@@ -166,6 +166,25 @@ impl MigrationSource for FilesystemSource {
 			}
 		}
 
+		// Sort by numeric prefix for deterministic ordering (#1335)
+		migrations.sort_by(|a, b| {
+			let num_a = a
+				.name
+				.chars()
+				.take_while(|c| c.is_ascii_digit())
+				.collect::<String>()
+				.parse::<u32>()
+				.unwrap_or(0);
+			let num_b = b
+				.name
+				.chars()
+				.take_while(|c| c.is_ascii_digit())
+				.collect::<String>()
+				.parse::<u32>()
+				.unwrap_or(0);
+			num_a.cmp(&num_b).then_with(|| a.name.cmp(&b.name))
+		});
+
 		Ok(migrations)
 	}
 }
@@ -188,20 +207,26 @@ mod tests {
 		fs::write(file_path, content).unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_new() {
+		// Arrange
 		let temp_dir = TempDir::new().unwrap();
+
+		// Act
 		let source = FilesystemSource::new(temp_dir.path());
+
+		// Assert
 		assert_eq!(source.root_dir, temp_dir.path());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_all_migrations() {
+		// Arrange
 		let temp_dir = TempDir::new().unwrap();
-
-		// Create test migration files
 		create_migration_file(
 			temp_dir.path(),
 			"polls",
@@ -221,7 +246,6 @@ pub fn migration() -> Migration {
 }
 "#,
 		);
-
 		create_migration_file(
 			temp_dir.path(),
 			"users",
@@ -241,21 +265,23 @@ pub fn migration() -> Migration {
 }
 "#,
 		);
-
 		let source = FilesystemSource::new(temp_dir.path());
+
+		// Act
 		let migrations = source.all_migrations().await.unwrap();
 
+		// Assert
 		assert_eq!(migrations.len(), 2);
 		assert!(migrations.iter().any(|m| m.app_label == "polls"));
 		assert!(migrations.iter().any(|m| m.app_label == "users"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_migrations_for_app() {
+		// Arrange
 		let temp_dir = TempDir::new().unwrap();
-
-		// Create test migration files
 		create_migration_file(
 			temp_dir.path(),
 			"polls",
@@ -275,7 +301,6 @@ pub fn migration() -> Migration {
 }
 "#,
 		);
-
 		create_migration_file(
 			temp_dir.path(),
 			"polls",
@@ -295,19 +320,22 @@ pub fn migration() -> Migration {
 }
 "#,
 		);
-
 		let source = FilesystemSource::new(temp_dir.path());
+
+		// Act
 		let polls_migrations = source.migrations_for_app("polls").await.unwrap();
 
+		// Assert
 		assert_eq!(polls_migrations.len(), 2);
 		assert!(polls_migrations.iter().all(|m| m.app_label == "polls"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_get_migration() {
+		// Arrange
 		let temp_dir = TempDir::new().unwrap();
-
 		create_migration_file(
 			temp_dir.path(),
 			"polls",
@@ -327,22 +355,28 @@ pub fn migration() -> Migration {
 }
 "#,
 		);
-
 		let source = FilesystemSource::new(temp_dir.path());
+
+		// Act
 		let migration = source.get_migration("polls", "0001_initial").await.unwrap();
 
+		// Assert
 		assert_eq!(migration.app_label, "polls");
 		assert_eq!(migration.name, "0001_initial");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_get_migration_not_found() {
+		// Arrange
 		let temp_dir = TempDir::new().unwrap();
-
 		let source = FilesystemSource::new(temp_dir.path());
+
+		// Act
 		let result = source.get_migration("polls", "0001_initial").await;
 
+		// Assert
 		assert!(result.is_err());
 		assert!(matches!(result.unwrap_err(), MigrationError::NotFound(_)));
 	}
