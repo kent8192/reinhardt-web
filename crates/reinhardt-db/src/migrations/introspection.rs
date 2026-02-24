@@ -1641,6 +1641,7 @@ impl DatabaseIntrospector for SQLiteIntrospector {
 }
 
 #[cfg(test)]
+#[cfg(feature = "sqlite")]
 mod tests {
 	use super::*;
 	use crate::migrations::FieldType;
