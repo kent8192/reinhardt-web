@@ -1,0 +1,35 @@
+name: Cross-Platform Check
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_TARGET_DIR: /tmp/cargo_target
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  cross-platform-check:
+    name: Cross-Platform Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Verify compilation on all major platforms
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Setup protoc
+        uses: ./.github/actions/setup-protoc
+
+      - name: Run cargo check (${{ matrix.os }})
+        run: cargo check --workspace --all --all-features
