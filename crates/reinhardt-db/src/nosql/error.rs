@@ -8,7 +8,7 @@ use std::fmt;
 pub type Result<T> = std::result::Result<T, NoSQLError>;
 
 /// Unified error type for NoSQL operations
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NoSQLError {
 	/// Connection error
 	ConnectionError(String),
@@ -227,7 +227,7 @@ impl From<bson::error::Error> for OdmError {
 }
 
 /// Validation error type.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
 	/// Required field is missing or empty.
 	Required(&'static str),
