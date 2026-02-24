@@ -9,6 +9,7 @@ on:
     types: [opened, synchronize, reopened, closed]
     paths:
       - "website/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -36,6 +37,19 @@ jobs:
       - name: Build
         working-directory: website
         run: zola build
+
+      - name: Set production branch via Cloudflare API
+        if: github.ref == 'refs/heads/main'
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          curl -sf -X PATCH \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/reinhardt-web" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"production_branch": "main"}' \
+            | jq -r '"Production branch set to: \(.result.production_branch)"'
 
       - name: Deploy to Cloudflare Pages
         id: deploy
