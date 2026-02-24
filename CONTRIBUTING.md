@@ -203,6 +203,36 @@ pub fn get_config() -> Config {
 - **PREFER** absolute paths or single-level relative paths (e.g., `../`)
 - Deep relative paths make code harder to understand
 
+### API Deprecation Policy
+
+When marking a public API as deprecated, follow these requirements:
+
+**Required attributes:**
+
+```rust
+#[deprecated(
+    since = "0.2.0",
+    note = "Use `new_function()` instead. Will be removed in 1.0.0."
+)]
+pub fn old_function() { ... }
+```
+
+**Requirements:**
+- `since`: Version when the item was deprecated (follow semantic versioning)
+- `note`: Concise migration path describing what to use instead and when removal is planned
+- Both `since` and `note` fields are **MANDATORY** — bare `#[deprecated]` is not allowed
+
+**Deprecation lifecycle:**
+1. Add `#[deprecated(since = "...", note = "...")]` to the item
+2. Keep the implementation functional until the planned removal version
+3. Add a `deprecated` commit type entry in CHANGELOG (triggers dedicated section)
+4. Remove the item in the version specified in `note`
+
+**Naming convention for commit messages:**
+```
+deprecated(auth): mark `old_session_token()` as deprecated in favor of `session_token()`
+```
+
 ---
 
 ## Testing Guidelines
