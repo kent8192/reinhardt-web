@@ -198,7 +198,7 @@ proptest! {
 		let middleware = CircuitBreakerMiddleware::new(config);
 
 		// State should be one of the valid states
-		let state = middleware.get_state();
+		let state = middleware.state();
 		assert!(matches!(state, CircuitState::Closed | CircuitState::Open | CircuitState::HalfOpen));
 	}
 

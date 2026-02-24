@@ -397,7 +397,7 @@ async fn test_circuit_breaker_decision_table_basic(
 	let _ = middleware.process(request, handler.clone()).await;
 
 	assert_eq!(
-		middleware.get_state(),
+		middleware.state(),
 		expected_state,
 		"CircuitBreaker state should be {:?}",
 		expected_state
@@ -419,7 +419,7 @@ async fn test_circuit_breaker_open_state_rejects_requests() {
 		let _ = middleware.process(request, failure_handler.clone()).await;
 	}
 
-	assert_eq!(middleware.get_state(), CircuitState::Open);
+	assert_eq!(middleware.state(), CircuitState::Open);
 
 	// Try another request - should be rejected with 503
 	let success_handler = Arc::new(ConfigurableTestHandler::always_success());
@@ -444,7 +444,7 @@ async fn test_circuit_breaker_halfopen_success_closes() {
 		let _ = middleware.process(request, failure_handler.clone()).await;
 	}
 
-	assert_eq!(middleware.get_state(), CircuitState::Open);
+	assert_eq!(middleware.state(), CircuitState::Open);
 
 	// Wait for timeout
 	tokio::time::sleep(Duration::from_millis(60)).await;
@@ -454,7 +454,7 @@ async fn test_circuit_breaker_halfopen_success_closes() {
 	let request = create_test_request("GET", "/success");
 	let _ = middleware.process(request, success_handler.clone()).await;
 
-	assert_eq!(middleware.get_state(), CircuitState::Closed);
+	assert_eq!(middleware.state(), CircuitState::Closed);
 }
 
 #[tokio::test]
@@ -471,7 +471,7 @@ async fn test_circuit_breaker_halfopen_failure_opens() {
 		let _ = middleware.process(request, failure_handler.clone()).await;
 	}
 
-	assert_eq!(middleware.get_state(), CircuitState::Open);
+	assert_eq!(middleware.state(), CircuitState::Open);
 
 	// Wait for timeout
 	tokio::time::sleep(Duration::from_millis(60)).await;
@@ -480,7 +480,7 @@ async fn test_circuit_breaker_halfopen_failure_opens() {
 	let request = create_test_request("GET", "/fail");
 	let _ = middleware.process(request, failure_handler.clone()).await;
 
-	assert_eq!(middleware.get_state(), CircuitState::Open);
+	assert_eq!(middleware.state(), CircuitState::Open);
 }
 
 // ============================================================================

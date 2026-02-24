@@ -21,9 +21,9 @@ use std::sync::Arc;
 // Circuit Breaker API Sanity
 // =============================================================================
 
-/// Tests that CircuitBreaker::get_state returns a valid state.
+/// Tests that CircuitBreaker::state returns a valid state.
 #[test]
-fn sanity_circuit_breaker_get_state() {
+fn sanity_circuit_breaker_state() {
 	use reinhardt_middleware::circuit_breaker::{
 		CircuitBreakerConfig, CircuitBreakerMiddleware, CircuitState,
 	};
@@ -40,7 +40,7 @@ fn sanity_circuit_breaker_get_state() {
 	let middleware = CircuitBreakerMiddleware::new(config);
 
 	// Initial state should be Closed
-	let state = middleware.get_state();
+	let state = middleware.state();
 	assert!(
 		matches!(state, CircuitState::Closed),
 		"Initial state should be Closed"
@@ -68,7 +68,7 @@ fn sanity_circuit_breaker_reset() {
 	// Reset should ensure circuit is closed
 	middleware.reset();
 
-	let state = middleware.get_state();
+	let state = middleware.state();
 	assert!(
 		matches!(state, CircuitState::Closed),
 		"State after reset should be Closed"

@@ -213,7 +213,7 @@ async fn test_circuit_breaker_closed_state_processes_normally(
 	success_handler: Arc<ConfigurableTestHandler>,
 ) {
 	// Verify: Initial state is Closed
-	assert_eq!(circuit_breaker_middleware.get_state(), CircuitState::Closed);
+	assert_eq!(circuit_breaker_middleware.state(), CircuitState::Closed);
 
 	// Execute: Send successful request
 	let request = create_test_request("GET", "/api/health");
@@ -224,7 +224,7 @@ async fn test_circuit_breaker_closed_state_processes_normally(
 
 	// Verify: Request succeeded and state is still Closed
 	assert_status(&response, 200);
-	assert_eq!(circuit_breaker_middleware.get_state(), CircuitState::Closed);
+	assert_eq!(circuit_breaker_middleware.state(), CircuitState::Closed);
 	assert_eq!(success_handler.count(), 1);
 }
 
@@ -237,7 +237,7 @@ async fn test_circuit_breaker_maintains_closed_with_success(
 	success_handler: Arc<ConfigurableTestHandler>,
 ) {
 	// Verify: Initial state is Closed
-	assert_eq!(circuit_breaker_middleware.get_state(), CircuitState::Closed);
+	assert_eq!(circuit_breaker_middleware.state(), CircuitState::Closed);
 
 	// Execute: Send multiple successful requests
 	for _ in 0..5 {
@@ -250,7 +250,7 @@ async fn test_circuit_breaker_maintains_closed_with_success(
 	}
 
 	// Verify: State remains Closed after successful requests and handler was called
-	assert_eq!(circuit_breaker_middleware.get_state(), CircuitState::Closed);
+	assert_eq!(circuit_breaker_middleware.state(), CircuitState::Closed);
 	assert_eq!(success_handler.count(), 5);
 }
 
