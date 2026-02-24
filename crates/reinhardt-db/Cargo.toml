@@ -176,3 +176,4 @@ tempfile = { workspace = true }
 proptest = "1.5"
 trybuild = "1.0"
 ctor = "0.6.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
