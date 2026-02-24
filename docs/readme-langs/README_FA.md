@@ -13,7 +13,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](../../LICENSE)
 [![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
@@ -1019,8 +1019,8 @@ Reinhardt اجزای ماژولار قابل ترکیب ارائه می‌دهد
 Reinhardt یک پروژه مبتنی بر انجمن است. اینجا می‌توانید کمک بگیرید:
 
 - 💬 **Discord**: به سرور Discord ما برای چت بلادرنگ بپیوندید (به زودی)
-- 💭 **GitHub Discussions**: [سوال بپرسید و ایده‌ها را به اشتراک بگذارید](https://github.com/kent8192/reinhardt-rs/discussions)
-- 🐛 **Issues**: [گزارش باگ](https://github.com/kent8192/reinhardt-rs/issues)
+- 💭 **GitHub Discussions**: [سوال بپرسید و ایده‌ها را به اشتراک بگذارید](https://github.com/kent8192/reinhardt-web/discussions)
+- 🐛 **Issues**: [گزارش باگ](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **مستندات**: [راهنماها را بخوانید](../)
 
 قبل از پرسیدن، لطفاً بررسی کنید:
@@ -1051,10 +1051,7 @@ Reinhardt یک پروژه مبتنی بر انجمن است. اینجا می‌�
 
 ## مجوز
 
-تحت یکی از مجوزهای زیر به انتخاب شما:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](../../LICENSE-APACHE) یا http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](../../LICENSE-MIT) یا http://opensource.org/licenses/MIT)
+این پروژه تحت مجوز [BSD 3-Clause License](../../LICENSE) منتشر شده است.
 
 ### اعتبار طرف سوم
 
