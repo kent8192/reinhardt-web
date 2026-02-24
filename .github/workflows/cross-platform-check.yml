@@ -31,25 +31,22 @@ jobs:
       - name: Setup protoc
         uses: ./.github/actions/setup-protoc
 
-      - name: Set OpenSSL environment variables (Windows)
+      - name: Install and configure OpenSSL (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          # Windows 2025 runner has OpenSSL pre-installed; set OPENSSL_DIR so
-          # openssl-sys can locate it automatically during cargo check.
-          $candidates = @(
-            "C:\Program Files\OpenSSL-Win64",
-            "C:\Program Files\OpenSSL",
-            "C:\OpenSSL-Win64",
-            "C:\OpenSSL"
-          )
-          foreach ($path in $candidates) {
-            if (Test-Path $path) {
-              echo "OPENSSL_DIR=$path" >> $env:GITHUB_ENV
-              Write-Host "Found OpenSSL at $path"
-              break
-            }
+          # Install 64-bit OpenSSL via chocolatey to ensure the correct libraries
+          # are available for openssl-sys linking on Windows runners.
+          $targetDir = "C:\Program Files\OpenSSL-Win64"
+          if (-not (Test-Path "$targetDir\lib")) {
+            choco install openssl --yes --no-progress 2>&1 | Out-Null
+            Write-Host "Installed OpenSSL via chocolatey"
+          } else {
+            Write-Host "Using pre-installed OpenSSL at $targetDir"
           }
+          echo "OPENSSL_DIR=$targetDir" >> $env:GITHUB_ENV
+          echo "OPENSSL_STATIC=1" >> $env:GITHUB_ENV
+          Write-Host "OPENSSL_DIR set to $targetDir"
 
       - name: Run cargo check (${{ matrix.os }})
         run: cargo check --workspace --all --all-features
