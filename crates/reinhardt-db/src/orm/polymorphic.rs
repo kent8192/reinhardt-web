@@ -30,6 +30,7 @@ pub enum InheritanceType {
 
 /// Configuration for polymorphic relationships
 /// Defines how types are identified and resolved
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct PolymorphicConfig {
 	/// Field name that stores the type identifier
