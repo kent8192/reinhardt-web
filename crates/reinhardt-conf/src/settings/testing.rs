@@ -2,7 +2,7 @@
 //!
 //! Provides helpers for testing configuration in unit and integration tests.
 //!
-//! This module is part of reinhardt-settings crate.
+//! This module is part of reinhardt-conf crate.
 
 use super::env_loader::load_env_optional;
 use std::collections::HashMap;
