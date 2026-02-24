@@ -25,6 +25,7 @@
 
 You may be looking for:
 
+- 🌐 [Official Website](https://reinhardt-web.dev) - Documentation, tutorials, and guides
 - 🚀 [Quick Start](#quick-start) - Get up and running in 5 minutes
 - 📦 [Installation Options](#installation) - Choose your flavor: Micro, Standard, or Full
 - 📚 [Getting Started Guide](docs/GETTING_STARTED.md) - Step-by-step tutorial
