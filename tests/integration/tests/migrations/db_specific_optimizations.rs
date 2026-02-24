@@ -1164,8 +1164,18 @@ async fn test_mysql_partition_by_range(
 			reinhardt_db::migrations::operations::PartitionType::Range,
 			"id",
 			vec![
-				PartitionDef::new("p0", reinhardt_db::migrations::operations::PartitionValues::LessThan("1000".to_string())),
-				PartitionDef::new("p1", reinhardt_db::migrations::operations::PartitionValues::LessThan("2000".to_string())),
+				PartitionDef::new(
+					"p0",
+					reinhardt_db::migrations::operations::PartitionValues::LessThan(
+						"1000".to_string(),
+					),
+				),
+				PartitionDef::new(
+					"p1",
+					reinhardt_db::migrations::operations::PartitionValues::LessThan(
+						"2000".to_string(),
+					),
+				),
 			],
 		)),
 	};
@@ -1214,10 +1224,22 @@ async fn test_mysql_partition_by_hash(
 			reinhardt_db::migrations::operations::PartitionType::Hash,
 			"id",
 			vec![
-				PartitionDef::new("p0", reinhardt_db::migrations::operations::PartitionValues::ModuloCount(4)),
-				PartitionDef::new("p1", reinhardt_db::migrations::operations::PartitionValues::ModuloCount(4)),
-				PartitionDef::new("p2", reinhardt_db::migrations::operations::PartitionValues::ModuloCount(4)),
-				PartitionDef::new("p3", reinhardt_db::migrations::operations::PartitionValues::ModuloCount(4)),
+				PartitionDef::new(
+					"p0",
+					reinhardt_db::migrations::operations::PartitionValues::ModuloCount(4),
+				),
+				PartitionDef::new(
+					"p1",
+					reinhardt_db::migrations::operations::PartitionValues::ModuloCount(4),
+				),
+				PartitionDef::new(
+					"p2",
+					reinhardt_db::migrations::operations::PartitionValues::ModuloCount(4),
+				),
+				PartitionDef::new(
+					"p3",
+					reinhardt_db::migrations::operations::PartitionValues::ModuloCount(4),
+				),
 			],
 		)),
 	};
