@@ -140,6 +140,7 @@ pub use user_management::{
 };
 
 /// Authentication errors
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum AuthenticationError {
 	InvalidCredentials,
