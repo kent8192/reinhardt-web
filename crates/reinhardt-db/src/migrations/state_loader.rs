@@ -244,6 +244,7 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "sqlite")]
 mod tests {
 	use super::*;
 	use crate::migrations::FieldType;

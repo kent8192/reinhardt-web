@@ -1883,11 +1883,11 @@ mod tests {
 	#[test]
 	fn test_json_to_sea_value_float() {
 		use serde_json::json;
-		let value = json!(3.14);
+		let value = json!(1.5);
 		let sea_value = super::Manager::<TestUser>::json_to_sea_value(&value);
 
 		let debug_str = format!("{:?}", sea_value);
-		assert!(debug_str.contains("3.14") || debug_str.contains("Double"));
+		assert!(debug_str.contains("1.5") || debug_str.contains("Double"));
 	}
 
 	#[test]

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-alpha.5...reinhardt-deeplink@v0.1.0-alpha.6) - 2026-02-24
+
+### Maintenance
+
+- updated the following local packages: reinhardt-urls
+
 ## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-alpha.4...reinhardt-deeplink@v0.1.0-alpha.5) - 2026-02-24
 
 ### Fixed
