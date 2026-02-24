@@ -9,6 +9,7 @@ on:
     types: [opened, synchronize, reopened, closed]
     paths:
       - "website/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
