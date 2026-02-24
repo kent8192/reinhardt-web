@@ -13,7 +13,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](../../LICENSE)
 [![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
@@ -1019,8 +1019,8 @@ Reinhardtは組み合わせ可能なモジュラーコンポーネントを提�
 Reinhardtはコミュニティ駆動のプロジェクトです。ヘルプが必要な場合:
 
 - 💬 **Discord**: Discordサーバーでリアルタイムチャット（近日公開）
-- 💭 **GitHub Discussions**: [質問やアイデアを共有](https://github.com/kent8192/reinhardt-rs/discussions)
-- 🐛 **Issues**: [バグを報告](https://github.com/kent8192/reinhardt-rs/issues)
+- 💭 **GitHub Discussions**: [質問やアイデアを共有](https://github.com/kent8192/reinhardt-web/discussions)
+- 🐛 **Issues**: [バグを報告](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **ドキュメント**: [ガイドを読む](../)
 
 質問する前に、以下を確認してください:
@@ -1051,12 +1051,7 @@ Reinhardtはコミュニティ駆動のプロジェクトです。ヘルプが�
 
 ## ライセンス
 
-以下のいずれかのライセンスの下でライセンスされています:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](../../LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](../../LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-お好みで選択できます。
+このプロジェクトは [BSD 3-Clause License](../../LICENSE) の下でライセンスされています。
 
 ### サードパーティ帰属
 

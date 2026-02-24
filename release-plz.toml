@@ -61,11 +61,6 @@ name = "reinhardt-benchmarks"
 release = false
 publish = false
 
-[[package]]
-name = "reinhardt-settings-cli"
-release = false
-publish = false
-
 [changelog]
 protect_breaking_commits = true
 sort_commits = "oldest"
