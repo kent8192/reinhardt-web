@@ -13,7 +13,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](../../LICENSE)
 [![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
@@ -1019,8 +1019,8 @@ Reinhardt предлагает модульные компоненты для к
 Reinhardt — проект, управляемый сообществом. Вот где можно получить помощь:
 
 - 💬 **Discord**: Присоединяйтесь к нашему Discord серверу для общения в реальном времени (скоро)
-- 💭 **GitHub Discussions**: [Задавайте вопросы и делитесь идеями](https://github.com/kent8192/reinhardt-rs/discussions)
-- 🐛 **Issues**: [Сообщайте об ошибках](https://github.com/kent8192/reinhardt-rs/issues)
+- 💭 **GitHub Discussions**: [Задавайте вопросы и делитесь идеями](https://github.com/kent8192/reinhardt-web/discussions)
+- 🐛 **Issues**: [Сообщайте об ошибках](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **Документация**: [Читайте руководства](../)
 
 Перед тем как задать вопрос, проверьте:
@@ -1051,10 +1051,7 @@ Reinhardt — проект, управляемый сообществом. Во�
 
 ## Лицензия
 
-Лицензировано по одной из следующих лицензий на ваш выбор:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](../../LICENSE-APACHE) или http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](../../LICENSE-MIT) или http://opensource.org/licenses/MIT)
+Этот проект лицензирован под [BSD 3-Clause License](../../LICENSE).
 
 ### Атрибуция третьих сторон
 

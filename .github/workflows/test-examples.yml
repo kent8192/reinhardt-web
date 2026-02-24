@@ -2,7 +2,12 @@ name: Test Examples
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
+
+concurrency:
+  group: test-examples-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 env:
   RUST_BACKTRACE: 1
@@ -11,6 +16,7 @@ env:
 jobs:
   test-local-examples:
     name: Test ${{ matrix.example }}
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

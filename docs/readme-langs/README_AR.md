@@ -13,7 +13,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](../../LICENSE)
 [![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
@@ -1019,8 +1019,8 @@ Reinhardt يقدم مكونات معيارية قابلة للمزج:
 Reinhardt مشروع يقوده المجتمع. إليك أين تحصل على المساعدة:
 
 - 💬 **Discord**: انضم إلى خادم Discord للدردشة الفورية (قريباً)
-- 💭 **GitHub Discussions**: [اطرح أسئلة وشارك الأفكار](https://github.com/kent8192/reinhardt-rs/discussions)
-- 🐛 **Issues**: [أبلغ عن الأخطاء](https://github.com/kent8192/reinhardt-rs/issues)
+- 💭 **GitHub Discussions**: [اطرح أسئلة وشارك الأفكار](https://github.com/kent8192/reinhardt-web/discussions)
+- 🐛 **Issues**: [أبلغ عن الأخطاء](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **الوثائق**: [اقرأ الأدلة](../)
 
 قبل السؤال، يرجى التحقق من:
@@ -1051,12 +1051,7 @@ Reinhardt مشروع يقوده المجتمع. إليك أين تحصل على 
 
 ## الترخيص
 
-مرخص بموجب أي من:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](../../LICENSE-APACHE) أو http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](../../LICENSE-MIT) أو http://opensource.org/licenses/MIT)
-
-باختيارك.
+هذا المشروع مرخص بموجب [BSD 3-Clause License](../../LICENSE).
 
 ### إسناد الطرف الثالث
 

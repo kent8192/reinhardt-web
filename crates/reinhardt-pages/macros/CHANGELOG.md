@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.9...reinhardt-pages-macros@v0.1.0-alpha.10) - 2026-02-23
+
+### Maintenance
+
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
 ## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.8...reinhardt-pages-macros@v0.1.0-alpha.9) - 2026-02-23
 
 ### Maintenance

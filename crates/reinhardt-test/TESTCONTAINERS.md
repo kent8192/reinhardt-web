@@ -266,4 +266,4 @@ See [`examples/testcontainer_usage.rs`](examples/testcontainer_usage.rs) for com
 
 ## License
 
-Same as parent project (MIT OR Apache-2.0)
+BSD 3-Clause License
