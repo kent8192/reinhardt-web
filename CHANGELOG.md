@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
+
+### Documentation
+
+- add official website link to Quick Navigation
+- update internal documentation links to official website URLs
+- remove repository-hosted documentation migrated to reinhardt-web.dev
+
+### Fixed
+
+- *(website)* set cloudflare pages production branch to main before deploy
+- *(website)* add workflow_dispatch trigger for manual deployment
+- *(website)* add DNS records for custom domain resolution
+- *(infra)* add import blocks for existing Cloudflare resources
+
 ## [0.1.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.17...reinhardt-web@v0.1.0-alpha.18) - 2026-02-24
 
 ### Added
