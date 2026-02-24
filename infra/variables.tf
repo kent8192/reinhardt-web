@@ -44,6 +44,12 @@ variable "production_branch" {
   default     = "main"
 }
 
+# --- Search engine verification ---
+variable "google_site_verification" {
+  description = "Google Search Console DNS TXT verification value"
+  type        = string
+}
+
 # --- Import IDs (for importing existing Cloudflare resources) ---
 variable "dns_record_apex_id" {
   description = "Cloudflare DNS record ID for the apex domain"
@@ -52,5 +58,10 @@ variable "dns_record_apex_id" {
 
 variable "dns_record_www_id" {
   description = "Cloudflare DNS record ID for the www subdomain"
+  type        = string
+}
+
+variable "dns_record_google_verification_id" {
+  description = "Cloudflare DNS record ID for Google verification TXT record"
   type        = string
 }

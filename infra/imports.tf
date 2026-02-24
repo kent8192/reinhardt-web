@@ -25,3 +25,9 @@ import {
   to = cloudflare_dns_record.website_www
   id = "${data.cloudflare_zone.website.zone_id}/${var.dns_record_www_id}"
 }
+
+# Google Search Console verification TXT record
+import {
+  to = cloudflare_dns_record.google_verification
+  id = "${data.cloudflare_zone.website.zone_id}/${var.dns_record_google_verification_id}"
+}
