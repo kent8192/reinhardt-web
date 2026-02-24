@@ -252,6 +252,7 @@ pub async fn execute_from_command_line() -> Result<(), Box<dyn std::error::Error
 fn requires_router(command: &Commands) -> bool {
 	match command {
 		Commands::Runserver { .. } => true,
+		#[cfg(feature = "routers")]
 		Commands::Showurls { .. } => true,
 		#[cfg(feature = "openapi")]
 		Commands::Generateopenapi { .. } => true,
@@ -856,10 +857,28 @@ mod tests {
 		assert!(result);
 	}
 
+	#[cfg(feature = "routers")]
 	#[rstest]
 	fn test_requires_router_for_showurls() {
 		// Arrange
 		let command = Commands::Showurls { names: false };
+
+		// Act
+		let result = requires_router(&command);
+
+		// Assert
+		assert!(result);
+	}
+
+	#[cfg(feature = "openapi")]
+	#[rstest]
+	fn test_requires_router_for_generateopenapi() {
+		// Arrange
+		let command = Commands::Generateopenapi {
+			format: "json".to_string(),
+			output: std::path::PathBuf::from("openapi.json"),
+			postman: false,
+		};
 
 		// Act
 		let result = requires_router(&command);
