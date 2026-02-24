@@ -1816,11 +1816,11 @@ mod tests {
 	#[test]
 	fn test_json_to_reinhardt_query_value_float() {
 		use serde_json::json;
-		let value = json!(3.14159);
+		let value = json!(2.5);
 		let rq_value = super::json_to_reinhardt_query_value(&value);
 
 		let debug_str = format!("{:?}", rq_value);
-		assert!(debug_str.contains("3.14159") || debug_str.contains("Double"));
+		assert!(debug_str.contains("2.5") || debug_str.contains("Double"));
 	}
 
 	#[test]
