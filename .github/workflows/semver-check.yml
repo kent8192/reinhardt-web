@@ -43,6 +43,7 @@ jobs:
         uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
           feature-group: all-features
+          workspace: true
           exclude: reinhardt-web,reinhardt-pages
           # Use the PR base branch SHA as the baseline since crates are not yet published
           # to crates.io. This compares SemVer compatibility against the main branch state.
