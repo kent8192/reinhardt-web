@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.20...reinhardt-web@v0.1.0-alpha.21) - 2026-02-24
+
+### Fixed
+
+- *(integration-tests)* use index-based access for mysql information_schema columns
+
+### Testing
+
+- *(reinhardt-db)* replace #[test] with #[rstest] in migration tests
+
 ## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
 
 ### Documentation
