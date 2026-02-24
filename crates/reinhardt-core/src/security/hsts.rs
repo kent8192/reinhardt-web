@@ -114,6 +114,7 @@ impl Default for HstsConfig {
 /// let middleware = HstsMiddleware::new(config);
 /// assert_eq!(middleware.config().max_age, 31536000);
 /// ```
+#[derive(Debug, Clone)]
 pub struct HstsMiddleware {
 	config: HstsConfig,
 }

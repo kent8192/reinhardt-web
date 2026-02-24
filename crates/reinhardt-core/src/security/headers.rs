@@ -257,6 +257,7 @@ impl SecurityHeadersConfig {
 }
 
 /// Security headers middleware
+#[derive(Debug, Clone)]
 pub struct SecurityHeadersMiddleware {
 	config: SecurityHeadersConfig,
 }

@@ -45,6 +45,7 @@ pub trait BaseContentNegotiation {
 }
 
 /// Content negotiator for selecting appropriate renderer
+#[derive(Debug, Clone)]
 pub struct ContentNegotiator {
 	default_media_type: MediaType,
 }
@@ -258,6 +259,7 @@ impl Default for ContentNegotiator {
 }
 
 /// Base content negotiation implementation (abstract)
+#[derive(Debug, Clone)]
 pub struct BaseNegotiator;
 
 impl BaseContentNegotiation for BaseNegotiator {}

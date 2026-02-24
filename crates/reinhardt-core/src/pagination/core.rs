@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 /// Represents pagination metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaginationMetadata {
 	pub count: usize,
 	pub next: Option<String>,
@@ -13,7 +13,7 @@ pub struct PaginationMetadata {
 }
 
 /// Paginated response wrapper
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaginatedResponse<T> {
 	pub count: usize,
 	pub next: Option<String>,

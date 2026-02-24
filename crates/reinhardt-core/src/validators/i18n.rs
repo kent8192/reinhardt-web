@@ -498,7 +498,7 @@ where
 }
 
 /// A builder for creating LocalizedValidators with custom language settings.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LocalizedValidatorBuilder {
 	language: Language,
 	messages: Option<ValidationMessages>,

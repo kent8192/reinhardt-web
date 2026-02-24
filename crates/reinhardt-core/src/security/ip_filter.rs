@@ -198,6 +198,7 @@ impl Default for IpFilterConfig {
 }
 
 /// IP Filtering Middleware
+#[derive(Debug, Clone)]
 pub struct IpFilterMiddleware {
 	config: IpFilterConfig,
 }
