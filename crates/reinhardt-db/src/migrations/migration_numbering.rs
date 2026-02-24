@@ -245,107 +245,131 @@ impl MigrationNumbering {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::fs;
 
+	#[rstest]
 	#[test]
 	fn test_next_number_first_migration() {
+		// Arrange
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
 
+		// Act
 		let next = MigrationNumbering::next_number(&migrations_dir, "myapp");
+
+		// Assert
 		assert_eq!(next, "0001");
 	}
 
+	#[rstest]
 	#[test]
 	fn test_next_number_existing_migrations() {
+		// Arrange
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
 		let app_dir = migrations_dir.join("myapp");
 		fs::create_dir_all(&app_dir).unwrap();
-
-		// Create mock migration files
 		fs::write(app_dir.join("0001_initial.rs"), "").unwrap();
 		fs::write(app_dir.join("0002_add_field.rs"), "").unwrap();
 		fs::write(app_dir.join("0003_remove_field.rs"), "").unwrap();
 
+		// Act
 		let next = MigrationNumbering::next_number(&migrations_dir, "myapp");
+
+		// Assert
 		assert_eq!(next, "0004");
 	}
 
+	#[rstest]
 	#[test]
 	fn test_get_highest_number_no_migrations() {
+		// Arrange
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
 
+		// Act
 		let highest = MigrationNumbering::get_highest_number(&migrations_dir, "myapp");
+
+		// Assert
 		assert_eq!(highest, 0);
 	}
 
+	#[rstest]
 	#[test]
 	fn test_get_highest_number_with_migrations() {
+		// Arrange
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
 		let app_dir = migrations_dir.join("myapp");
 		fs::create_dir_all(&app_dir).unwrap();
-
-		// Create mock migration files
 		fs::write(app_dir.join("0001_initial.rs"), "").unwrap();
 		fs::write(app_dir.join("0005_add_field.rs"), "").unwrap();
 		fs::write(app_dir.join("0003_remove_field.rs"), "").unwrap();
 
+		// Act
 		let highest = MigrationNumbering::get_highest_number(&migrations_dir, "myapp");
+
+		// Assert
 		assert_eq!(highest, 5);
 	}
 
+	#[rstest]
 	#[test]
 	fn test_get_highest_number_ignores_non_migration_files() {
+		// Arrange
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
 		let app_dir = migrations_dir.join("myapp");
 		fs::create_dir_all(&app_dir).unwrap();
-
-		// Create mock files
 		fs::write(app_dir.join("0001_initial.rs"), "").unwrap();
 		fs::write(app_dir.join("README.md"), "").unwrap();
 		fs::write(app_dir.join("myapp.rs"), "").unwrap();
 		fs::write(app_dir.join("invalid_name.rs"), "").unwrap();
 
+		// Act
 		let highest = MigrationNumbering::get_highest_number(&migrations_dir, "myapp");
+
+		// Assert
 		assert_eq!(highest, 1);
 	}
 
+	#[rstest]
 	#[test]
 	fn test_get_all_numbers() {
+		// Arrange
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
-
-		// Create multiple apps
 		let app1_dir = migrations_dir.join("app1");
 		let app2_dir = migrations_dir.join("app2");
 		fs::create_dir_all(&app1_dir).unwrap();
 		fs::create_dir_all(&app2_dir).unwrap();
-
 		fs::write(app1_dir.join("0001_initial.rs"), "").unwrap();
 		fs::write(app1_dir.join("0002_add_field.rs"), "").unwrap();
-
 		fs::write(app2_dir.join("0001_initial.rs"), "").unwrap();
 
+		// Act
 		let all_numbers = MigrationNumbering::get_all_numbers(&migrations_dir);
+
+		// Assert
 		assert_eq!(all_numbers.get("app1"), Some(&2));
 		assert_eq!(all_numbers.get("app2"), Some(&1));
 	}
 
+	#[rstest]
 	#[test]
 	fn test_zero_padding() {
+		// Arrange
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
 		let app_dir = migrations_dir.join("myapp");
 		fs::create_dir_all(&app_dir).unwrap();
-
-		// Create migration with number 99
 		fs::write(app_dir.join("0099_test.rs"), "").unwrap();
 
+		// Act
 		let next = MigrationNumbering::next_number(&migrations_dir, "myapp");
+
+		// Assert
 		assert_eq!(next, "0100");
 	}
 }
