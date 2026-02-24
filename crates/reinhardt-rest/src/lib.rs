@@ -24,7 +24,7 @@
 //! let parser = JSONParser::new();
 //! ```
 //!
-//! For router integration, see [`reinhardt_urls::routers`](reinhardt_urls::routers) crate.
+//! For router integration, see the `reinhardt_urls::routers` crate.
 //!
 //! ## Testing
 //!
