@@ -12,9 +12,9 @@
 //! HTTP-related types (`Handler`, `Middleware`, `MiddlewareChain`, `Request`, `Response`)
 //! have been moved to `reinhardt-http` crate to prevent circular dependencies.
 //!
-//! ```rust
+//! ```text
 //! // Use reinhardt-http for HTTP types
-//! // use reinhardt_http::{Handler, Middleware, Request, Response};
+//! use reinhardt_http::{Handler, Middleware, Request, Response};
 //! ```
 
 #[cfg(feature = "page")]
