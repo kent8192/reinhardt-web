@@ -44,3 +44,7 @@ jobs:
         with:
           feature-group: all-features
           exclude: reinhardt-web,reinhardt-pages
+          # Use the PR base branch SHA as the baseline since crates are not yet published
+          # to crates.io. This compares SemVer compatibility against the main branch state.
+          # github.event.pull_request.base.sha is a git commit SHA (hex string), safe to use.
+          baseline-rev: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
