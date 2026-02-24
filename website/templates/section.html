@@ -31,7 +31,7 @@
 		<ul class="page-list" role="list">
 			{% for page in section.pages %}
 			<li>
-				<a href="{{ page.permalink | safe }}">{{ page.title }}</a>
+				<a href="{{ page.path | safe }}">{{ page.title }}</a>
 				{% if page.description %}— {{ page.description }}{% endif %}
 			</li>
 			{% endfor %}
