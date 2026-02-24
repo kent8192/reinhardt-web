@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-web"
-version = "0.1.0-alpha.18"
+version = "0.1.0-alpha.19"
 edition.workspace = true
 license.workspace = true
 description = "A full-stack API framework for Rust, inspired by Django and Django REST Framework"
@@ -362,7 +362,7 @@ authors = ["kent8192 <51869472+kent8192@users.noreply.github.com>"]
 
 [workspace.dependencies]
 # Main facade crate (for workspace members that need to reference the root crate)
-reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.18" }
+reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.19" }
 
 # Internal crates
 reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.0-alpha.12" }
