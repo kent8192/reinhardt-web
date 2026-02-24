@@ -43,3 +43,14 @@ variable "production_branch" {
   type        = string
   default     = "main"
 }
+
+# --- Import IDs (for importing existing Cloudflare resources) ---
+variable "dns_record_apex_id" {
+  description = "Cloudflare DNS record ID for the apex domain"
+  type        = string
+}
+
+variable "dns_record_www_id" {
+  description = "Cloudflare DNS record ID for the www subdomain"
+  type        = string
+}
