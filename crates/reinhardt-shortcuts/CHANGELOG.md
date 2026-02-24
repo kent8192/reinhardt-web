@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-alpha.13...reinhardt-shortcuts@v0.1.0-alpha.14) - 2026-02-24
+
+### Fixed
+
+- *(release)* roll back unpublished crate versions after partial release failure
+
+### Maintenance
+
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
+## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-alpha.12...reinhardt-shortcuts@v0.1.0-alpha.13) - 2026-02-23
+
+### Maintenance
+
+- updated the following local packages: reinhardt-db, reinhardt-views, reinhardt-urls
+
 ## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-alpha.11...reinhardt-shortcuts@v0.1.0-alpha.12) - 2026-02-21
 
 ### Fixed

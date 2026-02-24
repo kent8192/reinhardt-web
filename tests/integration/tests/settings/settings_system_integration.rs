@@ -1,6 +1,6 @@
 //! Integration tests for Settings System
 //!
-//! These tests verify that reinhardt-settings works correctly with loading,
+//! These tests verify that reinhardt-conf settings works correctly with loading,
 //! validation, and access patterns.
 
 use reinhardt_conf::settings::{DatabaseConfig, Settings, TemplateConfig};
