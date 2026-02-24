@@ -12,3 +12,9 @@ output "custom_domain" {
   description = "Custom domain for the Pages project"
   value       = cloudflare_pages_domain.website.name
 }
+
+output "zone_id" {
+  description = "Cloudflare Zone ID for the custom domain"
+  value       = data.cloudflare_zone.website.zone_id
+  sensitive   = true
+}
