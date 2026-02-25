@@ -347,6 +347,12 @@ description = "Build and open documentation"
 command = "cargo"
 args = ["doc", "--workspace", "--all-features", "--no-deps", "--open"]
 
+[tasks.docs-rs-check]
+description = "Simulate docs.rs build environment (run with nightly)"
+command = "cargo"
+args = ["doc", "--workspace", "--all-features", "--no-deps"]
+env = { RUSTDOCFLAGS = "--cfg docsrs -D warnings" }
+
 # ============================================================================
 # Utility Tasks
 # ============================================================================
