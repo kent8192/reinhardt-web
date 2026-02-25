@@ -7,7 +7,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  CARGO_TARGET_DIR: /tmp/cargo_target
+  CARGO_TARGET_DIR: ${{ runner.temp }}/cargo_target
   CARGO_INCREMENTAL: 0
 
 jobs:
