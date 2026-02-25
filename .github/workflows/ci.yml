@@ -94,6 +94,11 @@ jobs:
     needs: [check, fmt, clippy]
     secrets: inherit
 
+  msrv-test:
+    name: MSRV Test
+    uses: ./.github/workflows/msrv-test.yml
+    needs: [check, fmt, clippy]
+
   # All jobs must pass
   ci-success:
     name: CI Success
@@ -114,6 +119,7 @@ jobs:
       - examples-test
       - ui-test
       - coverage
+      - msrv-test
     steps:
       - name: Verify all required checks passed
         run: |
@@ -131,6 +137,7 @@ jobs:
             "${{ needs.examples-test.result }}"
             "${{ needs.ui-test.result }}"
             "${{ needs.coverage.result }}"
+            "${{ needs.msrv-test.result }}"
           )
           for result in "${required_results[@]}"; do
             if [[ "$result" != "success" ]]; then
