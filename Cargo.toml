@@ -69,6 +69,7 @@ api = [
   "reinhardt-views/viewsets",
 ]
 auth = ["reinhardt-auth"]
+argon2-hasher = ["auth", "reinhardt-auth/argon2-hasher"]
 admin = [
   "reinhardt-admin",
   "reinhardt-admin/adapters",

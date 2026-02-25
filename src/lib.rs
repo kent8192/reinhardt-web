@@ -603,8 +603,8 @@ pub use reinhardt_auth::{
 	IsAdminUser, IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, SimpleUser, User,
 };
 
-#[cfg(all(feature = "auth", not(target_arch = "wasm32")))]
-#[cfg_attr(docsrs, doc(cfg(feature = "argon2-hasher")))]
+#[cfg(all(feature = "auth", feature = "argon2-hasher", not(target_arch = "wasm32")))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "auth", feature = "argon2-hasher"))))]
 pub use reinhardt_auth::Argon2Hasher;
 
 #[cfg(all(feature = "auth-jwt", not(target_arch = "wasm32")))]
