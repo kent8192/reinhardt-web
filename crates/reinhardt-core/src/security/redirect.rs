@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use url::Url;
 
 /// Errors that can occur during redirect URL validation
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RedirectValidationError {
 	/// URL uses a dangerous protocol (javascript:, data:, vbscript:)
