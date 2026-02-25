@@ -88,6 +88,8 @@
 //!     .with_middleware(Arc::new(CorsMiddleware::permissive()));
 //! ```
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 // Re-export external crates for macro support
 // Macro-generated code uses paths like `::reinhardt::reinhardt_apps::AppConfig`
 // These wrapper modules provide the namespace structure that macros expect.

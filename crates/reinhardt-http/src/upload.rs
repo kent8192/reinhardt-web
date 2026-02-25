@@ -10,6 +10,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 /// Errors that can occur during file upload operations
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum FileUploadError {
 	#[error("File too large: {0} bytes (max: {1} bytes)")]
