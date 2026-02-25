@@ -98,6 +98,11 @@ jobs:
     needs: [check, fmt, clippy]
     secrets: inherit
 
+  cross-platform-check:
+    name: Cross-Platform Check
+    uses: ./.github/workflows/cross-platform-check.yml
+    needs: [check, fmt, clippy]
+
   msrv-test:
     name: MSRV Test
     uses: ./.github/workflows/msrv-test.yml
@@ -124,6 +129,7 @@ jobs:
       - examples-test
       - ui-test
       - coverage
+      - cross-platform-check
       - msrv-test
     steps:
       - name: Verify all required checks passed
@@ -143,6 +149,7 @@ jobs:
             "${{ needs.examples-test.result }}"
             "${{ needs.ui-test.result }}"
             "${{ needs.coverage.result }}"
+            "${{ needs.cross-platform-check.result }}"
             "${{ needs.msrv-test.result }}"
           )
           for result in "${required_results[@]}"; do
