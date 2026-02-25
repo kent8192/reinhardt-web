@@ -134,6 +134,7 @@ jobs:
             "${{ needs.clippy.result }}"
             "${{ needs.publish-check.result }}"
             "${{ needs.todo-check.result }}"
+            "${{ needs.semver-check.result }}"
             "${{ needs.unit-test.result }}"
             "${{ needs.intra-crate-integration-test.result }}"
             "${{ needs.cross-crate-integration-test.result }}"
@@ -150,12 +151,6 @@ jobs:
               exit 1
             fi
           done
-          # semver-check is skipped on release-plz branches (expected)
-          semver="${{ needs.semver-check.result }}"
-          if [[ "$semver" != "success" && "$semver" != "skipped" ]]; then
-            echo "::error::SemVer check failed: $semver"
-            exit 1
-          fi
           # release-dry-run is skipped on release-plz branches (expected)
           dry_run="${{ needs.release-dry-run.result }}"
           if [[ "$dry_run" != "success" && "$dry_run" != "skipped" ]]; then

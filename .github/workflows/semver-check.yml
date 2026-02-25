@@ -11,12 +11,6 @@ jobs:
   semver-checks:
     name: SemVer Compatibility Check
     runs-on: ubuntu-latest
-    # Skip for release-plz branches - versions may reference unreleased crates
-    if: >-
-      ${{
-        !startsWith(github.head_ref || github.ref_name, 'release-plz-') &&
-        !startsWith(github.head_ref || github.ref_name, 'fix/release-plz')
-      }}
     timeout-minutes: 30
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -57,7 +51,12 @@ jobs:
           mv /tmp/csc/cargo-semver-checks ~/.cargo/bin/
           rm -rf /tmp/csc
 
-      - name: Run cargo-semver-checks
+      # On release-plz Release PRs, run the full semver-check using version numbers
+      # from Cargo.toml to validate the complete release (major/minor/patch).
+      # release-plz bumps versions in Cargo.toml, so cargo-semver-checks can auto-detect
+      # the intended release type and verify compliance.
+      - name: Run cargo-semver-checks (release PR - full version check)
+        if: ${{ startsWith(github.head_ref || github.ref_name, 'release-plz-') }}
         env:
           # Use the PR base branch SHA as the baseline since crates are not yet published
           # to crates.io. This compares SemVer compatibility against the main branch state.
@@ -69,4 +68,21 @@ jobs:
             --exclude reinhardt-web \
             --exclude reinhardt-pages \
             --all-features \
+            --baseline-rev "${BASELINE_REV:-HEAD~1}"
+
+      # On normal PRs, fix the release type to minor to guarantee that no breaking
+      # changes (which require a major version bump) are merged into main.
+      # Any API-breaking change will cause this check to fail, enforcing that
+      # breaking changes must go through an explicit major-version release PR.
+      - name: Run cargo-semver-checks (normal PR - minor release type)
+        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release-plz-') }}
+        env:
+          BASELINE_REV: ${{ github.event.pull_request.base.sha }}
+        run: |
+          cargo semver-checks check-release \
+            --workspace \
+            --exclude reinhardt-web \
+            --exclude reinhardt-pages \
+            --all-features \
+            --release-type minor \
             --baseline-rev "${BASELINE_REV:-HEAD~1}"
