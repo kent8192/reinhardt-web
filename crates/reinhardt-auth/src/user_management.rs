@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 /// User management error
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum UserManagementError {
 	/// User not found

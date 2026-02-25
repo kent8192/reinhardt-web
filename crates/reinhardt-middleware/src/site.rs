@@ -122,6 +122,7 @@ impl SiteRegistry {
 pub const SITE_ID_HEADER: &str = "X-Site-ID";
 
 /// Configuration for site middleware
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct SiteConfig {
 	/// Enable site middleware

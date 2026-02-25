@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 /// Token storage error
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum TokenStorageError {
 	/// Token not found
