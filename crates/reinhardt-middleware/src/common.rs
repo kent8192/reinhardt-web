@@ -74,10 +74,9 @@ impl Default for CommonConfig {
 /// }
 ///
 /// # tokio_test::block_on(async {
-/// let config = CommonConfig {
-///     append_slash: true,
-///     prepend_www: false,
-/// };
+/// let mut config = CommonConfig::new();
+/// config.append_slash = true;
+/// config.prepend_www = false;
 ///
 /// let middleware = CommonMiddleware::with_config(config);
 /// let handler = Arc::new(TestHandler);
@@ -123,10 +122,9 @@ impl CommonMiddleware {
 	/// ```
 	/// use reinhardt_middleware::{CommonMiddleware, CommonConfig};
 	///
-	/// let config = CommonConfig {
-	///     append_slash: true,
-	///     prepend_www: true,
-	/// };
+	/// let mut config = CommonConfig::new();
+	/// config.append_slash = true;
+	/// config.prepend_www = true;
 	///
 	/// let middleware = CommonMiddleware::with_config(config);
 	/// ```
