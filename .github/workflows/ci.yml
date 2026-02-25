@@ -71,6 +71,11 @@ jobs:
     needs: [check, fmt, clippy]
     secrets: inherit
 
+  docs-rs-check:
+    name: Docs.rs Build Check
+    uses: ./.github/workflows/docs-rs-check.yml
+    needs: [check, fmt, clippy]
+
   ui-test:
     name: UI Tests
     uses: ./.github/workflows/ui-test.yml
@@ -105,6 +110,7 @@ jobs:
       - intra-crate-integration-test
       - cross-crate-integration-test
       - doc-test
+      - docs-rs-check
       - examples-test
       - ui-test
       - coverage
@@ -121,6 +127,7 @@ jobs:
             "${{ needs.intra-crate-integration-test.result }}"
             "${{ needs.cross-crate-integration-test.result }}"
             "${{ needs.doc-test.result }}"
+            "${{ needs.docs-rs-check.result }}"
             "${{ needs.examples-test.result }}"
             "${{ needs.ui-test.result }}"
             "${{ needs.coverage.result }}"
