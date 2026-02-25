@@ -170,6 +170,7 @@ impl ContentTypeExport {
 }
 
 /// Import options
+#[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct ImportOptions {
 	/// Whether to skip existing entries instead of returning an error

@@ -213,6 +213,7 @@ impl SyncResult {
 }
 
 /// Options for sync operation
+#[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct SyncOptions {
 	/// Sync mode
