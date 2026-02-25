@@ -78,6 +78,7 @@ impl SchemaDraft {
 }
 
 /// Error type for schema validation operations
+#[non_exhaustive]
 #[derive(Debug)]
 pub enum SchemaError {
 	/// The schema is invalid
