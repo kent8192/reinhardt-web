@@ -32,6 +32,11 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          # fetch-depth: 0 is required for --baseline-rev to access the full git history.
+          # cargo-semver-checks needs to checkout and build the baseline commit, which
+          # is not possible with a shallow clone (fetch-depth: 1, the default).
+          fetch-depth: 0
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
