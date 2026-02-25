@@ -68,6 +68,30 @@ jobs:
           Write-Host "Using OpenSSL at: $opensslDir"
           echo "OPENSSL_DIR=$opensslDir" >> $env:GITHUB_ENV
 
+          # Find the actual lib directory containing .lib files.
+          # Chocolatey may place them in a VC subdirectory (e.g. lib\VC\x64\MD)
+          # rather than the root lib\ directory that openssl-sys expects.
+          $libCandidates = @(
+            "$opensslDir\lib\VC\x64\MD",
+            "$opensslDir\lib\VC\x64\MTd",
+            "$opensslDir\lib\VC",
+            "$opensslDir\lib"
+          )
+          $opensslLibDir = $null
+          foreach ($path in $libCandidates) {
+            if ((Test-Path "$path\libssl.lib") -or (Test-Path "$path\ssleay32.lib") -or (Test-Path "$path\libssl_static.lib")) {
+              $opensslLibDir = $path
+              break
+            }
+          }
+          if ($opensslLibDir) {
+            Write-Host "Using OpenSSL lib dir at: $opensslLibDir"
+            echo "OPENSSL_LIB_DIR=$opensslLibDir" >> $env:GITHUB_ENV
+          } else {
+            Write-Host "Warning: Could not find OpenSSL .lib files in known subdirectories, using default lib dir"
+            echo "OPENSSL_LIB_DIR=$opensslDir\lib" >> $env:GITHUB_ENV
+          }
+
       - name: Run cargo check (${{ matrix.os }})
         run: cargo check --workspace --all --all-features
 
