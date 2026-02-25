@@ -396,6 +396,7 @@ impl Default for LoggingSettings {
 }
 
 /// Settings error
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum SettingsError {
 	#[error("File error: {0}")]
