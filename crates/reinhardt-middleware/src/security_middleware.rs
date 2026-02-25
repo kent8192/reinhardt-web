@@ -16,6 +16,7 @@ use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// Security middleware configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct SecurityConfig {
 	/// Enable HSTS (HTTP Strict Transport Security)

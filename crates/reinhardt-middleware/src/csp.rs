@@ -28,6 +28,7 @@ fn is_valid_nonce(nonce: &str) -> bool {
 }
 
 /// CSP directive configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct CspConfig {
 	/// CSP directives (e.g., "default-src", "script-src")
