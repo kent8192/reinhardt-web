@@ -193,6 +193,7 @@ pub trait MigrationProvider {
 	fn migrations() -> Vec<Migration>;
 }
 
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum MigrationError {
 	#[error("Migration not found: {0}")]

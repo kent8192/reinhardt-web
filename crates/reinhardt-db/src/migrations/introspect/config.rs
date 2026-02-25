@@ -327,6 +327,7 @@ pub struct CliArgs {
 }
 
 /// Configuration errors.
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
 	#[error("IO error reading {path}: {source}")]

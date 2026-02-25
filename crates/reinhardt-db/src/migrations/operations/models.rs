@@ -37,6 +37,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// Validation errors that can occur during migration operations
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValidationError {
 	/// Composite primary key list is empty

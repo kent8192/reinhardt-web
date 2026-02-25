@@ -8,6 +8,7 @@ use chrono::{NaiveDate, NaiveDateTime};
 use std::fmt;
 
 /// Errors that can occur during field validation
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldError {
 	/// Value is required but was not provided
