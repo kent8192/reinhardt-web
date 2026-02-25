@@ -14,9 +14,6 @@ jobs:
     name: Cross-Platform Check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    env:
-      # runner.temp is only available at job-level or later, not at workflow-level env
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo_target
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +21,15 @@ jobs:
         os: [macos-latest, windows-latest]
 
     steps:
+      - name: Set cargo target directory
+        # Use the RUNNER_TEMP shell environment variable (not runner.temp context) because
+        # the runner context is unavailable at workflow/job-level env evaluation in
+        # reusable workflows (workflow_call). RUNNER_TEMP is a raw shell variable set by
+        # GitHub Actions on all hosted runners (macOS, Windows, Linux) and resolves to
+        # the OS-appropriate temp directory without requiring context evaluation.
+        shell: bash
+        run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/cargo_target" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
