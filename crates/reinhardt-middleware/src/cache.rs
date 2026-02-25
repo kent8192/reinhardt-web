@@ -148,6 +148,7 @@ pub enum CacheKeyStrategy {
 }
 
 /// Cache configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
 	/// Default TTL

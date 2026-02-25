@@ -26,6 +26,7 @@ pub use reinhardt_core::security::csrf::{
 };
 
 /// CSRF middleware configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct CsrfMiddlewareConfig {
 	/// Base CSRF configuration

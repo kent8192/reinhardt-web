@@ -2,6 +2,10 @@
 name = "reinhardt-auth"
 version = "0.1.0-alpha.16"
 description = "Authentication and authorization system"
+keywords = ["auth", "jwt", "authentication", "django", "web"]
+categories = ["authentication", "web-programming"]
+readme = "README.md"
+documentation = "https://docs.rs/reinhardt-auth"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

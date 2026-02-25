@@ -3,6 +3,7 @@
 use thiserror::Error;
 
 /// Social authentication errors
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum SocialAuthError {
 	/// Network error during HTTP requests
