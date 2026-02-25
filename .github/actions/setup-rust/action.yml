@@ -22,4 +22,4 @@ runs:
       uses: Swatinem/rust-cache@v2
       with:
         workspaces: |
-          . -> /tmp/cargo_target
+          . -> ${{ runner.temp }}/cargo_target
