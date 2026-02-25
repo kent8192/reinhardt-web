@@ -342,6 +342,7 @@ pub struct ValidationResult {
 }
 
 /// Auto-migration error
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum AutoMigrationError {
 	#[error("No schema changes detected")]
