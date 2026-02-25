@@ -46,6 +46,7 @@ use sqlx::{Any, AnyPool, pool::PoolOptions};
 use std::time::Duration;
 
 /// Database engine configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
 	/// Database URL (e.g., "sqlite::memory:", "postgres://...")

@@ -23,6 +23,7 @@ pub trait TypeDecorator: Send + Sync {
 	fn sql_type_name(&self) -> &str;
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum TypeError {
 	SerializationError(String),
