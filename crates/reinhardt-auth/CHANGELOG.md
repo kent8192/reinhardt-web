@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.16...reinhardt-auth@v0.1.0-alpha.17) - 2026-02-25
+
+### Fixed
+
+- *(docs)* fix bare URL and bracket escaping in doc comments for RUSTDOCFLAGS
+
 ## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.15...reinhardt-auth@v0.1.0-alpha.16) - 2026-02-24
 
 ### Maintenance

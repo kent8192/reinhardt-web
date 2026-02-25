@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.9...reinhardt-http@v0.1.0-alpha.10) - 2026-02-25
+
+### Fixed
+
+- *(core,http,conf)* add #[non_exhaustive] to all public error enums
+
 ## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.8...reinhardt-http@v0.1.0-alpha.9) - 2026-02-23
 
 ### Maintenance
