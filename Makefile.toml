@@ -351,7 +351,7 @@ args = ["doc", "--workspace", "--all-features", "--no-deps", "--open"]
 description = "Simulate docs.rs build environment (run with nightly)"
 command = "cargo"
 args = ["doc", "--workspace", "--all-features", "--no-deps"]
-env = { RUSTDOCFLAGS = "--cfg docsrs -D warnings" }
+env = { RUSTDOCFLAGS = "--cfg docsrs -D warnings", RUSTUP_TOOLCHAIN = "nightly" }
 
 # ============================================================================
 # Utility Tasks
