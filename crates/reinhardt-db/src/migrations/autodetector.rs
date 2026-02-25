@@ -1319,6 +1319,7 @@ impl ProjectState {
 /// // Custom with specific algorithm weights
 /// let config = SimilarityConfig::with_weights(0.75, 0.85, 0.6, 0.4).unwrap();
 /// ```
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct SimilarityConfig {
 	/// Threshold for model similarity (0.45 - 0.95)

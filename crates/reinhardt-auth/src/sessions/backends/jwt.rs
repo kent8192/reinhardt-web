@@ -52,6 +52,7 @@ use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
 /// JWT-specific session errors
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum JwtSessionError {
 	#[error("JWT encoding error: {0}")]
