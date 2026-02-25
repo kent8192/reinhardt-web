@@ -36,6 +36,7 @@ pub trait Serializer {
 }
 
 /// Errors that can occur during validation
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidatorError {
 	/// Unique constraint violation
@@ -172,6 +173,7 @@ impl ValidatorError {
 }
 
 /// Errors that can occur during serialization
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SerializerError {
 	/// Validation error

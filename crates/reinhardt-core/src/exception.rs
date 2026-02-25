@@ -27,6 +27,7 @@ pub use param_error::{ParamErrorContext, ParamType};
 /// let auth_err = Error::Authentication("Invalid token".to_string());
 /// assert_eq!(auth_err.status_code(), 401);
 /// ```
+#[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum Error {
 	/// HTTP-related errors (status code: 400)
@@ -314,6 +315,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Categorical classification of `Error` variants.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ErrorKind {
 	Http,

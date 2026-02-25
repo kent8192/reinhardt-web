@@ -174,6 +174,7 @@ impl MetricsStore {
 }
 
 /// Configuration for metrics middleware
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct MetricsConfig {
 	/// Endpoint to expose metrics (default: /metrics)

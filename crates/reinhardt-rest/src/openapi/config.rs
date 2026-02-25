@@ -44,6 +44,7 @@ use serde::{Deserialize, Serialize};
 /// let config = OpenApiConfig::default();
 /// assert!(config.enabled);
 /// ```
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenApiConfig {
 	/// Enable OpenAPI endpoints (default: true)

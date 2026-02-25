@@ -6,6 +6,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Django-style database layer for Reinhardt framework"
+keywords = ["database", "orm", "django", "rust", "async"]
+categories = ["database", "web-programming"]
+readme = "README.md"
+documentation = "https://docs.rs/reinhardt-db"
 
 [dependencies]
 # Internal crates (optional)

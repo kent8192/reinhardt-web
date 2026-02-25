@@ -14,6 +14,7 @@ use reinhardt_core::validators::SettingsValidator as BaseSettingsValidator;
 pub type ValidationResult = Result<(), ValidationError>;
 
 /// Validation error
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ValidationError {
 	#[error("Security error: {0}")]

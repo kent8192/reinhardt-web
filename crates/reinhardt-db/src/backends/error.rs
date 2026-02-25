@@ -3,6 +3,7 @@
 use thiserror::Error;
 
 /// Database operation errors
+#[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum DatabaseError {
 	/// Feature not supported by this database

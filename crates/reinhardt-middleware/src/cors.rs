@@ -3,6 +3,7 @@ use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// CORS middleware configuration
+#[non_exhaustive]
 pub struct CorsConfig {
 	pub allow_origins: Vec<String>,
 	pub allow_methods: Vec<String>,
