@@ -49,7 +49,6 @@
 //! - [`pagination`]: Cursor, page number, and limit-offset pagination strategies
 //! - [`parsers`]: Request body parsing (JSON, form, multipart)
 //! - [`negotiation`]: HTTP content negotiation utilities
-//! - [`signals`]: Async signal dispatching for application events
 //!
 //! ## Feature Flags
 //!
