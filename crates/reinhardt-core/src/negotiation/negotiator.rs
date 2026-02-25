@@ -10,6 +10,7 @@ pub trait Renderer {
 }
 
 /// Error type for negotiation failures
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub enum NegotiationError {
 	NoSuitableRenderer,

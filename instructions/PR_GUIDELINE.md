@@ -70,13 +70,13 @@ When creating PRs via `gh pr create`, the `--body` content MUST follow the PR te
 ### PC-3 (MUST): Branch Naming
 
 - Branch names SHOULD follow the pattern: `<type>/<scope>-<short-description>`
-- Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
+- Types: `feature`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
 - Scope: Module or component name
 - Short description: Kebab-case brief summary
 
 **Examples:**
 ```
-feat/auth-jwt-validation
+feature/auth-jwt-validation
 fix/orm-connection-pool-race-condition
 refactor/http-middleware-pipeline
 docs/api-openapi-spec
