@@ -192,10 +192,10 @@ impl DatabaseMigrationExecutor {
 	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-	/// // For doctest purposes, using SQLite in-memory
+	/// // Example: connecting to a PostgreSQL database
 	/// let db = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await.unwrap();
 	/// let executor = DatabaseMigrationExecutor::new(db.clone());
-	/// // Database type is automatically detected as Sqlite
+	/// // Database type is automatically detected as PostgreSQL
 	/// # });
 	/// ```
 	pub fn new(connection: DatabaseConnection) -> Self {
@@ -621,7 +621,7 @@ impl DatabaseMigrationExecutor {
 	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-	/// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
+	/// // Example: connecting to a PostgreSQL database
 	/// let db = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await.unwrap();
 	/// let mut executor = DatabaseMigrationExecutor::new(db);
 	///
