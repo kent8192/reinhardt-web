@@ -4,29 +4,11 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Basic attributes
-	let _with_attrs = page!(|| {
-		div {
-			class: "container",
-			id: "main-content",
-			"Hello"
-		}
-	});
+	let _with_attrs = __reinhardt_placeholder__!(/*0*/);
 
 	// Data attributes (underscore to hyphen conversion)
-	let _data_attrs = page!(|| {
-		div {
-			data_testid: "test-element",
-			data_value: "42",
-			"Data attributes"
-		}
-	});
+	let _data_attrs = __reinhardt_placeholder__!(/*1*/);
 
 	// ARIA attributes
-	let _aria_attrs = page!(|| {
-		button {
-			aria_label: "Close",
-			aria_expanded: "false",
-			"×"
-		}
-	});
+	let _aria_attrs = __reinhardt_placeholder__!(/*2*/);
 }

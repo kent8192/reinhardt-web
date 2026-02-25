@@ -4,29 +4,8 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Simple for loop
-	let _with_for = page!(|items: Vec<String>| {
-		ul {
-			for item in items {
-				li {
-					item
-				}
-			}
-		}
-	});
+	let _with_for = __reinhardt_placeholder__!(/*0*/);
 
 	// For with tuple destructuring
-	let _for_enumerate = page!(|items: Vec<(usize, String)>| {
-		ul {
-			for (index, item) in items {
-				li {
-					span {
-						index.to_string()
-					}
-					span {
-						item
-					}
-				}
-			}
-		}
-	});
+	let _for_enumerate = __reinhardt_placeholder__!(/*1*/);
 }

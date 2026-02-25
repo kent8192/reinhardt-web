@@ -11,16 +11,5 @@ fn calculate_checked(value: i32) -> bool {
 }
 
 fn main() {
-	let _valid = page!(|| {
-		div {
-			button {
-				disabled: is_button_disabled(),
-				"Submit"
-			}
-			input {
-				r#type: "checkbox",
-				checked: calculate_checked(5),
-			}
-		}
-	});
+	let _valid = __reinhardt_placeholder__!(/*0*/);
 }

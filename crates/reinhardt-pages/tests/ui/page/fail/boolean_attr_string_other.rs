@@ -3,10 +3,5 @@
 use reinhardt_pages::page;
 
 fn main() {
-	let _invalid = page!(|| {
-		button {
-			disabled: "disabled",
-			"Submit"
-		}
-	});
+	let _invalid = __reinhardt_placeholder__!(/*0*/);
 }

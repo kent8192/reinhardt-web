@@ -73,16 +73,7 @@ fn counter_signal() -> Signal<i32> {
 fn test_watch_ssr_basic_render(string_signal: Signal<String>) {
 	let signal = string_signal.clone();
 
-	let view = page!(|signal: Signal<String>| {
-		div {
-			class: "container",
-			watch {
-				span {
-					{ signal.get() }
-				}
-			}
-		}
-	})(signal.clone());
+	let view = __reinhardt_placeholder__!(/*0*/)(signal.clone());
 
 	let html = view.render_to_string();
 
@@ -107,17 +98,7 @@ fn test_watch_ssr_basic_render(string_signal: Signal<String>) {
 fn test_watch_ssr_condition_true(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
 
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			watch {
-				if signal.get() {
-					span {
-						"Visible content"
-					}
-				}
-			}
-		}
-	})(signal.clone());
+	let view = __reinhardt_placeholder__!(/*1*/)(signal.clone());
 
 	let html = view.render_to_string();
 
@@ -140,17 +121,7 @@ fn test_watch_ssr_condition_true(bool_signal_true: Signal<bool>) {
 fn test_watch_ssr_condition_false(bool_signal_false: Signal<bool>) {
 	let signal = bool_signal_false.clone();
 
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			watch {
-				if signal.get() {
-					span {
-						"Should not appear"
-					}
-				}
-			}
-		}
-	})(signal.clone());
+	let view = __reinhardt_placeholder__!(/*2*/)(signal.clone());
 
 	let html = view.render_to_string();
 
@@ -172,21 +143,7 @@ fn test_watch_ssr_condition_false(bool_signal_false: Signal<bool>) {
 fn test_watch_ssr_if_else_true_branch(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
 
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			watch {
-				if signal.get() {
-					span {
-						"True branch"
-					}
-				} else {
-					span {
-						"False branch"
-					}
-				}
-			}
-		}
-	})(signal.clone());
+	let view = __reinhardt_placeholder__!(/*3*/)(signal.clone());
 
 	let html = view.render_to_string();
 
@@ -202,21 +159,7 @@ fn test_watch_ssr_if_else_true_branch(bool_signal_true: Signal<bool>) {
 fn test_watch_ssr_if_else_false_branch(bool_signal_false: Signal<bool>) {
 	let signal = bool_signal_false.clone();
 
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			watch {
-				if signal.get() {
-					span {
-						"True branch"
-					}
-				} else {
-					span {
-						"False branch"
-					}
-				}
-			}
-		}
-	})(signal.clone());
+	let view = __reinhardt_placeholder__!(/*4*/)(signal.clone());
 
 	let html = view.render_to_string();
 
@@ -236,24 +179,7 @@ fn test_watch_ssr_if_else_false_branch(bool_signal_false: Signal<bool>) {
 fn test_watch_ssr_nested_elements(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
 
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			class: "outer",
-			watch {
-				if signal.get() {
-					section {
-						class: "section",
-						article {
-							class: "article",
-							p {
-								"Nested paragraph"
-							}
-						}
-					}
-				}
-			}
-		}
-	})(signal.clone());
+	let view = __reinhardt_placeholder__!(/*5*/)(signal.clone());
 
 	let html = view.render_to_string();
 
@@ -280,13 +206,7 @@ fn test_watch_ssr_nested_elements(bool_signal_true: Signal<bool>) {
 fn test_watch_ssr_content_escaping() {
 	let xss_content = Signal::new("<script>alert('xss')</script>".to_string());
 
-	let view = page!(|xss_content: Signal<String>| {
-		div {
-			watch {
-				{ xss_content.get() }
-			}
-		}
-	})(xss_content.clone());
+	let view = __reinhardt_placeholder__!(/*6*/)(xss_content.clone());
 
 	let html = view.render_to_string();
 
@@ -311,17 +231,7 @@ fn test_watch_ssr_content_escaping() {
 fn test_watch_ssr_for_loop(list_signal: Signal<Vec<String>>) {
 	let items = list_signal.clone();
 
-	let view = page!(|items: Signal<Vec<String>>| {
-		ul {
-			watch {
-				for item in items.get().iter() {
-					li {
-						{ item.clone() }
-					}
-				}
-			}
-		}
-	})(items.clone());
+	let view = __reinhardt_placeholder__!(/*7*/)(items.clone());
 
 	let html = view.render_to_string();
 
@@ -350,13 +260,7 @@ fn test_watch_ssr_for_loop(list_signal: Signal<Vec<String>>) {
 fn test_watch_ssr_expression(counter_signal: Signal<i32>) {
 	let counter = counter_signal.clone();
 
-	let view = page!(|counter: Signal<i32>| {
-		div {
-			watch {
-				{ format!("Count: {}", counter.get()) }
-			}
-		}
-	})(counter.clone());
+	let view = __reinhardt_placeholder__!(/*8*/)(counter.clone());
 
 	let html = view.render_to_string();
 
@@ -379,26 +283,7 @@ fn test_watch_ssr_multiple_blocks(
 	let loading = bool_signal_true.clone();
 	let error = error_signal.clone();
 
-	let view = page!(|loading: Signal<bool>, error: Signal<Option<String>>| {
-		div {
-			watch {
-				if loading.get() {
-					div {
-						class: "loading",
-						"Loading..."
-					}
-				}
-			}
-			watch {
-				if error.get().is_some() {
-					div {
-						class: "error",
-						{ error.get().unwrap_or_default() }
-					}
-				}
-			}
-		}
-	})(loading.clone(), error.clone());
+	let view = __reinhardt_placeholder__!(/*9*/)(loading.clone(), error.clone());
 
 	let html = view.render_to_string();
 
@@ -422,13 +307,7 @@ fn test_watch_ssr_multiple_blocks(
 fn test_watch_ssr_unicode() {
 	let unicode_content = Signal::new("日本語テスト 🎉 한국어".to_string());
 
-	let view = page!(|content: Signal<String>| {
-		div {
-			watch {
-				{ content.get() }
-			}
-		}
-	})(unicode_content.clone());
+	let view = __reinhardt_placeholder__!(/*10*/)(unicode_content.clone());
 
 	let html = view.render_to_string();
 
@@ -449,17 +328,7 @@ fn test_watch_ssr_unicode() {
 fn test_watch_ssr_data_attributes(counter_signal: Signal<i32>) {
 	let counter = counter_signal.clone();
 
-	let view = page!(|counter: Signal<i32>| {
-		div {
-			watch {
-				span {
-					data_count: counter.get().to_string(),
-					data_active: "true",
-					"Counter element"
-				}
-			}
-		}
-	})(counter.clone());
+	let view = __reinhardt_placeholder__!(/*11*/)(counter.clone());
 
 	let html = view.render_to_string();
 
@@ -482,14 +351,7 @@ fn test_watch_ssr_data_attributes(counter_signal: Signal<i32>) {
 fn test_watch_ssr_empty_content() {
 	let empty = Signal::new("".to_string());
 
-	let view = page!(|empty: Signal<String>| {
-		div {
-			class: "wrapper",
-			watch {
-				{ empty.get() }
-			}
-		}
-	})(empty.clone());
+	let view = __reinhardt_placeholder__!(/*12*/)(empty.clone());
 
 	let html = view.render_to_string();
 
@@ -512,15 +374,7 @@ fn test_watch_ssr_empty_content() {
 fn test_watch_ssr_with_renderer(ssr_renderer: SsrRenderer, string_signal: Signal<String>) {
 	let signal = string_signal.clone();
 
-	let view = page!(|signal: Signal<String>| {
-		div {
-			watch {
-				p {
-					{ signal.get() }
-				}
-			}
-		}
-	})(signal.clone());
+	let view = __reinhardt_placeholder__!(/*13*/)(signal.clone());
 
 	let html = ssr_renderer.render_view(&view);
 
@@ -540,27 +394,7 @@ fn test_watch_ssr_with_renderer(ssr_renderer: SsrRenderer, string_signal: Signal
 fn test_watch_ssr_deeply_nested(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
 
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			class: "level-1",
-			div {
-				class: "level-2",
-				div {
-					class: "level-3",
-					watch {
-						if signal.get() {
-							div {
-								class: "level-4",
-								span {
-									"Deep content"
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	})(signal.clone());
+	let view = __reinhardt_placeholder__!(/*14*/)(signal.clone());
 
 	let html = view.render_to_string();
 
@@ -592,13 +426,7 @@ fn test_watch_ssr_deeply_nested(bool_signal_true: Signal<bool>) {
 fn test_watch_ssr_fragment_result(list_signal: Signal<Vec<String>>) {
 	let items = list_signal.clone();
 
-	let view = page!(|items: Signal<Vec<String>>| {
-		div {
-			watch {
-				{ Page::fragment(items.get().iter().map(|i| { Page::text(i.clone()) }).collect ::<Vec<Page>>()) }
-			}
-		}
-	})(items.clone());
+	let view = __reinhardt_placeholder__!(/*15*/)(items.clone());
 
 	let html = view.render_to_string();
 
@@ -625,26 +453,7 @@ fn test_watch_ssr_state_matrix(
 	let loading = Signal::new(loading_state);
 	let error = Signal::new(error_state.clone());
 
-	let view = page!(|loading: Signal<bool>, error: Signal<Option<String>>| {
-		div {
-			watch {
-				if loading.get() {
-					div {
-						class: "loading",
-						"Loading..."
-					}
-				}
-			}
-			watch {
-				if error.get().is_some() {
-					div {
-						class: "error",
-						{ error.get().unwrap_or_default() }
-					}
-				}
-			}
-		}
-	})(loading.clone(), error.clone());
+	let view = __reinhardt_placeholder__!(/*16*/)(loading.clone(), error.clone());
 
 	let html = view.render_to_string();
 
@@ -682,16 +491,7 @@ fn test_watch_ssr_state_matrix(
 fn test_watch_ssr_special_chars_in_attrs() {
 	let title = Signal::new("Title with \"quotes\" & ampersand".to_string());
 
-	let view = page!(|title: Signal<String>| {
-		div {
-			watch {
-				span {
-					title: title.get(),
-					"Content"
-				}
-			}
-		}
-	})(title.clone());
+	let view = __reinhardt_placeholder__!(/*17*/)(title.clone());
 
 	let html = view.render_to_string();
 
@@ -709,20 +509,7 @@ fn test_watch_ssr_special_chars_in_attrs() {
 fn test_watch_ssr_void_elements(bool_signal_true: Signal<bool>) {
 	let show = bool_signal_true.clone();
 
-	let view = page!(|show: Signal<bool>| {
-		div {
-			watch {
-				if show.get() {
-					br {}
-					hr {}
-					img {
-						src: "/image.png",
-						alt: "Test image",
-					}
-				}
-			}
-		}
-	})(show.clone());
+	let view = __reinhardt_placeholder__!(/*18*/)(show.clone());
 
 	let html = view.render_to_string();
 

@@ -3,10 +3,5 @@
 use reinhardt_pages::page;
 
 fn main() {
-	let _invalid = page!(|| {
-		input {
-			r#type: "number",
-			min: true,
-		}
-	});
+	let _invalid = __reinhardt_placeholder__!(/*0*/);
 }

@@ -7,22 +7,8 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Basic watch block with simple content
-	let _basic = page!(|| {
-		div {
-			watch {
-				span {
-					"Reactive content"
-				}
-			}
-		}
-	});
+	let _basic = __reinhardt_placeholder__!(/*0*/);
 
 	// Watch block with text content
-	let _text = page!(|| {
-		div {
-			watch {
-				"Dynamic text"
-			}
-		}
-	});
+	let _text = __reinhardt_placeholder__!(/*1*/);
 }
