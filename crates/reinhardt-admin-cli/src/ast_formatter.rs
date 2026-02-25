@@ -332,7 +332,7 @@ fn skip_raw_string(s: &str, start_after_quote: usize, hash_count: usize) -> Opti
 		.map(|pos| start_after_quote + pos + closing_pattern.len())
 }
 
-/// Check if a '\'' at chars[idx] starts a char literal (not a lifetime).
+/// Check if a `'\''` at `chars\[idx\]` starts a char literal (not a lifetime).
 /// A char literal has the pattern: 'x' or '\x' or '\xx'
 fn is_char_literal(chars: &[(usize, char)], idx: usize) -> bool {
 	// After the opening quote, check if we see a closing quote pattern
