@@ -39,12 +39,29 @@ jobs:
       - name: Setup protoc
         uses: ./.github/actions/setup-protoc
 
+      - name: Install cargo-semver-checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download \
+            --repo obi1kenobi/cargo-semver-checks \
+            --pattern "cargo-semver-checks-x86_64-unknown-linux-musl.tar.gz" \
+            --dir /tmp/csc
+          tar xzf /tmp/csc/cargo-semver-checks-x86_64-unknown-linux-musl.tar.gz \
+            -C /tmp/csc/
+          mv /tmp/csc/cargo-semver-checks ~/.cargo/bin/
+          rm -rf /tmp/csc
+
       - name: Run cargo-semver-checks
-        uses: obi1kenobi/cargo-semver-checks-action@v2
-        with:
-          feature-group: all-features
-          exclude: reinhardt-web,reinhardt-pages
+        env:
           # Use the PR base branch SHA as the baseline since crates are not yet published
           # to crates.io. This compares SemVer compatibility against the main branch state.
           # github.event.pull_request.base.sha is a git commit SHA (hex string), safe to use.
-          baseline-rev: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
+          BASELINE_REV: ${{ github.event.pull_request.base.sha }}
+        run: |
+          cargo semver-checks check-release \
+            --workspace \
+            --exclude reinhardt-web \
+            --exclude reinhardt-pages \
+            --all-features \
+            --baseline-rev "${BASELINE_REV:-HEAD~1}"
