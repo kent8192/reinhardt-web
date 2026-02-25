@@ -43,4 +43,6 @@ jobs:
           tool: cargo-make
 
       - name: Build docs (docs.rs simulation)
+        env:
+          RUSTUP_TOOLCHAIN: nightly
         run: cargo doc --workspace --all-features --no-deps
