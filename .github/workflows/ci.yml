@@ -39,6 +39,10 @@ jobs:
     name: TODO Check
     uses: ./.github/workflows/todo-check.yml
 
+  semver-check:
+    name: SemVer Check
+    uses: ./.github/workflows/semver-check.yml
+
   release-dry-run:
     name: Release Dry-Run
     if: ${{ !startsWith(github.head_ref || '', 'release-plz-') }}
@@ -110,6 +114,7 @@ jobs:
       - clippy
       - publish-check
       - todo-check
+      - semver-check
       - release-dry-run
       - unit-test
       - intra-crate-integration-test
@@ -129,6 +134,7 @@ jobs:
             "${{ needs.clippy.result }}"
             "${{ needs.publish-check.result }}"
             "${{ needs.todo-check.result }}"
+            "${{ needs.semver-check.result }}"
             "${{ needs.unit-test.result }}"
             "${{ needs.intra-crate-integration-test.result }}"
             "${{ needs.cross-crate-integration-test.result }}"
