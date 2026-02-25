@@ -4,5 +4,27 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Nested elements
-	let _nested = __reinhardt_placeholder__!(/*0*/);
+	let _nested = page!(|| {
+		div {
+			class: "container",
+			header {
+				h1 {
+					"Title"
+				}
+			}
+			main {
+				p {
+					"Content paragraph 1"
+				}
+				p {
+					"Content paragraph 2"
+				}
+			}
+			footer {
+				span {
+					"Footer text"
+				}
+			}
+		}
+	});
 }

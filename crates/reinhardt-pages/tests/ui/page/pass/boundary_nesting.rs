@@ -7,11 +7,108 @@ use reinhardt_pages::page;
 
 fn main() {
 	// 10 levels of nesting
-	let _deep_nesting_10 = __reinhardt_placeholder__!(/*0*/);
+	let _deep_nesting_10 = page!(|| {
+		div {
+			div {
+				div {
+					div {
+						div {
+							div {
+								div {
+									div {
+										div {
+											div {
+												"10 levels deep"
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	});
 
 	// 15 levels with mixed elements
-	let _deep_nesting_15 = __reinhardt_placeholder__!(/*1*/);
+	let _deep_nesting_15 = page!(|| {
+		section {
+			article {
+				div {
+					ul {
+						li {
+							div {
+								span {
+									strong {
+										em {
+											code {
+												pre {
+													blockquote {
+														p {
+															a {
+																href: "#",
+																span {
+																	"15 levels deep"
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	});
 
 	// 20 levels (extreme case)
-	let _extreme_nesting = __reinhardt_placeholder__!(/*2*/);
+	let _extreme_nesting = page!(|| {
+		div {
+			div {
+				div {
+					div {
+						div {
+							div {
+								div {
+									div {
+										div {
+											div {
+												div {
+													div {
+														div {
+															div {
+																div {
+																	div {
+																		div {
+																			div {
+																				div {
+																					div {
+																						"Extremely deep"
+																					}
+																				}
+																			}
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	});
 }

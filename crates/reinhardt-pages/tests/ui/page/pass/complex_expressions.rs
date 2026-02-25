@@ -4,14 +4,31 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Brace expression for dynamic text
-	let _expr = __reinhardt_placeholder__!(/*0*/);
+	let _expr = page!(|count: i32| {
+		div {
+			{ format!("Count: {}", count) }
+		}
+	});
 
 	// Arithmetic expression
-	let _arithmetic = __reinhardt_placeholder__!(/*1*/);
+	let _arithmetic = page!(|a: i32, b: i32| {
+		div {
+			{ format!("Sum: {}", a + b) }
+		}
+	});
 
 	// Conditional expression (ternary-like)
-	let _conditional = __reinhardt_placeholder__!(/*2*/);
+	let _conditional = page!(|is_active: bool| {
+		div {
+			class: if is_active { "active" } else { "inactive" },
+			"Status indicator"
+		}
+	});
 
 	// Format expression
-	let _format = __reinhardt_placeholder__!(/*3*/);
+	let _format = page!(|count: usize| {
+		ul {
+			{ format!("Total items: {}", count) }
+		}
+	});
 }

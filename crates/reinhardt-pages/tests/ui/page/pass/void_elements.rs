@@ -4,14 +4,44 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Input element (void)
-	let _input = __reinhardt_placeholder__!(/*0*/);
+	let _input = page!(|| {
+		input {
+			class: "text-input",
+		}
+	});
 
 	// Break element (void)
-	let _br = __reinhardt_placeholder__!(/*1*/);
+	let _br = page!(|| {
+		div {
+			span {
+				"Line 1"
+			}
+			br {}
+			span {
+				"Line 2"
+			}
+		}
+	});
 
 	// Image element (void)
-	let _img = __reinhardt_placeholder__!(/*2*/);
+	let _img = page!(|| {
+		img {
+			src: "/logo.png",
+			class: "logo-image",
+			alt: "Logo",
+		}
+	});
 
 	// Horizontal rule (void)
-	let _hr = __reinhardt_placeholder__!(/*3*/);
+	let _hr = page!(|| {
+		div {
+			p {
+				"Section 1"
+			}
+			hr {}
+			p {
+				"Section 2"
+			}
+		}
+	});
 }

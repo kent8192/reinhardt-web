@@ -8,8 +8,40 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Watch with if-else using Signal
-	let _if_else = __reinhardt_placeholder__!(/*0*/);
+	let _if_else = page!(|loading: Signal<bool>| {
+		div {
+			watch {
+				if loading.get() {
+					span {
+						"Loading..."
+					}
+				} else {
+					span {
+						"Content loaded"
+					}
+				}
+			}
+		}
+	});
 
 	// Watch with if-else-if chain
-	let _if_else_if = __reinhardt_placeholder__!(/*1*/);
+	let _if_else_if = page!(|status: Signal<i32>| {
+		div {
+			watch {
+				if status.get() == 0 {
+					span {
+						"Idle"
+					}
+				} else if status.get() == 1 {
+					span {
+						"Processing"
+					}
+				} else {
+					span {
+						"Complete"
+					}
+				}
+			}
+		}
+	});
 }

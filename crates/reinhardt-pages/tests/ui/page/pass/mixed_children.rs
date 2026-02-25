@@ -4,11 +4,46 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Text and elements mixed
-	let _mixed = __reinhardt_placeholder__!(/*0*/);
+	let _mixed = page!(|| {
+		div {
+			span {
+				"Hello, "
+			}
+			strong {
+				"World"
+			}
+			span {
+				"!"
+			}
+		}
+	});
 
 	// Nested mixed content with conditional
-	let _nested_mixed = __reinhardt_placeholder__!(/*1*/);
+	let _nested_mixed = page!(|show_extra: bool| {
+		div {
+			span {
+				"Start: "
+			}
+			if show_extra {
+				span {
+					"Extra content "
+				}
+			}
+			span {
+				"End"
+			}
+		}
+	});
 
 	// Elements with expressions
-	let _with_expr = __reinhardt_placeholder__!(/*2*/);
+	let _with_expr = page!(|count: i32| {
+		div {
+			span {
+				"Count: "
+			}
+			strong {
+				{ format!("{}", count) }
+			}
+		}
+	});
 }

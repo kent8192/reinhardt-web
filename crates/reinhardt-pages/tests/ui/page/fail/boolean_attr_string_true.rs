@@ -6,5 +6,10 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Error: Boolean attribute 'disabled' cannot have a string literal value
-	let _invalid = __reinhardt_placeholder__!(/*0*/);
+	let _invalid = page!(|| {
+		button {
+			disabled: "true",
+			"Submit"
+		}
+	});
 }
