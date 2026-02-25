@@ -6,6 +6,10 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Core components for Reinhardt framework"
+keywords = ["web", "framework", "django", "rust", "async"]
+categories = ["web-programming", "web-programming::http-server"]
+readme = "README.md"
+documentation = "https://docs.rs/reinhardt-core"
 
 [dependencies]
 # Re-export all internal crates

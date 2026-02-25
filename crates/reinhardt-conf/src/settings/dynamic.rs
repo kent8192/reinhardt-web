@@ -49,6 +49,7 @@ use moka::future::Cache;
 use std::time::{Duration, Instant};
 
 /// Error type for dynamic settings operations
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum DynamicError {
 	#[error("Backend error: {0}")]

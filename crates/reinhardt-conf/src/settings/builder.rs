@@ -401,6 +401,7 @@ impl MergedSettings {
 }
 
 /// Error type for building settings
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum BuildError {
 	#[error("Source error in '{description}': {error}")]
@@ -414,6 +415,7 @@ pub enum BuildError {
 }
 
 /// Error type for getting values
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum GetError {
 	#[error("Missing required key: {0}")]
