@@ -32,8 +32,8 @@
 //! use reinhardt_core::exception::{Error, ErrorKind};
 //!
 //! // Create a typed application error
-//! let err = Error::new(ErrorKind::NotFound, "Resource not found");
-//! assert_eq!(err.kind(), &ErrorKind::NotFound);
+//! let err = Error::NotFound("Resource not found".to_string());
+//! assert_eq!(err.kind(), ErrorKind::NotFound);
 //! ```
 //!
 //! ## Architecture
