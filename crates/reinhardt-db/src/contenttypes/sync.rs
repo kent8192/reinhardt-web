@@ -35,6 +35,7 @@ pub enum SyncMode {
 }
 
 /// Error type for sync operations
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncError {
 	/// Database error

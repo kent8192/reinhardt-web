@@ -28,6 +28,7 @@ pub enum ExecutionResult<T> {
 }
 
 /// Errors that can occur during query execution
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutionError {
 	/// Database error

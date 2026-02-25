@@ -39,6 +39,7 @@ pub enum SerializationFormat {
 }
 
 /// Error type for serialization operations
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SerializationError {
 	/// JSON serialization/deserialization error

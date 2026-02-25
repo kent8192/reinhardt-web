@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 const UPLOAD_SESSION_TIMEOUT: Duration = Duration::from_secs(3600);
 
 /// Errors that can occur during chunked upload
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ChunkedUploadError {
 	#[error("IO error: {0}")]
