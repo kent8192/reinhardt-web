@@ -25,6 +25,7 @@ pub trait ConfigSource: Send + Sync {
 }
 
 /// Error type for configuration sources
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum SourceError {
 	#[error("IO error: {0}")]
