@@ -162,6 +162,7 @@ pub const SPAN_ID_HEADER: &str = "X-Span-ID";
 pub const PARENT_SPAN_ID_HEADER: &str = "X-Parent-Span-ID";
 
 /// Configuration for tracing middleware
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct TracingConfig {
 	/// Enable tracing

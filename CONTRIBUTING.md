@@ -203,6 +203,36 @@ pub fn get_config() -> Config {
 - **PREFER** absolute paths or single-level relative paths (e.g., `../`)
 - Deep relative paths make code harder to understand
 
+### API Deprecation Policy
+
+When marking a public API as deprecated, follow these requirements:
+
+**Required attributes:**
+
+```rust
+#[deprecated(
+    since = "0.2.0",
+    note = "Use `new_function()` instead. Will be removed in 1.0.0."
+)]
+pub fn old_function() { ... }
+```
+
+**Requirements:**
+- `since`: Version when the item was deprecated (follow semantic versioning)
+- `note`: Concise migration path describing what to use instead and when removal is planned
+- Both `since` and `note` fields are **MANDATORY** — bare `#[deprecated]` is not allowed
+
+**Deprecation lifecycle:**
+1. Add `#[deprecated(since = "...", note = "...")]` to the item
+2. Keep the implementation functional until the planned removal version
+3. Add a `deprecated` commit type entry in CHANGELOG (triggers dedicated section)
+4. Remove the item in the version specified in `note`
+
+**Naming convention for commit messages:**
+```
+deprecated(auth): mark `old_session_token()` as deprecated in favor of `session_token()`
+```
+
 ---
 
 ## Testing Guidelines
@@ -573,6 +603,96 @@ Update documentation for:
 - Update code snippets to reflect current API
 - Verify all links and references are valid
 - Maintain consistency in terminology and formatting
+
+---
+
+## API Stabilization Process
+
+### Final Comment Period (FCP)
+
+The **Final Comment Period** (FCP) is a structured process for reaching consensus on significant API changes before they are stabilized. FCP ensures that all stakeholders have an opportunity to review and comment on proposed changes before they become part of the stable API.
+
+### When FCP Applies
+
+FCP is required for:
+
+- **New public API additions** that affect the stable interface
+- **Modifications to existing public APIs** that are backward-incompatible
+- **Deprecation of stable APIs** that users depend on
+- **Removal of previously deprecated APIs**
+- **Significant behavioral changes** that affect the documented contract
+
+FCP is **not required** for:
+- Internal implementation changes
+- Documentation-only changes
+- Bug fixes that restore intended behavior
+- Additions to unstable/experimental API categories
+
+### FCP Process
+
+1. **Proposal Phase**: Open a GitHub Issue using the [API Change Proposal template](.github/ISSUE_TEMPLATE/8-api_change.yml)
+   - Describe the current API, proposed change, and rationale
+   - Classify the change (breaking/non-breaking)
+   - Provide a migration path for breaking changes
+
+2. **Discussion Phase** (minimum 7 days for non-breaking, 14 days for breaking):
+   - Community and maintainers review the proposal
+   - Alternative approaches are discussed
+   - Concerns and objections are raised and addressed
+
+3. **FCP Announcement**: A maintainer posts an FCP announcement comment on the issue
+   - States the proposed disposition (merge/postpone/close)
+   - Begins the final comment period countdown
+   - Labels the issue with `fcp-merge`, `fcp-postpone`, or `fcp-close`
+
+4. **Final Comment Period** (minimum 7 days):
+   - Community has a final opportunity to raise concerns
+   - Any new objections restart the discussion phase
+   - No new concerns → proceed to disposition
+
+5. **Resolution**: After FCP completes without new objections
+   - Issue is closed with final decision documented
+   - Implementation PR is opened referencing the stabilization issue
+   - API is marked as stable in the next minor/major release
+
+### API Stability Categories
+
+| Category | Description | FCP Required |
+|----------|-------------|--------------|
+| `Stable` | Fully supported, covered by SemVer | Yes (for changes) |
+| `Experimental` | Subject to change without major version bump | No |
+| `Internal` | Not part of the public API contract | No |
+
+### Marking API Stability
+
+Use `#[doc(cfg(...))]` and doc comments to communicate API status:
+
+```rust
+/// Stable API - covered by SemVer guarantees.
+pub fn stable_function() {}
+
+/// **Experimental**: This API is subject to change.
+///
+/// May be modified or removed in future minor versions.
+#[cfg_attr(docsrs, doc(cfg(feature = "experimental")))]
+pub fn experimental_function() {}
+```
+
+### Deprecation Policy
+
+When an API is deprecated:
+
+1. Add `#[deprecated(since = "x.y.z", note = "Use `new_function()` instead")]`
+2. Open a GitHub Issue documenting the deprecation timeline
+3. Provide a migration guide in the documentation
+4. Maintain the deprecated API for at least one minor version cycle
+5. Remove the API only after FCP and appropriate deprecation period
+
+### Resources
+
+- [API Stability Policy](docs/API_STABILITY.md) - Detailed stability guarantees
+- [API Change Proposal Template](.github/ISSUE_TEMPLATE/8-api_change.yml) - Template for API proposals
+- [SemVer specification](https://semver.org/) - Versioning guidelines
 
 ---
 

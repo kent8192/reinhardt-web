@@ -12,6 +12,7 @@ use std::io::Write;
 use std::sync::Arc;
 
 /// GZip compression middleware configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct GZipConfig {
 	/// Minimum response size to compress (in bytes)

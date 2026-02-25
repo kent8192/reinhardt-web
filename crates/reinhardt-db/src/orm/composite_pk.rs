@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Error types for composite primary key operations
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub enum CompositePkError {
 	/// Empty fields list provided

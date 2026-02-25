@@ -1,5 +1,6 @@
 //! Pool configuration
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
 	pub max_size: u32,
@@ -38,6 +39,7 @@ impl PoolConfig {
 	}
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct PoolOptions {
 	pub config: PoolConfig,

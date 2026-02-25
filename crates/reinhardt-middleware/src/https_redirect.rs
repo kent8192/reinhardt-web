@@ -9,6 +9,7 @@ use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// Configuration for HTTPS redirect middleware
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct HttpsRedirectConfig {
 	/// Enable HTTPS redirect

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use super::renderer::{ApiContext, BrowsableApiRenderer};
 
 /// Middleware configuration for Browsable API
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct BrowsableApiConfig {
 	/// Enable browsable API (default: true)

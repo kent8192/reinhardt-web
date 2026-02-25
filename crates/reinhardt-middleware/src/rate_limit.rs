@@ -150,6 +150,7 @@ impl RateLimitStore {
 pub use reinhardt_core::RateLimitStrategy;
 
 /// Rate Limiting Configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
 	/// Strategy
