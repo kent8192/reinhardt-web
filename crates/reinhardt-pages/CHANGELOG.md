@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.21](https://github.com/kent8192/reinhardt/compare/reinhardt-pages@v0.1.0-alpha.20...reinhardt-pages@v0.1.0-alpha.21) - 2026-02-25
+
+### Maintenance
+
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-middleware, reinhardt-utils, reinhardt-di, reinhardt-server, reinhardt-pages-macros, reinhardt-forms, reinhardt-forms, reinhardt-urls
+
 ## [0.1.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.19...reinhardt-pages@v0.1.0-alpha.20) - 2026-02-24
 
 ### Maintenance
