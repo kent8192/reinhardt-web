@@ -1,6 +1,6 @@
 //! Pool configuration
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoolConfig {
 	pub max_size: u32,
 	pub min_idle: Option<u32>,
@@ -38,7 +38,7 @@ impl PoolConfig {
 	}
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PoolOptions {
 	pub config: PoolConfig,
 }

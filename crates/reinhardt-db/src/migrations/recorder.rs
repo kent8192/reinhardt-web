@@ -4,7 +4,7 @@ use crate::backends::DatabaseConnection;
 use chrono::{DateTime, Utc};
 
 /// Migration record
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MigrationRecord {
 	pub app: String,
 	pub name: String,
