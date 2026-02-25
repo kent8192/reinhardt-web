@@ -178,8 +178,7 @@ async fn test_rate_limit_strategy_partitions(#[case] strategy: RateLimitStrategy
 	use reinhardt_middleware::Middleware;
 	use reinhardt_middleware::rate_limit::{RateLimitConfig, RateLimitMiddleware};
 
-	let config = RateLimitConfig::new(strategy.clone(), 100.0, 10.0)
-		.with_cost_per_request(1.0);
+	let config = RateLimitConfig::new(strategy.clone(), 100.0, 10.0).with_cost_per_request(1.0);
 
 	let middleware = Arc::new(RateLimitMiddleware::new(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success());

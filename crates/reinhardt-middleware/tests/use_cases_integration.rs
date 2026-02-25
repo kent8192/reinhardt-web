@@ -468,9 +468,8 @@ async fn use_case_login_throttling() {
 
 	// Strict rate limit for login
 	// Strict rate limit for login: 5 attempts max, slow refill
-	let login_rate_config =
-		RateLimitConfig::new(RateLimitStrategy::PerIp, 5.0, 0.1)
-			.with_error_message("Too many login attempts. Please try again later.".to_string());
+	let login_rate_config = RateLimitConfig::new(RateLimitStrategy::PerIp, 5.0, 0.1)
+		.with_error_message("Too many login attempts. Please try again later.".to_string());
 	let rate_limit = Arc::new(RateLimitMiddleware::new(login_rate_config));
 
 	// First 5 attempts should succeed
