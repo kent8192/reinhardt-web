@@ -129,11 +129,10 @@ impl GZipMiddleware {
 	/// }
 	///
 	/// # tokio_test::block_on(async {
-	/// let config = GZipConfig {
-	///     min_length: 1000,
-	///     compression_level: 9,
-	///     compressible_types: vec!["text/".to_string(), "application/json".to_string()],
-	/// };
+	/// let mut config = GZipConfig::default();
+	/// config.min_length = 1000;
+	/// config.compression_level = 9;
+	/// config.compressible_types = vec!["text/".to_string(), "application/json".to_string()];
 	///
 	/// let middleware = GZipMiddleware::with_config(config);
 	/// let handler = Arc::new(TestHandler);
