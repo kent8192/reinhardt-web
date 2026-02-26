@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.21](https://github.com/kent8192/reinhardt/compare/reinhardt-web@v0.1.0-alpha.20...reinhardt-web@v0.1.0-alpha.21) - 2026-02-26
+
+### Documentation
+
+- *(guidelines)* update branch naming convention from feat/ to feature/
+- *(core)* fix broken doctest in lib.rs crate-level documentation
+
+### Fixed
+
+- *(workspace)* enforce RFC 430 naming convention across public APIs
+- *(integration-tests)* update filter getter calls to use RFC 430 field access
+- *(ci)* force nightly toolchain in docs-rs-check to override rust-toolchain.toml
+- *(conf,middleware,rest)* replace struct literal initialization in doc tests for #[non_exhaustive] structs
+- *(middleware)* update integration tests for #[non_exhaustive] config structs
+- *(admin)* wrap generic type in backticks to fix unclosed HTML tag in doc comment
+- *(ci)* set OPENSSL_LIB_DIR for Windows cross-platform check
+- *(dentdelion,web)* fix broken intra-doc link and undefined argon2-hasher feature
+- *(web)* add argon2-hasher to full feature and fix cfg format in src/lib.rs
+- *(deeplink)* replace private intra-doc links with backtick references in doc comments
+- *(urls,views)* replace broken intra-doc links in doc comments
+- *(urls)* correct UnifiedRouter intra-doc link path to crate::routers::UnifiedRouter
+- *(apps,throttling)* use fully-qualified intra-doc link paths for AppError and ThrottleError
+
+### Maintenance
+
+- *(serena)* update project.yml with new configuration fields
+- *(serena)* set language_backend to LSP
+- merge main into docs/rustdoc-core-db to resolve conflicts
+
+### Styling
+
+- *(middleware)* fix rustfmt formatting in combination_integration.rs
+
 ## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
 
 ### Documentation
