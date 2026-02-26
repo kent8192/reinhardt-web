@@ -60,4 +60,10 @@ data "aws_subnets" "default" {
 		name   = "vpc-id"
 		values = [data.aws_vpc.default.id]
 	}
+	filter {
+		# Exclude us-east-1e: c6a/c6i/c5a.2xlarge are not supported in this AZ.
+		# us-east-1a, 1b, 1c, 1d, 1f all support the required instance types.
+		name   = "availability-zone"
+		values = ["us-east-1a", "us-east-1b", "us-east-1c", "us-east-1d", "us-east-1f"]
+	}
 }
