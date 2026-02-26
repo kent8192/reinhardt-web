@@ -156,10 +156,8 @@ async fn test_cors_decision_table(
 	#[case] should_have_cors_headers: bool,
 	#[case] is_preflight: bool,
 ) {
-	let config = CorsConfig {
-		allow_origins: allowed_origins.into_iter().map(String::from).collect(),
-		..Default::default()
-	};
+	let mut config = CorsConfig::default();
+	config.allow_origins = allowed_origins.into_iter().map(String::from).collect();
 
 	let middleware = Arc::new(CorsMiddleware::new(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success());
@@ -321,11 +319,10 @@ async fn test_gzip_decision_table(
 	#[case] body_size: usize,
 	#[case] should_compress: bool,
 ) {
-	let config = GZipConfig {
-		min_length: 200,
-		compression_level: 6,
-		compressible_types: vec!["text/".to_string(), "application/json".to_string()],
-	};
+	let mut config = GZipConfig::default();
+	config.min_length = 200;
+	config.compression_level = 6;
+	config.compressible_types = vec!["text/".to_string(), "application/json".to_string()];
 	let middleware = Arc::new(GZipMiddleware::with_config(config));
 
 	let body = "x".repeat(body_size);
