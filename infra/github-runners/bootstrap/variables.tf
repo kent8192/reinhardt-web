@@ -4,8 +4,8 @@ variable "aws_region" {
 	default     = "us-east-1"
 }
 
-variable "state_bucket_name" {
-	description = "Globally unique S3 bucket name for Terraform state storage"
+variable "aws_account_id" {
+	description = "AWS Account ID for the CI sub-account. Used to construct the globally unique S3 state bucket name (reinhardt-ci-terraform-state-<account_id>)."
 	type        = string
-	# Example: "reinhardt-ci-terraform-state-123456789012"
+	# Retrieve with: aws sts get-caller-identity --query Account --output text
 }

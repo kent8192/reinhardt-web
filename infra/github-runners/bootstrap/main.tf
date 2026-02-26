@@ -26,9 +26,13 @@ provider "aws" {
 	}
 }
 
+locals {
+	state_bucket_name = "reinhardt-ci-terraform-state-${var.aws_account_id}"
+}
+
 # S3 bucket for Terraform state (private, versioned, encrypted)
 resource "aws_s3_bucket" "terraform_state" {
-	bucket = var.state_bucket_name
+	bucket = local.state_bucket_name
 
 	lifecycle {
 		prevent_destroy = true
