@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.17](https://github.com/kent8192/reinhardt/compare/reinhardt-middleware@v0.1.0-alpha.16...reinhardt-middleware@v0.1.0-alpha.17) - 2026-02-26
+
+### Fixed
+
+- *(workspace)* enforce RFC 430 naming convention across public APIs
+- *(conf,middleware,rest)* replace struct literal initialization in doc tests for #[non_exhaustive] structs
+- *(middleware)* update integration tests for #[non_exhaustive] config structs
+
+### Maintenance
+
+- complete Cargo.toml metadata for all published crates
+
+### Styling
+
+- *(middleware)* fix rustfmt formatting in combination_integration.rs
+
 ## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.15...reinhardt-middleware@v0.1.0-alpha.16) - 2026-02-24
 
 ### Maintenance

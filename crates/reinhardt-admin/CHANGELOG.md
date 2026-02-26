@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
+## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt/compare/reinhardt-admin@v0.1.0-alpha.18...reinhardt-admin@v0.1.0-alpha.19) - 2026-02-26
+
+### Fixed
+
+- *(admin)* wrap generic type in backticks to fix unclosed HTML tag in doc comment
+
 ## [0.1.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-alpha.17...reinhardt-admin@v0.1.0-alpha.18) - 2026-02-24
 
 ### Maintenance
