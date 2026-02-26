@@ -93,8 +93,8 @@ async fn test_ratelimit_and_circuit_breaker_cascade() {
 	};
 	use std::time::Duration;
 
-	let rate_limit_config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0)
-		.with_cost_per_request(1.0);
+	let rate_limit_config =
+		RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0).with_cost_per_request(1.0);
 
 	let circuit_config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(60))
 		.with_half_open_success_threshold(3);
