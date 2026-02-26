@@ -88,4 +88,9 @@ module "github_runner" {
 	scale_down_schedule_expression  = "cron(* * * * ? *)"
 	minimum_running_time_in_minutes = 0
 	runner_boot_time_in_minutes     = 10 # Allow 10 min for cold start
+
+	# Disable reserved concurrency for scale-up Lambda (-1 = use unreserved pool).
+	# New AWS accounts have a low Lambda concurrency limit; reserving concurrency
+	# would reduce UnreservedConcurrentExecution below the AWS minimum of 10.
+	scale_up_reserved_concurrent_executions = -1
 }
