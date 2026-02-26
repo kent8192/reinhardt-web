@@ -59,9 +59,9 @@
 //! The `#[routes]` macro automatically handles `inventory` registration,
 //! so you don't need any additional boilerplate code.
 //!
-//! [`UnifiedRouter`]: reinhardt_urls::UnifiedRouter
-//! [`ServerRouter`]: reinhardt_urls::routers::ServerRouter
-//! [`ClientRouter`]: reinhardt_urls::routers::ClientRouter
+//! [`UnifiedRouter`]: crate::UnifiedRouter
+//! [`ServerRouter`]: crate::routers::ServerRouter
+//! [`ClientRouter`]: crate::routers::ClientRouter
 
 #[cfg(feature = "client-router")]
 use crate::routers::client_router::ClientRouter;
