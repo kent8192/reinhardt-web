@@ -451,7 +451,7 @@ const MINIFY_HTML_MAX_INPUT_SIZE: usize = 1024 * 1024;
 /// Simple HTML minification (removes extra whitespace).
 ///
 /// Returns the input unmodified when its byte length exceeds
-/// [`MINIFY_HTML_MAX_INPUT_SIZE`] to prevent denial-of-service attacks.
+/// `MINIFY_HTML_MAX_INPUT_SIZE` (1MB) to prevent denial-of-service attacks.
 ///
 /// Whitespace inside `<pre>` blocks is preserved.
 fn minify_html(html: &str) -> String {
