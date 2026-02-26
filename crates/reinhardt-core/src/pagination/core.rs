@@ -292,10 +292,10 @@ impl<T: Clone> Page<T> {
 	/// ```
 	/// use reinhardt_core::pagination::Page;
 	///
-	// For a large page range, ellipsis (None) are added
+	/// // For a large page range, ellipsis (None) are added
 	/// let page = Page::new(vec![1], 10, 20, 200, 10);
 	/// let elided = page.get_elided_page_range(2, 2);
-	// Result like: [Some(1), Some(2), None, Some(8), Some(9), Some(10), Some(11), Some(12), None, Some(19), Some(20)]
+	/// // Result like: [Some(1), Some(2), None, Some(8), Some(9), Some(10), Some(11), Some(12), None, Some(19), Some(20)]
 	/// assert!(elided.contains(&None)); // Contains ellipsis
 	/// assert!(elided.contains(&Some(10))); // Contains current page
 	/// ```

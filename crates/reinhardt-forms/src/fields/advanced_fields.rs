@@ -19,11 +19,11 @@ use std::collections::HashMap;
 ///
 /// let field = UUIDField::new("id");
 ///
-// Valid UUID v4
+/// // Valid UUID v4
 /// let result = field.clean(Some(&json!("550e8400-e29b-41d4-a716-446655440000")));
 /// assert!(result.is_ok());
 ///
-// Invalid UUID
+/// // Invalid UUID
 /// let result = field.clean(Some(&json!("not-a-uuid")));
 /// assert!(result.is_err());
 /// ```
@@ -212,11 +212,11 @@ impl FormField for UUIDField {
 ///
 /// let field = DurationField::new("duration");
 ///
-// Valid duration
+/// // Valid duration
 /// let result = field.clean(Some(&json!("P1Y2M3DT4H5M6S")));
 /// assert!(result.is_ok());
 ///
-// Another valid duration (1 day)
+/// // Another valid duration (1 day)
 /// let result = field.clean(Some(&json!("P1D")));
 /// assert!(result.is_ok());
 /// ```
@@ -446,26 +446,26 @@ impl FormField for DurationField {
 /// use reinhardt_forms::{Field, CharField, EmailField};
 /// use serde_json::json;
 ///
-// Create validators with constraints
+/// // Create validators with constraints
 /// let mut email_field = EmailField::new("email".to_string());
 /// let mut char_field = CharField::new("email".to_string());
 /// char_field.min_length = Some(5);
 /// char_field.max_length = Some(100);
 ///
-// Combine email validation with length validation
+/// // Combine email validation with length validation
 /// let field = ComboField::new("email")
 ///     .add_validator(Box::new(email_field))
 ///     .add_validator(Box::new(char_field));
 ///
-// Valid: passes both email and length checks
+/// // Valid: passes both email and length checks
 /// let result = field.clean(Some(&json!("user@example.com")));
 /// assert!(result.is_ok());
 ///
-// Invalid: fails email validation
+/// // Invalid: fails email validation
 /// let result = field.clean(Some(&json!("not-an-email")));
 /// assert!(result.is_err());
 ///
-// Invalid: too short (less than 5 characters)
+/// // Invalid: too short (less than 5 characters)
 /// let result = field.clean(Some(&json!("a@b")));
 /// assert!(result.is_err());
 /// ```

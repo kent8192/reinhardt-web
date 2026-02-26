@@ -196,7 +196,7 @@ where
 	///     .await
 	///     .unwrap();
 	///
-	// Acquire a connection
+	/// // Acquire a connection
 	/// let conn = pool.acquire().await;
 	/// assert!(conn.is_ok());
 	/// # }

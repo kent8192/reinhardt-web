@@ -76,13 +76,13 @@ impl std::error::Error for FieldError {}
 ///     .max_length(10)
 ///     .required(true);
 ///
-// Valid string
+/// // Valid string
 /// assert!(field.validate("hello").is_ok());
 ///
-// Too short
+/// // Too short
 /// assert!(field.validate("hi").is_err());
 ///
-// Too long
+/// // Too long
 /// assert!(field.validate("hello world").is_err());
 /// ```
 #[derive(Debug, Clone)]

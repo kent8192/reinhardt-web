@@ -30,7 +30,7 @@ impl FixtureLoader {
 	/// use reinhardt_test::fixtures::FixtureLoader;
 	///
 	/// let loader = FixtureLoader::new();
-	// Loader is ready to load fixtures
+	/// // Loader is ready to load fixtures
 	/// ```
 	pub fn new() -> Self {
 		Self {
