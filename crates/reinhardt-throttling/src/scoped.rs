@@ -60,7 +60,7 @@ impl<B: ThrottleBackend> ScopedRateThrottle<B> {
 	///
 	/// # Errors
 	///
-	/// Returns [`ThrottleError::InvalidKey`] if the scope name fails validation.
+	/// Returns [`crate::ThrottleError::InvalidKey`] if the scope name fails validation.
 	///
 	/// # Examples
 	///
