@@ -133,6 +133,7 @@ full = [
   "conf",
   "database",
   "auth",
+  "argon2-hasher",
   "admin",
   "graphql",
   "websockets",
