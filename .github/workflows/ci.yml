@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
     # Run CI on PRs targeting any branch
+    # (This comment added to re-trigger CI after doc test fix)
 
 permissions:
   contents: read
