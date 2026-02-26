@@ -10,13 +10,6 @@ resource "aws_sns_topic_subscription" "budget_alert_email" {
 	endpoint  = var.budget_alert_email
 }
 
-# Lambda subscription: triggers automatic fallback to GitHub-hosted runners
-resource "aws_sns_topic_subscription" "budget_alert_lambda" {
-	topic_arn = aws_sns_topic.budget_alert.arn
-	protocol  = "lambda"
-	endpoint  = aws_lambda_function.budget_circuit_breaker.arn
-}
-
 # Monthly budget with alert at 80% (warning) and 100% (disable self-hosted)
 resource "aws_budgets_budget" "ci_monthly" {
 	name         = "${var.prefix}-monthly-budget"
@@ -41,7 +34,7 @@ resource "aws_budgets_budget" "ci_monthly" {
 		subscriber_email_addresses = [var.budget_alert_email]
 	}
 
-	# Critical at 100%: email + Lambda (disables self-hosted runners)
+	# Critical at 100%: email notification (manual action required to disable self-hosted runners)
 	notification {
 		comparison_operator        = "GREATER_THAN"
 		threshold                  = 100

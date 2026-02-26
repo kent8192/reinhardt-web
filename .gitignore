@@ -149,4 +149,3 @@ infra/**/*.tfvars
 !infra/**/*.examples.tfvars
 infra/**/backend.tfvars
 infra/github-runners/lambdas/*.zip
-infra/github-runners/lambda/*.zip
