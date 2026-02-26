@@ -57,12 +57,10 @@ use fixtures::rate_limit_middleware;
 #[serial(cors)]
 async fn test_cors_preflight_returns_correct_headers() {
 	// Setup: Create CORS middleware with allowed origin
-	let config = CorsConfig {
-		allow_origins: vec!["https://example.com".to_string()],
-		allow_methods: vec!["GET".to_string(), "POST".to_string()],
-		allow_headers: vec!["Content-Type".to_string(), "Authorization".to_string()],
-		..Default::default()
-	};
+	let mut config = CorsConfig::default();
+	config.allow_origins = vec!["https://example.com".to_string()];
+	config.allow_methods = vec!["GET".to_string(), "POST".to_string()];
+	config.allow_headers = vec!["Content-Type".to_string(), "Authorization".to_string()];
 
 	let middleware = Arc::new(CorsMiddleware::new(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success());
@@ -101,10 +99,8 @@ async fn test_cors_preflight_returns_correct_headers() {
 #[serial(cors)]
 async fn test_cors_simple_request_adds_headers() {
 	// Setup: Create CORS middleware with allowed origin
-	let config = CorsConfig {
-		allow_origins: vec!["https://example.com".to_string()],
-		..Default::default()
-	};
+	let mut config = CorsConfig::default();
+	config.allow_origins = vec!["https://example.com".to_string()];
 
 	let middleware = Arc::new(CorsMiddleware::new(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success());
