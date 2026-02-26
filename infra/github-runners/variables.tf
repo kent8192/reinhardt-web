@@ -45,9 +45,9 @@ variable "runner_instance_types" {
 }
 
 variable "runner_max_count" {
-	description = "Maximum number of concurrent self-hosted runners (match max parallel CI jobs)"
+	description = "Maximum number of concurrent self-hosted runners. Set to cover observed max parallelism (~20 jobs) with headroom."
 	type        = number
-	default     = 30
+	default     = 20
 }
 
 variable "runner_extra_labels" {
