@@ -14,13 +14,11 @@
 //! assert_eq!(config.json_path, "/api/openapi.json");
 //!
 //! // Custom configuration
-//! let custom = OpenApiConfig {
-//!     title: "My API".to_string(),
-//!     version: "2.0.0".to_string(),
-//!     description: Some("Custom API description".to_string()),
-//!     swagger_path: "/api/swagger".to_string(),
-//!     ..Default::default()
-//! };
+//! let mut custom = OpenApiConfig::default();
+//! custom.title = "My API".to_string();
+//! custom.version = "2.0.0".to_string();
+//! custom.description = Some("Custom API description".to_string());
+//! custom.swagger_path = "/api/swagger".to_string();
 //! ```
 
 use serde::{Deserialize, Serialize};
