@@ -171,11 +171,8 @@ impl CspMiddleware {
 	/// directives.insert("default-src".to_string(), vec!["'self'".to_string()]);
 	/// directives.insert("script-src".to_string(), vec!["'self'".to_string(), "https://cdn.example.com".to_string()]);
 	///
-	/// let config = CspConfig {
-	///     directives,
-	///     report_only: false,
-	///     include_nonce: false,
-	/// };
+	/// let mut config = CspConfig::default();
+	/// config.directives = directives;
 	///
 	/// let middleware = CspMiddleware::with_config(config);
 	/// let handler = Arc::new(TestHandler);

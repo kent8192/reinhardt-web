@@ -71,11 +71,9 @@ impl BrowsableApiMiddleware {
 	/// ```
 	/// use reinhardt_rest::browsable_api::middleware::{BrowsableApiMiddleware, BrowsableApiConfig};
 	///
-	/// let config = BrowsableApiConfig {
-	///     enabled: true,
-	///     template_name: Some("custom_api.tpl".to_string()),
-	///     custom_css: Some("/static/api.css".to_string()),
-	/// };
+	/// let mut config = BrowsableApiConfig::default();
+	/// config.template_name = Some("custom_api.tpl".to_string());
+	/// config.custom_css = Some("/static/api.css".to_string());
 	///
 	/// let middleware = BrowsableApiMiddleware::with_config(config);
 	/// ```

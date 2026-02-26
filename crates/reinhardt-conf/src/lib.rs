@@ -21,12 +21,10 @@
 //! use reinhardt_conf::Settings;
 //!
 //! // Create settings with defaults and override specific fields
-//! let settings = Settings {
-//!     secret_key: "my-secret-key".to_string(),
-//!     debug: false,
-//!     allowed_hosts: vec!["example.com".to_string()],
-//!     ..Settings::default()
-//! };
+//! let mut settings = Settings::default();
+//! settings.secret_key = "my-secret-key".to_string();
+//! settings.debug = false;
+//! settings.allowed_hosts = vec!["example.com".to_string()];
 //!
 //! assert!(!settings.debug);
 //! assert_eq!(settings.allowed_hosts[0], "example.com");
