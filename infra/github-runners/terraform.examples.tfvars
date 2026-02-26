@@ -1,11 +1,16 @@
 # Copy to terraform.tfvars and fill in values.
 # NEVER commit terraform.tfvars (it is gitignored)
+#
+# SETUP: After filling in this file, run:
+#   ./init.sh
+# This script auto-generates backend.tfvars from aws_account_id and runs terraform init.
 
-aws_region = "us-east-1"
+aws_region     = "us-east-1"
+aws_account_id = "123456789012"  # aws sts get-caller-identity --query Account --output text
 
 # GitHub App credentials (from Task 3)
-github_app_id              = "12345678"
-github_app_installation_id = "87654321"
+github_app_id              = "TBD"
+github_app_installation_id = "TBD"
 github_app_key_base64      = "LS0tLS1CRUdJTi..."
 
 # GitHub repository (specify the actual owner username)

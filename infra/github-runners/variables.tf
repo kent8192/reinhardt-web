@@ -4,6 +4,12 @@ variable "aws_region" {
 	default     = "us-east-1"
 }
 
+variable "aws_account_id" {
+	description = "AWS Account ID for the CI sub-account. Used by init.sh to auto-generate backend.tfvars with the correct S3 bucket name."
+	type        = string
+	# Retrieve with: aws sts get-caller-identity --query Account --output text
+}
+
 variable "github_app_id" {
 	description = "GitHub App ID for runner registration token generation"
 	type        = string
