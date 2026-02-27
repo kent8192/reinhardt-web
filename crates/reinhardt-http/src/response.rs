@@ -185,7 +185,7 @@ pub fn truncate_for_log(input: &str, max_length: usize) -> String {
 }
 
 /// HTTP Response representation
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
 	pub status: StatusCode,
 	pub headers: HeaderMap,

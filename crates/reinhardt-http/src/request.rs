@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 /// Only proxy headers (X-Forwarded-For, X-Real-IP, X-Forwarded-Proto) from
 /// these IP addresses will be trusted. By default, no proxies are trusted
 /// and the actual connection information is used.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TrustedProxies {
 	/// Set of trusted proxy IP addresses.
 	/// Only requests originating from these IPs will have their proxy headers honored.
