@@ -87,7 +87,7 @@ module "github_runner" {
 	# JIT runners need time to pick up jobs after registration; without a grace
 	# period, scale-down terminates them before they become busy (race condition).
 	scale_down_schedule_expression  = "cron(* * * * ? *)"
-	minimum_running_time_in_minutes = 5
+	minimum_running_time_in_minutes = 15
 	runner_boot_time_in_minutes     = 10 # Allow 10 min for cold start
 
 	# Disable reserved concurrency for scale-up Lambda (-1 = use unreserved pool).
