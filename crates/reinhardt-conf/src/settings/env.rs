@@ -232,6 +232,7 @@ pub fn validate_env_var_name(name: &str) -> Result<(), EnvError> {
 }
 
 /// Environment variable errors
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum EnvError {
 	#[error("Missing environment variable: {0}")]

@@ -2,6 +2,10 @@
 name = "reinhardt-rest"
 version = "0.1.0-alpha.19"
 description = "REST API framework aggregator for Reinhardt"
+keywords = ["rest", "api", "web", "framework", "django"]
+categories = ["web-programming", "web-programming::http-server"]
+readme = "README.md"
+documentation = "https://docs.rs/reinhardt-rest"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

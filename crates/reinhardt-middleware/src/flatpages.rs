@@ -168,6 +168,7 @@ impl FlatpageStore {
 }
 
 /// Flatpages middleware configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct FlatpagesConfig {
 	/// Whether the middleware is enabled

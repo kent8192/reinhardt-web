@@ -31,7 +31,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 /// Session error types
-#[derive(Debug, Clone)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionError {
 	/// Database error occurred
 	DatabaseError(String),

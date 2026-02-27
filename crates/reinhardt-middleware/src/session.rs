@@ -171,6 +171,7 @@ impl SessionStore {
 }
 
 /// Session configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
 	/// Cookie name
