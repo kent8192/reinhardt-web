@@ -331,7 +331,7 @@ impl AutoMigrationGenerator {
 }
 
 /// Validation result
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationResult {
 	/// Is migration valid
 	pub is_valid: bool,
@@ -343,7 +343,7 @@ pub struct ValidationResult {
 
 /// Auto-migration error
 #[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AutoMigrationError {
 	#[error("No schema changes detected")]
 	NoChangesDetected,
