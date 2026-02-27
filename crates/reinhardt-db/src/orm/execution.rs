@@ -28,6 +28,7 @@ pub enum ExecutionResult<T> {
 }
 
 /// Errors that can occur during query execution
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutionError {
 	/// Database error
@@ -704,6 +705,7 @@ impl LoadOption {
 }
 
 /// Query options container
+#[non_exhaustive]
 pub struct QueryOptions {
 	pub load_options: Vec<LoadOption>,
 }

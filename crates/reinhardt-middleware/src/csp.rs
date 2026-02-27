@@ -28,6 +28,7 @@ fn is_valid_nonce(nonce: &str) -> bool {
 }
 
 /// CSP directive configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct CspConfig {
 	/// CSP directives (e.g., "default-src", "script-src")
@@ -170,11 +171,10 @@ impl CspMiddleware {
 	/// directives.insert("default-src".to_string(), vec!["'self'".to_string()]);
 	/// directives.insert("script-src".to_string(), vec!["'self'".to_string(), "https://cdn.example.com".to_string()]);
 	///
-	/// let config = CspConfig {
-	///     directives,
-	///     report_only: false,
-	///     include_nonce: false,
-	/// };
+	/// let mut config = CspConfig::default();
+	/// config.directives = directives;
+	/// config.report_only = false;
+	/// config.include_nonce = false;
 	///
 	/// let middleware = CspMiddleware::with_config(config);
 	/// let handler = Arc::new(TestHandler);

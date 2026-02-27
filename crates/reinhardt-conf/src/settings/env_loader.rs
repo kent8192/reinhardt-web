@@ -54,7 +54,7 @@ impl EnvLoader {
 	/// let loader = EnvLoader::new()
 	///     .path(PathBuf::from(".env.production"));
 	///
-	// Loader is configured to load from .env.production
+	/// // Loader is configured to load from .env.production
 	/// ```
 	pub fn path(mut self, path: impl Into<PathBuf>) -> Self {
 		self.path = Some(path.into());
@@ -70,7 +70,7 @@ impl EnvLoader {
 	/// let loader = EnvLoader::new()
 	///     .overwrite(true);
 	///
-	// When loading .env, existing env vars will be overwritten
+	/// // When loading .env, existing env vars will be overwritten
 	/// ```
 	pub fn overwrite(mut self, enabled: bool) -> Self {
 		self.overwrite = enabled;
@@ -86,7 +86,7 @@ impl EnvLoader {
 	/// let loader = EnvLoader::new()
 	///     .interpolate(true);
 	///
-	// Variables like $HOME or ${USER} will be expanded
+	/// // Variables like $HOME or ${USER} will be expanded
 	/// ```
 	pub fn interpolate(mut self, enabled: bool) -> Self {
 		self.interpolate = enabled;
@@ -151,9 +151,9 @@ impl EnvLoader {
 	/// let loader = EnvLoader::new()
 	///     .path(PathBuf::from(".env.optional"));
 	///
-	// Returns Ok(true) if loaded, Ok(false) if not found
+	/// // Returns Ok(true) if loaded, Ok(false) if not found
 	/// let loaded = loader.load_optional().unwrap();
-	// Won't panic if file doesn't exist
+	/// // Won't panic if file doesn't exist
 	/// ```
 	pub fn load_optional(&self) -> Result<bool, EnvError> {
 		let path = match &self.path {
@@ -409,9 +409,9 @@ pub fn load_env_auto() -> Result<(), EnvError> {
 /// use reinhardt_conf::settings::env_loader::load_env_optional;
 /// use std::path::PathBuf;
 ///
-// Returns true if loaded, false if not found
+/// // Returns true if loaded, false if not found
 /// let loaded = load_env_optional(PathBuf::from(".env.test")).unwrap();
-// Will not panic if file doesn't exist
+/// // Will not panic if file doesn't exist
 /// ```
 pub fn load_env_optional(path: impl Into<PathBuf>) -> Result<bool, EnvError> {
 	EnvLoader::new().path(path).load_optional()

@@ -16,6 +16,7 @@ use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// Security middleware configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct SecurityConfig {
 	/// Enable HSTS (HTTP Strict Transport Security)
@@ -151,18 +152,17 @@ impl SecurityMiddleware {
 	/// }
 	///
 	/// # tokio_test::block_on(async {
-	/// let config = SecurityConfig {
-	///     hsts_enabled: true,
-	///     hsts_seconds: 31536000,
-	///     hsts_include_subdomains: true,
-	///     hsts_preload: true,
-	///     ssl_redirect: false,
-	///     content_type_nosniff: true,
-	///     referrer_policy: Some("strict-origin-when-cross-origin".to_string()),
-	///     cross_origin_opener_policy: Some("same-origin".to_string()),
-	///     x_frame_options: Some("DENY".to_string()),
-	///     secure_proxy_ssl_header: None,
-	/// };
+	/// let mut config = SecurityConfig::default();
+	/// config.hsts_enabled = true;
+	/// config.hsts_seconds = 31536000;
+	/// config.hsts_include_subdomains = true;
+	/// config.hsts_preload = true;
+	/// config.ssl_redirect = false;
+	/// config.content_type_nosniff = true;
+	/// config.referrer_policy = Some("strict-origin-when-cross-origin".to_string());
+	/// config.cross_origin_opener_policy = Some("same-origin".to_string());
+	/// config.x_frame_options = Some("DENY".to_string());
+	/// config.secure_proxy_ssl_header = None;
 	///
 	/// let middleware = SecurityMiddleware::with_config(config);
 	/// let handler = Arc::new(TestHandler);
