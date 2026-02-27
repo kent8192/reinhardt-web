@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-urls"
-version = "0.1.0-alpha.16"
+version = "0.1.0-alpha.17"
 edition = "2024"
 license = "BSD-3-Clause"
 repository = "https://github.com/kent8192/reinhardt"

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.20](https://github.com/kent8192/reinhardt/compare/reinhardt-rest@v0.1.0-alpha.19...reinhardt-rest@v0.1.0-alpha.20) - 2026-02-27
+
+### Documentation
+
+- fix empty Rust code blocks in doc comments across workspace
+
+### Fixed
+
+- *(workspace)* enforce RFC 430 naming convention across public APIs
+
+### Maintenance
+
+- complete Cargo.toml metadata for all published crates
+
 ## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.18...reinhardt-rest@v0.1.0-alpha.19) - 2026-02-24
 
 ### Maintenance
