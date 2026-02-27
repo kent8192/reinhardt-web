@@ -65,7 +65,7 @@ pub type PageEventHandler = Arc<dyn Fn(DummyEvent) + 'static>;
 
 /// Error type for mounting views to the DOM.
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MountError {
 	/// Window object not available.
 	NoWindow,

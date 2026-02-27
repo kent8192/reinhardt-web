@@ -174,7 +174,7 @@ impl ValidatorError {
 
 /// Errors that can occur during serialization
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SerializerError {
 	/// Validation error
 	Validation(ValidatorError),
@@ -316,6 +316,7 @@ impl SerializerError {
 /// let deserialized = serializer.deserialize(&json).unwrap();
 /// assert_eq!(user.id, deserialized.id);
 /// ```
+#[derive(Debug, Clone)]
 pub struct JsonSerializer<T> {
 	_phantom: std::marker::PhantomData<T>,
 }

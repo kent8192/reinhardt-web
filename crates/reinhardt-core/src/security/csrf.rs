@@ -31,13 +31,13 @@ pub const REASON_NO_CSRF_COOKIE: &str = "CSRF cookie not set.";
 pub const REASON_NO_REFERER: &str = "Referer checking failed - no Referer.";
 
 /// CSRF token validation error
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RejectRequest {
 	pub reason: String,
 }
 
 /// Invalid token format error
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidTokenFormat {
 	pub reason: String,
 }
