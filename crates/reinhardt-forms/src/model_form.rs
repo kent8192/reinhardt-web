@@ -269,7 +269,7 @@ impl<T: FormModel> ModelForm<T> {
 	/// ```ignore
 	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
 	///
-	// Assuming we have a model that implements the Model trait
+	/// // Assuming we have a model that implements the Model trait
 	/// let config = ModelFormConfig::new();
 	/// let form = ModelForm::new(Some(instance), config);
 	/// ```

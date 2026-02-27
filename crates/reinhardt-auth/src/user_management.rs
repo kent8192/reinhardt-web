@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 /// User management error
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserManagementError {
 	/// User not found
 	UserNotFound,
@@ -66,7 +66,7 @@ pub type UserManagementResult<T> = Result<T, UserManagementError>;
 /// assert_eq!(user_data.username, "alice");
 /// assert_eq!(user_data.email, "alice@example.com");
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateUserData {
 	pub username: String,
 	pub email: String,
@@ -91,7 +91,7 @@ pub struct CreateUserData {
 /// assert_eq!(update_data.email, Some("newemail@example.com".to_string()));
 /// assert_eq!(update_data.is_active, Some(false));
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UpdateUserData {
 	pub email: Option<String>,
 	pub is_active: Option<bool>,

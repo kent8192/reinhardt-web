@@ -62,7 +62,7 @@ impl EnvSource {
 	/// use reinhardt_conf::settings::sources::EnvSource;
 	///
 	/// let source = EnvSource::new();
-	// Loads all environment variables
+	/// // Loads all environment variables
 	/// ```
 	pub fn new() -> Self {
 		Self {
@@ -79,7 +79,7 @@ impl EnvSource {
 	///
 	/// let source = EnvSource::new()
 	///     .with_prefix("APP_");
-	// Only loads env vars starting with APP_
+	/// // Only loads env vars starting with APP_
 	/// ```
 	pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
 		self.prefix = Some(prefix.into());
@@ -94,7 +94,7 @@ impl EnvSource {
 	///
 	/// let source = EnvSource::new()
 	///     .with_interpolation(true);
-	// Environment variables will support $VAR expansion
+	/// // Environment variables will support $VAR expansion
 	/// ```
 	pub fn with_interpolation(mut self, enabled: bool) -> Self {
 		self.interpolate = enabled;
@@ -194,7 +194,7 @@ impl DotEnvSource {
 	/// use reinhardt_conf::settings::sources::DotEnvSource;
 	///
 	/// let source = DotEnvSource::new();
-	// Loads from .env file
+	/// // Loads from .env file
 	/// ```
 	pub fn new() -> Self {
 		Self {
@@ -228,7 +228,7 @@ impl DotEnvSource {
 	///
 	/// let source = DotEnvSource::new()
 	///     .with_profile(Profile::Production);
-	// Will load .env.production
+	/// // Will load .env.production
 	/// ```
 	pub fn with_profile(mut self, profile: Profile) -> Self {
 		self.profile = Some(profile);
@@ -243,7 +243,7 @@ impl DotEnvSource {
 	///
 	/// let source = DotEnvSource::new()
 	///     .with_interpolation(true);
-	// .env file variables will support $VAR expansion
+	/// // .env file variables will support $VAR expansion
 	/// ```
 	pub fn with_interpolation(mut self, enabled: bool) -> Self {
 		self.interpolate = enabled;
@@ -484,10 +484,10 @@ impl ConfigSource for DefaultSource {
 /// use reinhardt_conf::settings::sources::auto_source;
 /// use std::path::PathBuf;
 ///
-// Automatically detects TOML source from extension
+/// // Automatically detects TOML source from extension
 /// let source = auto_source(PathBuf::from("config.toml")).unwrap();
 ///
-// Or JSON source
+/// // Or JSON source
 /// let source = auto_source(PathBuf::from("settings.json")).unwrap();
 /// ```
 pub fn auto_source(path: impl AsRef<Path>) -> Result<Box<dyn ConfigSource>, SourceError> {

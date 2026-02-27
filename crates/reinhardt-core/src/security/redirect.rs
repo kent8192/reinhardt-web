@@ -8,7 +8,7 @@ use url::Url;
 
 /// Errors that can occur during redirect URL validation
 #[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RedirectValidationError {
 	/// URL uses a dangerous protocol (javascript:, data:, vbscript:)
 	#[error("Dangerous protocol in redirect URL: {0}")]

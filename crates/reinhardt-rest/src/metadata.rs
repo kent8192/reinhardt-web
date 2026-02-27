@@ -25,6 +25,7 @@
 //! options.allowed_methods = vec!["GET".to_string(), "POST".to_string()];
 //! options.renders = vec!["application/json".to_string()];
 //! options.parses = vec!["application/json".to_string()];
+//! options.serializer_fields = None;
 //! ```
 //!
 //! ## OpenAPI Schema Generation Example

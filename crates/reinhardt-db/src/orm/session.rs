@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 /// Session error types
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionError {
 	/// Database error occurred
 	DatabaseError(String),

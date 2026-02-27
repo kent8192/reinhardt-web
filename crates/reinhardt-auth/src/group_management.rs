@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// Group management error
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GroupManagementError {
 	/// Group not found
 	GroupNotFound,
@@ -56,7 +56,7 @@ pub type GroupManagementResult<T> = Result<T, GroupManagementError>;
 ///
 /// assert_eq!(group.name, "Editors");
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Group {
 	pub id: Uuid,
 	pub name: String,
@@ -77,7 +77,7 @@ pub struct Group {
 ///
 /// assert_eq!(data.name, "Admins");
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateGroupData {
 	pub name: String,
 	pub description: Option<String>,

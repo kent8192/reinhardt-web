@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Social authentication errors
 #[non_exhaustive]
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SocialAuthError {
 	/// Network error during HTTP requests
 	#[error("Network error: {0}")]

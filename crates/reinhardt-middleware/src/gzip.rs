@@ -150,7 +150,7 @@ impl GZipMiddleware {
 	///     .unwrap();
 	///
 	/// let response = middleware.process(request, handler).await.unwrap();
-	// Small response not compressed due to min_length=1000
+	/// // Small response not compressed due to min_length=1000
 	/// assert!(!response.headers.contains_key(hyper::header::CONTENT_ENCODING));
 	/// # });
 	/// ```

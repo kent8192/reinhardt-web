@@ -173,6 +173,8 @@ impl CspMiddleware {
 	///
 	/// let mut config = CspConfig::default();
 	/// config.directives = directives;
+	/// config.report_only = false;
+	/// config.include_nonce = false;
 	///
 	/// let middleware = CspMiddleware::with_config(config);
 	/// let handler = Arc::new(TestHandler);

@@ -62,7 +62,9 @@ impl HttpsRedirectMiddleware {
 	///
 	/// # tokio_test::block_on(async {
 	/// let mut config = HttpsRedirectConfig::default();
+	/// config.enabled = true;
 	/// config.exempt_paths = vec!["/health".to_string()];
+	/// config.status_code = StatusCode::MOVED_PERMANENTLY;
 	///
 	/// let middleware = HttpsRedirectMiddleware::new(config);
 	/// let handler = Arc::new(TestHandler);
