@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.21](https://github.com/kent8192/reinhardt/compare/reinhardt-web@v0.1.0-alpha.20...reinhardt-web@v0.1.0-alpha.21) - 2026-02-27
+
+### Documentation
+
+- *(guidelines)* update branch naming convention from feat/ to feature/
+- *(core)* fix broken doctest in lib.rs crate-level documentation
+- fix empty Rust code blocks in doc comments across workspace
+- fix unresolved intra-doc links and unclosed HTML tags in rustdoc
+
+### Fixed
+
+- *(workspace)* enforce RFC 430 naming convention across public APIs
+- *(integration-tests)* update filter getter calls to use RFC 430 field access
+- *(ci)* force nightly toolchain in docs-rs-check to override rust-toolchain.toml
+
+### Maintenance
+
+- *(serena)* update project.yml with new configuration fields
+- *(serena)* set language_backend to LSP
+- merge main into docs/rustdoc-core-db to resolve conflicts
+
 ## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
 
 ### Documentation
