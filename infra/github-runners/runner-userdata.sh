@@ -2,7 +2,7 @@
 # Pre-installation setup for reinhardt CI runners.
 # Executed by github-aws-runners module before runner registration.
 
-set -euo pipefail
+set -eo pipefail
 
 # Install required system packages
 apt-get update -qq
