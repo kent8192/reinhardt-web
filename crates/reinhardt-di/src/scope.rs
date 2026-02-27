@@ -171,7 +171,7 @@ impl SingletonScope {
 	/// let scope = SingletonScope::new();
 	/// scope.set(42i32);
 	///
-	// Same value retrieved across multiple calls
+	/// // Same value retrieved across multiple calls
 	/// let val1 = scope.get::<i32>().unwrap();
 	/// let val2 = scope.get::<i32>().unwrap();
 	/// assert_eq!(*val1, *val2);

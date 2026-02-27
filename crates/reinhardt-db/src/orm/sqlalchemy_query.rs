@@ -98,7 +98,7 @@ impl<T: Model> SelectQuery<T> {
 	/// }
 	///
 	/// let query = SelectQuery::<User>::new();
-	// Query is ready for configuration
+	/// // Query is ready for configuration
 	/// ```
 	pub fn new() -> Self {
 		Self {

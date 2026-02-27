@@ -102,7 +102,7 @@ impl Request {
 	///     .build()
 	///     .unwrap();
 	///
-	// Set up parsers (empty vec for this example)
+	/// // Set up parsers (empty vec for this example)
 	/// let request = request.with_parsers(vec![]);
 	/// assert_eq!(request.method, Method::POST);
 	/// ```
@@ -132,7 +132,7 @@ impl Request {
 	/// let body = request.read_body().unwrap();
 	/// assert_eq!(body, Bytes::from("request body"));
 	///
-	// Second read fails because body is consumed
+	/// // Second read fails because body is consumed
 	/// assert!(request.read_body().is_err());
 	/// ```
 	pub fn read_body(&self) -> crate::Result<Bytes> {
