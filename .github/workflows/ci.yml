@@ -23,8 +23,8 @@ jobs:
   # Determine runner type based on whether the actor is the repository owner.
   # Repository owner uses self-hosted AWS Spot runners (faster, ~$70/month).
   # Other contributors use GitHub-hosted ubuntu-latest (free but slower).
-  # Fallback to GitHub-hosted when SELF_HOSTED_ENABLED variable is "false"
-  # (automatically set by AWS Budget circuit breaker when monthly cost exceeded).
+  # Self-hosted runners require SELF_HOSTED_ENABLED variable to be explicitly "true".
+  # AWS Budget circuit breaker sets this to "false" when monthly cost is exceeded.
   determine-runner:
     name: Determine Runner
     runs-on: ubuntu-latest
@@ -39,7 +39,7 @@ jobs:
           REPO_OWNER: ${{ github.repository_owner }}
           SELF_HOSTED_ENABLED: ${{ vars.SELF_HOSTED_ENABLED }}
         run: |
-          if [[ "$ACTOR" == "$REPO_OWNER" ]] && [[ "$SELF_HOSTED_ENABLED" != "false" ]]; then
+          if [[ "$ACTOR" == "$REPO_OWNER" ]] && [[ "$SELF_HOSTED_ENABLED" == "true" ]]; then
             # Self-hosted: faster CI with AWS Spot instances
             echo 'runner=["self-hosted","linux","x64","reinhardt-ci"]' >> "$GITHUB_OUTPUT"
             echo 'cargo-build-jobs=8' >> "$GITHUB_OUTPUT"
