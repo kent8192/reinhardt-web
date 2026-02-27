@@ -199,7 +199,6 @@ mod rate_limit_sanity {
 		};
 
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 100.0, 10.0)
-			.with_cost_per_request(1.0)
 			.with_excluded_paths(vec!["/health".to_string()])
 			.with_error_message("Rate limit exceeded".to_string());
 
@@ -221,7 +220,6 @@ mod rate_limit_sanity {
 		};
 
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 1.0, 0.0001)
-			.with_cost_per_request(1.0)
 			.with_excluded_paths(vec!["/health".to_string(), "/metrics".to_string()]);
 
 		let middleware = Arc::new(RateLimitMiddleware::new(config));

@@ -467,7 +467,6 @@ async fn use_case_login_throttling() {
 	let handler = Arc::new(ConfigurableTestHandler::always_success());
 
 	// Strict rate limit for login
-	// Strict rate limit for login: 5 attempts max, slow refill
 	let login_rate_config = RateLimitConfig::new(RateLimitStrategy::PerIp, 5.0, 0.1)
 		.with_error_message("Too many login attempts. Please try again later.".to_string());
 	let rate_limit = Arc::new(RateLimitMiddleware::new(login_rate_config));
@@ -668,7 +667,7 @@ async fn use_case_slow_request_timeout() {
 	let slow_handler =
 		Arc::new(ConfigurableTestHandler::always_success().with_delay(Duration::from_millis(200)));
 
-	let timeout_config = TimeoutConfig::new(Duration::from_millis(50)); // 50ms timeout
+	let timeout_config = TimeoutConfig::new(Duration::from_millis(50));
 	let timeout = Arc::new(TimeoutMiddleware::new(timeout_config));
 
 	let request = create_test_request("GET", "/api/slow");

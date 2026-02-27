@@ -393,6 +393,8 @@ async fn test_cors_middleware_origin_handling() {
 	config.allow_origins = vec!["https://example.com".to_string()];
 	config.allow_methods = vec!["GET".to_string(), "POST".to_string()];
 	config.allow_headers = vec!["Content-Type".to_string()];
+	config.allow_credentials = false;
+	config.max_age = Some(3600);
 
 	let cors = Arc::new(CorsMiddleware::new(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success());
@@ -417,6 +419,8 @@ async fn test_cors_preflight_handling() {
 	config.allow_origins = vec!["https://example.com".to_string()];
 	config.allow_methods = vec!["GET".to_string(), "POST".to_string(), "PUT".to_string()];
 	config.allow_headers = vec!["Content-Type".to_string(), "Authorization".to_string()];
+	config.allow_credentials = false;
+	config.max_age = Some(3600);
 
 	let cors = Arc::new(CorsMiddleware::new(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success());

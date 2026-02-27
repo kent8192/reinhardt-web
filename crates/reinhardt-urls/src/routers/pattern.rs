@@ -192,11 +192,11 @@ impl PathPattern {
 	/// ```
 	/// use reinhardt_urls::routers::{PathPattern, path};
 	///
-	// Create a simple pattern without parameters
+	/// // Create a simple pattern without parameters
 	/// let pattern = PathPattern::new(path!("/users/")).unwrap();
 	/// assert_eq!(pattern.pattern(), "/users/");
 	///
-	// Create a pattern with a parameter
+	/// // Create a pattern with a parameter
 	/// let pattern = PathPattern::new(path!("/users/{id}/")).unwrap();
 	/// assert_eq!(pattern.param_names(), &["id"]);
 	/// ```

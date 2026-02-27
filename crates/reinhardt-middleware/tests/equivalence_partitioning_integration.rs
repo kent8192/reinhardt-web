@@ -132,6 +132,7 @@ async fn test_gzip_content_type_partitions(
 	config.min_length = 1;
 	config.compression_level = 6;
 	config.compressible_types = vec!["text/".to_string(), "application/json".to_string()];
+
 	let middleware = Arc::new(GZipMiddleware::with_config(config));
 	let handler = Arc::new(ConfigurableTestHandler::with_content_type(content_type));
 
@@ -178,7 +179,7 @@ async fn test_rate_limit_strategy_partitions(#[case] strategy: RateLimitStrategy
 	use reinhardt_middleware::Middleware;
 	use reinhardt_middleware::rate_limit::{RateLimitConfig, RateLimitMiddleware};
 
-	let config = RateLimitConfig::new(strategy.clone(), 100.0, 10.0).with_cost_per_request(1.0);
+	let config = RateLimitConfig::new(strategy.clone(), 100.0, 10.0);
 
 	let middleware = Arc::new(RateLimitMiddleware::new(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success());
@@ -224,8 +225,7 @@ async fn test_rate_limit_strategy_isolation() {
 	};
 	use std::net::SocketAddr;
 
-	let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 1.0, 0.0001) // Very slow refill (essentially no refill during test)
-		.with_cost_per_request(1.0);
+	let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 1.0, 0.0001);
 
 	let middleware = Arc::new(RateLimitMiddleware::new(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success());
@@ -528,16 +528,16 @@ async fn test_locale_source_partitions(
 	use reinhardt_middleware::Middleware;
 	use reinhardt_middleware::locale::{LocaleConfig, LocaleMiddleware};
 
-	let mut config = LocaleConfig::with_locales(
+	let mut config = LocaleConfig::new();
+	config.supported_locales = vec![
 		"en".to_string(),
-		vec![
-			"en".to_string(),
-			"ja".to_string(),
-			"de".to_string(),
-			"fr".to_string(),
-		],
-	);
+		"ja".to_string(),
+		"de".to_string(),
+		"fr".to_string(),
+	];
+	config.default_locale = "en".to_string();
 	config.check_url_path = true;
+	config.cookie_name = "django_language".to_string();
 
 	let middleware = Arc::new(LocaleMiddleware::with_config(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success());
