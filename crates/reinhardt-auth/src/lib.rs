@@ -175,7 +175,7 @@ pub use user_management::{
 
 /// Authentication errors
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthenticationError {
 	InvalidCredentials,
 	UserNotFound,
