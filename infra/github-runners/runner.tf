@@ -74,7 +74,11 @@ module "github_runner" {
 	runners_lambda_zip                = "${path.module}/lambdas/runners.zip"
 	runner_binaries_syncer_lambda_zip = "${path.module}/lambdas/runner-binaries-syncer.zip"
 
-	# Pre-installation script: Docker, TestContainers images, mold, etc.
+	# Custom Ubuntu userdata template (module default is Amazon Linux / dnf-based).
+	# This template handles: AWS CLI, CloudWatch agent, runner install, and start.
+	userdata_template = "${path.module}/userdata-ubuntu.sh"
+
+	# Pre-installation script: Docker, Rust build tools, TestContainers images
 	userdata_pre_install = file("${path.module}/runner-userdata.sh")
 
 	# Repository scope (not org-wide, for security isolation)
