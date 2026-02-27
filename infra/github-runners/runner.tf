@@ -24,6 +24,9 @@ module "github_runner" {
 	runner_os           = "linux"
 	runner_architecture = "x64"
 
+	# Ubuntu AMI uses 'ubuntu' user (module defaults to 'ec2-user' for Amazon Linux)
+	runner_run_as = "ubuntu"
+
 	# Ubuntu 22.04 LTS (Jammy) AMI - Canonical official images in us-east-1
 	# Name pattern: ubuntu-jammy-22.04 (NOT ubuntu-22.04 which doesn't exist)
 	ami = {

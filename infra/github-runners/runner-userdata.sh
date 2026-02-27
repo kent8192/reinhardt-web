@@ -21,7 +21,7 @@ apt-get install -y --no-install-recommends \
 
 # Enable Docker (required for TestContainers)
 systemctl enable --now docker
-usermod -aG docker runners
+usermod -aG docker ubuntu
 
 # Optimize Docker for CI workloads
 cat > /etc/docker/daemon.json << 'EOF'
@@ -39,8 +39,8 @@ docker pull redis:7-alpine
 docker pull rabbitmq:3-management-alpine
 
 # Create .testcontainers.properties to force Docker socket (not Podman)
-mkdir -p /home/runners
-cat > /home/runners/.testcontainers.properties << 'EOF'
+mkdir -p /home/ubuntu
+cat > /home/ubuntu/.testcontainers.properties << 'EOF'
 docker.client.strategy=org.testcontainers.dockerclient.UnixSocketClientProviderStrategy
 EOF
-chown -R runners:runners /home/runners/.testcontainers.properties
+chown -R ubuntu:ubuntu /home/ubuntu/.testcontainers.properties
