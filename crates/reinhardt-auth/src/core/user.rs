@@ -151,7 +151,7 @@ impl User for SimpleUser {
 /// assert_eq!(anon.username(), "");
 /// assert_eq!(anon.id(), "");
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnonymousUser;
 
 impl User for AnonymousUser {
