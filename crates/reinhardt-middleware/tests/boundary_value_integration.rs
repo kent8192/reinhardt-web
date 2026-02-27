@@ -238,11 +238,10 @@ async fn test_gzip_min_length_boundary(
 	#[case] min_length: usize,
 	#[case] should_compress: bool,
 ) {
-	let config = GZipConfig {
-		min_length,
-		compression_level: 6,
-		compressible_types: vec!["text/".to_string()],
-	};
+	let mut config = GZipConfig::default();
+	config.min_length = min_length;
+	config.compression_level = 6;
+	config.compressible_types = vec!["text/".to_string()];
 	let middleware = Arc::new(GZipMiddleware::with_config(config));
 	let handler = Arc::new(SizedResponseHandler::new(body_size, "text/html"));
 
@@ -280,11 +279,10 @@ async fn test_gzip_compression_level_boundary(
 	#[case] compression_level: u32,
 	#[case] should_compress: bool,
 ) {
-	let config = GZipConfig {
-		min_length: 100,
-		compression_level,
-		compressible_types: vec!["text/".to_string()],
-	};
+	let mut config = GZipConfig::default();
+	config.min_length = 100;
+	config.compression_level = compression_level;
+	config.compressible_types = vec!["text/".to_string()];
 	let middleware = Arc::new(GZipMiddleware::with_config(config));
 
 	// Create a compressible response larger than min_length
@@ -617,11 +615,10 @@ async fn test_cache_max_entries_boundary(#[case] entry_count: usize, #[case] max
 #[case::small_body(10)]
 #[tokio::test]
 async fn test_gzip_empty_body_boundary(#[case] body_size: usize) {
-	let config = GZipConfig {
-		min_length: 0, // Allow compression of any size
-		compression_level: 6,
-		compressible_types: vec!["text/".to_string()],
-	};
+	let mut config = GZipConfig::default();
+	config.min_length = 0; // Allow compression of any size
+	config.compression_level = 6;
+	config.compressible_types = vec!["text/".to_string()];
 	let middleware = Arc::new(GZipMiddleware::with_config(config));
 	let handler = Arc::new(SizedResponseHandler::new(body_size, "text/html"));
 
@@ -690,11 +687,10 @@ async fn test_rate_limit_large_capacity_boundary(#[case] capacity: usize) {
 #[cfg(feature = "compression")]
 #[tokio::test]
 async fn test_gzip_large_body_boundary() {
-	let config = GZipConfig {
-		min_length: 100,
-		compression_level: 6,
-		compressible_types: vec!["text/".to_string()],
-	};
+	let mut config = GZipConfig::default();
+	config.min_length = 100;
+	config.compression_level = 6;
+	config.compressible_types = vec!["text/".to_string()];
 	let middleware = Arc::new(GZipMiddleware::with_config(config));
 
 	// 1MB response body

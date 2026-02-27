@@ -88,13 +88,12 @@ pub async fn graphql_playground(_req: Request) -> ViewResult<Response> {
 /// Development configuration allowing cross-origin requests for GraphQL Playground
 /// and frontend development.
 fn create_cors_middleware() -> CorsMiddleware {
-	let config = CorsConfig {
-		allow_origins: vec!["*".to_string()], // Development only
-		allow_methods: vec!["GET".to_string(), "POST".to_string(), "OPTIONS".to_string()],
-		allow_headers: vec!["Content-Type".to_string(), "Authorization".to_string()],
-		allow_credentials: false,
-		max_age: Some(3600),
-	};
+	let mut config = CorsConfig::default();
+	config.allow_origins = vec!["*".to_string()]; // Development only
+	config.allow_methods = vec!["GET".to_string(), "POST".to_string(), "OPTIONS".to_string()];
+	config.allow_headers = vec!["Content-Type".to_string(), "Authorization".to_string()];
+	config.allow_credentials = false;
+	config.max_age = Some(3600);
 	CorsMiddleware::new(config)
 }
 

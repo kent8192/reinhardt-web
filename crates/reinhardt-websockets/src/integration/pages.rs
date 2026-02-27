@@ -383,6 +383,7 @@ impl<B: SessionBackend> PagesAuthenticator<B> {
 			SessionError::SerializationError(msg) => {
 				AuthError::AuthenticationFailed(format!("Session data error: {}", msg))
 			}
+			_ => AuthError::AuthenticationFailed(format!("Session error: {}", error)),
 		}
 	}
 }

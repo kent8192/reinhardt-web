@@ -8,6 +8,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 /// Group management error
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GroupManagementError {
 	/// Group not found

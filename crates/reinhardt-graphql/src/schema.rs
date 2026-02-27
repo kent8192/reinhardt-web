@@ -295,7 +295,7 @@ impl UserStorage {
 	/// use reinhardt_graphql::schema::UserStorage;
 	///
 	/// let storage = UserStorage::new();
-	// Creates a new storage instance with defaults
+	/// // Creates a new storage instance with defaults
 	/// ```
 	pub fn new() -> Self {
 		Self {
@@ -312,7 +312,7 @@ impl UserStorage {
 	/// # Examples
 	///
 	/// ```ignore
-	// Retrieve user
+	/// // Retrieve user
 	/// let user = storage.get_user("user-1").await;
 	/// ```
 	pub async fn get_user(&self, id: &str) -> Option<User> {
@@ -323,7 +323,7 @@ impl UserStorage {
 	/// # Examples
 	///
 	/// ```ignore
-	// List all users
+	/// // List all users
 	/// let users = storage.list_users().await;
 	/// ```
 	pub async fn list_users(&self) -> Vec<User> {

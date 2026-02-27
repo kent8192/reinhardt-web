@@ -29,10 +29,10 @@ impl CronSchedule {
 	/// ```rust
 	/// use reinhardt_tasks::CronSchedule;
 	///
-	// Run every day at midnight
+	/// // Run every day at midnight
 	/// let daily = CronSchedule::new("0 0 * * *".to_string());
 	///
-	// Run every hour
+	/// // Run every hour
 	/// let hourly = CronSchedule::new("0 * * * *".to_string());
 	/// ```
 	pub fn new(expression: String) -> Self {
@@ -78,7 +78,7 @@ impl Schedule for CronSchedule {
 /// use reinhardt_tasks::Scheduler;
 ///
 /// let scheduler = Scheduler::new();
-// Add tasks and run scheduler
+/// // Add tasks and run scheduler
 /// ```
 // Fixes #786: added shutdown broadcast channel
 pub struct Scheduler {

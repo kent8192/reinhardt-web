@@ -9,6 +9,7 @@ use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// Configuration for HTTPS redirect middleware
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct HttpsRedirectConfig {
 	/// Enable HTTPS redirect
@@ -60,11 +61,10 @@ impl HttpsRedirectMiddleware {
 	/// }
 	///
 	/// # tokio_test::block_on(async {
-	/// let config = HttpsRedirectConfig {
-	///     enabled: true,
-	///     exempt_paths: vec!["/health".to_string()],
-	///     status_code: StatusCode::MOVED_PERMANENTLY,
-	/// };
+	/// let mut config = HttpsRedirectConfig::default();
+	/// config.enabled = true;
+	/// config.exempt_paths = vec!["/health".to_string()];
+	/// config.status_code = StatusCode::MOVED_PERMANENTLY;
 	///
 	/// let middleware = HttpsRedirectMiddleware::new(config);
 	/// let handler = Arc::new(TestHandler);
