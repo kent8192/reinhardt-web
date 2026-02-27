@@ -58,8 +58,9 @@ module "github_runner" {
 	enable_jit_config = true
 
 	# 200GB gp3 EBS: no need for free-disk-space cleanup step
+	# Ubuntu AMI root device is /dev/sda1 (not /dev/xvda used by Amazon Linux)
 	block_device_mappings = [{
-		device_name           = "/dev/xvda"
+		device_name           = "/dev/sda1"
 		delete_on_termination = true
 		volume_size           = var.runner_ebs_size_gb
 		volume_type           = "gp3"
