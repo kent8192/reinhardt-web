@@ -17,15 +17,15 @@ use serde_json::{self, Value};
 ///
 /// let field = JSONField::new("data");
 ///
-// Valid JSON object
+/// // Valid JSON object
 /// let result = field.clean(Some(&json!(r#"{"name": "John", "age": 30}"#)));
 /// assert!(result.is_ok());
 ///
-// Valid JSON array
+/// // Valid JSON array
 /// let result = field.clean(Some(&json!(r#"[1, 2, 3]"#)));
 /// assert!(result.is_ok());
 ///
-// Invalid JSON
+/// // Invalid JSON
 /// let result = field.clean(Some(&json!(r#"{invalid}"#)));
 /// assert!(result.is_err());
 /// ```

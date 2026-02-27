@@ -447,7 +447,7 @@ pub trait WithValidation: Sized {
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # let req = ();
 /// # let ctx = ();
-// In your handler:
+/// // In your handler:
 /// // async fn handler(
 /// //     // Extract path parameter "id" and validate it
 /// //     id: ValidatedPath<i32>,
