@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
-## [0.1.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.0-alpha.16...reinhardt-openapi@v0.1.0-alpha.17) - 2026-02-24
+## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.0-alpha.16...reinhardt-openapi@v0.1.0-rc.1) - 2026-02-24
 
 ### Maintenance
 
