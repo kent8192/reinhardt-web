@@ -9,6 +9,8 @@ on:
     types: [opened, synchronize, reopened, closed]
     paths:
       - "website/**"
+  schedule:
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 permissions:

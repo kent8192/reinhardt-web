@@ -383,10 +383,10 @@ let viewset = ModelViewSet::<User, UserSerializer>::new();
 
 **Cargo.toml:**
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt-views = { version = "0.1.0-alpha.18", features = ["viewsets"] }
-```
+reinhardt-views = { version = "LATEST_VERSION", features = ["viewsets"] }
+{% end %}
 
 **Documentation:**
 
@@ -789,10 +789,10 @@ pub fn main() {
 
 **Cargo.toml:**
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt-pages = { version = "0.1.0-alpha.18", features = ["pages-full"] }
-```
+reinhardt-pages = { version = "LATEST_VERSION", features = ["pages-full"] }
+{% end %}
 
 **Feature Flags:**
 
