@@ -125,6 +125,10 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - Use `git apply <patchfile name>.patch` for partial file commits
 - **NEVER** execute batch commits without user confirmation
 
+**Branch Operations:**
+- When merging branches and resolving conflicts, execute immediately without entering Plan Mode
+- Before creating branches, verify names don't conflict with existing ones using `git worktree list` and `git branch -a`
+
 **GitHub Integration:**
 - **MUST** use GitHub CLI (`gh`) for all GitHub operations
 - Use `gh pr create` for creating pull requests
@@ -133,6 +137,7 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - Use `gh issue view` for viewing issue details
 - Use `gh api` for accessing GitHub API
 - **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
+- When GitHub MCP tools return errors (e.g., 404), immediately fall back to `gh` CLI instead of retrying
 
 **GitHub Comments & Interactions:**
 - **NEVER** post comments on PRs or Issues without authorization
@@ -227,6 +232,7 @@ See instructions/RELEASE_PROCESS.md for detailed release procedures.
 - Run dry-run for ALL batch operations before actual execution
 - Use parallel agents for independent file edits
 - NO batch commits (create one at a time with user confirmation)
+- Execute straightforward operations (branch deletion, worktree cleanup) immediately without planning
 
 ### Issue Handling
 
@@ -379,6 +385,14 @@ cat .testcontainers.properties
 
 ## Review Process
 
+**CI Failure Diagnosis (Known Patterns):**
+- Check these recurring patterns first:
+  1. rustdoc intra-doc link errors with `-D warnings`
+  2. docs.rs build issues from empty code blocks
+  3. SemVer compatibility with `cargo-semver-checks`
+  4. Windows CI-specific failures
+- Always run `cargo doc --no-deps` locally before pushing doc-related fixes
+
 Before submitting code:
 
 1. **Run all commands:**
@@ -462,6 +476,11 @@ Before submitting code:
 - Include Claude Code attribution footer on all GitHub comments
 - Use repository-relative paths (not absolute) in GitHub comments
 - Provide structured agent context using AC-2 template format
+- Fall back to `gh` CLI when GitHub MCP tools return errors
+- Verify branch name uniqueness before creation (`git worktree list` and `git branch -a`)
+- Check known CI failure patterns before deep investigation
+- Run `cargo doc --no-deps` locally before pushing doc-related fixes
+- Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
@@ -515,6 +534,9 @@ Before submitting code:
 - Post vague or non-actionable GitHub comments
 - Skip Claude Code attribution footer on GitHub comments
 - Create PRs/Issues without following template structure
+- Enter Plan Mode for merge operations, branch deletion, or worktree cleanup
+- Retry GitHub MCP tools after errors instead of falling back to `gh` CLI
+- Create branches without checking for name conflicts
 
 ### 📚 Detailed Standards
 
