@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.2](https://github.com/kent8192/reinhardt/compare/reinhardt-web@v0.1.0-rc.1...reinhardt-web@v0.1.0-rc.2) - 2026-02-28
+
+### Documentation
+
+- update version references from alpha to 0.1.0-rc.1
+
+### Maintenance
+
+- *(release)* enable semver_check for rc stability
+
 ## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
 
 ### Documentation
