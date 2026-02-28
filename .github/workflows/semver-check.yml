@@ -2,18 +2,29 @@ name: SemVer Check
 
 on:
   workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label JSON'
+        type: string
+        default: '"ubuntu-latest"'
+      cargo-build-jobs:
+        description: "Parallel cargo build jobs"
+        type: string
+        default: "1"
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
 
 jobs:
   semver-checks:
     name: SemVer Compatibility Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
     timeout-minutes: 30
     steps:
       - name: Free Disk Space (Ubuntu)
+        if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -42,14 +53,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download \
-            --repo obi1kenobi/cargo-semver-checks \
-            --pattern "cargo-semver-checks-x86_64-unknown-linux-musl.tar.gz" \
-            --dir /tmp/csc
-          tar xzf /tmp/csc/cargo-semver-checks-x86_64-unknown-linux-musl.tar.gz \
-            -C /tmp/csc/
+          # Get latest release tag via GitHub API (no gh CLI dependency)
+          LATEST_TAG=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/obi1kenobi/cargo-semver-checks/releases/latest" \
+            | jq -r '.tag_name')
+          curl -fsSL -o /tmp/cargo-semver-checks.tar.gz \
+            "https://github.com/obi1kenobi/cargo-semver-checks/releases/download/${LATEST_TAG}/cargo-semver-checks-x86_64-unknown-linux-musl.tar.gz"
+          mkdir -p /tmp/csc
+          tar xzf /tmp/cargo-semver-checks.tar.gz -C /tmp/csc/
           mv /tmp/csc/cargo-semver-checks ~/.cargo/bin/
-          rm -rf /tmp/csc
+          rm -rf /tmp/csc /tmp/cargo-semver-checks.tar.gz
 
       # On release-plz Release PRs, run the full semver-check using version numbers
       # from Cargo.toml to validate the complete release (major/minor/patch).
