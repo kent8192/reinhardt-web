@@ -79,7 +79,7 @@ Reinhardt إطار عمل معياري. اختر نقطة البداية:
 [dependencies]
 # يُستورد كـ 'reinhardt'، منشور كـ 'reinhardt-web'
 # الافتراضي يُفعّل كل الميزات (الحزمة الكاملة)
-reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web" }
+reinhardt = { version = "0.1.0-rc.1", package = "reinhardt-web" }
 ```
 
 **يشمل:** Database، Auth، REST API، Admin، GraphQL، WebSockets، Cache، i18n، Mail، Sessions، Static Files، Storage
@@ -98,7 +98,7 @@ use reinhardt::{Request, Response, StatusCode};
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-features = false, features = ["standard"] }
+reinhardt = { version = "0.1.0-rc.1", package = "reinhardt-web", default-features = false, features = ["standard"] }
 ```
 
 **يشمل:** Core، Database (PostgreSQL)، REST API، Auth، Middleware، Pages (واجهة WASM مع SSR)
@@ -111,7 +111,7 @@ reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-feat
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.1.0-rc.1", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **يشمل:** HTTP، التوجيه، DI، استخراج المعاملات، الخادم
@@ -125,24 +125,24 @@ reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-feat
 ```toml
 [dependencies]
 # المكونات الأساسية
-reinhardt-http = "0.1.0-alpha.1"
-reinhardt-urls = "0.1.0-alpha.1"
+reinhardt-http = "0.1.0-rc.1"
+reinhardt-urls = "0.1.0-rc.1"
 
 # اختياري: قاعدة البيانات
-reinhardt-db = "0.1.0-alpha.1"
+reinhardt-db = "0.1.0-rc.1"
 
 # اختياري: المصادقة
-reinhardt-auth = "0.1.0-alpha.1"
+reinhardt-auth = "0.1.0-rc.1"
 
 # اختياري: ميزات REST API
-reinhardt-rest = "0.1.0-alpha.1"
+reinhardt-rest = "0.1.0-rc.1"
 
 # اختياري: لوحة الإدارة
-reinhardt-admin = "0.1.0-alpha.1"
+reinhardt-admin = "0.1.0-rc.1"
 
 # اختياري: الميزات المتقدمة
-reinhardt-graphql = "0.1.0-alpha.1"
-reinhardt-websockets = "0.1.0-alpha.1"
+reinhardt-graphql = "0.1.0-rc.1"
+reinhardt-websockets = "0.1.0-rc.1"
 ```
 
 **📖 للقائمة الكاملة للصناديق وأعلام الميزات المتاحة، انظر [دليل أعلام الميزات](https://reinhardt-web.dev/docs/feature-flags/).**

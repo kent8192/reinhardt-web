@@ -79,7 +79,7 @@ Reinhardt — модульный фреймворк. Выберите точку
 [dependencies]
 # Импортируется как 'reinhardt', опубликован как 'reinhardt-web'
 # По умолчанию включены ВСЕ функции (полный комплект)
-reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web" }
+reinhardt = { version = "0.1.0-rc.1", package = "reinhardt-web" }
 ```
 
 **Включает:** Database, Auth, REST API, Admin, GraphQL, WebSockets, Cache, i18n, Mail, Sessions, Static Files, Storage
@@ -98,7 +98,7 @@ use reinhardt::{Request, Response, StatusCode};
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-features = false, features = ["standard"] }
+reinhardt = { version = "0.1.0-rc.1", package = "reinhardt-web", default-features = false, features = ["standard"] }
 ```
 
 **Включает:** Core, Database (PostgreSQL), REST API, Auth, Middleware, Pages (WASM фронтенд с SSR)
@@ -111,7 +111,7 @@ reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-feat
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.1.0-rc.1", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Включает:** HTTP, маршрутизация, DI, извлечение параметров, сервер
@@ -125,24 +125,24 @@ reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-feat
 ```toml
 [dependencies]
 # Основные компоненты
-reinhardt-http = "0.1.0-alpha.1"
-reinhardt-urls = "0.1.0-alpha.1"
+reinhardt-http = "0.1.0-rc.1"
+reinhardt-urls = "0.1.0-rc.1"
 
 # Опционально: База данных
-reinhardt-db = "0.1.0-alpha.1"
+reinhardt-db = "0.1.0-rc.1"
 
 # Опционально: Аутентификация
-reinhardt-auth = "0.1.0-alpha.1"
+reinhardt-auth = "0.1.0-rc.1"
 
 # Опционально: REST API функции
-reinhardt-rest = "0.1.0-alpha.1"
+reinhardt-rest = "0.1.0-rc.1"
 
 # Опционально: Админ-панель
-reinhardt-admin = "0.1.0-alpha.1"
+reinhardt-admin = "0.1.0-rc.1"
 
 # Опционально: Расширенные функции
-reinhardt-graphql = "0.1.0-alpha.1"
-reinhardt-websockets = "0.1.0-alpha.1"
+reinhardt-graphql = "0.1.0-rc.1"
+reinhardt-websockets = "0.1.0-rc.1"
 ```
 
 **📖 Полный список доступных крейтов и флагов функций см. в [Руководстве по флагам функций](https://reinhardt-web.dev/docs/feature-flags/).**
