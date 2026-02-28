@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.2](https://github.com/kent8192/reinhardt/compare/reinhardt-web@v0.1.0-rc.1...reinhardt-web@v0.1.0-rc.2) - 2026-02-28
+
+### Fixed
+
+- *(ci)* change runner selection to opt-in for self-hosted runners
+- *(ci)* add 5-minute grace period for JIT runner scale-down
+- *(ci)* increase JIT runner minimum running time to 15 minutes
+- *(ci)* use ubuntu user for runner userdata and run_as configuration
+- *(ci)* add Ubuntu userdata template to replace Amazon Linux default
+- *(ci)* remove nounset flag from userdata to fix unbound variable error
+- *(ci)* use correct root device name for Ubuntu AMI (/dev/sda1)
+- *(ci)* install protoc v28 instead of system v3.12 for proto3 optional
+- *(ci)* add unzip to userdata package list for protoc installation
+- *(ci)* use .cargo/config.toml instead of RUSTFLAGS for mold in coverage
+- *(ci)* remove mold linker from coverage jobs to fix profraw generation
+- *(ci)* enable job_retry to prevent ephemeral runner scaling deadlock
+- *(ci)* add missing rust setup and gh cli for self-hosted runners
+- add singular .example.tfvars exception to .gitignore
+
+### Maintenance
+
+- migrate remaining workflows to support self-hosted runners
+- phase test jobs to prevent spot vCPU quota exhaustion
+- skip CI for out-of-date PR branches
+
 ## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
 
 ### Documentation
