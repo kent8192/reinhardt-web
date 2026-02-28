@@ -43,26 +43,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install protoc
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-          protoc --version
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
 
-      - name: Install Rust toolchain
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-binstall
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
+      - name: Setup protoc
+        uses: ./.github/actions/setup-protoc
 
       - name: Verify no circular dev-dependencies
         run: |

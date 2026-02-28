@@ -19,6 +19,13 @@ apt-get install -y --no-install-recommends \
 	jq \
 	unzip
 
+# Install GitHub CLI (required by CI workflows that use 'gh' commands)
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+apt-get update -qq
+apt-get install -y gh
+
 # Install protoc v28 (Ubuntu 22.04 ships v3.12 which lacks proto3 optional support)
 PROTOC_VERSION=28.3
 curl -fsSL -o /tmp/protoc.zip "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
