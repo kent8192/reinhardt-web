@@ -21,7 +21,7 @@ git_tag_name = "{{ package }}@v{{ version }}"
 git_release_type = "auto"
 
 # Publish settings
-semver_check = false
+semver_check = true
 publish_timeout = "10m"
 dependencies_update = true
 
