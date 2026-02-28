@@ -195,9 +195,17 @@ jobs:
         with:
           images-file: .github/docker-images-intra-crate.txt
 
+      - name: Configure mold linker
+        run: |
+          mkdir -p .cargo
+          cat >> .cargo/config.toml << 'CARGOEOF'
+
+          [target.x86_64-unknown-linux-gnu]
+          linker = "clang"
+          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+          CARGOEOF
+
       - name: Run intra-crate integration tests with coverage
-        env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
         run: |
           cargo llvm-cov nextest \
             --workspace \
@@ -303,9 +311,17 @@ jobs:
         with:
           images-file: .github/docker-images-cross-crate.txt
 
+      - name: Configure mold linker
+        run: |
+          mkdir -p .cargo
+          cat >> .cargo/config.toml << 'CARGOEOF'
+
+          [target.x86_64-unknown-linux-gnu]
+          linker = "clang"
+          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+          CARGOEOF
+
       - name: Run cross-crate integration tests with coverage
-        env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
         run: |
           cargo llvm-cov nextest \
             --package reinhardt-integration-tests \
