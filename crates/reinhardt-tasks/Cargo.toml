@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-tasks"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.24"
 description = "Background task execution and scheduling"
 edition.workspace = true
 license.workspace = true

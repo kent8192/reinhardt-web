@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.24](https://github.com/kent8192/reinhardt/compare/reinhardt-apps@v0.1.0-alpha.12...reinhardt-apps@v0.1.0-alpha.24) - 2026-02-28
+
+### Documentation
+
+- fix empty Rust code blocks in doc comments across workspace
+
 ## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.0-alpha.11...reinhardt-apps@v0.1.0-alpha.12) - 2026-02-23
 
 ### Maintenance

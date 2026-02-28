@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.24](https://github.com/kent8192/reinhardt/compare/reinhardt-web@v0.1.0-alpha.20...reinhardt-web@v0.1.0-alpha.24) - 2026-02-28
+
+### Documentation
+
+- *(guidelines)* update branch naming convention from feat/ to feature/
+- *(core)* fix broken doctest in lib.rs crate-level documentation
+- fix empty Rust code blocks in doc comments across workspace
+- fix unresolved intra-doc links and unclosed HTML tags in rustdoc
+- *(issues)* add security and api change templates to issue guidelines
+- *(release)* add rc stability policy for api freeze and bug-fix-only rules
+- link stability policy from claude.md quick reference
+
+### Fixed
+
+- *(workspace)* enforce RFC 430 naming convention across public APIs
+- *(integration-tests)* update filter getter calls to use RFC 430 field access
+- *(ci)* force nightly toolchain in docs-rs-check to override rust-toolchain.toml
+- *(auth)* remove Copy derive from AnonymousUser to pass semver check
+- *(examples)* update stale version numbers to match latest published versions
+
+### Maintenance
+
+- *(serena)* update project.yml with new configuration fields
+- *(serena)* set language_backend to LSP
+- merge main into docs/rustdoc-core-db to resolve conflicts
+- *(release)* add version_group to all publishable crates in release-plz.toml
+
+### Other
+
+- integrate main into fix/common-trait-impls-db
+
 ## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
 
 ### Documentation

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.24](https://github.com/kent8192/reinhardt/compare/reinhardt-db@v0.1.0-alpha.17...reinhardt-db@v0.1.0-alpha.24) - 2026-02-28
+
+### Documentation
+
+- fix empty Rust code blocks in doc comments across workspace
+
+### Maintenance
+
+- complete Cargo.toml metadata for all published crates
+- merge main into docs/rustdoc-core-db to resolve conflicts
+
+### Other
+
+- integrate main into fix/common-trait-impls-db
+
+### Testing
+
+- *(reinhardt-db)* replace #[test] with #[rstest] in migration tests
+
 ## [0.1.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-alpha.16...reinhardt-db@v0.1.0-alpha.17) - 2026-02-24
 
 ### Fixed

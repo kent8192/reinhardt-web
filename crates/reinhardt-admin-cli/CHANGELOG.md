@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.24](https://github.com/kent8192/reinhardt/compare/reinhardt-admin-cli@v0.1.0-alpha.20...reinhardt-admin-cli@v0.1.0-alpha.24) - 2026-02-28
+
+### Fixed
+
+- *(docs)* fix bare URL and bracket escaping in doc comments for RUSTDOCFLAGS
+
 ## [0.1.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-alpha.19...reinhardt-admin-cli@v0.1.0-alpha.20) - 2026-02-24
 
 ### Maintenance
