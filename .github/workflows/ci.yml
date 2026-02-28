@@ -106,9 +106,10 @@ jobs:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
-  # All tests run in parallel after lightweight checks
-  # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe
-  # Integration tests are split into intra-crate and cross-crate to reduce disk usage per job
+  # Phase 2a: Core tests run after lightweight checks pass.
+  # These run in parallel (up to ~17 self-hosted runners).
+  # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe.
+  # Integration tests are split into intra-crate and cross-crate to reduce disk usage per job.
   unit-test:
     name: Unit Tests
     uses: ./.github/workflows/unit-test.yml
@@ -153,24 +154,6 @@ jobs:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
-  ui-test:
-    name: UI Tests
-    uses: ./.github/workflows/ui-test.yml
-    needs: [check, fmt, clippy, determine-runner]
-    secrets: inherit
-    with:
-      runner: ${{ needs.determine-runner.outputs.runner }}
-      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
-
-  examples-test:
-    name: Examples Tests
-    uses: ./.github/workflows/examples-test.yml
-    needs: [check, fmt, clippy, determine-runner]
-    secrets: inherit
-    with:
-      runner: ${{ needs.determine-runner.outputs.runner }}
-      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
-
   coverage:
     name: Coverage
     uses: ./.github/workflows/coverage.yml
@@ -185,10 +168,31 @@ jobs:
     uses: ./.github/workflows/cross-platform-check.yml
     needs: [check, fmt, clippy]
 
+  # Phase 2b: Additional tests run after core tests complete.
+  # This phased approach prevents exceeding the Spot vCPU quota by
+  # ensuring Phase 2a runners have terminated before Phase 2b starts.
+  ui-test:
+    name: UI Tests
+    uses: ./.github/workflows/ui-test.yml
+    needs: [unit-test, intra-crate-integration-test, cross-crate-integration-test, determine-runner]
+    secrets: inherit
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
+
+  examples-test:
+    name: Examples Tests
+    uses: ./.github/workflows/examples-test.yml
+    needs: [unit-test, intra-crate-integration-test, cross-crate-integration-test, determine-runner]
+    secrets: inherit
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
+
   msrv-test:
     name: MSRV Test
     uses: ./.github/workflows/msrv-test.yml
-    needs: [check, fmt, clippy, determine-runner]
+    needs: [unit-test, intra-crate-integration-test, cross-crate-integration-test, determine-runner]
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
