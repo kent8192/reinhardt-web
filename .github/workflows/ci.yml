@@ -52,32 +52,59 @@ jobs:
   # Call all reusable workflows
   check:
     name: Check
+    needs: [determine-runner]
     uses: ./.github/workflows/check.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   fmt:
     name: Format
+    needs: [determine-runner]
     uses: ./.github/workflows/fmt.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
 
   clippy:
     name: Clippy
+    needs: [determine-runner]
     uses: ./.github/workflows/clippy.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   publish-check:
     name: Publish Check
+    needs: [determine-runner]
     uses: ./.github/workflows/publish-check.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   todo-check:
     name: TODO Check
+    needs: [determine-runner]
     uses: ./.github/workflows/todo-check.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   semver-check:
     name: SemVer Check
+    needs: [determine-runner]
     uses: ./.github/workflows/semver-check.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   release-dry-run:
     name: Release Dry-Run
+    needs: [determine-runner]
     if: ${{ !startsWith(github.head_ref || '', 'release-plz-') }}
     uses: ./.github/workflows/release-plz-dry-run.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   # All tests run in parallel after lightweight checks
   # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe
@@ -121,7 +148,10 @@ jobs:
   docs-rs-check:
     name: Docs.rs Build Check
     uses: ./.github/workflows/docs-rs-check.yml
-    needs: [check, fmt, clippy]
+    needs: [check, fmt, clippy, determine-runner]
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   ui-test:
     name: UI Tests
@@ -158,7 +188,10 @@ jobs:
   msrv-test:
     name: MSRV Test
     uses: ./.github/workflows/msrv-test.yml
-    needs: [check, fmt, clippy]
+    needs: [check, fmt, clippy, determine-runner]
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   # All jobs must pass
   ci-success:
