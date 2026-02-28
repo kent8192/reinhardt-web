@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt/compare/reinhardt-dentdelion@v0.1.0-alpha.15...reinhardt-dentdelion@v0.1.0-alpha.16) - 2026-02-28
+
+### Fixed
+
+- *(dentdelion,web)* fix broken intra-doc link and undefined argon2-hasher feature
+
 ## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.14...reinhardt-dentdelion@v0.1.0-alpha.15) - 2026-02-24
 
 ### Maintenance
