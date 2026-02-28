@@ -16,7 +16,8 @@ apt-get install -y --no-install-recommends \
 	clang \
 	lld \
 	curl \
-	jq
+	jq \
+	unzip
 
 # Install protoc v28 (Ubuntu 22.04 ships v3.12 which lacks proto3 optional support)
 PROTOC_VERSION=28.3
