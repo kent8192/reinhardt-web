@@ -193,6 +193,36 @@ rc.2 released (fix)    → Timer restarts (Day 0)
 No issues for 14 days  → Ready for stable (Day 14)
 ```
 
+### SC-2a (MUST): Agent-Detected Bug Verification (Two-Step Process)
+
+Bugs detected by LLM agents follow a **two-step verification process** before affecting the stability timer:
+
+**Step 1: Initial Detection**
+- Agent creates an Issue with the `agent-suspect` label
+- Issues with `agent-suspect` label are **excluded** from SC-2 stability timer reset
+- Even if labeled `critical` or `high`, the timer does NOT reset while `agent-suspect` is present
+
+**Step 2: Independent Verification**
+- An independent agent (with separate context) OR a human reviewer verifies the issue
+- Verification must be performed by an entity that did NOT participate in the initial detection
+- If confirmed as a real bug:
+  - Remove the `agent-suspect` label
+  - The issue now counts toward SC-2 stability timer reset (if `critical` or `high`)
+- If determined to be a false positive:
+  - Close the issue with explanation
+  - No impact on stability timer
+
+**Rationale:** LLM agents have a 5-15% false positive rate. Without verification, agent-detected issues could repeatedly reset the stability timer and indefinitely delay stable releases.
+
+**Example Timeline:**
+```
+rc.1 released                          → Timer starts (Day 0)
+Agent finds critical bug (agent-suspect) → Timer NOT reset (Day 5)
+Human verifies bug is real             → agent-suspect removed, Timer resets (Day 7)
+rc.2 released (fix)                    → Timer restarts (Day 0)
+No issues for 14 days                  → Ready for stable (Day 14)
+```
+
 ### SC-3 (SHOULD): Pre-Release Validation
 
 Before publishing the stable release:
@@ -264,6 +294,8 @@ During the RC phase:
 - Meet ALL SC-1 criteria before transitioning to stable
 - Increment RC version for each bug fix release (`rc.1` → `rc.2`)
 - Use the API Change Proposal template for breaking changes during RC
+- Verify agent-detected bugs independently before removing `agent-suspect` label (SC-2a)
+- Exclude `agent-suspect` labeled issues from stability timer reset
 
 ### NEVER DO
 - Regress from RC back to alpha
@@ -275,6 +307,8 @@ During the RC phase:
 - Skip the 2-week stability period
 - Publish stable release with open critical or high severity bugs
 - Introduce new pre-release identifiers during RC (e.g., `-beta`)
+- Remove `agent-suspect` label without independent verification (separate agent or human)
+- Count `agent-suspect` labeled issues toward stability timer reset
 
 ---
 

@@ -481,6 +481,9 @@ Before submitting code:
 - Check known CI failure patterns before deep investigation
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
+- Apply `agent-suspect` label to all agent-detected bug Issues
+- Verify agent-detected bugs independently before removing `agent-suspect` label
+- Use independent context (separate agent session) for agent re-evaluation of `agent-suspect` Issues
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
@@ -537,6 +540,9 @@ Before submitting code:
 - Enter Plan Mode for merge operations, branch deletion, or worktree cleanup
 - Retry GitHub MCP tools after errors instead of falling back to `gh` CLI
 - Create branches without checking for name conflicts
+- Remove `agent-suspect` label without independent verification (separate agent or human)
+- Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
+- Use the same agent context for both detection and verification of a bug
 
 ### 📚 Detailed Standards
 
@@ -548,6 +554,7 @@ For comprehensive guidelines, see:
 - **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
 - **Release Process**: instructions/RELEASE_PROCESS.md
 - **Stability Policy**: instructions/STABILITY_POLICY.md
+- **Agent Bug Discovery**: instructions/STABILITY_POLICY.md (SC-2a)
 - **Issues**: instructions/ISSUE_GUIDELINES.md
 - **Issue Handling**: instructions/ISSUE_HANDLING.md
 - **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
