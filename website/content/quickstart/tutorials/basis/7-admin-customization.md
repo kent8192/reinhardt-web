@@ -16,10 +16,10 @@ The Reinhardt admin is a powerful, automatically-generated interface for managin
 
 Add the admin dependency if not already present:
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["admin"] }
-```
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["admin"] }
+{% end %}
 
 ## Creating an Admin User
 
