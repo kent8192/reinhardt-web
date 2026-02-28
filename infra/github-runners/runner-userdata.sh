@@ -12,12 +12,18 @@ apt-get install -y --no-install-recommends \
 	build-essential \
 	pkg-config \
 	libssl-dev \
-	protobuf-compiler \
 	mold \
 	clang \
 	lld \
 	curl \
 	jq
+
+# Install protoc v28 (Ubuntu 22.04 ships v3.12 which lacks proto3 optional support)
+PROTOC_VERSION=28.3
+curl -fsSL -o /tmp/protoc.zip "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+unzip -o /tmp/protoc.zip -d /usr/local bin/protoc
+chmod +x /usr/local/bin/protoc
+rm -f /tmp/protoc.zip
 
 # Enable Docker (required for TestContainers)
 systemctl enable --now docker
