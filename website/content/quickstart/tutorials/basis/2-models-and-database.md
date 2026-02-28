@@ -50,10 +50,10 @@ database server and stores data in a single file.
 
 **Cargo.toml:**
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard", "db-sqlite"] }
-```
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", default-features = false, features = ["standard", "db-sqlite"] }
+{% end %}
 
 **settings/base.toml:**
 
@@ -70,11 +70,11 @@ for production use.
 
 **Cargo.toml:**
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["standard"] }
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["standard"] }
 # db-postgres is automatically included with "standard"
-```
+{% end %}
 
 **settings/base.toml:**
 
@@ -98,10 +98,10 @@ docker run --name postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgre
 
 **Cargo.toml:**
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard", "db-mysql"] }
-```
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", default-features = false, features = ["standard", "db-mysql"] }
+{% end %}
 
 **settings/base.toml:**
 
@@ -866,10 +866,10 @@ data. Let's enable it for our models.
 
 Add the admin dependency to `Cargo.toml`:
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["standard", "admin"] }
-```
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["standard", "admin"] }
+{% end %}
 
 Register your models in `polls/admin.rs`:
 

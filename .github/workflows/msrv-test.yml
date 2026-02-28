@@ -2,6 +2,15 @@ name: MSRV Test
 
 on:
   workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label JSON'
+        type: string
+        default: '"ubuntu-latest"'
+      cargo-build-jobs:
+        description: "Parallel cargo build jobs"
+        type: string
+        default: "1"
   workflow_dispatch:
 
 env:
@@ -9,11 +18,12 @@ env:
   RUST_BACKTRACE: 1
   CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_INCREMENTAL: 0
+  CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
 
 jobs:
   msrv-check:
     name: MSRV Check (${{ matrix.rust }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -23,6 +33,7 @@ jobs:
 
     steps:
       - name: Free Disk Space (Ubuntu)
+        if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true

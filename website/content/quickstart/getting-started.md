@@ -113,13 +113,13 @@ Reinhardt comes in three flavors. Choose the one that fits your needs:
 
 All features enabled, best for learning and rapid prototyping:
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
 # Default behavior - all features enabled
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web" }
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
-```
+{% end %}
 
 **Includes:** Database, Auth, REST API, Admin, GraphQL, WebSockets, Cache, i18n,
 Mail, Sessions, Static Files, Storage
@@ -128,12 +128,12 @@ Mail, Sessions, Static Files, Storage
 
 Balanced setup for most production projects:
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard"] }
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", default-features = false, features = ["standard"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
-```
+{% end %}
 
 **Includes:** Core, Database (PostgreSQL), REST API, Auth, Middleware, Templates
 
@@ -141,12 +141,12 @@ serde = { version = "1.0", features = ["derive"] }
 
 For microservices and simple APIs:
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
-```
+{% end %}
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
 
@@ -346,10 +346,10 @@ next:
 
 To use a database instead of in-memory storage:
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["standard", "db-postgres"] }
-```
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["standard", "db-postgres"] }
+{% end %}
 
 Check out the [ORM documentation](/docs/api/) for more details.
 

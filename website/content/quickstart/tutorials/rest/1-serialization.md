@@ -14,15 +14,15 @@ Learn how to serialize and deserialize data in Reinhardt.
 
 First, add Reinhardt to your project's `Cargo.toml`:
 
-```toml
+{% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["standard", "serializers"] }
-# Or for minimal setup: reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["minimal", "serializers"] }
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["standard", "serializers"] }
+# Or for minimal setup: reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", default-features = false, features = ["minimal", "serializers"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
-```
+{% end %}
 
 **Note:** Reinhardt uses feature flags to control which components are included in your build. The `standard` feature includes serializers, ORM, authentication, and other common API development tools. For more granular control, see the [Feature Flags Guide](/docs/feature-flags/).
 
