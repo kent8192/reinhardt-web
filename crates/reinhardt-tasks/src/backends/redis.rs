@@ -181,30 +181,40 @@ impl crate::backend::TaskBackend for RedisTaskBackend {
 		status: TaskStatus,
 	) -> Result<(), TaskExecutionError> {
 		let mut conn = (*self.connection).clone();
+		let key = self.task_key(task_id);
 
-		let metadata_json: Option<String> = conn
-			.get(self.task_key(task_id))
+		// Use Lua script for atomic read-modify-write to prevent TOCTOU race condition.
+		// The script reads current metadata, updates status and timestamp, and writes
+		// it back within a single atomic Redis operation.
+		let status_str = serde_json::to_string(&status)
+			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+		let updated_at = chrono::Utc::now().timestamp();
+
+		let script = redis::Script::new(
+			r#"
+			local current = redis.call('GET', KEYS[1])
+			if not current then
+				return nil
+			end
+			local data = cjson.decode(current)
+			data['status'] = cjson.decode(ARGV[1])
+			data['updated_at'] = tonumber(ARGV[2])
+			local updated = cjson.encode(data)
+			redis.call('SET', KEYS[1], updated)
+			return 1
+			"#,
+		);
+
+		let result: Option<i32> = script
+			.key(&key)
+			.arg(&status_str)
+			.arg(updated_at)
+			.invoke_async(&mut conn)
 			.await
 			.map_err(|e: RedisError| TaskExecutionError::BackendError(e.to_string()))?;
 
-		match metadata_json {
-			Some(json) => {
-				let mut metadata: TaskMetadata = serde_json::from_str(&json)
-					.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
-
-				metadata.status = status;
-				metadata.updated_at = chrono::Utc::now().timestamp();
-
-				let updated_json = serde_json::to_string(&metadata)
-					.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
-
-				let _: () = conn
-					.set(self.task_key(task_id), updated_json)
-					.await
-					.map_err(|e: RedisError| TaskExecutionError::BackendError(e.to_string()))?;
-
-				Ok(())
-			}
+		match result {
+			Some(_) => Ok(()),
 			None => Err(TaskExecutionError::NotFound(task_id)),
 		}
 	}
