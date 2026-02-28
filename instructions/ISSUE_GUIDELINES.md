@@ -57,7 +57,8 @@ Issues MUST be created using the appropriate issue template:
 - Question (`.github/ISSUE_TEMPLATE/4-question.yml`)
 - Performance Issue (`.github/ISSUE_TEMPLATE/5-performance.yml`)
 - CI/CD Issue (`.github/ISSUE_TEMPLATE/6-ci_cd.yml`)
-- Security Vulnerability (Use GitHub Security Advisories)
+- Security Vulnerability (`.github/ISSUE_TEMPLATE/7-security.yml`)
+- API Change Proposal (`.github/ISSUE_TEMPLATE/8-api_change.yml`)
 
 **Template Selection:**
 | Issue Type | Template File | Label Applied |
@@ -68,7 +69,8 @@ Issues MUST be created using the appropriate issue template:
 | Question | `.github/ISSUE_TEMPLATE/4-question.yml` | `question` |
 | Performance | `.github/ISSUE_TEMPLATE/5-performance.yml` | `performance` |
 | CI/CD | `.github/ISSUE_TEMPLATE/6-ci_cd.yml` | `ci-cd` |
-| Security | Use GitHub Security Advisories | `security`, `critical` |
+| Security | `.github/ISSUE_TEMPLATE/7-security.yml` | `security`, `critical` |
+| API change proposal | `.github/ISSUE_TEMPLATE/8-api_change.yml` | `enhancement`, `rc-migration` |
 
 **CLI Template Usage:**
 
@@ -319,6 +321,38 @@ Issue titles MUST be:
 - Environment details
 
 **Label Applied:** `ci-cd`
+
+### Security Vulnerability (`.github/ISSUE_TEMPLATE/7-security.yml`)
+
+**Use When:**
+- Reporting a security vulnerability
+- Identifying potential security risks
+
+**Required Information:**
+- Vulnerability description
+- Affected versions
+- Steps to reproduce
+- Impact assessment
+
+**Note:** For critical security vulnerabilities, prefer GitHub Security Advisories for private disclosure.
+
+**Label Applied:** `security`, `critical`
+
+### API Change Proposal (`.github/ISSUE_TEMPLATE/8-api_change.yml`)
+
+**Use When:**
+- Proposing changes to existing public APIs
+- Requesting breaking or non-breaking API modifications
+- Initiating a Final Comment Period (FCP) for API changes
+
+**Required Information:**
+- Current API description
+- Proposed change
+- Breaking change classification
+- Migration path (for breaking changes)
+- Rationale
+
+**Label Applied:** `enhancement`, `rc-migration`
 
 ---
 
