@@ -102,4 +102,14 @@ module "github_runner" {
 	# New AWS accounts have a low Lambda concurrency limit; reserving concurrency
 	# would reduce UnreservedConcurrentExecution below the AWS minimum of 10.
 	scale_up_reserved_concurrent_executions = -1
+
+	# Job retry: re-queue jobs that were not picked up by ephemeral runners.
+	# Without this, queued jobs can deadlock when the initial SQS message is
+	# consumed but the runner terminates before the job starts (e.g. when
+	# runners_maximum_count is reached or spot interruption occurs).
+	job_retry = {
+		enable           = true
+		delay_in_seconds = 120
+		max_attempts     = 3
+	}
 }
