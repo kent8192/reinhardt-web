@@ -525,6 +525,7 @@ For comprehensive guidelines, see:
 - **Documentation**: instructions/DOCUMENTATION_STANDARDS.md
 - **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
 - **Release Process**: instructions/RELEASE_PROCESS.md
+- **Stability Policy**: instructions/STABILITY_POLICY.md
 - **Issues**: instructions/ISSUE_GUIDELINES.md
 - **Issue Handling**: instructions/ISSUE_HANDLING.md
 - **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
