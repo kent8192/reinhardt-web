@@ -886,11 +886,11 @@ INSTALLED_APPS = [
 ```
 
 Rust (Reinhardt):
-```toml
+{% versioned_code(lang="toml") %}
 # Cargo.toml - Enable framework features
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["auth", "admin"] }
-```
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["auth", "admin"] }
+{% end %}
 
 ```rust
 // src/config/apps.rs - Register user apps only
@@ -925,16 +925,16 @@ via `installed_apps!`. Instead, they are enabled through Cargo feature flags.
 
 **Example Configuration**:
 
-```toml
+{% versioned_code(lang="toml") %}
 # Cargo.toml
 [dependencies]
 reinhardt = {
-    version = "0.1.0-alpha.18",
+    version = "LATEST_VERSION",
     package = "reinhardt-web",
     default-features = false,
     features = ["standard"]  # Includes auth, database, REST API
 }
-```
+{% end %}
 
 For a complete list of available features, see the [Feature Flags Guide](/docs/feature-flags/).
 
