@@ -146,6 +146,7 @@ infra/**/*.tfstate
 infra/**/*.tfstate.backup
 infra/**/.terraform.tfstate.lock.info
 infra/**/*.tfvars
+!infra/**/*.example.tfvars
 !infra/**/*.examples.tfvars
 infra/**/backend.tfvars
 infra/github-runners/lambdas/*.zip
