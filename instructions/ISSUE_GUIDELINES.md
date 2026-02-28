@@ -189,6 +189,21 @@ Issue titles MUST be:
 - Recommended: Type + Priority + Scope
 - Example: `bug`, `high`, `database` for a critical database bug
 
+### IL-3 (MUST): Agent-Detected Issue Labels
+
+Issues created by LLM agent bug discovery MUST include the `agent-suspect` label:
+
+| Label | Color | Description |
+|-------|-------|-------------|
+| `agent-suspect` | #d4c5f9 | Agent-detected issue pending independent verification |
+
+**Rules:**
+- ALL agent-detected issues MUST have `agent-suspect` label at creation
+- `agent-suspect` issues are excluded from stability timer reset (SC-2a)
+- The label is removed ONLY after independent verification confirms the issue
+- Independent verification requires a separate agent (with independent context) or human review
+- The verifying entity MUST NOT have participated in the initial detection
+
 ---
 
 ## Issue Lifecycle
@@ -407,6 +422,8 @@ https://github.com/kent8192/reinhardt-web/security/advisories
 - Provide minimal reproduction code for bug reports
 - Include environment details (Rust version, OS)
 - Be specific in issue titles (max 72 characters)
+- Apply `agent-suspect` label to all agent-detected bug issues
+- Verify agent-detected bugs independently before removing `agent-suspect` label
 
 ### ❌ NEVER DO
 
@@ -418,6 +435,8 @@ https://github.com/kent8192/reinhardt-web/security/advisories
 - Apply `release` label to issues (only for PRs)
 - Submit bug reports without reproduction steps
 - Leave issues inactive without response
+- Remove `agent-suspect` label without independent verification
+- Count `agent-suspect` labeled issues toward stability timer reset (SC-2a)
 
 ---
 
