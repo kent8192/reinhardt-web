@@ -117,7 +117,7 @@ inventory = "0.3"
 typed-arena = "2.0"
 tokio = { workspace = true, features = ["sync", "time"]}
 serde-xml-rs = { version = "0.8.1", optional = true }
-redis = { version = "1.0.0-rc.2", features = [
+redis = { workspace = true, features = [
   "tokio-comp",
   "connection-manager",
 ], optional = true }
