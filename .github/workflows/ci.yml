@@ -292,16 +292,16 @@ jobs:
         run: |
           # If PR branch is behind base, all jobs are expected to be skipped
           if [[ "$IS_BEHIND" == "true" ]]; then
-            echo "::warning::PR branch is out-of-date with base branch. All CI checks were skipped."
+            echo "::error::PR branch is out-of-date with base branch. All CI checks were skipped."
             echo "Please update your branch and push again to trigger CI."
-            exit 0
+            exit 1
           fi
 
           # If PR has merge conflicts, all jobs are expected to be skipped
           if [[ "$HAS_CONFLICTS" == "true" ]]; then
-            echo "::warning::PR has merge conflicts. All CI checks were skipped."
+            echo "::error::PR has merge conflicts. All CI checks were skipped."
             echo "Please resolve conflicts and push again to trigger CI."
-            exit 0
+            exit 1
           fi
 
           required_results=(
