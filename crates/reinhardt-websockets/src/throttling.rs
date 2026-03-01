@@ -439,7 +439,7 @@ impl ConnectionRateLimiter {
 			}
 		}
 
-		if entries.len() >= self.max_connections_per_window {
+		let result = if entries.len() >= self.max_connections_per_window {
 			Err(ThrottleError::ConnectionRateExceeded(format!(
 				"{} (exceeded {} connections per {:?})",
 				ip, self.max_connections_per_window, self.window
@@ -447,7 +447,12 @@ impl ConnectionRateLimiter {
 		} else {
 			entries.push_back(now);
 			Ok(())
-		}
+		};
+
+		// Remove IP entries whose timestamps have all expired
+		timestamps.retain(|_, v| !v.is_empty());
+
+		result
 	}
 
 	/// Get the number of connection attempts in the current window for an IP.

@@ -83,11 +83,22 @@ jobs:
             --all-features \
             --baseline-rev "${BASELINE_REV:-HEAD~1}"
 
-      # On normal PRs, fix the release type to minor to guarantee that no breaking
-      # changes (which require a major version bump) are merged into main.
-      # Any API-breaking change will cause this check to fail, enforcing that
-      # breaking changes must go through an explicit major-version release PR.
-      - name: Run cargo-semver-checks (normal PR - minor release type)
+      # Detect if any commits in the PR contain breaking change indicators
+      # (! suffix on type or BREAKING CHANGE: in body) to auto-select release type.
+      - name: Detect breaking changes in commits
+        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release-plz-') }}
+        id: detect-breaking
+        run: |
+          COMMITS=$(git log --format="%s%n%b" origin/main..HEAD)
+          if echo "$COMMITS" | grep -qE '^\w+(\(.+\))?!:|BREAKING CHANGE:'; then
+            echo "release_type=major" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_type=minor" >> "$GITHUB_OUTPUT"
+          fi
+
+      # On normal PRs, use auto-detected release type: minor for non-breaking
+      # changes, major when breaking change indicators are found in commits.
+      - name: Run cargo-semver-checks (normal PR)
         if: ${{ !startsWith(github.head_ref || github.ref_name, 'release-plz-') }}
         env:
           BASELINE_REV: ${{ github.event.pull_request.base.sha }}
@@ -97,5 +108,5 @@ jobs:
             --exclude reinhardt-web \
             --exclude reinhardt-pages \
             --all-features \
-            --release-type minor \
+            --release-type ${{ steps.detect-breaking.outputs.release_type }} \
             --baseline-rev "${BASELINE_REV:-HEAD~1}"
