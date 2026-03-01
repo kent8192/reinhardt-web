@@ -103,14 +103,21 @@ impl BatchInsertBuilder {
 	}
 }
 
-/// A single update entry: (where_column, where_value, column_value_pairs).
-type UpdateEntry = (String, String, Vec<(String, String)>);
+/// Internal representation for update entries supporting both legacy and
+/// parameterized formats.
+enum UpdateEntry {
+	/// Legacy format: raw WHERE clause string (not SQL-injection safe)
+	Legacy(String, Vec<(String, String)>),
+	/// Parameterized format: (where_column, where_value, column_value_pairs)
+	Parameterized(String, String, Vec<(String, String)>),
+}
 
 /// Builder for batch update operations
 ///
-/// Uses parameterized queries to prevent SQL injection. The `build_sql` method
-/// returns SQL statements with `$N` placeholders and their corresponding bind
-/// values, suitable for use with prepared statements.
+/// Supports both legacy raw WHERE clause API (deprecated) and parameterized
+/// query API for SQL injection prevention. New code should use
+/// [`add_update_parameterized`](Self::add_update_parameterized) and
+/// [`build_sql_parameterized`](Self::build_sql_parameterized).
 pub struct BatchUpdateBuilder {
 	table: String,
 	updates: Vec<UpdateEntry>,
@@ -125,50 +132,143 @@ impl BatchUpdateBuilder {
 		}
 	}
 
+	/// Add an update operation with a raw WHERE clause
+	///
+	/// # Deprecated
+	///
+	/// This method is vulnerable to SQL injection through the `where_clause`
+	/// parameter. Use [`add_update_parameterized`](Self::add_update_parameterized)
+	/// instead.
+	#[deprecated(
+		since = "0.1.0",
+		note = "vulnerable to SQL injection; use add_update_parameterized instead"
+	)]
+	pub fn add_update(
+		mut self,
+		where_clause: String,
+		columns_values: Vec<(String, String)>,
+	) -> Self {
+		self.updates
+			.push(UpdateEntry::Legacy(where_clause, columns_values));
+		self
+	}
+
 	/// Add an update operation with a parameterized WHERE clause
 	///
 	/// Uses column equality condition (`where_column = $N`) with bind parameter
 	/// to prevent SQL injection.
-	pub fn add_update(
+	pub fn add_update_parameterized(
 		mut self,
 		where_column: String,
 		where_value: String,
 		columns_values: Vec<(String, String)>,
 	) -> Self {
-		self.updates
-			.push((where_column, where_value, columns_values));
+		self.updates.push(UpdateEntry::Parameterized(
+			where_column,
+			where_value,
+			columns_values,
+		));
 		self
+	}
+
+	/// Build SQL statements for batch update (legacy format)
+	///
+	/// # Deprecated
+	///
+	/// Returns raw SQL strings without parameterization. Use
+	/// [`build_sql_parameterized`](Self::build_sql_parameterized) instead.
+	#[deprecated(
+		since = "0.1.0",
+		note = "returns unparameterized SQL; use build_sql_parameterized instead"
+	)]
+	pub fn build_sql(&self) -> Vec<String> {
+		self.updates
+			.iter()
+			.map(|entry| match entry {
+				UpdateEntry::Legacy(where_clause, columns_values) => {
+					let set_clause = columns_values
+						.iter()
+						.map(|(col, val)| {
+							format!("{} = '{}'", col, val.replace('\'', "''"))
+						})
+						.collect::<Vec<_>>()
+						.join(", ");
+
+					format!(
+						"UPDATE {} SET {} WHERE {}",
+						self.table, set_clause, where_clause
+					)
+				}
+				UpdateEntry::Parameterized(where_column, where_value, columns_values) => {
+					let set_clause = columns_values
+						.iter()
+						.map(|(col, val)| {
+							format!("{} = '{}'", col, val.replace('\'', "''"))
+						})
+						.collect::<Vec<_>>()
+						.join(", ");
+
+					format!(
+						"UPDATE {} SET {} WHERE {} = '{}'",
+						self.table,
+						set_clause,
+						where_column,
+						where_value.replace('\'', "''")
+					)
+				}
+			})
+			.collect()
 	}
 
 	/// Build parameterized SQL statements for batch update
 	///
 	/// Returns a list of `(sql, params)` tuples where `sql` contains `$N`
 	/// placeholders and `params` contains the corresponding bind values.
-	pub fn build_sql(&self) -> Vec<(String, Vec<String>)> {
+	///
+	/// Legacy entries added via the deprecated `add_update` method are rendered
+	/// with inline values (no parameterization) and return an empty params vec.
+	pub fn build_sql_parameterized(&self) -> Vec<(String, Vec<String>)> {
 		self.updates
 			.iter()
-			.map(|(where_column, where_value, columns_values)| {
-				let mut params = Vec::with_capacity(columns_values.len() + 1);
-				let mut param_idx = 1usize;
+			.map(|entry| match entry {
+				UpdateEntry::Legacy(where_clause, columns_values) => {
+					let set_clause = columns_values
+						.iter()
+						.map(|(col, val)| {
+							format!("{} = '{}'", col, val.replace('\'', "''"))
+						})
+						.collect::<Vec<_>>()
+						.join(", ");
 
-				let set_clause = columns_values
-					.iter()
-					.map(|(col, val)| {
-						let placeholder = format!("{} = ${}", col, param_idx);
-						params.push(val.clone());
-						param_idx += 1;
-						placeholder
-					})
-					.collect::<Vec<_>>()
-					.join(", ");
+					let sql = format!(
+						"UPDATE {} SET {} WHERE {}",
+						self.table, set_clause, where_clause
+					);
+					(sql, Vec::new())
+				}
+				UpdateEntry::Parameterized(where_column, where_value, columns_values) => {
+					let mut params = Vec::with_capacity(columns_values.len() + 1);
+					let mut param_idx = 1usize;
 
-				let sql = format!(
-					"UPDATE {} SET {} WHERE {} = ${}",
-					self.table, set_clause, where_column, param_idx
-				);
-				params.push(where_value.clone());
+					let set_clause = columns_values
+						.iter()
+						.map(|(col, val)| {
+							let placeholder = format!("{} = ${}", col, param_idx);
+							params.push(val.clone());
+							param_idx += 1;
+							placeholder
+						})
+						.collect::<Vec<_>>()
+						.join(", ");
 
-				(sql, params)
+					let sql = format!(
+						"UPDATE {} SET {} WHERE {} = ${}",
+						self.table, set_clause, where_column, param_idx
+					);
+					params.push(where_value.clone());
+
+					(sql, params)
+				}
 			})
 			.collect()
 	}
@@ -222,22 +322,45 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_batch_update_builder_uses_parameterized_queries() {
+	#[allow(deprecated)] // Testing deprecated API for backward compatibility
+	fn test_batch_update_builder_legacy() {
 		// Arrange
 		let builder = BatchUpdateBuilder::new("users")
 			.add_update(
+				"id = 1".to_string(),
+				vec![("name".to_string(), "Alice Updated".to_string())],
+			)
+			.add_update(
+				"id = 2".to_string(),
+				vec![("name".to_string(), "Bob Updated".to_string())],
+			);
+
+		// Act
+		let sql_statements = builder.build_sql();
+
+		// Assert
+		assert_eq!(sql_statements.len(), 2);
+		assert!(sql_statements[0].contains("UPDATE users"));
+		assert!(sql_statements[0].contains("WHERE id = 1"));
+	}
+
+	#[rstest]
+	fn test_batch_update_builder_uses_parameterized_queries() {
+		// Arrange
+		let builder = BatchUpdateBuilder::new("users")
+			.add_update_parameterized(
 				"id".to_string(),
 				"1".to_string(),
 				vec![("name".to_string(), "Alice Updated".to_string())],
 			)
-			.add_update(
+			.add_update_parameterized(
 				"id".to_string(),
 				"2".to_string(),
 				vec![("name".to_string(), "Bob Updated".to_string())],
 			);
 
 		// Act
-		let statements = builder.build_sql();
+		let statements = builder.build_sql_parameterized();
 
 		// Assert
 		assert_eq!(statements.len(), 2);
@@ -253,14 +376,14 @@ mod tests {
 	#[rstest]
 	fn test_batch_update_sql_injection_in_where_value_is_parameterized() {
 		// Arrange - attempt SQL injection via where_value
-		let builder = BatchUpdateBuilder::new("users").add_update(
+		let builder = BatchUpdateBuilder::new("users").add_update_parameterized(
 			"id".to_string(),
 			"1 OR 1=1; DROP TABLE users; --".to_string(),
 			vec![("name".to_string(), "hacked".to_string())],
 		);
 
 		// Act
-		let statements = builder.build_sql();
+		let statements = builder.build_sql_parameterized();
 
 		// Assert - the malicious value is a bind parameter, not in the SQL string
 		let (sql, params) = &statements[0];
@@ -272,14 +395,14 @@ mod tests {
 	#[rstest]
 	fn test_batch_update_sql_injection_in_set_value_is_parameterized() {
 		// Arrange - attempt SQL injection via column value
-		let builder = BatchUpdateBuilder::new("users").add_update(
+		let builder = BatchUpdateBuilder::new("users").add_update_parameterized(
 			"id".to_string(),
 			"1".to_string(),
 			vec![("name".to_string(), "'; DROP TABLE users; --".to_string())],
 		);
 
 		// Act
-		let statements = builder.build_sql();
+		let statements = builder.build_sql_parameterized();
 
 		// Assert - the malicious value is a bind parameter, not in the SQL string
 		let (sql, params) = &statements[0];
@@ -291,7 +414,7 @@ mod tests {
 	#[rstest]
 	fn test_batch_update_multiple_columns() {
 		// Arrange
-		let builder = BatchUpdateBuilder::new("users").add_update(
+		let builder = BatchUpdateBuilder::new("users").add_update_parameterized(
 			"id".to_string(),
 			"42".to_string(),
 			vec![
@@ -301,7 +424,7 @@ mod tests {
 		);
 
 		// Act
-		let statements = builder.build_sql();
+		let statements = builder.build_sql_parameterized();
 
 		// Assert
 		let (sql, params) = &statements[0];
