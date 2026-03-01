@@ -102,7 +102,7 @@ impl HttpsRedirectMiddleware {
 	///
 	/// ```
 	/// use std::sync::Arc;
-	/// use reinhardt_middleware::HttpsRedirectMiddleware;
+	/// use reinhardt_middleware::{HttpsRedirectConfig, HttpsRedirectMiddleware};
 	/// use reinhardt_http::{Handler, Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Version, HeaderMap};
 	/// use bytes::Bytes;
