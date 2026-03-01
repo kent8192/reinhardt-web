@@ -1023,7 +1023,7 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 					quote! { #migrations_crate::FieldType::Boolean }
 				}
 				"DateTime" => {
-					quote! { #migrations_crate::FieldType::DateTime }
+					quote! { #migrations_crate::FieldType::TimestampTz }
 				}
 				"Date" => {
 					quote! { #migrations_crate::FieldType::Date }
