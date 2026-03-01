@@ -103,10 +103,17 @@ impl BatchInsertBuilder {
 	}
 }
 
+/// A single update entry: (where_column, where_value, column_value_pairs).
+type UpdateEntry = (String, String, Vec<(String, String)>);
+
 /// Builder for batch update operations
+///
+/// Uses parameterized queries to prevent SQL injection. The `build_sql` method
+/// returns SQL statements with `$N` placeholders and their corresponding bind
+/// values, suitable for use with prepared statements.
 pub struct BatchUpdateBuilder {
 	table: String,
-	updates: Vec<(String, Vec<(String, String)>)>, // (where_clause, [(column, value)])
+	updates: Vec<UpdateEntry>,
 }
 
 impl BatchUpdateBuilder {
@@ -118,31 +125,50 @@ impl BatchUpdateBuilder {
 		}
 	}
 
-	/// Add an update operation
+	/// Add an update operation with a parameterized WHERE clause
+	///
+	/// Uses column equality condition (`where_column = $N`) with bind parameter
+	/// to prevent SQL injection.
 	pub fn add_update(
 		mut self,
-		where_clause: String,
+		where_column: String,
+		where_value: String,
 		columns_values: Vec<(String, String)>,
 	) -> Self {
-		self.updates.push((where_clause, columns_values));
+		self.updates
+			.push((where_column, where_value, columns_values));
 		self
 	}
 
-	/// Build SQL statements for batch update
-	pub fn build_sql(&self) -> Vec<String> {
+	/// Build parameterized SQL statements for batch update
+	///
+	/// Returns a list of `(sql, params)` tuples where `sql` contains `$N`
+	/// placeholders and `params` contains the corresponding bind values.
+	pub fn build_sql(&self) -> Vec<(String, Vec<String>)> {
 		self.updates
 			.iter()
-			.map(|(where_clause, columns_values)| {
+			.map(|(where_column, where_value, columns_values)| {
+				let mut params = Vec::with_capacity(columns_values.len() + 1);
+				let mut param_idx = 1usize;
+
 				let set_clause = columns_values
 					.iter()
-					.map(|(col, val)| format!("{} = '{}'", col, val.replace('\'', "''")))
+					.map(|(col, val)| {
+						let placeholder = format!("{} = ${}", col, param_idx);
+						params.push(val.clone());
+						param_idx += 1;
+						placeholder
+					})
 					.collect::<Vec<_>>()
 					.join(", ");
 
-				format!(
-					"UPDATE {} SET {} WHERE {}",
-					self.table, set_clause, where_clause
-				)
+				let sql = format!(
+					"UPDATE {} SET {} WHERE {} = ${}",
+					self.table, set_clause, where_column, param_idx
+				);
+				params.push(where_value.clone());
+
+				(sql, params)
 			})
 			.collect()
 	}
@@ -156,63 +182,144 @@ impl BatchUpdateBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_batch_insert_builder() {
+		// Arrange
 		let builder = BatchInsertBuilder::new("users")
 			.columns(vec!["name".to_string(), "email".to_string()])
 			.add_row(vec!["Alice".to_string(), "alice@example.com".to_string()])
 			.add_row(vec!["Bob".to_string(), "bob@example.com".to_string()])
 			.batch_size(2);
 
+		// Act
 		let sql_statements = builder.build_sql();
+
+		// Assert
 		assert_eq!(sql_statements.len(), 1);
 		assert!(sql_statements[0].contains("INSERT INTO users"));
 		assert!(sql_statements[0].contains("Alice"));
 		assert!(sql_statements[0].contains("Bob"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_insert_chunking() {
+		// Arrange
 		let mut builder = BatchInsertBuilder::new("users")
 			.columns(vec!["name".to_string()])
 			.batch_size(2);
 
-		// Add 5 rows with batch size 2 = 3 SQL statements
 		for i in 0..5 {
 			builder = builder.add_row(vec![format!("User{}", i)]);
 		}
 
+		// Act
 		let sql_statements = builder.build_sql();
-		assert_eq!(sql_statements.len(), 3); // 2 + 2 + 1
+
+		// Assert - 5 rows with batch size 2 = 3 SQL statements (2 + 2 + 1)
+		assert_eq!(sql_statements.len(), 3);
 	}
 
-	#[test]
-	fn test_batch_update_builder() {
+	#[rstest]
+	fn test_batch_update_builder_uses_parameterized_queries() {
+		// Arrange
 		let builder = BatchUpdateBuilder::new("users")
 			.add_update(
-				"id = 1".to_string(),
+				"id".to_string(),
+				"1".to_string(),
 				vec![("name".to_string(), "Alice Updated".to_string())],
 			)
 			.add_update(
-				"id = 2".to_string(),
+				"id".to_string(),
+				"2".to_string(),
 				vec![("name".to_string(), "Bob Updated".to_string())],
 			);
 
-		let sql_statements = builder.build_sql();
-		assert_eq!(sql_statements.len(), 2);
-		assert!(sql_statements[0].contains("UPDATE users"));
-		assert!(sql_statements[0].contains("WHERE id = 1"));
+		// Act
+		let statements = builder.build_sql();
+
+		// Assert
+		assert_eq!(statements.len(), 2);
+		let (sql, params) = &statements[0];
+		assert_eq!(sql, "UPDATE users SET name = $1 WHERE id = $2");
+		assert_eq!(params, &["Alice Updated", "1"]);
+
+		let (sql, params) = &statements[1];
+		assert_eq!(sql, "UPDATE users SET name = $1 WHERE id = $2");
+		assert_eq!(params, &["Bob Updated", "2"]);
 	}
 
-	#[test]
-	fn test_sql_injection_protection() {
+	#[rstest]
+	fn test_batch_update_sql_injection_in_where_value_is_parameterized() {
+		// Arrange - attempt SQL injection via where_value
+		let builder = BatchUpdateBuilder::new("users").add_update(
+			"id".to_string(),
+			"1 OR 1=1; DROP TABLE users; --".to_string(),
+			vec![("name".to_string(), "hacked".to_string())],
+		);
+
+		// Act
+		let statements = builder.build_sql();
+
+		// Assert - the malicious value is a bind parameter, not in the SQL string
+		let (sql, params) = &statements[0];
+		assert_eq!(sql, "UPDATE users SET name = $1 WHERE id = $2");
+		assert!(!sql.contains("DROP TABLE"));
+		assert_eq!(params[1], "1 OR 1=1; DROP TABLE users; --");
+	}
+
+	#[rstest]
+	fn test_batch_update_sql_injection_in_set_value_is_parameterized() {
+		// Arrange - attempt SQL injection via column value
+		let builder = BatchUpdateBuilder::new("users").add_update(
+			"id".to_string(),
+			"1".to_string(),
+			vec![("name".to_string(), "'; DROP TABLE users; --".to_string())],
+		);
+
+		// Act
+		let statements = builder.build_sql();
+
+		// Assert - the malicious value is a bind parameter, not in the SQL string
+		let (sql, params) = &statements[0];
+		assert_eq!(sql, "UPDATE users SET name = $1 WHERE id = $2");
+		assert!(!sql.contains("DROP TABLE"));
+		assert_eq!(params[0], "'; DROP TABLE users; --");
+	}
+
+	#[rstest]
+	fn test_batch_update_multiple_columns() {
+		// Arrange
+		let builder = BatchUpdateBuilder::new("users").add_update(
+			"id".to_string(),
+			"42".to_string(),
+			vec![
+				("name".to_string(), "Alice".to_string()),
+				("email".to_string(), "alice@example.com".to_string()),
+			],
+		);
+
+		// Act
+		let statements = builder.build_sql();
+
+		// Assert
+		let (sql, params) = &statements[0];
+		assert_eq!(sql, "UPDATE users SET name = $1, email = $2 WHERE id = $3");
+		assert_eq!(params, &["Alice", "alice@example.com", "42"]);
+	}
+
+	#[rstest]
+	fn test_sql_injection_protection_in_insert() {
+		// Arrange
 		let builder = BatchInsertBuilder::new("users")
 			.columns(vec!["name".to_string()])
 			.add_row(vec!["Alice'; DROP TABLE users; --".to_string()]);
 
+		// Act
 		let sql_statements = builder.build_sql();
-		// Single quotes should be escaped
+
+		// Assert - single quotes should be escaped
 		assert!(sql_statements[0].contains("Alice''; DROP TABLE users; --"));
 	}
 }
