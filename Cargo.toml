@@ -262,7 +262,7 @@ reinhardt-db = { workspace = true, optional = true }
 
 # External crates re-exported for macros
 inventory = { workspace = true, optional = true }
-reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-rc.1", optional = true }
+reinhardt-test = { path = "crates/reinhardt-test", optional = true }
 reinhardt-rest = { workspace = true, optional = true }
 reinhardt-auth = { workspace = true, optional = true }
 
