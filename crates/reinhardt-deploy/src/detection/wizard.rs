@@ -78,20 +78,20 @@ pub fn present_detection_results(result: &mut FeatureDetectionResult) -> DeployR
 		}
 
 		if result.nosql {
-			let nosql_default = get_nosql_default(&result.nosql_engine);
+			let nosql_default = get_nosql_default(&result.nosql_engines);
 			let nosql_choice =
 				Select::new("Select your NoSQL engine:", NOSQL_ENGINE_LABELS.to_vec())
 					.with_starting_cursor(nosql_default)
 					.prompt()
 					.map_err(map_inquire_error)?;
 
-			result.nosql_engine = match nosql_choice {
-				"DynamoDB" => Some(NoSqlEngine::DynamoDb),
-				"Firestore" => Some(NoSqlEngine::Firestore),
-				_ => Some(NoSqlEngine::MongoDb),
+			result.nosql_engines = match nosql_choice {
+				"DynamoDB" => vec![NoSqlEngine::DynamoDb],
+				"Firestore" => vec![NoSqlEngine::Firestore],
+				_ => vec![NoSqlEngine::MongoDb],
 			};
 		} else {
-			result.nosql_engine = None;
+			result.nosql_engines = Vec::new();
 		}
 
 		// Phase 4: Confirmation
@@ -174,8 +174,8 @@ pub fn apply_feature_selections(result: &mut FeatureDetectionResult, selected_in
 ///
 /// Returns the index into `NOSQL_ENGINE_LABELS` matching the current engine,
 /// or 0 (MongoDB) if no engine is set.
-pub fn get_nosql_default(engine: &Option<NoSqlEngine>) -> usize {
-	match engine {
+pub fn get_nosql_default(engines: &[NoSqlEngine]) -> usize {
+	match engines.first() {
 		Some(NoSqlEngine::DynamoDb) => 1,
 		Some(NoSqlEngine::Firestore) => 2,
 		_ => 0,
@@ -216,8 +216,8 @@ pub fn build_summary_table(result: &FeatureDetectionResult) -> Table {
 		.unwrap_or("-");
 
 	let nosql_detail = result
-		.nosql_engine
-		.as_ref()
+		.nosql_engines
+		.first()
 		.map(|e| match e {
 			NoSqlEngine::MongoDb => "MongoDB",
 			NoSqlEngine::DynamoDb => "DynamoDB",
@@ -357,10 +357,10 @@ mod tests {
 	#[rstest]
 	fn get_nosql_default_none() {
 		// Arrange
-		let engine: Option<NoSqlEngine> = None;
+		let engines: Vec<NoSqlEngine> = Vec::new();
 
 		// Act
-		let default = get_nosql_default(&engine);
+		let default = get_nosql_default(&engines);
 
 		// Assert
 		assert_eq!(default, 0);
@@ -369,10 +369,10 @@ mod tests {
 	#[rstest]
 	fn get_nosql_default_with_engine() {
 		// Arrange
-		let engine = Some(NoSqlEngine::Firestore);
+		let engines = vec![NoSqlEngine::Firestore];
 
 		// Act
-		let default = get_nosql_default(&engine);
+		let default = get_nosql_default(&engines);
 
 		// Assert
 		assert_eq!(default, 2);
@@ -421,7 +421,7 @@ mod tests {
 			database: true,
 			database_engine: Some(DatabaseEngine::PostgreSql),
 			nosql: true,
-			nosql_engine: Some(NoSqlEngine::MongoDb),
+			nosql_engines: vec![NoSqlEngine::MongoDb],
 			cache: false,
 			websockets: true,
 			frontend: false,
@@ -429,6 +429,7 @@ mod tests {
 			media: false,
 			background_tasks: false,
 			mail: false,
+			wasm: false,
 			ambiguous: false,
 			model_count: 0,
 			confidence: 1.0,
