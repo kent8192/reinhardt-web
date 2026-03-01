@@ -2,6 +2,7 @@
 name = "reinhardt-pages-ast"
 version = "0.1.0-rc.1"
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
 description = "AST definitions for reinhardt-pages macro DSLs (shared between proc-macros and formatters)"
 repository.workspace = true
