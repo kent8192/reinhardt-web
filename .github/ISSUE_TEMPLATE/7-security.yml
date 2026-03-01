@@ -19,7 +19,7 @@ body:
 
 				For detailed information, see:
 				- Security Policy: https://github.com/kent8192/reinhardt/blob/main/SECURITY.md
-				- Issue Guidelines: https://github.com/kent8192/reinhardt/blob/main/docs/ISSUE_GUIDELINES.md
+				- Issue Guidelines: https://github.com/kent8192/reinhardt/blob/main/instructions/ISSUE_GUIDELINES.md
 
 	- type: markdown
 		attributes:
