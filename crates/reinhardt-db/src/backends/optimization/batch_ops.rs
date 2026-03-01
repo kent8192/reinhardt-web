@@ -188,9 +188,7 @@ impl BatchUpdateBuilder {
 				UpdateEntry::Legacy(where_clause, columns_values) => {
 					let set_clause = columns_values
 						.iter()
-						.map(|(col, val)| {
-							format!("{} = '{}'", col, val.replace('\'', "''"))
-						})
+						.map(|(col, val)| format!("{} = '{}'", col, val.replace('\'', "''")))
 						.collect::<Vec<_>>()
 						.join(", ");
 
@@ -202,9 +200,7 @@ impl BatchUpdateBuilder {
 				UpdateEntry::Parameterized(where_column, where_value, columns_values) => {
 					let set_clause = columns_values
 						.iter()
-						.map(|(col, val)| {
-							format!("{} = '{}'", col, val.replace('\'', "''"))
-						})
+						.map(|(col, val)| format!("{} = '{}'", col, val.replace('\'', "''")))
 						.collect::<Vec<_>>()
 						.join(", ");
 
@@ -234,9 +230,7 @@ impl BatchUpdateBuilder {
 				UpdateEntry::Legacy(where_clause, columns_values) => {
 					let set_clause = columns_values
 						.iter()
-						.map(|(col, val)| {
-							format!("{} = '{}'", col, val.replace('\'', "''"))
-						})
+						.map(|(col, val)| format!("{} = '{}'", col, val.replace('\'', "''")))
 						.collect::<Vec<_>>()
 						.join(", ");
 
