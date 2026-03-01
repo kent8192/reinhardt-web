@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-rc.1...reinhardt-rest@v0.1.0-rc.2) - 2026-03-01
+
+### Fixed
+
+- *(rest)* use workspace redis dependency instead of pinned rc version
+
 ## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.18...reinhardt-rest@v0.1.0-rc.1) - 2026-02-24
 
 ### Maintenance
