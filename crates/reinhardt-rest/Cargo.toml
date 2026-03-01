@@ -8,6 +8,7 @@ readme = "README.md"
 documentation = "https://docs.rs/reinhardt-rest"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
 
 [features]
