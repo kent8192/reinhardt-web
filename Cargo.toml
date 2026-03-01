@@ -564,7 +564,7 @@ scopeguard = "1.2.0"
 tempfile = "3.15.0"
 trybuild = "1.0.114"
 url = "2.5.4"
-criterion = { version = "0.6", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 # SQL Query Builder
 sea-query = { version = "1.0.0-rc.29", features = [
