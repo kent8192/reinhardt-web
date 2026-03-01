@@ -106,12 +106,9 @@ impl DeployReport {
 	}
 
 	/// Format the report as JSON.
-	pub fn format_json(&self) -> String {
-		serde_json::to_string_pretty(self).unwrap_or_else(|e| {
-			serde_json::json!({
-				"error": format!("failed to serialize report: {}", e),
-			})
-			.to_string()
+	pub fn format_json(&self) -> DeployResult<String> {
+		serde_json::to_string_pretty(self).map_err(|e| crate::error::DeployError::Template {
+			message: format!("failed to serialize deploy report: {e}"),
 		})
 	}
 
@@ -314,7 +311,7 @@ mod tests {
 		let report = sample_report(true);
 
 		// Act
-		let json = report.format_json();
+		let json = report.format_json().unwrap();
 
 		// Assert
 		assert!(json.contains("\"version\": \"1.0\""));
@@ -440,7 +437,7 @@ mod tests {
 		let report = sample_report(false);
 
 		// Act
-		let json = report.format_json();
+		let json = report.format_json().unwrap();
 		let deserialized: DeployReport = serde_json::from_str(&json).unwrap();
 
 		// Assert

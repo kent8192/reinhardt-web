@@ -299,7 +299,7 @@ fn report_generation_all_formats() {
 
 	// Act
 	let human = report.format_human();
-	let json = report.format_json();
+	let json = report.format_json().unwrap();
 	let markdown = report.format_markdown();
 
 	// Assert — human format

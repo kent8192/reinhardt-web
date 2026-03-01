@@ -53,20 +53,32 @@ fn classify_import(segments: &[String], result: &mut FeatureDetectionResult) {
 		"db" | "orm" => result.database = true,
 		"channels" | "websocket" => result.websockets = true,
 		"cache" => result.cache = true,
-		"pages" => result.frontend = true,
+		"pages" => {
+			if segments.get(2).is_some_and(|s| s == "wasm") {
+				result.wasm = true;
+			} else {
+				result.frontend = true;
+			}
+		}
 		"views" if segments.get(2).is_some_and(|s| s == "template") => result.frontend = true,
 		"static_files" => result.static_files = true,
 		"media" => result.media = true,
 		"tasks" | "celery" => result.background_tasks = true,
 		"mail" => result.mail = true,
+		"wasm" => result.wasm = true,
 		"nosql" => {
 			result.nosql = true;
 			if let Some(engine) = segments.get(2) {
-				match engine.as_str() {
-					"mongodb" => result.nosql_engine = Some(NoSqlEngine::MongoDb),
-					"dynamodb" => result.nosql_engine = Some(NoSqlEngine::DynamoDb),
-					"firestore" => result.nosql_engine = Some(NoSqlEngine::Firestore),
-					_ => {}
+				let nosql_engine = match engine.as_str() {
+					"mongodb" => Some(NoSqlEngine::MongoDb),
+					"dynamodb" => Some(NoSqlEngine::DynamoDb),
+					"firestore" => Some(NoSqlEngine::Firestore),
+					_ => None,
+				};
+				if let Some(e) = nosql_engine
+					&& !result.nosql_engines.contains(&e)
+				{
+					result.nosql_engines.push(e);
 				}
 			}
 		}
@@ -136,7 +148,7 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 			database: false,
 			database_engine: None,
 			nosql: false,
-			nosql_engine: None,
+			nosql_engines: Vec::new(),
 			cache: false,
 			websockets: false,
 			frontend: false,
@@ -144,6 +156,7 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 			media: false,
 			background_tasks: false,
 			mail: false,
+			wasm: false,
 			ambiguous: false,
 			model_count: 0,
 			confidence: 0.0,
@@ -154,7 +167,7 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 		database: false,
 		database_engine: None,
 		nosql: false,
-		nosql_engine: None,
+		nosql_engines: Vec::new(),
 		cache: false,
 		websockets: false,
 		frontend: false,
@@ -162,6 +175,7 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 		media: false,
 		background_tasks: false,
 		mail: false,
+		wasm: false,
 		ambiguous: false,
 		model_count: 0,
 		confidence: 0.8,
@@ -500,7 +514,7 @@ pub struct Comment {
 
 		// Assert
 		assert!(result.nosql);
-		assert_eq!(result.nosql_engine, Some(NoSqlEngine::MongoDb));
+		assert_eq!(result.nosql_engines, vec![NoSqlEngine::MongoDb]);
 	}
 
 	#[rstest]
@@ -520,7 +534,7 @@ pub struct Comment {
 
 		// Assert
 		assert!(result.nosql);
-		assert_eq!(result.nosql_engine, Some(NoSqlEngine::DynamoDb));
+		assert_eq!(result.nosql_engines, vec![NoSqlEngine::DynamoDb]);
 	}
 
 	#[rstest]
@@ -540,7 +554,45 @@ pub struct Comment {
 
 		// Assert
 		assert!(result.nosql);
-		assert_eq!(result.nosql_engine, Some(NoSqlEngine::Firestore));
+		assert_eq!(result.nosql_engines, vec![NoSqlEngine::Firestore]);
+	}
+
+	#[rstest]
+	fn detect_wasm_from_use() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let src_dir = tmp.path().join("src");
+		std::fs::create_dir_all(&src_dir).unwrap();
+		std::fs::write(
+			src_dir.join("main.rs"),
+			"use reinhardt::wasm::WasmComponent;\n",
+		)
+		.unwrap();
+
+		// Act
+		let result = analyze_code(tmp.path()).unwrap();
+
+		// Assert
+		assert!(result.wasm);
+	}
+
+	#[rstest]
+	fn detect_wasm_from_pages_wasm_use() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let src_dir = tmp.path().join("src");
+		std::fs::create_dir_all(&src_dir).unwrap();
+		std::fs::write(
+			src_dir.join("main.rs"),
+			"use reinhardt::pages::wasm::WasmApp;\n",
+		)
+		.unwrap();
+
+		// Act
+		let result = analyze_code(tmp.path()).unwrap();
+
+		// Assert
+		assert!(result.wasm);
 	}
 
 	#[rstest]
@@ -700,11 +752,9 @@ fn main() {}
 
 		// Assert
 		assert!(result.nosql);
-		// Both engines detected; last-write-wins for nosql_engine
-		assert!(
-			result.nosql_engine == Some(NoSqlEngine::MongoDb)
-				|| result.nosql_engine == Some(NoSqlEngine::DynamoDb)
-		);
+		assert_eq!(result.nosql_engines.len(), 2);
+		assert!(result.nosql_engines.contains(&NoSqlEngine::MongoDb));
+		assert!(result.nosql_engines.contains(&NoSqlEngine::DynamoDb));
 	}
 
 	#[rstest]

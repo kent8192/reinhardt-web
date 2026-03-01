@@ -285,4 +285,53 @@ mod tests {
 		// Assert
 		assert_eq!(history.deployments.len(), 2);
 	}
+
+	#[rstest]
+	fn load_history_invalid_toml() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let reinhardt_dir = tmp.path().join(".reinhardt");
+		std::fs::create_dir_all(&reinhardt_dir).unwrap();
+		std::fs::write(reinhardt_dir.join("deployments.toml"), "not valid [[[").unwrap();
+
+		// Act
+		let result = load_history(tmp.path());
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn rollback_target_nonexistent_version() {
+		// Arrange
+		let history = DeploymentHistory {
+			deployments: vec![
+				sample_entry(1, DeploymentStatus::Inactive),
+				sample_entry(2, DeploymentStatus::Active),
+			],
+		};
+
+		// Act
+		let target = history.rollback_target(Some(99));
+
+		// Assert
+		assert!(target.is_none());
+	}
+
+	#[rstest]
+	fn rollback_target_no_inactive_deployments() {
+		// Arrange
+		let history = DeploymentHistory {
+			deployments: vec![
+				sample_entry(1, DeploymentStatus::Active),
+				sample_entry(2, DeploymentStatus::RolledBack),
+			],
+		};
+
+		// Act
+		let target = history.rollback_target(None);
+
+		// Assert
+		assert!(target.is_none());
+	}
 }

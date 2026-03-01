@@ -1,5 +1,7 @@
 use regex::Regex;
 
+use crate::error::{DeployError, DeployResult};
+
 /// Parsed result from `terraform plan` output.
 ///
 /// Captures resource change counts and drift detection state
@@ -33,12 +35,12 @@ impl PlanResult {
 	///
 	/// * `output` - Raw stdout from `terraform plan`
 	/// * `exit_code` - Process exit code (0 = no changes, 2 = changes pending)
-	pub fn parse(output: &str, exit_code: i32) -> Self {
+	pub fn parse(output: &str, exit_code: i32) -> DeployResult<Self> {
 		let drift_detected = output.contains("Objects have changed outside of Terraform");
 
 		// Exit code 0 means no changes; also handle explicit "No changes" message
 		if exit_code == 0 || output.contains("No changes") {
-			return Self {
+			return Ok(Self {
 				creates: 0,
 				updates: 0,
 				destroys: 0,
@@ -46,7 +48,7 @@ impl PlanResult {
 				unchanged: 0,
 				drift_detected,
 				raw_output: output.to_owned(),
-			};
+			});
 		}
 
 		// Pattern: "Plan: X to add, Y to change, Z to destroy."
@@ -54,17 +56,27 @@ impl PlanResult {
 			Regex::new(r"Plan:\s+(\d+)\s+to add,\s+(\d+)\s+to change,\s+(\d+)\s+to destroy")
 				.expect("plan regex must compile");
 
-		let (creates, updates, destroys) = plan_re
-			.captures(output)
-			.map(|caps| {
-				let add = caps[1].parse::<u32>().unwrap_or(0);
-				let change = caps[2].parse::<u32>().unwrap_or(0);
-				let destroy = caps[3].parse::<u32>().unwrap_or(0);
-				(add, change, destroy)
-			})
-			.unwrap_or((0, 0, 0));
+		let caps = plan_re.captures(output).ok_or_else(|| DeployError::TerraformExecution {
+			message: format!("failed to parse plan output: no 'Plan:' line found in terraform output (exit_code={exit_code})"),
+		})?;
 
-		Self {
+		let creates = caps[1]
+			.parse::<u32>()
+			.map_err(|e| DeployError::TerraformExecution {
+				message: format!("failed to parse resource count: {e}"),
+			})?;
+		let updates = caps[2]
+			.parse::<u32>()
+			.map_err(|e| DeployError::TerraformExecution {
+				message: format!("failed to parse resource count: {e}"),
+			})?;
+		let destroys = caps[3]
+			.parse::<u32>()
+			.map_err(|e| DeployError::TerraformExecution {
+				message: format!("failed to parse resource count: {e}"),
+			})?;
+
+		Ok(Self {
 			creates,
 			updates,
 			destroys,
@@ -72,7 +84,7 @@ impl PlanResult {
 			unchanged: 0,
 			drift_detected,
 			raw_output: output.to_owned(),
-		}
+		})
 	}
 
 	/// Returns `true` if the plan includes any resource changes.
@@ -92,7 +104,7 @@ mod tests {
 		let output = "No changes. Your infrastructure matches the configuration.";
 
 		// Act
-		let result = PlanResult::parse(output, 0);
+		let result = PlanResult::parse(output, 0).unwrap();
 
 		// Assert
 		assert_eq!(result.creates, 0);
@@ -107,7 +119,7 @@ mod tests {
 		let output = "Plan: 2 to add, 1 to change, 0 to destroy.";
 
 		// Act
-		let result = PlanResult::parse(output, 2);
+		let result = PlanResult::parse(output, 2).unwrap();
 
 		// Assert
 		assert_eq!(result.creates, 2);
@@ -122,7 +134,7 @@ mod tests {
 		let output = "Plan: 0 to add, 0 to change, 3 to destroy.";
 
 		// Act
-		let result = PlanResult::parse(output, 2);
+		let result = PlanResult::parse(output, 2).unwrap();
 
 		// Assert
 		assert_eq!(result.creates, 0);
@@ -137,7 +149,7 @@ mod tests {
 		let output = "Note: Objects have changed outside of Terraform\n\nPlan: 0 to add, 1 to change, 0 to destroy.";
 
 		// Act
-		let result = PlanResult::parse(output, 2);
+		let result = PlanResult::parse(output, 2).unwrap();
 
 		// Assert
 		assert!(result.drift_detected);
@@ -160,5 +172,30 @@ mod tests {
 		// Act & Assert
 		assert!(!plan.drift_detected);
 		assert!(!plan.has_changes());
+	}
+
+	#[rstest]
+	fn plan_result_malformed_output_returns_error() {
+		// Arrange
+		let output = "Some random terraform output without plan line";
+
+		// Act
+		let result = PlanResult::parse(output, 2);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn plan_result_missing_plan_line_returns_error() {
+		// Arrange
+		let output =
+			"Terraform will perform the following actions:\n  + resource\n\nChanges to Outputs:";
+
+		// Act
+		let result = PlanResult::parse(output, 2);
+
+		// Assert
+		assert!(result.is_err());
 	}
 }
