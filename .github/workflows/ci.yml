@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is-behind: ${{ steps.check.outputs.is-behind }}
+      has-conflicts: ${{ steps.check.outputs.has-conflicts }}
     steps:
       - name: Check if PR branch is behind base
         id: check
@@ -48,6 +49,17 @@ jobs:
                 `${context.payload.pull_request.base.ref}. ` +
                 `Skipping CI — please update your branch.`
               );
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            });
+            const hasConflicts = pr.mergeable_state === 'dirty';
+            core.setOutput('has-conflicts', hasConflicts.toString());
+            if (hasConflicts) {
+              core.warning('PR has merge conflicts. Skipping CI — please resolve conflicts.');
             }
 
   # Determine runner type based on whether the actor is the repository owner.
@@ -83,7 +95,7 @@ jobs:
   check:
     name: Check
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.is-behind != 'true'
+    if: needs.check-branch-status.outputs.is-behind != 'true' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -92,7 +104,7 @@ jobs:
   fmt:
     name: Format
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.is-behind != 'true'
+    if: needs.check-branch-status.outputs.is-behind != 'true' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/fmt.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -100,7 +112,7 @@ jobs:
   clippy:
     name: Clippy
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.is-behind != 'true'
+    if: needs.check-branch-status.outputs.is-behind != 'true' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/clippy.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -109,7 +121,7 @@ jobs:
   publish-check:
     name: Publish Check
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.is-behind != 'true'
+    if: needs.check-branch-status.outputs.is-behind != 'true' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/publish-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -118,7 +130,7 @@ jobs:
   todo-check:
     name: TODO Check
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.is-behind != 'true'
+    if: needs.check-branch-status.outputs.is-behind != 'true' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/todo-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -127,7 +139,7 @@ jobs:
   semver-check:
     name: SemVer Check
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.is-behind != 'true'
+    if: needs.check-branch-status.outputs.is-behind != 'true' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/semver-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -139,6 +151,7 @@ jobs:
     if: >-
       ${{
         needs.check-branch-status.outputs.is-behind != 'true' &&
+        needs.check-branch-status.outputs.has-conflicts != 'true' &&
         !startsWith(github.head_ref || '', 'release-plz-')
       }}
     uses: ./.github/workflows/release-plz-dry-run.yml
@@ -266,11 +279,19 @@ jobs:
       - name: Verify all required checks passed
         env:
           IS_BEHIND: ${{ needs.check-branch-status.outputs.is-behind }}
+          HAS_CONFLICTS: ${{ needs.check-branch-status.outputs.has-conflicts }}
         run: |
           # If PR branch is behind base, all jobs are expected to be skipped
           if [[ "$IS_BEHIND" == "true" ]]; then
             echo "::warning::PR branch is out-of-date with base branch. All CI checks were skipped."
             echo "Please update your branch and push again to trigger CI."
+            exit 0
+          fi
+
+          # If PR has merge conflicts, all jobs are expected to be skipped
+          if [[ "$HAS_CONFLICTS" == "true" ]]; then
+            echo "::warning::PR has merge conflicts. All CI checks were skipped."
+            echo "Please resolve conflicts and push again to trigger CI."
             exit 0
           fi
 
