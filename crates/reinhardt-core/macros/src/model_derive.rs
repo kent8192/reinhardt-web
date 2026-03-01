@@ -2544,6 +2544,19 @@ fn generate_registration_code(
 			params.push(quote! { .with_param("auto_increment", "true") });
 		}
 
+		// not_null: infer from Rust Option type
+		let (is_option, _) = extract_option_type(&field_info.ty);
+		let is_not_null = if let Some(null) = config.null {
+			!null
+		} else if config.primary_key {
+			true
+		} else {
+			!is_option
+		};
+		if is_not_null {
+			params.push(quote! { .with_param("not_null", "true") });
+		}
+
 		if let Some(max_length) = config.max_length {
 			let ml_str = max_length.to_string();
 			params.push(quote! { .with_param("max_length", #ml_str) });
