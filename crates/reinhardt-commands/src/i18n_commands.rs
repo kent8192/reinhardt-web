@@ -350,9 +350,8 @@ impl MakeMessagesCommand {
 
 		// Extract existing translations (simple approach: keep msgstr values)
 		let mut existing_translations = std::collections::HashMap::new();
-		static MSGID_MERGE_RE: LazyLock<Regex> = LazyLock::new(|| {
-			Regex::new(r#"msgid "([^"]+)"\nmsgstr "([^"]*)""#).unwrap()
-		});
+		static MSGID_MERGE_RE: LazyLock<Regex> =
+			LazyLock::new(|| Regex::new(r#"msgid "([^"]+)"\nmsgstr "([^"]*)""#).unwrap());
 
 		for cap in MSGID_MERGE_RE.captures_iter(&existing_content) {
 			if let (Some(msgid), Some(msgstr)) = (cap.get(1), cap.get(2)) {
@@ -574,9 +573,8 @@ impl CompileMessagesCommand {
 
 	fn parse_po_file(content: &str) -> CommandResult<Vec<(String, String)>> {
 		let mut messages = Vec::new();
-		static MSGID_PARSE_RE: LazyLock<Regex> = LazyLock::new(|| {
-			Regex::new(r#"msgid "([^"]*)"\s*msgstr "([^"]*)""#).unwrap()
-		});
+		static MSGID_PARSE_RE: LazyLock<Regex> =
+			LazyLock::new(|| Regex::new(r#"msgid "([^"]*)"\s*msgstr "([^"]*)""#).unwrap());
 
 		for cap in MSGID_PARSE_RE.captures_iter(content) {
 			if let (Some(msgid), Some(msgstr)) = (cap.get(1), cap.get(2)) {
