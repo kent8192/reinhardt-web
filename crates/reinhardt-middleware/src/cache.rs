@@ -367,9 +367,7 @@ impl CacheMiddleware {
 	/// Generate cache key
 	fn generate_cache_key(&self, request: &Request) -> String {
 		let base = match self.config.key_strategy {
-			CacheKeyStrategy::UrlOnly => {
-				format!("{}:{}", request.method.as_str(), request.uri.path())
-			}
+			CacheKeyStrategy::UrlOnly => request.uri.path().to_string(),
 			CacheKeyStrategy::UrlAndMethod => {
 				format!("{}:{}", request.method.as_str(), request.uri.path())
 			}
