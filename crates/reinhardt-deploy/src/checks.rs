@@ -37,19 +37,54 @@ impl PreflightRunner {
 		}
 	}
 
-	/// Builds check results from a list of `PreflightCheck` definitions.
+	/// Execute pre-flight checks by running their commands.
 	///
-	/// This is a pure function that converts check definitions into
-	/// pending result structures without executing any commands.
-	pub fn build_check_results(checks: &[PreflightCheck]) -> Vec<PreflightCheckResult> {
-		checks
-			.iter()
-			.map(|check| PreflightCheckResult {
+	/// Runs each check's command via the system shell and compares the
+	/// exit code against the expected value. Returns a result for each
+	/// check indicating pass/fail.
+	pub fn execute_checks(checks: &[PreflightCheck]) -> Vec<PreflightCheckResult> {
+		checks.iter().map(Self::run_check).collect()
+	}
+
+	/// Run a single pre-flight check command.
+	fn run_check(check: &PreflightCheck) -> PreflightCheckResult {
+		let parts: Vec<&str> = check.command.split_whitespace().collect();
+		if parts.is_empty() {
+			return PreflightCheckResult {
 				name: check.name.clone(),
-				passed: true,
-				message: format!("check defined: {}", check.description),
-			})
-			.collect()
+				passed: false,
+				message: "empty command".to_string(),
+			};
+		}
+
+		match std::process::Command::new(parts[0])
+			.args(&parts[1..])
+			.stdout(std::process::Stdio::piped())
+			.stderr(std::process::Stdio::piped())
+			.status()
+		{
+			Ok(status) => {
+				let exit_code = status.code().unwrap_or(-1);
+				let passed = exit_code == check.expected_exit_code;
+				PreflightCheckResult {
+					name: check.name.clone(),
+					passed,
+					message: if passed {
+						format!("{}: exit code {}", check.description, exit_code)
+					} else {
+						format!(
+							"{}: expected exit code {}, got {}",
+							check.description, check.expected_exit_code, exit_code
+						)
+					},
+				}
+			}
+			Err(e) => PreflightCheckResult {
+				name: check.name.clone(),
+				passed: false,
+				message: format!("failed to execute '{}': {}", check.command, e),
+			},
+		}
 	}
 
 	/// Returns true if all checks in the results passed.
@@ -174,49 +209,68 @@ mod tests {
 	}
 
 	#[rstest]
-	fn build_check_results_from_definitions() {
+	fn execute_checks_runs_true_command() {
 		// Arrange
-		let checks = vec![
-			PreflightCheck {
-				name: "docker_check".to_string(),
-				description: "Verify Docker is running".to_string(),
-				command: "docker info".to_string(),
-				expected_exit_code: 0,
-			},
-			PreflightCheck {
-				name: "terraform_check".to_string(),
-				description: "Verify Terraform is installed".to_string(),
-				command: "terraform version".to_string(),
-				expected_exit_code: 0,
-			},
-		];
+		let checks = vec![PreflightCheck {
+			name: "true_check".to_string(),
+			description: "Run true".to_string(),
+			command: "true".to_string(),
+			expected_exit_code: 0,
+		}];
 
 		// Act
-		let results = PreflightRunner::build_check_results(&checks);
+		let results = PreflightRunner::execute_checks(&checks);
 
 		// Assert
-		assert_eq!(results.len(), 2);
-		assert_eq!(results[0].name, "docker_check");
+		assert_eq!(results.len(), 1);
 		assert!(results[0].passed);
-		assert_eq!(
-			results[0].message,
-			"check defined: Verify Docker is running"
-		);
-		assert_eq!(results[1].name, "terraform_check");
-		assert!(results[1].passed);
-		assert_eq!(
-			results[1].message,
-			"check defined: Verify Terraform is installed"
-		);
+		assert_eq!(results[0].name, "true_check");
 	}
 
 	#[rstest]
-	fn build_check_results_empty_list() {
+	fn execute_checks_handles_failing_command() {
+		// Arrange
+		let checks = vec![PreflightCheck {
+			name: "false_check".to_string(),
+			description: "Run false".to_string(),
+			command: "false".to_string(),
+			expected_exit_code: 0,
+		}];
+
+		// Act
+		let results = PreflightRunner::execute_checks(&checks);
+
+		// Assert
+		assert_eq!(results.len(), 1);
+		assert!(!results[0].passed);
+	}
+
+	#[rstest]
+	fn execute_checks_handles_missing_command() {
+		// Arrange
+		let checks = vec![PreflightCheck {
+			name: "missing_check".to_string(),
+			description: "Run nonexistent".to_string(),
+			command: "nonexistent_command_xyz_99999".to_string(),
+			expected_exit_code: 0,
+		}];
+
+		// Act
+		let results = PreflightRunner::execute_checks(&checks);
+
+		// Assert
+		assert_eq!(results.len(), 1);
+		assert!(!results[0].passed);
+		assert!(results[0].message.contains("failed to execute"));
+	}
+
+	#[rstest]
+	fn execute_checks_empty_list() {
 		// Arrange
 		let checks: Vec<PreflightCheck> = vec![];
 
 		// Act
-		let results = PreflightRunner::build_check_results(&checks);
+		let results = PreflightRunner::execute_checks(&checks);
 
 		// Assert
 		assert!(results.is_empty());

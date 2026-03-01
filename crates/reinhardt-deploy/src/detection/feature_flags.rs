@@ -6,7 +6,7 @@ pub struct FeatureDetectionResult {
 	pub database: bool,
 	pub database_engine: Option<DatabaseEngine>,
 	pub nosql: bool,
-	pub nosql_engine: Option<NoSqlEngine>,
+	pub nosql_engines: Vec<NoSqlEngine>,
 	pub cache: bool,
 	pub websockets: bool,
 	pub frontend: bool,
@@ -14,6 +14,7 @@ pub struct FeatureDetectionResult {
 	pub media: bool,
 	pub background_tasks: bool,
 	pub mail: bool,
+	pub wasm: bool,
 	pub ambiguous: bool,
 	pub model_count: usize,
 	pub confidence: f64,
@@ -30,7 +31,7 @@ pub fn analyze_feature_flags(features: &[String]) -> FeatureDetectionResult {
 		database: false,
 		database_engine: None,
 		nosql: false,
-		nosql_engine: None,
+		nosql_engines: Vec::new(),
 		cache: false,
 		websockets: false,
 		frontend: false,
@@ -38,6 +39,7 @@ pub fn analyze_feature_flags(features: &[String]) -> FeatureDetectionResult {
 		media: false,
 		background_tasks: false,
 		mail: false,
+		wasm: false,
 		ambiguous: false,
 		model_count: 0,
 		confidence: 1.0,
@@ -55,15 +57,15 @@ pub fn analyze_feature_flags(features: &[String]) -> FeatureDetectionResult {
 			}
 			"nosql-mongodb" => {
 				result.nosql = true;
-				result.nosql_engine = Some(NoSqlEngine::MongoDb);
+				result.nosql_engines.push(NoSqlEngine::MongoDb);
 			}
 			"nosql-dynamodb" => {
 				result.nosql = true;
-				result.nosql_engine = Some(NoSqlEngine::DynamoDb);
+				result.nosql_engines.push(NoSqlEngine::DynamoDb);
 			}
 			"nosql-firestore" => {
 				result.nosql = true;
-				result.nosql_engine = Some(NoSqlEngine::Firestore);
+				result.nosql_engines.push(NoSqlEngine::Firestore);
 			}
 			"websockets" => {
 				result.websockets = true;
@@ -85,6 +87,9 @@ pub fn analyze_feature_flags(features: &[String]) -> FeatureDetectionResult {
 			}
 			"mail" => {
 				result.mail = true;
+			}
+			"wasm" | "wasm-frontend" => {
+				result.wasm = true;
 			}
 			"full" => {
 				result.ambiguous = true;
@@ -175,7 +180,7 @@ mod tests {
 
 		// Assert
 		assert!(result.nosql);
-		assert_eq!(result.nosql_engine, Some(NoSqlEngine::MongoDb));
+		assert_eq!(result.nosql_engines, vec![NoSqlEngine::MongoDb]);
 	}
 
 	#[rstest]
@@ -188,7 +193,7 @@ mod tests {
 
 		// Assert
 		assert!(result.nosql);
-		assert_eq!(result.nosql_engine, Some(NoSqlEngine::DynamoDb));
+		assert_eq!(result.nosql_engines, vec![NoSqlEngine::DynamoDb]);
 	}
 
 	#[rstest]
@@ -201,7 +206,7 @@ mod tests {
 
 		// Assert
 		assert!(result.nosql);
-		assert_eq!(result.nosql_engine, Some(NoSqlEngine::Firestore));
+		assert_eq!(result.nosql_engines, vec![NoSqlEngine::Firestore]);
 	}
 
 	#[rstest]
@@ -253,6 +258,30 @@ mod tests {
 	}
 
 	#[rstest]
+	fn detect_wasm() {
+		// Arrange
+		let features = vec!["wasm".to_string()];
+
+		// Act
+		let result = analyze_feature_flags(&features);
+
+		// Assert
+		assert!(result.wasm);
+	}
+
+	#[rstest]
+	fn detect_wasm_frontend() {
+		// Arrange
+		let features = vec!["wasm-frontend".to_string()];
+
+		// Act
+		let result = analyze_feature_flags(&features);
+
+		// Assert
+		assert!(result.wasm);
+	}
+
+	#[rstest]
 	fn empty_features_returns_defaults() {
 		// Arrange
 		let features: Vec<String> = vec![];
@@ -264,7 +293,7 @@ mod tests {
 		assert!(!result.database);
 		assert!(result.database_engine.is_none());
 		assert!(!result.nosql);
-		assert!(result.nosql_engine.is_none());
+		assert!(result.nosql_engines.is_empty());
 		assert!(!result.cache);
 		assert!(!result.websockets);
 		assert!(!result.frontend);
@@ -272,6 +301,7 @@ mod tests {
 		assert!(!result.media);
 		assert!(!result.background_tasks);
 		assert!(!result.mail);
+		assert!(!result.wasm);
 		assert!(!result.ambiguous);
 		assert_eq!(result.model_count, 0);
 		assert_eq!(result.confidence, 1.0);

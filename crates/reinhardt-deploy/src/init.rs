@@ -40,13 +40,18 @@ pub fn generate_deploy_toml(
 
 	// [nosql] - only if detected
 	if detection.nosql {
-		let engine = match &detection.nosql_engine {
-			Some(NoSqlEngine::MongoDb) => "mongodb",
-			Some(NoSqlEngine::DynamoDb) => "dynamodb",
-			Some(NoSqlEngine::Firestore) => "firestore",
-			None => "mongodb", // default
-		};
-		sections.push(format!("[nosql]\nengine = \"{}\"", engine));
+		if detection.nosql_engines.is_empty() {
+			sections.push("[[nosql]]\nengine = \"mongodb\"".to_string());
+		} else {
+			for engine in &detection.nosql_engines {
+				let engine_str = match engine {
+					NoSqlEngine::MongoDb => "mongodb",
+					NoSqlEngine::DynamoDb => "dynamodb",
+					NoSqlEngine::Firestore => "firestore",
+				};
+				sections.push(format!("[[nosql]]\nengine = \"{}\"", engine_str));
+			}
+		}
 	}
 
 	// [cache] - only if detected
@@ -117,7 +122,7 @@ mod tests {
 			database: true,
 			database_engine: Some(DatabaseEngine::PostgreSql),
 			nosql: true,
-			nosql_engine: Some(NoSqlEngine::MongoDb),
+			nosql_engines: vec![NoSqlEngine::MongoDb],
 			..Default::default()
 		};
 
@@ -125,7 +130,7 @@ mod tests {
 		let toml_content = generate_deploy_toml("myapp", ProviderType::Aws, &detection);
 
 		// Assert
-		assert!(toml_content.contains("[nosql]"));
+		assert!(toml_content.contains("[[nosql]]"));
 		assert!(toml_content.contains("engine = \"mongodb\""));
 	}
 
@@ -151,7 +156,7 @@ mod tests {
 			database: true,
 			database_engine: Some(DatabaseEngine::MySql),
 			nosql: true,
-			nosql_engine: Some(NoSqlEngine::DynamoDb),
+			nosql_engines: vec![NoSqlEngine::DynamoDb],
 			cache: true,
 			websockets: true,
 			frontend: true,
@@ -170,7 +175,7 @@ mod tests {
 		assert!(toml_content.contains("type = \"gcp\""));
 		assert!(toml_content.contains("[database]"));
 		assert!(toml_content.contains("engine = \"mysql\""));
-		assert!(toml_content.contains("[nosql]"));
+		assert!(toml_content.contains("[[nosql]]"));
 		assert!(toml_content.contains("engine = \"dynamodb\""));
 		assert!(toml_content.contains("[cache]"));
 		assert!(toml_content.contains("[websockets]"));
@@ -194,7 +199,7 @@ mod tests {
 		assert!(toml_content.contains("type = \"docker\""));
 		// No optional sections
 		assert!(!toml_content.contains("[database]"));
-		assert!(!toml_content.contains("[nosql]"));
+		assert!(!toml_content.contains("[[nosql]]"));
 		assert!(!toml_content.contains("[cache]"));
 	}
 
