@@ -140,6 +140,11 @@ impl TaskResultMetadata {
 		}
 	}
 
+	/// Set the error message while preserving result and status fields.
+	pub fn set_error(&mut self, error: String) {
+		self.error = Some(error);
+	}
+
 	/// Get the task ID
 	///
 	/// # Examples
