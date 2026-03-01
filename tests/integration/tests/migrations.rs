@@ -62,3 +62,15 @@ mod mysql_edge_cases;
 // PostgreSQL ENUM Edge Cases Tests
 #[path = "migrations/postgres_enum_edge_cases.rs"]
 mod postgres_enum_edge_cases;
+
+// Model-to-Migration Round-Trip Tests (Issue #1703)
+#[path = "migrations/model_roundtrip_integration.rs"]
+mod model_roundtrip_integration;
+
+// Schema Verification Tests (Issue #1703)
+#[path = "migrations/schema_verification_integration.rs"]
+mod schema_verification_integration;
+
+// Migration E2E Cycle Tests (Issue #1703)
+#[path = "migrations/migration_e2e_cycle_integration.rs"]
+mod migration_e2e_cycle_integration;
