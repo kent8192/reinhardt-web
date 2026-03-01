@@ -1453,9 +1453,7 @@ mod tests {
 			"RadixTree mode should reject directory traversal in path params"
 		);
 		assert!(
-			matcher
-				.match_path("/files/foo/../../etc/passwd")
-				.is_none(),
+			matcher.match_path("/files/foo/../../etc/passwd").is_none(),
 			"RadixTree mode should reject embedded directory traversal"
 		);
 
@@ -1464,10 +1462,7 @@ mod tests {
 		assert!(result.is_some());
 		let (handler_id, params) = result.unwrap();
 		assert_eq!(handler_id, "serve_file");
-		assert_eq!(
-			params.get("filepath"),
-			Some(&"css/style.css".to_string())
-		);
+		assert_eq!(params.get("filepath"), Some(&"css/style.css".to_string()));
 	}
 
 	#[test]
