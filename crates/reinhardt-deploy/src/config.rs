@@ -34,6 +34,58 @@ pub struct DeployConfig {
 }
 
 impl DeployConfig {
+	/// Validate configuration fields for correctness.
+	pub fn validate(&self) -> DeployResult<()> {
+		// Validate project name
+		if self.project.name.is_empty() {
+			return Err(DeployError::ConfigValidation {
+				message: "project.name must not be empty".to_string(),
+			});
+		}
+		let name_re =
+			regex::Regex::new(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$").expect("name regex must compile");
+		if !name_re.is_match(&self.project.name) {
+			return Err(DeployError::ConfigValidation {
+				message: format!(
+					"project.name '{}' is invalid: must start with alphanumeric and contain only [a-zA-Z0-9_-]",
+					self.project.name
+				),
+			});
+		}
+
+		// Validate app settings
+		if self.app.port == 0 {
+			return Err(DeployError::ConfigValidation {
+				message: "app.port must not be 0".to_string(),
+			});
+		}
+		if !self.app.health_check.starts_with('/') {
+			return Err(DeployError::ConfigValidation {
+				message: format!(
+					"app.health_check '{}' must start with '/'",
+					self.app.health_check
+				),
+			});
+		}
+		if self.app.instances == 0 {
+			return Err(DeployError::ConfigValidation {
+				message: "app.instances must be greater than 0".to_string(),
+			});
+		}
+		if self.app.cpu == 0 {
+			return Err(DeployError::ConfigValidation {
+				message: "app.cpu must be greater than 0".to_string(),
+			});
+		}
+		if self.app.memory == 0 {
+			return Err(DeployError::ConfigValidation {
+				message: "app.memory must be greater than 0".to_string(),
+			});
+		}
+
+		Ok(())
+	}
+
 	/// Load configuration from a file path.
 	pub fn from_file(path: &Path) -> DeployResult<Self> {
 		if !path.exists() {
@@ -43,6 +95,7 @@ impl DeployConfig {
 		}
 		let content = std::fs::read_to_string(path)?;
 		let config: DeployConfig = toml::from_str(&content)?;
+		config.validate()?;
 		Ok(config)
 	}
 
@@ -234,6 +287,11 @@ pub struct FrontendConfig {
 	pub fallback: Option<String>,
 	#[serde(default)]
 	pub cdn: bool,
+	/// Whether this frontend uses WASM (e.g., trunk + wasm-bindgen).
+	#[serde(default)]
+	pub wasm: bool,
+	/// Target triple for WASM compilation (defaults to `wasm32-unknown-unknown`).
+	pub wasm_target: Option<String>,
 }
 
 /// Static file hosting configuration.
@@ -561,5 +619,175 @@ type = "gcp"
 
 		let fly: ProviderConfig = toml::from_str(r#"type = "fly""#).unwrap();
 		assert_eq!(fly.provider_type, ProviderType::FlyIo);
+	}
+
+	#[rstest]
+	fn validate_empty_project_name() {
+		// Arrange
+		let config = DeployConfig {
+			project: ProjectConfig {
+				name: String::new(),
+				region: None,
+			},
+			..Default::default()
+		};
+
+		// Act
+		let result = config.validate();
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn validate_invalid_project_name() {
+		// Arrange
+		let config = DeployConfig {
+			project: ProjectConfig {
+				name: "-invalid".to_string(),
+				region: None,
+			},
+			..Default::default()
+		};
+
+		// Act
+		let result = config.validate();
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn validate_zero_port() {
+		// Arrange
+		let mut config = DeployConfig::default();
+		config.project.name = "myapp".to_string();
+		config.app.port = 0;
+
+		// Act
+		let result = config.validate();
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn validate_invalid_health_check() {
+		// Arrange
+		let mut config = DeployConfig::default();
+		config.project.name = "myapp".to_string();
+		config.app.health_check = "no-slash".to_string();
+
+		// Act
+		let result = config.validate();
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn validate_valid_config_succeeds() {
+		// Arrange
+		let mut config = DeployConfig::default();
+		config.project.name = "myapp".to_string();
+
+		// Act
+		let result = config.validate();
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn validate_zero_instances() {
+		// Arrange
+		let mut config = DeployConfig::default();
+		config.project.name = "myapp".to_string();
+		config.app.instances = 0;
+
+		// Act
+		let result = config.validate();
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn validate_zero_cpu() {
+		// Arrange
+		let mut config = DeployConfig::default();
+		config.project.name = "myapp".to_string();
+		config.app.cpu = 0;
+
+		// Act
+		let result = config.validate();
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn validate_zero_memory() {
+		// Arrange
+		let mut config = DeployConfig::default();
+		config.project.name = "myapp".to_string();
+		config.app.memory = 0;
+
+		// Act
+		let result = config.validate();
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn from_file_invalid_toml() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config_path = dir.path().join("deploy.toml");
+		std::fs::write(&config_path, "not valid toml [[[").unwrap();
+
+		// Act
+		let result = DeployConfig::from_file(&config_path);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn from_file_valid_toml_but_fails_validation() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config_path = dir.path().join("deploy.toml");
+		std::fs::write(
+			&config_path,
+			r#"
+[project]
+name = ""
+
+[provider]
+type = "docker"
+"#,
+		)
+		.unwrap();
+
+		// Act
+		let result = DeployConfig::from_file(&config_path);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn load_or_default_returns_default_when_no_file() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+
+		// Act
+		let config = DeployConfig::load_or_default(dir.path()).unwrap();
+
+		// Assert
+		assert_eq!(config.app.port, 8000);
+		assert_eq!(config.project.name, "");
 	}
 }

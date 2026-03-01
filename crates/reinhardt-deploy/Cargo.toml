@@ -21,7 +21,6 @@ colored = "3.0.0"
 dialoguer = "0.12.0"
 rust-embed = "8.5"
 regex = { workspace = true }
-syn = { version = "2.0", features = ["full", "parsing"] }
 walkdir = "2.5"
 which = "7.0"
 

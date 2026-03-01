@@ -24,7 +24,7 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 			database: false,
 			database_engine: None,
 			nosql: false,
-			nosql_engine: None,
+			nosql_engines: Vec::new(),
 			cache: false,
 			websockets: false,
 			frontend: false,
@@ -32,6 +32,7 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 			media: false,
 			background_tasks: false,
 			mail: false,
+			wasm: false,
 			ambiguous: false,
 			model_count: 0,
 			confidence: 0.0,
@@ -42,7 +43,7 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 		database: false,
 		database_engine: None,
 		nosql: false,
-		nosql_engine: None,
+		nosql_engines: Vec::new(),
 		cache: false,
 		websockets: false,
 		frontend: false,
@@ -50,6 +51,7 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 		media: false,
 		background_tasks: false,
 		mail: false,
+		wasm: false,
 		ambiguous: false,
 		model_count: 0,
 		confidence: 0.8,
@@ -99,16 +101,24 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 			message: e.to_string(),
 		})?;
 
+	let re_wasm = Regex::new(r"use\s+reinhardt::(wasm|pages::wasm)::").map_err(|e| {
+		DeployError::Detection {
+			message: e.to_string(),
+		}
+	})?;
+
 	// Pattern for `#[model(` attribute
 	let re_model = Regex::new(r"#\[model\(").map_err(|e| DeployError::Detection {
 		message: e.to_string(),
 	})?;
 
-	for entry in WalkDir::new(&src_dir)
-		.into_iter()
-		.filter_map(|e| e.ok())
-		.filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "rs"))
-	{
+	for entry in WalkDir::new(&src_dir).into_iter() {
+		let entry = entry.map_err(|e| DeployError::Detection {
+			message: format!("failed to walk directory: {e}"),
+		})?;
+		if !entry.file_type().is_file() || entry.path().extension().is_none_or(|ext| ext != "rs") {
+			continue;
+		}
 		let content =
 			std::fs::read_to_string(entry.path()).map_err(|e| DeployError::Detection {
 				message: format!("failed to read {}: {}", entry.path().display(), e),
@@ -138,17 +148,26 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 		if re_mail.is_match(&content) {
 			result.mail = true;
 		}
+		if re_wasm.is_match(&content) {
+			result.wasm = true;
+		}
 		if re_nosql_mongodb.is_match(&content) {
 			result.nosql = true;
-			result.nosql_engine = Some(NoSqlEngine::MongoDb);
+			if !result.nosql_engines.contains(&NoSqlEngine::MongoDb) {
+				result.nosql_engines.push(NoSqlEngine::MongoDb);
+			}
 		}
 		if re_nosql_dynamodb.is_match(&content) {
 			result.nosql = true;
-			result.nosql_engine = Some(NoSqlEngine::DynamoDb);
+			if !result.nosql_engines.contains(&NoSqlEngine::DynamoDb) {
+				result.nosql_engines.push(NoSqlEngine::DynamoDb);
+			}
 		}
 		if re_nosql_firestore.is_match(&content) {
 			result.nosql = true;
-			result.nosql_engine = Some(NoSqlEngine::Firestore);
+			if !result.nosql_engines.contains(&NoSqlEngine::Firestore) {
+				result.nosql_engines.push(NoSqlEngine::Firestore);
+			}
 		}
 
 		let model_count = re_model.find_iter(&content).count();
@@ -476,7 +495,7 @@ pub struct Comment {
 
 		// Assert
 		assert!(result.nosql);
-		assert_eq!(result.nosql_engine, Some(NoSqlEngine::MongoDb));
+		assert_eq!(result.nosql_engines, vec![NoSqlEngine::MongoDb]);
 	}
 
 	#[rstest]
@@ -496,7 +515,7 @@ pub struct Comment {
 
 		// Assert
 		assert!(result.nosql);
-		assert_eq!(result.nosql_engine, Some(NoSqlEngine::DynamoDb));
+		assert_eq!(result.nosql_engines, vec![NoSqlEngine::DynamoDb]);
 	}
 
 	#[rstest]
@@ -516,7 +535,45 @@ pub struct Comment {
 
 		// Assert
 		assert!(result.nosql);
-		assert_eq!(result.nosql_engine, Some(NoSqlEngine::Firestore));
+		assert_eq!(result.nosql_engines, vec![NoSqlEngine::Firestore]);
+	}
+
+	#[rstest]
+	fn detect_wasm_from_use() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let src_dir = tmp.path().join("src");
+		std::fs::create_dir_all(&src_dir).unwrap();
+		std::fs::write(
+			src_dir.join("main.rs"),
+			"use reinhardt::wasm::WasmComponent;\n",
+		)
+		.unwrap();
+
+		// Act
+		let result = analyze_code(tmp.path()).unwrap();
+
+		// Assert
+		assert!(result.wasm);
+	}
+
+	#[rstest]
+	fn detect_wasm_from_pages_wasm_use() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let src_dir = tmp.path().join("src");
+		std::fs::create_dir_all(&src_dir).unwrap();
+		std::fs::write(
+			src_dir.join("main.rs"),
+			"use reinhardt::pages::wasm::WasmApp;\n",
+		)
+		.unwrap();
+
+		// Act
+		let result = analyze_code(tmp.path()).unwrap();
+
+		// Assert
+		assert!(result.wasm);
 	}
 
 	#[rstest]

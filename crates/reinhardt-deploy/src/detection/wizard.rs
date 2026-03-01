@@ -10,5 +10,5 @@ use crate::error::DeployResult;
 /// This is a stub implementation. The actual `dialoguer`-based interactive
 /// prompts will be added when interactive deployment mode is enabled.
 pub fn present_detection_results(_result: &mut FeatureDetectionResult) -> DeployResult<()> {
-	Ok(())
+	unimplemented!("interactive wizard requires dialoguer integration")
 }
