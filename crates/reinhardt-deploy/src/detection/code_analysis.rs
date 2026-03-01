@@ -1,18 +1,130 @@
 use std::path::Path;
 
-use regex::Regex;
+use syn::{Item, UseTree};
 use walkdir::WalkDir;
 
 use crate::config::NoSqlEngine;
 use crate::detection::feature_flags::FeatureDetectionResult;
 use crate::error::{DeployError, DeployResult};
 
+/// Recursively collect fully-qualified path segments from a [`UseTree`].
+///
+/// Each returned `Vec<String>` represents one import path. For example,
+/// `use reinhardt::{db::Model, cache::Backend}` produces two paths:
+/// `["reinhardt", "db", "Model"]` and `["reinhardt", "cache", "Backend"]`.
+fn collect_use_paths(tree: &UseTree, prefix: &[String]) -> Vec<Vec<String>> {
+	match tree {
+		UseTree::Path(use_path) => {
+			let mut new_prefix = prefix.to_vec();
+			new_prefix.push(use_path.ident.to_string());
+			collect_use_paths(&use_path.tree, &new_prefix)
+		}
+		UseTree::Name(use_name) => {
+			let mut path = prefix.to_vec();
+			path.push(use_name.ident.to_string());
+			vec![path]
+		}
+		UseTree::Rename(use_rename) => {
+			let mut path = prefix.to_vec();
+			path.push(use_rename.ident.to_string());
+			vec![path]
+		}
+		UseTree::Glob(_) => {
+			vec![prefix.to_vec()]
+		}
+		UseTree::Group(use_group) => use_group
+			.items
+			.iter()
+			.flat_map(|item| collect_use_paths(item, prefix))
+			.collect(),
+	}
+}
+
+/// Classify a single import path and set the corresponding feature flags.
+///
+/// Only paths starting with `["reinhardt", ...]` with at least two segments
+/// are considered. The second segment determines the feature category.
+fn classify_import(segments: &[String], result: &mut FeatureDetectionResult) {
+	if segments.len() < 2 || segments[0] != "reinhardt" {
+		return;
+	}
+
+	match segments[1].as_str() {
+		"db" | "orm" => result.database = true,
+		"channels" | "websocket" => result.websockets = true,
+		"cache" => result.cache = true,
+		"pages" => result.frontend = true,
+		"views" if segments.get(2).is_some_and(|s| s == "template") => result.frontend = true,
+		"static_files" => result.static_files = true,
+		"media" => result.media = true,
+		"tasks" | "celery" => result.background_tasks = true,
+		"mail" => result.mail = true,
+		"nosql" => {
+			result.nosql = true;
+			if let Some(engine) = segments.get(2) {
+				match engine.as_str() {
+					"mongodb" => result.nosql_engine = Some(NoSqlEngine::MongoDb),
+					"dynamodb" => result.nosql_engine = Some(NoSqlEngine::DynamoDb),
+					"firestore" => result.nosql_engine = Some(NoSqlEngine::Firestore),
+					_ => {}
+				}
+			}
+		}
+		_ => {}
+	}
+}
+
+/// Parse a single Rust source file and update feature detection results.
+///
+/// Uses `syn::parse_file` to build an AST, then inspects `use` items for
+/// reinhardt imports and struct/enum items for `#[model(...)]` attributes.
+fn analyze_file(
+	content: &str,
+	path: &Path,
+	result: &mut FeatureDetectionResult,
+) -> DeployResult<()> {
+	let file = syn::parse_file(content).map_err(|e| DeployError::Detection {
+		message: format!("failed to parse {}: {e}", path.display()),
+	})?;
+
+	for item in &file.items {
+		match item {
+			Item::Use(item_use) => {
+				let paths = collect_use_paths(&item_use.tree, &[]);
+				for path in &paths {
+					classify_import(path, result);
+				}
+			}
+			Item::Struct(item_struct) => {
+				for attr in &item_struct.attrs {
+					if attr.path().is_ident("model") {
+						result.database = true;
+						result.model_count += 1;
+					}
+				}
+			}
+			Item::Enum(item_enum) => {
+				for attr in &item_enum.attrs {
+					if attr.path().is_ident("model") {
+						result.database = true;
+						result.model_count += 1;
+					}
+				}
+			}
+			_ => {}
+		}
+	}
+
+	Ok(())
+}
+
 /// Analyze source code to detect infrastructure requirements.
 ///
-/// Walks the `src/` directory recursively, scanning `.rs` files for
-/// `use reinhardt::*` import patterns and `#[model(` attribute patterns.
-/// Returns a [`FeatureDetectionResult`] with confidence 0.8 (code analysis
-/// provides moderate confidence since imports may not reflect runtime usage).
+/// Walks the `src/` directory recursively, scanning `.rs` files using
+/// `syn` AST parsing to detect `use reinhardt::*` import patterns and
+/// `#[model(` attribute patterns. Returns a [`FeatureDetectionResult`]
+/// with confidence 0.8 (code analysis provides moderate confidence since
+/// imports may not reflect runtime usage).
 ///
 /// If the `src/` directory does not exist, returns an empty result with
 /// confidence 0.0.
@@ -55,107 +167,19 @@ pub fn analyze_code(project_root: &Path) -> DeployResult<FeatureDetectionResult>
 		confidence: 0.8,
 	};
 
-	// Patterns for `use reinhardt::*` imports
-	let re_db = Regex::new(r"use\s+reinhardt::(db|orm)::").map_err(|e| DeployError::Detection {
-		message: e.to_string(),
-	})?;
-	let re_websockets = Regex::new(r"use\s+reinhardt::(channels|websocket)::").map_err(|e| {
-		DeployError::Detection {
-			message: e.to_string(),
+	for entry in WalkDir::new(&src_dir).into_iter() {
+		let entry = entry.map_err(|e| DeployError::Detection {
+			message: format!("failed to walk directory: {e}"),
+		})?;
+		if !entry.file_type().is_file() || entry.path().extension().is_none_or(|ext| ext != "rs") {
+			continue;
 		}
-	})?;
-	let re_cache = Regex::new(r"use\s+reinhardt::cache::").map_err(|e| DeployError::Detection {
-		message: e.to_string(),
-	})?;
-	let re_frontend = Regex::new(r"use\s+reinhardt::(pages|views::template)::?").map_err(|e| {
-		DeployError::Detection {
-			message: e.to_string(),
-		}
-	})?;
-	let re_static_files =
-		Regex::new(r"use\s+reinhardt::static_files::").map_err(|e| DeployError::Detection {
-			message: e.to_string(),
-		})?;
-	let re_media = Regex::new(r"use\s+reinhardt::media::").map_err(|e| DeployError::Detection {
-		message: e.to_string(),
-	})?;
-	let re_tasks =
-		Regex::new(r"use\s+reinhardt::(tasks|celery)::").map_err(|e| DeployError::Detection {
-			message: e.to_string(),
-		})?;
-	let re_mail = Regex::new(r"use\s+reinhardt::mail::").map_err(|e| DeployError::Detection {
-		message: e.to_string(),
-	})?;
-	let re_nosql_mongodb =
-		Regex::new(r"use\s+reinhardt::nosql::mongodb::").map_err(|e| DeployError::Detection {
-			message: e.to_string(),
-		})?;
-	let re_nosql_dynamodb =
-		Regex::new(r"use\s+reinhardt::nosql::dynamodb::").map_err(|e| DeployError::Detection {
-			message: e.to_string(),
-		})?;
-	let re_nosql_firestore =
-		Regex::new(r"use\s+reinhardt::nosql::firestore::").map_err(|e| DeployError::Detection {
-			message: e.to_string(),
-		})?;
-
-	// Pattern for `#[model(` attribute
-	let re_model = Regex::new(r"#\[model\(").map_err(|e| DeployError::Detection {
-		message: e.to_string(),
-	})?;
-
-	for entry in WalkDir::new(&src_dir)
-		.into_iter()
-		.filter_map(|e| e.ok())
-		.filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "rs"))
-	{
 		let content =
 			std::fs::read_to_string(entry.path()).map_err(|e| DeployError::Detection {
 				message: format!("failed to read {}: {}", entry.path().display(), e),
 			})?;
 
-		if re_db.is_match(&content) {
-			result.database = true;
-		}
-		if re_websockets.is_match(&content) {
-			result.websockets = true;
-		}
-		if re_cache.is_match(&content) {
-			result.cache = true;
-		}
-		if re_frontend.is_match(&content) {
-			result.frontend = true;
-		}
-		if re_static_files.is_match(&content) {
-			result.static_files = true;
-		}
-		if re_media.is_match(&content) {
-			result.media = true;
-		}
-		if re_tasks.is_match(&content) {
-			result.background_tasks = true;
-		}
-		if re_mail.is_match(&content) {
-			result.mail = true;
-		}
-		if re_nosql_mongodb.is_match(&content) {
-			result.nosql = true;
-			result.nosql_engine = Some(NoSqlEngine::MongoDb);
-		}
-		if re_nosql_dynamodb.is_match(&content) {
-			result.nosql = true;
-			result.nosql_engine = Some(NoSqlEngine::DynamoDb);
-		}
-		if re_nosql_firestore.is_match(&content) {
-			result.nosql = true;
-			result.nosql_engine = Some(NoSqlEngine::Firestore);
-		}
-
-		let model_count = re_model.find_iter(&content).count();
-		if model_count > 0 {
-			result.database = true;
-			result.model_count += model_count;
-		}
+		analyze_file(&content, entry.path(), &mut result)?;
 	}
 
 	Ok(result)
@@ -627,5 +651,115 @@ pub struct Comment {
 		// Assert
 		assert!(!result.database);
 		assert!(!result.cache);
+	}
+
+	// --- New AST-specific tests ---
+
+	#[rstest]
+	fn detect_group_imports() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let src_dir = tmp.path().join("src");
+		std::fs::create_dir_all(&src_dir).unwrap();
+		std::fs::write(
+			src_dir.join("main.rs"),
+			r#"
+use reinhardt::{db::Model, cache::Backend};
+
+fn main() {}
+"#,
+		)
+		.unwrap();
+
+		// Act
+		let result = analyze_code(tmp.path()).unwrap();
+
+		// Assert
+		assert!(result.database);
+		assert!(result.cache);
+	}
+
+	#[rstest]
+	fn detect_nested_group_imports() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let src_dir = tmp.path().join("src");
+		std::fs::create_dir_all(&src_dir).unwrap();
+		std::fs::write(
+			src_dir.join("main.rs"),
+			r#"
+use reinhardt::nosql::{mongodb::Collection, dynamodb::Table};
+
+fn main() {}
+"#,
+		)
+		.unwrap();
+
+		// Act
+		let result = analyze_code(tmp.path()).unwrap();
+
+		// Assert
+		assert!(result.nosql);
+		// Both engines detected; last-write-wins for nosql_engine
+		assert!(
+			result.nosql_engine == Some(NoSqlEngine::MongoDb)
+				|| result.nosql_engine == Some(NoSqlEngine::DynamoDb)
+		);
+	}
+
+	#[rstest]
+	fn detect_glob_imports() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let src_dir = tmp.path().join("src");
+		std::fs::create_dir_all(&src_dir).unwrap();
+		std::fs::write(
+			src_dir.join("main.rs"),
+			"use reinhardt::db::*;\n\nfn main() {}\n",
+		)
+		.unwrap();
+
+		// Act
+		let result = analyze_code(tmp.path()).unwrap();
+
+		// Assert
+		assert!(result.database);
+	}
+
+	#[rstest]
+	fn detect_rename_imports() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let src_dir = tmp.path().join("src");
+		std::fs::create_dir_all(&src_dir).unwrap();
+		std::fs::write(
+			src_dir.join("main.rs"),
+			"use reinhardt::cache::Backend as CacheBackend;\n\nfn main() {}\n",
+		)
+		.unwrap();
+
+		// Act
+		let result = analyze_code(tmp.path()).unwrap();
+
+		// Assert
+		assert!(result.cache);
+	}
+
+	#[rstest]
+	fn syntax_error_returns_detection_error() {
+		// Arrange
+		let tmp = tempfile::tempdir().unwrap();
+		let src_dir = tmp.path().join("src");
+		std::fs::create_dir_all(&src_dir).unwrap();
+		std::fs::write(src_dir.join("broken.rs"), "fn main() { let x = ;\n").unwrap();
+
+		// Act
+		let err = analyze_code(tmp.path()).unwrap_err();
+
+		// Assert
+		assert!(
+			matches!(err, DeployError::Detection { .. }),
+			"expected DeployError::Detection, got {err:?}"
+		);
 	}
 }
