@@ -1023,7 +1023,11 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 					quote! { #migrations_crate::FieldType::Boolean }
 				}
 				"DateTime" => {
-					quote! { #migrations_crate::FieldType::DateTime }
+					if config.auto_now == Some(true) || config.auto_now_add == Some(true) {
+						quote! { #migrations_crate::FieldType::TimestampTz }
+					} else {
+						quote! { #migrations_crate::FieldType::DateTime }
+					}
 				}
 				"Date" => {
 					quote! { #migrations_crate::FieldType::Date }
@@ -2545,6 +2549,31 @@ fn generate_registration_code(
 			&& unique
 		{
 			params.push(quote! { .with_param("unique", "true") });
+		}
+		// Infer nullable from Rust type when not explicitly set
+		if config.null.is_none() {
+			let (is_option, _) = extract_option_type(&field_info.ty);
+			if is_option {
+				params.push(quote! { .with_param("null", "true") });
+			} else {
+				params.push(quote! { .with_param("null", "false") });
+			}
+		}
+		// auto_increment: explicit value or default true for integer PKs
+		if config.primary_key && is_integer_primary_key_type(&field_info.ty) {
+			let auto_inc = config.auto_increment.unwrap_or(true);
+			let auto_inc_str = auto_inc.to_string();
+			params.push(quote! { .with_param("auto_increment", #auto_inc_str) });
+		} else if let Some(auto_increment) = config.auto_increment {
+			let auto_inc_str = auto_increment.to_string();
+			params.push(quote! { .with_param("auto_increment", #auto_inc_str) });
+		}
+		// auto_now / auto_now_add params
+		if config.auto_now == Some(true) {
+			params.push(quote! { .with_param("auto_now", "true") });
+		}
+		if config.auto_now_add == Some(true) {
+			params.push(quote! { .with_param("auto_now_add", "true") });
 		}
 
 		// Generate ForeignKey information if present
