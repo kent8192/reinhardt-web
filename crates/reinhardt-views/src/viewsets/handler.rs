@@ -30,6 +30,10 @@ pub struct ViewSetHandler<V: ViewSet> {
 	has_handled_request: RwLock<bool>,
 }
 
+// SAFETY: parking_lot::RwLock does not use poisoning, so ViewSetHandler
+// remains safe to use across unwind boundaries.
+unsafe impl<V: ViewSet> std::panic::RefUnwindSafe for ViewSetHandler<V> {}
+
 impl<V: ViewSet> ViewSetHandler<V> {
 	pub fn new(
 		viewset: Arc<V>,
