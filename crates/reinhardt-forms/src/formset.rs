@@ -211,8 +211,12 @@ impl FormSet {
 	pub fn process_data(&mut self, data: &HashMap<String, HashMap<String, serde_json::Value>>) {
 		self.forms.clear();
 
+		// Sort keys for deterministic ordering when max_num limit is applied
+		let mut keys: Vec<&String> = data.keys().collect();
+		keys.sort();
+
 		// Each form should have a key like "form-0", "form-1", etc.
-		for (key, form_data) in data {
+		for key in keys {
 			if key.starts_with(&self.prefix) {
 				// Enforce max_num limit during data processing
 				if let Some(max) = self.max_num
@@ -220,9 +224,11 @@ impl FormSet {
 				{
 					break;
 				}
-				let mut form = Form::new();
-				form.bind(form_data.clone());
-				self.forms.push(form);
+				if let Some(form_data) = data.get(key) {
+					let mut form = Form::new();
+					form.bind(form_data.clone());
+					self.forms.push(form);
+				}
 			}
 		}
 	}
