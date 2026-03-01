@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.15...reinhardt-auth@v0.1.0-rc.1) - 2026-02-24
+
+### Maintenance
+
+- updated the following local packages: reinhardt-db, reinhardt-db
+
+## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.14...reinhardt-auth@v0.1.0-alpha.15) - 2026-02-23
+
+### Maintenance
+
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.13...reinhardt-auth@v0.1.0-alpha.14) - 2026-02-23
+
+### Maintenance
+
+- updated the following local packages: reinhardt-query, reinhardt-query, reinhardt-apps, reinhardt-db, reinhardt-db
+
+## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.12...reinhardt-auth@v0.1.0-alpha.13) - 2026-02-21
+
+### Fixed
+
+- use logging framework instead of eprintln in authentication
+- replace std Mutex with tokio Mutex to prevent async deadlocks
+- replace unwrap with safe error handling in JWT claim extraction
+- add authentication and authorization enforcement to all endpoints
+- add path traversal prevention with input validation
+
+### Security
+
+- use server secret as HMAC key material in session auth hash
+- harden XSS, CSRF, auth, and proxy trust
+- fix TOTP algorithm, proxy trust, and session cookies
+- implement constant-time comparison and argon2 password hashing
+
+### Styling
+
+- apply rustfmt to pre-existing unformatted files
+- apply formatting to files introduced by merge from main
+- apply rustfmt formatting to workspace files
+
+### Documentation
+
+- add security note on client-side auth state limitations
+
+### Maintenance
+
+- add SAFETY comment to unsafe block in hasher_boundary_value
+
 ## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.11...reinhardt-auth@v0.1.0-alpha.12) - 2026-02-16
 
 ### Maintenance

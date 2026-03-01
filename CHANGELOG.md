@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
+
+### Documentation
+
+- add official website link to Quick Navigation
+- update internal documentation links to official website URLs
+- remove repository-hosted documentation migrated to reinhardt-web.dev
+
+### Fixed
+
+- *(website)* set cloudflare pages production branch to main before deploy
+- *(website)* add workflow_dispatch trigger for manual deployment
+- *(website)* add DNS records for custom domain resolution
+- *(infra)* add import blocks for existing Cloudflare resources
+- *(db)* gate sqlite-dependent tests with feature flag
+- *(db)* replace float test values to avoid clippy approx_constant lint
+
+### Testing
+
+- *(db)* add warning log test for .sql file detection
+
+## [0.1.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.17...reinhardt-web@v0.1.0-alpha.18) - 2026-02-24
+
+### Added
+
+- *(website)* add favicon generated from logo
+- *(website)* add WASM frontend and multiplatform cards to Why Reinhardt section
+- *(website)* add 6 additional feature cards to Why Reinhardt section
+- *(website)* expand color palette and add web font variables
+- *(website)* replace Zola inline syntax highlighting with highlight.js
+- *(website)* add sidebar navigation to standalone pages
+
+### Changed
+
+- *(website)* reorder header nav and implement unified weight-based sidebar
+- *(website)* move onboarding content into quickstart section
+- *(website)* switch docs to weight-based ordering for reference material
+
+### Documentation
+
+- *(website)* add sidebar_weight to tutorial pages
+- *(website)* add tutorials index page with card-based navigation
+- *(website)* audit and fix errors across docs pages
+
+### Fixed
+
+- *(website)* prevent visited link color from overriding button text
+- correct repository URLs from reinhardt-rs to reinhardt-web
+- *(website)* add security headers, SRI, FOUC prevention, accessibility, and optimize assets
+- *(website)* fix content links, fabricated APIs, and import paths
+- *(ci)* add branch flag and preview cleanup to deploy-website workflow
+- *(website)* replace cargo run commands with cargo make task equivalents
+- *(website)* unify sidebar navigation across quickstart and docs sections
+- *(website)* add package = "reinhardt-web" and update version to 0.1.0-alpha.18 in all examples
+- *(website)* correct docs.rs links to reinhardt-web crate
+- *(website)* update getting-started examples to use decorator and viewset patterns
+- *(website)* correct API patterns in serialization and rest quickstart tutorials
+- *(website)* restructure viewsets tutorial to use urls.rs pattern
+- *(website)* simplify server_fn definitions and use server_fn pattern in form macros
+- *(website)* add deepwiki reference to site configuration
+- *(website)* center standalone pages like changelog and security
+- *(website)* adjust logo size and spacing in navbar and hero section
+- *(website)* replace fn main() patterns with cargo make runserver convention across docs
+- *(website)* use root-relative paths instead of absolute permalinks in sidebar links
+
+### Maintenance
+
+- *(website)* update license references from MIT/Apache-2.0 to BSD-3-Clause
+- *(website)* add Cloudflare Pages deployment workflow
+- add terraform patterns to gitignore
+- *(infra)* add terraform configuration for cloudflare pages and github secrets
+- *(infra)* rename terraform template to conventional .example.tfvars format
+
+### Styling
+
+- *(website)* redesign visual components with modern aesthetics
+
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.15...reinhardt-web@v0.1.0-alpha.16) - 2026-02-21
+
+### Fixed
+
+- add panic prevention and error handling for admin operations
+
+### Documentation
+
+- remove non-existent feature flags from lib.rs documentation
+
+### Maintenance
+
+- add explanatory comments to undocumented #[allow(...)] attributes
+
 ## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.14...reinhardt-web@v0.1.0-alpha.15) - 2026-02-16
 
 ### Added

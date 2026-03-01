@@ -106,7 +106,7 @@ impl RateLimitStore {
 	}
 
 	/// Get the number of requests within a specified duration
-	pub fn get_request_count(&self, key: &str, duration: Duration) -> usize {
+	pub fn request_count(&self, key: &str, duration: Duration) -> usize {
 		let history = self.history.read().unwrap();
 		if let Some(requests) = history.get(key) {
 			let cutoff = Utc::now() - chrono::Duration::from_std(duration).unwrap();
@@ -116,8 +116,13 @@ impl RateLimitStore {
 		}
 	}
 
-	/// Clean up old request history
+	/// Clean up old request history and stale rate limit buckets
+	///
+	/// Removes request history entries older than `max_age` and evicts
+	/// rate limit buckets that have not been refilled within `max_age`,
+	/// preventing unbounded memory growth from accumulated stale entries.
 	pub fn cleanup(&self, max_age: Duration) {
+		// Prune old history entries
 		let mut history = self.history.write().unwrap();
 		let cutoff = Utc::now() - chrono::Duration::from_std(max_age).unwrap();
 
@@ -126,6 +131,12 @@ impl RateLimitStore {
 		}
 
 		history.retain(|_, requests| !requests.is_empty());
+		drop(history);
+
+		// Evict stale buckets that have not been accessed within max_age
+		let mut buckets = self.buckets.write().unwrap();
+		let now = Instant::now();
+		buckets.retain(|_, bucket| now.duration_since(bucket.last_refill) < max_age);
 	}
 
 	/// Reset the store
@@ -139,6 +150,7 @@ impl RateLimitStore {
 pub use reinhardt_core::RateLimitStrategy;
 
 /// Rate Limiting Configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
 	/// Strategy
@@ -353,7 +365,7 @@ impl RateLimitMiddleware {
 	/// let middleware = RateLimitMiddleware::new(
 	///     RateLimitConfig::new(RateLimitStrategy::PerRoute, 100.0, 10.0)
 	/// );
-	/// let count = middleware.store().get_request_count("route:/api/data", Duration::from_secs(60));
+	/// let count = middleware.store().request_count("route:/api/data", Duration::from_secs(60));
 	/// println!("Request count: {}", count);
 	/// ```
 	pub fn store(&self) -> &RateLimitStore {
@@ -785,7 +797,7 @@ mod tests {
 		store.record_request("test");
 		store.record_request("test");
 
-		let count = store.get_request_count("test", Duration::from_secs(60));
+		let count = store.request_count("test", Duration::from_secs(60));
 		assert_eq!(count, 3);
 	}
 
@@ -798,7 +810,7 @@ mod tests {
 
 		store.cleanup(Duration::from_millis(50));
 
-		let count = store.get_request_count("test", Duration::from_secs(60));
+		let count = store.request_count("test", Duration::from_secs(60));
 		assert_eq!(count, 0);
 	}
 

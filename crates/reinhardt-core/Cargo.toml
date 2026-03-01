@@ -1,11 +1,15 @@
 [package]
 name = "reinhardt-core"
-version = "0.1.0-alpha.5"
+version = "0.1.0-rc.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Core components for Reinhardt framework"
+keywords = ["web", "framework", "django", "rust", "async"]
+categories = ["web-programming", "web-programming::http-server"]
+readme = "README.md"
+documentation = "https://docs.rs/reinhardt-core"
 
 [dependencies]
 # Re-export all internal crates

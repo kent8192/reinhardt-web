@@ -298,7 +298,7 @@ fn room_item(room: &RoomInfo, on_select: impl Fn(Uuid) + Clone + 'static) -> Vie
 					}
 				}
 			}
-			if unread_count>0 {
+			if unread_count> 0 {
 				div {
 					class: "flex-shrink-0",
 					span {

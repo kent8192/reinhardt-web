@@ -2,6 +2,15 @@ name: Coverage
 
 on:
   workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label JSON. Use "\"ubuntu-latest\"" for GitHub-hosted or "[\"self-hosted\",\"linux\",\"x64\",\"reinhardt-ci\"]" for self-hosted.'
+        type: string
+        default: '"ubuntu-latest"'
+      cargo-build-jobs:
+        description: "Parallel cargo build jobs (1=GitHub-hosted OOM safe, 8=self-hosted)"
+        type: string
+        default: "1"
   workflow_dispatch:
 
 env:
@@ -9,7 +18,7 @@ env:
   RUST_BACKTRACE: 1
   CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_INCREMENTAL: 0
-  CARGO_BUILD_JOBS: 2
+  CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
   RUST_MIN_STACK: 8388608
@@ -17,13 +26,14 @@ env:
 jobs:
   unit-coverage:
     name: Unit Test Coverage
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 60
     permissions:
       id-token: write
       contents: read
     steps:
       - name: Free Disk Space (Ubuntu)
+        if: ${{ !contains(inputs.runner, 'self-hosted') }}
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -65,6 +75,7 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Additional disk cleanup before tests
+        if: ${{ !contains(inputs.runner, 'self-hosted') }}
         run: |
           echo "Disk usage before additional cleanup:"
           df -h
@@ -105,13 +116,14 @@ jobs:
 
   intra-crate-integration-coverage:
     name: Intra-Crate Integration Coverage
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 120
     permissions:
       id-token: write
       contents: read
     steps:
       - name: Free Disk Space (Ubuntu)
+        if: ${{ !contains(inputs.runner, 'self-hosted') }}
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -160,6 +172,7 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Additional disk cleanup before tests
+        if: ${{ !contains(inputs.runner, 'self-hosted') }}
         run: |
           echo "Disk usage before additional cleanup:"
           df -h
@@ -183,8 +196,6 @@ jobs:
           images-file: .github/docker-images-intra-crate.txt
 
       - name: Run intra-crate integration tests with coverage
-        env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
         run: |
           cargo llvm-cov nextest \
             --workspace \
@@ -211,13 +222,14 @@ jobs:
 
   cross-crate-integration-coverage:
     name: Cross-Crate Integration Coverage
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 60
     permissions:
       id-token: write
       contents: read
     steps:
       - name: Free Disk Space (Ubuntu)
+        if: ${{ !contains(inputs.runner, 'self-hosted') }}
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -266,6 +278,7 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Additional disk cleanup before tests
+        if: ${{ !contains(inputs.runner, 'self-hosted') }}
         run: |
           echo "Disk usage before additional cleanup:"
           df -h
@@ -289,8 +302,6 @@ jobs:
           images-file: .github/docker-images-cross-crate.txt
 
       - name: Run cross-crate integration tests with coverage
-        env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
         run: |
           cargo llvm-cov nextest \
             --package reinhardt-integration-tests \

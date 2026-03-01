@@ -162,18 +162,19 @@ impl MetricsStore {
 	}
 
 	/// Get request count for specific method and path
-	pub fn get_request_count(&self, method: &str, path: &str) -> u64 {
+	pub fn request_count(&self, method: &str, path: &str) -> u64 {
 		let key = format!("{}:{}", method, path);
 		*self.request_count.read().unwrap().get(&key).unwrap_or(&0)
 	}
 
 	/// Get status code count
-	pub fn get_status_count(&self, status: u16) -> u64 {
+	pub fn status_count(&self, status: u16) -> u64 {
 		*self.status_codes.read().unwrap().get(&status).unwrap_or(&0)
 	}
 }
 
 /// Configuration for metrics middleware
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct MetricsConfig {
 	/// Endpoint to expose metrics (default: /metrics)
@@ -497,7 +498,7 @@ mod tests {
 		let _response = middleware.process(request, handler).await.unwrap();
 
 		assert_eq!(middleware.store.total_requests(), 1);
-		assert_eq!(middleware.store.get_request_count("GET", "/test"), 1);
+		assert_eq!(middleware.store.request_count("GET", "/test"), 1);
 	}
 
 	#[tokio::test]
@@ -519,7 +520,7 @@ mod tests {
 		}
 
 		assert_eq!(middleware.store.total_requests(), 5);
-		assert_eq!(middleware.store.get_request_count("GET", "/test"), 5);
+		assert_eq!(middleware.store.request_count("GET", "/test"), 5);
 	}
 
 	#[tokio::test]
@@ -551,8 +552,8 @@ mod tests {
 			.unwrap();
 		let _response2 = middleware.process(request2, handler_404).await.unwrap();
 
-		assert_eq!(middleware.store.get_status_count(200), 1);
-		assert_eq!(middleware.store.get_status_count(404), 1);
+		assert_eq!(middleware.store.status_count(200), 1);
+		assert_eq!(middleware.store.status_count(404), 1);
 	}
 
 	#[tokio::test]
@@ -712,8 +713,8 @@ mod tests {
 			.unwrap();
 		let _response2 = middleware.process(post_request, handler).await.unwrap();
 
-		assert_eq!(middleware.store.get_request_count("GET", "/api/users"), 1);
-		assert_eq!(middleware.store.get_request_count("POST", "/api/users"), 1);
+		assert_eq!(middleware.store.request_count("GET", "/api/users"), 1);
+		assert_eq!(middleware.store.request_count("POST", "/api/users"), 1);
 		assert_eq!(middleware.store.total_requests(), 2);
 	}
 

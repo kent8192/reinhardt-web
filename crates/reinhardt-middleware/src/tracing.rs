@@ -137,7 +137,7 @@ impl TraceStore {
 	}
 
 	/// Get all completed spans
-	pub fn get_completed_spans(&self) -> Vec<Span> {
+	pub fn completed_spans(&self) -> Vec<Span> {
 		self.spans
 			.read()
 			.unwrap()
@@ -162,6 +162,7 @@ pub const SPAN_ID_HEADER: &str = "X-Span-ID";
 pub const PARENT_SPAN_ID_HEADER: &str = "X-Parent-Span-ID";
 
 /// Configuration for tracing middleware
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct TracingConfig {
 	/// Enable tracing
@@ -336,7 +337,7 @@ impl TracingMiddleware {
 	///
 	/// // Access the store
 	/// let store = middleware.store();
-	/// let completed = store.get_completed_spans();
+	/// let completed = store.completed_spans();
 	/// ```
 	pub fn store(&self) -> &TraceStore {
 		&self.store
@@ -502,7 +503,7 @@ mod tests {
 		assert!(response.headers.contains_key(SPAN_ID_HEADER));
 
 		// Should have recorded span
-		let spans = middleware.store.get_completed_spans();
+		let spans = middleware.store.completed_spans();
 		assert_eq!(spans.len(), 1);
 		assert_eq!(spans[0].status, SpanStatus::Ok);
 	}
@@ -553,7 +554,7 @@ mod tests {
 		let _response = middleware.process(request, handler).await.unwrap();
 
 		// Span should be marked as error
-		let spans = middleware.store.get_completed_spans();
+		let spans = middleware.store.completed_spans();
 		assert_eq!(spans.len(), 1);
 		assert_eq!(spans[0].status, SpanStatus::Error);
 	}
@@ -577,7 +578,7 @@ mod tests {
 
 		// Should not have trace headers for excluded path
 		assert!(!response.headers.contains_key(TRACE_ID_HEADER));
-		assert_eq!(middleware.store.get_completed_spans().len(), 0);
+		assert_eq!(middleware.store.completed_spans().len(), 0);
 	}
 
 	#[tokio::test]
@@ -599,7 +600,7 @@ mod tests {
 
 		// Should not have trace headers when disabled
 		assert!(!response.headers.contains_key(TRACE_ID_HEADER));
-		assert_eq!(middleware.store.get_completed_spans().len(), 0);
+		assert_eq!(middleware.store.completed_spans().len(), 0);
 	}
 
 	#[tokio::test]
@@ -619,7 +620,7 @@ mod tests {
 
 		let _response = middleware.process(request, handler).await.unwrap();
 
-		let spans = middleware.store.get_completed_spans();
+		let spans = middleware.store.completed_spans();
 		assert_eq!(spans.len(), 1);
 
 		let span = &spans[0];
@@ -646,7 +647,7 @@ mod tests {
 
 		let _response = middleware.process(request, handler).await.unwrap();
 
-		let spans = middleware.store.get_completed_spans();
+		let spans = middleware.store.completed_spans();
 		let span = &spans[0];
 
 		// Span should have a duration
@@ -673,12 +674,12 @@ mod tests {
 			let _response = middleware.process(request, handler.clone()).await.unwrap();
 		}
 
-		assert_eq!(middleware.store.get_completed_spans().len(), 5);
+		assert_eq!(middleware.store.completed_spans().len(), 5);
 
 		// Clear completed spans
 		middleware.store.clear_completed();
 
-		assert_eq!(middleware.store.get_completed_spans().len(), 0);
+		assert_eq!(middleware.store.completed_spans().len(), 0);
 	}
 
 	#[tokio::test]

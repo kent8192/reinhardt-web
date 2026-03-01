@@ -8,6 +8,7 @@ use chrono::{NaiveDate, NaiveDateTime};
 use std::fmt;
 
 /// Errors that can occur during field validation
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldError {
 	/// Value is required but was not provided
@@ -75,13 +76,13 @@ impl std::error::Error for FieldError {}
 ///     .max_length(10)
 ///     .required(true);
 ///
-// Valid string
+/// // Valid string
 /// assert!(field.validate("hello").is_ok());
 ///
-// Too short
+/// // Too short
 /// assert!(field.validate("hi").is_err());
 ///
-// Too long
+/// // Too long
 /// assert!(field.validate("hello world").is_err());
 /// ```
 #[derive(Debug, Clone)]

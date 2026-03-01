@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-mail"
-version = "0.1.0-alpha.9"
+version = "0.1.0-rc.1"
 description = "Email sending functionality with multiple backends"
 edition.workspace = true
 license.workspace = true
@@ -28,6 +28,7 @@ mime = "0.3"
 mime_guess = "2.0"
 chrono = { workspace = true }
 idna = "1.0"
+zeroize = "1.8"
 
 [features]
 full = []

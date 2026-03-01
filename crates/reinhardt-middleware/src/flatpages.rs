@@ -157,7 +157,7 @@ impl FlatpageStore {
 	}
 
 	/// Get all flatpages
-	pub fn get_all(&self) -> Vec<Flatpage> {
+	pub fn all(&self) -> Vec<Flatpage> {
 		self.pages.read().unwrap().values().cloned().collect()
 	}
 
@@ -168,6 +168,7 @@ impl FlatpageStore {
 }
 
 /// Flatpages middleware configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct FlatpagesConfig {
 	/// Whether the middleware is enabled
@@ -582,7 +583,7 @@ mod tests {
 		let retrieved = store.get("/page1/").unwrap();
 		assert_eq!(retrieved, page1);
 
-		// Test get_all
+		// Test all
 		let page2 = Flatpage::new(
 			"/page2/".to_string(),
 			"Page 2".to_string(),
@@ -590,7 +591,7 @@ mod tests {
 		);
 		store.register(page2);
 
-		let all = store.get_all();
+		let all = store.all();
 		assert_eq!(all.len(), 2);
 
 		// Test remove
@@ -600,7 +601,7 @@ mod tests {
 
 		// Test clear
 		store.clear();
-		assert_eq!(store.get_all().len(), 0);
+		assert_eq!(store.all().len(), 0);
 	}
 
 	#[tokio::test]

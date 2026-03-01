@@ -303,7 +303,7 @@ impl Transaction {
 	/// assert_eq!(sql, "BEGIN TRANSACTION");
 	/// assert_eq!(tx.state().unwrap(), TransactionState::Active);
 	///
-	// Nested transaction creates savepoint
+	/// // Nested transaction creates savepoint
 	/// let nested_sql = tx.begin().unwrap();
 	/// assert!(nested_sql.contains("SAVEPOINT"));
 	/// ```
