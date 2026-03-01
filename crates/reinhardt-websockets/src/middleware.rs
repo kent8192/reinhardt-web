@@ -22,6 +22,7 @@ pub enum MiddlewareError {
 }
 
 /// WebSocket connection context for middleware
+#[non_exhaustive]
 pub struct ConnectionContext {
 	/// Client IP address
 	pub ip: String,
