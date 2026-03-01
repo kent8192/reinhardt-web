@@ -24,6 +24,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:
