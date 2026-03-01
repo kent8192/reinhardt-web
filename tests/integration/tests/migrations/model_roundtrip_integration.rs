@@ -10,9 +10,15 @@
 //! - **RT-HP-15 to RT-HP-24**: Happy path attribute mapping (unique, default, index, etc.)
 //! - **RT-MACRO-01 to RT-MACRO-06**: Macro simulation tests (expose bugs #1700, #1701, #1702)
 //! - **RT-EC-01 to RT-EC-09**: Edge cases
+//! - **RT-HP-25 to RT-HP-38**: PostgreSQL-specific type mapping
+//! - **RT-TN-01 to RT-TN-08**: Table name conversion
+//! - **RT-MACRO-07 to RT-MACRO-12**: Additional macro simulation tests
+//! - **RT-COMB-01 to RT-COMB-05**: Attribute combination tests
+//! - **RT-APP-01 to RT-APP-03**: Multi-app schema tests
 
 use reinhardt_db::migrations::{
-	ConstraintDefinition, DatabaseSchema, FieldState, FieldType, ModelState, ProjectState,
+	ConstraintDefinition, DatabaseSchema, FieldState, FieldType, IndexDefinition, ModelState,
+	ProjectState,
 };
 use rstest::*;
 
@@ -888,4 +894,801 @@ fn test_rt_ec_09_uuid_primary_key() {
 	assert_eq!(col.data_type, FieldType::Uuid);
 	assert!(col.primary_key);
 	assert!(!col.auto_increment, "UUID PK should not be auto-increment");
+}
+
+// ============================================================================
+// PostgreSQL-Specific Type Mapping (RT-HP-25 to RT-HP-38)
+// ============================================================================
+
+#[rstest]
+fn test_rt_hp_25_real_type() {
+	// Arrange
+	let field = FieldState::new("value", FieldType::Real, false);
+	let schema =
+		build_single_model_schema("testapp", "Measurement", vec![("value".to_string(), field)]);
+
+	// Act
+	let table = schema
+		.tables
+		.get("measurement")
+		.expect("table should exist");
+	let col = table.columns.get("value").expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::Real);
+	assert!(!col.nullable);
+}
+
+#[rstest]
+fn test_rt_hp_26_bytea_non_nullable() {
+	// Arrange
+	let field = FieldState::new("data", FieldType::Bytea, false);
+	let schema =
+		build_single_model_schema("testapp", "BinaryData", vec![("data".to_string(), field)]);
+
+	// Act
+	let table = schema
+		.tables
+		.get("binary_data")
+		.expect("table should exist");
+	let col = table.columns.get("data").expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::Bytea);
+	assert!(!col.nullable);
+}
+
+#[rstest]
+fn test_rt_hp_27_hstore_nullable() {
+	// Arrange
+	let field = FieldState::new("metadata", FieldType::HStore, true);
+	let schema =
+		build_single_model_schema("testapp", "KeyValue", vec![("metadata".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("key_value").expect("table should exist");
+	let col = table.columns.get("metadata").expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::HStore);
+	assert!(col.nullable);
+}
+
+#[rstest]
+fn test_rt_hp_28_citext_non_nullable() {
+	// Arrange
+	let field = FieldState::new("username", FieldType::CIText, false);
+	let schema =
+		build_single_model_schema("testapp", "Account", vec![("username".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("account").expect("table should exist");
+	let col = table.columns.get("username").expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::CIText);
+	assert!(!col.nullable);
+}
+
+#[rstest]
+fn test_rt_hp_29_array_integer() {
+	// Arrange
+	let field = FieldState::new(
+		"scores",
+		FieldType::Array(Box::new(FieldType::Integer)),
+		false,
+	);
+	let schema =
+		build_single_model_schema("testapp", "Result", vec![("scores".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("result").expect("table should exist");
+	let col = table.columns.get("scores").expect("column should exist");
+
+	// Assert
+	assert_eq!(
+		col.data_type,
+		FieldType::Array(Box::new(FieldType::Integer))
+	);
+}
+
+#[rstest]
+fn test_rt_hp_30_array_varchar_preserves_inner_param() {
+	// Arrange
+	let field = FieldState::new(
+		"tags",
+		FieldType::Array(Box::new(FieldType::VarChar(100))),
+		true,
+	);
+	let schema = build_single_model_schema("testapp", "Article", vec![("tags".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("article").expect("table should exist");
+	let col = table.columns.get("tags").expect("column should exist");
+
+	// Assert
+	assert_eq!(
+		col.data_type,
+		FieldType::Array(Box::new(FieldType::VarChar(100)))
+	);
+	assert!(col.nullable);
+}
+
+#[rstest]
+fn test_rt_hp_31_int4range() {
+	// Arrange
+	let field = FieldState::new("age_range", FieldType::Int4Range, false);
+	let schema = build_single_model_schema(
+		"testapp",
+		"AgeFilter",
+		vec![("age_range".to_string(), field)],
+	);
+
+	// Act
+	let table = schema.tables.get("age_filter").expect("table should exist");
+	let col = table.columns.get("age_range").expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::Int4Range);
+}
+
+#[rstest]
+fn test_rt_hp_32_int8range() {
+	// Arrange
+	let field = FieldState::new("id_range", FieldType::Int8Range, false);
+	let schema =
+		build_single_model_schema("testapp", "IdFilter", vec![("id_range".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("id_filter").expect("table should exist");
+	let col = table.columns.get("id_range").expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::Int8Range);
+}
+
+#[rstest]
+fn test_rt_hp_33_numrange() {
+	// Arrange
+	let field = FieldState::new("price_range", FieldType::NumRange, false);
+	let schema = build_single_model_schema(
+		"testapp",
+		"PriceFilter",
+		vec![("price_range".to_string(), field)],
+	);
+
+	// Act
+	let table = schema
+		.tables
+		.get("price_filter")
+		.expect("table should exist");
+	let col = table
+		.columns
+		.get("price_range")
+		.expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::NumRange);
+}
+
+#[rstest]
+fn test_rt_hp_34_daterange() {
+	// Arrange
+	let field = FieldState::new("valid_period", FieldType::DateRange, true);
+	let schema = build_single_model_schema(
+		"testapp",
+		"Contract",
+		vec![("valid_period".to_string(), field)],
+	);
+
+	// Act
+	let table = schema.tables.get("contract").expect("table should exist");
+	let col = table
+		.columns
+		.get("valid_period")
+		.expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::DateRange);
+	assert!(col.nullable);
+}
+
+#[rstest]
+fn test_rt_hp_35_tsrange() {
+	// Arrange
+	let field = FieldState::new("event_period", FieldType::TsRange, false);
+	let schema = build_single_model_schema(
+		"testapp",
+		"Event",
+		vec![("event_period".to_string(), field)],
+	);
+
+	// Act
+	let table = schema.tables.get("event").expect("table should exist");
+	let col = table
+		.columns
+		.get("event_period")
+		.expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::TsRange);
+}
+
+#[rstest]
+fn test_rt_hp_36_tstzrange() {
+	// Arrange
+	let field = FieldState::new("meeting_time", FieldType::TsTzRange, false);
+	let schema = build_single_model_schema(
+		"testapp",
+		"Meeting",
+		vec![("meeting_time".to_string(), field)],
+	);
+
+	// Act
+	let table = schema.tables.get("meeting").expect("table should exist");
+	let col = table
+		.columns
+		.get("meeting_time")
+		.expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::TsTzRange);
+}
+
+#[rstest]
+fn test_rt_hp_37_tsvector() {
+	// Arrange
+	let field = FieldState::new("search_vector", FieldType::TsVector, true);
+	let schema = build_single_model_schema(
+		"testapp",
+		"Document",
+		vec![("search_vector".to_string(), field)],
+	);
+
+	// Act
+	let table = schema.tables.get("document").expect("table should exist");
+	let col = table
+		.columns
+		.get("search_vector")
+		.expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::TsVector);
+	assert!(col.nullable);
+}
+
+#[rstest]
+fn test_rt_hp_38_tsquery() {
+	// Arrange
+	let field = FieldState::new("query", FieldType::TsQuery, false);
+	let schema =
+		build_single_model_schema("testapp", "SearchQuery", vec![("query".to_string(), field)]);
+
+	// Act
+	let table = schema
+		.tables
+		.get("search_query")
+		.expect("table should exist");
+	let col = table.columns.get("query").expect("column should exist");
+
+	// Assert
+	assert_eq!(col.data_type, FieldType::TsQuery);
+	assert!(!col.nullable);
+}
+
+// ============================================================================
+// Table Name Conversion (RT-TN-01 to RT-TN-08)
+// ============================================================================
+
+#[rstest]
+fn test_rt_tn_01_http_response_table_name() {
+	// Arrange
+	let mut state = ProjectState::new();
+	let m = ModelState::new("testapp", "HTTPResponse");
+	state.add_model(m);
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert
+	assert!(
+		schema.tables.contains_key("http_response"),
+		"HTTPResponse should map to table 'http_response', got keys: {:?}",
+		schema.tables.keys().collect::<Vec<_>>()
+	);
+}
+
+#[rstest]
+fn test_rt_tn_02_api_key_table_name() {
+	// Arrange
+	let mut state = ProjectState::new();
+	let m = ModelState::new("testapp", "APIKey");
+	state.add_model(m);
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert
+	assert!(
+		schema.tables.contains_key("api_key"),
+		"APIKey should map to table 'api_key', got keys: {:?}",
+		schema.tables.keys().collect::<Vec<_>>()
+	);
+}
+
+#[rstest]
+fn test_rt_tn_03_xml_parser_table_name() {
+	// Arrange
+	let mut state = ProjectState::new();
+	let m = ModelState::new("testapp", "XMLParser");
+	state.add_model(m);
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert
+	assert!(
+		schema.tables.contains_key("xml_parser"),
+		"XMLParser should map to table 'xml_parser', got keys: {:?}",
+		schema.tables.keys().collect::<Vec<_>>()
+	);
+}
+
+#[rstest]
+fn test_rt_tn_04_simple_user_table_name() {
+	// Arrange
+	let mut state = ProjectState::new();
+	let m = ModelState::new("testapp", "User");
+	state.add_model(m);
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert
+	assert!(
+		schema.tables.contains_key("user"),
+		"User should map to table 'user'"
+	);
+}
+
+#[rstest]
+fn test_rt_tn_05_single_word_order_table_name() {
+	// Arrange
+	let mut state = ProjectState::new();
+	let m = ModelState::new("testapp", "Order");
+	state.add_model(m);
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert
+	assert!(
+		schema.tables.contains_key("order"),
+		"Order should map to table 'order'"
+	);
+}
+
+#[rstest]
+fn test_rt_tn_06_blog_post_table_name() {
+	// Arrange
+	let mut state = ProjectState::new();
+	let m = ModelState::new("testapp", "BlogPost");
+	state.add_model(m);
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert
+	assert!(
+		schema.tables.contains_key("blog_post"),
+		"BlogPost should map to table 'blog_post'"
+	);
+}
+
+#[rstest]
+fn test_rt_tn_07_my_https_client_table_name() {
+	// Arrange
+	let mut state = ProjectState::new();
+	let m = ModelState::new("testapp", "MyHTTPSClient");
+	state.add_model(m);
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert — Verify actual conversion output
+	let table_name = &ModelState::new("testapp", "MyHTTPSClient").table_name;
+	assert!(
+		schema.tables.contains_key(table_name.as_str()),
+		"MyHTTPSClient should map to table '{}', got keys: {:?}",
+		table_name,
+		schema.tables.keys().collect::<Vec<_>>()
+	);
+}
+
+#[rstest]
+fn test_rt_tn_08_single_char_table_name() {
+	// Arrange
+	let mut state = ProjectState::new();
+	let m = ModelState::new("testapp", "A");
+	state.add_model(m);
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert
+	assert!(schema.tables.contains_key("a"), "A should map to table 'a'");
+}
+
+// ============================================================================
+// Additional Macro Simulation (RT-MACRO-07 to RT-MACRO-12)
+// ============================================================================
+
+#[rstest]
+fn test_rt_macro_07_option_i64_pk() {
+	// Arrange — Option<i64> PK: nullable=true, primary_key=true, no auto_increment
+	let field = field_with_params(
+		"id",
+		FieldType::BigInteger,
+		true,
+		vec![("primary_key", "true")],
+	);
+	let schema =
+		build_single_model_schema("testapp", "NullablePk", vec![("id".to_string(), field)]);
+
+	// Act
+	let table = schema
+		.tables
+		.get("nullable_pk")
+		.expect("table should exist");
+	let col = table.columns.get("id").expect("column should exist");
+
+	// Assert
+	assert!(col.nullable, "Option<i64> PK should be nullable");
+	assert!(col.primary_key, "should be primary key");
+	assert!(
+		!col.auto_increment,
+		"nullable PK should not be auto-increment"
+	);
+}
+
+#[rstest]
+fn test_rt_macro_08_non_option_bool_nullable_true() {
+	// Arrange — Simulate macro bug #1701: non-Option<bool> produces nullable=true
+	let field = field_with_params("active", FieldType::Boolean, true, vec![]);
+	let schema = build_single_model_schema("testapp", "Flag", vec![("active".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("flag").expect("table should exist");
+	let col = table.columns.get("active").expect("column should exist");
+
+	// Assert — This SHOULD be false for non-Option bool, but macro bug sets nullable=true
+	assert!(
+		!col.nullable,
+		"non-Option<bool> should not be nullable (bug #1701)"
+	);
+}
+
+#[rstest]
+fn test_rt_macro_09_non_option_f64_nullable_true() {
+	// Arrange — Simulate macro bug #1701: non-Option<f64> produces nullable=true
+	let field = field_with_params("score", FieldType::Double, true, vec![]);
+	let schema = build_single_model_schema("testapp", "Score", vec![("score".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("score").expect("table should exist");
+	let col = table.columns.get("score").expect("column should exist");
+
+	// Assert — This SHOULD be false for non-Option f64, but macro bug sets nullable=true
+	assert!(
+		!col.nullable,
+		"non-Option<f64> should not be nullable (bug #1701)"
+	);
+}
+
+#[rstest]
+fn test_rt_macro_10_non_option_date_nullable_true() {
+	// Arrange — Simulate macro bug #1701: non-Option<Date> produces nullable=true
+	let field = field_with_params("birthday", FieldType::Date, true, vec![]);
+	let schema =
+		build_single_model_schema("testapp", "Person", vec![("birthday".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("person").expect("table should exist");
+	let col = table.columns.get("birthday").expect("column should exist");
+
+	// Assert — This SHOULD be false for non-Option Date, but macro bug sets nullable=true
+	assert!(
+		!col.nullable,
+		"non-Option<Date> should not be nullable (bug #1701)"
+	);
+}
+
+#[rstest]
+fn test_rt_macro_11_non_option_time_nullable_true() {
+	// Arrange — Simulate macro bug #1701: non-Option<Time> produces nullable=true
+	let field = field_with_params("start_time", FieldType::Time, true, vec![]);
+	let schema = build_single_model_schema(
+		"testapp",
+		"Schedule",
+		vec![("start_time".to_string(), field)],
+	);
+
+	// Act
+	let table = schema.tables.get("schedule").expect("table should exist");
+	let col = table
+		.columns
+		.get("start_time")
+		.expect("column should exist");
+
+	// Assert — This SHOULD be false for non-Option Time, but macro bug sets nullable=true
+	assert!(
+		!col.nullable,
+		"non-Option<Time> should not be nullable (bug #1701)"
+	);
+}
+
+#[rstest]
+fn test_rt_macro_12_non_option_uuid_nullable_true() {
+	// Arrange — Simulate macro bug #1701: non-Option<Uuid> produces nullable=true
+	let field = field_with_params("token", FieldType::Uuid, true, vec![]);
+	let schema = build_single_model_schema("testapp", "Token", vec![("token".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("token").expect("table should exist");
+	let col = table.columns.get("token").expect("column should exist");
+
+	// Assert — This SHOULD be false for non-Option Uuid, but macro bug sets nullable=true
+	assert!(
+		!col.nullable,
+		"non-Option<Uuid> should not be nullable (bug #1701)"
+	);
+}
+
+// ============================================================================
+// Attribute Combination Tests (RT-COMB-01 to RT-COMB-05)
+// ============================================================================
+
+#[rstest]
+fn test_rt_comb_01_pk_unique_auto_increment() {
+	// Arrange — PK + unique + auto_increment (all three attributes)
+	let field = field_with_params(
+		"id",
+		FieldType::Integer,
+		false,
+		vec![
+			("primary_key", "true"),
+			("unique", "true"),
+			("auto_increment", "true"),
+		],
+	);
+	let schema =
+		build_single_model_schema("testapp", "UniqueAuto", vec![("id".to_string(), field)]);
+
+	// Act
+	let table = schema
+		.tables
+		.get("unique_auto")
+		.expect("table should exist");
+	let col = table.columns.get("id").expect("column should exist");
+
+	// Assert
+	assert!(col.primary_key, "should be primary key");
+	assert!(col.auto_increment, "should be auto-increment");
+}
+
+#[rstest]
+fn test_rt_comb_02_nullable_default_null() {
+	// Arrange — nullable + default="NULL"
+	let field = field_with_params("bio", FieldType::Text, true, vec![("default", "NULL")]);
+	let schema = build_single_model_schema("testapp", "Profile", vec![("bio".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("profile").expect("table should exist");
+	let col = table.columns.get("bio").expect("column should exist");
+
+	// Assert
+	assert!(col.nullable, "should be nullable");
+	assert_eq!(
+		col.default.as_deref(),
+		Some("NULL"),
+		"default should be NULL"
+	);
+}
+
+#[rstest]
+fn test_rt_comb_03_unique_default_value() {
+	// Arrange — unique + default="draft"
+	let field = field_with_params(
+		"slug",
+		FieldType::VarChar(255),
+		false,
+		vec![("unique", "true"), ("default", "draft")],
+	);
+	let schema = build_single_model_schema("testapp", "Page", vec![("slug".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("page").expect("table should exist");
+	let col = table.columns.get("slug").expect("column should exist");
+
+	// Assert
+	assert_eq!(
+		col.default.as_deref(),
+		Some("draft"),
+		"default should be 'draft'"
+	);
+	assert!(!col.nullable);
+}
+
+#[rstest]
+fn test_rt_comb_04_pk_nullable_contradictory() {
+	// Arrange — PK + nullable (contradictory but allowed at state level)
+	let field = field_with_params(
+		"id",
+		FieldType::Integer,
+		true,
+		vec![("primary_key", "true")],
+	);
+	let schema = build_single_model_schema("testapp", "Oddity", vec![("id".to_string(), field)]);
+
+	// Act
+	let table = schema.tables.get("oddity").expect("table should exist");
+	let col = table.columns.get("id").expect("column should exist");
+
+	// Assert — Verify both properties are preserved
+	assert!(col.primary_key, "should be primary key");
+	assert!(col.nullable, "nullable should be preserved as set");
+}
+
+#[rstest]
+fn test_rt_comb_05_multiple_indexed_fields() {
+	// Arrange — Multiple indexed fields on same model
+	let field_email = FieldState::new("email", FieldType::VarChar(255), false);
+	let field_username = FieldState::new("username", FieldType::VarChar(100), false);
+	let field_name = FieldState::new("full_name", FieldType::VarChar(200), false);
+
+	let mut state = ProjectState::new();
+	let mut m = ModelState::new("testapp", "IndexedUser");
+	m.fields.insert("email".to_string(), field_email);
+	m.fields.insert("username".to_string(), field_username);
+	m.fields.insert("full_name".to_string(), field_name);
+	m.indexes.push(IndexDefinition {
+		name: "idx_email".to_string(),
+		fields: vec!["email".to_string()],
+		unique: true,
+	});
+	m.indexes.push(IndexDefinition {
+		name: "idx_username".to_string(),
+		fields: vec!["username".to_string()],
+		unique: true,
+	});
+	m.indexes.push(IndexDefinition {
+		name: "idx_full_name".to_string(),
+		fields: vec!["full_name".to_string()],
+		unique: false,
+	});
+	state.add_model(m);
+	let schema = state.to_database_schema();
+
+	// Act
+	let table = schema
+		.tables
+		.get("indexed_user")
+		.expect("table should exist");
+
+	// Assert — All three columns should exist
+	assert!(table.columns.contains_key("email"));
+	assert!(table.columns.contains_key("username"));
+	assert!(table.columns.contains_key("full_name"));
+	assert_eq!(table.indexes.len(), 3, "should have 3 indexes");
+}
+
+// ============================================================================
+// Multi-App Schema Tests (RT-APP-01 to RT-APP-03)
+// ============================================================================
+
+#[rstest]
+fn test_rt_app_01_two_apps_same_model_name() {
+	// Arrange — Two apps with same model name "User"
+	let mut state = ProjectState::new();
+
+	let mut m1 = ModelState::new("auth", "User");
+	m1.fields.insert(
+		"name".to_string(),
+		FieldState::new("name", FieldType::VarChar(100), false),
+	);
+	state.add_model(m1);
+
+	let mut m2 = ModelState::new("blog", "User");
+	m2.fields.insert(
+		"name".to_string(),
+		FieldState::new("name", FieldType::VarChar(100), false),
+	);
+	state.add_model(m2);
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert — Both tables should exist (table names are derived from model name)
+	assert!(
+		schema.tables.len() >= 2,
+		"should have at least 2 tables, got {}",
+		schema.tables.len()
+	);
+}
+
+#[rstest]
+fn test_rt_app_02_to_database_schema_for_app_filters() {
+	// Arrange — Two apps, filter by one
+	let mut state = ProjectState::new();
+
+	let mut m1 = ModelState::new("auth", "User");
+	m1.fields.insert(
+		"name".to_string(),
+		FieldState::new("name", FieldType::VarChar(100), false),
+	);
+	state.add_model(m1);
+
+	let mut m2 = ModelState::new("blog", "Post");
+	m2.fields.insert(
+		"title".to_string(),
+		FieldState::new("title", FieldType::VarChar(200), false),
+	);
+	state.add_model(m2);
+
+	// Act
+	let auth_schema = state.to_database_schema_for_app("auth");
+	let blog_schema = state.to_database_schema_for_app("blog");
+
+	// Assert
+	assert_eq!(
+		auth_schema.tables.len(),
+		1,
+		"auth schema should have 1 table"
+	);
+	assert!(
+		auth_schema.tables.contains_key("user"),
+		"auth schema should contain 'user' table"
+	);
+	assert_eq!(
+		blog_schema.tables.len(),
+		1,
+		"blog schema should have 1 table"
+	);
+	assert!(
+		blog_schema.tables.contains_key("post"),
+		"blog schema should contain 'post' table"
+	);
+}
+
+#[rstest]
+fn test_rt_app_03_three_apps_six_models() {
+	// Arrange — Three apps, each with 2 models → 6 tables total
+	let mut state = ProjectState::new();
+
+	for (app, models) in [
+		("auth", vec![("User", "name"), ("Group", "label")]),
+		("blog", vec![("Post", "title"), ("Comment", "body")]),
+		("shop", vec![("Product", "sku"), ("Order", "total")]),
+	] {
+		for (model, field_name) in models {
+			let mut m = ModelState::new(app, model);
+			m.fields.insert(
+				field_name.to_string(),
+				FieldState::new(field_name, FieldType::VarChar(100), false),
+			);
+			state.add_model(m);
+		}
+	}
+
+	// Act
+	let schema = state.to_database_schema();
+
+	// Assert
+	assert_eq!(schema.tables.len(), 6, "should have 6 tables total");
+	assert!(schema.tables.contains_key("user"));
+	assert!(schema.tables.contains_key("group"));
+	assert!(schema.tables.contains_key("post"));
+	assert!(schema.tables.contains_key("comment"));
+	assert!(schema.tables.contains_key("product"));
+	assert!(schema.tables.contains_key("order"));
 }

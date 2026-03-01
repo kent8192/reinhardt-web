@@ -5,9 +5,9 @@
 //! defaults, constraints) match the intended schema definition.
 //!
 //! **Test Coverage:**
-//! - Happy path: 12 scenarios (SV-HP-01 to SV-HP-12)
-//! - Error path: 5 scenarios (SV-EP-01 to SV-EP-05)
-//! - Edge cases: 5 scenarios (SV-EC-01 to SV-EC-05)
+//! - Happy path: 22 scenarios (SV-HP-01 to SV-HP-22)
+//! - Error path: 8 scenarios (SV-EP-01 to SV-EP-08)
+//! - Edge cases: 10 scenarios (SV-EC-01 to SV-EC-10)
 //!
 //! **Fixtures Used:**
 //! - `postgres_table_creator`: PostgreSQL schema management helper
@@ -1120,4 +1120,885 @@ async fn test_sv_ec_05_nullable_pk(#[future] postgres_table_creator: PostgresTab
 		is_nullable, "NO",
 		"PostgreSQL PK columns are always NOT NULL regardless of definition"
 	);
+}
+
+// ============================================================================
+// Schema Verification Extension (SV-HP-13 to SV-HP-22)
+// ============================================================================
+
+/// SV-HP-13: Text NOT NULL maps to data_type='text' and is_nullable='NO'
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_13_text_not_null(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp13_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col("content", FieldType::Text, true, false, false, false, None),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT data_type, is_nullable \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp13_table' AND column_name = 'content'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("data_type"), "text");
+	assert_eq!(row.get::<String, _>("is_nullable"), "NO");
+}
+
+/// SV-HP-14: Date type maps to data_type='date'
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_14_date_type(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp14_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"birth_date",
+				FieldType::Date,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT data_type \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp14_table' AND column_name = 'birth_date'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("data_type"), "date");
+}
+
+/// SV-HP-15: Time type maps to data_type='time without time zone'
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_15_time_type(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp15_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"start_time",
+				FieldType::Time,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT data_type \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp15_table' AND column_name = 'start_time'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("data_type"), "time without time zone");
+}
+
+/// SV-HP-16: SmallInteger maps to data_type='smallint'
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_16_small_integer(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp16_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"small_val",
+				FieldType::SmallInteger,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT data_type \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp16_table' AND column_name = 'small_val'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("data_type"), "smallint");
+}
+
+/// SV-HP-17: Decimal(10,2) maps to data_type='numeric' with precision=10 and scale=2
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_17_decimal(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp17_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"price",
+				FieldType::Decimal {
+					precision: 10,
+					scale: 2,
+				},
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT data_type, numeric_precision, numeric_scale \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp17_table' AND column_name = 'price'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("data_type"), "numeric");
+	assert_eq!(row.get::<i32, _>("numeric_precision"), 10);
+	assert_eq!(row.get::<i32, _>("numeric_scale"), 2);
+}
+
+/// SV-HP-18: Json type maps to data_type='json'
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_18_json(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp18_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"metadata",
+				FieldType::Json,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT data_type \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp18_table' AND column_name = 'metadata'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("data_type"), "json");
+}
+
+/// SV-HP-19: JsonBinary (JSONB) maps to data_type='jsonb'
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_19_jsonb(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp19_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"data",
+				FieldType::JsonBinary,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT data_type \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp19_table' AND column_name = 'data'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("data_type"), "jsonb");
+}
+
+/// SV-HP-20: Char(5) maps to data_type='character' with character_maximum_length=5
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_20_char_fixed(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp20_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col("code", FieldType::Char(5), false, false, false, false, None),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT data_type, character_maximum_length \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp20_table' AND column_name = 'code'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("data_type"), "character");
+	assert_eq!(row.get::<i32, _>("character_maximum_length"), 5);
+}
+
+/// SV-HP-21: Integer with default value 42 has column_default containing '42'
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_21_integer_default(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp21_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"quantity",
+				FieldType::Integer,
+				false,
+				false,
+				false,
+				false,
+				Some("42"),
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT column_default \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp21_table' AND column_name = 'quantity'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	let column_default: String = row.get("column_default");
+	assert!(
+		column_default.contains("42"),
+		"column_default should contain '42', got: {column_default}"
+	);
+}
+
+/// SV-HP-22: Multiple columns with defaults in the same table
+/// (Boolean false, Integer 0, VarChar "draft")
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_hp_22_multiple_defaults(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_hp22_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"is_active",
+				FieldType::Boolean,
+				false,
+				false,
+				false,
+				false,
+				Some("false"),
+			),
+			col(
+				"counter",
+				FieldType::Integer,
+				false,
+				false,
+				false,
+				false,
+				Some("0"),
+			),
+			col(
+				"status",
+				FieldType::VarChar(50),
+				false,
+				false,
+				false,
+				false,
+				Some("'draft'"),
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let rows = sqlx::query(
+		"SELECT column_name, column_default \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_hp22_table' AND column_name IN ('is_active', 'counter', 'status') \
+		 ORDER BY column_name",
+	)
+	.fetch_all(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(rows.len(), 3);
+	for row in &rows {
+		let col_name: String = row.get("column_name");
+		let col_default: String = row.get("column_default");
+		match col_name.as_str() {
+			"counter" => assert!(
+				col_default.contains("0"),
+				"counter default should contain '0', got: {col_default}"
+			),
+			"is_active" => assert!(
+				col_default.contains("false"),
+				"is_active default should contain 'false', got: {col_default}"
+			),
+			"status" => assert!(
+				col_default.contains("draft"),
+				"status default should contain 'draft', got: {col_default}"
+			),
+			_ => panic!("Unexpected column: {col_name}"),
+		}
+	}
+}
+
+// ============================================================================
+// Schema Error Extension (SV-EP-06 to SV-EP-08)
+// ============================================================================
+
+/// SV-EP-06: INSERT negative value into unsigned-like check constraint
+/// PostgreSQL does not have native unsigned types, so this tests a CHECK constraint
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_ep_06_negative_into_unsigned_check(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_ep06_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"positive_val",
+				FieldType::Integer,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Add a CHECK constraint manually to simulate unsigned behavior
+	let pool = creator.pool();
+	sqlx::query("ALTER TABLE sv_ep06_table ADD CONSTRAINT chk_positive CHECK (positive_val >= 0)")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Act
+	let result = sqlx::query("INSERT INTO sv_ep06_table (positive_val) VALUES (-1)")
+		.execute(pool.as_ref())
+		.await;
+
+	// Assert
+	assert!(
+		result.is_err(),
+		"INSERT of negative value should fail with CHECK constraint"
+	);
+}
+
+/// SV-EP-07: INSERT oversized decimal (12345678901.12 into Decimal(10,2))
+/// Value exceeds precision, PostgreSQL should reject it
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_ep_07_oversized_decimal(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_ep07_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"amount",
+				FieldType::Decimal {
+					precision: 10,
+					scale: 2,
+				},
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let result = sqlx::query("INSERT INTO sv_ep07_table (amount) VALUES (12345678901.12)")
+		.execute(pool.as_ref())
+		.await;
+
+	// Assert
+	assert!(
+		result.is_err(),
+		"INSERT of value exceeding numeric(10,2) precision should fail"
+	);
+}
+
+/// SV-EP-08: INSERT empty string into NOT NULL VarChar should succeed
+/// Empty string is not NULL in PostgreSQL
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_ep_08_empty_string_not_null_varchar(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_ep08_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"name",
+				FieldType::VarChar(100),
+				true,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let result = sqlx::query("INSERT INTO sv_ep08_table (name) VALUES ('')")
+		.execute(pool.as_ref())
+		.await;
+
+	// Assert
+	assert!(
+		result.is_ok(),
+		"INSERT of empty string into NOT NULL VarChar should succeed (empty != NULL)"
+	);
+}
+
+// ============================================================================
+// Schema Edge Cases Extension (SV-EC-06 to SV-EC-10)
+// ============================================================================
+
+/// SV-EC-06: DateTime vs TimestampTz in same table produce different data_type values
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_ec_06_datetime_vs_timestamptz(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_ec06_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"created_at",
+				FieldType::DateTime,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"updated_at",
+				FieldType::TimestampTz,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let rows = sqlx::query(
+		"SELECT column_name, data_type \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_ec06_table' AND column_name IN ('created_at', 'updated_at') \
+		 ORDER BY column_name",
+	)
+	.fetch_all(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(rows.len(), 2);
+	let created_type: String = rows[0].get("data_type");
+	let updated_type: String = rows[1].get("data_type");
+	assert_ne!(
+		created_type, updated_type,
+		"DateTime and TimestampTz should map to different data_type values"
+	);
+	// DateTime -> timestamp without time zone, TimestampTz -> timestamp with time zone
+	assert_eq!(created_type, "timestamp without time zone");
+	assert_eq!(updated_type, "timestamp with time zone");
+}
+
+/// SV-EC-07: Table with 10 different column types, all correctly mapped
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_ec_07_ten_column_types(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_ec07_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"col_bigint",
+				FieldType::BigInteger,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"col_smallint",
+				FieldType::SmallInteger,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"col_text",
+				FieldType::Text,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"col_varchar",
+				FieldType::VarChar(255),
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"col_bool",
+				FieldType::Boolean,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"col_date",
+				FieldType::Date,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"col_time",
+				FieldType::Time,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"col_json",
+				FieldType::Json,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"col_jsonb",
+				FieldType::JsonBinary,
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+			col(
+				"col_decimal",
+				FieldType::Decimal {
+					precision: 8,
+					scale: 3,
+				},
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let rows = sqlx::query(
+		"SELECT column_name, data_type \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_ec07_table' AND column_name != 'id' \
+		 ORDER BY column_name",
+	)
+	.fetch_all(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(rows.len(), 10, "Should have 10 non-id columns");
+	let expected: Vec<(&str, &str)> = vec![
+		("col_bigint", "bigint"),
+		("col_bool", "boolean"),
+		("col_date", "date"),
+		("col_decimal", "numeric"),
+		("col_json", "json"),
+		("col_jsonb", "jsonb"),
+		("col_smallint", "smallint"),
+		("col_text", "text"),
+		("col_time", "time without time zone"),
+		("col_varchar", "character varying"),
+	];
+	for (row, (exp_name, exp_type)) in rows.iter().zip(expected.iter()) {
+		let col_name: String = row.get("column_name");
+		let data_type: String = row.get("data_type");
+		assert_eq!(col_name, *exp_name, "Column name mismatch");
+		assert_eq!(
+			data_type, *exp_type,
+			"Data type mismatch for column {col_name}"
+		);
+	}
+}
+
+/// SV-EC-08: SmallInteger with auto_increment creates a sequence (smallserial)
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_ec_08_smallint_auto_increment(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_ec08_table",
+		vec![col(
+			"id",
+			FieldType::SmallInteger,
+			true,
+			false,
+			true,
+			true,
+			None,
+		)],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT column_default \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_ec08_table' AND column_name = 'id'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	// auto_increment on SmallInteger should create a sequence-backed default
+	let column_default: String = row.get("column_default");
+	assert!(
+		column_default.contains("nextval"),
+		"SmallInteger auto_increment should have nextval sequence default, got: {column_default}"
+	);
+}
+
+/// SV-EC-09: VarChar(1) minimum length maps to character_maximum_length=1
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_ec_09_varchar_min_length(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_ec09_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col(
+				"flag",
+				FieldType::VarChar(1),
+				false,
+				false,
+				false,
+				false,
+				None,
+			),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT character_maximum_length \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_ec09_table' AND column_name = 'flag'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<i32, _>("character_maximum_length"), 1);
+}
+
+/// SV-EC-10: Text type with nullable (not_null=false) has is_nullable='YES'
+#[rstest]
+#[tokio::test]
+#[serial(schema_verify)]
+async fn test_sv_ec_10_text_nullable(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = create_table(
+		"sv_ec10_table",
+		vec![
+			col("id", FieldType::Integer, true, false, true, true, None),
+			col("notes", FieldType::Text, false, false, false, false, None),
+		],
+	);
+	creator.apply(schema).await.unwrap();
+
+	// Act
+	let pool = creator.pool();
+	let row = sqlx::query(
+		"SELECT is_nullable \
+		 FROM information_schema.columns \
+		 WHERE table_name = 'sv_ec10_table' AND column_name = 'notes'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("is_nullable"), "YES");
 }

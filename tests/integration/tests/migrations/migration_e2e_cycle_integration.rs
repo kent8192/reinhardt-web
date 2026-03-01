@@ -810,3 +810,722 @@ async fn test_e2e_ec05_delete_and_reinsert(#[future] postgres_table_creator: Pos
 	assert_eq!(id, 2);
 	assert_eq!(row.get::<String, _>("value"), "second");
 }
+
+// ============================================================================
+// Helper functions for extension tests
+// ============================================================================
+
+/// Create a nullable column definition
+fn col_nullable(name: &str, type_def: FieldType) -> ColumnDefinition {
+	ColumnDefinition {
+		name: name.to_string(),
+		type_definition: type_def,
+		not_null: false,
+		unique: false,
+		primary_key: false,
+		auto_increment: false,
+		default: None,
+	}
+}
+
+/// Create a column definition with a default value
+fn col_default(name: &str, type_def: FieldType, default: &str) -> ColumnDefinition {
+	ColumnDefinition {
+		name: name.to_string(),
+		type_definition: type_def,
+		not_null: false,
+		unique: false,
+		primary_key: false,
+		auto_increment: false,
+		default: Some(default.to_string()),
+	}
+}
+
+/// Create a unique NOT NULL column definition
+fn col_unique(name: &str, type_def: FieldType) -> ColumnDefinition {
+	ColumnDefinition {
+		name: name.to_string(),
+		type_definition: type_def,
+		not_null: true,
+		unique: true,
+		primary_key: false,
+		auto_increment: false,
+		default: None,
+	}
+}
+
+// ============================================================================
+// E2E Cycle Extension (E2E-HP-11 to E2E-HP-20)
+// ============================================================================
+
+/// E2E-HP-11: Decimal(10,2) INSERT and SELECT roundtrip
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp11_decimal_roundtrip(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp11_table",
+		vec![
+			col_pk_auto("id"),
+			col_nn(
+				"price",
+				FieldType::Decimal {
+					precision: 10,
+					scale: 2,
+				},
+			),
+		],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act
+	sqlx::query("INSERT INTO e2e_hp11_table (price) VALUES ($1::numeric)")
+		.bind("123.45")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query("SELECT price::text as price FROM e2e_hp11_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	let price: String = row.get("price");
+	assert_eq!(price, "123.45");
+}
+
+/// E2E-HP-12: Text type INSERT large text and SELECT roundtrip
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp12_large_text_roundtrip(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp12_table",
+		vec![col_pk_auto("id"), col_nn("content", FieldType::Text)],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+	let large_text = "a".repeat(1000);
+
+	// Act
+	sqlx::query("INSERT INTO e2e_hp12_table (content) VALUES ($1)")
+		.bind(&large_text)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query("SELECT content FROM e2e_hp12_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	let content: String = row.get("content");
+	assert_eq!(content.len(), 1000);
+	assert_eq!(content, large_text);
+}
+
+/// E2E-HP-13: SmallInteger INSERT and SELECT roundtrip
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp13_smallinteger_roundtrip(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp13_table",
+		vec![
+			col_pk_auto("id"),
+			col_nn("small_val", FieldType::SmallInteger),
+		],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act
+	sqlx::query("INSERT INTO e2e_hp13_table (small_val) VALUES ($1)")
+		.bind(32000_i16)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query("SELECT small_val FROM e2e_hp13_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	let val: i16 = row.get("small_val");
+	assert_eq!(val, 32000);
+}
+
+/// E2E-HP-14: Date INSERT and SELECT roundtrip
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp14_date_roundtrip(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp14_table",
+		vec![col_pk_auto("id"), col_nn("birth_date", FieldType::Date)],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act
+	sqlx::query("INSERT INTO e2e_hp14_table (birth_date) VALUES ($1::date)")
+		.bind("2026-03-02")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query("SELECT birth_date::text as birth_date FROM e2e_hp14_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	let date: String = row.get("birth_date");
+	assert_eq!(date, "2026-03-02");
+}
+
+/// E2E-HP-15: Time INSERT and SELECT roundtrip
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp15_time_roundtrip(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp15_table",
+		vec![col_pk_auto("id"), col_nn("event_time", FieldType::Time)],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act
+	sqlx::query("INSERT INTO e2e_hp15_table (event_time) VALUES ($1::time)")
+		.bind("14:30:00")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query("SELECT event_time::text as event_time FROM e2e_hp15_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	let time: String = row.get("event_time");
+	assert_eq!(time, "14:30:00");
+}
+
+/// E2E-HP-16: Boolean INSERT true/false and SELECT roundtrip
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp16_boolean_roundtrip(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp16_table",
+		vec![col_pk_auto("id"), col_nn("flag", FieldType::Boolean)],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act
+	sqlx::query("INSERT INTO e2e_hp16_table (flag) VALUES ($1)")
+		.bind(true)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	sqlx::query("INSERT INTO e2e_hp16_table (flag) VALUES ($1)")
+		.bind(false)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let rows = sqlx::query("SELECT flag FROM e2e_hp16_table ORDER BY id")
+		.fetch_all(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(rows.len(), 2);
+	assert_eq!(rows[0].get::<bool, _>("flag"), true);
+	assert_eq!(rows[1].get::<bool, _>("flag"), false);
+}
+
+/// E2E-HP-17: Multiple nullable columns with mixed NULL and non-NULL values
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp17_nullable_columns(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp17_table",
+		vec![
+			col_pk_auto("id"),
+			col_nullable("name", FieldType::VarChar(100)),
+			col_nullable("age", FieldType::Integer),
+			col_nullable("email", FieldType::VarChar(200)),
+		],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act - insert with some NULL values
+	sqlx::query("INSERT INTO e2e_hp17_table (name, age, email) VALUES ($1, $2, $3)")
+		.bind("Alice")
+		.bind(None::<i32>)
+		.bind("alice@example.com")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query("SELECT name, age, email FROM e2e_hp17_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(
+		row.get::<Option<String>, _>("name"),
+		Some("Alice".to_string())
+	);
+	assert_eq!(row.get::<Option<i32>, _>("age"), None);
+	assert_eq!(
+		row.get::<Option<String>, _>("email"),
+		Some("alice@example.com".to_string())
+	);
+}
+
+/// E2E-HP-18: Default values for multiple types applied when columns omitted
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp18_default_values(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp18_table",
+		vec![
+			col_pk_auto("id"),
+			col_nn("name", FieldType::VarChar(100)),
+			col_default("status", FieldType::VarChar(20), "'active'"),
+			col_default("score", FieldType::Integer, "0"),
+			col_default("verified", FieldType::Boolean, "false"),
+		],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act - insert without default columns
+	sqlx::query("INSERT INTO e2e_hp18_table (name) VALUES ($1)")
+		.bind("Bob")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query("SELECT name, status, score, verified FROM e2e_hp18_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("name"), "Bob");
+	assert_eq!(row.get::<String, _>("status"), "active");
+	assert_eq!(row.get::<i32, _>("score"), 0);
+	assert_eq!(row.get::<bool, _>("verified"), false);
+}
+
+/// E2E-HP-19: Unique constraint with INSERT then UPDATE preserving uniqueness
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp19_unique_update(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp19_table",
+		vec![
+			col_pk_auto("id"),
+			col_unique("code", FieldType::VarChar(50)),
+		],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act - insert and then update the unique column
+	sqlx::query("INSERT INTO e2e_hp19_table (code) VALUES ($1)")
+		.bind("ABC")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	sqlx::query("UPDATE e2e_hp19_table SET code = $1 WHERE code = $2")
+		.bind("XYZ")
+		.bind("ABC")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query("SELECT code FROM e2e_hp19_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("code"), "XYZ");
+}
+
+/// E2E-HP-20: INSERT row with all supported basic types at once
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_hp20_all_basic_types(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_hp20_table",
+		vec![
+			col_pk_auto("id"),
+			col_nn("int_col", FieldType::Integer),
+			col_nn("varchar_col", FieldType::VarChar(100)),
+			col_nn("bool_col", FieldType::Boolean),
+			col_nn("float_col", FieldType::Float),
+			col_nn("double_col", FieldType::Double),
+			col_nn("date_col", FieldType::Date),
+			col_nn("tstz_col", FieldType::TimestampTz),
+		],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act
+	sqlx::query(
+		"INSERT INTO e2e_hp20_table (int_col, varchar_col, bool_col, float_col, double_col, date_col, tstz_col) \
+		 VALUES ($1, $2, $3, $4, $5, $6::date, $7::timestamptz)"
+	)
+		.bind(42_i32)
+		.bind("hello")
+		.bind(true)
+		.bind(3.14_f32)
+		.bind(2.71828_f64)
+		.bind("2026-03-02")
+		.bind("2026-03-02T14:30:00+00:00")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query(
+		"SELECT int_col, varchar_col, bool_col, float_col, double_col, \
+		 date_col::text as date_col, tstz_col::text as tstz_col FROM e2e_hp20_table",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<i32, _>("int_col"), 42);
+	assert_eq!(row.get::<String, _>("varchar_col"), "hello");
+	assert_eq!(row.get::<bool, _>("bool_col"), true);
+	assert_eq!(row.get::<f32, _>("float_col"), 3.14_f32);
+	assert_eq!(row.get::<f64, _>("double_col"), 2.71828_f64);
+	assert_eq!(row.get::<String, _>("date_col"), "2026-03-02");
+	// TimestampTz text representation includes timezone
+	let tstz: String = row.get("tstz_col");
+	assert!(tstz.starts_with("2026-03-02"));
+}
+
+// ============================================================================
+// E2E Error Extension (E2E-EP-06 to E2E-EP-08)
+// ============================================================================
+
+/// E2E-EP-06: UPDATE to violate unique constraint returns error
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_ep06_update_unique_violation(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_ep06_table",
+		vec![
+			col_pk_auto("id"),
+			col_unique("code", FieldType::VarChar(50)),
+		],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	sqlx::query("INSERT INTO e2e_ep06_table (code) VALUES ($1)")
+		.bind("AAA")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	sqlx::query("INSERT INTO e2e_ep06_table (code) VALUES ($1)")
+		.bind("BBB")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Act - update second row to conflict with first row
+	let result = sqlx::query("UPDATE e2e_ep06_table SET code = $1 WHERE code = $2")
+		.bind("AAA")
+		.bind("BBB")
+		.execute(pool.as_ref())
+		.await;
+
+	// Assert
+	assert!(result.is_err());
+}
+
+/// E2E-EP-07: INSERT SmallInteger overflow value returns error
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_ep07_smallinteger_overflow(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_ep07_table",
+		vec![
+			col_pk_auto("id"),
+			col_nn("small_val", FieldType::SmallInteger),
+		],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act - 40000 exceeds SmallInteger max (32767)
+	let result = sqlx::query("INSERT INTO e2e_ep07_table (small_val) VALUES ($1::smallint)")
+		.bind(40000_i32)
+		.execute(pool.as_ref())
+		.await;
+
+	// Assert
+	assert!(result.is_err());
+}
+
+/// E2E-EP-08: DELETE non-existent row succeeds with 0 rows affected
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_ep08_delete_nonexistent_row(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_ep08_table",
+		vec![col_pk_auto("id"), col_nn("name", FieldType::VarChar(50))],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act - delete from empty table
+	let result = sqlx::query("DELETE FROM e2e_ep08_table WHERE id = $1")
+		.bind(999_i32)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(result.rows_affected(), 0);
+}
+
+// ============================================================================
+// E2E Edge Cases (E2E-EC-06 to E2E-EC-10)
+// ============================================================================
+
+/// E2E-EC-06: INSERT 100 rows and verify COUNT
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_ec06_bulk_insert_count(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_ec06_table",
+		vec![col_pk_auto("id"), col_nn("value", FieldType::Integer)],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act
+	for i in 0..100 {
+		sqlx::query("INSERT INTO e2e_ec06_table (value) VALUES ($1)")
+			.bind(i)
+			.execute(pool.as_ref())
+			.await
+			.unwrap();
+	}
+	let row = sqlx::query("SELECT COUNT(*) as cnt FROM e2e_ec06_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	let count: i64 = row.get("cnt");
+	assert_eq!(count, 100);
+}
+
+/// E2E-EC-07: INSERT then UPDATE all rows and verify
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_ec07_update_all_rows(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_ec07_table",
+		vec![col_pk_auto("id"), col_nn("status", FieldType::VarChar(20))],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	for _ in 0..5 {
+		sqlx::query("INSERT INTO e2e_ec07_table (status) VALUES ($1)")
+			.bind("pending")
+			.execute(pool.as_ref())
+			.await
+			.unwrap();
+	}
+
+	// Act - update all rows
+	sqlx::query("UPDATE e2e_ec07_table SET status = $1")
+		.bind("done")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let rows = sqlx::query("SELECT status FROM e2e_ec07_table")
+		.fetch_all(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(rows.len(), 5);
+	for row in &rows {
+		assert_eq!(row.get::<String, _>("status"), "done");
+	}
+}
+
+/// E2E-EC-08: Empty string INSERT into VarChar roundtrip
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_ec08_empty_string_roundtrip(
+	#[future] postgres_table_creator: PostgresTableCreator,
+) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_ec08_table",
+		vec![col_pk_auto("id"), col_nn("name", FieldType::VarChar(100))],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act
+	sqlx::query("INSERT INTO e2e_ec08_table (name) VALUES ($1)")
+		.bind("")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let row = sqlx::query("SELECT name FROM e2e_ec08_table")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(row.get::<String, _>("name"), "");
+}
+
+/// E2E-EC-09: Integer MIN and MAX value roundtrip
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_ec09_integer_min_max(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![create_table(
+		"e2e_ec09_table",
+		vec![col_pk_auto("id"), col_nn("value", FieldType::Integer)],
+	)];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act
+	sqlx::query("INSERT INTO e2e_ec09_table (value) VALUES ($1)")
+		.bind(i32::MIN)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	sqlx::query("INSERT INTO e2e_ec09_table (value) VALUES ($1)")
+		.bind(i32::MAX)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	let rows = sqlx::query("SELECT value FROM e2e_ec09_table ORDER BY id")
+		.fetch_all(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(rows.len(), 2);
+	assert_eq!(rows[0].get::<i32, _>("value"), i32::MIN);
+	assert_eq!(rows[1].get::<i32, _>("value"), i32::MAX);
+}
+
+/// E2E-EC-10: Multiple tables in same schema with independent INSERT/SELECT
+#[rstest]
+#[serial(e2e_cycle)]
+#[tokio::test]
+async fn test_e2e_ec10_multiple_tables(#[future] postgres_table_creator: PostgresTableCreator) {
+	// Arrange
+	let mut creator = postgres_table_creator.await;
+	let schema = vec![
+		create_table(
+			"e2e_ec10_alpha",
+			vec![col_pk_auto("id"), col_nn("name", FieldType::VarChar(50))],
+		),
+		create_table(
+			"e2e_ec10_beta",
+			vec![col_pk_auto("id"), col_nn("value", FieldType::Integer)],
+		),
+	];
+	creator.apply(schema).await.unwrap();
+	let pool = creator.pool();
+
+	// Act - insert into both tables independently
+	sqlx::query("INSERT INTO e2e_ec10_alpha (name) VALUES ($1)")
+		.bind("alpha_row")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	sqlx::query("INSERT INTO e2e_ec10_beta (value) VALUES ($1)")
+		.bind(999_i32)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+
+	let alpha_row = sqlx::query("SELECT name FROM e2e_ec10_alpha")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+	let beta_row = sqlx::query("SELECT value FROM e2e_ec10_beta")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(alpha_row.get::<String, _>("name"), "alpha_row");
+	assert_eq!(beta_row.get::<i32, _>("value"), 999);
+}
