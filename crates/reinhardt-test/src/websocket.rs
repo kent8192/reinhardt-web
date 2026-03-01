@@ -386,13 +386,13 @@ mod tests {
 		assert_message_text(&text_msg, "Hello");
 		assert_message_contains(&text_msg, "ell");
 
-		let binary_msg = Message::Binary(vec![1, 2, 3]);
+		let binary_msg = Message::Binary(vec![1, 2, 3].into());
 		assert_message_binary(&binary_msg, &[1, 2, 3]);
 
-		let ping_msg = Message::Ping(vec![]);
+		let ping_msg = Message::Ping(vec![].into());
 		assert_message_ping(&ping_msg);
 
-		let pong_msg = Message::Pong(vec![]);
+		let pong_msg = Message::Pong(vec![].into());
 		assert_message_pong(&pong_msg);
 	}
 }
