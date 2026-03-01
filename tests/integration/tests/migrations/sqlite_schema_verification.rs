@@ -16,7 +16,6 @@ use reinhardt_db::migrations::{
 	operations::Operation,
 };
 use rstest::*;
-use sqlx::Row;
 use std::sync::Arc;
 
 // ============================================================================
@@ -86,7 +85,7 @@ async fn sqlite_conn() -> (Arc<DatabaseConnection>, DatabaseMigrationExecutor) {
 /// Apply a migration using the executor
 async fn apply_migration(executor: &mut DatabaseMigrationExecutor, operations: Vec<Operation>) {
 	let migration = create_test_migration("ssv_test", "0001_initial", operations);
-	executor.apply_migration(&migration).await.unwrap();
+	executor.apply_migrations(&[migration]).await.unwrap();
 }
 
 /// Get column info from PRAGMA table_info for a specific column
@@ -94,16 +93,16 @@ async fn get_column_info(
 	conn: &DatabaseConnection,
 	table: &str,
 	column: &str,
-) -> Option<(String, String, i32, Option<String>, i32)> {
+) -> Option<(String, String, i64, Option<String>, i64)> {
 	let query = format!("PRAGMA table_info({})", table);
 	let rows = conn.fetch_all(&query, vec![]).await.unwrap();
 	for row in rows {
-		let name: String = row.get(1);
+		let name: String = row.get::<String>("name").unwrap();
 		if name == column {
-			let col_type: String = row.get(2);
-			let notnull: i32 = row.get(3);
-			let dflt_value: Option<String> = row.get(4);
-			let pk: i32 = row.get(5);
+			let col_type: String = row.get::<String>("type").unwrap();
+			let notnull: i64 = row.get::<i64>("notnull").unwrap();
+			let dflt_value: Option<String> = row.get::<String>("dflt_value").ok();
+			let pk: i64 = row.get::<i64>("pk").unwrap();
 			return Some((name, col_type, notnull, dflt_value, pk));
 		}
 	}
@@ -114,16 +113,16 @@ async fn get_column_info(
 async fn get_all_columns(
 	conn: &DatabaseConnection,
 	table: &str,
-) -> Vec<(String, String, i32, Option<String>, i32)> {
+) -> Vec<(String, String, i64, Option<String>, i64)> {
 	let query = format!("PRAGMA table_info({})", table);
 	let rows = conn.fetch_all(&query, vec![]).await.unwrap();
 	rows.iter()
 		.map(|row| {
-			let name: String = row.get(1);
-			let col_type: String = row.get(2);
-			let notnull: i32 = row.get(3);
-			let dflt_value: Option<String> = row.get(4);
-			let pk: i32 = row.get(5);
+			let name: String = row.get::<String>("name").unwrap();
+			let col_type: String = row.get::<String>("type").unwrap();
+			let notnull: i64 = row.get::<i64>("notnull").unwrap();
+			let dflt_value: Option<String> = row.get::<String>("dflt_value").ok();
+			let pk: i64 = row.get::<i64>("pk").unwrap();
 			(name, col_type, notnull, dflt_value, pk)
 		})
 		.collect()
@@ -138,13 +137,13 @@ async fn has_unique_constraint(
 	let query = format!("PRAGMA index_list({})", table);
 	let indexes = conn.fetch_all(&query, vec![]).await.unwrap();
 	for idx_row in &indexes {
-		let idx_name: String = idx_row.get(1);
-		let is_unique: i32 = idx_row.get(2);
+		let idx_name: String = idx_row.get::<String>("name").unwrap();
+		let is_unique: i64 = idx_row.get::<i64>("unique").unwrap();
 		if is_unique == 1 {
 			let info_query = format!("PRAGMA index_info({})", idx_name);
 			let cols = conn.fetch_all(&info_query, vec![]).await.unwrap();
 			for col_row in &cols {
-				let col_name: String = col_row.get(2);
+				let col_name: String = col_row.get::<String>("name").unwrap();
 				if col_name == column {
 					return true;
 				}
@@ -1227,8 +1226,8 @@ async fn test_ssv_ec_01_integer_pk_rowid_alias() {
 
 	// Assert
 	assert_eq!(rows.len(), 2, "Should have 2 rows");
-	let id1: i32 = rows[0].get(0);
-	let id2: i32 = rows[1].get(0);
+	let id1: i64 = rows[0].get::<i64>("id").unwrap();
+	let id2: i64 = rows[1].get::<i64>("id").unwrap();
 	assert!(
 		id2 > id1,
 		"Auto-increment should produce increasing IDs, got {} and {}",

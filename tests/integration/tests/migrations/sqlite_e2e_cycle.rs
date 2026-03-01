@@ -126,9 +126,12 @@ async fn setup_sqlite() -> (Arc<DatabaseConnection>, DatabaseMigrationExecutor) 
 
 /// Apply a schema (list of operations) via migration executor
 async fn apply_schema(executor: &mut DatabaseMigrationExecutor, operations: Vec<Operation>) {
-	let migration = Migration::new("test_migration", operations);
+	let mut migration = Migration::new("test_migration", "test");
+	for op in operations {
+		migration = migration.add_operation(op);
+	}
 	executor
-		.apply(&migration)
+		.apply_migrations(&[migration])
 		.await
 		.expect("Failed to apply migration");
 }
