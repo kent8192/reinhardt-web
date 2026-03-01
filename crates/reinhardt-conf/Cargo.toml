@@ -80,7 +80,7 @@ anyhow = { workspace = true }
 hex = "0.4"
 colored = "3.0.0"
 mockito = "1.5"
-mockall = "0.13"
+mockall = { workspace = true }
 rstest = "0.26.1"
 wiremock = "0.6"
 serial_test = { workspace = true }
