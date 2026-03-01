@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.2](https://github.com/kent8192/reinhardt/compare/reinhardt-tasks@v0.1.0-rc.1...reinhardt-tasks@v0.1.0-rc.2) - 2026-03-01
+
+### Changed
+
+- *(tasks)* extract Redis Lua script to module-level constant
+
+### Fixed
+
+- *(tasks)* resolve race conditions in Redis update_status, worker lock release, and TaskLock extend
+
 ## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-alpha.3...reinhardt-tasks@v0.1.0-rc.1) - 2026-02-21
 
 ### Fixed
