@@ -95,13 +95,11 @@ impl<V: ViewSet + 'static> Handler for ViewSetHandler<V> {
 		let action_name = match self.action_map.get(&request.method) {
 			Some(name) => name,
 			None => {
-				let allowed: Vec<String> =
-					self.action_map.keys().map(|m| m.to_string()).collect();
+				let allowed: Vec<String> = self.action_map.keys().map(|m| m.to_string()).collect();
 				let mut response = Response::new(hyper::StatusCode::METHOD_NOT_ALLOWED);
-				response.headers.insert(
-					hyper::header::ALLOW,
-					allowed.join(", ").parse().unwrap(),
-				);
+				response
+					.headers
+					.insert(hyper::header::ALLOW, allowed.join(", ").parse().unwrap());
 				return Ok(response);
 			}
 		};
