@@ -373,6 +373,11 @@ impl OAuth2Authentication {
 			.await?
 			.ok_or_else(|| "Invalid or expired authorization code".to_string())?;
 
+		// Verify the authorization code was issued to the requesting client
+		if auth_code.client_id != client_id {
+			return Err("Authorization code was not issued to this client".to_string());
+		}
+
 		// Generate access token
 		let token = AccessToken {
 			token: format!("access_{}", Uuid::new_v4()),
@@ -520,6 +525,48 @@ mod tests {
 		// Code should be consumed
 		let consumed = store.consume_code("test_code").await.unwrap();
 		assert!(consumed.is_none());
+	}
+
+	#[tokio::test]
+	async fn test_exchange_code_rejects_mismatched_client_id() {
+		// Arrange - register two clients
+		let app_a = OAuth2Application {
+			client_id: "client_a".to_string(),
+			client_secret: "secret_a".to_string(),
+			redirect_uris: vec!["https://a.example.com/callback".to_string()],
+			grant_types: vec![GrantType::AuthorizationCode],
+		};
+		let app_b = OAuth2Application {
+			client_id: "client_b".to_string(),
+			client_secret: "secret_b".to_string(),
+			redirect_uris: vec!["https://b.example.com/callback".to_string()],
+			grant_types: vec![GrantType::AuthorizationCode],
+		};
+
+		let auth = OAuth2Authentication::new();
+		auth.register_application(app_a).await;
+		auth.register_application(app_b).await;
+
+		// Generate code for client_a
+		let code = auth
+			.generate_authorization_code(
+				"client_a",
+				"https://a.example.com/callback",
+				"user_123",
+				None,
+			)
+			.await
+			.unwrap();
+
+		// Act - try to exchange code using client_b's credentials
+		let result = auth.exchange_code(&code, "client_b", "secret_b").await;
+
+		// Assert - should reject because code was issued to client_a
+		assert!(result.is_err());
+		assert_eq!(
+			result.unwrap_err(),
+			"Authorization code was not issued to this client"
+		);
 	}
 
 	#[tokio::test]
