@@ -317,21 +317,21 @@ impl Worker {
 	/// configured concurrency limit is enforced. The permit is released
 	/// when the spawned task completes.
 	async fn try_process_task(&self, backend: Arc<dyn TaskBackend>) {
+		// Acquire concurrency permit before dequeue to prevent task loss
+		// when semaphore is closed.
+		let permit = match self.concurrency_semaphore.clone().acquire_owned().await {
+			Ok(permit) => permit,
+			Err(_) => {
+				tracing::error!(
+					worker = %self.config.name,
+					"Concurrency semaphore closed unexpectedly"
+				);
+				return;
+			}
+		};
+
 		match backend.dequeue().await {
 			Ok(Some(task_id)) => {
-				// Acquire a concurrency permit before executing the task.
-				// This enforces the configured concurrency limit.
-				let permit = match self.concurrency_semaphore.clone().acquire_owned().await {
-					Ok(permit) => permit,
-					Err(_) => {
-						tracing::error!(
-							worker = %self.config.name,
-							"Concurrency semaphore closed unexpectedly"
-						);
-						return;
-					}
-				};
-
 				tracing::info!(worker = %self.config.name, task_id = %task_id, "Processing task");
 
 				// Execute task; permit is held for the duration
