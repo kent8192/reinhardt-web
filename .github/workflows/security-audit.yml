@@ -1,0 +1,33 @@
+name: Security Audit
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label JSON'
+        type: string
+        default: '"ubuntu-latest"'
+  workflow_dispatch:
+  schedule:
+    # Run weekly on Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  security-audit:
+    name: Scan for known vulnerabilities
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit
