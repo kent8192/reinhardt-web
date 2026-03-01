@@ -129,6 +129,18 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - When merging branches and resolving conflicts, execute immediately without entering Plan Mode
 - Before creating branches, verify names don't conflict with existing ones using `git worktree list` and `git branch -a`
 
+**PR Conflict Resolution:**
+- **MUST** use worktree-based merge strategy for resolving PR conflicts (NOT rebase or force-push)
+- Procedure:
+  1. Create a local worktree for the PR source branch
+  2. Merge the target branch (e.g., `main`) into the source branch within the worktree
+  3. Resolve conflicts in the worktree
+  4. Commit the merge resolution
+  5. Push the source branch to remote
+  6. Clean up the worktree
+- **NEVER** use `git rebase` or `git push --force` to resolve PR conflicts
+- This preserves commit history and avoids force-push risks
+
 **GitHub Integration:**
 - **MUST** use GitHub CLI (`gh`) for all GitHub operations
 - Use `gh pr create` for creating pull requests
@@ -136,6 +148,9 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - Use `gh issue create` for creating issues
 - Use `gh issue view` for viewing issue details
 - Use `gh api` for accessing GitHub API
+- Use `gh discussion list` for viewing discussions
+- Use `gh discussion create` for creating discussions
+- For usage questions, prefer GitHub Discussions over Issues
 - **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
 - When GitHub MCP tools return errors (e.g., 404), immediately fall back to `gh` CLI instead of retrying
 
@@ -481,6 +496,7 @@ Before submitting code:
 - Check known CI failure patterns before deep investigation
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
+- Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `agent-suspect` label to all agent-detected bug Issues
 - Verify agent-detected bugs independently before removing `agent-suspect` label
 - Use independent context (separate agent session) for agent re-evaluation of `agent-suspect` Issues
@@ -540,6 +556,7 @@ Before submitting code:
 - Enter Plan Mode for merge operations, branch deletion, or worktree cleanup
 - Retry GitHub MCP tools after errors instead of falling back to `gh` CLI
 - Create branches without checking for name conflicts
+- Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
 - Remove `agent-suspect` label without independent verification (separate agent or human)
 - Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
 - Use the same agent context for both detection and verification of a bug
@@ -558,6 +575,7 @@ For comprehensive guidelines, see:
 - **Issues**: instructions/ISSUE_GUIDELINES.md
 - **Issue Handling**: instructions/ISSUE_HANDLING.md
 - **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
+- **GitHub Discussions**: https://github.com/kent8192/reinhardt-web/discussions
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md
 - **Label Definitions**: .github/labels.yml
