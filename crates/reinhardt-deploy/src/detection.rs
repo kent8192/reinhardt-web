@@ -107,6 +107,7 @@ fn is_mostly_empty(result: &FeatureDetectionResult) -> bool {
 		&& !result.media
 		&& !result.background_tasks
 		&& !result.mail
+		&& !result.wasm
 }
 
 /// Merge detection results from two layers using OR semantics.
@@ -126,7 +127,15 @@ fn merge_results(
 		database: layer1.database || layer2.database,
 		database_engine: layer1.database_engine.or(layer2.database_engine),
 		nosql: layer1.nosql || layer2.nosql,
-		nosql_engine: layer1.nosql_engine.or(layer2.nosql_engine),
+		nosql_engines: {
+			let mut engines = layer1.nosql_engines;
+			for engine in layer2.nosql_engines {
+				if !engines.contains(&engine) {
+					engines.push(engine);
+				}
+			}
+			engines
+		},
 		cache: layer1.cache || layer2.cache,
 		websockets: layer1.websockets || layer2.websockets,
 		frontend: layer1.frontend || layer2.frontend,
@@ -134,6 +143,7 @@ fn merge_results(
 		media: layer1.media || layer2.media,
 		background_tasks: layer1.background_tasks || layer2.background_tasks,
 		mail: layer1.mail || layer2.mail,
+		wasm: layer1.wasm || layer2.wasm,
 		ambiguous: layer1.ambiguous,
 		model_count: layer1.model_count.max(layer2.model_count),
 		confidence: if layer1_empty {
