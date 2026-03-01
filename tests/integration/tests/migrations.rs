@@ -74,3 +74,19 @@ mod schema_verification_integration;
 // Migration E2E Cycle Tests (Issue #1703)
 #[path = "migrations/migration_e2e_cycle_integration.rs"]
 mod migration_e2e_cycle_integration;
+
+// MySQL Schema Verification Tests (Issue #1703)
+#[path = "migrations/mysql_schema_verification.rs"]
+mod mysql_schema_verification;
+
+// MySQL E2E Cycle Tests (Issue #1703)
+#[path = "migrations/mysql_e2e_cycle.rs"]
+mod mysql_e2e_cycle;
+
+// SQLite Schema Verification Tests (Issue #1703)
+#[path = "migrations/sqlite_schema_verification.rs"]
+mod sqlite_schema_verification;
+
+// SQLite E2E Cycle Tests (Issue #1703)
+#[path = "migrations/sqlite_e2e_cycle.rs"]
+mod sqlite_e2e_cycle;
