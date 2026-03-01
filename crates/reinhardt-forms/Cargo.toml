@@ -37,7 +37,7 @@ full = []
 
 [dev-dependencies]
 tokio-test = "0.4"
-rstest = "0.23"
+rstest = { workspace = true }
 proptest = "1.6"
 tempfile = "3"
 reinhardt-test = { workspace = true }
