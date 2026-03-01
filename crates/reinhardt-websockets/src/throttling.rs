@@ -660,6 +660,8 @@ pub struct RateLimitMiddleware {
 	connection_rate_limiter: ConnectionRateLimiter,
 	connection_throttler: ConnectionThrottler,
 	message_rate_limiter: RateLimiter,
+	/// Maps connection ID to IP address for slot release on disconnect
+	connection_ips: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl RateLimitMiddleware {
@@ -677,6 +679,7 @@ impl RateLimitMiddleware {
 				config.max_messages_per_window,
 				config.message_window,
 			)),
+			connection_ips: Arc::new(RwLock::new(HashMap::new())),
 		}
 	}
 
@@ -726,20 +729,23 @@ impl ConnectionMiddleware for RateLimitMiddleware {
 			.await
 			.map_err(|e| MiddlewareError::ConnectionRejected(e.to_string()))?;
 
+		// Store connection ID -> IP mapping for slot release on disconnect
+		if let Some(conn_id) = &context.connection_id {
+			self.connection_ips
+				.write()
+				.await
+				.insert(conn_id.clone(), context.ip.clone());
+		}
+
 		Ok(())
 	}
 
 	async fn on_disconnect(&self, connection: &Arc<WebSocketConnection>) -> MiddlewareResult<()> {
-		// Release the concurrent connection slot.
-		// The connection ID is used as a fallback; in production the IP
-		// should be stored in the connection metadata during on_connect.
-		// For now, we look for the IP in the connection's metadata if
-		// the middleware stored it, otherwise we cannot release.
-		// This is a best-effort release.
-		//
-		// NOTE: Callers should prefer calling `release_connection(ip)` directly
-		// when the IP is known.
-		let _ = connection;
+		// Look up the IP address stored during on_connect and release the slot
+		let ip = self.connection_ips.write().await.remove(connection.id());
+		if let Some(ip) = ip {
+			self.connection_throttler.release_connection(&ip).await;
+		}
 		Ok(())
 	}
 }
@@ -1268,6 +1274,34 @@ mod tests {
 		middleware.release_connection("192.168.1.1").await;
 
 		// Assert - now a new connection should be allowed
+		let mut ctx3 = ConnectionContext::new("192.168.1.1".to_string());
+		assert!(middleware.on_connect(&mut ctx3).await.is_ok());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_rate_limit_middleware_on_disconnect_releases_slot() {
+		// Arrange - only 1 concurrent allowed
+		let config = WebSocketRateLimitConfig::default()
+			.with_max_connections_per_window(100)
+			.with_max_concurrent_connections_per_ip(1);
+		let middleware = RateLimitMiddleware::new(config);
+
+		// Connect with connection_id set
+		let mut ctx1 = ConnectionContext::new("192.168.1.1".to_string());
+		ctx1.connection_id = Some("conn_1".to_string());
+		middleware.on_connect(&mut ctx1).await.unwrap();
+
+		// Verify second connection is rejected (slot occupied)
+		let mut ctx2 = ConnectionContext::new("192.168.1.1".to_string());
+		assert!(middleware.on_connect(&mut ctx2).await.is_err());
+
+		// Act - simulate disconnect via on_disconnect
+		let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+		let connection = Arc::new(WebSocketConnection::new("conn_1".to_string(), tx));
+		middleware.on_disconnect(&connection).await.unwrap();
+
+		// Assert - slot released, new connection should be allowed
 		let mut ctx3 = ConnectionContext::new("192.168.1.1".to_string());
 		assert!(middleware.on_connect(&mut ctx3).await.is_ok());
 	}
