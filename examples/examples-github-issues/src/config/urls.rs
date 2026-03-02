@@ -2,6 +2,8 @@
 //!
 //! This module configures the unified GraphQL schema and URL patterns.
 
+use std::env;
+
 use async_graphql::{
 	MergedObject, MergedSubscription, Schema,
 	http::{GraphQLPlaygroundConfig, playground_source},
@@ -33,6 +35,13 @@ pub struct Subscription(IssueSubscription);
 /// GraphQL schema type alias
 pub type AppSchema = Schema<Query, Mutation, Subscription>;
 
+/// Load JWT secret from environment variable with fallback default
+fn jwt_secret() -> Vec<u8> {
+	env::var("JWT_SECRET")
+		.unwrap_or_else(|_| "your-secret-key-change-in-production".to_string())
+		.into_bytes()
+}
+
 /// GraphQL query/mutation handler with singleton schema
 pub async fn graphql_handler(req: Request) -> ViewResult<Response> {
 	let schema = get_schema();
@@ -49,7 +58,7 @@ pub async fn graphql_handler(req: Request) -> ViewResult<Response> {
 		.and_then(|h| h.to_str().ok())
 	{
 		if let Some(token) = auth_header.strip_prefix("Bearer ") {
-			let jwt_auth = JwtAuth::new(b"your-secret-key-change-in-production");
+			let jwt_auth = JwtAuth::new(&jwt_secret());
 			if let Ok(claims) = jwt_auth.verify_token(token) {
 				graphql_request.data(claims)
 			} else {
