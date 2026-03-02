@@ -121,6 +121,10 @@ impl ModelMetadata {
 			for (key, value) in &field_meta.params {
 				field_state.params.insert(key.clone(), value.clone());
 			}
+			// Override nullable from params if explicitly set
+			if let Some(null_value) = field_meta.params.get("null") {
+				field_state.nullable = null_value == "true";
+			}
 			// Set ForeignKey information if present
 			if let Some(ref fk_info) = field_meta.foreign_key {
 				field_state.foreign_key = Some(fk_info.clone());
