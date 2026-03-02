@@ -47,6 +47,16 @@ impl UserStorage {
 			.cloned()
 	}
 
+	/// Find a user by email
+	pub async fn find_by_email(&self, email: &str) -> Option<User> {
+		self.users
+			.read()
+			.await
+			.values()
+			.find(|u| u.email == email)
+			.cloned()
+	}
+
 	/// List all users
 	pub async fn list_users(&self) -> Vec<User> {
 		self.users.read().await.values().cloned().collect()
@@ -125,6 +135,11 @@ impl AuthMutation {
 		// Check if username already exists
 		if storage.find_by_username(&input.username).await.is_some() {
 			return Err(async_graphql::Error::new("Username already taken"));
+		}
+
+		// Check if email already exists
+		if storage.find_by_email(&input.email).await.is_some() {
+			return Err(async_graphql::Error::new("Email already in use"));
 		}
 
 		// Create new user with struct initialization instead of field reassignment
