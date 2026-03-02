@@ -166,6 +166,7 @@ advanced-queries = []
 integration-tests = []
 
 [dev-dependencies]
+insta = { workspace = true }
 tokio-test = "0.4"
 rstest = { workspace = true }
 serial_test = { workspace = true }
