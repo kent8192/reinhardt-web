@@ -496,7 +496,11 @@ impl HostNameVersioning {
 	/// ```
 	pub fn with_host_format(mut self, format: &str) -> Self {
 		// Convert format like "{version}.api.example.com" to regex "^([^.]+)\.api\.example\.com"
-		let pattern = format.replace("{version}", "([^.]+)").replace(".", "\\.");
+		// Escape dots first, then replace placeholder to prevent regex corruption
+		const PLACEHOLDER: &str = "__REINHARDT_VERSION_PLACEHOLDER__";
+		let pattern = format.replace("{version}", PLACEHOLDER);
+		let pattern = pattern.replace(".", "\\.");
+		let pattern = pattern.replace(PLACEHOLDER, "([^.]+)");
 		let pattern = format!("^{}", pattern);
 		if let Ok(regex) = Regex::new(&pattern) {
 			self.hostname_regex = regex;
