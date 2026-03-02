@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.1...reinhardt-urls@v0.1.0-rc.2) - 2026-03-02
+
+### Fixed
+
+- *(urls)* convert path-type parameters to matchit catch-all syntax in RadixTree mode
+
+### Styling
+
+- *(urls)* apply project formatting to pattern module
+
 ## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.15...reinhardt-urls@v0.1.0-rc.1) - 2026-02-24
 
 ### Maintenance
