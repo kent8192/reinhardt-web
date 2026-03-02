@@ -1371,7 +1371,14 @@ fn bind_reinhardt_query_value<'a>(
 		RValue::TinyUnsigned(Some(i)) => query.bind(*i as i32),
 		RValue::SmallUnsigned(Some(i)) => query.bind(*i as i32),
 		RValue::Unsigned(Some(i)) => query.bind(*i as i64),
-		RValue::BigUnsigned(Some(i)) => query.bind(*i as i64),
+		RValue::BigUnsigned(Some(i)) => query.bind(i64::try_from(*i).unwrap_or_else(|_| {
+			tracing::warn!(
+				value = *i,
+				"BigUnsigned value {} exceeds i64::MAX, clamping to i64::MAX",
+				i
+			);
+			i64::MAX
+		})),
 		RValue::Float(Some(f)) => query.bind(*f),
 		RValue::Double(Some(f)) => query.bind(*f),
 		RValue::String(Some(s)) => query.bind(s.as_ref().clone()),
