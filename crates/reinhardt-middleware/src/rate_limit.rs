@@ -99,7 +99,7 @@ impl RateLimitStore {
 		refill_rate: f64,
 		cost: f64,
 	) -> std::result::Result<f64, Duration> {
-		let mut buckets = self.buckets.write().unwrap();
+		let mut buckets = self.buckets.write().unwrap_or_else(|e| e.into_inner());
 		let bucket = buckets
 			.entry(key.to_string())
 			.or_insert_with(|| Bucket::new(capacity, refill_rate));
@@ -112,13 +112,13 @@ impl RateLimitStore {
 
 	/// Record a request
 	pub fn record_request(&self, key: &str) {
-		let mut history = self.history.write().unwrap();
+		let mut history = self.history.write().unwrap_or_else(|e| e.into_inner());
 		history.entry(key.to_string()).or_default().push(Utc::now());
 	}
 
 	/// Get the number of requests within a specified duration
 	pub fn request_count(&self, key: &str, duration: Duration) -> usize {
-		let history = self.history.read().unwrap();
+		let history = self.history.read().unwrap_or_else(|e| e.into_inner());
 		if let Some(requests) = history.get(key) {
 			let cutoff = Utc::now() - chrono::Duration::from_std(duration).unwrap();
 			requests.iter().filter(|&&time| time > cutoff).count()
@@ -134,7 +134,7 @@ impl RateLimitStore {
 	/// preventing unbounded memory growth from accumulated stale entries.
 	pub fn cleanup(&self, max_age: Duration) {
 		// Prune old history entries
-		let mut history = self.history.write().unwrap();
+		let mut history = self.history.write().unwrap_or_else(|e| e.into_inner());
 		let cutoff = Utc::now() - chrono::Duration::from_std(max_age).unwrap();
 
 		for requests in history.values_mut() {
@@ -145,15 +145,21 @@ impl RateLimitStore {
 		drop(history);
 
 		// Evict stale buckets that have not been accessed within max_age
-		let mut buckets = self.buckets.write().unwrap();
+		let mut buckets = self.buckets.write().unwrap_or_else(|e| e.into_inner());
 		let now = Instant::now();
 		buckets.retain(|_, bucket| now.duration_since(bucket.last_refill) < max_age);
 	}
 
 	/// Reset the store
 	pub fn reset(&self) {
-		self.buckets.write().unwrap().clear();
-		self.history.write().unwrap().clear();
+		self.buckets
+			.write()
+			.unwrap_or_else(|e| e.into_inner())
+			.clear();
+		self.history
+			.write()
+			.unwrap_or_else(|e| e.into_inner())
+			.clear();
 	}
 }
 
