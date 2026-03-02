@@ -841,7 +841,12 @@ impl Session {
 						// If there are columns to insert, add them
 						if !columns.is_empty() {
 							insert_stmt.columns(columns);
-							insert_stmt.values(values_vec).unwrap();
+							insert_stmt.values(values_vec).map_err(|e| {
+								SessionError::FlushError(format!(
+									"Failed to build INSERT values: {}",
+									e
+								))
+							})?;
 						}
 
 						// Add RETURNING clause for PostgreSQL to get generated ID
