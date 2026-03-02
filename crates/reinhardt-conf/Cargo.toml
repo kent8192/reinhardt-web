@@ -38,7 +38,7 @@ redis = { version = "0.32.7", features = [
 sqlx = { workspace = true, features = ["any", "runtime-tokio", "tls-rustls", "postgres", "mysql"], optional = true }
 reinhardt-query = { workspace = true, optional = true }
 reqwest = { version = "0.12", features = ["json"], optional = true }
-rand = { version = "0.9.2", optional = true }
+rand = { workspace = true, optional = true }
 aws-config = { version = "1.5", optional = true }
 aws-sdk-secretsmanager = { version = "1.52", optional = true }
 aws-smithy-runtime = { version = "1.9", optional = true }
@@ -81,7 +81,7 @@ anyhow = { workspace = true }
 hex = "0.4"
 colored = "3.0.0"
 mockito = "1.5"
-mockall = "0.13"
+mockall = { workspace = true }
 rstest = "0.26.1"
 wiremock = "0.6"
 serial_test = { workspace = true }
