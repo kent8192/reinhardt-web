@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-forms"
-version = "0.1.0-alpha.6"
+version = "0.1.0-rc.1"
 description = "Form handling and validation"
 edition.workspace = true
 license.workspace = true
@@ -33,7 +33,7 @@ full = []
 
 [dev-dependencies]
 tokio-test = "0.4"
-rstest = "0.23"
+rstest = { workspace = true }
 proptest = "1.6"
 tempfile = "3"
 reinhardt-test = { workspace = true }

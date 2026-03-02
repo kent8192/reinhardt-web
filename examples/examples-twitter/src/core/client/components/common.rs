@@ -500,7 +500,7 @@ pub fn textarea(
 						div {
 							class: "flex justify-end mt-1",
 							span {
-								class: if value_signal_for_count.get().len()>max_length { "text-danger font-medium" } else if value_signal_for_count.get().len()>max_length * 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" },
+								class: if value_signal_for_count.get().len()> max_length { "text-danger font-medium" } else if value_signal_for_count.get().len()> max_length * 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" },
 								{ format!("{}/{}", value_signal_for_count.get().len(), max_length) }
 							}
 						}

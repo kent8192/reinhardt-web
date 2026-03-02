@@ -5,13 +5,14 @@
 
 use crate::types::{AdminError, AdminResult};
 use async_trait::async_trait;
+use reinhardt_db::orm::execution::convert_values;
 use reinhardt_db::orm::{
 	DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue, Model,
 };
 use reinhardt_di::{DiResult, Injectable, InjectionContext};
 use reinhardt_query::prelude::{
-	Alias, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order, PostgresQueryBuilder, Query,
-	QueryStatementBuilder, SimpleExpr, Value,
+	Alias, CaseStatement, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order,
+	PostgresQueryBuilder, Query, QueryStatementBuilder, SimpleExpr, Value,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -127,17 +128,54 @@ fn annotation_value_to_safe_expr(
 		}
 		AnnotationValue::Field(f) => Expr::col(Alias::new(&f.field)).into(),
 		AnnotationValue::Expression(e) => annotation_expr_to_safe_expr(e),
-		// For aggregate, subquery, and postgres-specific types,
-		// fall back to SQL representation (these are internally constructed)
-		other => Expr::cust(other.to_sql()).into(),
+		AnnotationValue::Aggregate(a) => aggregate_to_safe_expr(a),
+		// Subquery and PostgreSQL-specific aggregation types produce SQL
+		// from internally constructed ORM queries, not from user HTTP input.
+		// Their SQL output is safe because it's built through type-safe ORM APIs.
+		AnnotationValue::Subquery(_)
+		| AnnotationValue::ArrayAgg(_)
+		| AnnotationValue::StringAgg(_)
+		| AnnotationValue::JsonbAgg(_)
+		| AnnotationValue::JsonbBuildObject(_)
+		| AnnotationValue::TsRank(_) => Expr::cust(val.to_sql()).into(),
+	}
+}
+
+/// Convert an `Aggregate` to a safe SeaQuery `SimpleExpr`.
+///
+/// Uses parameterized function templates with quoted column identifiers
+/// instead of raw SQL string interpolation, preventing SQL injection
+/// through field name manipulation.
+fn aggregate_to_safe_expr(agg: &reinhardt_db::orm::aggregation::Aggregate) -> SimpleExpr {
+	use reinhardt_db::orm::aggregation::AggregateFunc;
+
+	let func_name = match agg.func {
+		AggregateFunc::Count | AggregateFunc::CountDistinct => "COUNT",
+		AggregateFunc::Sum => "SUM",
+		AggregateFunc::Avg => "AVG",
+		AggregateFunc::Max => "MAX",
+		AggregateFunc::Min => "MIN",
+	};
+
+	if let Some(field) = &agg.field {
+		let col_expr: SimpleExpr = Expr::col(Alias::new(field)).into();
+		let is_distinct = agg.distinct || matches!(agg.func, AggregateFunc::CountDistinct);
+		if is_distinct {
+			Expr::cust_with_values(format!("{func_name}(DISTINCT ?)"), [col_expr]).into()
+		} else {
+			Expr::cust_with_values(format!("{func_name}(?)"), [col_expr]).into()
+		}
+	} else {
+		// COUNT(*) case - static SQL template, no user input
+		Expr::cust(format!("{func_name}(*)")).into()
 	}
 }
 
 /// Convert an annotation `Expression` to a safe SeaQuery `SimpleExpr`.
 ///
-/// Recursively converts arithmetic expressions using type-safe SeaQuery API
-/// for field references and values. For complex expression types (Case, Coalesce),
-/// falls back to SQL output from the expression's own serialization.
+/// Recursively converts all expression types using type-safe SeaQuery API
+/// for field references and values, preventing SQL injection through
+/// value manipulation in expression trees.
 fn annotation_expr_to_safe_expr(expr: &reinhardt_db::orm::annotation::Expression) -> SimpleExpr {
 	use reinhardt_db::orm::annotation::Expression as AnnotExpr;
 
@@ -162,10 +200,39 @@ fn annotation_expr_to_safe_expr(expr: &reinhardt_db::orm::annotation::Expression
 			let right_expr = annotation_value_to_safe_expr(right);
 			Expr::cust_with_values("(? / ?)", [left_expr, right_expr]).into()
 		}
-		// For Case and Coalesce, use the expression's own SQL serialization
-		// (these are complex structures built internally, not from user input)
-		_ => Expr::cust(expr.to_sql()).into(),
+		AnnotExpr::Case { whens, default } => {
+			let mut case = CaseStatement::new();
+			for when in whens {
+				// Q conditions are constructed internally by the ORM's query builder,
+				// not from user HTTP input. The THEN values are safely converted
+				// through annotation_value_to_safe_expr.
+				let cond_expr: SimpleExpr = Expr::cust(when.condition.to_sql()).into();
+				let then_expr = annotation_value_to_safe_expr(&when.then);
+				case = case.when(cond_expr, then_expr);
+			}
+			if let Some(default_val) = default {
+				case = case.else_result(annotation_value_to_safe_expr(default_val));
+			}
+			SimpleExpr::from(case)
+		}
+		AnnotExpr::Coalesce(values) => {
+			let exprs: Vec<SimpleExpr> = values.iter().map(annotation_value_to_safe_expr).collect();
+			if exprs.is_empty() {
+				Expr::val(Option::<String>::None).into()
+			} else {
+				let placeholders = vec!["?"; exprs.len()].join(", ");
+				Expr::cust_with_values(format!("COALESCE({placeholders})"), exprs).into()
+			}
+		}
 	}
+}
+
+/// Escape SQL LIKE wildcard characters in user input
+fn escape_like_pattern(input: &str) -> String {
+	input
+		.replace('\\', "\\\\")
+		.replace('%', "\\%")
+		.replace('_', "\\_")
 }
 
 /// Build a SimpleExpr from a single Filter
@@ -235,9 +302,15 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		(FilterOperator::Lte, v) => col.lte(filter_value_to_sea_value(v)),
 
 		// String-specific operators
-		(FilterOperator::Contains, FilterValue::String(s)) => col.like(format!("%{}%", s)),
-		(FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
-		(FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
+		(FilterOperator::Contains, FilterValue::String(s)) => {
+			col.like(format!("%{}%", escape_like_pattern(s)))
+		}
+		(FilterOperator::StartsWith, FilterValue::String(s)) => {
+			col.like(format!("{}%", escape_like_pattern(s)))
+		}
+		(FilterOperator::EndsWith, FilterValue::String(s)) => {
+			col.like(format!("%{}", escape_like_pattern(s)))
+		}
 		(FilterOperator::In, FilterValue::String(s)) => {
 			let values: Vec<Value> = s.split(',').map(|v| v.trim().into_value()).collect();
 			col.is_in(values)
@@ -421,6 +494,10 @@ impl AdminDatabase {
 		offset: u64,
 		limit: u64,
 	) -> AdminResult<Vec<HashMap<String, serde_json::Value>>> {
+		// SELECT * is intentional: admin panel operates on dynamic schemas where
+		// the column set is not known at compile time. Each ModelAdmin defines
+		// list_display fields, and column filtering is applied at the application
+		// layer after fetching all columns.
 		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.column(ColumnRef::Asterisk)
@@ -435,10 +512,11 @@ impl AdminDatabase {
 		query.limit(limit).offset(offset);
 
 		// Execute query
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let rows = self
 			.connection
-			.query(&sql, vec![])
+			.query(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -481,6 +559,10 @@ impl AdminDatabase {
 		offset: u64,
 		limit: u64,
 	) -> AdminResult<Vec<HashMap<String, serde_json::Value>>> {
+		// SELECT * is intentional: admin panel operates on dynamic schemas where
+		// the column set is not known at compile time. Each ModelAdmin defines
+		// list_display fields, and column filtering is applied at the application
+		// layer after fetching all columns.
 		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.column(ColumnRef::Asterisk)
@@ -526,10 +608,11 @@ impl AdminDatabase {
 		query.limit(limit).offset(offset);
 
 		// Execute query
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let rows = self
 			.connection
-			.query(&sql, vec![])
+			.query(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -587,21 +670,16 @@ impl AdminDatabase {
 			query.cond_where(combined);
 		}
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let row = self
 			.connection
-			.query_one(&sql, vec![])
+			.query_one(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
-		// Extract count from result
-		let count = if let Some(count_value) = row.data.get("count") {
-			count_value.as_i64().unwrap_or(0) as u64
-		} else if let Some(obj) = row.data.as_object() {
-			obj.values().next().and_then(|v| v.as_i64()).unwrap_or(0) as u64
-		} else {
-			0
-		};
+		// Extract count from result, propagating errors for unexpected formats
+		let count = extract_count_from_row(&row.data)?;
 
 		Ok(count)
 	}
@@ -635,16 +713,20 @@ impl AdminDatabase {
 			Value::String(Some(Box::new(id.to_string())))
 		};
 
+		// SELECT * is intentional: admin detail view displays all fields from the
+		// model. The admin panel operates on dynamic schemas where the column set
+		// is determined by the ModelAdmin configuration at runtime.
 		let query = Query::select()
 			.from(Alias::new(table_name))
 			.column(ColumnRef::Asterisk)
 			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
 			.to_owned();
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let row = self
 			.connection
-			.query_optional(&sql, vec![])
+			.query_optional(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -691,11 +773,18 @@ impl AdminDatabase {
 			.into_table(Alias::new(table_name))
 			.to_owned();
 
-		// Build column and value lists
+		// Sort keys for deterministic column ordering in generated SQL.
+		// HashMap iteration order is non-deterministic, which causes
+		// flaky tests and non-reproducible query plans.
+		let mut sorted_keys: Vec<String> = data.keys().cloned().collect();
+		sorted_keys.sort();
+
+		// Build column and value lists in sorted order
 		let mut columns = Vec::new();
 		let mut values = Vec::new();
 
-		for (key, value) in data {
+		for key in sorted_keys {
+			let value = data.get(&key).cloned().unwrap_or(serde_json::Value::Null);
 			columns.push(Alias::new(&key));
 
 			let sea_value = match value {
@@ -717,15 +806,18 @@ impl AdminDatabase {
 		}
 
 		// Pass values directly for reinhardt-query
-		query.columns(columns).values(values).unwrap();
+		query.columns(columns).values(values).map_err(|e| {
+			AdminError::DatabaseError(format!("column/value count mismatch: {}", e))
+		})?;
 
 		// Add RETURNING clause to get the inserted ID
 		query.returning([Alias::new("id")]);
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let row = self
 			.connection
-			.query_one(&sql, vec![])
+			.query_one(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -768,8 +860,13 @@ impl AdminDatabase {
 	) -> AdminResult<u64> {
 		let mut query = Query::update().table(Alias::new(table_name)).to_owned();
 
-		// Build SET clauses
-		for (key, value) in data {
+		// Sort keys for deterministic SET clause ordering in generated SQL
+		let mut sorted_keys: Vec<String> = data.keys().cloned().collect();
+		sorted_keys.sort();
+
+		// Build SET clauses in sorted order
+		for key in sorted_keys {
+			let value = data.get(&key).cloned().unwrap_or(serde_json::Value::Null);
 			let sea_value = match value {
 				serde_json::Value::String(s) => Value::String(Some(Box::new(s))),
 				serde_json::Value::Number(n) => {
@@ -796,10 +893,11 @@ impl AdminDatabase {
 		};
 		query.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value));
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let affected = self
 			.connection
-			.execute(&sql, vec![])
+			.execute(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -840,10 +938,11 @@ impl AdminDatabase {
 			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
 			.to_owned();
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let affected = self
 			.connection
-			.execute(&sql, vec![])
+			.execute(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -924,10 +1023,11 @@ impl AdminDatabase {
 			.and_where(Expr::col(Alias::new(pk_field)).is_in(pk_values))
 			.to_owned();
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let affected = self
 			.connection
-			.execute(&sql, vec![])
+			.execute(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -969,25 +1069,54 @@ impl AdminDatabase {
 			query.cond_where(condition);
 		}
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let row = self
 			.connection
-			.query_one(&sql, vec![])
+			.query_one(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
-		// Extract count from result
-		let count = if let Some(count_value) = row.data.get("count") {
-			count_value.as_i64().unwrap_or(0) as u64
-		} else if let Some(obj) = row.data.as_object() {
-			// COUNT(*) result may be in the first column
-			obj.values().next().and_then(|v| v.as_i64()).unwrap_or(0) as u64
-		} else {
-			0
-		};
+		// Extract count from result, propagating errors for unexpected formats
+		let count = extract_count_from_row(&row.data)?;
 
 		Ok(count)
 	}
+}
+
+/// Extract count value from a query result row
+///
+/// Attempts to extract an integer count from the query result in the following order:
+/// 1. Look for a "count" key in the JSON object
+/// 2. Take the first value from the JSON object
+///
+/// Returns an error if the data format is unexpected or the value cannot be
+/// interpreted as an integer.
+fn extract_count_from_row(data: &serde_json::Value) -> AdminResult<u64> {
+	if let Some(count_value) = data.get("count") {
+		return count_value.as_i64().map(|v| v as u64).ok_or_else(|| {
+			AdminError::DatabaseError(format!(
+				"COUNT query returned non-integer value: {}",
+				count_value
+			))
+		});
+	}
+
+	if let Some(obj) = data.as_object()
+		&& let Some(first_value) = obj.values().next()
+	{
+		return first_value.as_i64().map(|v| v as u64).ok_or_else(|| {
+			AdminError::DatabaseError(format!(
+				"COUNT query returned non-integer value: {}",
+				first_value
+			))
+		});
+	}
+
+	Err(AdminError::DatabaseError(format!(
+		"COUNT query returned unexpected data format: {}",
+		data
+	)))
 }
 
 /// Injectable trait implementation for AdminDatabase
@@ -1008,6 +1137,93 @@ mod tests {
 	use super::*;
 	use reinhardt_db::orm::annotation::Expression;
 	use reinhardt_db::orm::expressions::{F, OuterRef};
+	use rstest::rstest;
+
+	// ==================== escape_like_pattern tests ====================
+
+	#[rstest]
+	fn test_escape_like_pattern_percent() {
+		// Arrange
+		let input = "100%";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "100\\%");
+	}
+
+	#[rstest]
+	fn test_escape_like_pattern_underscore() {
+		// Arrange
+		let input = "user_name";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "user\\_name");
+	}
+
+	#[rstest]
+	fn test_escape_like_pattern_backslash() {
+		// Arrange
+		let input = "path\\to";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "path\\\\to");
+	}
+
+	#[rstest]
+	fn test_escape_like_pattern_combined() {
+		// Arrange
+		let input = "100%_done";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "100\\%\\_done");
+	}
+
+	#[rstest]
+	fn test_escape_like_pattern_no_special_chars() {
+		// Arrange
+		let input = "normal text";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "normal text");
+	}
+
+	// ==================== escape_like_pattern regression tests (#632) ====================
+
+	/// Regression tests for issue #632: LIKE wildcard injection via unescaped metacharacters.
+	/// Verifies that percent, underscore, and backslash in user input are always escaped
+	/// so they cannot be used as LIKE wildcards or escape prefix injections.
+	#[rstest]
+	#[case("%wildcard%", "\\%wildcard\\%")]
+	#[case("under_score", "under\\_score")]
+	#[case("back\\slash", "back\\\\slash")]
+	#[case("%_%", "\\%\\_\\%")]
+	fn test_escape_like_pattern_sanitizes_special_chars(
+		#[case] input: &str,
+		#[case] expected: &str,
+	) {
+		// Arrange: user-supplied string containing LIKE metacharacters
+		// Act
+		let escaped = escape_like_pattern(input);
+		// Assert: output exactly matches fully-escaped form with no unescaped metacharacters
+		assert_eq!(
+			escaped, expected,
+			"input={input:?} was not correctly escaped"
+		);
+	}
 
 	// ==================== build_composite_filter_condition tests ====================
 
@@ -1362,6 +1578,47 @@ mod tests {
 		}
 	}
 
+	// ==================== insert values mismatch tests (#1551) ====================
+
+	#[rstest]
+	fn test_insert_values_mismatch_returns_error_not_panic() {
+		// Arrange
+		// Simulate the scenario where columns and values count mismatch
+		// by calling SeaQuery's values() with wrong number of values
+		let mut query = Query::insert()
+			.into_table(Alias::new("test_table"))
+			.to_owned();
+
+		let columns = vec![Alias::new("col1"), Alias::new("col2"), Alias::new("col3")];
+		let values = vec![Value::String(Some(Box::new("val1".to_string())))]; // Only 1 value for 3 columns
+
+		// Act
+		let result = query.columns(columns).values(values);
+
+		// Assert - should return Err, not panic
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_insert_values_matching_count_succeeds() {
+		// Arrange
+		let mut query = Query::insert()
+			.into_table(Alias::new("test_table"))
+			.to_owned();
+
+		let columns = vec![Alias::new("col1"), Alias::new("col2")];
+		let values = vec![
+			Value::String(Some(Box::new("val1".to_string()))),
+			Value::String(Some(Box::new("val2".to_string()))),
+		];
+
+		// Act
+		let result = query.columns(columns).values(values);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
 	// ==================== SQL injection prevention tests ====================
 
 	#[test]
@@ -1515,5 +1772,235 @@ mod tests {
 				op
 			);
 		}
+	}
+
+	// ==================== Case/Coalesce safe expression tests ====================
+
+	#[test]
+	fn test_coalesce_expression_uses_safe_parameterized_api() {
+		use reinhardt_db::orm::annotation::{AnnotationValue, Value as OrmValue};
+
+		// Arrange: COALESCE(field_a, 0)
+		let expr = Expression::Coalesce(vec![
+			AnnotationValue::Field(F::new("field_a")),
+			AnnotationValue::Value(OrmValue::Int(0)),
+		]);
+		let filter = Filter::new(
+			"result".to_string(),
+			FilterOperator::Gt,
+			FilterValue::Expression(expr),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		assert!(result.is_some());
+		let sea_expr = result.unwrap();
+		let query = Query::select()
+			.from(Alias::new("items"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(sea_expr))
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("COALESCE"),
+			"Should contain COALESCE function: {}",
+			query
+		);
+		assert!(
+			query.contains("\"result\""),
+			"Left side should be quoted: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_case_expression_uses_safe_api() {
+		use reinhardt_db::orm::annotation::{
+			AnnotationValue, Value as OrmValue, When as AnnotWhen,
+		};
+		use reinhardt_db::orm::expressions::Q;
+
+		// Arrange: CASE WHEN status = 'active' THEN 1 ELSE 0 END
+		let expr = Expression::Case {
+			whens: vec![AnnotWhen::new(
+				Q::new("status", "=", "'active'"),
+				AnnotationValue::Value(OrmValue::Int(1)),
+			)],
+			default: Some(Box::new(AnnotationValue::Value(OrmValue::Int(0)))),
+		};
+		let filter = Filter::new(
+			"priority".to_string(),
+			FilterOperator::Eq,
+			FilterValue::Expression(expr),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		assert!(result.is_some());
+		let sea_expr = result.unwrap();
+		let query = Query::select()
+			.from(Alias::new("tasks"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(sea_expr))
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("CASE"),
+			"Should contain CASE keyword: {}",
+			query
+		);
+		assert!(
+			query.contains("WHEN"),
+			"Should contain WHEN keyword: {}",
+			query
+		);
+		assert!(
+			query.contains("ELSE"),
+			"Should contain ELSE keyword: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_empty_coalesce_returns_null() {
+		// Arrange: COALESCE() with no values
+		let expr = Expression::Coalesce(vec![]);
+
+		// Act
+		let result = annotation_expr_to_safe_expr(&expr);
+
+		// Assert: should produce NULL expression without panicking
+		let query = Query::select()
+			.from(Alias::new("test"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(result))
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("NULL"),
+			"Empty COALESCE should produce NULL: {}",
+			query
+		);
+	}
+
+	// ==================== Aggregate safe expression tests ====================
+
+	#[test]
+	fn test_aggregate_count_uses_safe_api() {
+		use reinhardt_db::orm::aggregation::{Aggregate, AggregateFunc};
+
+		// Arrange: COUNT(*)
+		let agg = Aggregate {
+			func: AggregateFunc::Count,
+			field: None,
+			alias: None,
+			distinct: false,
+		};
+
+		// Act
+		let result = aggregate_to_safe_expr(&agg);
+
+		// Assert
+		let query = Query::select()
+			.from(Alias::new("items"))
+			.expr(result)
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("COUNT(*)"),
+			"Should contain COUNT(*): {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_aggregate_sum_field_uses_quoted_identifier() {
+		use reinhardt_db::orm::aggregation::{Aggregate, AggregateFunc};
+
+		// Arrange: SUM(price)
+		let agg = Aggregate {
+			func: AggregateFunc::Sum,
+			field: Some("price".to_string()),
+			alias: None,
+			distinct: false,
+		};
+
+		// Act
+		let result = aggregate_to_safe_expr(&agg);
+
+		// Assert
+		let query = Query::select()
+			.from(Alias::new("orders"))
+			.expr(result)
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("SUM("),
+			"Should contain SUM function: {}",
+			query
+		);
+		assert!(
+			query.contains("\"price\""),
+			"Field name should be quoted: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_aggregate_count_distinct_uses_distinct_keyword() {
+		use reinhardt_db::orm::aggregation::{Aggregate, AggregateFunc};
+
+		// Arrange: COUNT(DISTINCT category)
+		let agg = Aggregate {
+			func: AggregateFunc::CountDistinct,
+			field: Some("category".to_string()),
+			alias: None,
+			distinct: false, // AggregateFunc::CountDistinct implies DISTINCT
+		};
+
+		// Act
+		let result = aggregate_to_safe_expr(&agg);
+
+		// Assert
+		let query = Query::select()
+			.from(Alias::new("products"))
+			.expr(result)
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("COUNT(DISTINCT"),
+			"Should contain COUNT(DISTINCT: {}",
+			query
+		);
+		assert!(
+			query.contains("\"category\""),
+			"Field name should be quoted: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_aggregate_injection_attempt_is_quoted() {
+		use reinhardt_db::orm::aggregation::{Aggregate, AggregateFunc};
+
+		// Arrange: attacker tries injection via aggregate field name
+		let agg = Aggregate {
+			func: AggregateFunc::Sum,
+			field: Some("price); DROP TABLE users; --".to_string()),
+			alias: None,
+			distinct: false,
+		};
+
+		// Act
+		let result = aggregate_to_safe_expr(&agg);
+
+		// Assert: injection payload should be treated as a quoted identifier
+		let query = Query::select()
+			.from(Alias::new("orders"))
+			.expr(result)
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("\"price); DROP TABLE users; --\""),
+			"Injection payload should be enclosed in double quotes: {}",
+			query
+		);
 	}
 }

@@ -1,9 +1,9 @@
 [package]
 name = "reinhardt-pages"
-version = "0.1.0-alpha.15"
+version = "0.1.0-rc.1"
 edition = "2024"
 authors = ["Reinhardt Contributors"]
-license = "MIT OR Apache-2.0"
+license = "BSD-3-Clause"
 description = "WASM-based frontend framework for Reinhardt with Django-like API"
 repository.workspace = true
 keywords = ["wasm", "web", "frontend", "reactive", "django"]
@@ -62,6 +62,9 @@ web-sys-full = [
 [dependencies]
 # Documentation
 aquamarine = "0.5"
+
+# Constant-time comparison for CSRF token verification
+subtle = { workspace = true }
 
 # Core types (Page, PageElement, Head, etc.)
 

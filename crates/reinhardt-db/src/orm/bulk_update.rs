@@ -34,7 +34,7 @@ impl BulkUpdateBuilder {
 	/// use reinhardt_db::orm::bulk_update::BulkUpdateBuilder;
 	///
 	/// let builder = BulkUpdateBuilder::new("users");
-	// Can chain: .set().where_clause().build()
+	/// // Can chain: .set().where_clause().build()
 	/// ```
 	pub fn new(table_name: &str) -> Self {
 		Self {

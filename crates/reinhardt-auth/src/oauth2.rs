@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use reinhardt_http::Request;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use subtle::ConstantTimeEq;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 /// OAuth2 grant type
@@ -159,29 +161,29 @@ impl Default for InMemoryOAuth2Store {
 #[async_trait]
 impl OAuth2TokenStore for InMemoryOAuth2Store {
 	async fn store_code(&self, code: AuthorizationCode) -> Result<(), String> {
-		let mut codes = self.codes.lock().unwrap();
+		let mut codes = self.codes.lock().await;
 		codes.insert(code.code.clone(), code);
 		Ok(())
 	}
 
 	async fn consume_code(&self, code: &str) -> Result<Option<AuthorizationCode>, String> {
-		let mut codes = self.codes.lock().unwrap();
+		let mut codes = self.codes.lock().await;
 		Ok(codes.remove(code))
 	}
 
 	async fn store_token(&self, user_id: &str, token: AccessToken) -> Result<(), String> {
-		let mut tokens = self.tokens.lock().unwrap();
+		let mut tokens = self.tokens.lock().await;
 		tokens.insert(token.token.clone(), user_id.to_string());
 		Ok(())
 	}
 
 	async fn get_token(&self, token: &str) -> Result<Option<String>, String> {
-		let tokens = self.tokens.lock().unwrap();
+		let tokens = self.tokens.lock().await;
 		Ok(tokens.get(token).cloned())
 	}
 
 	async fn revoke_token(&self, token: &str) -> Result<(), String> {
-		let mut tokens = self.tokens.lock().unwrap();
+		let mut tokens = self.tokens.lock().await;
 		tokens.remove(token);
 		Ok(())
 	}
@@ -310,16 +312,21 @@ impl OAuth2Authentication {
 	}
 
 	/// Register an OAuth2 application
-	pub fn register_application(&self, app: OAuth2Application) {
-		let mut applications = self.applications.lock().unwrap();
+	pub async fn register_application(&self, app: OAuth2Application) {
+		let mut applications = self.applications.lock().await;
 		applications.insert(app.client_id.clone(), app);
 	}
 
 	/// Validate client credentials
-	pub fn validate_client(&self, client_id: &str, client_secret: &str) -> bool {
-		let applications = self.applications.lock().unwrap();
+	///
+	/// Uses constant-time comparison to prevent timing attacks on client secrets.
+	pub async fn validate_client(&self, client_id: &str, client_secret: &str) -> bool {
+		let applications = self.applications.lock().await;
 		if let Some(app) = applications.get(client_id) {
-			app.client_secret == client_secret
+			app.client_secret
+				.as_bytes()
+				.ct_eq(client_secret.as_bytes())
+				.into()
 		} else {
 			false
 		}
@@ -355,7 +362,7 @@ impl OAuth2Authentication {
 		client_secret: &str,
 	) -> Result<AccessToken, String> {
 		// Validate client
-		if !self.validate_client(client_id, client_secret) {
+		if !self.validate_client(client_id, client_secret).await {
 			return Err("Invalid client credentials".to_string());
 		}
 
@@ -365,6 +372,11 @@ impl OAuth2Authentication {
 			.consume_code(code)
 			.await?
 			.ok_or_else(|| "Invalid or expired authorization code".to_string())?;
+
+		// Verify the authorization code was issued to the requesting client
+		if auth_code.client_id != client_id {
+			return Err("Authorization code was not issued to this client".to_string());
+		}
 
 		// Generate access token
 		let token = AccessToken {
@@ -450,10 +462,10 @@ mod tests {
 		};
 
 		let auth = OAuth2Authentication::new();
-		auth.register_application(app);
+		auth.register_application(app).await;
 
-		assert!(auth.validate_client("test_client", "test_secret"));
-		assert!(!auth.validate_client("test_client", "wrong_secret"));
+		assert!(auth.validate_client("test_client", "test_secret").await);
+		assert!(!auth.validate_client("test_client", "wrong_secret").await);
 	}
 
 	#[tokio::test]
@@ -466,7 +478,7 @@ mod tests {
 		};
 
 		let auth = OAuth2Authentication::new();
-		auth.register_application(app);
+		auth.register_application(app).await;
 
 		// Generate authorization code
 		let code = auth
@@ -516,6 +528,48 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn test_exchange_code_rejects_mismatched_client_id() {
+		// Arrange - register two clients
+		let app_a = OAuth2Application {
+			client_id: "client_a".to_string(),
+			client_secret: "secret_a".to_string(),
+			redirect_uris: vec!["https://a.example.com/callback".to_string()],
+			grant_types: vec![GrantType::AuthorizationCode],
+		};
+		let app_b = OAuth2Application {
+			client_id: "client_b".to_string(),
+			client_secret: "secret_b".to_string(),
+			redirect_uris: vec!["https://b.example.com/callback".to_string()],
+			grant_types: vec![GrantType::AuthorizationCode],
+		};
+
+		let auth = OAuth2Authentication::new();
+		auth.register_application(app_a).await;
+		auth.register_application(app_b).await;
+
+		// Generate code for client_a
+		let code = auth
+			.generate_authorization_code(
+				"client_a",
+				"https://a.example.com/callback",
+				"user_123",
+				None,
+			)
+			.await
+			.unwrap();
+
+		// Act - try to exchange code using client_b's credentials
+		let result = auth.exchange_code(&code, "client_b", "secret_b").await;
+
+		// Assert - should reject because code was issued to client_a
+		assert!(result.is_err());
+		assert_eq!(
+			result.unwrap_err(),
+			"Authorization code was not issued to this client"
+		);
+	}
+
+	#[tokio::test]
 	async fn test_invalid_client_credentials() {
 		let app = OAuth2Application {
 			client_id: "test_client".to_string(),
@@ -525,7 +579,7 @@ mod tests {
 		};
 
 		let auth = OAuth2Authentication::new();
-		auth.register_application(app);
+		auth.register_application(app).await;
 
 		let code = auth
 			.generate_authorization_code(

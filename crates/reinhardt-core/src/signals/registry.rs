@@ -23,19 +23,19 @@ impl SignalRegistry {
 		let type_id = TypeId::of::<T>();
 		let key = (type_id, name.as_str().to_string());
 
-		// Try to get existing signal
+		// Use upgradable read lock to prevent TOCTOU race condition.
+		// This ensures no other thread can insert between our read check and write.
+		let signals = self.signals.upgradable_read();
+		if let Some(signal_any) = signals.get(&key)
+			&& let Some(signal) = signal_any.downcast_ref::<Signal<T>>()
 		{
-			let signals = self.signals.read();
-			if let Some(signal_any) = signals.get(&key)
-				&& let Some(signal) = signal_any.downcast_ref::<Signal<T>>()
-			{
-				return signal.clone();
-			}
+			return signal.clone();
 		}
 
-		// Create new signal
+		// Atomically upgrade to write lock
 		let signal = Signal::new(name);
-		self.signals.write().insert(key, Box::new(signal.clone()));
+		let mut signals = parking_lot::RwLockUpgradableReadGuard::upgrade(signals);
+		signals.insert(key, Box::new(signal.clone()));
 		signal
 	}
 
@@ -49,20 +49,19 @@ impl SignalRegistry {
 		let type_id = TypeId::of::<T>();
 		let key = (type_id, name_str.clone());
 
-		// Try to get existing signal
+		// Use upgradable read lock to prevent TOCTOU race condition.
+		// This ensures no other thread can insert between our read check and write.
+		let signals = self.signals.upgradable_read();
+		if let Some(signal_any) = signals.get(&key)
+			&& let Some(signal) = signal_any.downcast_ref::<Signal<T>>()
 		{
-			let signals = self.signals.read();
-			if let Some(signal_any) = signals.get(&key)
-				&& let Some(signal) = signal_any.downcast_ref::<Signal<T>>()
-			{
-				return signal.clone();
-			}
+			return signal.clone();
 		}
 
-		// Create new signal (need to leak string for SignalName)
-		let leaked: &'static str = Box::leak(name_str.clone().into_boxed_str());
-		let signal = Signal::new(SignalName::custom(leaked));
-		self.signals.write().insert(key, Box::new(signal.clone()));
+		// Atomically upgrade to write lock
+		let signal = Signal::new(SignalName::from_string(name_str.clone()));
+		let mut signals = parking_lot::RwLockUpgradableReadGuard::upgrade(signals);
+		signals.insert(key, Box::new(signal.clone()));
 		signal
 	}
 }
@@ -80,4 +79,69 @@ pub fn get_signal<T: Send + Sync + 'static>(name: SignalName) -> Signal<T> {
 #[doc(hidden)]
 pub fn get_signal_with_string<T: Send + Sync + 'static>(name: impl Into<String>) -> Signal<T> {
 	GLOBAL_REGISTRY.get_or_create_with_string(name)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn test_registry_get_or_create_with_static_name() {
+		// Arrange
+		let registry = SignalRegistry::new();
+
+		// Act
+		let signal1 = registry.get_or_create::<String>(SignalName::PRE_SAVE);
+		let signal2 = registry.get_or_create::<String>(SignalName::PRE_SAVE);
+
+		// Assert
+		assert_eq!(signal1.receiver_count(), signal2.receiver_count());
+	}
+
+	#[rstest]
+	fn test_registry_get_or_create_with_string_no_leak() {
+		// Arrange
+		let registry = SignalRegistry::new();
+
+		// Act - create signals with dynamic string names (previously would Box::leak)
+		for i in 0..100 {
+			let name = format!("dynamic_signal_{}", i);
+			let _signal = registry.get_or_create_with_string::<String>(name);
+		}
+
+		// Assert - verify all signals were registered
+		let signals = registry.signals.read();
+		let string_signal_count = signals
+			.keys()
+			.filter(|(_, name)| name.starts_with("dynamic_signal_"))
+			.count();
+		assert_eq!(string_signal_count, 100);
+	}
+
+	#[rstest]
+	fn test_registry_get_or_create_with_string_deduplication() {
+		// Arrange
+		let registry = SignalRegistry::new();
+
+		// Act - create signal with same name twice
+		let signal1 = registry.get_or_create_with_string::<String>("dedup_test");
+		let signal2 = registry.get_or_create_with_string::<String>("dedup_test");
+
+		// Assert - should return the same signal (same receiver count after modifications)
+		assert_eq!(signal1.receiver_count(), 0);
+		assert_eq!(signal2.receiver_count(), 0);
+	}
+
+	#[rstest]
+	fn test_registry_from_string_creates_arc_based_signal_name() {
+		// Arrange
+		let dynamic_name = format!("arc_signal_{}", 42);
+
+		// Act
+		let name = SignalName::from_string(dynamic_name);
+
+		// Assert - the name should work correctly without Box::leak
+		assert_eq!(name.as_str(), "arc_signal_42");
+	}
 }

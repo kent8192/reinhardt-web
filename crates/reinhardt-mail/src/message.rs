@@ -79,9 +79,9 @@ impl Alternative {
 		&self.content
 	}
 
-	/// Get the content as string (if valid UTF-8)
-	pub fn content_as_string(&self) -> Option<String> {
-		String::from_utf8(self.content.clone()).ok()
+	/// Get the content as a string slice (if valid UTF-8)
+	pub fn content_as_string(&self) -> Option<&str> {
+		std::str::from_utf8(&self.content).ok()
 	}
 }
 
@@ -276,21 +276,22 @@ impl Attachment {
 
 /// Represents an email message with validated addresses.
 ///
-/// Fields are not publicly accessible to enforce validation through the builder.
+/// All fields are private to enforce validation through the builder.
 /// Use getter methods for read access and the builder for construction.
+/// Direct field assignment is not possible, preventing bypass of validation.
 #[derive(Debug, Clone)]
 pub struct EmailMessage {
-	pub(crate) subject: String,
-	pub(crate) body: String,
-	pub(crate) from_email: String,
-	pub(crate) to: Vec<String>,
-	pub(crate) cc: Vec<String>,
-	pub(crate) bcc: Vec<String>,
-	pub(crate) reply_to: Vec<String>,
-	pub(crate) html_body: Option<String>,
-	pub(crate) alternatives: Vec<Alternative>,
-	pub(crate) attachments: Vec<Attachment>,
-	pub(crate) headers: Vec<(String, String)>,
+	subject: String,
+	body: String,
+	from_email: String,
+	to: Vec<String>,
+	cc: Vec<String>,
+	bcc: Vec<String>,
+	reply_to: Vec<String>,
+	html_body: Option<String>,
+	alternatives: Vec<Alternative>,
+	attachments: Vec<Attachment>,
+	headers: Vec<(String, String)>,
 }
 
 impl EmailMessage {
@@ -451,10 +452,13 @@ impl EmailMessageBuilder {
 
 	/// Build the email message with validation.
 	///
-	/// Validates all email addresses using `validate_email()` before
-	/// constructing the message. Returns an error if any address is invalid.
+	/// Validates all email addresses using `validate_email()` and checks
+	/// subject/header values for header injection attacks before
+	/// constructing the message. Returns an error if any validation fails.
 	pub fn build(self) -> crate::EmailResult<EmailMessage> {
-		use crate::validation::{validate_email, validate_email_list};
+		use crate::validation::{
+			check_header_injection, validate_email, validate_email_list, validate_header_name,
+		};
 
 		// Validate from_email if provided
 		if !self.from_email.is_empty() {
@@ -466,6 +470,15 @@ impl EmailMessageBuilder {
 		validate_email_list(&self.cc)?;
 		validate_email_list(&self.bcc)?;
 		validate_email_list(&self.reply_to)?;
+
+		// Validate subject for header injection
+		check_header_injection(&self.subject)?;
+
+		// Validate custom header names (RFC 2822) and values (injection)
+		for (name, value) in &self.headers {
+			validate_header_name(name)?;
+			check_header_injection(value)?;
+		}
 
 		Ok(EmailMessage {
 			subject: self.subject,

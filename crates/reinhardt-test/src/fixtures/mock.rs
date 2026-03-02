@@ -165,7 +165,11 @@ pub fn mock_connection() -> DatabaseConnection {
 
 	mock.expect_fetch_all().returning(|_, _| Ok(Vec::new()));
 
-	mock.expect_fetch_one().returning(|_, _| Ok(Row::new()));
+	mock.expect_fetch_one().returning(|_, _| {
+		let mut row = Row::new();
+		row.data.insert("count".to_string(), QueryValue::Int(0));
+		Ok(row)
+	});
 
 	mock.expect_fetch_optional().returning(|_, _| Ok(None));
 

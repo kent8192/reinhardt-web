@@ -4,14 +4,14 @@
 //!
 //! ## Available Fixtures
 //!
-//! - `dcl_test_table` - Creates a test table for privilege testing
-//! - `test_role` - Creates a test role
-//! - `test_role_with_attrs` - Creates a role with specific attributes
-//! - `test_user` - Creates a test user
-//! - `test_user_with_password` - Creates a user with password
-//! - `cleanup_dcl_objects` - Cleans up test DCL objects
-//! - `test_database` - Creates a test database
-//! - `test_schema` - Creates a test schema (PostgreSQL only)
+//! - `dcl_test_table` - Creates a test table name for privilege testing
+//! - `test_role` - Creates a test role name
+//! - `test_role_with_attrs` - Creates a role name with specific attributes
+//! - `test_user` - Creates a test user name
+//! - `test_user_with_password` - Creates a user name with password
+//! - `dcl_tracker` - Per-instance object tracker for cleanup
+//! - `test_database` - Creates a test database name
+//! - `test_schema` - Creates a test schema name (PostgreSQL only)
 //!
 //! ## Usage
 //!
@@ -24,36 +24,115 @@
 //! async fn test_grant_select(
 //!     dcl_test_table: String,
 //!     test_role: String,
-//!     cleanup_dcl_objects: Vec<String>
+//!     mut dcl_tracker: DclTracker,
 //! ) {
-//!     // Test table name: dcl_test_table
-//!     // Test role name: test_role
-//!     // Cleanup list: cleanup_dcl_objects
+//!     dcl_tracker.track(format!("TABLE:{}", dcl_test_table));
+//!     dcl_tracker.track(format!("ROLE:{}", test_role));
+//!     // After test, dcl_tracker.cleanup_list() returns tracked objects
 //! }
 //! ```
+//!
+//! ## Migration from Global State
+//!
+//! The previous implementation used a global `Mutex<Vec<String>>` for tracking
+//! DCL objects, which caused race conditions in parallel test execution.
+//! The new design uses per-instance `DclTracker` for thread-safe tracking
+//! and UUID-based naming to prevent name collisions. (Fixes #870)
 
 use reinhardt_query::prelude::{
 	Alias, ColumnDef, CreateTableStatement, ForeignKey, ForeignKeyAction, Query,
 };
-use std::sync::Mutex;
+use uuid::Uuid;
 
-// Store for tracking created DCL objects for cleanup
-static DCL_OBJECTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// Per-instance tracker for DCL objects created during a test
+///
+/// Replaces the previous global `Mutex<Vec<String>>` approach to eliminate
+/// race conditions between parallel tests. Each test gets its own tracker
+/// instance through the `dcl_tracker` rstest fixture.
+///
+/// ## Object Format
+///
+/// Each tracked entry is formatted as `<TYPE>:<name>` where TYPE is one of:
+/// - TABLE
+/// - ROLE
+/// - USER
+/// - DATABASE
+/// - SCHEMA
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use reinhardt_test::fixtures::dcl::DclTracker;
+///
+/// let mut tracker = DclTracker::new();
+/// tracker.track("ROLE:test_role_abc123".to_string());
+/// tracker.track("TABLE:dcl_test_def456".to_string());
+///
+/// let objects = tracker.cleanup_list();
+/// assert_eq!(objects.len(), 2);
+/// ```
+pub struct DclTracker {
+	objects: Vec<String>,
+}
 
-/// Track a DCL object for cleanup
-fn track_object(object_name: String) {
-	let mut objects = DCL_OBJECTS.lock().unwrap();
-	objects.push(object_name);
+impl DclTracker {
+	/// Create a new empty tracker
+	pub fn new() -> Self {
+		Self {
+			objects: Vec::new(),
+		}
+	}
+
+	/// Track a DCL object for later cleanup
+	pub fn track(&mut self, object_name: String) {
+		self.objects.push(object_name);
+	}
+
+	/// Return all tracked objects and clear the internal list
+	pub fn cleanup_list(&mut self) -> Vec<String> {
+		std::mem::take(&mut self.objects)
+	}
+}
+
+impl Default for DclTracker {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+/// rstest fixture providing a per-instance DCL object tracker
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use reinhardt_test::fixtures::dcl::{dcl_tracker, DclTracker};
+/// use rstest::rstest;
+///
+/// #[rstest]
+/// fn test_with_tracker(mut dcl_tracker: DclTracker) {
+///     dcl_tracker.track("ROLE:my_role".to_string());
+///     let cleanup = dcl_tracker.cleanup_list();
+///     assert_eq!(cleanup.len(), 1);
+/// }
+/// ```
+#[rstest::fixture]
+pub fn dcl_tracker() -> DclTracker {
+	DclTracker::new()
+}
+
+/// Generate a short unique suffix from UUID for naming
+fn unique_suffix() -> String {
+	Uuid::new_v4().simple().to_string()[..12].to_string()
 }
 
 /// Create a test table for DCL privilege testing
 ///
-/// Returns the table name for use in tests.
+/// Returns a unique table name using UUID-based suffix.
 ///
 /// # Table Schema
 ///
 /// ```text
-/// dcl_test_<timestamp> (
+/// dcl_test_<uuid> (
 ///     id BIGINT PRIMARY KEY,
 ///     name VARCHAR(100) NOT NULL,
 ///     value TEXT,
@@ -73,22 +152,16 @@ fn track_object(object_name: String) {
 /// }
 /// ```
 pub fn dcl_test_table() -> String {
-	let timestamp = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
-		.as_secs();
-	let table_name = format!("dcl_test_{}", timestamp);
-	track_object(format!("TABLE:{}", table_name));
-	table_name
+	format!("dcl_test_{}", unique_suffix())
 }
 
 /// Create a test role name
 ///
-/// Returns a unique role name for testing.
+/// Returns a unique role name using UUID-based suffix.
 ///
 /// # Naming Convention
 ///
-/// Format: `test_role_<timestamp>`
+/// Format: `test_role_<uuid>`
 ///
 /// # Example
 ///
@@ -102,13 +175,7 @@ pub fn dcl_test_table() -> String {
 /// }
 /// ```
 pub fn test_role() -> String {
-	let timestamp = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
-		.as_secs();
-	let role_name = format!("test_role_{}", timestamp);
-	track_object(format!("ROLE:{}", role_name));
-	role_name
+	format!("test_role_{}", unique_suffix())
 }
 
 /// Create a test role with specific attributes
@@ -131,28 +198,23 @@ pub fn test_role() -> String {
 /// #[rstest]
 /// fn test_role_with_attributes(test_role_with_attrs: (String, String)) {
 ///     let (role_name, attrs) = test_role_with_attrs;
-///     assert!(role_name.starts_with("test_role_"));
+///     assert!(role_name.starts_with("test_role_attrs_"));
 ///     assert!(attrs.contains("LOGIN"));
 /// }
 /// ```
 pub fn test_role_with_attrs() -> (String, String) {
-	let timestamp = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
-		.as_secs();
-	let role_name = format!("test_role_attrs_{}", timestamp);
+	let role_name = format!("test_role_attrs_{}", unique_suffix());
 	let attributes = "LOGIN,CREATEDB".to_string();
-	track_object(format!("ROLE:{}", role_name));
 	(role_name, attributes)
 }
 
 /// Create a test user name
 ///
-/// Returns a unique user name for testing.
+/// Returns a unique user name using UUID-based suffix.
 ///
 /// # Naming Convention
 ///
-/// Format: `test_user_<timestamp>`
+/// Format: `test_user_<uuid>`
 ///
 /// # Example
 ///
@@ -166,13 +228,7 @@ pub fn test_role_with_attrs() -> (String, String) {
 /// }
 /// ```
 pub fn test_user() -> String {
-	let timestamp = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
-		.as_secs();
-	let user_name = format!("test_user_{}", timestamp);
-	track_object(format!("USER:{}", user_name));
-	user_name
+	format!("test_user_{}", unique_suffix())
 }
 
 /// Create a test user with password
@@ -196,62 +252,24 @@ pub fn test_user() -> String {
 /// #[rstest]
 /// fn test_user_auth(test_user_with_password: (String, String)) {
 ///     let (username, password) = test_user_with_password;
-///     assert!(username.starts_with("test_user_"));
+///     assert!(username.starts_with("test_user_pass_"));
 ///     assert!(!password.is_empty());
 /// }
 /// ```
 pub fn test_user_with_password() -> (String, String) {
-	let timestamp = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
-		.as_secs();
-	let user_name = format!("test_user_pass_{}", timestamp);
-	let password = format!("test_password_{}", timestamp);
-	track_object(format!("USER:{}", user_name));
+	let suffix = unique_suffix();
+	let user_name = format!("test_user_pass_{}", suffix);
+	let password = format!("test_password_{}", suffix);
 	(user_name, password)
-}
-
-/// Cleanup DCL objects created during test
-///
-/// Returns a list of all DCL objects created in the current test for cleanup.
-///
-/// # Object Format
-///
-/// Each entry is formatted as `<TYPE>:<name>` where TYPE is one of:
-/// - TABLE
-/// - ROLE
-/// - USER
-/// - DATABASE
-/// - SCHEMA
-///
-/// # Example
-///
-/// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::{test_role, cleanup_dcl_objects};
-/// use rstest::rstest;
-///
-/// #[rstest]
-/// fn test_with_cleanup(test_role: String, cleanup_dcl_objects: Vec<String>) {
-///     // After test, cleanup_dcl_objects contains all objects to drop
-///     for object in cleanup_dcl_objects {
-///         // Drop object...
-///     }
-/// }
-/// ```
-pub fn cleanup_dcl_objects() -> Vec<String> {
-	let mut objects = DCL_OBJECTS.lock().unwrap();
-	let cleanup_list = objects.clone();
-	objects.clear();
-	cleanup_list
 }
 
 /// Create a test database name
 ///
-/// Returns a unique database name for testing.
+/// Returns a unique database name using UUID-based suffix.
 ///
 /// # Naming Convention
 ///
-/// Format: `test_db_<timestamp>`
+/// Format: `test_db_<uuid>`
 ///
 /// # Example
 ///
@@ -265,22 +283,16 @@ pub fn cleanup_dcl_objects() -> Vec<String> {
 /// }
 /// ```
 pub fn test_database() -> String {
-	let timestamp = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
-		.as_secs();
-	let db_name = format!("test_db_{}", timestamp);
-	track_object(format!("DATABASE:{}", db_name));
-	db_name
+	format!("test_db_{}", unique_suffix())
 }
 
 /// Create a test schema name (PostgreSQL only)
 ///
-/// Returns a unique schema name for testing.
+/// Returns a unique schema name using UUID-based suffix.
 ///
 /// # Naming Convention
 ///
-/// Format: `test_schema_<timestamp>`
+/// Format: `test_schema_<uuid>`
 ///
 /// # Database Support
 ///
@@ -300,13 +312,7 @@ pub fn test_database() -> String {
 /// }
 /// ```
 pub fn test_schema() -> String {
-	let timestamp = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
-		.as_secs();
-	let schema_name = format!("test_schema_{}", timestamp);
-	track_object(format!("SCHEMA:{}", schema_name));
-	schema_name
+	format!("test_schema_{}", unique_suffix())
 }
 
 /// Generate reinhardt-query `CreateTableStatement` for DCL test table
@@ -316,7 +322,7 @@ pub fn test_schema() -> String {
 /// # Schema
 ///
 /// ```text
-/// dcl_test_<timestamp> (
+/// dcl_test_<uuid> (
 ///     id BIGINT PRIMARY KEY,
 ///     name VARCHAR(100) NOT NULL,
 ///     value TEXT,
@@ -370,12 +376,12 @@ pub fn dcl_test_table_stmt() -> CreateTableStatement {
 /// # Schema
 ///
 /// ```text
-/// dcl_test_parent_<timestamp> (
+/// dcl_test_parent_<uuid> (
 ///     id BIGINT PRIMARY KEY,
 ///     name VARCHAR(100) NOT NULL
 /// )
 ///
-/// dcl_test_child_<timestamp> (
+/// dcl_test_child_<uuid> (
 ///     id BIGINT PRIMARY KEY,
 ///     parent_id BIGINT NOT NULL,
 ///     value TEXT,
@@ -402,23 +408,10 @@ pub fn dcl_test_table_stmt() -> CreateTableStatement {
 /// }
 /// ```
 pub fn dcl_test_table_with_fk() -> (CreateTableStatement, CreateTableStatement, String, String) {
-	let parent_name = format!(
-		"dcl_test_parent_{}",
-		std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_secs()
-	);
-	let child_name = format!(
-		"dcl_test_child_{}",
-		std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_secs()
-	);
-
-	track_object(format!("TABLE:{}", parent_name));
-	track_object(format!("TABLE:{}", child_name));
+	// Use same suffix for parent and child to make the relationship clear
+	let suffix = unique_suffix();
+	let parent_name = format!("dcl_test_parent_{}", suffix);
+	let child_name = format!("dcl_test_child_{}", suffix);
 
 	let mut parent_stmt = Query::create_table();
 	parent_stmt
@@ -475,108 +468,127 @@ mod tests {
 	use reinhardt_query::prelude::{
 		MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder,
 	};
-	use serial_test::serial;
+	use rstest::rstest;
 
-	#[test]
-	#[serial]
+	#[rstest]
 	fn test_dcl_test_table_format() {
+		// Arrange & Act
 		let table = dcl_test_table();
+
+		// Assert
 		assert!(table.starts_with("dcl_test_"));
 	}
 
-	#[test]
-	#[serial]
+	#[rstest]
+	fn test_dcl_test_table_uniqueness() {
+		// Arrange & Act
+		let table1 = dcl_test_table();
+		let table2 = dcl_test_table();
+
+		// Assert
+		assert_ne!(table1, table2, "Each call must generate a unique name");
+	}
+
+	#[rstest]
 	fn test_test_role_format() {
+		// Arrange & Act
 		let role = test_role();
+
+		// Assert
 		assert!(role.starts_with("test_role_"));
 	}
 
-	#[test]
-	#[serial]
+	#[rstest]
 	fn test_test_role_with_attrs_format() {
+		// Arrange & Act
 		let (role, attrs) = test_role_with_attrs();
+
+		// Assert
 		assert!(role.starts_with("test_role_attrs_"));
 		assert_eq!(attrs, "LOGIN,CREATEDB");
 	}
 
-	#[test]
-	#[serial]
+	#[rstest]
 	fn test_test_user_format() {
+		// Arrange & Act
 		let user = test_user();
+
+		// Assert
 		assert!(user.starts_with("test_user_"));
 	}
 
-	#[test]
-	#[serial]
+	#[rstest]
 	fn test_test_user_with_password_format() {
+		// Arrange & Act
 		let (user, pass) = test_user_with_password();
+
+		// Assert
 		assert!(user.starts_with("test_user_pass_"));
 		assert!(pass.starts_with("test_password_"));
 	}
 
-	#[test]
-	#[serial]
+	#[rstest]
 	fn test_test_database_format() {
+		// Arrange & Act
 		let db = test_database();
+
+		// Assert
 		assert!(db.starts_with("test_db_"));
 	}
 
-	#[test]
-	#[serial]
+	#[rstest]
 	fn test_test_schema_format() {
+		// Arrange & Act
 		let schema = test_schema();
+
+		// Assert
 		assert!(schema.starts_with("test_schema_"));
 	}
 
-	#[test]
-	#[serial]
-	fn test_cleanup_dcl_objects_returns_objects() {
-		// Clear any existing objects
-		{
-			let mut objects = DCL_OBJECTS.lock().unwrap();
-			objects.clear();
-		}
+	#[rstest]
+	fn test_dcl_tracker_tracks_objects() {
+		// Arrange
+		let mut tracker = DclTracker::new();
+		let role = test_role();
+		let user = test_user();
+		let table = dcl_test_table();
 
-		// Create some test objects
-		let _role = test_role();
-		let _user = test_user();
-		let _table = dcl_test_table();
+		// Act
+		tracker.track(format!("ROLE:{}", role));
+		tracker.track(format!("USER:{}", user));
+		tracker.track(format!("TABLE:{}", table));
 
-		// Get cleanup list
-		let cleanup = cleanup_dcl_objects();
+		let cleanup = tracker.cleanup_list();
 
+		// Assert
 		assert_eq!(cleanup.len(), 3);
 		assert!(cleanup.iter().any(|o| o.starts_with("ROLE:")));
 		assert!(cleanup.iter().any(|o| o.starts_with("USER:")));
 		assert!(cleanup.iter().any(|o| o.starts_with("TABLE:")));
 	}
 
-	#[test]
-	#[serial]
-	fn test_cleanup_clears_objects() {
-		// Clear any existing objects
-		{
-			let mut objects = DCL_OBJECTS.lock().unwrap();
-			objects.clear();
-		}
+	#[rstest]
+	fn test_dcl_tracker_clears_after_cleanup() {
+		// Arrange
+		let mut tracker = DclTracker::new();
+		tracker.track(format!("ROLE:{}", test_role()));
+		tracker.track(format!("USER:{}", test_user()));
 
-		// Create test objects
-		let _role = test_role();
-		let _user = test_user();
+		// Act
+		let cleanup1 = tracker.cleanup_list();
+		let cleanup2 = tracker.cleanup_list();
 
-		// Get cleanup list
-		let cleanup1 = cleanup_dcl_objects();
+		// Assert
 		assert_eq!(cleanup1.len(), 2);
-
-		// Get cleanup list again - should be empty
-		let cleanup2 = cleanup_dcl_objects();
 		assert_eq!(cleanup2.len(), 0);
 	}
 
-	#[test]
-	#[serial]
+	#[rstest]
 	fn test_dcl_test_table_stmt_generates_valid_sql() {
+		// Arrange & Act
 		let stmt = dcl_test_table_stmt();
+
+		// Assert
 		assert!(
 			stmt.to_string(PostgresQueryBuilder::new())
 				.contains("CREATE TABLE")
@@ -587,11 +599,12 @@ mod tests {
 		);
 	}
 
-	#[test]
-	#[serial]
+	#[rstest]
 	fn test_dcl_test_table_with_fk_format() {
+		// Arrange & Act
 		let (parent_stmt, child_stmt, parent_name, child_name) = dcl_test_table_with_fk();
 
+		// Assert
 		assert!(parent_name.starts_with("dcl_test_parent_"));
 		assert!(child_name.starts_with("dcl_test_child_"));
 
@@ -603,5 +616,16 @@ mod tests {
 		assert!(child_sql.contains("CREATE TABLE"));
 		assert!(child_sql.contains(&child_name));
 		assert!(child_sql.contains("FOREIGN KEY"));
+	}
+
+	#[rstest]
+	fn test_dcl_test_table_with_fk_uses_same_suffix() {
+		// Arrange & Act
+		let (_parent_stmt, _child_stmt, parent_name, child_name) = dcl_test_table_with_fk();
+
+		// Assert - parent and child share the same suffix
+		let parent_suffix = parent_name.strip_prefix("dcl_test_parent_").unwrap();
+		let child_suffix = child_name.strip_prefix("dcl_test_child_").unwrap();
+		assert_eq!(parent_suffix, child_suffix);
 	}
 }

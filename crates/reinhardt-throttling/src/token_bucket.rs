@@ -5,8 +5,9 @@
 //! and each request consumes one or more tokens.
 
 use super::time_provider::{SystemTimeProvider, TimeProvider};
-use super::{Throttle, ThrottleResult};
+use super::{Throttle, ThrottleError, ThrottleResult};
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
@@ -27,13 +28,17 @@ pub struct TokenBucketConfig {
 impl TokenBucketConfig {
 	/// Creates a new token bucket configuration
 	///
+	/// # Errors
+	///
+	/// Returns [`ThrottleError::InvalidConfig`] if `refill_interval` is zero.
+	///
 	/// # Examples
 	///
 	/// ```
 	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
 	///
 	/// // 100 requests per minute with burst capacity of 100
-	/// let config = TokenBucketConfig::new(100, 100, 60, 1);
+	/// let config = TokenBucketConfig::new(100, 100, 60, 1).unwrap();
 	/// assert_eq!(config.capacity, 100);
 	/// assert_eq!(config.refill_rate, 100);
 	/// ```
@@ -42,13 +47,18 @@ impl TokenBucketConfig {
 		refill_rate: usize,
 		refill_interval: u64,
 		tokens_per_request: usize,
-	) -> Self {
-		Self {
+	) -> ThrottleResult<Self> {
+		if refill_interval == 0 {
+			return Err(ThrottleError::InvalidConfig(
+				"refill_interval must be non-zero".to_string(),
+			));
+		}
+		Ok(Self {
 			capacity,
 			refill_rate,
 			refill_interval,
 			tokens_per_request,
-		}
+		})
 	}
 
 	/// Creates a builder for fluent configuration
@@ -63,7 +73,8 @@ impl TokenBucketConfig {
 	///     .refill_rate(10)
 	///     .refill_interval(1)
 	///     .tokens_per_request(1)
-	///     .build();
+	///     .build()
+	///     .unwrap();
 	///
 	/// assert_eq!(config.capacity, 50);
 	/// assert_eq!(config.refill_rate, 10);
@@ -172,16 +183,27 @@ impl TokenBucketConfigBuilder {
 
 	/// Build the configuration
 	///
-	/// # Panics
+	/// # Errors
 	///
-	/// Panics if any required field is not set
-	pub fn build(self) -> TokenBucketConfig {
-		TokenBucketConfig {
-			capacity: self.capacity.expect("capacity must be set"),
-			refill_rate: self.refill_rate.expect("refill_rate must be set"),
-			refill_interval: self.refill_interval.expect("refill_interval must be set"),
-			tokens_per_request: self.tokens_per_request.unwrap_or(1),
+	/// Returns [`ThrottleError::InvalidConfig`] if any required field is not set
+	/// or if `refill_interval` is zero.
+	pub fn build(self) -> ThrottleResult<TokenBucketConfig> {
+		let refill_interval = self.refill_interval.unwrap_or(0);
+		if refill_interval == 0 {
+			return Err(ThrottleError::InvalidConfig(
+				"refill_interval must be set and non-zero".to_string(),
+			));
 		}
+		Ok(TokenBucketConfig {
+			capacity: self
+				.capacity
+				.ok_or_else(|| ThrottleError::InvalidConfig("capacity must be set".to_string()))?,
+			refill_rate: self.refill_rate.ok_or_else(|| {
+				ThrottleError::InvalidConfig("refill_rate must be set".to_string())
+			})?,
+			refill_interval,
+			tokens_per_request: self.tokens_per_request.unwrap_or(1),
+		})
 	}
 }
 
@@ -211,7 +233,7 @@ struct BucketState {
 pub struct TokenBucket<T: TimeProvider = SystemTimeProvider> {
 	config: TokenBucketConfig,
 	time_provider: Arc<T>,
-	state: Arc<RwLock<BucketState>>,
+	buckets: Arc<RwLock<HashMap<String, BucketState>>>,
 }
 
 impl TokenBucket<SystemTimeProvider> {
@@ -226,15 +248,10 @@ impl TokenBucket<SystemTimeProvider> {
 	/// let throttle = TokenBucket::new(config);
 	/// ```
 	pub fn new(config: TokenBucketConfig) -> Self {
-		let initial_state = BucketState {
-			tokens: config.capacity,
-			last_refill: SystemTimeProvider::new().now(),
-		};
-
 		Self {
 			config,
 			time_provider: Arc::new(SystemTimeProvider::new()),
-			state: Arc::new(RwLock::new(initial_state)),
+			buckets: Arc::new(RwLock::new(HashMap::new())),
 		}
 	}
 }
@@ -242,15 +259,18 @@ impl TokenBucket<SystemTimeProvider> {
 impl<T: TimeProvider> TokenBucket<T> {
 	/// Creates a new token bucket with custom time provider
 	pub fn with_time_provider(config: TokenBucketConfig, time_provider: Arc<T>) -> Self {
-		let initial_state = BucketState {
-			tokens: config.capacity,
-			last_refill: time_provider.now(),
-		};
-
 		Self {
 			config,
 			time_provider,
-			state: Arc::new(RwLock::new(initial_state)),
+			buckets: Arc::new(RwLock::new(HashMap::new())),
+		}
+	}
+
+	/// Create a new bucket state initialized with full capacity
+	fn new_bucket_state(&self) -> BucketState {
+		BucketState {
+			tokens: self.config.capacity,
+			last_refill: self.time_provider.now(),
 		}
 	}
 
@@ -273,12 +293,14 @@ impl<T: TimeProvider> TokenBucket<T> {
 		}
 	}
 
-	/// Try to consume tokens from the bucket
-	async fn consume_tokens(&self, count: usize) -> ThrottleResult<bool> {
-		let mut state = self.state.write().await;
+	/// Try to consume tokens from the bucket for a given key
+	async fn consume_tokens(&self, key: &str, count: usize) -> ThrottleResult<bool> {
+		let mut buckets = self.buckets.write().await;
+		let new_state = self.new_bucket_state();
+		let state = buckets.entry(key.to_string()).or_insert(new_state);
 
 		// Refill tokens first
-		self.refill_tokens(&mut state);
+		self.refill_tokens(state);
 
 		// Check if we have enough tokens
 		if state.tokens >= count {
@@ -289,29 +311,47 @@ impl<T: TimeProvider> TokenBucket<T> {
 		}
 	}
 
-	/// Get current token count
-	pub async fn tokens(&self) -> usize {
-		let mut state = self.state.write().await;
-		self.refill_tokens(&mut state);
+	/// Get current token count for a given key
+	pub async fn tokens_for_key(&self, key: &str) -> usize {
+		let mut buckets = self.buckets.write().await;
+		let new_state = self.new_bucket_state();
+		let state = buckets.entry(key.to_string()).or_insert(new_state);
+		self.refill_tokens(state);
 		state.tokens
 	}
 
-	/// Reset the bucket to full capacity
+	/// Get current token count (uses default empty key for backward compatibility)
+	pub async fn tokens(&self) -> usize {
+		self.tokens_for_key("").await
+	}
+
+	/// Reset the bucket for a specific key
+	pub async fn reset_key(&self, key: &str) {
+		let mut buckets = self.buckets.write().await;
+		if let Some(state) = buckets.get_mut(key) {
+			state.tokens = self.config.capacity;
+			state.last_refill = self.time_provider.now();
+		}
+	}
+
+	/// Reset all buckets
 	pub async fn reset(&self) {
-		let mut state = self.state.write().await;
-		state.tokens = self.config.capacity;
-		state.last_refill = self.time_provider.now();
+		let mut buckets = self.buckets.write().await;
+		buckets.clear();
 	}
 }
 
 #[async_trait]
 impl<T: TimeProvider> Throttle for TokenBucket<T> {
-	async fn allow_request(&self, _key: &str) -> ThrottleResult<bool> {
-		self.consume_tokens(self.config.tokens_per_request).await
+	async fn allow_request(&self, key: &str) -> ThrottleResult<bool> {
+		self.consume_tokens(key, self.config.tokens_per_request)
+			.await
 	}
 
-	async fn wait_time(&self, _key: &str) -> ThrottleResult<Option<u64>> {
-		let state = self.state.read().await;
+	async fn wait_time(&self, key: &str) -> ThrottleResult<Option<u64>> {
+		let mut buckets = self.buckets.write().await;
+		let new_state = self.new_bucket_state();
+		let state = buckets.entry(key.to_string()).or_insert(new_state);
 
 		if state.tokens >= self.config.tokens_per_request {
 			return Ok(None);
@@ -339,157 +379,293 @@ impl<T: TimeProvider> Throttle for TokenBucket<T> {
 mod tests {
 	use super::*;
 	use crate::time_provider::MockTimeProvider;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_basic() {
-		let config = TokenBucketConfig::new(5, 5, 10, 1);
+		// Arrange
+		let config = TokenBucketConfig::new(5, 5, 10, 1).unwrap();
 		let throttle = TokenBucket::new(config);
 
-		// Should allow 5 requests (capacity)
+		// Act & Assert - should allow 5 requests (capacity)
 		for _ in 0..5 {
 			assert!(throttle.allow_request("user").await.unwrap());
 		}
 
-		// 6th request should fail
+		// Assert - 6th request should fail
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_refill() {
+		// Arrange
 		use tokio::time::Instant;
 		let time_provider = Arc::new(MockTimeProvider::new(Instant::now()));
-		let config = TokenBucketConfig::new(10, 5, 1, 1);
+		let config = TokenBucketConfig::new(10, 5, 1, 1).unwrap();
 		let throttle = TokenBucket::with_time_provider(config.clone(), time_provider.clone());
 
-		// Consume all tokens
+		// Act - consume all tokens
 		for _ in 0..10 {
 			assert!(throttle.allow_request("user").await.unwrap());
 		}
 		assert!(!throttle.allow_request("user").await.unwrap());
 
-		// Advance time by refill interval
+		// Act - advance time by refill interval
 		time_provider.advance(std::time::Duration::from_secs(1));
 
-		// Should have 5 new tokens
+		// Assert - should have 5 new tokens
 		for _ in 0..5 {
 			assert!(throttle.allow_request("user").await.unwrap());
 		}
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_burst() {
-		let config = TokenBucketConfig::per_second(5, 20); // 5/sec, burst 20
+		// Arrange
+		let config = TokenBucketConfig::per_second(5, 20);
 		let throttle = TokenBucket::new(config);
 
-		// Should handle burst of 20
+		// Act & Assert - should handle burst of 20
 		for _ in 0..20 {
 			assert!(throttle.allow_request("user").await.unwrap());
 		}
 
-		// 21st should fail
+		// Assert - 21st should fail
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_tokens_per_request() {
-		let config = TokenBucketConfig::new(10, 10, 10, 2); // 2 tokens per request
+		// Arrange
+		let config = TokenBucketConfig::new(10, 10, 10, 2).unwrap();
 		let throttle = TokenBucket::new(config);
 
-		// Should allow 5 requests (10 tokens / 2 per request)
+		// Act & Assert - should allow 5 requests (10 tokens / 2 per request)
 		for _ in 0..5 {
 			assert!(throttle.allow_request("user").await.unwrap());
 		}
 
-		// 6th request should fail
+		// Assert - 6th request should fail
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_get_tokens() {
-		let config = TokenBucketConfig::new(10, 5, 10, 1);
+		// Arrange
+		let config = TokenBucketConfig::new(10, 5, 10, 1).unwrap();
 		let throttle = TokenBucket::new(config);
 
-		// Initial tokens should equal capacity
-		assert_eq!(throttle.tokens().await, 10);
+		// Assert - initial tokens should equal capacity
+		assert_eq!(throttle.tokens_for_key("user").await, 10);
 
-		// After consuming 3 tokens
+		// Act - consume 3 tokens
 		for _ in 0..3 {
 			throttle.allow_request("user").await.unwrap();
 		}
-		assert_eq!(throttle.tokens().await, 7);
+
+		// Assert
+		assert_eq!(throttle.tokens_for_key("user").await, 7);
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_token_bucket_reset() {
-		let config = TokenBucketConfig::new(10, 5, 10, 1);
+	async fn test_token_bucket_per_key_isolation() {
+		// Arrange
+		let config = TokenBucketConfig::new(3, 3, 60, 1).unwrap();
 		let throttle = TokenBucket::new(config);
 
-		// Consume all tokens
+		// Act - exhaust user_a's tokens
+		for _ in 0..3 {
+			assert!(throttle.allow_request("user_a").await.unwrap());
+		}
+
+		// Assert - user_a is throttled
+		assert!(!throttle.allow_request("user_a").await.unwrap());
+
+		// Assert - user_b still has full capacity (independent bucket)
+		for _ in 0..3 {
+			assert!(throttle.allow_request("user_b").await.unwrap());
+		}
+		assert!(!throttle.allow_request("user_b").await.unwrap());
+
+		// Assert - token counts are independent
+		assert_eq!(throttle.tokens_for_key("user_a").await, 0);
+		assert_eq!(throttle.tokens_for_key("user_b").await, 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_token_bucket_reset() {
+		// Arrange
+		let config = TokenBucketConfig::new(10, 5, 10, 1).unwrap();
+		let throttle = TokenBucket::new(config);
+
+		// Act - consume all tokens
 		for _ in 0..10 {
 			throttle.allow_request("user").await.unwrap();
 		}
-		assert_eq!(throttle.tokens().await, 0);
+		assert_eq!(throttle.tokens_for_key("user").await, 0);
 
-		// Reset
+		// Act - reset all buckets
 		throttle.reset().await;
-		assert_eq!(throttle.tokens().await, 10);
+
+		// Assert - after reset, a new bucket is created with full capacity
+		assert_eq!(throttle.tokens_for_key("user").await, 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_wait_time() {
+		// Arrange
 		use tokio::time::Instant;
 		let time_provider = Arc::new(MockTimeProvider::new(Instant::now()));
-		let config = TokenBucketConfig::new(5, 5, 10, 1);
+		let config = TokenBucketConfig::new(5, 5, 10, 1).unwrap();
 		let throttle = TokenBucket::with_time_provider(config, time_provider.clone());
 
-		// Consume all tokens
+		// Act - consume all tokens
 		for _ in 0..5 {
 			throttle.allow_request("user").await.unwrap();
 		}
 
-		// Should have wait time
+		// Assert - should have wait time
 		let wait = throttle.wait_time("user").await.unwrap();
 		assert!(wait.is_some());
 		assert!(wait.unwrap() > 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_bucket_config_builder() {
+		// Arrange & Act
 		let config = TokenBucketConfig::builder()
 			.capacity(100)
 			.refill_rate(50)
 			.refill_interval(60)
 			.tokens_per_request(2)
-			.build();
+			.build()
+			.unwrap();
 
+		// Assert
 		assert_eq!(config.capacity, 100);
 		assert_eq!(config.refill_rate, 50);
 		assert_eq!(config.refill_interval, 60);
 		assert_eq!(config.tokens_per_request, 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_bucket_config_per_second() {
+		// Arrange & Act
 		let config = TokenBucketConfig::per_second(10, 20);
+
+		// Assert
 		assert_eq!(config.refill_rate, 10);
 		assert_eq!(config.capacity, 20);
 		assert_eq!(config.refill_interval, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_bucket_config_per_minute() {
+		// Arrange & Act
 		let config = TokenBucketConfig::per_minute(100, 150);
+
+		// Assert
 		assert_eq!(config.refill_rate, 100);
 		assert_eq!(config.capacity, 150);
 		assert_eq!(config.refill_interval, 60);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_bucket_config_per_hour() {
+		// Arrange & Act
 		let config = TokenBucketConfig::per_hour(1000, 1500);
+
+		// Assert
 		assert_eq!(config.refill_rate, 1000);
 		assert_eq!(config.capacity, 1500);
 		assert_eq!(config.refill_interval, 3600);
+	}
+
+	#[rstest]
+	fn test_new_rejects_zero_refill_interval() {
+		// Arrange & Act
+		let result = TokenBucketConfig::new(10, 5, 0, 1);
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_builder_rejects_zero_refill_interval() {
+		// Arrange & Act
+		let result = TokenBucketConfig::builder()
+			.capacity(10)
+			.refill_rate(5)
+			.refill_interval(0)
+			.tokens_per_request(1)
+			.build();
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_builder_rejects_missing_refill_interval() {
+		// Arrange & Act
+		let result = TokenBucketConfig::builder()
+			.capacity(10)
+			.refill_rate(5)
+			.build();
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_builder_rejects_missing_capacity() {
+		// Arrange & Act
+		let result = TokenBucketConfig::builder()
+			.refill_rate(5)
+			.refill_interval(10)
+			.build();
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_builder_rejects_missing_refill_rate() {
+		// Arrange & Act
+		let result = TokenBucketConfig::builder()
+			.capacity(10)
+			.refill_interval(10)
+			.build();
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
 	}
 }

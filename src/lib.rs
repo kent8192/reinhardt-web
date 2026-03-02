@@ -88,6 +88,8 @@
 //!     .with_middleware(Arc::new(CorsMiddleware::permissive()));
 //! ```
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 // Re-export external crates for macro support
 // Macro-generated code uses paths like `::reinhardt::reinhardt_apps::AppConfig`
 // These wrapper modules provide the namespace structure that macros expect.
@@ -103,6 +105,7 @@ pub mod reinhardt_pages {
 
 #[doc(hidden)]
 pub mod reinhardt_types {
+	// Public API surface glob re-export requires allowing unused imports and unreachable pub
 	#[allow(unused_imports, unreachable_pub)]
 	pub use reinhardt_core::types::*;
 }
@@ -600,8 +603,12 @@ pub use reinhardt_auth::{
 	IsAdminUser, IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, SimpleUser, User,
 };
 
-#[cfg(all(feature = "auth", not(target_arch = "wasm32")))]
-#[cfg_attr(docsrs, doc(cfg(feature = "argon2-hasher")))]
+#[cfg(all(
+	feature = "auth",
+	feature = "argon2-hasher",
+	not(target_arch = "wasm32")
+))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "auth", feature = "argon2-hasher"))))]
 pub use reinhardt_auth::Argon2Hasher;
 
 #[cfg(all(feature = "auth-jwt", not(target_arch = "wasm32")))]

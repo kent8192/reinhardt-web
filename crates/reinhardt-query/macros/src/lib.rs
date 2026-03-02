@@ -89,32 +89,84 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, parse_macro_input};
 
-/// Extract custom identifier name from `#[iden = "..."]` attribute.
-fn extract_custom_name(attrs: &[syn::Attribute]) -> Option<String> {
-	attrs.iter().find_map(|attr| {
+/// Characters that are unsafe in SQL identifiers.
+const SQL_UNSAFE_CHARS: [char; 5] = [';', '\'', '"', '\\', '`'];
+
+/// Validate a custom identifier name for SQL safety.
+/// Rejects empty strings, null bytes, control characters, and SQL-unsafe characters.
+// Fixes #794
+fn validate_iden_name(name: &str, span: proc_macro2::Span) -> Result<(), syn::Error> {
+	if name.is_empty() {
+		return Err(syn::Error::new(span, "identifier name must not be empty"));
+	}
+	if name.contains('\0') {
+		return Err(syn::Error::new(
+			span,
+			"identifier name must not contain null bytes",
+		));
+	}
+	if name.chars().any(|c| c.is_control()) {
+		return Err(syn::Error::new(
+			span,
+			"identifier name must not contain control characters",
+		));
+	}
+	if let Some(c) = name.chars().find(|c| SQL_UNSAFE_CHARS.contains(c)) {
+		return Err(syn::Error::new(
+			span,
+			format!("identifier name contains SQL-unsafe character: '{c}'"),
+		));
+	}
+	if name.contains("--") || name.contains("/*") {
+		return Err(syn::Error::new(
+			span,
+			"identifier name contains SQL comment sequence",
+		));
+	}
+	Ok(())
+}
+
+/// Extract and validate custom identifier name from `#[iden = "..."]` attribute.
+// Fixes #794
+fn extract_custom_name(attrs: &[syn::Attribute]) -> Result<Option<String>, syn::Error> {
+	for attr in attrs {
 		if !attr.path().is_ident("iden") {
-			return None;
+			continue;
 		}
 		match &attr.meta {
 			syn::Meta::NameValue(name_value) => {
-				if name_value.path.is_ident("iden")
-					&& let syn::Expr::Lit(lit) = &name_value.value
+				if let syn::Expr::Lit(lit) = &name_value.value
 					&& let syn::Lit::Str(lit_str) = &lit.lit
 				{
-					return Some(lit_str.value());
+					let value = lit_str.value();
+					validate_iden_name(&value, lit_str.span())?;
+					return Ok(Some(value));
 				}
-				None
+				return Err(syn::Error::new_spanned(
+					&name_value.value,
+					"#[iden = ...] expects a string literal, e.g., #[iden = \"custom_name\"]",
+				));
 			}
 			syn::Meta::List(list) => {
-				if list.path.is_ident("iden") {
-					let lit: syn::LitStr = list.parse_args().ok()?;
-					return Some(lit.value());
-				}
-				None
+				let lit: syn::LitStr = list.parse_args().map_err(|_| {
+					syn::Error::new_spanned(
+						list,
+						"#[iden(...)] expects a single string literal, e.g., #[iden(\"custom_name\")]",
+					)
+				})?;
+				let value = lit.value();
+				validate_iden_name(&value, lit.span())?;
+				return Ok(Some(value));
 			}
-			_ => None,
+			syn::Meta::Path(_) => {
+				return Err(syn::Error::new_spanned(
+					attr,
+					"#[iden] requires a value, use #[iden = \"name\"] or #[iden(\"name\")]",
+				));
+			}
 		}
-	})
+	}
+	Ok(None)
 }
 
 /// Derive `Iden` trait for enums and structs.
@@ -191,18 +243,44 @@ fn extract_custom_name(attrs: &[syn::Attribute]) -> Option<String> {
 #[proc_macro_derive(Iden, attributes(iden))]
 pub fn derive_iden(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
+	match derive_iden_impl(&input) {
+		Ok(tokens) => tokens.into(),
+		Err(err) => err.to_compile_error().into(),
+	}
+}
 
+// Fixes #792
+/// Generate a match pattern for an enum variant, handling associated data.
+/// - Unit variants: `VariantName`
+/// - Tuple variants: `VariantName(..)`
+/// - Named variants: `VariantName { .. }`
+fn generate_variant_pattern(
+	enum_name: &syn::Ident,
+	variant: &syn::Variant,
+) -> proc_macro2::TokenStream {
+	let variant_ident = &variant.ident;
+	match &variant.fields {
+		syn::Fields::Unit => quote! { #enum_name::#variant_ident },
+		syn::Fields::Unnamed(_) => quote! { #enum_name::#variant_ident(..) },
+		syn::Fields::Named(_) => quote! { #enum_name::#variant_ident { .. } },
+	}
+}
+
+/// Internal implementation of `derive_iden` that returns a `Result` for proper error propagation.
+fn derive_iden_impl(input: &DeriveInput) -> Result<proc_macro2::TokenStream, syn::Error> {
 	let name = &input.ident;
 
-	let expanded = match &input.data {
+	match &input.data {
 		Data::Enum(data_enum) => {
-			// Collect variant names and their identifier strings
+			// Collect variant data: (pattern, identifier name)
+			// Fixes #792: Include variant pattern to handle associated data
 			let variant_data: Vec<_> = data_enum
 				.variants
 				.iter()
 				.map(|variant| {
 					let variant_ident = &variant.ident;
-					let iden_name = extract_custom_name(&variant.attrs).unwrap_or_else(|| {
+					let pattern = generate_variant_pattern(name, variant);
+					let iden_name = extract_custom_name(&variant.attrs)?.unwrap_or_else(|| {
 						if variant_ident == "Table" {
 							// Convention: Table variant uses enum name as table identifier
 							name.to_string().to_snake_case()
@@ -210,25 +288,35 @@ pub fn derive_iden(input: TokenStream) -> TokenStream {
 							variant_ident.to_string().to_snake_case()
 						}
 					});
-					(variant_ident.clone(), iden_name)
+					Ok((pattern, iden_name))
 				})
-				.collect();
+				.collect::<Result<_, syn::Error>>()?;
 
 			// Generate Display match arms
-			let display_arms = variant_data.iter().map(|(variant_ident, iden_name)| {
+			// Fixes #792: Use pattern instead of simple variant ident
+			let display_arms = variant_data.iter().map(|(pattern, iden_name)| {
 				quote! {
-					#name::#variant_ident => f.write_str(#iden_name),
+					#pattern => f.write_str(#iden_name),
 				}
 			});
 
 			// Generate Iden::unquoted match arms
-			let iden_arms = variant_data.iter().map(|(variant_ident, iden_name)| {
+			// Fixes #792: Use pattern instead of simple variant ident
+			// Iden::unquoted contract: writer is expected to not fail
+			let iden_arms = variant_data.iter().map(|(pattern, iden_name)| {
 				quote! {
-					#name::#variant_ident => s.write_str(#iden_name).unwrap(),
+					#pattern => s.write_str(#iden_name).expect("write to String is infallible"),
 				}
 			});
 
-			quote! {
+			Ok(quote! {
+				// Fixes #808: Compile-time assertion that Debug is implemented,
+				// required by the Iden supertrait
+				const _: () = {
+					fn __assert_debug<T: ::std::fmt::Debug>() {}
+					fn __check() { __assert_debug::<#name>(); }
+				};
+
 				impl ::std::fmt::Display for #name {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
 						match self {
@@ -244,14 +332,21 @@ pub fn derive_iden(input: TokenStream) -> TokenStream {
 						}
 					}
 				}
-			}
+			})
 		}
 
 		Data::Struct(_data_struct) => {
-			let iden_name = extract_custom_name(&input.attrs)
+			let iden_name = extract_custom_name(&input.attrs)?
 				.unwrap_or_else(|| name.to_string().to_snake_case());
 
-			quote! {
+			Ok(quote! {
+				// Fixes #808: Compile-time assertion that Debug is implemented,
+				// required by the Iden supertrait
+				const _: () = {
+					fn __assert_debug<T: ::std::fmt::Debug>() {}
+					fn __check() { __assert_debug::<#name>(); }
+				};
+
 				impl ::std::fmt::Display for #name {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
 						f.write_str(#iden_name)
@@ -260,18 +355,16 @@ pub fn derive_iden(input: TokenStream) -> TokenStream {
 
 				impl reinhardt_query::types::Iden for #name {
 					fn unquoted(&self, s: &mut dyn ::std::fmt::Write) {
-						s.write_str(#iden_name).unwrap();
+						// Iden::unquoted contract: writer is expected to not fail
+						s.write_str(#iden_name).expect("write to String is infallible");
 					}
 				}
-			}
+			})
 		}
 
-		_ => {
-			quote! {
-				compile_error!("`#[derive(Iden)]` only supports enums and structs");
-			}
-		}
-	};
-
-	TokenStream::from(expanded)
+		_ => Err(syn::Error::new_spanned(
+			&input.ident,
+			"`#[derive(Iden)]` only supports enums and structs",
+		)),
+	}
 }

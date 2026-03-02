@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-dentdelion"
-version = "0.1.0-alpha.11"
+version = "0.1.0-rc.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -94,3 +94,4 @@ reinhardt-db = {workspace = true, features = ["backends"], optional = true}
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tempfile = { workspace = true }
+rstest = { workspace = true }

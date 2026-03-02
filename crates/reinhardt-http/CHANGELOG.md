@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.8...reinhardt-http@v0.1.0-rc.1) - 2026-02-23
+
+### Maintenance
+
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
+## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.7...reinhardt-http@v0.1.0-alpha.8) - 2026-02-21
+
+### Fixed
+
+- add session timeout for chunked uploads
+- fix streaming parser, cookie parsing, and request builder
+- recover from poisoned mutex instead of panicking
+- prevent panics from lock poisoning, query parsing, and input validation
+- add path traversal prevention with input validation
+
+### Security
+
+- use cryptographically random filenames for uploads
+- add safe error response builder to prevent info leakage
+- harden XSS, CSRF, auth, and proxy trust
+- prevent path traversal in file upload handling
+
+### Styling
+
+- fix pre-existing clippy warnings and apply rustfmt
+- apply rustfmt to pre-existing unformatted files
+- collapse nested if statements per clippy::collapsible_if
+- apply code formatting to security fix files
+
+### Documentation
+
+- add security note on client-side auth state limitations
+
 ## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.6...reinhardt-http@v0.1.0-alpha.7) - 2026-02-12
 
 ### Maintenance

@@ -1,6 +1,44 @@
 //! PostgreSQL query builder backend
 //!
 //! This module implements the SQL generation backend for PostgreSQL.
+//!
+//! # SQL Identifier Quoting
+//!
+//! PostgreSQL uses **double quotes** (`"`) for SQL identifiers (table names, column names,
+//! index names, etc.). This is different from string literals, which use single quotes (`'`).
+//!
+//! ## Quoting Behavior
+//!
+//! - All identifiers are automatically wrapped in double quotes
+//! - Double quotes within identifiers are escaped by doubling (`"` becomes `""`)
+//! - Case sensitivity is preserved when identifiers are quoted
+//!
+//! ## Examples
+//!
+//! | Input Identifier | Quoted Output |
+//! |-----------------|---------------|
+//! | `users` | `"users"` |
+//! | `user_name` | `"user_name"` |
+//! | `column"with"quotes` | `"column""with""quotes"` |
+//!
+//! ## Testing Generated SQL
+//!
+//! When writing tests for generated SQL, ensure you account for identifier quoting:
+//!
+//! ```rust,ignore
+//! use reinhardt_query::backend::{PostgresQueryBuilder, QueryBuilder};
+//! use reinhardt_query::prelude::*;
+//!
+//! let builder = PostgresQueryBuilder::new();
+//! let stmt = Query::select().column("name").from("users");
+//! let (sql, _) = builder.build_select(&stmt);
+//!
+//! // Note the double quotes around identifiers
+//! assert_eq!(sql, r#"SELECT "name" FROM "users""#);
+//! ```
+//!
+//! For more details on SQL syntax, see the
+//! [PostgreSQL Documentation](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS).
 
 use super::{QueryBuilder, SqlWriter};
 use crate::{
@@ -110,13 +148,29 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
 			TableRef::SubQuery(query, alias) => {
-				let (sql, _) = self.build_select(query);
+				let (subquery_sql, subquery_values) = self.build_select(query);
+
+				// Adjust placeholders for PostgreSQL ($1, $2, ... -> $N, $N+1, ...)
+				let offset = writer.param_index() - 1;
+				let adjusted_sql = if offset > 0 {
+					let mut sql = subquery_sql;
+					for i in (1..=subquery_values.len()).rev() {
+						sql = sql.replace(&format!("${}", i), &format!("${}", i + offset));
+					}
+					sql
+				} else {
+					subquery_sql
+				};
+
 				writer.push("(");
-				writer.push(&sql);
+				writer.push(&adjusted_sql);
 				writer.push(")");
 				writer.push_keyword("AS");
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
+
+				// Merge the values from the subquery
+				writer.append_values(&subquery_values);
 			}
 		}
 	}
@@ -334,13 +388,13 @@ impl PostgresQueryBuilder {
 			SimpleExpr::AsEnum(name, expr) => {
 				self.write_simple_expr(writer, expr);
 				writer.push("::");
-				writer.push(&name.to_string());
+				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr(writer, expr);
 				writer.push(" AS ");
-				writer.push(&type_name.to_string());
+				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
 		}
@@ -513,13 +567,13 @@ impl PostgresQueryBuilder {
 			SimpleExpr::AsEnum(name, expr) => {
 				self.write_simple_expr_unquoted(writer, expr);
 				writer.push("::");
-				writer.push(&name.to_string());
+				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr_unquoted(writer, expr);
 				writer.push(" AS ");
-				writer.push(&type_name.to_string());
+				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
 		}
@@ -975,6 +1029,8 @@ impl QueryBuilder for PostgresQueryBuilder {
 	}
 
 	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
+		use crate::query::insert::InsertSource;
+
 		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
@@ -998,18 +1054,29 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push(")");
 		}
 
-		// VALUES clause
-		if !stmt.values.is_empty() {
-			writer.push_keyword("VALUES");
-			writer.push_space();
+		// VALUES clause or SELECT subquery
+		match &stmt.source {
+			InsertSource::Values(values) if !values.is_empty() => {
+				writer.push_keyword("VALUES");
+				writer.push_space();
 
-			writer.push_list(&stmt.values, ", ", |w, row| {
-				w.push("(");
-				w.push_list(row, ", ", |w2, value| {
-					w2.push_value(value.clone(), |i| self.placeholder(i));
+				writer.push_list(values, ", ", |w, row| {
+					w.push("(");
+					w.push_list(row, ", ", |w2, value| {
+						w2.push_value(value.clone(), |i| self.placeholder(i));
+					});
+					w.push(")");
 				});
-				w.push(")");
-			});
+			}
+			InsertSource::Subquery(select) => {
+				writer.push_space();
+				let (select_sql, select_values) = self.build_select(select);
+				writer.push(&select_sql);
+				writer.append_values(&select_values);
+			}
+			_ => {
+				// Empty values - this is valid SQL in some contexts
+			}
 		}
 
 		// ON CONFLICT clause
@@ -1694,7 +1761,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			match body {
 				TriggerBody::PostgresFunction(func_name) => {
 					writer.push("EXECUTE FUNCTION ");
-					writer.push(func_name.as_str());
+					writer.push_identifier(func_name.as_str(), |s| self.escape_iden(s));
 					writer.push("()");
 				}
 				TriggerBody::Single(_) | TriggerBody::Multiple(_) => {
@@ -3277,240 +3344,240 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 		writer.finish()
 	}
-	//
-	// 	fn build_analyze(&self, stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("ANALYZE");
-	//
-	// 		if stmt.verbose {
-	// 			writer.push_keyword("VERBOSE");
-	// 		}
-	//
-	// 		// Tables and columns
-	// 		if !stmt.tables.is_empty() {
-	// 			writer.push_space();
-	// 			writer.push_list(&stmt.tables, ", ", |w, table| {
-	// 				w.push_identifier(&Iden::to_string(table.table.as_ref()), |s| {
-	// 					self.escape_iden(s)
-	// 				});
-	// 				if !table.columns.is_empty() {
-	// 					w.push(" (");
-	// 					w.push_list(&table.columns, ", ", |w2, col| {
-	// 						w2.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
-	// 					});
-	// 					w.push(")");
-	// 				}
-	// 			});
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
-	// 	fn build_vacuum(&self, stmt: &crate::query::VacuumStatement) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("VACUUM");
-	//
-	// 		// Options
-	// 		if stmt.full {
-	// 			writer.push_keyword("FULL");
-	// 		}
-	// 		if stmt.freeze {
-	// 			writer.push_keyword("FREEZE");
-	// 		}
-	// 		if stmt.verbose {
-	// 			writer.push_keyword("VERBOSE");
-	// 		}
-	// 		if stmt.analyze {
-	// 			writer.push_keyword("ANALYZE");
-	// 		}
-	//
-	// 		// Tables
-	// 		if !stmt.tables.is_empty() {
-	// 			writer.push_space();
-	// 			writer.push_list(&stmt.tables, ", ", |w, table| {
-	// 				w.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
-	// 			});
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
-	// 	fn build_create_materialized_view(
-	// 		&self,
-	// 		stmt: &crate::query::CreateMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("CREATE MATERIALIZED VIEW");
-	//
-	// 		// IF NOT EXISTS
-	// 		if stmt.def.if_not_exists {
-	// 			writer.push_keyword("IF NOT EXISTS");
-	// 		}
-	//
-	// 		// View name
-	// 		writer.push_space();
-	// 		writer.push_identifier(&Iden::to_string(stmt.def.name.as_ref()), |s| {
-	// 			self.escape_iden(s)
-	// 		});
-	//
-	// 		// Column names
-	// 		if !stmt.def.columns.is_empty() {
-	// 			writer.push_space();
-	// 			writer.push("(");
-	// 			writer.push_list(&stmt.def.columns, ", ", |w, col| {
-	// 				w.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
-	// 			});
-	// 			writer.push(")");
-	// 		}
-	//
-	// 		// TABLESPACE
-	// 		if let Some(ref tablespace) = stmt.def.tablespace {
-	// 			writer.push_keyword("TABLESPACE");
-	// 			writer.push_space();
-	// 			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
-	// 				self.escape_iden(s)
-	// 			});
-	// 		}
-	//
-	// 		// AS SELECT
-	// 		if let Some(ref select) = stmt.select {
-	// 			writer.push_keyword("AS");
-	// 			writer.push_space();
-	// 			let (select_sql, select_values) = self.build_select(select);
-	// 			writer.push(&select_sql);
-	//
-	// 			// WITH [NO] DATA
-	// 			if let Some(with_data) = stmt.def.with_data {
-	// 				writer.push_space();
-	// 				if with_data {
-	// 					writer.push_keyword("WITH DATA");
-	// 				} else {
-	// 					writer.push_keyword("WITH NO DATA");
-	// 				}
-	// 			}
-	//
-	// 			let (sql, _) = writer.finish();
-	// 			return (sql, select_values);
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
-	// 	fn build_alter_materialized_view(
-	// 		&self,
-	// 		stmt: &crate::query::AlterMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		use crate::types::{Iden, MaterializedViewOperation};
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("ALTER MATERIALIZED VIEW");
-	//
-	// 		// View name
-	// 		if let Some(ref name) = stmt.name {
-	// 			writer.push_space();
-	// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-	// 		}
-	//
-	// 		// Operations
-	// 		for operation in &stmt.operations {
-	// 			writer.push_space();
-	// 			match operation {
-	// 				MaterializedViewOperation::Rename(new_name) => {
-	// 					writer.push_keyword("RENAME TO");
-	// 					writer.push_space();
-	// 					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
-	// 						self.escape_iden(s)
-	// 					});
-	// 				}
-	// 				MaterializedViewOperation::OwnerTo(new_owner) => {
-	// 					writer.push_keyword("OWNER TO");
-	// 					writer.push_space();
-	// 					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
-	// 						self.escape_iden(s)
-	// 					});
-	// 				}
-	// 				MaterializedViewOperation::SetSchema(schema_name) => {
-	// 					writer.push_keyword("SET SCHEMA");
-	// 					writer.push_space();
-	// 					writer.push_identifier(&Iden::to_string(schema_name.as_ref()), |s| {
-	// 						self.escape_iden(s)
-	// 					});
-	// 				}
-	// 			}
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
-	// 	fn build_drop_materialized_view(
-	// 		&self,
-	// 		stmt: &crate::query::DropMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("DROP MATERIALIZED VIEW");
-	//
-	// 		// IF EXISTS
-	// 		if stmt.if_exists {
-	// 			writer.push_keyword("IF EXISTS");
-	// 		}
-	//
-	// 		// View names
-	// 		writer.push_space();
-	// 		writer.push_list(&stmt.names, ", ", |w, name| {
-	// 			w.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-	// 		});
-	//
-	// 		// CASCADE or RESTRICT
-	// 		if stmt.cascade {
-	// 			writer.push_keyword("CASCADE");
-	// 		} else if stmt.restrict {
-	// 			writer.push_keyword("RESTRICT");
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
-	// 	fn build_refresh_materialized_view(
-	// 		&self,
-	// 		stmt: &crate::query::RefreshMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("REFRESH MATERIALIZED VIEW");
-	//
-	// 		// CONCURRENTLY
-	// 		if stmt.concurrently {
-	// 			writer.push_keyword("CONCURRENTLY");
-	// 		}
-	//
-	// 		// View name
-	// 		if let Some(ref name) = stmt.name {
-	// 			writer.push_space();
-	// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-	// 		}
-	//
-	// 		// WITH [NO] DATA
-	// 		if let Some(with_data) = stmt.with_data {
-	// 			writer.push_space();
-	// 			if with_data {
-	// 				writer.push_keyword("WITH DATA");
-	// 			} else {
-	// 				writer.push_keyword("WITH NO DATA");
-	// 			}
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
+
+	fn build_analyze(&self, stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("ANALYZE");
+
+		if stmt.verbose {
+			writer.push_keyword("VERBOSE");
+		}
+
+		// Tables and columns
+		if !stmt.tables.is_empty() {
+			writer.push_space();
+			writer.push_list(&stmt.tables, ", ", |w, table| {
+				w.push_identifier(&Iden::to_string(table.table.as_ref()), |s| {
+					self.escape_iden(s)
+				});
+				if !table.columns.is_empty() {
+					w.push(" (");
+					w.push_list(&table.columns, ", ", |w2, col| {
+						w2.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
+					});
+					w.push(")");
+				}
+			});
+		}
+
+		writer.finish()
+	}
+
+	fn build_vacuum(&self, stmt: &crate::query::VacuumStatement) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("VACUUM");
+
+		// Options
+		if stmt.full {
+			writer.push_keyword("FULL");
+		}
+		if stmt.freeze {
+			writer.push_keyword("FREEZE");
+		}
+		if stmt.verbose {
+			writer.push_keyword("VERBOSE");
+		}
+		if stmt.analyze {
+			writer.push_keyword("ANALYZE");
+		}
+
+		// Tables
+		if !stmt.tables.is_empty() {
+			writer.push_space();
+			writer.push_list(&stmt.tables, ", ", |w, table| {
+				w.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+			});
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_materialized_view(
+		&self,
+		stmt: &crate::query::CreateMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("CREATE MATERIALIZED VIEW");
+
+		// IF NOT EXISTS
+		if stmt.def.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		// View name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.def.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// Column names
+		if !stmt.def.columns.is_empty() {
+			writer.push_space();
+			writer.push("(");
+			writer.push_list(&stmt.def.columns, ", ", |w, col| {
+				w.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
+			});
+			writer.push(")");
+		}
+
+		// TABLESPACE
+		if let Some(ref tablespace) = stmt.def.tablespace {
+			writer.push_keyword("TABLESPACE");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
+				self.escape_iden(s)
+			});
+		}
+
+		// AS SELECT
+		if let Some(ref select) = stmt.select {
+			writer.push_keyword("AS");
+			writer.push_space();
+			let (select_sql, select_values) = self.build_select(select);
+			writer.push(&select_sql);
+
+			// WITH [NO] DATA
+			if let Some(with_data) = stmt.def.with_data {
+				writer.push_space();
+				if with_data {
+					writer.push_keyword("WITH DATA");
+				} else {
+					writer.push_keyword("WITH NO DATA");
+				}
+			}
+
+			let (sql, _) = writer.finish();
+			return (sql, select_values);
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_materialized_view(
+		&self,
+		stmt: &crate::query::AlterMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::{Iden, MaterializedViewOperation};
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("ALTER MATERIALIZED VIEW");
+
+		// View name
+		if let Some(ref name) = stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Operations
+		for operation in &stmt.operations {
+			writer.push_space();
+			match operation {
+				MaterializedViewOperation::Rename(new_name) => {
+					writer.push_keyword("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				MaterializedViewOperation::OwnerTo(new_owner) => {
+					writer.push_keyword("OWNER TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				MaterializedViewOperation::SetSchema(schema_name) => {
+					writer.push_keyword("SET SCHEMA");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(schema_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_materialized_view(
+		&self,
+		stmt: &crate::query::DropMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("DROP MATERIALIZED VIEW");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// View names
+		writer.push_space();
+		writer.push_list(&stmt.names, ", ", |w, name| {
+			w.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		});
+
+		// CASCADE or RESTRICT
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_refresh_materialized_view(
+		&self,
+		stmt: &crate::query::RefreshMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("REFRESH MATERIALIZED VIEW");
+
+		// CONCURRENTLY
+		if stmt.concurrently {
+			writer.push_keyword("CONCURRENTLY");
+		}
+
+		// View name
+		if let Some(ref name) = stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// WITH [NO] DATA
+		if let Some(with_data) = stmt.with_data {
+			writer.push_space();
+			if with_data {
+				writer.push_keyword("WITH DATA");
+			} else {
+				writer.push_keyword("WITH NO DATA");
+			}
+		}
+
+		writer.finish()
+	}
+
 	fn build_create_procedure(
 		&self,
 		stmt: &crate::query::CreateProcedureStatement,
@@ -4195,7 +4262,7 @@ mod tests {
 	use crate::{
 		expr::{Expr, ExprTrait},
 		query::Query,
-		types::IntoIden,
+		types::{Alias, IntoIden},
 	};
 	use rstest::rstest;
 
@@ -4334,6 +4401,57 @@ mod tests {
 		let (sql, values) = builder.build_insert(&stmt);
 		assert!(sql.contains("RETURNING *"));
 		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_insert_from_subquery() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Create a SELECT subquery
+		let select = Query::select()
+			.column("name")
+			.column("email")
+			.from("temp_users")
+			.to_owned();
+
+		// Create an INSERT with subquery
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name", "email"])
+			.from_subquery(select);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains("INSERT INTO \"users\""));
+		assert!(sql.contains("\"name\", \"email\""));
+		assert!(sql.contains("SELECT \"name\", \"email\" FROM \"temp_users\""));
+		assert!(!sql.contains("VALUES"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_insert_from_subquery_with_where() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Create a SELECT subquery with WHERE clause
+		let select = Query::select()
+			.column("name")
+			.column("email")
+			.from("temp_users")
+			.and_where(Expr::col("active").eq(true))
+			.to_owned();
+
+		// Create an INSERT with subquery
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name", "email"])
+			.from_subquery(select);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains("INSERT INTO \"users\""));
+		assert!(sql.contains("SELECT"));
+		assert!(sql.contains("FROM \"temp_users\""));
+		assert!(sql.contains("WHERE"));
+		assert_eq!(values.len(), 1); // true value from WHERE clause
 	}
 
 	#[test]
@@ -5004,6 +5122,59 @@ mod tests {
 		assert!(sql.contains("\"status\" = $"));
 		assert!(sql.contains("\"active\" = $"));
 		assert_eq!(values.len(), 4); // 0, "main", "available", true
+	}
+
+	#[test]
+	fn test_from_subquery_preserves_parameter_values() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Arrange
+		let mut subquery = Query::select();
+		subquery
+			.column("id")
+			.column("name")
+			.from("users")
+			.and_where(Expr::col("active").eq(true))
+			.and_where(Expr::col("role").eq("admin"));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from_subquery(subquery, Alias::new("active_admins"))
+			.and_where(Expr::col("name").like("A%"));
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert
+		assert!(sql.contains("(SELECT"));
+		assert!(sql.contains(") AS \"active_admins\""));
+		// Subquery params (true, "admin") + outer param ("A%") = 3 values
+		assert_eq!(values.len(), 3);
+	}
+
+	#[test]
+	fn test_from_subquery_postgres_placeholder_renumbering() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Arrange: outer query has params before the FROM subquery
+		let mut subquery = Query::select();
+		subquery
+			.column("id")
+			.from("users")
+			.and_where(Expr::col("role").eq("admin"));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from_subquery(subquery, Alias::new("sub"))
+			.and_where(Expr::col("status").eq("active"));
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert: subquery param should be $1, outer param should be $2
+		assert!(sql.contains("$1"));
+		assert!(sql.contains("$2"));
+		assert_eq!(values.len(), 2);
 	}
 
 	// --- Phase 5: NULL Handling Tests ---
@@ -7325,7 +7496,7 @@ mod tests {
 		let (sql, values) = builder.build_create_trigger(&stmt);
 		assert_eq!(
 			sql,
-			r#"CREATE TRIGGER "audit_log" AFTER INSERT ON "users" FOR EACH ROW EXECUTE FUNCTION log_user_insert()"#
+			r#"CREATE TRIGGER "audit_log" AFTER INSERT ON "users" FOR EACH ROW EXECUTE FUNCTION "log_user_insert"()"#
 		);
 		assert_eq!(values.len(), 0);
 	}
@@ -7346,7 +7517,7 @@ mod tests {
 		let (sql, values) = builder.build_create_trigger(&stmt);
 		assert_eq!(
 			sql,
-			r#"CREATE TRIGGER "update_timestamp" BEFORE UPDATE ON "users" FOR EACH ROW EXECUTE FUNCTION update_modified_at()"#
+			r#"CREATE TRIGGER "update_timestamp" BEFORE UPDATE ON "users" FOR EACH ROW EXECUTE FUNCTION "update_modified_at"()"#
 		);
 		assert_eq!(values.len(), 0);
 	}
@@ -7367,7 +7538,7 @@ mod tests {
 		let (sql, values) = builder.build_create_trigger(&stmt);
 		assert_eq!(
 			sql,
-			r#"CREATE TRIGGER "audit_delete" AFTER DELETE ON "users" FOR EACH STATEMENT EXECUTE FUNCTION log_bulk_delete()"#
+			r#"CREATE TRIGGER "audit_delete" AFTER DELETE ON "users" FOR EACH STATEMENT EXECUTE FUNCTION "log_bulk_delete"()"#
 		);
 		assert_eq!(values.len(), 0);
 	}
@@ -9016,6 +9187,87 @@ mod tests {
 		builder.build_set_default_role(&stmt);
 	}
 
+	// ==================== SQL identifier escaping tests ====================
+
+	#[rstest]
+	fn test_as_enum_escapes_type_name_with_special_characters() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::val("active").as_enum(Alias::new("user\"status")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert: enum type name must be quoted and inner quotes doubled
+		assert!(sql.contains("::\"user\"\"status\""));
+	}
+
+	#[rstest]
+	fn test_cast_escapes_type_name_with_special_characters() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::col("age").cast_as(Alias::new("my\"type")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert: cast type name must be quoted and inner quotes doubled
+		assert!(sql.contains("CAST(\"age\" AS \"my\"\"type\")"));
+	}
+
+	#[rstest]
+	fn test_trigger_function_name_is_escaped() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("test_trigger")
+			.timing(crate::types::TriggerTiming::After)
+			.event(crate::types::TriggerEvent::Insert)
+			.on_table("users")
+			.for_each(crate::types::TriggerScope::Row)
+			.execute_function("my\"func");
+
+		// Act
+		let (sql, _) = builder.build_create_trigger(&stmt);
+
+		// Assert: function name must be quoted and inner quotes doubled
+		assert!(sql.contains("EXECUTE FUNCTION \"my\"\"func\"()"));
+	}
+
+	#[rstest]
+	fn test_as_enum_normal_type_name_is_quoted() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::val("active").as_enum(Alias::new("status")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert: even normal identifiers should be quoted
+		assert!(sql.contains("::\"status\""));
+	}
+
+	#[rstest]
+	fn test_cast_normal_type_name_is_quoted() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::col("age").cast_as(Alias::new("INTEGER")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert: cast type name should be quoted
+		assert!(sql.contains("CAST(\"age\" AS \"INTEGER\")"));
+	}
+
 	// ==================== Dollar-quote delimiter safety tests ====================
 
 	#[rstest]
@@ -9043,10 +9295,6 @@ mod tests {
 			delimiter, "$$",
 			"Delimiter must not be $$ when body contains $$"
 		);
-		assert!(
-			!body.contains(&delimiter),
-			"Delimiter must not appear in body"
-		);
 		assert_eq!(delimiter, "$body_0$");
 	}
 
@@ -9060,7 +9308,11 @@ mod tests {
 
 		// Assert
 		assert_ne!(delimiter, "$$");
-		assert!(!body.contains(&delimiter));
+		let delimiters = collect_dollar_quote_delimiters(body);
+		assert!(
+			!delimiters.contains(&delimiter),
+			"Generated delimiter must not conflict with any delimiter in body"
+		);
 	}
 
 	#[rstest]
@@ -9073,7 +9325,6 @@ mod tests {
 
 		// Assert
 		assert_eq!(delimiter, "$body_1$");
-		assert!(!body.contains(&delimiter));
 	}
 
 	#[rstest]
@@ -9086,32 +9337,253 @@ mod tests {
 
 		// Assert
 		assert_eq!(delimiter, "$body_2$");
-		assert!(!body.contains(&delimiter));
 	}
+
+	#[rstest]
+	fn test_safe_delimiter_ignores_dollar_amount_not_delimiter() {
+		// Arrange: $100 is not a dollar-quote delimiter (digit after $)
+		let body = "SELECT $100 + $200";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert: $$ is safe because $100 is not a delimiter
+		assert_eq!(delimiter, "$$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_empty_body() {
+		// Arrange
+		let body = "";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_whitespace_only_body() {
+		// Arrange
+		let body = "   \t\n  ";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_nested_dollar_quotes() {
+		// Arrange: body contains nested dollar-quoted strings
+		let body = "$inner$ SELECT 1 $inner$ $$ nested $$";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert: must avoid both $$ and $inner$
+		assert_ne!(delimiter, "$$");
+		assert_ne!(delimiter, "$inner$");
+		assert_eq!(delimiter, "$body_0$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_tag_style_delimiters() {
+		// Arrange: body contains $tag$ style delimiters
+		let body = "$func$ BEGIN RETURN 1; END; $func$";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert: $$ is safe because body only contains $func$
+		assert_eq!(delimiter, "$$");
+	}
+
+	// ==================== Dollar-quote delimiter collection tests ====================
+
+	#[rstest]
+	fn test_collect_delimiters_empty_body() {
+		// Arrange
+		let body = "";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert!(delimiters.is_empty());
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_no_dollar_signs() {
+		// Arrange
+		let body = "SELECT 1 + 2";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert!(delimiters.is_empty());
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_dollar_amounts_are_not_delimiters() {
+		// Arrange: $1, $2 are PostgreSQL parameter placeholders, not delimiters
+		let body = "SELECT $1 + $2";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert!(delimiters.is_empty());
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_finds_empty_tag() {
+		// Arrange
+		let body = "$$ body content $$";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert_eq!(delimiters.len(), 1);
+		assert!(delimiters.contains("$$"));
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_finds_named_tag() {
+		// Arrange
+		let body = "$func$ body $func$";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert_eq!(delimiters.len(), 1);
+		assert!(delimiters.contains("$func$"));
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_finds_multiple_tags() {
+		// Arrange
+		let body = "$$ outer $inner$ nested $inner$ outer $$";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert_eq!(delimiters.len(), 2);
+		assert!(delimiters.contains("$$"));
+		assert!(delimiters.contains("$inner$"));
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_underscore_in_tag() {
+		// Arrange
+		let body = "$my_tag$ content $my_tag$";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert!(delimiters.contains("$my_tag$"));
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_rejects_digit_start_tag() {
+		// Arrange: $1tag$ is not valid because tag starts with digit
+		let body = "$1tag$ content";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert: $1tag$ is not a valid delimiter
+		assert!(!delimiters.contains("$1tag$"));
+	}
+}
+
+/// Collect all dollar-quote delimiters present in the body text.
+///
+/// A dollar-quote delimiter in PostgreSQL has the form `$tag$` where `tag` is
+/// either empty or consists of `[a-zA-Z0-9_]` characters not starting with a
+/// digit. This function scans the body and returns the set of all such
+/// delimiters (including the surrounding `$` signs).
+///
+/// Using exact delimiter boundary detection instead of substring matching
+/// prevents false positives (e.g. `$100` is not a delimiter) and false
+/// negatives (e.g. partial overlap with candidate delimiter tags).
+fn collect_dollar_quote_delimiters(body: &str) -> std::collections::HashSet<String> {
+	let mut delimiters = std::collections::HashSet::new();
+	let bytes = body.as_bytes();
+	let len = bytes.len();
+	let mut i = 0;
+
+	while i < len {
+		if bytes[i] == b'$' {
+			// Found a '$', try to parse a dollar-quote delimiter
+			let start = i;
+			i += 1;
+
+			// Empty tag: `$$`
+			if i < len && bytes[i] == b'$' {
+				delimiters.insert("$$".to_string());
+				i += 1;
+				continue;
+			}
+
+			// Non-empty tag: tag must match [a-zA-Z_][a-zA-Z0-9_]*
+			if i < len && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+				let tag_start = i;
+				i += 1;
+				while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+					i += 1;
+				}
+				// Check for closing '$'
+				if i < len && bytes[i] == b'$' {
+					let delimiter = &body[start..=i];
+					delimiters.insert(delimiter.to_string());
+					i += 1;
+					continue;
+				}
+				// Not a valid delimiter, continue from after the initial '$'
+				i = tag_start;
+				continue;
+			}
+
+			// '$' followed by a digit or other non-tag character -- not a delimiter
+			continue;
+		}
+		i += 1;
+	}
+
+	delimiters
 }
 
 /// Generate a safe dollar-quote delimiter that does not appear in the body.
 ///
 /// PostgreSQL dollar-quoting uses `$$` as the default delimiter. If the function
 /// body contains `$$`, an attacker could break out of the dollar-quoted string.
-/// This function generates a unique delimiter by appending a numeric suffix
-/// until a collision-free delimiter is found.
+/// This function scans for all dollar-quote delimiter patterns in the body and
+/// generates a unique delimiter that does not conflict with any of them.
 fn generate_safe_dollar_quote_delimiter(body: &str) -> String {
-	let default = "$$".to_string();
-	if !body.contains(&default) {
-		return default;
+	let existing = collect_dollar_quote_delimiters(body);
+
+	if !existing.contains("$$") {
+		return "$$".to_string();
 	}
 
 	// Try numbered delimiters: $body_0$, $body_1$, ...
 	for i in 0u64.. {
 		let candidate = format!("$body_{}$", i);
-		if !body.contains(&candidate) {
+		if !existing.contains(&candidate) {
 			return candidate;
 		}
 	}
 
 	// Unreachable in practice, but satisfy the compiler
-	default
+	"$$".to_string()
 }
 
 impl crate::query::QueryBuilderTrait for PostgresQueryBuilder {

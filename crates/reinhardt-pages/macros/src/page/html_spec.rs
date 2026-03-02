@@ -1025,7 +1025,8 @@ pub(super) static TRACK_SPEC: ElementSpec = ElementSpec {
 		expected_type: AttrType::String,
 		required: true,
 	}],
-	allowed_attrs: Some(&["kind", "label", "srclang", "default"]),
+	// Fixes #851: include required attribute "src" in allowed_attrs
+	allowed_attrs: Some(&["src", "kind", "label", "srclang", "default"]),
 	is_void: true,
 	is_interactive: false,
 	content_model: Some(ContentModel::Empty),
@@ -1110,7 +1111,8 @@ pub(super) static PARAM_SPEC: ElementSpec = ElementSpec {
 		expected_type: AttrType::String,
 		required: true,
 	}],
-	allowed_attrs: Some(&["value"]),
+	// Fixes #851: include required attribute "name" in allowed_attrs
+	allowed_attrs: Some(&["name", "value"]),
 	is_void: true,
 	is_interactive: false,
 	content_model: Some(ContentModel::Empty),
@@ -1226,7 +1228,8 @@ pub(super) static DATA_SPEC: ElementSpec = ElementSpec {
 		expected_type: AttrType::String,
 		required: true,
 	}],
-	allowed_attrs: Some(&[]),
+	// Fixes #851: include required attribute "value" in allowed_attrs
+	allowed_attrs: Some(&["value"]),
 	is_void: false,
 	is_interactive: false,
 	content_model: None,
@@ -1765,6 +1768,7 @@ pub(super) static INPUT_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 			"month",
 			"color",
 			"range",
+			"image",
 		],
 	}],
 };
@@ -1788,7 +1792,7 @@ pub(super) static FORM_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 	attrs: &[
 		EnumAttrSpec {
 			name: "method",
-			valid_values: &["get", "post"],
+			valid_values: &["get", "post", "dialog"],
 		},
 		EnumAttrSpec {
 			name: "enctype",
