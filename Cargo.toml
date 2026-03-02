@@ -469,9 +469,8 @@ native-tls = "=0.2.14"
 # Authentication & Security
 argon2 = { version = "0.5", features = ["std"] }
 password-hash = "0.5"
-rand = "0.8"
-rand_core = "0.6"
-getrandom = { version = "0.2", features = ["js"] }  # WASM support with js feature
+rand = "0.9"
+getrandom = { version = "0.3", features = ["wasm_js"] }  # WASM support with wasm_js feature
 jsonwebtoken = { version = "10.2.0", features = ["aws_lc_rs"] }
 uuid = { version = "1.18.1", features = ["v4", "v5", "serde"] }
 
