@@ -316,6 +316,63 @@ mod tests {
 		assert_eq!(config.relationships, vec!["posts", "comments"]);
 	}
 
+	#[tokio::test]
+	async fn test_lazy_loaded_get_returns_owned_clone() {
+		// Arrange
+		let lazy = LazyLoaded::new(|| Box::pin(async { Ok(vec![10, 20, 30]) }));
+
+		// Act - get() loads and returns owned T via clone
+		let data = lazy.get().await.unwrap();
+
+		// Assert
+		assert_eq!(data, vec![10, 20, 30]);
+		assert!(lazy.is_loaded());
+	}
+
+	#[tokio::test]
+	async fn test_lazy_loaded_get_if_loaded_returns_none_when_not_loaded() {
+		// Arrange
+		let lazy = LazyLoaded::new(|| Box::pin(async { Ok(42) }));
+
+		// Act
+		let result = lazy.get_if_loaded();
+
+		// Assert
+		assert_eq!(result, None);
+	}
+
+	#[tokio::test]
+	async fn test_lazy_loaded_get_if_loaded_returns_cloned_value() {
+		// Arrange
+		let lazy = LazyLoaded::preloaded(String::from("hello"), || {
+			Box::pin(async { Ok(String::from("world")) })
+		});
+
+		// Act
+		let result = lazy.get_if_loaded();
+
+		// Assert
+		assert_eq!(result, Some(String::from("hello")));
+	}
+
+	#[tokio::test]
+	async fn test_lazy_loaded_reset_forces_reload() {
+		// Arrange
+		let lazy = LazyLoaded::preloaded(vec![1], || Box::pin(async { Ok(vec![2]) }));
+		assert!(lazy.is_loaded());
+
+		// Act
+		lazy.reset();
+
+		// Assert
+		assert!(!lazy.is_loaded());
+		assert_eq!(lazy.get_if_loaded(), None);
+
+		// Reload
+		let data = lazy.get().await.unwrap();
+		assert_eq!(data, vec![2]);
+	}
+
 	#[test]
 	fn test_relationship_cache() {
 		let cache = RelationshipCache::new();
