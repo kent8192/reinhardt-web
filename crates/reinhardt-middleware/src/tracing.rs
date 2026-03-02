@@ -89,11 +89,25 @@ impl Span {
 	}
 }
 
+/// Default maximum number of spans before eviction triggers
+const DEFAULT_MAX_SPANS: usize = 10_000;
+
 /// Trace context storage
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TraceStore {
 	/// Active spans
 	spans: RwLock<HashMap<String, Span>>,
+	/// Maximum number of spans before completed spans are evicted
+	max_spans: usize,
+}
+
+impl Default for TraceStore {
+	fn default() -> Self {
+		Self {
+			spans: RwLock::new(HashMap::new()),
+			max_spans: DEFAULT_MAX_SPANS,
+		}
+	}
 }
 
 impl TraceStore {
@@ -102,14 +116,26 @@ impl TraceStore {
 		Self::default()
 	}
 
+	/// Create a new trace store with a custom maximum span limit
+	pub fn with_max_spans(max_spans: usize) -> Self {
+		Self {
+			spans: RwLock::new(HashMap::new()),
+			max_spans,
+		}
+	}
+
 	/// Start a new span
 	pub fn start_span(&self, trace_id: String, operation_name: String) -> String {
 		let span = Span::new(trace_id, operation_name);
 		let span_id = span.span_id.clone();
-		self.spans
-			.write()
-			.unwrap_or_else(|e| e.into_inner())
-			.insert(span_id.clone(), span);
+		let mut spans = self.spans.write().unwrap_or_else(|e| e.into_inner());
+		spans.insert(span_id.clone(), span);
+
+		// Evict completed spans when store exceeds capacity
+		if spans.len() > self.max_spans {
+			spans.retain(|_, s| s.end_time.is_none());
+		}
+		drop(spans);
 		span_id
 	}
 
