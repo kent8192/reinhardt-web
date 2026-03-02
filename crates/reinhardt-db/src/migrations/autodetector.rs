@@ -540,7 +540,7 @@ impl ProjectState {
 	pub fn to_database_schema(&self) -> super::schema_diff::DatabaseSchema {
 		let mut tables = BTreeMap::new();
 
-		for ((_app_label, _model_name), model_state) in &self.models {
+		for ((app_label, model_name), model_state) in &self.models {
 			let mut columns = BTreeMap::new();
 			for (field_name, field_state) in &model_state.fields {
 				// FieldType enum already contains all type information including length
@@ -582,12 +582,26 @@ impl ProjectState {
 				})
 				.collect();
 
+			// Convert indexes from ModelState to IndexSchema
+			let indexes: Vec<super::schema_diff::IndexSchema> = model_state
+				.indexes
+				.iter()
+				.map(|idx| super::schema_diff::IndexSchema {
+					name: idx.name.clone(),
+					columns: idx.fields.clone(),
+					unique: idx.unique,
+				})
+				.collect();
+
+			// Use app_label + model_name as table key to prevent collisions
+			// across apps (Django convention: app_label_modelname)
+			let table_key = format!("{}_{}", app_label, model_name.to_lowercase());
 			tables.insert(
-				model_state.table_name.clone(),
+				table_key.clone(),
 				super::schema_diff::TableSchema {
-					name: model_state.table_name.clone(),
+					name: table_key,
 					columns,
-					indexes: Vec::new(),
+					indexes,
 					constraints,
 				},
 			);
@@ -616,7 +630,7 @@ impl ProjectState {
 	) -> super::schema_diff::DatabaseSchema {
 		let mut tables = BTreeMap::new();
 
-		for ((this_app_label, _model_name), model_state) in &self.models {
+		for ((this_app_label, model_name), model_state) in &self.models {
 			// Filter by app_label
 			if this_app_label == app_label {
 				let mut columns = BTreeMap::new();
@@ -658,12 +672,26 @@ impl ProjectState {
 					})
 					.collect();
 
+				// Convert indexes from ModelState to IndexSchema
+				let indexes: Vec<super::schema_diff::IndexSchema> = model_state
+					.indexes
+					.iter()
+					.map(|idx| super::schema_diff::IndexSchema {
+						name: idx.name.clone(),
+						columns: idx.fields.clone(),
+						unique: idx.unique,
+					})
+					.collect();
+
+				// Use app_label + model_name as table key to prevent collisions
+				// across apps (Django convention: app_label_modelname)
+				let table_key = format!("{}_{}", this_app_label, model_name.to_lowercase());
 				tables.insert(
-					model_state.table_name.clone(),
+					table_key.clone(),
 					super::schema_diff::TableSchema {
-						name: model_state.table_name.clone(),
+						name: table_key,
 						columns,
-						indexes: Vec::new(),
+						indexes,
 						constraints,
 					},
 				);
