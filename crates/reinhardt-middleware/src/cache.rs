@@ -93,43 +93,43 @@ impl CacheStore {
 
 	/// Get an entry
 	pub fn get(&self, key: &str) -> Option<CacheEntry> {
-		let entries = self.entries.read().unwrap();
+		let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
 		entries.get(key).cloned()
 	}
 
 	/// Set an entry
 	pub fn set(&self, key: String, entry: CacheEntry) {
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write().unwrap_or_else(|e| e.into_inner());
 		entries.insert(key, entry);
 	}
 
 	/// Delete an entry
 	pub fn delete(&self, key: &str) {
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write().unwrap_or_else(|e| e.into_inner());
 		entries.remove(key);
 	}
 
 	/// Clean up expired entries
 	pub fn cleanup(&self) {
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write().unwrap_or_else(|e| e.into_inner());
 		entries.retain(|_, entry| !entry.is_expired());
 	}
 
 	/// Clear the store
 	pub fn clear(&self) {
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write().unwrap_or_else(|e| e.into_inner());
 		entries.clear();
 	}
 
 	/// Get the number of entries
 	pub fn len(&self) -> usize {
-		let entries = self.entries.read().unwrap();
+		let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
 		entries.len()
 	}
 
 	/// Check if the store is empty
 	pub fn is_empty(&self) -> bool {
-		let entries = self.entries.read().unwrap();
+		let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
 		entries.is_empty()
 	}
 }
@@ -148,6 +148,7 @@ pub enum CacheKeyStrategy {
 }
 
 /// Cache configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
 	/// Default TTL
@@ -366,9 +367,7 @@ impl CacheMiddleware {
 	/// Generate cache key
 	fn generate_cache_key(&self, request: &Request) -> String {
 		let base = match self.config.key_strategy {
-			CacheKeyStrategy::UrlOnly => {
-				format!("{}:{}", request.method.as_str(), request.uri.path())
-			}
+			CacheKeyStrategy::UrlOnly => request.uri.path().to_string(),
 			CacheKeyStrategy::UrlAndMethod => {
 				format!("{}:{}", request.method.as_str(), request.uri.path())
 			}

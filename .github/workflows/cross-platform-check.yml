@@ -1,0 +1,97 @@
+name: Cross-Platform Check
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  cross-platform-check:
+    name: Cross-Platform Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Verify compilation on all major platforms
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Set cargo target directory
+        # Use the RUNNER_TEMP shell environment variable (not runner.temp context) because
+        # the runner context is unavailable at workflow/job-level env evaluation in
+        # reusable workflows (workflow_call). RUNNER_TEMP is a raw shell variable set by
+        # GitHub Actions on all hosted runners (macOS, Windows, Linux) and resolves to
+        # the OS-appropriate temp directory without requiring context evaluation.
+        shell: bash
+        run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/cargo_target" >> "$GITHUB_ENV"
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Setup protoc
+        uses: ./.github/actions/setup-protoc
+
+      - name: Configure OpenSSL (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          # Install OpenSSL via chocolatey. The choco openssl package provides MSVC-compatible
+          # import libraries (.lib), which are required by openssl-sys for dynamic linking
+          # with the MSVC Rust toolchain. Static linking is not used because choco's package
+          # does not include full static libraries; dynamic import libs suffice for cargo check.
+          choco install openssl --yes --no-progress 2>&1 | Out-Null
+
+          # Find the installed OpenSSL directory (choco may install to different paths)
+          $candidatePaths = @(
+            "C:\Program Files\OpenSSL-Win64",
+            "C:\Program Files\OpenSSL"
+          )
+          $opensslDir = $null
+          foreach ($path in $candidatePaths) {
+            if (Test-Path "$path\include\openssl\ssl.h") {
+              $opensslDir = $path
+              break
+            }
+          }
+          if (-not $opensslDir) {
+            Write-Error "OpenSSL not found after installation. Searched: $($candidatePaths -join ', ')"
+            exit 1
+          }
+          Write-Host "Using OpenSSL at: $opensslDir"
+          echo "OPENSSL_DIR=$opensslDir" >> $env:GITHUB_ENV
+
+          # Find the actual lib directory containing .lib files.
+          # Chocolatey may place them in a VC subdirectory (e.g. lib\VC\x64\MD)
+          # rather than the root lib\ directory that openssl-sys expects.
+          $libCandidates = @(
+            "$opensslDir\lib\VC\x64\MD",
+            "$opensslDir\lib\VC\x64\MTd",
+            "$opensslDir\lib\VC",
+            "$opensslDir\lib"
+          )
+          $opensslLibDir = $null
+          foreach ($path in $libCandidates) {
+            if ((Test-Path "$path\libssl.lib") -or (Test-Path "$path\ssleay32.lib") -or (Test-Path "$path\libssl_static.lib")) {
+              $opensslLibDir = $path
+              break
+            }
+          }
+          if ($opensslLibDir) {
+            Write-Host "Using OpenSSL lib dir at: $opensslLibDir"
+            echo "OPENSSL_LIB_DIR=$opensslLibDir" >> $env:GITHUB_ENV
+          } else {
+            Write-Host "Warning: Could not find OpenSSL .lib files in known subdirectories, using default lib dir"
+            echo "OPENSSL_LIB_DIR=$opensslDir\lib" >> $env:GITHUB_ENV
+          }
+
+      - name: Run cargo check (${{ matrix.os }})
+        run: cargo check --workspace --all --all-features
+

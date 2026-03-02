@@ -45,7 +45,7 @@ impl InsertBuilder {
 	/// use reinhardt_db::orm::hybrid_dml::InsertBuilder;
 	///
 	/// let builder = InsertBuilder::new("users");
-	// Can chain: .value().hybrid_value().build()
+	/// // Can chain: .value().hybrid_value().build()
 	/// ```
 	pub fn new(table_name: &str) -> Self {
 		Self {
@@ -268,7 +268,7 @@ impl UpdateBuilder {
 	/// use reinhardt_db::orm::hybrid_dml::UpdateBuilder;
 	///
 	/// let builder = UpdateBuilder::new("users");
-	// Can chain: .set().where_clause().build()
+	/// // Can chain: .set().where_clause().build()
 	/// ```
 	pub fn new(table_name: &str) -> Self {
 		Self {

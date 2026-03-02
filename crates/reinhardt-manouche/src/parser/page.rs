@@ -402,7 +402,10 @@ fn parse_watch_node(input: ParseStream) -> Result<PageNode> {
 
 	// Consume the "watch" identifier
 	let watch_ident: Ident = input.parse()?;
-	debug_assert_eq!(watch_ident, "watch");
+	assert_eq!(
+		watch_ident, "watch",
+		"parser in wrong state: expected 'watch' identifier"
+	);
 
 	// Parse the braced content
 	let content;

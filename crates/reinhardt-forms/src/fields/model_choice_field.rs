@@ -33,7 +33,7 @@ impl<T: FormModel> ModelChoiceField<T> {
 	/// use reinhardt_forms::FormModel;
 	/// use serde_json::{json, Value};
 	///
-	// Define a simple Category model
+	/// // Define a simple Category model
 	/// #[derive(Clone)]
 	/// struct Category {
 	///     id: i32,
@@ -62,7 +62,7 @@ impl<T: FormModel> ModelChoiceField<T> {
 	///     }
 	/// }
 	///
-	// Create a queryset with sample categories
+	/// // Create a queryset with sample categories
 	/// let categories = vec![
 	///     Category { id: 1, name: "Technology".to_string() },
 	///     Category { id: 2, name: "Science".to_string() },
@@ -181,7 +181,7 @@ impl<T: FormModel> FormField for ModelChoiceField<T> {
 					.get("required")
 					.cloned()
 					.unwrap_or_else(|| "This field is required.".to_string());
-				return Err(FieldError::validation(Some(&self.name), &error_msg));
+				return Err(FieldError::validation(None, &error_msg));
 			}
 			return Ok(Value::Null);
 		}
@@ -198,7 +198,7 @@ impl<T: FormModel> FormField for ModelChoiceField<T> {
 					.get("invalid_choice")
 					.cloned()
 					.unwrap_or_else(|| "Select a valid choice.".to_string());
-				return Err(FieldError::validation(Some(&self.name), &error_msg));
+				return Err(FieldError::validation(None, &error_msg));
 			}
 		};
 
@@ -209,7 +209,7 @@ impl<T: FormModel> FormField for ModelChoiceField<T> {
 					.get("required")
 					.cloned()
 					.unwrap_or_else(|| "This field is required.".to_string());
-				return Err(FieldError::validation(Some(&self.name), &error_msg));
+				return Err(FieldError::validation(None, &error_msg));
 			}
 			return Ok(Value::Null);
 		}
@@ -226,7 +226,7 @@ impl<T: FormModel> FormField for ModelChoiceField<T> {
 				.get("invalid_choice")
 				.cloned()
 				.unwrap_or_else(|| "Select a valid choice.".to_string());
-			return Err(FieldError::validation(Some(&self.name), &error_msg));
+			return Err(FieldError::validation(None, &error_msg));
 		}
 
 		Ok(Value::String(s.to_string()))
@@ -266,7 +266,7 @@ impl<T: FormModel> ModelMultipleChoiceField<T> {
 	/// use reinhardt_forms::FormModel;
 	/// use serde_json::{json, Value};
 	///
-	// Define a simple Tag model
+	/// // Define a simple Tag model
 	/// #[derive(Clone)]
 	/// struct Tag {
 	///     id: i32,
@@ -295,7 +295,7 @@ impl<T: FormModel> ModelMultipleChoiceField<T> {
 	///     }
 	/// }
 	///
-	// Create a queryset with sample tags
+	/// // Create a queryset with sample tags
 	/// let tags = vec![
 	///     Tag { id: 1, name: "rust".to_string() },
 	///     Tag { id: 2, name: "programming".to_string() },
@@ -306,7 +306,7 @@ impl<T: FormModel> ModelMultipleChoiceField<T> {
 	/// assert_eq!(field.name(), "tags");
 	/// assert!(FormField::required(&field));
 	///
-	// Test with multiple selections
+	/// // Test with multiple selections
 	/// let result = field.clean(Some(&json!(["1", "2"])));
 	/// assert!(result.is_ok());
 	/// ```
@@ -413,7 +413,7 @@ impl<T: FormModel> FormField for ModelMultipleChoiceField<T> {
 					.get("required")
 					.cloned()
 					.unwrap_or_else(|| "This field is required.".to_string());
-				return Err(FieldError::validation(Some(&self.name), &error_msg));
+				return Err(FieldError::validation(None, &error_msg));
 			}
 			return Ok(Value::Array(Vec::new()));
 		}
@@ -427,7 +427,7 @@ impl<T: FormModel> FormField for ModelMultipleChoiceField<T> {
 						.get("required")
 						.cloned()
 						.unwrap_or_else(|| "This field is required.".to_string());
-					return Err(FieldError::validation(Some(&self.name), &error_msg));
+					return Err(FieldError::validation(None, &error_msg));
 				}
 				return Ok(Value::Array(Vec::new()));
 			}
@@ -443,7 +443,7 @@ impl<T: FormModel> FormField for ModelMultipleChoiceField<T> {
 					.get("invalid_list")
 					.cloned()
 					.unwrap_or_else(|| "Enter a list of values.".to_string());
-				return Err(FieldError::validation(Some(&self.name), &error_msg));
+				return Err(FieldError::validation(None, &error_msg));
 			}
 		};
 
@@ -453,7 +453,7 @@ impl<T: FormModel> FormField for ModelMultipleChoiceField<T> {
 				.get("required")
 				.cloned()
 				.unwrap_or_else(|| "This field is required.".to_string());
-			return Err(FieldError::validation(Some(&self.name), &error_msg));
+			return Err(FieldError::validation(None, &error_msg));
 		}
 
 		// Validate that all choices exist in queryset
@@ -470,7 +470,7 @@ impl<T: FormModel> FormField for ModelMultipleChoiceField<T> {
 						.get("invalid_choice")
 						.cloned()
 						.unwrap_or_else(|| format!("'{}' is not a valid choice.", value_str));
-					return Err(FieldError::validation(Some(&self.name), &error_msg));
+					return Err(FieldError::validation(None, &error_msg));
 				}
 			}
 		}

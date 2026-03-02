@@ -14,6 +14,7 @@ use std::sync::Arc;
 use maxminddb::geoip2;
 
 /// Configuration for geo-based rate limiting
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct GeoRateConfig {
 	/// Rate for specific country codes (ISO 3166-1 alpha-2)

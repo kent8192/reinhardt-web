@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 /// Token storage error
-#[derive(Debug, Clone)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenStorageError {
 	/// Token not found
 	NotFound,
@@ -51,7 +52,7 @@ pub type TokenStorageResult<T> = Result<T, TokenStorageError>;
 ///     metadata: Default::default(),
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredToken {
 	/// The token value
 	pub token: String,
@@ -226,7 +227,7 @@ impl InMemoryTokenStorage {
 	/// assert_eq!(storage.len(), 0);
 	/// ```
 	pub fn len(&self) -> usize {
-		self.tokens.read().unwrap().len()
+		self.tokens.read().unwrap_or_else(|e| e.into_inner()).len()
 	}
 
 	/// Check if storage is empty
@@ -240,7 +241,10 @@ impl InMemoryTokenStorage {
 	/// assert!(storage.is_empty());
 	/// ```
 	pub fn is_empty(&self) -> bool {
-		self.tokens.read().unwrap().is_empty()
+		self.tokens
+			.read()
+			.unwrap_or_else(|e| e.into_inner())
+			.is_empty()
 	}
 
 	/// Clear all tokens
@@ -255,7 +259,10 @@ impl InMemoryTokenStorage {
 	/// assert!(storage.is_empty());
 	/// ```
 	pub fn clear(&self) {
-		self.tokens.write().unwrap().clear();
+		self.tokens
+			.write()
+			.unwrap_or_else(|e| e.into_inner())
+			.clear();
 	}
 }
 
@@ -268,13 +275,13 @@ impl Default for InMemoryTokenStorage {
 #[async_trait]
 impl TokenStorage for InMemoryTokenStorage {
 	async fn store(&self, token: StoredToken) -> TokenStorageResult<()> {
-		let mut tokens = self.tokens.write().unwrap();
+		let mut tokens = self.tokens.write().unwrap_or_else(|e| e.into_inner());
 		tokens.insert(token.token.clone(), token);
 		Ok(())
 	}
 
 	async fn get(&self, token: &str) -> TokenStorageResult<StoredToken> {
-		let tokens = self.tokens.read().unwrap();
+		let tokens = self.tokens.read().unwrap_or_else(|e| e.into_inner());
 		tokens
 			.get(token)
 			.cloned()
@@ -282,7 +289,7 @@ impl TokenStorage for InMemoryTokenStorage {
 	}
 
 	async fn get_user_tokens(&self, user_id: i64) -> TokenStorageResult<Vec<StoredToken>> {
-		let tokens = self.tokens.read().unwrap();
+		let tokens = self.tokens.read().unwrap_or_else(|e| e.into_inner());
 		let user_tokens: Vec<StoredToken> = tokens
 			.values()
 			.filter(|t| t.user_id == user_id)
@@ -292,19 +299,19 @@ impl TokenStorage for InMemoryTokenStorage {
 	}
 
 	async fn delete(&self, token: &str) -> TokenStorageResult<()> {
-		let mut tokens = self.tokens.write().unwrap();
+		let mut tokens = self.tokens.write().unwrap_or_else(|e| e.into_inner());
 		tokens.remove(token);
 		Ok(())
 	}
 
 	async fn delete_user_tokens(&self, user_id: i64) -> TokenStorageResult<()> {
-		let mut tokens = self.tokens.write().unwrap();
+		let mut tokens = self.tokens.write().unwrap_or_else(|e| e.into_inner());
 		tokens.retain(|_, t| t.user_id != user_id);
 		Ok(())
 	}
 
 	async fn cleanup_expired(&self, current_time: i64) -> TokenStorageResult<usize> {
-		let mut tokens = self.tokens.write().unwrap();
+		let mut tokens = self.tokens.write().unwrap_or_else(|e| e.into_inner());
 		let before_count = tokens.len();
 		tokens.retain(|_, t| !t.is_expired(current_time));
 		let removed = before_count - tokens.len();

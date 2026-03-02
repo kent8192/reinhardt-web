@@ -106,38 +106,60 @@ impl TraceStore {
 	pub fn start_span(&self, trace_id: String, operation_name: String) -> String {
 		let span = Span::new(trace_id, operation_name);
 		let span_id = span.span_id.clone();
-		self.spans.write().unwrap().insert(span_id.clone(), span);
+		self.spans
+			.write()
+			.unwrap_or_else(|e| e.into_inner())
+			.insert(span_id.clone(), span);
 		span_id
 	}
 
 	/// End a span
 	pub fn end_span(&self, span_id: &str) {
-		if let Some(span) = self.spans.write().unwrap().get_mut(span_id) {
+		if let Some(span) = self
+			.spans
+			.write()
+			.unwrap_or_else(|e| e.into_inner())
+			.get_mut(span_id)
+		{
 			span.end();
 		}
 	}
 
 	/// Mark span as error
 	pub fn mark_span_error(&self, span_id: &str) {
-		if let Some(span) = self.spans.write().unwrap().get_mut(span_id) {
+		if let Some(span) = self
+			.spans
+			.write()
+			.unwrap_or_else(|e| e.into_inner())
+			.get_mut(span_id)
+		{
 			span.mark_error();
 		}
 	}
 
 	/// Add tag to span
 	pub fn add_span_tag(&self, span_id: &str, key: String, value: String) {
-		if let Some(span) = self.spans.write().unwrap().get_mut(span_id) {
+		if let Some(span) = self
+			.spans
+			.write()
+			.unwrap_or_else(|e| e.into_inner())
+			.get_mut(span_id)
+		{
 			span.add_tag(key, value);
 		}
 	}
 
 	/// Get span
 	pub fn get_span(&self, span_id: &str) -> Option<Span> {
-		self.spans.read().unwrap().get(span_id).cloned()
+		self.spans
+			.read()
+			.unwrap_or_else(|e| e.into_inner())
+			.get(span_id)
+			.cloned()
 	}
 
 	/// Get all completed spans
-	pub fn get_completed_spans(&self) -> Vec<Span> {
+	pub fn completed_spans(&self) -> Vec<Span> {
 		self.spans
 			.read()
 			.unwrap()
@@ -162,6 +184,7 @@ pub const SPAN_ID_HEADER: &str = "X-Span-ID";
 pub const PARENT_SPAN_ID_HEADER: &str = "X-Parent-Span-ID";
 
 /// Configuration for tracing middleware
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct TracingConfig {
 	/// Enable tracing
@@ -336,7 +359,7 @@ impl TracingMiddleware {
 	///
 	/// // Access the store
 	/// let store = middleware.store();
-	/// let completed = store.get_completed_spans();
+	/// let completed = store.completed_spans();
 	/// ```
 	pub fn store(&self) -> &TraceStore {
 		&self.store
@@ -502,7 +525,7 @@ mod tests {
 		assert!(response.headers.contains_key(SPAN_ID_HEADER));
 
 		// Should have recorded span
-		let spans = middleware.store.get_completed_spans();
+		let spans = middleware.store.completed_spans();
 		assert_eq!(spans.len(), 1);
 		assert_eq!(spans[0].status, SpanStatus::Ok);
 	}
@@ -553,7 +576,7 @@ mod tests {
 		let _response = middleware.process(request, handler).await.unwrap();
 
 		// Span should be marked as error
-		let spans = middleware.store.get_completed_spans();
+		let spans = middleware.store.completed_spans();
 		assert_eq!(spans.len(), 1);
 		assert_eq!(spans[0].status, SpanStatus::Error);
 	}
@@ -577,7 +600,7 @@ mod tests {
 
 		// Should not have trace headers for excluded path
 		assert!(!response.headers.contains_key(TRACE_ID_HEADER));
-		assert_eq!(middleware.store.get_completed_spans().len(), 0);
+		assert_eq!(middleware.store.completed_spans().len(), 0);
 	}
 
 	#[tokio::test]
@@ -599,7 +622,7 @@ mod tests {
 
 		// Should not have trace headers when disabled
 		assert!(!response.headers.contains_key(TRACE_ID_HEADER));
-		assert_eq!(middleware.store.get_completed_spans().len(), 0);
+		assert_eq!(middleware.store.completed_spans().len(), 0);
 	}
 
 	#[tokio::test]
@@ -619,7 +642,7 @@ mod tests {
 
 		let _response = middleware.process(request, handler).await.unwrap();
 
-		let spans = middleware.store.get_completed_spans();
+		let spans = middleware.store.completed_spans();
 		assert_eq!(spans.len(), 1);
 
 		let span = &spans[0];
@@ -646,7 +669,7 @@ mod tests {
 
 		let _response = middleware.process(request, handler).await.unwrap();
 
-		let spans = middleware.store.get_completed_spans();
+		let spans = middleware.store.completed_spans();
 		let span = &spans[0];
 
 		// Span should have a duration
@@ -673,12 +696,12 @@ mod tests {
 			let _response = middleware.process(request, handler.clone()).await.unwrap();
 		}
 
-		assert_eq!(middleware.store.get_completed_spans().len(), 5);
+		assert_eq!(middleware.store.completed_spans().len(), 5);
 
 		// Clear completed spans
 		middleware.store.clear_completed();
 
-		assert_eq!(middleware.store.get_completed_spans().len(), 0);
+		assert_eq!(middleware.store.completed_spans().len(), 0);
 	}
 
 	#[tokio::test]

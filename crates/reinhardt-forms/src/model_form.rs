@@ -269,7 +269,7 @@ impl<T: FormModel> ModelForm<T> {
 	/// ```ignore
 	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
 	///
-	// Assuming we have a model that implements the Model trait
+	/// // Assuming we have a model that implements the Model trait
 	/// let config = ModelFormConfig::new();
 	/// let form = ModelForm::new(Some(instance), config);
 	/// ```
@@ -414,6 +414,20 @@ impl<T: FormModel> ModelForm<T> {
 
 		Ok(instance)
 	}
+	/// Set a field value directly on the model instance.
+	///
+	/// This is used by `InlineFormSet` to set foreign key values on child
+	/// instances before saving.
+	///
+	/// If no instance exists, this method is a no-op.
+	pub fn set_field_value(&mut self, field_name: &str, value: Value) {
+		if let Some(ref mut instance) = self.instance {
+			// Silently ignore errors from set_field, as the field may not exist
+			// on all model types (defensive approach for inline formsets)
+			let _ = instance.set_field(field_name, value);
+		}
+	}
+
 	pub fn form(&self) -> &Form {
 		&self.form
 	}

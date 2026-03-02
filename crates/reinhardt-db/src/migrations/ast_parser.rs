@@ -225,7 +225,8 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 				return Some(super::Operation::DropIndex { table, columns });
 			}
 			"RunSQL" => {
-				let sql = extract_static_str_field(&expr_struct.fields, "sql")?;
+				// Use extract_string_field to handle both literal and .to_string() patterns (#1336)
+				let sql = extract_string_field(&expr_struct.fields, "sql")?;
 				let reverse_sql = extract_optional_str_field(&expr_struct.fields, "reverse_sql");
 				return Some(super::Operation::RunSQL { sql, reverse_sql });
 			}
@@ -295,6 +296,12 @@ fn extract_optional_str_field(
 				&& func_path.path.is_ident("Some")
 				&& !expr_call.args.is_empty()
 			{
+				// Handle Some("str".to_string()) pattern
+				if let Expr::MethodCall(method_call) = &expr_call.args[0]
+					&& method_call.method == "to_string"
+				{
+					return extract_string_literal(&method_call.receiver);
+				}
 				return extract_string_literal(&expr_call.args[0]);
 			}
 		}

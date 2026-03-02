@@ -1,11 +1,15 @@
 [package]
 name = "reinhardt-db"
-version = "0.1.0-alpha.13"
+version = "0.1.0-rc.1"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Django-style database layer for Reinhardt framework"
+keywords = ["database", "orm", "django", "rust", "async"]
+categories = ["database", "web-programming"]
+readme = "README.md"
+documentation = "https://docs.rs/reinhardt-db"
 
 [dependencies]
 # Internal crates (optional)
@@ -176,3 +180,4 @@ tempfile = { workspace = true }
 proptest = "1.5"
 trybuild = "1.0"
 ctor = "0.6.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
