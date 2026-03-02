@@ -105,7 +105,7 @@ dev-server = ["dep:notify"]
 
 [dev-dependencies]
 tokio = { workspace = true }
-proptest = "1.8"
+proptest = { workspace = true }
 regex = "1.0"
 bytes = { workspace = true }
 rstest = { workspace = true }
