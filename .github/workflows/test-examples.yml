@@ -123,6 +123,15 @@ jobs:
         working-directory: examples/${{ matrix.example }}
         run: cargo build --all-features
 
+      - name: Install wasm32 target
+        if: contains(fromJSON('["examples-twitter", "examples-tutorial-basis"]'), matrix.example)
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Check WASM compilation
+        if: contains(fromJSON('["examples-twitter", "examples-tutorial-basis"]'), matrix.example)
+        working-directory: examples/${{ matrix.example }}
+        run: cargo check --target wasm32-unknown-unknown
+
       - name: Test
         working-directory: examples/${{ matrix.example }}
         run: cargo nextest run --all-features
