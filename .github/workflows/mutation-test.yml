@@ -1,0 +1,102 @@
+name: Mutation Testing
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'Phase to run'
+        type: choice
+        options:
+          - all
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+        default: all
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_TARGET_DIR: /tmp/cargo_target
+
+jobs:
+  mutation-test:
+    name: "Phase ${{ matrix.phase }}: ${{ matrix.name }}"
+    runs-on: ubuntu-latest
+    if: inputs.phase == 'all' || inputs.phase == matrix.phase
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - phase: "1"
+            name: "Security"
+            packages: "-p reinhardt-auth -p reinhardt-db"
+          - phase: "2"
+            name: "API"
+            packages: "-p reinhardt-http -p reinhardt-rest -p reinhardt-urls -p reinhardt-views"
+          - phase: "3"
+            name: "Input/Flow"
+            packages: "-p reinhardt-forms -p reinhardt-middleware -p reinhardt-di -p reinhardt-conf"
+          - phase: "4"
+            name: "Communication"
+            packages: "-p reinhardt-graphql -p reinhardt-grpc -p reinhardt-websockets"
+          - phase: "5"
+            name: "Remaining"
+            packages: "-p reinhardt-query -p reinhardt-core -p reinhardt-apps -p reinhardt-server -p reinhardt-pages -p reinhardt-commands -p reinhardt-utils -p reinhardt-dispatch -p reinhardt-shortcuts -p reinhardt-tasks -p reinhardt-mail -p reinhardt-i18n -p reinhardt-openapi -p reinhardt-throttling -p reinhardt-admin -p reinhardt-deeplink -p reinhardt-dentdelion"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Setup Protoc
+        uses: ./.github/actions/setup-protoc
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      - name: Run mutation testing
+        continue-on-error: true
+        run: cargo mutants ${{ matrix.packages }} --test-tool nextest --timeout-multiplier 2 --jobs 1 --output /tmp/mutants-phase-${{ matrix.phase }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Mutation Testing Results - Phase ${{ matrix.phase }}: ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f /tmp/mutants-phase-${{ matrix.phase }}/outcomes.json ]; then
+            total=$(jq 'length' /tmp/mutants-phase-${{ matrix.phase }}/outcomes.json)
+            caught=$(jq '[.[] | select(.scenario != "Baseline" and .summary == "CaughtMutant")] | length' /tmp/mutants-phase-${{ matrix.phase }}/outcomes.json)
+            missed=$(jq '[.[] | select(.scenario != "Baseline" and .summary == "MissedMutant")] | length' /tmp/mutants-phase-${{ matrix.phase }}/outcomes.json)
+            timeout=$(jq '[.[] | select(.scenario != "Baseline" and .summary == "Timeout")] | length' /tmp/mutants-phase-${{ matrix.phase }}/outcomes.json)
+            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Caught | $caught |" >> $GITHUB_STEP_SUMMARY
+            echo "| Missed | $missed |" >> $GITHUB_STEP_SUMMARY
+            echo "| Timeout | $timeout |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No results found." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-phase-${{ matrix.phase }}
+          path: /tmp/mutants-phase-${{ matrix.phase }}/
+          retention-days: 14
