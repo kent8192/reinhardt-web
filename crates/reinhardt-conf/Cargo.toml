@@ -73,6 +73,7 @@ hot-reload = ["notify", "tokio", "async"]
 caching = ["moka", "async"]
 
 [dev-dependencies]
+insta = { workspace = true }
 futures = { workspace = true }
 tempfile = "3.8"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
