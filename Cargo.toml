@@ -336,6 +336,8 @@ members = [
   "crates/reinhardt-dentdelion",                        # Plugin system
   "crates/reinhardt-deeplink",                          # Mobile deep linking
   "crates/reinhardt-openapi",                           # OpenAPI router wrapper
+  "crates/reinhardt-pages-components",         # UI design system components
+  "crates/reinhardt-pages-components-macros",  # UI components macros
   # Integration tests
   "tests",
   "tests/integration",
