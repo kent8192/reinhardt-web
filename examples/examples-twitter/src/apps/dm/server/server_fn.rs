@@ -391,22 +391,18 @@ pub async fn list_messages(
 		.into_iter()
 		.collect();
 
-	let mut sender_map: std::collections::HashMap<Uuid, User> =
-		std::collections::HashMap::new();
-	for sender_id in unique_sender_ids {
-		if let Some(user) = User::objects()
-			.filter(
-				User::field_id(),
-				FilterOperator::Eq,
-				FilterValue::String(sender_id.to_string()),
-			)
-			.first()
-			.await
-			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
-		{
-			sender_map.insert(sender_id, user);
-		}
-	}
+	let sender_ids_str: Vec<String> = unique_sender_ids.iter().map(|id| id.to_string()).collect();
+	let senders = User::objects()
+		.filter(
+			User::field_id(),
+			FilterOperator::In,
+			FilterValue::Array(sender_ids_str),
+		)
+		.all()
+		.await
+		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
+	let sender_map: std::collections::HashMap<Uuid, User> =
+		senders.into_iter().map(|u| (u.id(), u)).collect();
 
 	// Build message infos using pre-fetched sender data
 	let mut message_infos = Vec::new();
