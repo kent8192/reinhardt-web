@@ -5464,3 +5464,225 @@ impl ModelState {
 		self.fields.insert(name.to_string(), new_field);
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	use rstest::rstest;
+
+	// ---------------------------------------------------------------
+	// ProjectState::to_database_schema
+	// ---------------------------------------------------------------
+
+	#[rstest]
+	fn to_database_schema_uses_table_name_as_key() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut user = ModelState::new("auth", "User");
+		user.add_field(FieldState::new(
+			"id",
+			super::super::FieldType::Integer,
+			false,
+		));
+		let mut post = ModelState::new("blog", "Post");
+		post.add_field(FieldState::new(
+			"id",
+			super::super::FieldType::Integer,
+			false,
+		));
+		state.add_model(user);
+		state.add_model(post);
+
+		// Act
+		let schema = state.to_database_schema();
+
+		// Assert — keys are table names, not app_modelname
+		assert!(schema.tables.contains_key("user"));
+		assert!(schema.tables.contains_key("post"));
+		assert_eq!(schema.tables.len(), 2);
+	}
+
+	#[rstest]
+	fn to_database_schema_does_not_propagate_indexes() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("myapp", "Article");
+		model.add_field(FieldState::new(
+			"title",
+			super::super::FieldType::VarChar(255),
+			false,
+		));
+		model.indexes.push(IndexDefinition {
+			name: "idx_title".to_string(),
+			fields: vec!["title".to_string()],
+			unique: false,
+		});
+		state.add_model(model);
+
+		// Act
+		let schema = state.to_database_schema();
+
+		// Assert — current implementation sets indexes to Vec::new()
+		let table = schema.tables.get("article").expect("table should exist");
+		assert!(
+			table.indexes.is_empty(),
+			"indexes are not propagated in current implementation"
+		);
+	}
+
+	#[rstest]
+	fn to_database_schema_converts_fields_correctly() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("shop", "Product");
+		let mut pk_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		pk_field
+			.params
+			.insert("primary_key".to_string(), "true".to_string());
+		pk_field
+			.params
+			.insert("auto_increment".to_string(), "true".to_string());
+		model.add_field(pk_field);
+		model.add_field(FieldState::new(
+			"name",
+			super::super::FieldType::VarChar(100),
+			false,
+		));
+		model.add_field(FieldState::new(
+			"description",
+			super::super::FieldType::Text,
+			true,
+		));
+		state.add_model(model);
+
+		// Act
+		let schema = state.to_database_schema();
+
+		// Assert
+		let table = schema.tables.get("product").expect("table should exist");
+		assert_eq!(table.columns.len(), 3);
+
+		let id_col = table.columns.get("id").expect("id column should exist");
+		assert!(id_col.primary_key);
+		assert!(id_col.auto_increment);
+		assert!(!id_col.nullable);
+
+		let desc_col = table
+			.columns
+			.get("description")
+			.expect("description column should exist");
+		assert!(desc_col.nullable);
+		assert!(!desc_col.primary_key);
+	}
+
+	// ---------------------------------------------------------------
+	// ProjectState::to_database_schema_for_app
+	// ---------------------------------------------------------------
+
+	#[rstest]
+	fn to_database_schema_for_app_filters_by_app_label() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut user = ModelState::new("auth", "User");
+		user.add_field(FieldState::new(
+			"id",
+			super::super::FieldType::Integer,
+			false,
+		));
+		let mut post = ModelState::new("blog", "Post");
+		post.add_field(FieldState::new(
+			"id",
+			super::super::FieldType::Integer,
+			false,
+		));
+		let mut comment = ModelState::new("blog", "Comment");
+		comment.add_field(FieldState::new(
+			"id",
+			super::super::FieldType::Integer,
+			false,
+		));
+		state.add_model(user);
+		state.add_model(post);
+		state.add_model(comment);
+
+		// Act
+		let blog_schema = state.to_database_schema_for_app("blog");
+		let auth_schema = state.to_database_schema_for_app("auth");
+
+		// Assert
+		assert_eq!(blog_schema.tables.len(), 2);
+		assert!(blog_schema.tables.contains_key("post"));
+		assert!(blog_schema.tables.contains_key("comment"));
+
+		assert_eq!(auth_schema.tables.len(), 1);
+		assert!(auth_schema.tables.contains_key("user"));
+	}
+
+	#[rstest]
+	fn to_database_schema_for_app_returns_empty_for_unknown_app() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("auth", "User");
+		model.add_field(FieldState::new(
+			"id",
+			super::super::FieldType::Integer,
+			false,
+		));
+		state.add_model(model);
+
+		// Act
+		let schema = state.to_database_schema_for_app("nonexistent");
+
+		// Assert
+		assert!(schema.tables.is_empty());
+	}
+
+	#[rstest]
+	fn to_database_schema_for_app_does_not_propagate_indexes() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("myapp", "Item");
+		model.add_field(FieldState::new(
+			"name",
+			super::super::FieldType::VarChar(100),
+			false,
+		));
+		model.indexes.push(IndexDefinition {
+			name: "idx_name".to_string(),
+			fields: vec!["name".to_string()],
+			unique: true,
+		});
+		state.add_model(model);
+
+		// Act
+		let schema = state.to_database_schema_for_app("myapp");
+
+		// Assert — current implementation sets indexes to Vec::new()
+		let table = schema.tables.get("item").expect("table should exist");
+		assert!(
+			table.indexes.is_empty(),
+			"indexes are not propagated in current implementation"
+		);
+	}
+
+	#[rstest]
+	fn to_database_schema_for_app_uses_table_name_as_key() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("cms", "BlogPost");
+		model.add_field(FieldState::new(
+			"id",
+			super::super::FieldType::Integer,
+			false,
+		));
+		state.add_model(model);
+
+		// Act
+		let schema = state.to_database_schema_for_app("cms");
+
+		// Assert — key is snake_case table name, not app-prefixed
+		assert!(schema.tables.contains_key("blog_post"));
+		assert_eq!(schema.tables.len(), 1);
+	}
+}
