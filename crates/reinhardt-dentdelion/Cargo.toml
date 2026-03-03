@@ -92,6 +92,7 @@ aquamarine = { workspace = true }
 reinhardt-db = {workspace = true, features = ["backends"], optional = true}
 
 [dev-dependencies]
+insta = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tempfile = { workspace = true }
 rstest = { workspace = true }
