@@ -4,6 +4,9 @@ on:
   pull_request:
     # Run CI on PRs targeting any branch
     # (This comment added to re-trigger CI after doc test fix)
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -20,6 +23,18 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  # On main push, only run coverage to update Codecov baseline.
+  # All other checks are handled via PR workflow.
+  coverage-main:
+    name: Coverage (main)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [determine-runner]
+    uses: ./.github/workflows/coverage.yml
+    secrets: inherit
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
+
   # Check if PR branch has merge conflicts.
   # When conflicts exist, skip all CI jobs to save runner costs.
   check-branch-status:
@@ -78,7 +93,7 @@ jobs:
   check:
     name: Check
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.has-conflicts != 'true'
+    if: github.event_name != 'push' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -87,7 +102,7 @@ jobs:
   fmt:
     name: Format
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.has-conflicts != 'true'
+    if: github.event_name != 'push' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/fmt.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -95,7 +110,7 @@ jobs:
   clippy:
     name: Clippy
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.has-conflicts != 'true'
+    if: github.event_name != 'push' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/clippy.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -104,7 +119,7 @@ jobs:
   publish-check:
     name: Publish Check
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.has-conflicts != 'true'
+    if: github.event_name != 'push' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/publish-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -113,7 +128,7 @@ jobs:
   todo-check:
     name: TODO Check
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.has-conflicts != 'true'
+    if: github.event_name != 'push' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/todo-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -122,7 +137,7 @@ jobs:
   semver-check:
     name: SemVer Check
     needs: [determine-runner, check-branch-status]
-    if: needs.check-branch-status.outputs.has-conflicts != 'true'
+    if: github.event_name != 'push' && needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/semver-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -133,6 +148,7 @@ jobs:
     needs: [determine-runner, check-branch-status]
     if: >-
       ${{
+        github.event_name != 'push' &&
         needs.check-branch-status.outputs.has-conflicts != 'true' &&
         !startsWith(github.head_ref || '', 'release-plz-')
       }}
@@ -240,6 +256,7 @@ jobs:
     needs:
       - check-branch-status
       - determine-runner
+      - coverage-main
       - check
       - fmt
       - clippy
@@ -261,7 +278,19 @@ jobs:
       - name: Verify all required checks passed
         env:
           HAS_CONFLICTS: ${{ needs.check-branch-status.outputs.has-conflicts }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          # On main push, only coverage-main runs; all other jobs are skipped
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            coverage_main="${{ needs.coverage-main.result }}"
+            if [[ "$coverage_main" != "success" ]]; then
+              echo "::error::Coverage (main) failed: $coverage_main"
+              exit 1
+            fi
+            echo "Coverage upload for main branch completed successfully!"
+            exit 0
+          fi
+
           # If PR has merge conflicts, all jobs are expected to be skipped
           if [[ "$HAS_CONFLICTS" == "true" ]]; then
             echo "::error::PR has merge conflicts. All CI checks were skipped."
