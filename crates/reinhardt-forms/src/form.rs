@@ -946,6 +946,7 @@ impl Index<&str> for Form {
 mod tests {
 	use super::*;
 	use crate::fields::CharField;
+	use rstest::rstest;
 
 	#[test]
 	fn test_form_validation() {
@@ -1341,5 +1342,57 @@ mod tests {
 			form.cleaned_data().get("name").unwrap(),
 			&serde_json::json!("JOHN DOE")
 		);
+	}
+
+	#[rstest]
+	fn constant_time_eq_same_values_returns_true() {
+		// Arrange
+		let a = b"hello world";
+		let b = b"hello world";
+
+		// Act
+		let result = constant_time_eq(a, b);
+
+		// Assert
+		assert_eq!(result, true);
+	}
+
+	#[rstest]
+	fn constant_time_eq_different_values_returns_false() {
+		// Arrange
+		let a = b"hello world";
+		let b = b"hello earth";
+
+		// Act
+		let result = constant_time_eq(a, b);
+
+		// Assert
+		assert_eq!(result, false);
+	}
+
+	#[rstest]
+	fn constant_time_eq_different_lengths_returns_false() {
+		// Arrange
+		let a = b"short";
+		let b = b"longer string";
+
+		// Act
+		let result = constant_time_eq(a, b);
+
+		// Assert
+		assert_eq!(result, false);
+	}
+
+	#[rstest]
+	fn constant_time_eq_empty_strings_returns_true() {
+		// Arrange
+		let a = b"";
+		let b = b"";
+
+		// Act
+		let result = constant_time_eq(a, b);
+
+		// Assert
+		assert_eq!(result, true);
 	}
 }
