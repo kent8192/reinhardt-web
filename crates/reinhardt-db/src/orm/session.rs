@@ -1914,4 +1914,101 @@ mod tests {
 
 		assert_eq!(session.get_backend(), DbBackend::Sqlite);
 	}
+
+	// ──────────────────────────────────────────────────────────────
+	// SessionError::FlushError propagation tests
+	// ──────────────────────────────────────────────────────────────
+
+	#[rstest]
+	fn test_flush_error_preserves_source_message() {
+		// Arrange
+		let source_msg = "Failed to build INSERT values: column count mismatch";
+
+		// Act
+		let err = SessionError::FlushError(source_msg.to_string());
+
+		// Assert
+		assert_eq!(err.to_string(), format!("Flush error: {}", source_msg));
+	}
+
+	#[rstest]
+	fn test_flush_error_from_sqlx_error_format() {
+		// Arrange
+		// Simulate the pattern used in execute_with_values: .map_err(|e| SessionError::FlushError(e.to_string()))
+		let simulated_sqlx_error = "error returned from database: table not found";
+
+		// Act
+		let err = SessionError::FlushError(simulated_sqlx_error.to_string());
+
+		// Assert
+		assert_eq!(
+			err.to_string(),
+			"Flush error: error returned from database: table not found"
+		);
+	}
+
+	#[rstest]
+	fn test_flush_error_equality() {
+		// Arrange
+		let err1 = SessionError::FlushError("same message".to_string());
+		let err2 = SessionError::FlushError("same message".to_string());
+		let err3 = SessionError::FlushError("different message".to_string());
+
+		// Act & Assert
+		assert_eq!(err1, err2);
+		assert_ne!(err1, err3);
+	}
+
+	#[rstest]
+	fn test_flush_error_is_distinct_from_other_variants() {
+		// Arrange
+		let flush_err = SessionError::FlushError("connection lost".to_string());
+		let db_err = SessionError::DatabaseError("connection lost".to_string());
+
+		// Act & Assert
+		assert_ne!(flush_err, db_err);
+	}
+
+	#[rstest]
+	fn test_flush_error_implements_std_error() {
+		// Arrange
+		let err = SessionError::FlushError("write failed".to_string());
+
+		// Act
+		let boxed: Box<dyn std::error::Error> = Box::new(err);
+
+		// Assert
+		assert_eq!(boxed.to_string(), "Flush error: write failed");
+	}
+
+	#[rstest]
+	fn test_flush_error_extract_id_format() {
+		// Arrange
+		// Simulate the pattern: SessionError::FlushError(format!("Failed to extract ID: {}", e))
+		let extraction_error = "Failed to extract ID: column 'id' not found";
+
+		// Act
+		let err = SessionError::FlushError(extraction_error.to_string());
+
+		// Assert
+		assert_eq!(
+			err.to_string(),
+			"Flush error: Failed to extract ID: column 'id' not found"
+		);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_flush_with_no_dirty_objects_succeeds(_init_drivers: ()) {
+		// Arrange
+		let pool = create_test_pool().await;
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let result = session.flush().await;
+
+		// Assert
+		assert!(result.is_ok());
+	}
 }
