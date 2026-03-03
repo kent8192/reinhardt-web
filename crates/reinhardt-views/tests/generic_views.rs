@@ -96,10 +96,10 @@ impl Model for Comment {
 
 #[rstest]
 fn list_api_view_new_creates_instance() {
-	// Arrange + Act
+	// Act
 	let view = ListAPIView::<Article, JsonSerializer<Article>>::new();
 
-	// Assert: the view was constructed without panicking; verify allowed methods
+	// Assert
 	let methods = view.allowed_methods();
 	assert!(methods.contains(&"GET"));
 }
@@ -110,7 +110,7 @@ fn list_api_view_default_equals_new() {
 	let from_new: ListAPIView<Article, JsonSerializer<Article>> = ListAPIView::new();
 	let from_default: ListAPIView<Article, JsonSerializer<Article>> = Default::default();
 
-	// Act + Assert: both have identical allowed methods
+	// Assert
 	assert_eq!(from_new.allowed_methods(), from_default.allowed_methods());
 }
 
@@ -129,14 +129,14 @@ fn list_api_view_allowed_methods_include_get_and_head() {
 }
 
 #[rstest]
-fn list_api_view_with_paginate_by_sets_pagination() {
+fn list_api_view_with_paginate_by_compiles_and_allows_get() {
 	// Arrange
 	let page_size = 20_usize;
 
 	// Act
 	let view = ListAPIView::<Article, JsonSerializer<Article>>::new().with_paginate_by(page_size);
 
-	// Assert: construction succeeds and the view is still functional
+	// Assert
 	let methods = view.allowed_methods();
 	assert!(methods.contains(&"GET"));
 }
@@ -218,7 +218,7 @@ fn list_api_view_with_filter_config() {
 
 #[rstest]
 fn list_api_view_works_with_different_model() {
-	// Arrange + Act
+	// Act
 	let view = ListAPIView::<Comment, JsonSerializer<Comment>>::new().with_paginate_by(5);
 
 	// Assert
@@ -233,7 +233,7 @@ fn list_api_view_works_with_different_model() {
 
 #[rstest]
 fn create_api_view_new_creates_instance() {
-	// Arrange + Act
+	// Act
 	let view = CreateAPIView::<Article, JsonSerializer<Article>>::new();
 
 	// Assert
@@ -247,7 +247,7 @@ fn create_api_view_default_equals_new() {
 	let from_new: CreateAPIView<Article, JsonSerializer<Article>> = CreateAPIView::new();
 	let from_default: CreateAPIView<Article, JsonSerializer<Article>> = Default::default();
 
-	// Act + Assert
+	// Assert
 	assert_eq!(from_new.allowed_methods(), from_default.allowed_methods());
 }
 
@@ -283,7 +283,7 @@ fn create_api_view_with_queryset_accepts_queryset() {
 
 #[rstest]
 fn retrieve_api_view_new_creates_instance() {
-	// Arrange + Act
+	// Act
 	let view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new();
 
 	// Assert
@@ -292,19 +292,18 @@ fn retrieve_api_view_new_creates_instance() {
 }
 
 #[rstest]
-fn retrieve_api_view_default_lookup_field_is_pk() {
-	// Arrange + Act
-	// Verify default construction with default lookup field (pk)
+fn retrieve_api_view_default_allows_get_and_head() {
+	// Act
 	let view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new();
 
-	// Assert: GET is available (default lookup_field is "pk")
+	// Assert
 	assert!(view.allowed_methods().contains(&"GET"));
 	assert!(view.allowed_methods().contains(&"HEAD"));
 }
 
 #[rstest]
 fn retrieve_api_view_with_custom_lookup_field() {
-	// Arrange + Act
+	// Act
 	let view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new()
 		.with_lookup_field("slug".to_string());
 
@@ -331,7 +330,7 @@ fn retrieve_api_view_allowed_methods_exclude_post() {
 
 #[rstest]
 fn update_api_view_new_creates_instance() {
-	// Arrange + Act
+	// Act
 	let view = UpdateAPIView::<Article, JsonSerializer<Article>>::new();
 
 	// Assert
@@ -355,7 +354,7 @@ fn update_api_view_allowed_methods_include_put_and_patch() {
 
 #[rstest]
 fn update_api_view_with_lookup_field_accepts_custom_field() {
-	// Arrange + Act
+	// Act
 	let view = UpdateAPIView::<Article, JsonSerializer<Article>>::new()
 		.with_lookup_field("slug".to_string());
 
@@ -365,7 +364,7 @@ fn update_api_view_with_lookup_field_accepts_custom_field() {
 
 #[rstest]
 fn update_api_view_with_partial_enabled() {
-	// Arrange + Act
+	// Act
 	let view = UpdateAPIView::<Article, JsonSerializer<Article>>::new().with_partial(true);
 
 	// Assert
@@ -374,10 +373,10 @@ fn update_api_view_with_partial_enabled() {
 
 #[rstest]
 fn update_api_view_with_partial_disabled() {
-	// Arrange + Act
+	// Act
 	let view = UpdateAPIView::<Article, JsonSerializer<Article>>::new().with_partial(false);
 
-	// Assert: PUT is still available even when partial is disabled
+	// Assert
 	assert!(view.allowed_methods().contains(&"PUT"));
 }
 
@@ -387,7 +386,7 @@ fn update_api_view_with_partial_disabled() {
 
 #[rstest]
 fn destroy_api_view_new_creates_instance() {
-	// Arrange + Act
+	// Act
 	let view = DestroyAPIView::<Article>::new();
 
 	// Assert
@@ -401,7 +400,7 @@ fn destroy_api_view_default_equals_new() {
 	let from_new: DestroyAPIView<Article> = DestroyAPIView::new();
 	let from_default: DestroyAPIView<Article> = Default::default();
 
-	// Act + Assert
+	// Assert
 	assert_eq!(from_new.allowed_methods(), from_default.allowed_methods());
 }
 
@@ -421,7 +420,7 @@ fn destroy_api_view_allowed_methods_exclude_get() {
 
 #[rstest]
 fn destroy_api_view_with_lookup_field_sets_field() {
-	// Arrange + Act
+	// Act
 	let view = DestroyAPIView::<Article>::new().with_lookup_field("uuid".to_string());
 
 	// Assert
@@ -434,7 +433,7 @@ fn destroy_api_view_with_lookup_field_sets_field() {
 
 #[rstest]
 fn list_create_api_view_new_creates_instance() {
-	// Arrange + Act
+	// Act
 	let view = ListCreateAPIView::<Article, JsonSerializer<Article>>::new();
 
 	// Assert
@@ -460,7 +459,7 @@ fn list_create_api_view_allowed_methods_include_get_post_head() {
 
 #[rstest]
 fn list_create_api_view_with_paginate_by() {
-	// Arrange + Act
+	// Act
 	let view = ListCreateAPIView::<Article, JsonSerializer<Article>>::new().with_paginate_by(10);
 
 	// Assert
@@ -471,7 +470,7 @@ fn list_create_api_view_with_paginate_by() {
 
 #[rstest]
 fn list_create_api_view_with_ordering() {
-	// Arrange + Act
+	// Act
 	let view = ListCreateAPIView::<Article, JsonSerializer<Article>>::new()
 		.with_ordering(vec!["-id".to_string()]);
 
@@ -481,7 +480,7 @@ fn list_create_api_view_with_ordering() {
 
 #[rstest]
 fn retrieve_update_api_view_new_creates_instance() {
-	// Arrange + Act
+	// Act
 	let view = RetrieveUpdateAPIView::<Article, JsonSerializer<Article>>::new();
 
 	// Assert
@@ -493,7 +492,7 @@ fn retrieve_update_api_view_new_creates_instance() {
 
 #[rstest]
 fn retrieve_update_api_view_with_lookup_field() {
-	// Arrange + Act
+	// Act
 	let view = RetrieveUpdateAPIView::<Article, JsonSerializer<Article>>::new()
 		.with_lookup_field("slug".to_string());
 
@@ -505,7 +504,7 @@ fn retrieve_update_api_view_with_lookup_field() {
 
 #[rstest]
 fn retrieve_destroy_api_view_new_creates_instance() {
-	// Arrange + Act
+	// Act
 	let view = RetrieveDestroyAPIView::<Article, JsonSerializer<Article>>::new();
 
 	// Assert
@@ -531,7 +530,7 @@ fn retrieve_destroy_api_view_allowed_methods_exclude_post() {
 
 #[rstest]
 fn retrieve_update_destroy_api_view_new_creates_instance() {
-	// Arrange + Act
+	// Act
 	let view = RetrieveUpdateDestroyAPIView::<Article, JsonSerializer<Article>>::new();
 
 	// Assert
@@ -563,7 +562,7 @@ fn retrieve_update_destroy_api_view_allowed_methods_include_all_crud() {
 
 #[rstest]
 fn retrieve_update_destroy_api_view_with_lookup_field() {
-	// Arrange + Act
+	// Act
 	let view = RetrieveUpdateDestroyAPIView::<Article, JsonSerializer<Article>>::new()
 		.with_lookup_field("uuid".to_string());
 
@@ -578,10 +577,10 @@ fn retrieve_update_destroy_api_view_with_lookup_field() {
 
 #[rstest]
 fn pagination_config_page_number_stores_page_size() {
-	// Arrange + Act
+	// Act
 	let config = PaginationConfig::page_number(30, Some(300));
 
-	// Assert: discriminant is PageNumber with the given page_size
+	// Assert
 	match config {
 		PaginationConfig::PageNumber {
 			page_size,
@@ -596,7 +595,7 @@ fn pagination_config_page_number_stores_page_size() {
 
 #[rstest]
 fn pagination_config_limit_offset_stores_limits() {
-	// Arrange + Act
+	// Act
 	let config = PaginationConfig::limit_offset(15, Some(150));
 
 	// Assert
@@ -614,7 +613,7 @@ fn pagination_config_limit_offset_stores_limits() {
 
 #[rstest]
 fn pagination_config_cursor_stores_page_size_and_field() {
-	// Arrange + Act
+	// Act
 	let config = PaginationConfig::cursor(20, "created_at");
 
 	// Assert
@@ -632,7 +631,7 @@ fn pagination_config_cursor_stores_page_size_and_field() {
 
 #[rstest]
 fn pagination_config_none_is_none_variant() {
-	// Arrange + Act
+	// Act
 	let config = PaginationConfig::none();
 
 	// Assert
@@ -641,10 +640,10 @@ fn pagination_config_none_is_none_variant() {
 
 #[rstest]
 fn pagination_config_default_is_page_number() {
-	// Arrange + Act
+	// Act
 	let config = PaginationConfig::default();
 
-	// Assert: default is PageNumber with page_size=10
+	// Assert
 	match config {
 		PaginationConfig::PageNumber { page_size, .. } => {
 			assert_eq!(page_size, 10);
@@ -659,7 +658,7 @@ fn pagination_config_default_is_page_number() {
 
 #[rstest]
 fn filter_config_new_creates_empty_config() {
-	// Arrange + Act
+	// Act
 	let config = FilterConfig::new();
 
 	// Assert
@@ -670,7 +669,7 @@ fn filter_config_new_creates_empty_config() {
 
 #[rstest]
 fn filter_config_with_filterable_fields_stores_fields() {
-	// Arrange + Act
+	// Act
 	let config = FilterConfig::new().with_filterable_fields(vec!["status", "category"]);
 
 	// Assert
@@ -679,7 +678,7 @@ fn filter_config_with_filterable_fields_stores_fields() {
 
 #[rstest]
 fn filter_config_with_search_fields_stores_fields() {
-	// Arrange + Act
+	// Act
 	let config = FilterConfig::new().with_search_fields(vec!["title", "body"]);
 
 	// Assert
@@ -688,7 +687,7 @@ fn filter_config_with_search_fields_stores_fields() {
 
 #[rstest]
 fn filter_config_case_insensitive_can_be_disabled() {
-	// Arrange + Act
+	// Act
 	let config = FilterConfig::new().case_insensitive(false);
 
 	// Assert
@@ -697,7 +696,7 @@ fn filter_config_case_insensitive_can_be_disabled() {
 
 #[rstest]
 fn filter_config_builder_chain() {
-	// Arrange + Act
+	// Act
 	let config = FilterConfig::new()
 		.with_filterable_fields(vec!["status"])
 		.with_search_fields(vec!["title"])

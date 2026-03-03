@@ -13,6 +13,7 @@ use reinhardt_views::viewsets::{
 	register_action,
 };
 use rstest::rstest;
+use serial_test::serial;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -55,8 +56,8 @@ fn make_request_with_body(method: Method, uri: &str, body: &'static str) -> Requ
 // ===========================================================================
 
 #[rstest]
-fn test_action_list_is_not_detail() {
-	// Arrange / Act
+fn action_list_is_not_detail() {
+	// Act
 	let action = Action::list();
 
 	// Assert
@@ -65,8 +66,8 @@ fn test_action_list_is_not_detail() {
 }
 
 #[rstest]
-fn test_action_retrieve_is_detail() {
-	// Arrange / Act
+fn action_retrieve_is_detail() {
+	// Act
 	let action = Action::retrieve();
 
 	// Assert
@@ -75,8 +76,8 @@ fn test_action_retrieve_is_detail() {
 }
 
 #[rstest]
-fn test_action_create_is_not_detail() {
-	// Arrange / Act
+fn action_create_is_not_detail() {
+	// Act
 	let action = Action::create();
 
 	// Assert
@@ -85,8 +86,8 @@ fn test_action_create_is_not_detail() {
 }
 
 #[rstest]
-fn test_action_update_is_detail() {
-	// Arrange / Act
+fn action_update_is_detail() {
+	// Act
 	let action = Action::update();
 
 	// Assert
@@ -95,8 +96,8 @@ fn test_action_update_is_detail() {
 }
 
 #[rstest]
-fn test_action_partial_update_is_detail() {
-	// Arrange / Act
+fn action_partial_update_is_detail() {
+	// Act
 	let action = Action::partial_update();
 
 	// Assert
@@ -108,8 +109,8 @@ fn test_action_partial_update_is_detail() {
 }
 
 #[rstest]
-fn test_action_destroy_is_detail() {
-	// Arrange / Act
+fn action_destroy_is_detail() {
+	// Act
 	let action = Action::destroy();
 
 	// Assert
@@ -118,8 +119,8 @@ fn test_action_destroy_is_detail() {
 }
 
 #[rstest]
-fn test_action_custom_list_type() {
-	// Arrange / Act
+fn action_custom_list_type() {
+	// Act
 	let action = Action::custom("recent", false);
 
 	// Assert
@@ -131,8 +132,8 @@ fn test_action_custom_list_type() {
 }
 
 #[rstest]
-fn test_action_custom_detail_type() {
-	// Arrange / Act
+fn action_custom_detail_type() {
+	// Act
 	let action = Action::custom("activate", true);
 
 	// Assert
@@ -144,7 +145,7 @@ fn test_action_custom_detail_type() {
 }
 
 #[rstest]
-fn test_action_from_name_standard_actions() {
+fn action_from_name_standard_actions() {
 	// Arrange
 	let cases = [
 		("list", false),
@@ -169,11 +170,11 @@ fn test_action_from_name_standard_actions() {
 }
 
 #[rstest]
-fn test_action_from_name_unknown_defaults_to_list() {
-	// Arrange / Act
+fn action_from_name_unknown_defaults_to_list() {
+	// Act
 	let action = Action::from_name("unknown_custom_action");
 
-	// Assert – unknown names produce a Custom variant and default to non-detail
+	// Assert
 	assert!(!action.detail);
 	match action.action_type {
 		ActionType::Custom(name) => assert_eq!(name.as_ref(), "unknown_custom_action"),
@@ -186,8 +187,8 @@ fn test_action_from_name_unknown_defaults_to_list() {
 // ===========================================================================
 
 #[rstest]
-fn test_generic_viewset_basename() {
-	// Arrange / Act
+fn generic_viewset_basename() {
+	// Act
 	let viewset = GenericViewSet::new("articles", ());
 
 	// Assert
@@ -195,8 +196,8 @@ fn test_generic_viewset_basename() {
 }
 
 #[rstest]
-fn test_generic_viewset_default_lookup_field() {
-	// Arrange / Act
+fn generic_viewset_default_lookup_field() {
+	// Act
 	let viewset = GenericViewSet::new("articles", ());
 
 	// Assert
@@ -209,7 +210,7 @@ fn test_generic_viewset_default_lookup_field() {
 
 #[rstest]
 #[tokio::test]
-async fn test_model_viewset_list_returns_ok() {
+async fn model_viewset_list_returns_ok() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
 	let request = make_request(Method::GET, "/users/");
@@ -223,7 +224,7 @@ async fn test_model_viewset_list_returns_ok() {
 
 #[rstest]
 #[tokio::test]
-async fn test_model_viewset_retrieve_returns_ok() {
+async fn model_viewset_retrieve_returns_ok() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
 	let request = make_request(Method::GET, "/users/42/");
@@ -237,7 +238,7 @@ async fn test_model_viewset_retrieve_returns_ok() {
 
 #[rstest]
 #[tokio::test]
-async fn test_model_viewset_create_returns_created() {
+async fn model_viewset_create_returns_created() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
 	let request = make_request_with_body(Method::POST, "/users/", r#"{"name":"Alice"}"#);
@@ -251,7 +252,7 @@ async fn test_model_viewset_create_returns_created() {
 
 #[rstest]
 #[tokio::test]
-async fn test_model_viewset_update_returns_ok() {
+async fn model_viewset_update_returns_ok() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
 	let request = make_request_with_body(Method::PUT, "/users/1/", r#"{"name":"Bob"}"#);
@@ -265,7 +266,7 @@ async fn test_model_viewset_update_returns_ok() {
 
 #[rstest]
 #[tokio::test]
-async fn test_model_viewset_partial_update_returns_ok() {
+async fn model_viewset_partial_update_returns_ok() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
 	let request = make_request_with_body(Method::PATCH, "/users/1/", r#"{"name":"Carol"}"#);
@@ -282,7 +283,7 @@ async fn test_model_viewset_partial_update_returns_ok() {
 
 #[rstest]
 #[tokio::test]
-async fn test_model_viewset_destroy_returns_no_content() {
+async fn model_viewset_destroy_returns_no_content() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
 	let request = make_request(Method::DELETE, "/users/1/");
@@ -295,8 +296,8 @@ async fn test_model_viewset_destroy_returns_no_content() {
 }
 
 #[rstest]
-fn test_model_viewset_default_lookup_field_is_id() {
-	// Arrange / Act
+fn model_viewset_default_lookup_field_is_id() {
+	// Act
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
 
 	// Assert
@@ -304,8 +305,8 @@ fn test_model_viewset_default_lookup_field_is_id() {
 }
 
 #[rstest]
-fn test_model_viewset_custom_lookup_field() {
-	// Arrange / Act
+fn model_viewset_custom_lookup_field() {
+	// Act
 	let viewset: ModelViewSet<TestModel, TestSerializer> =
 		ModelViewSet::new("users").with_lookup_field("username");
 
@@ -319,7 +320,7 @@ fn test_model_viewset_custom_lookup_field() {
 
 #[rstest]
 #[tokio::test]
-async fn test_readonly_viewset_list_allowed() {
+async fn readonly_viewset_list_allowed() {
 	// Arrange
 	let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
 		ReadOnlyModelViewSet::new("posts");
@@ -334,7 +335,7 @@ async fn test_readonly_viewset_list_allowed() {
 
 #[rstest]
 #[tokio::test]
-async fn test_readonly_viewset_retrieve_allowed() {
+async fn readonly_viewset_retrieve_allowed() {
 	// Arrange
 	let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
 		ReadOnlyModelViewSet::new("posts");
@@ -349,7 +350,7 @@ async fn test_readonly_viewset_retrieve_allowed() {
 
 #[rstest]
 #[tokio::test]
-async fn test_readonly_viewset_create_is_denied() {
+async fn readonly_viewset_create_is_denied() {
 	// Arrange
 	let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
 		ReadOnlyModelViewSet::new("posts");
@@ -367,7 +368,7 @@ async fn test_readonly_viewset_create_is_denied() {
 
 #[rstest]
 #[tokio::test]
-async fn test_readonly_viewset_destroy_is_denied() {
+async fn readonly_viewset_destroy_is_denied() {
 	// Arrange
 	let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
 		ReadOnlyModelViewSet::new("posts");
@@ -388,7 +389,7 @@ async fn test_readonly_viewset_destroy_is_denied() {
 // ===========================================================================
 
 #[rstest]
-fn test_viewset_builder_empty_actions_returns_error() {
+fn viewset_builder_empty_actions_returns_error() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("items");
 
@@ -406,7 +407,7 @@ fn test_viewset_builder_empty_actions_returns_error() {
 }
 
 #[rstest]
-fn test_viewset_builder_name_and_suffix_are_mutually_exclusive() {
+fn viewset_builder_name_and_suffix_are_mutually_exclusive() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("items");
 
@@ -427,7 +428,7 @@ fn test_viewset_builder_name_and_suffix_are_mutually_exclusive() {
 }
 
 #[rstest]
-fn test_viewset_builder_builds_successfully_with_actions() {
+fn viewset_builder_builds_successfully_with_actions() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("items");
 	let mut actions = HashMap::new();
@@ -444,8 +445,8 @@ fn test_viewset_builder_builds_successfully_with_actions() {
 }
 
 #[rstest]
-fn test_viewset_actions_macro_creates_correct_mapping() {
-	// Arrange / Act
+fn viewset_actions_macro_creates_correct_mapping() {
+	// Act
 	let actions = viewset_actions!(GET => "list", POST => "create");
 
 	// Assert
@@ -457,7 +458,7 @@ fn test_viewset_actions_macro_creates_correct_mapping() {
 }
 
 #[rstest]
-fn test_viewset_builder_with_name_succeeds() {
+fn viewset_builder_with_name_succeeds() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("items");
 	let actions = viewset_actions!(GET => "list");
@@ -474,7 +475,7 @@ fn test_viewset_builder_with_name_succeeds() {
 }
 
 #[rstest]
-fn test_viewset_builder_with_suffix_succeeds() {
+fn viewset_builder_with_suffix_succeeds() {
 	// Arrange
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("items");
 	let actions = viewset_actions!(GET => "list");
@@ -495,8 +496,8 @@ fn test_viewset_builder_with_suffix_succeeds() {
 // ===========================================================================
 
 #[rstest]
-fn test_pagination_config_page_number() {
-	// Arrange / Act
+fn pagination_config_page_number() {
+	// Act
 	let config = PaginationConfig::page_number(20, Some(200));
 
 	// Assert
@@ -513,8 +514,8 @@ fn test_pagination_config_page_number() {
 }
 
 #[rstest]
-fn test_pagination_config_limit_offset() {
-	// Arrange / Act
+fn pagination_config_limit_offset() {
+	// Act
 	let config = PaginationConfig::limit_offset(25, Some(500));
 
 	// Assert
@@ -531,8 +532,8 @@ fn test_pagination_config_limit_offset() {
 }
 
 #[rstest]
-fn test_pagination_config_cursor() {
-	// Arrange / Act
+fn pagination_config_cursor() {
+	// Act
 	let config = PaginationConfig::cursor(50, "created_at");
 
 	// Assert
@@ -549,8 +550,8 @@ fn test_pagination_config_cursor() {
 }
 
 #[rstest]
-fn test_pagination_config_none() {
-	// Arrange / Act
+fn pagination_config_none() {
+	// Act
 	let config = PaginationConfig::none();
 
 	// Assert
@@ -558,12 +559,12 @@ fn test_pagination_config_none() {
 }
 
 #[rstest]
-fn test_model_viewset_without_pagination() {
-	// Arrange / Act
+fn model_viewset_without_pagination() {
+	// Act
 	let viewset: ModelViewSet<TestModel, TestSerializer> =
 		ModelViewSet::new("items").without_pagination();
 
-	// Assert – verify the call chain compiles and returns same type
+	// Assert
 	assert_eq!(viewset.get_basename(), "items");
 }
 
@@ -572,8 +573,8 @@ fn test_model_viewset_without_pagination() {
 // ===========================================================================
 
 #[rstest]
-fn test_filter_config_filterable_fields() {
-	// Arrange / Act
+fn filter_config_filterable_fields() {
+	// Act
 	let config = FilterConfig::new()
 		.with_filterable_fields(vec!["status", "category"])
 		.with_search_fields(vec!["title", "description"]);
@@ -588,8 +589,8 @@ fn test_filter_config_filterable_fields() {
 }
 
 #[rstest]
-fn test_filter_config_case_sensitive_override() {
-	// Arrange / Act
+fn filter_config_case_sensitive_override() {
+	// Act
 	let config = FilterConfig::new().case_insensitive(false);
 
 	// Assert
@@ -597,8 +598,8 @@ fn test_filter_config_case_sensitive_override() {
 }
 
 #[rstest]
-fn test_ordering_config_fields_and_default() {
-	// Arrange / Act
+fn ordering_config_fields_and_default() {
+	// Act
 	let config = OrderingConfig::new()
 		.with_ordering_fields(vec!["created_at", "title", "id"])
 		.with_default_ordering(vec!["-created_at"]);
@@ -609,8 +610,8 @@ fn test_ordering_config_fields_and_default() {
 }
 
 #[rstest]
-fn test_model_viewset_with_filters_and_ordering() {
-	// Arrange / Act
+fn model_viewset_with_filters_and_ordering() {
+	// Act
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("articles")
 		.with_filters(
 			FilterConfig::new()
@@ -623,7 +624,7 @@ fn test_model_viewset_with_filters_and_ordering() {
 				.with_default_ordering(vec!["-created_at"]),
 		);
 
-	// Assert – basename survives the builder chain
+	// Assert
 	assert_eq!(viewset.get_basename(), "articles");
 }
 
@@ -632,7 +633,8 @@ fn test_model_viewset_with_filters_and_ordering() {
 // ===========================================================================
 
 #[rstest]
-fn test_register_and_get_custom_action() {
+#[serial(viewset_registry)]
+fn register_and_get_custom_action() {
 	// Arrange
 	let viewset_type = "test_register_get_custom::CustomViewSet";
 	clear_actions();
@@ -652,8 +654,8 @@ fn test_register_and_get_custom_action() {
 }
 
 #[rstest]
-fn test_action_helper_creates_correct_metadata() {
-	// Arrange / Act
+fn action_helper_creates_correct_metadata() {
+	// Act
 	let metadata = action("recent", false, |_req| async {
 		reinhardt_http::Response::ok()
 			.with_json(&serde_json::json!([]))
@@ -666,17 +668,17 @@ fn test_action_helper_creates_correct_metadata() {
 }
 
 #[rstest]
-fn test_action_metadata_display_name_default() {
-	// Arrange / Act
+fn action_metadata_display_name_default() {
+	// Act
 	let metadata = ActionMetadata::new("activate_user");
 
-	// Assert – snake_case converted to Title Case
+	// Assert
 	assert_eq!(metadata.display_name(), "Activate User");
 }
 
 #[rstest]
-fn test_action_metadata_custom_name_takes_priority() {
-	// Arrange / Act
+fn action_metadata_custom_name_takes_priority() {
+	// Act
 	let metadata = ActionMetadata::new("activate_user").with_custom_name("Activate Now");
 
 	// Assert
@@ -684,8 +686,8 @@ fn test_action_metadata_custom_name_takes_priority() {
 }
 
 #[rstest]
-fn test_action_metadata_url_name_replaces_underscores() {
-	// Arrange / Act
+fn action_metadata_url_name_replaces_underscores() {
+	// Act
 	let metadata = ActionMetadata::new("recent_posts");
 
 	// Assert
@@ -693,8 +695,8 @@ fn test_action_metadata_url_name_replaces_underscores() {
 }
 
 #[rstest]
-fn test_action_metadata_custom_url_name() {
-	// Arrange / Act
+fn action_metadata_custom_url_name() {
+	// Act
 	let metadata = ActionMetadata::new("recent_posts").with_url_name("latest");
 
 	// Assert
@@ -702,8 +704,8 @@ fn test_action_metadata_custom_url_name() {
 }
 
 #[rstest]
-fn test_action_metadata_url_path_default() {
-	// Arrange / Act
+fn action_metadata_url_path_default() {
+	// Act
 	let metadata = ActionMetadata::new("bulk_delete");
 
 	// Assert
@@ -711,8 +713,8 @@ fn test_action_metadata_url_path_default() {
 }
 
 #[rstest]
-fn test_action_metadata_custom_url_path() {
-	// Arrange / Act
+fn action_metadata_custom_url_path() {
+	// Act
 	let metadata = ActionMetadata::new("bulk_delete").with_url_path("bulk/delete");
 
 	// Assert
@@ -724,8 +726,8 @@ fn test_action_metadata_custom_url_path() {
 // ===========================================================================
 
 #[rstest]
-fn test_nested_url_helper() {
-	// Arrange / Act
+fn nested_url_helper() {
+	// Act
 	let url = nested_url("users", "42", "posts");
 
 	// Assert
@@ -733,8 +735,8 @@ fn test_nested_url_helper() {
 }
 
 #[rstest]
-fn test_nested_detail_url_helper() {
-	// Arrange / Act
+fn nested_detail_url_helper() {
+	// Act
 	let url = nested_detail_url("users", "42", "posts", "7");
 
 	// Assert
@@ -742,8 +744,8 @@ fn test_nested_detail_url_helper() {
 }
 
 #[rstest]
-fn test_nested_resource_path_single_segment() {
-	// Arrange / Act
+fn nested_resource_path_single_segment() {
+	// Act
 	let path = NestedResourcePath::new().add_segment("users", "user_id");
 
 	// Assert
@@ -752,8 +754,8 @@ fn test_nested_resource_path_single_segment() {
 }
 
 #[rstest]
-fn test_nested_resource_path_two_segments() {
-	// Arrange / Act
+fn nested_resource_path_two_segments() {
+	// Act
 	let path = NestedResourcePath::new()
 		.add_segment("users", "user_id")
 		.add_segment("posts", "post_id");
@@ -764,8 +766,8 @@ fn test_nested_resource_path_two_segments() {
 }
 
 #[rstest]
-fn test_nested_resource_creation() {
-	// Arrange / Act
+fn nested_resource_creation() {
+	// Act
 	let nested = NestedResource::new("user", "user_id", "author_id");
 
 	// Assert
@@ -775,7 +777,7 @@ fn test_nested_resource_creation() {
 }
 
 #[rstest]
-fn test_nested_viewset_get_parent_id_from_request() {
+fn nested_viewset_get_parent_id_from_request() {
 	// Arrange
 	let inner: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("comments");
 	let config = NestedResource::new("posts", "post_id", "post_id");
@@ -790,7 +792,7 @@ fn test_nested_viewset_get_parent_id_from_request() {
 }
 
 #[rstest]
-fn test_nested_resource_path_extract_parent_ids() {
+fn nested_resource_path_extract_parent_ids() {
 	// Arrange
 	let path = NestedResourcePath::new()
 		.add_segment("users", "user_id")
@@ -806,8 +808,8 @@ fn test_nested_resource_path_extract_parent_ids() {
 }
 
 #[rstest]
-fn test_nested_resource_path_empty_returns_root_list_url() {
-	// Arrange / Act
+fn nested_resource_path_empty_returns_root_list_url() {
+	// Act
 	let path = NestedResourcePath::new();
 
 	// Assert
