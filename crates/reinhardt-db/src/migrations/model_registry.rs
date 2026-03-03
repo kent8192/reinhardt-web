@@ -113,11 +113,14 @@ impl ModelMetadata {
 
 		// Convert fields
 		for (name, field_meta) in &self.fields {
-			let mut field_state = FieldState::new(
-				name.clone(),
-				field_meta.field_type.clone(),
-				false, // nullable - default to false
-			);
+			// Override nullable from "null" param if present
+			let nullable = field_meta
+				.params
+				.get("null")
+				.map(|v| v.eq_ignore_ascii_case("true"))
+				.unwrap_or(false);
+			let mut field_state =
+				FieldState::new(name.clone(), field_meta.field_type.clone(), nullable);
 			for (key, value) in &field_meta.params {
 				field_state.params.insert(key.clone(), value.clone());
 			}
@@ -591,5 +594,58 @@ mod tests {
 		assert_eq!(field.field_type, FieldType::Custom("CharField".to_string()));
 		assert_eq!(field.params.get("max_length").unwrap(), "100");
 		assert_eq!(field.params.get("null").unwrap(), "False");
+	}
+
+	mod nullable_override {
+		use super::*;
+		use rstest::rstest;
+
+		#[rstest]
+		fn null_param_true_sets_nullable_to_true() {
+			// Arrange
+			let mut metadata = ModelMetadata::new("myapp", "MyModel", "myapp_mymodel");
+			let field = FieldMetadata::new(FieldType::Custom("CharField".to_string()))
+				.with_param("null", "true");
+			metadata.add_field("name".to_string(), field);
+
+			// Act
+			let model_state = metadata.to_model_state();
+
+			// Assert
+			let field_state = model_state.fields.get("name").expect("field should exist");
+			assert_eq!(field_state.nullable, true);
+		}
+
+		#[rstest]
+		fn null_param_false_sets_nullable_to_false() {
+			// Arrange
+			let mut metadata = ModelMetadata::new("myapp", "MyModel", "myapp_mymodel");
+			let field = FieldMetadata::new(FieldType::Custom("CharField".to_string()))
+				.with_param("null", "false");
+			metadata.add_field("name".to_string(), field);
+
+			// Act
+			let model_state = metadata.to_model_state();
+
+			// Assert
+			let field_state = model_state.fields.get("name").expect("field should exist");
+			assert_eq!(field_state.nullable, false);
+		}
+
+		#[rstest]
+		fn no_null_param_defaults_nullable_to_false() {
+			// Arrange
+			let mut metadata = ModelMetadata::new("myapp", "MyModel", "myapp_mymodel");
+			let field = FieldMetadata::new(FieldType::Custom("CharField".to_string()))
+				.with_param("max_length", "100");
+			metadata.add_field("name".to_string(), field);
+
+			// Act
+			let model_state = metadata.to_model_state();
+
+			// Assert
+			let field_state = model_state.fields.get("name").expect("field should exist");
+			assert_eq!(field_state.nullable, false);
+		}
 	}
 }
