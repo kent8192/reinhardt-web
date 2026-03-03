@@ -250,8 +250,10 @@ impl RestAuthentication for TokenAuthentication {
 			if let Some(token) = header.strip_prefix(&prefix)
 				&& let Some(user_id) = self.tokens.get(token)
 			{
-				// Try to parse user_id as UUID, or generate a new one if it fails
-				let id = uuid::Uuid::parse_str(user_id).unwrap_or_else(|_| uuid::Uuid::new_v4());
+				// Try to parse user_id as UUID, or generate deterministic one from user_id
+				let id = uuid::Uuid::parse_str(user_id).unwrap_or_else(|_| {
+					uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, user_id.as_bytes())
+				});
 				return Ok(Some(Box::new(SimpleUser {
 					id,
 					username: user_id.clone(),
@@ -279,8 +281,10 @@ impl AuthenticationBackend for TokenAuthentication {
 
 	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
 		if self.tokens.values().any(|id| id == user_id) {
-			// Try to parse user_id as UUID, or generate a new one if it fails
-			let id = uuid::Uuid::parse_str(user_id).unwrap_or_else(|_| uuid::Uuid::new_v4());
+			// Try to parse user_id as UUID, or generate deterministic one from user_id
+			let id = uuid::Uuid::parse_str(user_id).unwrap_or_else(|_| {
+				uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, user_id.as_bytes())
+			});
 			Ok(Some(Box::new(SimpleUser {
 				id,
 				username: user_id.to_string(),
@@ -338,7 +342,7 @@ impl RestAuthentication for RemoteUserAuthentication {
 			&& !username.is_empty()
 		{
 			return Ok(Some(Box::new(SimpleUser {
-				id: uuid::Uuid::new_v4(),
+				id: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, username.as_bytes()),
 				username: username.to_string(),
 				email: format!("{}@example.com", username),
 				is_active: true,
@@ -683,6 +687,127 @@ mod tests {
 		// Verify the authenticated user
 		let user = result.unwrap();
 		assert_eq!(user.get_username(), "testuser");
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_token_auth_non_uuid_user_id_is_deterministic() {
+		// Arrange
+		let mut auth = TokenAuthentication::new();
+		auth.add_token("tok1", "alice");
+
+		let mut headers = HeaderMap::new();
+		headers.insert("Authorization", "Token tok1".parse().unwrap());
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let result1 = RestAuthentication::authenticate(&auth, &request)
+			.await
+			.unwrap()
+			.unwrap();
+		let result2 = RestAuthentication::authenticate(&auth, &request)
+			.await
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(result1.id(), result2.id());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_token_auth_valid_uuid_user_id_preserved() {
+		// Arrange
+		let valid_uuid = "550e8400-e29b-41d4-a716-446655440000";
+		let mut auth = TokenAuthentication::new();
+		auth.add_token("tok1", valid_uuid);
+
+		let mut headers = HeaderMap::new();
+		headers.insert("Authorization", "Token tok1".parse().unwrap());
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let user = RestAuthentication::authenticate(&auth, &request)
+			.await
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(user.id(), valid_uuid);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_token_auth_authenticate_and_get_user_return_same_uuid() {
+		// Arrange
+		let mut auth = TokenAuthentication::new();
+		auth.add_token("tok1", "alice");
+
+		let mut headers = HeaderMap::new();
+		headers.insert("Authorization", "Token tok1".parse().unwrap());
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let auth_user = AuthenticationBackend::authenticate(&auth, &request)
+			.await
+			.unwrap()
+			.unwrap();
+		let get_user = auth.get_user("alice").await.unwrap().unwrap();
+
+		// Assert
+		assert_eq!(auth_user.id(), get_user.id());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_remote_user_auth_non_uuid_is_deterministic() {
+		// Arrange
+		let auth = RemoteUserAuthentication::new();
+
+		let mut headers = HeaderMap::new();
+		headers.insert("REMOTE_USER", "bob".parse().unwrap());
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let result1 = RestAuthentication::authenticate(&auth, &request)
+			.await
+			.unwrap()
+			.unwrap();
+		let result2 = RestAuthentication::authenticate(&auth, &request)
+			.await
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(result1.id(), result2.id());
 	}
 
 	#[tokio::test]
