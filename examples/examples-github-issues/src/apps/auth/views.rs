@@ -78,7 +78,7 @@ impl AuthQuery {
 			let user = storage.get_user(&claims.sub).await;
 			return Ok(user.map(UserType));
 		}
-		Ok(None)
+		Err(async_graphql::Error::new("Authentication required"))
 	}
 
 	/// List all users
