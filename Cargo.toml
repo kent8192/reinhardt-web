@@ -311,6 +311,7 @@ members = [
   "crates/reinhardt-pages",                             # WASM frontend framework
   "crates/reinhardt-pages/macros",              # WASM frontend macros
   "crates/reinhardt-pages/ast",                        # WASM frontend AST
+  "crates/reinhardt-whitenoise",                       # Static file optimization
   "crates/reinhardt-manouche",                         # DSL definitions for pages macros
   "crates/reinhardt-testkit",
   "crates/reinhardt-test",
@@ -340,6 +341,7 @@ members = [
   "crates/reinhardt-openapi",                           # OpenAPI router wrapper
   "crates/reinhardt-deploy",                           # Deployment engine
   "crates/reinhardt-seeding",                          # Database seeding framework
+  "crates/reinhardt-storages",                         # Cloud storage backends
   # Integration tests
   "tests",
   "tests/integration",
@@ -421,6 +423,7 @@ reinhardt-deeplink = { path = "crates/reinhardt-deeplink", version = "0.1.0-rc.4
 reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-rc.4" }
 reinhardt-deploy = { path = "crates/reinhardt-deploy", version = "0.1.0-alpha.1" }
 reinhardt-seeding = { path = "crates/reinhardt-seeding", version = "0.1.0-rc.4" }
+reinhardt-storages = { path = "crates/reinhardt-storages", version = "0.1.0" }
 
 # Query subcrates
 reinhardt-query-macros = { path = "crates/reinhardt-query/macros", version = "0.1.0-rc.4" }
