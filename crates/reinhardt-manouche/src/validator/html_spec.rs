@@ -1633,8 +1633,7 @@ fn validate_required_attributes(element: &TypedPageElement, spec: &ElementSpec) 
 /// Validates that all attributes are in the allowed list.
 fn validate_allowed_attributes(element: &TypedPageElement, allowed: &[&str]) -> Result<()> {
 	for attr in &element.attrs {
-		let html_name =
-			crate::core::attr_utils::ident_to_html_attr_name(&attr.name.to_string());
+		let html_name = crate::core::attr_utils::ident_to_html_attr_name(&attr.name.to_string());
 
 		// Check if it's a global attribute
 		if is_global_attribute(&html_name) {

@@ -29,7 +29,10 @@ const SVG_CAMEL_CASE_ATTRS: &[(&str, &str)] = &[
 pub(crate) fn ident_to_html_attr_name(name: &str) -> String {
 	let name = name.strip_prefix("r#").unwrap_or(name);
 	// Check SVG camelCase mapping first
-	if let Some(&(_, camel)) = SVG_CAMEL_CASE_ATTRS.iter().find(|&&(snake, _)| snake == name) {
+	if let Some(&(_, camel)) = SVG_CAMEL_CASE_ATTRS
+		.iter()
+		.find(|&&(snake, _)| snake == name)
+	{
 		return camel.to_string();
 	}
 	name.replace('_', "-")

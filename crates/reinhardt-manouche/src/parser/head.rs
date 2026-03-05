@@ -445,9 +445,7 @@ mod tests {
 	#[case("for")]
 	fn test_parse_reserved_keyword_as_attr_name(#[case] keyword: &str) {
 		// Arrange
-		let input_str = format!(
-			"|| {{ script {{ src: \"/app.js\", {keyword}: \"module\", }} }}",
-		);
+		let input_str = format!("|| {{ script {{ src: \"/app.js\", {keyword}: \"module\", }} }}",);
 
 		// Act
 		let ast: HeadMacro = syn::parse_str(&input_str).unwrap();

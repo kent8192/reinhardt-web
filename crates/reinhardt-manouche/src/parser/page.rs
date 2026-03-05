@@ -13,8 +13,9 @@
 
 use proc_macro2::TokenStream;
 use syn::{
-	Expr, Ident, Pat, Result, Token, braced, parenthesized,
+	Expr, Ident, Pat, Result, Token, braced,
 	ext::IdentExt,
+	parenthesized,
 	parse::{Parse, ParseStream},
 	token,
 };
@@ -964,9 +965,7 @@ mod tests {
 	#[case("for")]
 	fn test_parse_reserved_keyword_as_attr_name(#[case] keyword: &str) {
 		// Arrange
-		let input_str = format!(
-			"|| {{ input {{ {keyword}: \"text\", }} }}",
-		);
+		let input_str = format!("|| {{ input {{ {keyword}: \"text\", }} }}",);
 
 		// Act
 		let result: PageMacro = syn::parse_str(&input_str).unwrap();
