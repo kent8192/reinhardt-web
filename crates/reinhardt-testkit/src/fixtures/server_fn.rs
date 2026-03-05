@@ -14,8 +14,8 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_test::fixtures::server_fn::*;
-//! use reinhardt_test::fixtures::di::singleton_scope;
+//! use reinhardt_testkit::fixtures::server_fn::*;
+//! use reinhardt_testkit::fixtures::di::singleton_scope;
 //! use rstest::*;
 //!
 //! #[rstest]
@@ -47,7 +47,7 @@ use crate::server_fn::{MockHttpRequest, MockHttpResponse, MockSession, TestToken
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::test_anonymous;
+/// use reinhardt_testkit::fixtures::server_fn::test_anonymous;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -67,7 +67,7 @@ pub fn test_anonymous() -> TestUser {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::test_user;
+/// use reinhardt_testkit::fixtures::server_fn::test_user;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -88,7 +88,7 @@ pub fn test_user() -> TestUser {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::test_admin;
+/// use reinhardt_testkit::fixtures::server_fn::test_admin;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -110,7 +110,7 @@ pub fn test_admin() -> TestUser {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::anonymous_session;
+/// use reinhardt_testkit::fixtures::server_fn::anonymous_session;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -128,7 +128,7 @@ pub fn anonymous_session() -> MockSession {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::authenticated_session;
+/// use reinhardt_testkit::fixtures::server_fn::authenticated_session;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -146,7 +146,7 @@ pub fn authenticated_session(test_user: TestUser) -> MockSession {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::admin_session;
+/// use reinhardt_testkit::fixtures::server_fn::admin_session;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -169,7 +169,7 @@ pub fn admin_session(test_admin: TestUser) -> MockSession {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::get_request;
+/// use reinhardt_testkit::fixtures::server_fn::get_request;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -187,7 +187,7 @@ pub fn get_request() -> MockHttpRequest {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::post_request;
+/// use reinhardt_testkit::fixtures::server_fn::post_request;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -205,7 +205,7 @@ pub fn post_request() -> MockHttpRequest {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::ok_response;
+/// use reinhardt_testkit::fixtures::server_fn::ok_response;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -227,7 +227,7 @@ pub fn ok_response() -> MockHttpResponse {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::token_claims;
+/// use reinhardt_testkit::fixtures::server_fn::token_claims;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -247,7 +247,7 @@ pub fn token_claims(test_user: TestUser) -> TestTokenClaims {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::fixtures::server_fn::expired_token_claims;
+/// use reinhardt_testkit::fixtures::server_fn::expired_token_claims;
 /// use rstest::*;
 ///
 /// #[rstest]

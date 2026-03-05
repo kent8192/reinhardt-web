@@ -14,7 +14,7 @@ static INIT: Once = Once::new();
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::logging::init_test_logging;
+/// use reinhardt_testkit::logging::init_test_logging;
 ///
 /// // In your test:
 /// init_test_logging();

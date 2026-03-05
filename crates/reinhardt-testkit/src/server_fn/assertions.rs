@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_test::server_fn::assertions::{ServerFnResultAssertions, assert_server_fn_returns};
+//! use reinhardt_testkit::server_fn::assertions::{ServerFnResultAssertions, assert_server_fn_returns};
 //!
 //! let result = my_server_fn(input, &ctx).await;
 //!

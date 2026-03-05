@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_test::server_fn::{ServerFnTestContext, TestUser};
+//! use reinhardt_testkit::server_fn::{ServerFnTestContext, TestUser};
 //! use reinhardt_di::SingletonScope;
 //! use std::sync::Arc;
 //!

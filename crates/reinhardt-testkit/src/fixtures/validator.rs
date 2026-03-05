@@ -29,7 +29,7 @@ use crate::resource::{TeardownGuard, TestResource};
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::validator::validator_test_db;
+/// use reinhardt_testkit::fixtures::validator::validator_test_db;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -123,8 +123,8 @@ impl TestResource for ValidatorDbGuard {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::validator::validator_db_guard;
-/// use reinhardt_test::resource::TeardownGuard;
+/// use reinhardt_testkit::fixtures::validator::validator_db_guard;
+/// use reinhardt_testkit::resource::TeardownGuard;
 /// use rstest::*;
 ///
 /// #[rstest]

@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_test::server_fn::mock_request::{MockHttpRequest, MockHttpResponse};
+//! use reinhardt_testkit::server_fn::mock_request::{MockHttpRequest, MockHttpResponse};
 //!
 //! let request = MockHttpRequest::post("/api/users")
 //!     .with_json(&CreateUserInput { name: "Alice".to_string() })

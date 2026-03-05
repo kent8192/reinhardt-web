@@ -79,7 +79,7 @@ fn get_pool_config() -> (u32, u64) {
 ///
 /// # Example
 /// ```ignore
-/// use reinhardt_test::fixtures::testcontainers::create_test_any_pool;
+/// use reinhardt_testkit::fixtures::testcontainers::create_test_any_pool;
 ///
 /// # async fn example() {
 /// let database_url = "postgres://localhost:5432/test";
@@ -224,7 +224,7 @@ use fs2::FileExt;
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::FileLockGuard;
+/// use reinhardt_testkit::fixtures::FileLockGuard;
 ///
 /// // Acquire lock (blocks until available)
 /// let guard = FileLockGuard::new("/tmp/test.lock")?;
@@ -280,7 +280,7 @@ impl Drop for FileLockGuard {
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::postgres_container;
+/// use reinhardt_testkit::fixtures::postgres_container;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -480,7 +480,7 @@ pub async fn cockroachdb_container()
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::redis_container;
+/// use reinhardt_testkit::fixtures::redis_container;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -574,11 +574,11 @@ impl std::fmt::Debug for RedisClusterContainer {
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::testcontainers::redis_cluster_lock;
+/// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_lock;
 /// use rstest::*;
 ///
 /// #[rstest]
-/// fn test_with_cluster_lock(redis_cluster_lock: reinhardt_test::fixtures::FileLockGuard) {
+/// fn test_with_cluster_lock(redis_cluster_lock: reinhardt_testkit::fixtures::FileLockGuard) {
 ///     // Lock ensures exclusive cluster access
 /// }
 /// ```
@@ -596,13 +596,13 @@ pub fn redis_cluster_lock() -> FileLockGuard {
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::testcontainers::{redis_cluster_lock, redis_cluster_cleanup};
+/// use reinhardt_testkit::fixtures::testcontainers::{redis_cluster_lock, redis_cluster_cleanup};
 /// use rstest::*;
 ///
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_cleanup(
-///     redis_cluster_lock: reinhardt_test::fixtures::FileLockGuard,
+///     redis_cluster_lock: reinhardt_testkit::fixtures::FileLockGuard,
 ///     #[future] redis_cluster_cleanup: ()
 /// ) {
 ///     let _ = redis_cluster_cleanup.await;
@@ -799,16 +799,16 @@ pub async fn redis_cluster_ports_ready(
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::testcontainers::redis_cluster_container;
+/// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_container;
 /// use rstest::*;
 ///
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_cluster_ready(
-///     redis_cluster_lock: reinhardt_test::fixtures::FileLockGuard,
+///     redis_cluster_lock: reinhardt_testkit::fixtures::FileLockGuard,
 ///     #[future] redis_cluster_cleanup: (),
 ///     #[future] redis_cluster_ports_ready: (ContainerAsync<GenericImage>, Vec<u16>),
-///     #[future] redis_cluster_container: reinhardt_test::fixtures::RedisClusterContainer
+///     #[future] redis_cluster_container: reinhardt_testkit::fixtures::RedisClusterContainer
 /// ) {
 ///     let container = redis_cluster_container.await;
 ///     assert_eq!(container.node_ports.len(), 6);
@@ -840,18 +840,18 @@ pub async fn redis_cluster_container(
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::redis_cluster;
+/// use reinhardt_testkit::fixtures::redis_cluster;
 /// use rstest::*;
 ///
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_redis_cluster(
-///     redis_cluster_lock: reinhardt_test::fixtures::FileLockGuard,
+///     redis_cluster_lock: reinhardt_testkit::fixtures::FileLockGuard,
 ///     #[future] redis_cluster_cleanup: (),
 ///     #[future] redis_cluster_ports_ready: (ContainerAsync<GenericImage>, Vec<u16>),
-///     #[future] redis_cluster_container: reinhardt_test::fixtures::RedisClusterContainer,
+///     #[future] redis_cluster_container: reinhardt_testkit::fixtures::RedisClusterContainer,
 ///     #[future] redis_cluster: (
-///         reinhardt_test::fixtures::RedisClusterContainer,
+///         reinhardt_testkit::fixtures::RedisClusterContainer,
 ///         Arc<redis::cluster::ClusterClient>,
 ///         Vec<String>
 ///     )
@@ -908,7 +908,7 @@ pub async fn redis_cluster(
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::testcontainers::redis_cluster_client;
+/// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_client;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -972,7 +972,7 @@ pub async fn redis_cluster_client(
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::testcontainers::redis_cluster_urls;
+/// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_urls;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -1011,14 +1011,14 @@ pub async fn redis_cluster_urls(
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::testcontainers::redis_cluster_fixture;
+/// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_fixture;
 /// use rstest::*;
 ///
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_simple_cluster(
 ///     #[future] redis_cluster_fixture: (
-///         reinhardt_test::fixtures::RedisClusterContainer,
+///         reinhardt_testkit::fixtures::RedisClusterContainer,
 ///         Arc<redis::cluster::ClusterClient>,
 ///         Vec<String>
 ///     )
@@ -1275,7 +1275,7 @@ pub async fn mongodb_container() -> (ContainerAsync<GenericImage>, String, u16) 
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::localstack_fixture;
+/// use reinhardt_testkit::fixtures::localstack_fixture;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -1331,7 +1331,7 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 /// # Example
 ///
 /// ```ignore
-/// # use reinhardt_test::fixtures::postgres_with_migrations_from;
+/// # use reinhardt_testkit::fixtures::postgres_with_migrations_from;
 /// # use reinhardt_db::migrations::MigrationProvider;
 /// # #[tokio::main]
 /// # async fn main() {
@@ -1398,7 +1398,7 @@ pub async fn postgres_with_migrations_from<P: reinhardt_db::migrations::Migratio
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_test::fixtures::mysql_container;
+/// use reinhardt_testkit::fixtures::mysql_container;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -1539,7 +1539,7 @@ pub async fn mysql_container() -> (
 /// # Example
 ///
 /// ```ignore
-/// # use reinhardt_test::fixtures::mysql_with_migrations_from;
+/// # use reinhardt_testkit::fixtures::mysql_with_migrations_from;
 /// # use reinhardt_db::migrations::MigrationProvider;
 /// # #[tokio::main]
 /// # async fn main() {
@@ -1605,7 +1605,7 @@ pub async fn mysql_with_migrations_from<P: reinhardt_db::migrations::MigrationPr
 /// # Example
 ///
 /// ```ignore
-/// # use reinhardt_test::fixtures::sqlite_with_migrations_from;
+/// # use reinhardt_testkit::fixtures::sqlite_with_migrations_from;
 /// # use reinhardt_db::migrations::MigrationProvider;
 /// # #[tokio::main]
 /// # async fn main() {
@@ -1669,7 +1669,7 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 /// # Example
 ///
 /// ```ignore
-/// # use reinhardt_test::fixtures::*;
+/// # use reinhardt_testkit::fixtures::*;
 /// # use rstest::*;
 /// # use std::sync::Arc;
 /// # use reinhardt_db::DatabaseConnection;
@@ -1745,7 +1745,7 @@ pub async fn postgres_with_all_migrations() -> Result<
 /// # Example
 ///
 /// ```ignore
-/// # use reinhardt_test::fixtures::postgres_with_apps_migrations;
+/// # use reinhardt_testkit::fixtures::postgres_with_apps_migrations;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // #[tokio::test]
@@ -1805,7 +1805,7 @@ pub async fn postgres_with_apps_migrations(
 /// # Example
 ///
 /// ```ignore
-/// # use reinhardt_test::fixtures::*;
+/// # use reinhardt_testkit::fixtures::*;
 /// # use rstest::*;
 /// # use std::sync::Arc;
 /// # use reinhardt_db::DatabaseConnection;
@@ -1903,7 +1903,7 @@ pub async fn mysql_with_apps_migrations(
 /// # Example
 ///
 /// ```ignore
-/// # use reinhardt_test::fixtures::*;
+/// # use reinhardt_testkit::fixtures::*;
 /// # use rstest::*;
 /// # use std::sync::Arc;
 /// # use reinhardt_db::DatabaseConnection;
@@ -1998,7 +1998,7 @@ pub async fn sqlite_with_apps_migrations(
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_test::fixtures::rabbitmq_container;
+/// use reinhardt_testkit::fixtures::rabbitmq_container;
 /// use rstest::*;
 ///
 /// #[rstest]

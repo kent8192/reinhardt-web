@@ -13,7 +13,7 @@
 //! ## Usage Example
 //!
 //! ```rust,ignore
-//! use reinhardt_test::fixtures::schema::{create_table_for_model, create_tables_for_models};
+//! use reinhardt_testkit::fixtures::schema::{create_table_for_model, create_tables_for_models};
 //! use reinhardt_db::orm::Model;
 //!
 //! #[model(app_label = "test", table_name = "articles")]

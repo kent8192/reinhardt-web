@@ -15,7 +15,7 @@
 //! ## PostgresContainer
 //!
 //! ```rust,no_run
-//! use reinhardt_test::containers::{PostgresContainer, TestDatabase};
+//! use reinhardt_testkit::containers::{PostgresContainer, TestDatabase};
 //!
 //! # #[tokio::main]
 //! # async fn main() {
@@ -28,7 +28,7 @@
 //! ## MySqlContainer
 //!
 //! ```rust,no_run
-//! use reinhardt_test::containers::{MySqlContainer, TestDatabase};
+//! use reinhardt_testkit::containers::{MySqlContainer, TestDatabase};
 //!
 //! # #[tokio::main]
 //! # async fn main() {
@@ -40,7 +40,7 @@
 //! ## RedisContainer
 //!
 //! ```rust,no_run
-//! use reinhardt_test::containers::RedisContainer;
+//! use reinhardt_testkit::containers::RedisContainer;
 //!
 //! # #[tokio::main]
 //! # async fn main() {
@@ -54,7 +54,7 @@
 //! ## Quick Start Functions
 //!
 //! ```rust,no_run
-//! use reinhardt_test::containers::{start_postgres, start_redis};
+//! use reinhardt_testkit::containers::{start_postgres, start_redis};
 //!
 //! # #[tokio::main]
 //! # async fn main() {
@@ -66,7 +66,7 @@
 //! ## Test Wrapper Functions
 //!
 //! ```rust,no_run
-//! use reinhardt_test::containers::with_postgres;
+//! use reinhardt_testkit::containers::with_postgres;
 //!
 //! #[tokio::test]
 //! async fn my_test() {
@@ -81,7 +81,7 @@
 //! ## SQLite Helpers
 //!
 //! ```rust,no_run
-//! use reinhardt_test::containers::sqlite;
+//! use reinhardt_testkit::containers::sqlite;
 //!
 //! let memory_url = sqlite::memory_url();
 //! let temp_url = sqlite::temp_file_url("my_test");
@@ -547,7 +547,7 @@ where
 /// ```rust,no_run
 /// # #[tokio::main]
 /// # async fn main() {
-/// use reinhardt_test::containers::{with_postgres, PostgresContainer};
+/// use reinhardt_testkit::containers::{with_postgres, PostgresContainer};
 ///
 /// #[tokio::test]
 /// async fn test_with_database() {
@@ -871,7 +871,7 @@ pub mod sqlite {
 	///
 	/// # Example
 	/// ```ignore
-	/// use reinhardt_test::containers::sqlite::memory_url;
+	/// use reinhardt_testkit::containers::sqlite::memory_url;
 	///
 	/// let url = memory_url();
 	/// assert_eq!(url, "sqlite::memory:");
@@ -887,7 +887,7 @@ pub mod sqlite {
 	///
 	/// # Example
 	/// ```ignore
-	/// use reinhardt_test::containers::sqlite::temp_file_url;
+	/// use reinhardt_testkit::containers::sqlite::temp_file_url;
 	///
 	/// let url = temp_file_url("test_db");
 	/// // Use the database...

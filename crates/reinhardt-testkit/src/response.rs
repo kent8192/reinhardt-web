@@ -20,7 +20,7 @@ impl TestResponse {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::response::TestResponse;
+	/// use reinhardt_testkit::response::TestResponse;
 	/// use http::{Response, StatusCode};
 	/// use http_body_util::Full;
 	/// use bytes::Bytes;
@@ -91,7 +91,7 @@ impl TestResponse {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::response::TestResponse;
+	/// use reinhardt_testkit::response::TestResponse;
 	/// use http::{StatusCode, HeaderMap, Version};
 	/// use bytes::Bytes;
 	///

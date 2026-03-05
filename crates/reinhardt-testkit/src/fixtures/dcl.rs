@@ -16,7 +16,7 @@
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use reinhardt_test::fixtures::dcl::*;
+//! use reinhardt_testkit::fixtures::dcl::*;
 //! use rstest::rstest;
 //!
 //! #[rstest]
@@ -62,7 +62,7 @@ use uuid::Uuid;
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::DclTracker;
+/// use reinhardt_testkit::fixtures::dcl::DclTracker;
 ///
 /// let mut tracker = DclTracker::new();
 /// tracker.track("ROLE:test_role_abc123".to_string());
@@ -105,7 +105,7 @@ impl Default for DclTracker {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::{dcl_tracker, DclTracker};
+/// use reinhardt_testkit::fixtures::dcl::{dcl_tracker, DclTracker};
 /// use rstest::rstest;
 ///
 /// #[rstest]
@@ -143,7 +143,7 @@ fn unique_suffix() -> String {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::dcl_test_table;
+/// use reinhardt_testkit::fixtures::dcl::dcl_test_table;
 /// use rstest::rstest;
 ///
 /// #[rstest]
@@ -166,7 +166,7 @@ pub fn dcl_test_table() -> String {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::test_role;
+/// use reinhardt_testkit::fixtures::dcl::test_role;
 /// use rstest::rstest;
 ///
 /// #[rstest]
@@ -192,7 +192,7 @@ pub fn test_role() -> String {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::test_role_with_attrs;
+/// use reinhardt_testkit::fixtures::dcl::test_role_with_attrs;
 /// use rstest::rstest;
 ///
 /// #[rstest]
@@ -219,7 +219,7 @@ pub fn test_role_with_attrs() -> (String, String) {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::test_user;
+/// use reinhardt_testkit::fixtures::dcl::test_user;
 /// use rstest::rstest;
 ///
 /// #[rstest]
@@ -246,7 +246,7 @@ pub fn test_user() -> String {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::test_user_with_password;
+/// use reinhardt_testkit::fixtures::dcl::test_user_with_password;
 /// use rstest::rstest;
 ///
 /// #[rstest]
@@ -274,7 +274,7 @@ pub fn test_user_with_password() -> (String, String) {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::test_database;
+/// use reinhardt_testkit::fixtures::dcl::test_database;
 /// use rstest::rstest;
 ///
 /// #[rstest]
@@ -303,7 +303,7 @@ pub fn test_database() -> String {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::test_schema;
+/// use reinhardt_testkit::fixtures::dcl::test_schema;
 /// use rstest::rstest;
 ///
 /// #[rstest]
@@ -333,7 +333,7 @@ pub fn test_schema() -> String {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::dcl_test_table_stmt;
+/// use reinhardt_testkit::fixtures::dcl::dcl_test_table_stmt;
 /// use reinhardt_query::prelude::{PostgresQueryBuilder, MySqlQueryBuilder, QueryStatementBuilder};
 ///
 /// #[test]
@@ -396,7 +396,7 @@ pub fn dcl_test_table_stmt() -> CreateTableStatement {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::dcl::dcl_test_table_with_fk;
+/// use reinhardt_testkit::fixtures::dcl::dcl_test_table_with_fk;
 /// use reinhardt_query::prelude::{PostgresQueryBuilder, QueryStatementBuilder};
 ///
 /// #[test]

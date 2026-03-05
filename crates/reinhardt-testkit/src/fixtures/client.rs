@@ -14,7 +14,7 @@
 //! ### Using api_client_from_url with TestServerGuard
 //!
 //! ```rust,no_run
-//! use reinhardt_test::fixtures::{test_server_guard, api_client_from_url, TestServerGuard};
+//! use reinhardt_testkit::fixtures::{test_server_guard, api_client_from_url, TestServerGuard};
 //! use reinhardt_urls::routers::UnifiedRouter;
 //! use rstest::*;
 //!
@@ -32,7 +32,7 @@
 //! ### Creating APIClient directly
 //!
 //! ```rust,no_run
-//! use reinhardt_test::APIClient;
+//! use reinhardt_testkit::APIClient;
 //!
 //! # async fn example() {
 //! let client = APIClient::with_base_url("http://localhost:8080");
@@ -55,7 +55,7 @@ use crate::client::APIClient;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::api_client_from_url;
+/// use reinhardt_testkit::fixtures::api_client_from_url;
 ///
 /// # async fn example() {
 /// let client = api_client_from_url("http://localhost:8080");
@@ -66,7 +66,7 @@ use crate::client::APIClient;
 /// # Usage with TestServerGuard
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::{test_server_guard, api_client_from_url, TestServerGuard};
+/// use reinhardt_testkit::fixtures::{test_server_guard, api_client_from_url, TestServerGuard};
 /// use rstest::*;
 ///
 /// #[rstest]

@@ -25,7 +25,7 @@ use tokio::task::JoinHandle;
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_test::server::{spawn_test_server, EchoPathHandler};
+/// use reinhardt_testkit::server::{spawn_test_server, EchoPathHandler};
 /// use std::sync::Arc;
 ///
 /// # async fn example() {
@@ -81,7 +81,7 @@ pub async fn spawn_test_server(handler: Arc<dyn Handler>) -> (String, JoinHandle
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_test::server::{spawn_test_server, shutdown_test_server, EchoPathHandler};
+/// use reinhardt_testkit::server::{spawn_test_server, shutdown_test_server, EchoPathHandler};
 /// use std::sync::Arc;
 ///
 /// # async fn example() {
@@ -103,7 +103,7 @@ pub async fn shutdown_test_server(handle: JoinHandle<()>) {
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_test::server::{spawn_test_server, EchoPathHandler};
+/// use reinhardt_testkit::server::{spawn_test_server, EchoPathHandler};
 /// use std::sync::Arc;
 ///
 /// # async fn example() {
@@ -133,7 +133,7 @@ impl Handler for EchoPathHandler {
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_test::server::{spawn_test_server, StatusCodeHandler};
+/// use reinhardt_testkit::server::{spawn_test_server, StatusCodeHandler};
 /// use std::sync::Arc;
 ///
 /// # async fn example() {
@@ -163,7 +163,7 @@ impl Handler for StatusCodeHandler {
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_test::server::{spawn_test_server, MethodEchoHandler};
+/// use reinhardt_testkit::server::{spawn_test_server, MethodEchoHandler};
 /// use std::sync::Arc;
 ///
 /// # async fn example() {
@@ -195,7 +195,7 @@ impl Handler for MethodEchoHandler {
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_test::server::{spawn_test_server, DelayedHandler};
+/// use reinhardt_testkit::server::{spawn_test_server, DelayedHandler};
 /// use std::sync::Arc;
 ///
 /// # async fn example() {
@@ -227,7 +227,7 @@ impl Handler for DelayedHandler {
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_test::server::{spawn_test_server, BodyEchoHandler};
+/// use reinhardt_testkit::server::{spawn_test_server, BodyEchoHandler};
 /// use std::sync::Arc;
 ///
 /// # async fn example() {
@@ -257,7 +257,7 @@ impl Handler for BodyEchoHandler {
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_test::server::{spawn_test_server, LargeResponseHandler};
+/// use reinhardt_testkit::server::{spawn_test_server, LargeResponseHandler};
 /// use std::sync::Arc;
 ///
 /// # async fn example() {
@@ -291,7 +291,7 @@ impl Handler for LargeResponseHandler {
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_test::server::{spawn_test_server, RouterHandler};
+/// use reinhardt_testkit::server::{spawn_test_server, RouterHandler};
 /// use std::sync::Arc;
 ///
 /// # async fn example() {

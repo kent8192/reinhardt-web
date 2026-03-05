@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_test::server_fn::transaction::TestTransaction;
+//! use reinhardt_testkit::server_fn::transaction::TestTransaction;
 //!
 //! #[rstest]
 //! #[tokio::test]

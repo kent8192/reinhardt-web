@@ -12,7 +12,7 @@
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use reinhardt_test::fixtures::get_test_pool;
+//! use reinhardt_testkit::fixtures::get_test_pool;
 //! use rstest::*;
 //!
 //! #[rstest]
@@ -457,7 +457,7 @@ pub fn cleanup_shared_postgres() {
 /// # Usage
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::shared_db_pool;
+/// use reinhardt_testkit::fixtures::shared_db_pool;
 /// use rstest::*;
 /// use sqlx::PgPool;
 ///
@@ -474,7 +474,7 @@ pub fn cleanup_shared_postgres() {
 /// This fixture can be used as a base for other fixtures:
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::shared_db_pool;
+/// use reinhardt_testkit::fixtures::shared_db_pool;
 /// use rstest::*;
 /// use sqlx::PgPool;
 /// use std::sync::Arc;

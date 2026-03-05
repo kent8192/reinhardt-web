@@ -21,7 +21,7 @@ pub use reinhardt_http::{Error, Request, Response, Result};
 /// ## Basic usage
 ///
 /// ```
-/// use reinhardt_test::http::create_request;
+/// use reinhardt_testkit::http::create_request;
 /// use hyper::Method;
 ///
 /// let request = create_request(Method::GET, "/api/users", None, vec![]);
@@ -32,7 +32,7 @@ pub use reinhardt_http::{Error, Request, Response, Result};
 /// ## With body
 ///
 /// ```
-/// use reinhardt_test::http::create_request;
+/// use reinhardt_testkit::http::create_request;
 /// use hyper::Method;
 ///
 /// let body = r#"{"name": "Alice"}"#;
@@ -44,7 +44,7 @@ pub use reinhardt_http::{Error, Request, Response, Result};
 /// ## With headers
 ///
 /// ```
-/// use reinhardt_test::http::create_request;
+/// use reinhardt_testkit::http::create_request;
 /// use hyper::Method;
 ///
 /// let headers = vec![
@@ -89,7 +89,7 @@ pub fn create_request(
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{extract_json, create_request};
+/// use reinhardt_testkit::http::{extract_json, create_request};
 /// use reinhardt_http::Response;
 /// use serde::{Deserialize, Serialize};
 ///
@@ -113,7 +113,7 @@ pub fn create_request(
 /// # Invalid JSON
 ///
 /// ```
-/// use reinhardt_test::http::extract_json;
+/// use reinhardt_testkit::http::extract_json;
 /// use reinhardt_http::Response;
 /// use serde::Deserialize;
 ///
@@ -153,7 +153,7 @@ pub fn extract_json<T: DeserializeOwned>(response: Response) -> Result<T> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::create_test_request;
+/// use reinhardt_testkit::http::create_test_request;
 ///
 /// let request = create_test_request("GET", "/api/users", false);
 /// assert_eq!(request.method.as_str(), "GET");
@@ -163,7 +163,7 @@ pub fn extract_json<T: DeserializeOwned>(response: Response) -> Result<T> {
 /// ## Secure request
 ///
 /// ```
-/// use reinhardt_test::http::create_test_request;
+/// use reinhardt_testkit::http::create_test_request;
 ///
 /// let request = create_test_request("POST", "/api/login", true);
 /// assert!(request.is_secure);
@@ -202,7 +202,7 @@ pub fn create_test_request(method: &str, uri: &str, secure: bool) -> Request {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::create_secure_request;
+/// use reinhardt_testkit::http::create_secure_request;
 ///
 /// let request = create_secure_request("GET", "/api/users");
 /// assert!(request.is_secure);
@@ -219,7 +219,7 @@ pub fn create_secure_request(method: &str, uri: &str) -> Request {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::create_insecure_request;
+/// use reinhardt_testkit::http::create_insecure_request;
 ///
 /// let request = create_insecure_request("GET", "/api/users");
 /// assert!(!request.is_secure);
@@ -240,7 +240,7 @@ pub fn create_insecure_request(method: &str, uri: &str) -> Request {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::create_test_response;
+/// use reinhardt_testkit::http::create_test_response;
 /// use hyper::StatusCode;
 ///
 /// let response = create_test_response();
@@ -255,7 +255,7 @@ pub fn create_test_response() -> Response {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::create_response_with_status;
+/// use reinhardt_testkit::http::create_response_with_status;
 /// use hyper::StatusCode;
 ///
 /// let response = create_response_with_status(StatusCode::NOT_FOUND);
@@ -270,7 +270,7 @@ pub fn create_response_with_status(status: StatusCode) -> Response {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::create_response_with_headers;
+/// use reinhardt_testkit::http::create_response_with_headers;
 /// use hyper::{HeaderMap, header::{HeaderName, HeaderValue}};
 ///
 /// let mut headers = HeaderMap::new();
@@ -296,7 +296,7 @@ pub fn create_response_with_headers(headers: HeaderMap) -> Response {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{create_test_response, has_header};
+/// use reinhardt_testkit::http::{create_test_response, has_header};
 ///
 /// let response = create_test_response().with_header("x-api-version", "v1");
 /// assert!(has_header(&response, "x-api-version"));
@@ -313,7 +313,7 @@ pub fn has_header(response: &Response, header_name: &str) -> bool {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{create_test_response, get_header};
+/// use reinhardt_testkit::http::{create_test_response, get_header};
 ///
 /// let response = create_test_response().with_header("x-api-version", "v1");
 /// assert_eq!(get_header(&response, "x-api-version"), Some("v1"));
@@ -331,7 +331,7 @@ pub fn get_header<'a>(response: &'a Response, header_name: &str) -> Option<&'a s
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{create_test_response, header_equals};
+/// use reinhardt_testkit::http::{create_test_response, header_equals};
 ///
 /// let response = create_test_response().with_header("content-type", "application/json");
 /// assert!(header_equals(&response, "content-type", "application/json"));
@@ -348,7 +348,7 @@ pub fn header_equals(response: &Response, header_name: &str, expected_value: &st
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{create_test_response, header_contains};
+/// use reinhardt_testkit::http::{create_test_response, header_contains};
 ///
 /// let response = create_test_response().with_header("content-type", "application/json; charset=utf-8");
 /// assert!(header_contains(&response, "content-type", "application/json"));
@@ -372,7 +372,7 @@ pub fn header_contains(response: &Response, header_name: &str, substring: &str) 
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{create_test_response, assert_status};
+/// use reinhardt_testkit::http::{create_test_response, assert_status};
 /// use hyper::StatusCode;
 ///
 /// let response = create_test_response();
@@ -380,7 +380,7 @@ pub fn header_contains(response: &Response, header_name: &str, substring: &str) 
 /// ```
 ///
 /// ```should_panic
-/// use reinhardt_test::http::{create_test_response, assert_status};
+/// use reinhardt_testkit::http::{create_test_response, assert_status};
 /// use hyper::StatusCode;
 ///
 /// let response = create_test_response();
@@ -401,14 +401,14 @@ pub fn assert_status(response: &Response, expected: StatusCode) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{create_test_response, assert_has_header};
+/// use reinhardt_testkit::http::{create_test_response, assert_has_header};
 ///
 /// let response = create_test_response().with_header("x-api-version", "v1");
 /// assert_has_header(&response, "x-api-version"); // Passes
 /// ```
 ///
 /// ```should_panic
-/// use reinhardt_test::http::{create_test_response, assert_has_header};
+/// use reinhardt_testkit::http::{create_test_response, assert_has_header};
 ///
 /// let response = create_test_response();
 /// assert_has_header(&response, "x-missing-header"); // Panics
@@ -428,14 +428,14 @@ pub fn assert_has_header(response: &Response, header_name: &str) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{create_test_response, assert_no_header};
+/// use reinhardt_testkit::http::{create_test_response, assert_no_header};
 ///
 /// let response = create_test_response();
 /// assert_no_header(&response, "x-missing-header"); // Passes
 /// ```
 ///
 /// ```should_panic
-/// use reinhardt_test::http::{create_test_response, assert_no_header};
+/// use reinhardt_testkit::http::{create_test_response, assert_no_header};
 ///
 /// let response = create_test_response().with_header("x-api-version", "v1");
 /// assert_no_header(&response, "x-api-version"); // Panics
@@ -455,14 +455,14 @@ pub fn assert_no_header(response: &Response, header_name: &str) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{create_test_response, assert_header_equals};
+/// use reinhardt_testkit::http::{create_test_response, assert_header_equals};
 ///
 /// let response = create_test_response().with_header("content-type", "application/json");
 /// assert_header_equals(&response, "content-type", "application/json"); // Passes
 /// ```
 ///
 /// ```should_panic
-/// use reinhardt_test::http::{create_test_response, assert_header_equals};
+/// use reinhardt_testkit::http::{create_test_response, assert_header_equals};
 ///
 /// let response = create_test_response().with_header("content-type", "application/json");
 /// assert_header_equals(&response, "content-type", "text/html"); // Panics
@@ -484,14 +484,14 @@ pub fn assert_header_equals(response: &Response, header_name: &str, expected_val
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::http::{create_test_response, assert_header_contains};
+/// use reinhardt_testkit::http::{create_test_response, assert_header_contains};
 ///
 /// let response = create_test_response().with_header("content-type", "application/json; charset=utf-8");
 /// assert_header_contains(&response, "content-type", "application/json"); // Passes
 /// ```
 ///
 /// ```should_panic
-/// use reinhardt_test::http::{create_test_response, assert_header_contains};
+/// use reinhardt_testkit::http::{create_test_response, assert_header_contains};
 ///
 /// let response = create_test_response().with_header("content-type", "application/json");
 /// assert_header_contains(&response, "content-type", "text/html"); // Panics

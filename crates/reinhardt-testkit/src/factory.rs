@@ -23,7 +23,7 @@ impl APIRequestFactory {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	///
 	/// let factory = APIRequestFactory::new();
 	/// let request = factory.get("/api/users/").build();
@@ -55,7 +55,7 @@ impl APIRequestFactory {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	///
 	/// let factory = APIRequestFactory::new();
 	/// let request = factory.get("/api/users/").build().unwrap();
@@ -69,7 +69,7 @@ impl APIRequestFactory {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	/// use serde_json::json;
 	///
 	/// let factory = APIRequestFactory::new();
@@ -86,7 +86,7 @@ impl APIRequestFactory {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	/// use serde_json::json;
 	///
 	/// let factory = APIRequestFactory::new();
@@ -103,7 +103,7 @@ impl APIRequestFactory {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	/// use serde_json::json;
 	///
 	/// let factory = APIRequestFactory::new();
@@ -120,7 +120,7 @@ impl APIRequestFactory {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	///
 	/// let factory = APIRequestFactory::new();
 	/// let request = factory.delete("/api/users/1/").build().unwrap();
@@ -134,7 +134,7 @@ impl APIRequestFactory {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	///
 	/// let factory = APIRequestFactory::new();
 	/// let request = factory.head("/api/users/").build().unwrap();
@@ -148,7 +148,7 @@ impl APIRequestFactory {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	///
 	/// let factory = APIRequestFactory::new();
 	/// let request = factory.options("/api/users/").build().unwrap();
@@ -162,7 +162,7 @@ impl APIRequestFactory {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	/// use http::Method;
 	///
 	/// let factory = APIRequestFactory::new();
@@ -234,7 +234,7 @@ impl RequestBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	/// use serde_json::json;
 	///
 	/// let factory = APIRequestFactory::new();
@@ -252,7 +252,7 @@ impl RequestBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	/// use serde_json::json;
 	///
 	/// let factory = APIRequestFactory::new();
@@ -292,7 +292,7 @@ impl RequestBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	///
 	/// let factory = APIRequestFactory::new();
 	/// let request = factory.post("/api/upload/").body("raw data").build().unwrap();
@@ -306,7 +306,7 @@ impl RequestBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	/// use serde_json::json;
 	///
 	/// let factory = APIRequestFactory::new();
@@ -322,7 +322,7 @@ impl RequestBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::factory::APIRequestFactory;
+	/// use reinhardt_testkit::factory::APIRequestFactory;
 	///
 	/// let factory = APIRequestFactory::new();
 	/// let request = factory.get("/api/users/").build().unwrap();

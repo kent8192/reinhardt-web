@@ -83,8 +83,8 @@ impl Default for TransactionHandle {
 /// ```rust,no_run
 /// # #[tokio::main]
 /// # async fn main() {
-/// use reinhardt_test::testcase::APITestCase;
-/// use reinhardt_test::resource::AsyncTeardownGuard;
+/// use reinhardt_testkit::testcase::APITestCase;
+/// use reinhardt_testkit::resource::AsyncTeardownGuard;
 /// use rstest::*;
 ///
 /// #[fixture]
@@ -259,7 +259,7 @@ impl AsyncTestResource for APITestCase {
 /// ```rust,no_run
 /// # #[tokio::main]
 /// # async fn main() {
-/// # use reinhardt_test::test_case;
+/// # use reinhardt_testkit::test_case;
 /// test_case! {
 ///     async fn test_get_users(case: &APITestCase) {
 ///         let client = case.client().await;
@@ -336,8 +336,8 @@ macro_rules! authenticated_test_case {
 /// ## PostgreSQL Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::test_case_with_db;
-/// use reinhardt_test::testcase::APITestCase;
+/// use reinhardt_testkit::test_case_with_db;
+/// use reinhardt_testkit::testcase::APITestCase;
 ///
 /// test_case_with_db! {
 ///     postgres,
@@ -354,8 +354,8 @@ macro_rules! authenticated_test_case {
 /// ## MySQL Example
 ///
 /// ```rust,ignore
-/// use reinhardt_test::test_case_with_db;
-/// use reinhardt_test::testcase::APITestCase;
+/// use reinhardt_testkit::test_case_with_db;
+/// use reinhardt_testkit::testcase::APITestCase;
 ///
 /// test_case_with_db! {
 ///     mysql,

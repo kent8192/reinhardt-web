@@ -28,7 +28,7 @@ mock! {
 	/// # Direct Usage Example
 	///
 	/// ```rust
-	/// use reinhardt_test::fixtures::MockDatabaseBackend;
+	/// use reinhardt_testkit::fixtures::MockDatabaseBackend;
 	/// use reinhardt_db::backends::types::{QueryResult, QueryValue};
 	/// use reinhardt_db::backends::backend::DatabaseBackend as BackendTrait;
 	///

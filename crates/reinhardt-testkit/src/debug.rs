@@ -65,7 +65,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	///
 	/// let toolbar = DebugToolbar::new();
 	/// assert!(toolbar.is_enabled());
@@ -90,7 +90,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	///
 	/// let mut toolbar = DebugToolbar::new();
 	/// toolbar.set_enabled(false);
@@ -104,7 +104,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	///
 	/// let toolbar = DebugToolbar::new();
 	/// assert!(toolbar.is_enabled());
@@ -117,7 +117,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::{DebugToolbar, DebugPanel, DebugEntry};
+	/// use reinhardt_testkit::debug::{DebugToolbar, DebugPanel, DebugEntry};
 	///
 	/// # tokio_test::block_on(async {
 	/// let toolbar = DebugToolbar::new();
@@ -141,7 +141,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	/// use std::time::Duration;
 	///
 	/// # tokio_test::block_on(async {
@@ -174,7 +174,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	///
 	/// # tokio_test::block_on(async {
 	/// let toolbar = DebugToolbar::new();
@@ -194,7 +194,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	///
 	/// # tokio_test::block_on(async {
 	/// let toolbar = DebugToolbar::new();
@@ -214,7 +214,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	/// use std::time::Duration;
 	///
 	/// # tokio_test::block_on(async {
@@ -237,7 +237,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::{DebugToolbar, DebugPanel, DebugEntry};
+	/// use reinhardt_testkit::debug::{DebugToolbar, DebugPanel, DebugEntry};
 	///
 	/// # tokio_test::block_on(async {
 	/// let toolbar = DebugToolbar::new();
@@ -258,7 +258,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	///
 	/// # tokio_test::block_on(async {
 	/// let toolbar = DebugToolbar::new();
@@ -275,7 +275,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	/// use std::time::Duration;
 	///
 	/// # tokio_test::block_on(async {
@@ -294,7 +294,7 @@ impl DebugToolbar {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::debug::DebugToolbar;
+	/// use reinhardt_testkit::debug::DebugToolbar;
 	///
 	/// # tokio_test::block_on(async {
 	/// let toolbar = DebugToolbar::new();

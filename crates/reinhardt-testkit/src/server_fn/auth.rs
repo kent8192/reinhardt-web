@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_test::server_fn::auth::{TestUser, MockSession};
+//! use reinhardt_testkit::server_fn::auth::{TestUser, MockSession};
 //!
 //! // Create an admin user
 //! let admin = TestUser::admin();

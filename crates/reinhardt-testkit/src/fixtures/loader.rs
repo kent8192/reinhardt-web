@@ -27,7 +27,7 @@ impl FixtureLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::fixtures::FixtureLoader;
+	/// use reinhardt_testkit::fixtures::FixtureLoader;
 	///
 	/// let loader = FixtureLoader::new();
 	/// // Loader is ready to load fixtures
@@ -42,7 +42,7 @@ impl FixtureLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::fixtures::FixtureLoader;
+	/// use reinhardt_testkit::fixtures::FixtureLoader;
 	///
 	/// # tokio_test::block_on(async {
 	/// let loader = FixtureLoader::new();
@@ -63,7 +63,7 @@ impl FixtureLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::fixtures::FixtureLoader;
+	/// use reinhardt_testkit::fixtures::FixtureLoader;
 	/// use serde::Deserialize;
 	///
 	/// #[derive(Deserialize)]
@@ -94,7 +94,7 @@ impl FixtureLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::fixtures::FixtureLoader;
+	/// use reinhardt_testkit::fixtures::FixtureLoader;
 	///
 	/// # tokio_test::block_on(async {
 	/// let loader = FixtureLoader::new();
@@ -116,7 +116,7 @@ impl FixtureLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::fixtures::FixtureLoader;
+	/// use reinhardt_testkit::fixtures::FixtureLoader;
 	///
 	/// # tokio_test::block_on(async {
 	/// let loader = FixtureLoader::new();
@@ -133,7 +133,7 @@ impl FixtureLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::fixtures::FixtureLoader;
+	/// use reinhardt_testkit::fixtures::FixtureLoader;
 	///
 	/// # tokio_test::block_on(async {
 	/// let loader = FixtureLoader::new();
@@ -151,7 +151,7 @@ impl FixtureLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::fixtures::FixtureLoader;
+	/// use reinhardt_testkit::fixtures::FixtureLoader;
 	///
 	/// # tokio_test::block_on(async {
 	/// let loader = FixtureLoader::new();
@@ -199,7 +199,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::fixtures::{FactoryBuilder, Factory};
+	/// use reinhardt_testkit::fixtures::{FactoryBuilder, Factory};
 	///
 	/// #[derive(Debug, PartialEq)]
 	/// struct TestData { id: i32 }
@@ -231,7 +231,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::fixtures::random_test_key;
+/// use reinhardt_testkit::fixtures::random_test_key;
 ///
 /// let key = random_test_key();
 /// assert!(key.starts_with("test_key_"));
@@ -246,7 +246,7 @@ pub fn random_test_key() -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::fixtures::test_config_value;
+/// use reinhardt_testkit::fixtures::test_config_value;
 ///
 /// let value = test_config_value("my_value");
 /// assert_eq!(value["value"], "my_value");
@@ -269,12 +269,12 @@ pub fn test_config_value(value: &str) -> serde_json::Value {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::fixture_loader;
+/// use reinhardt_testkit::fixtures::fixture_loader;
 /// use rstest::*;
 ///
 /// #[rstest]
 /// #[tokio::test]
-/// async fn test_with_fixtures(fixture_loader: reinhardt_test::fixtures::FixtureLoader) {
+/// async fn test_with_fixtures(fixture_loader: reinhardt_testkit::fixtures::FixtureLoader) {
 ///     fixture_loader.load_from_json("test".to_string(), r#"{"id": 1}"#).await.unwrap();
 ///     // ...
 /// }
@@ -291,12 +291,12 @@ pub fn fixture_loader() -> FixtureLoader {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::api_client;
+/// use reinhardt_testkit::fixtures::api_client;
 /// use rstest::*;
 ///
 /// #[rstest]
 /// #[tokio::test]
-/// async fn test_api_request(api_client: reinhardt_test::client::APIClient) {
+/// async fn test_api_request(api_client: reinhardt_testkit::client::APIClient) {
 ///     // Make requests with client
 /// }
 /// ```
@@ -310,7 +310,7 @@ pub fn api_client() -> crate::client::APIClient {
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::fixtures::temp_dir;
+/// use reinhardt_testkit::fixtures::temp_dir;
 /// use rstest::*;
 ///
 /// #[rstest]

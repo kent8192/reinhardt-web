@@ -22,7 +22,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	///
 	/// # tokio_test::block_on(async {
 	/// let mock = MockFunction::<i32>::new();
@@ -41,7 +41,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	///
 	/// # tokio_test::block_on(async {
 	/// let mock = MockFunction::with_default(42);
@@ -61,7 +61,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	///
 	/// # tokio_test::block_on(async {
 	/// let mock = MockFunction::<i32>::new();
@@ -79,7 +79,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	///
 	/// # tokio_test::block_on(async {
 	/// let mock = MockFunction::<i32>::new();
@@ -101,7 +101,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -128,7 +128,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	///
 	/// # tokio_test::block_on(async {
 	/// let mock = MockFunction::<i32>::new();
@@ -146,7 +146,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	///
 	/// # tokio_test::block_on(async {
 	/// let mock = MockFunction::<i32>::new();
@@ -164,7 +164,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -184,7 +184,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -205,7 +205,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	///
 	/// # tokio_test::block_on(async {
 	/// let mock = MockFunction::<i32>::new();
@@ -225,7 +225,7 @@ impl<T: Clone> MockFunction<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::MockFunction;
+	/// use reinhardt_testkit::mock::MockFunction;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -260,7 +260,7 @@ impl<T> Spy<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::Spy;
+	/// use reinhardt_testkit::mock::Spy;
 	///
 	/// let spy = Spy::<String>::new();
 	/// assert!(spy.inner().is_none());
@@ -276,7 +276,7 @@ impl<T> Spy<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::Spy;
+	/// use reinhardt_testkit::mock::Spy;
 	///
 	/// let value = "test".to_string();
 	/// let spy = Spy::wrap(value);
@@ -293,7 +293,7 @@ impl<T> Spy<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::Spy;
+	/// use reinhardt_testkit::mock::Spy;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -320,7 +320,7 @@ impl<T> Spy<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::Spy;
+	/// use reinhardt_testkit::mock::Spy;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -346,7 +346,7 @@ impl<T> Spy<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::mock::Spy;
+	/// use reinhardt_testkit::mock::Spy;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -390,7 +390,7 @@ impl<T> Default for Spy<T> {
 /// ## Basic usage
 ///
 /// ```no_run
-/// use reinhardt_test::mock::SimpleHandler;
+/// use reinhardt_testkit::mock::SimpleHandler;
 /// use reinhardt_http::{Request, Response};
 /// use reinhardt_http::Handler;
 ///
@@ -404,7 +404,7 @@ impl<T> Default for Spy<T> {
 /// ## With path-based routing
 ///
 /// ```no_run
-/// use reinhardt_test::mock::SimpleHandler;
+/// use reinhardt_testkit::mock::SimpleHandler;
 /// use reinhardt_http::{Request, Response};
 ///
 /// let handler = SimpleHandler::new(|req: Request| {
@@ -419,7 +419,7 @@ impl<T> Default for Spy<T> {
 /// ## With custom logic
 ///
 /// ```no_run
-/// use reinhardt_test::mock::SimpleHandler;
+/// use reinhardt_testkit::mock::SimpleHandler;
 /// use reinhardt_http::{Request, Response};
 /// use std::sync::{Arc, Mutex};
 ///
@@ -458,7 +458,7 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_test::mock::SimpleHandler;
+	/// use reinhardt_testkit::mock::SimpleHandler;
 	/// use reinhardt_http::{Request, Response};
 	///
 	/// let handler = SimpleHandler::new(|req| {

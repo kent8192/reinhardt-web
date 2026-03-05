@@ -7,7 +7,7 @@ use serde_json::Value;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_field_eq;
+/// use reinhardt_testkit::assertions::assert_json_field_eq;
 /// use serde_json::json;
 ///
 /// let data = json!({"name": "John", "age": 30});
@@ -29,7 +29,7 @@ pub fn assert_json_field_eq(json: &Value, field: &str, expected: &Value) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_has_field;
+/// use reinhardt_testkit::assertions::assert_json_has_field;
 /// use serde_json::json;
 ///
 /// let data = json!({"name": "John", "age": 30});
@@ -47,7 +47,7 @@ pub fn assert_json_has_field(json: &Value, field: &str) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_missing_field;
+/// use reinhardt_testkit::assertions::assert_json_missing_field;
 /// use serde_json::json;
 ///
 /// let data = json!({"name": "John"});
@@ -65,7 +65,7 @@ pub fn assert_json_missing_field(json: &Value, field: &str) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_array_len;
+/// use reinhardt_testkit::assertions::assert_json_array_len;
 /// use serde_json::json;
 ///
 /// let data = json!([1, 2, 3]);
@@ -89,7 +89,7 @@ pub fn assert_json_array_len(json: &Value, expected_len: usize) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_array_empty;
+/// use reinhardt_testkit::assertions::assert_json_array_empty;
 /// use serde_json::json;
 ///
 /// let data = json!([]);
@@ -103,7 +103,7 @@ pub fn assert_json_array_empty(json: &Value) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_array_not_empty;
+/// use reinhardt_testkit::assertions::assert_json_array_not_empty;
 /// use serde_json::json;
 ///
 /// let data = json!([1, 2, 3]);
@@ -121,7 +121,7 @@ pub fn assert_json_array_not_empty(json: &Value) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_array_contains;
+/// use reinhardt_testkit::assertions::assert_json_array_contains;
 /// use serde_json::json;
 ///
 /// let data = json!([1, 2, 3]);
@@ -144,7 +144,7 @@ pub fn assert_json_array_contains(json: &Value, expected: &Value) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_matches;
+/// use reinhardt_testkit::assertions::assert_json_matches;
 /// use serde_json::json;
 ///
 /// let actual = json!({"name": "John", "age": 30, "city": "NYC"});
@@ -181,7 +181,7 @@ pub fn assert_json_matches(actual: &Value, pattern: &Value) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_contains;
+/// use reinhardt_testkit::assertions::assert_contains;
 ///
 /// let text = "Hello, World!";
 /// assert_contains(text, "World");
@@ -199,7 +199,7 @@ pub fn assert_contains(text: &str, substring: &str) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_not_contains;
+/// use reinhardt_testkit::assertions::assert_not_contains;
 ///
 /// let text = "Hello, World!";
 /// assert_not_contains(text, "Goodbye");
@@ -217,7 +217,7 @@ pub fn assert_not_contains(text: &str, substring: &str) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_status_eq;
+/// use reinhardt_testkit::assertions::assert_status_eq;
 /// use http::StatusCode;
 ///
 /// let status = StatusCode::OK;
@@ -235,7 +235,7 @@ pub fn assert_status_eq(actual: StatusCode, expected: StatusCode) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_status_success;
+/// use reinhardt_testkit::assertions::assert_status_success;
 /// use http::StatusCode;
 ///
 /// let status = StatusCode::OK;
@@ -253,7 +253,7 @@ pub fn assert_status_success(status: StatusCode) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_status_client_error;
+/// use reinhardt_testkit::assertions::assert_status_client_error;
 /// use http::StatusCode;
 ///
 /// let status = StatusCode::BAD_REQUEST;
@@ -271,7 +271,7 @@ pub fn assert_status_client_error(status: StatusCode) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_status_server_error;
+/// use reinhardt_testkit::assertions::assert_status_server_error;
 /// use http::StatusCode;
 ///
 /// let status = StatusCode::INTERNAL_SERVER_ERROR;
@@ -289,7 +289,7 @@ pub fn assert_status_server_error(status: StatusCode) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_status_error;
+/// use reinhardt_testkit::assertions::assert_status_error;
 /// use http::StatusCode;
 ///
 /// let status = StatusCode::NOT_FOUND;
@@ -307,7 +307,7 @@ pub fn assert_status_error(status: StatusCode) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_status_redirect;
+/// use reinhardt_testkit::assertions::assert_status_redirect;
 /// use http::StatusCode;
 ///
 /// let status = StatusCode::FOUND;
@@ -331,7 +331,7 @@ pub fn assert_status_redirect(status: StatusCode) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_status;
+/// use reinhardt_testkit::assertions::assert_status;
 /// use reinhardt_http::Response;
 /// use http::StatusCode;
 ///
@@ -357,7 +357,7 @@ pub fn assert_status(response: &reinhardt_http::Response, expected: StatusCode) 
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_response_body_contains;
+/// use reinhardt_testkit::assertions::assert_response_body_contains;
 /// use reinhardt_http::Response;
 ///
 /// let response = Response::ok().with_body(b"Hello, World!".to_vec());
@@ -382,7 +382,7 @@ pub fn assert_response_body_contains(response: &reinhardt_http::Response, expect
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_response_body_equals;
+/// use reinhardt_testkit::assertions::assert_response_body_equals;
 /// use reinhardt_http::Response;
 ///
 /// let expected = b"exact content";
@@ -411,7 +411,7 @@ pub fn assert_response_body_equals(response: &reinhardt_http::Response, expected
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_response;
+/// use reinhardt_testkit::assertions::assert_json_response;
 /// use reinhardt_http::Response;
 /// use serde::{Deserialize, Serialize};
 ///
@@ -455,7 +455,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_json_response_contains;
+/// use reinhardt_testkit::assertions::assert_json_response_contains;
 /// use reinhardt_http::Response;
 /// use serde_json::json;
 ///
@@ -507,7 +507,7 @@ pub fn assert_json_response_contains(
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_error;
+/// use reinhardt_testkit::assertions::assert_error;
 /// use reinhardt_http::{Error, Result};
 ///
 /// let result: Result<()> = Err(Error::NotFound("Item not found".to_string()));
@@ -529,7 +529,7 @@ pub fn assert_error<T>(result: reinhardt_http::Result<T>) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_not_found_error;
+/// use reinhardt_testkit::assertions::assert_not_found_error;
 /// use reinhardt_http::{Error, Result};
 ///
 /// let result: Result<()> = Err(Error::NotFound("User not found".to_string()));
@@ -552,7 +552,7 @@ pub fn assert_not_found_error<T>(result: reinhardt_http::Result<T>) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_validation_error;
+/// use reinhardt_testkit::assertions::assert_validation_error;
 /// use reinhardt_http::{Error, Result};
 ///
 /// let result: Result<()> = Err(Error::Validation("Invalid email".to_string()));
@@ -575,7 +575,7 @@ pub fn assert_validation_error<T>(result: reinhardt_http::Result<T>) {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_test::assertions::assert_internal_error;
+/// use reinhardt_testkit::assertions::assert_internal_error;
 /// use reinhardt_http::{Error, Result};
 ///
 /// let result: Result<()> = Err(Error::Internal("Database connection failed".to_string()));
@@ -770,7 +770,7 @@ pub mod tasks {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_test::assertions::tasks::{assert_task_completed, TaskStatus};
+	/// use reinhardt_testkit::assertions::tasks::{assert_task_completed, TaskStatus};
 	/// use std::time::Duration;
 	/// use std::sync::Arc;
 	///

@@ -88,7 +88,7 @@ pub type RequestHandler = Arc<dyn Fn(Request<Full<Bytes>>) -> Response<Full<Byte
 ///
 /// # Example
 /// ```rust,no_run
-/// use reinhardt_test::client::{APIClientBuilder, HttpVersion};
+/// use reinhardt_testkit::client::{APIClientBuilder, HttpVersion};
 /// use std::time::Duration;
 ///
 /// let client = APIClientBuilder::new()
@@ -205,7 +205,7 @@ impl Default for APIClientBuilder {
 ///
 /// # Example
 /// ```rust,no_run
-/// use reinhardt_test::APIClient;
+/// use reinhardt_testkit::APIClient;
 /// use http::StatusCode;
 /// use serde_json::json;
 ///
@@ -248,7 +248,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// let client = APIClient::new();
 	/// assert_eq!(client.base_url(), "http://testserver");
@@ -262,7 +262,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// let client = APIClient::with_base_url("https://api.example.com");
 	/// assert_eq!(client.base_url(), "https://api.example.com");
@@ -276,7 +276,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	/// use std::time::Duration;
 	///
 	/// let client = APIClient::builder()
@@ -295,7 +295,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	/// use http::{Request, Response, StatusCode};
 	/// use http_body_util::Full;
 	/// use bytes::Bytes;
@@ -319,7 +319,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
@@ -343,7 +343,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -361,7 +361,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
@@ -378,7 +378,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
@@ -405,7 +405,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
@@ -435,7 +435,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
@@ -451,7 +451,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -477,7 +477,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -503,7 +503,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	/// use serde_json::json;
 	///
 	/// # tokio_test::block_on(async {
@@ -529,7 +529,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
@@ -545,7 +545,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
@@ -561,7 +561,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
@@ -578,7 +578,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::with_base_url("http://localhost:8080");
@@ -601,7 +601,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::with_base_url("http://localhost:8080");
@@ -637,7 +637,7 @@ impl APIClient {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_test::client::APIClient;
+	/// use reinhardt_testkit::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::with_base_url("http://localhost:8080");

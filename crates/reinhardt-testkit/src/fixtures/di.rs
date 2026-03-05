@@ -12,7 +12,7 @@
 //!
 //! ```rust,no_run
 //! use reinhardt_di::{Injectable, DiResult};
-//! use reinhardt_test::fixtures::{injection_context, singleton_scope};
+//! use reinhardt_testkit::fixtures::{injection_context, singleton_scope};
 //! use rstest::*;
 //!
 //! #[derive(Clone, Debug)]
@@ -44,7 +44,7 @@
 //!
 //! ```rust,no_run
 //! use reinhardt_di::Depends;
-//! use reinhardt_test::fixtures::injection_context;
+//! use reinhardt_testkit::fixtures::injection_context;
 //! use rstest::*;
 //!
 //! #[rstest]
@@ -67,7 +67,7 @@
 //!
 //! ```rust,no_run
 //! use reinhardt_di::{Injectable, DiResult, InjectionContext};
-//! use reinhardt_test::fixtures::{injection_context_with_overrides, singleton_scope};
+//! use reinhardt_testkit::fixtures::{injection_context_with_overrides, singleton_scope};
 //! use rstest::*;
 //! use std::sync::Arc;
 //!
@@ -116,7 +116,7 @@ use std::sync::Arc;
 ///
 /// ```rust,no_run
 /// use reinhardt_di::SingletonScope;
-/// use reinhardt_test::fixtures::singleton_scope;
+/// use reinhardt_testkit::fixtures::singleton_scope;
 /// use rstest::*;
 /// use std::sync::Arc;
 ///
@@ -156,7 +156,7 @@ pub fn singleton_scope() -> Arc<SingletonScope> {
 ///
 /// ```rust,no_run
 /// use reinhardt_di::{Injectable, InjectionContext, DiResult};
-/// use reinhardt_test::fixtures::injection_context;
+/// use reinhardt_testkit::fixtures::injection_context;
 /// use rstest::*;
 ///
 /// #[derive(Clone)]
@@ -185,7 +185,7 @@ pub fn singleton_scope() -> Arc<SingletonScope> {
 ///
 /// ```rust,no_run
 /// use reinhardt_di::{Depends, Injectable, InjectionContext, DiResult};
-/// use reinhardt_test::fixtures::injection_context;
+/// use reinhardt_testkit::fixtures::injection_context;
 /// use rstest::*;
 ///
 /// #[derive(Clone, Default)]
@@ -246,7 +246,7 @@ pub fn injection_context(singleton_scope: Arc<SingletonScope>) -> InjectionConte
 ///
 /// ```rust,no_run
 /// use reinhardt_di::{Injectable, DiResult, InjectionContext};
-/// use reinhardt_test::fixtures::{injection_context_with_overrides, singleton_scope};
+/// use reinhardt_testkit::fixtures::{injection_context_with_overrides, singleton_scope};
 /// use rstest::*;
 /// use std::sync::Arc;
 ///
@@ -266,7 +266,7 @@ pub fn injection_context(singleton_scope: Arc<SingletonScope>) -> InjectionConte
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_with_mock_db(singleton_scope: Arc<reinhardt_di::SingletonScope>) {
-///     let ctx = reinhardt_test::fixtures::injection_context_with_overrides(
+///     let ctx = reinhardt_testkit::fixtures::injection_context_with_overrides(
 ///         singleton_scope,
 ///         |scope| {
 ///             // Override Database with test value
@@ -284,7 +284,7 @@ pub fn injection_context(singleton_scope: Arc<SingletonScope>) -> InjectionConte
 ///
 /// ```rust,no_run
 /// use reinhardt_di::{Injectable, DiResult, InjectionContext};
-/// use reinhardt_test::fixtures::{injection_context_with_overrides, singleton_scope};
+/// use reinhardt_testkit::fixtures::{injection_context_with_overrides, singleton_scope};
 /// use rstest::*;
 /// use std::sync::Arc;
 ///
@@ -315,7 +315,7 @@ pub fn injection_context(singleton_scope: Arc<SingletonScope>) -> InjectionConte
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_with_multiple_mocks(singleton_scope: Arc<reinhardt_di::SingletonScope>) {
-///     let ctx = reinhardt_test::fixtures::injection_context_with_overrides(
+///     let ctx = reinhardt_testkit::fixtures::injection_context_with_overrides(
 ///         singleton_scope,
 ///         |scope| {
 ///             // Override multiple dependencies
@@ -364,7 +364,7 @@ where
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::injection_context_with_sqlite;
+/// use reinhardt_testkit::fixtures::injection_context_with_sqlite;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -422,7 +422,7 @@ pub async fn injection_context_with_sqlite() -> (tempfile::NamedTempFile, Inject
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::injection_context_with_database;
+/// use reinhardt_testkit::fixtures::injection_context_with_database;
 ///
 /// #[tokio::test]
 /// async fn test_with_postgres() {

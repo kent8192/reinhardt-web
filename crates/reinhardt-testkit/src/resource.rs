@@ -15,7 +15,7 @@
 //! ### Per-test resource (BeforeEach/AfterEach)
 //!
 //! ```rust
-//! use reinhardt_test::resource::{TestResource, TeardownGuard};
+//! use reinhardt_testkit::resource::{TestResource, TeardownGuard};
 //! use rstest::*;
 //!
 //! struct TestEnv {
@@ -49,7 +49,7 @@
 //! ### Suite-wide resource (BeforeAll/AfterAll)
 //!
 //! ```rust,no_run
-//! use reinhardt_test::resource::{SuiteResource, SuiteGuard, acquire_suite};
+//! use reinhardt_testkit::resource::{SuiteResource, SuiteGuard, acquire_suite};
 //! use rstest::*;
 //! use std::sync::{OnceLock, Mutex, Weak};
 //!
@@ -97,7 +97,7 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::resource::TestResource;
+/// use reinhardt_testkit::resource::TestResource;
 ///
 /// struct TestEnv {
 ///     data: Vec<String>,
@@ -132,7 +132,7 @@ pub trait TestResource: Sized {
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::resource::{TestResource, TeardownGuard};
+/// use reinhardt_testkit::resource::{TestResource, TeardownGuard};
 /// use rstest::*;
 ///
 /// struct TestEnv;
@@ -196,7 +196,7 @@ impl<F: TestResource> DerefMut for TeardownGuard<F> {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::resource::SuiteResource;
+/// use reinhardt_testkit::resource::SuiteResource;
 ///
 /// struct DatabaseSuite {
 ///     url: String,
@@ -232,7 +232,7 @@ pub trait SuiteResource: Send + Sync + 'static {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::resource::{SuiteResource, SuiteGuard, acquire_suite};
+/// use reinhardt_testkit::resource::{SuiteResource, SuiteGuard, acquire_suite};
 /// use rstest::*;
 /// use std::sync::{OnceLock, Mutex, Weak};
 ///
@@ -271,7 +271,7 @@ impl<T: SuiteResource> Deref for SuiteGuard<T> {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::resource::{SuiteResource, acquire_suite};
+/// use reinhardt_testkit::resource::{SuiteResource, acquire_suite};
 /// use std::sync::{OnceLock, Mutex, Weak};
 ///
 /// struct MySuite {
@@ -317,7 +317,7 @@ pub fn acquire_suite<T: SuiteResource>(cell: &'static OnceLock<Mutex<Weak<T>>>) 
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::resource::AsyncTestResource;
+/// use reinhardt_testkit::resource::AsyncTestResource;
 ///
 /// struct AsyncTestEnv {
 ///     connection: String,
@@ -379,7 +379,7 @@ impl<F: AsyncTestResource> AsyncDrop for AsyncResourceWrapper<F> {
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::resource::{AsyncTestResource, AsyncTeardownGuard};
+/// use reinhardt_testkit::resource::{AsyncTestResource, AsyncTeardownGuard};
 ///
 /// struct AsyncTestEnv {
 ///     value: i32,

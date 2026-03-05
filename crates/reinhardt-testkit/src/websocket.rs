@@ -8,7 +8,7 @@
 //! ### Basic WebSocket Connection
 //!
 //! ```rust,no_run
-//! use reinhardt_test::websocket::WebSocketTestClient;
+//! use reinhardt_testkit::websocket::WebSocketTestClient;
 //! use rstest::*;
 //!
 //! #[rstest]
@@ -24,7 +24,7 @@
 //! ### WebSocket with Authentication
 //!
 //! ```rust,no_run
-//! use reinhardt_test::websocket::WebSocketTestClient;
+//! use reinhardt_testkit::websocket::WebSocketTestClient;
 //!
 //! #[tokio::test]
 //! async fn test_websocket_auth() {
@@ -60,7 +60,7 @@ impl WebSocketTestClient {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// use reinhardt_test::websocket::WebSocketTestClient;
+	/// use reinhardt_testkit::websocket::WebSocketTestClient;
 	///
 	/// #[tokio::test]
 	/// async fn test_connect() {
@@ -83,7 +83,7 @@ impl WebSocketTestClient {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// use reinhardt_test::websocket::WebSocketTestClient;
+	/// use reinhardt_testkit::websocket::WebSocketTestClient;
 	///
 	/// #[tokio::test]
 	/// async fn test_auth() {
@@ -117,7 +117,7 @@ impl WebSocketTestClient {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// use reinhardt_test::websocket::WebSocketTestClient;
+	/// use reinhardt_testkit::websocket::WebSocketTestClient;
 	///
 	/// #[tokio::test]
 	/// async fn test_query_auth() {
@@ -141,7 +141,7 @@ impl WebSocketTestClient {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// use reinhardt_test::websocket::WebSocketTestClient;
+	/// use reinhardt_testkit::websocket::WebSocketTestClient;
 	///
 	/// #[tokio::test]
 	/// async fn test_cookie_auth() {
@@ -178,7 +178,7 @@ impl WebSocketTestClient {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// use reinhardt_test::websocket::WebSocketTestClient;
+	/// use reinhardt_testkit::websocket::WebSocketTestClient;
 	///
 	/// #[tokio::test]
 	/// async fn test_send() {
@@ -222,7 +222,7 @@ impl WebSocketTestClient {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// use reinhardt_test::websocket::WebSocketTestClient;
+	/// use reinhardt_testkit::websocket::WebSocketTestClient;
 	///
 	/// #[tokio::test]
 	/// async fn test_receive() {
@@ -302,7 +302,7 @@ pub mod assertions {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// use reinhardt_test::websocket::assertions::assert_message_text;
+	/// use reinhardt_testkit::websocket::assertions::assert_message_text;
 	/// use tokio_tungstenite::tungstenite::Message;
 	///
 	/// let msg = Message::text("Hello");

@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc};
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::admin::audit_logger_with_test_data;
+/// use reinhardt_testkit::fixtures::admin::audit_logger_with_test_data;
 /// use reinhardt_conf::settings::audit::{AuditBackend, EventFilter};
 /// use rstest::*;
 ///
@@ -110,7 +110,7 @@ pub struct TestAuditLogEntry {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::admin::generate_test_audit_entry;
+/// use reinhardt_testkit::fixtures::admin::generate_test_audit_entry;
 ///
 /// let entry = generate_test_audit_entry(0, 100, 10);
 /// assert_eq!(entry.user_id, "user_0");
@@ -146,7 +146,7 @@ pub fn generate_test_audit_entry(
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::admin::generate_test_audit_entries;
+/// use reinhardt_testkit::fixtures::admin::generate_test_audit_entries;
 ///
 /// let entries = generate_test_audit_entries(10000, 100, 10);
 /// assert_eq!(entries.len(), 10000);

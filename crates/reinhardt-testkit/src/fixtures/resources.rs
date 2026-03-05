@@ -28,7 +28,7 @@ use testcontainers::core::WaitFor;
 /// ## Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -138,7 +138,7 @@ static POSTGRES_SUITE: OnceLock<Mutex<Weak<PostgresSuiteResource>>> = OnceLock::
 /// ## Example
 ///
 /// ```rust,no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]

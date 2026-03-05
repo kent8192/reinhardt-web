@@ -31,7 +31,7 @@ use reinhardt_server::GraphQLHandler;
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use reinhardt_urls::routers::ServerRouter as Router;
 ///
 /// #[tokio::test]
@@ -143,7 +143,7 @@ impl Drop for TestServerGuard {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use reinhardt_urls::routers::ServerRouter as Router;
 ///
 /// #[tokio::test]
@@ -185,7 +185,7 @@ impl Handler for BasicHandler {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -215,7 +215,7 @@ pub fn http_client() -> reqwest::Client {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -246,7 +246,7 @@ pub async fn http1_server() -> TestServer {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -278,7 +278,7 @@ pub async fn http2_server() -> TestServer {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -308,7 +308,7 @@ pub async fn server_with_timeout(
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -335,7 +335,7 @@ pub async fn server_with_rate_limit(#[default(100)] limit: u32) -> TestServer {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -364,7 +364,7 @@ pub async fn server_with_middleware_chain() -> TestServer {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -401,7 +401,7 @@ pub async fn server_with_di() -> (TestServer, Arc<InjectionContext>) {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -442,7 +442,7 @@ pub async fn websocket_server() -> TestServer {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -475,7 +475,7 @@ pub async fn websocket_client(
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_test::fixtures::*;
+/// use reinhardt_testkit::fixtures::*;
 /// use rstest::*;
 ///
 /// #[rstest]

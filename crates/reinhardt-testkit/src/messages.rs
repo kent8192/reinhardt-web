@@ -38,7 +38,7 @@ pub type MessageAssertionResult<T> = Result<T, MessageAssertionError>;
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::messages::assert_message_count;
+/// use reinhardt_testkit::messages::assert_message_count;
 /// use reinhardt_core::messages::Message;
 ///
 /// let messages = vec![
@@ -65,7 +65,7 @@ pub fn assert_message_count(
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::messages::{assert_message_exists, assert_message_level};
+/// use reinhardt_testkit::messages::{assert_message_exists, assert_message_level};
 /// use reinhardt_core::messages::{Message, Level};
 ///
 /// let messages = vec![
@@ -98,7 +98,7 @@ pub fn assert_message_exists(
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::messages::assert_message_level;
+/// use reinhardt_testkit::messages::assert_message_level;
 /// use reinhardt_core::messages::{Message, Level};
 ///
 /// let message = Message::new(Level::Info, "Test message".to_string());
@@ -122,7 +122,7 @@ pub fn assert_message_level(
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::messages::assert_message_tags;
+/// use reinhardt_testkit::messages::assert_message_tags;
 /// use reinhardt_core::messages::{Message, Level};
 ///
 /// let mut message = Message::new(Level::Info, "Test message".to_string());
@@ -147,7 +147,7 @@ pub fn assert_message_tags(
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::messages::assert_messages;
+/// use reinhardt_testkit::messages::assert_messages;
 /// use reinhardt_core::messages::{Message, Level};
 ///
 /// let messages = vec![
@@ -203,7 +203,7 @@ pub fn assert_messages(
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_test::messages::MessagesTestMixin;
+/// use reinhardt_testkit::messages::MessagesTestMixin;
 /// use reinhardt_core::messages::{Message, Level};
 ///
 /// let mut mixin = MessagesTestMixin::new();
