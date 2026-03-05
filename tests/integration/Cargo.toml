@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-integration-tests"
-version = "0.1.0-alpha.1"
+version = "0.1.0-rc.1"
 edition.workspace = true
 publish = false
 autotests = true
@@ -125,6 +125,7 @@ url = { workspace = true }
 rust_decimal = { workspace = true }
 async-stream = "0.3"
 regex = { workspace = true }
+validator = { version = "0.20", features = ["derive"] }
 
 [features]
 default = ["postgres", "sqlite", "caching", "hot-reload", "dynamic-redis"]
