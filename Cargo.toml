@@ -312,6 +312,7 @@ members = [
   "crates/reinhardt-pages/macros",              # WASM frontend macros
   "crates/reinhardt-pages/ast",                        # WASM frontend AST
   "crates/reinhardt-manouche",                         # DSL definitions for pages macros
+  "crates/reinhardt-testkit",
   "crates/reinhardt-test",
   "crates/reinhardt-tasks",
   "crates/reinhardt-utils",
@@ -391,6 +392,7 @@ reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-rc.4" }
 reinhardt-manouche = { path = "crates/reinhardt-manouche", version = "0.1.0-rc.4" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-rc.4" }
+reinhardt-testkit = { path = "crates/reinhardt-testkit", version = "0.1.0-rc.4" }
 reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-rc.4" }
 reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.1.0-rc.4" }
 reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-rc.4" }
