@@ -240,12 +240,12 @@ middleware-rate-limit = [
 [dependencies]
 # WASM-compatible dependencies (always included)
 reinhardt-pages = { workspace = true, optional = true }
+reinhardt-urls = { workspace = true }
 
 # Server-side dependencies (NOT for WASM)
 reinhardt-core = {workspace = true, features = ["types"]}
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Core dependencies
-reinhardt-urls = { workspace = true }
 reinhardt-utils = { workspace = true }
 reinhardt-views = { workspace = true }
 reinhardt-http = { workspace = true }
@@ -313,6 +313,7 @@ members = [
   "crates/reinhardt-pages/ast",                        # WASM frontend AST
   "crates/reinhardt-whitenoise",                       # Static file optimization
   "crates/reinhardt-manouche",                         # DSL definitions for pages macros
+  "crates/reinhardt-testkit",
   "crates/reinhardt-test",
   "crates/reinhardt-tasks",
   "crates/reinhardt-utils",
@@ -338,6 +339,7 @@ members = [
   "crates/reinhardt-dentdelion",                        # Plugin system
   "crates/reinhardt-deeplink",                          # Mobile deep linking
   "crates/reinhardt-openapi",                           # OpenAPI router wrapper
+  "crates/reinhardt-deploy",                           # Deployment engine
   # Integration tests
   "tests",
   "tests/integration",
@@ -392,6 +394,7 @@ reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-rc.4" }
 reinhardt-manouche = { path = "crates/reinhardt-manouche", version = "0.1.0-rc.4" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-rc.4" }
+reinhardt-testkit = { path = "crates/reinhardt-testkit", version = "0.1.0-rc.4" }
 reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-rc.4" }
 reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.1.0-rc.4" }
 reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-rc.4" }
@@ -416,6 +419,7 @@ reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-rc.4" }
 reinhardt-deeplink = { path = "crates/reinhardt-deeplink", version = "0.1.0-rc.4" }
 reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-rc.4" }
+reinhardt-deploy = { path = "crates/reinhardt-deploy", version = "0.1.0-alpha.1" }
 
 # Query subcrates
 reinhardt-query-macros = { path = "crates/reinhardt-query/macros", version = "0.1.0-rc.4" }
