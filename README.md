@@ -33,6 +33,7 @@ You may be looking for:
 - 📖 [API Documentation](https://docs.rs/reinhardt-web) - Complete API reference
 - 🎯 [Who is Reinhardt For?](#who-is-reinhardt-for) - Check if Reinhardt fits your needs
 - 🛤️ [Choose Your Path](#choose-your-path) - Find the right starting point for you
+- 🔒 [API Stability](#api-stability) - Our stability promise and release lifecycle
 - 💬 [Community & Support](#getting-help) - Get help from the community
 
 ## Who is Reinhardt For?
@@ -119,6 +120,25 @@ Reinhardt brings together the best of three worlds:
 - **Signals** for event-driven architecture
 
 See [Available Components](#available-components) for complete list and [Getting Started](https://reinhardt-web.dev/quickstart/getting-started/) for examples.
+
+## API Stability
+
+Reinhardt follows a **three-phase lifecycle** for every crate:
+
+| Phase | What to Expect |
+|-------|---------------|
+| **Alpha** (`0.x.0-alpha.N`) | APIs may change freely. Early adopters welcome. |
+| **RC** (`0.x.0-rc.N`) | API is modified only for bug fixes. No new features. Safe to build against. |
+| **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
+
+**Current status:** All crates are at `0.1.0-rc` (Release Candidate).
+
+**What this means for you:**
+- Public APIs will only change to fix bugs -- no new additions or breaking changes
+- Bug fixes are shipped as `rc.2`, `rc.3`, etc.
+- Stable `0.1.0` will be released after a 2-week stability period with no critical issues
+
+For the full stability policy, see [API Stability Policy](docs/API_STABILITY.md).
 
 ## Installation
 
