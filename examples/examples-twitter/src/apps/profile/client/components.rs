@@ -16,12 +16,14 @@ use reinhardt::pages::component::View;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
-use reinhardt::pages::reactive::hooks::use_state;
+use reinhardt::pages::reactive::hooks::{use_effect, use_state};
 use uuid::Uuid;
 
 #[cfg(client)]
 use {
 	crate::apps::profile::server::server_fn::{fetch_profile, update_profile_form},
+	reinhardt::pages::create_resource,
+	reinhardt::pages::reactive::ResourceState,
 	reinhardt::pages::spawn::spawn_task,
 };
 
@@ -34,30 +36,36 @@ use crate::apps::profile::server::server_fn::fetch_profile;
 /// Features cover image, large avatar, bio, location, and website.
 /// Uses watch blocks for reactive UI updates when async data loads.
 pub fn profile_view(user_id: Uuid) -> View {
-	// Hook-styled state management
-	let (profile, set_profile) = use_state(None::<ProfileResponse>);
-	let (loading, set_loading) = use_state(true);
-	let (error, set_error) = use_state(None::<String>);
+	// Data fetching with create_resource on client, initial loading state on server
+	let (profile, _set_profile) = use_state(None::<ProfileResponse>);
+	let (loading, _set_loading) = use_state(true);
+	let (error, _set_error) = use_state(None::<String>);
 
 	#[cfg(client)]
 	{
-		// Clone setters for async use
-		let set_profile = set_profile.clone();
-		let set_loading = set_loading.clone();
-		let set_error = set_error.clone();
+		let resource = create_resource(move || async move {
+			fetch_profile(user_id).await.map_err(|e| e.to_string())
+		});
 
-		spawn_task(async move {
-			set_loading(true);
-			set_error(None);
+		let profile_setter = _set_profile.clone();
+		let loading_setter = _set_loading.clone();
+		let error_setter = _set_error.clone();
+		let resource_for_effect = resource.clone();
 
-			match fetch_profile(user_id).await {
-				Ok(profile_data) => {
-					set_profile(Some(profile_data));
-					set_loading(false);
+		use_effect(move || {
+			match resource_for_effect.get() {
+				ResourceState::Loading => {
+					loading_setter(true);
+					error_setter(None);
 				}
-				Err(e) => {
-					set_error(Some(e.to_string()));
-					set_loading(false);
+				ResourceState::Success(data) => {
+					profile_setter(Some(data));
+					loading_setter(false);
+					error_setter(None);
+				}
+				ResourceState::Error(err) => {
+					error_setter(Some(err));
+					loading_setter(false);
 				}
 			}
 		});

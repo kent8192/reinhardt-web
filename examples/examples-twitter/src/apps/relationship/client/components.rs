@@ -14,6 +14,8 @@ use {
 	crate::apps::relationship::server::server_fn::{
 		fetch_followers, fetch_following, follow_user, unfollow_user,
 	},
+	reinhardt::pages::create_resource,
+	reinhardt::pages::reactive::ResourceState,
 	reinhardt::pages::spawn::spawn_task,
 };
 
@@ -274,26 +276,32 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> View {
 
 	#[cfg(client)]
 	{
-		let users_clone = users.clone();
-		let loading_clone = loading.clone();
-		let error_clone = error.clone();
-
-		spawn_task(async move {
-			loading_clone.set(true);
-			error_clone.set(None);
-
+		let resource = create_resource(move || async move {
 			let result = match list_type {
 				UserListType::Followers => fetch_followers(user_id).await,
 				UserListType::Following => fetch_following(user_id).await,
 			};
+			result.map_err(|e| e.to_string())
+		});
 
-			match result {
-				Ok(user_list) => {
-					users_clone.set(user_list);
-					loading_clone.set(false);
+		let users_clone = users.clone();
+		let loading_clone = loading.clone();
+		let error_clone = error.clone();
+		let resource_for_effect = resource.clone();
+
+		reinhardt::pages::reactive::hooks::use_effect(move || {
+			match resource_for_effect.get() {
+				ResourceState::Loading => {
+					loading_clone.set(true);
+					error_clone.set(None);
 				}
-				Err(e) => {
-					error_clone.set(Some(e.to_string()));
+				ResourceState::Success(data) => {
+					users_clone.set(data);
+					loading_clone.set(false);
+					error_clone.set(None);
+				}
+				ResourceState::Error(err) => {
+					error_clone.set(Some(err));
 					loading_clone.set(false);
 				}
 			}

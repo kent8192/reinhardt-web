@@ -10,12 +10,14 @@ use reinhardt::pages::Signal;
 use reinhardt::pages::component::View;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
-use reinhardt::pages::reactive::hooks::use_state;
+use reinhardt::pages::reactive::hooks::{use_effect, use_state};
 use uuid::Uuid;
 
 #[cfg(client)]
 use {
 	crate::apps::tweet::server::server_fn::{create_tweet, delete_tweet, list_tweets},
+	reinhardt::pages::create_resource,
+	reinhardt::pages::reactive::ResourceState,
 	reinhardt::pages::spawn::spawn_task,
 };
 
@@ -416,29 +418,37 @@ pub fn tweet_form() -> View {
 /// Uses React-like hooks for state management.
 /// Uses watch blocks for reactive UI updates when async data loads.
 pub fn tweet_list(user_id: Option<Uuid>) -> View {
-	// Hook-styled state management
-	let (tweets, set_tweets) = use_state(Vec::<TweetInfo>::new());
-	let (loading, set_loading) = use_state(true);
-	let (error, set_error) = use_state(None::<String>);
+	// Data fetching with create_resource on client, initial loading state on server
+	let (tweets, _set_tweets) = use_state(Vec::<TweetInfo>::new());
+	let (loading, _set_loading) = use_state(true);
+	let (error, _set_error) = use_state(None::<String>);
 
 	#[cfg(client)]
 	{
-		let set_tweets = set_tweets.clone();
-		let set_loading = set_loading.clone();
-		let set_error = set_error.clone();
+		let resource = create_resource(move || async move {
+			list_tweets(user_id, 0).await.map_err(|e| e.to_string())
+		});
 
-		spawn_task(async move {
-			set_loading(true);
-			set_error(None);
+		// Bridge resource state to individual signals for page! macro compatibility
+		let tweets_setter = _set_tweets.clone();
+		let loading_setter = _set_loading.clone();
+		let error_setter = _set_error.clone();
+		let resource_for_effect = resource.clone();
 
-			match list_tweets(user_id, 0).await {
-				Ok(tweet_list) => {
-					set_tweets(tweet_list);
-					set_loading(false);
+		use_effect(move || {
+			match resource_for_effect.get() {
+				ResourceState::Loading => {
+					loading_setter(true);
+					error_setter(None);
 				}
-				Err(e) => {
-					set_error(Some(e.to_string()));
-					set_loading(false);
+				ResourceState::Success(data) => {
+					tweets_setter(data);
+					loading_setter(false);
+					error_setter(None);
+				}
+				ResourceState::Error(err) => {
+					error_setter(Some(err));
+					loading_setter(false);
 				}
 			}
 		});
