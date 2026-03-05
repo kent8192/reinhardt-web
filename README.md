@@ -128,13 +128,15 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | Phase | What to Expect |
 |-------|---------------|
 | **Alpha** (`0.x.0-alpha.N`) | APIs may change freely. Early adopters welcome. |
-| **RC** (`0.x.0-rc.N`) | API is modified only for bug fixes. No new features. Safe to build against. |
+| **RC** (`0.x.0-rc.N`) | API frozen. Bug fixes only. Safe to build against. |
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 **Current status:** All crates are at `0.1.0-rc` (Release Candidate).
 
 **What this means for you:**
-- Public APIs will only change to fix bugs -- no new additions or breaking changes
+- Public APIs will only change to fix critical bugs -- no new features or additions
+- If a critical fix requires an API change, a migration guide is provided
+- Naming improvements use deprecation aliases (your existing code keeps compiling)
 - Bug fixes are shipped as `rc.2`, `rc.3`, etc.
 - Stable `0.1.0` will be released after a 2-week stability period with no critical issues
 
