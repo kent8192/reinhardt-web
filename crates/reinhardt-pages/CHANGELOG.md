@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.4...reinhardt-pages@v0.1.0-rc.5) - 2026-03-06
+
+### Fixed
+
+- *(pages)* use dynamic year in SelectDateWidget instead of hardcoded 2025
+
+### Other
+
+- resolve conflicts with origin/main
+
 ## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.1...reinhardt-pages@v0.1.0-rc.2) - 2026-03-04
 
 ### Fixed
