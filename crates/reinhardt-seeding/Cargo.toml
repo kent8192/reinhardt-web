@@ -18,7 +18,7 @@ full = ["json", "yaml", "macros"]
 # Internal dependencies
 reinhardt-core = { workspace = true }
 reinhardt-db = { workspace = true }
-reinhardt-seeding-macros = { path = "macros", optional = true }
+reinhardt-seeding-macros = { path = "macros", version = "0.1.0-rc.4", optional = true }
 
 # Serialization
 serde = { workspace = true }
