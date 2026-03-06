@@ -2389,30 +2389,6 @@ where
 		self
 	}
 
-	/// Quote a SQL identifier to prevent injection via field names.
-	/// Uses PostgreSQL double-quote escaping (also valid for SQLite).
-	/// Handles dot-separated qualified names (e.g., "table.column" becomes "table"."column").
-	fn quote_identifier(field: &str) -> String {
-		assert!(
-			!field.contains('\0'),
-			"SQL identifier must not contain null bytes"
-		);
-
-		fn quote_single(name: &str) -> String {
-			format!("\"{}\"", name.replace('"', "\"\""))
-		}
-
-		if field.contains('.') {
-			field
-				.split('.')
-				.map(quote_single)
-				.collect::<Vec<_>>()
-				.join(".")
-		} else {
-			quote_single(field)
-		}
-	}
-
 	/// Build WHERE condition using reinhardt-query from accumulated filters
 	fn build_where_condition(&self) -> Option<Condition> {
 		// Early return only if both filters and subquery_conditions are empty
@@ -2577,7 +2553,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} @> ARRAY[{}]",
-							Self::quote_identifier(&filter.field),
+							quote_identifier(&filter.field),
 							placeholders
 						),
 						arr.iter().cloned(),
@@ -2590,7 +2566,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} <@ ARRAY[{}]",
-							Self::quote_identifier(&filter.field),
+							quote_identifier(&filter.field),
 							placeholders
 						),
 						arr.iter().cloned(),
@@ -2603,7 +2579,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} && ARRAY[{}]",
-							Self::quote_identifier(&filter.field),
+							quote_identifier(&filter.field),
 							placeholders
 						),
 						arr.iter().cloned(),
@@ -2616,7 +2592,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} @@ plainto_tsquery('english', ?)",
-							Self::quote_identifier(&filter.field)
+							quote_identifier(&filter.field)
 						),
 						[query.clone()],
 					)
@@ -2626,7 +2602,7 @@ where
 				(FilterOperator::JsonbContains, FilterValue::String(json)) => {
 					// field @> ?::jsonb - parameterized
 					Expr::cust_with_values(
-						format!("{} @> ?::jsonb", Self::quote_identifier(&filter.field)),
+						format!("{} @> ?::jsonb", quote_identifier(&filter.field)),
 						[json.clone()],
 					)
 					.into_simple_expr()
@@ -2634,14 +2610,14 @@ where
 				(FilterOperator::JsonbContainedBy, FilterValue::String(json)) => {
 					// field <@ ?::jsonb - parameterized
 					Expr::cust_with_values(
-						format!("{} <@ ?::jsonb", Self::quote_identifier(&filter.field)),
+						format!("{} <@ ?::jsonb", quote_identifier(&filter.field)),
 						[json.clone()],
 					)
 					.into_simple_expr()
 				}
 				(FilterOperator::JsonbKeyExists, FilterValue::String(key)) => {
 					// field ? 'key' - using PgBinOper for safe parameterization
-					Expr::cust(Self::quote_identifier(&filter.field))
+					Expr::cust(quote_identifier(&filter.field))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsKey),
@@ -2656,7 +2632,7 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(Self::quote_identifier(&filter.field))
+					Expr::cust(quote_identifier(&filter.field))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsAnyKey),
@@ -2671,7 +2647,7 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(Self::quote_identifier(&filter.field))
+					Expr::cust(quote_identifier(&filter.field))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsAllKeys),
@@ -2681,7 +2657,7 @@ where
 				(FilterOperator::JsonbPathExists, FilterValue::String(path)) => {
 					// field @? ? - parameterized
 					Expr::cust_with_values(
-						format!("{} @? ?", Self::quote_identifier(&filter.field)),
+						format!("{} @? ?", quote_identifier(&filter.field)),
 						[path.clone()],
 					)
 					.into_simple_expr()
@@ -2691,7 +2667,7 @@ where
 					// field @> ? - parameterized
 					let val = Self::filter_value_to_sql_string(v);
 					Expr::cust_with_values(
-						format!("{} @> ?", Self::quote_identifier(&filter.field)),
+						format!("{} @> ?", quote_identifier(&filter.field)),
 						[val],
 					)
 					.into_simple_expr()
@@ -2699,7 +2675,7 @@ where
 				(FilterOperator::RangeContainedBy, FilterValue::String(range)) => {
 					// field <@ ? - parameterized
 					Expr::cust_with_values(
-						format!("{} <@ ?", Self::quote_identifier(&filter.field)),
+						format!("{} <@ ?", quote_identifier(&filter.field)),
 						[range.clone()],
 					)
 					.into_simple_expr()
@@ -2707,7 +2683,7 @@ where
 				(FilterOperator::RangeOverlaps, FilterValue::String(range)) => {
 					// field && ? - parameterized
 					Expr::cust_with_values(
-						format!("{} && ?", Self::quote_identifier(&filter.field)),
+						format!("{} && ?", quote_identifier(&filter.field)),
 						[range.clone()],
 					)
 					.into_simple_expr()
@@ -2727,11 +2703,17 @@ where
 			let expr = match subq_cond {
 				SubqueryCondition::In { field, subquery } => {
 					// field IN (subquery)
-					Expr::cust(format!("{} IN {}", field, subquery)).into_simple_expr()
+					Expr::cust(format!("{} IN {}", quote_identifier(field), subquery))
+					.into_simple_expr()
 				}
 				SubqueryCondition::NotIn { field, subquery } => {
 					// field NOT IN (subquery)
-					Expr::cust(format!("{} NOT IN {}", field, subquery)).into_simple_expr()
+					Expr::cust(format!(
+					"{} NOT IN {}",
+					quote_identifier(field),
+					subquery
+				))
+				.into_simple_expr()
 				}
 				SubqueryCondition::Exists { subquery } => {
 					// EXISTS (subquery)
@@ -5530,8 +5512,31 @@ impl FilterValue {
 }
 
 // ============================================================================
-// Helper Functions for JOIN Support
+// Helper Functions
 // ============================================================================
+
+/// Quote a SQL identifier to prevent injection via field names.
+/// Uses PostgreSQL double-quote escaping (also valid for SQLite).
+/// Handles dot-separated qualified names (e.g., "table.column" becomes "table"."column").
+fn quote_identifier(field: &str) -> String {
+	if field.contains('\0') {
+		panic!("SQL identifier must not contain null bytes");
+	}
+
+	fn quote_single(name: &str) -> String {
+		format!("\"{}\"", name.replace('"', "\"\""))
+	}
+
+	if field.contains('.') {
+		field
+			.split('.')
+			.map(quote_single)
+			.collect::<Vec<_>>()
+			.join(".")
+	} else {
+		quote_single(field)
+	}
+}
 
 /// Parse field reference into reinhardt-query column expression
 ///
@@ -5558,12 +5563,23 @@ fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
 	} else if field.contains('.') {
 		// Qualified column reference (table.column format)
 		let parts: Vec<&str> = field.split('.').collect();
-		if parts.len() == 2 {
-			// Produces: "table"."column" instead of "table.column"
-			ColumnRef::table_column(Alias::new(parts[0]), Alias::new(parts[1]))
-		} else {
-			// Fallback for unexpected formats (e.g., schema.table.column)
-			ColumnRef::column(Alias::new(field))
+		match parts.as_slice() {
+			[table, column] => {
+				// Produces: "table"."column" instead of "table.column"
+				ColumnRef::table_column(Alias::new(*table), Alias::new(*column))
+			}
+			[schema, table, column] => {
+				// Produces: "schema"."table"."column"
+				ColumnRef::schema_table_column(
+					Alias::new(*schema),
+					Alias::new(*table),
+					Alias::new(*column),
+				)
+			}
+			_ => {
+				// Fallback for unexpected formats (4+ parts)
+				ColumnRef::column(Alias::new(field))
+			}
 		}
 	} else {
 		// Simple column reference
@@ -6090,7 +6106,7 @@ mod tests {
 		// input and expected provided by rstest cases
 
 		// Act
-		let result = QuerySet::<TestUser>::quote_identifier(input);
+		let result = super::quote_identifier(input);
 
 		// Assert
 		assert_eq!(result, expected);
@@ -6110,10 +6126,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""author_id" = "id""#),
-			"Expected quoted identifier comparison in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "author_id" = "id""#
 		);
 	}
 
@@ -6130,10 +6145,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""tags" @> ARRAY"#),
-			"Expected quoted 'tags' with @> ARRAY operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "tags" @> ARRAY['rust', 'web']"#
 		);
 	}
 
@@ -6151,16 +6165,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		// OuterRef("authors.id") must render as "authors"."id", not "authors.id"
-		assert!(
-			sql.contains(r#""authors"."id""#),
-			"Expected qualified column reference in SQL, got: {}",
-			sql
-		);
-		assert!(
-			!sql.contains(r#""authors.id""#),
-			"SQL must not contain single-identifier authors.id, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "author_id" = "authors"."id""#
 		);
 	}
 
@@ -6171,7 +6178,7 @@ mod tests {
 		let malicious_field = r#"id" OR 1=1 --"#.to_string();
 
 		// Act
-		let quoted = QuerySet::<TestUser>::quote_identifier(&malicious_field);
+		let quoted = super::quote_identifier(&malicious_field);
 
 		// Assert
 		// The double quote inside is escaped, preventing injection
@@ -6188,7 +6195,7 @@ mod tests {
 		let field_with_null = "field\0name";
 
 		// Act
-		QuerySet::<TestUser>::quote_identifier(field_with_null);
+		super::quote_identifier(field_with_null);
 
 		// Assert - should panic before reaching here
 	}
@@ -6212,13 +6219,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		let expected_fragment = format!(r#""author_id" {} "id""#, sql_op);
-		assert!(
-			sql.contains(&expected_fragment),
-			"Expected SQL to contain '{}', got: {}",
-			expected_fragment,
-			sql
-		);
+		let expected =
+			format!(r#"SELECT * FROM "test_users" WHERE "author_id" {} "id""#, sql_op);
+		assert_eq!(sql, expected);
 	}
 
 	#[rstest]
@@ -6234,10 +6237,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""tags" <@ ARRAY"#),
-			"Expected quoted 'tags' with <@ ARRAY operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "tags" <@ ARRAY['rust']"#
 		);
 	}
 
@@ -6254,10 +6256,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""tags" && ARRAY"#),
-			"Expected quoted 'tags' with && ARRAY operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "tags" && ARRAY['rust']"#
 		);
 	}
 
@@ -6274,10 +6275,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""content" @@ plainto_tsquery('english'"#),
-			"Expected quoted 'content' with @@ full-text operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "content" @@ plainto_tsquery('english', 'search term')"#
 		);
 	}
 
