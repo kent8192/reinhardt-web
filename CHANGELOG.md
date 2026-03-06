@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.4...reinhardt-web@v0.1.0-rc.5) - 2026-03-06
+
+### Fixed
+
+- *(ci)* enforce semver-check during RC phase instead of skipping
+
+### Maintenance
+
+- add auto-close parent issue workflow
+
 ## [0.1.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.3...reinhardt-web@v0.1.0-rc.4) - 2026-03-05
 
 ### Documentation
