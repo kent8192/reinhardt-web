@@ -304,6 +304,11 @@ docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/
 docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/ --baseline-commit origin/main --error --metrics off
 ```
 
+**Security Audit:**
+```bash
+cargo make audit  # Check for known vulnerabilities in dependencies
+```
+
 **Placeholder Check (formatter artifact detection):**
 ```bash
 # Check for __reinhardt_placeholder__! left in source files after page! macro formatting
@@ -501,6 +506,7 @@ Before submitting code:
 - Apply `agent-suspect` label to all agent-detected bug Issues
 - Verify agent-detected bugs independently before removing `agent-suspect` label
 - Use independent context (separate agent session) for agent re-evaluation of `agent-suspect` Issues
+- Obtain SP-6 approval before adding non-breaking APIs during RC phase (`enhancement` + `rc-addition` labels + maintainer approval)
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
