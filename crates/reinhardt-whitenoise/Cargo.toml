@@ -13,9 +13,9 @@ categories = ["web-programming", "compression"]
 
 [dependencies]
 # Workspace dependencies
-reinhardt-utils = { path = "../reinhardt-utils" }
-reinhardt-http = { path = "../reinhardt-http" }
-reinhardt-middleware = { path = "../reinhardt-middleware" }
+reinhardt-utils = { workspace = true }
+reinhardt-http = { workspace = true }
+reinhardt-middleware = { workspace = true }
 
 # External dependencies
 tokio = { version = "1.42", features = ["fs", "rt", "macros"] }
