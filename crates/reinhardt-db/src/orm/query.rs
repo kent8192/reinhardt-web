@@ -2393,6 +2393,11 @@ where
 	/// Uses PostgreSQL double-quote escaping (also valid for SQLite).
 	/// Handles dot-separated qualified names (e.g., "table.column" becomes "table"."column").
 	fn quote_identifier(field: &str) -> String {
+		assert!(
+			!field.contains('\0'),
+			"SQL identifier must not contain null bytes"
+		);
+
 		fn quote_single(name: &str) -> String {
 			format!("\"{}\"", name.replace('"', "\"\""))
 		}
@@ -2418,7 +2423,7 @@ where
 		let mut cond = Condition::all();
 
 		for filter in &self.filters {
-			let col = Expr::col(Alias::new(&filter.field));
+			let col = Expr::col(parse_column_reference(&filter.field));
 
 			let expr = match (&filter.operator, &filter.value) {
 				// Field-to-field comparisons (must come before generic patterns)
@@ -6102,10 +6107,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""author_id" = "id""#),
+			"Expected quoted identifier comparison in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6118,10 +6127,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""tags" @> ARRAY"#),
+			"Expected quoted 'tags' with @> ARRAY operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6169,15 +6182,24 @@ mod tests {
 	}
 
 	#[rstest]
-	#[case(FilterOperator::Ne, "!=")]
+	#[should_panic(expected = "SQL identifier must not contain null bytes")]
+	fn test_quote_identifier_rejects_null_bytes() {
+		// Arrange
+		let field_with_null = "field\0name";
+
+		// Act
+		QuerySet::<TestUser>::quote_identifier(field_with_null);
+
+		// Assert - should panic before reaching here
+	}
+
+	#[rstest]
+	#[case(FilterOperator::Ne, "<>")]
 	#[case(FilterOperator::Gt, ">")]
 	#[case(FilterOperator::Gte, ">=")]
 	#[case(FilterOperator::Lt, "<")]
 	#[case(FilterOperator::Lte, "<=")]
-	fn test_outerref_comparison_operators(
-		#[case] op: FilterOperator,
-		#[case] _sql_op: &str,
-	) {
+	fn test_outerref_comparison_operators(#[case] op: FilterOperator, #[case] sql_op: &str) {
 		// Arrange
 		use crate::orm::expressions::OuterRef;
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
@@ -6187,10 +6209,16 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		let expected_fragment = format!(r#""author_id" {} "id""#, sql_op);
+		assert!(
+			sql.contains(&expected_fragment),
+			"Expected SQL to contain '{}', got: {}",
+			expected_fragment,
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6203,10 +6231,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""tags" <@ ARRAY"#),
+			"Expected quoted 'tags' with <@ ARRAY operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6219,10 +6251,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""tags" && ARRAY"#),
+			"Expected quoted 'tags' with && ARRAY operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6235,10 +6271,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""content" @@ plainto_tsquery('english'"#),
+			"Expected quoted 'content' with @@ full-text operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6251,10 +6291,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""metadata" @> "#),
+			"Expected quoted 'metadata' with @> JSONB operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6267,10 +6311,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""metadata" <@ "#),
+			"Expected quoted 'metadata' with <@ JSONB operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6283,10 +6331,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""metadata" ?"#),
+			"Expected quoted 'metadata' with ? JSONB key exists operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6299,10 +6351,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""metadata" ?|"#),
+			"Expected quoted 'metadata' with ?| JSONB any key exists operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6315,10 +6371,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""metadata" ?&"#),
+			"Expected quoted 'metadata' with ?& JSONB all keys exist operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6331,10 +6391,15 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		// SeaQuery renders @? with parameterized value as @'value'
+		assert!(
+			sql.contains(r#""metadata" @'"#),
+			"Expected quoted 'metadata' with @? JSONB path exists operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6347,10 +6412,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""age_range" @>"#),
+			"Expected quoted 'age_range' with @> range contains operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6363,10 +6432,14 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""age_range" <@"#),
+			"Expected quoted 'age_range' with <@ range contained by operator in SQL, got: {}",
+			sql
+		);
 	}
 
 	#[rstest]
@@ -6379,9 +6452,13 @@ mod tests {
 		));
 
 		// Act
-		let condition = queryset.build_where_condition();
+		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(condition.is_some());
+		assert!(
+			sql.contains(r#""age_range" &&"#),
+			"Expected quoted 'age_range' with && range overlaps operator in SQL, got: {}",
+			sql
+		);
 	}
 }
