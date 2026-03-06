@@ -139,6 +139,13 @@ impl FilesystemRepository {
 		let name = &migration.name;
 		let atomic = migration.atomic;
 
+		// Build initial field token
+		let initial_tokens = match migration.initial {
+			Some(true) => quote! { Some(true) },
+			Some(false) => quote! { Some(false) },
+			None => quote! { None },
+		};
+
 		// Generate operation code
 		let ops_tokens = migration.operations.iter();
 		let operations_code = quote! { vec![#(#ops_tokens),*] };
@@ -156,6 +163,7 @@ impl FilesystemRepository {
 					dependencies: vec![#(#deps),*],
 					atomic: #atomic,
 					replaces: vec![#(#replaces),*],
+					initial: #initial_tokens,
 				}
 			}
 		};
