@@ -311,7 +311,7 @@ fn generate_wrapper_with_both(
 			.map(|ext| {
 				let pat = &ext.pat;
 				quote! {
-					::validator::Validate::validate(&#pat)
+					::validator::Validate::validate(&*#pat)
 						.map_err(|e| #core_crate::exception::Error::Validation(
 							::serde_json::to_string(&e).unwrap_or_else(|_| format!("{:?}", e))
 						))?;
