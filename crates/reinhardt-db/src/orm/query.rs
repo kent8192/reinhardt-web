@@ -6294,10 +6294,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""metadata" @> "#),
-			"Expected quoted 'metadata' with @> JSONB operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "metadata" @> '{"key": "value"}'::jsonb"#
 		);
 	}
 
@@ -6314,10 +6313,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""metadata" <@ "#),
-			"Expected quoted 'metadata' with <@ JSONB operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "metadata" <@ '{"key": "value"}'::jsonb"#
 		);
 	}
 
@@ -6334,10 +6332,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""metadata" ?"#),
-			"Expected quoted 'metadata' with ? JSONB key exists operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "metadata" ? 'key'"#
 		);
 	}
 
@@ -6354,10 +6351,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""metadata" ?|"#),
-			"Expected quoted 'metadata' with ?| JSONB any key exists operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "metadata" ?| array['key1', 'key2']"#
 		);
 	}
 
@@ -6374,10 +6370,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""metadata" ?&"#),
-			"Expected quoted 'metadata' with ?& JSONB all keys exist operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "metadata" ?& array['key1', 'key2']"#
 		);
 	}
 
@@ -6394,11 +6389,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		// SeaQuery renders @? with parameterized value as @'value'
-		assert!(
-			sql.contains(r#""metadata" @'"#),
-			"Expected quoted 'metadata' with @? JSONB path exists operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "metadata" @'$.key' "#
 		);
 	}
 
@@ -6415,10 +6408,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""age_range" @>"#),
-			"Expected quoted 'age_range' with @> range contains operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "age_range" @> '''25'''"#
 		);
 	}
 
@@ -6435,10 +6427,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""age_range" <@"#),
-			"Expected quoted 'age_range' with <@ range contained by operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "age_range" <@ '[20, 30]'"#
 		);
 	}
 
@@ -6455,10 +6446,9 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		assert!(
-			sql.contains(r#""age_range" &&"#),
-			"Expected quoted 'age_range' with && range overlaps operator in SQL, got: {}",
-			sql
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "age_range" && '[20, 30]'"#
 		);
 	}
 }
