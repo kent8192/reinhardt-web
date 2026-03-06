@@ -553,6 +553,48 @@ Version Changes:
 
 **See**: @docs/RELEASE_PROCESS.md for detailed release procedures
 
+### Develop Branch PRs
+
+For PRs from `develop/*` branches targeting `main` (version transitions):
+
+**Requirements:**
+
+- **MUST** have `migration-approved` label applied by maintainer
+- Branch name MUST follow `develop/X.Y.Z` format
+- Version transition MUST be valid: `develop_minor == main_minor + 1` and `patch == 0`
+- CI workflow `Develop Merge Guard` validates these requirements automatically
+
+**Guard Behavior:**
+
+| Source Branch | `migration-approved` Label | Version Valid | Result |
+|--------------|---------------------------|---------------|--------|
+| Non-develop | N/A | N/A | Pass (guard skipped) |
+| `develop/*` | Missing | Any | Fail |
+| `develop/*` | Present | Invalid | Fail |
+| `develop/*` | Present | Valid | Pass |
+
+**Title Format:**
+```
+feat!: merge develop/X.Y.Z into main
+
+Example:
+feat!: merge develop/0.2.0 into main
+```
+
+**Example:**
+```bash
+# Apply migration-approved label (maintainer only)
+gh pr edit <number> --add-label migration-approved
+
+# Create develop branch PR
+gh pr create --title "feat!: merge develop/0.2.0 into main" \
+  --base main \
+  --head develop/0.2.0 \
+  --label migration-approved,breaking-change
+```
+
+**See**: `.github/workflows/develop-merge-guard.yml` for CI guard implementation
+
 ### Documentation-Only PRs
 
 For documentation changes:

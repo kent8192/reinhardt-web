@@ -503,6 +503,7 @@ Before submitting code:
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
+- Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
 - Apply `agent-suspect` label to all agent-detected bug Issues
 - Verify agent-detected bugs independently before removing `agent-suspect` label
 - Use independent context (separate agent session) for agent re-evaluation of `agent-suspect` Issues
@@ -565,6 +566,7 @@ Before submitting code:
 - Retry GitHub MCP tools after errors instead of falling back to `gh` CLI
 - Create branches without checking for name conflicts
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
+- Merge develop/* branches into main without `migration-approved` label and CI version validation
 - Remove `agent-suspect` label without independent verification (separate agent or human)
 - Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
 - Use the same agent context for both detection and verification of a bug
