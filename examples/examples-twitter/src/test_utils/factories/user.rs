@@ -5,8 +5,9 @@
 
 use chrono::Utc;
 use reinhardt::{Argon2Hasher, PasswordHasher};
-use reinhardt_query::prelude::{
-	Alias, Expr, ExprTrait, IntoValue, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
+use reinhardt::db::orm::{
+	Alias, Expr, ExprTrait, IntoValue, PostgresQueryBuilder, Query, QueryBuilderValue as Value,
+	QueryStatementBuilder,
 };
 use rstest::*;
 use sqlx::PgPool;
