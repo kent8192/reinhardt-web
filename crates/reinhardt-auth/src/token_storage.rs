@@ -810,5 +810,4 @@ mod tests {
 			"Invalid token format"
 		);
 	}
-
 }
