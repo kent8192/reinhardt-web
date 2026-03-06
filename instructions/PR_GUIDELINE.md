@@ -388,6 +388,33 @@ cargo make clippy-check
 
 **For batch issue handling**: See docs/ISSUE_HANDLING.md for work unit principles (WU-1 ~ WU-3) on how to scope PRs when addressing multiple issues.
 
+### RP-5 (MUST): Use Three-Dot Diff for PR Verification
+
+PR の差分検証には three-dot diff を使用する。
+
+- **MUST** use three-dot diff (`...`) to verify PR changes from the merge base
+- Three-dot diff excludes merge history noise and shows only changes introduced by the PR
+- This applies to both manual review and automated diff verification
+
+**Commands:**
+```bash
+# Three-dot diff: shows changes from merge base (CORRECT)
+git diff main...feature-branch
+
+# Two-dot diff: includes merge history noise (AVOID)
+git diff main..feature-branch
+```
+
+**GitHub CLI:**
+```bash
+# View PR diff (GitHub uses three-dot diff by default)
+gh pr diff <number>
+```
+
+**Rationale:**
+- Two-dot diff includes all commits reachable from one branch but not the other, polluting the diff with merge history
+- Three-dot diff compares the tip of the feature branch against the merge base (common ancestor), showing only the PR's actual changes
+
 ---
 
 ## PR Conflict Resolution
@@ -558,6 +585,7 @@ docs(readme): add installation instructions
 - Run all checks before requesting review
 - Address all review comments
 - Ensure all CI checks pass before merge
+- Use three-dot diff (`main...branch`) for PR verification to exclude merge history noise
 
 ### ❌ NEVER DO
 - Write PR titles or descriptions in non-English languages
@@ -569,6 +597,7 @@ docs(readme): add installation instructions
 - Leave unresolved review comments
 - Force push after review has started (unless explicitly requested)
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
+- Use two-dot diff (`main..branch`) for PR verification (includes merge history noise)
 
 ---
 

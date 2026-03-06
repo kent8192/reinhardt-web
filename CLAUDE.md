@@ -507,6 +507,7 @@ Before submitting code:
 - Verify agent-detected bugs independently before removing `agent-suspect` label
 - Use independent context (separate agent session) for agent re-evaluation of `agent-suspect` Issues
 - Obtain SP-6 approval before adding non-breaking APIs during RC phase (`enhancement` + `rc-addition` labels + maintainer approval)
+- Use three-dot diff (`main...branch`) for PR diff verification to exclude merge history noise
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
@@ -567,6 +568,7 @@ Before submitting code:
 - Remove `agent-suspect` label without independent verification (separate agent or human)
 - Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
 - Use the same agent context for both detection and verification of a bug
+- Use two-dot diff (`main..branch`) for PR verification (includes merge history noise)
 
 ### 📚 Detailed Standards
 
