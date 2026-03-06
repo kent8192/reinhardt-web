@@ -2431,22 +2431,22 @@ where
 				(FilterOperator::Eq, FilterValue::OuterRef(outer)) => {
 					// For correlated subqueries, reference outer query field
 					// e.g., WHERE books.author_id = authors.id (where authors is from outer query)
-					Expr::cust(format!("{} = {}", filter.field, outer.to_sql())).into_simple_expr()
+					col.eq(Expr::col(Alias::new(&outer.field)))
 				}
 				(FilterOperator::Ne, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} != {}", filter.field, outer.to_sql())).into_simple_expr()
+					col.ne(Expr::col(Alias::new(&outer.field)))
 				}
 				(FilterOperator::Gt, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} > {}", filter.field, outer.to_sql())).into_simple_expr()
+					col.gt(Expr::col(Alias::new(&outer.field)))
 				}
 				(FilterOperator::Gte, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} >= {}", filter.field, outer.to_sql())).into_simple_expr()
+					col.gte(Expr::col(Alias::new(&outer.field)))
 				}
 				(FilterOperator::Lt, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} < {}", filter.field, outer.to_sql())).into_simple_expr()
+					col.lt(Expr::col(Alias::new(&outer.field)))
 				}
 				(FilterOperator::Lte, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} <= {}", filter.field, outer.to_sql())).into_simple_expr()
+					col.lte(Expr::col(Alias::new(&outer.field)))
 				}
 				// Expression comparisons (F("a") * F("b") etc.)
 				(FilterOperator::Eq, FilterValue::Expression(expr)) => {
@@ -2557,7 +2557,11 @@ where
 					// field @> ARRAY[?, ?] - parameterized
 					let placeholders = arr.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 					Expr::cust_with_values(
-						format!("{} @> ARRAY[{}]", filter.field, placeholders),
+						format!(
+							"{} @> ARRAY[{}]",
+							Self::quote_identifier(&filter.field),
+							placeholders
+						),
 						arr.iter().cloned(),
 					)
 					.into_simple_expr()
@@ -2566,7 +2570,11 @@ where
 					// field <@ ARRAY[?, ?] - parameterized
 					let placeholders = arr.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 					Expr::cust_with_values(
-						format!("{} <@ ARRAY[{}]", filter.field, placeholders),
+						format!(
+							"{} <@ ARRAY[{}]",
+							Self::quote_identifier(&filter.field),
+							placeholders
+						),
 						arr.iter().cloned(),
 					)
 					.into_simple_expr()
@@ -2575,7 +2583,11 @@ where
 					// field && ARRAY[?, ?] - parameterized
 					let placeholders = arr.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 					Expr::cust_with_values(
-						format!("{} && ARRAY[{}]", filter.field, placeholders),
+						format!(
+							"{} && ARRAY[{}]",
+							Self::quote_identifier(&filter.field),
+							placeholders
+						),
 						arr.iter().cloned(),
 					)
 					.into_simple_expr()
@@ -2584,7 +2596,10 @@ where
 				(FilterOperator::FullTextMatch, FilterValue::String(query)) => {
 					// field @@ plainto_tsquery('english', ?) - parameterized
 					Expr::cust_with_values(
-						format!("{} @@ plainto_tsquery('english', ?)", filter.field),
+						format!(
+							"{} @@ plainto_tsquery('english', ?)",
+							Self::quote_identifier(&filter.field)
+						),
 						[query.clone()],
 					)
 					.into_simple_expr()
@@ -2592,20 +2607,28 @@ where
 				// PostgreSQL JSONB operators
 				(FilterOperator::JsonbContains, FilterValue::String(json)) => {
 					// field @> ?::jsonb - parameterized
-					Expr::cust_with_values(format!("{} @> ?::jsonb", filter.field), [json.clone()])
-						.into_simple_expr()
+					Expr::cust_with_values(
+						format!("{} @> ?::jsonb", Self::quote_identifier(&filter.field)),
+						[json.clone()],
+					)
+					.into_simple_expr()
 				}
 				(FilterOperator::JsonbContainedBy, FilterValue::String(json)) => {
 					// field <@ ?::jsonb - parameterized
-					Expr::cust_with_values(format!("{} <@ ?::jsonb", filter.field), [json.clone()])
-						.into_simple_expr()
+					Expr::cust_with_values(
+						format!("{} <@ ?::jsonb", Self::quote_identifier(&filter.field)),
+						[json.clone()],
+					)
+					.into_simple_expr()
 				}
 				(FilterOperator::JsonbKeyExists, FilterValue::String(key)) => {
 					// field ? 'key' - using PgBinOper for safe parameterization
-					Expr::cust(&filter.field).into_simple_expr().binary(
-						BinOper::PgOperator(PgBinOper::JsonContainsKey),
-						SimpleExpr::from(key.clone()),
-					)
+					Expr::cust(Self::quote_identifier(&filter.field))
+						.into_simple_expr()
+						.binary(
+							BinOper::PgOperator(PgBinOper::JsonContainsKey),
+							SimpleExpr::from(key.clone()),
+						)
 				}
 				(FilterOperator::JsonbAnyKeyExists, FilterValue::Array(keys)) => {
 					// field ?| array[?, ?] - using PgBinOper for safe parameterization
@@ -2615,10 +2638,12 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(&filter.field).into_simple_expr().binary(
-						BinOper::PgOperator(PgBinOper::JsonContainsAnyKey),
-						array_expr,
-					)
+					Expr::cust(Self::quote_identifier(&filter.field))
+						.into_simple_expr()
+						.binary(
+							BinOper::PgOperator(PgBinOper::JsonContainsAnyKey),
+							array_expr,
+						)
 				}
 				(FilterOperator::JsonbAllKeysExist, FilterValue::Array(keys)) => {
 					// field ?& array[?, ?] - using PgBinOper for safe parameterization
@@ -2628,32 +2653,46 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(&filter.field).into_simple_expr().binary(
-						BinOper::PgOperator(PgBinOper::JsonContainsAllKeys),
-						array_expr,
-					)
+					Expr::cust(Self::quote_identifier(&filter.field))
+						.into_simple_expr()
+						.binary(
+							BinOper::PgOperator(PgBinOper::JsonContainsAllKeys),
+							array_expr,
+						)
 				}
 				(FilterOperator::JsonbPathExists, FilterValue::String(path)) => {
 					// field @? ? - parameterized
-					Expr::cust_with_values(format!("{} @? ?", filter.field), [path.clone()])
-						.into_simple_expr()
+					Expr::cust_with_values(
+						format!("{} @? ?", Self::quote_identifier(&filter.field)),
+						[path.clone()],
+					)
+					.into_simple_expr()
 				}
 				// PostgreSQL Range operators
 				(FilterOperator::RangeContains, v) => {
 					// field @> ? - parameterized
 					let val = Self::filter_value_to_sql_string(v);
-					Expr::cust_with_values(format!("{} @> ?", filter.field), [val])
-						.into_simple_expr()
+					Expr::cust_with_values(
+						format!("{} @> ?", Self::quote_identifier(&filter.field)),
+						[val],
+					)
+					.into_simple_expr()
 				}
 				(FilterOperator::RangeContainedBy, FilterValue::String(range)) => {
 					// field <@ ? - parameterized
-					Expr::cust_with_values(format!("{} <@ ?", filter.field), [range.clone()])
-						.into_simple_expr()
+					Expr::cust_with_values(
+						format!("{} <@ ?", Self::quote_identifier(&filter.field)),
+						[range.clone()],
+					)
+					.into_simple_expr()
 				}
 				(FilterOperator::RangeOverlaps, FilterValue::String(range)) => {
 					// field && ? - parameterized
-					Expr::cust_with_values(format!("{} && ?", filter.field), [range.clone()])
-						.into_simple_expr()
+					Expr::cust_with_values(
+						format!("{} && ?", Self::quote_identifier(&filter.field)),
+						[range.clone()],
+					)
+					.into_simple_expr()
 				}
 				// Fallback for unsupported combinations
 				_ => {
@@ -5518,6 +5557,7 @@ fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
 mod tests {
 	use crate::orm::query::UpdateValue;
 	use crate::orm::{FilterOperator, FilterValue, Model, QuerySet, query::Filter};
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
