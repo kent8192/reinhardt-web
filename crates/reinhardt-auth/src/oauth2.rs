@@ -2,7 +2,8 @@
 //!
 //! Provides OAuth2 authorization flow support for third-party authentication.
 
-use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
+use crate::repository::{SimpleUserRepository, UserRepository};
+use crate::{AuthenticationBackend, AuthenticationError, User};
 use async_trait::async_trait;
 use reinhardt_http::Request;
 use serde::{Deserialize, Serialize};
@@ -93,34 +94,6 @@ pub trait OAuth2TokenStore: Send + Sync {
 	async fn revoke_token(&self, token: &str) -> Result<(), String>;
 }
 
-/// User repository trait for OAuth2 authentication
-///
-/// Provides an abstraction for retrieving user data from various storage backends.
-///
-/// # Examples
-///
-/// ```
-/// use reinhardt_auth::{UserRepository, User};
-/// use async_trait::async_trait;
-///
-/// struct MyUserRepository;
-///
-/// #[async_trait]
-/// impl UserRepository for MyUserRepository {
-///     async fn get_user_by_id(&self, user_id: &str) -> Result<Option<Box<dyn User>>, String> {
-///         // Custom implementation
-///         Ok(None)
-///     }
-/// }
-/// ```
-#[async_trait]
-pub trait UserRepository: Send + Sync {
-	/// Get user by ID
-	///
-	/// Returns `Ok(Some(user))` if found, `Ok(None)` if not found, or `Err` on error.
-	async fn get_user_by_id(&self, user_id: &str) -> Result<Option<Box<dyn User>>, String>;
-}
-
 /// In-memory OAuth2 token store
 ///
 /// # Examples
@@ -198,41 +171,6 @@ impl OAuth2TokenStore for InMemoryOAuth2Store {
 		let mut tokens = self.tokens.lock().await;
 		tokens.remove(token);
 		Ok(())
-	}
-}
-
-/// Simple in-memory user repository
-///
-/// Creates SimpleUser instances on-the-fly without database access.
-/// Suitable for testing and development environments.
-///
-/// # Examples
-///
-/// ```
-/// use reinhardt_auth::{SimpleUserRepository, UserRepository};
-///
-/// #[tokio::main]
-/// async fn main() {
-///     let repo = SimpleUserRepository;
-///     let user = repo.get_user_by_id("user_123").await.unwrap();
-///     assert!(user.is_some());
-/// }
-/// ```
-pub struct SimpleUserRepository;
-
-#[async_trait]
-impl UserRepository for SimpleUserRepository {
-	async fn get_user_by_id(&self, user_id: &str) -> Result<Option<Box<dyn User>>, String> {
-		// Create a simple user object for development/testing
-		Ok(Some(Box::new(SimpleUser {
-			id: Uuid::new_v4(),
-			username: user_id.to_string(),
-			email: format!("{}@example.com", user_id),
-			is_active: true,
-			is_admin: false,
-			is_staff: false,
-			is_superuser: false,
-		})))
 	}
 }
 
