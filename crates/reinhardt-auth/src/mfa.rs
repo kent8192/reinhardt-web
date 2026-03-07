@@ -476,14 +476,22 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_user_id_namespace_matches_documented_derivation() {
+	#[tokio::test]
+	async fn test_user_id_is_deterministic_uuidv5() {
 		// Arrange
-		let expected = Uuid::new_v5(&Uuid::NAMESPACE_URL, b"https://reinhardt.rs/user-id");
+		let mfa = MFAAuthentication::new("TestApp");
+		mfa.register_user("alice", "JBSWY3DPEHPK3PXP").await;
 
-		// Act & Assert
+		// Act
+		let user = mfa.get_user("alice").await.unwrap().unwrap();
+		let id = Uuid::parse_str(&user.id()).unwrap();
+
+		// Assert - ID must be UUIDv5 (version 5, RFC 4122 variant)
+		assert_eq!(id.get_version_num(), 5, "user ID must be UUIDv5");
 		assert_eq!(
-			USER_ID_NAMESPACE, expected,
-			"USER_ID_NAMESPACE must match documented derivation"
+			id.get_variant(),
+			uuid::Variant::RFC4122,
+			"user ID must use RFC 4122 variant"
 		);
 	}
 

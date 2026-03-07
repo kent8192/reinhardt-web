@@ -461,24 +461,40 @@ mod tests {
 		// possible through the trait object returned by authenticate().
 	}
 
-	/// Verifies that the JWT `authenticate` implementation constructs `SimpleUser`
-	/// with an empty email field, since JWT claims do not carry email information.
-	/// This is a source-level contract test: the authenticate method at line 216-227
-	/// sets `email: String::new()`.
+	/// Verifies that JWT authentication does not fabricate email data.
+	/// JWT claims carry only `sub` (user ID) and `username`; the authenticated
+	/// user must not have email information injected from outside the token.
 	#[rstest]
-	fn test_claims_struct_has_no_email_field() {
-		// Arrange & Act
+	#[tokio::test]
+	async fn test_jwt_authenticated_user_has_no_email_in_claims() {
+		// Arrange
+		let jwt_auth = JwtAuth::new(b"test-secret-key-256bit!");
+		let token = jwt_auth
+			.generate_token(
+				"550e8400-e29b-41d4-a716-446655440000".to_string(),
+				"alice".to_string(),
+			)
+			.unwrap();
+		let request = create_request_with_bearer(&token);
+
+		// Act
+		let result = RestAuthentication::authenticate(&jwt_auth, &request).await;
+		let user = result.unwrap().unwrap();
+
+		// Assert - JWT claims schema has no email field, so the authenticated
+		// user cannot carry email data from the token
 		let claims = Claims::new(
 			"550e8400-e29b-41d4-a716-446655440000".to_string(),
 			"alice".to_string(),
 			Duration::hours(1),
 		);
-
-		// Assert - Claims struct has no email field; serialization confirms this
 		let serialized = serde_json::to_value(&claims).unwrap();
 		assert!(
 			serialized.get("email").is_none(),
 			"JWT Claims must not contain an email field"
 		);
+		// Verify the user was actually authenticated successfully
+		assert_eq!(user.username(), "alice");
+		assert_eq!(user.id(), "550e8400-e29b-41d4-a716-446655440000");
 	}
 }
