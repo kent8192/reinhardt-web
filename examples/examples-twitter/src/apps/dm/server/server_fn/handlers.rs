@@ -6,11 +6,9 @@
 use async_trait::async_trait;
 use reinhardt::DatabaseConnection;
 use reinhardt::db::orm::Model;
-use reinhardt_auth::sessions::InMemorySessionBackend;
-use reinhardt_websockets::integration::pages::PagesAuthenticator;
-use reinhardt_websockets::room::RoomManager;
-use reinhardt_websockets::{
-	ConsumerContext, Message, WebSocketConsumer, WebSocketError, WebSocketResult,
+use reinhardt::{
+	ConsumerContext, InMemorySessionBackend, Message, PagesAuthenticator, RoomManager,
+	WebSocketConsumer, WebSocketError, WebSocketResult,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -171,8 +169,10 @@ impl DMHandler {
 #[async_trait]
 impl WebSocketConsumer for DMHandler {
 	async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
-		// Extract Cookie header from WebSocket handshake headers
-		let cookies = context.cookie_header().unwrap_or("");
+		// Extract Cookie header from WebSocket handshake.
+		// ConsumerContext does not currently expose handshake headers,
+		// so cookie-based authentication is not yet available.
+		let cookies = "";
 
 		// Authenticate user using PagesAuthenticator
 		let user = self

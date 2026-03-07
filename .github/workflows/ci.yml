@@ -10,6 +10,7 @@ permissions:
   contents: read
   id-token: write
   pull-requests: read
+  security-events: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -29,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has-conflicts: ${{ steps.check.outputs.has-conflicts }}
+      infra-changed: ${{ steps.check-infra.outputs.infra-changed }}
     steps:
       - name: Check if PR has merge conflicts
         id: check
@@ -46,6 +48,21 @@ jobs:
               core.warning('PR has merge conflicts. Skipping CI — please resolve conflicts.');
             }
 
+      - name: Check if infra files changed
+        id: check-infra
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            const infraChanged = files.some(f => f.filename.startsWith('infra/'));
+            core.setOutput('infra-changed', infraChanged.toString());
+
   # Determine runner type based on whether the actor is the repository owner.
   # Repository owner uses self-hosted AWS Spot runners (faster, ~$70/month).
   # Other contributors use GitHub-hosted ubuntu-latest (free but slower).
@@ -58,14 +75,40 @@ jobs:
       runner: ${{ steps.set-runner.outputs.runner }}
       cargo-build-jobs: ${{ steps.set-runner.outputs.cargo-build-jobs }}
     steps:
+      - name: Parse PR checkbox for self-hosted
+        if: github.event_name == 'pull_request'
+        id: parse-checkbox
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            // Default: false (when checkbox is missing or unchecked)
+            const checked = /- \[x\] I use self-hosted runner/i.test(body);
+            core.setOutput('self-hosted-requested', checked.toString());
+
       - name: Set runner configuration
         id: set-runner
         env:
           ACTOR: ${{ github.actor }}
           REPO_OWNER: ${{ github.repository_owner }}
           SELF_HOSTED_ENABLED: ${{ vars.SELF_HOSTED_ENABLED }}
+          EVENT_NAME: ${{ github.event_name }}
+          SELF_HOSTED_REQUESTED: ${{ steps.parse-checkbox.outputs.self-hosted-requested }}
         run: |
+          USE_SELF_HOSTED=false
           if [[ "$ACTOR" == "$REPO_OWNER" ]] && [[ "$SELF_HOSTED_ENABLED" == "true" ]]; then
+            if [[ "$EVENT_NAME" == "pull_request" ]]; then
+              # PR: require explicit checkbox opt-in (default: false)
+              if [[ "$SELF_HOSTED_REQUESTED" == "true" ]]; then
+                USE_SELF_HOSTED=true
+              fi
+            else
+              # Non-PR events (workflow_dispatch): use self-hosted by default
+              USE_SELF_HOSTED=true
+            fi
+          fi
+
+          if [[ "$USE_SELF_HOSTED" == "true" ]]; then
             # Self-hosted: faster CI with AWS Spot instances
             echo 'runner=["self-hosted","linux","x64","reinhardt-ci"]' >> "$GITHUB_OUTPUT"
             echo 'cargo-build-jobs=8' >> "$GITHUB_OUTPUT"
@@ -136,6 +179,16 @@ jobs:
     uses: ./.github/workflows/security-audit.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
+
+  terraform-check:
+    name: Terraform Check
+    needs: [check-branch-status]
+    if: >-
+      ${{
+        needs.check-branch-status.outputs.has-conflicts != 'true' &&
+        needs.check-branch-status.outputs.infra-changed == 'true'
+      }}
+    uses: ./.github/workflows/terraform-check.yml
 
   semver-check:
     name: SemVer Check
@@ -246,9 +299,9 @@ jobs:
     if: |
       always() &&
       needs.detect-affected.outputs.has-affected == 'true' &&
-      !contains(needs.unit-test.result, 'failure') &&
-      !contains(needs.intra-crate-integration-test.result, 'failure') &&
-      !contains(needs.cross-crate-integration-test.result, 'failure')
+      needs.unit-test.result == 'success' &&
+      needs.intra-crate-integration-test.result == 'success' &&
+      needs.cross-crate-integration-test.result == 'success'
     secrets: inherit
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -290,6 +343,7 @@ jobs:
       - publish-check
       - todo-check
       - security-audit
+      - terraform-check
       - semver-check
       - release-dry-run
       - unit-test
@@ -344,6 +398,7 @@ jobs:
             "ui-test:${{ needs.ui-test.result }}"
             "coverage:${{ needs.coverage.result }}"
             "examples-test:${{ needs.examples-test.result }}"
+            "terraform-check:${{ needs.terraform-check.result }}"
           )
           for entry in "${selectively_skippable[@]}"; do
             name="${entry%%:*}"
