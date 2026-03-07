@@ -166,6 +166,7 @@ where
 					// Begin circular dependency detection
 					let type_id = TypeId::of::<T>();
 					let type_name = std::any::type_name::<T>();
+					crate::register_type_name::<T>(type_name);
 					let _guard = begin_resolution(type_id, type_name)
 						.map_err(|e| DiError::CircularDependency(e.to_string()))?;
 
@@ -177,6 +178,7 @@ where
 				// Begin circular dependency detection (even for uncached)
 				let type_id = TypeId::of::<T>();
 				let type_name = std::any::type_name::<T>();
+				crate::register_type_name::<T>(type_name);
 				let _guard = begin_resolution(type_id, type_name)
 					.map_err(|e| DiError::CircularDependency(e.to_string()))?;
 
