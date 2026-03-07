@@ -87,6 +87,7 @@ pages-web-sys-full = ["pages", "reinhardt-pages/web-sys-full"]
 uuid = ["reinhardt-pages/uuid"]
 chrono = ["reinhardt-pages/chrono"]
 websockets = ["reinhardt-websockets"]
+websockets-pages = ["websockets", "reinhardt-websockets/pages-integration"]
 cache = ["reinhardt-utils/cache"]
 redis-backend = ["cache", "reinhardt-utils/redis-backend"]
 i18n = ["reinhardt-i18n"]
@@ -167,6 +168,7 @@ full = [
   "reinhardt-shortcuts/full",
   "reinhardt-tasks/full",
   "reinhardt-test/full",
+  "websockets-pages",
   "reinhardt-websockets/full",
   "reinhardt-middleware/full",
   "reinhardt-graphql/full",
@@ -240,12 +242,12 @@ middleware-rate-limit = [
 [dependencies]
 # WASM-compatible dependencies (always included)
 reinhardt-pages = { workspace = true, optional = true }
+reinhardt-urls = { workspace = true }
 
 # Server-side dependencies (NOT for WASM)
 reinhardt-core = {workspace = true, features = ["types"]}
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Core dependencies
-reinhardt-urls = { workspace = true }
 reinhardt-utils = { workspace = true }
 reinhardt-views = { workspace = true }
 reinhardt-http = { workspace = true }
