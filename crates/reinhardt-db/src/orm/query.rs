@@ -2704,16 +2704,12 @@ where
 				SubqueryCondition::In { field, subquery } => {
 					// field IN (subquery)
 					Expr::cust(format!("{} IN {}", quote_identifier(field), subquery))
-					.into_simple_expr()
+						.into_simple_expr()
 				}
 				SubqueryCondition::NotIn { field, subquery } => {
 					// field NOT IN (subquery)
-					Expr::cust(format!(
-					"{} NOT IN {}",
-					quote_identifier(field),
-					subquery
-				))
-				.into_simple_expr()
+					Expr::cust(format!("{} NOT IN {}", quote_identifier(field), subquery))
+						.into_simple_expr()
 				}
 				SubqueryCondition::Exists { subquery } => {
 					// EXISTS (subquery)
@@ -6219,8 +6215,10 @@ mod tests {
 		let sql = queryset.to_sql();
 
 		// Assert
-		let expected =
-			format!(r#"SELECT * FROM "test_users" WHERE "author_id" {} "id""#, sql_op);
+		let expected = format!(
+			r#"SELECT * FROM "test_users" WHERE "author_id" {} "id""#,
+			sql_op
+		);
 		assert_eq!(sql, expected);
 	}
 
