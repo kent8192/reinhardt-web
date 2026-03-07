@@ -4,11 +4,11 @@
 //! with proper password hashing and relationships.
 
 use chrono::Utc;
-use reinhardt::{Argon2Hasher, PasswordHasher};
 use reinhardt::db::orm::{
 	Alias, Expr, ExprTrait, IntoValue, PostgresQueryBuilder, Query, QueryBuilderValue as Value,
 	QueryStatementBuilder,
 };
+use reinhardt::{Argon2Hasher, PasswordHasher};
 use rstest::*;
 use sqlx::PgPool;
 use uuid::Uuid;
