@@ -14,23 +14,16 @@
 //! - Verifies generated migration files
 //! - Tests migration executability on real databases
 
-use reinhardt_db::backends::DatabaseConnection;
 use reinhardt_db::migrations::schema_diff::{ColumnSchema, DatabaseSchema, TableSchema};
 use reinhardt_db::migrations::{
-	AutoMigrationGenerator, ColumnDefinition, FieldType, FilesystemRepository, FilesystemSource,
-	Migration, MigrationNamer, MigrationNumbering, MigrationService, Operation,
-	autodetector::ProjectState,
+	AutoMigrationGenerator, FieldType, FilesystemRepository, FilesystemSource, Migration,
+	MigrationNumbering, MigrationService,
 };
-use reinhardt_test::fixtures::postgres_container;
-use rstest::*;
 use serial_test::serial;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use tempfile::TempDir;
-use testcontainers::ContainerAsync;
-use testcontainers::GenericImage;
-use testcontainers::core::WaitFor;
 use tokio::sync::Mutex;
 
 // ============================================================================
