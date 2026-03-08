@@ -20,7 +20,7 @@ variable "runner_arch" {
 	description = "Runner architecture: x64 or arm64"
 
 	validation {
-		condition     = contains(["x64", "arm64"], var.runner_arch)
+		condition     = var.runner_arch == "x64" || var.runner_arch == "arm64"
 		error_message = "Variable runner_arch must be either x64 or arm64."
 	}
 }
