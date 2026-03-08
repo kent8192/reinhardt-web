@@ -45,9 +45,11 @@ pub mod shutdown;
 pub mod timeout;
 
 #[cfg(feature = "graphql")]
+/// GraphQL request handler integration (requires `graphql` feature).
 pub mod graphql;
 
 #[cfg(feature = "websocket")]
+/// WebSocket server support with broadcast capabilities (requires `websocket` feature).
 pub mod websocket;
 
 pub use http::{HttpServer, serve, serve_with_shutdown};
