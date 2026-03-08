@@ -141,7 +141,7 @@ build {
 		]
 		inline = [
 			"PROTOC_VERSION=28.3",
-			"curl -fsSL -o /tmp/protoc.zip \"https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-${PROTOC_ARCH}.zip\"",
+			"curl -fsSL -o /tmp/protoc.zip \"https://github.com/protocolbuffers/protobuf/releases/download/v$${PROTOC_VERSION}/protoc-$${PROTOC_VERSION}-$${PROTOC_ARCH}.zip\"",
 			"unzip -o /tmp/protoc.zip -d /usr/local bin/protoc",
 			"chmod +x /usr/local/bin/protoc",
 			"rm -f /tmp/protoc.zip",
@@ -155,7 +155,7 @@ build {
 			"AWSCLI_ARCH=${local.awscli_arch}",
 		]
 		inline = [
-			"curl -fsSL -o /tmp/awscliv2.zip \"https://awscli.amazonaws.com/awscli-exe-linux-${AWSCLI_ARCH}.zip\"",
+			"curl -fsSL -o /tmp/awscliv2.zip \"https://awscli.amazonaws.com/awscli-exe-linux-$${AWSCLI_ARCH}.zip\"",
 			"unzip -q /tmp/awscliv2.zip -d /tmp",
 			"/tmp/aws/install",
 			"rm -rf /tmp/aws /tmp/awscliv2.zip",
@@ -169,7 +169,7 @@ build {
 			"CW_ARCH=${local.cloudwatch_arch}",
 		]
 		inline = [
-			"curl -fsSL -o /tmp/amazon-cloudwatch-agent.deb \"https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/${CW_ARCH}/latest/amazon-cloudwatch-agent.deb\"",
+			"curl -fsSL -o /tmp/amazon-cloudwatch-agent.deb \"https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/$${CW_ARCH}/latest/amazon-cloudwatch-agent.deb\"",
 			"dpkg -i -E /tmp/amazon-cloudwatch-agent.deb",
 			"rm -f /tmp/amazon-cloudwatch-agent.deb",
 		]
