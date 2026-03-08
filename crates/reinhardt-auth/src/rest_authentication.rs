@@ -808,6 +808,25 @@ mod tests {
 		);
 	}
 
+	#[rstest]
+	#[tokio::test]
+	async fn test_token_auth_get_user_same_id_produces_same_uuid() {
+		// Arrange
+		let mut auth = TokenAuthentication::new();
+		auth.add_token("secret_token", "alice");
+
+		// Act
+		let user1 = auth.get_user("alice").await.unwrap().unwrap();
+		let user2 = auth.get_user("alice").await.unwrap().unwrap();
+
+		// Assert
+		assert_eq!(
+			user1.id(),
+			user2.id(),
+			"same user_id must produce the same UUID via get_user"
+		);
+	}
+
 	#[tokio::test]
 	async fn test_custom_token_config() {
 		let config = TokenAuthConfig {
