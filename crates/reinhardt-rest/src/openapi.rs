@@ -188,19 +188,25 @@ pub use utoipa::Number;
 pub use inventory;
 pub use utoipa;
 
+/// Errors that can occur during OpenAPI schema operations.
 #[derive(Debug, Error)]
 pub enum SchemaError {
+	/// The schema definition is invalid.
 	#[error("Invalid schema: {0}")]
 	InvalidSchema(String),
 
+	/// A serialization or deserialization error occurred.
 	#[error("Serialization error: {0}")]
 	SerializationError(String),
 
+	/// An error occurred during schema inspection.
 	#[error("Inspector error: {0}")]
 	InspectorError(String),
 
+	/// A JSON parsing or generation error.
 	#[error("JSON error: {0}")]
 	JsonError(#[from] serde_json::Error),
 }
 
+/// Result type alias for schema operations.
 pub type SchemaResult<T> = std::result::Result<T, SchemaError>;
