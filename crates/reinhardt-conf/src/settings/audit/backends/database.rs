@@ -228,14 +228,11 @@ impl AuditBackend for DatabaseAuditBackend {
 					query.and_where(Expr::col(Alias::new("user")).eq(user.as_str()));
 				}
 				if let Some(start_time) = f.start_time {
-					query.and_where(
-						Expr::col(Alias::new("timestamp")).gte(start_time.to_rfc3339()),
-					);
+					query
+						.and_where(Expr::col(Alias::new("timestamp")).gte(start_time.to_rfc3339()));
 				}
 				if let Some(end_time) = f.end_time {
-					query.and_where(
-						Expr::col(Alias::new("timestamp")).lte(end_time.to_rfc3339()),
-					);
+					query.and_where(Expr::col(Alias::new("timestamp")).lte(end_time.to_rfc3339()));
 				}
 			}
 
