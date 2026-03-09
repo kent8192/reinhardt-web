@@ -106,6 +106,9 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
+      - name: Clean coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
       - name: Run unit tests with coverage
         env:
           RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
@@ -218,6 +221,9 @@ jobs:
         uses: ./.github/actions/pull-docker-images
         with:
           images-file: .github/docker-images-intra-crate.txt
+
+      - name: Clean coverage artifacts
+        run: cargo llvm-cov clean --workspace
 
       - name: Run intra-crate integration tests with coverage
         env:
@@ -333,6 +339,9 @@ jobs:
         uses: ./.github/actions/pull-docker-images
         with:
           images-file: .github/docker-images-cross-crate.txt
+
+      - name: Clean coverage artifacts
+        run: cargo llvm-cov clean --workspace
 
       - name: Run cross-crate integration tests with coverage
         env:
