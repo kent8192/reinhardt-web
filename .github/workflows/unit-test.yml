@@ -71,6 +71,13 @@ jobs:
         with:
           tool: cargo-make
 
+      - name: Install mold linker and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold clang lld build-essential
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
@@ -100,6 +107,20 @@ jobs:
           rm -rf ~/.m2 || true
           echo "Disk usage after additional cleanup:"
           df -h
+
+      - name: Configure mold linker
+        run: |
+          cat > /tmp/clang-mold-wrapper << 'WRAPPER'
+          #!/bin/sh
+          exec clang -fuse-ld=mold "$@"
+          WRAPPER
+          chmod +x /tmp/clang-mold-wrapper
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "aarch64" ]; then
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
+          elif [ "$ARCH" = "x86_64" ]; then
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
+          fi
 
       - name: Pre-pull Docker images
         run: |
