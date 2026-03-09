@@ -294,11 +294,20 @@ jobs:
           # cargo-llvm-cov nextest not generating profraw with --test flag.
           # See: #2078
           source <(cargo llvm-cov show-env --export-prefix)
+          # Override profraw pattern: use continuous mode (%c) with per-binary
+          # merging (%m) to reduce profraw disk usage from ~18GB (one file per
+          # nextest process) to ~50MB (one file per unique binary).
+          export LLVM_PROFILE_FILE="${CARGO_TARGET_DIR}/llvm-cov-target/%m%c.profraw"
+          mkdir -p "${CARGO_TARGET_DIR}/llvm-cov-target"
+          echo "=== Disk before build ==="
+          df -h /tmp
           cargo test --no-run \
             --workspace \
             --test "*" \
             --exclude reinhardt-integration-tests \
             --all-features
+          echo "=== Disk after build, before test ==="
+          df -h /tmp
           cargo nextest run \
             --workspace \
             --test "*" \
@@ -306,6 +315,9 @@ jobs:
             -E "$FILTER_EXPR" \
             --all-features \
             --no-fail-fast
+          echo "=== Disk after test ==="
+          df -h /tmp
+          ls -lh "${CARGO_TARGET_DIR}/llvm-cov-target/"*.profraw 2>/dev/null | head -20 || echo "No profraw files found"
           cargo llvm-cov report \
             --codecov \
             --output-path /tmp/intra-crate-codecov.json
@@ -446,14 +458,26 @@ jobs:
           # cargo-llvm-cov nextest not generating profraw with --test flag.
           # See: #2078
           source <(cargo llvm-cov show-env --export-prefix)
+          # Override profraw pattern: use continuous mode (%c) with per-binary
+          # merging (%m) to reduce profraw disk usage from ~18GB (one file per
+          # nextest process) to ~50MB (one file per unique binary).
+          export LLVM_PROFILE_FILE="${CARGO_TARGET_DIR}/llvm-cov-target/%m%c.profraw"
+          mkdir -p "${CARGO_TARGET_DIR}/llvm-cov-target"
+          echo "=== Disk before build ==="
+          df -h /tmp
           cargo test --no-run \
             --package reinhardt-integration-tests \
             --all-features
+          echo "=== Disk after build, before test ==="
+          df -h /tmp
           cargo nextest run \
             --package reinhardt-integration-tests \
             --all-features \
             --no-fail-fast \
             "${FILTER_ARGS[@]}"
+          echo "=== Disk after test ==="
+          df -h /tmp
+          ls -lh "${CARGO_TARGET_DIR}/llvm-cov-target/"*.profraw 2>/dev/null | head -20 || echo "No profraw files found"
           cargo llvm-cov report \
             --codecov \
             --output-path /tmp/cross-crate-codecov.json
