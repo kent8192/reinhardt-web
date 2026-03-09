@@ -80,13 +80,9 @@ jobs:
 
       - name: Install mold linker and build dependencies
         run: |
-          # Wait for unattended-upgrades or other apt processes to finish
-          while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-            echo "Waiting for dpkg lock to be released..."
-            sleep 5
-          done
-          sudo apt-get update
-          sudo apt-get install -y mold clang lld build-essential
+          # Use DPkg::Lock::Timeout to wait for dpkg lock atomically
+          sudo apt-get update -o DPkg::Lock::Timeout=120
+          sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
 
@@ -209,13 +205,9 @@ jobs:
 
       - name: Install mold linker and build dependencies
         run: |
-          # Wait for unattended-upgrades or other apt processes to finish
-          while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-            echo "Waiting for dpkg lock to be released..."
-            sleep 5
-          done
-          sudo apt-get update
-          sudo apt-get install -y mold clang lld build-essential
+          # Use DPkg::Lock::Timeout to wait for dpkg lock atomically
+          sudo apt-get update -o DPkg::Lock::Timeout=120
+          sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
 
@@ -290,34 +282,13 @@ jobs:
           else
             FILTER_EXPR="not binary(/ui/)"
           fi
-          # Use show-env + separate build/test/report to work around
-          # cargo-llvm-cov nextest not generating profraw with --test flag.
-          # See: #2078
-          source <(cargo llvm-cov show-env --export-prefix)
-          echo "=== Coverage env ==="
-          echo "LLVM_PROFILE_FILE=$LLVM_PROFILE_FILE"
-          echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
-          echo "RUSTFLAGS=$RUSTFLAGS"
-          # Ensure profraw output directory exists (cargo llvm-cov clean
-          # may have removed it, and LLVM runtime does not create dirs)
-          mkdir -p "$(dirname "$LLVM_PROFILE_FILE")"
-          cargo test --no-run \
-            --workspace \
-            --test "*" \
-            --exclude reinhardt-integration-tests \
-            --all-features
-          cargo nextest run \
+          cargo llvm-cov nextest \
             --workspace \
             --test "*" \
             --exclude reinhardt-integration-tests \
             -E "$FILTER_EXPR" \
             --all-features \
-            --no-fail-fast
-          echo "=== Profraw search ==="
-          find "${CARGO_TARGET_DIR}" -name "*.profraw" 2>/dev/null | head -20
-          find "${CARGO_TARGET_DIR}" -name "*.profraw" 2>/dev/null | wc -l
-          df -h /tmp
-          cargo llvm-cov report \
+            --no-fail-fast \
             --codecov \
             --output-path /tmp/intra-crate-codecov.json
 
@@ -373,13 +344,9 @@ jobs:
 
       - name: Install mold linker and build dependencies
         run: |
-          # Wait for unattended-upgrades or other apt processes to finish
-          while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-            echo "Waiting for dpkg lock to be released..."
-            sleep 5
-          done
-          sudo apt-get update
-          sudo apt-get install -y mold clang lld build-essential
+          # Use DPkg::Lock::Timeout to wait for dpkg lock atomically
+          sudo apt-get update -o DPkg::Lock::Timeout=120
+          sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
 
@@ -453,32 +420,13 @@ jobs:
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
             FILTER_ARGS+=(-E "$NEXTEST_FILTER_EXPR")
           fi
-          # Use show-env + separate build/test/report to work around
-          # cargo-llvm-cov nextest not generating profraw with --test flag.
-          # See: #2078
-          source <(cargo llvm-cov show-env --export-prefix)
-          echo "=== Coverage env ==="
-          echo "LLVM_PROFILE_FILE=$LLVM_PROFILE_FILE"
-          echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
-          echo "RUSTFLAGS=$RUSTFLAGS"
-          # Ensure profraw output directory exists (cargo llvm-cov clean
-          # may have removed it, and LLVM runtime does not create dirs)
-          mkdir -p "$(dirname "$LLVM_PROFILE_FILE")"
-          cargo test --no-run \
-            --package reinhardt-integration-tests \
-            --all-features
-          cargo nextest run \
+          cargo llvm-cov nextest \
             --package reinhardt-integration-tests \
             --all-features \
             --no-fail-fast \
-            "${FILTER_ARGS[@]}"
-          echo "=== Profraw search ==="
-          find "${CARGO_TARGET_DIR}" -name "*.profraw" 2>/dev/null | head -20
-          find "${CARGO_TARGET_DIR}" -name "*.profraw" 2>/dev/null | wc -l
-          df -h /tmp
-          cargo llvm-cov report \
             --codecov \
-            --output-path /tmp/cross-crate-codecov.json
+            --output-path /tmp/cross-crate-codecov.json \
+            "${FILTER_ARGS[@]}"
 
       - name: Upload coverage to Codecov
         if: always()
