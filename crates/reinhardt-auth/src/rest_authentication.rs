@@ -827,6 +827,46 @@ mod tests {
 		);
 	}
 
+	#[rstest]
+	#[tokio::test]
+	async fn test_token_auth_unknown_token_returns_none() {
+		// Arrange
+		let mut auth = TokenAuthentication::new();
+		auth.add_token("known_token", "alice");
+
+		let mut headers = HeaderMap::new();
+		headers.insert("Authorization", "Token unknown_token".parse().unwrap());
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let result = RestAuthentication::authenticate(&auth, &request)
+			.await
+			.unwrap();
+
+		// Assert
+		assert!(result.is_none());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_token_auth_get_user_unknown_returns_none() {
+		// Arrange
+		let mut auth = TokenAuthentication::new();
+		auth.add_token("secret_token", "alice");
+
+		// Act
+		let result = auth.get_user("nonexistent_user").await.unwrap();
+
+		// Assert
+		assert!(result.is_none());
+	}
+
 	#[tokio::test]
 	async fn test_custom_token_config() {
 		let config = TokenAuthConfig {

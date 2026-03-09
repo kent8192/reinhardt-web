@@ -789,6 +789,65 @@ mod tests {
 
 	#[rstest::rstest]
 	#[tokio::test]
+	async fn test_create_user_with_email_missing_at_sign_returns_invalid_email() {
+		// Arrange
+		let hasher = Argon2Hasher::new();
+		let mut manager = UserManager::new(hasher);
+
+		let user_data = CreateUserData {
+			username: "testuser".to_string(),
+			email: "invalidemail.com".to_string(),
+			password: "password123".to_string(),
+			is_active: true,
+			is_admin: false,
+		};
+
+		// Act
+		let result = manager.create_user(user_data).await;
+
+		// Assert
+		assert_eq!(result.unwrap_err(), UserManagementError::InvalidEmail);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_create_user_with_email_missing_dot_returns_invalid_email() {
+		// Arrange
+		let hasher = Argon2Hasher::new();
+		let mut manager = UserManager::new(hasher);
+
+		let user_data = CreateUserData {
+			username: "testuser".to_string(),
+			email: "invalid@emailcom".to_string(),
+			password: "password123".to_string(),
+			is_active: true,
+			is_admin: false,
+		};
+
+		// Act
+		let result = manager.create_user(user_data).await;
+
+		// Assert
+		assert_eq!(result.unwrap_err(), UserManagementError::InvalidEmail);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_get_user_nonexistent_returns_user_not_found() {
+		// Arrange
+		let hasher = Argon2Hasher::new();
+		let manager = UserManager::new(hasher);
+		let nonexistent_id = Uuid::new_v4().to_string();
+
+		// Act
+		let result = manager.get_user(&nonexistent_id).await;
+
+		// Assert
+		assert_eq!(result.unwrap_err(), UserManagementError::UserNotFound);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
 	async fn test_create_user_with_empty_email_succeeds() {
 		// Arrange
 		let hasher = Argon2Hasher::new();

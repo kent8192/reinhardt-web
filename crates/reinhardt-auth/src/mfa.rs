@@ -492,6 +492,19 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
+	async fn test_get_user_unregistered_returns_none() {
+		// Arrange
+		let mfa = MFAAuthentication::new("TestApp");
+
+		// Act
+		let result = mfa.get_user("nonexistent_user").await.unwrap();
+
+		// Assert
+		assert!(result.is_none());
+	}
+
+	#[rstest]
+	#[tokio::test]
 	async fn test_get_user_different_usernames_produce_different_ids() {
 		// Arrange
 		let mfa = MFAAuthentication::new("TestApp");

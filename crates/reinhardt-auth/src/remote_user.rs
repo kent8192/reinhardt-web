@@ -257,6 +257,19 @@ mod tests {
 		assert!(!user.is_admin());
 	}
 
+	#[rstest]
+	#[tokio::test]
+	async fn test_get_user_always_returns_none() {
+		// Arrange
+		let auth = RemoteUserAuthentication::new();
+
+		// Act
+		let result = auth.get_user("any_user_id").await.unwrap();
+
+		// Assert
+		assert!(result.is_none());
+	}
+
 	#[tokio::test]
 	async fn test_empty_header() {
 		let auth = RemoteUserAuthentication::new();
