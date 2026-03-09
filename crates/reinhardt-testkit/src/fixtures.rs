@@ -66,6 +66,7 @@ pub mod server;
 pub mod resources;
 #[cfg(feature = "testcontainers")]
 pub mod shared_postgres;
+/// TestContainers setup and lifecycle management fixtures.
 #[cfg(feature = "testcontainers")]
 pub mod testcontainers;
 

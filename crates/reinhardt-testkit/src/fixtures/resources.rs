@@ -43,10 +43,14 @@ use testcontainers::core::WaitFor;
 pub struct PostgresSuiteResource {
 	// Note: Container must be held to keep it alive during test suite execution
 	// TestContainers automatically stops/removes containers when dropped
+	/// Running PostgreSQL container handle (kept alive for the test suite).
 	#[allow(dead_code)]
 	pub container: testcontainers::ContainerAsync<testcontainers::GenericImage>,
+	/// Connection pool to the PostgreSQL database.
 	pub pool: sqlx::postgres::PgPool,
+	/// Host port mapped to the container's PostgreSQL port.
 	pub port: u16,
+	/// Full database connection URL.
 	pub database_url: String,
 }
 
@@ -163,10 +167,14 @@ pub fn postgres_suite() -> SuiteGuard<PostgresSuiteResource> {
 pub struct MySqlSuiteResource {
 	// Note: Container must be held to keep it alive during test suite execution
 	// TestContainers automatically stops/removes containers when dropped
+	/// Running MySQL container handle (kept alive for the test suite).
 	#[allow(dead_code)]
 	pub container: testcontainers::ContainerAsync<testcontainers::GenericImage>,
+	/// Connection pool to the MySQL database.
 	pub pool: sqlx::mysql::MySqlPool,
+	/// Host port mapped to the container's MySQL port.
 	pub port: u16,
+	/// Full database connection URL.
 	pub database_url: String,
 }
 
