@@ -109,9 +109,27 @@ jobs:
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
 
+      # Configure mold linker via .cargo/config.toml instead of RUSTFLAGS.
+      # RUSTFLAGS conflicts with cargo-llvm-cov's internal -C instrument-coverage flag,
+      # causing profraw files to not be generated for some targets.
+      # See: #2078
+      - name: Configure mold linker for coverage
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "aarch64" ]; then
+            TARGET="aarch64-unknown-linux-gnu"
+          elif [ "$ARCH" = "x86_64" ]; then
+            TARGET="x86_64-unknown-linux-gnu"
+          fi
+          cat >> .cargo/config.toml << EOF
+
+          [target.${TARGET}]
+          linker = "clang"
+          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+          EOF
+
       - name: Run unit tests with coverage
         env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
         run: |
@@ -225,9 +243,23 @@ jobs:
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
 
+      - name: Configure mold linker for coverage
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "aarch64" ]; then
+            TARGET="aarch64-unknown-linux-gnu"
+          elif [ "$ARCH" = "x86_64" ]; then
+            TARGET="x86_64-unknown-linux-gnu"
+          fi
+          cat >> .cargo/config.toml << EOF
+
+          [target.${TARGET}]
+          linker = "clang"
+          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+          EOF
+
       - name: Run intra-crate integration tests with coverage
         env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
         run: |
@@ -343,9 +375,23 @@ jobs:
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
 
+      - name: Configure mold linker for coverage
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "aarch64" ]; then
+            TARGET="aarch64-unknown-linux-gnu"
+          elif [ "$ARCH" = "x86_64" ]; then
+            TARGET="x86_64-unknown-linux-gnu"
+          fi
+          cat >> .cargo/config.toml << EOF
+
+          [target.${TARGET}]
+          linker = "clang"
+          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+          EOF
+
       - name: Run cross-crate integration tests with coverage
         env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
         run: |
