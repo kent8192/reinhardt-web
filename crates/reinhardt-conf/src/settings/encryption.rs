@@ -8,17 +8,22 @@ use serde::{Deserialize, Serialize};
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Holds encrypted configuration data with its associated nonce.
 pub struct EncryptedConfig {
+	/// The AES-256-GCM encrypted ciphertext.
 	pub data: Vec<u8>,
+	/// The 12-byte nonce used for encryption.
 	pub nonce: Vec<u8>,
 }
 
 impl EncryptedConfig {
+	/// Creates a new `EncryptedConfig` from raw ciphertext and nonce bytes.
 	pub fn new(data: Vec<u8>, nonce: Vec<u8>) -> Self {
 		Self { data, nonce }
 	}
 }
 
+/// AES-256-GCM encryptor for configuration values.
 pub struct ConfigEncryptor {
 	cipher: Aes256Gcm,
 }
