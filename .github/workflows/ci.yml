@@ -81,7 +81,6 @@ jobs:
     outputs:
       runner: ${{ steps.set-runner.outputs.runner }}
       cargo-build-jobs: ${{ steps.set-runner.outputs.cargo-build-jobs }}
-      coverage-cargo-build-jobs: ${{ steps.set-runner.outputs.coverage-cargo-build-jobs }}
     steps:
       - name: Parse PR checkbox for self-hosted
         if: github.event_name == 'pull_request'
@@ -127,12 +126,10 @@ jobs:
             # Self-hosted: faster CI with AWS Spot instances
             echo 'runner=["self-hosted","linux","arm64","reinhardt-ci"]' >> "$GITHUB_OUTPUT"
             echo 'cargo-build-jobs=8' >> "$GITHUB_OUTPUT"
-            echo 'coverage-cargo-build-jobs=4' >> "$GITHUB_OUTPUT"
           else
             # GitHub-hosted: free, slower; CARGO_BUILD_JOBS=1 prevents OOM on 7GB RAM
             echo 'runner="ubuntu-latest"' >> "$GITHUB_OUTPUT"
             echo 'cargo-build-jobs=1' >> "$GITHUB_OUTPUT"
-            echo 'coverage-cargo-build-jobs=1' >> "$GITHUB_OUTPUT"
           fi
 
   # Detect which packages are affected by the PR changes.
@@ -167,6 +164,15 @@ jobs:
     needs: [determine-runner, check-branch-status]
     if: needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/clippy.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
+
+  wasm-check:
+    name: WASM Check
+    needs: [determine-runner, check-branch-status]
+    if: needs.check-branch-status.outputs.has-conflicts != 'true'
+    uses: ./.github/workflows/wasm-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
@@ -297,7 +303,7 @@ jobs:
     secrets: inherit
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
-      cargo-build-jobs: ${{ needs.determine-runner.outputs.coverage-cargo-build-jobs }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
       nextest-filter: ${{ needs.detect-affected.outputs.nextest-filter }}
       run-all: ${{ needs.detect-affected.outputs.run-all }}
 
@@ -357,6 +363,7 @@ jobs:
       - check
       - fmt
       - clippy
+      - wasm-check
       - publish-check
       - todo-check
       - security-audit
@@ -390,6 +397,7 @@ jobs:
             "check:${{ needs.check.result }}"
             "fmt:${{ needs.fmt.result }}"
             "clippy:${{ needs.clippy.result }}"
+            "wasm-check:${{ needs.wasm-check.result }}"
             "todo-check:${{ needs.todo-check.result }}"
             "security-audit:${{ needs.security-audit.result }}"
             "semver-check:${{ needs.semver-check.result }}"

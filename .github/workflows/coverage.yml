@@ -24,6 +24,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_INCREMENTAL: 0
   CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
@@ -35,8 +36,6 @@ jobs:
     name: Unit Test Coverage
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 60
-    env:
-      CARGO_TARGET_DIR: /tmp/cargo_target_unit_cov
     permissions:
       id-token: write
       contents: read
@@ -78,14 +77,6 @@ jobs:
         with:
           tool: nextest
 
-      - name: Install mold linker and build dependencies
-        run: |
-          # Use DPkg::Lock::Timeout to wait for dpkg lock atomically
-          sudo apt-get update -o DPkg::Lock::Timeout=120
-          sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
-          sudo apt-get clean
-          sudo rm -rf /var/lib/apt/lists/*
-
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
@@ -108,38 +99,6 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
-      - name: Clean coverage artifacts
-        run: |
-          cargo llvm-cov clean --workspace
-          # Remove llvm-cov-target entirely to force fresh instrumented build.
-          # On self-hosted runners, cached build artifacts in llvm-cov-target
-          # may lack -C instrument-coverage, producing zero profraw files.
-          rm -rf "${CARGO_TARGET_DIR}/llvm-cov-target"
-
-      # Configure mold linker via wrapper script set as the target linker.
-      # We cannot use config.toml rustflags because cargo-llvm-cov overrides
-      # them with its own RUSTFLAGS (which includes -C instrument-coverage).
-      # The linker config is separate and not affected by RUSTFLAGS precedence.
-      # See: #2078
-      - name: Configure mold linker for coverage
-        run: |
-          cat > /tmp/clang-mold-wrapper << 'WRAPPER'
-          #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
-          WRAPPER
-          chmod +x /tmp/clang-mold-wrapper
-          ARCH=$(uname -m)
-          if [ "$ARCH" = "aarch64" ]; then
-            TARGET="aarch64-unknown-linux-gnu"
-          elif [ "$ARCH" = "x86_64" ]; then
-            TARGET="x86_64-unknown-linux-gnu"
-          fi
-          cat >> .cargo/config.toml << EOF
-
-          [target.${TARGET}]
-          linker = "/tmp/clang-mold-wrapper"
-          EOF
-
       - name: Run unit tests with coverage
         env:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
@@ -149,12 +108,6 @@ jobs:
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
             FILTER_ARGS+=(-E "$NEXTEST_FILTER_EXPR")
           fi
-          # Remove build config that conflicts with cargo-llvm-cov:
-          # - rustflags: cargo-llvm-cov manages RUSTFLAGS internally
-          # - target-dir: must use CARGO_TARGET_DIR env var, not config
-          #   (cargo-llvm-cov may read config target-dir for its internal
-          #    llvm-cov-target path, causing profraw location mismatch)
-          sed -i '/^rustflags/d; /^target-dir/d' .cargo/config.toml
           cargo llvm-cov nextest \
             --workspace \
             --lib \
@@ -181,8 +134,6 @@ jobs:
     name: Intra-Crate Integration Coverage
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 120
-    env:
-      CARGO_TARGET_DIR: /tmp/cargo_target_intra_cov
     permissions:
       id-token: write
       contents: read
@@ -216,9 +167,8 @@ jobs:
 
       - name: Install mold linker and build dependencies
         run: |
-          # Use DPkg::Lock::Timeout to wait for dpkg lock atomically
-          sudo apt-get update -o DPkg::Lock::Timeout=120
-          sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
+          sudo apt-get update
+          sudo apt-get install -y mold clang lld build-essential
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
 
@@ -261,30 +211,6 @@ jobs:
         with:
           images-file: .github/docker-images-intra-crate.txt
 
-      - name: Clean coverage artifacts
-        run: |
-          cargo llvm-cov clean --workspace
-          rm -rf "${CARGO_TARGET_DIR}/llvm-cov-target"
-
-      - name: Configure mold linker for coverage
-        run: |
-          cat > /tmp/clang-mold-wrapper << 'WRAPPER'
-          #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
-          WRAPPER
-          chmod +x /tmp/clang-mold-wrapper
-          ARCH=$(uname -m)
-          if [ "$ARCH" = "aarch64" ]; then
-            TARGET="aarch64-unknown-linux-gnu"
-          elif [ "$ARCH" = "x86_64" ]; then
-            TARGET="x86_64-unknown-linux-gnu"
-          fi
-          cat >> .cargo/config.toml << EOF
-
-          [target.${TARGET}]
-          linker = "/tmp/clang-mold-wrapper"
-          EOF
-
       - name: Run intra-crate integration tests with coverage
         env:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
@@ -295,12 +221,6 @@ jobs:
           else
             FILTER_EXPR="not binary(/ui/)"
           fi
-          # Remove build config that conflicts with cargo-llvm-cov:
-          # - rustflags: cargo-llvm-cov manages RUSTFLAGS internally
-          # - target-dir: must use CARGO_TARGET_DIR env var, not config
-          #   (cargo-llvm-cov may read config target-dir for its internal
-          #    llvm-cov-target path, causing profraw location mismatch)
-          sed -i '/^rustflags/d; /^target-dir/d' .cargo/config.toml
           cargo llvm-cov nextest \
             --workspace \
             --test "*" \
@@ -328,8 +248,6 @@ jobs:
     name: Cross-Crate Integration Coverage
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 60
-    env:
-      CARGO_TARGET_DIR: /tmp/cargo_target_cross_cov
     permissions:
       id-token: write
       contents: read
@@ -363,9 +281,8 @@ jobs:
 
       - name: Install mold linker and build dependencies
         run: |
-          # Use DPkg::Lock::Timeout to wait for dpkg lock atomically
-          sudo apt-get update -o DPkg::Lock::Timeout=120
-          sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
+          sudo apt-get update
+          sudo apt-get install -y mold clang lld build-essential
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
 
@@ -408,30 +325,6 @@ jobs:
         with:
           images-file: .github/docker-images-cross-crate.txt
 
-      - name: Clean coverage artifacts
-        run: |
-          cargo llvm-cov clean --workspace
-          rm -rf "${CARGO_TARGET_DIR}/llvm-cov-target"
-
-      - name: Configure mold linker for coverage
-        run: |
-          cat > /tmp/clang-mold-wrapper << 'WRAPPER'
-          #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
-          WRAPPER
-          chmod +x /tmp/clang-mold-wrapper
-          ARCH=$(uname -m)
-          if [ "$ARCH" = "aarch64" ]; then
-            TARGET="aarch64-unknown-linux-gnu"
-          elif [ "$ARCH" = "x86_64" ]; then
-            TARGET="x86_64-unknown-linux-gnu"
-          fi
-          cat >> .cargo/config.toml << EOF
-
-          [target.${TARGET}]
-          linker = "/tmp/clang-mold-wrapper"
-          EOF
-
       - name: Run cross-crate integration tests with coverage
         env:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
@@ -441,12 +334,6 @@ jobs:
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
             FILTER_ARGS+=(-E "$NEXTEST_FILTER_EXPR")
           fi
-          # Remove build config that conflicts with cargo-llvm-cov:
-          # - rustflags: cargo-llvm-cov manages RUSTFLAGS internally
-          # - target-dir: must use CARGO_TARGET_DIR env var, not config
-          #   (cargo-llvm-cov may read config target-dir for its internal
-          #    llvm-cov-target path, causing profraw location mismatch)
-          sed -i '/^rustflags/d; /^target-dir/d' .cargo/config.toml
           cargo llvm-cov nextest \
             --package reinhardt-integration-tests \
             --all-features \
