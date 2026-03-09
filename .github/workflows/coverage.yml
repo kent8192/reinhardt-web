@@ -290,13 +290,23 @@ jobs:
           else
             FILTER_EXPR="not binary(/ui/)"
           fi
-          cargo llvm-cov nextest \
+          # Use show-env + separate build/test/report to work around
+          # cargo-llvm-cov nextest not generating profraw with --test flag.
+          # See: #2078
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo test --no-run \
+            --workspace \
+            --test "*" \
+            --exclude reinhardt-integration-tests \
+            --all-features
+          cargo nextest run \
             --workspace \
             --test "*" \
             --exclude reinhardt-integration-tests \
             -E "$FILTER_EXPR" \
             --all-features \
-            --no-fail-fast \
+            --no-fail-fast
+          cargo llvm-cov report \
             --codecov \
             --output-path /tmp/intra-crate-codecov.json
 
@@ -432,13 +442,21 @@ jobs:
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
             FILTER_ARGS+=(-E "$NEXTEST_FILTER_EXPR")
           fi
-          cargo llvm-cov nextest \
+          # Use show-env + separate build/test/report to work around
+          # cargo-llvm-cov nextest not generating profraw with --test flag.
+          # See: #2078
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo test --no-run \
+            --package reinhardt-integration-tests \
+            --all-features
+          cargo nextest run \
             --package reinhardt-integration-tests \
             --all-features \
             --no-fail-fast \
-            --codecov \
-            --output-path /tmp/cross-crate-codecov.json \
             "${FILTER_ARGS[@]}"
+          cargo llvm-cov report \
+            --codecov \
+            --output-path /tmp/cross-crate-codecov.json
 
       - name: Upload coverage to Codecov
         if: always()
