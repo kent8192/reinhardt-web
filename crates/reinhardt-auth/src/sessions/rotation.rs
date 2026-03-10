@@ -374,4 +374,61 @@ mod tests {
 		rotator.increment_request_count(&mut metadata);
 		assert_eq!(metadata.request_count, 2);
 	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_rotate_preserves_all_session_data() {
+		// Arrange
+		let backend = InMemorySessionBackend::new();
+		let mut session = Session::new(backend);
+		session.set("user_id", 42).unwrap();
+		session.set("role", "admin").unwrap();
+		session.set("theme", "dark").unwrap();
+		let old_key = session.get_or_create_key().to_string();
+		let rotator = SessionRotator::new(RotationPolicy::OnLogin);
+
+		// Act
+		rotator.rotate(&mut session).await.unwrap();
+
+		// Assert
+		assert_ne!(session.get_or_create_key(), old_key);
+		let user_id: i32 = session.get("user_id").unwrap().unwrap();
+		assert_eq!(user_id, 42);
+		let role: String = session.get("role").unwrap().unwrap();
+		assert_eq!(role, "admin");
+		let theme: String = session.get("theme").unwrap().unwrap();
+		assert_eq!(theme, "dark");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_rotation_metadata_stored() {
+		// Arrange
+		let backend = InMemorySessionBackend::new();
+		let mut session = Session::new(backend);
+		session.set("user_id", 1).unwrap();
+		let rotator = SessionRotator::new(RotationPolicy::OnLogin);
+
+		// Act
+		rotator.rotate(&mut session).await.unwrap();
+
+		// Assert
+		let metadata: RotationMetadata = session.get("_rotation_metadata").unwrap().unwrap();
+		assert_eq!(metadata.request_count, 0);
+		assert!(metadata.last_rotation <= Utc::now());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_never_policy_no_rotation() {
+		// Arrange
+		let rotator = SessionRotator::new(RotationPolicy::Never);
+		let metadata = RotationMetadata::default();
+
+		// Act
+		let should_rotate = rotator.should_rotate(&metadata);
+
+		// Assert
+		assert!(!should_rotate);
+	}
 }
