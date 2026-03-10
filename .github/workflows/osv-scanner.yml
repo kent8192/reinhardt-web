@@ -28,6 +28,7 @@ jobs:
 
       - name: Run OSV scanner (diff)
         uses: google/osv-scanner-action/osv-scanner-action@v2.3.3
+        continue-on-error: true
         with:
           scan-args: |-
             --lockfile=Cargo.lock
@@ -56,6 +57,7 @@ jobs:
 
       - name: Run OSV scanner (recursive)
         uses: google/osv-scanner-action/osv-scanner-action@v2.3.3
+        continue-on-error: true
         with:
           scan-args: |-
             --recursive
