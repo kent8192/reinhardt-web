@@ -252,11 +252,6 @@ jobs:
         with:
           images-file: .github/docker-images-intra-crate.txt
 
-      - name: Clean coverage artifacts
-        run: |
-          cargo llvm-cov clean --workspace
-          rm -rf "${CARGO_TARGET_DIR}/llvm-cov-target"
-
       - name: Configure cargo for coverage
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
@@ -278,15 +273,13 @@ jobs:
           linker = "/tmp/clang-mold-wrapper"
           EOF
 
-      - name: Set coverage environment
-        run: |
-          cargo llvm-cov show-env 2>/dev/null | sed "s/='\(.*\)'$/=\1/" >> "$GITHUB_ENV"
-
       - name: Run intra-crate integration tests with coverage
         env:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
         run: |
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo llvm-cov clean --workspace
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
             FILTER_EXPR="(not binary(/ui/)) & ($NEXTEST_FILTER_EXPR)"
           else
@@ -299,9 +292,6 @@ jobs:
             -E "$FILTER_EXPR" \
             --all-features \
             --no-fail-fast
-
-      - name: Generate intra-crate coverage report
-        run: |
           cargo llvm-cov report \
             --codecov \
             --output-path /tmp/intra-crate-codecov.json
@@ -309,8 +299,8 @@ jobs:
       - name: Debug profraw file locations
         if: failure()
         run: |
-          echo "=== LLVM_PROFILE_FILE: ${LLVM_PROFILE_FILE} ==="
-          echo "=== CARGO_LLVM_COV_TARGET_DIR: ${CARGO_LLVM_COV_TARGET_DIR} ==="
+          echo "=== show-env output ==="
+          cargo llvm-cov show-env 2>/dev/null || echo "(show-env failed)"
           echo "=== Searching for profraw files ==="
           find "${CARGO_TARGET_DIR}" -name "*.profraw" -type f 2>/dev/null | head -20 || echo "No profraw in CARGO_TARGET_DIR"
           find /tmp -maxdepth 3 -name "*.profraw" -type f 2>/dev/null | head -20 || echo "No profraw in /tmp"
@@ -415,11 +405,6 @@ jobs:
         with:
           images-file: .github/docker-images-cross-crate.txt
 
-      - name: Clean coverage artifacts
-        run: |
-          cargo llvm-cov clean --workspace
-          rm -rf "${CARGO_TARGET_DIR}/llvm-cov-target"
-
       - name: Configure cargo for coverage
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
@@ -441,15 +426,13 @@ jobs:
           linker = "/tmp/clang-mold-wrapper"
           EOF
 
-      - name: Set coverage environment
-        run: |
-          cargo llvm-cov show-env 2>/dev/null | sed "s/='\(.*\)'$/=\1/" >> "$GITHUB_ENV"
-
       - name: Run cross-crate integration tests with coverage
         env:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
         run: |
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo llvm-cov clean --workspace
           FILTER_ARGS=()
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
             FILTER_ARGS+=(-E "$NEXTEST_FILTER_EXPR")
@@ -459,9 +442,6 @@ jobs:
             --all-features \
             --no-fail-fast \
             "${FILTER_ARGS[@]}"
-
-      - name: Generate cross-crate coverage report
-        run: |
           cargo llvm-cov report \
             --codecov \
             --output-path /tmp/cross-crate-codecov.json
@@ -469,8 +449,8 @@ jobs:
       - name: Debug profraw file locations
         if: failure()
         run: |
-          echo "=== LLVM_PROFILE_FILE: ${LLVM_PROFILE_FILE} ==="
-          echo "=== CARGO_LLVM_COV_TARGET_DIR: ${CARGO_LLVM_COV_TARGET_DIR} ==="
+          echo "=== show-env output ==="
+          cargo llvm-cov show-env 2>/dev/null || echo "(show-env failed)"
           echo "=== Searching for profraw files ==="
           find "${CARGO_TARGET_DIR}" -name "*.profraw" -type f 2>/dev/null | head -20 || echo "No profraw in CARGO_TARGET_DIR"
           find /tmp -maxdepth 3 -name "*.profraw" -type f 2>/dev/null | head -20 || echo "No profraw in /tmp"
