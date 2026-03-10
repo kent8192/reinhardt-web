@@ -592,9 +592,8 @@ pub use reinhardt_views::viewsets::{
 // Re-export routers
 #[cfg(not(target_arch = "wasm32"))]
 pub use reinhardt_urls::routers::{
-	DefaultRouter, PathMatcher, PathPattern, Route, Router, ServerRouter,
-	UrlPatternsRegistration, clear_router, get_router, is_router_registered, register_router,
-	register_router_arc,
+	DefaultRouter, PathMatcher, PathPattern, Route, Router, ServerRouter, UrlPatternsRegistration,
+	clear_router, get_router, is_router_registered, register_router, register_router_arc,
 };
 
 // Re-export client-router types (requires client-router feature)
@@ -915,7 +914,6 @@ pub mod prelude {
 		ServerRouter,
 		SingleObjectMixin,
 		StatusCode,
-		UnifiedRouter,
 		View,
 		ViewResult,
 		ViewSet,
@@ -925,6 +923,10 @@ pub mod prelude {
 		is_router_registered,
 		register_router,
 	};
+
+	// Client-router types (requires client-router feature)
+	#[cfg(feature = "client-router")]
+	pub use crate::UnifiedRouter;
 
 	// External dependencies (via core)
 	#[cfg(feature = "core")]
