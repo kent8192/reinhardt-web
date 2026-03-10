@@ -250,8 +250,8 @@ flowchart TD
     A[New test to write] --> B{How many Reinhardt crates involved?}
     B -->|"2+ crates"| C["Cross-crate integration test<br/>Location: tests/ at repo root"]
     B -->|"1 crate"| D{How many distinct components tested?}
-    D -->|"1 component"| E["Unit test<br/>Location: inline #[cfg(test)] or crate/tests/"]
-    D -->|"2+ components"| F["Within-crate integration test<br/>Location: crate/tests/"]
+    D -->|"1 component"| E["Unit test<br/>Location: inline #[cfg(test)] or crates/reinhardt-~/tests/"]
+    D -->|"2+ components"| F["Within-crate integration test<br/>Location: crates/reinhardt-~/tests/"]
 ```
 
 ---
