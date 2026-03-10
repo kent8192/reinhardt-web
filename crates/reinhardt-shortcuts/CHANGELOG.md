@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-rc.4...reinhardt-shortcuts@v0.1.0-rc.6) - 2026-03-10
+
+### Documentation
+
+- add missing doc comments for public API modules and types
+- *(shortcuts)* add missing public API documentation
+
+### Fixed
+
+- *(release)* bump all crates to v0.1.0-rc.6 to skip yanked reinhardt-query-macros rc.5
+
 ## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-rc.4...reinhardt-shortcuts@v0.1.0-rc.5) - 2026-03-07
 
 ### Documentation

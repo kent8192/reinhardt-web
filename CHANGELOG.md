@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.4...reinhardt-web@v0.1.0-rc.6) - 2026-03-10
+
+### Added
+
+- *(examples)* introduce Injected<T> usage in di-showcase
+- *(infra)* add Packer template for Golden AMI builds
+- *(ci)* add AMI build workflow for Golden AMI
+- *(infra)* migrate to Golden AMI + Graviton (arm64) Spot instances
+
+### Changed
+
+- *(examples)* remove unnecessary r# prefix from HTML attribute names
+- *(ci)* update workflow runner labels from x64 to arm64
+
+### Documentation
+
+- *(stability)* relax SP-1 API freeze and add SP-6 non-breaking addition review
+- *(claude)* add SP-6 non-breaking addition policy to quick reference
+- *(pr)* add three-dot diff rule for PR verification (RP-5)
+- *(pr)* replace Japanese text with English in RP-5
+- *(tutorial)* migrate part 1 code examples from use_state/spawn_local to use_action
+- *(tutorial)* migrate part 2 code examples from use_state/spawn_local to use_action
+- *(tutorial)* migrate part 3 code examples from use_state/spawn_local to use_action
+- *(tutorial)* migrate part 4 code examples from spawn_local to use_action
+- *(readme)* fix broken links, code examples, and model attribute references
+- *(readme)* replace unimplemented!() with realistic query example
+- *(core)* add missing public API documentation
+- *(branding)* update OGP image with branded design featuring lion logo
+- *(branding)* use rust red title with differentiated color palette
+- *(conf)* add missing documentation for settings, dynamic, and types modules
+- *(utils)* add missing documentation for cache pubsub message fields
+
+### Fixed
+
+- *(ci)* enforce semver-check during RC phase instead of skipping
+- *(ci)* remove non-existent paths from CODEOWNERS
+- *(macros)* replace skeleton tests with meaningful assertions in pre_validate
+- *(examples)* add force-link for library crate in di-showcase manage.rs
+- remove develop/0.2.0 content accidentally merged via PR [[#1918](https://github.com/kent8192/reinhardt-web/issues/1918)](https://github.com/kent8192/reinhardt-web/issues/1918)
+- *(test)* add missing redirect_uri argument to oauth2 exchange_code tests
+- restore non-crate develop/0.2.0 changes that are harmless or beneficial
+- *(test)* restore orphaned apply_update and pre_validate module declarations
+- *(ci)* prevent UI Tests from running when Phase 1 checks fail
+- *(db)* add identifier quoting to F::to_sql() and FieldRef::to_sql()
+- *(db)* always quote SQL identifiers in F::to_sql() and annotation alias
+- *(infra)* add data_type to SSM parameter for Launch Template resolution
+- *(ci)* resolve Packer 1.15.0 validation failure for runner_arch variable
+- *(ci)* escape shell variables in Packer HCL2 inline scripts
+- *(ci)* enable universe repository for x64 AMI package installation
+- *(ci)* run semgrep via docker run instead of container directive
+- *(web)* add cfg gate for reinhardt_macros WASM re-export
+- *(ci)* isolate coverage job target dirs and replace sed with config overwrite
+- *(ci)* use two-phase cargo-llvm-cov to resolve ARM64 profraw generation
+- *(ci)* add postgres:16-alpine to docker image pre-pull lists
+- *(ci)* use show-env approach for integration coverage on ARM64
+- *(ci)* pipe show-env output directly to GITHUB_ENV
+- *(ci)* strip single quotes from show-env output for GITHUB_ENV
+- *(ci)* use single-step source approach for integration coverage
+- *(ci)* unify coverage to cargo-llvm-cov-nextest and add RUST_MIN_STACK
+- *(ci)* separate coverage and examples tests from CI workflow
+- *(ci)* add memory optimizations and increase unit test partitions
+- *(release)* bump all crates to v0.1.0-rc.6 to skip yanked reinhardt-query-macros rc.5
+
+### Maintenance
+
+- *(labels)* add rc-addition label for SP-6 non-breaking additions
+- *(semver)* update comments to reflect SP-1 relaxation policy
+- *(serena)* clean up project.yml formatting
+- add develop leak guard to detect indirect develop/* merges
+- remove duplicate lowercase PR template
+- sync PR template content
+- *(release-plz)* auto-close stale release-plz PRs before creating new one
+- auto-assign self-hosted runner for release-plz PRs
+- add WASM build check workflow for reinhardt-web
+- *(coverage)* add diagnostic steps for profraw debugging
+
+### Reverted
+
+- *(release-plz)* remove redundant stale PR cleanup step
+
+### Styling
+
+- *(examples)* apply rustfmt to examples-twitter components
+- *(examples)* apply reinhardt-admin fmt to examples-twitter common.rs
+- apply format fixes after main merge
+- format assert_eq macro in concat function test
+- *(db)* fix formatting alignment in migrations and ORM modules
+
+### Testing
+
+- *(db)* add field mapping and migrations integration tests
+
 ## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.4...reinhardt-web@v0.1.0-rc.5) - 2026-03-07
 
 ### Added
