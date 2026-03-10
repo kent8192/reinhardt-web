@@ -280,7 +280,7 @@ jobs:
 
       - name: Set coverage environment
         run: |
-          cargo llvm-cov show-env >> "$GITHUB_ENV"
+          cargo llvm-cov show-env 2>/dev/null | sed "s/='\(.*\)'$/=\1/" >> "$GITHUB_ENV"
 
       - name: Run intra-crate integration tests with coverage
         env:
@@ -443,7 +443,7 @@ jobs:
 
       - name: Set coverage environment
         run: |
-          cargo llvm-cov show-env >> "$GITHUB_ENV"
+          cargo llvm-cov show-env 2>/dev/null | sed "s/='\(.*\)'$/=\1/" >> "$GITHUB_ENV"
 
       - name: Run cross-crate integration tests with coverage
         env:
