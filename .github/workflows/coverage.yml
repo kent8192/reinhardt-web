@@ -280,12 +280,7 @@ jobs:
 
       - name: Set coverage environment
         run: |
-          source <(cargo llvm-cov show-env --export-prefix)
-          echo "LLVM_PROFILE_FILE=${LLVM_PROFILE_FILE}" >> "$GITHUB_ENV"
-          echo "RUSTFLAGS=${RUSTFLAGS}" >> "$GITHUB_ENV"
-          echo "CARGO_LLVM_COV=1" >> "$GITHUB_ENV"
-          echo "CARGO_LLVM_COV_SHOW_ENV=1" >> "$GITHUB_ENV"
-          echo "CARGO_LLVM_COV_TARGET_DIR=${CARGO_LLVM_COV_TARGET_DIR}" >> "$GITHUB_ENV"
+          cargo llvm-cov show-env >> "$GITHUB_ENV"
 
       - name: Run intra-crate integration tests with coverage
         env:
@@ -448,12 +443,7 @@ jobs:
 
       - name: Set coverage environment
         run: |
-          source <(cargo llvm-cov show-env --export-prefix)
-          echo "LLVM_PROFILE_FILE=${LLVM_PROFILE_FILE}" >> "$GITHUB_ENV"
-          echo "RUSTFLAGS=${RUSTFLAGS}" >> "$GITHUB_ENV"
-          echo "CARGO_LLVM_COV=1" >> "$GITHUB_ENV"
-          echo "CARGO_LLVM_COV_SHOW_ENV=1" >> "$GITHUB_ENV"
-          echo "CARGO_LLVM_COV_TARGET_DIR=${CARGO_LLVM_COV_TARGET_DIR}" >> "$GITHUB_ENV"
+          cargo llvm-cov show-env >> "$GITHUB_ENV"
 
       - name: Run cross-crate integration tests with coverage
         env:
