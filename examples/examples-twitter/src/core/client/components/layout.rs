@@ -18,7 +18,7 @@
 use crate::apps::auth::shared::types::UserInfo;
 use crate::core::client::components::common::theme_toggle;
 use crate::core::client::components::icons;
-use reinhardt::pages::component::{Component, PageElement, IntoPage, Page};
+use reinhardt::pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt::pages::page;
 use reinhardt::pages::router::Link;
 

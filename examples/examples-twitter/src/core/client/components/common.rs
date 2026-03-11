@@ -19,7 +19,7 @@
 
 use crate::core::client::components::icons;
 use reinhardt::pages::Signal;
-use reinhardt::pages::component::{PageElement, IntoPage, Page};
+use reinhardt::pages::component::{IntoPage, Page, PageElement};
 use reinhardt::pages::page;
 
 #[cfg(client)]
@@ -637,11 +637,7 @@ pub fn empty() -> Page {
 
 /// Divider component
 pub fn divider() -> Page {
-	page!(|| {
-		div {
-			class: "divider",
-		}
-	})()
+	page!(|| { div { class: "divider" } })()
 }
 
 /// Badge component
