@@ -519,6 +519,15 @@ async fn create_snippet(
     // 2. Save to database (using Reinhardt ORM)
     // let snippet = Manager::<Snippet>::new().create(...).await?;
 
+    // Demo mode: Create a mock snippet with a sample ID
+    let snippet = Snippet {
+        id: 4,
+        title: serializer.title.clone(),
+        code: serializer.code.clone(),
+        language: serializer.language.clone(),
+        created_at: Utc::now(),
+    };
+
     // 3. Return response with created status
     let response_data = json!({
         "message": "Snippet created",
