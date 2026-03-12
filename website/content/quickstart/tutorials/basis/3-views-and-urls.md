@@ -1295,6 +1295,8 @@ The server functions pattern demonstrated in this tutorial provides:
 
 The examples mentioned above demonstrate production-ready patterns for each approach.
 
+> **Note**: The example project (`examples-tutorial-basis`) also includes a REST API layer in `apps/polls/` (views, serializers, URLs) demonstrating the traditional server-side approach alongside the reinhardt-pages approach covered in this tutorial. For REST API patterns, see the [REST API Tutorial series](/quickstart/tutorials/rest/).
+
 ## Summary
 
 In this tutorial, you learned:
