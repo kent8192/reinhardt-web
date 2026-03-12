@@ -236,8 +236,8 @@ pub struct SnippetSerializer {
 
 	#[validate(length(
 		min = 1,
-		max = 65535,
-		message = "Code must be between 1 and 65535 characters"
+		max = 10000,
+		message = "Code must be between 1 and 10000 characters"
 	))]
 	pub code: String,
 
