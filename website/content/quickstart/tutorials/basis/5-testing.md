@@ -618,6 +618,8 @@ In this tutorial, you learned:
 - Best practices for test organization and isolation
 - The importance of automatic cleanup via RAII
 
+> **Note**: The example project also includes WASM component tests in `tests/wasm/` using `wasm-bindgen-test`. These tests verify client-side rendering with mock infrastructure. For WASM testing patterns, see the reinhardt-pages documentation.
+
 ## What's Next?
 
 Now that we have a well-tested application, let's add static files (CSS, JavaScript, images) to improve the user interface.
