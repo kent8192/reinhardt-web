@@ -67,7 +67,9 @@ impl BaseCommand for StartProjectCommand {
 		// Determine project type
 		let is_restful = ctx.has_option("restful");
 		let with_pages = ctx.has_option("with-pages")
-			|| ctx.option("type").map_or(false, |t| t == "mtv" || t == "pages");
+			|| ctx
+				.option("type")
+				.is_some_and(|t| t == "mtv" || t == "pages");
 
 		// Validate exclusive flags
 		if is_restful && with_pages {
@@ -197,7 +199,9 @@ impl BaseCommand for StartAppCommand {
 		// Determine app type and structure
 		let is_restful = ctx.has_option("restful");
 		let with_pages = ctx.has_option("with-pages")
-			|| ctx.option("type").map_or(false, |t| t == "mtv" || t == "pages");
+			|| ctx
+				.option("type")
+				.is_some_and(|t| t == "mtv" || t == "pages");
 		let is_workspace = ctx.has_option("workspace");
 
 		// Validate exclusive flags
