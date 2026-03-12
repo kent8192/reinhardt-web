@@ -236,8 +236,8 @@ pub struct SnippetSerializer {
 
 	#[validate(length(
 		min = 1,
-		max = 65535,
-		message = "Code must be between 1 and 65535 characters"
+		max = 10000,
+		message = "Code must be between 1 and 10000 characters"
 	))]
 	pub code: String,
 
@@ -505,7 +505,7 @@ Typical validation workflow in an API view with Reinhardt:
 ```rust
 use json::json;
 use reinhardt::core::serde::json;
-use reinhardt::http::ViewResult;
+use reinhardt::ViewResult;
 use reinhardt::{post, Json, Response, StatusCode};
 use validator::Validate;
 
@@ -518,6 +518,15 @@ async fn create_snippet(
 
     // 2. Save to database (using Reinhardt ORM)
     // let snippet = Manager::<Snippet>::new().create(...).await?;
+
+    // Demo mode: Create a mock snippet with a sample ID
+    let snippet = Snippet {
+        id: 4,
+        title: serializer.title.clone(),
+        code: serializer.code.clone(),
+        language: serializer.language.clone(),
+        created_at: Utc::now(),
+    };
 
     // 3. Return response with created status
     let response_data = json!({
