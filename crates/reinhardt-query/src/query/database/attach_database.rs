@@ -208,4 +208,64 @@ mod tests {
 		assert!(stmt.file_path.is_none());
 		assert!(stmt.database_name.is_none());
 	}
+
+	#[rstest]
+	fn test_attach_database_build_sql() {
+		// Arrange
+		let mut stmt = AttachDatabaseStatement::new();
+		stmt.file_path("path/to/db.sqlite").as_name("auxiliary");
+
+		// Act
+		let (sql, values) = stmt.build_any(&crate::backend::SqliteQueryBuilder);
+
+		// Assert
+		assert_eq!(sql, r#"ATTACH DATABASE 'path/to/db.sqlite' AS "auxiliary""#);
+		assert!(values.0.is_empty());
+	}
+
+	#[rstest]
+	fn test_attach_database_file_path_with_single_quotes() {
+		// Arrange
+		let mut stmt = AttachDatabaseStatement::new();
+		stmt.file_path("/path/to/file's.db").as_name("auxiliary");
+
+		// Act
+		let (sql, _) = stmt.build_any(&crate::backend::SqliteQueryBuilder);
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"ATTACH DATABASE '/path/to/file''s.db' AS "auxiliary""#
+		);
+	}
+
+	#[rstest]
+	fn test_attach_database_db_name_with_double_quotes() {
+		// Arrange
+		let mut stmt = AttachDatabaseStatement::new();
+		stmt.file_path("path/to/db.sqlite").as_name(r#"my"db"#);
+
+		// Act
+		let (sql, _) = stmt.build_any(&crate::backend::SqliteQueryBuilder);
+
+		// Assert
+		assert_eq!(sql, r#"ATTACH DATABASE 'path/to/db.sqlite' AS "my""db""#);
+	}
+
+	#[rstest]
+	fn test_attach_database_both_special_chars() {
+		// Arrange
+		let mut stmt = AttachDatabaseStatement::new();
+		stmt.file_path("/tmp/user's data/test.db")
+			.as_name(r#"special"name"#);
+
+		// Act
+		let (sql, _) = stmt.build_any(&crate::backend::SqliteQueryBuilder);
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"ATTACH DATABASE '/tmp/user''s data/test.db' AS "special""name""#
+		);
+	}
 }

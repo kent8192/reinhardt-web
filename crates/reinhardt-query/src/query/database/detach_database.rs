@@ -163,4 +163,44 @@ mod tests {
 			"test_db"
 		);
 	}
+
+	#[rstest]
+	fn test_detach_database_build_sql() {
+		// Arrange
+		let mut stmt = DetachDatabaseStatement::new();
+		stmt.name("auxiliary");
+
+		// Act
+		let (sql, values) = stmt.build_any(&crate::backend::SqliteQueryBuilder);
+
+		// Assert
+		assert_eq!(sql, r#"DETACH DATABASE "auxiliary""#);
+		assert!(values.0.is_empty());
+	}
+
+	#[rstest]
+	fn test_detach_database_db_name_with_double_quotes() {
+		// Arrange
+		let mut stmt = DetachDatabaseStatement::new();
+		stmt.name(r#"my"db"#);
+
+		// Act
+		let (sql, _) = stmt.build_any(&crate::backend::SqliteQueryBuilder);
+
+		// Assert
+		assert_eq!(sql, r#"DETACH DATABASE "my""db""#);
+	}
+
+	#[rstest]
+	fn test_detach_database_db_name_with_special_chars() {
+		// Arrange
+		let mut stmt = DetachDatabaseStatement::new();
+		stmt.name(r#"test"schema"name"#);
+
+		// Act
+		let (sql, _) = stmt.build_any(&crate::backend::SqliteQueryBuilder);
+
+		// Assert
+		assert_eq!(sql, r#"DETACH DATABASE "test""schema""name""#);
+	}
 }
