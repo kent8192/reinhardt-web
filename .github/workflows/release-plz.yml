@@ -23,6 +23,7 @@ jobs:
     name: Release PR
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     concurrency:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
@@ -73,7 +74,9 @@ jobs:
 
   release-plz-release:
     name: Release
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     concurrency:
       group: release-plz-release-${{ github.ref }}
       cancel-in-progress: false
