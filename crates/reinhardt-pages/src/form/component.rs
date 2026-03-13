@@ -626,7 +626,7 @@ impl FormComponent {
 
 						// Get validator from registry
 						let registry = ValidatorRegistry::global();
-						let registry = registry.lock().unwrap();
+						let registry = registry.lock().unwrap_or_else(|e| e.into_inner());
 
 						match registry.validate(validator_id, &value, params) {
 							Ok(_) => {
