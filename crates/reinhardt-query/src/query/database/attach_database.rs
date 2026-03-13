@@ -4,6 +4,7 @@
 //! ATTACH DATABASE is a SQLite-specific feature for connecting additional database files.
 
 use crate::types::{DynIden, IntoIden};
+use crate::value::Value;
 
 use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
@@ -112,10 +113,10 @@ impl QueryStatementBuilder for AttachDatabaseStatement {
 		{
 			panic!("ATTACH DATABASE is SQLite-specific and not supported in MySQL");
 		}
-		if (query_builder as &dyn Any)
-			.downcast_ref::<crate::backend::SqliteQueryBuilder>()
-			.is_some()
+		if let Some(sqlite_builder) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>()
 		{
+			use crate::backend::QueryBuilder as _;
 			let file_path = self
 				.file_path
 				.as_deref()
@@ -124,16 +125,14 @@ impl QueryStatementBuilder for AttachDatabaseStatement {
 				.database_name
 				.as_ref()
 				.expect("ATTACH DATABASE requires a schema name (AS clause)");
-			let quote = query_builder.quote_char();
-			// Escape single quotes in file_path to prevent SQL injection
-			let escaped_file_path = file_path.replace('\'', "''");
-			// Escape quote characters in db_name identifier to prevent SQL injection
-			let escaped_db_name = db_name
-				.to_string()
-				.replace(quote, &format!("{}{}", quote, quote));
+			// Reuse Value::to_sql_literal for proper string literal escaping
+			let escaped_file_path =
+				Value::String(Some(Box::new(file_path.to_string()))).to_sql_literal();
+			// Reuse escape_identifier for proper identifier escaping
+			let escaped_db_name = sqlite_builder.escape_identifier(&db_name.to_string());
 			let sql = format!(
-				"ATTACH DATABASE '{}' AS {}{}{}",
-				escaped_file_path, quote, escaped_db_name, quote,
+				"ATTACH DATABASE {} AS {}",
+				escaped_file_path, escaped_db_name,
 			);
 			return (sql, crate::value::Values::new());
 		}

@@ -89,20 +89,17 @@ impl QueryStatementBuilder for DetachDatabaseStatement {
 		{
 			panic!("DETACH DATABASE is SQLite-specific and not supported in MySQL");
 		}
-		if (query_builder as &dyn Any)
-			.downcast_ref::<crate::backend::SqliteQueryBuilder>()
-			.is_some()
+		if let Some(sqlite_builder) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>()
 		{
+			use crate::backend::QueryBuilder as _;
 			let db_name = self
 				.database_name
 				.as_ref()
 				.expect("DETACH DATABASE requires a database name");
-			let quote = query_builder.quote_char();
-			// Escape quote characters in db_name identifier to prevent SQL injection
-			let escaped_db_name = db_name
-				.to_string()
-				.replace(quote, &format!("{}{}", quote, quote));
-			let sql = format!("DETACH DATABASE {}{}{}", quote, escaped_db_name, quote,);
+			// Reuse escape_identifier for proper identifier escaping
+			let escaped_db_name = sqlite_builder.escape_identifier(&db_name.to_string());
+			let sql = format!("DETACH DATABASE {}", escaped_db_name);
 			return (sql, crate::value::Values::new());
 		}
 		if (query_builder as &dyn Any)
