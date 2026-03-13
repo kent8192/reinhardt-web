@@ -348,7 +348,7 @@ mod user_model_tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "testuser".to_string(),
-			email: "test@example.com".to_string(),
+			email: Some("test@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -399,7 +399,7 @@ mod user_model_tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "user".to_string(),
-			email: "user@example.com".to_string(),
+			email: Some("user@example.com".to_string()),
 			is_active,
 			is_admin,
 			is_staff,
@@ -491,7 +491,7 @@ mod database_integration_tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "session_user".to_string(),
-			email: "session@example.com".to_string(),
+			email: Some("session@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,

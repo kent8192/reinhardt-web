@@ -53,7 +53,7 @@ use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 /// #         Ok(Some(Box::new(SimpleUser {
 /// #             id: Uuid::new_v4(),
 /// #             username: "testuser".to_string(),
-/// #             email: "test@example.com".to_string(),
+/// #             email: Some("test@example.com".to_string()),
 /// #             is_active: true,
 /// #             is_admin: false,
 /// #             is_staff: false,
@@ -136,7 +136,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
 	/// #         Ok(Some(Box::new(SimpleUser {
 	/// #             id: Uuid::new_v4(),
 	/// #             username: "testuser".to_string(),
-	/// #             email: "test@example.com".to_string(),
+	/// #             email: Some("test@example.com".to_string()),
 	/// #             is_active: true,
 	/// #             is_admin: false,
 	/// #             is_staff: false,
@@ -306,7 +306,7 @@ mod tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "testuser".to_string(),
-			email: "test@example.com".to_string(),
+			email: Some("test@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,

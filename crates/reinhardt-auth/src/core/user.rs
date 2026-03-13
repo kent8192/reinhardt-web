@@ -16,7 +16,7 @@ use uuid::Uuid;
 /// let user = SimpleUser {
 ///     id: Uuid::new_v4(),
 ///     username: "alice".to_string(),
-///     email: "alice@example.com".to_string(),
+///     email: Some("alice@example.com".to_string()),
 ///     is_active: true,
 ///     is_admin: false,
 ///     is_staff: false,
@@ -81,7 +81,7 @@ pub trait User: Send + Sync {
 /// let user = SimpleUser {
 ///     id: Uuid::new_v4(),
 ///     username: "bob".to_string(),
-///     email: "bob@example.com".to_string(),
+///     email: Some("bob@example.com".to_string()),
 ///     is_active: true,
 ///     is_admin: true,
 ///     is_staff: true,
@@ -98,8 +98,8 @@ pub struct SimpleUser {
 	pub id: Uuid,
 	/// The user's login name.
 	pub username: String,
-	/// The user's email address.
-	pub email: String,
+	/// The user's email address, if available.
+	pub email: Option<String>,
 	/// Whether the user account is active.
 	pub is_active: bool,
 	/// Whether the user has admin privileges.

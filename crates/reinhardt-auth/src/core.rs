@@ -25,7 +25,7 @@
 //! let user = SimpleUser {
 //!     id: Uuid::new_v4(),
 //!     username: "alice".to_string(),
-//!     email: "alice@example.com".to_string(),
+//!     email: Some("alice@example.com".to_string()),
 //!     is_active: true,
 //!     is_admin: false,
 //!     is_staff: false,

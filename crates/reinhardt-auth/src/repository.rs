@@ -64,7 +64,7 @@ impl UserRepository for SimpleUserRepository {
 		Ok(Some(Box::new(SimpleUser {
 			id: Uuid::new_v5(&Uuid::NAMESPACE_URL, user_id.as_bytes()),
 			username: user_id.to_string(),
-			email: String::new(),
+			email: None,
 			is_active: true,
 			is_admin: false,
 			is_staff: false,

@@ -287,7 +287,7 @@ impl reinhardt_auth::AuthenticationBackend for TestAuthBackend {
 				Ok(Some(Box::new(SimpleUser {
 					id: Uuid::new_v4(),
 					username: "testuser".to_string(),
-					email: "test@example.com".to_string(),
+					email: Some("test@example.com".to_string()),
 					is_active: true,
 					is_admin: false,
 				})))
@@ -308,7 +308,7 @@ impl reinhardt_auth::AuthenticationBackend for TestAuthBackend {
 				Ok(Some(Box::new(SimpleUser {
 					id: Uuid::new_v4(),
 					username: "testuser".to_string(),
-					email: "test@example.com".to_string(),
+					email: Some("test@example.com".to_string()),
 					is_active: true,
 					is_admin: false,
 				})))

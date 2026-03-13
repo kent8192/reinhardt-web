@@ -318,7 +318,7 @@ impl RestAuthentication for TokenAuthentication {
 				return Ok(Some(Box::new(SimpleUser {
 					id,
 					username: user_id.clone(),
-					email: String::new(),
+					email: None,
 					is_active: true,
 					is_admin: false,
 					is_staff: false,
@@ -349,7 +349,7 @@ impl AuthenticationBackend for TokenAuthentication {
 			Ok(Some(Box::new(SimpleUser {
 				id,
 				username: user_id.to_string(),
-				email: String::new(),
+				email: None,
 				is_active: true,
 				is_admin: false,
 				is_staff: false,
@@ -405,7 +405,7 @@ impl RestAuthentication for RemoteUserAuthentication {
 			return Ok(Some(Box::new(SimpleUser {
 				id: uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, username.as_bytes()),
 				username: username.to_string(),
-				email: String::new(),
+				email: None,
 				is_active: true,
 				is_admin: false,
 				is_staff: false,
@@ -498,11 +498,7 @@ impl<B: SessionBackend> RestAuthentication for SessionAuthentication<B> {
 						.ok()
 						.flatten()
 						.unwrap_or_else(|| user_id.clone());
-					let email: String = session
-						.get("_auth_user_email")
-						.ok()
-						.flatten()
-						.unwrap_or_default();
+					let email: Option<String> = session.get("_auth_user_email").ok().flatten();
 					let is_active: bool = session
 						.get("_auth_user_is_active")
 						.ok()

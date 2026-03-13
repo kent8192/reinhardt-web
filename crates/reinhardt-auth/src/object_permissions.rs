@@ -46,7 +46,7 @@ pub type PermissionMap = Arc<RwLock<HashMap<(String, String), Vec<String>>>>;
 ///     let user = SimpleUser {
 ///         id: Uuid::new_v4(),
 ///         username: "alice".to_string(),
-///         email: "alice@example.com".to_string(),
+///         email: Some("alice@example.com".to_string()),
 ///         is_active: true,
 ///         is_admin: false,
 ///         is_staff: false,
@@ -99,7 +99,7 @@ pub trait ObjectPermissionChecker: Send + Sync {
 ///     let user = SimpleUser {
 ///         id: Uuid::new_v4(),
 ///         username: "alice".to_string(),
-///         email: "alice@example.com".to_string(),
+///         email: Some("alice@example.com".to_string()),
 ///         is_active: true,
 ///         is_admin: false,
 ///         is_staff: false,
@@ -273,7 +273,7 @@ impl ObjectPermissionChecker for ObjectPermissionManager {
 ///     let user = SimpleUser {
 ///         id: Uuid::new_v4(),
 ///         username: "alice".to_string(),
-///         email: "alice@example.com".to_string(),
+///         email: Some("alice@example.com".to_string()),
 ///         is_active: true,
 ///         is_admin: false,
 ///         is_staff: false,
@@ -365,7 +365,7 @@ mod tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "alice".to_string(),
-			email: "alice@example.com".to_string(),
+			email: Some("alice@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -402,7 +402,7 @@ mod tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "alice".to_string(),
-			email: "alice@example.com".to_string(),
+			email: Some("alice@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -438,7 +438,7 @@ mod tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "alice".to_string(),
-			email: "alice@example.com".to_string(),
+			email: Some("alice@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -488,7 +488,7 @@ mod tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "alice".to_string(),
-			email: "alice@example.com".to_string(),
+			email: Some("alice@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -529,7 +529,7 @@ mod tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "alice".to_string(),
-			email: "alice@example.com".to_string(),
+			email: Some("alice@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -585,7 +585,7 @@ mod tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "alice".to_string(),
-			email: "alice@example.com".to_string(),
+			email: Some("alice@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -624,7 +624,7 @@ mod tests {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "alice".to_string(),
-			email: "alice@example.com".to_string(),
+			email: Some("alice@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -660,7 +660,7 @@ mod tests {
 		let user_a = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "alice".to_string(),
-			email: "alice@example.com".to_string(),
+			email: Some("alice@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -669,7 +669,7 @@ mod tests {
 		let user_b = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "bob".to_string(),
-			email: "bob@example.com".to_string(),
+			email: Some("bob@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,

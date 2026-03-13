@@ -184,7 +184,7 @@ impl AuthenticationBackend for BasicAuthentication {
 					return Ok(Some(Box::new(SimpleUser {
 						id: Uuid::new_v5(&crate::USER_ID_NAMESPACE, username.as_bytes()),
 						username: username.clone(),
-						email: String::new(),
+						email: None,
 						is_active: true,
 						is_admin: false,
 						is_staff: false,
@@ -203,7 +203,7 @@ impl AuthenticationBackend for BasicAuthentication {
 			Ok(Some(Box::new(SimpleUser {
 				id: Uuid::new_v5(&crate::USER_ID_NAMESPACE, user_id.as_bytes()),
 				username: user_id.to_string(),
-				email: String::new(),
+				email: None,
 				is_active: true,
 				is_admin: false,
 				is_staff: false,

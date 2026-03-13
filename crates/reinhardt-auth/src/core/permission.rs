@@ -161,7 +161,7 @@ impl Permission for AllowAny {
 /// let user = SimpleUser {
 ///     id: Uuid::new_v4(),
 ///     username: "alice".to_string(),
-///     email: "alice@example.com".to_string(),
+///     email: Some("alice@example.com".to_string()),
 ///     is_active: true,
 ///     is_admin: false,
 ///     is_staff: false,
@@ -213,7 +213,7 @@ impl Permission for IsAuthenticated {
 /// let user = SimpleUser {
 ///     id: Uuid::new_v4(),
 ///     username: "alice".to_string(),
-///     email: "alice@example.com".to_string(),
+///     email: Some("alice@example.com".to_string()),
 ///     is_active: true,
 ///     is_admin: false,
 ///     is_staff: false,
@@ -232,7 +232,7 @@ impl Permission for IsAuthenticated {
 /// let admin = SimpleUser {
 ///     id: Uuid::new_v4(),
 ///     username: "admin".to_string(),
-///     email: "admin@example.com".to_string(),
+///     email: Some("admin@example.com".to_string()),
 ///     is_active: true,
 ///     is_admin: true,
 ///     is_staff: true,
