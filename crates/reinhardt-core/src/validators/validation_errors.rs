@@ -1,5 +1,6 @@
 //! Aggregate validation errors by field name
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -12,7 +13,7 @@ use super::errors::ValidationError;
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ValidationErrors {
-	errors: BTreeMap<&'static str, Vec<ValidationError>>,
+	errors: BTreeMap<Cow<'static, str>, Vec<ValidationError>>,
 }
 
 impl ValidationErrors {
@@ -24,12 +25,12 @@ impl ValidationErrors {
 	}
 
 	/// Add a validation error for a specific field.
-	pub fn add(&mut self, field: &'static str, error: ValidationError) {
-		self.errors.entry(field).or_default().push(error);
+	pub fn add(&mut self, field: impl Into<Cow<'static, str>>, error: ValidationError) {
+		self.errors.entry(field.into()).or_default().push(error);
 	}
 
 	/// Get all field errors as a map.
-	pub fn field_errors(&self) -> &BTreeMap<&'static str, Vec<ValidationError>> {
+	pub fn field_errors(&self) -> &BTreeMap<Cow<'static, str>, Vec<ValidationError>> {
 		&self.errors
 	}
 
