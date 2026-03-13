@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       runner:
-        description: 'Runner label JSON. Use "\"ubuntu-latest\"" for GitHub-hosted or "[\"self-hosted\",\"linux\",\"x64\",\"reinhardt-ci\"]" for self-hosted.'
+        description: 'Runner label JSON. Use "\"ubuntu-latest\"" for GitHub-hosted or "[\"self-hosted\",\"linux\",\"arm64\",\"reinhardt-ci\"]" for self-hosted.'
         type: string
         default: '"ubuntu-latest"'
       cargo-build-jobs:
@@ -69,6 +69,11 @@ jobs:
 
       - name: Install mold linker and build dependencies
         run: |
+          # Wait for unattended-upgrades or other apt processes to finish
+          while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+            echo "Waiting for dpkg lock to be released..."
+            sleep 5
+          done
           sudo apt-get update
           sudo apt-get install -y mold clang lld build-essential
           sudo apt-get clean
@@ -119,6 +124,7 @@ jobs:
             -E "$FILTER_EXPR" \
             --partition hash:${{ matrix.partition }}/8 \
             --no-fail-fast \
+            --no-tests=warn \
             --status-level=none \
             --final-status-level=none
 
