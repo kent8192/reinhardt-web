@@ -101,7 +101,7 @@ where
 
 	/// Check if data is loaded
 	pub fn is_loaded(&self) -> bool {
-		self.data.read().unwrap().is_some()
+		self.data.read().unwrap_or_else(|e| e.into_inner()).is_some()
 	}
 
 	/// Load the data if not already loaded
@@ -115,7 +115,7 @@ where
 		let data = (self.loader)().await?;
 
 		// Store it
-		let mut guard = self.data.write().unwrap();
+		let mut guard = self.data.write().unwrap_or_else(|e| e.into_inner());
 		*guard = Some(data);
 
 		Ok(())
@@ -126,7 +126,7 @@ where
 		// Ensure data is loaded
 		self.load().await?;
 
-		let guard = self.data.read().unwrap();
+		let guard = self.data.read().unwrap_or_else(|e| e.into_inner());
 		Ok(guard.as_ref().unwrap().clone())
 	}
 
@@ -145,13 +145,13 @@ where
 	/// assert!(lazy.get_if_loaded().is_none());
 	/// ```
 	pub fn get_if_loaded(&self) -> Option<T> {
-		let guard = self.data.read().unwrap();
+		let guard = self.data.read().unwrap_or_else(|e| e.into_inner());
 		guard.as_ref().cloned()
 	}
 
 	/// Reset the lazy-loaded value, forcing a reload on next access
 	pub fn reset(&self) {
-		let mut guard = self.data.write().unwrap();
+		let mut guard = self.data.write().unwrap_or_else(|e| e.into_inner());
 		*guard = None;
 	}
 }
@@ -241,7 +241,7 @@ impl RelationshipCache {
 
 	/// Check if a relationship is cached
 	pub fn contains(&self, key: &str) -> bool {
-		self.cache.read().unwrap().contains_key(key)
+		self.cache.read().unwrap_or_else(|e| e.into_inner()).contains_key(key)
 	}
 
 	/// Get a cached relationship
@@ -249,25 +249,25 @@ impl RelationshipCache {
 	where
 		T: 'static + Clone,
 	{
-		let cache = self.cache.read().unwrap();
+		let cache = self.cache.read().unwrap_or_else(|e| e.into_inner());
 		cache.get(key).and_then(|v| v.downcast_ref::<T>().cloned())
 	}
 
 	/// Set a cached relationship
 	pub fn set<T: 'static + Send + Sync>(&self, key: String, value: T) {
-		let mut cache = self.cache.write().unwrap();
+		let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
 		cache.insert(key, Box::new(value));
 	}
 
 	/// Remove a cached relationship
 	pub fn remove(&self, key: &str) -> bool {
-		let mut cache = self.cache.write().unwrap();
+		let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
 		cache.remove(key).is_some()
 	}
 
 	/// Clear all cached relationships
 	pub fn clear(&self) {
-		let mut cache = self.cache.write().unwrap();
+		let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
 		cache.clear();
 	}
 }
