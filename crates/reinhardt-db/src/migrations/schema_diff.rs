@@ -294,12 +294,15 @@ impl SchemaDiff {
 		// Detect column changes for existing tables
 		for (table_name, target_table) in &self.target_schema.tables {
 			if let Some(current_table) = self.current_schema.tables.get(table_name) {
+				// Clone table_name once for reuse across all change types
+				let table_name_owned = table_name.clone();
+
 				// Column additions
 				for col_name in target_table.columns.keys() {
 					if !current_table.columns.contains_key(col_name) {
 						result
 							.columns_to_add
-							.push((table_name.clone(), col_name.clone()));
+							.push((table_name_owned.clone(), col_name.clone()));
 					}
 				}
 
@@ -308,7 +311,7 @@ impl SchemaDiff {
 					if !target_table.columns.contains_key(col_name) {
 						result
 							.columns_to_remove
-							.push((table_name.clone(), col_name.clone()));
+							.push((table_name_owned.clone(), col_name.clone()));
 					}
 				}
 
@@ -318,7 +321,7 @@ impl SchemaDiff {
 						&& current_col != target_col
 					{
 						result.columns_to_modify.push((
-							table_name.clone(),
+							table_name_owned.clone(),
 							col_name.clone(),
 							current_col.clone(),
 							target_col.clone(),
@@ -331,7 +334,7 @@ impl SchemaDiff {
 					if !current_table.indexes.contains(target_index) {
 						result
 							.indexes_to_add
-							.push((table_name.clone(), target_index.clone()));
+							.push((table_name_owned.clone(), target_index.clone()));
 					}
 				}
 
@@ -339,7 +342,7 @@ impl SchemaDiff {
 					if !target_table.indexes.contains(current_index) {
 						result
 							.indexes_to_remove
-							.push((table_name.clone(), current_index.clone()));
+							.push((table_name_owned.clone(), current_index.clone()));
 					}
 				}
 			}
