@@ -32,6 +32,20 @@ This file defines the pull request (PR) policy for the Reinhardt project. These 
 - **NEVER** use web browser UI for PR creation when MCP or CLI is available
 - MCP and CLI both ensure consistency and can be automated
 
+The following diagram summarizes the PR creation flow:
+
+```mermaid
+flowchart TD
+    A[Create new PR] --> B{GitHub MCP available?}
+    B -->|Yes| C[Use create_pull_request MCP tool]
+    B -->|No| D[Use gh pr create CLI]
+    C --> E[Follow PR template structure]
+    D --> E
+    E --> F[Add appropriate labels]
+    F --> G[Run pre-review checks]
+    G --> H[Request review]
+```
+
 **PR Template Location:** `.github/PULL_REQUEST_TEMPLATE.md`
 
 When creating PRs via `gh pr create`, the `--body` content MUST follow the PR template structure defined in `.github/PULL_REQUEST_TEMPLATE.md`.
@@ -101,6 +115,24 @@ fix/connection-pool-leak    → PR target: main
 ```
 
 See instructions/STABILITY_POLICY.md § DB-2 for permitted changes on the develop branch.
+
+The following diagram illustrates branch targeting during the RC phase:
+
+```mermaid
+gitGraph
+    commit id: "v0.1.0-rc.1"
+    branch "develop/0.2.0"
+    checkout main
+    branch "fix/pool-leak"
+    commit id: "fix: pool leak"
+    checkout main
+    merge "fix/pool-leak" id: "bug fix to main"
+    checkout "develop/0.2.0"
+    branch "feature/mysql"
+    commit id: "feat: mysql support"
+    checkout "develop/0.2.0"
+    merge "feature/mysql" id: "feature to develop"
+```
 
 ### PC-4 (SHOULD): Draft PRs for Work in Progress
 
@@ -294,7 +326,7 @@ feat(api)!: change response format to JSON:API specification
   - **MUST NOT** end with a period
   - Keep under 72 characters for readability
 
-**See**: @docs/COMMIT_GUIDELINE.md for detailed commit type definitions
+**See**: @instructions/COMMIT_GUIDELINE.md for detailed commit type definitions
 
 ---
 
@@ -469,6 +501,39 @@ PR conflicts MUST be resolved using a worktree-based merge strategy. Rebase and 
 - Merge commits clearly document conflict resolution
 - Worktree isolation prevents interference with current work
 
+The following sequence diagram shows the worktree-based conflict resolution workflow:
+
+```mermaid
+sequenceDiagram
+    participant D as Developer
+    participant M as Main Repo
+    participant W as Worktree
+    participant R as Remote
+
+    D->>M: git worktree add /tmp/wt source-branch
+    D->>W: cd /tmp/wt
+    D->>W: git merge target-branch
+    Note over W: Resolve conflicts in files
+    D->>W: git add + git commit
+    D->>R: git push origin source-branch
+    D->>M: git worktree remove /tmp/wt
+```
+
+The following git graph shows how the merge commit appears in the branch history:
+
+```mermaid
+gitGraph
+    commit id: "main commits..."
+    branch feature-branch
+    commit id: "feature work"
+    commit id: "more changes"
+    checkout main
+    commit id: "new main commits (cause conflict)"
+    checkout feature-branch
+    merge main id: "resolve conflicts (worktree merge)"
+    commit id: "continue work"
+```
+
 ### CR-2 (NEVER): Prohibited Approaches
 
 - **NEVER** use `git rebase` to resolve PR conflicts
@@ -489,7 +554,7 @@ A PR can only be merged when:
 - All conversations are resolved
 - At least one approval from a maintainer (if required by repo settings)
 - No merge conflicts with base branch
-- All commits follow commit guidelines (@docs/COMMIT_GUIDELINE.md)
+- All commits follow commit guidelines (@instructions/COMMIT_GUIDELINE.md)
 
 ### MP-2 (MUST): Merge Strategy
 
@@ -509,6 +574,43 @@ A PR can only be merged when:
 - Creates additional merge commit
 - Only use for merging long-lived branches
 - Generally avoid for feature branches
+
+The following diagrams compare the three merge strategies:
+
+**Squash and Merge (Default):**
+
+```mermaid
+gitGraph
+    commit id: "main"
+    branch feature
+    commit id: "wip: draft"
+    commit id: "fix: typo"
+    commit id: "feat: complete"
+    checkout main
+    commit id: "feat: add feature (squashed)" type: HIGHLIGHT
+```
+
+**Rebase and Merge:**
+
+```mermaid
+gitGraph
+    commit id: "main"
+    commit id: "feat: step 1 (rebased)" type: HIGHLIGHT
+    commit id: "feat: step 2 (rebased)" type: HIGHLIGHT
+    commit id: "feat: step 3 (rebased)" type: HIGHLIGHT
+```
+
+**Merge Commit (Avoid for features):**
+
+```mermaid
+gitGraph
+    commit id: "main"
+    branch feature
+    commit id: "feat: step 1"
+    commit id: "feat: step 2"
+    checkout main
+    merge feature id: "Merge branch feature"
+```
 
 ### MP-3 (SHOULD): Delete Branch After Merge
 
@@ -567,7 +669,7 @@ Version Changes:
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-**See**: @docs/RELEASE_PROCESS.md for detailed release procedures
+**See**: @instructions/RELEASE_PROCESS.md for detailed release procedures
 
 ### Develop Branch PRs
 
@@ -663,7 +765,7 @@ docs(readme): add installation instructions
 
 - **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)
 - **Issue Handling Principles**: docs/ISSUE_HANDLING.md
-- **Commit Guidelines**: @docs/COMMIT_GUIDELINE.md
-- **Release Process**: @docs/RELEASE_PROCESS.md
+- **Commit Guidelines**: @instructions/COMMIT_GUIDELINE.md
+- **Release Process**: @instructions/RELEASE_PROCESS.md
 - **GitHub MCP Tools**: Available when GitHub MCP server is configured
 - **GitHub CLI Documentation (fallback)**: https://cli.github.com/manual/

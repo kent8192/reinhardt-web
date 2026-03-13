@@ -11,7 +11,7 @@ output "webhook_secret" {
 
 output "runner_labels" {
   description = "Labels to use in GitHub Actions runs-on for self-hosted runners"
-  value       = jsonencode(concat(["self-hosted", "linux", "x64"], var.runner_extra_labels))
+  value       = jsonencode(concat(["self-hosted", "linux", "arm64"], var.runner_extra_labels))
 }
 
 # Manual webhook setup guide.
@@ -37,4 +37,14 @@ output "webhook_setup_guide" {
 
 		3. Verify: Push a commit to trigger CI and check AWS CloudWatch for Lambda invocations
 	EOT
+}
+
+output "github_actions_oidc_provider_arn" {
+  description = "ARN of the GitHub Actions OIDC identity provider"
+  value       = aws_iam_openid_connect_provider.github_actions.arn
+}
+
+output "github_actions_ami_builder_role_arn" {
+  description = "ARN of the IAM role used by the AMI builder workflow"
+  value       = aws_iam_role.github_actions_ami_builder.arn
 }
