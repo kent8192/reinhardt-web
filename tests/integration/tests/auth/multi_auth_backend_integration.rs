@@ -904,7 +904,7 @@ impl AuthenticationBackend for DatabaseAuthBackend {
 				Box::new(SimpleUser {
 					id,
 					username,
-					email,
+					email: Some(email),
 					is_active,
 					is_admin: is_staff,
 					is_staff,

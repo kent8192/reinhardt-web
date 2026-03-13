@@ -245,7 +245,7 @@ mod tests {
 		let test_user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "testuser".to_string(),
-			email: "test@example.com".to_string(),
+			email: Some("test@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -361,7 +361,7 @@ mod tests {
 		let test_user = SimpleUser {
 			id: user_id,
 			username: "session_user".to_string(),
-			email: "session@example.com".to_string(),
+			email: Some("session@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -411,7 +411,7 @@ mod tests {
 		let test_user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "cookie_user".to_string(),
-			email: "cookie@example.com".to_string(),
+			email: Some("cookie@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,
@@ -491,7 +491,7 @@ mod tests {
 		let test_user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: "body_user".to_string(),
-			email: "body@example.com".to_string(),
+			email: Some("body@example.com".to_string()),
 			is_active: true,
 			is_admin: false,
 			is_staff: false,

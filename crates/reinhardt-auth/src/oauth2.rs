@@ -624,7 +624,7 @@ mod tests {
 					Ok(Some(Box::new(SimpleUser {
 						id: Uuid::from_u128(999),
 						username: self.username.clone(),
-						email: "mock@example.com".to_string(),
+						email: Some("mock@example.com".to_string()),
 						is_active: true,
 						is_admin: true,
 						is_staff: true,
@@ -666,7 +666,7 @@ mod tests {
 				Ok(Some(Box::new(SimpleUser {
 					id: Uuid::from_u128(777),
 					username: format!("custom_{}", user_id),
-					email: format!("{}@custom.com", user_id),
+					email: Some(format!("{}@custom.com", user_id)),
 					is_active: true,
 					is_admin: false,
 					is_staff: true,

@@ -220,7 +220,7 @@ impl RestAuthentication for JwtAuth {
 						return Ok(Some(Box::new(SimpleUser {
 							id,
 							username: claims.username.clone(),
-							email: String::new(),
+							email: None,
 							// Security defaults: privilege flags are set to restrictive values
 							// since JWT claims alone cannot determine user privileges.
 							// Use UserRepository integration for accurate privilege data.

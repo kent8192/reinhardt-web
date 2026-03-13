@@ -252,10 +252,15 @@ impl<H: PasswordHasher> UserManager<H> {
 			.map_err(|e| UserManagementError::Other(e.to_string()))?;
 
 		// Create user
+		let email = if data.email.is_empty() {
+			None
+		} else {
+			Some(data.email)
+		};
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
 			username: data.username.clone(),
-			email: data.email,
+			email,
 			is_active: data.is_active,
 			is_admin: data.is_admin,
 			is_staff: false,
@@ -404,7 +409,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///     };
 	///
 	///     let updated = manager.update_user(&user.id.to_string(), update_data).await.unwrap();
-	///     assert_eq!(updated.email, "newemail@example.com");
+	///     assert_eq!(updated.email.as_deref(), Some("newemail@example.com"));
 	///     assert!(!updated.is_active);
 	/// }
 	/// ```
@@ -425,7 +430,7 @@ impl<H: PasswordHasher> UserManager<H> {
 			if !email.contains('@') || !email.contains('.') {
 				return Err(UserManagementError::InvalidEmail);
 			}
-			user.email = email;
+			user.email = Some(email);
 		}
 
 		if let Some(is_active) = data.is_active {
@@ -615,7 +620,7 @@ mod tests {
 
 		let user = manager.create_user(user_data).await.unwrap();
 		assert_eq!(user.username, "alice");
-		assert_eq!(user.email, "alice@example.com");
+		assert_eq!(user.email.as_deref(), Some("alice@example.com"));
 		assert!(user.is_active);
 		assert!(!user.is_admin);
 	}
@@ -707,7 +712,7 @@ mod tests {
 			.update_user(&user.id.to_string(), update_data)
 			.await
 			.unwrap();
-		assert_eq!(updated.email, "newemail@example.com");
+		assert_eq!(updated.email.as_deref(), Some("newemail@example.com"));
 		assert!(!updated.is_active);
 		assert!(updated.is_admin);
 	}
@@ -867,7 +872,7 @@ mod tests {
 		// Assert
 		let user = result.unwrap();
 		assert_eq!(user.username, "jwt_user");
-		assert_eq!(user.email, "");
+		assert_eq!(user.email, None);
 		assert!(user.is_active);
 	}
 }

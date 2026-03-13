@@ -81,7 +81,7 @@ fn create_test_user(username: &str) -> SimpleUser {
 	SimpleUser {
 		id: Uuid::new_v4(),
 		username: username.to_string(),
-		email: format!("{}@example.com", username),
+		email: Some(format!("{}@example.com", username)),
 		is_active: true,
 		is_admin: false,
 		is_staff: false,

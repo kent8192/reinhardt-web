@@ -183,7 +183,7 @@ impl AuthenticationBackend for MFAAuthentication {
 					Ok(Some(Box::new(SimpleUser {
 						id: Uuid::new_v5(&USER_ID_NAMESPACE, user.as_bytes()),
 						username: user.to_string(),
-						email: String::new(),
+						email: None,
 						// Security defaults: privilege flags are set to restrictive values
 						// since MFA authentication alone cannot determine user privileges.
 						// Use UserRepository integration for accurate privilege data.
@@ -207,7 +207,7 @@ impl AuthenticationBackend for MFAAuthentication {
 			Ok(Some(Box::new(SimpleUser {
 				id: Uuid::new_v5(&USER_ID_NAMESPACE, user_id.as_bytes()),
 				username: user_id.to_string(),
-				email: String::new(),
+				email: None,
 				// Security defaults: privilege flags are set to restrictive values
 				// since MFA authentication alone cannot determine user privileges.
 				// Use UserRepository integration for accurate privilege data.
