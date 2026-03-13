@@ -123,7 +123,7 @@ mod tests {
 		assert!(
 			!diff_result
 				.tables_to_remove
-				.contains(&"reinhardt_migrations"),
+				.contains(&"reinhardt_migrations".to_string()),
 			"System table 'reinhardt_migrations' should not be included in tables to remove"
 		);
 
