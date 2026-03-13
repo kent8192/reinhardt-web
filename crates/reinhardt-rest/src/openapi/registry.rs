@@ -71,7 +71,7 @@ impl SchemaRegistry {
 	/// ```
 	pub fn register(&self, name: impl Into<String>, schema: Schema) {
 		let name = name.into();
-		let mut schemas = self.schemas.lock().unwrap();
+		let mut schemas = self.schemas.lock().unwrap_or_else(|e| e.into_inner());
 		schemas.insert(name, schema);
 	}
 
@@ -92,7 +92,7 @@ impl SchemaRegistry {
 	/// assert!(schema.is_some());
 	/// ```
 	pub fn get_schema(&self, name: &str) -> Option<Schema> {
-		let schemas = self.schemas.lock().unwrap();
+		let schemas = self.schemas.lock().unwrap_or_else(|e| e.into_inner());
 		schemas.get(name).cloned()
 	}
 
@@ -121,10 +121,10 @@ impl SchemaRegistry {
 	/// }
 	/// ```
 	pub fn get_ref(&self, name: &str) -> Option<RefOr<Schema>> {
-		let schemas = self.schemas.lock().unwrap();
+		let schemas = self.schemas.lock().unwrap_or_else(|e| e.into_inner());
 		if schemas.contains_key(name) {
 			// Increment reference count for circular detection
-			let mut references = self.references.lock().unwrap();
+			let mut references = self.references.lock().unwrap_or_else(|e| e.into_inner());
 			*references.entry(name.to_string()).or_insert(0) += 1;
 
 			Some(RefOr::Ref(utoipa::openapi::Ref::new(format!(
@@ -151,7 +151,7 @@ impl SchemaRegistry {
 	/// assert!(registry.contains("User"));
 	/// ```
 	pub fn contains(&self, name: &str) -> bool {
-		let schemas = self.schemas.lock().unwrap();
+		let schemas = self.schemas.lock().unwrap_or_else(|e| e.into_inner());
 		schemas.contains_key(name)
 	}
 
@@ -170,7 +170,7 @@ impl SchemaRegistry {
 	/// assert_eq!(registry.len(), 1);
 	/// ```
 	pub fn len(&self) -> usize {
-		let schemas = self.schemas.lock().unwrap();
+		let schemas = self.schemas.lock().unwrap_or_else(|e| e.into_inner());
 		schemas.len()
 	}
 
@@ -189,7 +189,7 @@ impl SchemaRegistry {
 	/// assert!(!registry.is_empty());
 	/// ```
 	pub fn is_empty(&self) -> bool {
-		let schemas = self.schemas.lock().unwrap();
+		let schemas = self.schemas.lock().unwrap_or_else(|e| e.into_inner());
 		schemas.is_empty()
 	}
 
@@ -215,7 +215,7 @@ impl SchemaRegistry {
 	/// assert!(circular.contains(&"User".to_string()));
 	/// ```
 	pub fn detect_circular_references(&self) -> Vec<String> {
-		let references = self.references.lock().unwrap();
+		let references = self.references.lock().unwrap_or_else(|e| e.into_inner());
 		references
 			.iter()
 			.filter(|(_, count)| **count > 1)
@@ -239,10 +239,10 @@ impl SchemaRegistry {
 	/// assert!(registry.is_empty());
 	/// ```
 	pub fn clear(&self) {
-		let mut schemas = self.schemas.lock().unwrap();
+		let mut schemas = self.schemas.lock().unwrap_or_else(|e| e.into_inner());
 		schemas.clear();
 
-		let mut references = self.references.lock().unwrap();
+		let mut references = self.references.lock().unwrap_or_else(|e| e.into_inner());
 		references.clear();
 	}
 
@@ -267,7 +267,7 @@ impl SchemaRegistry {
 	/// assert!(components.schemas.contains_key("Post"));
 	/// ```
 	pub fn to_components(&self) -> Components {
-		let schemas = self.schemas.lock().unwrap();
+		let schemas = self.schemas.lock().unwrap_or_else(|e| e.into_inner());
 		let mut builder = ComponentsBuilder::new();
 
 		for (name, schema) in schemas.iter() {
@@ -300,8 +300,8 @@ impl SchemaRegistry {
 	/// assert!(registry1.contains("Post"));
 	/// ```
 	pub fn merge(&self, other: &SchemaRegistry) {
-		let other_schemas = other.schemas.lock().unwrap();
-		let mut schemas = self.schemas.lock().unwrap();
+		let other_schemas = other.schemas.lock().unwrap_or_else(|e| e.into_inner());
+		let mut schemas = self.schemas.lock().unwrap_or_else(|e| e.into_inner());
 
 		for (name, schema) in other_schemas.iter() {
 			schemas.insert(name.clone(), schema.clone());
