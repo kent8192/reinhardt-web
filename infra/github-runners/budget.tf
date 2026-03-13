@@ -24,6 +24,10 @@ resource "aws_budgets_budget" "ci_monthly" {
     values = ["user:Project$reinhardt"]
   }
 
+  # Budget alert delivery depends on aws_sns_topic_subscription.budget_alert_email
+  # being confirmed. SNS email subscriptions require manual confirmation by the
+  # subscriber; alerts will not be delivered until the subscription is confirmed.
+
   # Warning at 80%: email via SNS topic
   notification {
     comparison_operator       = "GREATER_THAN"
