@@ -1,0 +1,48 @@
+# Stage 1: Install Rust toolchain, trunk, and wasm-bindgen-cli
+FROM rust:{{ rust_version }}-slim AS toolchain
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        pkg-config libssl-dev curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup target add {{ wasm_target }}
+RUN cargo install trunk --version {{ trunk_version }} --locked
+RUN cargo install wasm-bindgen-cli --version {{ wasm_bindgen_version }} --locked
+
+# Stage 2: Build WASM application with trunk
+FROM toolchain AS builder
+
+WORKDIR /app
+COPY . .
+
+WORKDIR /app/{{ source_dir }}
+
+ENV CARGO_PROFILE_RELEASE_OPT_LEVEL={{ optimization_level }}
+RUN trunk build --release --dist /app/{{ output_dir }}
+
+# Stage 3: Serve built WASM files with nginx
+FROM nginx:alpine AS runtime
+
+LABEL app="{{ app_name }}" \
+      description="WASM frontend built with Reinhardt and trunk"
+
+COPY --from=builder /app/{{ output_dir }} /usr/share/nginx/html
+
+# Support client-side routing by falling back to index.html
+RUN printf 'server {\n\
+    listen {{ nginx_port }};\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    location / {\n\
+        try_files $uri $uri/ /index.html;\n\
+    }\n\
+    # Cache WASM and JS assets aggressively\n\
+    location ~* \\.(wasm|js)$ {\n\
+        expires 1y;\n\
+        add_header Cache-Control "public, immutable";\n\
+    }\n\
+}\n' > /etc/nginx/conf.d/default.conf
+
+EXPOSE {{ nginx_port }}
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,27 @@
+[package]
+name = "reinhardt-deploy"
+version = "0.1.0-rc.8"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Deployment utilities and Dockerfile generation for Reinhardt applications"
+
+[features]
+default = []
+full = ["wasm-deploy"]
+wasm-deploy = []
+
+[dependencies]
+# Template engine for Dockerfile generation
+tera = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+insta = { workspace = true }
