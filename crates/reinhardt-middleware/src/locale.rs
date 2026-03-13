@@ -285,7 +285,12 @@ impl Middleware for LocaleMiddleware {
 		// Add locale to request headers for downstream handlers
 		request
 			.headers
-			.insert(LOCALE_HEADER, locale.parse().unwrap());
+			.insert(
+				LOCALE_HEADER,
+				locale
+					.parse()
+					.unwrap_or_else(|_| hyper::header::HeaderValue::from_static("en")),
+			);
 
 		// Process request with handler
 		handler.handle(request).await

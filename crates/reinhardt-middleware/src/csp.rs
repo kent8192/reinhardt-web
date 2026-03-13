@@ -7,6 +7,7 @@
 //! - Per-request CSP overrides
 
 use async_trait::async_trait;
+use hyper::header::HeaderValue;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -318,7 +319,12 @@ impl Middleware for CspMiddleware {
 		let csp_value = self.build_csp_header(nonce.as_deref());
 		response
 			.headers
-			.insert(self.get_header_name(), csp_value.parse().unwrap());
+			.insert(
+				self.get_header_name(),
+				csp_value
+					.parse()
+					.unwrap_or_else(|_| HeaderValue::from_static("")),
+			);
 
 		Ok(response)
 	}

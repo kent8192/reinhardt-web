@@ -229,7 +229,12 @@ impl Middleware for HttpsRedirectMiddleware {
 		let mut response = Response::new(self.config.status_code);
 		response
 			.headers
-			.insert(hyper::header::LOCATION, https_url.parse().unwrap());
+			.insert(
+				hyper::header::LOCATION,
+				https_url
+					.parse()
+					.unwrap_or_else(|_| hyper::header::HeaderValue::from_static("/")),
+			);
 		Ok(response)
 	}
 }

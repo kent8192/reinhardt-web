@@ -239,7 +239,12 @@ impl Middleware for CommonMiddleware {
 			let mut response = Response::new(StatusCode::MOVED_PERMANENTLY);
 			response
 				.headers
-				.insert(hyper::header::LOCATION, redirect_url.parse().unwrap());
+				.insert(
+					hyper::header::LOCATION,
+					redirect_url
+						.parse()
+						.unwrap_or_else(|_| hyper::header::HeaderValue::from_static("/")),
+				);
 			return Ok(response);
 		}
 

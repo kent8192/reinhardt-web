@@ -377,7 +377,12 @@ impl Middleware for CsrfMiddleware {
 		let cookie_header = self.build_set_cookie_header(&token);
 		response
 			.headers
-			.insert("Set-Cookie", cookie_header.parse().unwrap());
+			.insert(
+				"Set-Cookie",
+				cookie_header
+					.parse()
+					.unwrap_or_else(|_| hyper::header::HeaderValue::from_static("")),
+			);
 
 		Ok(response)
 	}

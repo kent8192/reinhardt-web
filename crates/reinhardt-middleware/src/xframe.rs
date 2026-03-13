@@ -195,7 +195,13 @@ impl Middleware for XFrameOptionsMiddleware {
 		if !response.headers.contains_key(&X_FRAME_OPTIONS) {
 			response
 				.headers
-				.insert(X_FRAME_OPTIONS, self.option.as_str().parse().unwrap());
+				.insert(
+					X_FRAME_OPTIONS,
+					self.option
+						.as_str()
+						.parse()
+						.unwrap_or_else(|_| hyper::header::HeaderValue::from_static("DENY")),
+				);
 		}
 
 		Ok(response)
