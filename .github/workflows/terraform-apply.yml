@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
   id-token: write
 
 concurrency:
@@ -28,7 +27,7 @@ jobs:
             dir: infra/github-runners
             backend: s3
           - module: bootstrap
-            dir: infra/bootstrap
+            dir: infra/github-runners/bootstrap
             backend: local
           - module: website
             dir: infra/website
@@ -115,7 +114,7 @@ jobs:
             dir: infra/github-runners
             backend: s3
           - module: bootstrap
-            dir: infra/bootstrap
+            dir: infra/github-runners/bootstrap
             backend: local
           - module: website
             dir: infra/website

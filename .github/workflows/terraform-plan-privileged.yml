@@ -69,7 +69,7 @@ jobs:
             dir: infra/github-runners
             backend: s3
           - module: bootstrap
-            dir: infra/bootstrap
+            dir: infra/github-runners/bootstrap
             backend: local
           - module: website
             dir: infra/website
@@ -111,7 +111,7 @@ jobs:
       - name: Install and run tfprovidercheck
         working-directory: ${{ matrix.dir }}
         run: |
-          go install github.com/suzuki-shunsuke/tfprovidercheck@latest
+          go install github.com/suzuki-shunsuke/tfprovidercheck@v1.0.7
           if [ -f .terraform.lock.hcl ]; then
             tfprovidercheck
           else
@@ -125,7 +125,7 @@ jobs:
 
       - name: Semgrep terraform security scan
         run: |
-          pip install semgrep
+          pip install semgrep==1.155.0
           semgrep scan \
             --config "$GITHUB_WORKSPACE/.semgrep/terraform-security.yml" \
             --error \
@@ -148,7 +148,7 @@ jobs:
             dir: infra/github-runners
             backend: s3
           - module: bootstrap
-            dir: infra/bootstrap
+            dir: infra/github-runners/bootstrap
             backend: local
           - module: website
             dir: infra/website
@@ -209,7 +209,7 @@ jobs:
           TF_VAR_cloudflare_api_token: ${{ secrets.TF_CLOUDFLARE_API_TOKEN }}
           TF_VAR_github_token: ${{ secrets.TF_GITHUB_TOKEN }}
         run: |
-          terraform plan -no-color -input=false 2>&1 | tee plan-output.txt
+          terraform plan -detailed-exitcode -no-color -input=false 2>&1 | tee plan-output.txt
           echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
         continue-on-error: true
 
@@ -280,3 +280,7 @@ jobs:
                 body: body,
               });
             }
+
+      - name: Fail on plan error
+        if: env.SKIP_PLAN != 'true' && steps.plan.outputs.exitcode == '1'
+        run: exit 1
