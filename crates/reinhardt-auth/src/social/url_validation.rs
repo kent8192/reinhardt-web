@@ -3,7 +3,6 @@
 //! Ensures endpoint URLs use HTTPS to prevent cleartext transmission of
 //! sensitive credentials (access tokens, authorization codes, client secrets).
 
-
 use url::{Host, Url};
 
 use super::core::SocialAuthError;
