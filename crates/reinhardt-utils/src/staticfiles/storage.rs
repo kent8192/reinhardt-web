@@ -153,7 +153,10 @@ impl Storage for MemoryStorage {
 	}
 
 	fn exists(&self, name: &str) -> bool {
-		self.files.read().unwrap_or_else(|e| e.into_inner()).contains_key(name)
+		self.files
+			.read()
+			.unwrap_or_else(|e| e.into_inner())
+			.contains_key(name)
 	}
 
 	async fn open(&self, name: &str) -> io::Result<Vec<u8>> {
@@ -166,7 +169,10 @@ impl Storage for MemoryStorage {
 	}
 
 	async fn delete(&self, name: &str) -> io::Result<()> {
-		self.files.write().unwrap_or_else(|e| e.into_inner()).remove(name);
+		self.files
+			.write()
+			.unwrap_or_else(|e| e.into_inner())
+			.remove(name);
 		Ok(())
 	}
 

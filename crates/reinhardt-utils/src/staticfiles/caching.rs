@@ -377,9 +377,10 @@ impl Middleware for CacheControlMiddleware {
 		// Add Vary header if specified
 		if let Some(vary) = &policy.vary {
 			let vary_header: HeaderName = "vary".parse().expect("valid header name: vary");
-			response
-				.headers
-				.insert(vary_header, vary.parse().expect("valid header value for vary"));
+			response.headers.insert(
+				vary_header,
+				vary.parse().expect("valid header value for vary"),
+			);
 		}
 
 		Ok(response)
