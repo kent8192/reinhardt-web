@@ -21,8 +21,6 @@ pub struct LeakyBucketConfig {
 	pub capacity: usize,
 	/// Rate at which requests leak from the bucket (requests per second)
 	pub leak_rate: f64,
-	/// Maximum number of per-key entries before eviction occurs
-	max_entries: usize,
 }
 
 impl LeakyBucketConfig {
@@ -57,42 +55,7 @@ impl LeakyBucketConfig {
 		Ok(Self {
 			capacity,
 			leak_rate,
-			max_entries: DEFAULT_MAX_ENTRIES,
 		})
-	}
-
-	/// Returns the maximum number of per-key entries before eviction occurs
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_throttling::leaky_bucket::LeakyBucketConfig;
-	///
-	/// let config = LeakyBucketConfig::new(20, 10.0).unwrap();
-	/// assert_eq!(config.max_entries(), 10_000);
-	/// ```
-	pub fn max_entries(&self) -> usize {
-		self.max_entries
-	}
-
-	/// Sets the maximum number of per-key entries before eviction occurs
-	///
-	/// When the number of tracked keys exceeds this limit, the least recently
-	/// accessed entries are evicted to make room. Defaults to 10,000.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_throttling::leaky_bucket::LeakyBucketConfig;
-	///
-	/// let config = LeakyBucketConfig::new(20, 10.0)
-	///     .unwrap()
-	///     .with_max_entries(5000);
-	/// assert_eq!(config.max_entries(), 5000);
-	/// ```
-	pub fn with_max_entries(mut self, max_entries: usize) -> Self {
-		self.max_entries = max_entries;
-		self
 	}
 
 	/// Create configuration for requests per second
@@ -174,6 +137,7 @@ pub struct LeakyBucketThrottle<T: TimeProvider = SystemTimeProvider> {
 	config: LeakyBucketConfig,
 	time_provider: Arc<T>,
 	states: Arc<RwLock<HashMap<String, BucketState>>>,
+	max_entries: usize,
 }
 
 impl LeakyBucketThrottle<SystemTimeProvider> {
@@ -192,6 +156,7 @@ impl LeakyBucketThrottle<SystemTimeProvider> {
 			config,
 			time_provider: Arc::new(SystemTimeProvider::new()),
 			states: Arc::new(RwLock::new(HashMap::new())),
+			max_entries: DEFAULT_MAX_ENTRIES,
 		}
 	}
 }
@@ -203,7 +168,41 @@ impl<T: TimeProvider> LeakyBucketThrottle<T> {
 			config,
 			time_provider,
 			states: Arc::new(RwLock::new(HashMap::new())),
+			max_entries: DEFAULT_MAX_ENTRIES,
 		}
+	}
+
+	/// Sets the maximum number of per-key entries before eviction occurs.
+	///
+	/// When the number of tracked keys exceeds this limit, the least recently
+	/// accessed entries are evicted to make room. Defaults to 10,000.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_throttling::leaky_bucket::{LeakyBucketThrottle, LeakyBucketConfig};
+	///
+	/// let config = LeakyBucketConfig::per_second(5.0, 10).unwrap();
+	/// let throttle = LeakyBucketThrottle::new(config).with_max_entries(500);
+	/// ```
+	pub fn with_max_entries(mut self, max_entries: usize) -> Self {
+		self.max_entries = max_entries;
+		self
+	}
+
+	/// Returns the maximum number of per-key entries before eviction occurs
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_throttling::leaky_bucket::{LeakyBucketThrottle, LeakyBucketConfig};
+	///
+	/// let config = LeakyBucketConfig::per_second(5.0, 10).unwrap();
+	/// let throttle = LeakyBucketThrottle::new(config);
+	/// assert_eq!(throttle.max_entries(), 10_000);
+	/// ```
+	pub fn max_entries(&self) -> usize {
+		self.max_entries
 	}
 
 	/// Create a new bucket state initialized as empty
@@ -238,7 +237,7 @@ impl<T: TimeProvider> LeakyBucketThrottle<T> {
 	/// since last leak). If still at capacity, removes the least recently
 	/// accessed entries.
 	fn evict_if_needed(&self, states: &mut HashMap<String, BucketState>) {
-		if states.len() < self.config.max_entries {
+		if states.len() < self.max_entries {
 			return;
 		}
 
@@ -252,7 +251,7 @@ impl<T: TimeProvider> LeakyBucketThrottle<T> {
 			effective_level > f64::EPSILON
 		});
 
-		if states.len() < self.config.max_entries {
+		if states.len() < self.max_entries {
 			return;
 		}
 
@@ -263,7 +262,7 @@ impl<T: TimeProvider> LeakyBucketThrottle<T> {
 			.collect();
 		entries.sort_by_key(|(_, accessed)| *accessed);
 
-		let to_remove = states.len() - self.config.max_entries + 1;
+		let to_remove = states.len() - self.max_entries + 1;
 		for (key, _) in entries.into_iter().take(to_remove) {
 			states.remove(&key);
 		}
@@ -681,8 +680,9 @@ mod tests {
 		// Arrange
 		use tokio::time::Instant;
 		let time_provider = Arc::new(MockTimeProvider::new(Instant::now()));
-		let config = LeakyBucketConfig::new(5, 1.0).unwrap().with_max_entries(3);
-		let throttle = LeakyBucketThrottle::with_time_provider(config, time_provider.clone());
+		let config = LeakyBucketConfig::new(5, 1.0).unwrap();
+		let throttle = LeakyBucketThrottle::with_time_provider(config, time_provider.clone())
+			.with_max_entries(3);
 
 		// Act - fill 3 keys to capacity
 		for i in 0..3 {
@@ -706,8 +706,9 @@ mod tests {
 		// Arrange
 		use tokio::time::Instant;
 		let time_provider = Arc::new(MockTimeProvider::new(Instant::now()));
-		let config = LeakyBucketConfig::new(5, 1.0).unwrap().with_max_entries(3);
-		let throttle = LeakyBucketThrottle::with_time_provider(config, time_provider.clone());
+		let config = LeakyBucketConfig::new(5, 1.0).unwrap();
+		let throttle = LeakyBucketThrottle::with_time_provider(config, time_provider.clone())
+			.with_max_entries(3);
 
 		// Act - fill 3 keys with active (non-drained) buckets
 		for i in 0..3 {
@@ -729,22 +730,22 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_leaky_bucket_config_with_max_entries() {
+	fn test_leaky_bucket_throttle_with_max_entries() {
 		// Arrange & Act
-		let config = LeakyBucketConfig::new(10, 2.0)
-			.unwrap()
-			.with_max_entries(5000);
+		let config = LeakyBucketConfig::new(10, 2.0).unwrap();
+		let throttle = LeakyBucketThrottle::new(config).with_max_entries(5000);
 
 		// Assert
-		assert_eq!(config.max_entries(), 5000);
+		assert_eq!(throttle.max_entries(), 5000);
 	}
 
 	#[rstest]
-	fn test_leaky_bucket_config_default_max_entries() {
+	fn test_leaky_bucket_throttle_default_max_entries() {
 		// Arrange & Act
 		let config = LeakyBucketConfig::new(10, 2.0).unwrap();
+		let throttle = LeakyBucketThrottle::new(config);
 
 		// Assert
-		assert_eq!(config.max_entries(), DEFAULT_MAX_ENTRIES);
+		assert_eq!(throttle.max_entries(), DEFAULT_MAX_ENTRIES);
 	}
 }

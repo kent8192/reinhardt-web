@@ -26,8 +26,6 @@ pub struct TokenBucketConfig {
 	pub refill_interval: u64,
 	/// Number of tokens consumed per request
 	pub tokens_per_request: usize,
-	/// Maximum number of per-key entries before eviction occurs
-	max_entries: usize,
 }
 
 impl TokenBucketConfig {
@@ -63,42 +61,7 @@ impl TokenBucketConfig {
 			refill_rate,
 			refill_interval,
 			tokens_per_request,
-			max_entries: DEFAULT_MAX_ENTRIES,
 		})
-	}
-
-	/// Returns the maximum number of per-key entries before eviction occurs
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
-	///
-	/// let config = TokenBucketConfig::new(100, 100, 60, 1).unwrap();
-	/// assert_eq!(config.max_entries(), 10_000);
-	/// ```
-	pub fn max_entries(&self) -> usize {
-		self.max_entries
-	}
-
-	/// Sets the maximum number of per-key entries before eviction occurs
-	///
-	/// When the number of tracked keys exceeds this limit, the least recently
-	/// accessed entries are evicted to make room. Defaults to 10,000.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
-	///
-	/// let config = TokenBucketConfig::new(100, 100, 60, 1)
-	///     .unwrap()
-	///     .with_max_entries(5000);
-	/// assert_eq!(config.max_entries(), 5000);
-	/// ```
-	pub fn with_max_entries(mut self, max_entries: usize) -> Self {
-		self.max_entries = max_entries;
-		self
 	}
 
 	/// Creates a builder for fluent configuration
@@ -141,7 +104,6 @@ impl TokenBucketConfig {
 			refill_rate: rate,
 			refill_interval: 1,
 			tokens_per_request: 1,
-			max_entries: DEFAULT_MAX_ENTRIES,
 		}
 	}
 
@@ -163,7 +125,6 @@ impl TokenBucketConfig {
 			refill_rate: rate,
 			refill_interval: 60,
 			tokens_per_request: 1,
-			max_entries: DEFAULT_MAX_ENTRIES,
 		}
 	}
 
@@ -185,7 +146,6 @@ impl TokenBucketConfig {
 			refill_rate: rate,
 			refill_interval: 3600,
 			tokens_per_request: 1,
-			max_entries: DEFAULT_MAX_ENTRIES,
 		}
 	}
 }
@@ -197,7 +157,6 @@ pub struct TokenBucketConfigBuilder {
 	refill_rate: Option<usize>,
 	refill_interval: Option<u64>,
 	tokens_per_request: Option<usize>,
-	max_entries: Option<usize>,
 }
 
 impl TokenBucketConfigBuilder {
@@ -225,12 +184,6 @@ impl TokenBucketConfigBuilder {
 		self
 	}
 
-	/// Set maximum number of per-key entries before eviction
-	pub fn max_entries(mut self, max_entries: usize) -> Self {
-		self.max_entries = Some(max_entries);
-		self
-	}
-
 	/// Build the configuration
 	///
 	/// # Errors
@@ -253,7 +206,6 @@ impl TokenBucketConfigBuilder {
 			})?,
 			refill_interval,
 			tokens_per_request: self.tokens_per_request.unwrap_or(1),
-			max_entries: self.max_entries.unwrap_or(DEFAULT_MAX_ENTRIES),
 		})
 	}
 }
@@ -287,6 +239,7 @@ pub struct TokenBucket<T: TimeProvider = SystemTimeProvider> {
 	config: TokenBucketConfig,
 	time_provider: Arc<T>,
 	buckets: Arc<RwLock<HashMap<String, BucketState>>>,
+	max_entries: usize,
 }
 
 impl TokenBucket<SystemTimeProvider> {
@@ -305,6 +258,7 @@ impl TokenBucket<SystemTimeProvider> {
 			config,
 			time_provider: Arc::new(SystemTimeProvider::new()),
 			buckets: Arc::new(RwLock::new(HashMap::new())),
+			max_entries: DEFAULT_MAX_ENTRIES,
 		}
 	}
 }
@@ -316,7 +270,41 @@ impl<T: TimeProvider> TokenBucket<T> {
 			config,
 			time_provider,
 			buckets: Arc::new(RwLock::new(HashMap::new())),
+			max_entries: DEFAULT_MAX_ENTRIES,
 		}
+	}
+
+	/// Sets the maximum number of per-key entries before eviction occurs.
+	///
+	/// When the number of tracked keys exceeds this limit, the least recently
+	/// accessed entries are evicted to make room. Defaults to 10,000.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
+	///
+	/// let config = TokenBucketConfig::per_second(5, 10);
+	/// let throttle = TokenBucket::new(config).with_max_entries(500);
+	/// ```
+	pub fn with_max_entries(mut self, max_entries: usize) -> Self {
+		self.max_entries = max_entries;
+		self
+	}
+
+	/// Returns the maximum number of per-key entries before eviction occurs
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
+	///
+	/// let config = TokenBucketConfig::per_second(5, 10);
+	/// let throttle = TokenBucket::new(config);
+	/// assert_eq!(throttle.max_entries(), 10_000);
+	/// ```
+	pub fn max_entries(&self) -> usize {
+		self.max_entries
 	}
 
 	/// Create a new bucket state initialized with full capacity
@@ -356,7 +344,7 @@ impl<T: TimeProvider> TokenBucket<T> {
 	/// elapsed time). If still at capacity, removes the least recently
 	/// accessed entries.
 	fn evict_if_needed(&self, buckets: &mut HashMap<String, BucketState>) {
-		if buckets.len() < self.config.max_entries {
+		if buckets.len() < self.max_entries {
 			return;
 		}
 
@@ -375,7 +363,7 @@ impl<T: TimeProvider> TokenBucket<T> {
 			effective_tokens < self.config.capacity
 		});
 
-		if buckets.len() < self.config.max_entries {
+		if buckets.len() < self.max_entries {
 			return;
 		}
 
@@ -386,7 +374,7 @@ impl<T: TimeProvider> TokenBucket<T> {
 			.collect();
 		entries.sort_by_key(|(_, accessed)| *accessed);
 
-		let to_remove = buckets.len() - self.config.max_entries + 1;
+		let to_remove = buckets.len() - self.max_entries + 1;
 		for (key, _) in entries.into_iter().take(to_remove) {
 			buckets.remove(&key);
 		}
@@ -796,10 +784,9 @@ mod tests {
 		// Arrange
 		use tokio::time::Instant;
 		let time_provider = Arc::new(MockTimeProvider::new(Instant::now()));
-		let config = TokenBucketConfig::new(5, 5, 1, 1)
-			.unwrap()
-			.with_max_entries(3);
-		let throttle = TokenBucket::with_time_provider(config, time_provider.clone());
+		let config = TokenBucketConfig::new(5, 5, 1, 1).unwrap();
+		let throttle =
+			TokenBucket::with_time_provider(config, time_provider.clone()).with_max_entries(3);
 
 		// Act - add 3 keys that consume some tokens
 		for i in 0..3 {
@@ -823,10 +810,9 @@ mod tests {
 		// Arrange
 		use tokio::time::Instant;
 		let time_provider = Arc::new(MockTimeProvider::new(Instant::now()));
-		let config = TokenBucketConfig::new(5, 5, 60, 1)
-			.unwrap()
-			.with_max_entries(3);
-		let throttle = TokenBucket::with_time_provider(config, time_provider.clone());
+		let config = TokenBucketConfig::new(5, 5, 60, 1).unwrap();
+		let throttle =
+			TokenBucket::with_time_provider(config, time_provider.clone()).with_max_entries(3);
 
 		// Act - fill 3 keys, consuming all tokens (long refill interval so they stay active)
 		for i in 0..3 {
@@ -848,37 +834,22 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_token_bucket_config_with_max_entries() {
-		// Arrange & Act
-		let config = TokenBucketConfig::new(10, 5, 1, 1)
-			.unwrap()
-			.with_max_entries(5000);
-
-		// Assert
-		assert_eq!(config.max_entries(), 5000);
-	}
-
-	#[rstest]
-	fn test_token_bucket_config_default_max_entries() {
+	fn test_token_bucket_throttle_with_max_entries() {
 		// Arrange & Act
 		let config = TokenBucketConfig::new(10, 5, 1, 1).unwrap();
+		let throttle = TokenBucket::new(config).with_max_entries(5000);
 
 		// Assert
-		assert_eq!(config.max_entries(), DEFAULT_MAX_ENTRIES);
+		assert_eq!(throttle.max_entries(), 5000);
 	}
 
 	#[rstest]
-	fn test_token_bucket_builder_max_entries() {
+	fn test_token_bucket_throttle_default_max_entries() {
 		// Arrange & Act
-		let config = TokenBucketConfig::builder()
-			.capacity(10)
-			.refill_rate(5)
-			.refill_interval(1)
-			.max_entries(500)
-			.build()
-			.unwrap();
+		let config = TokenBucketConfig::new(10, 5, 1, 1).unwrap();
+		let throttle = TokenBucket::new(config);
 
 		// Assert
-		assert_eq!(config.max_entries(), 500);
+		assert_eq!(throttle.max_entries(), DEFAULT_MAX_ENTRIES);
 	}
 }
