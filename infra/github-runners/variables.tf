@@ -85,6 +85,19 @@ variable "runner_ami_ssm_parameter_name" {
   default     = "/reinhardt-ci/runner-ami-id"
 }
 
+variable "enable_housekeeping_runner" {
+  description = "Enable the always-on housekeeping runner (t4g.nano) for scheduled cleanup workflows"
+  type        = bool
+  default     = false
+}
+
+variable "housekeeping_instance_type" {
+  description = "EC2 instance type for the housekeeping runner (API-only jobs, minimal resources needed)"
+  type        = string
+  default     = "t4g.nano"
+}
+
+
 variable "tf_plan_aws_access_key_id" {
   description = "AWS access key ID for terraform-plan CI workflow (read-only IAM user recommended)"
   type        = string
@@ -95,4 +108,9 @@ variable "tf_plan_aws_secret_access_key" {
   description = "AWS secret access key for terraform-plan CI workflow"
   type        = string
   sensitive   = true
+}
+
+variable "organizations_account_email" {
+  description = "Email address for the CI sub-account (used by organizations module in terraform-plan CI)"
+  type        = string
 }
