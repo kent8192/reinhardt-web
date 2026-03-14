@@ -34,6 +34,9 @@ budget_alert_email       = "<your-email@example.com>"
 
 prefix = "reinhardt-ci"
 
+# Organizations module variable (for terraform-plan CI)
+organizations_account_email = "<your-email+reinhardt-ci@example.com>"
+
 # Housekeeping runner (always-on, for scheduled cleanup workflows)
 # Set to true after initial CI setup is confirmed working.
 enable_housekeeping_runner  = false

@@ -97,6 +97,7 @@ variable "housekeeping_instance_type" {
   default     = "t4g.nano"
 }
 
+
 variable "tf_plan_aws_access_key_id" {
   description = "AWS access key ID for terraform-plan CI workflow (read-only IAM user recommended)"
   type        = string
@@ -107,4 +108,9 @@ variable "tf_plan_aws_secret_access_key" {
   description = "AWS secret access key for terraform-plan CI workflow"
   type        = string
   sensitive   = true
+}
+
+variable "organizations_account_email" {
+  description = "Email address for the CI sub-account (used by organizations module in terraform-plan CI)"
+  type        = string
 }
