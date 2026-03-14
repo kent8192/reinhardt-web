@@ -22,7 +22,7 @@ pub struct LeakyBucketConfig {
 	/// Rate at which requests leak from the bucket (requests per second)
 	pub leak_rate: f64,
 	/// Maximum number of per-key entries before eviction occurs
-	pub max_entries: usize,
+	max_entries: usize,
 }
 
 impl LeakyBucketConfig {
@@ -61,6 +61,20 @@ impl LeakyBucketConfig {
 		})
 	}
 
+	/// Returns the maximum number of per-key entries before eviction occurs
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_throttling::leaky_bucket::LeakyBucketConfig;
+	///
+	/// let config = LeakyBucketConfig::new(20, 10.0).unwrap();
+	/// assert_eq!(config.max_entries(), 10_000);
+	/// ```
+	pub fn max_entries(&self) -> usize {
+		self.max_entries
+	}
+
 	/// Sets the maximum number of per-key entries before eviction occurs
 	///
 	/// When the number of tracked keys exceeds this limit, the least recently
@@ -74,7 +88,7 @@ impl LeakyBucketConfig {
 	/// let config = LeakyBucketConfig::new(20, 10.0)
 	///     .unwrap()
 	///     .with_max_entries(5000);
-	/// assert_eq!(config.max_entries, 5000);
+	/// assert_eq!(config.max_entries(), 5000);
 	/// ```
 	pub fn with_max_entries(mut self, max_entries: usize) -> Self {
 		self.max_entries = max_entries;
@@ -722,7 +736,7 @@ mod tests {
 			.with_max_entries(5000);
 
 		// Assert
-		assert_eq!(config.max_entries, 5000);
+		assert_eq!(config.max_entries(), 5000);
 	}
 
 	#[rstest]
@@ -731,6 +745,6 @@ mod tests {
 		let config = LeakyBucketConfig::new(10, 2.0).unwrap();
 
 		// Assert
-		assert_eq!(config.max_entries, DEFAULT_MAX_ENTRIES);
+		assert_eq!(config.max_entries(), DEFAULT_MAX_ENTRIES);
 	}
 }

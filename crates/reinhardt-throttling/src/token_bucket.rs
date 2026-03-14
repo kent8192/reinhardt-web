@@ -27,7 +27,7 @@ pub struct TokenBucketConfig {
 	/// Number of tokens consumed per request
 	pub tokens_per_request: usize,
 	/// Maximum number of per-key entries before eviction occurs
-	pub max_entries: usize,
+	max_entries: usize,
 }
 
 impl TokenBucketConfig {
@@ -67,6 +67,20 @@ impl TokenBucketConfig {
 		})
 	}
 
+	/// Returns the maximum number of per-key entries before eviction occurs
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
+	///
+	/// let config = TokenBucketConfig::new(100, 100, 60, 1).unwrap();
+	/// assert_eq!(config.max_entries(), 10_000);
+	/// ```
+	pub fn max_entries(&self) -> usize {
+		self.max_entries
+	}
+
 	/// Sets the maximum number of per-key entries before eviction occurs
 	///
 	/// When the number of tracked keys exceeds this limit, the least recently
@@ -80,7 +94,7 @@ impl TokenBucketConfig {
 	/// let config = TokenBucketConfig::new(100, 100, 60, 1)
 	///     .unwrap()
 	///     .with_max_entries(5000);
-	/// assert_eq!(config.max_entries, 5000);
+	/// assert_eq!(config.max_entries(), 5000);
 	/// ```
 	pub fn with_max_entries(mut self, max_entries: usize) -> Self {
 		self.max_entries = max_entries;
@@ -841,7 +855,7 @@ mod tests {
 			.with_max_entries(5000);
 
 		// Assert
-		assert_eq!(config.max_entries, 5000);
+		assert_eq!(config.max_entries(), 5000);
 	}
 
 	#[rstest]
@@ -850,7 +864,7 @@ mod tests {
 		let config = TokenBucketConfig::new(10, 5, 1, 1).unwrap();
 
 		// Assert
-		assert_eq!(config.max_entries, DEFAULT_MAX_ENTRIES);
+		assert_eq!(config.max_entries(), DEFAULT_MAX_ENTRIES);
 	}
 
 	#[rstest]
@@ -865,6 +879,6 @@ mod tests {
 			.unwrap();
 
 		// Assert
-		assert_eq!(config.max_entries, 500);
+		assert_eq!(config.max_entries(), 500);
 	}
 }
