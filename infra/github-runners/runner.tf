@@ -11,8 +11,8 @@ locals {
     runner_architecture = "arm64"
     runner_run_as       = "ubuntu"
 
-    instance_target_capacity_type = "spot"
-    instance_allocation_strategy  = "price-capacity-optimized"
+    instance_target_capacity_type   = "spot"
+    instance_allocation_strategy    = "price-capacity-optimized"
     create_service_linked_role_spot = true
 
     enable_ephemeral_runners = true
