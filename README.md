@@ -1048,7 +1048,7 @@ Reinhardt offers modular components you can mix and match:
 | HTTP & Routing      | `reinhardt-http`          | Request/Response, HTTP handling             |
 | URL Routing         | `reinhardt-urls`          | Function-based and class-based routes       |
 | Server              | `reinhardt-server`        | HTTP server implementation                  |
-| Middleware          | `reinhardt-dispatch`      | Middleware chain, signal dispatch           |
+| Dispatch            | `reinhardt-dispatch`      | HTTP request dispatching, handler composition |
 | Configuration       | `reinhardt-conf`          | Settings management, environment loading    |
 | Commands            | `reinhardt-commands`      | Management CLI tools (startproject, etc.)   |
 | Shortcuts           | `reinhardt-shortcuts`     | Common utility functions                    |
@@ -1067,6 +1067,9 @@ Reinhardt offers modular components you can mix and match:
 | GraphQL             | `reinhardt-graphql`       | Schema generation, subscriptions            |
 | WebSockets          | `reinhardt-websockets`    | Real-time communication                     |
 | i18n                | `reinhardt-i18n`          | Multi-language support                      |
+| Mail                | `reinhardt-mail`          | Email sending and templating                |
+| gRPC                | `reinhardt-grpc`          | gRPC services, protobuf types               |
+| Deep Link           | `reinhardt-deeplink`      | iOS Universal Links, Android App Links      |
 | **Middleware**       |                           |                                             |
 | Middleware          | `reinhardt-middleware`    | HTTP middleware components, CORS, security  |
 | **Testing**         |                           |                                             |
