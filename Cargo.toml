@@ -238,7 +238,7 @@ auth-token = ["auth", "reinhardt-auth/token"]
 db-postgres = ["database", "reinhardt-db/postgres", "reinhardt-commands/postgres"]
 db-mysql = ["database", "reinhardt-db/mysql"]
 db-sqlite = ["database", "reinhardt-db/sqlite", "reinhardt-commands/sqlite"]
-db-cockroachdb = ["database", "reinhardt-db/cockroachdb-backend"]
+db-cockroachdb = ["database", "reinhardt-db/cockroachdb-backend", "reinhardt-commands/postgres"]
 
 # Fine-grained middleware
 middleware-cors = ["reinhardt-middleware", "reinhardt-middleware/cors"]
