@@ -35,6 +35,16 @@
 //! - `social` (feature-gated): OAuth2/OpenID Connect social authentication providers
 //! - `user_management`: CRUD operations for users and groups
 //!
+//! ## DI Setup for `CurrentUser`
+//!
+//! To use [`CurrentUser`] in endpoint handlers, configure:
+//! 1. `InjectionContext` with a `DatabaseConnection` singleton
+//! 2. Router with `.with_di_context()`
+//! 3. Authentication middleware that sets `AuthState` in request extensions
+//!
+//! See [`current_user`] module documentation for detailed setup examples and
+//! fallback behavior.
+//!
 //! ## Feature Flags
 //!
 //! | Feature | Default | Description |

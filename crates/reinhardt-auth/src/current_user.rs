@@ -14,6 +14,51 @@
 //!    - Parses the user_id to the model's primary key type
 //!    - Loads the user from the database using `Model::objects().get(pk)`
 //! 3. Returns `CurrentUser::authenticated(user, user_id)` or `CurrentUser::anonymous()`
+//!
+//! # Prerequisites
+//!
+//! For `CurrentUser<U>` injection to work properly, the following must be configured:
+//!
+//! 1. **DI Context on Router**: The router must be configured with `.with_di_context()`
+//! 2. **`DatabaseConnection` Singleton**: A `DatabaseConnection` must be registered
+//!    as a singleton in the `InjectionContext`
+//! 3. **Authentication Middleware**: Middleware must insert `AuthState` into request extensions
+//!
+//! If the DI context is not configured, `CurrentUser` will fall back to anonymous.
+//! If `DatabaseConnection` is not registered, `CurrentUser` will also fall back to anonymous
+//! (with a warning log).
+//!
+//! ## Setup Example
+//!
+//! ```rust,ignore
+//! use reinhardt_di::InjectionContext;
+//! use reinhardt_db::DatabaseConnection;
+//! use std::sync::Arc;
+//!
+//! // 1. Create and configure the DI context
+//! let mut ctx = InjectionContext::new();
+//!
+//! // 2. Register DatabaseConnection as a singleton
+//! let db = DatabaseConnection::connect_postgres("postgres://...")
+//!     .await
+//!     .expect("Failed to connect");
+//! ctx.register_singleton(db);
+//!
+//! // 3. Configure the router with the DI context
+//! let router = Router::new()
+//!     .with_di_context(Arc::new(ctx))
+//!     .route("/api/profile", get(profile_handler));
+//! ```
+//!
+//! ## Fallback Behavior
+//!
+//! | Condition | Result |
+//! |-----------|--------|
+//! | DI context not set | `CurrentUser::anonymous()` (warning logged) |
+//! | `DatabaseConnection` not registered | `CurrentUser::anonymous()` (warning logged) |
+//! | `AuthState` not in extensions | `CurrentUser::anonymous()` |
+//! | User not found in database | `CurrentUser::anonymous()` |
+//! | All configured correctly | `CurrentUser::authenticated(user, id)` |
 
 use crate::AuthenticationError;
 use crate::BaseUser;
