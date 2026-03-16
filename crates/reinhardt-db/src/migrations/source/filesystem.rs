@@ -24,11 +24,19 @@ impl FilesystemSource {
 	///
 	/// * `root_dir` - Root directory to scan for migration files
 	///
-	/// # Example
+	/// # Workspace Safety
+	///
+	/// When used in a Cargo workspace, relative paths are resolved from the
+	/// current working directory, which may differ depending on where `cargo`
+	/// commands are invoked. Use `env!("CARGO_MANIFEST_DIR")` for reliable paths:
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::FilesystemSource;
-	/// let source = FilesystemSource::new("./migrations");
+	///
+	/// // Workspace-safe: path is always relative to the crate's Cargo.toml
+	/// let source = FilesystemSource::new(
+	///     format!("{}/migrations", env!("CARGO_MANIFEST_DIR"))
+	/// );
 	/// ```
 	pub fn new<P: AsRef<Path>>(root_dir: P) -> Self {
 		Self {
