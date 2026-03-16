@@ -544,7 +544,10 @@ pub fn migration() -> Migration {
 		let migrations = source.all_migrations().await.unwrap();
 
 		// Assert
-		assert!(migrations.is_empty(), "Non-existent directory should return empty migrations");
+		assert!(
+			migrations.is_empty(),
+			"Non-existent directory should return empty migrations"
+		);
 
 		let captured = logs.lock().unwrap();
 		let has_warning = captured
