@@ -511,7 +511,8 @@ mod tests {
 		let mut ctx = TemplateContext::new();
 		ctx.insert("secret_key", "real-key").unwrap();
 		ctx.insert("project_name", "my_project").unwrap();
-		ctx.set_example_override("secret_key", "PLACEHOLDER").unwrap();
+		ctx.set_example_override("secret_key", "PLACEHOLDER")
+			.unwrap();
 
 		// Act
 		let example_ctx = ctx.to_example_context();

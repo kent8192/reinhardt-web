@@ -450,7 +450,9 @@ fn test_example_override_produces_different_content() {
 
 	let cmd = reinhardt_commands::TemplateCommand::new();
 	let mut context = TemplateContext::new();
-	context.insert("secret_key", "real-generated-key-abc123").unwrap();
+	context
+		.insert("secret_key", "real-generated-key-abc123")
+		.unwrap();
 	context
 		.set_example_override("secret_key", "CHANGE_THIS_PLACEHOLDER")
 		.unwrap();
@@ -468,20 +470,21 @@ fn test_example_override_produces_different_content() {
 
 	// Assert
 	let example_content = std::fs::read_to_string(
-		output_dir.path().join("settings").join("config.example.toml"),
+		output_dir
+			.path()
+			.join("settings")
+			.join("config.example.toml"),
 	)
 	.unwrap();
 	let real_content =
 		std::fs::read_to_string(output_dir.path().join("settings").join("config.toml")).unwrap();
 
 	assert_eq!(
-		example_content,
-		"secret_key = \"CHANGE_THIS_PLACEHOLDER\"\n",
+		example_content, "secret_key = \"CHANGE_THIS_PLACEHOLDER\"\n",
 		".example.toml should contain the override placeholder"
 	);
 	assert_eq!(
-		real_content,
-		"secret_key = \"real-generated-key-abc123\"\n",
+		real_content, "secret_key = \"real-generated-key-abc123\"\n",
 		".toml should contain the real generated key"
 	);
 }
@@ -527,10 +530,9 @@ fn test_example_override_multiple_keys() {
 	.unwrap();
 
 	// Assert
-	let example_content = std::fs::read_to_string(
-		output_dir.path().join("settings").join("db.example.toml"),
-	)
-	.unwrap();
+	let example_content =
+		std::fs::read_to_string(output_dir.path().join("settings").join("db.example.toml"))
+			.unwrap();
 	let real_content =
 		std::fs::read_to_string(output_dir.path().join("settings").join("db.toml")).unwrap();
 
@@ -579,11 +581,9 @@ fn test_example_override_does_not_affect_regular_files() {
 	.unwrap();
 
 	// Assert
-	let content =
-		std::fs::read_to_string(output_dir.path().join("config.toml")).unwrap();
+	let content = std::fs::read_to_string(output_dir.path().join("config.toml")).unwrap();
 	assert_eq!(
-		content,
-		"key = \"real-value\"\n",
+		content, "key = \"real-value\"\n",
 		"Non-example file should use real value, not override"
 	);
 	// .example.toml should NOT be created for a non-example template
@@ -628,10 +628,9 @@ fn test_example_override_empty_produces_identical_content() {
 	.unwrap();
 
 	// Assert
-	let example_content = std::fs::read_to_string(
-		output_dir.path().join("settings").join("base.example.toml"),
-	)
-	.unwrap();
+	let example_content =
+		std::fs::read_to_string(output_dir.path().join("settings").join("base.example.toml"))
+			.unwrap();
 	let real_content =
 		std::fs::read_to_string(output_dir.path().join("settings").join("base.toml")).unwrap();
 
@@ -664,7 +663,10 @@ fn test_secret_key_startproject_flow() {
 	let mut context = TemplateContext::new();
 	context.insert("secret_key", &secret_key).unwrap();
 	context
-		.set_example_override("secret_key", "CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET")
+		.set_example_override(
+			"secret_key",
+			"CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET",
+		)
 		.unwrap();
 	let ctx = reinhardt_commands::CommandContext::new(vec![]);
 
@@ -679,10 +681,9 @@ fn test_secret_key_startproject_flow() {
 	.unwrap();
 
 	// Assert
-	let example_content = std::fs::read_to_string(
-		output_dir.path().join("settings").join("base.example.toml"),
-	)
-	.unwrap();
+	let example_content =
+		std::fs::read_to_string(output_dir.path().join("settings").join("base.example.toml"))
+			.unwrap();
 	let real_content =
 		std::fs::read_to_string(output_dir.path().join("settings").join("base.toml")).unwrap();
 
@@ -747,10 +748,9 @@ fn test_example_override_partial_keys() {
 	.unwrap();
 
 	// Assert
-	let example_content = std::fs::read_to_string(
-		output_dir.path().join("settings").join("app.example.toml"),
-	)
-	.unwrap();
+	let example_content =
+		std::fs::read_to_string(output_dir.path().join("settings").join("app.example.toml"))
+			.unwrap();
 	let real_content =
 		std::fs::read_to_string(output_dir.path().join("settings").join("app.toml")).unwrap();
 

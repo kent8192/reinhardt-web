@@ -11,24 +11,16 @@
 
 # Django-style settings
 debug = false
-secret_key = "{{ secret_key }}"
-# Reserved: not yet consumed by the framework
+secret_key = "CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET"
 language_code = "en-us"
 time_zone = "UTC"
 use_i18n = true
 use_tz = true
 append_slash = true
-# Reserved: not yet consumed by the framework
 default_auto_field = "reinhardt.db.models.BigAutoField"
 
 # Allowed hosts (empty list allows all hosts in debug mode)
 allowed_hosts = []
-
-# Installed applications
-# This list is read by the settings loader at runtime.
-# To register apps, add their config names as strings here.
-# App registration in Rust code uses the installed_apps! macro separately.
-installed_apps = []
 
 # Database configuration
 [database]
