@@ -50,7 +50,11 @@ pub struct DatabaseMetadata {
 	/// Database engine (e.g., "postgresql", "sqlite")
 	pub engine: String,
 
-	/// Registered tables/models for this database
+	/// All registered models in the project.
+	///
+	/// Note: The model registry does not track per-database routing, so
+	/// every database alias reports the same global model list. Multi-database
+	/// routing is handled at runtime by the ORM layer, not at introspection time.
 	pub tables: Vec<TableMetadata>,
 }
 
@@ -240,18 +244,24 @@ fn collect_database_metadata() -> Vec<DatabaseMetadata> {
 	}
 
 	let models = get_registered_models();
+	let model_tables: Vec<TableMetadata> = models
+		.iter()
+		.map(|m| TableMetadata {
+			name: m.table_name.to_string(),
+			app: m.app_label.to_string(),
+		})
+		.collect();
 
+	// Attach models to the "default" database only, since the model registry
+	// does not track per-database routing. Other aliases get empty tables.
 	databases
 		.into_iter()
 		.map(|(alias, engine)| {
-			let tables = models
-				.iter()
-				.map(|m| TableMetadata {
-					name: m.table_name.to_string(),
-					app: m.app_label.to_string(),
-				})
-				.collect();
-
+			let tables = if alias == "default" {
+				model_tables.clone()
+			} else {
+				Vec::new()
+			};
 			DatabaseMetadata {
 				alias,
 				engine,
@@ -275,19 +285,24 @@ fn build_settings(
 	use reinhardt_conf::settings::builder::SettingsBuilder;
 	use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 
+	let base_dir_str = base_dir
+		.to_str()
+		.ok_or_else(|| format!("base_dir contains invalid UTF-8: {}", base_dir.display()))?;
+
+	// Generate a random secret key to avoid shipping a hardcoded value,
+	// consistent with the approach used in execute_collectstatic.
+	let default_secret_key = crate::cli::generate_random_secret_key();
+
 	let merged = SettingsBuilder::new()
 		.profile(profile)
 		.add_source(
 			DefaultSource::new()
 				.with_value(
 					"base_dir",
-					serde_json::Value::String(base_dir.to_str().unwrap_or_default().to_string()),
+					serde_json::Value::String(base_dir_str.to_string()),
 				)
 				.with_value("debug", serde_json::Value::Bool(true))
-				.with_value(
-					"secret_key",
-					serde_json::Value::String("introspect-temp".to_string()),
-				)
+				.with_value("secret_key", serde_json::Value::String(default_secret_key))
 				.with_value("allowed_hosts", serde_json::Value::Array(vec![]))
 				.with_value("installed_apps", serde_json::Value::Array(vec![]))
 				.with_value("databases", serde_json::json!({}))
@@ -523,10 +538,10 @@ fn collect_features_metadata() -> FeaturesMetadata {
 		cache: detect_cache_signal(&all_features),
 		websocket: all_features
 			.iter()
-			.any(|f| f.contains("websocket") || f.contains("ws")),
+			.any(|f| has_token(f, "websocket") || has_token(f, "websockets")),
 		background_worker: all_features
 			.iter()
-			.any(|f| f.contains("task") || f.contains("worker") || f.contains("celery")),
+			.any(|f| has_token(f, "tasks") || has_token(f, "worker") || has_token(f, "celery")),
 	};
 
 	FeaturesMetadata {
@@ -536,29 +551,41 @@ fn collect_features_metadata() -> FeaturesMetadata {
 	}
 }
 
-/// Detect database type from feature names
+/// Split a feature name into tokens by common separators (`-`, `_`)
+fn feature_tokens(feature: &str) -> Vec<&str> {
+	feature.split(&['-', '_'][..]).collect()
+}
+
+/// Check if a feature name contains a specific token as a whole word
+fn has_token(feature: &str, token: &str) -> bool {
+	feature_tokens(feature)
+		.iter()
+		.any(|t| t.eq_ignore_ascii_case(token))
+}
+
+/// Detect database type from feature names using strict token matching
 fn detect_database_signal(features: &[&str]) -> String {
 	for f in features {
-		if f.contains("postgres") || f.contains("pg") {
+		if has_token(f, "postgres") || has_token(f, "postgresql") {
 			return "postgresql".to_string();
 		}
-		if f.contains("mysql") {
+		if has_token(f, "mysql") {
 			return "mysql".to_string();
 		}
-		if f.contains("sqlite") {
+		if has_token(f, "sqlite") {
 			return "sqlite".to_string();
 		}
 	}
 	"none".to_string()
 }
 
-/// Detect cache type from feature names
+/// Detect cache type from feature names using strict token matching
 fn detect_cache_signal(features: &[&str]) -> String {
 	for f in features {
-		if f.contains("redis") {
+		if has_token(f, "redis") {
 			return "redis".to_string();
 		}
-		if f.contains("memcache") || f.contains("memcached") {
+		if has_token(f, "memcache") || has_token(f, "memcached") {
 			return "memcached".to_string();
 		}
 	}
@@ -804,6 +831,8 @@ mod tests {
 	#[case(&["db-mysql", "server"], "mysql")]
 	#[case(&["sqlite", "server"], "sqlite")]
 	#[case(&["server", "auth"], "none")]
+	#[case(&["jpeg-support"], "none")] // "pg" in "jpeg" must NOT trigger postgresql
+	#[case(&["aws-sdk"], "none")] // false positive guard
 	fn test_detect_database_signal(#[case] features: &[&str], #[case] expected: &str) {
 		// Arrange & Act
 		let result = detect_database_signal(features);

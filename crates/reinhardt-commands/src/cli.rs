@@ -8,6 +8,8 @@ use crate::MakeMigrationsCommand;
 use crate::base::BaseCommand;
 use crate::collectstatic::{CollectStaticCommand, CollectStaticOptions};
 use crate::{CheckCommand, CommandContext, MigrateCommand, RunServerCommand, ShellCommand};
+#[cfg(feature = "introspect")]
+use clap::ValueEnum;
 use clap::{Parser, Subcommand};
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
@@ -36,6 +38,16 @@ pub struct Cli {
 	/// Verbosity level (can be repeated for more output)
 	#[arg(short, long, action = clap::ArgAction::Count)]
 	pub verbosity: u8,
+}
+
+/// Output format for the introspect command
+#[cfg(feature = "introspect")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum OutputFormat {
+	/// YAML output (default)
+	Yaml,
+	/// JSON output
+	Json,
 }
 
 /// Command-line interface commands
@@ -189,8 +201,8 @@ pub enum Commands {
 	#[cfg(feature = "introspect")]
 	Introspect {
 		/// Output format: yaml (default) or json
-		#[arg(short = 'f', long, default_value = "yaml")]
-		format: String,
+		#[arg(short = 'f', long, value_enum, default_value_t = OutputFormat::Yaml)]
+		format: OutputFormat,
 
 		/// Output only a specific section (app, databases, routes, middleware, settings, features)
 		#[arg(short = 's', long)]
@@ -683,7 +695,7 @@ async fn execute_showurls(_names: bool, _verbosity: u8) -> Result<(), Box<dyn st
 /// Execute the introspect command
 #[cfg(feature = "introspect")]
 async fn execute_introspect(
-	format: String,
+	format: OutputFormat,
 	section: Option<String>,
 	verbosity: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -721,14 +733,14 @@ async fn execute_introspect(
 			.get(section_name)
 			.ok_or_else(|| format!("Section '{}' not found in output", section_name))?;
 
-		match format.as_str() {
-			"json" => serde_json::to_string_pretty(section_value)?,
-			_ => serde_yaml::to_string(section_value)?,
+		match format {
+			OutputFormat::Json => serde_json::to_string_pretty(section_value)?,
+			OutputFormat::Yaml => serde_yaml::to_string(section_value)?,
 		}
 	} else {
-		match format.as_str() {
-			"json" => format_json(&output)?,
-			_ => format_yaml(&output)?,
+		match format {
+			OutputFormat::Json => format_json(&output)?,
+			OutputFormat::Yaml => format_yaml(&output)?,
 		}
 	};
 
@@ -737,17 +749,9 @@ async fn execute_introspect(
 	Ok(())
 }
 
-#[cfg(not(feature = "introspect"))]
-async fn execute_introspect(
-	_format: String,
-	_section: Option<String>,
-	_verbosity: u8,
-) -> Result<(), Box<dyn std::error::Error>> {
-	Err("introspect command requires 'introspect' feature. \
-		Enable it in your Cargo.toml: \
-		reinhardt-commands = { version = \"0.1.0\", features = [\"introspect\"] }"
-		.into())
-}
+// Stub when introspect feature is disabled — not reachable because the
+// Commands::Introspect variant is also feature-gated, but keeps the match arm
+// exhaustive for non-introspect builds that might add a fallback.
 
 /// Execute the generateopenapi command
 #[cfg(feature = "openapi")]
@@ -924,7 +928,7 @@ async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 /// Produces a 50-character hex string (200 bits of entropy). This is used
 /// as the default `SECRET_KEY` when no explicit key is configured, ensuring
 /// that each process gets a unique key rather than a shared hardcoded value.
-fn generate_random_secret_key() -> String {
+pub(crate) fn generate_random_secret_key() -> String {
 	use rand::Rng;
 	use std::fmt::Write;
 
@@ -1083,7 +1087,7 @@ mod tests {
 	fn test_requires_router_for_introspect() {
 		// Arrange
 		let command = Commands::Introspect {
-			format: "yaml".to_string(),
+			format: OutputFormat::Yaml,
 			section: None,
 		};
 

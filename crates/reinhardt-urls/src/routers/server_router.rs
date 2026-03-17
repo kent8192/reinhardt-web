@@ -421,13 +421,6 @@ impl ServerRouter {
 			child.di_context = self.di_context.clone();
 		}
 
-		// Propagate parent middleware names to child for introspection completeness
-		if !self.middleware_names.is_empty() {
-			let mut inherited = self.middleware_names.clone();
-			inherited.append(&mut child.middleware_names);
-			child.middleware_names = inherited;
-		}
-
 		self.children.push(child);
 		self
 	}
@@ -453,12 +446,6 @@ impl ServerRouter {
 		}
 		if child.di_context.is_none() {
 			child.di_context = self.di_context.clone();
-		}
-		// Propagate parent middleware names to child for introspection completeness
-		if !self.middleware_names.is_empty() {
-			let mut inherited = self.middleware_names.clone();
-			inherited.append(&mut child.middleware_names);
-			child.middleware_names = inherited;
 		}
 		self.children.push(child);
 	}
