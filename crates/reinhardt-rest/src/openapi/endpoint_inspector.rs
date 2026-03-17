@@ -187,13 +187,17 @@ impl EndpointInspector {
 			builder = builder.request_body(Some(request_body));
 		}
 
-		// Add default response
-		builder = builder.response(
-			"200",
-			ResponseBuilder::new()
-				.description("Successful response")
-				.build(),
-		);
+		// Add default response (with headers if present)
+		let mut default_resp_builder = ResponseBuilder::new().description("Successful response");
+		for header in metadata.headers {
+			default_resp_builder = default_resp_builder.header(
+				header.name,
+				HeaderBuilder::new()
+					.description(Some(header.description.to_string()))
+					.build(),
+			);
+		}
+		builder = builder.response("200", default_resp_builder.build());
 
 		// Add custom responses from metadata
 		for response in metadata.responses {

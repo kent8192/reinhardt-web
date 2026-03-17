@@ -23,6 +23,11 @@ use hyper::Method;
 ///     println!("{} {}", metadata.method, metadata.path);
 /// }
 /// ```
+// NOTE: #[non_exhaustive] is intentionally omitted in the pre-1.0 phase.
+// EndpointMetadata is constructed via struct literals in both proc-macro codegen
+// (reinhardt-core-macros) and test code across multiple crates. Adding
+// #[non_exhaustive] would require a builder or constructor, which adds complexity
+// without benefit before the public API stabilizes at 1.0.
 #[derive(Debug, Clone)]
 pub struct EndpointMetadata {
 	/// URL path pattern for this endpoint (e.g., "/users/{id}/").

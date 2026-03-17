@@ -20,6 +20,7 @@ use utoipa::openapi::{
 #[rstest]
 fn test_simple_struct_schema_generation() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -48,6 +49,7 @@ fn test_simple_struct_schema_generation() {
 #[rstest]
 fn test_optional_fields_not_required() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -74,6 +76,7 @@ fn test_optional_fields_not_required() {
 #[rstest]
 fn test_field_with_description() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -110,6 +113,7 @@ fn test_field_with_description() {
 #[rstest]
 fn test_field_with_example() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -142,6 +146,7 @@ fn test_field_with_example() {
 #[rstest]
 fn test_field_with_format() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -177,6 +182,7 @@ fn test_field_with_format() {
 #[rstest]
 fn test_field_with_read_only() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -208,6 +214,7 @@ fn test_field_with_read_only() {
 #[rstest]
 fn test_field_with_write_only() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct CreateUser {
@@ -239,6 +246,7 @@ fn test_field_with_write_only() {
 #[rstest]
 fn test_field_with_deprecated() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -271,6 +279,7 @@ fn test_field_with_deprecated() {
 #[rstest]
 fn test_field_with_numeric_constraints() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct Product {
@@ -304,6 +313,7 @@ fn test_field_with_numeric_constraints() {
 #[rstest]
 fn test_field_with_string_length_constraints() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -337,6 +347,7 @@ fn test_field_with_string_length_constraints() {
 #[rstest]
 fn test_field_with_pattern() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -366,6 +377,7 @@ fn test_field_with_pattern() {
 #[rstest]
 fn test_doc_comments_as_description() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -401,6 +413,7 @@ fn test_doc_comments_as_description() {
 #[rstest]
 fn test_explicit_description_overrides_doc_comment() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -431,6 +444,7 @@ fn test_explicit_description_overrides_doc_comment() {
 #[rstest]
 fn test_combined_attributes() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -476,6 +490,7 @@ fn test_combined_attributes() {
 #[rstest]
 fn test_complex_struct_with_all_features() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -577,6 +592,7 @@ fn test_complex_struct_with_all_features() {
 #[rstest]
 fn test_simple_unit_enum_generates_string_schema() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Status {
@@ -605,6 +621,7 @@ fn test_simple_unit_enum_generates_string_schema() {
 #[rstest]
 fn test_internally_tagged_enum() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(tag = "type")]
@@ -630,6 +647,7 @@ fn test_internally_tagged_enum() {
 #[rstest]
 fn test_adjacently_tagged_enum() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(tag = "t", content = "c")]
@@ -654,6 +672,7 @@ fn test_adjacently_tagged_enum() {
 #[rstest]
 fn test_untagged_enum() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(untagged)]
@@ -679,6 +698,7 @@ fn test_untagged_enum() {
 #[rstest]
 fn test_externally_tagged_enum_with_struct_variants() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Shape {
@@ -704,6 +724,7 @@ fn test_externally_tagged_enum_with_struct_variants() {
 #[rstest]
 fn test_enum_with_newtype_variant() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Wrapper {
@@ -726,6 +747,7 @@ fn test_enum_with_newtype_variant() {
 #[rstest]
 fn test_enum_with_serde_rename() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	enum Status {
@@ -755,6 +777,7 @@ fn test_enum_with_serde_rename() {
 #[rstest]
 fn test_enum_with_serde_rename_all() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(rename_all = "snake_case")]
@@ -784,6 +807,7 @@ fn test_enum_with_serde_rename_all() {
 #[rstest]
 fn test_enum_with_skip_variant() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	enum Mode {
@@ -814,6 +838,7 @@ fn test_enum_with_skip_variant() {
 #[rstest]
 fn test_mixed_variant_types() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Data {
@@ -840,6 +865,7 @@ fn test_mixed_variant_types() {
 #[rstest]
 fn test_internally_tagged_with_unit_variant() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(tag = "kind")]
@@ -869,6 +895,7 @@ fn test_internally_tagged_with_unit_variant() {
 #[rstest]
 fn test_container_title_attribute() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	#[schema(title = "User Account")]
@@ -892,6 +919,7 @@ fn test_container_title_attribute() {
 #[rstest]
 fn test_container_description_attribute() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	#[schema(description = "A user account in the system")]
@@ -919,6 +947,7 @@ fn test_container_description_attribute() {
 fn test_container_description_overrides_doc_comment() {
 	// Arrange
 	/// This doc comment should be overridden
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	#[schema(description = "Explicit container description")]
@@ -944,6 +973,7 @@ fn test_container_description_overrides_doc_comment() {
 #[rstest]
 fn test_container_example_attribute() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	#[schema(example = "{\"id\": 1, \"name\": \"Alice\"}")]
@@ -967,6 +997,7 @@ fn test_container_example_attribute() {
 #[rstest]
 fn test_container_deprecated_attribute() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	#[schema(deprecated)]
@@ -989,6 +1020,7 @@ fn test_container_deprecated_attribute() {
 #[rstest]
 fn test_container_nullable_attribute() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	#[schema(nullable)]
@@ -1019,6 +1051,7 @@ fn test_container_nullable_attribute() {
 #[rstest]
 fn test_container_combined_attributes() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	#[schema(
@@ -1055,6 +1088,7 @@ fn test_container_combined_attributes() {
 #[rstest]
 fn test_field_exclusive_minimum_maximum() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct NumericBounds {
@@ -1090,6 +1124,7 @@ fn test_field_exclusive_minimum_maximum() {
 #[rstest]
 fn test_field_multiple_of() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct MultipleOfTest {
@@ -1120,6 +1155,7 @@ fn test_field_multiple_of() {
 #[rstest]
 fn test_field_min_max_items() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct ItemBounds {
@@ -1148,6 +1184,7 @@ fn test_field_min_max_items() {
 #[rstest]
 fn test_field_unique_items() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct UniqueSet {
@@ -1175,6 +1212,7 @@ fn test_field_unique_items() {
 #[rstest]
 fn test_field_nullable() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct NullableField {
@@ -1208,6 +1246,7 @@ fn test_field_nullable() {
 #[rstest]
 fn test_field_default_value() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct WithDefault {
@@ -1236,6 +1275,7 @@ fn test_field_default_value() {
 #[rstest]
 fn test_field_title() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct WithTitle {
@@ -1264,6 +1304,7 @@ fn test_field_title() {
 #[rstest]
 fn test_field_attributes_in_json_output() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct JsonVerification {
@@ -1314,6 +1355,7 @@ fn test_field_attributes_in_json_output() {
 #[rstest]
 fn test_enum_container_attributes() {
 	// Arrange
+	// Allow: compile-time-only test fixture for derive macro verification
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	#[schema(title = "User Status", description = "The status of a user account")]

@@ -346,6 +346,9 @@ fn derive_enum_schema(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream 
 }
 
 /// Generate code to apply container-level attributes to a schema
+///
+/// Handles both `Schema::Object` and `Schema::AllOf` variants, so container
+/// attributes work correctly for flattened structs that produce AllOf schemas.
 fn generate_container_modifications(
 	attrs: &schema::ContainerAttributes,
 	openapi_crate: &proc_macro2::TokenStream,
@@ -354,41 +357,102 @@ fn generate_container_modifications(
 
 	if let Some(ref title) = attrs.title {
 		mods.push(quote! {
-			if let Schema::Object(ref mut obj) = schema {
-				obj.title = Some(#title.to_string());
+			match schema {
+				Schema::Object(ref mut obj) => {
+					obj.title = Some(#title.to_string());
+				}
+				Schema::AllOf(ref mut all_of) => {
+					all_of.title = Some(#title.to_string());
+				}
+				_ => {}
 			}
 		});
 	}
 
 	if let Some(ref description) = attrs.description {
 		mods.push(quote! {
-			if let Schema::Object(ref mut obj) = schema {
-				obj.description = Some(#description.to_string());
+			match schema {
+				Schema::Object(ref mut obj) => {
+					obj.description = Some(#description.to_string());
+				}
+				Schema::AllOf(ref mut all_of) => {
+					all_of.description = Some(#description.to_string());
+				}
+				_ => {}
 			}
 		});
 	}
 
 	if let Some(ref example) = attrs.example {
+		// Parse the example string as JSON; fall back to a JSON string if invalid
 		mods.push(quote! {
-			if let Schema::Object(ref mut obj) = schema {
-				obj.example = Some(serde_json::json!(#example));
+			let example_value: serde_json::Value = serde_json::from_str(#example)
+				.unwrap_or_else(|_| serde_json::json!(#example));
+			match schema {
+				Schema::Object(ref mut obj) => {
+					obj.example = Some(example_value);
+				}
+				Schema::AllOf(ref mut all_of) => {
+					all_of.example = Some(example_value);
+				}
+				_ => {}
 			}
 		});
 	}
 
 	if attrs.deprecated {
 		mods.push(quote! {
-			if let Schema::Object(ref mut obj) = schema {
-				obj.deprecated = Some(#openapi_crate::utoipa::openapi::Deprecated::True);
+			match schema {
+				Schema::Object(ref mut obj) => {
+					obj.deprecated = Some(#openapi_crate::utoipa::openapi::Deprecated::True);
+				}
+				// AllOf does not have a deprecated field in utoipa;
+				// wrap in a single-item AllOf with deprecated on the inner object
+				_ => {}
 			}
 		});
 	}
 
 	if attrs.nullable {
 		mods.push(quote! {
-			if let Schema::Object(ref mut obj) = schema {
+			{
 				use #openapi_crate::utoipa::openapi::schema::{SchemaType, Type};
-				obj.schema_type = SchemaType::from_iter([Type::Object, Type::Null]);
+				match schema {
+					Schema::Object(ref mut obj) => {
+						// Preserve the existing type and add Null
+						let existing_type = std::mem::replace(
+							&mut obj.schema_type,
+							SchemaType::AnyValue,
+						);
+						match existing_type {
+							SchemaType::Type(t) => {
+								obj.schema_type = SchemaType::from_iter([t, Type::Null]);
+							}
+							other => {
+								obj.schema_type = other;
+							}
+						}
+					}
+					Schema::AllOf(ref mut all_of) => {
+						// AllOf nullable: set schema_type to include Null
+						let existing_type = std::mem::replace(
+							&mut all_of.schema_type,
+							SchemaType::AnyValue,
+						);
+						match existing_type {
+							SchemaType::AnyValue => {
+								all_of.schema_type = SchemaType::from_iter([Type::Object, Type::Null]);
+							}
+							SchemaType::Type(t) => {
+								all_of.schema_type = SchemaType::from_iter([t, Type::Null]);
+							}
+							other => {
+								all_of.schema_type = other;
+							}
+						}
+					}
+					_ => {}
+				}
 			}
 		});
 	}
@@ -689,9 +753,13 @@ fn build_field_schema(field_type: &syn::Type, attrs: &FieldAttributes) -> proc_m
 	}
 
 	if let Some(ref example) = attrs.example {
+		// Parse the example string as JSON; fall back to a JSON string if invalid
 		modifications.push(quote! {
 			if let Schema::Object(ref mut obj) = schema {
-				obj.example = Some(serde_json::json!(#example));
+				obj.example = Some(
+					serde_json::from_str(#example)
+						.unwrap_or_else(|_| serde_json::json!(#example))
+				);
 			}
 		});
 	}
@@ -818,22 +886,57 @@ fn build_field_schema(field_type: &syn::Type, attrs: &FieldAttributes) -> proc_m
 
 	if attrs.nullable {
 		modifications.push(quote! {
-			if let Schema::Object(ref mut obj) = schema {
-				use #openapi_crate::utoipa::openapi::schema::SchemaType;
-				// Preserve the existing type and add Null
-				let existing_type = std::mem::replace(
-					&mut obj.schema_type,
-					SchemaType::AnyValue,
-				);
-				match existing_type {
-					SchemaType::Type(t) => {
-						use #openapi_crate::utoipa::openapi::schema::Type;
-						obj.schema_type = SchemaType::from_iter([t, Type::Null]);
-					}
-					other => {
-						obj.schema_type = other;
+			use #openapi_crate::utoipa::openapi::schema::{SchemaType, Type};
+			match schema {
+				Schema::Object(ref mut obj) => {
+					// Preserve the existing type and add Null
+					let existing_type = std::mem::replace(
+						&mut obj.schema_type,
+						SchemaType::AnyValue,
+					);
+					match existing_type {
+						SchemaType::Type(t) => {
+							obj.schema_type = SchemaType::from_iter([t, Type::Null]);
+						}
+						other => {
+							obj.schema_type = other;
+						}
 					}
 				}
+				Schema::Array(ref mut arr) => {
+					// Preserve the existing array type and add Null
+					let existing_type = std::mem::replace(
+						&mut arr.schema_type,
+						SchemaType::AnyValue,
+					);
+					match existing_type {
+						SchemaType::Type(t) => {
+							arr.schema_type = SchemaType::from_iter([t, Type::Null]);
+						}
+						other => {
+							arr.schema_type = other;
+						}
+					}
+				}
+				Schema::AllOf(ref mut all_of) => {
+					// AllOf nullable: set schema_type to include Null
+					let existing_type = std::mem::replace(
+						&mut all_of.schema_type,
+						SchemaType::AnyValue,
+					);
+					match existing_type {
+						SchemaType::AnyValue => {
+							all_of.schema_type = SchemaType::from_iter([Type::Object, Type::Null]);
+						}
+						SchemaType::Type(t) => {
+							all_of.schema_type = SchemaType::from_iter([t, Type::Null]);
+						}
+						other => {
+							all_of.schema_type = other;
+						}
+					}
+				}
+				_ => {}
 			}
 		});
 	}

@@ -103,28 +103,34 @@ pub(crate) fn extract_container_attributes(
 ) -> Result<ContainerAttributes, syn::Error> {
 	let mut container_attrs = ContainerAttributes::default();
 
+	// First pass: collect all doc comment lines
+	let mut doc_description: Option<String> = None;
 	for attr in attrs {
-		// Check for doc comments as description fallback
-		if attr.path().is_ident("doc") {
-			if let Meta::NameValue(MetaNameValue {
+		if attr.path().is_ident("doc")
+			&& let Meta::NameValue(MetaNameValue {
 				value: syn::Expr::Lit(syn::ExprLit {
 					lit: Lit::Str(lit_str),
 					..
 				}),
 				..
 			}) = &attr.meta
-			{
-				let doc = lit_str.value().trim().to_string();
-				if !doc.is_empty() && container_attrs.description.is_none() {
-					// Only use doc comments if no explicit description is set
-					if let Some(ref mut desc) = container_attrs.description {
-						desc.push(' ');
-						desc.push_str(&doc);
-					} else {
-						container_attrs.description = Some(doc);
-					}
+		{
+			let doc = lit_str.value().trim().to_string();
+			if !doc.is_empty() {
+				if let Some(ref mut desc) = doc_description {
+					desc.push(' ');
+					desc.push_str(&doc);
+				} else {
+					doc_description = Some(doc);
 				}
 			}
+		}
+	}
+	// Use doc comments as fallback description (may be overridden by explicit attribute)
+	container_attrs.description = doc_description;
+
+	for attr in attrs {
+		if attr.path().is_ident("doc") {
 			continue;
 		}
 
