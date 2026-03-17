@@ -25,8 +25,9 @@ default_auto_field = "reinhardt.db.models.BigAutoField"
 allowed_hosts = []
 
 # Installed applications
-# Register your app configs here using the installed_apps! macro in your code.
-# Example: installed_apps![MyAppConfig, AnotherAppConfig]
+# This list is read by the settings loader at runtime.
+# To register apps, add their config names as strings here.
+# App registration in Rust code uses the installed_apps! macro separately.
 installed_apps = []
 
 # Database configuration
