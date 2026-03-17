@@ -664,6 +664,9 @@ mod tests {
 			module_path: "test::views",
 			request_body_type: Some("crate :: models :: QualifiedPathTestSchema"),
 			request_content_type: Some("application/json"),
+			responses: &[],
+			headers: &[],
+			security: &[],
 		};
 
 		// Act
