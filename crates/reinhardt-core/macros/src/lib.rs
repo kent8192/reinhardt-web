@@ -651,6 +651,7 @@ pub fn derive_app_config(input: TokenStream) -> TokenStream {
 ///
 /// - Each migration module must export a `migration()` function returning `Migration`
 /// - The crate must have `reinhardt-migrations` and `linkme` as dependencies
+///
 #[proc_macro]
 pub fn collect_migrations(input: TokenStream) -> TokenStream {
 	collect_migrations::collect_migrations_impl(input.into())
