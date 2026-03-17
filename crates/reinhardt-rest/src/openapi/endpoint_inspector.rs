@@ -36,6 +36,19 @@ impl Default for InspectorConfig {
 	}
 }
 
+/// Normalize a type name by extracting the last path segment.
+///
+/// Handles fully-qualified paths like `"crate :: models :: CreateUserRequest"`
+/// (produced by `quote!().to_string()`) by returning just `"CreateUserRequest"`.
+/// Simple names without `::` are returned as-is.
+fn normalize_type_name(type_str: &str) -> &str {
+	type_str
+		.rsplit("::")
+		.next()
+		.map(|s| s.trim())
+		.unwrap_or(type_str)
+}
+
 /// Endpoint inspector for function-based routes
 ///
 /// Extracts endpoint information from HTTP method decorator macros
@@ -133,19 +146,24 @@ impl EndpointInspector {
 		let body_type = metadata.request_body_type?;
 		let content_type = metadata.request_content_type?;
 
+		// Normalize the type name to handle fully-qualified paths from quote!()
+		// e.g., "crate :: models :: CreateUserRequest" → "CreateUserRequest"
+		let normalized_type = normalize_type_name(body_type);
+
 		// Try to get schema from global registry first
-		let schema =
-			if let Some(registered_schema) = super::registry::get_all_schemas().get(body_type) {
-				// Use registered schema
-				registered_schema.clone()
-			} else {
-				// Fallback: Create placeholder schema (empty object)
-				Schema::Object(
-					ObjectBuilder::new()
-						.description(Some(format!("Request body for {}", body_type)))
-						.build(),
-				)
-			};
+		let schema = if let Some(registered_schema) =
+			super::registry::get_all_schemas().get(normalized_type)
+		{
+			// Use registered schema
+			registered_schema.clone()
+		} else {
+			// Fallback: Create placeholder schema (empty object)
+			Schema::Object(
+				ObjectBuilder::new()
+					.description(Some(format!("Request body for {}", normalized_type)))
+					.build(),
+			)
+		};
 
 		// Create Content with schema
 		let content = ContentBuilder::new().schema(Some(schema)).build();
@@ -153,7 +171,7 @@ impl EndpointInspector {
 		// Create RequestBody
 		Some(
 			RequestBodyBuilder::new()
-				.description(Some(format!("Request body containing {}", body_type)))
+				.description(Some(format!("Request body containing {}", normalized_type)))
 				.required(Some(utoipa::openapi::Required::True))
 				.content(content_type, content)
 				.build(),
@@ -513,5 +531,94 @@ mod tests {
 
 		// Test invalid method
 		assert!(inspector.metadata_method_to_http_method("INVALID").is_err());
+	}
+
+	#[test]
+	fn test_normalize_type_name_simple() {
+		// Arrange / Act / Assert
+		assert_eq!(
+			normalize_type_name("CreateUserRequest"),
+			"CreateUserRequest"
+		);
+	}
+
+	#[test]
+	fn test_normalize_type_name_fully_qualified() {
+		// Arrange: fully-qualified path as produced by quote!().to_string()
+		// Act / Assert
+		assert_eq!(
+			normalize_type_name("crate :: models :: CreateUserRequest"),
+			"CreateUserRequest"
+		);
+	}
+
+	#[test]
+	fn test_normalize_type_name_compact_path() {
+		// Arrange: compact path without spaces around ::
+		// Act / Assert
+		assert_eq!(
+			normalize_type_name("crate::models::CreateUserRequest"),
+			"CreateUserRequest"
+		);
+	}
+
+	#[test]
+	fn test_normalize_type_name_single_segment_with_colons() {
+		// Arrange: path with only one :: separator
+		// Act / Assert
+		assert_eq!(normalize_type_name("models::LoginForm"), "LoginForm");
+	}
+
+	#[test]
+	fn test_normalize_type_name_empty_string() {
+		// Arrange / Act / Assert
+		assert_eq!(normalize_type_name(""), "");
+	}
+
+	#[test]
+	fn test_create_request_body_with_qualified_path() {
+		// Arrange
+		let inspector = EndpointInspector::new();
+
+		// Simulate a fully-qualified type path as produced by quote!()
+		let metadata = EndpointMetadata {
+			path: "/api/users",
+			method: "POST",
+			name: Some("create_user"),
+			function_name: "create_user",
+			module_path: "users::views",
+			request_body_type: Some("crate :: models :: CreateUserRequest"),
+			request_content_type: Some("application/json"),
+		};
+
+		// Act
+		let request_body = inspector.create_request_body(&metadata);
+
+		// Assert: should still produce a request body (fallback schema)
+		assert!(
+			request_body.is_some(),
+			"Should return a request body even with fully-qualified type path"
+		);
+
+		let rb = request_body.unwrap();
+		assert!(rb.content.contains_key("application/json"));
+
+		// Verify the description uses the normalized (short) type name
+		let content = rb.content.get("application/json").unwrap();
+		if let Some(utoipa::openapi::RefOr::T(schema)) = &content.schema {
+			if let utoipa::openapi::schema::Schema::Object(obj) = schema {
+				let description = obj.description.as_deref().unwrap_or("");
+				assert!(
+					description.contains("CreateUserRequest"),
+					"Description should contain the normalized type name, got: {}",
+					description
+				);
+				assert!(
+					!description.contains("crate ::"),
+					"Description should not contain path qualifiers, got: {}",
+					description
+				);
+			}
+		}
 	}
 }
