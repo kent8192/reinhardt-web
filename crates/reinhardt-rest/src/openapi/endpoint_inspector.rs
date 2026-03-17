@@ -40,13 +40,12 @@ impl Default for InspectorConfig {
 ///
 /// Handles fully-qualified paths like `"crate :: models :: CreateUserRequest"`
 /// (produced by `quote!().to_string()`) by returning just `"CreateUserRequest"`.
-/// Simple names without `::` are returned as-is.
+/// Simple names without `::` are returned as-is but still trimmed of whitespace.
 fn normalize_type_name(type_str: &str) -> &str {
-	type_str
-		.rsplit("::")
-		.next()
-		.map(|s| s.trim())
-		.unwrap_or(type_str)
+	match type_str.rsplit_once("::") {
+		Some((_, last)) => last.trim(),
+		None => type_str.trim(),
+	}
 }
 
 /// Endpoint inspector for function-based routes
@@ -330,6 +329,34 @@ impl Default for EndpointInspector {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::openapi::schema_registration::SchemaRegistration;
+	use utoipa::openapi::schema::ObjectBuilder;
+
+	// Register a test schema for qualified-path lookup verification.
+	// This will be present in the global registry under "QualifiedPathTestSchema".
+	inventory::submit! {
+		SchemaRegistration {
+			name: "QualifiedPathTestSchema",
+			generator: || {
+				Schema::Object(
+					ObjectBuilder::new()
+						.schema_type(utoipa::openapi::schema::Type::Object)
+						.title(Some("QualifiedPathTestSchema"))
+						.description(Some("Test schema for qualified path lookup"))
+						.property(
+							"test_field",
+							Schema::Object(
+								ObjectBuilder::new()
+									.schema_type(utoipa::openapi::schema::Type::String)
+									.build(),
+							),
+						)
+						.required("test_field")
+						.build(),
+				)
+			},
+		}
+	}
 
 	#[test]
 	fn test_normalize_path() {
@@ -576,25 +603,31 @@ mod tests {
 	}
 
 	#[test]
-	fn test_create_request_body_with_qualified_path() {
-		// Arrange
+	fn test_create_request_body_with_qualified_path_uses_registered_schema() {
+		// Arrange: verify the test schema is present in the global registry
+		let all_schemas = super::super::registry::get_all_schemas();
+		assert!(
+			all_schemas.contains_key("QualifiedPathTestSchema"),
+			"Test schema 'QualifiedPathTestSchema' should be registered in the global registry"
+		);
+
 		let inspector = EndpointInspector::new();
 
 		// Simulate a fully-qualified type path as produced by quote!()
 		let metadata = EndpointMetadata {
-			path: "/api/users",
+			path: "/api/test",
 			method: "POST",
-			name: Some("create_user"),
-			function_name: "create_user",
-			module_path: "users::views",
-			request_body_type: Some("crate :: models :: CreateUserRequest"),
+			name: Some("test_endpoint"),
+			function_name: "test_endpoint",
+			module_path: "test::views",
+			request_body_type: Some("crate :: models :: QualifiedPathTestSchema"),
 			request_content_type: Some("application/json"),
 		};
 
 		// Act
 		let request_body = inspector.create_request_body(&metadata);
 
-		// Assert: should still produce a request body (fallback schema)
+		// Assert: should return a request body using the registered schema
 		assert!(
 			request_body.is_some(),
 			"Should return a request body even with fully-qualified type path"
@@ -603,22 +636,36 @@ mod tests {
 		let rb = request_body.unwrap();
 		assert!(rb.content.contains_key("application/json"));
 
-		// Verify the description uses the normalized (short) type name
+		// Verify the schema came from the registry (has title and properties),
+		// not the fallback (which only has a description)
 		let content = rb.content.get("application/json").unwrap();
-		if let Some(utoipa::openapi::RefOr::T(schema)) = &content.schema {
-			if let utoipa::openapi::schema::Schema::Object(obj) = schema {
-				let description = obj.description.as_deref().unwrap_or("");
-				assert!(
-					description.contains("CreateUserRequest"),
-					"Description should contain the normalized type name, got: {}",
-					description
-				);
-				assert!(
-					!description.contains("crate ::"),
-					"Description should not contain path qualifiers, got: {}",
-					description
-				);
+		match &content.schema {
+			Some(utoipa::openapi::RefOr::T(schema)) => match schema {
+				Schema::Object(obj) => {
+					// The registered schema has a title set
+					assert_eq!(
+						obj.title.as_deref(),
+						Some("QualifiedPathTestSchema"),
+						"Schema should come from the registry (has title), not the fallback"
+					);
+					// The registered schema has a 'test_field' property
+					assert!(
+						obj.properties.contains_key("test_field"),
+						"Schema should contain 'test_field' property from the registered schema"
+					);
+					// The registered schema has a specific description
+					assert_eq!(
+						obj.description.as_deref(),
+						Some("Test schema for qualified path lookup"),
+						"Schema description should match the registered schema"
+					);
+				}
+				_ => panic!("Expected Object schema from registry, got non-Object variant"),
+			},
+			Some(utoipa::openapi::RefOr::Ref(_)) => {
+				panic!("Expected concrete schema, got a $ref")
 			}
+			None => panic!("Expected schema in content, got None"),
 		}
 	}
 }
