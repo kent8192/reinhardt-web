@@ -9,9 +9,14 @@ use std::collections::HashMap;
 use tera::Tera;
 
 /// Context for template rendering, holding key-value pairs passed to Tera templates.
+///
+/// Supports example overrides: when rendering `.example.` files, override values
+/// are substituted for specified keys so that example files contain safe placeholder
+/// strings while the actual settings files receive the real generated values.
 #[derive(Debug, Clone)]
 pub struct TemplateContext {
 	variables: HashMap<String, JsonValue>,
+	example_overrides: HashMap<String, JsonValue>,
 }
 
 impl From<TemplateContext> for tera::Context {
@@ -29,6 +34,7 @@ impl TemplateContext {
 	pub fn new() -> Self {
 		Self {
 			variables: HashMap::new(),
+			example_overrides: HashMap::new(),
 		}
 	}
 
@@ -41,6 +47,30 @@ impl TemplateContext {
 		let json_value = serde_json::to_value(value)?;
 		self.variables.insert(key.into(), json_value);
 		Ok(())
+	}
+
+	/// Sets an override value for `.example.` files.
+	///
+	/// When rendering `.example.` files, the override value is used instead of
+	/// the normal value for this key. This allows example files to contain safe
+	/// placeholder strings while actual settings files receive real values.
+	pub fn set_example_override<K, V>(&mut self, key: K, value: V) -> Result<(), serde_json::Error>
+	where
+		K: Into<String>,
+		V: Serialize,
+	{
+		let json_value = serde_json::to_value(value)?;
+		self.example_overrides.insert(key.into(), json_value);
+		Ok(())
+	}
+
+	/// Creates a context for rendering `.example.` files by applying overrides.
+	fn to_example_context(&self) -> Self {
+		let mut ctx = self.clone();
+		for (key, value) in &self.example_overrides {
+			ctx.variables.insert(key.clone(), value.clone());
+		}
+		ctx
 	}
 }
 
@@ -228,38 +258,39 @@ impl TemplateCommand {
 			))
 		})?;
 
-		// Replace template variables
-		let rendered_content = self.render_template(&template_content, context)?;
+		if has_example_suffix {
+			// For .example files, render with example overrides for the .example copy
+			// and with normal context for the non-example copy
+			let example_context = context.to_example_context();
+			let example_content = self.render_template(&template_content, &example_context)?;
 
-		// Write the file with .example suffix (if it has one)
-		let mut output_file = fs::File::create(&output_path_with_example).map_err(|e| {
-			CommandError::ExecutionError(format!(
-				"Failed to create output file '{}': {}",
-				output_path_with_example.display(),
-				e
-			))
-		})?;
-
-		output_file
-			.write_all(rendered_content.as_bytes())
-			.map_err(|e| {
+			// Write the .example file with override values
+			let mut output_file = fs::File::create(&output_path_with_example).map_err(|e| {
 				CommandError::ExecutionError(format!(
-					"Failed to write to output file '{}': {}",
+					"Failed to create output file '{}': {}",
 					output_path_with_example.display(),
 					e
 				))
 			})?;
+			output_file
+				.write_all(example_content.as_bytes())
+				.map_err(|e| {
+					CommandError::ExecutionError(format!(
+						"Failed to write to output file '{}': {}",
+						output_path_with_example.display(),
+						e
+					))
+				})?;
+			ctx.verbose(&format!(
+				"Created: {}",
+				output_path_with_example
+					.strip_prefix(output_base)
+					.unwrap_or(&output_path_with_example)
+					.display()
+			));
 
-		ctx.verbose(&format!(
-			"Created: {}",
-			output_path_with_example
-				.strip_prefix(output_base)
-				.unwrap_or(&output_path_with_example)
-				.display()
-		));
-
-		// If file has .example suffix, also create a version without it
-		if has_example_suffix {
+			// Render the non-example file with normal context (real values)
+			let rendered_content = self.render_template(&template_content, context)?;
 			let processed_name_without_example =
 				if let Some(pos) = processed_name.rfind(".example.") {
 					format!(
@@ -273,7 +304,6 @@ impl TemplateCommand {
 
 			let output_path_without_example = output_base.join(processed_name_without_example);
 
-			// Write the same content to the file without .example
 			let mut output_file_no_example = fs::File::create(&output_path_without_example)
 				.map_err(|e| {
 					CommandError::ExecutionError(format!(
@@ -282,7 +312,6 @@ impl TemplateCommand {
 						e
 					))
 				})?;
-
 			output_file_no_example
 				.write_all(rendered_content.as_bytes())
 				.map_err(|e| {
@@ -292,12 +321,38 @@ impl TemplateCommand {
 						e
 					))
 				})?;
-
 			ctx.verbose(&format!(
 				"Created: {}",
 				output_path_without_example
 					.strip_prefix(output_base)
 					.unwrap_or(&output_path_without_example)
+					.display()
+			));
+		} else {
+			// Non-example files: render normally
+			let rendered_content = self.render_template(&template_content, context)?;
+
+			let mut output_file = fs::File::create(&output_path_with_example).map_err(|e| {
+				CommandError::ExecutionError(format!(
+					"Failed to create output file '{}': {}",
+					output_path_with_example.display(),
+					e
+				))
+			})?;
+			output_file
+				.write_all(rendered_content.as_bytes())
+				.map_err(|e| {
+					CommandError::ExecutionError(format!(
+						"Failed to write to output file '{}': {}",
+						output_path_with_example.display(),
+						e
+					))
+				})?;
+			ctx.verbose(&format!(
+				"Created: {}",
+				output_path_with_example
+					.strip_prefix(output_base)
+					.unwrap_or(&output_path_with_example)
 					.display()
 			));
 		}

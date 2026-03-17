@@ -11,7 +11,7 @@
 
 # Django-style settings
 debug = false
-secret_key = "CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET"
+secret_key = "{{ secret_key }}"
 # Reserved: not yet consumed by the framework
 language_code = "en-us"
 time_zone = "UTC"
