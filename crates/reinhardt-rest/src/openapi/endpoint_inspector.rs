@@ -10,11 +10,13 @@ use reinhardt_core::endpoint::EndpointMetadata;
 use utoipa::openapi::{
 	HttpMethod, PathItem, ResponseBuilder,
 	content::ContentBuilder,
+	header::HeaderBuilder,
 	path::{
 		Operation, OperationBuilder, Parameter, ParameterBuilder, ParameterIn, PathItemBuilder,
 	},
 	request_body::{RequestBody, RequestBodyBuilder},
 	schema::{ObjectBuilder, Schema, SchemaFormat, Type},
+	security::SecurityRequirement,
 };
 
 /// Configuration for endpoint inspection
@@ -192,6 +194,30 @@ impl EndpointInspector {
 				.description("Successful response")
 				.build(),
 		);
+
+		// Add custom responses from metadata
+		for response in metadata.responses {
+			let mut resp_builder =
+				ResponseBuilder::new().description(response.description.to_string());
+
+			// Add any response headers from metadata to custom responses
+			for header in metadata.headers {
+				resp_builder = resp_builder.header(
+					header.name,
+					HeaderBuilder::new()
+						.description(Some(header.description.to_string()))
+						.build(),
+				);
+			}
+
+			builder = builder.response(response.status.to_string(), resp_builder.build());
+		}
+
+		// Add security requirements from metadata
+		for security_name in metadata.security {
+			let requirement = SecurityRequirement::new::<&str, [&str; 0], &str>(security_name, []);
+			builder = builder.security(requirement);
+		}
 
 		builder.build()
 	}
@@ -378,6 +404,9 @@ mod tests {
 			module_path: "users::views",
 			request_body_type: Some("CreateUserRequest"),
 			request_content_type: Some("application/json"),
+			responses: &[],
+			headers: &[],
+			security: &[],
 		};
 
 		let request_body = inspector.create_request_body(&metadata);
@@ -404,6 +433,9 @@ mod tests {
 			module_path: "users::views",
 			request_body_type: None,
 			request_content_type: None,
+			responses: &[],
+			headers: &[],
+			security: &[],
 		};
 
 		let request_body = inspector.create_request_body(&metadata);
@@ -422,6 +454,9 @@ mod tests {
 			module_path: "auth::views",
 			request_body_type: Some("LoginForm"),
 			request_content_type: Some("application/x-www-form-urlencoded"),
+			responses: &[],
+			headers: &[],
+			security: &[],
 		};
 
 		let request_body = inspector.create_request_body(&metadata);
@@ -445,6 +480,9 @@ mod tests {
 			module_path: "nonexistent::views",
 			request_body_type: Some("NonExistentType"),
 			request_content_type: Some("application/json"),
+			responses: &[],
+			headers: &[],
+			security: &[],
 		};
 
 		// Act
