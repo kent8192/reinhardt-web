@@ -652,10 +652,21 @@ fn detect_storage_signal(features: &[&str]) -> Option<String> {
 	None
 }
 
-/// Detect mail backend type from feature names using strict token matching
+/// Detect mail backend type from feature names using strict token matching.
+///
+/// Recognizes both explicit backend tokens (e.g., `smtp`) and the generic
+/// `mail` feature flag used by this workspace (`mail = ["reinhardt-mail"]`).
+/// When only the generic `mail` token is present, returns `"smtp"` as the
+/// default backend since `reinhardt-mail` uses SMTP transport.
 fn detect_mail_signal(features: &[&str]) -> Option<String> {
 	for f in features {
 		if has_token(f, "smtp") {
+			return Some("smtp".to_string());
+		}
+	}
+	// Fall back to detecting the generic "mail" feature flag
+	for f in features {
+		if has_token(f, "mail") {
 			return Some("smtp".to_string());
 		}
 	}
@@ -664,12 +675,13 @@ fn detect_mail_signal(features: &[&str]) -> Option<String> {
 
 /// Detect session backend type from feature names using compound token matching.
 ///
-/// Requires a feature to contain both a "session" token and a backend token
-/// (e.g., "session-redis", "session-db") to avoid false positives with cache
-/// detection for bare "redis" tokens.
+/// Requires a feature to contain both a session-related token (`session` or
+/// `sessions`) and a backend token (e.g., `redis-sessions`, `session-db`) to
+/// avoid false positives with cache detection for bare `redis` tokens.
 fn detect_session_backend_signal(features: &[&str]) -> Option<String> {
 	for f in features {
-		if !has_token(f, "session") {
+		let is_session_feature = has_token(f, "session") || has_token(f, "sessions");
+		if !is_session_feature {
 			continue;
 		}
 		if has_token(f, "redis") {
@@ -1118,6 +1130,7 @@ mod tests {
 	#[rstest]
 	#[case(&["smtp-backend"], Some("smtp"))]
 	#[case(&["mail-smtp"], Some("smtp"))]
+	#[case(&["mail"], Some("smtp"))] // workspace feature: mail = ["reinhardt-mail"]
 	#[case(&["server"], None)]
 	fn test_detect_mail_signal(#[case] features: &[&str], #[case] expected: Option<&str>) {
 		// Arrange & Act
@@ -1132,6 +1145,7 @@ mod tests {
 	#[case(&["session-db"], Some("database"))]
 	#[case(&["session-database"], Some("database"))]
 	#[case(&["session-file"], Some("file"))]
+	#[case(&["redis-sessions"], Some("redis"))] // workspace feature: reinhardt-auth/redis-sessions
 	#[case(&["redis-backend"], None)] // bare "redis" without "session" must NOT match
 	#[case(&["server"], None)]
 	fn test_detect_session_backend_signal(
