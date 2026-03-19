@@ -105,9 +105,6 @@ When modifying features, check and update the following documentation as applica
 #### Detailed Guides
 **Location:** `instructions/` directory
 **Files:**
-- `instructions/GETTING_STARTED.md` - Getting started guide
-- `instructions/FEATURE_FLAGS.md` - Feature flags documentation
-- `docs/tutorials/` - Tutorial files
 - `instructions/MODULE_SYSTEM.md` - Module system standards
 - `instructions/TESTING_STANDARDS.md` - Testing standards
 - `instructions/ANTI_PATTERNS.md` - Anti-patterns guide
@@ -656,7 +653,7 @@ pub fn validate_email(email: &str) -> Result<(), ValidationError> {
 - Phone number validation
 ```
 
-**3. docs/tutorials/validation.md:**
+**3. Website tutorial (reinhardt-web.dev):**
 ```markdown
 ### Email Validation
 
