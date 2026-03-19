@@ -34,7 +34,7 @@ impl AcceptHeader {
 			.collect();
 
 		// Sort by quality (highest first)
-		media_types.sort_by(|a, b| b.quality.partial_cmp(&a.quality).unwrap());
+		media_types.sort_by(|a, b| b.quality.partial_cmp(&a.quality).unwrap_or(std::cmp::Ordering::Equal));
 
 		Self { media_types }
 	}

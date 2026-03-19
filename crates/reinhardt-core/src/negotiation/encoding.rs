@@ -217,7 +217,7 @@ impl EncodingNegotiator {
 		let mut requested = self.parse_accept_encoding(accept_encoding);
 
 		// Sort by quality (highest first)
-		requested.sort_by(|a, b| b.quality.partial_cmp(&a.quality).unwrap());
+		requested.sort_by(|a, b| b.quality.partial_cmp(&a.quality).unwrap_or(std::cmp::Ordering::Equal));
 
 		// Try to find best match based on client preference
 		for req in &requested {

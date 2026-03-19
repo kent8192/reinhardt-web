@@ -212,7 +212,7 @@ impl LanguageNegotiator {
 		let mut requested = self.parse_accept_language(accept_language);
 
 		// Sort by quality (highest first)
-		requested.sort_by(|a, b| b.quality.partial_cmp(&a.quality).unwrap());
+		requested.sort_by(|a, b| b.quality.partial_cmp(&a.quality).unwrap_or(std::cmp::Ordering::Equal));
 
 		for req in &requested {
 			for avail in available {
@@ -267,7 +267,7 @@ impl LanguageNegotiator {
 	/// ```
 	pub fn find_all_matches(&self, accept_language: &str, available: &[Language]) -> Vec<Language> {
 		let mut requested = self.parse_accept_language(accept_language);
-		requested.sort_by(|a, b| b.quality.partial_cmp(&a.quality).unwrap());
+		requested.sort_by(|a, b| b.quality.partial_cmp(&a.quality).unwrap_or(std::cmp::Ordering::Equal));
 
 		let mut matches = Vec::new();
 		for req in &requested {
