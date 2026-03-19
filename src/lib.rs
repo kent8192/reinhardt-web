@@ -1037,6 +1037,8 @@ pub mod prelude {
 	// OpenAPI feature - schema generation and documentation
 	// Note: When 'openapi' feature is enabled, types are available at top level
 	// Example: use reinhardt::prelude::*; or use reinhardt::{OpenApi, ApiDoc, Schema};
+	#[cfg(feature = "openapi")]
+	pub use crate::{Schema, ToSchema};
 
 	// DI params - FastAPI-style parameter extraction
 	#[cfg(any(feature = "minimal", feature = "standard", feature = "di"))]
