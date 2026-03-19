@@ -380,9 +380,10 @@ where
 				// Destroy action
 				self.handle_destroy(request).await
 			}
-			_ => Err(reinhardt_core::exception::Error::Http(
-				"Method not allowed".to_string(),
-			)),
+			_ => Err(reinhardt_core::exception::Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 }
@@ -591,9 +592,10 @@ where
 					.with_json(&serde_json::json!({}))
 					.map_err(|e| reinhardt_core::exception::Error::Http(e.to_string()))
 			}
-			_ => Err(reinhardt_core::exception::Error::Http(
-				"Method not allowed".to_string(),
-			)),
+			_ => Err(reinhardt_core::exception::Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 }
