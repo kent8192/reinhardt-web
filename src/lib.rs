@@ -697,7 +697,7 @@ pub use reinhardt_auth::{
 };
 
 // Re-export middleware
-#[cfg(all(feature = "sessions", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "sessions", feature = "middleware", not(target_arch = "wasm32")))]
 pub use reinhardt_middleware::AuthenticationMiddleware;
 
 #[cfg(all(
@@ -1079,7 +1079,9 @@ pub mod prelude {
 
 	// Sessions feature
 	#[cfg(feature = "sessions")]
-	pub use crate::{AuthenticationMiddleware, Session};
+	pub use crate::Session;
+	#[cfg(all(feature = "sessions", feature = "middleware"))]
+	pub use crate::AuthenticationMiddleware;
 
 	// Cache feature
 	#[cfg(feature = "cache")]
