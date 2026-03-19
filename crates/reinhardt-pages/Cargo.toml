@@ -143,9 +143,9 @@ web-sys = { version = "0.3.83", features = [
 
 # Async support for WASM
 reinhardt-core = {workspace = true, features = ["reactive", "page"]}
-syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
-quote = "1.0"
-proc-macro2 = "1.0"
+syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.56"
 gloo-net = "0.6"
