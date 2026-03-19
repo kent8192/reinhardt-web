@@ -701,8 +701,8 @@ When an API is deprecated:
 
 ### Resources
 
-- [Getting Started Guide](/quickstart/getting-started/)
-- [Feature Flags Guide](/docs/feature-flags/)
+- [Getting Started Guide](https://reinhardt-web.dev/quickstart/getting-started/)
+- [Feature Flags Guide](https://reinhardt-web.dev/docs/feature-flags/)
 - [Issue Guidelines](instructions/ISSUE_GUIDELINES.md) - Issue creation and management
 - [Pull Request Guidelines](instructions/PR_GUIDELINE.md) - PR policies and procedures
 - [Security Policy](SECURITY.md) - Security vulnerability reporting
@@ -715,7 +715,7 @@ When an API is deprecated:
 
 Please check:
 
--  [Getting Started Guide](/quickstart/getting-started/)
+-  [Getting Started Guide](https://reinhardt-web.dev/quickstart/getting-started/)
 -  [Issue Guidelines](instructions/ISSUE_GUIDELINES.md)
 -  [Pull Request Guidelines](instructions/PR_GUIDELINE.md)
 -  [Examples](examples/)
