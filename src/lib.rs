@@ -818,6 +818,11 @@ pub use reinhardt_rest::browsable_api;
 #[cfg(all(feature = "openapi", not(target_arch = "wasm32")))]
 pub use reinhardt_rest::openapi::*;
 
+// Re-export inventory for use in macro-generated code (openapi feature)
+#[cfg(all(feature = "openapi", not(target_arch = "wasm32")))]
+#[doc(hidden)]
+pub use reinhardt_rest::openapi::inventory;
+
 // Re-export OpenApiRouter (requires openapi-router feature)
 #[cfg(all(feature = "openapi-router", not(target_arch = "wasm32")))]
 pub use reinhardt_openapi::OpenApiRouter;
