@@ -236,7 +236,6 @@ use fs2::FileExt;
 /// ```
 pub struct FileLockGuard {
 	file: std::fs::File,
-	path: std::path::PathBuf,
 }
 
 impl FileLockGuard {
@@ -257,14 +256,15 @@ impl FileLockGuard {
 
 		file.lock_exclusive()?;
 
-		Ok(Self { file, path })
+		Ok(Self { file })
 	}
 }
 
 impl Drop for FileLockGuard {
 	fn drop(&mut self) {
 		let _ = self.file.unlock();
-		let _ = std::fs::remove_file(&self.path);
+		// Do not delete the lock file: other processes need the same inode
+		// for file-based mutual exclusion to work correctly.
 	}
 }
 
