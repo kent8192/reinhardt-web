@@ -380,8 +380,8 @@ where
 				// Destroy action
 				self.handle_destroy(request).await
 			}
-			_ => Err(reinhardt_core::exception::Error::Http(
-				"Method not allowed".to_string(),
+			_ => Err(reinhardt_core::exception::Error::MethodNotAllowed(
+				format!("Method {} not allowed", request.method),
 			)),
 		}
 	}
@@ -591,8 +591,8 @@ where
 					.with_json(&serde_json::json!({}))
 					.map_err(|e| reinhardt_core::exception::Error::Http(e.to_string()))
 			}
-			_ => Err(reinhardt_core::exception::Error::Http(
-				"Method not allowed".to_string(),
+			_ => Err(reinhardt_core::exception::Error::MethodNotAllowed(
+				format!("Method {} not allowed", request.method),
 			)),
 		}
 	}
@@ -628,6 +628,7 @@ where
 mod tests {
 	use super::*;
 	use hyper::Method;
+	use rstest::rstest;
 	use std::collections::HashMap;
 	use std::sync::Arc;
 
@@ -713,5 +714,47 @@ mod tests {
 			.and_then(|b| b.build());
 
 		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_model_viewset_dispatch_unsupported_method_returns_405() {
+		// Arrange
+		let viewset = ModelViewSet::<(), ()>::new("test");
+		let request = Request::builder()
+			.method(Method::OPTIONS)
+			.uri("/test/")
+			.build()
+			.unwrap();
+		let action = Action::list();
+
+		// Act
+		let result = viewset.dispatch(request, action).await;
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.status_code(), 405);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_readonly_viewset_dispatch_unsupported_method_returns_405() {
+		// Arrange
+		let viewset = ReadOnlyModelViewSet::<(), ()>::new("test");
+		let request = Request::builder()
+			.method(Method::DELETE)
+			.uri("/test/1/")
+			.build()
+			.unwrap();
+		let action = Action::retrieve();
+
+		// Act
+		let result = viewset.dispatch(request, action).await;
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.status_code(), 405);
 	}
 }
