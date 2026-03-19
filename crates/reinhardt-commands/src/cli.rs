@@ -329,7 +329,7 @@ pub async fn execute_from_command_line_with_registry(
 			// Extract the raw arguments and try to find a matching custom command.
 			let raw_args: Vec<String> = env::args().collect();
 			match resolve_custom_command(&raw_args, &registry) {
-				Some((name, args)) => (Commands::Custom { name, args }, 0),
+				Some((name, args, verbosity)) => (Commands::Custom { name, args }, verbosity),
 				None => {
 					// No custom command matched either; let clap display its error.
 					clap_err.exit();
@@ -499,37 +499,61 @@ pub async fn run_command_with_registry(
 
 /// Returns `true` when the clap error represents an unrecognised subcommand.
 ///
-/// We only want to intercept this specific case so that help, version, and
-/// other clap-generated messages are still displayed normally.
+/// Only `InvalidSubcommand` is intercepted. `UnknownArgument` is intentionally
+/// excluded because it fires for unknown flags/options (e.g. `--bogus-flag`)
+/// which should still produce the normal clap error output.
 fn is_unknown_subcommand(err: &clap::Error) -> bool {
-	matches!(
-		err.kind(),
-		clap::error::ErrorKind::InvalidSubcommand | clap::error::ErrorKind::UnknownArgument
-	)
+	matches!(err.kind(), clap::error::ErrorKind::InvalidSubcommand)
 }
+
+/// Known global options that accept a separate value argument.
+///
+/// When skipping leading flags we must also consume the following token for
+/// options that take a value (e.g. `--verbosity 2`). Without this, the value
+/// would be mistaken for the subcommand name.
+const GLOBAL_OPTIONS_WITH_VALUE: &[&str] = &["--verbosity"];
 
 /// Try to resolve raw CLI arguments into a custom command from the registry.
 ///
 /// The convention is: `manage <subcommand> [args...]`.  Global flags that
-/// appear before the subcommand (e.g., `-v`) are skipped.
+/// appear before the subcommand (e.g., `-v`) are skipped.  The function also
+/// extracts the verbosity level so it can be forwarded to the custom command.
 fn resolve_custom_command(
 	raw_args: &[String],
 	registry: &CommandRegistry,
-) -> Option<(String, Vec<String>)> {
-	// Skip the binary name (argv[0]) and any leading flags.
+) -> Option<(String, Vec<String>, u8)> {
+	let mut verbosity: u8 = 0;
+
+	// Skip the binary name (argv[0]) and parse leading global flags.
 	let mut iter = raw_args.iter().skip(1).peekable();
 	while let Some(arg) = iter.peek() {
-		if arg.starts_with('-') {
-			iter.next();
-		} else {
+		if !arg.starts_with('-') {
 			break;
+		}
+		let flag = iter.next().unwrap(); // safe: peeked above
+
+		if flag == "-v" || flag == "--verbose" {
+			verbosity = verbosity.saturating_add(1);
+		} else if flag == "--verbosity" {
+			// Consume the next token as the value.
+			if let Some(val) = iter.peek()
+				&& !val.starts_with('-')
+			{
+				verbosity = val.parse().unwrap_or(0);
+				iter.next();
+			}
+		} else if let Some(val) = flag.strip_prefix("--verbosity=") {
+			verbosity = val.parse().unwrap_or(0);
+		} else if GLOBAL_OPTIONS_WITH_VALUE.contains(&flag.as_str()) {
+			// Skip the value for other known options that take one.
+			iter.next();
 		}
 	}
 
 	let subcommand = iter.next()?;
 	if registry.get(subcommand).is_some() {
 		let remaining: Vec<String> = iter.cloned().collect();
-		Some((subcommand.clone(), remaining))
+		Some((subcommand.clone(), remaining, verbosity))
 	} else {
 		None
 	}
