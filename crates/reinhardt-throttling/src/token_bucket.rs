@@ -211,37 +211,18 @@ impl TokenBucketConfigBuilder {
 		let capacity = self
 			.capacity
 			.ok_or_else(|| ThrottleError::InvalidConfig("capacity must be set".to_string()))?;
-		if capacity == 0 {
-			return Err(ThrottleError::InvalidConfig(
-				"capacity must be non-zero".to_string(),
-			));
-		}
 		let refill_rate = self
 			.refill_rate
 			.ok_or_else(|| ThrottleError::InvalidConfig("refill_rate must be set".to_string()))?;
-		if refill_rate == 0 {
-			return Err(ThrottleError::InvalidConfig(
-				"refill_rate must be non-zero".to_string(),
-			));
-		}
-		let refill_interval = self.refill_interval.unwrap_or(0);
-		if refill_interval == 0 {
-			return Err(ThrottleError::InvalidConfig(
-				"refill_interval must be set and non-zero".to_string(),
-			));
-		}
+		let refill_interval = self
+			.refill_interval
+			.ok_or_else(|| {
+				ThrottleError::InvalidConfig("refill_interval must be set".to_string())
+			})?;
 		let tokens_per_request = self.tokens_per_request.unwrap_or(1);
-		if tokens_per_request == 0 {
-			return Err(ThrottleError::InvalidConfig(
-				"tokens_per_request must be non-zero".to_string(),
-			));
-		}
-		Ok(TokenBucketConfig {
-			capacity,
-			refill_rate,
-			refill_interval,
-			tokens_per_request,
-		})
+
+		// Delegate to TokenBucketConfig::new for centralized validation
+		TokenBucketConfig::new(capacity, refill_rate, refill_interval, tokens_per_request)
 	}
 }
 
@@ -352,8 +333,21 @@ impl<T: TimeProvider> TokenBucket<T> {
 		}
 	}
 
-	/// Refill tokens based on elapsed time
+	/// Refill tokens based on elapsed time and mark the entry as accessed.
+	///
+	/// Use this for operations that represent actual usage (e.g., `allow_request`,
+	/// `tokens_for_key`). For read-only queries like `wait_time`, use
+	/// `refill_tokens_only` to avoid affecting eviction ordering.
 	fn refill_tokens(&self, state: &mut BucketState) {
+		self.refill_tokens_only(state);
+		state.last_accessed = self.time_provider.now();
+	}
+
+	/// Refill tokens based on elapsed time without updating `last_accessed`.
+	///
+	/// This avoids marking the entry as recently used, preserving correct
+	/// eviction ordering when called from read-only queries like `wait_time`.
+	fn refill_tokens_only(&self, state: &mut BucketState) {
 		let now = self.time_provider.now();
 		let elapsed = now.duration_since(state.last_refill);
 		let refill_duration = Duration::from_secs(self.config.refill_interval);
@@ -369,7 +363,6 @@ impl<T: TimeProvider> TokenBucket<T> {
 			// Advance last refill time by the consumed intervals to preserve fractional time
 			state.last_refill += Duration::from_secs(intervals * self.config.refill_interval);
 		}
-		state.last_accessed = now;
 	}
 
 	/// Evict stale entries when the map is at or exceeds its maximum size.
@@ -497,8 +490,10 @@ impl<T: TimeProvider> Throttle for TokenBucket<T> {
 			.entry(key.to_string())
 			.or_insert_with(|| self.new_bucket_state());
 
-		// Refill tokens before checking wait time to avoid stale results
-		self.refill_tokens(state);
+		// Refill tokens before checking wait time to avoid stale results.
+		// Use refill_tokens_only to avoid updating last_accessed, since
+		// wait_time is a read-only query that should not affect eviction.
+		self.refill_tokens_only(state);
 
 		if state.tokens >= self.config.tokens_per_request {
 			return Ok(None);
