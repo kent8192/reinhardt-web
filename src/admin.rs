@@ -61,11 +61,6 @@ pub mod server {
 	pub use reinhardt_admin::server::*;
 }
 
-#[cfg(target_arch = "wasm32")]
-pub mod pages {
-	pub use reinhardt_admin_pages::*;
-}
-
 // Re-export core router for admin route mounting
 #[cfg(not(target_arch = "wasm32"))]
 pub use reinhardt_admin::core::{AdminRouter, admin_routes};
@@ -75,6 +70,3 @@ pub use adapters::*;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use server::*;
-
-#[cfg(target_arch = "wasm32")]
-pub use pages::*;
