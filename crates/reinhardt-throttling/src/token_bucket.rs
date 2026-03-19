@@ -51,9 +51,24 @@ impl TokenBucketConfig {
 		refill_interval: u64,
 		tokens_per_request: usize,
 	) -> ThrottleResult<Self> {
+		if capacity == 0 {
+			return Err(ThrottleError::InvalidConfig(
+				"capacity must be non-zero".to_string(),
+			));
+		}
+		if refill_rate == 0 {
+			return Err(ThrottleError::InvalidConfig(
+				"refill_rate must be non-zero".to_string(),
+			));
+		}
 		if refill_interval == 0 {
 			return Err(ThrottleError::InvalidConfig(
 				"refill_interval must be non-zero".to_string(),
+			));
+		}
+		if tokens_per_request == 0 {
+			return Err(ThrottleError::InvalidConfig(
+				"tokens_per_request must be non-zero".to_string(),
 			));
 		}
 		Ok(Self {
@@ -88,26 +103,29 @@ impl TokenBucketConfig {
 
 	/// Create configuration for requests per second
 	///
+	/// # Errors
+	///
+	/// Returns [`ThrottleError::InvalidConfig`] if `rate` or `burst` is zero.
+	///
 	/// # Examples
 	///
 	/// ```
 	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
 	///
 	/// // 10 requests per second with burst of 20
-	/// let config = TokenBucketConfig::per_second(10, 20);
+	/// let config = TokenBucketConfig::per_second(10, 20).unwrap();
 	/// assert_eq!(config.refill_rate, 10);
 	/// assert_eq!(config.capacity, 20);
 	/// ```
-	pub fn per_second(rate: usize, burst: usize) -> Self {
-		Self {
-			capacity: burst,
-			refill_rate: rate,
-			refill_interval: 1,
-			tokens_per_request: 1,
-		}
+	pub fn per_second(rate: usize, burst: usize) -> ThrottleResult<Self> {
+		Self::new(burst, rate, 1, 1)
 	}
 
 	/// Create configuration for requests per minute
+	///
+	/// # Errors
+	///
+	/// Returns [`ThrottleError::InvalidConfig`] if `rate` or `burst` is zero.
 	///
 	/// # Examples
 	///
@@ -115,20 +133,19 @@ impl TokenBucketConfig {
 	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
 	///
 	/// // 100 requests per minute with burst of 150
-	/// let config = TokenBucketConfig::per_minute(100, 150);
+	/// let config = TokenBucketConfig::per_minute(100, 150).unwrap();
 	/// assert_eq!(config.refill_rate, 100);
 	/// assert_eq!(config.refill_interval, 60);
 	/// ```
-	pub fn per_minute(rate: usize, burst: usize) -> Self {
-		Self {
-			capacity: burst,
-			refill_rate: rate,
-			refill_interval: 60,
-			tokens_per_request: 1,
-		}
+	pub fn per_minute(rate: usize, burst: usize) -> ThrottleResult<Self> {
+		Self::new(burst, rate, 60, 1)
 	}
 
 	/// Create configuration for requests per hour
+	///
+	/// # Errors
+	///
+	/// Returns [`ThrottleError::InvalidConfig`] if `rate` or `burst` is zero.
 	///
 	/// # Examples
 	///
@@ -136,17 +153,12 @@ impl TokenBucketConfig {
 	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
 	///
 	/// // 1000 requests per hour with burst of 1500
-	/// let config = TokenBucketConfig::per_hour(1000, 1500);
+	/// let config = TokenBucketConfig::per_hour(1000, 1500).unwrap();
 	/// assert_eq!(config.refill_rate, 1000);
 	/// assert_eq!(config.refill_interval, 3600);
 	/// ```
-	pub fn per_hour(rate: usize, burst: usize) -> Self {
-		Self {
-			capacity: burst,
-			refill_rate: rate,
-			refill_interval: 3600,
-			tokens_per_request: 1,
-		}
+	pub fn per_hour(rate: usize, burst: usize) -> ThrottleResult<Self> {
+		Self::new(burst, rate, 3600, 1)
 	}
 }
 
@@ -189,24 +201,18 @@ impl TokenBucketConfigBuilder {
 	/// # Errors
 	///
 	/// Returns [`ThrottleError::InvalidConfig`] if any required field is not set
-	/// or if `refill_interval` is zero.
+	/// or if any field is zero.
 	pub fn build(self) -> ThrottleResult<TokenBucketConfig> {
+		let capacity = self
+			.capacity
+			.ok_or_else(|| ThrottleError::InvalidConfig("capacity must be set".to_string()))?;
+		let refill_rate = self.refill_rate.ok_or_else(|| {
+			ThrottleError::InvalidConfig("refill_rate must be set".to_string())
+		})?;
 		let refill_interval = self.refill_interval.unwrap_or(0);
-		if refill_interval == 0 {
-			return Err(ThrottleError::InvalidConfig(
-				"refill_interval must be set and non-zero".to_string(),
-			));
-		}
-		Ok(TokenBucketConfig {
-			capacity: self
-				.capacity
-				.ok_or_else(|| ThrottleError::InvalidConfig("capacity must be set".to_string()))?,
-			refill_rate: self.refill_rate.ok_or_else(|| {
-				ThrottleError::InvalidConfig("refill_rate must be set".to_string())
-			})?,
-			refill_interval,
-			tokens_per_request: self.tokens_per_request.unwrap_or(1),
-		})
+		let tokens_per_request = self.tokens_per_request.unwrap_or(1);
+
+		TokenBucketConfig::new(capacity, refill_rate, refill_interval, tokens_per_request)
 	}
 }
 
@@ -228,7 +234,7 @@ struct BucketState {
 /// use reinhardt_throttling::Throttle;
 ///
 /// # tokio_test::block_on(async {
-/// let config = TokenBucketConfig::per_second(10, 20);
+/// let config = TokenBucketConfig::per_second(10, 20).unwrap();
 /// let throttle = TokenBucket::new(config);
 ///
 /// // First request should succeed
@@ -250,7 +256,7 @@ impl TokenBucket<SystemTimeProvider> {
 	/// ```
 	/// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
 	///
-	/// let config = TokenBucketConfig::per_second(5, 10);
+	/// let config = TokenBucketConfig::per_second(5, 10).unwrap();
 	/// let throttle = TokenBucket::new(config);
 	/// ```
 	pub fn new(config: TokenBucketConfig) -> Self {
@@ -284,7 +290,7 @@ impl<T: TimeProvider> TokenBucket<T> {
 	/// ```
 	/// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
 	///
-	/// let config = TokenBucketConfig::per_second(5, 10);
+	/// let config = TokenBucketConfig::per_second(5, 10).unwrap();
 	/// let throttle = TokenBucket::new(config).with_max_entries(500);
 	/// ```
 	pub fn with_max_entries(mut self, max_entries: usize) -> Self {
@@ -299,7 +305,7 @@ impl<T: TimeProvider> TokenBucket<T> {
 	/// ```
 	/// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
 	///
-	/// let config = TokenBucketConfig::per_second(5, 10);
+	/// let config = TokenBucketConfig::per_second(5, 10).unwrap();
 	/// let throttle = TokenBucket::new(config);
 	/// assert_eq!(throttle.max_entries(), 10_000);
 	/// ```
@@ -535,7 +541,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_token_bucket_burst() {
 		// Arrange
-		let config = TokenBucketConfig::per_second(5, 20);
+		let config = TokenBucketConfig::per_second(5, 20).unwrap();
 		let throttle = TokenBucket::new(config);
 
 		// Act & Assert - should handle burst of 20
@@ -669,7 +675,7 @@ mod tests {
 	#[rstest]
 	fn test_token_bucket_config_per_second() {
 		// Arrange & Act
-		let config = TokenBucketConfig::per_second(10, 20);
+		let config = TokenBucketConfig::per_second(10, 20).unwrap();
 
 		// Assert
 		assert_eq!(config.refill_rate, 10);
@@ -680,7 +686,7 @@ mod tests {
 	#[rstest]
 	fn test_token_bucket_config_per_minute() {
 		// Arrange & Act
-		let config = TokenBucketConfig::per_minute(100, 150);
+		let config = TokenBucketConfig::per_minute(100, 150).unwrap();
 
 		// Assert
 		assert_eq!(config.refill_rate, 100);
@@ -691,7 +697,7 @@ mod tests {
 	#[rstest]
 	fn test_token_bucket_config_per_hour() {
 		// Arrange & Act
-		let config = TokenBucketConfig::per_hour(1000, 1500);
+		let config = TokenBucketConfig::per_hour(1000, 1500).unwrap();
 
 		// Assert
 		assert_eq!(config.refill_rate, 1000);
@@ -851,5 +857,134 @@ mod tests {
 
 		// Assert
 		assert_eq!(throttle.max_entries(), DEFAULT_MAX_ENTRIES);
+	}
+
+	#[rstest]
+	fn test_new_rejects_zero_capacity() {
+		// Arrange & Act
+		let result = TokenBucketConfig::new(0, 5, 10, 1);
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_new_rejects_zero_refill_rate() {
+		// Arrange & Act
+		let result = TokenBucketConfig::new(10, 0, 10, 1);
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_new_rejects_zero_tokens_per_request() {
+		// Arrange & Act
+		let result = TokenBucketConfig::new(10, 5, 10, 0);
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_builder_rejects_zero_capacity() {
+		// Arrange & Act
+		let result = TokenBucketConfig::builder()
+			.capacity(0)
+			.refill_rate(5)
+			.refill_interval(10)
+			.tokens_per_request(1)
+			.build();
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_builder_rejects_zero_refill_rate() {
+		// Arrange & Act
+		let result = TokenBucketConfig::builder()
+			.capacity(10)
+			.refill_rate(0)
+			.refill_interval(10)
+			.tokens_per_request(1)
+			.build();
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_builder_rejects_zero_tokens_per_request() {
+		// Arrange & Act
+		let result = TokenBucketConfig::builder()
+			.capacity(10)
+			.refill_rate(5)
+			.refill_interval(10)
+			.tokens_per_request(0)
+			.build();
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			ThrottleError::InvalidConfig(_)
+		));
+	}
+
+	#[rstest]
+	fn test_per_second_rejects_zero_rate() {
+		// Arrange & Act
+		let result = TokenBucketConfig::per_second(0, 10);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_per_second_rejects_zero_burst() {
+		// Arrange & Act
+		let result = TokenBucketConfig::per_second(10, 0);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_per_minute_rejects_zero_rate() {
+		// Arrange & Act
+		let result = TokenBucketConfig::per_minute(0, 10);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_per_hour_rejects_zero_rate() {
+		// Arrange & Act
+		let result = TokenBucketConfig::per_hour(0, 10);
+
+		// Assert
+		assert!(result.is_err());
 	}
 }
