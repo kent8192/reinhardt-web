@@ -178,7 +178,9 @@ impl QueryStatementBuilder for DropTypeStatement {
 		{
 			return builder.build_drop_type(self);
 		}
-		unreachable!("Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder");
+		unreachable!(
+			"Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder"
+		);
 	}
 }
 

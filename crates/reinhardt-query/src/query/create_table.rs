@@ -413,7 +413,9 @@ impl QueryStatementBuilder for CreateTableStatement {
 		{
 			return builder.build_create_table(self);
 		}
-		unreachable!("Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder");
+		unreachable!(
+			"Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder"
+		);
 	}
 }
 

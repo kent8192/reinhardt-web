@@ -159,7 +159,9 @@ impl QueryStatementBuilder for AlterMaterializedViewStatement {
 		{
 			unimplemented!("SQLite does not support materialized views");
 		}
-		unreachable!("Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder");
+		unreachable!(
+			"Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder"
+		);
 	}
 }
 

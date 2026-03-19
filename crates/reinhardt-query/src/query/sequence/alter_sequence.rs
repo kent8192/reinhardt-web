@@ -309,7 +309,9 @@ impl QueryStatementBuilder for AlterSequenceStatement {
 		{
 			return builder.build_alter_sequence(self);
 		}
-		unreachable!("Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder");
+		unreachable!(
+			"Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder"
+		);
 	}
 }
 

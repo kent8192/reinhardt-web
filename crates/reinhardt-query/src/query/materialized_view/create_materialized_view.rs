@@ -197,14 +197,20 @@ impl QueryStatementBuilder for CreateMaterializedViewStatement {
 		if let Some(_builder) =
 			(query_builder as &dyn Any).downcast_ref::<crate::backend::MySqlQueryBuilder>()
 		{
-			unimplemented!("MySQL does not support materialized views. Use regular tables with triggers or scheduled queries instead.");
+			unimplemented!(
+				"MySQL does not support materialized views. Use regular tables with triggers or scheduled queries instead."
+			);
 		}
 		if let Some(_builder) =
 			(query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>()
 		{
-			unimplemented!("SQLite does not support materialized views. Use regular tables with triggers or application-level caching instead.");
+			unimplemented!(
+				"SQLite does not support materialized views. Use regular tables with triggers or application-level caching instead."
+			);
 		}
-		unreachable!("Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder");
+		unreachable!(
+			"Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder"
+		);
 	}
 }
 

@@ -348,7 +348,9 @@ impl QueryStatementBuilder for InsertStatement {
 			return sqlite.build_insert(self);
 		}
 
-		unreachable!("Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder");
+		unreachable!(
+			"Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder"
+		);
 	}
 }
 

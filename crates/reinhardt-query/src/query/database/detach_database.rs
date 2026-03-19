@@ -108,7 +108,9 @@ impl QueryStatementBuilder for DetachDatabaseStatement {
 		{
 			unimplemented!("DETACH DATABASE is SQLite-specific and not supported in CockroachDB");
 		}
-		unreachable!("Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder");
+		unreachable!(
+			"Unsupported query builder type: expected PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder"
+		);
 	}
 }
 
