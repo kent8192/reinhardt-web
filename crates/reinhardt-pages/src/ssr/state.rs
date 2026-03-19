@@ -111,8 +111,8 @@ impl SsrState {
 		// Escape HTML-sensitive characters to prevent XSS via </script> injection
 		let escaped = escape_json_for_html(&json);
 		format!(
-			r#"<script id="ssr-state" type="application/json">window.{} = {};</script>"#,
-			SSR_STATE_VAR, escaped
+			r#"<script id="ssr-state" type="application/json">{}</script>"#,
+			escaped
 		)
 	}
 
@@ -227,9 +227,27 @@ mod tests {
 		let mut state = SsrState::new();
 		state.add_signal("test", true);
 		let script = state.to_script_tag();
-		assert!(script.starts_with("<script"));
-		assert!(script.contains("__REINHARDT_SSR_STATE__"));
-		assert!(script.contains("</script>"));
+		assert!(script.starts_with(r#"<script id="ssr-state" type="application/json">"#));
+		assert!(script.ends_with("</script>"));
+		// Should NOT contain JavaScript assignment syntax
+		assert!(!script.contains("window."));
+		assert!(!script.contains(&format!("{} =", SSR_STATE_VAR)));
+	}
+
+	#[test]
+	fn test_ssr_state_to_script_tag_contains_valid_json() {
+		let mut state = SsrState::new();
+		state.add_signal("count", 42);
+		let script = state.to_script_tag();
+
+		// Extract JSON content from script tag
+		let prefix = r#"<script id="ssr-state" type="application/json">"#;
+		let suffix = "</script>";
+		let json_content = &script[prefix.len()..script.len() - suffix.len()];
+
+		// The content should be valid JSON
+		let parsed: serde_json::Value = serde_json::from_str(json_content).unwrap();
+		assert_eq!(parsed["signals"]["count"], serde_json::json!(42));
 	}
 
 	#[test]
@@ -328,9 +346,10 @@ mod xss_prevention_tests {
 		// Act
 		let script = state.to_script_tag();
 
-		// Assert: Normal data should be preserved
+		// Assert: Normal data should be preserved as pure JSON
 		assert!(script.contains("Alice"));
 		assert!(script.contains("42"));
-		assert!(script.contains("__REINHARDT_SSR_STATE__"));
+		// Should NOT contain JavaScript assignment (pure JSON only)
+		assert!(!script.contains("window."));
 	}
 }
