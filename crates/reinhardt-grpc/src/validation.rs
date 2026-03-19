@@ -222,7 +222,7 @@ impl ValidationRuleSet {
 	///
 	/// If the string length exceeds `max`, a violation is recorded.
 	pub fn require_max_length(mut self, field: &str, value: &str, max: usize) -> Self {
-		if value.len() > max {
+		if value.chars().count() > max {
 			self.violations.push(FieldRule::max_length(field, max));
 		}
 		self
@@ -232,7 +232,7 @@ impl ValidationRuleSet {
 	///
 	/// If the string length is below `min`, a violation is recorded.
 	pub fn require_min_length(mut self, field: &str, value: &str, min: usize) -> Self {
-		if value.len() < min {
+		if value.chars().count() < min {
 			self.violations.push(FieldRule::min_length(field, min));
 		}
 		self
