@@ -107,11 +107,14 @@ impl PostgresSuiteResource {
 						break;
 					}
 					Err(e) if attempt < MAX_RETRIES - 1 => {
+						let backoff = Duration::from_millis(100 * 2u64.pow(attempt));
 						eprintln!(
-							"Connection attempt {} failed: {}. Retrying...",
+							"Connection attempt {} failed: {}. Retrying in {:?}...",
 							attempt + 1,
-							e
+							e,
+							backoff
 						);
+						tokio::time::sleep(backoff).await;
 					}
 					Err(e) => panic!(
 						"Failed to connect to PostgreSQL after {} retries: {}",
