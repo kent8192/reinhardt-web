@@ -4,8 +4,8 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-variable "excluded_az_ids" {
-  description = "AZ IDs to exclude (AZs that do not support required Graviton instance types). Use zone IDs (e.g. 'use1-az3') for cross-account consistency."
+variable "excluded_zone_ids" {
+  description = "Zone IDs to exclude (AZs that do not support required Graviton instance types). Use zone IDs (e.g. 'use1-az3') for cross-account consistency."
   type        = list(string)
   default     = []
 }

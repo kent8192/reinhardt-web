@@ -56,7 +56,7 @@ data "aws_availability_zones" "available" {
 
   # Exclude AZs that do not support Graviton instance types (c7g/c6g).
   # Each region may have different unsupported AZs; add them to this list as needed.
-  exclude_zone_ids = var.excluded_az_ids
+  exclude_zone_ids = var.excluded_zone_ids
 }
 
 # Default VPC data sources (use default VPC for simplicity)
