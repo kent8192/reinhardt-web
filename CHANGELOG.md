@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.13...reinhardt-web@v0.1.0-rc.14) - 2026-03-19
+
+### Fixed
+
+- *(migrations)* resolve multi-element dependency parsing and deterministic sort
+
+### Maintenance
+
+- add workflow to auto-delete release-plz branches on PR close
+
 ## [0.1.0-rc.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.12...reinhardt-web@v0.1.0-rc.13) - 2026-03-18
 
 ### Added
