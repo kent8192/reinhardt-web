@@ -276,8 +276,9 @@ fn test_ssr_state_script_tag() {
 	// to_script_tag returns String directly
 	let script = state.to_script_tag();
 
-	assert!(script.starts_with("<script"));
+	assert!(script.starts_with(r#"<script id="ssr-state" type="application/json">"#));
 	assert!(script.ends_with("</script>"));
-	assert!(script.contains("__REINHARDT_SSR_STATE__"));
+	// Pure JSON content, no JavaScript assignment wrapper
+	assert!(!script.contains("window."));
 	assert!(script.contains("42"));
 }
