@@ -218,7 +218,7 @@ fn validate_create_user_input(input: &CreateUserInput) -> GqlResult<()> {
 	if name.is_empty() {
 		return Err(async_graphql::Error::new("Name cannot be empty"));
 	}
-	if name.len() > MAX_NAME_LENGTH {
+	if name.chars().count() > MAX_NAME_LENGTH {
 		return Err(async_graphql::Error::new(format!(
 			"Name exceeds maximum length of {} characters",
 			MAX_NAME_LENGTH
@@ -726,6 +726,32 @@ mod tests {
 			!result.errors.is_empty(),
 			"expected validation error for empty name"
 		);
+	}
+
+	#[tokio::test]
+	async fn test_create_user_accepts_multibyte_name_within_character_limit() {
+		// Arrange: a name with multi-byte characters that is within the 100-character limit
+		// but would exceed 100 bytes (each CJK char is 3 bytes in UTF-8)
+		let storage = UserStorage::new();
+		let schema = create_schema(storage);
+
+		// 34 CJK characters = 34 chars, 102 bytes
+		let cjk_name = "山田太郎花子山田太郎花子山田太郎花子山田太郎花子山田太郎花子山田太郎";
+
+		// Act
+		let query = format!(
+			r#"mutation {{ createUser(input: {{ name: "{cjk_name}", email: "test@example.com" }}) {{ id name }} }}"#
+		);
+		let result = schema.execute(&query).await;
+
+		// Assert: should succeed because character count (34) is within limit (100)
+		assert!(
+			result.errors.is_empty(),
+			"expected success for multi-byte name within character limit, got errors: {:?}",
+			result.errors
+		);
+		let data = result.data.into_json().unwrap();
+		assert_eq!(data["createUser"]["name"], cjk_name);
 	}
 
 	#[tokio::test]
