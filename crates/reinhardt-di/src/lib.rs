@@ -110,6 +110,40 @@
 //!     .build();
 //! ```
 //!
+//! ## Router Integration
+//!
+//! When building a custom router with `use_inject = true` views that depend on
+//! injectable types (e.g., `AuthUser<U>`), two DI-related configurations are required:
+//!
+//! 1. **`with_di_context()`** must be called on the router with an `InjectionContext`
+//! 2. **`DatabaseConnection`** must be registered as a singleton in the `InjectionContext`
+//!
+//! Without `with_di_context()`, an error message is logged:
+//! `"DI context not set. Ensure the router is configured with .with_di_context()"`.
+//!
+//! Without `DatabaseConnection` registered as a singleton, authentication-dependent
+//! injectables silently fall back to anonymous — no error is produced, but authenticated
+//! requests will receive 401 responses.
+//!
+//! ```ignore
+//! use reinhardt_di::{InjectionContext, SingletonScope};
+//! use reinhardt_db::orm::manager::get_connection;
+//! use reinhardt_urls::UnifiedRouter;
+//! use std::sync::Arc;
+//!
+//! let singleton_scope = Arc::new(SingletonScope::new());
+//! let db = get_connection();
+//! let di_ctx = Arc::new(
+//!     InjectionContext::builder(singleton_scope)
+//!         .singleton(db)  // Required for CurrentUser/AuthUser resolution
+//!         .build(),
+//! );
+//!
+//! let router = UnifiedRouter::new()
+//!     .with_di_context(di_ctx);
+//!     // ... mount endpoints
+//! ```
+//!
 //! ## Circular Dependency Detection
 //!
 //! The DI system automatically detects circular dependencies at runtime using an optimized
