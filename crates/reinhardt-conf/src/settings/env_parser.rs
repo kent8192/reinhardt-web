@@ -71,8 +71,8 @@ pub fn parse_dict(value: &str) -> HashMap<String, String> {
 			let key = key.trim().to_string();
 			let val = val.trim().to_string();
 
-			// Skip entries where both key and value are empty
-			if !key.is_empty() || !val.is_empty() {
+			// Skip entries where key or value is empty
+			if !key.is_empty() && !val.is_empty() {
 				map.insert(key, val);
 			}
 		}
