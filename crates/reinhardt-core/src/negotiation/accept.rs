@@ -34,7 +34,7 @@ impl AcceptHeader {
 			.collect();
 
 		// Sort by quality (highest first)
-		// Use unwrap_or as a safety net in case NaN slips through
+		// Non-finite values are rejected at parse time; unwrap_or is a safety net
 		media_types.sort_by(|a, b| {
 			b.quality
 				.partial_cmp(&a.quality)

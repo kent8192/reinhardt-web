@@ -137,8 +137,8 @@ impl EncodingQuality {
 				&& key.trim() == "q"
 				&& let Ok(q) = value.trim().parse::<f32>()
 			{
-				// Reject NaN quality values to prevent partial_cmp panic
-				if q.is_nan() {
+				// Reject non-finite quality values (NaN, inf, -inf)
+				if !q.is_finite() {
 					return None;
 				}
 				quality = q.clamp(0.0, 1.0);
@@ -221,7 +221,7 @@ impl EncodingNegotiator {
 		let mut requested = self.parse_accept_encoding(accept_encoding);
 
 		// Sort by quality (highest first)
-		// Use unwrap_or as a safety net in case NaN slips through
+		// Non-finite values are rejected at parse time; unwrap_or is a safety net
 		requested.sort_by(|a, b| {
 			b.quality
 				.partial_cmp(&a.quality)
@@ -343,15 +343,18 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_parse_rejects_nan_quality() {
+	#[case("gzip;q=NaN")]
+	#[case("gzip;q=inf")]
+	#[case("gzip;q=-inf")]
+	fn test_parse_rejects_non_finite_quality(#[case] input: &str) {
 		// Arrange
-		let input = "gzip;q=NaN";
+		// (input provided by rstest case)
 
 		// Act
 		let result = EncodingQuality::parse(input);
 
 		// Assert
-		assert_eq!(result, None, "NaN quality value should be rejected");
+		assert_eq!(result, None, "Non-finite quality value should be rejected");
 	}
 
 	#[rstest]

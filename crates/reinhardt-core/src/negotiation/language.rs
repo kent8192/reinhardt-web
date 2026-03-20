@@ -84,8 +84,8 @@ impl Language {
 				&& key.trim() == "q"
 				&& let Ok(q) = value.trim().parse::<f32>()
 			{
-				// Reject NaN quality values to prevent partial_cmp panic
-				if q.is_nan() {
+				// Reject non-finite quality values (NaN, inf, -inf)
+				if !q.is_finite() {
 					return None;
 				}
 				quality = q.clamp(0.0, 1.0);
@@ -216,7 +216,7 @@ impl LanguageNegotiator {
 		let mut requested = self.parse_accept_language(accept_language);
 
 		// Sort by quality (highest first)
-		// Use unwrap_or as a safety net in case NaN slips through
+		// Non-finite values are rejected at parse time; unwrap_or is a safety net
 		requested.sort_by(|a, b| {
 			b.quality
 				.partial_cmp(&a.quality)
@@ -355,15 +355,18 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_parse_rejects_nan_quality() {
+	#[case("en-US;q=NaN")]
+	#[case("en-US;q=inf")]
+	#[case("en-US;q=-inf")]
+	fn test_parse_rejects_non_finite_quality(#[case] input: &str) {
 		// Arrange
-		let input = "en-US;q=NaN";
+		// (input provided by rstest case)
 
 		// Act
 		let result = Language::parse(input);
 
 		// Assert
-		assert_eq!(result, None, "NaN quality value should be rejected");
+		assert_eq!(result, None, "Non-finite quality value should be rejected");
 	}
 
 	#[rstest]

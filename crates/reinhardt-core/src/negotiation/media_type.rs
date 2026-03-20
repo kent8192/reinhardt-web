@@ -73,8 +73,8 @@ impl MediaType {
 
 				if key == "q" {
 					if let Ok(q) = value.parse::<f32>() {
-						// Reject NaN quality values to prevent partial_cmp panic
-						if q.is_nan() {
+						// Reject non-finite quality values (NaN, inf, -inf)
+						if !q.is_finite() {
 							return None;
 						}
 						media_type.quality = q.clamp(0.0, 1.0);
@@ -214,7 +214,9 @@ mod tests {
 	#[rstest]
 	#[case("text/html;q=NaN")]
 	#[case("application/json; q=NaN")]
-	fn test_parse_rejects_nan_quality(#[case] input: &str) {
+	#[case("text/html;q=inf")]
+	#[case("text/html;q=-inf")]
+	fn test_parse_rejects_non_finite_quality(#[case] input: &str) {
 		// Arrange
 		// (input provided by rstest case)
 
@@ -222,6 +224,6 @@ mod tests {
 		let result = MediaType::parse(input);
 
 		// Assert
-		assert_eq!(result, None, "NaN quality value should be rejected");
+		assert_eq!(result, None, "Non-finite quality value should be rejected");
 	}
 }
