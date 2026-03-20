@@ -169,6 +169,17 @@ resource "aws_instance" "cancel_runner" {
     runner_labels     = "reinhardt-cancel"
   })
 
+  # Enforce IMDSv2 (token-based) to prevent SSRF credential theft via IMDS
+  metadata_options {
+    http_tokens   = "required"
+    http_endpoint = "enabled"
+  }
+
+  # Encrypt root volume at rest using the default AWS-managed EBS key
+  root_block_device {
+    encrypted = true
+  }
+
   tags = {
     Name = "${var.prefix}-cancel-runner"
   }
