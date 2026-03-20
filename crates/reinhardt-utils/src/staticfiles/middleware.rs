@@ -362,10 +362,7 @@ mod tests {
 	#[case("app.js", "public, immutable, max-age=31536000")]
 	#[case("app.wasm", "public, immutable, max-age=31536000")]
 	#[case("font.woff2", "public, immutable, max-age=31536000")]
-	fn test_config_cache_long_term_extensions(
-		#[case] path: &str,
-		#[case] expected: &str,
-	) {
+	fn test_config_cache_long_term_extensions(#[case] path: &str, #[case] expected: &str) {
 		// Arrange
 		let config = StaticFilesConfig::default();
 
@@ -379,10 +376,7 @@ mod tests {
 	#[rstest]
 	#[case("index.html", "public, must-revalidate, max-age=300")]
 	#[case("file.unknown", "public, must-revalidate, max-age=300")]
-	fn test_config_cache_short_term_extensions(
-		#[case] path: &str,
-		#[case] expected: &str,
-	) {
+	fn test_config_cache_short_term_extensions(#[case] path: &str, #[case] expected: &str) {
 		// Arrange
 		let config = StaticFilesConfig::default();
 
@@ -396,8 +390,8 @@ mod tests {
 	#[rstest]
 	fn test_config_custom_cache_config() {
 		// Arrange
-		let custom_cache = CacheControlConfig::new()
-			.with_type_policy("html".to_string(), CachePolicy::no_cache());
+		let custom_cache =
+			CacheControlConfig::new().with_type_policy("html".to_string(), CachePolicy::no_cache());
 
 		// Act
 		let config = StaticFilesConfig::new("dist").cache_config(custom_cache);
