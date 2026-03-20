@@ -124,6 +124,9 @@ jobs:
             ENV_KEY="CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"
           elif [ "$ARCH" = "x86_64" ]; then
             ENV_KEY="CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+          else
+            echo "Unsupported architecture for mold linker configuration: $ARCH" >&2
+            exit 1
           fi
           echo "${ENV_KEY}=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
 
@@ -267,6 +270,9 @@ jobs:
             ENV_KEY="CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"
           elif [ "$ARCH" = "x86_64" ]; then
             ENV_KEY="CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+          else
+            echo "Unsupported architecture for mold linker configuration: $ARCH" >&2
+            exit 1
           fi
           echo "${ENV_KEY}=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
 
@@ -417,6 +423,9 @@ jobs:
             ENV_KEY="CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"
           elif [ "$ARCH" = "x86_64" ]; then
             ENV_KEY="CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+          else
+            echo "Unsupported architecture for mold linker configuration: $ARCH" >&2
+            exit 1
           fi
           echo "${ENV_KEY}=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
 
