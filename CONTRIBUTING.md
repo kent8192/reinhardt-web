@@ -105,8 +105,8 @@ Reinhardt uses a workspace structure:
 **IMPORTANT**: Reinhardt uses Rust 2024 Edition module system:
 
 - L **DO NOT USE** `mod.rs` files
--  **USE** `module_name.rs` files instead
--  **DECLARE** modules in `lib.rs` or parent module with `mod module_name;`
+- **USE** `module_name.rs` files instead
+- **DECLARE** modules in `lib.rs` or parent module with `mod module_name;`
 
 Example:
 
@@ -118,8 +118,8 @@ pub mod routing;
 // File structure:
 // src/
 //   lib.rs
-//   http.rs          //  Correct
-//   routing.rs       //  Correct
+//   http.rs          // Correct
+//   routing.rs       // Correct
 //   http/mod.rs      // L DO NOT USE
 ```
 
@@ -175,18 +175,18 @@ pub mod routing;
 Examples:
 
 ```rust
-//  Good: Marked placeholder
+// Good: Marked placeholder
 pub fn get_cache_config() -> CacheConfig {
     todo!("Implement cache configuration loading from settings")
 }
 
-//  Good: Using TODO comment
+// Good: Using TODO comment
 pub fn validate_input(data: &str) -> Result<()> {
     // TODO: Add input validation logic - planned for next sprint
     Ok(())
 }
 
-//  Good: Intentionally not implemented
+// Good: Intentionally not implemented
 fn legacy_api() -> String {
     unimplemented!("This legacy API is intentionally not supported")
 }
@@ -242,7 +242,7 @@ deprecated(auth): mark `old_session_token()` as deprecated in favor of `session_
 1. **NO skeleton implementations**: Tests MUST contain meaningful assertions
    - Tests must be capable of failing when code is incorrect
    - L Bad: `assert!(true)` or empty test bodies
-   -  Good: Tests with real assertions
+   - Good: Tests with real assertions
 
 2. **Use Reinhardt components**: Every test MUST use at least one Reinhardt crate component
 
@@ -703,8 +703,8 @@ When an API is deprecated:
 
 ### Resources
 
-- [Getting Started Guide](/quickstart/getting-started/)
-- [Feature Flags Guide](/docs/feature-flags/)
+- [Getting Started Guide](website/content/quickstart/getting-started.md)
+- [Feature Flags Guide](website/content/docs/feature-flags.md)
 - [Issue Guidelines](instructions/ISSUE_GUIDELINES.md) - Issue creation and management
 - [Pull Request Guidelines](instructions/PR_GUIDELINE.md) - PR policies and procedures
 - [Security Policy](SECURITY.md) - Security vulnerability reporting
@@ -717,12 +717,12 @@ When an API is deprecated:
 
 Please check:
 
--  [Getting Started Guide](/quickstart/getting-started/)
--  [Issue Guidelines](instructions/ISSUE_GUIDELINES.md)
--  [Pull Request Guidelines](instructions/PR_GUIDELINE.md)
--  [Examples](examples/)
--  Existing GitHub Issues and Discussions
--  [CLAUDE.md](CLAUDE.md) for project-specific guidelines
+- [Getting Started Guide](website/content/quickstart/getting-started.md)
+- [Issue Guidelines](instructions/ISSUE_GUIDELINES.md)
+- [Pull Request Guidelines](instructions/PR_GUIDELINE.md)
+- [Examples](examples/)
+- Existing GitHub Issues and Discussions
+- [CLAUDE.md](CLAUDE.md) for project-specific guidelines
 
 ---
 
@@ -735,33 +735,33 @@ Please check:
 - L NO `mod.rs` files
 - L NO TODO/NOTE comments in user-facing placeholders
 - L NO unmarked placeholder implementations
--  USE 2024 edition module system
--  MARK ALL placeholders with `todo!()` or `// TODO:`
+- USE 2024 edition module system
+- MARK ALL placeholders with `todo!()` or `// TODO:`
 
 **Testing**:
 
 - L NO skeleton tests
 - L NO cross-crate functional dev-dependencies (except reinhardt-test)
--  CLEAN UP all test artifacts
--  SERIALIZE tests with global state using `#[serial]`
+- CLEAN UP all test artifacts
+- SERIALIZE tests with global state using `#[serial]`
 
 **File Management**:
 
 - L NO saving files to project directory (use `/tmp`)
 - L NO relative paths with more than one level up
--  DELETE `/tmp` files when done
+- DELETE `/tmp` files when done
 
 **Documentation**:
 
 - L NO outdated documentation after code changes
--  UPDATE documentation with code changes
+- UPDATE documentation with code changes
 
 **Commits**:
 
 - L NO commits without user instruction
 - L NO batch commits without confirmation
--  SPLIT commits by logical purpose
--  KEEP commits small and focused
+- SPLIT commits by logical purpose
+- KEEP commits small and focused
 
 
 ### Common Commands
