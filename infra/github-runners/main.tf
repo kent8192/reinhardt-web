@@ -55,15 +55,25 @@ data "aws_vpc" "default" {
   default = true
 }
 
+data "aws_availability_zones" "available" {
+  state = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["otp-in-not-required"]
+  }
+
+  # Exclude us-east-1e (zone ID use1-az3) because it doesn't support required Graviton instance types
+  exclude_zone_ids = ["use1-az3"]
+}
+
 data "aws_subnets" "default" {
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.default.id]
   }
   filter {
-    # Exclude us-east-1e: Graviton instance types (c7g/c6g) are not supported in this AZ.
-    # us-east-1a, 1b, 1c, 1d, 1f all support the required Graviton instance types.
     name   = "availability-zone"
-    values = ["us-east-1a", "us-east-1b", "us-east-1c", "us-east-1d", "us-east-1f"]
+    values = data.aws_availability_zones.available.names
   }
 }
