@@ -87,7 +87,7 @@ Implement API endpoints using HTTP method decorators. Add to `users/views.rs`:
 
 ```rust
 use json::json;
-use reinhardt::core::serde::json;
+use serde_json as json;
 use reinhardt::ViewResult;
 use reinhardt::{get, post, Json, Response, StatusCode};
 use crate::models::User;
@@ -95,7 +95,7 @@ use crate::serializers::UserSerializer;
 
 #[get("/users", name = "list_users")]
 pub async fn list_users() -> ViewResult<Response> {
-    let users = User::objects().all().all().await?;
+    let users = User::objects().all().await?;
     let serialized: Vec<UserSerializer> = users.into_iter()
         .map(|u| UserSerializer::from(u))
         .collect();
@@ -174,7 +174,7 @@ Edit `users/views.rs` to implement full CRUD operations:
 
 ```rust
 use json::json;
-use reinhardt::core::serde::json;
+use serde_json as json;
 use reinhardt::ViewResult;
 use reinhardt::{get, post, Json, Path, Response, StatusCode};
 use crate::models::User;
@@ -182,7 +182,7 @@ use crate::serializers::UserSerializer;
 
 #[get("/users", name = "list_users")]
 pub async fn list_users() -> ViewResult<Response> {
-    let users = User::objects().all().all().await?;
+    let users = User::objects().all().await?;
     let serialized: Vec<UserSerializer> = users.into_iter()
         .map(|u| UserSerializer::from(u))
         .collect();
