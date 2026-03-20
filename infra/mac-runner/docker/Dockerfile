@@ -5,15 +5,17 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 	&& . "$HOME/.cargo/env" \
 	&& rustup component add clippy rustfmt
 
-# Install cargo tools (matching AWS Spot runner toolset)
+# Install cargo-nextest via pre-built binary (avoids aws-lc-sys GCC bug in Docker)
+RUN curl -LsSf https://get.nexte.st/latest/linux-arm | tar zxf - -C /usr/local/bin
+
+# Install cargo-make from source
 RUN . "$HOME/.cargo/env" \
-	&& cargo install cargo-nextest --locked \
 	&& cargo install cargo-make --locked
 
-# Install mold linker
-RUN apt-get update \
-	&& apt-get install -y --no-install-recommends mold \
-	&& rm -rf /var/lib/apt/lists/*
+# Install mold linker (not available in Ubuntu Focal repos, use GitHub release)
+RUN MOLD_VERSION=2.35.1 \
+	&& curl -LsSf "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-aarch64-linux.tar.gz" \
+	| tar xzf - --strip-components=1 -C /usr/local
 
 # Copy healthcheck script
 COPY scripts/healthcheck.sh /usr/local/bin/healthcheck.sh
