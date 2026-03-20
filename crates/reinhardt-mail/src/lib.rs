@@ -247,6 +247,10 @@ pub enum EmailError {
 	/// A header injection attack was detected in the input.
 	#[error("Header injection attempt detected: {0}")]
 	HeaderInjection(String),
+
+	/// A configuration value is invalid.
+	#[error("Invalid configuration: {0}")]
+	InvalidConfiguration(String),
 }
 
 impl EmailError {

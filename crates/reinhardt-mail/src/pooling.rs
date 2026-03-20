@@ -99,12 +99,39 @@ impl PoolConfig {
 pub struct EmailPool {
 	smtp_config: SmtpConfig,
 	pool_config: PoolConfig,
+	// Debug is intentionally not derived because Semaphore lacks Debug;
+	// a manual impl is provided below for test ergonomics.
 	semaphore: Arc<Semaphore>,
+}
+
+impl std::fmt::Debug for EmailPool {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("EmailPool")
+			.field("smtp_config", &self.smtp_config)
+			.field("pool_config", &self.pool_config)
+			.finish_non_exhaustive()
+	}
 }
 
 impl EmailPool {
 	/// Create a new email connection pool
+	///
+	/// # Errors
+	///
+	/// Returns [`EmailError::InvalidConfiguration`] if `max_connections` or
+	/// `max_messages_per_connection` is zero.
 	pub fn new(smtp_config: SmtpConfig, pool_config: PoolConfig) -> EmailResult<Self> {
+		if pool_config.max_connections == 0 {
+			return Err(EmailError::InvalidConfiguration(
+				"max_connections must be at least 1".to_string(),
+			));
+		}
+		if pool_config.max_messages_per_connection == 0 {
+			return Err(EmailError::InvalidConfiguration(
+				"max_messages_per_connection must be at least 1".to_string(),
+			));
+		}
+
 		let semaphore = Arc::new(Semaphore::new(pool_config.max_connections));
 
 		Ok(Self {
@@ -285,6 +312,40 @@ mod tests {
 		assert_eq!(config.max_connections, 10);
 		assert_eq!(config.min_idle, 2);
 		assert_eq!(config.max_messages_per_connection, 100);
+	}
+
+	#[rstest]
+	fn test_email_pool_rejects_zero_max_connections() {
+		// Arrange
+		let smtp_config = SmtpConfig::new("smtp.example.com", 587);
+		let pool_config = PoolConfig::new().with_max_connections(0);
+
+		// Act
+		let result = EmailPool::new(smtp_config, pool_config);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(
+			matches!(err, EmailError::InvalidConfiguration(ref msg) if msg.contains("max_connections")),
+			"Expected InvalidConfiguration for max_connections, got: {err}"
+		);
+	}
+
+	#[rstest]
+	fn test_email_pool_rejects_zero_max_messages_per_connection() {
+		// Arrange
+		let smtp_config = SmtpConfig::new("smtp.example.com", 587);
+		let pool_config = PoolConfig::new().with_max_messages_per_connection(0);
+
+		// Act
+		let result = EmailPool::new(smtp_config, pool_config);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(
+			matches!(err, EmailError::InvalidConfiguration(ref msg) if msg.contains("max_messages_per_connection")),
+			"Expected InvalidConfiguration for max_messages_per_connection, got: {err}"
+		);
 	}
 
 	#[tokio::test]
