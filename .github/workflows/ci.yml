@@ -117,7 +117,7 @@ jobs:
           # Security: only trusted actors can use Mac runner.
           # Fork PRs are ALWAYS excluded regardless of actor.
           if [[ "$MAC_RUNNER_ENABLED" == "true" ]] && [[ "$IS_FORK" != "true" ]]; then
-            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]] && [[ "$ACTOR" == "$REPO_OWNER" ]]; then
               USE_MAC=true
             elif [[ "$EVENT_NAME" == "pull_request" ]]; then
               # release-plz PRs: trusted (only push-access users create these branches)
