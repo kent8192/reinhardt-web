@@ -1,4 +1,4 @@
-FROM myoung34/github-runner:2.322.0
+FROM myoung34/github-runner:2.333.0
 
 # Install Rust toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
