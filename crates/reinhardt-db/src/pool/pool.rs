@@ -474,12 +474,13 @@ impl<DB: sqlx::Database> PooledConnection<DB> {
 
 impl<DB: sqlx::Database> Drop for PooledConnection<DB> {
 	fn drop(&mut self) {
-		let pool_ref = self.pool_ref.clone();
-		let connection_id = self.connection_id.clone();
-
 		// Guard against panic when no tokio runtime is available
-		// (e.g., when dropped outside of an async context)
+		// (e.g., when dropped outside of an async context).
+		// Only clone pool_ref and connection_id when a runtime is available.
 		if let Ok(handle) = tokio::runtime::Handle::try_current() {
+			let pool_ref = self.pool_ref.clone();
+			let connection_id = self.connection_id.clone();
+
 			handle.spawn(async move {
 				pool_ref
 					.emit_event(PoolEvent::connection_returned(connection_id))
@@ -578,16 +579,44 @@ mod tests {
 
 	#[rstest]
 	fn test_handle_try_current_returns_err_outside_runtime() {
+		// Arrange & Act & Assert
+		// Run on a fresh thread to avoid inheriting runtime context
+		// from the test runner's worker thread.
+		let handle = std::thread::spawn(|| {
+			let result = tokio::runtime::Handle::try_current();
+			assert!(
+				result.is_err(),
+				"Handle::try_current() should return Err outside of a tokio runtime"
+			);
+		});
+		handle.join().expect("thread should not panic");
+	}
+
+	#[rstest]
+	fn test_drop_pooled_connection_outside_runtime_does_not_panic() {
 		// Arrange
-		// No tokio runtime is active in this synchronous test
+		// Create a Tokio runtime and acquire a pooled connection inside it.
+		let rt = tokio::runtime::Runtime::new().expect("failed to create Tokio runtime");
 
-		// Act
-		let result = tokio::runtime::Handle::try_current();
+		let (pool, conn) = rt.block_on(async {
+			let config = PoolConfig::default();
+			let pool = ConnectionPool::new_sqlite("sqlite::memory:", config)
+				.await
+				.expect("failed to create ConnectionPool");
 
-		// Assert
-		assert!(
-			result.is_err(),
-			"Handle::try_current() should return Err outside of a tokio runtime"
-		);
+			let conn = pool.acquire().await.expect("failed to acquire connection");
+
+			(pool, conn)
+		});
+
+		// Drop the runtime so there is no active Tokio runtime.
+		drop(rt);
+
+		// Act & Assert
+		// Dropping the connection outside any runtime should not panic.
+		drop(conn);
+
+		// Also drop the pool to ensure cleanup does not panic outside a runtime.
+		drop(pool);
 	}
 }
