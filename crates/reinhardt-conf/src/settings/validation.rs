@@ -678,9 +678,8 @@ mod tests {
 		// Assert
 		let err = result.unwrap_err();
 		let error_msg = err.to_string();
-		assert_eq!(
+		assert!(
 			error_msg.contains("SECURE_SSL_REDIRECT must be set in production"),
-			true,
 			"Expected error about missing SECURE_SSL_REDIRECT, got: {error_msg}"
 		);
 	}
@@ -707,9 +706,8 @@ mod tests {
 		// Assert
 		let err = result.unwrap_err();
 		let error_msg = err.to_string();
-		assert_eq!(
+		assert!(
 			error_msg.contains("SECURE_SSL_REDIRECT should be true in production"),
-			true,
 			"Expected error about SECURE_SSL_REDIRECT being false, got: {error_msg}"
 		);
 	}
