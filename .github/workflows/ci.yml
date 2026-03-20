@@ -82,7 +82,7 @@ jobs:
   # GitHub-hosted: fallback for fork PRs or when self-hosted is unavailable.
   determine-runner:
     name: Determine Runner
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     outputs:
       runner: ${{ steps.set-runner.outputs.runner }}
       cargo-build-jobs: ${{ steps.set-runner.outputs.cargo-build-jobs }}
