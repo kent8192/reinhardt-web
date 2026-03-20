@@ -163,7 +163,7 @@ impl Injectable for AuthInfo {
             ))?;
 
         // Get AuthState from request extensions
-        let auth_state: AuthState = request.extensions.get::<AuthState>()
+        let auth_state = request.extensions.get::<AuthState>()
             .ok_or_else(|| DiError::NotFound(
                 "AuthInfo: No AuthState found in request extensions. \
                  Ensure authentication middleware is configured.".into()
