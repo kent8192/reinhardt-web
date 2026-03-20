@@ -242,7 +242,7 @@ where
 								.get("page")
 								.and_then(|p| p.parse::<usize>().ok())
 								.unwrap_or(1);
-							let has_next = page * page_size < total_count;
+							let has_next = page.saturating_mul(*page_size) < total_count;
 							serde_json::json!({
 								"count": total_count,
 								"page": page,
@@ -263,12 +263,12 @@ where
 								.get("limit")
 								.and_then(|l| l.parse::<usize>().ok())
 								.unwrap_or(10);
-							let has_next = offset + limit < total_count;
+							let has_next = offset.saturating_add(limit) < total_count;
 							serde_json::json!({
 								"count": total_count,
 								"offset": offset,
 								"limit": limit,
-								"next": if has_next { Some(format!("?offset={}&limit={}", offset + limit, limit)) } else { None::<String> },
+								"next": if has_next { Some(format!("?offset={}&limit={}", offset.saturating_add(limit), limit)) } else { None::<String> },
 								"previous": if offset > 0 { Some(format!("?offset={}&limit={}", offset.saturating_sub(limit), limit)) } else { None::<String> },
 								"results": results
 							})
