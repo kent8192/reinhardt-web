@@ -464,19 +464,20 @@ mod tests {
 	use rstest::rstest;
 
 	#[rstest]
-	fn handle_try_current_returns_none_outside_runtime() {
+	fn handle_try_current_returns_err_outside_runtime() {
 		// Arrange
-		// Verify that Handle::try_current() returns Err outside a Tokio runtime,
-		// which is the guard condition used in our Drop impl.
+		// Run on a fresh thread to avoid inheriting any runtime context
+		// from the test runner's worker thread.
 
-		// Act
-		let result = tokio::runtime::Handle::try_current();
-
-		// Assert
-		assert!(
-			result.is_err(),
-			"Handle::try_current() should return Err outside a runtime"
-		);
+		// Act & Assert
+		let handle = std::thread::spawn(|| {
+			let result = tokio::runtime::Handle::try_current();
+			assert!(
+				result.is_err(),
+				"Handle::try_current() should return Err outside a runtime"
+			);
+		});
+		handle.join().expect("thread should not panic");
 	}
 
 	#[rstest]
@@ -507,5 +508,33 @@ mod tests {
 		// Assert
 		// Dropping within an active runtime should work without panic
 		drop(conn);
+	}
+
+	#[rstest]
+	fn drop_pooled_connection_outside_runtime_does_not_panic() {
+		// Arrange
+		// Create a Tokio runtime and acquire a pooled connection inside it.
+		let rt = tokio::runtime::Runtime::new().expect("failed to create Tokio runtime");
+
+		let (pool, conn) = rt.block_on(async {
+			let config = PoolConfig::default();
+			let pool = ConnectionPool::new_sqlite("sqlite::memory:", config)
+				.await
+				.expect("failed to create ConnectionPool");
+
+			let conn = pool.acquire().await.expect("failed to acquire connection");
+
+			(pool, conn)
+		});
+
+		// Drop the runtime so there is no active Tokio runtime.
+		drop(rt);
+
+		// Act & Assert
+		// Dropping the connection outside any runtime should not panic.
+		drop(conn);
+
+		// Also drop the pool to ensure cleanup does not panic outside a runtime.
+		drop(pool);
 	}
 }
