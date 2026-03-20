@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.13...reinhardt-web@v0.1.0-rc.14) - 2026-03-20
+
+### Documentation
+
+- update CRATE_STRUCTURE.md with accurate crate count and descriptions
+- fix broken links, typos, and outdated info in root docs
+
+### Fixed
+
+- *(migrations)* resolve multi-element dependency parsing and deterministic sort
+- *(rest)* correct module path in versioning macro
+- *(ci)* use atomic dpkg lock timeout and add missing environment key
+- *(testkit)* unify PostgreSQL version, add pool close, and cleanup backoff
+- *(pages)* protect textarea, style, and script from minification
+- *(db-macros)* emit compile error for unknown field attributes
+- *(examples)* use /api/ mount point for URL consistency
+
+### Maintenance
+
+- add workflow to auto-delete release-plz branches on PR close
+
 ## [0.1.0-rc.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.12...reinhardt-web@v0.1.0-rc.13) - 2026-03-18
 
 ### Added
