@@ -99,8 +99,9 @@ impl PoolConfig {
 pub struct EmailPool {
 	smtp_config: SmtpConfig,
 	pool_config: PoolConfig,
-	// Debug is intentionally not derived because Semaphore lacks Debug;
-	// a manual impl is provided below for test ergonomics.
+	// Debug is intentionally not derived to avoid exposing semaphore internals
+	// and to keep the Debug output concise; a manual impl is provided below
+	// for test and debugging ergonomics.
 	semaphore: Arc<Semaphore>,
 }
 
@@ -122,14 +123,16 @@ impl EmailPool {
 	/// `max_messages_per_connection` is zero.
 	pub fn new(smtp_config: SmtpConfig, pool_config: PoolConfig) -> EmailResult<Self> {
 		if pool_config.max_connections == 0 {
-			return Err(EmailError::InvalidConfiguration(
-				"max_connections must be at least 1".to_string(),
-			));
+			return Err(EmailError::InvalidConfiguration(format!(
+				"max_connections must be at least 1, got {}",
+				pool_config.max_connections
+			)));
 		}
 		if pool_config.max_messages_per_connection == 0 {
-			return Err(EmailError::InvalidConfiguration(
-				"max_messages_per_connection must be at least 1".to_string(),
-			));
+			return Err(EmailError::InvalidConfiguration(format!(
+				"max_messages_per_connection must be at least 1, got {}",
+				pool_config.max_messages_per_connection
+			)));
 		}
 
 		let semaphore = Arc::new(Semaphore::new(pool_config.max_connections));
