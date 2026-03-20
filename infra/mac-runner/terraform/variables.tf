@@ -1,7 +1,7 @@
 variable "repo_url" {
 	description = "GitHub repository URL for runner registration"
 	type        = string
-	default     = "https://github.com/kent8192/reinhardt"
+	default     = "https://github.com/kent8192/reinhardt-web"
 }
 
 variable "github_token" {
