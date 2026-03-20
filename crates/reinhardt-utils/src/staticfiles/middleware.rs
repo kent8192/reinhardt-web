@@ -15,6 +15,7 @@ use super::caching::CacheControlConfig;
 use super::handler::{StaticError, StaticFileHandler};
 
 /// Configuration for the static files middleware.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct StaticFilesConfig {
 	/// Root directory for static files
@@ -172,12 +173,23 @@ impl StaticFilesMiddleware {
 	async fn try_serve(&self, path: &str) -> Option<Response> {
 		match self.handler.serve(path).await {
 			Ok(file) => {
-				let cache_value = self.config.cache_config.get_policy(path).to_header_value();
-				let response = Response::ok()
+				let mut response = Response::ok()
 					.with_header("Content-Type", &file.mime_type)
-					.with_header("ETag", &file.etag())
-					.with_header("Cache-Control", &cache_value)
-					.with_body(file.content);
+					.with_header("ETag", &file.etag());
+
+				// Only set cache headers when caching is enabled
+				if self.config.cache_config.enabled {
+					let policy = self.config.cache_config.get_policy(path);
+					let cache_value = policy.to_header_value();
+					response = response.with_header("Cache-Control", &cache_value);
+
+					// Apply Vary header if specified in the policy
+					if let Some(vary) = &policy.vary {
+						response = response.with_header("Vary", vary);
+					}
+				}
+
+				response = response.with_body(file.content);
 				Some(response)
 			}
 			Err(StaticError::NotFound(_)) => None,

@@ -287,7 +287,7 @@ impl CacheControlConfig {
 	}
 
 	/// Get policy for a given path
-	pub fn get_policy(&self, path: &str) -> &CachePolicy {
+	pub(crate) fn get_policy(&self, path: &str) -> &CachePolicy {
 		// Try extension-based matching first
 		if let Some(extension) = path.rsplit('.').next()
 			&& let Some(policy) = self.type_policies.get(extension)
