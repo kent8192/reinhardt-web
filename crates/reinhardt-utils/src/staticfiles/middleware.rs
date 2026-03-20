@@ -11,6 +11,7 @@ use reinhardt_core::exception::Result;
 use reinhardt_http::{Handler, Middleware};
 use reinhardt_http::{Request, Response};
 
+use super::caching::CacheControlConfig;
 use super::handler::{StaticError, StaticFileHandler};
 
 /// Configuration for the static files middleware.
@@ -28,6 +29,8 @@ pub struct StaticFilesConfig {
 	pub allowed_extensions: Vec<String>,
 	/// Path prefixes to exclude from SPA fallback (e.g., ["/api/", "/docs"])
 	pub excluded_prefixes: Vec<String>,
+	/// Cache control configuration for static file responses
+	pub cache_config: CacheControlConfig,
 }
 
 impl Default for StaticFilesConfig {
@@ -39,6 +42,7 @@ impl Default for StaticFilesConfig {
 			index_files: vec!["index.html".to_string()],
 			allowed_extensions: vec![],
 			excluded_prefixes: vec!["/api/".to_string()],
+			cache_config: CacheControlConfig::new(),
 		}
 	}
 }
@@ -79,6 +83,12 @@ impl StaticFilesConfig {
 	/// Set path prefixes to exclude from SPA fallback.
 	pub fn excluded_prefixes(mut self, prefixes: Vec<String>) -> Self {
 		self.excluded_prefixes = prefixes;
+		self
+	}
+
+	/// Set cache control configuration.
+	pub fn cache_config(mut self, config: CacheControlConfig) -> Self {
+		self.cache_config = config;
 		self
 	}
 }
@@ -162,10 +172,11 @@ impl StaticFilesMiddleware {
 	async fn try_serve(&self, path: &str) -> Option<Response> {
 		match self.handler.serve(path).await {
 			Ok(file) => {
+				let cache_value = self.config.cache_config.get_policy(path).to_header_value();
 				let response = Response::ok()
 					.with_header("Content-Type", &file.mime_type)
 					.with_header("ETag", &file.etag())
-					.with_header("Cache-Control", "public, max-age=31536000, immutable")
+					.with_header("Cache-Control", &cache_value)
 					.with_body(file.content);
 				Some(response)
 			}
@@ -233,6 +244,8 @@ impl Middleware for StaticFilesMiddleware {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::staticfiles::caching::{CacheControlConfig, CachePolicy};
+	use rstest::rstest;
 
 	#[test]
 	fn test_config_defaults() {
@@ -310,5 +323,78 @@ mod tests {
 		assert!(middleware.is_extension_allowed("style.css"));
 		assert!(middleware.is_extension_allowed("app.wasm"));
 		assert!(!middleware.is_extension_allowed("secret.json"));
+	}
+
+	#[rstest]
+	fn test_config_default_has_cache_config() {
+		// Arrange
+		let config = StaticFilesConfig::default();
+
+		// Act
+		let html_policy = config.cache_config.get_policy("index.html");
+		let js_policy = config.cache_config.get_policy("app.js");
+
+		// Assert
+		assert_eq!(
+			html_policy.to_header_value(),
+			"public, must-revalidate, max-age=300"
+		);
+		assert_eq!(
+			js_policy.to_header_value(),
+			"public, immutable, max-age=31536000"
+		);
+	}
+
+	#[rstest]
+	#[case("style.css", "public, immutable, max-age=31536000")]
+	#[case("app.js", "public, immutable, max-age=31536000")]
+	#[case("app.wasm", "public, immutable, max-age=31536000")]
+	#[case("font.woff2", "public, immutable, max-age=31536000")]
+	fn test_config_cache_long_term_extensions(
+		#[case] path: &str,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let config = StaticFilesConfig::default();
+
+		// Act
+		let policy = config.cache_config.get_policy(path);
+
+		// Assert
+		assert_eq!(policy.to_header_value(), expected);
+	}
+
+	#[rstest]
+	#[case("index.html", "public, must-revalidate, max-age=300")]
+	#[case("file.unknown", "public, must-revalidate, max-age=300")]
+	fn test_config_cache_short_term_extensions(
+		#[case] path: &str,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let config = StaticFilesConfig::default();
+
+		// Act
+		let policy = config.cache_config.get_policy(path);
+
+		// Assert
+		assert_eq!(policy.to_header_value(), expected);
+	}
+
+	#[rstest]
+	fn test_config_custom_cache_config() {
+		// Arrange
+		let custom_cache = CacheControlConfig::new()
+			.with_type_policy("html".to_string(), CachePolicy::no_cache());
+
+		// Act
+		let config = StaticFilesConfig::new("dist").cache_config(custom_cache);
+		let html_policy = config.cache_config.get_policy("index.html");
+
+		// Assert
+		assert_eq!(
+			html_policy.to_header_value(),
+			"no-cache, no-store, must-revalidate"
+		);
 	}
 }
