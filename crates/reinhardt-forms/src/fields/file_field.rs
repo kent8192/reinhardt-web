@@ -16,15 +16,26 @@ fn validate_filename_safety(filename: &str) -> FieldResult<()> {
 		));
 	}
 
-	// Reject directory traversal sequences
-	if filename.contains("../") || filename.contains("..\\") {
-		return Err(FieldError::Validation(
-			"Filename contains directory traversal sequence".to_string(),
-		));
+	// Reject directory traversal by checking path components split on both
+	// '/' and '\\' separators.  This catches bare ".." without a trailing
+	// slash as well as sequences like "../" and "..\\".
+	for component in filename.split(['/', '\\']) {
+		if component == ".." {
+			return Err(FieldError::Validation(
+				"Filename contains directory traversal sequence".to_string(),
+			));
+		}
 	}
 
 	// Reject absolute paths (Unix-style)
 	if filename.starts_with('/') {
+		return Err(FieldError::Validation(
+			"Filename must not be an absolute path".to_string(),
+		));
+	}
+
+	// Reject absolute paths (Windows UNC paths, e.g. \\server\share)
+	if filename.starts_with("\\\\") {
 		return Err(FieldError::Validation(
 			"Filename must not be an absolute path".to_string(),
 		));
@@ -543,6 +554,7 @@ mod tests {
 		// Assert
 		assert!(
 			matches!(result, Err(FieldError::Validation(ref msg)) if msg.contains("null bytes")),
+			"Expected null bytes rejection"
 		);
 	}
 
@@ -777,6 +789,7 @@ mod tests {
 		// Assert
 		assert!(
 			matches!(result, Err(FieldError::Validation(ref msg)) if msg.contains("directory traversal")),
+			"Expected directory traversal rejection for ImageField"
 		);
 	}
 
@@ -795,6 +808,7 @@ mod tests {
 		// Assert
 		assert!(
 			matches!(result, Err(FieldError::Validation(ref msg)) if msg.contains("null bytes")),
+			"Expected null bytes rejection for ImageField"
 		);
 	}
 
@@ -813,6 +827,7 @@ mod tests {
 		// Assert
 		assert!(
 			matches!(result, Err(FieldError::Validation(ref msg)) if msg.contains("absolute path")),
+			"Expected absolute path rejection for ImageField"
 		);
 	}
 
