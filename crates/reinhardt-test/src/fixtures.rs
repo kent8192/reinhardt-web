@@ -39,8 +39,8 @@ pub mod admin_panel;
 #[cfg(all(feature = "admin", feature = "testcontainers"))]
 pub mod admin_migrations;
 
-// WASM frontend test fixtures
-#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+// WASM frontend test fixtures and E2E browser testing fixtures
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm"), feature = "e2e"))]
 pub mod wasm;
 
 // Admin integration fixtures (conditional on admin + testcontainers features)
