@@ -199,10 +199,7 @@ impl PostgresBackend {
 				if let Some(f) = value.to_f64() {
 					row.insert(column_name.to_string(), QueryValue::Float(f));
 				} else {
-					return Err(DatabaseError::TypeError(format!(
-						"Failed to convert Decimal value '{}' to f64 for column '{}'",
-						value, column_name
-					)));
+					return Err(Self::decimal_conversion_error(&value, column_name));
 				}
 			} else if let Ok(value) = pg_row.try_get::<f64, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Float(value));
@@ -227,6 +224,14 @@ impl PostgresBackend {
 			}
 		}
 		Ok(row)
+	}
+
+	/// Build a TypeError for failed Decimal-to-f64 conversion
+	fn decimal_conversion_error(value: &rust_decimal::Decimal, column_name: &str) -> DatabaseError {
+		DatabaseError::TypeError(format!(
+			"Failed to convert Decimal value '{}' to f64 for column '{}'",
+			value, column_name
+		))
 	}
 }
 
@@ -376,10 +381,19 @@ mod tests {
 			decimal
 		);
 		let f = result.unwrap();
+
+		// Use combined relative and absolute tolerance for float comparison
+		let diff = (f - expected).abs();
+		let rel_tol = 1e-12;
+		let abs_tol = 1e-12;
+		let tol = expected.abs() * rel_tol + abs_tol;
+
 		assert!(
-			(f - expected).abs() < 1e15,
-			"Expected approximately {}, got {}",
+			diff <= tol,
+			"Expected approximately {} (tolerance {}, diff {}), got {}",
 			expected,
+			tol,
+			diff,
 			f
 		);
 	}
@@ -394,10 +408,7 @@ mod tests {
 		let column_name = "price_column";
 
 		// Act
-		let error = DatabaseError::TypeError(format!(
-			"Failed to convert Decimal value '{}' to f64 for column '{}'",
-			value, column_name
-		));
+		let error = super::PostgresBackend::decimal_conversion_error(&value, column_name);
 
 		// Assert
 		assert!(matches!(error, DatabaseError::TypeError(_)));
