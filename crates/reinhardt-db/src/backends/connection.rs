@@ -11,6 +11,10 @@ use super::{
 #[cfg(feature = "postgres")]
 use super::dialect::PostgresBackend;
 
+/// SQLSTATE code for "invalid_catalog_name" (database does not exist)
+#[cfg(feature = "postgres")]
+const SQLSTATE_INVALID_CATALOG_NAME: &str = "3D000";
+
 #[cfg(feature = "sqlite")]
 use super::dialect::SqliteBackend;
 
@@ -189,7 +193,7 @@ impl DatabaseConnection {
 				// which indicates the database does not exist
 				let is_db_not_found = matches!(
 					&e,
-					sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some("3D000")
+					sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some(SQLSTATE_INVALID_CATALOG_NAME)
 				);
 				if !is_db_not_found {
 					return Err(e.into());

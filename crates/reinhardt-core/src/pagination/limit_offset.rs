@@ -132,10 +132,10 @@ impl LimitOffsetPagination {
 	}
 
 	fn build_url(&self, base_url: &str, offset: usize, limit: usize) -> String {
-		let url = url::Url::parse(base_url).unwrap_or_else(|_| {
-			url::Url::parse(&format!("http://localhost{}", base_url))
-				.unwrap_or_else(|_| url::Url::parse("http://localhost/").expect("hardcoded URL"))
-		});
+		let fallback_base = url::Url::parse("http://localhost/").expect("hardcoded URL");
+		let url = url::Url::parse(base_url)
+			.or_else(|_| fallback_base.join(base_url))
+			.unwrap_or_else(|_| fallback_base.clone());
 
 		let mut new_url = url.clone();
 		new_url
@@ -267,6 +267,9 @@ mod tests {
 		let result = paginator.paginate(&items, None, malformed_url);
 
 		// Assert
-		assert!(result.is_ok(), "paginate should not panic with malformed URL: {malformed_url:?}");
+		assert!(
+			result.is_ok(),
+			"paginate should not panic with malformed URL: {malformed_url:?}"
+		);
 	}
 }
