@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.12...reinhardt-commands@v0.1.0-rc.13) - 2026-03-18
+
+### Added
+
+- *(commands)* extend InfraSignals with gRPC, storage, mail, session, graphql, admin, i18n detection
+
+### Fixed
+
+- *(commands)* align mail and session detection with workspace feature names
+
+## [0.1.0-rc.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.11...reinhardt-commands@v0.1.0-rc.12) - 2026-03-18
+
+### Added
+
+- *(commands)* add --merge option to makemigrations command
+- *(commands)* add introspect management command
+
+### Deprecated
+
+- *(conf)* mark Settings.installed_apps and related methods as deprecated
+
+### Fixed
+
+- *(commands)* address Copilot review feedback on introspect command
+
+### Testing
+
+- add tests for makemigrations --merge option
+
 ## [0.1.0-rc.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.10...reinhardt-commands@v0.1.0-rc.11) - 2026-03-16
 
 ### Documentation
