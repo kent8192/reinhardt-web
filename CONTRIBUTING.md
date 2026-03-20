@@ -51,8 +51,8 @@ Build commands:
 # Build the entire workspace (recommended)
 cargo make build
 
-# Build with all features
-cargo make build --all-features
+# Build with all features (already included in the task definition)
+cargo make build
 
 # Or use plain cargo if needed
 cargo build --workspace --all --all-features
@@ -148,7 +148,7 @@ pub mod routing;
 
 - **DELETE obsolete code immediately** - don't leave commented-out code
 - **NO comments documenting deleted code** - Git history is the record
-- Extract important notes to `instructions/IMPLEMENTATION_NOTES.md` if needed
+- Extract important notes to dedicated documentation files in `instructions/` if needed
 
 ### TODO and Placeholder Policy
 
@@ -260,7 +260,8 @@ deprecated(auth): mark `old_session_token()` as deprecated in favor of `session_
 **Integration Tests**:
 
 - Use TWO or MORE Reinhardt crates
-- **MUST** be placed in the `tests` crate
+- Cross-crate integration tests **MUST** be placed in the `tests` crate
+- Within-crate integration tests can be placed in the functional crate
 - Test interactions between multiple crates
 
 **Dependency Rules**:
@@ -281,9 +282,10 @@ deprecated(auth): mark `old_session_token()` as deprecated in favor of `session_
 Example:
 
 ```rust
+use rstest::rstest;
 use serial_test::serial;
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_translation() {
     activate("fr", catalog);
