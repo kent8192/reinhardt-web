@@ -477,12 +477,15 @@ impl<DB: sqlx::Database> Drop for PooledConnection<DB> {
 		let pool_ref = self.pool_ref.clone();
 		let connection_id = self.connection_id.clone();
 
-		// Emit checkin event asynchronously
-		tokio::spawn(async move {
-			pool_ref
-				.emit_event(PoolEvent::connection_returned(connection_id))
-				.await;
-		});
+		// Guard against panic when no tokio runtime is available
+		// (e.g., when dropped outside of an async context)
+		if let Ok(handle) = tokio::runtime::Handle::try_current() {
+			handle.spawn(async move {
+				pool_ref
+					.emit_event(PoolEvent::connection_returned(connection_id))
+					.await;
+			});
+		}
 	}
 }
 
@@ -570,6 +573,21 @@ mod tests {
 		assert_eq!(
 			masked, non_url,
 			"Non-URL strings should pass through unchanged"
+		);
+	}
+
+	#[rstest]
+	fn test_handle_try_current_returns_err_outside_runtime() {
+		// Arrange
+		// No tokio runtime is active in this synchronous test
+
+		// Act
+		let result = tokio::runtime::Handle::try_current();
+
+		// Assert
+		assert!(
+			result.is_err(),
+			"Handle::try_current() should return Err outside of a tokio runtime"
 		);
 	}
 }
