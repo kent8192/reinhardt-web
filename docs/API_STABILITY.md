@@ -216,8 +216,7 @@ Every breaking change (MAJOR release) and every significant deprecation must inc
 3. **How to migrate**: Step-by-step migration instructions with code examples
 4. **Timeline**: When the old behavior will be fully removed (if applicable)
 
-Migration guides are placed in `docs/migrations/vX.Y.Z-migration.md` (the directory
-is created when the first migration guide is needed).
+Migration guides are placed in individual crate CHANGELOGs and release notes.
 
 ---
 
