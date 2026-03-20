@@ -73,6 +73,10 @@ impl MediaType {
 
 				if key == "q" {
 					if let Ok(q) = value.parse::<f32>() {
+						// Reject NaN quality values to prevent partial_cmp panic
+						if q.is_nan() {
+							return None;
+						}
 						media_type.quality = q.clamp(0.0, 1.0);
 					}
 				} else {
@@ -190,6 +194,7 @@ impl fmt::Display for MediaType {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[test]
 	fn test_parse_media_type() {
@@ -204,5 +209,19 @@ mod tests {
 		let json = MediaType::new("application", "json");
 		let wildcard = MediaType::new("*", "*");
 		assert!(json.matches(&wildcard));
+	}
+
+	#[rstest]
+	#[case("text/html;q=NaN")]
+	#[case("application/json; q=NaN")]
+	fn test_parse_rejects_nan_quality(#[case] input: &str) {
+		// Arrange
+		// (input provided by rstest case)
+
+		// Act
+		let result = MediaType::parse(input);
+
+		// Assert
+		assert_eq!(result, None, "NaN quality value should be rejected");
 	}
 }
