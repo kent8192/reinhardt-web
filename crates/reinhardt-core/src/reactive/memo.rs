@@ -182,20 +182,35 @@ impl<T: Clone + 'static> Memo<T> {
 		});
 
 		// Execute the computation function using Remove-Execute-Reinsert pattern
-		// to avoid RefCell reentrant borrow panics when the closure creates nested effects or memos
-		let mut memo_fn_box = MEMO_FUNCTIONS.with(|storage| storage.borrow_mut().remove(&memo_id));
-		let result = if let Some(ref mut boxed) = memo_fn_box
+		// to avoid RefCell reentrant borrow panics when the closure creates nested effects or memos.
+		// An RAII guard ensures the function is reinserted even if the computation panics.
+		struct MemoFnGuard {
+			memo_id: NodeId,
+			memo_fn_box: Option<Box<dyn core::any::Any>>,
+		}
+
+		impl Drop for MemoFnGuard {
+			fn drop(&mut self) {
+				if let Some(f) = self.memo_fn_box.take() {
+					MEMO_FUNCTIONS.with(|storage| {
+						storage.borrow_mut().insert(self.memo_id, f);
+					});
+				}
+			}
+		}
+
+		let mut guard = MemoFnGuard {
+			memo_id,
+			memo_fn_box: MEMO_FUNCTIONS.with(|storage| storage.borrow_mut().remove(&memo_id)),
+		};
+
+		let result = if let Some(ref mut boxed) = guard.memo_fn_box
 			&& let Some(memo_fn) = boxed.downcast_mut::<MemoFn<T>>()
 		{
 			memo_fn()
 		} else {
 			panic!("Memo function not found - this should never happen")
 		};
-		if let Some(f) = memo_fn_box {
-			MEMO_FUNCTIONS.with(|storage| {
-				storage.borrow_mut().insert(memo_id, f);
-			});
-		}
 
 		// Pop observer from stack
 		with_runtime(|rt| {

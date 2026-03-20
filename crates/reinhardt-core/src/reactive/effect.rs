@@ -221,15 +221,35 @@ impl Effect {
 		});
 
 		// Execute the effect function using Remove-Execute-Reinsert pattern
-		// to avoid RefCell reentrant borrow panics when the closure creates nested effects
-		let mut effect_fn = EFFECT_FUNCTIONS.with(|storage| storage.borrow_mut().remove(&effect_id));
-		if let Some(ref mut f) = effect_fn {
-			f();
+		// to avoid RefCell reentrant borrow panics when the closure creates nested effects.
+		// An RAII guard ensures the closure is reinserted even if the user closure panics,
+		// and skips reinsertion if the effect was disposed during execution.
+		struct EffectFnGuard {
+			effect_id: NodeId,
+			effect_fn: Option<EffectFn>,
 		}
-		if let Some(f) = effect_fn {
-			EFFECT_FUNCTIONS.with(|storage| {
-				storage.borrow_mut().insert(effect_id, f);
-			});
+
+		impl Drop for EffectFnGuard {
+			fn drop(&mut self) {
+				// Only reinsert if the effect is still registered (not disposed during execution)
+				let still_alive =
+					EFFECT_TIMING.with(|storage| storage.borrow().contains_key(&self.effect_id));
+				if still_alive {
+					if let Some(f) = self.effect_fn.take() {
+						EFFECT_FUNCTIONS.with(|storage| {
+							storage.borrow_mut().insert(self.effect_id, f);
+						});
+					}
+				}
+			}
+		}
+
+		let mut guard = EffectFnGuard {
+			effect_id,
+			effect_fn: EFFECT_FUNCTIONS.with(|storage| storage.borrow_mut().remove(&effect_id)),
+		};
+		if let Some(ref mut f) = guard.effect_fn {
+			f();
 		}
 
 		// Pop observer from stack
@@ -254,6 +274,11 @@ impl Effect {
 
 		// Remove from storage (ignore if TLS is destroyed)
 		let _ = EFFECT_FUNCTIONS.try_with(|storage| {
+			storage.borrow_mut().remove(&self.id);
+		});
+
+		// Remove timing entry so the RAII guard in execute_effect() knows not to reinsert
+		let _ = EFFECT_TIMING.try_with(|storage| {
 			storage.borrow_mut().remove(&self.id);
 		});
 	}
@@ -493,24 +518,41 @@ mod tests {
 	#[serial]
 	fn test_effect_dispose_during_execution() {
 		// Arrange
+		let signal = Signal::new(0);
 		let run_count = Rc::new(RefCell::new(0));
 		let run_count_clone = run_count.clone();
-
-		// Act - create an effect that disposes itself during execution
 		let effect_holder: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
 		let holder_clone = effect_holder.clone();
+		let signal_clone = signal.clone();
 
+		// Act - create an effect that reads a signal and disposes itself on re-execution
 		let effect = Effect::new(move || {
+			let _val = signal_clone.get(); // Track signal dependency
 			*run_count_clone.borrow_mut() += 1;
-			// Dispose any previously stored effect (safe even during execution)
+			// On re-execution, the holder has the effect so dispose is called
 			if let Some(e) = holder_clone.borrow().as_ref() {
 				e.dispose();
 			}
 		});
 
+		// Store the effect so it can be disposed during next execution
 		*effect_holder.borrow_mut() = Some(effect);
 
-		// Assert - effect ran once without panic
+		// Assert - effect ran once during creation
 		assert_eq!(*run_count.borrow(), 1);
+
+		// Act - trigger re-execution via signal change; effect disposes itself
+		signal.set(1);
+		with_runtime(|rt| rt.flush_updates_enhanced());
+
+		// Assert - effect ran a second time (during which it disposed itself)
+		assert_eq!(*run_count.borrow(), 2);
+
+		// Act - trigger another change; disposed effect should NOT run
+		signal.set(2);
+		with_runtime(|rt| rt.flush_updates_enhanced());
+
+		// Assert - still 2, effect did not run again
+		assert_eq!(*run_count.borrow(), 2);
 	}
 }
