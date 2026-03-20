@@ -824,8 +824,9 @@ mod tests {
 		// "あいう" is 3 characters but 9 bytes in UTF-8
 		let validator = MaxLengthValidator::new(5);
 		assert!(validator.validate("あいう").is_ok()); // 3 chars <= 5: valid
-		assert!(validator.validate("あいうえおか").is_err()); // 6 chars > 5: invalid
-		match validator.validate("あいうえおか") {
+		let result = validator.validate("あいうえおか"); // 6 chars > 5: invalid
+		assert!(result.is_err());
+		match result {
 			Err(ValidationError::TooLong { length, max }) => {
 				assert_eq!(length, 6); // character count, not byte length (18)
 				assert_eq!(max, 5);
