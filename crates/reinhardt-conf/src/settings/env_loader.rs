@@ -254,20 +254,26 @@ impl EnvLoader {
 				validate_env_var_name(key)?;
 				let mut value = value.trim().to_string();
 
-				// Remove quotes if present
-				if (value.starts_with('"') && value.ends_with('"'))
-					|| (value.starts_with('\'') && value.ends_with('\''))
-				{
+				// Remove quotes if present, tracking quote type for POSIX semantics
+				let is_single_quoted =
+					value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2;
+				let is_double_quoted =
+					value.starts_with('"') && value.ends_with('"') && value.len() >= 2;
+				if is_single_quoted || is_double_quoted {
 					value = value[1..value.len() - 1].to_string();
 				}
 
-				// Handle variable interpolation
-				if self.interpolate {
-					value = self.expand_variables(&value);
-				}
+				// Single-quoted values preserve literal content per POSIX semantics:
+				// no variable interpolation or escape processing
+				if !is_single_quoted {
+					// Handle variable interpolation
+					if self.interpolate {
+						value = self.expand_variables(&value);
+					}
 
-				// Handle escaped characters
-				value = self.unescape(&value);
+					// Handle escaped characters
+					value = self.unescape(&value);
+				}
 
 				// Set or skip based on overwrite setting
 				if self.overwrite || env::var(key).is_err() {
@@ -548,6 +554,34 @@ ESCAPED=\$not_expanded
 		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("FILE_VAR");
+		}
+	}
+
+	#[test]
+	fn test_single_quoted_values_preserve_escape_sequences() {
+		let content = r#"
+SINGLE_ESCAPE='\n\t\\'
+DOUBLE_ESCAPE="\n\t\\"
+		"#;
+
+		let loader = EnvLoader::new();
+		loader.parse_and_set(content).unwrap();
+
+		// Single-quoted: escape sequences preserved literally per POSIX semantics
+		assert_eq!(env::var("SINGLE_ESCAPE").unwrap(), r"\n\t\\");
+
+		// Double-quoted: escape sequences are processed
+		let double_val = env::var("DOUBLE_ESCAPE").unwrap();
+		assert!(
+			double_val.contains('\n') || double_val.contains('\t'),
+			"Double-quoted value should have processed escapes"
+		);
+
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
+		unsafe {
+			env::remove_var("SINGLE_ESCAPE");
+			env::remove_var("DOUBLE_ESCAPE");
 		}
 	}
 }
