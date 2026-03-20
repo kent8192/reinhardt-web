@@ -442,14 +442,70 @@ impl<DB: sqlx::Database> PooledConnection<DB> {
 
 impl<DB: sqlx::Database> Drop for PooledConnection<DB> {
 	fn drop(&mut self) {
-		let pool_ref = self.pool_ref.clone();
-		let connection_id = self.connection_id.clone();
+		// Only spawn cleanup task if a Tokio runtime is active.
+		// When dropped outside a runtime (e.g. after runtime shutdown),
+		// silently skip the event emission to avoid a panic.
+		if let Ok(handle) = tokio::runtime::Handle::try_current() {
+			let pool_ref = self.pool_ref.clone();
+			let connection_id = self.connection_id.clone();
 
-		// Emit checkin event asynchronously
-		tokio::spawn(async move {
-			pool_ref
-				.emit_event(PoolEvent::connection_returned(connection_id))
-				.await;
-		});
+			handle.spawn(async move {
+				pool_ref
+					.emit_event(PoolEvent::connection_returned(connection_id))
+					.await;
+			});
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn handle_try_current_returns_none_outside_runtime() {
+		// Arrange
+		// Verify that Handle::try_current() returns Err outside a Tokio runtime,
+		// which is the guard condition used in our Drop impl.
+
+		// Act
+		let result = tokio::runtime::Handle::try_current();
+
+		// Assert
+		assert!(
+			result.is_err(),
+			"Handle::try_current() should return Err outside a runtime"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn handle_try_current_returns_ok_inside_runtime() {
+		// Arrange & Act
+		let result = tokio::runtime::Handle::try_current();
+
+		// Assert
+		assert!(
+			result.is_ok(),
+			"Handle::try_current() should return Ok inside a runtime"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn drop_pooled_connection_inside_runtime_does_not_panic() {
+		// Arrange
+		let config = PoolConfig::default();
+		let pool = ConnectionPool::new_sqlite("sqlite::memory:", config)
+			.await
+			.unwrap();
+
+		// Act
+		let conn = pool.acquire().await.unwrap();
+
+		// Assert
+		// Dropping within an active runtime should work without panic
+		drop(conn);
 	}
 }
