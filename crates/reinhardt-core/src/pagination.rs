@@ -498,10 +498,16 @@ mod tests {
 
 		let result = paginator.paginate(&items, Some("limit=0"), "http://api.example.com/items");
 		assert!(result.is_err());
-		assert!(matches!(
-			result.unwrap_err(),
-			crate::exception::Error::InvalidLimit(_)
-		));
+		let err = result.unwrap_err();
+		if let crate::exception::Error::InvalidLimit(msg) = &err {
+			assert!(
+				msg.contains("greater than zero"),
+				"expected zero-limit error message, got: {}",
+				msg
+			);
+		} else {
+			panic!("expected InvalidLimit error for zero limit, got: {:?}", err);
+		}
 	}
 
 	#[test]
