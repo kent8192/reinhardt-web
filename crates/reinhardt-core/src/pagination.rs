@@ -491,6 +491,32 @@ mod tests {
 		assert_eq!(page.results.len(), 15);
 	}
 
+	#[test]
+	fn test_limit_offset_pagination_zero_limit_rejected() {
+		let items: Vec<i32> = (1..=100).collect();
+		let paginator = LimitOffsetPagination::new().default_limit(10);
+
+		let result = paginator.paginate(&items, Some("limit=0"), "http://api.example.com/items");
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			crate::exception::Error::InvalidLimit(_)
+		));
+	}
+
+	#[test]
+	fn test_limit_offset_pagination_limit_one_works() {
+		let items: Vec<i32> = (1..=10).collect();
+		let paginator = LimitOffsetPagination::new().default_limit(10);
+
+		let page = paginator
+			.paginate(&items, Some("limit=1"), "http://api.example.com/items")
+			.unwrap();
+		assert_eq!(page.results.len(), 1);
+		assert_eq!(page.results[0], 1);
+		assert!(page.next.is_some());
+	}
+
 	// ========================================
 	// CursorPagination Tests
 	// ========================================
