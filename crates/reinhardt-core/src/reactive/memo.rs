@@ -181,16 +181,21 @@ impl<T: Clone + 'static> Memo<T> {
 			});
 		});
 
-		// Execute the computation function
-		let result = MEMO_FUNCTIONS.with(|storage| {
-			let mut storage = storage.borrow_mut();
-			if let Some(boxed) = storage.get_mut(&memo_id)
-				&& let Some(memo_fn) = boxed.downcast_mut::<MemoFn<T>>()
-			{
-				return memo_fn();
-			}
-			panic!("Memo function not found - this should never happen");
-		});
+		// Execute the computation function using Remove-Execute-Reinsert pattern
+		// to avoid RefCell reentrant borrow panics when the closure creates nested effects or memos
+		let mut memo_fn_box = MEMO_FUNCTIONS.with(|storage| storage.borrow_mut().remove(&memo_id));
+		let result = if let Some(ref mut boxed) = memo_fn_box
+			&& let Some(memo_fn) = boxed.downcast_mut::<MemoFn<T>>()
+		{
+			memo_fn()
+		} else {
+			panic!("Memo function not found - this should never happen")
+		};
+		if let Some(f) = memo_fn_box {
+			MEMO_FUNCTIONS.with(|storage| {
+				storage.borrow_mut().insert(memo_id, f);
+			});
+		}
 
 		// Pop observer from stack
 		with_runtime(|rt| {
@@ -455,6 +460,28 @@ mod tests {
 	// While chained memos are a valid pattern, the test creates Drop ordering complexities
 	// with TLS. In production code, memo chains work correctly during normal execution;
 	// the issue only manifests during test cleanup.
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_memo_creates_effect_during_computation() {
+		// Arrange
+		let effect_ran = Rc::new(RefCell::new(false));
+		let effect_ran_clone = effect_ran.clone();
+
+		// Act - create a memo whose computation creates an effect
+		let memo = Memo::new(move || {
+			use crate::reactive::Effect;
+			let ran = effect_ran_clone.clone();
+			let _effect = Effect::new(move || {
+				*ran.borrow_mut() = true;
+			});
+			42
+		});
+
+		// Assert - memo returns the correct value and nested effect executed
+		assert_eq!(memo.get(), 42);
+		assert_eq!(*effect_ran.borrow(), true);
+	}
 
 	#[test]
 	#[serial]
