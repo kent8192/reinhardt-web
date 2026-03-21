@@ -302,15 +302,19 @@ impl super::runtime::Runtime {
 	/// Flush all pending updates (enhanced version)
 	///
 	/// This executes all Effects that have been scheduled for update.
+	/// Skips effects that were disposed between scheduling and execution.
 	pub fn flush_updates_enhanced(&self) {
 		*self.update_scheduled.borrow_mut() = false;
 
 		// Take all pending updates
 		let pending = core::mem::take(&mut *self.pending_updates.borrow_mut());
 
-		// Execute each pending effect
+		// Execute each pending effect (skip disposed ones)
 		for node_id in pending {
-			self.execute_scheduled_effect(node_id);
+			let still_registered = EFFECT_TIMING.with(|storage| storage.borrow().contains_key(&node_id));
+			if still_registered {
+				self.execute_scheduled_effect(node_id);
+			}
 		}
 	}
 }
