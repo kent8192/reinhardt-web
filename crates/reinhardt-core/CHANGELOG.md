@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.13...reinhardt-core@v0.1.0-rc.14) - 2026-03-21
+
+### Fixed
+
+- *(core)* resolve RefCell reentrant borrow panic in effect and memo execution
+- *(core)* add RAII guards for panic safety and prevent disposed effect resurrection
+- *(core)* collapse nested if into single condition in EffectFnGuard::drop
+- *(core)* clear dependency graph on effect disposal to prevent infinite loops
+
 ## [0.1.0-rc.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.11...reinhardt-core@v0.1.0-rc.12) - 2026-03-18
 
 ### Added
