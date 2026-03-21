@@ -4,6 +4,7 @@ use super::config::PoolConfig;
 use super::errors::{PoolError, PoolResult};
 use super::events::{PoolEvent, PoolEventListener};
 use sqlx::{Database, MySql, Pool, Postgres, Sqlite};
+use std::mem::ManuallyDrop;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
@@ -219,7 +220,7 @@ where
 			.await;
 
 		Ok(PooledConnection {
-			conn,
+			conn: ManuallyDrop::new(conn),
 			pool_ref: self.clone_arc(),
 			connection_id,
 		})
@@ -411,7 +412,10 @@ impl ConnectionPool<Sqlite> {
 
 /// A pooled connection wrapper with event emission
 pub struct PooledConnection<DB: sqlx::Database> {
-	conn: sqlx::pool::PoolConnection<DB>,
+	// Wrapped in ManuallyDrop so we can take ownership in Drop.
+	// When no tokio runtime is available, we detach the connection
+	// to avoid sqlx's PoolConnection::Drop calling rt::spawn().
+	conn: ManuallyDrop<sqlx::pool::PoolConnection<DB>>,
 	pool_ref: Arc<ConnectionPool<DB>>,
 	connection_id: String,
 }
@@ -420,7 +424,7 @@ impl<DB: sqlx::Database> PooledConnection<DB> {
 	/// Documentation for `inner`
 	///
 	pub fn inner(&mut self) -> &mut sqlx::pool::PoolConnection<DB> {
-		&mut self.conn
+		&mut *self.conn
 	}
 	/// Get the unique identifier for this connection
 	///
@@ -474,18 +478,31 @@ impl<DB: sqlx::Database> PooledConnection<DB> {
 
 impl<DB: sqlx::Database> Drop for PooledConnection<DB> {
 	fn drop(&mut self) {
-		// Guard against panic when no tokio runtime is available
-		// (e.g., when dropped outside of an async context).
-		// Only clone pool_ref and connection_id when a runtime is available.
-		if let Ok(handle) = tokio::runtime::Handle::try_current() {
-			let pool_ref = self.pool_ref.clone();
-			let connection_id = self.connection_id.clone();
+		// SAFETY: ManuallyDrop::take is called exactly once (in drop).
+		let conn = unsafe { ManuallyDrop::take(&mut self.conn) };
 
-			handle.spawn(async move {
-				pool_ref
-					.emit_event(PoolEvent::connection_returned(connection_id))
-					.await;
-			});
+		match tokio::runtime::Handle::try_current() {
+			Ok(handle) => {
+				// Runtime available: drop the connection normally (returns to pool)
+				// and emit the connection-returned event.
+				drop(conn);
+
+				let pool_ref = self.pool_ref.clone();
+				let connection_id = self.connection_id.clone();
+
+				handle.spawn(async move {
+					pool_ref
+						.emit_event(PoolEvent::connection_returned(connection_id))
+						.await;
+				});
+			}
+			Err(_) => {
+				// No runtime available: prevent sqlx's PoolConnection::Drop
+				// from running, as it calls crate::rt::spawn() which panics
+				// without a tokio runtime. The connection is intentionally
+				// leaked to avoid the panic.
+				std::mem::forget(conn);
+			}
 		}
 	}
 }
