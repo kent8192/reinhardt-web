@@ -1,5 +1,10 @@
 name: Setup Protobuf Compiler
-description: Install protoc on Linux, macOS, and Windows
+description: Install protoc from GitHub Releases (apt version is too old for Proto3 optional)
+inputs:
+  version:
+    description: Protoc release version (without v prefix)
+    required: false
+    default: "28.3"
 runs:
   using: composite
   steps:
@@ -7,11 +12,18 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        # Use DPkg::Lock::Timeout to wait for dpkg lock instead of
-        # racy fuser-based polling (lock can be re-acquired between
-        # fuser check and apt-get execution)
-        sudo apt-get update -qq -o DPkg::Lock::Timeout=120
-        sudo apt-get install -y -o DPkg::Lock::Timeout=120 protobuf-compiler
+        PROTOC_VERSION="${{ inputs.version }}"
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)  PROTOC_ARCH="linux-x86_64" ;;
+          aarch64) PROTOC_ARCH="linux-aarch_64" ;;
+          *)       echo "Unsupported architecture: $ARCH" && exit 1 ;;
+        esac
+        curl -LsSf "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-${PROTOC_ARCH}.zip" \
+          -o /tmp/protoc.zip
+        sudo unzip -o /tmp/protoc.zip -d /usr/local bin/protoc
+        sudo chmod +x /usr/local/bin/protoc
+        rm /tmp/protoc.zip
         protoc --version
     - name: Install protoc (macOS)
       if: runner.os == 'macOS'
