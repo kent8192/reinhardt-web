@@ -1,0 +1,18 @@
+debug = true
+secret_key = "rough2spec-dev-secret-key-change-in-production"
+allowed_hosts = ["*"]
+
+[installed_apps]
+apps = ["rough2spec.apps.generate"]
+
+[middleware]
+classes = [
+    "reinhardt.middleware.common.CommonMiddleware",
+    "reinhardt.middleware.cors.CorsMiddleware",
+]
+
+[logging]
+level = "info"
+
+[cors]
+allow_all_origins = true

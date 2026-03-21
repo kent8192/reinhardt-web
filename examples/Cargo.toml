@@ -9,6 +9,7 @@ members = [
 	"examples-github-issues",
 	"examples-twitter",
 	"examples-di-showcase",
+	"examples-rough2spec",
 ]
 
 # Note: Each example has a binary named "manage"
