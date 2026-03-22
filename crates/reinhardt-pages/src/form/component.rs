@@ -104,108 +104,177 @@ pub struct FormComponent {
 ///
 /// # Limitations
 ///
-/// This is a substring-based denylist which provides defense-in-depth but is not
-/// a complete security boundary on its own. Sophisticated bypass techniques
-/// (e.g., string concatenation, comment insertion) may circumvent these checks.
-/// The primary security boundary is the IIFE sandbox combined with the
-/// `validate_js_expression` structural checks (semicolons, assignments).
+/// This is a substring/word-boundary denylist, not a full JavaScript parser.
+/// Determined attackers may find bypass patterns that a denylist cannot cover
+/// (e.g., string concatenation, comment insertion, unicode escapes).
 /// A token-level allowlist parser would be a stronger approach and is tracked
-/// for future improvement.
-const DANGEROUS_JS_PATTERNS: &[(&str, &str)] = &[
-	("eval(", "eval() is not allowed in validation expressions"),
-	("eval (", "eval() is not allowed in validation expressions"),
+/// for future improvement. The denylist raises the bar significantly for
+/// the intended use case (form validation expressions authored by developers,
+/// not arbitrary end-user input). The primary security boundary is the
+/// `validate_js_expression` structural checks (semicolons, assignments)
+/// combined with this pattern denylist.
+///
+/// Patterns are matched with word-boundary checks where applicable to avoid
+/// false positives on legitimate field names (e.g., `document_id`, `window_size`).
+/// Patterns that include a trailing `.` or `(` act as their own boundary.
+///
+/// Each entry is `(pattern, description, requires_word_boundary)`:
+/// - `requires_word_boundary = true`: only matches when the pattern is NOT
+///   preceded or followed by an ASCII alphanumeric char or `_` (i.e., not part
+///   of a larger identifier like `document_id`). For patterns ending with `.`,
+///   a preceding `.` (member access chain) also skips the match.
+/// - `requires_word_boundary = false`: pattern already contains a delimiter
+///   (`.` or `(`) so a bare substring match is sufficient
+const DANGEROUS_JS_PATTERNS: &[(&str, &str, bool)] = &[
+	(
+		"eval(",
+		"eval() is not allowed in validation expressions",
+		false,
+	),
+	(
+		"eval (",
+		"eval() is not allowed in validation expressions",
+		false,
+	),
 	(
 		"Function(",
 		"Function constructor is not allowed in validation expressions",
+		false,
 	),
 	(
 		"Function (",
 		"Function constructor is not allowed in validation expressions",
+		false,
 	),
 	(
 		"import(",
 		"Dynamic import is not allowed in validation expressions",
+		false,
 	),
 	(
 		"import (",
 		"Dynamic import is not allowed in validation expressions",
+		false,
 	),
 	(
 		"require(",
 		"require() is not allowed in validation expressions",
+		false,
 	),
 	(
 		"require (",
 		"require() is not allowed in validation expressions",
+		false,
 	),
-	("fetch(", "fetch() is not allowed in validation expressions"),
+	(
+		"fetch(",
+		"fetch() is not allowed in validation expressions",
+		false,
+	),
 	(
 		"fetch (",
 		"fetch() is not allowed in validation expressions",
+		false,
 	),
 	(
 		"XMLHttpRequest",
 		"XMLHttpRequest is not allowed in validation expressions",
+		true,
 	),
 	(
 		"document.",
 		"DOM access is not allowed in validation expressions",
+		true,
 	),
 	(
 		"window.",
 		"window access is not allowed in validation expressions",
+		true,
 	),
 	(
 		"globalThis.",
 		"globalThis access is not allowed in validation expressions",
+		true,
 	),
 	(
 		"self.",
 		"self access is not allowed in validation expressions",
+		true,
 	),
 	(
 		"navigator.",
 		"navigator access is not allowed in validation expressions",
+		true,
 	),
 	(
 		"location.",
 		"location access is not allowed in validation expressions",
+		true,
 	),
 	(
 		"localStorage",
 		"localStorage is not allowed in validation expressions",
+		true,
 	),
 	(
 		"sessionStorage",
 		"sessionStorage is not allowed in validation expressions",
+		true,
 	),
 	(
 		"cookie",
 		"cookie access is not allowed in validation expressions",
+		true,
 	),
 	(
 		"setTimeout",
 		"setTimeout is not allowed in validation expressions",
+		true,
 	),
 	(
 		"setInterval",
 		"setInterval is not allowed in validation expressions",
+		true,
 	),
 	(
 		"WebSocket",
 		"WebSocket is not allowed in validation expressions",
+		true,
 	),
 	(
 		"__proto__",
 		"prototype manipulation is not allowed in validation expressions",
+		false,
 	),
 	(
 		"constructor",
 		"constructor access is not allowed in validation expressions",
+		true,
 	),
 	(
 		"prototype",
 		"prototype access is not allowed in validation expressions",
+		true,
+	),
+	(
+		"atob(",
+		"atob() is not allowed in validation expressions",
+		false,
+	),
+	(
+		"atob (",
+		"atob() is not allowed in validation expressions",
+		false,
+	),
+	(
+		"btoa(",
+		"btoa() is not allowed in validation expressions",
+		false,
+	),
+	(
+		"btoa (",
+		"btoa() is not allowed in validation expressions",
+		false,
 	),
 ];
 
@@ -269,19 +338,54 @@ pub fn validate_js_expression(expression: &str) -> Result<(), String> {
 		}
 	}
 
-	// Check for dangerous patterns, but skip matches that are part of `fields.` member access
-	// to avoid false positives (e.g., `fields.location` or `fields.document.length`)
-	for (pattern, description) in DANGEROUS_JS_PATTERNS {
+	// Check for dangerous patterns using word-boundary awareness to reduce false positives.
+	// Patterns with `requires_word_boundary = true` are only flagged when they appear as
+	// standalone identifiers (not as part of a larger identifier like `document_id`).
+	let expr_bytes = expression.as_bytes();
+	for (pattern, description, requires_word_boundary) in DANGEROUS_JS_PATTERNS {
 		let mut search_from = 0;
 		while let Some(pos) = expression[search_from..].find(pattern) {
 			let abs_pos = search_from + pos;
-			// Check if this match is preceded by "fields." - if so, it's a legitimate
-			// field access, not a global object reference
-			let is_field_access = abs_pos >= 7 && &expression[abs_pos - 7..abs_pos] == "fields.";
-			if !is_field_access {
-				return Err(description.to_string());
+
+			if *requires_word_boundary {
+				// Determine if the pattern ends with a delimiter (`.` or `(`), which
+				// affects both preceding and following boundary checks.
+				let pattern_bytes = pattern.as_bytes();
+				let ends_with_delimiter = matches!(pattern_bytes.last(), Some(b'.') | Some(b'('));
+
+				// Check preceding character: if it is alphanumeric or `_`, the pattern
+				// is part of a larger identifier (e.g., `document_id`) and not a match.
+				// Additionally, for patterns ending with `.` (global object patterns like
+				// `document.`, `window.`), also skip when preceded by `.` to allow member
+				// access chains like `fields.document.length`.
+				let prev_byte = if abs_pos > 0 {
+					expr_bytes[abs_pos - 1]
+				} else {
+					0
+				};
+				let is_ident_char = prev_byte.is_ascii_alphanumeric() || prev_byte == b'_';
+				let is_member_access = ends_with_delimiter && prev_byte == b'.';
+				let preceded_by_ident = is_ident_char || is_member_access;
+
+				// Only check the following boundary if the pattern does not already
+				// end with a delimiter. Patterns like `document.` already have a
+				// natural boundary at the end.
+				let followed_by_ident = if ends_with_delimiter {
+					false
+				} else {
+					let end_pos = abs_pos + pattern.len();
+					end_pos < expr_bytes.len()
+						&& (expr_bytes[end_pos].is_ascii_alphanumeric()
+							|| expr_bytes[end_pos] == b'_')
+				};
+
+				if preceded_by_ident || followed_by_ident {
+					search_from = abs_pos + pattern.len();
+					continue;
+				}
 			}
-			search_from = abs_pos + pattern.len();
+
+			return Err(description.to_string());
 		}
 	}
 
@@ -649,7 +753,9 @@ impl FormComponent {
 		);
 
 		// Evaluate the expression using Function constructor to run the IIFE.
-		// Note: Function constructor still executes in the global scope and is eval-like.
+		// Note: Function constructor is functionally equivalent to eval() for code
+		// execution - it parses and runs arbitrary JavaScript with full global access.
+		// It does NOT provide any sandboxing or scope isolation.
 		// The actual security boundary is provided by `validate_js_expression` above,
 		// which rejects dangerous patterns before code reaches this point.
 		let func = Function::new_no_args(&format!("return ({});", safe_code));
@@ -707,7 +813,9 @@ impl FormComponent {
 		);
 
 		// Evaluate the expression using Function constructor to run the IIFE.
-		// Note: Function constructor still executes in the global scope and is eval-like.
+		// Note: Function constructor is functionally equivalent to eval() for code
+		// execution - it parses and runs arbitrary JavaScript with full global access.
+		// It does NOT provide any sandboxing or scope isolation.
 		// The actual security boundary is provided by `validate_js_expression` above.
 		let func = Function::new_no_args(&format!("return ({});", safe_code));
 		let result = func
@@ -984,6 +1092,10 @@ mod tests {
 	#[case("fields.document.length > 0", "field named document (not global)")]
 	#[case("fields.navigator !== ''", "field named navigator (not global)")]
 	#[case("fields.self === 'active'", "field named self (not global)")]
+	#[case("document_id > 0", "identifier containing 'document' as prefix")]
+	#[case("window_size >= 100", "identifier containing 'window' as prefix")]
+	#[case("my_location.length > 0", "identifier ending with 'location'")]
+	#[case("has_cookie === 'true'", "identifier ending with 'cookie'")]
 	fn test_validate_js_expression_allows_safe_expressions(
 		#[case] expression: &str,
 		#[case] _desc: &str,

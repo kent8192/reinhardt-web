@@ -1106,6 +1106,10 @@ mod tests {
 	#[case("</script\t>", "tab before >")]
 	#[case("</script  >", "multiple spaces before >")]
 	#[case("</SCRIPT >", "uppercase with space")]
+	#[case("</ script>", "space between </ and script")]
+	#[case("</\tscript>", "tab between </ and script")]
+	#[case("</ script >", "whitespace on both sides of tag name")]
+	#[case("</ SCRIPT >", "whitespace on both sides, uppercase")]
 	fn test_escape_for_script_whitespace_before_close(#[case] tag: &str, #[case] _desc: &str) {
 		// Arrange & Act
 		let escaped = escape_for_script(tag);
