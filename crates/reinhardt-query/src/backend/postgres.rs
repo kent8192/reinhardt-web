@@ -40,6 +40,8 @@
 //! For more details on SQL syntax, see the
 //! [PostgreSQL Documentation](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS).
 
+use std::fmt::Write as FmtWrite;
+
 use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
@@ -457,10 +459,12 @@ impl PostgresQueryBuilder {
 						writer.push(&format!("'{}'", escaped));
 					}
 					Value::Bytes(Some(b)) => {
-						writer.push("E'\\\\x");
+						let mut hex = String::with_capacity(b.as_ref().len() * 2);
 						for byte in b.as_ref() {
-							writer.push(&format!("{:02x}", byte));
+							write!(hex, "{:02x}", byte).unwrap();
 						}
+						writer.push("E'\\\\x");
+						writer.push(&hex);
 						writer.push("'");
 					}
 					#[cfg(feature = "with-chrono")]
@@ -2523,11 +2527,12 @@ impl QueryBuilder for PostgresQueryBuilder {
 					});
 				}
 				RoleAttribute::ValidUntil(timestamp) => {
+					// PostgreSQL VALID UNTIL requires a string constant (Sconst),
+					// not a bind parameter. Use inline literal with single-quote escaping.
+					let escaped = timestamp.replace('\'', "''");
 					writer.push("VALID UNTIL");
 					writer.push_space();
-					writer.push_value(Value::String(Some(Box::new(timestamp.clone()))), |i| {
-						self.placeholder(i)
-					});
+					writer.push(&format!("'{}'", escaped));
 				}
 				RoleAttribute::InRole(roles) => {
 					writer.push("IN ROLE");
@@ -2651,11 +2656,12 @@ impl QueryBuilder for PostgresQueryBuilder {
 					});
 				}
 				RoleAttribute::ValidUntil(timestamp) => {
+					// PostgreSQL VALID UNTIL requires a string constant (Sconst),
+					// not a bind parameter. Use inline literal with single-quote escaping.
+					let escaped = timestamp.replace('\'', "''");
 					writer.push("VALID UNTIL");
 					writer.push_space();
-					writer.push_value(Value::String(Some(Box::new(timestamp.clone()))), |i| {
-						self.placeholder(i)
-					});
+					writer.push(&format!("'{}'", escaped));
 				}
 				RoleAttribute::InRole(roles) => {
 					writer.push("IN ROLE");
