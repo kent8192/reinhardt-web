@@ -169,53 +169,137 @@ pub fn validate_query(query: &str, limits: &QueryLimits) -> Result<(), String> {
 	Ok(())
 }
 
+/// GraphQL keywords that should not be counted as fields.
+const GRAPHQL_KEYWORDS: &[&str] = &[
+	"query",
+	"mutation",
+	"subscription",
+	"fragment",
+	"on",
+	"true",
+	"false",
+	"null",
+];
+
+/// Check whether a token is a field-like identifier.
+///
+/// Returns `true` when the token looks like a GraphQL field name:
+/// an alphanumeric identifier that is not a keyword and does not
+/// start with a fragment spread (`...`).
+fn is_field_identifier(token: &str) -> bool {
+	!token.is_empty()
+		&& !token.starts_with("...")
+		&& !GRAPHQL_KEYWORDS.contains(&token)
+		&& token
+			.chars()
+			.next()
+			.is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+}
+
 /// Count approximate number of fields in a GraphQL query.
 ///
-/// Uses a heuristic approach: counts identifiers that appear after
-/// an opening brace or newline within selection sets.
+/// Counts field-like identifiers that appear inside selection sets
+/// (brace depth > 0). Each identifier token is evaluated immediately
+/// during character processing, so multiple fields on the same line
+/// are counted correctly.
 fn count_query_fields(query: &str) -> usize {
-	// Simple heuristic: count non-keyword identifiers within braces
 	let mut count = 0;
 	let mut in_string = false;
 	let mut depth: usize = 0;
+	let mut token = String::new();
+	let mut in_comment = false;
+	let mut escaped = false;
 
-	for line in query.lines() {
-		let trimmed = line.trim();
-		if trimmed.is_empty() || trimmed.starts_with('#') {
+	for ch in query.chars() {
+		if escaped {
+			escaped = false;
 			continue;
 		}
 
-		let mut escaped = false;
-		for ch in trimmed.chars() {
-			if escaped {
-				// Previous character was a backslash inside a string,
-				// so this character is escaped — skip it.
-				escaped = false;
-				continue;
-			}
-			match ch {
-				'\\' if in_string => escaped = true,
-				'"' => in_string = !in_string,
-				'{' if !in_string => depth += 1,
-				'}' if !in_string => depth = depth.saturating_sub(1),
-				_ => {}
-			}
-		}
-
-		// Count field-like lines within selection sets
-		if depth > 0 && !in_string {
-			let field_line = trimmed.trim_start_matches('{').trim();
-			if !field_line.is_empty()
-				&& !field_line.starts_with('}')
-				&& !field_line.starts_with("...")
-				&& !field_line.starts_with("query")
-				&& !field_line.starts_with("mutation")
-				&& !field_line.starts_with("subscription")
-				&& !field_line.starts_with("fragment")
-			{
+		// Handle line comments: everything after '#' (outside strings) is ignored
+		if ch == '\n' {
+			in_comment = false;
+			// Flush any accumulated token at end of line
+			if depth > 0 && !in_string && is_field_identifier(&token) {
 				count += 1;
 			}
+			token.clear();
+			continue;
 		}
+
+		if in_comment {
+			continue;
+		}
+
+		if in_string {
+			match ch {
+				'\\' => escaped = true,
+				'"' => in_string = false,
+				_ => {}
+			}
+			continue;
+		}
+
+		match ch {
+			'#' => {
+				// Flush token before comment starts
+				if depth > 0 && is_field_identifier(&token) {
+					count += 1;
+				}
+				token.clear();
+				in_comment = true;
+			}
+			'"' => {
+				// Flush token before string starts
+				if depth > 0 && is_field_identifier(&token) {
+					count += 1;
+				}
+				token.clear();
+				in_string = true;
+			}
+			'{' => {
+				// Flush token — the identifier before '{' is a field with sub-selection
+				if depth > 0 && is_field_identifier(&token) {
+					count += 1;
+				}
+				token.clear();
+				depth += 1;
+			}
+			'}' => {
+				// Flush token before closing brace
+				if depth > 0 && is_field_identifier(&token) {
+					count += 1;
+				}
+				token.clear();
+				depth = depth.saturating_sub(1);
+			}
+			'(' => {
+				// Flush token — the identifier before '(' is a field with arguments
+				if depth > 0 && is_field_identifier(&token) {
+					count += 1;
+				}
+				token.clear();
+			}
+			c if c.is_ascii_whitespace() || c == ',' => {
+				// Token delimiter: evaluate accumulated token
+				if depth > 0 && is_field_identifier(&token) {
+					count += 1;
+				}
+				token.clear();
+			}
+			')' | ':' | '!' | '@' | '$' | '=' | '|' | '&' => {
+				// Punctuation that terminates a token but is not a field delimiter
+				token.clear();
+			}
+			_ => {
+				token.push(ch);
+			}
+		}
+	}
+
+	// Flush final token (query may not end with newline)
+	if depth > 0 && !in_string && is_field_identifier(&token) {
+		count += 1;
 	}
 
 	count
@@ -1097,6 +1181,36 @@ mod tests {
 		"multiple escaped quotes in a single string literal"
 	)]
 	fn test_count_query_fields_with_escaped_strings(
+		#[case] query: &str,
+		#[case] expected: usize,
+		#[case] description: &str,
+	) {
+		// Arrange — query and expected count provided by rstest parametrization
+
+		// Act
+		let count = count_query_fields(query);
+
+		// Assert
+		assert_eq!(count, expected, "{}", description);
+	}
+
+	#[rstest::rstest]
+	#[case(
+		"{ users { id name email } }",
+		4,
+		"parent field plus multiple fields on same line within sub-selection"
+	)]
+	#[case(
+		"{ users { id } }",
+		2,
+		"parent field plus single field on same line within sub-selection"
+	)]
+	#[case(
+		"{ users { id name } posts { title body } }",
+		6,
+		"two parent fields plus their sub-selection fields on same line"
+	)]
+	fn test_count_query_fields_same_line(
 		#[case] query: &str,
 		#[case] expected: usize,
 		#[case] description: &str,
