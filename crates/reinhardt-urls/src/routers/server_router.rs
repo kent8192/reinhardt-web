@@ -77,6 +77,38 @@ pub struct MiddlewareInfo {
 /// Route information tuple: (path, name, namespace, methods)
 pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<Method>)>;
 
+/// Join two path segments, normalizing any double slashes.
+///
+/// Concatenates `prefix` and `suffix`, then collapses consecutive `/` characters
+/// into a single `/`. The leading slash is always preserved.
+///
+/// # Examples
+///
+/// ```
+/// # use reinhardt_urls::routers::server_router::join_path;
+/// assert_eq!(join_path("/api/", "/users"), "/api/users");
+/// assert_eq!(join_path("/api", "/users"), "/api/users");
+/// assert_eq!(join_path("/api", "users"), "/apiusers");
+/// assert_eq!(join_path("", "/users"), "/users");
+/// ```
+pub fn join_path(prefix: &str, suffix: &str) -> String {
+	let raw = format!("{}{}", prefix, suffix);
+	let mut result = String::with_capacity(raw.len());
+	let mut prev_slash = false;
+	for ch in raw.chars() {
+		if ch == '/' {
+			if !prev_slash {
+				result.push(ch);
+			}
+			prev_slash = true;
+		} else {
+			result.push(ch);
+			prev_slash = false;
+		}
+	}
+	result
+}
+
 /// Handler information stored in matchit router
 #[derive(Clone)]
 struct RouteHandler {
@@ -1249,7 +1281,7 @@ impl ServerRouter {
 			let full_path = if self.prefix.is_empty() {
 				route.path.clone()
 			} else {
-				format!("{}{}", self.prefix, route.path)
+				join_path(&self.prefix, &route.path)
 			};
 
 			routes.push((
@@ -1265,7 +1297,7 @@ impl ServerRouter {
 			let full_path = if self.prefix.is_empty() {
 				func_route.path.clone()
 			} else {
-				format!("{}{}", self.prefix, func_route.path)
+				join_path(&self.prefix, &func_route.path)
 			};
 
 			routes.push((
@@ -1281,7 +1313,7 @@ impl ServerRouter {
 			let full_path = if self.prefix.is_empty() {
 				view_route.path.clone()
 			} else {
-				format!("{}{}", self.prefix, view_route.path)
+				join_path(&self.prefix, &view_route.path)
 			};
 
 			routes.push((
@@ -1326,7 +1358,7 @@ impl ServerRouter {
 			} else if child.prefix.is_empty() {
 				self.prefix.clone()
 			} else {
-				format!("{}{}", self.prefix, child.prefix)
+				join_path(&self.prefix, &child.prefix)
 			};
 
 			for (path, name, namespace, methods) in child.get_all_routes() {
@@ -1334,7 +1366,7 @@ impl ServerRouter {
 				let full_path = if path.starts_with(&child.prefix) || child.prefix.is_empty() {
 					path
 				} else {
-					format!("{}{}", child_prefix, path)
+					join_path(&child_prefix, &path)
 				};
 
 				// Combine namespaces (parent:child)
