@@ -68,8 +68,19 @@ impl BatchInsertBuilder {
 	}
 
 	/// Build SQL statements for batch insert
+	///
+	/// Identifiers (table name and column names) are quoted with double quotes
+	/// and embedded double quotes are escaped to prevent SQL injection.
 	pub fn build_sql(&self) -> Vec<String> {
 		let mut statements = Vec::new();
+
+		let quoted_table = format!("\"{}\"", self.table.replace('"', "\"\""));
+		let quoted_columns = self
+			.columns
+			.iter()
+			.map(|c| format!("\"{}\"", c.replace('"', "\"\"")))
+			.collect::<Vec<_>>()
+			.join(", ");
 
 		for chunk in self.rows.chunks(self.batch_size) {
 			let values_list: Vec<String> = chunk
@@ -86,8 +97,8 @@ impl BatchInsertBuilder {
 
 			let sql = format!(
 				"INSERT INTO {} ({}) VALUES {}",
-				self.table,
-				self.columns.join(", "),
+				quoted_table,
+				quoted_columns,
 				values_list.join(", ")
 			);
 
@@ -292,7 +303,9 @@ mod tests {
 
 		// Assert
 		assert_eq!(sql_statements.len(), 1);
-		assert!(sql_statements[0].contains("INSERT INTO users"));
+		assert!(sql_statements[0].contains("INSERT INTO \"users\""));
+		assert!(sql_statements[0].contains("\"name\""));
+		assert!(sql_statements[0].contains("\"email\""));
 		assert!(sql_statements[0].contains("Alice"));
 		assert!(sql_statements[0].contains("Bob"));
 	}
@@ -438,5 +451,37 @@ mod tests {
 
 		// Assert - single quotes should be escaped
 		assert!(sql_statements[0].contains("Alice''; DROP TABLE users; --"));
+	}
+
+	#[rstest]
+	fn test_batch_insert_quotes_table_name() {
+		// Arrange - table name with double quote injection attempt
+		let builder = BatchInsertBuilder::new("users\"; DROP TABLE data; --")
+			.columns(vec!["name".to_string()])
+			.add_row(vec!["Alice".to_string()]);
+
+		// Act
+		let sql_statements = builder.build_sql();
+
+		// Assert - table name must be properly quoted and escaped
+		assert!(sql_statements[0].starts_with("INSERT INTO \"users\"\"; DROP TABLE data; --\""));
+	}
+
+	#[rstest]
+	fn test_batch_insert_quotes_column_names() {
+		// Arrange - column name with double quote injection attempt
+		let builder = BatchInsertBuilder::new("users")
+			.columns(vec![
+				"name".to_string(),
+				"col\"; DROP TABLE users; --".to_string(),
+			])
+			.add_row(vec!["Alice".to_string(), "value".to_string()]);
+
+		// Act
+		let sql_statements = builder.build_sql();
+
+		// Assert - column names must be properly quoted
+		assert!(sql_statements[0].contains("\"name\""));
+		assert!(sql_statements[0].contains("\"col\"\"; DROP TABLE users; --\""));
 	}
 }
