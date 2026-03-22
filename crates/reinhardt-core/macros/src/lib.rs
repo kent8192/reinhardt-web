@@ -39,11 +39,11 @@ mod rel;
 mod routes;
 mod routes_registration;
 mod schema;
-mod use_inject;
-mod validate_derive;
-pub(crate) mod settings_parser;
 mod settings_compose;
 mod settings_fragment;
+pub(crate) mod settings_parser;
+mod use_inject;
+mod validate_derive;
 
 use action::action_impl;
 use admin::admin_impl;

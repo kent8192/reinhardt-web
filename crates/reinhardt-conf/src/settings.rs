@@ -5,27 +5,27 @@
 
 pub mod advanced;
 pub mod builder;
+pub mod cache;
+pub mod contacts;
+pub mod core_settings;
+pub mod cors;
+pub mod email;
 pub mod env;
 pub mod env_loader;
 pub mod env_parser;
+pub mod fragment;
+pub mod i18n;
+pub mod logging;
+pub mod media;
 pub mod prelude;
 pub mod profile;
 pub mod secret_types;
-pub mod sources;
-pub mod validation;
-pub mod contacts;
-pub mod fragment;
-pub mod i18n;
 pub mod security;
-pub mod core_settings;
-pub mod template_settings;
-pub mod cache;
-pub mod cors;
-pub mod email;
-pub mod logging;
-pub mod media;
 pub mod session;
+pub mod sources;
 pub mod static_files;
+pub mod template_settings;
+pub mod validation;
 
 // Dynamic settings (async feature required)
 #[cfg(feature = "async")]
@@ -716,10 +716,7 @@ mod tests {
 	#[rstest]
 	fn test_has_core_settings_bridge() {
 		// Arrange
-		let settings = Settings::new(
-			PathBuf::from("/app"),
-			"test-secret".to_string(),
-		);
+		let settings = Settings::new(PathBuf::from("/app"), "test-secret".to_string());
 
 		// Act
 		let core = settings.core();

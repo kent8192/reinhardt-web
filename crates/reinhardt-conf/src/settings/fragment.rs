@@ -5,8 +5,8 @@
 
 use super::profile::Profile;
 use super::validation::ValidationResult;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 
 /// A composable unit of configuration.

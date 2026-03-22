@@ -2,8 +2,8 @@
 //!
 //! Administrator and manager contact information for notifications.
 
-use super::fragment::SettingsFragment;
 use super::Contact;
+use super::fragment::SettingsFragment;
 use serde::{Deserialize, Serialize};
 
 /// Administrator and manager contact information.
@@ -34,8 +34,8 @@ pub trait HasContactSettings {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::settings::fragment::SettingsFragment;
 	use crate::settings::Contact;
+	use crate::settings::fragment::SettingsFragment;
 	use rstest::rstest;
 
 	#[rstest]

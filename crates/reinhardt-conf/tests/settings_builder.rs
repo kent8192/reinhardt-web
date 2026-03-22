@@ -582,8 +582,18 @@ fn settings_with_validated_apps_replaces_apps_list() {
 
 	// Assert
 	assert_eq!(settings.core.installed_apps.len(), 2);
-	assert!(!settings.core.installed_apps.contains(&"old_app".to_string()));
-	assert!(settings.core.installed_apps.contains(&"new_app_one".to_string()));
+	assert!(
+		!settings
+			.core
+			.installed_apps
+			.contains(&"old_app".to_string())
+	);
+	assert!(
+		settings
+			.core
+			.installed_apps
+			.contains(&"new_app_one".to_string())
+	);
 }
 
 // ===========================================================================

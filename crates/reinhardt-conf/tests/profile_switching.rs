@@ -285,8 +285,18 @@ fn development_settings_allows_localhost() {
 	settings.core.allowed_hosts = vec!["localhost".to_string(), "127.0.0.1".to_string()];
 
 	// Assert
-	assert!(settings.core.allowed_hosts.contains(&"localhost".to_string()));
-	assert!(settings.core.allowed_hosts.contains(&"127.0.0.1".to_string()));
+	assert!(
+		settings
+			.core
+			.allowed_hosts
+			.contains(&"localhost".to_string())
+	);
+	assert!(
+		settings
+			.core
+			.allowed_hosts
+			.contains(&"127.0.0.1".to_string())
+	);
 }
 
 #[rstest]
@@ -300,8 +310,18 @@ fn production_settings_disallows_debug_and_restricts_hosts() {
 
 	// Assert
 	assert!(!settings.core.debug);
-	assert!(!settings.core.allowed_hosts.contains(&"localhost".to_string()));
-	assert!(settings.core.allowed_hosts.contains(&"example.com".to_string()));
+	assert!(
+		!settings
+			.core
+			.allowed_hosts
+			.contains(&"localhost".to_string())
+	);
+	assert!(
+		settings
+			.core
+			.allowed_hosts
+			.contains(&"example.com".to_string())
+	);
 }
 
 #[rstest]

@@ -12,10 +12,7 @@ const IMPLICIT_FRAGMENT: &str = "CoreSettings";
 const IMPLICIT_KEY: &str = "core";
 
 /// Implementation for `#[settings(key: Type | !Type)]`.
-pub(crate) fn settings_compose_impl(
-	args: TokenStream,
-	input: ItemStruct,
-) -> Result<TokenStream> {
+pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Result<TokenStream> {
 	let conf_crate = crate::crate_paths::get_reinhardt_conf_crate();
 	let struct_name = &input.ident;
 	let vis = &input.vis;
@@ -27,11 +24,12 @@ pub(crate) fn settings_compose_impl(
 	let entries = if args_str.trim().is_empty() {
 		vec![]
 	} else {
-		let (_, entries) = parse_settings_attr(&args_str)
-			.map_err(|e| syn::Error::new(
+		let (_, entries) = parse_settings_attr(&args_str).map_err(|e| {
+			syn::Error::new(
 				proc_macro2::Span::call_site(),
 				format!("failed to parse settings attribute: {}", e),
-			))?;
+			)
+		})?;
 		entries
 	};
 
@@ -87,9 +85,7 @@ pub(crate) fn settings_compose_impl(
 
 	// Add implicit CoreSettings if not excluded
 	let mut all_fragments: Vec<(String, String)> = vec![];
-	if !excludes.contains(IMPLICIT_FRAGMENT)
-		&& !seen_types.contains(IMPLICIT_FRAGMENT)
-	{
+	if !excludes.contains(IMPLICIT_FRAGMENT) && !seen_types.contains(IMPLICIT_FRAGMENT) {
 		all_fragments.push((IMPLICIT_KEY.to_string(), IMPLICIT_FRAGMENT.to_string()));
 	}
 	all_fragments.extend(includes);

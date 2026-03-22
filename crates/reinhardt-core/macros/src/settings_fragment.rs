@@ -5,10 +5,7 @@ use quote::{format_ident, quote};
 use syn::{ItemStruct, LitStr, Result};
 
 /// Implementation for `#[settings(fragment = true, section = "...")]`.
-pub(crate) fn settings_fragment_impl(
-	args: TokenStream,
-	input: ItemStruct,
-) -> Result<TokenStream> {
+pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Result<TokenStream> {
 	let conf_crate = crate::crate_paths::get_reinhardt_conf_crate();
 
 	// Parse section from args

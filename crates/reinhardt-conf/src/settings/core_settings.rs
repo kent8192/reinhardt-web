@@ -82,9 +82,7 @@ impl SettingsFragment for CoreSettings {
 
 	fn validate(&self, profile: &Profile) -> ValidationResult {
 		if self.secret_key.is_empty() {
-			return Err(ValidationError::MissingRequired(
-				"secret_key".to_string(),
-			));
+			return Err(ValidationError::MissingRequired("secret_key".to_string()));
 		}
 
 		if profile.is_production() {
