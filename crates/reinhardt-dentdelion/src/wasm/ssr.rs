@@ -551,17 +551,55 @@ if (root) {{
 /// assert_eq!(escape_for_script(normal), normal);
 /// ```
 pub fn escape_for_script(s: &str) -> String {
-	// Escape </script> (case-insensitive variants) to prevent XSS
-	// The escaped version <\/script> is safe because:
-	// 1. HTML parser doesn't recognize it as a closing tag
-	// 2. JavaScript treats \/ as just / in string literals
-	let mut result = s.to_string();
+	// Comprehensive escaping for safe embedding inside <script> tags.
+	//
+	// Defense layers:
+	// 1. Escape backslashes first (prevents attackers from using \<\/script> to bypass)
+	// 2. Escape </script> case-insensitively (HTML parser terminates on any case variant)
+	// 3. Escape <!-- and --> (HTML comment sequences can break script context)
+	//
+	// The escaped forms are safe because:
+	// - <\/script> is not recognized as a closing tag by the HTML parser
+	// - JavaScript treats \/ as just / in string literals
+	// - \u003C and \u002D are JavaScript unicode escapes, invisible to HTML parser
 
-	// Replace common case variations of </script>
-	// Order matters: replace specific patterns before generic ones
-	result = result.replace("</script>", "<\\/script>");
-	result = result.replace("</SCRIPT>", "<\\/SCRIPT>");
-	result = result.replace("</Script>", "<\\/Script>");
+	let mut result = String::with_capacity(s.len());
+	let bytes = s.as_bytes();
+	let len = bytes.len();
+	let mut i = 0;
+
+	while i < len {
+		// Check for </script> (case-insensitive) - HTML spec requires case-insensitive matching
+		if i + 9 <= len && bytes[i] == b'<' && bytes[i + 1] == b'/' {
+			let candidate = &s[i + 2..i + 9.min(len)];
+			if candidate.len() >= 7 && candidate[..7].eq_ignore_ascii_case("script>") {
+				// Preserve original casing but escape the forward slash
+				result.push('<');
+				result.push('\\');
+				// Push the rest of the original closing tag preserving case
+				result.push_str(&s[i + 1..i + 9]);
+				i += 9;
+				continue;
+			}
+		}
+
+		// Check for <!-- (HTML comment open)
+		if i + 4 <= len && &bytes[i..i + 4] == b"<!--" {
+			result.push_str("\\u003C!--");
+			i += 4;
+			continue;
+		}
+
+		// Check for --> (HTML comment close)
+		if i + 3 <= len && &bytes[i..i + 3] == b"-->" {
+			result.push_str("--\\u003E");
+			i += 3;
+			continue;
+		}
+
+		result.push(s.as_bytes()[i] as char);
+		i += 1;
+	}
 
 	result
 }
@@ -902,79 +940,159 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
 	}
 
-	// ===== XSS Prevention Tests =====
+	// =========================================================================
+	// XSS Prevention Tests (Issue #2551)
+	// =========================================================================
 
-	#[test]
+	use rstest::rstest;
+
+	#[rstest]
 	fn test_escape_for_script_prevents_script_tag_injection() {
-		// Test the most common attack vector
+		// Arrange
 		let malicious = r#"{"name": "</script><script>alert(1)</script>"}"#;
+
+		// Act
 		let escaped = escape_for_script(malicious);
 
-		// The escaped string should NOT contain unescaped </script>
+		// Assert
 		assert!(!escaped.contains("</script>"));
-
-		// It should contain the escaped version
 		assert!(escaped.contains("<\\/script>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_for_script_handles_uppercase() {
+		// Arrange
 		let malicious = r#"{"name": "</SCRIPT><script>alert(1)</script>"}"#;
+
+		// Act
 		let escaped = escape_for_script(malicious);
 
+		// Assert
 		assert!(!escaped.contains("</SCRIPT>"));
 		assert!(escaped.contains("<\\/SCRIPT>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_for_script_handles_mixed_case() {
+		// Arrange
 		let malicious = r#"{"name": "</Script><script>alert(1)</script>"}"#;
+
+		// Act
 		let escaped = escape_for_script(malicious);
 
+		// Assert
 		assert!(!escaped.contains("</Script>"));
 		assert!(escaped.contains("<\\/Script>"));
 	}
 
-	#[test]
+	#[rstest]
+	#[case("</sCrIpT>", "random mixed case")]
+	#[case("</sCRIPT>", "variant mixed case")]
+	#[case("</scRipt>", "another mixed case")]
+	fn test_escape_for_script_case_insensitive(#[case] tag: &str, #[case] _desc: &str) {
+		// Arrange & Act
+		let escaped = escape_for_script(tag);
+
+		// Assert - no unescaped closing script tag should remain
+		assert!(
+			!escaped.contains(tag),
+			"Case variant '{}' was not escaped",
+			tag
+		);
+		assert!(
+			escaped.contains("<\\"),
+			"Missing escape sequence for '{}'",
+			tag
+		);
+	}
+
+	#[rstest]
 	fn test_escape_for_script_preserves_normal_content() {
+		// Arrange
 		let normal = r#"{"name": "Alice", "age": 30}"#;
+
+		// Act
 		let escaped = escape_for_script(normal);
 
+		// Assert
 		assert_eq!(escaped, normal);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_for_script_handles_multiple_occurrences() {
+		// Arrange
 		let malicious = r#"</script></script></SCRIPT>"#;
+
+		// Act
 		let escaped = escape_for_script(malicious);
 
+		// Assert
 		assert!(!escaped.contains("</script>"));
 		assert!(!escaped.contains("</SCRIPT>"));
-		assert!(escaped.matches("<\\/script>").count() == 2);
-		assert!(escaped.matches("<\\/SCRIPT>").count() == 1);
+		assert_eq!(escaped.matches("<\\/script>").count(), 2);
+		assert_eq!(escaped.matches("<\\/SCRIPT>").count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_for_script_empty_string() {
+		// Arrange & Act & Assert
 		assert_eq!(escape_for_script(""), "");
 	}
 
-	#[test]
+	#[rstest]
+	fn test_escape_for_script_escapes_html_comment_open() {
+		// Arrange
+		let malicious = r#"{"data": "<!--<script>alert(1)</script>-->"}"#;
+
+		// Act
+		let escaped = escape_for_script(malicious);
+
+		// Assert - <!-- should be escaped
+		assert!(!escaped.contains("<!--"));
+		assert!(escaped.contains("\\u003C!--"));
+	}
+
+	#[rstest]
+	fn test_escape_for_script_escapes_html_comment_close() {
+		// Arrange
+		let malicious = r#"{"data": "-->"}"#;
+
+		// Act
+		let escaped = escape_for_script(malicious);
+
+		// Assert - --> should be escaped
+		assert!(!escaped.contains("-->"));
+		assert!(escaped.contains("--\\u003E"));
+	}
+
+	#[rstest]
+	fn test_escape_for_script_combined_attack_vectors() {
+		// Arrange - combined attack with script tags and HTML comments
+		let malicious = r#"<!--</script>--><script>alert(1)</script>"#;
+
+		// Act
+		let escaped = escape_for_script(malicious);
+
+		// Assert
+		assert!(!escaped.contains("<!--"));
+		assert!(!escaped.contains("-->"));
+		assert!(!escaped.contains("</script>"));
+	}
+
+	#[rstest]
 	fn test_generate_hydration_script_escapes_malicious_props() {
+		// Arrange
 		let proxy = SsrProxy::new();
 		let component = r#"function Component(props) { return h('div', null, props.name); }"#;
 		let malicious_props = r#"{"name": "</script><script>alert(document.cookie)</script>"}"#;
 
+		// Act
 		let script = proxy.generate_hydration_script(component, malicious_props);
 
-		// The malicious </script> should be escaped
+		// Assert
 		assert!(script.contains("<\\/script>"));
-
-		// The script should still be valid HTML with exactly one closing tag at the end
 		assert!(script.starts_with("<script type=\"module\">"));
 		assert!(script.ends_with("</script>"));
-
-		// Count the number of </script> occurrences - should be exactly 1 (the closing tag)
 		let closing_tag_count = script.matches("</script>").count();
 		assert_eq!(
 			closing_tag_count, 1,
@@ -982,25 +1100,38 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_hydration_script_escapes_malicious_code() {
+		// Arrange
 		let proxy = SsrProxy::new();
-		// Malicious component code trying to break out
 		let malicious_code =
 			r#"function Component() { return '</script><script>alert(1)</script>'; }"#;
 		let props = "{}";
 
+		// Act
 		let script = proxy.generate_hydration_script(malicious_code, props);
 
-		// The malicious </script> should be escaped
+		// Assert
 		assert!(script.contains("<\\/script>"));
-
-		// Count the number of </script> occurrences - should be exactly 1 (the closing tag)
 		let closing_tag_count = script.matches("</script>").count();
 		assert_eq!(
 			closing_tag_count, 1,
 			"Expected exactly 1 closing </script> tag"
 		);
+	}
+
+	#[rstest]
+	fn test_generate_hydration_script_escapes_html_comments_in_props() {
+		// Arrange
+		let proxy = SsrProxy::new();
+		let component = r#"function Component(props) { return h('div', null, props.data); }"#;
+		let malicious_props = r#"{"data": "<!--<script>alert(1)</script>-->"}"#;
+
+		// Act
+		let script = proxy.generate_hydration_script(component, malicious_props);
+
+		// Assert - HTML comments should be escaped in the output
+		assert!(!script[..script.len() - 9].contains("<!--"));
 	}
 
 	#[cfg(feature = "ts")]
