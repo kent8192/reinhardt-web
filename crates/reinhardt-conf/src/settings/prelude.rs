@@ -2,6 +2,7 @@
 //!
 //! Import this module to get access to the most commonly used types and traits.
 
+#[allow(deprecated)]
 pub use super::advanced::{
 	AdvancedSettings, CacheSettings, CorsSettings, DatabaseSettings as AdvancedDatabaseSettings,
 	EmailSettings, LoggingSettings, MediaSettings, SessionSettings, SettingsError, StaticSettings,

@@ -17,6 +17,7 @@ pub mod contacts;
 pub mod fragment;
 pub mod i18n;
 pub mod security;
+pub mod core_settings;
 pub mod template_settings;
 pub mod cache;
 pub mod cors;
@@ -102,6 +103,7 @@ impl Contact {
 }
 
 // Re-export from advanced module
+#[allow(deprecated)]
 pub use advanced::{
 	AdvancedSettings, CacheSettings, CorsSettings, DatabaseSettings as AdvancedDatabaseSettings,
 	EmailSettings, LoggingSettings, MediaSettings, SessionSettings, SettingsError, StaticSettings,
