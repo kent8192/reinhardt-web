@@ -48,6 +48,8 @@ impl StructInjectableArgs {
 
 		let mut scope = None;
 		let mut prebuilt = false;
+		let mut seen_scope = false;
+		let mut seen_prebuilt = false;
 
 		let parsed = syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated
 			.parse2(args)?;
@@ -55,6 +57,13 @@ impl StructInjectableArgs {
 		for meta in &parsed {
 			match meta {
 				syn::Meta::NameValue(nv) if nv.path.is_ident("scope") => {
+					if seen_scope {
+						return Err(syn::Error::new_spanned(
+							&nv.path,
+							"duplicate argument: scope was already specified",
+						));
+					}
+					seen_scope = true;
 					if let syn::Expr::Path(expr_path) = &nv.value {
 						let ident = expr_path.path.get_ident().ok_or_else(|| {
 							syn::Error::new_spanned(
@@ -81,6 +90,13 @@ impl StructInjectableArgs {
 					}
 				}
 				syn::Meta::NameValue(nv) if nv.path.is_ident("prebuilt") => {
+					if seen_prebuilt {
+						return Err(syn::Error::new_spanned(
+							&nv.path,
+							"duplicate argument: prebuilt was already specified",
+						));
+					}
+					seen_prebuilt = true;
 					if let syn::Expr::Lit(expr_lit) = &nv.value {
 						if let syn::Lit::Bool(lit_bool) = &expr_lit.lit {
 							prebuilt = lit_bool.value;
@@ -516,5 +532,41 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err().to_string();
 		assert!(err.contains("scope"));
+	}
+
+	#[test]
+	fn test_injectable_struct_duplicate_scope_errors() {
+		// Arrange
+		let args = quote! { scope = Singleton, scope = Request };
+		let input: DeriveInput = syn::parse2(quote! {
+			struct Foo;
+		})
+		.unwrap();
+
+		// Act
+		let result = injectable_struct_impl(args, input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("duplicate"));
+	}
+
+	#[test]
+	fn test_injectable_struct_duplicate_prebuilt_errors() {
+		// Arrange
+		let args = quote! { scope = Singleton, prebuilt = true, prebuilt = false };
+		let input: DeriveInput = syn::parse2(quote! {
+			struct Foo;
+		})
+		.unwrap();
+
+		// Act
+		let result = injectable_struct_impl(args, input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("duplicate"));
 	}
 }
