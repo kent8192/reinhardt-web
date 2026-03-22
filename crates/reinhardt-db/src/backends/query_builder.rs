@@ -1160,7 +1160,7 @@ impl SelectBuilder {
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
-			MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
 		};
 
 		let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
@@ -1190,11 +1190,11 @@ impl SelectBuilder {
 			stmt.limit(limit_u64);
 		}
 
-		// Build SQL with inline values
+		// Build parameterized SQL (consistent with InsertBuilder, UpdateBuilder, DeleteBuilder)
 		let sql = match self.backend.database_type() {
-			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
-			DatabaseType::Mysql => stmt.to_string(MySqlQueryBuilder),
-			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&stmt).0,
+			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&stmt).0,
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&stmt).0,
 		};
 
 		// Collect parameters
@@ -2785,5 +2785,61 @@ mod tests {
 		assert!(
 			matches!(err, DatabaseError::QueryError(ref msg) if msg.contains("column/value count mismatch"))
 		);
+	}
+
+	// =========================================================================
+	// Issue #2558: SelectBuilder::build() returns parameterized SQL
+	// =========================================================================
+
+	#[rstest]
+	fn test_select_builder_uses_parameterized_sql() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = SelectBuilder::new(backend)
+			.from("users")
+			.where_eq("id", QueryValue::Int(42));
+		let (sql, params) = builder.build();
+
+		// Assert - SQL should contain placeholder $1, not inlined value 42
+		assert_eq!(sql, "SELECT * FROM \"users\" WHERE \"id\" = $1");
+		assert_eq!(params.len(), 1);
+		assert!(matches!(params[0], QueryValue::Int(42)));
+	}
+
+	#[rstest]
+	fn test_select_builder_parameterized_multiple_wheres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = SelectBuilder::new(backend)
+			.columns(vec!["id", "name"])
+			.from("users")
+			.where_eq("status", QueryValue::String("active".to_string()))
+			.where_eq("age", QueryValue::Int(18));
+		let (sql, params) = builder.build();
+
+		// Assert - parameterized with $1 and $2
+		assert_eq!(
+			sql,
+			"SELECT \"id\", \"name\" FROM \"users\" WHERE \"status\" = $1 AND \"age\" = $2"
+		);
+		assert_eq!(params.len(), 2);
+	}
+
+	#[rstest]
+	fn test_select_builder_no_where_no_params() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = SelectBuilder::new(backend).from("users");
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(sql, "SELECT * FROM \"users\"");
+		assert!(params.is_empty());
 	}
 }
