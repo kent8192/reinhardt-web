@@ -327,7 +327,10 @@ where
 
 				Response::created().with_json(&json_value)
 			}
-			_ => Err(Error::Http("Method not allowed".to_string())),
+			_ => Err(Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 
@@ -500,10 +503,13 @@ where
 					.json()
 					.map_err(|e| Error::Http(format!("Invalid request body: {}", e)))?;
 
+				// Validate that patch data is a JSON object
+				let patch_obj = patch_data.as_object().ok_or_else(|| {
+					Error::Http("PATCH request body must be a JSON object".to_string())
+				})?;
+
 				// Merge patch data into current object
-				if let (Some(current_obj), Some(patch_obj)) =
-					(current.as_object_mut(), patch_data.as_object())
-				{
+				if let Some(current_obj) = current.as_object_mut() {
 					for (key, value) in patch_obj {
 						current_obj.insert(key.clone(), value.clone());
 					}
@@ -530,7 +536,10 @@ where
 
 				Response::ok().with_json(&json_value)
 			}
-			_ => Err(Error::Http("Method not allowed".to_string())),
+			_ => Err(Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 
@@ -669,7 +678,10 @@ where
 				// Return 204 No Content
 				Ok(Response::no_content())
 			}
-			_ => Err(Error::Http("Method not allowed".to_string())),
+			_ => Err(Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 
@@ -843,10 +855,13 @@ where
 					.json()
 					.map_err(|e| Error::Http(format!("Invalid request body: {}", e)))?;
 
+				// Validate that patch data is a JSON object
+				let patch_obj = patch_data.as_object().ok_or_else(|| {
+					Error::Http("PATCH request body must be a JSON object".to_string())
+				})?;
+
 				// Merge patch data into current object
-				if let (Some(current_obj), Some(patch_obj)) =
-					(current.as_object_mut(), patch_data.as_object())
-				{
+				if let Some(current_obj) = current.as_object_mut() {
 					for (key, value) in patch_obj {
 						current_obj.insert(key.clone(), value.clone());
 					}
@@ -892,7 +907,10 @@ where
 				// Return 204 No Content
 				Ok(Response::no_content())
 			}
-			_ => Err(Error::Http("Method not allowed".to_string())),
+			_ => Err(Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 
