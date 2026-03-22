@@ -21,13 +21,14 @@
 //! use reinhardt_conf::Settings;
 //!
 //! // Create settings with defaults and override specific fields
+//! #[allow(deprecated)]
 //! let mut settings = Settings::default();
-//! settings.secret_key = "my-secret-key".to_string();
-//! settings.debug = false;
-//! settings.allowed_hosts = vec!["example.com".to_string()];
+//! settings.core.secret_key = "my-secret-key".to_string();
+//! settings.core.debug = false;
+//! settings.core.allowed_hosts = vec!["example.com".to_string()];
 //!
-//! assert!(!settings.debug);
-//! assert_eq!(settings.allowed_hosts[0], "example.com");
+//! assert!(!settings.core.debug);
+//! assert_eq!(settings.core.allowed_hosts[0], "example.com");
 //! ```
 //!
 //! ## Architecture
