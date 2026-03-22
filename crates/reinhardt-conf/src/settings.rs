@@ -13,8 +13,18 @@ pub mod profile;
 pub mod secret_types;
 pub mod sources;
 pub mod validation;
+pub mod contacts;
 pub mod fragment;
+pub mod i18n;
 pub mod security;
+pub mod template_settings;
+pub mod cache;
+pub mod cors;
+pub mod email;
+pub mod logging;
+pub mod media;
+pub mod session;
+pub mod static_files;
 
 // Dynamic settings (async feature required)
 #[cfg(feature = "async")]
