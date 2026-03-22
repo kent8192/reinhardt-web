@@ -84,14 +84,14 @@ pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<Method>)>;
 ///
 /// # Examples
 ///
-/// ```
-/// # use reinhardt_urls::routers::server_router::join_path;
+/// ```rust,ignore
+/// // crate-internal usage only
 /// assert_eq!(join_path("/api/", "/users"), "/api/users");
 /// assert_eq!(join_path("/api", "/users"), "/api/users");
 /// assert_eq!(join_path("/api", "users"), "/apiusers");
 /// assert_eq!(join_path("", "/users"), "/users");
 /// ```
-pub fn join_path(prefix: &str, suffix: &str) -> String {
+pub(crate) fn join_path(prefix: &str, suffix: &str) -> String {
 	let raw = format!("{}{}", prefix, suffix);
 	let mut result = String::with_capacity(raw.len());
 	let mut prev_slash = false;
