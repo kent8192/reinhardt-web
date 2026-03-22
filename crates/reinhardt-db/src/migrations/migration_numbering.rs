@@ -57,7 +57,8 @@ impl MigrationNumbering {
 		} else {
 			// Cache miss - scan filesystem
 			let highest = Self::get_highest_number(migrations_dir, app_label);
-			cache.insert(cache_key, highest);
+			// Store highest + 1 so the next cache hit returns the correct next number
+			cache.insert(cache_key, highest + 1);
 			Self::format_number(highest + 1)
 		}
 	}

@@ -156,21 +156,22 @@ impl MigrationSquasher {
 				.push((migration.app_label.clone(), migration.name.clone()));
 		}
 
+		// Build a HashSet of squashed migration identities for O(1) lookup
+		let squashed_set: HashSet<(&str, &str)> = migrations
+			.iter()
+			.map(|m| (m.app_label.as_str(), m.name.as_str()))
+			.collect();
+
 		// Collect dependencies from all migrations (external dependencies only)
+		let mut seen_deps: HashSet<(&str, &str)> = HashSet::new();
 		for migration in migrations {
 			for (dep_app, dep_name) in &migration.dependencies {
 				// Only include dependencies outside the squashed range
 				if *dep_app != *app_label
-					|| !migrations
-						.iter()
-						.any(|m| m.app_label == *dep_app && m.name == *dep_name)
+					|| !squashed_set.contains(&(dep_app.as_str(), dep_name.as_str()))
 				{
-					// Avoid duplicate dependencies
-					if !squashed
-						.dependencies
-						.iter()
-						.any(|(a, n)| a == dep_app && n == dep_name)
-					{
+					// Avoid duplicate dependencies via HashSet lookup
+					if seen_deps.insert((dep_app.as_str(), dep_name.as_str())) {
 						squashed
 							.dependencies
 							.push((dep_app.clone(), dep_name.clone()));
