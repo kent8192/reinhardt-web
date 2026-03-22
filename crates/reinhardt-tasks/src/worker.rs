@@ -397,15 +397,18 @@ impl Worker {
 		let started_at = Utc::now();
 
 		// Try to acquire lock if available
+		let mut lock_token = None;
 		if let Some(ref lock) = self.task_lock {
-			let acquired = lock.acquire(task_id, Duration::from_secs(300)).await?;
-			if !acquired {
-				tracing::info!(
-					worker = %self.config.name,
-					task_id = %task_id,
-					"Task already locked by another worker"
-				);
-				return Ok(());
+			match lock.acquire(task_id, Duration::from_secs(300)).await? {
+				Some(token) => lock_token = Some(token),
+				None => {
+					tracing::info!(
+						worker = %self.config.name,
+						task_id = %task_id,
+						"Task already locked by another worker"
+					);
+					return Ok(());
+				}
 			}
 		}
 
@@ -550,7 +553,8 @@ impl Worker {
 
 		// Always release lock if acquired, regardless of store_result outcome
 		if let Some(ref lock) = self.task_lock
-			&& let Err(e) = lock.release(task_id).await
+			&& let Some(ref token) = lock_token
+			&& let Err(e) = lock.release(task_id, token).await
 		{
 			tracing::error!(
 				worker = %self.config.name,
