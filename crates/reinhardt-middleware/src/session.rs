@@ -1180,8 +1180,11 @@ mod tests {
 		let response = middleware.process(request, handler).await.unwrap();
 
 		// Assert - both Set-Cookie headers should be present
-		let set_cookies: Vec<&hyper::header::HeaderValue> =
-			response.headers.get_all("Set-Cookie").iter().collect();
+		let set_cookies: Vec<&hyper::header::HeaderValue> = response
+			.headers
+			.get_all(hyper::header::SET_COOKIE)
+			.iter()
+			.collect();
 		assert_eq!(
 			set_cookies.len(),
 			2,

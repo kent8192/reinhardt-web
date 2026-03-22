@@ -503,17 +503,9 @@ where
 					.json()
 					.map_err(|e| Error::Http(format!("Invalid request body: {}", e)))?;
 
-				// Validate that patch data is a JSON object
-				let patch_obj = patch_data.as_object().ok_or_else(|| {
-					Error::Http("PATCH request body must be a JSON object".to_string())
-				})?;
-
-				// Merge patch data into current object
-				if let Some(current_obj) = current.as_object_mut() {
-					for (key, value) in patch_obj {
-						current_obj.insert(key.clone(), value.clone());
-					}
-				}
+				// Validate and merge patch data into current object
+				crate::generic::patch_utils::merge_patch_object_into(&mut current, &patch_data)
+					.map_err(Error::Http)?;
 
 				// Deserialize merged object back to model
 				let merged: M = serde_json::from_value(current)
@@ -855,17 +847,9 @@ where
 					.json()
 					.map_err(|e| Error::Http(format!("Invalid request body: {}", e)))?;
 
-				// Validate that patch data is a JSON object
-				let patch_obj = patch_data.as_object().ok_or_else(|| {
-					Error::Http("PATCH request body must be a JSON object".to_string())
-				})?;
-
-				// Merge patch data into current object
-				if let Some(current_obj) = current.as_object_mut() {
-					for (key, value) in patch_obj {
-						current_obj.insert(key.clone(), value.clone());
-					}
-				}
+				// Validate and merge patch data into current object
+				crate::generic::patch_utils::merge_patch_object_into(&mut current, &patch_data)
+					.map_err(Error::Http)?;
 
 				// Deserialize merged object back to model
 				let merged: M = serde_json::from_value(current)
