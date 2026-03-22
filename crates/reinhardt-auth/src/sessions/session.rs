@@ -391,7 +391,9 @@ impl<B: SessionBackend> Session<B> {
 		}
 
 		let key = self.get_or_create_key().to_string();
-		self.backend.save(&key, &self.data, Some(3600)).await?;
+		self.backend
+			.save(&key, &self.data, Some(self.timeout))
+			.await?;
 		self.is_modified = false;
 
 		Ok(())
@@ -995,6 +997,26 @@ mod tests {
 
 		session.mark_unmodified();
 		assert!(!session.is_modified());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_session_save_uses_configured_timeout() {
+		// Arrange
+		let backend = InMemorySessionBackend::new();
+		let mut session = Session::new(backend);
+		session.set_timeout(7200);
+		session.set("key", "value").unwrap();
+
+		// Act
+		session.save().await.unwrap();
+
+		// Assert - verify timeout was set to custom value (not hardcoded 3600)
+		assert_eq!(session.get_timeout(), 7200);
+		// Verify data persisted correctly with the custom timeout
+		let key = session.session_key().unwrap().to_string();
+		let loaded: Option<HashMap<String, Value>> = session.backend.load(&key).await.unwrap();
+		assert!(loaded.is_some());
 	}
 
 	#[tokio::test]

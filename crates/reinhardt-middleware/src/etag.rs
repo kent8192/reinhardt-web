@@ -226,10 +226,14 @@ impl Middleware for ETagMiddleware {
 		let etag = self.generate_etag(&response.body);
 
 		// Check If-None-Match header (for GET/HEAD requests)
+		// Uses weak comparison per RFC 7232 Section 2.3.2:
+		// strip W/ prefix before comparing opaque-tag values
 		if (method == "GET" || method == "HEAD")
 			&& if_none_match.as_ref().is_some_and(|inm| {
-				inm.split(',')
-					.any(|tag| tag.trim().trim_matches('"') == etag.trim_matches('"'))
+				inm.split(',').any(|tag| {
+					strip_etag_for_weak_comparison(tag.trim())
+						== strip_etag_for_weak_comparison(&etag)
+				})
 			}) {
 			// Return 304 Not Modified
 			let mut not_modified = Response::new(StatusCode::NOT_MODIFIED);
@@ -262,6 +266,17 @@ impl Middleware for ETagMiddleware {
 
 		Ok(response)
 	}
+}
+
+/// Strip ETag for weak comparison per RFC 7232 Section 2.3.2.
+///
+/// Removes the `W/` prefix (if present) and surrounding double quotes,
+/// returning only the opaque-tag value for comparison.
+fn strip_etag_for_weak_comparison(etag: &str) -> &str {
+	let s = etag.strip_prefix("W/").unwrap_or(etag);
+	s.strip_prefix('"')
+		.and_then(|s| s.strip_suffix('"'))
+		.unwrap_or(s)
 }
 
 #[cfg(test)]
@@ -538,5 +553,67 @@ mod tests {
 		let etag2 = response2.headers.get("etag").unwrap().to_str().unwrap();
 
 		assert_ne!(etag1, etag2);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_weak_etag_if_none_match() {
+		// Arrange - use weak ETags
+		let config = ETagConfig::new().with_weak_etag();
+		let middleware = Arc::new(ETagMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+
+		// Get weak ETag from first request
+		let request1 = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		let response1 = middleware.process(request1, handler.clone()).await.unwrap();
+		let etag = response1.headers.get("etag").unwrap().clone();
+		let etag_str = etag.to_str().unwrap();
+
+		// Assert - ETag should be weak format W/"..."
+		assert!(
+			etag_str.starts_with("W/"),
+			"ETag should be weak: {}",
+			etag_str
+		);
+
+		// Act - second request with the weak ETag in If-None-Match
+		let mut headers = HeaderMap::new();
+		headers.insert(hyper::header::IF_NONE_MATCH, etag);
+		let request2 = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		let response2 = middleware.process(request2, handler).await.unwrap();
+
+		// Assert - should return 304 Not Modified per RFC 7232 weak comparison
+		assert_eq!(
+			response2.status,
+			StatusCode::NOT_MODIFIED,
+			"Weak ETag comparison should match and return 304"
+		);
+	}
+
+	#[rstest::rstest]
+	#[case("\"abc123\"", "abc123")]
+	#[case("W/\"abc123\"", "abc123")]
+	#[case("abc123", "abc123")]
+	#[case("W/", "")]
+	fn test_strip_etag_for_weak_comparison(#[case] input: &str, #[case] expected: &str) {
+		// Act
+		let result = super::strip_etag_for_weak_comparison(input);
+
+		// Assert
+		assert_eq!(result, expected);
 	}
 }

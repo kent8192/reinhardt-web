@@ -351,7 +351,12 @@ impl Middleware for CsrfMiddleware {
 	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
 		// Check if path is exempt
 		let path = request.uri.path();
-		if self.config.exempt_paths.contains(path) {
+		if self
+			.config
+			.exempt_paths
+			.iter()
+			.any(|exempt| path.starts_with(exempt))
+		{
 			return handler.handle(request).await;
 		}
 
@@ -980,6 +985,65 @@ mod tests {
 			session_id1, session_id2,
 			"Fallback session IDs should differ because they use random generation, \
 			not deterministic derivation from request metadata"
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_csrf_exempt_paths_uses_prefix_match() {
+		// Arrange - exempt "/api" should also exempt "/api/subpath"
+		let mut config = CsrfMiddlewareConfig::default();
+		config.exempt_paths.insert("/api".to_string());
+
+		let middleware = CsrfMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
+
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/api/webhook/github")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await;
+
+		// Assert - sub-path should be exempt via prefix matching
+		assert!(
+			response.is_ok(),
+			"Sub-path /api/webhook/github should be exempt when /api is in exempt_paths"
+		);
+		assert_eq!(response.unwrap().status, StatusCode::OK);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_csrf_exempt_paths_no_false_prefix_match() {
+		// Arrange - exempt "/api" should NOT exempt "/application"
+		let mut config = CsrfMiddlewareConfig::default();
+		config.exempt_paths.insert("/api".to_string());
+
+		let middleware = CsrfMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
+
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/application/form")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await;
+
+		// Assert - /application should NOT be exempt (not a prefix of /api)
+		assert!(
+			response.is_err(),
+			"Path /application/form should NOT be exempt when only /api is in exempt_paths"
 		);
 	}
 }
