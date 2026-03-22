@@ -481,10 +481,11 @@ fn minify_html(html: &str) -> String {
 	while let Some((byte_pos, c)) = chars.next() {
 		let remaining = &html[byte_pos..];
 
-		// Detect opening preserved tag (e.g. <pre>, <textarea class="...">)
+		// Detect opening preserved tag (case-insensitive, e.g. <pre>, <PRE>, <Pre class="...">)
 		if preserved_tag.is_none() && c == '<' {
+			let remaining_lower = remaining.to_ascii_lowercase();
 			for tag in &PRESERVED_TAGS {
-				if remaining
+				if remaining_lower
 					.strip_prefix(&format!("<{tag}"))
 					.is_some_and(|after| {
 						after.starts_with(|ch: char| ch == '>' || ch.is_ascii_whitespace())
@@ -496,11 +497,14 @@ fn minify_html(html: &str) -> String {
 			}
 		}
 
-		// Detect closing tag for the currently preserved tag
+		// Detect closing tag for the currently preserved tag (case-insensitive)
 		if let Some(tag) = preserved_tag {
 			let close = format!("</{tag}>");
-			if c == '<' && remaining.starts_with(&close) {
-				result.push_str(&close);
+			if c == '<' && remaining.len() >= close.len()
+				&& remaining[..close.len()].eq_ignore_ascii_case(&close)
+			{
+				// Push the original-cased closing tag from the source
+				result.push_str(&remaining[..close.len()]);
 				// Skip the remaining chars of the closing tag (we already consumed '<')
 				for _ in 0..close.len() - 1 {
 					chars.next();
@@ -794,6 +798,30 @@ mod tests {
 	#[case::surrounding_whitespace_collapsed(
 		"<div>  hello  </div>  <pre>  keep  </pre>  <div>  world  </div>",
 		"<div> hello </div> <pre>  keep  </pre> <div> world </div>"
+	)]
+	#[case::pre_uppercase(
+		"<PRE>  hello\n  world  </PRE>",
+		"<PRE>  hello\n  world  </PRE>"
+	)]
+	#[case::pre_mixed_case(
+		"<Pre>  hello\n  world  </Pre>",
+		"<Pre>  hello\n  world  </Pre>"
+	)]
+	#[case::textarea_uppercase(
+		"<TEXTAREA>  multi\n  line  </TEXTAREA>",
+		"<TEXTAREA>  multi\n  line  </TEXTAREA>"
+	)]
+	#[case::script_uppercase(
+		"<SCRIPT>  var x  =  1;  </SCRIPT>",
+		"<SCRIPT>  var x  =  1;  </SCRIPT>"
+	)]
+	#[case::style_mixed_case(
+		"<Style>  .foo  {  color: red;  }  </Style>",
+		"<Style>  .foo  {  color: red;  }  </Style>"
+	)]
+	#[case::pre_uppercase_with_attrs(
+		"<PRE class=\"code\">  spaced  </PRE>",
+		"<PRE class=\"code\">  spaced  </PRE>"
 	)]
 	fn test_minify_html_preserves_tag_content(#[case] input: &str, #[case] expected: &str) {
 		// Arrange (input and expected provided by rstest cases)
