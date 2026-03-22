@@ -452,7 +452,59 @@ impl PostgresQueryBuilder {
 					Value::Double(Some(d)) => {
 						writer.push(&d.to_string());
 					}
-					// None values render as NULL
+					Value::Char(Some(c)) => {
+						let escaped = c.to_string().replace('\'', "''");
+						writer.push(&format!("'{}'", escaped));
+					}
+					Value::Bytes(Some(b)) => {
+						writer.push("E'\\\\x");
+						for byte in b.as_ref() {
+							writer.push(&format!("{:02x}", byte));
+						}
+						writer.push("'");
+					}
+					#[cfg(feature = "with-chrono")]
+					Value::ChronoDate(Some(d)) => {
+						writer.push(&format!("'{}'", d));
+					}
+					#[cfg(feature = "with-chrono")]
+					Value::ChronoTime(Some(t)) => {
+						writer.push(&format!("'{}'", t));
+					}
+					#[cfg(feature = "with-chrono")]
+					Value::ChronoDateTime(Some(dt)) => {
+						writer.push(&format!("'{}'", dt));
+					}
+					#[cfg(feature = "with-chrono")]
+					Value::ChronoDateTimeUtc(Some(dt)) => {
+						writer.push(&format!("'{}'", dt));
+					}
+					#[cfg(feature = "with-chrono")]
+					Value::ChronoDateTimeLocal(Some(dt)) => {
+						writer.push(&format!("'{}'", dt));
+					}
+					#[cfg(feature = "with-chrono")]
+					Value::ChronoDateTimeWithTimeZone(Some(dt)) => {
+						writer.push(&format!("'{}'", dt));
+					}
+					#[cfg(feature = "with-uuid")]
+					Value::Uuid(Some(u)) => {
+						writer.push(&format!("'{}'", u));
+					}
+					#[cfg(feature = "with-json")]
+					Value::Json(Some(j)) => {
+						let escaped = j.to_string().replace('\'', "''");
+						writer.push(&format!("'{}'", escaped));
+					}
+					#[cfg(feature = "with-rust_decimal")]
+					Value::Decimal(Some(d)) => {
+						writer.push(&d.to_string());
+					}
+					#[cfg(feature = "with-bigdecimal")]
+					Value::BigDecimal(Some(d)) => {
+						writer.push(&d.to_string());
+					}
+					// None values and arrays render as NULL
 					_ => {
 						writer.push("NULL");
 					}
@@ -2473,9 +2525,9 @@ impl QueryBuilder for PostgresQueryBuilder {
 				RoleAttribute::ValidUntil(timestamp) => {
 					writer.push("VALID UNTIL");
 					writer.push_space();
-					writer.push("'");
-					writer.push(timestamp);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(timestamp.clone()))), |i| {
+						self.placeholder(i)
+					});
 				}
 				RoleAttribute::InRole(roles) => {
 					writer.push("IN ROLE");
@@ -2601,9 +2653,9 @@ impl QueryBuilder for PostgresQueryBuilder {
 				RoleAttribute::ValidUntil(timestamp) => {
 					writer.push("VALID UNTIL");
 					writer.push_space();
-					writer.push("'");
-					writer.push(timestamp);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(timestamp.clone()))), |i| {
+						self.placeholder(i)
+					});
 				}
 				RoleAttribute::InRole(roles) => {
 					writer.push("IN ROLE");
