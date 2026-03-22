@@ -7,6 +7,23 @@ use super::simple_expr::{Keyword, SimpleExpr};
 use crate::types::{BinOper, UnOper};
 use crate::value::Value;
 
+/// Escape SQL LIKE wildcard characters in user input.
+///
+/// Escapes `\` -> `\\`, `%` -> `\%`, and `_` -> `\_` so that user-supplied
+/// strings are treated as literal text in LIKE patterns.
+fn escape_like_pattern(input: &str) -> String {
+	let mut escaped = String::with_capacity(input.len());
+	for ch in input.chars() {
+		match ch {
+			'\\' => escaped.push_str("\\\\"),
+			'%' => escaped.push_str("\\%"),
+			'_' => escaped.push_str("\\_"),
+			_ => escaped.push(ch),
+		}
+	}
+	escaped
+}
+
 /// Trait for expression operations.
 ///
 /// This trait provides methods for building complex expressions through
@@ -181,6 +198,8 @@ pub trait ExprTrait: Sized {
 
 	/// IN.
 	///
+	/// Returns `FALSE` when the iterator is empty, since `x IN ()` is invalid SQL.
+	///
 	/// # Example
 	///
 	/// ```rust,ignore
@@ -192,27 +211,36 @@ pub trait ExprTrait: Sized {
 		I: IntoIterator<Item = V>,
 		V: Into<SimpleExpr>,
 	{
+		let collected: Vec<SimpleExpr> = values.into_iter().map(|v| v.into()).collect();
+		if collected.is_empty() {
+			// Empty IN () is invalid SQL in all databases; use FALSE instead
+			return SimpleExpr::Constant(Keyword::False);
+		}
 		SimpleExpr::Binary(
 			Box::new(self.into_simple_expr()),
 			BinOper::In,
-			Box::new(SimpleExpr::Tuple(
-				values.into_iter().map(|v| v.into()).collect(),
-			)),
+			Box::new(SimpleExpr::Tuple(collected)),
 		)
 	}
 
 	/// NOT IN.
+	///
+	/// Returns `TRUE` when the iterator is empty, since `x NOT IN ()` is invalid SQL
+	/// and logically equivalent to `TRUE`.
 	fn is_not_in<I, V>(self, values: I) -> SimpleExpr
 	where
 		I: IntoIterator<Item = V>,
 		V: Into<SimpleExpr>,
 	{
+		let collected: Vec<SimpleExpr> = values.into_iter().map(|v| v.into()).collect();
+		if collected.is_empty() {
+			// Empty NOT IN () is invalid SQL in all databases; use TRUE instead
+			return SimpleExpr::Constant(Keyword::True);
+		}
 		SimpleExpr::Binary(
 			Box::new(self.into_simple_expr()),
 			BinOper::NotIn,
-			Box::new(SimpleExpr::Tuple(
-				values.into_iter().map(|v| v.into()).collect(),
-			)),
+			Box::new(SimpleExpr::Tuple(collected)),
 		)
 	}
 
@@ -276,29 +304,41 @@ pub trait ExprTrait: Sized {
 	}
 
 	/// Helper for LIKE with prefix wildcard.
+	///
+	/// SQL wildcard characters (`%`, `_`) and the escape character (`\`) in
+	/// user input are escaped before constructing the pattern.
 	fn starts_with<S>(self, prefix: S) -> SimpleExpr
 	where
 		S: Into<String>,
 	{
-		let pattern = format!("{}%", prefix.into());
+		let escaped = escape_like_pattern(&prefix.into());
+		let pattern = format!("{}%", escaped);
 		self.like(Value::String(Some(Box::new(pattern))))
 	}
 
 	/// Helper for LIKE with suffix wildcard.
+	///
+	/// SQL wildcard characters (`%`, `_`) and the escape character (`\`) in
+	/// user input are escaped before constructing the pattern.
 	fn ends_with<S>(self, suffix: S) -> SimpleExpr
 	where
 		S: Into<String>,
 	{
-		let pattern = format!("%{}", suffix.into());
+		let escaped = escape_like_pattern(&suffix.into());
+		let pattern = format!("%{}", escaped);
 		self.like(Value::String(Some(Box::new(pattern))))
 	}
 
 	/// Helper for LIKE with both wildcards.
+	///
+	/// SQL wildcard characters (`%`, `_`) and the escape character (`\`) in
+	/// user input are escaped before constructing the pattern.
 	fn contains<S>(self, substring: S) -> SimpleExpr
 	where
 		S: Into<String>,
 	{
-		let pattern = format!("%{}%", substring.into());
+		let escaped = escape_like_pattern(&substring.into());
+		let pattern = format!("%{}%", escaped);
 		self.like(Value::String(Some(Box::new(pattern))))
 	}
 
