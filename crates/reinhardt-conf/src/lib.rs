@@ -68,4 +68,35 @@ pub mod settings;
 
 // Re-export commonly used types at the crate root for convenience
 #[cfg(feature = "settings")]
+#[allow(deprecated)] // Settings is deprecated but re-exported for backward compatibility
 pub use settings::{DatabaseConfig, MiddlewareConfig, Settings, TemplateConfig};
+
+// Re-export fragment system types at the crate root
+#[cfg(feature = "settings")]
+pub use settings::{
+	fragment::SettingsFragment,
+	core_settings::CoreSettings,
+	core_settings::HasCoreSettings,
+	security::SecuritySettings,
+	security::HasSecuritySettings,
+	cache::CacheSettings,
+	cache::HasCacheSettings,
+	session::SessionSettings,
+	session::HasSessionSettings,
+	cors::CorsSettings,
+	cors::HasCorsSettings,
+	static_files::StaticSettings,
+	static_files::HasStaticSettings,
+	media::MediaSettings,
+	media::HasMediaSettings,
+	email::EmailSettings,
+	email::HasEmailSettings,
+	logging::LoggingSettings,
+	logging::HasLoggingSettings,
+	i18n::I18nSettings,
+	i18n::HasI18nSettings,
+	template_settings::TemplateSettings,
+	template_settings::HasTemplateSettings,
+	contacts::ContactSettings,
+	contacts::HasContactSettings,
+};
