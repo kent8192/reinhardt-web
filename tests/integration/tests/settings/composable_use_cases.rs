@@ -234,3 +234,74 @@ fn use_case_legacy_flat_security_keys_deserialize() {
 		"Legacy flat append_slash should deserialize into core.security"
 	);
 }
+
+#[rstest]
+#[allow(deprecated)]
+fn use_case_settings_builder_flat_keys_into_typed() {
+	// Arrange — simulate DefaultSource with flat security keys (as used by introspect)
+	use reinhardt_conf::settings::builder::SettingsBuilder;
+	use reinhardt_conf::settings::profile::Profile;
+	use reinhardt_conf::settings::sources::DefaultSource;
+
+	let merged = SettingsBuilder::new()
+		.profile(Profile::Development)
+		.add_source(
+			DefaultSource::new()
+				.with_value("secret_key", serde_json::json!("test-secret-key"))
+				.with_value("debug", serde_json::json!(true))
+				.with_value("allowed_hosts", serde_json::json!([]))
+				.with_value("installed_apps", serde_json::json!([]))
+				.with_value("databases", serde_json::json!({}))
+				.with_value("templates", serde_json::json!([]))
+				.with_value("static_url", serde_json::json!("/static/"))
+				.with_value("staticfiles_dirs", serde_json::json!([]))
+				.with_value("media_url", serde_json::json!("/media/"))
+				.with_value("language_code", serde_json::json!("en-us"))
+				.with_value("time_zone", serde_json::json!("UTC"))
+				.with_value("use_i18n", serde_json::json!(false))
+				.with_value("use_tz", serde_json::json!(false))
+				.with_value("default_auto_field", serde_json::json!("BigAutoField"))
+				// Flat security keys (same as introspect's build_settings)
+				.with_value("secure_ssl_redirect", serde_json::json!(true))
+				.with_value("session_cookie_secure", serde_json::json!(true))
+				.with_value("csrf_cookie_secure", serde_json::json!(true))
+				.with_value("append_slash", serde_json::json!(false))
+				.with_value("middleware", serde_json::json!([]))
+				.with_value("root_urlconf", serde_json::json!(""))
+				.with_value("admins", serde_json::json!([]))
+				.with_value("managers", serde_json::json!([])),
+		)
+		.build()
+		.expect("SettingsBuilder should build with flat keys");
+
+	// Act — into_typed should correctly map flat keys via #[serde(flatten)]
+	let settings: Settings = merged
+		.into_typed()
+		.expect("into_typed should succeed with flat security keys");
+
+	// Assert — security fields should be accessible via core.security
+	assert_eq!(
+		settings.core.secret_key, "test-secret-key",
+		"secret_key should be in core via flatten"
+	);
+	assert!(
+		settings.core.debug,
+		"debug should be in core via flatten"
+	);
+	assert!(
+		settings.core.security.secure_ssl_redirect,
+		"Flat secure_ssl_redirect should map to core.security via double flatten"
+	);
+	assert!(
+		settings.core.security.session_cookie_secure,
+		"Flat session_cookie_secure should map to core.security via double flatten"
+	);
+	assert!(
+		settings.core.security.csrf_cookie_secure,
+		"Flat csrf_cookie_secure should map to core.security via double flatten"
+	);
+	assert!(
+		!settings.core.security.append_slash,
+		"Flat append_slash should map to core.security via double flatten"
+	);
+}
