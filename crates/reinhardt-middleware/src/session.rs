@@ -1223,6 +1223,9 @@ mod tests {
 // Injectable Implementations for Dependency Injection
 // ============================================================================
 
+/// Default session cookie name used when no `SessionCookieName` extension is present.
+const DEFAULT_SESSION_COOKIE_NAME: &str = "sessionid";
+
 /// Helper function to extract session ID from HTTP request cookies.
 ///
 /// Searches for a cookie with the specified name in the Cookie header.
@@ -1276,15 +1279,17 @@ impl Injectable for SessionData {
 			DiError::NotFound("Request not found in InjectionContext".to_string())
 		})?;
 
-		// Extract configured cookie name from request extensions
-		let cookie_name = request
-			.extensions
-			.get::<SessionCookieName>()
-			.map(|cn| cn.as_str().to_string())
-			.unwrap_or_else(|| "sessionid".to_string());
+		// Extract configured cookie name from request extensions.
+		// Extensions::get returns an owned value, so we extract it once and
+		// use a reference for the lookup to avoid additional allocation.
+		let ext_cookie_name = request.extensions.get::<SessionCookieName>();
+		let cookie_name = ext_cookie_name
+			.as_ref()
+			.map(|cn| cn.as_str())
+			.unwrap_or(DEFAULT_SESSION_COOKIE_NAME);
 
 		// Extract session ID from Cookie header
-		let session_id = extract_session_id_from_request(&request, &cookie_name)?;
+		let session_id = extract_session_id_from_request(&request, cookie_name)?;
 
 		// Load SessionData from store
 		store

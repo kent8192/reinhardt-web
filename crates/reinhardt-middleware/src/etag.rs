@@ -227,13 +227,16 @@ impl Middleware for ETagMiddleware {
 
 		// Check If-None-Match header (for GET/HEAD requests)
 		// Uses weak comparison per RFC 7232 Section 2.3.2:
-		// strip W/ prefix before comparing opaque-tag values
+		// strip W/ prefix before comparing opaque-tag values.
+		// Also handle wildcard "*" per RFC 7232 Section 3.2:
+		// If-None-Match: * means match any current entity.
 		if (method == "GET" || method == "HEAD")
 			&& if_none_match.as_ref().is_some_and(|inm| {
-				inm.split(',').any(|tag| {
-					strip_etag_for_weak_comparison(tag.trim())
-						== strip_etag_for_weak_comparison(&etag)
-				})
+				inm.trim() == "*"
+					|| inm.split(',').any(|tag| {
+						strip_etag_for_weak_comparison(tag.trim())
+							== strip_etag_for_weak_comparison(&etag)
+					})
 			}) {
 			// Return 304 Not Modified
 			let mut not_modified = Response::new(StatusCode::NOT_MODIFIED);
@@ -615,5 +618,38 @@ mod tests {
 
 		// Assert
 		assert_eq!(result, expected);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_if_none_match_wildcard_returns_304() {
+		// Arrange - RFC 7232 Section 3.2: If-None-Match: * should match any current entity
+		let config = ETagConfig::new();
+		let middleware = ETagMiddleware::new(config);
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			hyper::header::IF_NONE_MATCH,
+			hyper::header::HeaderValue::from_static("*"),
+		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert - wildcard should match, returning 304 Not Modified
+		assert_eq!(
+			response.status,
+			StatusCode::NOT_MODIFIED,
+			"If-None-Match: * should return 304 for GET requests per RFC 7232"
+		);
 	}
 }

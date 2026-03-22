@@ -999,24 +999,110 @@ mod tests {
 		assert!(!session.is_modified());
 	}
 
+	/// Test double that records the TTL passed to `save()`.
+	///
+	/// Wraps `InMemorySessionBackend` and captures the TTL argument
+	/// so tests can assert that `Session::save()` forwards the configured timeout.
+	#[derive(Clone)]
+	struct TtlRecordingBackend {
+		inner: InMemorySessionBackend,
+		recorded_ttl: Arc<std::sync::Mutex<Option<Option<u64>>>>,
+	}
+
+	impl TtlRecordingBackend {
+		fn new() -> Self {
+			Self {
+				inner: InMemorySessionBackend::new(),
+				recorded_ttl: Arc::new(std::sync::Mutex::new(None)),
+			}
+		}
+
+		fn recorded_ttl(&self) -> Option<Option<u64>> {
+			*self.recorded_ttl.lock().unwrap()
+		}
+	}
+
+	use std::sync::Arc;
+
+	#[async_trait::async_trait]
+	impl super::super::backends::SessionBackend for TtlRecordingBackend {
+		async fn load<T>(
+			&self,
+			session_key: &str,
+		) -> Result<Option<T>, super::super::backends::SessionError>
+		where
+			T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
+		{
+			self.inner.load(session_key).await
+		}
+
+		async fn save<T>(
+			&self,
+			session_key: &str,
+			data: &T,
+			ttl: Option<u64>,
+		) -> Result<(), super::super::backends::SessionError>
+		where
+			T: Serialize + Send + Sync,
+		{
+			*self.recorded_ttl.lock().unwrap() = Some(ttl);
+			self.inner.save(session_key, data, ttl).await
+		}
+
+		async fn delete(
+			&self,
+			session_key: &str,
+		) -> Result<(), super::super::backends::SessionError> {
+			self.inner.delete(session_key).await
+		}
+
+		async fn exists(
+			&self,
+			session_key: &str,
+		) -> Result<bool, super::super::backends::SessionError> {
+			self.inner.exists(session_key).await
+		}
+	}
+
 	#[rstest::rstest]
 	#[tokio::test]
-	async fn test_session_save_uses_configured_timeout() {
-		// Arrange
-		let backend = InMemorySessionBackend::new();
-		let mut session = Session::new(backend);
+	async fn test_session_save_forwards_configured_ttl_to_backend() {
+		// Arrange - use TtlRecordingBackend to verify save() passes the TTL
+		let backend = TtlRecordingBackend::new();
+		let mut session = Session::new(backend.clone());
 		session.set_timeout(7200);
 		session.set("key", "value").unwrap();
 
 		// Act
 		session.save().await.unwrap();
 
-		// Assert - verify timeout was set to custom value (not hardcoded 3600)
-		assert_eq!(session.get_timeout(), 7200);
-		// Verify data persisted correctly with the custom timeout
-		let key = session.session_key().unwrap().to_string();
-		let loaded: Option<HashMap<String, Value>> = session.backend.load(&key).await.unwrap();
-		assert!(loaded.is_some());
+		// Assert - verify the backend received the correct TTL value
+		let recorded = backend.recorded_ttl();
+		assert_eq!(
+			recorded,
+			Some(Some(7200)),
+			"Session::save() should forward the configured timeout (7200) to backend.save()"
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_session_save_forwards_default_ttl_to_backend() {
+		// Arrange - use default timeout (1800)
+		let backend = TtlRecordingBackend::new();
+		let mut session = Session::new(backend.clone());
+		session.set("key", "value").unwrap();
+
+		// Act
+		session.save().await.unwrap();
+
+		// Assert - verify the backend received the default TTL value
+		let recorded = backend.recorded_ttl();
+		assert_eq!(
+			recorded,
+			Some(Some(1800)),
+			"Session::save() should forward the default timeout (1800) to backend.save()"
+		);
 	}
 
 	#[tokio::test]

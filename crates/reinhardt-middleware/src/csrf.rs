@@ -350,12 +350,15 @@ impl Default for CsrfMiddleware {
 impl Middleware for CsrfMiddleware {
 	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
 		// Check if path is exempt
+		// Use path-segment boundary matching to prevent false prefix matches.
+		// For example, exempt "/api" should match "/api" and "/api/webhook"
+		// but NOT "/api2" or "/application".
 		let path = request.uri.path();
 		if self
 			.config
 			.exempt_paths
 			.iter()
-			.any(|exempt| path.starts_with(exempt))
+			.any(|exempt| path == exempt.as_str() || path.starts_with(&format!("{}/", exempt)))
 		{
 			return handler.handle(request).await;
 		}
