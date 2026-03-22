@@ -3,7 +3,9 @@
 //! This module provides router integration for admin panel,
 //! generating ServerRouter from AdminSite configuration.
 //!
-//! Server functions are explicitly registered via `.server_fn()` in `admin_routes()`.
+//! On non-wasm32 targets, server functions are explicitly registered via `.server_fn()`
+//! in `admin_routes()`. On wasm32 targets, only the namespaced router is returned
+//! (server function registration is server-side only).
 
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt_pages::server_fn::ServerFnRouterExt;
@@ -165,12 +167,36 @@ mod tests {
 	#[cfg(not(target_arch = "wasm32"))]
 	#[rstest]
 	fn test_admin_routes_registers_all_server_functions() {
-		// Arrange & Act
+		// Arrange
+		let expected_paths = [
+			"/api/server_fn/get_dashboard",
+			"/api/server_fn/get_list",
+			"/api/server_fn/get_detail",
+			"/api/server_fn/get_fields",
+			"/api/server_fn/create_record",
+			"/api/server_fn/update_record",
+			"/api/server_fn/delete_record",
+			"/api/server_fn/bulk_delete_records",
+			"/api/server_fn/export_data",
+			"/api/server_fn/import_data",
+		];
+
+		// Act
 		let router = admin_routes();
+		let routes = router.get_all_routes();
+		let paths: Vec<&str> = routes.iter().map(|(path, _, _, _)| path.as_str()).collect();
 
 		// Assert - 10 server functions should be registered
-		let routes = router.get_all_routes();
 		assert_eq!(routes.len(), 10);
+		for expected in &expected_paths {
+			assert_eq!(
+				paths.iter().filter(|p| p == &expected).count(),
+				1,
+				"expected path {} to be registered exactly once, but found paths: {:?}",
+				expected,
+				paths
+			);
+		}
 	}
 
 	#[rstest]
