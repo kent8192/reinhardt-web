@@ -246,7 +246,7 @@ async fn handle_request(
 	let path = req.uri().path();
 
 	// Serve static files in debug mode from staticfiles_dirs
-	if settings.debug && path.starts_with(&settings.static_url) {
+	if settings.core.debug && path.starts_with(&settings.static_url) {
 		// Strip static_url prefix to get relative path
 		let relative_path = match path.strip_prefix(&settings.static_url) {
 			Some(p) => p,
@@ -412,7 +412,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let settings = Arc::new(load_settings());
 
 	// Display loaded settings info (debug mode only)
-	if settings.debug {
+	if settings.core.debug {
 		println!(
 			"{}",
 			format!(

@@ -82,7 +82,7 @@ impl CsrfMiddlewareConfig {
 
 	/// Create from application `Settings`
 	///
-	/// Maps `Settings.csrf_cookie_secure` to `CsrfConfig.cookie_secure`.
+	/// Maps `Settings.core.security.csrf_cookie_secure` to `CsrfConfig.cookie_secure`.
 	///
 	/// # Examples
 	///
@@ -90,14 +90,17 @@ impl CsrfMiddlewareConfig {
 	/// use reinhardt_conf::Settings;
 	/// use reinhardt_middleware::csrf::CsrfMiddlewareConfig;
 	///
+	/// #[allow(deprecated)]
 	/// let settings = Settings::default();
+	/// #[allow(deprecated)]
 	/// let config = CsrfMiddlewareConfig::from_settings(&settings);
 	/// assert!(!config.csrf_config.cookie_secure);
 	/// ```
+	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
 	pub fn from_settings(settings: &Settings) -> Self {
 		Self {
 			csrf_config: CsrfConfig {
-				cookie_secure: settings.csrf_cookie_secure,
+				cookie_secure: settings.core.security.csrf_cookie_secure,
 				..CsrfConfig::default()
 			},
 			..Self::default()
@@ -215,9 +218,12 @@ impl CsrfMiddleware {
 	/// use reinhardt_conf::Settings;
 	/// use reinhardt_middleware::csrf::CsrfMiddleware;
 	///
+	/// #[allow(deprecated)]
 	/// let settings = Settings::default();
+	/// #[allow(deprecated)]
 	/// let middleware = CsrfMiddleware::from_settings(&settings);
 	/// ```
+	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
 	pub fn from_settings(settings: &Settings) -> Self {
 		Self::with_config(CsrfMiddlewareConfig::from_settings(settings))
 	}
@@ -855,11 +861,13 @@ mod tests {
 	#[tokio::test]
 	async fn test_csrf_config_from_settings_secure() {
 		// Arrange
+		#[allow(deprecated)]
 		let mut settings =
 			Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
-		settings.csrf_cookie_secure = true;
+		settings.core.security.csrf_cookie_secure = true;
 
 		// Act
+		#[allow(deprecated)]
 		let config = CsrfMiddlewareConfig::from_settings(&settings);
 
 		// Assert
@@ -870,9 +878,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_csrf_config_from_settings_defaults() {
 		// Arrange
+		#[allow(deprecated)]
 		let settings = Settings::default();
 
 		// Act
+		#[allow(deprecated)]
 		let config = CsrfMiddlewareConfig::from_settings(&settings);
 
 		// Assert
@@ -885,9 +895,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_csrf_middleware_from_settings() {
 		// Arrange
+		#[allow(deprecated)]
 		let mut settings =
 			Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
-		settings.csrf_cookie_secure = true;
+		settings.core.security.csrf_cookie_secure = true;
+		#[allow(deprecated)]
 		let middleware = CsrfMiddleware::from_settings(&settings);
 		let handler = Arc::new(TestHandler);
 

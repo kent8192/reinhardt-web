@@ -59,21 +59,23 @@ impl Default for SecurityConfig {
 	}
 }
 
+#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
 impl From<&Settings> for SecurityConfig {
 	fn from(settings: &Settings) -> Self {
-		let hsts_enabled = settings.secure_hsts_seconds.is_some();
-		let hsts_seconds = settings
+		let security = &settings.core.security;
+		let hsts_enabled = security.secure_hsts_seconds.is_some();
+		let hsts_seconds = security
 			.secure_hsts_seconds
 			.map(|s| u32::try_from(s).unwrap_or(u32::MAX))
 			.unwrap_or(0);
 
 		Self {
-			ssl_redirect: settings.secure_ssl_redirect,
+			ssl_redirect: security.secure_ssl_redirect,
 			hsts_enabled,
 			hsts_seconds,
-			hsts_include_subdomains: settings.secure_hsts_include_subdomains,
-			hsts_preload: settings.secure_hsts_preload,
-			secure_proxy_ssl_header: settings.secure_proxy_ssl_header.clone(),
+			hsts_include_subdomains: security.secure_hsts_include_subdomains,
+			hsts_preload: security.secure_hsts_preload,
+			secure_proxy_ssl_header: security.secure_proxy_ssl_header.clone(),
 			..Self::default()
 		}
 	}
@@ -202,12 +204,15 @@ impl SecurityMiddleware {
 	/// use reinhardt_middleware::SecurityMiddleware;
 	/// use std::path::PathBuf;
 	///
+	/// #[allow(deprecated)]
 	/// let mut settings = Settings::new(PathBuf::from("/app"), "secret".to_string());
-	/// settings.secure_ssl_redirect = true;
-	/// settings.secure_hsts_seconds = Some(31536000);
+	/// settings.core.security.secure_ssl_redirect = true;
+	/// settings.core.security.secure_hsts_seconds = Some(31536000);
 	///
+	/// #[allow(deprecated)]
 	/// let middleware = SecurityMiddleware::from_settings(&settings);
 	/// ```
+	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
 	pub fn from_settings(settings: &Settings) -> Self {
 		Self {
 			config: SecurityConfig::from(settings),
@@ -709,16 +714,18 @@ mod tests {
 	#[tokio::test]
 	async fn test_from_settings_conversion() {
 		// Arrange
+		#[allow(deprecated)]
 		let mut settings =
 			Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
-		settings.secure_ssl_redirect = true;
-		settings.secure_hsts_seconds = Some(63072000);
-		settings.secure_hsts_include_subdomains = true;
-		settings.secure_hsts_preload = true;
-		settings.secure_proxy_ssl_header =
+		settings.core.security.secure_ssl_redirect = true;
+		settings.core.security.secure_hsts_seconds = Some(63072000);
+		settings.core.security.secure_hsts_include_subdomains = true;
+		settings.core.security.secure_hsts_preload = true;
+		settings.core.security.secure_proxy_ssl_header =
 			Some(("X-Forwarded-Proto".to_string(), "https".to_string()));
 
 		// Act
+		#[allow(deprecated)]
 		let config = SecurityConfig::from(&settings);
 
 		// Assert
@@ -736,9 +743,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_from_settings_defaults() {
 		// Arrange
+		#[allow(deprecated)]
 		let settings = Settings::default();
 
 		// Act
+		#[allow(deprecated)]
 		let config = SecurityConfig::from(&settings);
 
 		// Assert
@@ -756,12 +765,14 @@ mod tests {
 	#[tokio::test]
 	async fn test_from_settings_constructor() {
 		// Arrange
+		#[allow(deprecated)]
 		let mut settings =
 			Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
-		settings.secure_ssl_redirect = true;
-		settings.secure_hsts_seconds = Some(31536000);
+		settings.core.security.secure_ssl_redirect = true;
+		settings.core.security.secure_hsts_seconds = Some(31536000);
 
 		// Act
+		#[allow(deprecated)]
 		let middleware = SecurityMiddleware::from_settings(&settings);
 		let handler = Arc::new(TestHandler);
 

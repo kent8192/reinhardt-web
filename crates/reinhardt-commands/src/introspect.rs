@@ -399,6 +399,7 @@ fn load_settings_databases() -> Vec<(String, String)> {
 	};
 
 	settings
+		.core
 		.databases
 		.iter()
 		.map(|(alias, config)| (alias.clone(), config.engine.clone()))
@@ -483,11 +484,11 @@ fn load_security_settings() -> (bool, bool, bool, bool, bool) {
 
 	match build_settings(&base_dir, &settings_dir, profile, &profile_str) {
 		Ok(s) => (
-			s.secure_ssl_redirect,
-			s.session_cookie_secure,
-			s.csrf_cookie_secure,
-			s.secure_hsts_seconds.unwrap_or(0) > 0,
-			s.debug,
+			s.core.security.secure_ssl_redirect,
+			s.core.security.session_cookie_secure,
+			s.core.security.csrf_cookie_secure,
+			s.core.security.secure_hsts_seconds.unwrap_or(0) > 0,
+			s.core.debug,
 		),
 		Err(_) => (false, false, false, false, true),
 	}
