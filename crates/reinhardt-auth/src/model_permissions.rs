@@ -56,8 +56,11 @@ pub struct DjangoModelPermissions {
 impl DjangoModelPermissions {
 	/// Create a new Django model permission checker without a model name
 	///
-	/// Without a model name, permission checks require explicit permission strings
-	/// and HTTP method-based permission derivation is not available.
+	/// Without a model name, HTTP method-based permission derivation is not available.
+	/// The [`has_permission`](Permission::has_permission) implementation will fall back to
+	/// allowing only admin users (based on `context.is_admin`); explicit permission
+	/// string checks are only available via the direct API
+	/// [`user_has_permission`](Self::user_has_permission).
 	///
 	/// # Examples
 	///
@@ -75,12 +78,17 @@ impl DjangoModelPermissions {
 
 	/// Create a new Django model permission checker with a model name
 	///
-	/// The model name should be in `app_label.model` format (e.g., "blog.article").
+	/// The model name **must** be in `app_label.model` format (e.g., `"blog.article"`).
 	/// This enables HTTP method-based permission derivation:
 	/// - POST -> `app_label.add_model`
 	/// - PUT/PATCH -> `app_label.change_model`
 	/// - DELETE -> `app_label.delete_model`
 	/// - GET/HEAD/OPTIONS -> `app_label.view_model`
+	///
+	/// # Panics
+	///
+	/// Panics if `model_name` does not contain exactly one `.` separator
+	/// (i.e., both `app_label` and `model` parts must be non-empty).
 	///
 	/// # Examples
 	///
@@ -89,7 +97,25 @@ impl DjangoModelPermissions {
 	///
 	/// let perm = DjangoModelPermissions::with_model_name("blog.article");
 	/// ```
+	///
+	/// ```should_panic
+	/// use reinhardt_auth::model_permissions::DjangoModelPermissions;
+	///
+	/// // Missing dot separator - panics
+	/// let _perm = DjangoModelPermissions::with_model_name("blogarticle");
+	/// ```
 	pub fn with_model_name(model_name: &str) -> Self {
+		let Some((app_label, model)) = model_name.split_once('.') else {
+			panic!(
+				"model_name must be in `app_label.model` format, got: {:?}",
+				model_name
+			);
+		};
+		assert!(
+			!app_label.is_empty() && !model.is_empty(),
+			"both app_label and model must be non-empty in `app_label.model` format, got: {:?}",
+			model_name
+		);
 		Self {
 			user_permissions: Arc::new(RwLock::new(HashMap::new())),
 			model_name: Some(model_name.to_string()),
