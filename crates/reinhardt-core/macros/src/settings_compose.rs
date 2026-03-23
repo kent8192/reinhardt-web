@@ -203,16 +203,15 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 		})
 		.collect();
 
-	// Generate Has* trait impls
+	// Generate HasSettings<F> impls for each fragment
 	let trait_impls: Vec<_> = includes
 		.iter()
 		.map(|(key, type_name)| {
 			let key_ident = format_ident!("{}", key);
 			let type_path = resolve_fragment_type(type_name, &conf_crate);
-			let trait_path = resolve_fragment_trait(type_name, &conf_crate);
 			quote! {
-				impl #trait_path for #struct_name {
-					fn #key_ident(&self) -> &#type_path {
+				impl #conf_crate::settings::fragment::HasSettings<#type_path> for #struct_name {
+					fn get_settings(&self) -> &#type_path {
 						&self.#key_ident
 					}
 				}
@@ -268,18 +267,6 @@ fn resolve_fragment_type(type_name: &str, conf_crate: &TokenStream) -> TokenStre
 	}
 }
 
-/// Returns a token stream for a `Has{Fragment}` trait path.
-///
-/// Built-in fragment traits are emitted as fully qualified paths through
-/// `conf_crate`.  User-defined traits are emitted as bare identifiers.
-fn resolve_fragment_trait(type_name: &str, conf_crate: &TokenStream) -> TokenStream {
-	let trait_ident = format_ident!("Has{}", type_name);
-	if BUILTIN_FRAGMENTS.contains(&type_name) {
-		quote! { #conf_crate::#trait_ident }
-	} else {
-		quote! { #trait_ident }
-	}
-}
 
 #[cfg(test)]
 mod tests {

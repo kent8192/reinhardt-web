@@ -56,7 +56,8 @@ pub mod docs;
 /// Test utilities for settings configuration.
 pub mod testing;
 
-use core_settings::{CoreSettings, HasCoreSettings};
+use core_settings::CoreSettings;
+use fragment::HasSettings;
 use reinhardt_utils::staticfiles::storage::StaticFilesConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -454,8 +455,8 @@ impl Default for Settings {
 }
 
 #[allow(deprecated)] // Internal: Settings is deprecated but we still need the HasCoreSettings bridge
-impl HasCoreSettings for Settings {
-	fn core(&self) -> &CoreSettings {
+impl HasSettings<CoreSettings> for Settings {
+	fn get_settings(&self) -> &CoreSettings {
 		&self.core
 	}
 }

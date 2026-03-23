@@ -98,8 +98,7 @@ password = "local-password"
 ```rust
 use reinhardt::settings;
 use reinhardt::{
-	CoreSettings, DefaultSource, HasCoreSettings, LowPriorityEnvSource, Profile, SettingsBuilder,
-	TomlFileSource,
+	CoreSettings, DefaultSource, LowPriorityEnvSource, Profile, SettingsBuilder, TomlFileSource,
 };
 use std::env;
 
@@ -404,7 +403,7 @@ fragments. All fragments, including `CoreSettings`, must be declared explicitly.
 
 ```rust
 use reinhardt::settings;
-use reinhardt::{CoreSettings, HasCoreSettings};
+use reinhardt::CoreSettings;
 
 #[settings(core: CoreSettings)]
 pub struct ProjectSettings;
@@ -419,9 +418,8 @@ Use `field_name: FragmentType` syntax, separated by `|`:
 
 ```rust
 use reinhardt::settings;
-use reinhardt::{CoreSettings, HasCoreSettings};
+use reinhardt::CoreSettings;
 use reinhardt::conf::{CacheSettings, SessionSettings, CorsSettings};
-use reinhardt::conf::{HasCacheSettings, HasSessionSettings, HasCorsSettings};
 
 #[settings(core: CoreSettings | cache: CacheSettings | session: SessionSettings | cors: CorsSettings)]
 pub struct ProjectSettings;
@@ -439,7 +437,7 @@ If you don't need `CoreSettings`, simply omit it:
 
 ```rust
 use reinhardt::settings;
-use reinhardt::conf::{CacheSettings, HasCacheSettings};
+use reinhardt::conf::CacheSettings;
 
 #[settings(cache: CacheSettings)]
 pub struct ProjectSettings;
@@ -451,7 +449,12 @@ pub struct ProjectSettings;
 
 Each fragment has a corresponding `Has*` trait that enables generic programming
 over settings types. This is useful for writing functions that only require
-specific fragments:
+specific fragments.
+
+**Note:** You do not need to implement `Has*Settings` traits manually. The
+`#[settings]` macro automatically provides blanket implementations for all
+declared fragments. To use method-call syntax like `settings.core()` in
+generic bounds, import the specific `Has*Settings` trait:
 
 ```rust
 use reinhardt::conf::{HasCoreSettings, HasCacheSettings};
@@ -462,6 +465,10 @@ fn configure_app<S: HasCoreSettings + HasCacheSettings>(settings: &S) {
 	// Use settings without knowing the concrete ProjectSettings type
 }
 ```
+
+When using the `#[settings]` macro, you only need to import the fragment types
+(e.g., `CoreSettings`), not the accessor traits — the macro generates all
+necessary trait implementations automatically.
 
 ### Profile-Based Validation
 
@@ -574,7 +581,7 @@ TOML files, use `EnvSource`:
 
 ```rust
 use reinhardt::settings;
-use reinhardt::{CoreSettings, DefaultSource, EnvSource, HasCoreSettings, SettingsBuilder};
+use reinhardt::{CoreSettings, DefaultSource, EnvSource, SettingsBuilder};
 
 #[settings(core: CoreSettings)]
 pub struct ProjectSettings;
@@ -601,8 +608,7 @@ pub fn get_settings() -> ProjectSettings {
 ```rust
 use reinhardt::settings;
 use reinhardt::{
-	CoreSettings, DefaultSource, HasCoreSettings, LowPriorityEnvSource, Profile, SettingsBuilder,
-	TomlFileSource,
+	CoreSettings, DefaultSource, LowPriorityEnvSource, Profile, SettingsBuilder, TomlFileSource,
 };
 use std::env;
 
