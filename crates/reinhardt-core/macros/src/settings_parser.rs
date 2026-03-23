@@ -75,7 +75,13 @@ fn field_override(input: &str) -> nom::IResult<&str, FieldOverride> {
 	let (input, _) = multispace0(input)?;
 	let (input, pol) = policy(input)?;
 	let (input, _) = multispace0(input)?;
-	Ok((input, FieldOverride { field_name: field_name.to_string(), policy: pol }))
+	Ok((
+		input,
+		FieldOverride {
+			field_name: field_name.to_string(),
+			policy: pol,
+		},
+	))
 }
 
 /// Parse a `{ field: policy, ... }` override block.
@@ -111,14 +117,18 @@ fn field_overrides(input: &str) -> nom::IResult<&str, Vec<FieldOverride>> {
 /// Parse `key: TypeName` with an optional `{ field: policy, ... }` override block.
 fn include_entry(input: &str) -> nom::IResult<&str, FragmentEntry> {
 	let (input, (key, type_name)) =
-		separated_pair(ident, delimited(multispace0, char(':'), multispace0), ident).parse(input)?;
+		separated_pair(ident, delimited(multispace0, char(':'), multispace0), ident)
+			.parse(input)?;
 	let (input, _) = multispace0(input)?;
 	let (input, overrides) = opt(field_overrides).parse(input)?;
-	Ok((input, FragmentEntry::Include {
-		key: key.to_string(),
-		type_name: type_name.to_string(),
-		overrides: overrides.unwrap_or_default(),
-	}))
+	Ok((
+		input,
+		FragmentEntry::Include {
+			key: key.to_string(),
+			type_name: type_name.to_string(),
+			overrides: overrides.unwrap_or_default(),
+		},
+	))
 }
 
 /// Parse `!TypeName`.
@@ -325,7 +335,11 @@ mod tests {
 		// Assert
 		assert_eq!(result.1.len(), 1);
 		match &result.1[0] {
-			FragmentEntry::Include { key, type_name, overrides } => {
+			FragmentEntry::Include {
+				key,
+				type_name,
+				overrides,
+			} => {
 				assert_eq!(key, "core");
 				assert_eq!(type_name, "CoreSettings");
 				assert_eq!(overrides.len(), 2);
@@ -348,7 +362,11 @@ mod tests {
 
 		// Assert
 		match &result.1[0] {
-			FragmentEntry::Include { key, type_name, overrides } => {
+			FragmentEntry::Include {
+				key,
+				type_name,
+				overrides,
+			} => {
 				assert_eq!(key, "cors");
 				assert_eq!(type_name, "CorsSettings");
 				assert!(overrides.is_empty());

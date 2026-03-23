@@ -141,7 +141,11 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 
 	for entry in &entries {
 		match entry {
-			FragmentEntry::Include { key, type_name, overrides } => {
+			FragmentEntry::Include {
+				key,
+				type_name,
+				overrides,
+			} => {
 				if !seen_keys.insert(key.clone()) {
 					return Err(syn::Error::new(
 						proc_macro2::Span::call_site(),
@@ -413,7 +417,6 @@ fn resolve_fragment_type(type_name: &str, conf_crate: &TokenStream) -> TokenStre
 		quote! { #type_ident }
 	}
 }
-
 
 #[cfg(test)]
 mod tests {

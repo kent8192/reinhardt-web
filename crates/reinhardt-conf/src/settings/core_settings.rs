@@ -91,15 +91,51 @@ impl SettingsFragment for CoreSettings {
 		// secret_key has no default and must be explicitly provided by the user.
 		// All other fields have serde defaults or implement Default.
 		static POLICIES: [FieldPolicy; 9] = [
-			FieldPolicy { name: "base_dir", requirement: FieldRequirement::Optional, has_default: true },
-			FieldPolicy { name: "secret_key", requirement: FieldRequirement::Required, has_default: false },
-			FieldPolicy { name: "debug", requirement: FieldRequirement::Optional, has_default: true },
-			FieldPolicy { name: "allowed_hosts", requirement: FieldRequirement::Optional, has_default: true },
-			FieldPolicy { name: "databases", requirement: FieldRequirement::Optional, has_default: true },
-			FieldPolicy { name: "security", requirement: FieldRequirement::Optional, has_default: true },
-			FieldPolicy { name: "middleware", requirement: FieldRequirement::Optional, has_default: true },
-			FieldPolicy { name: "root_urlconf", requirement: FieldRequirement::Optional, has_default: true },
-			FieldPolicy { name: "installed_apps", requirement: FieldRequirement::Optional, has_default: true },
+			FieldPolicy {
+				name: "base_dir",
+				requirement: FieldRequirement::Optional,
+				has_default: true,
+			},
+			FieldPolicy {
+				name: "secret_key",
+				requirement: FieldRequirement::Required,
+				has_default: false,
+			},
+			FieldPolicy {
+				name: "debug",
+				requirement: FieldRequirement::Optional,
+				has_default: true,
+			},
+			FieldPolicy {
+				name: "allowed_hosts",
+				requirement: FieldRequirement::Optional,
+				has_default: true,
+			},
+			FieldPolicy {
+				name: "databases",
+				requirement: FieldRequirement::Optional,
+				has_default: true,
+			},
+			FieldPolicy {
+				name: "security",
+				requirement: FieldRequirement::Optional,
+				has_default: true,
+			},
+			FieldPolicy {
+				name: "middleware",
+				requirement: FieldRequirement::Optional,
+				has_default: true,
+			},
+			FieldPolicy {
+				name: "root_urlconf",
+				requirement: FieldRequirement::Optional,
+				has_default: true,
+			},
+			FieldPolicy {
+				name: "installed_apps",
+				requirement: FieldRequirement::Optional,
+				has_default: true,
+			},
 		];
 		&POLICIES
 	}

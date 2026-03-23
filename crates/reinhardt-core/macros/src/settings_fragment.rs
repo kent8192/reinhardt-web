@@ -117,7 +117,10 @@ fn has_serde_default(field: &syn::Field) -> bool {
 
 /// Strip `#[setting(...)]` attributes from field attrs, returning cleaned attrs.
 fn strip_setting_attrs(attrs: &[syn::Attribute]) -> Vec<&syn::Attribute> {
-	attrs.iter().filter(|a| !a.path().is_ident("setting")).collect()
+	attrs
+		.iter()
+		.filter(|a| !a.path().is_ident("setting"))
+		.collect()
 }
 
 /// Implementation for `#[settings(fragment = true, section = "...")]`.
