@@ -5,7 +5,7 @@ use reinhardt::settings;
 use reinhardt::{DefaultSource, LowPriorityEnvSource, Profile, SettingsBuilder, TomlFileSource};
 use std::env;
 
-#[settings()]
+#[settings(core: CoreSettings)]
 struct ProjectSettings;
 
 /// Get settings based on environment variable

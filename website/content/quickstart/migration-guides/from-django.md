@@ -181,7 +181,7 @@ Reinhardt uses a composable, macro-based settings system with multiple sources:
 use reinhardt::settings;
 use reinhardt::{SettingsBuilder, EnvSource, DefaultSource};
 
-#[settings()]
+#[settings(core: CoreSettings)]
 pub struct ProjectSettings;
 
 pub fn get_settings() -> ProjectSettings {

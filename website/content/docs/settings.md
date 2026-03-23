@@ -100,7 +100,7 @@ use reinhardt::settings;
 use reinhardt::{DefaultSource, LowPriorityEnvSource, Profile, SettingsBuilder, TomlFileSource};
 use std::env;
 
-#[settings(/* add fragments here, e.g.: cache: CacheSettings | session: SessionSettings */)]
+#[settings(core: CoreSettings /* add fragments here, e.g.: | cache: CacheSettings | session: SessionSettings */)]
 pub struct ProjectSettings;
 
 pub fn get_settings() -> ProjectSettings {
@@ -395,14 +395,14 @@ than under a `[core]` section.
 ### The `#[settings]` Macro
 
 The `#[settings]` macro generates a `ProjectSettings` struct with the specified
-fragments. `CoreSettings` is always included by default.
+fragments. All fragments, including `CoreSettings`, must be declared explicitly.
 
 #### Basic Usage (CoreSettings only)
 
 ```rust
 use reinhardt::settings;
 
-#[settings()]
+#[settings(core: CoreSettings)]
 pub struct ProjectSettings;
 
 // Generated struct has a `core` field of type CoreSettings.
@@ -417,7 +417,7 @@ Use `field_name: FragmentType` syntax, separated by `|`:
 use reinhardt::settings;
 use reinhardt::conf::{CacheSettings, SessionSettings, CorsSettings};
 
-#[settings(cache: CacheSettings | session: SessionSettings | cors: CorsSettings)]
+#[settings(core: CoreSettings | cache: CacheSettings | session: SessionSettings | cors: CorsSettings)]
 pub struct ProjectSettings;
 
 // Access:
@@ -427,15 +427,15 @@ pub struct ProjectSettings;
 // settings.cors.allowed_origins
 ```
 
-#### Excluding CoreSettings
+#### Without CoreSettings
 
-In rare cases where you don't need `CoreSettings`, exclude it with `!`:
+If you don't need `CoreSettings`, simply omit it:
 
 ```rust
 use reinhardt::settings;
 use reinhardt::conf::CacheSettings;
 
-#[settings(!CoreSettings, cache: CacheSettings)]
+#[settings(cache: CacheSettings)]
 pub struct ProjectSettings;
 
 // Only has settings.cache, no settings.core
@@ -570,7 +570,7 @@ TOML files, use `EnvSource`:
 use reinhardt::settings;
 use reinhardt::{SettingsBuilder, EnvSource, DefaultSource};
 
-#[settings()]
+#[settings(core: CoreSettings)]
 pub struct ProjectSettings;
 
 pub fn get_settings() -> ProjectSettings {
@@ -597,7 +597,7 @@ use reinhardt::settings;
 use reinhardt::{DefaultSource, LowPriorityEnvSource, Profile, SettingsBuilder, TomlFileSource};
 use std::env;
 
-#[settings()]
+#[settings(core: CoreSettings)]
 pub struct ProjectSettings;
 
 pub fn get_settings() -> ProjectSettings {
