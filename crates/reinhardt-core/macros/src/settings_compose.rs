@@ -26,9 +26,7 @@ fn camel_to_snake(s: &str) -> String {
 					// aB → a_b
 					result.push('_');
 				} else if prev.is_uppercase()
-					&& chars
-						.get(i + 1)
-						.is_some_and(|next| next.is_lowercase())
+					&& chars.get(i + 1).is_some_and(|next| next.is_lowercase())
 				{
 					// ABc → a_bc (acronym boundary)
 					result.push('_');
