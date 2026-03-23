@@ -294,6 +294,9 @@ pub use reinhardt_conf::settings::core_settings::{CoreSettings, HasCoreSettings}
 pub use reinhardt_conf::settings::fragment::SettingsFragment;
 
 #[cfg(all(feature = "conf", not(target_arch = "wasm32")))]
+pub use reinhardt_conf::settings::fragment::HasSettings;
+
+#[cfg(all(feature = "conf", not(target_arch = "wasm32")))]
 pub use reinhardt_conf::settings::builder::SettingsBuilder;
 
 #[cfg(all(feature = "conf", not(target_arch = "wasm32")))]

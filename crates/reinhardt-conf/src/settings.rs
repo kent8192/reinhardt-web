@@ -454,6 +454,8 @@ impl Default for Settings {
 }
 
 #[allow(deprecated)] // Internal: Settings is deprecated but we still need the HasCoreSettings bridge
+// WARNING: Do NOT implement HasSettings<CoreSettings> for Settings.
+// That would conflict with the blanket impl for HasCoreSettings.
 impl HasCoreSettings for Settings {
 	fn core(&self) -> &CoreSettings {
 		&self.core
