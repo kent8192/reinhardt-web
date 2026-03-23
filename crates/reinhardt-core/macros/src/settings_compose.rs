@@ -141,7 +141,7 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 
 	for entry in &entries {
 		match entry {
-			FragmentEntry::Include { key, type_name } => {
+			FragmentEntry::Include { key, type_name, overrides: _ } => {
 				if !seen_keys.insert(key.clone()) {
 					return Err(syn::Error::new(
 						proc_macro2::Span::call_site(),
