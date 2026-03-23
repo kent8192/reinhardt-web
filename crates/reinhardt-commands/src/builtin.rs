@@ -1345,10 +1345,10 @@ impl BaseCommand for RunServerCommand {
 			}
 
 			// Display index file info (Refs #2869)
-			if with_pages && !no_spa {
-				if let Some(index_str) = ctx.option("index") {
-					ctx.info(&format!("📄 Index:   {} (specified)", index_str));
-				}
+			if with_pages
+				&& !no_spa && let Some(index_str) = ctx.option("index")
+			{
+				ctx.info(&format!("📄 Index:   {} (specified)", index_str));
 			}
 
 			#[cfg(feature = "openapi-router")]
@@ -1613,7 +1613,13 @@ impl RunServerCommand {
 			{
 				let index_raw = ctx.option("index").map(|s| s.to_string());
 				Self::run_with_autoreload(
-					ctx, address, _insecure, no_docs, with_pages, static_dir, no_spa,
+					ctx,
+					address,
+					_insecure,
+					no_docs,
+					with_pages,
+					static_dir,
+					no_spa,
 					index_raw.as_deref(),
 				)
 				.await
@@ -1635,6 +1641,8 @@ impl RunServerCommand {
 
 	/// Run server with file watching and auto-reload
 	#[cfg(all(feature = "server", feature = "autoreload"))]
+	// Allow many arguments: autoreload handler mirrors run_server configuration options
+	#[allow(clippy::too_many_arguments)]
 	async fn run_with_autoreload(
 		ctx: &CommandContext,
 		address: &str,

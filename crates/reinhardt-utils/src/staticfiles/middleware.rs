@@ -484,8 +484,7 @@ mod tests {
 	#[rstest]
 	fn test_config_index_file_builder_sets_path() {
 		// Arrange & Act
-		let config = StaticFilesConfig::new("dist")
-			.index_file("./index.html");
+		let config = StaticFilesConfig::new("dist").index_file("./index.html");
 
 		// Assert
 		assert_eq!(config.index_file, Some(PathBuf::from("./index.html")));
@@ -494,8 +493,7 @@ mod tests {
 	#[rstest]
 	fn test_config_index_file_absolute_path_preserved() {
 		// Arrange & Act
-		let config = StaticFilesConfig::new("dist")
-			.index_file("/absolute/path/index.html");
+		let config = StaticFilesConfig::new("dist").index_file("/absolute/path/index.html");
 
 		// Assert
 		assert_eq!(
@@ -512,8 +510,7 @@ mod tests {
 		let index_path = dir.path().join("index.html");
 		std::fs::write(&index_path, "<html>hello</html>").unwrap();
 
-		let config = StaticFilesConfig::new(dir.path().join("dist"))
-			.index_file(&index_path);
+		let config = StaticFilesConfig::new(dir.path().join("dist")).index_file(&index_path);
 		let middleware = StaticFilesMiddleware::new(config);
 
 		// Act
@@ -521,10 +518,7 @@ mod tests {
 
 		// Assert
 		let response = response.expect("should return Some");
-		assert_eq!(
-			response.headers.get("Content-Type").unwrap(),
-			"text/html"
-		);
+		assert_eq!(response.headers.get("Content-Type").unwrap(), "text/html");
 		assert!(response.headers.contains_key("ETag"));
 		assert!(response.headers.contains_key("Cache-Control"));
 	}
@@ -569,8 +563,7 @@ mod tests {
 		std::fs::create_dir_all(&dist).unwrap();
 		std::fs::write(dist.join("index.html"), "<html>dist</html>").unwrap();
 
-		let config = StaticFilesConfig::new(&dist)
-			.index_file(&index_path);
+		let config = StaticFilesConfig::new(&dist).index_file(&index_path);
 		let middleware = StaticFilesMiddleware::new(config);
 
 		// Act
@@ -611,8 +604,7 @@ mod tests {
 		let index_path = dir.path().join("index.html");
 		std::fs::write(&index_path, "<html>etag test</html>").unwrap();
 
-		let config = StaticFilesConfig::new(dir.path().join("dist"))
-			.index_file(&index_path);
+		let config = StaticFilesConfig::new(dir.path().join("dist")).index_file(&index_path);
 		let middleware = StaticFilesMiddleware::new(config);
 
 		// Act
@@ -633,8 +625,7 @@ mod tests {
 		let index_path = dir.path().join("index.html");
 		std::fs::write(&index_path, "<html>consistency</html>").unwrap();
 
-		let config = StaticFilesConfig::new(dir.path())
-			.index_file(&index_path);
+		let config = StaticFilesConfig::new(dir.path()).index_file(&index_path);
 		let middleware = StaticFilesMiddleware::new(config);
 
 		// Act
@@ -673,8 +664,8 @@ mod tests {
 		let dir = tempfile::tempdir().unwrap();
 		std::fs::write(dir.path().join("default.html"), "<html>custom</html>").unwrap();
 
-		let config = StaticFilesConfig::new(dir.path())
-			.index_files(vec!["default.html".to_string()]);
+		let config =
+			StaticFilesConfig::new(dir.path()).index_files(vec!["default.html".to_string()]);
 		let middleware = StaticFilesMiddleware::new(config);
 
 		// Act
@@ -704,8 +695,12 @@ mod tests {
 		let response2 = middleware.serve_direct_file(&index_path).await;
 
 		// Assert
-		let body1 = std::str::from_utf8(&response1.unwrap().body).unwrap().to_string();
-		let body2 = std::str::from_utf8(&response2.unwrap().body).unwrap().to_string();
+		let body1 = std::str::from_utf8(&response1.unwrap().body)
+			.unwrap()
+			.to_string();
+		let body2 = std::str::from_utf8(&response2.unwrap().body)
+			.unwrap()
+			.to_string();
 		assert_eq!(body1, body2);
 		assert_eq!(body1, "<html>safe</html>");
 	}

@@ -1434,7 +1434,10 @@ mod tests {
 		};
 
 		// Assert
-		if let Commands::Runserver { with_pages, index, .. } = command {
+		if let Commands::Runserver {
+			with_pages, index, ..
+		} = command
+		{
 			assert!(!with_pages);
 			assert_eq!(index, Some("./index.html".to_string()));
 		} else {

@@ -219,10 +219,7 @@ impl CollectStaticCommand {
 			} else {
 				return Err(io::Error::new(
 					io::ErrorKind::NotFound,
-					format!(
-						"Index source file not found: {}",
-						index_source.display()
-					),
+					format!("Index source file not found: {}", index_source.display()),
 				));
 			}
 		}
