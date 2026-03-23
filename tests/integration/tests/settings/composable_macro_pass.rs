@@ -14,6 +14,7 @@
 use reinhardt_conf::settings::cache::{CacheSettings, HasCacheSettings};
 use reinhardt_conf::settings::core_settings::{CoreSettings, HasCoreSettings};
 use reinhardt_conf::settings::fragment::SettingsFragment;
+use reinhardt_conf::settings::policy::FieldRequirement;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_macros::settings;
 use rstest::rstest;
@@ -492,4 +493,142 @@ fn compose_type_only_serde_roundtrip() {
 		deserialized.core.secret_key, "roundtrip",
 		"Type-only syntax should survive serde roundtrip"
 	);
+}
+
+// ============================================================================
+// Field policies tests — #[setting(...)] attribute and default_policy
+// ============================================================================
+
+/// Fragment with explicit field-level setting attributes.
+#[settings(fragment = true, section = "field_policy_test")]
+struct FieldPolicyFragment {
+	#[setting(required)]
+	pub api_key: String,
+	#[setting(optional)]
+	pub timeout: u64,
+	#[setting(default = "8080")]
+	pub port: u16,
+	pub unset_field: String,
+}
+
+#[rstest]
+fn fragment_field_policies_returns_correct_metadata() {
+	// Arrange / Act
+	let policies = FieldPolicyFragment::field_policies();
+
+	// Assert
+	assert_eq!(policies.len(), 4, "Should have a policy for each field");
+
+	// api_key: required
+	assert_eq!(policies[0].name, "api_key");
+	assert_eq!(policies[0].requirement, FieldRequirement::Required);
+	assert!(!policies[0].has_default);
+
+	// timeout: optional
+	assert_eq!(policies[1].name, "timeout");
+	assert_eq!(policies[1].requirement, FieldRequirement::Optional);
+	assert!(policies[1].has_default);
+
+	// port: default = "8080"
+	assert_eq!(policies[2].name, "port");
+	assert_eq!(policies[2].requirement, FieldRequirement::Optional);
+	assert!(policies[2].has_default);
+
+	// unset_field: inherits default_policy (optional by default)
+	assert_eq!(policies[3].name, "unset_field");
+	assert_eq!(policies[3].requirement, FieldRequirement::Optional);
+	assert!(policies[3].has_default);
+}
+
+/// Fragment with `default_policy = "required"` — all unmarked fields become required.
+#[settings(fragment = true, section = "strict_test", default_policy = "required")]
+struct StrictFragment {
+	pub host: String,
+	#[setting(optional)]
+	pub timeout: u64,
+}
+
+#[rstest]
+fn fragment_default_policy_required_makes_unmarked_fields_required() {
+	// Arrange / Act
+	let policies = StrictFragment::field_policies();
+
+	// Assert
+	assert_eq!(policies.len(), 2);
+
+	// host: inherits default_policy = "required"
+	assert_eq!(policies[0].name, "host");
+	assert_eq!(policies[0].requirement, FieldRequirement::Required);
+	assert!(!policies[0].has_default);
+
+	// timeout: explicitly optional
+	assert_eq!(policies[1].name, "timeout");
+	assert_eq!(policies[1].requirement, FieldRequirement::Optional);
+	assert!(policies[1].has_default);
+}
+
+/// Fragment with `default_policy = "optional"` — explicit, same as default behavior.
+#[settings(fragment = true, section = "lenient_test", default_policy = "optional")]
+struct LenientFragment {
+	pub host: String,
+	#[setting(required)]
+	pub secret: String,
+}
+
+#[rstest]
+fn fragment_default_policy_optional_makes_unmarked_fields_optional() {
+	// Arrange / Act
+	let policies = LenientFragment::field_policies();
+
+	// Assert
+	assert_eq!(policies.len(), 2);
+
+	// host: inherits default_policy = "optional"
+	assert_eq!(policies[0].name, "host");
+	assert_eq!(policies[0].requirement, FieldRequirement::Optional);
+	assert!(policies[0].has_default);
+
+	// secret: explicitly required
+	assert_eq!(policies[1].name, "secret");
+	assert_eq!(policies[1].requirement, FieldRequirement::Required);
+	assert!(!policies[1].has_default);
+}
+
+/// Fragment with default expression — verify serde deserialization uses the default.
+#[rstest]
+fn fragment_default_expr_applies_on_deserialization() {
+	// Arrange
+	let json = r#"{"api_key":"test","timeout":30,"unset_field":"val"}"#;
+
+	// Act — port is missing from JSON, should use default = 8080
+	let fragment: FieldPolicyFragment = serde_json::from_str(json).unwrap();
+
+	// Assert
+	assert_eq!(
+		fragment.port, 8080,
+		"Missing field with default expression should use the default value"
+	);
+}
+
+/// Fragment without any #[setting] attrs — backward compatible, all optional by default.
+#[rstest]
+fn fragment_without_setting_attrs_returns_all_optional() {
+	// Arrange / Act
+	let policies = CustomDbSettings::field_policies();
+
+	// Assert
+	assert_eq!(policies.len(), 2);
+	for policy in policies {
+		assert_eq!(
+			policy.requirement,
+			FieldRequirement::Optional,
+			"Field '{}' should be optional by default",
+			policy.name,
+		);
+		assert!(
+			policy.has_default,
+			"Field '{}' should have has_default=true by default",
+			policy.name,
+		);
+	}
 }
