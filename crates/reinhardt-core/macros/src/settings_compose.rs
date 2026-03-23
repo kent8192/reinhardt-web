@@ -74,16 +74,15 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 		})
 		.collect();
 
-	// Generate Has* trait impls
+	// Generate HasSettings<F> impls for each fragment
 	let trait_impls: Vec<_> = includes
 		.iter()
 		.map(|(key, type_name)| {
 			let key_ident = format_ident!("{}", key);
 			let type_ident = format_ident!("{}", type_name);
-			let trait_name = format_ident!("Has{}", type_name);
 			quote! {
-				impl #trait_name for #struct_name {
-					fn #key_ident(&self) -> &#type_ident {
+				impl #conf_crate::settings::fragment::HasSettings<#type_ident> for #struct_name {
+					fn get_settings(&self) -> &#type_ident {
 						&self.#key_ident
 					}
 				}

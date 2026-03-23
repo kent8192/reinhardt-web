@@ -65,6 +65,8 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 		#vis struct #struct_name #struct_body
 
 		impl #conf_crate::settings::fragment::SettingsFragment for #struct_name {
+			type Accessor = dyn #trait_name;
+
 			fn section() -> &'static str {
 				#section
 			}
@@ -74,6 +76,12 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 		#vis trait #trait_name {
 			/// Get a reference to the settings fragment.
 			fn #method_name(&self) -> &#struct_name;
+		}
+
+		impl<T: #conf_crate::settings::fragment::HasSettings<#struct_name>> #trait_name for T {
+			fn #method_name(&self) -> &#struct_name {
+				self.get_settings()
+			}
 		}
 	})
 }
