@@ -148,6 +148,10 @@ pub enum Commands {
 		/// Disable SPA mode (no index.html fallback)
 		#[arg(long)]
 		no_spa: bool,
+
+		/// Path to index.html for SPA fallback (auto-detected from project root)
+		#[arg(long)]
+		index: Option<String>,
 	},
 
 	/// Run an interactive Rust shell (REPL)
@@ -460,6 +464,7 @@ pub async fn run_command_with_registry(
 			with_pages,
 			static_dir,
 			no_spa,
+			index,
 		} => {
 			execute_runserver(RunServerOptions {
 				address,
@@ -469,6 +474,7 @@ pub async fn run_command_with_registry(
 				with_pages,
 				static_dir,
 				no_spa,
+				index,
 				verbosity,
 			})
 			.await
@@ -679,6 +685,7 @@ struct RunServerOptions {
 	with_pages: bool,
 	static_dir: String,
 	no_spa: bool,
+	index: Option<String>,
 	verbosity: u8,
 }
 
@@ -703,6 +710,9 @@ async fn execute_runserver(options: RunServerOptions) -> Result<(), Box<dyn std:
 	ctx.set_option("static-dir".to_string(), options.static_dir);
 	if options.no_spa {
 		ctx.set_option("no-spa".to_string(), "true".to_string());
+	}
+	if let Some(ref index) = options.index {
+		ctx.set_option("index".to_string(), index.clone());
 	}
 
 	let cmd = RunServerCommand;
@@ -1149,6 +1159,7 @@ mod tests {
 			with_pages: false,
 			static_dir: "dist".to_string(),
 			no_spa: false,
+			index: None,
 		};
 
 		// Act
@@ -1316,5 +1327,49 @@ mod tests {
 			"Expected lib+bin hint in error message, got: {}",
 			error_msg
 		);
+	}
+
+	#[rstest]
+	fn test_runserver_with_index_option() {
+		// Arrange
+		let command = Commands::Runserver {
+			address: "127.0.0.1:8000".to_string(),
+			noreload: false,
+			insecure: false,
+			no_docs: false,
+			with_pages: true,
+			static_dir: "dist".to_string(),
+			no_spa: false,
+			index: Some("./index.html".to_string()),
+		};
+
+		// Act & Assert
+		if let Commands::Runserver { index, .. } = command {
+			assert_eq!(index, Some("./index.html".to_string()));
+		} else {
+			panic!("Expected Runserver command");
+		}
+	}
+
+	#[rstest]
+	fn test_runserver_without_index_option() {
+		// Arrange
+		let command = Commands::Runserver {
+			address: "127.0.0.1:8000".to_string(),
+			noreload: false,
+			insecure: false,
+			no_docs: false,
+			with_pages: false,
+			static_dir: "dist".to_string(),
+			no_spa: false,
+			index: None,
+		};
+
+		// Act & Assert
+		if let Commands::Runserver { index, .. } = command {
+			assert!(index.is_none());
+		} else {
+			panic!("Expected Runserver command");
+		}
 	}
 }

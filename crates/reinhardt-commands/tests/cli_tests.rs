@@ -33,6 +33,7 @@ fn create_runserver_default() -> Commands {
 		with_pages: false,
 		static_dir: "dist".to_string(),
 		no_spa: false,
+		index: None,
 	}
 }
 
@@ -55,6 +56,7 @@ fn create_runserver_with_options(
 		with_pages,
 		static_dir: static_dir.to_string(),
 		no_spa,
+		index: None,
 	}
 }
 
