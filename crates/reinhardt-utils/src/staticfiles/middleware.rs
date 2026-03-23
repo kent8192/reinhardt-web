@@ -3,7 +3,7 @@
 //! This middleware intercepts requests and serves static files from a configured directory.
 //! It supports SPA (Single Page Application) mode for WASM frontend applications.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -212,13 +212,67 @@ impl StaticFilesMiddleware {
 	}
 
 	/// Serve the SPA fallback (index.html).
+	///
+	/// Priority:
+	/// 1. `index_file` — explicit path (can be outside `root_dir`)
+	/// 2. `index_files` — searched within `root_dir`
 	async fn serve_spa_fallback(&self) -> Option<Response> {
+		// Priority 1: Explicit index file path (can be outside root_dir)
+		if let Some(ref index_path) = self.config.index_file {
+			return self.serve_direct_file(index_path).await;
+		}
+
+		// Priority 2: Search within root_dir (existing behavior)
 		for index_file in &self.config.index_files {
 			if let Some(response) = self.try_serve(index_file).await {
 				return Some(response);
 			}
 		}
 		None
+	}
+
+	/// Serve a file directly from an absolute path (bypasses root_dir security check).
+	///
+	/// This is safe because the path is a fixed, user-specified value from CLI
+	/// or configuration — not derived from the request URL.
+	///
+	/// Generates ETag and Cache-Control headers consistent with `try_serve`.
+	async fn serve_direct_file(&self, path: &Path) -> Option<Response> {
+		let content = tokio::fs::read(path).await.ok()?;
+		let mime = mime_guess::from_path(path)
+			.first_or_octet_stream()
+			.to_string();
+
+		// Generate ETag from content hash (consistent with StaticFileHandler::etag)
+		let etag = {
+			use std::collections::hash_map::DefaultHasher;
+			use std::hash::{Hash, Hasher};
+			let mut hasher = DefaultHasher::new();
+			content.hash(&mut hasher);
+			format!("\"{}\"", hasher.finish())
+		};
+
+		let filename = path
+			.file_name()
+			.and_then(|n| n.to_str())
+			.unwrap_or("index.html");
+
+		let mut response = Response::ok()
+			.with_header("Content-Type", &mime)
+			.with_header("ETag", &etag);
+
+		if self.config.cache_config.enabled {
+			let policy = self.config.cache_config.get_policy(filename);
+			let cache_value = policy.to_header_value();
+			response = response.with_header("Cache-Control", &cache_value);
+
+			if let Some(vary) = &policy.vary {
+				response = response.with_header("Vary", vary);
+			}
+		}
+
+		response = response.with_body(content);
+		Some(response)
 	}
 }
 
@@ -448,5 +502,70 @@ mod tests {
 			config.index_file,
 			Some(PathBuf::from("/absolute/path/index.html"))
 		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_direct_file_existing_html() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let index_path = dir.path().join("index.html");
+		std::fs::write(&index_path, "<html>hello</html>").unwrap();
+
+		let config = StaticFilesConfig::new(dir.path().join("dist"))
+			.index_file(&index_path);
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware.serve_direct_file(&index_path).await;
+
+		// Assert
+		let response = response.expect("should return Some");
+		assert_eq!(
+			response.headers.get("Content-Type").unwrap(),
+			"text/html"
+		);
+		assert!(response.headers.contains_key("ETag"));
+		assert!(response.headers.contains_key("Cache-Control"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_direct_file_nonexistent_returns_none() {
+		// Arrange
+		let config = StaticFilesConfig::new("dist");
+		let middleware = StaticFilesMiddleware::new(config);
+		let nonexistent = PathBuf::from("/tmp/nonexistent_index_2869.html");
+
+		// Act
+		let response = middleware.serve_direct_file(&nonexistent).await;
+
+		// Assert
+		assert!(response.is_none());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_direct_file_cache_disabled_no_cache_header() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let index_path = dir.path().join("index.html");
+		std::fs::write(&index_path, "<html>hello</html>").unwrap();
+
+		let mut cache_config = CacheControlConfig::new();
+		cache_config.enabled = false;
+
+		let config = StaticFilesConfig::new(dir.path().join("dist"))
+			.index_file(&index_path)
+			.cache_config(cache_config);
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware.serve_direct_file(&index_path).await;
+
+		// Assert
+		let response = response.expect("should return Some");
+		assert!(response.headers.contains_key("ETag"));
+		assert!(!response.headers.contains_key("Cache-Control"));
 	}
 }
