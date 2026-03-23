@@ -50,6 +50,61 @@ fn admin_spa_html() -> String {
 		.to_string()
 }
 
+/// Embedded admin CSS asset
+#[cfg(not(target_arch = "wasm32"))]
+const ADMIN_CSS: &str = include_str!("../../assets/style.css");
+
+/// Embedded admin JS asset
+#[cfg(not(target_arch = "wasm32"))]
+const ADMIN_JS: &str = include_str!("../../assets/main.js");
+
+/// Serves the embedded admin CSS stylesheet
+#[cfg(not(target_arch = "wasm32"))]
+async fn admin_css_handler(
+	_request: reinhardt_http::Request,
+) -> reinhardt_core::exception::Result<reinhardt_http::Response> {
+	Ok(reinhardt_http::Response::ok()
+		.with_header("Content-Type", "text/css; charset=utf-8")
+		.with_header("Cache-Control", "public, max-age=3600")
+		.with_body(ADMIN_CSS))
+}
+
+/// Serves the embedded admin JS entry point
+#[cfg(not(target_arch = "wasm32"))]
+async fn admin_js_handler(
+	_request: reinhardt_http::Request,
+) -> reinhardt_core::exception::Result<reinhardt_http::Response> {
+	Ok(reinhardt_http::Response::ok()
+		.with_header("Content-Type", "application/javascript; charset=utf-8")
+		.with_header("Cache-Control", "public, max-age=3600")
+		.with_body(ADMIN_JS))
+}
+
+/// Returns a `ServerRouter` that serves the admin panel's static assets.
+///
+/// Mount this router at `/static/admin/` alongside the main `admin_routes()`:
+///
+/// ```rust,no_run
+/// use reinhardt_admin::core::{admin_routes, admin_static_routes};
+///
+/// // Mount admin views and static assets
+/// let admin = admin_routes();          // mount at /admin/
+/// let assets = admin_static_routes();  // mount at /static/admin/
+/// ```
+///
+/// The admin HTML page references `/static/admin/style.css` and
+/// `/static/admin/main.js`. This router serves those embedded assets.
+pub fn admin_static_routes() -> ServerRouter {
+	let router = ServerRouter::new();
+
+	#[cfg(not(target_arch = "wasm32"))]
+	let router = router
+		.function("/style.css", hyper::Method::GET, admin_css_handler)
+		.function("/main.js", hyper::Method::GET, admin_js_handler);
+
+	router
+}
+
 /// Admin router builder
 ///
 /// Builds a ServerRouter from an AdminSite with all CRUD endpoints.
@@ -332,6 +387,81 @@ mod tests {
 
 	#[cfg(not(target_arch = "wasm32"))]
 	#[rstest]
+	fn test_admin_spa_html_references_css_and_js() {
+		// Arrange & Act
+		let html = admin_spa_html();
+
+		// Assert
+		assert!(
+			html.contains("/static/admin/style.css"),
+			"HTML should reference admin CSS"
+		);
+		assert!(
+			html.contains("/static/admin/main.js"),
+			"HTML should reference admin JS"
+		);
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
+	fn test_embedded_admin_css_is_not_empty() {
+		// Assert
+		assert!(
+			!ADMIN_CSS.is_empty(),
+			"Embedded admin CSS should not be empty"
+		);
+		assert!(
+			ADMIN_CSS.contains("box-sizing"),
+			"CSS should contain UnoCSS preflight reset"
+		);
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
+	fn test_embedded_admin_js_is_not_empty() {
+		// Assert
+		assert!(
+			!ADMIN_JS.is_empty(),
+			"Embedded admin JS should not be empty"
+		);
+		assert!(
+			ADMIN_JS.contains("Reinhardt Admin"),
+			"JS should contain admin panel identifier"
+		);
+	}
+
+	#[rstest]
+	fn test_admin_static_routes_creates_router() {
+		// Arrange & Act
+		let router = admin_static_routes();
+
+		// Assert - should not have namespace (mounted separately)
+		assert_eq!(router.namespace(), None);
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
+	fn test_admin_static_routes_registers_asset_routes() {
+		// Arrange & Act
+		let router = admin_static_routes();
+		let routes = router.get_all_routes();
+		let paths: Vec<&str> = routes.iter().map(|(path, _, _, _)| path.as_str()).collect();
+
+		// Assert
+		assert!(
+			paths.contains(&"/style.css"),
+			"Should serve style.css, found: {:?}",
+			paths
+		);
+		assert!(
+			paths.contains(&"/main.js"),
+			"Should serve main.js, found: {:?}",
+			paths
+		);
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
 	#[tokio::test]
 	async fn test_admin_spa_handler_includes_csp_headers() {
 		// Arrange
@@ -357,6 +487,60 @@ mod tests {
 		assert!(
 			headers.contains_key("x-content-type-options"),
 			"Response should include X-Content-Type-Options header"
+		);
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
+	#[tokio::test]
+	async fn test_admin_css_handler_returns_css_content_type() {
+		// Arrange
+		let request = reinhardt_http::Request::builder()
+			.method(hyper::Method::GET)
+			.uri("/style.css")
+			.build()
+			.unwrap();
+
+		// Act
+		let response = admin_css_handler(request).await.unwrap();
+
+		// Assert
+		let content_type = response
+			.headers
+			.get("content-type")
+			.map(|v| v.to_str().unwrap_or(""))
+			.unwrap_or("");
+		assert!(
+			content_type.contains("text/css"),
+			"CSS handler should return text/css content type, got: {}",
+			content_type
+		);
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
+	#[tokio::test]
+	async fn test_admin_js_handler_returns_js_content_type() {
+		// Arrange
+		let request = reinhardt_http::Request::builder()
+			.method(hyper::Method::GET)
+			.uri("/main.js")
+			.build()
+			.unwrap();
+
+		// Act
+		let response = admin_js_handler(request).await.unwrap();
+
+		// Assert
+		let content_type = response
+			.headers
+			.get("content-type")
+			.map(|v| v.to_str().unwrap_or(""))
+			.unwrap_or("");
+		assert!(
+			content_type.contains("javascript"),
+			"JS handler should return application/javascript content type, got: {}",
+			content_type
 		);
 	}
 }
