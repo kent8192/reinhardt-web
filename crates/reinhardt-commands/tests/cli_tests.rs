@@ -329,6 +329,7 @@ fn test_commands_collectstatic_all_options() {
 		dry_run: true,
 		link: true,
 		ignore: vec!["*.map".to_string(), "*.log".to_string()],
+		index: None,
 	};
 
 	match cmd {
@@ -338,6 +339,7 @@ fn test_commands_collectstatic_all_options() {
 			dry_run,
 			link,
 			ignore,
+			..
 		} => {
 			assert!(clear, "clear should be true");
 			assert!(no_input, "no_input should be true");
@@ -364,6 +366,7 @@ fn test_commands_collectstatic_defaults() {
 		dry_run: false,
 		link: false,
 		ignore: vec![],
+		index: None,
 	};
 
 	match cmd {
@@ -373,6 +376,7 @@ fn test_commands_collectstatic_defaults() {
 			dry_run,
 			link,
 			ignore,
+			..
 		} => {
 			assert!(!clear, "clear should be false by default");
 			assert!(!no_input, "no_input should be false by default");
@@ -746,6 +750,7 @@ fn test_collectstatic_decision_flag_combinations(
 		dry_run,
 		link,
 		ignore: vec![],
+		index: None,
 	};
 
 	match cmd {
@@ -788,6 +793,7 @@ fn test_collectstatic_multiple_ignore_patterns() {
 		dry_run: false,
 		link: false,
 		ignore: patterns.clone(),
+		index: None,
 	};
 
 	match cmd {
@@ -834,6 +840,7 @@ fn test_cli_commands_sanity() {
 			dry_run: false,
 			link: false,
 			ignore: vec![],
+			index: None,
 		},
 		Commands::Showurls { names: false },
 	];
@@ -1247,6 +1254,7 @@ fn test_all_command_variants_creatable() {
 		dry_run: true,
 		link: true,
 		ignore: vec!["*.txt".to_string()],
+		index: None,
 	};
 
 	let showurls = Commands::Showurls { names: true };

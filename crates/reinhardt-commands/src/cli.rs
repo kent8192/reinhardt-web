@@ -193,6 +193,10 @@ pub enum Commands {
 		/// Ignore file patterns (glob)
 		#[arg(long, value_name = "PATTERN")]
 		ignore: Vec<String>,
+
+		/// Path to index.html source file (auto-detected from project root)
+		#[arg(long)]
+		index: Option<String>,
 	},
 
 	/// Display all registered URL patterns
@@ -487,7 +491,8 @@ pub async fn run_command_with_registry(
 			dry_run,
 			link,
 			ignore,
-		} => execute_collectstatic(clear, no_input, dry_run, link, ignore, verbosity).await,
+			index,
+		} => execute_collectstatic(clear, no_input, dry_run, link, ignore, index, verbosity).await,
 		Commands::Showurls { names } => execute_showurls(names, verbosity).await,
 		#[cfg(feature = "introspect")]
 		Commands::Introspect { format, section } => execute_introspect(format, section, verbosity).await,
@@ -764,6 +769,7 @@ async fn execute_collectstatic(
 	dry_run: bool,
 	link: bool,
 	ignore: Vec<String>,
+	index: Option<String>,
 	verbosity: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	// Load settings from TOML files
@@ -857,8 +863,24 @@ async fn execute_collectstatic(
 		fast_compare: false,
 	};
 
+	// Resolve index source path
+	// Refs #2869: Auto-detect index.html from project root for collectstatic
+	let index_source = match &index {
+		Some(path) => Some(PathBuf::from(path)),
+		None => {
+			// Auto-detect from project root
+			let candidate = base_dir.join("index.html");
+			if candidate.exists() {
+				Some(candidate)
+			} else {
+				None
+			}
+		}
+	};
+
 	// Create and execute command in blocking context
 	let mut cmd = CollectStaticCommand::new(config, options);
+	cmd.set_index_source(index_source);
 	let result = tokio::task::spawn_blocking(move || {
 		// Call the sync execute() method directly (not the BaseCommand trait method)
 		CollectStaticCommand::execute(&mut cmd)
@@ -1254,6 +1276,7 @@ mod tests {
 			dry_run: false,
 			link: false,
 			ignore: vec![],
+			index: None,
 		};
 
 		// Act
