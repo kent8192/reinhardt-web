@@ -1,4 +1,4 @@
-//! Handler for `#[settings(key: Type | key: Type)]`
+//! Handler for `#[settings(key: Type | Type | key: Type)]`
 
 use crate::settings_parser::{FragmentEntry, parse_settings_attr};
 use proc_macro2::TokenStream;
@@ -129,6 +129,24 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 					));
 				}
 				includes.push((key.clone(), type_name.clone()));
+			}
+			FragmentEntry::TypeOnly(type_name) => {
+				let key = infer_field_name(type_name).map_err(|msg| {
+					syn::Error::new(proc_macro2::Span::call_site(), msg)
+				})?;
+				if !seen_keys.insert(key.clone()) {
+					return Err(syn::Error::new(
+						proc_macro2::Span::call_site(),
+						format!("Duplicate field name `{}`.", key),
+					));
+				}
+				if !seen_types.insert(type_name.clone()) {
+					return Err(syn::Error::new(
+						proc_macro2::Span::call_site(),
+						format!("Duplicate fragment type `{}`.", type_name),
+					));
+				}
+				includes.push((key, type_name.clone()));
 			}
 			FragmentEntry::Exclude(type_name) => {
 				return Err(syn::Error::new(
