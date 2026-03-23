@@ -17,6 +17,8 @@ pub mod fragment;
 pub mod i18n;
 pub mod logging;
 pub mod media;
+/// Field-level policy types for settings fragments.
+pub mod policy;
 pub mod prelude;
 pub mod profile;
 pub mod secret_types;
@@ -463,6 +465,9 @@ impl HasSettings<CoreSettings> for Settings {
 
 // Re-export DatabaseConfig from database_config module
 pub use database_config::DatabaseConfig;
+
+// Re-export policy types
+pub use policy::{FieldPolicy, FieldRequirement};
 
 /// Template engine configuration
 #[non_exhaustive]
