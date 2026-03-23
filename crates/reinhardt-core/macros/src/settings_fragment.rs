@@ -192,6 +192,25 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 	let mut default_fn_defs = Vec::new();
 	let mut new_fields = Vec::new();
 
+	// Settings fragments must use named fields (braced structs)
+	match &input.fields {
+		Fields::Unnamed(unnamed) => {
+			return Err(syn::Error::new(
+				unnamed.paren_token.span.join(),
+				"tuple structs are not supported for `#[settings(fragment = true)]`. \
+				 Use a named-field struct instead.",
+			));
+		}
+		Fields::Unit => {
+			return Err(syn::Error::new(
+				input.ident.span(),
+				"unit structs are not supported for `#[settings(fragment = true)]`. \
+				 Use a named-field struct instead.",
+			));
+		}
+		Fields::Named(_) => {}
+	}
+
 	if let Fields::Named(ref named) = input.fields {
 		for field in &named.named {
 			let field_name = field.ident.as_ref().unwrap();
@@ -220,7 +239,9 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 					)
 				}
 				Some(SettingAttr::Default(expr)) => {
-					let fn_name = format_ident!("__default_{}", field_name);
+					// Include struct name in generated function to avoid collisions
+					// between multiple fragment structs in the same module
+					let fn_name = format_ident!("__default_{}_{}", struct_name, field_name);
 					let field_ty = &field.ty;
 					let expr_tokens: TokenStream = expr.parse().map_err(|e| {
 						syn::Error::new(

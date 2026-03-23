@@ -261,7 +261,7 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 		let type_path = resolve_fragment_type(type_name, &conf_crate);
 		let method_name = format_ident!("resolved_{}_policies", key);
 
-		// Generate match arms for each override
+		// Generate match arms for each override (mutate existing entries)
 		let match_arms: Vec<_> = overrides
 			.iter()
 			.map(|ovr| {
@@ -269,6 +269,27 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 				let requirement_tokens = policy_kind_to_tokens(&ovr.policy, &conf_crate);
 				quote! {
 					#field_name_str => p.requirement = #requirement_tokens,
+				}
+			})
+			.collect();
+
+		// Generate insert statements for overrides not present in base policies.
+		// This handles the case where `field_policies()` returns an empty slice
+		// but the composition applies overrides that should still take effect.
+		let insert_stmts: Vec<_> = overrides
+			.iter()
+			.map(|ovr| {
+				let field_name_str = &ovr.field_name;
+				let requirement_tokens = policy_kind_to_tokens(&ovr.policy, &conf_crate);
+				let is_optional = matches!(ovr.policy, PolicyKind::Optional);
+				quote! {
+					if !policies.iter().any(|p| p.name == #field_name_str) {
+						policies.push(#conf_crate::settings::policy::FieldPolicy {
+							name: #field_name_str,
+							requirement: #requirement_tokens,
+							has_default: #is_optional,
+						});
+					}
 				}
 			})
 			.collect();
@@ -283,6 +304,8 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 						_ => {}
 					}
 				}
+				// Insert new entries for overrides targeting fields not in base policies
+				#(#insert_stmts)*
 				policies
 			}
 		});

@@ -591,6 +591,91 @@ mod tests {
 		assert!(message.contains("section `[core]`"));
 	}
 
+	#[rstest]
+	fn test_build_composed_missing_required_field() {
+		// Arrange
+		use crate::settings::composed::ComposedSettings;
+		use crate::settings::profile::Profile;
+		use crate::settings::validation::ValidationResult;
+		use serde::Serialize;
+
+		#[derive(Clone, Debug, Serialize, Deserialize)]
+		struct MinimalComposed {
+			#[serde(default)]
+			optional_field: String,
+		}
+
+		impl ComposedSettings for MinimalComposed {
+			fn validate_requirements(merged: &IndexMap<String, Value>) -> Result<(), BuildError> {
+				// Require "secret_key" to be present
+				if !merged.contains_key("secret_key") {
+					return Err(BuildError::MissingRequiredField {
+						section: "test",
+						field: "secret_key",
+					});
+				}
+				Ok(())
+			}
+
+			fn validate_fragments(&self, _profile: &Profile) -> ValidationResult {
+				Ok(())
+			}
+		}
+
+		// Act: build without providing required key
+		let result = SettingsBuilder::new().build_composed::<MinimalComposed>();
+
+		// Assert: should fail with MissingRequiredField
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(
+			matches!(
+				err,
+				BuildError::MissingRequiredField {
+					section: "test",
+					field: "secret_key"
+				}
+			),
+			"expected MissingRequiredField, got: {err:?}"
+		);
+	}
+
+	#[rstest]
+	fn test_build_composed_success() {
+		// Arrange
+		use crate::settings::composed::ComposedSettings;
+		use crate::settings::profile::Profile;
+		use crate::settings::validation::ValidationResult;
+		use serde::Serialize;
+
+		#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+		struct SimpleComposed {
+			#[serde(default)]
+			name: String,
+		}
+
+		impl ComposedSettings for SimpleComposed {
+			fn validate_requirements(_merged: &IndexMap<String, Value>) -> Result<(), BuildError> {
+				// No required fields
+				Ok(())
+			}
+
+			fn validate_fragments(&self, _profile: &Profile) -> ValidationResult {
+				Ok(())
+			}
+		}
+
+		// Act: build with a value
+		let result = SettingsBuilder::new()
+			.add_source(DefaultSource::new().with_value("name", Value::String("app".to_string())))
+			.build_composed::<SimpleComposed>();
+
+		// Assert
+		assert!(result.is_ok());
+		let composed = result.unwrap();
+		assert_eq!(composed.name, "app");
+	}
+
 	#[test]
 	fn test_settings_builder_keys() {
 		let settings = SettingsBuilder::new()
