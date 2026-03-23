@@ -5,6 +5,7 @@
 //! linked into the test binary so that `inventory` can discover the admin's
 //! `AppStaticFilesConfig` registration at link time.
 
+use reinhardt_admin::core::AdminSite;
 use reinhardt_apps::get_app_static_files;
 use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions};
 use reinhardt_utils::staticfiles::StaticFilesConfig;
@@ -13,8 +14,13 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-// Force linker to include reinhardt_admin so inventory picks up the registration
-extern crate reinhardt_admin;
+// Ensure reinhardt_admin is linked so inventory discovers the registration.
+// Accessing a concrete type prevents the linker from stripping the crate.
+const _: () = {
+	fn _force_link() {
+		let _ = std::mem::size_of::<AdminSite>();
+	}
+};
 
 // ============================================================================
 // Inventory Discovery Tests
