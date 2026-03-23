@@ -25,14 +25,13 @@ fn camel_to_snake(s: &str) -> String {
 				if prev.is_lowercase() || prev.is_ascii_digit() {
 					// aB → a_b
 					result.push('_');
-				} else if prev.is_uppercase() {
-					// Check if next char is lowercase (end of acronym)
-					if let Some(&next) = chars.get(i + 1) {
-						if next.is_lowercase() {
-							// ABc → a_bc (acronym boundary)
-							result.push('_');
-						}
-					}
+				} else if prev.is_uppercase()
+					&& chars
+						.get(i + 1)
+						.is_some_and(|next| next.is_lowercase())
+				{
+					// ABc → a_bc (acronym boundary)
+					result.push('_');
 				}
 			}
 			result.push(ch.to_lowercase().next().unwrap());
