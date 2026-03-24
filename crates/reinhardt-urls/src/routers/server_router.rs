@@ -457,7 +457,11 @@ impl ServerRouter {
 	fn build_middleware_with_exclusions(&self) -> Vec<Arc<dyn Middleware>> {
 		let mut result: Vec<Arc<dyn Middleware>> = Vec::with_capacity(self.middleware.len());
 
-		for (mw, exclusions) in self.middleware.iter().zip(self.middleware_exclusions.iter()) {
+		for (mw, exclusions) in self
+			.middleware
+			.iter()
+			.zip(self.middleware_exclusions.iter())
+		{
 			if exclusions.is_empty() {
 				result.push(mw.clone());
 			} else {
