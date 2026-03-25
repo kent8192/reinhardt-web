@@ -3,6 +3,7 @@
 //! This middleware intercepts requests and serves static files from a configured directory.
 //! It supports SPA (Single Page Application) mode for WASM frontend applications.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -13,6 +14,15 @@ use reinhardt_http::{Request, Response};
 
 use super::caching::CacheControlConfig;
 use super::handler::{StaticError, StaticFileHandler};
+
+/// Detected WASM entry point for auto-injection.
+#[derive(Debug, Clone)]
+struct WasmEntry {
+	/// JS entry file relative to root_dir (e.g., "my_app.js")
+	js_file: String,
+	/// WASM binary file relative to root_dir (e.g., "my_app_bg.wasm")
+	wasm_file: String,
+}
 
 /// Configuration for the static files middleware.
 #[derive(Debug, Clone)]
@@ -37,6 +47,12 @@ pub struct StaticFilesConfig {
 	pub excluded_prefixes: Vec<String>,
 	/// Cache control configuration for static file responses
 	pub cache_config: CacheControlConfig,
+	/// Enable automatic WASM script injection into SPA HTML responses
+	pub auto_inject_wasm: bool,
+	/// Explicit WASM entry point name (e.g., "my_app") for fallback detection
+	pub wasm_entry: Option<String>,
+	/// Manifest mapping original filenames to hashed filenames
+	pub wasm_manifest: Option<HashMap<String, String>>,
 }
 
 impl Default for StaticFilesConfig {
@@ -50,6 +66,9 @@ impl Default for StaticFilesConfig {
 			allowed_extensions: vec![],
 			excluded_prefixes: vec!["/api/".to_string()],
 			cache_config: CacheControlConfig::new(),
+			auto_inject_wasm: true,
+			wasm_entry: None,
+			wasm_manifest: None,
 		}
 	}
 }
@@ -105,6 +124,36 @@ impl StaticFilesConfig {
 	/// Set cache control configuration.
 	pub fn cache_config(mut self, config: CacheControlConfig) -> Self {
 		self.cache_config = config;
+		self
+	}
+
+	/// Enable or disable automatic WASM script injection.
+	pub fn auto_inject_wasm(mut self, enabled: bool) -> Self {
+		self.auto_inject_wasm = enabled;
+		self
+	}
+
+	/// Set the explicit WASM entry point name for fallback detection.
+	///
+	/// # Panics
+	///
+	/// Panics if `entry` contains invalid characters. Only alphanumeric characters,
+	/// `-`, `_`, `.`, and `/` are allowed.
+	pub fn wasm_entry(mut self, entry: impl Into<String>) -> Self {
+		let entry = entry.into();
+		if !entry
+			.chars()
+			.all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/')
+		{
+			panic!("wasm_entry contains invalid characters: only alphanumeric, '-', '_', '.', '/' are allowed");
+		}
+		self.wasm_entry = Some(entry);
+		self
+	}
+
+	/// Set the WASM manifest for filename resolution (e.g., hashed filenames).
+	pub fn wasm_manifest(mut self, manifest: HashMap<String, String>) -> Self {
+		self.wasm_manifest = Some(manifest);
 		self
 	}
 }
@@ -732,5 +781,79 @@ mod tests {
 		let response = response.expect("should return Some");
 		assert!(response.headers.contains_key("ETag"));
 		assert!(!response.headers.contains_key("Cache-Control"));
+	}
+
+	#[rstest]
+	fn test_config_auto_inject_wasm_default_true() {
+		// Arrange & Act
+		let config = StaticFilesConfig::default();
+
+		// Assert
+		assert!(config.auto_inject_wasm);
+	}
+
+	#[rstest]
+	fn test_config_auto_inject_wasm_builder() {
+		// Arrange & Act
+		let config = StaticFilesConfig::new("dist").auto_inject_wasm(false);
+
+		// Assert
+		assert!(!config.auto_inject_wasm);
+	}
+
+	#[rstest]
+	fn test_config_wasm_entry_default_none() {
+		// Arrange & Act
+		let config = StaticFilesConfig::default();
+
+		// Assert
+		assert!(config.wasm_entry.is_none());
+	}
+
+	#[rstest]
+	fn test_config_wasm_entry_builder() {
+		// Arrange & Act
+		let config = StaticFilesConfig::new("dist").wasm_entry("my_app");
+
+		// Assert
+		assert_eq!(config.wasm_entry, Some("my_app".to_string()));
+	}
+
+	#[rstest]
+	fn test_config_wasm_manifest_default_none() {
+		// Arrange & Act
+		let config = StaticFilesConfig::default();
+
+		// Assert
+		assert!(config.wasm_manifest.is_none());
+	}
+
+	#[rstest]
+	fn test_config_wasm_manifest_builder() {
+		// Arrange
+		let mut manifest = HashMap::new();
+		manifest.insert("app.js".to_string(), "app.abc123.js".to_string());
+
+		// Act
+		let config = StaticFilesConfig::new("dist").wasm_manifest(manifest.clone());
+
+		// Assert
+		assert_eq!(config.wasm_manifest, Some(manifest));
+	}
+
+	#[rstest]
+	#[should_panic(expected = "invalid characters")]
+	fn test_config_wasm_entry_rejects_unsafe_chars() {
+		// Arrange & Act & Assert
+		StaticFilesConfig::new("dist").wasm_entry("my app;rm -rf");
+	}
+
+	#[rstest]
+	fn test_config_wasm_entry_allows_path_separators() {
+		// Arrange & Act
+		let config = StaticFilesConfig::new("dist").wasm_entry("sub/my_app");
+
+		// Assert
+		assert_eq!(config.wasm_entry, Some("sub/my_app".to_string()));
 	}
 }
