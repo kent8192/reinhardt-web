@@ -3,6 +3,7 @@
 //! This middleware intercepts requests and serves static files from a configured directory.
 //! It supports SPA (Single Page Application) mode for WASM frontend applications.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -13,6 +14,15 @@ use reinhardt_http::{Request, Response};
 
 use super::caching::CacheControlConfig;
 use super::handler::{StaticError, StaticFileHandler};
+
+/// Detected WASM entry point for auto-injection.
+#[derive(Debug, Clone)]
+struct WasmEntry {
+	/// JS entry file relative to root_dir (e.g., "my_app.js")
+	js_file: String,
+	/// WASM binary file relative to root_dir (e.g., "my_app_bg.wasm")
+	wasm_file: String,
+}
 
 /// Configuration for the static files middleware.
 #[derive(Debug, Clone)]
@@ -37,6 +47,12 @@ pub struct StaticFilesConfig {
 	pub excluded_prefixes: Vec<String>,
 	/// Cache control configuration for static file responses
 	pub cache_config: CacheControlConfig,
+	/// Enable automatic WASM script injection into SPA HTML responses
+	pub auto_inject_wasm: bool,
+	/// Explicit WASM entry point filename (e.g., "my_app.js") for fallback detection
+	pub wasm_entry: Option<String>,
+	/// Manifest mapping original filenames to hashed filenames
+	pub wasm_manifest: Option<HashMap<String, String>>,
 }
 
 impl Default for StaticFilesConfig {
@@ -50,6 +66,9 @@ impl Default for StaticFilesConfig {
 			allowed_extensions: vec![],
 			excluded_prefixes: vec!["/api/".to_string()],
 			cache_config: CacheControlConfig::new(),
+			auto_inject_wasm: true,
+			wasm_entry: None,
+			wasm_manifest: None,
 		}
 	}
 }
@@ -107,6 +126,50 @@ impl StaticFilesConfig {
 		self.cache_config = config;
 		self
 	}
+
+	/// Enable or disable automatic WASM script injection.
+	pub fn auto_inject_wasm(mut self, enabled: bool) -> Self {
+		self.auto_inject_wasm = enabled;
+		self
+	}
+
+	/// Set the explicit WASM entry point filename for fallback detection.
+	///
+	/// The entry must be a `.js` filename (e.g., `"my_app.js"` or `"pkg/my_app.js"`).
+	/// The corresponding WASM file is inferred by stripping `.js` and appending `_bg.wasm`.
+	///
+	/// # Panics
+	///
+	/// Panics if `entry` contains invalid characters. Only alphanumeric characters,
+	/// `-`, `_`, `.`, and `/` are allowed.
+	///
+	/// Panics if `entry` contains `..` path traversal sequences.
+	///
+	/// Panics if `entry` is empty.
+	pub fn wasm_entry(mut self, entry: impl Into<String>) -> Self {
+		let entry = entry.into();
+		assert!(!entry.is_empty(), "wasm_entry must not be empty");
+		assert!(
+			!entry.contains(".."),
+			"wasm_entry must not contain '..' path traversal sequences: {entry}"
+		);
+		if !entry
+			.chars()
+			.all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/')
+		{
+			panic!(
+				"wasm_entry contains invalid characters: only alphanumeric, '-', '_', '.', '/' are allowed"
+			);
+		}
+		self.wasm_entry = Some(entry);
+		self
+	}
+
+	/// Set the WASM manifest for filename resolution (e.g., hashed filenames).
+	pub fn wasm_manifest(mut self, manifest: HashMap<String, String>) -> Self {
+		self.wasm_manifest = Some(manifest);
+		self
+	}
 }
 
 /// Middleware for serving static files.
@@ -130,6 +193,7 @@ impl StaticFilesConfig {
 pub struct StaticFilesMiddleware {
 	config: StaticFilesConfig,
 	handler: StaticFileHandler,
+	wasm_entry: Option<WasmEntry>,
 }
 
 impl StaticFilesMiddleware {
@@ -137,12 +201,167 @@ impl StaticFilesMiddleware {
 	pub fn new(config: StaticFilesConfig) -> Self {
 		let handler = StaticFileHandler::new(config.root_dir.clone())
 			.with_index_files(config.index_files.clone());
-		Self { config, handler }
+		let wasm_entry = if config.auto_inject_wasm {
+			Self::detect_wasm_entry(&config)
+		} else {
+			tracing::info!("WASM auto-injection is disabled");
+			None
+		};
+		Self {
+			config,
+			handler,
+			wasm_entry,
+		}
 	}
 
 	/// Create a middleware with default configuration for the given directory.
 	pub fn for_directory(root_dir: impl Into<PathBuf>) -> Self {
 		Self::new(StaticFilesConfig::new(root_dir))
+	}
+
+	/// Detect WASM entry point by scanning `root_dir` for `{name}.js` + `{name}_bg.wasm` pairs.
+	///
+	/// Falls back to `config.wasm_entry` when zero or multiple pairs are found.
+	fn detect_wasm_entry(config: &StaticFilesConfig) -> Option<WasmEntry> {
+		let root = &config.root_dir;
+		tracing::debug!("scanning {:?} for WASM entry points", root);
+
+		// Scan top-level files in root_dir for {name}.js + {name}_bg.wasm pairs
+		let mut pairs: Vec<(String, String)> = Vec::new();
+		if let Ok(entries) = std::fs::read_dir(root) {
+			let mut js_stems: Vec<String> = Vec::new();
+			let mut wasm_stems: Vec<String> = Vec::new();
+
+			for entry in entries.flatten() {
+				let path = entry.path();
+				if !path.is_file() {
+					continue;
+				}
+				if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+					if let Some(stem) = name.strip_suffix(".js") {
+						js_stems.push(stem.to_string());
+					} else if let Some(stem) = name.strip_suffix("_bg.wasm") {
+						wasm_stems.push(stem.to_string());
+					}
+				}
+			}
+
+			for stem in &js_stems {
+				if wasm_stems.contains(stem) {
+					pairs.push((format!("{stem}.js"), format!("{stem}_bg.wasm")));
+				}
+			}
+		}
+
+		match pairs.len() {
+			1 => {
+				let (js_file, wasm_file) = pairs.into_iter().next().unwrap();
+				tracing::info!(
+					"auto-detected WASM entry: js={}, wasm={}",
+					js_file,
+					wasm_file
+				);
+				Some(WasmEntry { js_file, wasm_file })
+			}
+			0 => {
+				tracing::debug!("no WASM pairs found in {:?}, trying fallback", root);
+				Self::try_wasm_entry_fallback(config)
+			}
+			n => {
+				tracing::warn!(
+					"found {} WASM pairs in {:?}, cannot auto-detect; trying fallback",
+					n,
+					root
+				);
+				Self::try_wasm_entry_fallback(config)
+			}
+		}
+	}
+
+	/// Try to resolve WASM entry from `config.wasm_entry` fallback.
+	///
+	/// Accepts a `.js` filename (e.g., `"my_app.js"`) and infers the WASM file
+	/// by stripping `.js` and appending `_bg.wasm`.
+	fn try_wasm_entry_fallback(config: &StaticFilesConfig) -> Option<WasmEntry> {
+		let entry_name = config.wasm_entry.as_ref()?;
+		let js_file = entry_name.clone();
+		let stem = js_file.strip_suffix(".js").unwrap_or(&js_file);
+		let wasm_file = format!("{stem}_bg.wasm");
+
+		let js_path = config.root_dir.join(&js_file);
+		let wasm_path = config.root_dir.join(&wasm_file);
+
+		if !js_path.exists() {
+			tracing::warn!("fallback WASM JS file not found: {:?}", js_path);
+			return None;
+		}
+		if !wasm_path.exists() {
+			tracing::warn!("fallback WASM binary not found: {:?}", wasm_path);
+			return None;
+		}
+
+		tracing::info!(
+			"using fallback WASM entry: js={}, wasm={}",
+			js_file,
+			wasm_file
+		);
+		Some(WasmEntry { js_file, wasm_file })
+	}
+
+	/// Resolve the URL for a WASM-related file, applying manifest lookup if available.
+	///
+	/// Manifest values are validated to contain only safe characters (alphanumeric,
+	/// `-`, `_`, `.`, `/`). Unsafe values are rejected and the original filename is
+	/// used as a fallback to prevent HTML injection.
+	fn resolve_wasm_url(
+		filename: &str,
+		url_prefix: &str,
+		manifest: Option<&HashMap<String, String>>,
+	) -> String {
+		let resolved = manifest
+			.and_then(|m| m.get(filename))
+			.filter(|v| {
+				v.chars()
+					.all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '/'))
+			})
+			.map(|s| s.as_str())
+			.unwrap_or(filename);
+		format!("{url_prefix}{resolved}")
+	}
+
+	/// Inject a WASM auto-loader script into HTML content before `</body>`.
+	///
+	/// If no `</body>` tag is found (case-insensitive), the script is appended to the end.
+	fn inject_wasm_script(
+		html: &str,
+		entry: &WasmEntry,
+		url_prefix: &str,
+		manifest: Option<&HashMap<String, String>>,
+	) -> String {
+		let js_url = Self::resolve_wasm_url(&entry.js_file, url_prefix, manifest);
+		let wasm_url = Self::resolve_wasm_url(&entry.wasm_file, url_prefix, manifest);
+
+		let script = format!(
+			"\n<!-- Reinhardt WASM Auto-Loader -->\n\
+			 <script type=\"module\">\n\
+			 const {{ default: init }} = await import('{js_url}');\n\
+			 await init('{wasm_url}');\n\
+			 </script>\n"
+		);
+
+		// Case-insensitive search for </body>
+		if let Some(pos) = html.to_lowercase().rfind("</body>") {
+			let mut result = String::with_capacity(html.len() + script.len());
+			result.push_str(&html[..pos]);
+			result.push_str(&script);
+			result.push_str(&html[pos..]);
+			result
+		} else {
+			let mut result = String::with_capacity(html.len() + script.len());
+			result.push_str(html);
+			result.push_str(&script);
+			result
+		}
 	}
 
 	/// Check if the request path matches the URL prefix.
@@ -212,7 +431,7 @@ impl StaticFilesMiddleware {
 		}
 	}
 
-	/// Serve the SPA fallback (index.html).
+	/// Serve the SPA fallback (index.html), optionally injecting WASM auto-loader script.
 	///
 	/// Priority:
 	/// 1. `index_file` — explicit path (can be outside `root_dir`)
@@ -220,16 +439,83 @@ impl StaticFilesMiddleware {
 	async fn serve_spa_fallback(&self) -> Option<Response> {
 		// Priority 1: Explicit index file path (can be outside root_dir)
 		if let Some(ref index_path) = self.config.index_file {
-			return self.serve_direct_file(index_path).await;
+			let content = tokio::fs::read(index_path).await.ok()?;
+			return self.build_spa_response(content, index_path);
 		}
 
 		// Priority 2: Search within root_dir (existing behavior)
 		for index_file in &self.config.index_files {
-			if let Some(response) = self.try_serve(index_file).await {
-				return Some(response);
+			let path = self.config.root_dir.join(index_file);
+			if let Ok(content) = tokio::fs::read(&path).await {
+				return self.build_spa_response(content, &path);
 			}
 		}
 		None
+	}
+
+	/// Build a SPA response from raw file content, injecting WASM script if applicable.
+	///
+	/// Computes ETag from the final (post-injection) content to ensure cache correctness.
+	fn build_spa_response(&self, content: Vec<u8>, path: &Path) -> Option<Response> {
+		let mime = mime_guess::from_path(path)
+			.first_or_octet_stream()
+			.to_string();
+
+		let filename = path
+			.file_name()
+			.and_then(|n| n.to_str())
+			.unwrap_or("index.html");
+
+		// Apply WASM injection if entry is detected
+		let final_content = if let Some(ref entry) = self.wasm_entry {
+			match String::from_utf8(content) {
+				Ok(html) => {
+					let injected = Self::inject_wasm_script(
+						&html,
+						entry,
+						&self.config.url_prefix,
+						self.config.wasm_manifest.as_ref(),
+					);
+					tracing::debug!("injected WASM auto-loader into SPA response");
+					injected.into_bytes()
+				}
+				Err(e) => {
+					tracing::warn!(
+						"SPA fallback is not valid UTF-8, serving raw content: {}",
+						e
+					);
+					e.into_bytes()
+				}
+			}
+		} else {
+			content
+		};
+
+		// Generate ETag from final content (post-injection)
+		let etag = {
+			use std::collections::hash_map::DefaultHasher;
+			use std::hash::{Hash, Hasher};
+			let mut hasher = DefaultHasher::new();
+			final_content.hash(&mut hasher);
+			format!("\"{}\"", hasher.finish())
+		};
+
+		let mut response = Response::ok()
+			.with_header("Content-Type", &mime)
+			.with_header("ETag", &etag);
+
+		if self.config.cache_config.enabled {
+			let policy = self.config.cache_config.get_policy(filename);
+			let cache_value = policy.to_header_value();
+			response = response.with_header("Cache-Control", &cache_value);
+
+			if let Some(vary) = &policy.vary {
+				response = response.with_header("Vary", vary);
+			}
+		}
+
+		response = response.with_body(final_content);
+		Some(response)
 	}
 
 	/// Serve a file directly from a configured filesystem path (bypasses `root_dir` security check).
@@ -240,6 +526,8 @@ impl StaticFilesMiddleware {
 	/// from the request URL.
 	///
 	/// Generates ETag and Cache-Control headers consistent with `try_serve`.
+	// Used by tests to verify header generation independently of SPA injection flow
+	#[cfg(test)]
 	async fn serve_direct_file(&self, path: &Path) -> Option<Response> {
 		let content = tokio::fs::read(path).await.ok()?;
 		let mime = mime_guess::from_path(path)
@@ -732,5 +1020,488 @@ mod tests {
 		let response = response.expect("should return Some");
 		assert!(response.headers.contains_key("ETag"));
 		assert!(!response.headers.contains_key("Cache-Control"));
+	}
+
+	#[rstest]
+	fn test_config_auto_inject_wasm_default_true() {
+		// Arrange & Act
+		let config = StaticFilesConfig::default();
+
+		// Assert
+		assert!(config.auto_inject_wasm);
+	}
+
+	#[rstest]
+	fn test_config_auto_inject_wasm_builder() {
+		// Arrange & Act
+		let config = StaticFilesConfig::new("dist").auto_inject_wasm(false);
+
+		// Assert
+		assert!(!config.auto_inject_wasm);
+	}
+
+	#[rstest]
+	fn test_config_wasm_entry_default_none() {
+		// Arrange & Act
+		let config = StaticFilesConfig::default();
+
+		// Assert
+		assert!(config.wasm_entry.is_none());
+	}
+
+	#[rstest]
+	fn test_config_wasm_entry_builder() {
+		// Arrange & Act
+		let config = StaticFilesConfig::new("dist").wasm_entry("my_app.js");
+
+		// Assert
+		assert_eq!(config.wasm_entry, Some("my_app.js".to_string()));
+	}
+
+	#[rstest]
+	fn test_config_wasm_manifest_default_none() {
+		// Arrange & Act
+		let config = StaticFilesConfig::default();
+
+		// Assert
+		assert!(config.wasm_manifest.is_none());
+	}
+
+	#[rstest]
+	fn test_config_wasm_manifest_builder() {
+		// Arrange
+		let mut manifest = HashMap::new();
+		manifest.insert("app.js".to_string(), "app.abc123.js".to_string());
+
+		// Act
+		let config = StaticFilesConfig::new("dist").wasm_manifest(manifest.clone());
+
+		// Assert
+		assert_eq!(config.wasm_manifest, Some(manifest));
+	}
+
+	#[rstest]
+	#[should_panic(expected = "invalid characters")]
+	fn test_config_wasm_entry_rejects_unsafe_chars() {
+		// Arrange & Act & Assert
+		StaticFilesConfig::new("dist").wasm_entry("my app;rm -rf.js");
+	}
+
+	#[rstest]
+	fn test_config_wasm_entry_allows_path_separators() {
+		// Arrange & Act
+		let config = StaticFilesConfig::new("dist").wasm_entry("sub/my_app.js");
+
+		// Assert
+		assert_eq!(config.wasm_entry, Some("sub/my_app.js".to_string()));
+	}
+
+	#[rstest]
+	fn test_detect_wasm_entry_single_pair() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
+		std::fs::write(dir.path().join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
+		let config = StaticFilesConfig::new(dir.path());
+
+		// Act
+		let entry = StaticFilesMiddleware::detect_wasm_entry(&config);
+
+		// Assert
+		let entry = entry.expect("should detect single pair");
+		assert_eq!(entry.js_file, "my_app.js");
+		assert_eq!(entry.wasm_file, "my_app_bg.wasm");
+	}
+
+	#[rstest]
+	fn test_detect_wasm_entry_no_pair() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(dir.path().join("app.js"), "// js").unwrap();
+		// No matching _bg.wasm file
+		let config = StaticFilesConfig::new(dir.path());
+
+		// Act
+		let entry = StaticFilesMiddleware::detect_wasm_entry(&config);
+
+		// Assert
+		assert!(entry.is_none());
+	}
+
+	#[rstest]
+	fn test_detect_wasm_entry_multiple_pairs_falls_back_to_wasm_entry() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(dir.path().join("app_a.js"), "// js a").unwrap();
+		std::fs::write(dir.path().join("app_a_bg.wasm"), &[0u8; 4]).unwrap();
+		std::fs::write(dir.path().join("app_b.js"), "// js b").unwrap();
+		std::fs::write(dir.path().join("app_b_bg.wasm"), &[0u8; 4]).unwrap();
+		let config = StaticFilesConfig::new(dir.path()).wasm_entry("app_a.js");
+
+		// Act
+		let entry = StaticFilesMiddleware::detect_wasm_entry(&config);
+
+		// Assert
+		let entry = entry.expect("should fall back to wasm_entry");
+		assert_eq!(entry.js_file, "app_a.js");
+		assert_eq!(entry.wasm_file, "app_a_bg.wasm");
+	}
+
+	#[rstest]
+	fn test_detect_wasm_entry_fallback_missing_file() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		// Only create js, not the wasm file
+		std::fs::write(dir.path().join("missing_app.js"), "// js").unwrap();
+		let config = StaticFilesConfig::new(dir.path()).wasm_entry("missing_app.js");
+
+		// Act
+		let entry = StaticFilesMiddleware::detect_wasm_entry(&config);
+
+		// Assert
+		assert!(entry.is_none());
+	}
+
+	#[rstest]
+	fn test_detect_wasm_entry_disabled() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
+		std::fs::write(dir.path().join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
+		let config = StaticFilesConfig::new(dir.path()).auto_inject_wasm(false);
+
+		// Act
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Assert
+		assert!(middleware.wasm_entry.is_none());
+	}
+
+	#[rstest]
+	fn test_detect_wasm_entry_ignores_non_wasm_js_files() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(dir.path().join("utils.js"), "// utility").unwrap();
+		std::fs::write(dir.path().join("style.css"), "body{}").unwrap();
+		std::fs::write(dir.path().join("data.json"), "{}").unwrap();
+		let config = StaticFilesConfig::new(dir.path());
+
+		// Act
+		let entry = StaticFilesMiddleware::detect_wasm_entry(&config);
+
+		// Assert
+		assert!(entry.is_none());
+	}
+
+	#[rstest]
+	fn test_resolve_wasm_url_no_manifest() {
+		// Arrange & Act
+		let url = StaticFilesMiddleware::resolve_wasm_url("app.js", "/static/", None);
+
+		// Assert
+		assert_eq!(url, "/static/app.js");
+	}
+
+	#[rstest]
+	fn test_resolve_wasm_url_with_manifest_match() {
+		// Arrange
+		let mut manifest = HashMap::new();
+		manifest.insert("app.js".to_string(), "app.abc123.js".to_string());
+
+		// Act
+		let url = StaticFilesMiddleware::resolve_wasm_url("app.js", "/static/", Some(&manifest));
+
+		// Assert
+		assert_eq!(url, "/static/app.abc123.js");
+	}
+
+	#[rstest]
+	fn test_resolve_wasm_url_with_manifest_no_match() {
+		// Arrange
+		let mut manifest = HashMap::new();
+		manifest.insert("other.js".to_string(), "other.xyz.js".to_string());
+
+		// Act
+		let url = StaticFilesMiddleware::resolve_wasm_url("app.js", "/static/", Some(&manifest));
+
+		// Assert
+		assert_eq!(url, "/static/app.js");
+	}
+
+	#[rstest]
+	fn test_inject_wasm_script_before_body() {
+		// Arrange
+		let html = "<html><body><h1>Hello</h1></body></html>";
+		let entry = WasmEntry {
+			js_file: "app.js".to_string(),
+			wasm_file: "app_bg.wasm".to_string(),
+		};
+
+		// Act
+		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/", None);
+
+		// Assert — generated HTML with dynamic URLs
+		assert!(result.contains("<!-- Reinhardt WASM Auto-Loader -->"));
+		assert!(result.contains("await import('/app.js')"));
+		assert!(result.contains("await init('/app_bg.wasm')"));
+		assert!(result.contains("</body></html>"));
+	}
+
+	#[rstest]
+	fn test_inject_wasm_script_case_insensitive_body() {
+		// Arrange
+		let html = "<html><body><h1>Hello</h1></BODY></html>";
+		let entry = WasmEntry {
+			js_file: "app.js".to_string(),
+			wasm_file: "app_bg.wasm".to_string(),
+		};
+
+		// Act
+		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/", None);
+
+		// Assert — generated HTML with dynamic URLs
+		assert!(result.contains("<!-- Reinhardt WASM Auto-Loader -->"));
+		assert!(result.contains("</BODY></html>"));
+	}
+
+	#[rstest]
+	fn test_inject_wasm_script_no_body_tag_appends() {
+		// Arrange
+		let html = "<html><h1>No body tag</h1></html>";
+		let entry = WasmEntry {
+			js_file: "app.js".to_string(),
+			wasm_file: "app_bg.wasm".to_string(),
+		};
+
+		// Act
+		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/", None);
+
+		// Assert — generated HTML with dynamic URLs
+		assert!(result.ends_with("</script>\n"));
+		assert!(result.contains("<!-- Reinhardt WASM Auto-Loader -->"));
+	}
+
+	#[rstest]
+	fn test_inject_wasm_script_with_manifest() {
+		// Arrange
+		let html = "<html><body></body></html>";
+		let entry = WasmEntry {
+			js_file: "app.js".to_string(),
+			wasm_file: "app_bg.wasm".to_string(),
+		};
+		let mut manifest = HashMap::new();
+		manifest.insert("app.js".to_string(), "app.h4sh.js".to_string());
+		manifest.insert("app_bg.wasm".to_string(), "app_bg.h4sh.wasm".to_string());
+
+		// Act
+		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/", Some(&manifest));
+
+		// Assert — generated HTML with dynamic URLs
+		assert!(result.contains("await import('/app.h4sh.js')"));
+		assert!(result.contains("await init('/app_bg.h4sh.wasm')"));
+	}
+
+	#[rstest]
+	fn test_inject_wasm_script_with_url_prefix() {
+		// Arrange
+		let html = "<html><body></body></html>";
+		let entry = WasmEntry {
+			js_file: "app.js".to_string(),
+			wasm_file: "app_bg.wasm".to_string(),
+		};
+
+		// Act
+		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/static/", None);
+
+		// Assert — generated HTML with dynamic URLs
+		assert!(result.contains("await import('/static/app.js')"));
+		assert!(result.contains("await init('/static/app_bg.wasm')"));
+	}
+
+	#[rstest]
+	fn test_detect_wasm_entry_fallback_with_path_separator() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let sub = dir.path().join("pkg");
+		std::fs::create_dir_all(&sub).unwrap();
+		std::fs::write(sub.join("my_app.js"), "// js").unwrap();
+		std::fs::write(sub.join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
+		let config = StaticFilesConfig::new(dir.path()).wasm_entry("pkg/my_app.js");
+
+		// Act
+		let entry = StaticFilesMiddleware::detect_wasm_entry(&config);
+
+		// Assert
+		let entry = entry.expect("should resolve path with separator");
+		assert_eq!(entry.js_file, "pkg/my_app.js");
+		assert_eq!(entry.wasm_file, "pkg/my_app_bg.wasm");
+	}
+
+	#[rstest]
+	#[should_panic(expected = "path traversal")]
+	fn test_config_wasm_entry_rejects_path_traversal() {
+		// Arrange & Act & Assert
+		StaticFilesConfig::new("dist").wasm_entry("../../etc/passwd.js");
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not be empty")]
+	fn test_config_wasm_entry_rejects_empty_string() {
+		// Arrange & Act & Assert
+		StaticFilesConfig::new("dist").wasm_entry("");
+	}
+
+	#[rstest]
+	fn test_resolve_wasm_url_rejects_unsafe_manifest_values() {
+		// Arrange
+		let mut manifest = HashMap::new();
+		manifest.insert("app.js".to_string(), "');alert('xss".to_string());
+
+		// Act
+		let url = StaticFilesMiddleware::resolve_wasm_url("app.js", "/", Some(&manifest));
+
+		// Assert — falls back to original filename due to unsafe manifest value
+		assert_eq!(url, "/app.js");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_auto_injects_wasm() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(
+			dir.path().join("index.html"),
+			"<html><body><h1>App</h1></body></html>",
+		)
+		.unwrap();
+		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
+		std::fs::write(dir.path().join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
+
+		let config = StaticFilesConfig::new(dir.path());
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware.serve_spa_fallback().await;
+
+		// Assert — generated HTML with dynamic URLs
+		let response = response.expect("should return Some");
+		let body = std::str::from_utf8(&response.body).unwrap();
+		assert!(body.contains("<!-- Reinhardt WASM Auto-Loader -->"));
+		assert!(body.contains("await import('/my_app.js')"));
+		assert!(body.contains("await init('/my_app_bg.wasm')"));
+		assert!(body.contains("</body></html>"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_no_inject_when_disabled() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(
+			dir.path().join("index.html"),
+			"<html><body><h1>App</h1></body></html>",
+		)
+		.unwrap();
+		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
+		std::fs::write(dir.path().join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
+
+		let config = StaticFilesConfig::new(dir.path()).auto_inject_wasm(false);
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware.serve_spa_fallback().await;
+
+		// Assert
+		let response = response.expect("should return Some");
+		let body = std::str::from_utf8(&response.body).unwrap();
+		assert!(!body.contains("Reinhardt WASM Auto-Loader"));
+		assert_eq!(body, "<html><body><h1>App</h1></body></html>");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_etag_reflects_injected_content() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(dir.path().join("index.html"), "<html><body></body></html>").unwrap();
+		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
+		std::fs::write(dir.path().join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
+
+		let config_with = StaticFilesConfig::new(dir.path());
+		let mw_with = StaticFilesMiddleware::new(config_with);
+
+		let config_without = StaticFilesConfig::new(dir.path()).auto_inject_wasm(false);
+		let mw_without = StaticFilesMiddleware::new(config_without);
+
+		// Act
+		let resp_with = mw_with.serve_spa_fallback().await.unwrap();
+		let resp_without = mw_without.serve_spa_fallback().await.unwrap();
+
+		// Assert — ETags must differ because content differs after injection
+		let etag_with = resp_with.headers.get("ETag").unwrap();
+		let etag_without = resp_without.headers.get("ETag").unwrap();
+		assert_ne!(etag_with, etag_without);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_no_inject_when_spa_mode_false() {
+		// Arrange — spa_mode gate is in process(), not serve_spa_fallback()
+		// This test verifies that serve_spa_fallback still works independently
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(dir.path().join("index.html"), "<html><body></body></html>").unwrap();
+
+		let config = StaticFilesConfig::new(dir.path()).spa_mode(false);
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act — calling serve_spa_fallback directly bypasses the spa_mode check in process()
+		let response = middleware.serve_spa_fallback().await;
+
+		// Assert — response is still produced (spa_mode gating is in process())
+		assert!(response.is_some());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_invalid_utf8_serves_raw() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		// Write invalid UTF-8 content as an index file
+		let invalid_bytes: Vec<u8> = vec![0xFF, 0xFE, 0x00, 0x3C, 0x68, 0x74, 0x6D, 0x6C];
+		std::fs::write(dir.path().join("index.html"), &invalid_bytes).unwrap();
+		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
+		std::fs::write(dir.path().join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
+
+		let config = StaticFilesConfig::new(dir.path());
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware.serve_spa_fallback().await;
+
+		// Assert — should serve raw content without injection
+		let response = response.expect("should return Some");
+		assert_eq!(response.body, invalid_bytes);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_preserves_content_type_and_cache_headers() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(dir.path().join("index.html"), "<html><body></body></html>").unwrap();
+		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
+		std::fs::write(dir.path().join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
+
+		let config = StaticFilesConfig::new(dir.path());
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware.serve_spa_fallback().await;
+
+		// Assert
+		let response = response.expect("should return Some");
+		assert_eq!(response.headers.get("Content-Type").unwrap(), "text/html");
+		assert!(response.headers.contains_key("ETag"));
+		assert!(response.headers.contains_key("Cache-Control"));
 	}
 }
