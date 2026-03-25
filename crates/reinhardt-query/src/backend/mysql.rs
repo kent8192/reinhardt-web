@@ -51,26 +51,26 @@ pub struct MySqlQueryBuilder;
 fn parse_user_host(user_name: &str) -> (String, String) {
 	let parts: Vec<&str> = user_name.splitn(2, '@').collect();
 	if parts.len() == 2 {
-		// Only strip outer quotes from user when they form a matched pair,
-		// preserving embedded quotes that are part of the actual username.
+		// Only strip quotes that form a complete pair (both leading AND trailing)
+		// to avoid stripping data characters that happen to be single quotes.
+		// For example, "admin'" should keep the trailing quote (it's part of the username),
+		// while "'admin'" should strip both (they're wrapper quotes).
 		let user = strip_matched_quotes(parts[0]);
-		let host = parts[1].trim_matches('\'');
+		let host = strip_matched_quotes(parts[1]);
 		(user.to_string(), host.to_string())
 	} else {
 		(user_name.to_string(), "%".to_string())
 	}
 }
 
-/// Strip outer single quotes only when they form a matched pair.
+/// Strip single quotes only when they form a matched pair (both leading and trailing).
 ///
-/// Returns the inner content if the string starts and ends with `'`,
-/// otherwise returns the original string unchanged.
+/// This prevents stripping data characters that happen to be single quotes
+/// while still handling the MySQL `'user'@'host'` quoted format correctly.
 fn strip_matched_quotes(s: &str) -> &str {
-	if s.len() >= 2 && s.starts_with('\'') && s.ends_with('\'') {
-		&s[1..s.len() - 1]
-	} else {
-		s
-	}
+	s.strip_prefix('\'')
+		.and_then(|inner| inner.strip_suffix('\''))
+		.unwrap_or(s)
 }
 
 /// Format a MySQL user identifier as `'user'@'host'`.
@@ -7595,11 +7595,12 @@ mod tests {
 	#[rstest]
 	fn test_format_mysql_user_escapes_single_quotes_in_user() {
 		// Arrange - user name with single quote in user part
-		// parse_user_host splits on first '@': user="admin'", host="'localhost" (trimmed to "localhost")
+		// parse_user_host splits on first '@': user="admin'", host="'localhost"
+		// Both single quotes are preserved as data and escaped by doubling
 		let result = format_mysql_user("admin'@'localhost");
 
-		// Act & Assert - single quotes in user part must be escaped by doubling
-		assert_eq!(result, "'admin'''@'localhost'");
+		// Act & Assert - single quotes in both user and host parts must be escaped
+		assert_eq!(result, "'admin'''@'''localhost'");
 	}
 
 	#[rstest]
