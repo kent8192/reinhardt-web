@@ -144,8 +144,11 @@ impl StaticFilesConfig {
 	/// `-`, `_`, `.`, and `/` are allowed.
 	///
 	/// Panics if `entry` contains `..` path traversal sequences.
+	///
+	/// Panics if `entry` is empty.
 	pub fn wasm_entry(mut self, entry: impl Into<String>) -> Self {
 		let entry = entry.into();
+		assert!(!entry.is_empty(), "wasm_entry must not be empty");
 		assert!(
 			!entry.contains(".."),
 			"wasm_entry must not contain '..' path traversal sequences: {entry}"
@@ -201,7 +204,7 @@ impl StaticFilesMiddleware {
 		let wasm_entry = if config.auto_inject_wasm {
 			Self::detect_wasm_entry(&config)
 		} else {
-			tracing::debug!("WASM auto-injection is disabled");
+			tracing::info!("WASM auto-injection is disabled");
 			None
 		};
 		Self {
@@ -1339,6 +1342,13 @@ mod tests {
 	fn test_config_wasm_entry_rejects_path_traversal() {
 		// Arrange & Act & Assert
 		StaticFilesConfig::new("dist").wasm_entry("../../etc/passwd.js");
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not be empty")]
+	fn test_config_wasm_entry_rejects_empty_string() {
+		// Arrange & Act & Assert
+		StaticFilesConfig::new("dist").wasm_entry("");
 	}
 
 	#[rstest]
