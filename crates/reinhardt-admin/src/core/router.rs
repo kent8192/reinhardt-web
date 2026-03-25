@@ -7,6 +7,7 @@
 //! in `admin_routes()`. On wasm32 targets, only the namespaced router is returned
 //! (server function registration is server-side only).
 
+use reinhardt_di::SingletonScope;
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt_pages::server_fn::ServerFnRouterExt;
 use reinhardt_urls::routers::ServerRouter;
@@ -85,11 +86,15 @@ async fn admin_js_handler(
 /// Mount this router at `/static/admin/` alongside the main `admin_routes()`:
 ///
 /// ```rust,no_run
-/// use reinhardt_admin::core::{admin_routes, admin_static_routes};
+/// use reinhardt_admin::core::{AdminSite, admin_routes, admin_static_routes};
+/// use reinhardt_di::SingletonScope;
+/// use std::sync::Arc;
 ///
+/// let site = Arc::new(AdminSite::new("Admin"));
+/// let singleton = SingletonScope::new();
 /// // Mount admin views and static assets
-/// let admin = admin_routes();          // mount at /admin/
-/// let assets = admin_static_routes();  // mount at /static/admin/
+/// let admin = admin_routes(site, &singleton);  // mount at /admin/
+/// let assets = admin_static_routes();           // mount at /static/admin/
 /// ```
 ///
 /// The admin HTML page references `/static/admin/style.css` and
@@ -105,21 +110,32 @@ pub fn admin_static_routes() -> ServerRouter {
 	router
 }
 
-/// Admin router builder
+/// Admin router builder with automatic DI registration
 ///
-/// Builds a ServerRouter from an AdminSite with all CRUD endpoints.
+/// Builds a `ServerRouter` from an `AdminSite` with all CRUD endpoints,
+/// and auto-registers the `AdminSite` in the singleton scope for DI.
+///
+/// `AdminDatabase` is **not** registered here; it is lazily constructed
+/// from `DatabaseConnection` at first request via its `Injectable` impl.
 ///
 /// # Examples
 ///
 /// ```rust,no_run
 /// use reinhardt_admin::core::{AdminSite, admin_routes};
+/// use reinhardt_di::{SingletonScope, InjectionContext};
+/// use std::sync::Arc;
 ///
-/// let site = AdminSite::new("My Admin");
-/// // ... register models ...
+/// let site = Arc::new(AdminSite::new("My Admin"));
+/// let singleton = Arc::new(SingletonScope::new());
+/// let router = admin_routes(Arc::clone(&site), &singleton);
 ///
-/// let router = admin_routes();
+/// let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
+/// // Mount router and attach DI context to UnifiedRouter
 /// ```
-pub fn admin_routes() -> ServerRouter {
+pub fn admin_routes(site: Arc<AdminSite>, singleton: &SingletonScope) -> ServerRouter {
+	// Auto-register AdminSite in singleton scope for DI resolution
+	singleton.set_arc(site);
+
 	let router = ServerRouter::new().with_namespace("admin");
 
 	// Register all admin server functions on server-side targets.
@@ -233,13 +249,53 @@ impl AdminRouter {
 	/// - `POST /{model}/bulk-delete/` - Bulk delete model instances
 	/// - `GET /{model}/export/` - Export model data
 	/// - `POST /{model}/import/` - Import model data
+	///
+	/// # Deprecation
+	///
+	/// Use [`admin_routes()`] with `SingletonScope` parameter instead.
+	#[deprecated(
+		since = "0.1.0-rc.10",
+		note = "Use admin_routes(site, &singleton_scope) instead"
+	)]
 	pub fn routes(&self) -> ServerRouter {
-		admin_routes()
+		// Create a temporary singleton scope for backward compat
+		let singleton = SingletonScope::new();
+		admin_routes(Arc::clone(&self.site), &singleton)
+	}
+
+	/// Build the ServerRouter with DI auto-registration
+	///
+	/// Registers the `AdminSite` in the provided singleton scope
+	/// and returns a `ServerRouter` with all admin endpoints.
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_admin::core::{AdminSite, AdminRouter};
+	/// use reinhardt_di::SingletonScope;
+	/// use std::sync::Arc;
+	///
+	/// let site = Arc::new(AdminSite::new("Admin"));
+	/// let singleton = SingletonScope::new();
+	/// let router = AdminRouter::from_arc(site)
+	///     .build_with_di(&singleton);
+	/// ```
+	pub fn build_with_di(self, singleton: &SingletonScope) -> ServerRouter {
+		admin_routes(self.site, singleton)
 	}
 
 	/// Build the ServerRouter (alias for routes())
+	///
+	/// # Deprecation
+	///
+	/// Use [`build_with_di()`] or [`admin_routes()`] instead.
+	#[deprecated(
+		since = "0.1.0-rc.10",
+		note = "Use build_with_di(&singleton_scope) or admin_routes(site, &singleton_scope) instead"
+	)]
 	pub fn build(self) -> ServerRouter {
-		admin_routes()
+		let singleton = SingletonScope::new();
+		admin_routes(self.site, &singleton)
 	}
 }
 
@@ -248,13 +304,38 @@ mod tests {
 	use super::*;
 	use rstest::rstest;
 
+	/// Helper to create test admin_routes with default site and singleton
+	fn test_admin_routes() -> ServerRouter {
+		let site = Arc::new(AdminSite::new("Test"));
+		let singleton = SingletonScope::new();
+		admin_routes(site, &singleton)
+	}
+
 	#[rstest]
 	fn test_admin_routes_creates_router() {
 		// Arrange & Act
-		let router = admin_routes();
+		let router = test_admin_routes();
 
 		// Assert
 		assert_eq!(router.namespace(), Some("admin"));
+	}
+
+	#[rstest]
+	fn test_admin_routes_auto_registers_site_in_singleton() {
+		// Arrange
+		let site = Arc::new(AdminSite::new("Auto-Registered Admin"));
+		let singleton = SingletonScope::new();
+
+		// Act
+		let _router = admin_routes(Arc::clone(&site), &singleton);
+
+		// Assert - AdminSite should be registered in singleton scope
+		let registered = singleton.get::<AdminSite>();
+		assert!(
+			registered.is_some(),
+			"AdminSite should be auto-registered in singleton scope"
+		);
+		assert_eq!(registered.unwrap().name(), "Auto-Registered Admin");
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
@@ -277,7 +358,7 @@ mod tests {
 		];
 
 		// Act
-		let router = admin_routes();
+		let router = test_admin_routes();
 		let routes = router.get_all_routes();
 		let paths: Vec<&str> = routes.iter().map(|(path, _, _, _)| path.as_str()).collect();
 
@@ -294,6 +375,7 @@ mod tests {
 		}
 	}
 
+	#[allow(deprecated)] // testing backward compat of deprecated method
 	#[rstest]
 	fn test_admin_router_backward_compat() {
 		// Arrange
@@ -305,6 +387,23 @@ mod tests {
 
 		// Assert
 		assert_eq!(router.namespace(), Some("admin"));
+	}
+
+	#[rstest]
+	fn test_admin_router_build_with_di() {
+		// Arrange
+		let site = Arc::new(AdminSite::new("DI Admin"));
+		let singleton = SingletonScope::new();
+		let router_builder = AdminRouter::from_arc(site);
+
+		// Act
+		let router = router_builder.build_with_di(&singleton);
+
+		// Assert
+		assert_eq!(router.namespace(), Some("admin"));
+		let registered = singleton.get::<AdminSite>();
+		assert!(registered.is_some());
+		assert_eq!(registered.unwrap().name(), "DI Admin");
 	}
 
 	#[rstest]
@@ -330,8 +429,9 @@ mod tests {
 		let favicon_data = vec![0x89, 0x50, 0x4E, 0x47]; // PNG magic bytes
 
 		// Act
+		let singleton = SingletonScope::new();
 		let router_builder = router_builder.with_favicon_bytes(favicon_data.clone());
-		let _router = router_builder.build();
+		let _router = router_builder.build_with_di(&singleton);
 
 		// Assert
 		let stored = site.favicon_data();
@@ -343,7 +443,7 @@ mod tests {
 	#[rstest]
 	fn test_admin_routes_includes_html_get_routes() {
 		// Arrange & Act
-		let router = admin_routes();
+		let router = test_admin_routes();
 		let routes = router.get_all_routes();
 
 		// Assert - GET routes should be registered
