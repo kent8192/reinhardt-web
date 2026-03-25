@@ -154,7 +154,9 @@ impl StaticFilesConfig {
 			.chars()
 			.all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/')
 		{
-			panic!("wasm_entry contains invalid characters: only alphanumeric, '-', '_', '.', '/' are allowed");
+			panic!(
+				"wasm_entry contains invalid characters: only alphanumeric, '-', '_', '.', '/' are allowed"
+			);
 		}
 		self.wasm_entry = Some(entry);
 		self
@@ -521,6 +523,8 @@ impl StaticFilesMiddleware {
 	/// from the request URL.
 	///
 	/// Generates ETag and Cache-Control headers consistent with `try_serve`.
+	// Used by tests to verify header generation independently of SPA injection flow
+	#[cfg(test)]
 	async fn serve_direct_file(&self, path: &Path) -> Option<Response> {
 		let content = tokio::fs::read(path).await.ok()?;
 		let mime = mime_guess::from_path(path)
@@ -1287,8 +1291,7 @@ mod tests {
 		manifest.insert("app_bg.wasm".to_string(), "app_bg.h4sh.wasm".to_string());
 
 		// Act
-		let result =
-			StaticFilesMiddleware::inject_wasm_script(html, &entry, "/", Some(&manifest));
+		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/", Some(&manifest));
 
 		// Assert — generated HTML with dynamic URLs
 		assert!(result.contains("await import('/app.h4sh.js')"));
@@ -1305,8 +1308,7 @@ mod tests {
 		};
 
 		// Act
-		let result =
-			StaticFilesMiddleware::inject_wasm_script(html, &entry, "/static/", None);
+		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/static/", None);
 
 		// Assert — generated HTML with dynamic URLs
 		assert!(result.contains("await import('/static/app.js')"));
@@ -1411,11 +1413,7 @@ mod tests {
 	async fn test_serve_spa_fallback_etag_reflects_injected_content() {
 		// Arrange
 		let dir = tempfile::tempdir().unwrap();
-		std::fs::write(
-			dir.path().join("index.html"),
-			"<html><body></body></html>",
-		)
-		.unwrap();
+		std::fs::write(dir.path().join("index.html"), "<html><body></body></html>").unwrap();
 		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
 		std::fs::write(dir.path().join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
 
@@ -1441,11 +1439,7 @@ mod tests {
 		// Arrange — spa_mode gate is in process(), not serve_spa_fallback()
 		// This test verifies that serve_spa_fallback still works independently
 		let dir = tempfile::tempdir().unwrap();
-		std::fs::write(
-			dir.path().join("index.html"),
-			"<html><body></body></html>",
-		)
-		.unwrap();
+		std::fs::write(dir.path().join("index.html"), "<html><body></body></html>").unwrap();
 
 		let config = StaticFilesConfig::new(dir.path()).spa_mode(false);
 		let middleware = StaticFilesMiddleware::new(config);
@@ -1484,11 +1478,7 @@ mod tests {
 	async fn test_serve_spa_fallback_preserves_content_type_and_cache_headers() {
 		// Arrange
 		let dir = tempfile::tempdir().unwrap();
-		std::fs::write(
-			dir.path().join("index.html"),
-			"<html><body></body></html>",
-		)
-		.unwrap();
+		std::fs::write(dir.path().join("index.html"), "<html><body></body></html>").unwrap();
 		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
 		std::fs::write(dir.path().join("my_app_bg.wasm"), &[0u8; 4]).unwrap();
 
