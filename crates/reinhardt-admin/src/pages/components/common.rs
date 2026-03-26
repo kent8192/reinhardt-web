@@ -265,6 +265,12 @@ where
 				.attr("aria-disabled", "true")
 				.attr("tabindex", "-1")
 				.child(text.to_string())
+		} else if active {
+			// Active (current page) items use <span> to prevent redundant navigation
+			PageElement::new("span")
+				.attr("class", "page-link")
+				.attr("aria-current", "page")
+				.child(text.to_string())
 		} else {
 			PageElement::new("a")
 				.attr("class", "page-link")
@@ -287,6 +293,12 @@ where
 				.attr("class", "page-link")
 				.attr("aria-disabled", "true")
 				.attr("tabindex", "-1")
+				.child(text.to_string())
+		} else if active {
+			// Active (current page) items use <span> to prevent redundant navigation
+			PageElement::new("span")
+				.attr("class", "page-link")
+				.attr("aria-current", "page")
 				.child(text.to_string())
 		} else {
 			// SSR: No event handler needed (will be hydrated on client)
