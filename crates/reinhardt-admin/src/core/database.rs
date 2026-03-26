@@ -1121,11 +1121,11 @@ impl AdminDatabase {
 /// Extract count value from a query result row
 ///
 /// Attempts to extract an integer count from the query result in the following order:
-/// 1. Look for a "count" key in the JSON object
-/// 2. Take the first value from the JSON object
+/// 1. Look for a "count" key in the JSON object and return its integer value
+/// 2. If no "count" key is found, return an error listing the available key names
 ///
-/// Returns an error if the data format is unexpected or the value cannot be
-/// interpreted as an integer.
+/// Returns an error if the data format is unexpected, the "count" key is missing,
+/// or the value cannot be interpreted as an integer.
 fn extract_count_from_row(data: &serde_json::Value) -> AdminResult<u64> {
 	if let Some(count_value) = data.get("count") {
 		return count_value.as_i64().map(|v| v as u64).ok_or_else(|| {
