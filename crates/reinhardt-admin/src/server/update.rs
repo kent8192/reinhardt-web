@@ -76,18 +76,26 @@ pub async fn update_record(
 		.await
 		.map_server_fn_error();
 
-	let success = result.is_ok();
-	audit::log_update(&user_id, &model_name, &id, &sanitized_data, success);
+	// Check for database errors first, logging failure before returning
+	let affected = match result {
+		Err(e) => {
+			audit::log_update(&user_id, &model_name, &id, &sanitized_data, false);
+			return Err(e);
+		}
+		Ok(n) => n,
+	};
 
-	let affected = result?;
-
-	// Return 404 error when no record was found with the given ID
+	// Return 404 error when no record was found with the given ID.
+	// Only log success=true after confirming the record was actually updated.
 	if affected == 0 {
+		audit::log_update(&user_id, &model_name, &id, &sanitized_data, false);
 		return Err(ServerFnError::server(
 			404,
 			format!("{} not found", model_name),
 		));
 	}
+
+	audit::log_update(&user_id, &model_name, &id, &sanitized_data, true);
 
 	Ok(MutationResponse {
 		success: true,
