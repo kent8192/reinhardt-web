@@ -106,18 +106,33 @@ pub fn admin_static_routes() -> ServerRouter {
 	router
 }
 
-/// Admin router builder
+/// Admin router builder (deprecated)
 ///
-/// Builds a `ServerRouter` from an `AdminSite` with all CRUD endpoints.
-/// For DI auto-registration, use `admin_routes_with_di()` instead.
+/// This function builds a `ServerRouter` with admin endpoints but does **not**
+/// register `AdminSite` in the DI singleton scope. As a result, server function
+/// handlers that resolve `AdminSite` via `#[inject]` will fail at runtime with
+/// `DiError::NotRegistered`.
+///
+/// Use `admin_routes_with_di()` instead, which accepts an `Arc<AdminSite>` and
+/// a `&SingletonScope`, auto-registers the site, and returns a fully functional
+/// admin router.
 ///
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_admin::core::admin_routes;
+/// use reinhardt_admin::core::{AdminSite, admin_routes_with_di};
+/// use reinhardt_di::SingletonScope;
+/// use std::sync::Arc;
 ///
-/// let router = admin_routes();
+/// let site = Arc::new(AdminSite::new("My Admin"));
+/// let singleton = SingletonScope::new();
+/// let router = admin_routes_with_di(site, &singleton);
 /// ```
+#[deprecated(
+	since = "0.1.0-rc.14",
+	note = "Does not register AdminSite in the DI scope; server function handlers will fail \
+	        at runtime. Use admin_routes_with_di(site, &singleton_scope) instead."
+)]
 pub fn admin_routes() -> ServerRouter {
 	let router = ServerRouter::new().with_namespace("admin");
 
@@ -170,6 +185,7 @@ pub fn admin_routes() -> ServerRouter {
 /// let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 /// // Mount router and attach DI context to UnifiedRouter
 /// ```
+#[allow(deprecated)] // calls admin_routes() internally for route construction
 pub fn admin_routes_with_di(site: Arc<AdminSite>, singleton: &SingletonScope) -> ServerRouter {
 	// Auto-register AdminSite in singleton scope for DI resolution
 	singleton.set_arc(site);
@@ -316,6 +332,7 @@ mod tests {
 	use rstest::rstest;
 
 	/// Helper to create test admin_routes router
+	#[allow(deprecated)] // testing deprecated admin_routes() behavior
 	fn test_admin_routes() -> ServerRouter {
 		admin_routes()
 	}

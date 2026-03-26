@@ -66,6 +66,7 @@ pub mod server {
 
 // Re-export core router for admin route mounting
 #[cfg(not(target_arch = "wasm32"))]
+#[allow(deprecated)] // re-exporting deprecated admin_routes for backward compatibility
 pub use reinhardt_admin::core::{
 	AdminRouter, admin_routes, admin_routes_with_di, admin_static_routes,
 };
