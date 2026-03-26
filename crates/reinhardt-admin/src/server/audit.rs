@@ -234,7 +234,9 @@ pub fn log_bulk_delete(
 		user_id: user_id.to_string(),
 		action: AuditAction::BulkDelete,
 		model_name: model_name.to_string(),
-		record_id: Some(record_ids.join(",")),
+		record_id: Some(
+			serde_json::to_string(&record_ids).unwrap_or_else(|_| record_ids.join(",")),
+		),
 		changed_fields: None,
 		success,
 		affected_count: Some(affected),
