@@ -285,6 +285,61 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 	hash_a.ct_eq(&hash_b).into()
 }
 
+/// The header name used for CSRF token submission.
+pub const CSRF_HEADER_NAME: &str = "x-csrf-token";
+
+/// Extracts the CSRF token from the `X-CSRF-Token` request header.
+///
+/// Returns `None` if the header is missing or not valid UTF-8.
+///
+/// # Arguments
+///
+/// * `headers` - The HTTP request headers
+pub fn extract_csrf_header(headers: &hyper::HeaderMap) -> Option<String> {
+	headers
+		.get(CSRF_HEADER_NAME)
+		.and_then(|v| v.to_str().ok())
+		.map(|s| s.to_string())
+}
+
+/// Validates CSRF tokens using the double-submit pattern.
+///
+/// Compares the token submitted in the request body against the token
+/// submitted in the `X-CSRF-Token` header. Both must be present and
+/// must match via constant-time comparison.
+///
+/// # Arguments
+///
+/// * `body_token` - The CSRF token from the request body
+/// * `headers` - The HTTP request headers (to extract the header token)
+///
+/// # Errors
+///
+/// Returns a `ServerFnError` with status 403 if:
+/// - The `X-CSRF-Token` header is missing
+/// - The body token is empty
+/// - The tokens do not match
+pub fn require_csrf_token(
+	body_token: &str,
+	headers: &hyper::HeaderMap,
+) -> Result<(), reinhardt_pages::server_fn::ServerFnError> {
+	let header_token = extract_csrf_header(headers).ok_or_else(|| {
+		reinhardt_pages::server_fn::ServerFnError::server(
+			403,
+			"CSRF token missing from X-CSRF-Token header",
+		)
+	})?;
+
+	if !validate_csrf_token(body_token, &header_token) {
+		return Err(reinhardt_pages::server_fn::ServerFnError::server(
+			403,
+			"CSRF token validation failed",
+		));
+	}
+
+	Ok(())
+}
+
 /// Sanitizes mutation data values to prevent stored XSS.
 ///
 /// Checks all string values in the mutation data for dangerous HTML/JavaScript
@@ -750,5 +805,90 @@ mod tests {
 		assert!(needs_html_escaping("a'b"));
 		assert!(!needs_html_escaping("safe text"));
 		assert!(!needs_html_escaping("hello world 123"));
+	}
+
+	// ============================================================
+	// CSRF header extraction and validation tests
+	// ============================================================
+
+	#[rstest]
+	fn test_extract_csrf_header_present() {
+		// Arrange
+		let mut headers = hyper::HeaderMap::new();
+		headers.insert("x-csrf-token", "test-token".parse().unwrap());
+
+		// Act
+		let result = extract_csrf_header(&headers);
+
+		// Assert
+		assert_eq!(result, Some("test-token".to_string()));
+	}
+
+	#[rstest]
+	fn test_extract_csrf_header_missing() {
+		// Arrange
+		let headers = hyper::HeaderMap::new();
+
+		// Act
+		let result = extract_csrf_header(&headers);
+
+		// Assert
+		assert_eq!(result, None);
+	}
+
+	#[rstest]
+	fn test_require_csrf_token_matching_tokens() {
+		// Arrange
+		let token = generate_csrf_token();
+		let mut headers = hyper::HeaderMap::new();
+		headers.insert("x-csrf-token", token.parse().unwrap());
+
+		// Act
+		let result = require_csrf_token(&token, &headers);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn test_require_csrf_token_mismatching_tokens() {
+		// Arrange
+		let body_token = generate_csrf_token();
+		let header_token = generate_csrf_token();
+		let mut headers = hyper::HeaderMap::new();
+		headers.insert("x-csrf-token", header_token.parse().unwrap());
+
+		// Act
+		let result = require_csrf_token(&body_token, &headers);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_require_csrf_token_missing_header() {
+		// Arrange
+		let body_token = generate_csrf_token();
+		let headers = hyper::HeaderMap::new();
+
+		// Act
+		let result = require_csrf_token(&body_token, &headers);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_require_csrf_token_empty_body_token() {
+		// Arrange
+		let header_token = generate_csrf_token();
+		let mut headers = hyper::HeaderMap::new();
+		headers.insert("x-csrf-token", header_token.parse().unwrap());
+
+		// Act
+		let result = require_csrf_token("", &headers);
+
+		// Assert
+		assert!(result.is_err());
 	}
 }

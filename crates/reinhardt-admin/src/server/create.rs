@@ -6,7 +6,7 @@ use crate::adapters::{AdminDatabase, AdminRecord, AdminSite};
 use crate::types::{MutationRequest, MutationResponse};
 #[allow(deprecated)] // CurrentUser is deprecated, will migrate to AuthUser in 0.2.0
 use reinhardt_auth::{CurrentUser, DefaultUser};
-use reinhardt_pages::server_fn::{ServerFnError, server_fn};
+use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest, server_fn};
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -14,7 +14,7 @@ use super::audit;
 #[cfg(not(target_arch = "wasm32"))]
 use super::error::MapServerFnError;
 #[cfg(not(target_arch = "wasm32"))]
-use super::security::sanitize_mutation_values;
+use super::security::{require_csrf_token, sanitize_mutation_values};
 #[cfg(not(target_arch = "wasm32"))]
 use super::validation::validate_mutation_data;
 
@@ -44,7 +44,7 @@ use super::validation::validate_mutation_data;
 /// data.insert("username".to_string(), serde_json::json!("alice"));
 /// data.insert("email".to_string(), serde_json::json!("alice@example.com"));
 ///
-/// let request = MutationRequest { data };
+/// let request = MutationRequest { csrf_token: "token".to_string(), data };
 /// let response = create_record("User".to_string(), request).await?;
 /// println!("Created: {}", response.message);
 /// ```
@@ -56,7 +56,11 @@ pub async fn create_record(
 	#[inject] site: Arc<AdminSite>,
 	#[inject] db: Arc<AdminDatabase>,
 	#[inject] current_user: CurrentUser<DefaultUser>,
+	#[inject] http_request: ServerFnRequest,
 ) -> Result<MutationResponse, ServerFnError> {
+	// CSRF token validation (double-submit pattern)
+	require_csrf_token(&request.csrf_token, &http_request.inner().headers)?;
+
 	// Authentication check
 	let user = current_user
 		.user()
