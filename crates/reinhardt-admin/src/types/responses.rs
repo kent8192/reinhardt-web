@@ -98,6 +98,7 @@ pub struct ImportResponse {
 
 /// Response for export endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ExportResponse {
 	/// Exported data (binary)
 	#[serde(with = "serde_bytes")]
