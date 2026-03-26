@@ -170,29 +170,21 @@ impl AdminAuth {
 		Ok(())
 	}
 
-	/// Returns the `AuthState` as a trait object for permission checking.
-	///
-	/// This is used to pass the auth state to `ModelAdmin` permission methods
-	/// that accept `&(dyn Any + Send + Sync)`.
-	///
-	/// # Returns
-	///
-	/// Returns `Some` with a reference to the `AuthState` as a trait object
-	/// if authenticated, or `None` if anonymous.
-	pub fn as_any_user(&self) -> Option<&(dyn std::any::Any + Send + Sync)> {
-		self.auth_state
-			.as_ref()
-			.map(|s| s as &(dyn std::any::Any + Send + Sync))
-	}
-
 	/// Checks model-level permission using `ModelAdmin`, returning an error if denied.
 	///
 	/// This method first verifies staff status, then delegates to the
 	/// `ModelAdmin`'s permission method for the specified permission type.
 	///
+	/// The caller is responsible for providing the actual user object extracted
+	/// from the DI context (e.g., via `CurrentUser<DefaultUser>`). This ensures
+	/// the same concrete type is passed to `ModelAdmin::has_*_permission` as in
+	/// other endpoints (e.g., `list.rs`, `create.rs`), allowing `downcast_ref`
+	/// calls inside `ModelAdmin` implementations to succeed.
+	///
 	/// # Arguments
 	///
 	/// * `model_admin` - The model admin to check permissions against
+	/// * `user` - The authenticated user object as a trait object
 	/// * `permission` - The type of permission to check
 	///
 	/// # Errors
@@ -202,14 +194,13 @@ impl AdminAuth {
 	pub async fn require_model_permission(
 		&self,
 		model_admin: &dyn crate::core::ModelAdmin,
+		user: &(dyn std::any::Any + Send + Sync),
 		permission: ModelPermission,
 	) -> Result<(), ServerFnError> {
 		self.require_staff()?;
 
-		let user = self
-			.as_any_user()
-			.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
-
+		// require_staff() already guarantees auth_state is Some and authenticated,
+		// so we can proceed directly to the permission check.
 		let has_permission = match permission {
 			ModelPermission::View => model_admin.has_view_permission(user).await,
 			ModelPermission::Add => model_admin.has_add_permission(user).await,
