@@ -65,7 +65,7 @@ pub async fn create_record(
 	// Get model admin and check permission
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	if !model_admin
-		.has_add_permission(user as &(dyn std::any::Any + Send + Sync))
+		.has_add_permission(user as &dyn crate::core::AdminUser)
 		.await
 	{
 		return Err(ServerFnError::server(403, "Permission denied"));
