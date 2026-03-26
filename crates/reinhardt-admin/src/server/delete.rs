@@ -48,7 +48,7 @@ pub async fn delete_record(
 	#[inject] db: Arc<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 ) -> Result<MutationResponse, ServerFnError> {
-	// CSRF token validation (double-submit pattern)
+	// CSRF token validation (double-submit cookie pattern)
 	require_csrf_token(&csrf_token, &http_request.inner().headers)?;
 
 	// Authentication and authorization check
@@ -115,7 +115,7 @@ pub async fn bulk_delete_records(
 	#[inject] db: Arc<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 ) -> Result<BulkDeleteResponse, ServerFnError> {
-	// CSRF token validation (double-submit pattern)
+	// CSRF token validation (double-submit cookie pattern)
 	require_csrf_token(&request.csrf_token, &http_request.inner().headers)?;
 
 	// Authentication and authorization check
