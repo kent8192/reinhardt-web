@@ -9,9 +9,18 @@
 //! - `DataTable` - Data table component
 
 use crate::types::{FilterInfo, FilterType, ModelInfo};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use std::collections::HashMap;
+
+/// Percent-encode a string for safe use in URL path segments.
+///
+/// Encodes all non-alphanumeric characters to prevent path traversal
+/// and other URL injection attacks via malformed model names or IDs.
+fn encode_path_segment(s: &str) -> String {
+	utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
+}
 
 #[cfg(target_arch = "wasm32")]
 use reinhardt_pages::dom::EventType;
@@ -264,8 +273,10 @@ fn action_buttons(model_name: &str, record_id: &str) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
-	let detail_url = format!("/admin/{}/{}/", model_name.to_lowercase(), record_id);
-	let edit_url = format!("/admin/{}/{}/change/", model_name.to_lowercase(), record_id);
+	let encoded_model = encode_path_segment(&model_name.to_lowercase());
+	let encoded_id = encode_path_segment(record_id);
+	let detail_url = format!("/admin/{}/{}/", encoded_model, encoded_id);
+	let edit_url = format!("/admin/{}/{}/change/", encoded_model, encoded_id);
 
 	PageElement::new("div")
 		.attr("class", "btn-group btn-group-sm")
@@ -321,8 +332,10 @@ pub fn detail_view(
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
-	let edit_url = format!("/admin/{}/{}/change/", model_name.to_lowercase(), record_id);
-	let list_url = format!("/admin/{}/", model_name.to_lowercase());
+	let encoded_model = encode_path_segment(&model_name.to_lowercase());
+	let encoded_id = encode_path_segment(record_id);
+	let edit_url = format!("/admin/{}/{}/change/", encoded_model, encoded_id);
+	let list_url = format!("/admin/{}/", encoded_model);
 
 	PageElement::new("div")
 		.attr("class", "detail-view")
@@ -405,7 +418,7 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 		format!("Create {}", model_name)
 	};
 
-	let list_url = format!("/admin/{}/", model_name.to_lowercase());
+	let list_url = format!("/admin/{}/", encode_path_segment(&model_name.to_lowercase()));
 
 	// Add form fields
 	let form_groups: Vec<Page> = fields.iter().map(form_group).collect();
