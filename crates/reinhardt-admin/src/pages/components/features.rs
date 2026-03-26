@@ -387,8 +387,11 @@ pub fn detail_view(
 
 /// Generates a detail table for record fields
 fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
-	let rows: Vec<Page> = record
-		.iter()
+	// Collect key-value pairs and sort by key for deterministic field display order
+	let mut entries: Vec<(&String, &String)> = record.iter().collect();
+	entries.sort_by_key(|(k, _)| *k);
+	let rows: Vec<Page> = entries
+		.into_iter()
 		.map(|(key, value)| {
 			PageElement::new("tr")
 				.child(
@@ -719,4 +722,67 @@ pub fn filters(
 				.children(filter_controls),
 		)
 		.into_page()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::detail_table;
+	use rstest::rstest;
+	use std::collections::HashMap;
+
+	/// Verifies that detail_table renders fields in alphabetical order regardless
+	/// of HashMap insertion order.
+	#[rstest]
+	fn test_detail_table_renders_fields_in_alphabetical_order() {
+		// Arrange
+		let mut record = HashMap::new();
+		record.insert("zebra".to_string(), "z_value".to_string());
+		record.insert("alpha".to_string(), "a_value".to_string());
+		record.insert("middle".to_string(), "m_value".to_string());
+
+		// Act
+		let page = detail_table(&record);
+		let html = page.render_to_string();
+
+		// Assert: alpha must appear before middle, and middle before zebra
+		let pos_alpha = html.find("alpha").expect("alpha field must be present");
+		let pos_middle = html.find("middle").expect("middle field must be present");
+		let pos_zebra = html.find("zebra").expect("zebra field must be present");
+		assert!(
+			pos_alpha < pos_middle,
+			"alpha must appear before middle in rendered output"
+		);
+		assert!(
+			pos_middle < pos_zebra,
+			"middle must appear before zebra in rendered output"
+		);
+	}
+
+	/// Verifies that detail_table renders associated values alongside their keys.
+	#[rstest]
+	fn test_detail_table_renders_key_value_pairs() {
+		// Arrange
+		let mut record = HashMap::new();
+		record.insert("username".to_string(), "john_doe".to_string());
+		record.insert("email".to_string(), "john@example.com".to_string());
+
+		// Act
+		let page = detail_table(&record);
+		let html = page.render_to_string();
+
+		// Assert
+		assert!(
+			html.contains("username"),
+			"key 'username' must appear in output"
+		);
+		assert!(
+			html.contains("john_doe"),
+			"value 'john_doe' must appear in output"
+		);
+		assert!(html.contains("email"), "key 'email' must appear in output");
+		assert!(
+			html.contains("john@example.com"),
+			"value 'john@example.com' must appear in output"
+		);
+	}
 }
