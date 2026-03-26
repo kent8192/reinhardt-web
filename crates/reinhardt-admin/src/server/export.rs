@@ -61,6 +61,22 @@ pub async fn export_data(
 	.await?;
 	let table_name = model_admin.table_name();
 
+	// Query total count to detect truncation
+	let total_count = db
+		.count::<AdminRecord>(table_name, vec![])
+		.await
+		.map_server_fn_error()?;
+	let truncated = total_count > MAX_EXPORT_RECORDS;
+
+	if truncated {
+		tracing::warn!(
+			"Export for model '{}' truncated: {} total records, limit is {}",
+			model_name,
+			total_count,
+			MAX_EXPORT_RECORDS
+		);
+	}
+
 	// Fetch records with export limit to prevent memory exhaustion
 	let results = db
 		.list::<AdminRecord>(table_name, vec![], 0, MAX_EXPORT_RECORDS)
@@ -137,5 +153,7 @@ pub async fn export_data(
 		data,
 		filename,
 		content_type: content_type.to_string(),
+		truncated,
+		total_count: Some(total_count),
 	})
 }
