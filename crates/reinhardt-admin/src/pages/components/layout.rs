@@ -74,7 +74,16 @@ pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> Page {
 	let nav_items: Vec<Page> = models
 		.iter()
 		.map(|model| {
-			let is_active = current_path.is_some_and(|path| path.starts_with(&model.url));
+			// Match the model URL exactly or as a prefix for sub-pages.
+			// Model URLs end with '/' (e.g., "/admin/users/"), so starts_with
+			// correctly matches sub-pages like "/admin/users/42/change/"
+			// without false positives like "/admin/usersx/".
+			let is_active = current_path.is_some_and(|path| {
+				let normalized_url = model.url.trim_end_matches('/');
+				path == model.url
+					|| path == normalized_url
+					|| path.starts_with(&format!("{}/", normalized_url))
+			});
 			let item_class = if is_active {
 				"nav-link active"
 			} else {
@@ -157,10 +166,13 @@ pub fn main_layout(
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::RouterOutlet;
 
+	// Get the current path from the router for sidebar active-link highlighting
+	let current_path = router.current_path().get();
+
 	PageElement::new("div")
 		.attr("class", "admin-layout")
 		.child(header(site_name, user_name))
-		.child(sidebar(models, None))
+		.child(sidebar(models, Some(&current_path)))
 		.child(
 			PageElement::new("main")
 				.attr("class", "main-content")
