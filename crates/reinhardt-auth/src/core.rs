@@ -115,6 +115,8 @@
 //! # });
 //! ```
 
+// Re-exports the deprecated User trait for backward compatibility.
+#![allow(deprecated)]
 // Rust 2024 module system: use module.rs + module/ pattern
 /// Authentication backend trait and composite backend.
 #[path = "core/backend.rs"]

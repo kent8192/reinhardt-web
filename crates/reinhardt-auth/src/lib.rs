@@ -1,4 +1,6 @@
 #![warn(missing_docs)]
+// Re-exports of deprecated User trait and DefaultUser struct are intentional for backward compatibility.
+#![allow(deprecated)]
 //! # Reinhardt Auth
 //!
 //! Authentication and authorization system for Reinhardt framework.
