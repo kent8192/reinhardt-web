@@ -17,6 +17,8 @@ use super::audit;
 use super::error::{AdminAuth, MapServerFnError, ModelPermission};
 #[cfg(not(target_arch = "wasm32"))]
 use super::limits::MAX_BULK_DELETE_IDS;
+#[cfg(not(target_arch = "wasm32"))]
+use super::security::require_csrf_token;
 
 /// Delete a single model instance by ID
 ///
@@ -38,7 +40,7 @@ use super::limits::MAX_BULK_DELETE_IDS;
 /// use reinhardt_admin::server::delete_record;
 ///
 /// // Client-side usage (automatically generates HTTP request)
-/// let response = delete_record("User".to_string(), "42".to_string()).await?;
+/// let response = delete_record("User".to_string(), "42".to_string(), "token".to_string()).await?;
 /// println!("Deleted: {}", response.message);
 /// ```
 #[allow(deprecated)] // CurrentUser will be migrated to AuthUser in 0.2.0
@@ -46,11 +48,15 @@ use super::limits::MAX_BULK_DELETE_IDS;
 pub async fn delete_record(
 	model_name: String,
 	id: String,
+	csrf_token: String,
 	#[inject] site: Arc<AdminSite>,
 	#[inject] db: Arc<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] current_user: CurrentUser<DefaultUser>,
 ) -> Result<MutationResponse, ServerFnError> {
+	// CSRF token validation (double-submit cookie pattern)
+	require_csrf_token(&csrf_token, &http_request.inner().headers)?;
+
 	// Authentication and authorization check
 	let auth = AdminAuth::from_request(&http_request);
 	let user = current_user
@@ -109,6 +115,7 @@ pub async fn delete_record(
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let request = BulkDeleteRequest {
+///     csrf_token: "token".to_string(),
 ///     ids: vec!["1".to_string(), "2".to_string(), "3".to_string()],
 /// };
 /// let response = bulk_delete_records("User".to_string(), request).await?;
@@ -124,6 +131,9 @@ pub async fn bulk_delete_records(
 	#[inject] http_request: ServerFnRequest,
 	#[inject] current_user: CurrentUser<DefaultUser>,
 ) -> Result<BulkDeleteResponse, ServerFnError> {
+	// CSRF token validation (double-submit cookie pattern)
+	require_csrf_token(&request.csrf_token, &http_request.inner().headers)?;
+
 	// Authentication and authorization check
 	let auth = AdminAuth::from_request(&http_request);
 	let user = current_user

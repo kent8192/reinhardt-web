@@ -14,7 +14,7 @@ use super::audit;
 #[cfg(not(target_arch = "wasm32"))]
 use super::error::{AdminAuth, MapServerFnError, ModelPermission};
 #[cfg(not(target_arch = "wasm32"))]
-use super::security::sanitize_mutation_values;
+use super::security::{require_csrf_token, sanitize_mutation_values};
 #[cfg(not(target_arch = "wasm32"))]
 use super::validation::validate_mutation_data;
 
@@ -43,7 +43,7 @@ use super::validation::validate_mutation_data;
 /// let mut data = HashMap::new();
 /// data.insert("email".to_string(), serde_json::json!("alice.new@example.com"));
 ///
-/// let request = MutationRequest { data };
+/// let request = MutationRequest { csrf_token: "token".to_string(), data };
 /// let response = update_record("User".to_string(), "42".to_string(), request).await?;
 /// println!("Updated: {}", response.message);
 /// ```
@@ -58,6 +58,9 @@ pub async fn update_record(
 	#[inject] http_request: ServerFnRequest,
 	#[inject] current_user: CurrentUser<DefaultUser>,
 ) -> Result<MutationResponse, ServerFnError> {
+	// CSRF token validation (double-submit cookie pattern)
+	require_csrf_token(&request.csrf_token, &http_request.inner().headers)?;
+
 	// Authentication and authorization check
 	let auth = AdminAuth::from_request(&http_request);
 	let user = current_user
