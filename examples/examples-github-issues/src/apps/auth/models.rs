@@ -15,6 +15,7 @@ use uuid::Uuid;
 /// and `FullUser` trait implementations for admin panel integration.
 #[model(app_label = "auth", table_name = "auth_user")]
 #[derive(Serialize, Deserialize)]
+#[allow(clippy::too_many_arguments)] // macro-generated new() has 8 args from model fields
 pub struct User {
 	#[field(primary_key = true)]
 	pub id: Uuid,
