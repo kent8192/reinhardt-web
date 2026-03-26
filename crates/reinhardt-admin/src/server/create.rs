@@ -87,7 +87,7 @@ pub async fn create_record(
 		.unwrap_or_else(|_| "unknown".to_string());
 
 	let result = db
-		.create::<AdminRecord>(table_name, pk_field, sanitized_data.clone())
+		.create::<AdminRecord>(table_name, Some(pk_field), sanitized_data.clone())
 		.await
 		.map_server_fn_error();
 

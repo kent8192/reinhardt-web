@@ -787,16 +787,17 @@ impl AdminDatabase {
 	/// data.insert("name".to_string(), serde_json::json!("Alice"));
 	/// data.insert("email".to_string(), serde_json::json!("alice@example.com"));
 	///
-	/// db.create::<AdminRecord>("admin_records", "id", data).await?;
+	/// db.create::<AdminRecord>("admin_records", Some("id"), data).await?;
 	/// # Ok(())
 	/// # }
 	/// ```
 	pub async fn create<M: Model>(
 		&self,
 		table_name: &str,
-		pk_field: &str,
+		pk_field: Option<&str>,
 		data: HashMap<String, serde_json::Value>,
 	) -> AdminResult<u64> {
+		let pk_field = pk_field.unwrap_or("id");
 		let mut query = Query::insert()
 			.into_table(Alias::new(table_name))
 			.to_owned();
