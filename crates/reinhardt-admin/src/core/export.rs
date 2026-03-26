@@ -333,7 +333,7 @@ impl TsvExporter {
 		if include_headers {
 			let header_line = fields.join("\t");
 			output.extend_from_slice(header_line.as_bytes());
-			output.push(b'\n');
+			output.extend_from_slice(b"\r\n");
 		}
 
 		// Write data rows
@@ -341,14 +341,15 @@ impl TsvExporter {
 			let values: Vec<String> = fields
 				.iter()
 				.map(|field| {
+					// Escape tabs, newlines, and carriage returns to prevent field corruption
 					row.get(field)
-						.map(|v| v.replace('\t', " "))
+						.map(|v| v.replace(['\t', '\n'], " ").replace('\r', ""))
 						.unwrap_or_default()
 				})
 				.collect();
 			let line = values.join("\t");
 			output.extend_from_slice(line.as_bytes());
-			output.push(b'\n');
+			output.extend_from_slice(b"\r\n");
 		}
 
 		Ok(output)
@@ -436,13 +437,20 @@ impl ExportBuilder {
 			self.config.fields().to_vec()
 		};
 
-		let data = match self.config.format() {
+		// Apply max_rows limit if configured
+		let effective_data = if let Some(max) = self.config.max_rows() {
+			&self.data[..self.data.len().min(max)]
+		} else {
+			&self.data
+		};
+
+		let exported = match self.config.format() {
 			ExportFormat::CSV => {
-				CsvExporter::export(&fields, &self.data, self.config.include_headers())?
+				CsvExporter::export(&fields, effective_data, self.config.include_headers())?
 			}
-			ExportFormat::JSON => JsonExporter::export(&self.data)?,
+			ExportFormat::JSON => JsonExporter::export(effective_data)?,
 			ExportFormat::TSV => {
-				TsvExporter::export(&fields, &self.data, self.config.include_headers())?
+				TsvExporter::export(&fields, effective_data, self.config.include_headers())?
 			}
 			ExportFormat::Excel | ExportFormat::XML => {
 				return Err(AdminError::ValidationError(format!(
@@ -460,10 +468,10 @@ impl ExportBuilder {
 		);
 
 		Ok(ExportResult::new(
-			data,
+			exported,
 			self.config.format().mime_type().to_string(),
 			filename,
-			self.data.len(),
+			effective_data.len(),
 		))
 	}
 }
@@ -566,8 +574,24 @@ mod tests {
 
 		assert!(result.is_ok());
 		let output = String::from_utf8(result.unwrap()).unwrap();
-		assert!(output.contains("id\tname"));
-		assert!(output.contains("1\tAlice"));
+		assert!(output.contains("id\tname\r\n"));
+		assert!(output.contains("1\tAlice\r\n"));
+	}
+
+	#[test]
+	fn test_tsv_exporter_escapes_newlines() {
+		let fields = vec!["id".to_string(), "bio".to_string()];
+		let mut row = HashMap::new();
+		row.insert("id".to_string(), "1".to_string());
+		row.insert("bio".to_string(), "line1\nline2\r\nline3".to_string());
+
+		let data = vec![row];
+		let result = TsvExporter::export(&fields, &data, true);
+
+		assert!(result.is_ok());
+		let output = String::from_utf8(result.unwrap()).unwrap();
+		// Newlines and carriage returns in field values must be escaped
+		assert_eq!(output, "id\tbio\r\n1\tline1 line2 line3\r\n");
 	}
 
 	#[test]
