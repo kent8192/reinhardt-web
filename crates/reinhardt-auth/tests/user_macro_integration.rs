@@ -364,10 +364,7 @@ mod tests {
 	fn test_permissions_has_perms_multiple() {
 		// Arrange
 		let mut user = make_test_user();
-		user.user_permissions = vec![
-			"blog.add_post".to_string(),
-			"blog.edit_post".to_string(),
-		];
+		user.user_permissions = vec!["blog.add_post".to_string(), "blog.edit_post".to_string()];
 
 		// Act / Assert
 		assert!(user.has_perms(&["blog.add_post", "blog.edit_post"]));
@@ -378,10 +375,7 @@ mod tests {
 	fn test_permissions_get_all_permissions() {
 		// Arrange
 		let mut user = make_test_user();
-		user.user_permissions = vec![
-			"blog.add_post".to_string(),
-			"blog.edit_post".to_string(),
-		];
+		user.user_permissions = vec!["blog.add_post".to_string(), "blog.edit_post".to_string()];
 
 		// Act
 		let all_perms = user.get_all_permissions();
