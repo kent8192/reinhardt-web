@@ -1,10 +1,13 @@
 //! URL configuration for examples-github-issues project
 //!
 //! This module configures the unified GraphQL schema and URL patterns.
-//! Admin panel routes are integrated via `AdminSite::get_urls()`.
+//! Admin panel routes are integrated via `admin_routes_with_di()`.
 
 use std::env;
+use std::sync::Arc;
 
+use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
+use reinhardt::di::SingletonScope;
 use reinhardt::graphql::{
 	MergedObject, MergedSubscription, Schema,
 	http::{GraphQLPlaygroundConfig, playground_source},
@@ -115,22 +118,16 @@ fn create_cors_middleware() -> CorsMiddleware {
 /// Admin routes require a `DatabaseConnection` via `AdminSite::get_urls()`.
 #[routes]
 pub fn routes() -> UnifiedRouter {
-	// Configure admin site (registration only, no DB needed yet)
-	let _admin = configure_admin();
-
-	// Admin routes require DatabaseConnection for query execution.
-	// In production, mount admin routes like this:
-	//
-	//   let db = DatabaseConnection::connect("postgres://...").await?;
-	//   let admin_router = admin.get_urls(db);
-	//   router.mount("/admin", admin_router)
-	//
-	// For this example, admin is configured but not mounted since
-	// get_urls() requires an async DatabaseConnection.
+	// Configure admin site and wrap in Arc for DI registration
+	let admin_site = Arc::new(configure_admin());
+	let singleton_scope = SingletonScope::new();
 
 	UnifiedRouter::new()
 		.endpoint(views::health_check)
 		.function("/graphql", reinhardt::Method::POST, graphql_handler)
 		.function("/graphql", reinhardt::Method::GET, graphql_playground)
+		// Mount admin panel routes with DI registration and static assets
+		.mount("/admin/", admin_routes_with_di(admin_site, &singleton_scope))
+		.mount("/static/admin/", admin_static_routes())
 		.with_middleware(create_cors_middleware())
 }
