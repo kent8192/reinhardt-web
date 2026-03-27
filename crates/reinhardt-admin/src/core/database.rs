@@ -321,10 +321,16 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		}
 		// Array-based In/NotIn: convert each element to a Value
 		(FilterOperator::In, FilterValue::Array(arr)) => {
+			if arr.is_empty() {
+				return None;
+			}
 			let values: Vec<Value> = arr.iter().map(|v| v.as_str().into_value()).collect();
 			col.is_in(values)
 		}
 		(FilterOperator::NotIn, FilterValue::Array(arr)) => {
+			if arr.is_empty() {
+				return None;
+			}
 			let values: Vec<Value> = arr.iter().map(|v| v.as_str().into_value()).collect();
 			col.is_not_in(values)
 		}
@@ -335,22 +341,6 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		}
 		(FilterOperator::NotIn, FilterValue::String(s)) => {
 			let values: Vec<Value> = s.split(',').map(|v| v.trim().into_value()).collect();
-			col.is_not_in(values)
-		}
-
-		// Array: Direct multi-value filtering (Issue #2936)
-		(FilterOperator::In, FilterValue::Array(arr)) => {
-			if arr.is_empty() {
-				return None;
-			}
-			let values: Vec<Value> = arr.iter().map(|v| v.as_str().into_value()).collect();
-			col.is_in(values)
-		}
-		(FilterOperator::NotIn, FilterValue::Array(arr)) => {
-			if arr.is_empty() {
-				return None;
-			}
-			let values: Vec<Value> = arr.iter().map(|v| v.as_str().into_value()).collect();
 			col.is_not_in(values)
 		}
 
