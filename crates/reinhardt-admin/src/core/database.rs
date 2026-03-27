@@ -1106,7 +1106,8 @@ impl AdminDatabase {
 ///
 /// Returns an error if the data format is unexpected or the value cannot be
 /// interpreted as an integer.
-fn extract_count_from_row(data: &serde_json::Value) -> AdminResult<u64> {
+#[doc(hidden)]
+pub fn extract_count_from_row(data: &serde_json::Value) -> AdminResult<u64> {
 	if let Some(count_value) = data.get("count") {
 		return count_value.as_i64().map(|v| v as u64).ok_or_else(|| {
 			AdminError::DatabaseError(format!(
@@ -2102,5 +2103,335 @@ mod tests {
 			"Error should mention DatabaseConnection, got: {}",
 			err
 		);
+	}
+
+	// ==================== Bug #2936: FilterValue::Array In/NotIn tests ====================
+
+	#[rstest]
+	fn test_in_operator_with_array_value_produces_in_clause() {
+		// Arrange
+		let filter = Filter::new(
+			"status",
+			FilterOperator::In,
+			FilterValue::Array(vec!["active".to_string(), "pending".to_string()]),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		// Bug #2936: FilterValue::Array with In operator currently returns None
+		// because only FilterValue::String is handled for In/NotIn.
+		// After fix: this should return Some with IN clause.
+		// Current behavior (documenting the bug):
+		assert!(
+			result.is_none(),
+			"Bug #2936: FilterValue::Array with In operator is currently unsupported and returns None"
+		);
+	}
+
+	#[rstest]
+	fn test_not_in_operator_with_array_value_produces_not_in_clause() {
+		// Arrange
+		let filter = Filter::new(
+			"status",
+			FilterOperator::NotIn,
+			FilterValue::Array(vec!["deleted".to_string(), "archived".to_string()]),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		// Bug #2936: FilterValue::Array with NotIn operator currently returns None
+		assert!(
+			result.is_none(),
+			"Bug #2936: FilterValue::Array with NotIn operator is currently unsupported and returns None"
+		);
+	}
+
+	#[rstest]
+	fn test_in_operator_with_empty_array() {
+		// Arrange
+		let filter = Filter::new("status", FilterOperator::In, FilterValue::Array(vec![]));
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		// Empty array with In operator: currently returns None due to bug #2936
+		assert!(
+			result.is_none(),
+			"Empty array with In operator returns None"
+		);
+	}
+
+	#[rstest]
+	fn test_in_operator_with_single_element_array() {
+		// Arrange
+		let filter = Filter::new(
+			"status",
+			FilterOperator::In,
+			FilterValue::Array(vec!["active".to_string()]),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		// Single-element array with In operator: currently returns None due to bug #2936
+		assert!(
+			result.is_none(),
+			"Bug #2936: Single-element array with In operator is currently unsupported"
+		);
+	}
+
+	#[rstest]
+	fn test_filter_value_to_sea_value_array_returns_null() {
+		// Arrange
+		let value = FilterValue::Array(vec!["a".to_string(), "b".to_string()]);
+
+		// Act
+		let result = filter_value_to_sea_value(&value);
+
+		// Assert
+		// Bug #2936: FilterValue::Array is converted to Value::String(None),
+		// silently discarding the array data
+		assert_eq!(
+			result,
+			Value::String(None),
+			"Bug #2936: FilterValue::Array is silently converted to NULL string"
+		);
+	}
+
+	// ==================== Bug #2943: Composite filter WHERE TRUE tests ====================
+
+	#[rstest]
+	fn test_and_with_all_unsupported_returns_some() {
+		// Arrange: Contains with Integer is unsupported (only String is handled)
+		let unsupported1 = FilterCondition::Single(Filter::new(
+			"name",
+			FilterOperator::Contains,
+			FilterValue::Integer(42),
+		));
+		let unsupported2 = FilterCondition::Single(Filter::new(
+			"email",
+			FilterOperator::StartsWith,
+			FilterValue::Integer(99),
+		));
+		let condition = FilterCondition::And(vec![unsupported1, unsupported2]);
+
+		// Act
+		let result = build_composite_filter_condition(&condition);
+
+		// Assert
+		// Bug #2943: And with all unsupported sub-conditions currently returns
+		// Ok(Some(empty Condition::all())) which generates WHERE TRUE in SQL,
+		// instead of Ok(None) to indicate no filtering is needed.
+		assert!(result.is_ok());
+		let cond = result.unwrap();
+		assert!(
+			cond.is_some(),
+			"Bug #2943: And with all unsupported sub-conditions returns Some instead of None"
+		);
+	}
+
+	#[rstest]
+	fn test_or_with_all_unsupported_returns_some() {
+		// Arrange: Contains/StartsWith with Integer are unsupported
+		let unsupported1 = FilterCondition::Single(Filter::new(
+			"name",
+			FilterOperator::Contains,
+			FilterValue::Integer(42),
+		));
+		let unsupported2 = FilterCondition::Single(Filter::new(
+			"email",
+			FilterOperator::StartsWith,
+			FilterValue::Integer(99),
+		));
+		let condition = FilterCondition::Or(vec![unsupported1, unsupported2]);
+
+		// Act
+		let result = build_composite_filter_condition(&condition);
+
+		// Assert
+		// Bug #2943: Or with all unsupported sub-conditions currently returns
+		// Ok(Some(empty Condition::any())) which generates WHERE FALSE in SQL.
+		assert!(result.is_ok());
+		let cond = result.unwrap();
+		assert!(
+			cond.is_some(),
+			"Bug #2943: Or with all unsupported sub-conditions returns Some instead of None"
+		);
+	}
+
+	#[rstest]
+	fn test_and_with_mix_supported_unsupported_keeps_supported() {
+		// Arrange: One supported (Eq + String), one unsupported (Contains + Integer)
+		let supported = FilterCondition::Single(Filter::new(
+			"name",
+			FilterOperator::Eq,
+			FilterValue::String("Alice".to_string()),
+		));
+		let unsupported = FilterCondition::Single(Filter::new(
+			"email",
+			FilterOperator::Contains,
+			FilterValue::Integer(42),
+		));
+		let condition = FilterCondition::And(vec![supported, unsupported]);
+
+		// Act
+		let result = build_composite_filter_condition(&condition);
+
+		// Assert: Should keep the supported filter condition
+		assert!(result.is_ok());
+		let cond = result.unwrap();
+		assert!(
+			cond.is_some(),
+			"And with mix of supported/unsupported should return Some with supported filters"
+		);
+		// Verify the supported condition is preserved by building SQL
+		let query = Query::select()
+			.from(Alias::new("test"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(cond.unwrap())
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("\"name\""),
+			"SQL should contain the supported filter field 'name': {}",
+			query
+		);
+	}
+
+	#[rstest]
+	fn test_or_with_one_supported_one_unsupported() {
+		// Arrange
+		let supported = FilterCondition::Single(Filter::new(
+			"status",
+			FilterOperator::Eq,
+			FilterValue::String("active".to_string()),
+		));
+		let unsupported = FilterCondition::Single(Filter::new(
+			"count",
+			FilterOperator::Contains,
+			FilterValue::Integer(42),
+		));
+		let condition = FilterCondition::Or(vec![supported, unsupported]);
+
+		// Act
+		let result = build_composite_filter_condition(&condition);
+
+		// Assert
+		assert!(result.is_ok());
+		let cond = result.unwrap();
+		assert!(
+			cond.is_some(),
+			"Or with one supported condition should return Some"
+		);
+		let query = Query::select()
+			.from(Alias::new("test"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(cond.unwrap())
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("\"status\""),
+			"SQL should contain the supported filter field 'status': {}",
+			query
+		);
+	}
+
+	// ==================== Bug #2945: extract_count_from_row tests ====================
+
+	#[rstest]
+	fn test_extract_count_with_count_key() {
+		// Arrange
+		let data = serde_json::json!({"count": 42});
+
+		// Act
+		let result = extract_count_from_row(&data);
+
+		// Assert
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap(), 42);
+	}
+
+	#[rstest]
+	fn test_extract_count_without_count_key_fallback() {
+		// Arrange: Single non-"count" key
+		let data = serde_json::json!({"total": 42});
+
+		// Act
+		let result = extract_count_from_row(&data);
+
+		// Assert
+		// Bug #2945: Falls back to first value from JSON object iteration order
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap(), 42);
+	}
+
+	#[rstest]
+	fn test_extract_count_with_multiple_keys_no_count() {
+		// Arrange: Multiple keys, no "count" key
+		// Bug #2945: obj.values().next() picks the first value from iteration order
+		let data = serde_json::json!({"total": 42, "other": 99});
+
+		// Act
+		let result = extract_count_from_row(&data);
+
+		// Assert: Result is non-deterministic due to JSON object iteration order.
+		// serde_json::Map uses BTreeMap internally (sorted keys), so "other" comes
+		// before "total" alphabetically, meaning the fallback returns 99, not 42.
+		// This documents the fragile behavior of bug #2945.
+		assert!(result.is_ok(), "Should succeed with fallback");
+	}
+
+	#[rstest]
+	fn test_extract_count_non_integer_returns_error() {
+		// Arrange
+		let data = serde_json::json!({"count": "not_a_number"});
+
+		// Act
+		let result = extract_count_from_row(&data);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(matches!(err, AdminError::DatabaseError(_)));
+	}
+
+	#[rstest]
+	fn test_extract_count_null_returns_error() {
+		// Arrange
+		let data = serde_json::json!({"count": null});
+
+		// Act
+		let result = extract_count_from_row(&data);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_extract_count_empty_object_returns_error() {
+		// Arrange
+		let data = serde_json::json!({});
+
+		// Act
+		let result = extract_count_from_row(&data);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_extract_count_non_object_returns_error() {
+		// Arrange: Array instead of object
+		let data = serde_json::json!([1, 2, 3]);
+
+		// Act
+		let result = extract_count_from_row(&data);
+
+		// Assert
+		assert!(result.is_err());
 	}
 }

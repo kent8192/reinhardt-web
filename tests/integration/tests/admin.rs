@@ -4,4 +4,5 @@
 
 mod admin {
 	mod admin_database_tests;
+	mod admin_handler_logic_tests;
 }
