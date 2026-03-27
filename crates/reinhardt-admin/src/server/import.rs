@@ -58,7 +58,7 @@ pub async fn import_data(
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	auth.require_model_permission(
 		model_admin.as_ref(),
-		&user as &(dyn std::any::Any + Send + Sync),
+		&user as &dyn crate::core::AdminUser,
 		ModelPermission::Add,
 	)
 	.await?;
@@ -73,6 +73,7 @@ pub async fn import_data(
 	}
 
 	let table_name = model_admin.table_name();
+	let pk_field = model_admin.pk_field();
 
 	// Parse data based on format
 	// Sanitize error messages to avoid exposing internal details (schema, SQL, etc.)
@@ -110,7 +111,10 @@ pub async fn import_data(
 	let mut errors = Vec::new();
 
 	for (index, record) in records.into_iter().enumerate() {
-		match db.create::<AdminRecord>(table_name, record).await {
+		match db
+			.create::<AdminRecord>(table_name, Some(pk_field), record)
+			.await
+		{
 			Ok(_) => imported += 1,
 			Err(_) => {
 				// Hide internal error details (SQL fragments, table structures, column names)

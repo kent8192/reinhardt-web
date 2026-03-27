@@ -69,7 +69,7 @@ pub mod server {
 #[allow(deprecated)]
 // re-exporting deprecated admin_routes and admin_routes_with_di for backward compatibility
 pub use reinhardt_admin::core::{
-	AdminRouter, admin_routes, admin_routes_with_di, admin_routes_with_di_deferred,
+	AdminRouter, AdminUser, admin_routes, admin_routes_with_di, admin_routes_with_di_deferred,
 	admin_static_routes,
 };
 
