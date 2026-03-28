@@ -325,11 +325,11 @@ args = ["llvm-cov", "nextest", "--workspace", "--lib", "--all-features", "--no-f
 # ============================================================================
 
 [tasks.feature-check]
-description = "Check representative feature combinations (18 patterns)"
+description = "Check representative feature combinations (25 patterns)"
 dependencies = ["feature-check-facade", "feature-check-subcrate"]
 
 [tasks.feature-check-facade]
-description = "Check facade crate feature combinations (10 patterns)"
+description = "Check facade crate feature combinations (17 patterns)"
 script_runner = "bash"
 script = '''
 set -e
@@ -346,6 +346,13 @@ combos=(
 	"cli-tools|reinhardt-web|--no-default-features -F cli-tools"
 	"standard+mysql|reinhardt-web|--no-default-features -F standard,db-mysql"
 	"standard+sqlite|reinhardt-web|--no-default-features -F standard,db-sqlite"
+	"db-cockroachdb|reinhardt-web|--no-default-features -F minimal,db-cockroachdb"
+	"auth-variants|reinhardt-web|--no-default-features -F minimal,auth-jwt,auth-session,auth-oauth,auth-token"
+	"middleware-all|reinhardt-web|--no-default-features -F minimal,middleware-cors,middleware-compression,middleware-security,middleware-rate-limit"
+	"pages-graphql-ws|reinhardt-web|--no-default-features -F minimal,pages,graphql,websockets,database,db-postgres"
+	"admin-forms|reinhardt-web|--no-default-features -F minimal,admin,database,db-postgres,auth"
+	"plugins|reinhardt-web|--no-default-features -F minimal,dentdelion,deeplink,dispatch,grpc"
+	"openapi-router|reinhardt-web|--no-default-features -F minimal,openapi-router,database,db-postgres"
 )
 
 for combo in "${combos[@]}"; do

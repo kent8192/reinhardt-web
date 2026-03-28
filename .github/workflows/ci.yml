@@ -224,6 +224,23 @@ jobs:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
+  # Feature flag combination check - release PRs only.
+  # Verifies that all documented feature presets compile correctly
+  # before publishing to crates.io. Only runs on release-plz branches
+  # since feature breakage is most critical at release time.
+  feature-check:
+    name: Feature Check
+    needs: [determine-runner, check-branch-status]
+    if: >-
+      ${{
+        needs.check-branch-status.outputs.has-conflicts != 'true' &&
+        startsWith(github.head_ref || '', 'release-plz-')
+      }}
+    uses: ./.github/workflows/reinhardt-feature-check.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
+
   security-audit:
     name: Security Audit
     needs: [determine-runner, check-branch-status]
@@ -382,6 +399,7 @@ jobs:
       - wasm-check
       - publish-check
       - todo-check
+      - feature-check
       - security-audit
       - terraform-check
       - semver-check
@@ -436,6 +454,7 @@ jobs:
             "ui-test:${{ needs.ui-test.result }}"
             "terraform-check:${{ needs.terraform-check.result }}"
             "msrv-test:${{ needs.msrv-test.result }}"
+            "feature-check:${{ needs.feature-check.result }}"
           )
           for entry in "${selectively_skippable[@]}"; do
             name="${entry%%:*}"
