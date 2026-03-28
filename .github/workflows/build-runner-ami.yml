@@ -25,6 +25,10 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: build-runner-ami-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-ami:
     runs-on: ubuntu-latest
