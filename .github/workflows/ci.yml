@@ -336,28 +336,28 @@ jobs:
     uses: ./.github/workflows/cross-platform-check.yml
     needs: [check, fmt, clippy]
 
-  # Phase 2b: Additional tests run after core tests complete.
-  # This phased approach prevents exceeding the Spot vCPU quota by
-  # ensuring Phase 2a runners have terminated before Phase 2b starts.
-  # Note: examples-test runs as a separate standalone workflow.
-  # Coverage runs only on main branch pushes (not on PRs).
+  # Phase 2a (continued): UI tests run in parallel with unit/integration tests.
+  # Dynamic partitioning reduces runner count for small-scope PRs,
+  # mitigating vCPU quota pressure from parallel execution.
   ui-test:
     name: UI Tests
     uses: ./.github/workflows/ui-test.yml
-    needs: [unit-test, intra-crate-integration-test, cross-crate-integration-test, determine-runner, detect-affected]
-    if: |
-      always() &&
-      needs.detect-affected.outputs.has-affected == 'true' &&
-      needs.unit-test.result == 'success' &&
-      needs.intra-crate-integration-test.result == 'success' &&
-      needs.cross-crate-integration-test.result == 'success'
+    needs: [check, fmt, clippy, determine-runner, detect-affected]
+    if: needs.detect-affected.outputs.has-affected == 'true'
     secrets: inherit
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
       nextest-filter: ${{ needs.detect-affected.outputs.nextest-filter }}
       run-all: ${{ needs.detect-affected.outputs.run-all }}
+      partitions-json: ${{ needs.detect-affected.outputs.partitions-json }}
+      partition-count: ${{ needs.detect-affected.outputs.partition-count }}
 
+  # Phase 2b: Additional tests run after core tests complete.
+  # This phased approach prevents exceeding the Spot vCPU quota by
+  # ensuring Phase 2a runners have terminated before Phase 2b starts.
+  # Note: examples-test runs as a separate standalone workflow.
+  # Coverage runs only on main branch pushes (not on PRs).
   msrv-test:
     name: MSRV Test
     uses: ./.github/workflows/msrv-test.yml
