@@ -327,7 +327,10 @@ where
 
 				Response::created().with_json(&json_value)
 			}
-			_ => Err(Error::Http("Method not allowed".to_string())),
+			_ => Err(Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 
@@ -396,11 +399,14 @@ where
 			))
 		})?;
 
-		let filter = Filter::new(
-			self.lookup_field.clone(),
-			FilterOperator::Eq,
-			FilterValue::String(lookup_value.clone()),
-		);
+		// Try to parse as i64 first (common for primary keys), fallback to string
+		let filter_value = if let Ok(int_value) = lookup_value.parse::<i64>() {
+			FilterValue::Integer(int_value)
+		} else {
+			FilterValue::String(lookup_value.clone())
+		};
+
+		let filter = Filter::new(self.lookup_field.clone(), FilterOperator::Eq, filter_value);
 
 		self.get_queryset()
 			.filter(filter)
@@ -497,14 +503,9 @@ where
 					.json()
 					.map_err(|e| Error::Http(format!("Invalid request body: {}", e)))?;
 
-				// Merge patch data into current object
-				if let (Some(current_obj), Some(patch_obj)) =
-					(current.as_object_mut(), patch_data.as_object())
-				{
-					for (key, value) in patch_obj {
-						current_obj.insert(key.clone(), value.clone());
-					}
-				}
+				// Validate and merge patch data into current object
+				crate::generic::patch_utils::merge_patch_object_into(&mut current, &patch_data)
+					.map_err(Error::Http)?;
 
 				// Deserialize merged object back to model
 				let merged: M = serde_json::from_value(current)
@@ -527,7 +528,10 @@ where
 
 				Response::ok().with_json(&json_value)
 			}
-			_ => Err(Error::Http("Method not allowed".to_string())),
+			_ => Err(Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 
@@ -596,11 +600,14 @@ where
 			))
 		})?;
 
-		let filter = Filter::new(
-			self.lookup_field.clone(),
-			FilterOperator::Eq,
-			FilterValue::String(lookup_value.clone()),
-		);
+		// Try to parse as i64 first (common for primary keys), fallback to string
+		let filter_value = if let Ok(int_value) = lookup_value.parse::<i64>() {
+			FilterValue::Integer(int_value)
+		} else {
+			FilterValue::String(lookup_value.clone())
+		};
+
+		let filter = Filter::new(self.lookup_field.clone(), FilterOperator::Eq, filter_value);
 
 		self.get_queryset()
 			.filter(filter)
@@ -663,7 +670,10 @@ where
 				// Return 204 No Content
 				Ok(Response::no_content())
 			}
-			_ => Err(Error::Http("Method not allowed".to_string())),
+			_ => Err(Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 
@@ -733,11 +743,14 @@ where
 			))
 		})?;
 
-		let filter = Filter::new(
-			self.lookup_field.clone(),
-			FilterOperator::Eq,
-			FilterValue::String(lookup_value.clone()),
-		);
+		// Try to parse as i64 first (common for primary keys), fallback to string
+		let filter_value = if let Ok(int_value) = lookup_value.parse::<i64>() {
+			FilterValue::Integer(int_value)
+		} else {
+			FilterValue::String(lookup_value.clone())
+		};
+
+		let filter = Filter::new(self.lookup_field.clone(), FilterOperator::Eq, filter_value);
 
 		self.get_queryset()
 			.filter(filter)
@@ -834,14 +847,9 @@ where
 					.json()
 					.map_err(|e| Error::Http(format!("Invalid request body: {}", e)))?;
 
-				// Merge patch data into current object
-				if let (Some(current_obj), Some(patch_obj)) =
-					(current.as_object_mut(), patch_data.as_object())
-				{
-					for (key, value) in patch_obj {
-						current_obj.insert(key.clone(), value.clone());
-					}
-				}
+				// Validate and merge patch data into current object
+				crate::generic::patch_utils::merge_patch_object_into(&mut current, &patch_data)
+					.map_err(Error::Http)?;
 
 				// Deserialize merged object back to model
 				let merged: M = serde_json::from_value(current)
@@ -883,7 +891,10 @@ where
 				// Return 204 No Content
 				Ok(Response::no_content())
 			}
-			_ => Err(Error::Http("Method not allowed".to_string())),
+			_ => Err(Error::MethodNotAllowed(format!(
+				"Method {} not allowed",
+				request.method
+			))),
 		}
 	}
 
