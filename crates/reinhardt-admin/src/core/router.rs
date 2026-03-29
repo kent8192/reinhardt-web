@@ -21,11 +21,14 @@ use std::sync::Arc;
 /// to prevent XSS, clickjacking, and other browser-side attacks.
 #[cfg(not(target_arch = "wasm32"))]
 async fn admin_spa_handler(
-	_request: reinhardt_http::Request,
+	request: reinhardt_http::Request,
 ) -> reinhardt_core::exception::Result<reinhardt_http::Response> {
 	let security_headers = crate::server::security::SecurityHeaders::default();
-	let mut response =
-		reinhardt_http::Response::ok().with_header("Content-Type", "text/html; charset=utf-8");
+	let csrf_token = crate::server::security::generate_csrf_token();
+	let csrf_cookie = crate::server::security::build_csrf_cookie(&csrf_token, request.is_secure);
+	let mut response = reinhardt_http::Response::ok()
+		.with_header("Content-Type", "text/html; charset=utf-8")
+		.append_header("Set-Cookie", &csrf_cookie);
 	for (name, value) in security_headers.to_header_map() {
 		response = response.with_header(name, &value);
 	}
@@ -111,6 +114,43 @@ pub fn admin_static_routes() -> ServerRouter {
 		.function("/main.js", hyper::Method::GET, admin_js_handler);
 
 	router
+}
+
+/// Returns path prefixes that should be exempt from global CSP middleware.
+///
+/// The admin panel sets its own `Content-Security-Policy` headers on HTML
+/// responses (allowing `'unsafe-inline'` for styles, `data:` for images,
+/// etc.). If your application uses [`CspMiddleware`] with strict directives,
+/// add these paths to its `exempt_paths` so the middleware does not override
+/// the admin's CSP.
+///
+/// # Returned paths
+///
+/// - `"/admin"` -- the admin SPA HTML routes
+/// - `"/static/admin"` -- the admin's embedded CSS/JS assets
+///
+/// # Note
+///
+/// Reinhardt's own `CspMiddleware` already checks for an existing CSP header
+/// and skips insertion if one is present. This helper is primarily useful when
+/// a third-party or custom CSP middleware unconditionally sets headers.
+///
+/// [`CspMiddleware`]: reinhardt_middleware::CspMiddleware
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use reinhardt_admin::core::admin_csp_exempt_paths;
+/// use reinhardt_middleware::{CspConfig, CspMiddleware};
+///
+/// let mut config = CspConfig::strict();
+/// for path in admin_csp_exempt_paths() {
+///     config = config.add_exempt_path(path);
+/// }
+/// let middleware = CspMiddleware::with_config(config);
+/// ```
+pub fn admin_csp_exempt_paths() -> Vec<String> {
+	vec!["/admin".to_string(), "/static/admin".to_string()]
 }
 
 /// Internal route builder shared by `admin_routes_with_di` and the deprecated `admin_routes`.
@@ -209,10 +249,14 @@ pub fn admin_routes_with_di(site: Arc<AdminSite>, singleton: &SingletonScope) ->
 /// Admin router builder with deferred DI registration
 ///
 /// Builds a `ServerRouter` from an `AdminSite` with all CRUD endpoints,
-/// and returns a [`DiRegistrationList`] containing the `AdminSite`
-/// registration. The list should be attached to the [`UnifiedRouter`] via
-/// [`with_di_registrations`], which ensures it reaches the server's
-/// singleton scope during startup.
+/// and returns a [`DiRegistrationList`] containing the `AdminSite` and
+/// `AdminUserLoader` registrations. The list should be attached to the
+/// [`UnifiedRouter`] via [`with_di_registrations`], which ensures it reaches
+/// the server's singleton scope during startup.
+///
+/// If a custom user type was configured via [`AdminSite::set_user_type`],
+/// that type is used for admin authentication. Otherwise,
+/// [`AdminDefaultUser`] (table `auth_user`) is registered as a fallback.
 ///
 /// `AdminDatabase` is **not** registered here; it is lazily constructed
 /// from `DatabaseConnection` at first request via its `Injectable` impl.
@@ -224,6 +268,7 @@ pub fn admin_routes_with_di(site: Arc<AdminSite>, singleton: &SingletonScope) ->
 /// use reinhardt_urls::routers::UnifiedRouter;
 /// use std::sync::Arc;
 ///
+/// // Default: uses AdminDefaultUser (table "auth_user")
 /// let site = Arc::new(AdminSite::new("My Admin"));
 /// let (admin_router, admin_di) = admin_routes_with_di_deferred(site);
 ///
@@ -232,6 +277,16 @@ pub fn admin_routes_with_di(site: Arc<AdminSite>, singleton: &SingletonScope) ->
 ///     .with_di_registrations(admin_di);
 /// ```
 ///
+/// ```rust,ignore
+/// // Custom user type
+/// let mut site = AdminSite::new("My Admin");
+/// site.set_user_type::<MyCustomUser>();
+/// let site = Arc::new(site);
+/// let (admin_router, admin_di) = admin_routes_with_di_deferred(site);
+/// ```
+///
+/// [`AdminSite::set_user_type`]: AdminSite::set_user_type
+/// [`AdminDefaultUser`]: crate::server::user::AdminDefaultUser
 /// [`DiRegistrationList`]: reinhardt_di::DiRegistrationList
 /// [`UnifiedRouter`]: reinhardt_urls::routers::UnifiedRouter
 /// [`with_di_registrations`]: reinhardt_urls::routers::UnifiedRouter::with_di_registrations
@@ -239,6 +294,17 @@ pub fn admin_routes_with_di_deferred(
 	site: Arc<AdminSite>,
 ) -> (ServerRouter, reinhardt_di::DiRegistrationList) {
 	let mut registrations = reinhardt_di::DiRegistrationList::new();
+
+	// Register the user loader for admin authentication.
+	// If the site has a custom user type (set via set_user_type::<U>()),
+	// use that; otherwise fall back to AdminDefaultUser.
+	let loader = site.user_loader().unwrap_or_else(|| {
+		Arc::new(crate::server::admin_auth::create_admin_user_loader::<
+			crate::server::user::AdminDefaultUser,
+		>())
+	});
+	registrations.register_arc(loader);
+
 	registrations.register_arc(site);
 	(build_admin_router(), registrations)
 }
@@ -765,6 +831,84 @@ mod tests {
 			content_type.contains("javascript"),
 			"JS handler should return application/javascript content type, got: {}",
 			content_type
+		);
+	}
+
+	#[rstest]
+	fn test_admin_csp_exempt_paths_returns_expected_paths() {
+		// Arrange & Act
+		let paths = admin_csp_exempt_paths();
+
+		// Assert
+		assert!(paths.contains(&"/admin".to_string()));
+		assert!(paths.contains(&"/static/admin".to_string()));
+		assert_eq!(paths.len(), 2);
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
+	#[tokio::test]
+	async fn test_admin_spa_handler_sets_csrf_cookie() {
+		// Arrange
+		let request = reinhardt_http::Request::builder()
+			.method(hyper::Method::GET)
+			.uri("/")
+			.build()
+			.unwrap();
+
+		// Act
+		let response = admin_spa_handler(request).await.unwrap();
+
+		// Assert
+		let set_cookie = response
+			.headers
+			.get("set-cookie")
+			.expect("Response should include Set-Cookie header")
+			.to_str()
+			.unwrap();
+		assert!(
+			set_cookie.contains("__csrf_token="),
+			"Cookie should contain CSRF token name, got: {}",
+			set_cookie
+		);
+		assert!(
+			set_cookie.contains("SameSite=Strict"),
+			"Cookie should have SameSite=Strict, got: {}",
+			set_cookie
+		);
+		assert!(
+			set_cookie.contains("Path=/admin"),
+			"Cookie should be scoped to /admin, got: {}",
+			set_cookie
+		);
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
+	#[tokio::test]
+	async fn test_admin_spa_handler_csrf_cookie_no_secure_for_http() {
+		// Arrange
+		let request = reinhardt_http::Request::builder()
+			.method(hyper::Method::GET)
+			.uri("/")
+			.build()
+			.unwrap();
+		// is_secure defaults to false
+
+		// Act
+		let response = admin_spa_handler(request).await.unwrap();
+
+		// Assert
+		let set_cookie = response
+			.headers
+			.get("set-cookie")
+			.expect("Response should include Set-Cookie header")
+			.to_str()
+			.unwrap();
+		assert!(
+			!set_cookie.contains("Secure"),
+			"HTTP request should not set Secure flag, got: {}",
+			set_cookie
 		);
 	}
 }
