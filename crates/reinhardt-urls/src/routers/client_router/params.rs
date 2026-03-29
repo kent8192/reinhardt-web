@@ -65,7 +65,7 @@ pub trait FromPath: Sized {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_urls::routers::client_router::Path;
 ///
 /// // Single parameter

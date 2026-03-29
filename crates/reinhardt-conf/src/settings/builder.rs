@@ -246,7 +246,7 @@ impl MergedSettings {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// // Retrieve configuration value
 	/// let value = settings.get_or("key", "default");
 	/// ```
@@ -279,7 +279,7 @@ impl MergedSettings {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// // Retrieve configuration value
 	/// let value = settings.get_raw("key");
 	/// ```

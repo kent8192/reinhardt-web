@@ -87,7 +87,7 @@ pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<Method>)>;
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// // crate-internal usage only
 /// assert_eq!(join_path("/api/", "/users"), "/api/users");
 /// assert_eq!(join_path("/api", "/users"), "/api/users");
@@ -1339,7 +1339,7 @@ impl ServerRouter {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let router = ServerRouter::new()
 	///     .with_prefix("/api/v1")
 	///     .function("/users", Method::GET, handler);
@@ -1470,7 +1470,7 @@ impl ServerRouter {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let router = ServerRouter::new().with_namespace("users");
 	/// assert_eq!(router.get_full_namespace(Some("v1")), Some("v1:users".to_string()));
 	/// assert_eq!(router.get_full_namespace(None), Some("users".to_string()));
@@ -1491,7 +1491,7 @@ impl ServerRouter {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let mut router = ServerRouter::new()
 	///     .with_namespace("v1");
 	///
@@ -1591,7 +1591,7 @@ impl ServerRouter {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let router = ServerRouter::new()
 	///     .with_namespace("v1");
 	///

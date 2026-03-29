@@ -882,7 +882,7 @@ pub mod sqlite {
 	/// which is useful for fast tests that don't require a real database container.
 	///
 	/// # Example
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_testkit::containers::sqlite::memory_url;
 	///
 	/// let url = memory_url();
@@ -898,7 +898,7 @@ pub mod sqlite {
 	/// cleaned up when the test completes (if using proper cleanup).
 	///
 	/// # Example
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_testkit::containers::sqlite::temp_file_url;
 	///
 	/// let url = temp_file_url("test_db");

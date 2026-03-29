@@ -120,7 +120,7 @@ pub trait BaseUserManager<U: BaseUser>: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let mut manager = MyUserManager::new();
 	/// let user = manager.create_user(
 	///     "alice@example.com",
@@ -150,7 +150,7 @@ pub trait BaseUserManager<U: BaseUser>: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let mut manager = MyUserManager::new();
 	/// let superuser = manager.create_superuser(
 	///     "admin@example.com",

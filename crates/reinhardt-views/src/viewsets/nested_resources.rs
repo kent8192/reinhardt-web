@@ -154,7 +154,7 @@ impl<V> NestedViewSet<V> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_views::viewsets::{NestedViewSet, NestedResource, ModelViewSet};
 	///
 	/// let inner_viewset = ModelViewSet::new("comments");

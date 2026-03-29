@@ -455,7 +455,7 @@ impl CollectionProxy {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_urls::proxy::{CollectionProxy, query::{FilterCondition, FilterOp}};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

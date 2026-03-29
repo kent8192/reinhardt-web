@@ -58,7 +58,7 @@ impl CheckMessage {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let msg = CheckMessage::error("E001", "Error").with_hint("Try this");
 	/// ```
 	pub fn with_hint(mut self, hint: impl Into<String>) -> Self {

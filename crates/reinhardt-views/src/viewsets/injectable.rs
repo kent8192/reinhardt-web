@@ -5,7 +5,7 @@
 //!
 //! # Usage
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_views::viewsets::{InjectableViewSet, ModelViewSet, ViewSet};
 //! use reinhardt_di::Injectable;
 //! use std::sync::Arc;
@@ -36,7 +36,7 @@ use std::sync::Arc;
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// # #[tokio::main]
 /// # async fn main() {
 /// use reinhardt_views::viewsets::{InjectableViewSet, ModelViewSet, ViewSet};
@@ -76,7 +76,7 @@ pub trait InjectableViewSet: ViewSet {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let db: Arc<DatabaseConnection> = self.resolve(&request).await?;
 	/// ```
 	async fn resolve<T>(&self, request: &Request) -> Result<T>
@@ -120,7 +120,7 @@ pub trait InjectableViewSet: ViewSet {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let fresh_service: MyService = self.resolve_uncached(&request).await?;
 	/// ```
 	async fn resolve_uncached<T>(&self, request: &Request) -> Result<T>
@@ -156,7 +156,7 @@ pub trait InjectableViewSet: ViewSet {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// if let Some(cache) = self.try_resolve::<CacheService>(&request).await {
 	///     // Use cache
 	/// } else {

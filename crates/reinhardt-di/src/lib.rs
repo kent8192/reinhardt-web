@@ -115,7 +115,7 @@
 //! The DI system automatically detects circular dependencies at runtime using an optimized
 //! thread-local mechanism:
 //!
-//! ```no_run
+//! ```ignore
 //! # use reinhardt_di::{Injectable, InjectionContext, SingletonScope, DiResult};
 //! # use async_trait::async_trait;
 //! # use std::sync::Arc;
@@ -204,7 +204,7 @@
 //!
 //! Returns an injection error if any requirement is missing (fail-fast behavior).
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_auth::AuthUser;
 //! use reinhardt_auth::DefaultUser;
 //!

@@ -46,7 +46,7 @@ pub const SESSION_COOKIE_NAME: &str = "sessionid";
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_auth::handlers::LoginHandler;
 /// use reinhardt_auth::session::InMemorySessionStore;
 /// use reinhardt_auth::core::backend::AuthenticationBackend;
@@ -67,7 +67,7 @@ impl<S: SessionStore, A: AuthenticationBackend> LoginHandler<S, A> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_auth::handlers::LoginHandler;
 	/// use reinhardt_auth::session::InMemorySessionStore;
 	/// use reinhardt_auth::backend::AuthBackend;

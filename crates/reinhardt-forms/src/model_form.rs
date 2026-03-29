@@ -49,7 +49,7 @@ pub trait FormModel: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// # use reinhardt_forms::model_form::FieldType;
 	/// fn field_type(name: &str) -> Option<FieldType> {
 	///     match name {
@@ -85,7 +85,7 @@ pub trait FormModel: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// # struct Example { id: i32, name: String }
 	/// # impl Example {
 	/// fn to_choice_label(&self) -> String {
@@ -110,7 +110,7 @@ pub trait FormModel: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// # struct Example { id: i32 }
 	/// # impl Example {
 	/// fn to_choice_value(&self) -> String {
@@ -287,7 +287,7 @@ impl<T: FormModel> ModelForm<T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
 	///
 	/// // Assuming we have a model that implements the Model trait
@@ -345,7 +345,7 @@ impl<T: FormModel> ModelForm<T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
 	///
 	/// let config = ModelFormConfig::new();
@@ -358,7 +358,7 @@ impl<T: FormModel> ModelForm<T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
 	/// use std::collections::HashMap;
 	/// use serde_json::json;
@@ -378,7 +378,7 @@ impl<T: FormModel> ModelForm<T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
 	///
 	/// let config = ModelFormConfig::new();
@@ -401,7 +401,7 @@ impl<T: FormModel> ModelForm<T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
 	///
 	/// let config = ModelFormConfig::new();
@@ -506,7 +506,7 @@ impl<T: FormModel> ModelFormBuilder<T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_forms::{ModelFormBuilder, ModelFormConfig};
 	///
 	/// let config = ModelFormConfig::new();

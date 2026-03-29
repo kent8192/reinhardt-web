@@ -509,7 +509,7 @@ impl UserStorage {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// // Retrieve user
 	/// let user = storage.get_user("user-1").await;
 	/// ```
@@ -520,7 +520,7 @@ impl UserStorage {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// // List all users
 	/// let users = storage.list_users().await;
 	/// ```

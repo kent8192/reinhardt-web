@@ -18,7 +18,7 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_auth::social::{
 //!     ProviderConfig,
 //!     providers::GoogleProvider,

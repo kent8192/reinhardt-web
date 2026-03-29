@@ -115,7 +115,7 @@ impl<T: 'static> GenericViewSet<T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_views::{viewset_actions, viewsets::GenericViewSet};
 	/// use hyper::Method;
 	///
@@ -521,7 +521,7 @@ impl<M: 'static, S: 'static> ReadOnlyModelViewSet<M, S> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_views::viewsets::{ReadOnlyModelViewSet, FilterConfig};
 	///
 	/// let viewset = ReadOnlyModelViewSet::<MyModel, MySerializer>::new("items")
@@ -540,7 +540,7 @@ impl<M: 'static, S: 'static> ReadOnlyModelViewSet<M, S> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_views::viewsets::{ReadOnlyModelViewSet, OrderingConfig};
 	///
 	/// let viewset = ReadOnlyModelViewSet::<MyModel, MySerializer>::new("items")

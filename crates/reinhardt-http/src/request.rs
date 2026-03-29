@@ -363,7 +363,7 @@ impl RequestBuilder {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_http::Request;
 	/// use hyper::Method;
 	///

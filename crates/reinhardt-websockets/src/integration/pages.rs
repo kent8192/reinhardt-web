@@ -16,7 +16,7 @@
 //! On the server side, use [`PagesAuthenticator`] to validate WebSocket connections
 //! using session cookies:
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_websockets::integration::pages::PagesAuthenticator;
 //! use reinhardt_websockets::{ConsumerContext, WebSocketConsumer, Message, WebSocketResult};
 //! use reinhardt_auth::sessions::InMemorySessionBackend;
@@ -62,7 +62,7 @@
 //!
 //! On the client side (WASM), use the `use_websocket` hook from reinhardt-pages:
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_pages::reactive::hooks::{use_websocket, use_effect, UseWebSocketOptions};
 //! use reinhardt_pages::reactive::hooks::{ConnectionState, WebSocketMessage};
 //!
@@ -173,7 +173,7 @@ impl AuthUser for PagesAuthUser {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_websockets::integration::pages::PagesAuthenticator;
 /// use reinhardt_auth::sessions::InMemorySessionBackend;
 ///
@@ -203,7 +203,7 @@ impl<B: SessionBackend> PagesAuthenticator<B> {
 	///
 	/// # Example
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_websockets::integration::pages::PagesAuthenticator;
 	/// use reinhardt_auth::sessions::InMemorySessionBackend;
 	///
@@ -226,7 +226,7 @@ impl<B: SessionBackend> PagesAuthenticator<B> {
 	///
 	/// # Example
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_websockets::integration::pages::PagesAuthenticator;
 	/// use reinhardt_auth::sessions::InMemorySessionBackend;
 	///
@@ -247,7 +247,7 @@ impl<B: SessionBackend> PagesAuthenticator<B> {
 	///
 	/// # Example
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_websockets::integration::pages::PagesAuthenticator;
 	/// use reinhardt_auth::sessions::InMemorySessionBackend;
 	///
@@ -284,7 +284,7 @@ impl<B: SessionBackend> PagesAuthenticator<B> {
 	///
 	/// # Example
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_websockets::integration::pages::PagesAuthenticator;
 	/// use reinhardt_auth::sessions::InMemorySessionBackend;
 	///

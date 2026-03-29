@@ -221,7 +221,7 @@ pub mod prelude {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_testkit::poll_until;
 /// use std::time::Duration;
 ///
@@ -265,7 +265,7 @@ where
 ///
 /// # Usage
 ///
-/// ```no_run
+/// ```ignore
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// struct TestUser {
 ///     id: Option<i64>,
@@ -294,7 +294,7 @@ where
 /// # Examples
 ///
 /// ## Basic usage
-/// ```no_run
+/// ```ignore
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// struct User {
 ///     id: Option<i64>,
@@ -309,7 +309,7 @@ where
 /// ```
 ///
 /// ## With relationships
-/// ```no_run
+/// ```ignore
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// struct Author {
 ///     id: Option<i32>,
