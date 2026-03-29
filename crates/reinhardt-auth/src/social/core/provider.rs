@@ -9,7 +9,7 @@ use async_trait::async_trait;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_auth::social::{OAuthProvider, ProviderConfig};
 /// use std::sync::Arc;
 ///

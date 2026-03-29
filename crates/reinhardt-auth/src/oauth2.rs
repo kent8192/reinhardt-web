@@ -207,7 +207,7 @@ impl OAuth2TokenStore for InMemoryOAuth2Store {
 ///
 /// With custom user repository:
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_auth::{OAuth2Authentication, SimpleUserRepository};
 /// use std::sync::Arc;
 ///

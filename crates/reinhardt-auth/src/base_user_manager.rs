@@ -22,7 +22,7 @@ use std::collections::HashMap;
 ///
 /// Implementing a simple in-memory user manager:
 ///
-/// ```rust,ignore
+/// ```no_run
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use reinhardt_auth::{BaseUser, BaseUserManager, Argon2Hasher};
@@ -120,7 +120,7 @@ pub trait BaseUserManager<U: BaseUser>: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let mut manager = MyUserManager::new();
 	/// let user = manager.create_user(
 	///     "alice@example.com",
@@ -150,7 +150,7 @@ pub trait BaseUserManager<U: BaseUser>: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let mut manager = MyUserManager::new();
 	/// let superuser = manager.create_superuser(
 	///     "admin@example.com",
