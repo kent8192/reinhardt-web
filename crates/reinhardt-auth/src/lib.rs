@@ -133,6 +133,9 @@ pub mod model_permissions;
 pub mod oauth2;
 /// Object-level permission checking.
 pub mod object_permissions;
+/// Database-backed permission model.
+#[cfg(feature = "database")]
+pub mod permission;
 /// Rate-limiting permission class.
 #[cfg(feature = "rate-limit")]
 pub mod rate_limit_permission;
@@ -185,6 +188,8 @@ pub use oauth2::{
 	OAuth2Authentication, OAuth2TokenStore,
 };
 pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPermissionManager};
+#[cfg(feature = "database")]
+pub use permission::AuthPermission;
 pub use permission_operators::{AndPermission, NotPermission, OrPermission};
 #[cfg(feature = "social")]
 pub use social::{
