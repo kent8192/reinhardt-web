@@ -304,7 +304,7 @@ impl ClientRouter {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let router = ClientRouter::new()
 	///     .route_path("/users/{id}/", |Path(id): Path<i64>| {
 	///         user_detail(id)
@@ -347,7 +347,7 @@ impl ClientRouter {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let router = ClientRouter::new()
 	///     .route_path2("/users/{user_id}/posts/{post_id}/",
 	///         |Path(user_id): Path<i64>, Path(post_id): Path<i64>| {
@@ -393,7 +393,7 @@ impl ClientRouter {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let router = ClientRouter::new()
 	///     .route_path3("/org/{org}/repos/{repo}/issues/{issue}/",
 	///         |Path(org): Path<String>, Path(repo): Path<String>, Path(issue): Path<i32>| {
