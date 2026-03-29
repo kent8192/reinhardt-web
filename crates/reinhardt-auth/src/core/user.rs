@@ -28,7 +28,7 @@ use uuid::Uuid;
 /// assert_eq!(user.username(), "alice");
 /// ```
 #[deprecated(
-	since = "0.1.0-rc.15",
+	since = "0.1.0-rc.14",
 	note = "Use AuthIdentity + BaseUser/FullUser + PermissionsMixin instead"
 )]
 pub trait User: Send + Sync {

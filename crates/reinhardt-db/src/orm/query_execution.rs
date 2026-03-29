@@ -88,7 +88,7 @@ impl QueryCompiler {
 
 	/// Build condition expression from field, operator and value
 	fn build_condition_expr(field: &str, operator: &str, value: &str) -> SimpleExpr {
-		// For reinhardt-query v1.0.0-rc.15, we use custom SQL expressions
+		// For reinhardt-query v1.0.0-rc.14, we use custom SQL expressions
 		// as the API for building complex conditions has changed
 		// This is a temporary solution until we can use the proper API
 
