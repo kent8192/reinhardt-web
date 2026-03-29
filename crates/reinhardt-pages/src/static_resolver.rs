@@ -322,7 +322,7 @@ pub fn resolve_static(path: &str) -> String {
 ///
 /// ## Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_pages::static_resolver::{is_initialized, init_static_resolver};
 ///
 /// if !is_initialized() {

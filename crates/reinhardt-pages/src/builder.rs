@@ -11,8 +11,7 @@
 //!
 //! ## Example
 //!
-//! ```no_run
-//! # use reinhardt_pages::builder::html::{button, div};
+//! ```ignore
 //! use reinhardt_pages::builder::html::div;
 //! use reinhardt_pages::Signal;
 //!

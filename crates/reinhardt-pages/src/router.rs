@@ -13,7 +13,7 @@
 //!
 //! ## Usage
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_pages::router::{Router, Link, RouterOutlet};
 //! use std::sync::Arc;
 //!

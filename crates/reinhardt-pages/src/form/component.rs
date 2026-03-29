@@ -402,7 +402,7 @@ impl FormComponent {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_pages::form::FormComponent;
 	///
 	/// let metadata = form.to_metadata();

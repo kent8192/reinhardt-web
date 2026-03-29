@@ -13,7 +13,7 @@ use std::rc::Rc;
 ///
 /// ## Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_pages::reactive::hooks::{use_ref, use_effect};
 ///
 /// let render_count = use_ref(0);

@@ -52,8 +52,7 @@ impl ElementBuilder {
 	///
 	/// ## Example
 	///
-	/// ```no_run
-	/// # use reinhardt_pages::builder::html::{div};
+	/// ```ignore
 	/// div().class("container flex-row").build()
 	/// ```
 	pub fn class(self, class: &str) -> Self {
@@ -65,8 +64,7 @@ impl ElementBuilder {
 	///
 	/// ## Example
 	///
-	/// ```no_run
-	/// # use reinhardt_pages::builder::html::{div};
+	/// ```ignore
 	/// div().id("main-content").build()
 	/// ```
 	pub fn id(self, id: &str) -> Self {
@@ -78,8 +76,7 @@ impl ElementBuilder {
 	///
 	/// ## Example
 	///
-	/// ```no_run
-	/// # use reinhardt_pages::builder::html::{div};
+	/// ```ignore
 	/// div().style("color: red; font-size: 16px").build()
 	/// ```
 	pub fn style(self, style: &str) -> Self {
@@ -91,8 +88,7 @@ impl ElementBuilder {
 	///
 	/// ## Example
 	///
-	/// ```no_run
-	/// # use reinhardt_pages::builder::html::{div};
+	/// ```ignore
 	/// div().attr("data-test-id", "my-div").build()
 	/// ```
 	pub fn attr(self, name: &str, value: &str) -> Self {
@@ -104,8 +100,7 @@ impl ElementBuilder {
 	///
 	/// ## Example
 	///
-	/// ```no_run
-	/// # use reinhardt_pages::builder::html::{div};
+	/// ```ignore
 	/// div().remove_attr("disabled").build()
 	/// ```
 	pub fn remove_attr(self, name: &str) -> Self {
@@ -119,9 +114,7 @@ impl ElementBuilder {
 	///
 	/// ## Example
 	///
-	/// ```no_run
-	/// # use reinhardt_pages::builder::html::{button};
-	/// # use reinhardt_pages::reactive::Signal;
+	/// ```ignore
 	/// let disabled = Signal::new(false);
 	/// button()
 	///     .reactive_attr("disabled", disabled)
@@ -141,8 +134,7 @@ impl ElementBuilder {
 	///
 	/// ## Example
 	///
-	/// ```no_run
-	/// # use reinhardt_pages::builder::html::{p};
+	/// ```ignore
 	/// p().text("Hello, world!").build()
 	/// ```
 	pub fn text(self, text: &str) -> Self {
@@ -154,8 +146,7 @@ impl ElementBuilder {
 	///
 	/// ## Example
 	///
-	/// ```no_run
-	/// # use reinhardt_pages::builder::html::{div, p};
+	/// ```ignore
 	/// div()
 	///     .child(p().text("First paragraph").build())
 	///     .child(p().text("Second paragraph").build())

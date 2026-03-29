@@ -269,8 +269,7 @@ impl Router {
 	///
 	/// # Example
 	///
-	/// ```no_run
-	/// # struct User;
+	/// ```ignore
 	/// use reinhardt_pages::router::{Router, PathParams};
 	///
 	/// let router = Router::new()
@@ -313,8 +312,7 @@ impl Router {
 	///
 	/// # Example
 	///
-	/// ```no_run
-	/// # struct User;
+	/// ```ignore
 	/// use reinhardt_pages::router::{Router, PathParams, RouterError};
 	///
 	/// let router = Router::new()

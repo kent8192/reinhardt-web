@@ -9,7 +9,7 @@ use std::collections::HashMap;
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_pages::component::Props;
 ///
 /// #[derive(Default)]

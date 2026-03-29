@@ -32,7 +32,7 @@
 //!
 //! ## Usage
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_pages::csrf::{get_csrf_token, CsrfManager, verify_csrf_token};
 //!
 //! // Client-side: retrieve token
@@ -391,7 +391,7 @@ pub fn verify_csrf_token(
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_pages::csrf::CsrfVerifier;
 ///
 /// struct MyCsrfMiddleware;

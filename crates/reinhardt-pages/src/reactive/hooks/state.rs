@@ -346,7 +346,7 @@ impl<T: 'static> SharedSignal<T> {
 /// // Clone and use in event handler
 /// let handler = {
 ///     let set_count = set_count.clone();
-///     move |_| set_count(42)
+///     move |_: ()| set_count(42)
 /// };
 /// ```
 pub fn use_shared_state<T>(initial: T) -> (SharedSignal<T>, SharedSetState<T>)

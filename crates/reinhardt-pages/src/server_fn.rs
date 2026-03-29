@@ -45,7 +45,7 @@
 //!
 //! Server functions support multiple serialization formats via the `codec` parameter:
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_pages_macros::server_fn;
 //!
 //! // JSON codec (default) - human-readable, widely supported

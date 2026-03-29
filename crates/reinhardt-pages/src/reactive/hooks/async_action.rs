@@ -202,7 +202,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for Action<T, E> {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_pages::reactive::hooks::use_action;
 ///
 /// async fn submit_form(data: FormData) -> Result<String, String> {

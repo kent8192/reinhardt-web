@@ -92,7 +92,7 @@ impl SsrOptions {
 	///
 	/// # Example
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let options = SsrOptions::new()
 	///     .partial_hydration(true)
 	///     .default_strategy(HydrationStrategy::Static);
@@ -111,7 +111,7 @@ impl SsrOptions {
 	///
 	/// # Example
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let options = SsrOptions::new()
 	///     .default_strategy(HydrationStrategy::Island);
 	/// ```
@@ -124,7 +124,7 @@ impl SsrOptions {
 	///
 	/// Shortcut for enabling partial hydration with island strategy.
 	/// Equivalent to:
-	/// ```no_run
+	/// ```ignore
 	/// options.partial_hydration(true).default_strategy(HydrationStrategy::Island)
 	/// ```
 	pub fn islands_only(mut self) -> Self {

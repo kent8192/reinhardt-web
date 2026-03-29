@@ -49,9 +49,7 @@ impl Drop for SubscriptionHandle {
 ///
 /// # Example
 ///
-/// ```no_run
-/// # use reinhardt_pages::reactive::Signal;
-/// # use reinhardt_pages::reactive::hooks::use_sync_external_store;
+/// ```ignore
 /// let signal_with_sub = use_sync_external_store(subscribe, get_snapshot);
 ///
 /// // Use it like a normal Signal

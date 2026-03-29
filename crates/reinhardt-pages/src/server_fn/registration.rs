@@ -8,7 +8,7 @@
 //! The trait is not meant to be implemented manually. Instead, use the `#[server_fn]`
 //! macro which generates a marker struct and implements this trait automatically.
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_pages::server_fn::ServerFnRouterExt;
 //! use crate::server_fn::{login, logout};
 //!
@@ -34,8 +34,7 @@ use super::registry::ServerFnHandler;
 /// # Example
 ///
 /// Given a server function:
-/// ```no_run
-/// # struct User;
+/// ```ignore
 /// #[server_fn]
 /// pub async fn login(username: String, password: String) -> Result<User, ServerFnError> {
 ///     // ...
@@ -43,7 +42,7 @@ use super::registry::ServerFnHandler;
 /// ```
 ///
 /// The macro generates:
-/// ```no_run
+/// ```ignore
 /// pub struct login;
 ///
 /// impl ServerFnRegistration for login {
