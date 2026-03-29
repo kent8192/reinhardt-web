@@ -7,7 +7,7 @@
 //!
 //! For best results, ensure `SessionMiddleware` runs before `MessageMiddleware`:
 //!
-//! ```ignore
+//! ```no_run
 //! app.middleware(SessionMiddleware::new(config))
 //!    .middleware(MessageMiddleware::new(storage));
 //! ```
