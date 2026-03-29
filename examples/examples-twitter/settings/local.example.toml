@@ -4,7 +4,6 @@
 # Copy this file to local.toml and customize as needed.
 # The local.toml file is gitignored and should not be committed.
 
-[core]
 # Enable debug mode for development
 debug = true
 
