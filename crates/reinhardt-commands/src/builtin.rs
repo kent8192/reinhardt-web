@@ -1494,14 +1494,25 @@ impl RunServerCommand {
 
 		// OpenAPI documentation is shown in startup banner above
 
-		// Create DI context for dependency injection
-		let singleton_scope = std::sync::Arc::new(reinhardt_di::SingletonScope::new());
-
-		// Apply deferred DI registrations from route configuration (e.g., AdminSite from admin_routes_with_di_deferred)
-		if let Some(registrations) = reinhardt_urls::routers::take_di_registrations() {
-			ctx.verbose("Applying deferred DI registrations from route configuration");
-			registrations.apply_to(&singleton_scope);
-		}
+		// Resolve DI context: reuse user-provided context from router, or create a new one.
+		// When the user attaches a DI context via UnifiedRouter::with_di_context(),
+		// we must register server-managed singletons (e.g., DatabaseConnection)
+		// into that context's singleton scope rather than creating a separate one.
+		let (singleton_scope, user_provided_context) =
+			if let Some(existing_ctx) = reinhardt_urls::routers::get_router_di_context() {
+				ctx.verbose("Using user-provided DI context from router configuration");
+				(existing_ctx.singleton_scope().clone(), Some(existing_ctx))
+			} else {
+				let scope = std::sync::Arc::new(reinhardt_di::SingletonScope::new());
+				// Apply deferred DI registrations only when no user context exists.
+				// When a user context is present, UnifiedRouter::flush_di_registrations
+				// has already applied them to the user's singleton scope.
+				if let Some(registrations) = reinhardt_urls::routers::take_di_registrations() {
+					ctx.verbose("Applying deferred DI registrations from route configuration");
+					registrations.apply_to(&scope);
+				}
+				(scope, None)
+			};
 
 		// Register DatabaseConnection as singleton when database feature is enabled
 		#[cfg(feature = "reinhardt-db")]
@@ -1557,8 +1568,13 @@ impl RunServerCommand {
 			}
 		}
 
-		let di_context =
-			std::sync::Arc::new(reinhardt_di::InjectionContext::builder(singleton_scope).build());
+		// Build or reuse the DI context
+		let di_context = match user_provided_context {
+			Some(ctx) => ctx,
+			None => std::sync::Arc::new(
+				reinhardt_di::InjectionContext::builder(singleton_scope).build(),
+			),
+		};
 
 		// Create HTTP server with DI context and logging middleware
 		let mut server = HttpServer::new(router)
