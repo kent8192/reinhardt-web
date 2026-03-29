@@ -20,7 +20,7 @@ use crate::reactive::Signal;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::reactive::hooks::ActionPhase;
 ///
 /// let phase: ActionPhase<String, String> = ActionPhase::Idle;
@@ -202,7 +202,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for Action<T, E> {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::reactive::hooks::use_action;
 ///
 /// async fn submit_form(data: FormData) -> Result<String, String> {

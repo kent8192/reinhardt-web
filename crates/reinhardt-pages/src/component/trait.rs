@@ -9,7 +9,7 @@ use super::into_page::{IntoPage, Page};
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::component::{Component, View, IntoPage};
 ///
 /// struct Greeting {

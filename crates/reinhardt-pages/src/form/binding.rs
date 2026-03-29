@@ -20,7 +20,7 @@
 //!
 //! ## Example
 //!
-//! ```ignore
+//! ```no_run
 //! use reinhardt_pages::{Signal, FormComponent, FormBinding};
 //!
 //! // Create Signals for form fields
@@ -85,7 +85,7 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let form_component = FormComponent::new(metadata, "/api/submit");
 	/// let binding = FormBinding::new(form_component);
 	/// ```
@@ -110,7 +110,8 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::reactive::Signal;
 	/// let username = Signal::new("".to_string());
 	/// binding.bind_field("username", username.clone());
 	///
@@ -149,7 +150,7 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// binding.unbind_field("username");
 	/// ```
 	pub fn unbind_field(&mut self, field_name: &str) {
@@ -169,7 +170,7 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// if let Some(signal) = binding.get_binding("username") {
 	///     println!("Current value: {}", signal.get());
 	/// }
@@ -190,7 +191,7 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let username = binding.get_field_value("username");
 	/// assert_eq!(username, "john_doe");
 	/// ```
@@ -207,7 +208,8 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::reactive::Signal;
 	/// binding.set_field_value("username", "jane_doe");
 	/// // Bound Signal is automatically updated
 	/// ```
@@ -280,7 +282,7 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let metadata = binding.form_component().metadata();
 	/// ```
 	pub fn form_component(&self) -> &FormComponent {
@@ -291,7 +293,7 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// binding.form_component_mut().set_value("username", "new_value");
 	/// ```
 	pub fn form_component_mut(&mut self) -> &mut FormComponent {
@@ -304,7 +306,7 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // After direct FormComponent manipulation
 	/// binding.form_component_mut().set_value("username", "direct_update");
 	/// // Sync to Signals
@@ -323,7 +325,8 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::reactive::Signal;
 	/// // After batch Signal updates
 	/// username.set("new_username".to_string());
 	/// email.set("new@email.com".to_string());
@@ -345,7 +348,7 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// for field_name in binding.bound_fields() {
 	///     println!("Bound field: {}", field_name);
 	/// }
@@ -366,7 +369,7 @@ impl FormBinding {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// if binding.is_bound("username") {
 	///     println!("Username is bound");
 	/// }

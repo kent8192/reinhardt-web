@@ -15,7 +15,8 @@ pub trait BooleanAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{button};
 	/// button().disabled(true).build()  // <button disabled></button>
 	/// button().disabled(false).build() // <button></button>
 	/// ```
@@ -25,7 +26,8 @@ pub trait BooleanAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{input};
 	/// input().attr("type", "checkbox").checked(true).build()
 	/// ```
 	fn checked(self, value: bool) -> Self;
@@ -34,7 +36,8 @@ pub trait BooleanAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{option};
 	/// option().attr("value", "1").selected(true).build()
 	/// ```
 	fn selected(self, value: bool) -> Self;
@@ -43,7 +46,8 @@ pub trait BooleanAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{input};
 	/// input().attr("type", "text").readonly(true).build()
 	/// ```
 	fn readonly(self, value: bool) -> Self;
@@ -52,7 +56,8 @@ pub trait BooleanAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{input};
 	/// input().attr("type", "text").required(true).build()
 	/// ```
 	fn required(self, value: bool) -> Self;
@@ -61,7 +66,8 @@ pub trait BooleanAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{input};
 	/// input().attr("type", "text").autofocus(true).build()
 	/// ```
 	fn autofocus(self, value: bool) -> Self;
@@ -70,7 +76,8 @@ pub trait BooleanAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{select};
 	/// select().multiple(true).build()
 	/// ```
 	fn multiple(self, value: bool) -> Self;
@@ -145,7 +152,8 @@ pub trait AriaAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{button};
 	/// button().aria_label("Close dialog").build()
 	/// ```
 	fn aria_label(self, label: &str) -> Self;
@@ -156,7 +164,8 @@ pub trait AriaAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{div};
 	/// div().aria_hidden(true).build()
 	/// ```
 	fn aria_hidden(self, hidden: bool) -> Self;
@@ -167,7 +176,8 @@ pub trait AriaAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{button};
 	/// button().aria_expanded(false).build()
 	/// ```
 	fn aria_expanded(self, expanded: bool) -> Self;
@@ -179,7 +189,8 @@ pub trait AriaAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{div};
 	/// div().aria_live("polite").build()
 	/// ```
 	fn aria_live(self, value: &str) -> Self;
@@ -190,7 +201,8 @@ pub trait AriaAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{input};
 	/// input().aria_describedby("error-message").build()
 	/// ```
 	fn aria_describedby(self, id: &str) -> Self;
@@ -201,7 +213,8 @@ pub trait AriaAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{input};
 	/// input().aria_labelledby("label-id").build()
 	/// ```
 	fn aria_labelledby(self, id: &str) -> Self;
@@ -210,7 +223,8 @@ pub trait AriaAttributes {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{div};
 	/// div().role("button").build()
 	/// ```
 	fn role(self, role: &str) -> Self;
@@ -253,7 +267,8 @@ impl AriaAttributes for ElementBuilder {
 ///
 /// ## Example
 ///
-/// ```ignore
+/// ```no_run
+/// # use reinhardt_pages::builder::html::{button};
 /// let element = button().disabled(true).build();
 /// remove_attribute(&element, "disabled");
 /// ```

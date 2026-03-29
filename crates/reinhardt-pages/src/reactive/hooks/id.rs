@@ -73,7 +73,7 @@ pub fn use_id() -> String {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::reactive::hooks::use_id_with_prefix;
 ///
 /// let id = use_id_with_prefix("modal");

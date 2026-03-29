@@ -27,7 +27,7 @@ use crate::crate_paths::{
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use proc_macro2::Ident;
 /// use quote::format_ident;
 ///
@@ -81,7 +81,8 @@ pub(crate) struct ServerFnOptions {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # struct User;
 	/// #[server_fn(endpoint = "/api/users/get")]
 	/// async fn get_user(id: u32) -> Result<User, ServerFnError> {
 	///     // ...
@@ -95,7 +96,7 @@ pub(crate) struct ServerFnOptions {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// #[server_fn(codec = "msgpack")]
 	/// async fn upload_data(data: Vec<u8>) -> Result<(), ServerFnError> {
 	///     // ...
@@ -112,7 +113,7 @@ pub(crate) struct ServerFnOptions {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Public API endpoint without CSRF protection
 	/// #[server_fn(no_csrf = true)]
 	/// async fn public_health_check() -> Result<String, ServerFnError> {
@@ -129,7 +130,8 @@ pub(crate) struct ServerFnOptions {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # struct User;
 	/// #[server_fn(pre_validate = true)]
 	/// async fn create_user(req: CreateUserRequest) -> Result<User, ServerFnError> {
 	///     // req is already validated
@@ -199,7 +201,8 @@ fn is_inject_attr(attr: &syn::Attribute) -> bool {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
+/// # struct User;
 /// async fn handler(
 ///     id: u32,                    // Regular parameter
 ///     #[inject] db: Arc<Database>, // DI parameter (explicit)
@@ -234,12 +237,14 @@ fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<InjectInfo
 /// # Example
 ///
 /// Input:
-/// ```ignore
+/// ```no_run
+/// # struct User;
 /// async fn handler(id: u32, #[inject] db: Database) -> Result<User, Error>
 /// ```
 ///
 /// Output:
-/// ```ignore
+/// ```no_run
+/// # struct User;
 /// async fn handler(id: u32, db: Database) -> Result<User, Error>
 /// ```
 fn remove_inject_attrs(func: &ItemFn) -> ItemFn {
@@ -969,7 +974,7 @@ fn generate_server_handler(
 		///
 		/// # Example
 		///
-		/// ```ignore
+		/// ```no_run
 		/// use axum::{Router, routing::post};
 		///
 		/// let app = Router::new()

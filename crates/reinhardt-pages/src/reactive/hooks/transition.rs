@@ -50,7 +50,7 @@ impl TransitionState {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::reactive::hooks::{use_state, use_transition};
 ///
 /// let (items, set_items) = use_state(vec![]);

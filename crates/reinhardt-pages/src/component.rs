@@ -12,7 +12,8 @@
 //!
 //! ## Usage
 //!
-//! ```ignore
+//! ```no_run
+//! # use reinhardt_pages::builder::html::{div, p};
 //! use reinhardt_pages::component::{Component, IntoPage, Page};
 //!
 //! // Simple component as a function

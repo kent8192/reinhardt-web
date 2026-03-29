@@ -6,7 +6,8 @@
 //!
 //! ## Usage
 //!
-//! ```ignore
+//! ```no_run
+//! # struct User;
 //! use reinhardt_pages::auth::{AuthState, auth_state};
 //!
 //! // Get the global auth state

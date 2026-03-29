@@ -5,7 +5,8 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```no_run
+//! # struct User;
 //! use reinhardt_pages::router::{Router, PathParams};
 //!
 //! let router = Router::new()
@@ -62,7 +63,7 @@ impl ParamContext {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::router::{PathParams, FromPath, ParamContext, PathError};
 ///
 /// // Custom type implementing FromPath
@@ -104,7 +105,8 @@ pub trait FromPath: Sized {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
+/// # struct User;
 /// use reinhardt_pages::router::PathParams;
 /// use reinhardt_pages::component::View;
 ///

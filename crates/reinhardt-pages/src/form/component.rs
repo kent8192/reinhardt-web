@@ -294,7 +294,7 @@ const DANGEROUS_JS_PATTERNS: &[(&str, &str, bool)] = &[
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::form::component::validate_js_expression;
 ///
 /// // Safe expressions
@@ -402,7 +402,7 @@ impl FormComponent {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_pages::form::FormComponent;
 	///
 	/// let metadata = form.to_metadata();

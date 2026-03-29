@@ -20,7 +20,7 @@
 //!
 //! ## Example
 //!
-//! ```ignore
+//! ```no_run
 //! use reinhardt_pages::reactive::{Signal, Effect, Memo};
 //!
 //! // Create signals

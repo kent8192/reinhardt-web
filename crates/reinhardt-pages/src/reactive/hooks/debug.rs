@@ -25,7 +25,7 @@ type EventArg = crate::component::DummyEvent;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::reactive::hooks::{use_state, use_debug_value};
 ///
 /// fn use_online_status() -> Signal<bool> {
@@ -65,7 +65,7 @@ pub fn use_debug_value<T: std::fmt::Debug>(_value: T) {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::reactive::hooks::use_debug_value_with;
 ///
 /// let items = use_state(vec![1, 2, 3, 4, 5]);

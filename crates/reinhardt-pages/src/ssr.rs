@@ -13,7 +13,7 @@
 //!
 //! ## Usage
 //!
-//! ```ignore
+//! ```no_run
 //! use reinhardt_pages::ssr::{SsrRenderer, SsrOptions};
 //! use reinhardt_pages::component::Component;
 //!

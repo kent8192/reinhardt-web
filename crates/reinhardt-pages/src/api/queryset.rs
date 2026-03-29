@@ -165,7 +165,8 @@ where
 	/// Adds a filter condition (exact match).
 	///
 	/// # Example
-	/// ```ignore
+	/// ```no_run
+	/// # struct User;
 	/// User::objects().filter("is_active", true)
 	/// ```
 	pub fn filter(mut self, field: impl Into<String>, value: impl Serialize) -> Self {
@@ -176,7 +177,8 @@ where
 	/// Adds a filter with a specific operation.
 	///
 	/// # Example
-	/// ```ignore
+	/// ```no_run
+	/// # struct User;
 	/// User::objects().filter_op("age", FilterOp::Gte, 18)
 	/// ```
 	pub fn filter_op(
@@ -192,7 +194,8 @@ where
 	/// Adds an exclude filter (NOT condition).
 	///
 	/// # Example
-	/// ```ignore
+	/// ```no_run
+	/// # struct User;
 	/// User::objects().exclude("status", "banned")
 	/// ```
 	pub fn exclude(mut self, field: impl Into<String>, value: impl Serialize) -> Self {
@@ -205,7 +208,8 @@ where
 	/// Prefix field names with '-' for descending order.
 	///
 	/// # Example
-	/// ```ignore
+	/// ```no_run
+	/// # struct User;
 	/// User::objects().order_by(&["-created_at", "username"])
 	/// ```
 	pub fn order_by(mut self, fields: &[&str]) -> Self {
@@ -216,7 +220,8 @@ where
 	/// Limits the number of results.
 	///
 	/// # Example
-	/// ```ignore
+	/// ```no_run
+	/// # struct User;
 	/// User::objects().limit(10)
 	/// ```
 	pub fn limit(mut self, n: usize) -> Self {
@@ -227,7 +232,8 @@ where
 	/// Skips the first N results.
 	///
 	/// # Example
-	/// ```ignore
+	/// ```no_run
+	/// # struct User;
 	/// User::objects().offset(20).limit(10)  // Page 3
 	/// ```
 	pub fn offset(mut self, n: usize) -> Self {
@@ -238,7 +244,8 @@ where
 	/// Selects specific fields for partial responses.
 	///
 	/// # Example
-	/// ```ignore
+	/// ```no_run
+	/// # struct User;
 	/// User::objects().only(&["id", "username"])
 	/// ```
 	pub fn only(mut self, fields: &[&str]) -> Self {

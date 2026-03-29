@@ -285,7 +285,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// element.set_text_content("Hello, World!");
 	/// ```
 	pub fn set_text_content(&self, text: &str) {
@@ -438,7 +438,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let sibling = element.next_element_sibling();
 	/// if let Some(next) = sibling {
 	///     println!("Next sibling: {}", next.tag_name());
@@ -458,7 +458,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let sibling = element.previous_element_sibling();
 	/// if let Some(prev) = sibling {
 	///     println!("Previous sibling: {}", prev.tag_name());
@@ -478,7 +478,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// if let Some(first_child) = element.first_element_child() {
 	///     println!("First child: {}", first_child.tag_name());
 	/// }
@@ -497,7 +497,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// if let Some(last_child) = element.last_element_child() {
 	///     println!("Last child: {}", last_child.tag_name());
 	/// }
@@ -514,7 +514,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let count = element.child_element_count();
 	/// println!("Element has {} children", count);
 	/// ```
@@ -628,7 +628,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let id = element.id();
 	/// if !id.is_empty() {
 	///     println!("Element ID: {}", id);
@@ -648,7 +648,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// element.set_id("my-element");
 	/// assert_eq!(element.id(), "my-element");
 	/// ```
@@ -667,7 +667,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let class_list = element.class_list();
 	/// class_list.add_1("active").unwrap();
 	/// ```
@@ -740,7 +740,7 @@ impl Element {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// if element.has_class("active") {
 	///     println!("Element is active");
 	/// }

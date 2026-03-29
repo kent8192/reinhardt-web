@@ -77,7 +77,8 @@ mod server_fn;
 /// - `endpoint = "/custom/path"` - Custom endpoint path
 /// - `codec = "json"` - Serialization codec (json, url, msgpack)
 ///
-/// ```ignore
+/// ```no_run
+/// # struct User;
 /// #[server_fn(endpoint = "/api/users/get")]
 /// async fn get_user(id: u32) -> Result<User, ServerFnError> {
 ///     // ...
@@ -524,7 +525,7 @@ pub fn server_fn(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ### watch with match
 ///
-/// ```ignore
+/// ```no_run
 /// watch {
 ///     match state.get() {
 ///         State::Loading => div { "Loading..." },
@@ -540,7 +541,7 @@ pub fn server_fn(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// Call components with named arguments:
 ///
-/// ```ignore
+/// ```no_run
 /// MyButton(label: "Click me")
 ///
 /// MyCard(title: "Card", content: "Content", class: "custom")
@@ -1101,7 +1102,8 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// Group fields are flattened for accessor methods:
 ///
-/// ```ignore
+/// ```no_run
+/// # use reinhardt_pages::reactive::Signal;
 /// // Access fields directly (groups are transparent)
 /// form.street();  // Returns &Signal<String>
 /// form.city();
@@ -1333,7 +1335,9 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// The `form!` macro generates the following code:
 ///
-/// ```ignore
+/// ```no_run
+/// # use reinhardt_pages::builder::html::{form};
+/// # use reinhardt_pages::reactive::Signal;
 /// // Generated struct with Signal fields
 /// struct FormName {
 ///     field_name: Signal<FieldType>,
@@ -1418,7 +1422,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// Control automatic @input handler generation with the `bind` property.
 /// Default is `true` (automatic binding enabled).
 ///
-/// ```ignore
+/// ```no_run
 /// fields: {
 ///     // Automatic binding (default)
 ///     username: CharField { required },
@@ -1596,7 +1600,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// Use the `wrapper` property to wrap an input field with custom HTML structure.
 ///
-/// ```ignore
+/// ```no_run
 /// fields: {
 ///     email: EmailField {
 ///         required,
@@ -1620,7 +1624,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// ### Icon Example
 ///
-/// ```ignore
+/// ```no_run
 /// fields: {
 ///     username: CharField {
 ///         required,
@@ -1645,7 +1649,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// Add ARIA and data attributes for accessibility and custom data.
 ///
-/// ```ignore
+/// ```no_run
 /// fields: {
 ///     search: CharField {
 ///         label: "Search",
