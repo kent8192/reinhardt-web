@@ -265,7 +265,7 @@ where
 ///
 /// # Usage
 ///
-/// ```ignore
+/// ```no_run
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// struct TestUser {
 ///     id: Option<i64>,
@@ -294,7 +294,7 @@ where
 /// # Examples
 ///
 /// ## Basic usage
-/// ```ignore
+/// ```no_run
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// struct User {
 ///     id: Option<i64>,
@@ -309,7 +309,7 @@ where
 /// ```
 ///
 /// ## With relationships
-/// ```ignore
+/// ```no_run
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// struct Author {
 ///     id: Option<i32>,
