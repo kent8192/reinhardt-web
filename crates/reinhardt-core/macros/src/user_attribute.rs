@@ -106,22 +106,25 @@ fn inject_skip_getter(input: &mut ItemStruct, mapping: &FieldMapping, args: &Use
 		skip_getter_fields.push(ident.to_string());
 	}
 
-	// UserPermissions and Groups — skip_getter only
-	// (Vec<T> type is now supported by model_derive via ArrayField)
+	// UserPermissions and Groups — non-DB cache fields, fully skipped by model
+	let mut skip_fields: Vec<String> = Vec::new();
 	for role in &[FieldRole::UserPermissions, FieldRole::Groups] {
 		if let Some(ident) = mapping.get(*role) {
-			skip_getter_fields.push(ident.to_string());
+			skip_fields.push(ident.to_string());
 		}
 	}
 
 	if let syn::Fields::Named(ref mut fields) = input.fields {
 		for field in &mut fields.named {
-			if let Some(ref ident) = field.ident
-				&& skip_getter_fields.contains(&ident.to_string())
-			{
-				field
-					.attrs
-					.push(syn::parse_quote!(#[field(skip_getter = true)]));
+			if let Some(ref ident) = field.ident {
+				let name = ident.to_string();
+				if skip_fields.contains(&name) {
+					field.attrs.push(syn::parse_quote!(#[field(skip = true)]));
+				} else if skip_getter_fields.contains(&name) {
+					field
+						.attrs
+						.push(syn::parse_quote!(#[field(skip_getter = true)]));
+				}
 			}
 		}
 	}
