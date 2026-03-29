@@ -206,8 +206,9 @@ pub use simple::SimpleRouter;
 // Server router (full HTTP routing implementation)
 #[cfg(not(target_arch = "wasm32"))]
 pub use server_router::{
-	FunctionHandler, MiddlewareInfo, ServerRouter, clear_router, get_router, is_router_registered,
-	register_di_registrations, register_router, register_router_arc, take_di_registrations,
+	FunctionHandler, MiddlewareInfo, ServerRouter, clear_router, get_router, get_router_di_context,
+	is_router_registered, register_di_registrations, register_router, register_router_arc,
+	take_di_registrations,
 };
 
 // Unified router (closure-based API combining server and client routers)

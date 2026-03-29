@@ -61,3 +61,4 @@ bytes = { workspace = true }
 hyper = { workspace = true }
 rstest = { workspace = true }
 serial_test = { workspace = true }
+reinhardt-testkit = { path = "../reinhardt-testkit" }
