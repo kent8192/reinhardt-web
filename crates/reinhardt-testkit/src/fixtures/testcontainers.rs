@@ -844,7 +844,7 @@ pub async fn redis_cluster_container(
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_testkit::fixtures::redis_cluster;
 /// use rstest::*;
 ///
@@ -1695,7 +1695,7 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 ///
 /// Your app must register migrations using `collect_migrations!`:
 ///
-/// ```no_run
+/// ```ignore
 /// // In your app's migrations.rs
 /// reinhardt::collect_migrations!(
 ///     app_label = "polls",
