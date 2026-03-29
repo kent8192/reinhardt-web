@@ -42,14 +42,13 @@ const MAX_PAYLOAD_SIZE: usize = 10_000_000; // 10MB
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::validation::validate_mutation_data;
 ///
 /// let mut data = HashMap::new();
 /// data.insert("name".to_string(), serde_json::json!("Alice"));
 ///
 /// validate_mutation_data(&data, &model_admin, false)?;
-/// ```
 pub fn validate_mutation_data(
 	data: &HashMap<String, serde_json::Value>,
 	model_admin: &dyn ModelAdmin,

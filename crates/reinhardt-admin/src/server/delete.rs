@@ -36,13 +36,12 @@ use super::security::require_csrf_token;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::delete_record;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let response = delete_record("User".to_string(), "42".to_string(), "token".to_string()).await?;
 /// println!("Deleted: {}", response.message);
-/// ```
 #[server_fn]
 pub async fn delete_record(
 	model_name: String,
@@ -121,7 +120,7 @@ pub async fn delete_record(
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::bulk_delete_records;
 /// use reinhardt_admin::types::BulkDeleteRequest;
 ///
@@ -132,7 +131,6 @@ pub async fn delete_record(
 /// };
 /// let response = bulk_delete_records("User".to_string(), request).await?;
 /// println!("Deleted {} items", response.deleted);
-/// ```
 #[server_fn]
 pub async fn bulk_delete_records(
 	model_name: String,

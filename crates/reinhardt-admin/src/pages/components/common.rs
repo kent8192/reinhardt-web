@@ -56,13 +56,12 @@ impl ButtonVariant {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::common::*;
 /// use reinhardt_pages::Signal;
 ///
 /// let clicked = Signal::new(false);
 /// button("Click me", ButtonVariant::Primary, false, clicked)
-/// ```
 pub fn button(text: &str, variant: ButtonVariant, disabled: bool, _on_click: Signal<bool>) -> Page {
 	let classes = format!("btn {}", variant.class());
 
@@ -111,11 +110,10 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, _on_click: Sig
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::common::loading_spinner;
 ///
 /// loading_spinner()
-/// ```
 pub fn loading_spinner() -> Page {
 	PageElement::new("div")
 		.attr("class", "loading-spinner")
@@ -138,11 +136,10 @@ pub fn loading_spinner() -> Page {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::common::error_display;
 ///
 /// error_display("An error occurred", true)
-/// ```
 pub fn error_display(message: &str, dismissible: bool) -> Page {
 	let mut container = PageElement::new("div")
 		.attr("class", "alert alert-danger")
@@ -168,13 +165,12 @@ pub fn error_display(message: &str, dismissible: bool) -> Page {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::common::pagination;
 /// use reinhardt_pages::Signal;
 ///
 /// let current_page = Signal::new(1u64);
 /// pagination(current_page, 10)
-/// ```
 pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> Page {
 	let current_val = current_page.get();
 	let mut nav_items = Vec::new();
@@ -326,13 +322,12 @@ where
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::common::search_bar;
 /// use reinhardt_pages::Signal;
 ///
 /// let search_value = Signal::new(String::new());
 /// search_bar(search_value, "Search...")
-/// ```
 pub fn search_bar(value: Signal<String>, placeholder: &str) -> Page {
 	let current_value = value.get();
 

@@ -68,11 +68,10 @@ thread_local! {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::router::init_global_router;
 ///
 /// init_global_router();
-/// ```
 pub fn init_global_router() {
 	ROUTER.with(|r| {
 		*r.borrow_mut() = Some(init_router());
@@ -85,13 +84,12 @@ pub fn init_global_router() {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::router::try_with_router;
 ///
 /// if let Some(count) = try_with_router(|router| router.route_count()) {
 ///     println!("Routes: {}", count);
 /// }
-/// ```
 pub fn try_with_router<F, R>(f: F) -> Option<R>
 where
 	F: FnOnce(&Router) -> R,
@@ -108,14 +106,13 @@ where
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::router::with_router;
 ///
 /// with_router(|router| {
 ///     let params = router.current_params().get();
 ///     // Use router...
 /// });
-/// ```
 pub fn with_router<F, R>(f: F) -> R
 where
 	F: FnOnce(&Router) -> R,
@@ -567,11 +564,10 @@ fn field_type_to_html_input_type(field_type: &reinhardt_admin::types::FieldType)
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::router::init_router;
 ///
 /// let router = init_router();
-/// ```
 pub fn init_router() -> Router {
 	// IMPORTANT: Route registration order matters. See doc comment above.
 	Router::new()

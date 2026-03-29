@@ -25,12 +25,11 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```no_run
 //! use reinhardt_admin::server::dashboard::get_dashboard;
 //!
 //! // In your app
 //! let dashboard_data = get_dashboard().await?;
-//! ```
 
 // The `#[server_fn]` proc macro generates internal modules that cannot have doc comments.
 // Allow missing docs for all server function submodules.

@@ -28,13 +28,12 @@ use reinhardt_http::ResponseCookies;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::get_dashboard;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let dashboard = get_dashboard().await?;
 /// println!("Site: {}", dashboard.site_name);
-/// ```
 #[server_fn]
 pub async fn get_dashboard(
 	#[inject] site: Arc<AdminSite>,

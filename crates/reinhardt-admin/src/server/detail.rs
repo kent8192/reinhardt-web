@@ -27,13 +27,12 @@ use super::error::{AdminAuth, MapServerFnError, ModelPermission};
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::get_detail;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let response = get_detail("User".to_string(), "42".to_string()).await?;
 /// println!("User data: {:?}", response.data);
-/// ```
 #[server_fn]
 pub async fn get_detail(
 	model_name: String,

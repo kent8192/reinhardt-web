@@ -79,7 +79,7 @@ fn build_columns(model_admin: &Arc<dyn ModelAdmin>) -> Vec<ColumnInfo> {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::get_list;
 /// use reinhardt_admin::types::ListQueryParams;
 /// use std::collections::HashMap;
@@ -94,7 +94,6 @@ fn build_columns(model_admin: &Arc<dyn ModelAdmin>) -> Vec<ColumnInfo> {
 /// };
 /// let response = get_list("User".to_string(), params).await?;
 /// println!("Found {} users", response.count);
-/// ```
 #[server_fn]
 pub async fn get_list(
 	model_name: String,

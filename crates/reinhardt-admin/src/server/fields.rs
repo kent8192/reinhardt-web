@@ -28,7 +28,7 @@ use reinhardt_utils::utils_core::text::humanize_field_name;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::get_fields;
 ///
 /// // Client-side usage for create form
@@ -38,7 +38,6 @@ use reinhardt_utils::utils_core::text::humanize_field_name;
 /// // Client-side usage for edit form
 /// let response = get_fields("User".to_string(), Some("42".to_string())).await?;
 /// println!("Existing values: {:?}", response.values);
-/// ```
 #[server_fn]
 pub async fn get_fields(
 	model_name: String,

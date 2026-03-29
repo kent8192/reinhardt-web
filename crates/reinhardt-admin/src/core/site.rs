@@ -185,7 +185,7 @@ impl AdminSite {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_admin::core::{AdminSite, ModelAdminConfig};
 	///
 	/// let admin = AdminSite::new("Admin");
@@ -196,7 +196,6 @@ impl AdminSite {
 	///     .build()?;
 	///
 	/// admin.register("User", user_admin);
-	/// ```
 	pub fn register(
 		&self,
 		model_name: impl Into<String>,
@@ -219,13 +218,12 @@ impl AdminSite {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// // ... register User ...
 	/// admin.unregister("User");
-	/// ```
 	pub fn unregister(&self, model_name: &str) -> AdminResult<()> {
 		self.registry
 			.remove(model_name)
@@ -251,13 +249,12 @@ impl AdminSite {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// // ... register User ...
 	/// let user_admin = admin.get_model_admin("User").unwrap();
-	/// ```
 	pub fn get_model_admin(&self, model_name: &str) -> AdminResult<Arc<dyn ModelAdmin>> {
 		self.registry
 			.get(model_name)

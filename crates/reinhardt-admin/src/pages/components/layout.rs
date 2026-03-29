@@ -23,11 +23,10 @@ pub struct ModelInfo {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::layout::header;
 ///
 /// header("My Admin Panel", Some("john_doe"))
-/// ```
 pub fn header(site_name: &str, user_name: Option<&str>) -> Page {
 	let user_display = user_name.unwrap_or("Guest");
 
@@ -72,7 +71,7 @@ fn is_active_path(model_url: &str, current_path: Option<&str>) -> bool {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::layout::{sidebar, ModelInfo};
 ///
 /// let models = vec![
@@ -80,7 +79,6 @@ fn is_active_path(model_url: &str, current_path: Option<&str>) -> bool {
 ///     ModelInfo { name: "Posts".to_string(), url: "/admin/posts/".to_string() },
 /// ];
 /// sidebar(&models, Some("/admin/users/"))
-/// ```
 pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
@@ -129,11 +127,10 @@ pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> Page {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::layout::footer;
 ///
 /// footer("0.1.0")
-/// ```
 pub fn footer(version: &str) -> Page {
 	PageElement::new("footer")
 		.attr("class", "footer bg-light text-center py-3 border-top")
@@ -153,7 +150,7 @@ pub fn footer(version: &str) -> Page {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::layout::{main_layout, ModelInfo};
 /// use reinhardt_pages::router::Router;
 /// use std::sync::Arc;
@@ -163,7 +160,6 @@ pub fn footer(version: &str) -> Page {
 /// ];
 /// let router = Arc::new(Router::new());
 /// main_layout("My Admin", &models, None, "0.1.0", router)
-/// ```
 pub fn main_layout(
 	site_name: &str,
 	models: &[ModelInfo],

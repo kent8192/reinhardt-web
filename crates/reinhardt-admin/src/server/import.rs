@@ -31,7 +31,7 @@ use super::limits::{MAX_IMPORT_FILE_SIZE, MAX_IMPORT_RECORDS};
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::import_data;
 /// use reinhardt_admin::types::ImportFormat;
 ///
@@ -43,7 +43,6 @@ use super::limits::{MAX_IMPORT_FILE_SIZE, MAX_IMPORT_RECORDS};
 ///     file_data
 /// ).await?;
 /// println!("Imported {} records", response.imported);
-/// ```
 #[server_fn]
 pub async fn import_data(
 	model_name: String,

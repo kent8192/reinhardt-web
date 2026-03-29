@@ -57,7 +57,7 @@ use std::sync::Arc;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::features::dashboard;
 /// use reinhardt_admin::types::ModelInfo;
 ///
@@ -66,7 +66,6 @@ use std::sync::Arc;
 ///     ModelInfo { name: "Posts".to_string(), list_url: "/admin/posts/".to_string() },
 /// ];
 /// dashboard("My Admin Panel", &models)
-/// ```
 pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
 	PageElement::new("div")
 		.attr("class", "dashboard")
@@ -179,7 +178,7 @@ pub struct ListViewData {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::features::{list_view, ListViewData, Column};
 /// use reinhardt_pages::Signal;
 /// use std::collections::HashMap;
@@ -199,7 +198,6 @@ pub struct ListViewData {
 /// let page_signal = Signal::new(1u64);
 /// let filters_signal = Signal::new(HashMap::new());
 /// list_view(&data, page_signal, filters_signal)
-/// ```
 pub fn list_view(
 	data: &ListViewData,
 	current_page_signal: reinhardt_pages::Signal<u64>,
@@ -338,7 +336,7 @@ pub struct FormField {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::features::detail_view;
 /// use std::collections::HashMap;
 ///
@@ -346,7 +344,6 @@ pub struct FormField {
 /// record.insert("id".to_string(), "1".to_string());
 /// record.insert("username".to_string(), "john_doe".to_string());
 /// detail_view("User", "1", &record)
-/// ```
 pub fn detail_view(
 	model_name: &str,
 	record_id: &str,
@@ -420,7 +417,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::features::{model_form, FormField};
 ///
 /// let fields = vec![
@@ -433,7 +430,6 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 ///     },
 /// ];
 /// model_form("User", &fields, None)
-/// ```
 pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str>) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
@@ -674,7 +670,7 @@ fn create_filter_control(
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::pages::components::features::filters;
 /// use reinhardt_admin::types::{FilterInfo, FilterType};
 /// use reinhardt_pages::Signal;
@@ -690,7 +686,6 @@ fn create_filter_control(
 ///     },
 /// ];
 /// filters(&filter_infos, filters_signal)
-/// ```
 pub fn filters(
 	filters_info: &[FilterInfo],
 	filters_signal: Signal<HashMap<String, String>>,

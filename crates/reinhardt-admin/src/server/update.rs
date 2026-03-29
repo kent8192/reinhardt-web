@@ -34,7 +34,7 @@ use super::validation::validate_mutation_data;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::update_record;
 /// use reinhardt_admin::types::MutationRequest;
 /// use std::collections::HashMap;
@@ -46,7 +46,6 @@ use super::validation::validate_mutation_data;
 /// let request = MutationRequest { csrf_token: "token".to_string(), data };
 /// let response = update_record("User".to_string(), "42".to_string(), request).await?;
 /// println!("Updated: {}", response.message);
-/// ```
 #[server_fn]
 pub async fn update_record(
 	model_name: String,

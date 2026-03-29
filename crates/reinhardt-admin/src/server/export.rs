@@ -29,14 +29,13 @@ use super::limits::MAX_EXPORT_RECORDS;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::export_data;
 /// use reinhardt_admin::types::ExportFormat;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let response = export_data("User".to_string(), ExportFormat::JSON).await?;
 /// println!("Downloaded {}", response.filename);
-/// ```
 #[server_fn]
 pub async fn export_data(
 	model_name: String,

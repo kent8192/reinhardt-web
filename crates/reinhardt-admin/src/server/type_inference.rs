@@ -301,7 +301,7 @@ fn humanize_value(value: &str) -> String {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::type_inference::find_model_by_table_name;
 ///
 /// if let Some(metadata) = find_model_by_table_name("auth_user") {
@@ -309,7 +309,6 @@ fn humanize_value(value: &str) -> String {
 ///         println!("Field: {}", field_name);
 ///     }
 /// }
-/// ```
 pub fn find_model_by_table_name(table_name: &str) -> Option<ModelMetadata> {
 	let registry = global_registry();
 	registry
@@ -324,14 +323,13 @@ pub fn find_model_by_table_name(table_name: &str) -> Option<ModelMetadata> {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_admin::server::type_inference::get_field_metadata;
 ///
 /// if let Some(field_meta) = get_field_metadata("auth_user", "email") {
 ///     let admin_type = infer_admin_field_type(&field_meta.field_type);
 ///     let required = infer_required(&field_meta);
 /// }
-/// ```
 pub fn get_field_metadata(table_name: &str, field_name: &str) -> Option<FieldMetadata> {
 	find_model_by_table_name(table_name).and_then(|m| m.fields.get(field_name).cloned())
 }
