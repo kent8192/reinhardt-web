@@ -361,22 +361,8 @@ impl QueryFieldCompiler {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// # use reinhardt_db::orm::expressions::FieldRef;
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
 	/// use reinhardt_db::orm::query_fields::comparison::*;
+	/// use reinhardt_db::orm::query_fields::compiler::QueryFieldCompiler;
 	///
 	/// // u1.id < u2.id
 	/// let comparison = FieldComparison::new(
@@ -387,6 +373,7 @@ impl QueryFieldCompiler {
 	///
 	/// let sql = QueryFieldCompiler::compile_field_comparison(&comparison);
 	/// assert_eq!(sql, "u1.id < u2.id");
+	/// ```
 	pub fn compile_field_comparison(comparison: &FieldComparison) -> String {
 		let left = Self::compile_field_ref(&comparison.left);
 		let right = Self::compile_field_ref(&comparison.right);
@@ -433,6 +420,7 @@ impl QueryFieldCompiler {
 	///
 	/// ```no_run
 	/// use reinhardt_db::orm::query_fields::aggregate::*;
+	/// use reinhardt_db::orm::query_fields::compiler::QueryFieldCompiler;
 	///
 	/// // COUNT(*) > 5
 	/// let expr = AggregateExpr::count("*").gt(5);
@@ -443,6 +431,7 @@ impl QueryFieldCompiler {
 	/// let expr = AggregateExpr::avg("price").lte(100.5);
 	/// let sql = QueryFieldCompiler::compile_aggregate_comparison(&expr);
 	/// assert_eq!(sql, "AVG(price) <= 100.5");
+	/// ```
 	pub fn compile_aggregate_comparison(expr: &ComparisonExpr) -> String {
 		let agg_sql = Self::compile_aggregate_function(&expr.aggregate);
 		let op = Self::comparison_operator_to_sql(expr.op);

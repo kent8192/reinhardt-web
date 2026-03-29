@@ -18,6 +18,7 @@ use super::error::OdmResult;
 ///     id: ObjectId,
 ///     name: String,
 /// }
+/// ```
 pub trait Document: Serialize + DeserializeOwned + Send + Sync + 'static {
 	/// Primary key type (e.g., `ObjectId`, `Uuid`, `i64`).
 	type Id: Serialize + DeserializeOwned + Send + Sync;

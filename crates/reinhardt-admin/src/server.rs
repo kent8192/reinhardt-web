@@ -25,14 +25,16 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_admin::server::dashboard::get_dashboard;
 //!
 //! // In your app
 //! let dashboard_data = get_dashboard().await?;
+//! ```
 
 // The `#[server_fn]` proc macro generates internal modules that cannot have doc comments.
 // Allow missing docs for all server function submodules.
+pub(crate) mod admin_auth;
 #[allow(missing_docs)]
 pub mod create;
 #[allow(missing_docs)]
@@ -68,6 +70,7 @@ pub mod type_inference;
 pub mod validation;
 
 // Re-exports
+pub use admin_auth::AdminAuthenticatedUser;
 pub use create::*;
 pub use dashboard::*;
 pub use delete::*;

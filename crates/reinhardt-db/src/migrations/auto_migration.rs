@@ -145,6 +145,7 @@ impl AutoMigrationGenerator {
 	///
 	/// // Caller persists the migration
 	/// write_migration_file(&migration_file, &result.operations).await?;
+	/// ```
 	pub async fn generate(
 		&self,
 		app_label: &str,

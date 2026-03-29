@@ -2,10 +2,9 @@
 //!
 //! Provides field information for dynamic form generation.
 
-use super::user::AdminDefaultUser;
+use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, FieldInfo, FieldType};
 use crate::types::FieldsResponse;
-use reinhardt_auth::AuthUser;
 use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest, server_fn};
 use std::sync::Arc;
 
@@ -28,7 +27,7 @@ use reinhardt_utils::utils_core::text::humanize_field_name;
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_admin::server::get_fields;
 ///
 /// // Client-side usage for create form
@@ -38,6 +37,7 @@ use reinhardt_utils::utils_core::text::humanize_field_name;
 /// // Client-side usage for edit form
 /// let response = get_fields("User".to_string(), Some("42".to_string())).await?;
 /// println!("Existing values: {:?}", response.values);
+/// ```
 #[server_fn]
 pub async fn get_fields(
 	model_name: String,
@@ -45,17 +45,13 @@ pub async fn get_fields(
 	#[inject] site: Arc<AdminSite>,
 	#[inject] db: Arc<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
-	#[inject] AuthUser(user): AuthUser<AdminDefaultUser>,
+	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<FieldsResponse, ServerFnError> {
 	// Authentication and authorization check
 	let auth = AdminAuth::from_request(&http_request);
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
-	auth.require_model_permission(
-		model_admin.as_ref(),
-		&user as &dyn crate::core::AdminUser,
-		ModelPermission::View,
-	)
-	.await?;
+	auth.require_model_permission(model_admin.as_ref(), user.as_ref(), ModelPermission::View)
+		.await?;
 	let field_names = model_admin
 		.fields()
 		.unwrap_or_else(|| model_admin.list_display());

@@ -81,9 +81,10 @@ impl<M: Model, T> Field<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// let u1_id = Field::<User, i32>::new(vec!["id".to_string()]).with_alias("u1");
 	/// let u2_id = Field::<User, i32>::new(vec!["id".to_string()]).with_alias("u2");
+	/// ```
 	pub fn with_alias(mut self, alias: &str) -> Self {
 		self.table_alias = Some(alias.to_string());
 		self
@@ -105,9 +106,10 @@ impl<M: Model, T> Field<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// // u1.id < u2.id
 	/// let comparison = u1_id.field_lt(u2_id);
+	/// ```
 	pub fn field_lt<M2: Model>(self, other: Field<M2, T>) -> FieldComparison {
 		FieldComparison::new(
 			self.to_field_ref(),

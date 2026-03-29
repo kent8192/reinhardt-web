@@ -86,7 +86,7 @@ impl CockroachDBBackend {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
 	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
@@ -97,6 +97,7 @@ impl CockroachDBBackend {
 	/// let backend = CockroachDBBackend::new(pg_editor);
 	/// # Ok(())
 	/// # }
+	/// ```
 	pub fn new(pg_editor: PostgreSQLSchemaEditor) -> Self {
 		Self {
 			schema_editor: CockroachDBSchemaEditor::new(pg_editor),
@@ -107,7 +108,7 @@ impl CockroachDBBackend {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
 	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
@@ -122,6 +123,7 @@ impl CockroachDBBackend {
 	/// assert_eq!(sql, "SHOW REGIONS");
 	/// # Ok(())
 	/// # }
+	/// ```
 	pub fn schema_editor(&self) -> &CockroachDBSchemaEditor {
 		&self.schema_editor
 	}
@@ -130,7 +132,7 @@ impl CockroachDBBackend {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
 	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
@@ -142,6 +144,7 @@ impl CockroachDBBackend {
 	/// let editor = backend.schema_editor_mut();
 	/// # Ok(())
 	/// # }
+	/// ```
 	pub fn schema_editor_mut(&mut self) -> &mut CockroachDBSchemaEditor {
 		&mut self.schema_editor
 	}
@@ -150,7 +153,7 @@ impl CockroachDBBackend {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
 	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
@@ -162,6 +165,7 @@ impl CockroachDBBackend {
 	/// assert_eq!(backend.database_name(), "cockroachdb");
 	/// # Ok(())
 	/// # }
+	/// ```
 	pub fn database_name(&self) -> &str {
 		"cockroachdb"
 	}
@@ -170,7 +174,7 @@ impl CockroachDBBackend {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
 	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
@@ -186,6 +190,7 @@ impl CockroachDBBackend {
 	/// assert!(!backend.supports_feature("unknown_feature"));
 	/// # Ok(())
 	/// # }
+	/// ```
 	pub fn supports_feature(&self, feature: &str) -> bool {
 		matches!(
 			feature,

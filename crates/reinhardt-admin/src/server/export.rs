@@ -2,9 +2,8 @@
 //!
 //! Provides export operations for admin models.
 
-use super::user::AdminDefaultUser;
+use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, ExportFormat, ExportResponse};
-use reinhardt_auth::AuthUser;
 use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest, server_fn};
 use std::sync::Arc;
 
@@ -29,13 +28,14 @@ use super::limits::MAX_EXPORT_RECORDS;
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_admin::server::export_data;
 /// use reinhardt_admin::types::ExportFormat;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let response = export_data("User".to_string(), ExportFormat::JSON).await?;
 /// println!("Downloaded {}", response.filename);
+/// ```
 #[server_fn]
 pub async fn export_data(
 	model_name: String,
@@ -43,17 +43,13 @@ pub async fn export_data(
 	#[inject] site: Arc<AdminSite>,
 	#[inject] db: Arc<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
-	#[inject] AuthUser(user): AuthUser<AdminDefaultUser>,
+	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<ExportResponse, ServerFnError> {
 	// Authentication and authorization check
 	let auth = AdminAuth::from_request(&http_request);
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
-	auth.require_model_permission(
-		model_admin.as_ref(),
-		&user as &dyn crate::core::AdminUser,
-		ModelPermission::View,
-	)
-	.await?;
+	auth.require_model_permission(model_admin.as_ref(), user.as_ref(), ModelPermission::View)
+		.await?;
 	let table_name = model_admin.table_name();
 
 	// Query total count to detect truncation

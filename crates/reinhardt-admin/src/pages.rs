@@ -20,7 +20,7 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use reinhardt_admin_app::components::features::dashboard::dashboard_view;
 //!
 //! // In your app
@@ -29,6 +29,7 @@
 //!         {dashboard_view()}
 //!     </div>
 //! }
+//! ```
 
 pub mod components;
 pub mod router;

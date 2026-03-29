@@ -32,6 +32,7 @@ pub enum AggregateFunction {
 ///
 /// // AVG(price) <= 100.0
 /// let expr = AggregateExpr::avg("price").lte(100.0);
+/// ```
 #[derive(Debug, Clone)]
 pub struct AggregateExpr {
 	/// Type of aggregate function
@@ -167,6 +168,7 @@ impl From<f32> for ComparisonValue {
 ///
 /// ```no_run
 /// use reinhardt_db::orm::query_fields::aggregate::*;
+/// use reinhardt_db::orm::query_fields::comparison::ComparisonOperator;
 ///
 /// // COUNT(*) > 5
 /// let expr = ComparisonExpr::new(
@@ -174,6 +176,7 @@ impl From<f32> for ComparisonValue {
 ///     ComparisonOperator::Gt,
 ///     ComparisonValue::Int(5),
 /// );
+/// ```
 #[derive(Debug, Clone)]
 pub struct ComparisonExpr {
 	/// Aggregate expression

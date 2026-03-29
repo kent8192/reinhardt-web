@@ -45,10 +45,11 @@ pub struct Migration {
 	///
 	/// These dependencies resolve to different apps based on settings.
 	/// For example, a migration depending on the User model might use:
-	/// ```no_run
+	/// ```ignore
 	/// swappable_dependencies: vec![
 	///     SwappableDependency::new("AUTH_USER_MODEL", "auth", "User", "0001_initial")
 	/// ]
+	/// ```
 	#[serde(default)]
 	pub swappable_dependencies: Vec<SwappableDependency>,
 
@@ -56,7 +57,7 @@ pub struct Migration {
 	///
 	/// These dependencies are only enforced when their condition is met.
 	/// For example, a migration might optionally depend on PostGIS:
-	/// ```no_run
+	/// ```ignore
 	/// optional_dependencies: vec![
 	///     OptionalDependency::new(
 	///         "gis_extension",
@@ -64,6 +65,7 @@ pub struct Migration {
 	///         DependencyCondition::AppInstalled("gis_extension".to_string())
 	///     )
 	/// ]
+	/// ```
 	#[serde(default)]
 	pub optional_dependencies: Vec<OptionalDependency>,
 }

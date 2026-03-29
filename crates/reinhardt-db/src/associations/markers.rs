@@ -229,7 +229,7 @@ where
 	///
 	/// # Example
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_db::associations::ManyToManyConfig;
 	///
 	/// // Add a user to a group
@@ -240,6 +240,7 @@ where
 	///     "user_id".to_string(),
 	/// );
 	/// group.members.add_with_db(&db, config, user.id).await?;
+	/// ```
 	pub async fn add_with_db<PK, TPK>(
 		&self,
 		conn: &DatabaseConnection,

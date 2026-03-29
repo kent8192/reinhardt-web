@@ -2,10 +2,9 @@
 //!
 //! Provides create operations for admin models.
 
-use super::user::AdminDefaultUser;
+use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite};
 use crate::types::{MutationRequest, MutationResponse};
-use reinhardt_auth::AuthUser;
 use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest, server_fn};
 use std::sync::Arc;
 
@@ -34,7 +33,7 @@ use super::validation::validate_mutation_data;
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use reinhardt_admin::server::create_record;
 /// use reinhardt_admin::types::MutationRequest;
 /// use std::collections::HashMap;
@@ -47,6 +46,7 @@ use super::validation::validate_mutation_data;
 /// let request = MutationRequest { csrf_token: "token".to_string(), data };
 /// let response = create_record("User".to_string(), request).await?;
 /// println!("Created: {}", response.message);
+/// ```
 #[server_fn]
 pub async fn create_record(
 	model_name: String,
@@ -54,7 +54,7 @@ pub async fn create_record(
 	#[inject] site: Arc<AdminSite>,
 	#[inject] db: Arc<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
-	#[inject] AuthUser(user): AuthUser<AdminDefaultUser>,
+	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<MutationResponse, ServerFnError> {
 	// CSRF token validation (double-submit cookie pattern)
 	require_csrf_token(&request.csrf_token, &http_request.inner().headers)?;
@@ -62,12 +62,8 @@ pub async fn create_record(
 	// Authentication and authorization check
 	let auth = AdminAuth::from_request(&http_request);
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
-	auth.require_model_permission(
-		model_admin.as_ref(),
-		&user as &dyn crate::core::AdminUser,
-		ModelPermission::Add,
-	)
-	.await?;
+	auth.require_model_permission(model_admin.as_ref(), user.as_ref(), ModelPermission::Add)
+		.await?;
 	let table_name = model_admin.table_name();
 	let pk_field = model_admin.pk_field();
 

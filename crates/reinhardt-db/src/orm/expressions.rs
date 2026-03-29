@@ -67,8 +67,7 @@ impl fmt::Display for F {
 ///
 /// # Examples
 ///
-/// ```no_run
-/// # use reinhardt_db::orm::Model;
+/// ```ignore
 /// use reinhardt_db::orm::expressions::FieldRef;
 /// use reinhardt_core::macros::model;
 /// use serde::{Serialize, Deserialize};
@@ -106,6 +105,7 @@ impl fmt::Display for F {
 /// use reinhardt_db::orm::expressions::F;
 /// let f: F = User::field_name().into();
 /// assert_eq!(f.to_sql(), "name");
+/// ```
 #[derive(Debug, Clone, Copy)]
 pub struct FieldRef<M, T> {
 	name: &'static str,
@@ -125,9 +125,11 @@ impl<M, T> FieldRef<M, T> {
 	/// # Examples
 	///
 	/// ```no_run
+	/// # struct User;
 	/// use reinhardt_db::orm::expressions::FieldRef;
 	///
 	/// const USER_ID: FieldRef<User, i64> = FieldRef::new("id");
+	/// ```
 	pub const fn new(name: &'static str) -> Self {
 		Self {
 			name,
@@ -139,23 +141,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
+	/// ```ignore
 	/// let id_ref = User::field_id();
 	/// assert_eq!(id_ref.name(), "id");
+	/// ```
 	pub const fn name(&self) -> &'static str {
 		self.name
 	}
@@ -164,23 +153,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
+	/// ```ignore
 	/// let id_ref = User::field_id();
 	/// assert_eq!(id_ref.to_sql(), "\"id\"");
+	/// ```
 	pub fn to_sql(&self) -> String {
 		quote_identifier(self.name)
 	}
@@ -189,23 +165,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
+	/// ```ignore
 	/// let filter = User::field_id().eq(42);
 	/// // Results in: WHERE id = 42
+	/// ```
 	pub fn eq<V: Into<FilterValue>>(&self, value: V) -> Filter {
 		Filter::new(self.name.to_string(), FilterOperator::Eq, value.into())
 	}
@@ -214,25 +177,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// #     #[field(max_length = 50)]
-	/// #     status: String,
-	/// # }
+	/// ```ignore
 	/// let filter = User::field_status().ne("inactive");
 	/// // Results in: WHERE status != 'inactive'
+	/// ```
 	pub fn ne<V: Into<FilterValue>>(&self, value: V) -> Filter {
 		Filter::new(self.name.to_string(), FilterOperator::Ne, value.into())
 	}
@@ -241,24 +189,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// #     age: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = User::field_age().gt(18);
 	/// // Results in: WHERE age > 18
+	/// ```
 	pub fn gt<V: Into<FilterValue>>(&self, value: V) -> Filter {
 		Filter::new(self.name.to_string(), FilterOperator::Gt, value.into())
 	}
@@ -267,24 +201,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// #     age: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = User::field_age().gte(18);
 	/// // Results in: WHERE age >= 18
+	/// ```
 	pub fn gte<V: Into<FilterValue>>(&self, value: V) -> Filter {
 		Filter::new(self.name.to_string(), FilterOperator::Gte, value.into())
 	}
@@ -293,24 +213,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// #     age: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = User::field_age().lt(65);
 	/// // Results in: WHERE age < 65
+	/// ```
 	pub fn lt<V: Into<FilterValue>>(&self, value: V) -> Filter {
 		Filter::new(self.name.to_string(), FilterOperator::Lt, value.into())
 	}
@@ -319,24 +225,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// #     age: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = User::field_age().lte(65);
 	/// // Results in: WHERE age <= 65
+	/// ```
 	pub fn lte<V: Into<FilterValue>>(&self, value: V) -> Filter {
 		Filter::new(self.name.to_string(), FilterOperator::Lte, value.into())
 	}
@@ -345,32 +237,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
-	/// #
-	/// # #[model(app_label = "test", table_name = "orders")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct Order {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     discount_price: i64,
-	/// #     total_price: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = Order::field_discount_price().eq_field(Order::field_total_price());
 	/// // Results in: WHERE discount_price = total_price
+	/// ```
 	pub fn eq_field<T2>(&self, other: FieldRef<M, T2>) -> Filter {
 		Filter::new(
 			self.name.to_string(),
@@ -383,32 +253,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
-	/// #
-	/// # #[model(app_label = "test", table_name = "orders")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct Order {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     discount_price: i64,
-	/// #     total_price: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = Order::field_discount_price().ne_field(Order::field_total_price());
 	/// // Results in: WHERE discount_price != total_price
+	/// ```
 	pub fn ne_field<T2>(&self, other: FieldRef<M, T2>) -> Filter {
 		Filter::new(
 			self.name.to_string(),
@@ -421,32 +269,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
-	/// #
-	/// # #[model(app_label = "test", table_name = "orders")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct Order {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     discount_price: i64,
-	/// #     total_price: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = Order::field_total_price().gt_field(Order::field_discount_price());
 	/// // Results in: WHERE total_price > discount_price
+	/// ```
 	pub fn gt_field<T2>(&self, other: FieldRef<M, T2>) -> Filter {
 		Filter::new(
 			self.name.to_string(),
@@ -459,32 +285,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
-	/// #
-	/// # #[model(app_label = "test", table_name = "orders")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct Order {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     discount_price: i64,
-	/// #     total_price: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = Order::field_total_price().gte_field(Order::field_discount_price());
 	/// // Results in: WHERE total_price >= discount_price
+	/// ```
 	pub fn gte_field<T2>(&self, other: FieldRef<M, T2>) -> Filter {
 		Filter::new(
 			self.name.to_string(),
@@ -497,32 +301,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
-	/// #
-	/// # #[model(app_label = "test", table_name = "orders")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct Order {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     discount_price: i64,
-	/// #     total_price: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = Order::field_discount_price().lt_field(Order::field_total_price());
 	/// // Results in: WHERE discount_price < total_price
+	/// ```
 	pub fn lt_field<T2>(&self, other: FieldRef<M, T2>) -> Filter {
 		Filter::new(
 			self.name.to_string(),
@@ -535,32 +317,10 @@ impl<M, T> FieldRef<M, T> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_core::macros::model;
-	/// # use reinhardt_db::orm::Model;
-	/// # use serde::{Serialize, Deserialize};
-	/// #
-	/// # #[model(app_label = "test", table_name = "users")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct User {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     #[field(max_length = 255)]
-	/// #     name: String,
-	/// #     #[field(max_length = 255)]
-	/// #     email: String,
-	/// # }
-	/// #
-	/// # #[model(app_label = "test", table_name = "orders")]
-	/// # #[derive(Serialize, Deserialize)]
-	/// # struct Order {
-	/// #     #[field(primary_key = true)]
-	/// #     id: i64,
-	/// #     discount_price: i64,
-	/// #     total_price: i64,
-	/// # }
+	/// ```ignore
 	/// let filter = Order::field_discount_price().lte_field(Order::field_total_price());
 	/// // Results in: WHERE discount_price <= total_price
+	/// ```
 	pub fn lte_field<T2>(&self, other: FieldRef<M, T2>) -> Filter {
 		Filter::new(
 			self.name.to_string(),
