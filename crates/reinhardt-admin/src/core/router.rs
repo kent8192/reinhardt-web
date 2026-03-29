@@ -113,6 +113,43 @@ pub fn admin_static_routes() -> ServerRouter {
 	router
 }
 
+/// Returns path prefixes that should be exempt from global CSP middleware.
+///
+/// The admin panel sets its own `Content-Security-Policy` headers on HTML
+/// responses (allowing `'unsafe-inline'` for styles, `data:` for images,
+/// etc.). If your application uses [`CspMiddleware`] with strict directives,
+/// add these paths to its `exempt_paths` so the middleware does not override
+/// the admin's CSP.
+///
+/// # Returned paths
+///
+/// - `"/admin"` -- the admin SPA HTML routes
+/// - `"/static/admin"` -- the admin's embedded CSS/JS assets
+///
+/// # Note
+///
+/// Reinhardt's own `CspMiddleware` already checks for an existing CSP header
+/// and skips insertion if one is present. This helper is primarily useful when
+/// a third-party or custom CSP middleware unconditionally sets headers.
+///
+/// [`CspMiddleware`]: reinhardt_middleware::CspMiddleware
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use reinhardt_admin::core::admin_csp_exempt_paths;
+/// use reinhardt_middleware::{CspConfig, CspMiddleware};
+///
+/// let mut config = CspConfig::strict();
+/// for path in admin_csp_exempt_paths() {
+///     config = config.add_exempt_path(path);
+/// }
+/// let middleware = CspMiddleware::with_config(config);
+/// ```
+pub fn admin_csp_exempt_paths() -> Vec<String> {
+	vec!["/admin".to_string(), "/static/admin".to_string()]
+}
+
 /// Internal route builder shared by `admin_routes_with_di` and the deprecated `admin_routes`.
 fn build_admin_router() -> ServerRouter {
 	let router = ServerRouter::new().with_namespace("admin");
@@ -766,5 +803,16 @@ mod tests {
 			"JS handler should return application/javascript content type, got: {}",
 			content_type
 		);
+	}
+
+	#[rstest]
+	fn test_admin_csp_exempt_paths_returns_expected_paths() {
+		// Arrange & Act
+		let paths = admin_csp_exempt_paths();
+
+		// Assert
+		assert!(paths.contains(&"/admin".to_string()));
+		assert!(paths.contains(&"/static/admin".to_string()));
+		assert_eq!(paths.len(), 2);
 	}
 }
