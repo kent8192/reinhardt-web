@@ -181,8 +181,10 @@ serial_test = "3"
 trybuild = "1.0"
 criterion = { workspace = true }
 rstest = { workspace = true }
-proptest = { workspace = true }
 tempfile = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+proptest = { workspace = true }
 
 [lib]
 crate-type = ["rlib"]
