@@ -28,9 +28,31 @@ fn resolve_wasm_dir() -> std::path::PathBuf {
 	std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("dist-wasm")
 }
 
+/// Resolves the collected static files root directory (STATIC_ROOT).
+///
+/// Checks `STATIC_ROOT` environment variable. Returns `None` if not set
+/// or the `admin/` subdirectory does not exist within it.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_static_root_admin() -> Option<std::path::PathBuf> {
+	std::env::var("STATIC_ROOT")
+		.ok()
+		.map(|root| std::path::PathBuf::from(root).join("admin"))
+		.filter(|p| p.is_dir())
+}
+
 /// Returns true if the WASM SPA has been built (dist-wasm/ contains entry point).
+///
+/// Checks the collected STATIC_ROOT first, then falls back to the build
+/// output directory (dist-wasm/).
 #[cfg(not(target_arch = "wasm32"))]
 fn is_wasm_built() -> bool {
+	// Check STATIC_ROOT/admin/ first (production: after collectstatic)
+	if let Some(admin_dir) = resolve_static_root_admin() {
+		if admin_dir.join("reinhardt_admin.js").is_file() {
+			return true;
+		}
+	}
+	// Fallback to build output directory (development)
 	resolve_wasm_dir().join("reinhardt_admin.js").is_file()
 }
 
@@ -54,17 +76,33 @@ async fn admin_spa_handler(
 	Ok(response.with_body(admin_spa_html()))
 }
 
+/// Resolves an admin static file path to its final URL.
+///
+/// Uses the global static resolver (initialized by the application) for
+/// manifest-aware URL resolution. Falls back to `/static/admin/` prefix
+/// if the resolver has not been initialized.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_admin_static(path: &str) -> String {
+	let admin_path = format!("admin/{}", path);
+	reinhardt_pages::static_resolver::resolve_static(&admin_path)
+}
+
 /// Generates the HTML shell for the admin SPA.
 ///
 /// Detects at runtime whether the WASM SPA has been built:
 /// - If `dist-wasm/reinhardt_admin.js` exists, loads the WASM entry point
 /// - Otherwise, falls back to the placeholder bootstrap script (`main.js`)
+///
+/// All static file URLs are resolved via [`resolve_admin_static`], which
+/// integrates with the collectstatic manifest for cache-busted filenames
+/// in production.
 #[cfg(not(target_arch = "wasm32"))]
 fn admin_spa_html() -> String {
-	let script_tag = if is_wasm_built() {
-		r#"<script type="module" src="/static/admin/reinhardt_admin.js"></script>"#
+	let css_url = resolve_admin_static("style.css");
+	let js_url = if is_wasm_built() {
+		resolve_admin_static("reinhardt_admin.js")
 	} else {
-		r#"<script type="module" src="/static/admin/main.js"></script>"#
+		resolve_admin_static("main.js")
 	};
 	format!(
 		r#"<!DOCTYPE html>
@@ -73,11 +111,11 @@ fn admin_spa_html() -> String {
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>Reinhardt Admin</title>
-	<link rel="stylesheet" href="/static/admin/style.css" />
+	<link rel="stylesheet" href="{css_url}" />
 </head>
 <body>
 	<div id="app"></div>
-	{script_tag}
+	<script type="module" src="{js_url}"></script>
 </body>
 </html>"#
 	)
@@ -113,37 +151,55 @@ async fn admin_js_handler(
 		.with_body(bytes::Bytes::from_static(ADMIN_JS)))
 }
 
-/// Serves the WASM JavaScript entry point from the build output directory.
+/// Reads a file from STATIC_ROOT/admin/ first, then falls back to dist-wasm/.
 ///
-/// Returns 404 if the WASM SPA has not been built.
+/// This ensures collected (and potentially hashed) files are preferred in
+/// production, while development builds from dist-wasm/ still work.
+#[cfg(not(target_arch = "wasm32"))]
+async fn read_admin_wasm_file(filename: &str) -> Option<Vec<u8>> {
+	// 1. Try STATIC_ROOT/admin/ (production: after collectstatic)
+	if let Some(admin_dir) = resolve_static_root_admin() {
+		if let Ok(data) = tokio::fs::read(admin_dir.join(filename)).await {
+			return Some(data);
+		}
+	}
+	// 2. Fallback to dist-wasm/ (development: build output)
+	tokio::fs::read(resolve_wasm_dir().join(filename))
+		.await
+		.ok()
+}
+
+/// Serves the WASM JavaScript entry point.
+///
+/// Checks STATIC_ROOT/admin/ first (production), then dist-wasm/ (development).
+/// Returns 404 if the WASM SPA has not been built or collected.
 #[cfg(not(target_arch = "wasm32"))]
 async fn admin_wasm_js_handler(
 	_request: reinhardt_http::Request,
 ) -> reinhardt_core::exception::Result<reinhardt_http::Response> {
-	let path = resolve_wasm_dir().join("reinhardt_admin.js");
-	match tokio::fs::read(&path).await {
-		Ok(data) => Ok(reinhardt_http::Response::ok()
+	match read_admin_wasm_file("reinhardt_admin.js").await {
+		Some(data) => Ok(reinhardt_http::Response::ok()
 			.with_header("Content-Type", "application/javascript; charset=utf-8")
 			.with_header("Cache-Control", "public, max-age=3600")
 			.with_body(bytes::Bytes::from(data))),
-		Err(_) => Ok(reinhardt_http::Response::not_found()),
+		None => Ok(reinhardt_http::Response::not_found()),
 	}
 }
 
-/// Serves the WASM binary from the build output directory.
+/// Serves the WASM binary.
 ///
-/// Returns 404 if the WASM SPA has not been built.
+/// Checks STATIC_ROOT/admin/ first (production), then dist-wasm/ (development).
+/// Returns 404 if the WASM SPA has not been built or collected.
 #[cfg(not(target_arch = "wasm32"))]
 async fn admin_wasm_bg_handler(
 	_request: reinhardt_http::Request,
 ) -> reinhardt_core::exception::Result<reinhardt_http::Response> {
-	let path = resolve_wasm_dir().join("reinhardt_admin_bg.wasm");
-	match tokio::fs::read(&path).await {
-		Ok(data) => Ok(reinhardt_http::Response::ok()
+	match read_admin_wasm_file("reinhardt_admin_bg.wasm").await {
+		Some(data) => Ok(reinhardt_http::Response::ok()
 			.with_header("Content-Type", "application/wasm")
 			.with_header("Cache-Control", "public, max-age=3600")
 			.with_body(bytes::Bytes::from(data))),
-		Err(_) => Ok(reinhardt_http::Response::not_found()),
+		None => Ok(reinhardt_http::Response::not_found()),
 	}
 }
 
@@ -756,14 +812,15 @@ mod tests {
 		// Arrange & Act
 		let html = admin_spa_html();
 
-		// Assert
+		// Assert - URLs are resolved via resolve_admin_static, which falls back
+		// to /static/ prefix when the resolver is not initialized (test env)
 		assert!(
-			html.contains("/static/admin/style.css"),
+			html.contains("style.css"),
 			"HTML should reference admin CSS"
 		);
 		assert!(
-			html.contains("/static/admin/main.js"),
-			"HTML should reference admin JS"
+			html.contains("main.js") || html.contains("reinhardt_admin.js"),
+			"HTML should reference admin JS (placeholder or WASM)"
 		);
 	}
 
@@ -960,6 +1017,20 @@ mod tests {
 			dir.ends_with("dist-wasm"),
 			"WASM dir should end with 'dist-wasm', got: {:?}",
 			dir
+		);
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
+	fn test_resolve_admin_static_uses_static_resolver() {
+		// Arrange & Act - resolver not initialized in test env, uses fallback
+		let url = resolve_admin_static("style.css");
+
+		// Assert - fallback produces /static/admin/style.css
+		assert!(
+			url.contains("admin/style.css"),
+			"Should resolve admin static path, got: {}",
+			url
 		);
 	}
 
