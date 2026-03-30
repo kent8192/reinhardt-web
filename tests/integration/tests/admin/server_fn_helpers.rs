@@ -544,7 +544,7 @@ pub async fn uuid_pk_context(
 				.uuid()
 				.not_null(true)
 				.primary_key(true)
-				.extra("DEFAULT gen_random_uuid()"),
+				.default(Expr::cust("gen_random_uuid()").into()),
 		)
 		.col(
 			ColumnDef::new(Alias::new("name"))
