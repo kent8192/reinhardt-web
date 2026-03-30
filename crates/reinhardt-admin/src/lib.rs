@@ -26,6 +26,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod adapters;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod core;
 pub mod pages;
 pub mod server;

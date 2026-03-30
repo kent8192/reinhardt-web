@@ -11,7 +11,7 @@ use crate::pages::components::features::{
 	Column, FormField, ListViewData, dashboard, detail_view, list_view, model_form,
 };
 #[cfg(target_arch = "wasm32")]
-use crate::server::{get_dashboard, get_model_detail, get_model_fields, list_models};
+use crate::server::{get_dashboard, get_detail, get_fields, get_list};
 #[cfg(target_arch = "wasm32")]
 use crate::types::ListQueryParams;
 use crate::types::ModelInfo;
@@ -133,14 +133,14 @@ fn dashboard_view() -> Page {
 
 	PageElement::new("div")
 		.attr("class", "dashboard-container")
-		.child({
+		.child(Page::reactive({
 			let resource = dashboard_resource.clone();
 			move || match resource.get() {
 				ResourceState::Loading => loading_view(),
 				ResourceState::Success(data) => dashboard(&data.site_name, &data.models),
 				ResourceState::Error(err) => error_view(&err),
 			}
-		})
+		}))
 		.into_page()
 }
 
@@ -172,7 +172,7 @@ fn list_view_component(model_name: String) -> Page {
 		let model_name = model_name.clone();
 		async move {
 			let params = ListQueryParams::default();
-			list_models(model_name, params)
+			get_list(model_name, params)
 				.await
 				.map_err(|e| e.to_string())
 		}
@@ -199,7 +199,7 @@ fn list_view_component(model_name: String) -> Page {
 
 	PageElement::new("div")
 		.attr("class", "list-container")
-		.child({
+		.child(Page::reactive({
 			let resource = list_resource.clone();
 			let page_signal = page_signal.clone();
 			let filters_signal = filters_signal.clone();
@@ -209,14 +209,34 @@ fn list_view_component(model_name: String) -> Page {
 					// Convert ListResponse to ListViewData
 					let data = ListViewData {
 						model_name: response.model_name.clone(),
-						columns: response.columns.unwrap_or_else(|| {
-							vec![Column {
-								field: "id".to_string(),
-								label: "ID".to_string(),
-								sortable: true,
-							}]
-						}),
-						records: response.results,
+						columns: response
+							.columns
+							.map(|cols| {
+								cols.into_iter()
+									.map(|c| Column {
+										field: c.field,
+										label: c.label,
+										sortable: c.sortable,
+									})
+									.collect()
+							})
+							.unwrap_or_else(|| {
+								vec![Column {
+									field: "id".to_string(),
+									label: "ID".to_string(),
+									sortable: true,
+								}]
+							}),
+						records: response
+							.results
+							.into_iter()
+							.map(|record| {
+								record
+									.into_iter()
+									.map(|(k, v)| (k, v.as_str().unwrap_or("").to_string()))
+									.collect()
+							})
+							.collect(),
 						current_page: response.page,
 						total_pages: response.total_pages,
 						total_count: response.count,
@@ -226,7 +246,7 @@ fn list_view_component(model_name: String) -> Page {
 				}
 				ResourceState::Error(err) => error_view(&err),
 			}
-		})
+		}))
 		.into_page()
 }
 
@@ -267,11 +287,13 @@ fn list_view_component(model_name: String) -> Page {
 fn detail_view_component(model_name: String, record_id: String) -> Page {
 	use reinhardt_pages::component::{IntoPage, PageElement};
 
+	let model_name_for_view = model_name.clone();
+	let record_id_for_view = record_id.clone();
 	let detail_resource = create_resource(move || {
 		let model_name = model_name.clone();
 		let record_id = record_id.clone();
 		async move {
-			get_model_detail(model_name, record_id)
+			get_detail(model_name, record_id)
 				.await
 				.map_err(|e| e.to_string())
 		}
@@ -279,18 +301,23 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 
 	PageElement::new("div")
 		.attr("class", "detail-container")
-		.child({
+		.child(Page::reactive({
 			let resource = detail_resource.clone();
-			let model_name = model_name.clone();
-			let record_id = record_id.clone();
+			let model_name = model_name_for_view;
+			let record_id = record_id_for_view;
 			move || match resource.get() {
 				ResourceState::Loading => loading_view(),
 				ResourceState::Success(response) => {
-					detail_view(&model_name, &record_id, &response.data)
+					let data: std::collections::HashMap<String, String> = response
+						.data
+						.iter()
+						.map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+						.collect();
+					detail_view(&model_name, &record_id, &data)
 				}
 				ResourceState::Error(err) => error_view(&err),
 			}
-		})
+		}))
 		.into_page()
 }
 
@@ -310,10 +337,11 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 fn create_view_component(model_name: String) -> Page {
 	use reinhardt_pages::component::{IntoPage, PageElement};
 
+	let model_name_for_view = model_name.clone();
 	let fields_resource = create_resource(move || {
 		let model_name = model_name.clone();
 		async move {
-			get_model_fields(model_name, None)
+			get_fields(model_name, None)
 				.await
 				.map_err(|e| e.to_string())
 		}
@@ -321,9 +349,9 @@ fn create_view_component(model_name: String) -> Page {
 
 	PageElement::new("div")
 		.attr("class", "form-container")
-		.child({
+		.child(Page::reactive({
 			let resource = fields_resource.clone();
-			let model_name = model_name.clone();
+			let model_name = model_name_for_view;
 			move || match resource.get() {
 				ResourceState::Loading => loading_view(),
 				ResourceState::Success(response) => {
@@ -343,7 +371,7 @@ fn create_view_component(model_name: String) -> Page {
 				}
 				ResourceState::Error(err) => error_view(&err),
 			}
-		})
+		}))
 		.into_page()
 }
 
@@ -376,11 +404,13 @@ fn create_view_component(model_name: String) -> Page {
 fn edit_view_component(model_name: String, record_id: String) -> Page {
 	use reinhardt_pages::component::{IntoPage, PageElement};
 
+	let model_name_for_view = model_name.clone();
+	let record_id_for_view = record_id.clone();
 	let fields_resource = create_resource(move || {
 		let model_name = model_name.clone();
 		let record_id = record_id.clone();
 		async move {
-			get_model_fields(model_name, Some(record_id))
+			get_fields(model_name, Some(record_id))
 				.await
 				.map_err(|e| e.to_string())
 		}
@@ -388,10 +418,10 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 
 	PageElement::new("div")
 		.attr("class", "form-container")
-		.child({
+		.child(Page::reactive({
 			let resource = fields_resource.clone();
-			let model_name = model_name.clone();
-			let record_id = record_id.clone();
+			let model_name = model_name_for_view;
+			let record_id = record_id_for_view;
 			move || match resource.get() {
 				ResourceState::Loading => loading_view(),
 				ResourceState::Success(response) => {
@@ -424,7 +454,7 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 				}
 				ResourceState::Error(err) => error_view(&err),
 			}
-		})
+		}))
 		.into_page()
 }
 
@@ -524,10 +554,10 @@ fn error_view(message: &str) -> Page {
 
 /// Convert FieldType to HTML input type string
 ///
-/// Maps reinhardt_admin::types::FieldType to HTML input type attributes.
+/// Maps crate::types::FieldType to HTML input type attributes.
 #[cfg(target_arch = "wasm32")]
-fn field_type_to_html_input_type(field_type: &reinhardt_admin::types::FieldType) -> String {
-	use reinhardt_admin::types::FieldType;
+fn field_type_to_html_input_type(field_type: &crate::types::FieldType) -> String {
+	use crate::types::FieldType;
 
 	match field_type {
 		FieldType::Text => "text".to_string(),
