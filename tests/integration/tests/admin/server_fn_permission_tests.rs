@@ -3,7 +3,6 @@
 //! These tests verify that server functions correctly reject requests when
 //! the ModelAdmin denies the required permission. Covers Issue #3118.
 
-use std::collections::HashMap;
 use super::server_fn_helpers::{
 	deny_all_context, make_auth_user, make_staff_request, view_only_context,
 };
@@ -17,6 +16,7 @@ use reinhardt_admin::server::{
 };
 use rstest::*;
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::server_fn_helpers::TEST_CSRF_TOKEN;
