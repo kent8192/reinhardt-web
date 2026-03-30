@@ -982,7 +982,7 @@ fn generate_server_handler(
 		///
 		/// # Example
 		///
-		/// ```ignore
+		/// ```no_run
 		/// use axum::{Router, routing::post};
 		///
 		/// let app = Router::new()

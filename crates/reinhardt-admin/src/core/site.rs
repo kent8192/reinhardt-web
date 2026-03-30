@@ -319,7 +319,7 @@ impl AdminSite {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
@@ -351,7 +351,7 @@ impl AdminSite {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
