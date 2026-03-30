@@ -38,6 +38,10 @@ const _: () = {
 	/// Path to admin static assets directory
 	const ADMIN_STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets");
 
+	/// Path to WASM build output directory (may not exist until WASM is built)
+	const ADMIN_WASM_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/dist-wasm");
+
 	// Register at compile time using inventory
 	reinhardt_apps::register_app_static_files!("admin", ADMIN_STATIC_DIR, "/static/admin/");
+	reinhardt_apps::register_app_static_files!("admin-wasm", ADMIN_WASM_DIR, "/static/admin/");
 };
