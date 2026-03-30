@@ -14,5 +14,6 @@ mod admin {
 	mod server_fn_helpers;
 	mod server_fn_import_tests;
 	mod server_fn_list_tests;
+	mod server_fn_permission_tests;
 	mod server_fn_update_tests;
 }
