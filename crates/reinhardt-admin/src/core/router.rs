@@ -218,7 +218,9 @@ pub fn admin_static_routes() -> ServerRouter {
 	let router = ServerRouter::new();
 
 	#[cfg(not(target_arch = "wasm32"))]
-	let router = router.function("/{*path}", hyper::Method::GET, admin_static_file_handler);
+	let router = router
+		.function("/{*path}", hyper::Method::GET, admin_static_file_handler)
+		.function("/{*path}", hyper::Method::HEAD, admin_static_file_handler);
 
 	router
 }
