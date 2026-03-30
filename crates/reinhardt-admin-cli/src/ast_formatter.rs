@@ -1606,6 +1606,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("div {"));
 		assert!(result.content.contains("\"hello\""));
 		assert!(result.contains_page_macro);
@@ -1621,6 +1622,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("div"));
 		assert!(result.content.contains("class"));
 		assert!(result.contains_page_macro);
@@ -1636,6 +1638,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(input, result.content);
 		assert!(!result.contains_page_macro);
 	}
@@ -1650,6 +1653,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("page!(|| { div { } })"));
 		assert!(!result.contains_page_macro);
 	}
@@ -1665,6 +1669,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("// page!(|| { div { } })"));
 		assert!(!result.contains_page_macro);
 	}
@@ -1679,6 +1684,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("name: String"));
 		assert!(result.contains_page_macro);
 	}
@@ -1693,6 +1699,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("div {"));
 		assert!(result.content.contains("p {"));
 		assert!(result.contains_page_macro);
@@ -1708,6 +1715,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("@if"));
 		assert!(result.contains_page_macro);
 	}
@@ -1722,6 +1730,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("@for"));
 		assert!(result.contains_page_macro);
 	}
@@ -1736,6 +1745,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("<MyComponent"));
 		assert!(result.content.contains("/>"));
 		assert!(result.contains_page_macro);
@@ -1751,6 +1761,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("@click"));
 		assert!(result.contains_page_macro);
 	}
@@ -1794,6 +1805,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(input, result.content);
 		assert!(!result.contains_page_macro);
 	}
@@ -1812,6 +1824,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("items: Vec<String>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1826,6 +1839,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("value: Option<i32>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1840,6 +1854,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("res: Result<String, Error>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1854,6 +1869,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("items: Vec<Option<String>>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1868,6 +1884,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("map: HashMap<String, i32>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1882,6 +1899,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("s: &str"));
 		assert!(result.contains_page_macro);
 	}
@@ -1896,6 +1914,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("arr: [i32; 5]"));
 		assert!(result.contains_page_macro);
 	}
@@ -1910,6 +1929,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("t: (String, i32)"));
 		assert!(result.contains_page_macro);
 	}
@@ -1924,6 +1944,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("v: std::vec::Vec<String>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1938,6 +1959,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(
 			result
 				.content
@@ -1958,6 +1980,7 @@ mod tests {
 		let result2 = formatter.format(&result.content).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, result2.content);
 		assert!(result2.contains_page_macro);
 	}
