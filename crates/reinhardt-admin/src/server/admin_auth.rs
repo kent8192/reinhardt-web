@@ -311,6 +311,39 @@ mod tests {
 	}
 
 	#[rstest]
+	#[tokio::test]
+	async fn test_inject_returns_error_when_no_database_connection() {
+		// Arrange: singleton with AdminUserLoader but NO DatabaseConnection
+		let singleton = Arc::new(SingletonScope::new());
+		let loader = AdminUserLoader(Arc::new(|_user_id, _db| {
+			Box::pin(async { Err(DiError::NotFound("should not be called".to_string())) })
+		}));
+		singleton.set_arc(Arc::new(loader));
+		let request = reinhardt_http::Request::builder()
+			.uri("/admin/test")
+			.build()
+			.expect("Failed to build test request");
+		request
+			.extensions
+			.insert(AuthState::authenticated("user-123", true, true));
+		let ctx = InjectionContext::builder(singleton)
+			.with_request(request)
+			.build();
+
+		// Act
+		let result = AdminAuthenticatedUser::inject(&ctx).await;
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(
+			err.to_string().contains("DatabaseConnection"),
+			"Expected error mentioning DatabaseConnection, got: {}",
+			err
+		);
+	}
+
+	#[rstest]
 	fn test_admin_user_loader_can_be_stored_in_singleton_scope() {
 		// Arrange
 		let singleton = SingletonScope::new();
