@@ -3,6 +3,7 @@
 //! These tests verify that server functions correctly reject requests when
 //! the ModelAdmin denies the required permission. Covers Issue #3118.
 
+use std::collections::HashMap;
 use super::server_fn_helpers::{
 	deny_all_context, make_auth_user, make_staff_request, view_only_context,
 };
@@ -149,7 +150,7 @@ async fn test_deny_all_create(#[future] deny_all_context: (Arc<AdminSite>, Arc<A
 
 	let request = MutationRequest {
 		csrf_token: TEST_CSRF_TOKEN.to_string(),
-		data: serde_json::Map::from_iter([
+		data: HashMap::from([
 			("name".to_string(), json!("test")),
 			("status".to_string(), json!("active")),
 		]),
@@ -187,7 +188,7 @@ async fn test_deny_all_update(#[future] deny_all_context: (Arc<AdminSite>, Arc<A
 
 	let request = MutationRequest {
 		csrf_token: TEST_CSRF_TOKEN.to_string(),
-		data: serde_json::Map::from_iter([("name".to_string(), json!("updated"))]),
+		data: HashMap::from([("name".to_string(), json!("updated"))]),
 	};
 
 	// Act
@@ -382,7 +383,7 @@ async fn test_view_only_create_denied(
 
 	let request = MutationRequest {
 		csrf_token: TEST_CSRF_TOKEN.to_string(),
-		data: serde_json::Map::from_iter([
+		data: HashMap::from([
 			("name".to_string(), json!("should fail")),
 			("status".to_string(), json!("active")),
 		]),
@@ -425,7 +426,7 @@ async fn test_view_only_update_denied(
 
 	let request = MutationRequest {
 		csrf_token: TEST_CSRF_TOKEN.to_string(),
-		data: serde_json::Map::from_iter([("name".to_string(), json!("updated"))]),
+		data: HashMap::from([("name".to_string(), json!("updated"))]),
 	};
 
 	// Act
