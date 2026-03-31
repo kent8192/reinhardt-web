@@ -14,8 +14,8 @@ use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode, body::Incoming};
 use hyper_util::rt::TokioIo;
 use reinhardt_commands::WelcomePage;
-use reinhardt_commands::{WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml};
 use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions};
+use reinhardt_commands::{WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml};
 use reinhardt_pages::component::Component;
 use reinhardt_pages::ssr::SsrRenderer;
 use reinhardt_utils::safe_path_join;
@@ -320,20 +320,21 @@ async fn handle_request(
 		// Also search STATIC_ROOT for already-collected files
 		let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
-		if let Some(ref root) = settings.static_root {
-			if let Ok(file_path) = safe_path_join(root, relative_path) {
-				if file_path.exists() && file_path.is_file() {
-					return serve_static_file(&file_path).await;
-				}
-			}
+		if let Some(ref root) = settings.static_root
+			&& let Ok(file_path) = safe_path_join(root, relative_path)
+			&& file_path.exists()
+			&& file_path.is_file()
+		{
+			return serve_static_file(&file_path).await;
 		}
 
 		// Fallback: check <cwd>/staticfiles/
 		let default_root = cwd.join("staticfiles");
-		if let Ok(file_path) = safe_path_join(&default_root, relative_path) {
-			if file_path.exists() && file_path.is_file() {
-				return serve_static_file(&file_path).await;
-			}
+		if let Ok(file_path) = safe_path_join(&default_root, relative_path)
+			&& file_path.exists()
+			&& file_path.is_file()
+		{
+			return serve_static_file(&file_path).await;
 		}
 
 		// File not found, return 404
@@ -451,7 +452,9 @@ fn build_admin_wasm(force: bool) -> bool {
 		.unwrap_or_else(|| PathBuf::from("."));
 	let admin_crate_dir = workspace_root.join("crates").join("reinhardt-admin");
 
-	let artifact = admin_crate_dir.join("dist-admin").join("reinhardt_admin.js");
+	let artifact = admin_crate_dir
+		.join("dist-admin")
+		.join("reinhardt_admin.js");
 	if artifact.exists() && !force {
 		println!(
 			"{}",
@@ -470,7 +473,10 @@ fn build_admin_wasm(force: bool) -> bool {
 			true
 		}
 		Err(e) => {
-			eprintln!("{}", format!("Warning: Admin WASM build failed: {}", e).yellow());
+			eprintln!(
+				"{}",
+				format!("Warning: Admin WASM build failed: {}", e).yellow()
+			);
 			false
 		}
 	}
@@ -485,7 +491,10 @@ fn build_pages_wasm(force: bool) -> bool {
 	let cwd = match env::current_dir() {
 		Ok(d) => d,
 		Err(e) => {
-			eprintln!("{}", format!("Warning: Failed to get current directory: {}", e).yellow());
+			eprintln!(
+				"{}",
+				format!("Warning: Failed to get current directory: {}", e).yellow()
+			);
 			return false;
 		}
 	};
@@ -502,21 +511,28 @@ fn build_pages_wasm(force: bool) -> bool {
 			let mut name = String::new();
 			for line in content.lines() {
 				let trimmed = line.trim();
-				if trimmed.starts_with("name") && trimmed.contains('=') {
-					if let Some(val) = trimmed.split('=').nth(1) {
-						name = val.trim().trim_matches('"').trim_matches('\'').to_string();
-						break;
-					}
+				if trimmed.starts_with("name")
+					&& trimmed.contains('=')
+					&& let Some(val) = trimmed.split('=').nth(1)
+				{
+					name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+					break;
 				}
 			}
 			if name.is_empty() {
-				eprintln!("{}", "Warning: Could not determine crate name from Cargo.toml".yellow());
+				eprintln!(
+					"{}",
+					"Warning: Could not determine crate name from Cargo.toml".yellow()
+				);
 				return false;
 			}
 			name
 		}
 		Err(e) => {
-			eprintln!("{}", format!("Warning: Failed to read Cargo.toml: {}", e).yellow());
+			eprintln!(
+				"{}",
+				format!("Warning: Failed to read Cargo.toml: {}", e).yellow()
+			);
 			return false;
 		}
 	};
@@ -531,7 +547,10 @@ fn build_pages_wasm(force: bool) -> bool {
 		return true;
 	}
 
-	println!("{}", format!("Building pages WASM for {}...", crate_name).cyan());
+	println!(
+		"{}",
+		format!("Building pages WASM for {}...", crate_name).cyan()
+	);
 	let config = WasmBuildConfig::new(".").output_dir("dist");
 	match WasmBuilder::new(config).build() {
 		Ok(_) => {
@@ -539,7 +558,10 @@ fn build_pages_wasm(force: bool) -> bool {
 			true
 		}
 		Err(e) => {
-			eprintln!("{}", format!("Warning: Pages WASM build failed: {}", e).yellow());
+			eprintln!(
+				"{}",
+				format!("Warning: Pages WASM build failed: {}", e).yellow()
+			);
 			false
 		}
 	}
@@ -566,7 +588,10 @@ fn run_collectstatic(settings: &Settings) -> bool {
 	let cwd = match env::current_dir() {
 		Ok(d) => d,
 		Err(e) => {
-			eprintln!("{}", format!("Warning: Failed to get current directory: {}", e).yellow());
+			eprintln!(
+				"{}",
+				format!("Warning: Failed to get current directory: {}", e).yellow()
+			);
 			return false;
 		}
 	};
@@ -623,7 +648,10 @@ fn run_collectstatic(settings: &Settings) -> bool {
 			true
 		}
 		Err(e) => {
-			eprintln!("{}", format!("Warning: collectstatic failed: {}", e).yellow());
+			eprintln!(
+				"{}",
+				format!("Warning: collectstatic failed: {}", e).yellow()
+			);
 			false
 		}
 	}
@@ -679,9 +707,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 
 	// Detect SPA index.html for client-side routing fallback
-	let spa_index = resolve_spa_index(&settings).map(|p| Arc::new(p));
+	let spa_index = resolve_spa_index(&settings).map(Arc::new);
 	if spa_index.is_some() {
-		println!("{}", "SPA mode: index.html detected, enabling client-side routing fallback".green());
+		println!(
+			"{}",
+			"SPA mode: index.html detected, enabling client-side routing fallback".green()
+		);
 	}
 
 	// Display loaded settings info (debug mode only)

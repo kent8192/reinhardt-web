@@ -360,10 +360,7 @@ pub fn detect_cdylib_in_cargo_toml_content(content: &str) -> bool {
 			in_lib_section = trimmed == "[lib]";
 			continue;
 		}
-		if in_lib_section
-			&& trimmed.starts_with("crate-type")
-			&& trimmed.contains("cdylib")
-		{
+		if in_lib_section && trimmed.starts_with("crate-type") && trimmed.contains("cdylib") {
 			return true;
 		}
 	}
