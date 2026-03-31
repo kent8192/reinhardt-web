@@ -142,7 +142,10 @@ pub(crate) async fn execute_createsuperuser(
 	if database.is_some() {
 		eprintln!(
 			"{}",
-			style("Warning: --database flag is deprecated. Database URL is resolved from reinhardt-conf settings.").yellow()
+			style(
+				"Warning: --database flag is deprecated. Database URL is resolved from reinhardt-conf settings."
+			)
+			.yellow()
 		);
 	}
 
