@@ -3268,9 +3268,10 @@ async fn mn_05_drop_column_gets_remove_prefix_name() {
 #[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
-async fn mn_06_add_column_with_nullable_change() {
-	// Test: Adding a nullable column should produce a descriptive name
-	// (not "initial"), verifying the namer works for common schema evolution
+async fn mn_06_alter_column_type_change_gets_descriptive_name() {
+	// Test: Changing column type (Integer → Float) should produce AlterColumn
+	// with descriptive name. This validates that generate_operations() now
+	// correctly handles columns_to_modify.
 
 	// Arrange
 	let temp_dir = TempDir::new().unwrap();
@@ -3296,6 +3297,17 @@ async fn mn_06_add_column_with_nullable_change() {
 			auto_increment: true,
 		},
 	);
+	table.columns.insert(
+		"price".to_string(),
+		ColumnSchema {
+			name: "price".to_string(),
+			data_type: FieldType::Integer,
+			nullable: false,
+			default: None,
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 	schema_v1.tables.insert("items".to_string(), table);
 
 	let (first_name, _) = generate_and_save_migration_with_namer(
@@ -3308,7 +3320,7 @@ async fn mn_06_add_column_with_nullable_change() {
 	.await;
 	assert_eq!(first_name, "0001_initial");
 
-	// Add 'description' nullable text column
+	// Change 'price' from Integer to Float
 	let mut schema_v2 = schema_v1.clone();
 	schema_v2
 		.tables
@@ -3316,11 +3328,11 @@ async fn mn_06_add_column_with_nullable_change() {
 		.unwrap()
 		.columns
 		.insert(
-			"description".to_string(),
+			"price".to_string(),
 			ColumnSchema {
-				name: "description".to_string(),
-				data_type: FieldType::Text,
-				nullable: true,
+				name: "price".to_string(),
+				data_type: FieldType::Float,
+				nullable: false,
 				default: None,
 				primary_key: false,
 				auto_increment: false,
@@ -3345,12 +3357,12 @@ async fn mn_06_add_column_with_nullable_change() {
 	);
 	assert!(
 		!second_name.contains("initial"),
-		"Adding a column should NOT be named 'initial', got '{}'",
+		"Alter column migration should NOT be named 'initial', got '{}'",
 		second_name
 	);
 	assert!(
-		second_content.contains("AddColumn"),
-		"Should contain AddColumn operation"
+		second_content.contains("AlterColumn"),
+		"Should contain AlterColumn operation"
 	);
 }
 
@@ -3454,9 +3466,10 @@ async fn mn_07_multiple_add_columns_get_combined_name() {
 #[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
-async fn mn_08_new_table_after_initial_gets_descriptive_name() {
-	// Test: Adding a second table to an app should produce a descriptive name
-	// for the second migration, not "initial"
+async fn mn_08_index_addition_gets_create_index_name() {
+	// Test: Adding an index should produce a descriptive name containing
+	// "create_index" or "create_unique_index". This validates that
+	// generate_operations() now handles indexes_to_add.
 
 	// Arrange
 	let temp_dir = TempDir::new().unwrap();
@@ -3482,6 +3495,17 @@ async fn mn_08_new_table_after_initial_gets_descriptive_name() {
 			auto_increment: true,
 		},
 	);
+	table.columns.insert(
+		"slug".to_string(),
+		ColumnSchema {
+			name: "slug".to_string(),
+			data_type: FieldType::VarChar(200),
+			nullable: false,
+			default: None,
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 	schema_v1
 		.tables
 		.insert("articles".to_string(), table);
@@ -3496,37 +3520,18 @@ async fn mn_08_new_table_after_initial_gets_descriptive_name() {
 	.await;
 	assert_eq!(first_name, "0001_initial");
 
-	// Add a second table 'tags'
+	// Add unique index on 'slug'
 	let mut schema_v2 = schema_v1.clone();
-	let mut tags_table = TableSchema {
-		name: "tags".to_string(),
-		columns: BTreeMap::new(),
-		indexes: Vec::new(),
-		constraints: Vec::new(),
-	};
-	tags_table.columns.insert(
-		"id".to_string(),
-		ColumnSchema {
-			name: "id".to_string(),
-			data_type: FieldType::Integer,
-			nullable: false,
-			default: None,
-			primary_key: true,
-			auto_increment: true,
-		},
-	);
-	tags_table.columns.insert(
-		"name".to_string(),
-		ColumnSchema {
-			name: "name".to_string(),
-			data_type: FieldType::VarChar(50),
-			nullable: false,
-			default: None,
-			primary_key: false,
-			auto_increment: false,
-		},
-	);
-	schema_v2.tables.insert("tags".to_string(), tags_table);
+	schema_v2
+		.tables
+		.get_mut("articles")
+		.unwrap()
+		.indexes
+		.push(IndexSchema {
+			name: "idx_articles_slug".to_string(),
+			columns: vec!["slug".to_string()],
+			unique: true,
+		});
 
 	// Act
 	let (second_name, second_content) = generate_and_save_migration_with_namer(
@@ -3546,16 +3551,12 @@ async fn mn_08_new_table_after_initial_gets_descriptive_name() {
 	);
 	assert!(
 		!second_name.contains("initial"),
-		"New table addition in second migration should NOT be named 'initial', got '{}'",
+		"Index addition should NOT be named 'initial', got '{}'",
 		second_name
 	);
 	assert!(
-		second_content.contains("CreateTable"),
-		"Should contain CreateTable operation for tags"
-	);
-	assert!(
-		second_content.contains("tags"),
-		"Should reference 'tags' table"
+		second_content.contains("CreateIndex"),
+		"Should contain CreateIndex operation"
 	);
 }
 
