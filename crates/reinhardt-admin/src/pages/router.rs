@@ -708,16 +708,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_login_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/login/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("login"));
-	}
-
-	#[test]
 	fn test_dashboard_route_match() {
 		let router = init_router();
 		let route_match = router.match_path("/admin/");

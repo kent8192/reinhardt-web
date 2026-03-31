@@ -619,6 +619,9 @@ mod tests {
 	use super::*;
 	use rstest::rstest;
 
+	/// Embedded admin JavaScript file for test assertions.
+	const ADMIN_JS: &[u8] = include_bytes!("../../assets/main.js");
+
 	/// Helper to create test admin router
 	fn test_admin_routes() -> ServerRouter {
 		build_admin_router()
