@@ -135,9 +135,10 @@ impl CollectStaticCommand {
 		// This step is only active when the "server" feature is enabled.
 		#[cfg(feature = "server")]
 		{
-			let admin_assets_dir = std::path::PathBuf::from(
-				concat!(env!("CARGO_MANIFEST_DIR"), "/../reinhardt-admin/assets"),
-			);
+			let admin_assets_dir = std::path::PathBuf::from(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/../reinhardt-admin/assets"
+			));
 
 			if admin_assets_dir.exists() {
 				use reinhardt_admin::core::vendor::{Verbosity, download_vendor_assets};

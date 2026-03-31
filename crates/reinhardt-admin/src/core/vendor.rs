@@ -108,8 +108,8 @@ pub fn verify_integrity(path: &Path, expected_sha256: &str) -> Result<(), String
 		return Ok(());
 	}
 
-	let data = std::fs::read(path)
-		.map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
+	let data =
+		std::fs::read(path).map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
 
 	let mut hasher = Sha256::new();
 	hasher.update(&data);
@@ -169,7 +169,10 @@ pub async fn download_vendor_assets(
 				}
 				Err(e) => {
 					if verbosity != Verbosity::Silent {
-						println!("re-downloading (integrity mismatch): {} — {}", asset.target, e);
+						println!(
+							"re-downloading (integrity mismatch): {} — {}",
+							asset.target, e
+						);
 					}
 				}
 			}
@@ -182,11 +185,7 @@ pub async fn download_vendor_assets(
 		let response = client.get(asset.url).send().await?;
 		let status = response.status();
 		if !status.is_success() {
-			return Err(anyhow::anyhow!(
-				"HTTP {} downloading {}",
-				status,
-				asset.url
-			));
+			return Err(anyhow::anyhow!("HTTP {} downloading {}", status, asset.url));
 		}
 
 		let bytes = response.bytes().await?;
@@ -197,17 +196,16 @@ pub async fn download_vendor_assets(
 		}
 
 		// Write atomically by writing to a temp file in the same directory then renaming
-		let parent_dir = dest
-			.parent()
-			.ok_or_else(|| anyhow::anyhow!("destination has no parent directory: {}", dest.display()))?;
+		let parent_dir = dest.parent().ok_or_else(|| {
+			anyhow::anyhow!("destination has no parent directory: {}", dest.display())
+		})?;
 		let mut tmp = tempfile::NamedTempFile::new_in(parent_dir)?;
 		tmp.write_all(&bytes)?;
 		tmp.persist(&dest)
 			.map_err(|e| anyhow::anyhow!("failed to persist {}: {}", dest.display(), e))?;
 
 		// Verify the newly downloaded file
-		verify_integrity(&dest, asset.sha256)
-			.map_err(|e| anyhow::anyhow!("{}", e))?;
+		verify_integrity(&dest, asset.sha256).map_err(|e| anyhow::anyhow!("{}", e))?;
 
 		if verbosity == Verbosity::Verbose {
 			println!("saved: {}", asset.target);
@@ -232,7 +230,10 @@ mod tests {
 		let assets = admin_vendor_assets();
 
 		// Assert
-		assert!(!assets.is_empty(), "vendor asset manifest must not be empty");
+		assert!(
+			!assets.is_empty(),
+			"vendor asset manifest must not be empty"
+		);
 	}
 
 	/// Every entry must have a non-empty URL and a non-empty target path.
@@ -339,7 +340,10 @@ mod tests {
 		std::fs::write(&file, b"body {}").expect("write");
 
 		// Act
-		let result = verify_integrity(&file, "0000000000000000000000000000000000000000000000000000000000000000");
+		let result = verify_integrity(
+			&file,
+			"0000000000000000000000000000000000000000000000000000000000000000",
+		);
 
 		// Assert
 		assert!(result.is_err(), "wrong hash should fail");
