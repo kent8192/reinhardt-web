@@ -155,7 +155,13 @@ pub(crate) async fn execute_createsuperuser(
 
 	let creator = reinhardt_auth::get_superuser_creator().ok_or(
 		"No SuperuserCreator registered. Call reinhardt_auth::register_superuser_creator() \
-		 in your manage.rs before execute_from_command_line().",
+		 in your manage.rs before execute_from_command_line().\n\
+		 \n\
+		 If using #[user(full=true)] + #[model]:\n  \
+		   register_superuser_creator(superuser_creator_for::<YourUser>());\n\
+		 \n\
+		 If implementing BaseUser manually, also implement SuperuserInit.\n\
+		 See reinhardt_auth::SuperuserInit documentation for details.",
 	)?;
 
 	match creator
