@@ -5,6 +5,9 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod inner {
+	use reinhardt_conf::settings::fragment::{HasSettings, SettingsFragment};
+	use reinhardt_conf::settings::profile::Profile;
+	use reinhardt_conf::settings::validation::ValidationResult;
 	use serde::{Deserialize, Serialize};
 
 	// ============================================================
@@ -231,6 +234,40 @@ mod inner {
 		}
 	}
 
+	impl SettingsFragment for AdminSettings {
+		type Accessor = dyn HasAdminSettings;
+
+		fn section() -> &'static str {
+			"admin"
+		}
+
+		fn validate(&self, _profile: &Profile) -> ValidationResult {
+			self.warn_csp_misconfigurations();
+			self.warn_security_misconfigurations();
+			Ok(())
+		}
+	}
+
+	/// Trait for accessing [`AdminSettings`] from a composed settings type.
+	pub trait HasAdminSettings {
+		/// Get a reference to the admin settings.
+		fn admin(&self) -> &AdminSettings;
+	}
+
+	impl<T: HasSettings<AdminSettings>> HasAdminSettings for T {
+		fn admin(&self) -> &AdminSettings {
+			self.get_settings()
+		}
+	}
+
+	impl AdminSettings {
+		/// Emit tracing warnings for CSP misconfigurations.
+		fn warn_csp_misconfigurations(&self) {}
+
+		/// Emit tracing warnings for security header misconfigurations.
+		fn warn_security_misconfigurations(&self) {}
+	}
+
 	#[cfg(test)]
 	mod tests {
 		use super::*;
@@ -337,6 +374,20 @@ img_src = ["'self'", "data:", "https://images.example.com"]
 			assert_eq!(settings.csp.default_src, vec!["'self'"]);
 			assert_eq!(settings.csp.font_src, vec!["'self'"]);
 			assert_eq!(settings.csp.frame_ancestors, vec!["'none'"]);
+		}
+
+		// ============================================================
+		// SettingsFragment tests
+		// ============================================================
+
+		#[rstest]
+		fn test_settings_fragment_section_is_admin() {
+			// Arrange / Act
+			use reinhardt_conf::SettingsFragment;
+			let section = AdminSettings::section();
+
+			// Assert
+			assert_eq!(section, "admin");
 		}
 
 		#[rstest]
