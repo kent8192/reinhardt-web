@@ -728,4 +728,30 @@ mod tests {
 			"range(1,1) should produce exactly 1 character"
 		);
 	}
+
+	mod proptests {
+		use super::*;
+		use proptest::prelude::*;
+
+		proptest! {
+			// fixed always preserves the exact input integer value
+			#[test]
+			fn prop_fixed_preserves_int(n in -10000i64..10000) {
+				let expr = format!("{n} | fixed | TBD");
+				let result = run_generate(&expr).unwrap();
+				prop_assert_eq!(result, toml::Value::Integer(n));
+			}
+
+			// same seed always produces identical output
+			#[test]
+			fn prop_same_seed_same_result(seed in 0u64..10000) {
+				let expr = format!(
+					"regex([a-z]*) | range(10, 10) | random | seed({seed}) | TBD"
+				);
+				let r1 = run_generate(&expr).unwrap();
+				let r2 = run_generate(&expr).unwrap();
+				prop_assert_eq!(r1, r2);
+			}
+		}
+	}
 }
