@@ -131,9 +131,8 @@ impl CollectStaticCommand {
 			fs::create_dir_all(&self.config.static_root)?;
 		}
 
-		// Download vendor assets and generate UnoCSS for the admin panel before
-		// collecting static files. This step is only active when the "server"
-		// feature is enabled.
+		// Download vendor assets for the admin panel before collecting static files.
+		// This step is only active when the "server" feature is enabled.
 		#[cfg(feature = "server")]
 		{
 			let admin_assets_dir = std::path::PathBuf::from(concat!(
@@ -182,29 +181,6 @@ impl CollectStaticCommand {
 							"Warning: vendor asset download failed (continuing with existing files): {}",
 							e
 						);
-					}
-				}
-
-				// Generate UnoCSS utility CSS from admin source files.
-				// The crate root is the parent of the assets directory.
-				if let Some(admin_crate_dir) = admin_assets_dir.parent() {
-					use reinhardt_admin::core::unocss::{admin_unocss_config, generate_unocss};
-
-					let unocss_config = admin_unocss_config();
-					match generate_unocss(admin_crate_dir, &unocss_config, verbosity) {
-						Ok(()) => {
-							if self.options.verbosity > 0 {
-								println!("UnoCSS utility CSS generated");
-							}
-						}
-						Err(e) => {
-							// UnoCSS generation failures are non-fatal; warn and
-							// continue with whatever CSS already exists.
-							eprintln!(
-								"Warning: UnoCSS generation failed (continuing with existing files): {}",
-								e
-							);
-						}
 					}
 				}
 			}
