@@ -390,6 +390,22 @@ impl SchemaDiff {
 					interleave_in_parent: None,
 					partition: None,
 				});
+
+				// Generate CreateIndex for indexes on new tables
+				// (detect() only compares indexes on existing tables)
+				for index in &table_schema.indexes {
+					operations.push(Operation::CreateIndex {
+						table: table_name.clone(),
+						columns: index.columns.clone(),
+						unique: index.unique,
+						index_type: None,
+						where_clause: None,
+						concurrently: false,
+						expressions: None,
+						mysql_options: None,
+						operator_class: None,
+					});
+				}
 			}
 		}
 
@@ -1159,6 +1175,39 @@ mod tests {
 		assert!(
 			diff.has_destructive_changes(),
 			"Column type modification should be flagged as destructive"
+		);
+	}
+
+	#[test]
+	fn test_generate_operations_new_table_with_indexes() {
+		// Arrange: new table with an index should generate both CreateTable and CreateIndex
+		let current = DatabaseSchema::default();
+		let mut target = DatabaseSchema::default();
+		let mut table = table_with_cols("users", vec![
+			("id", pk_col("id")),
+			("email", col("email", FieldType::VarChar(255), false)),
+		]);
+		table.indexes.push(IndexSchema {
+			name: "idx_users_email".to_string(),
+			columns: vec!["email".to_string()],
+			unique: true,
+		});
+		target.tables.insert("users".to_string(), table);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert: should have CreateTable + CreateIndex
+		assert_eq!(ops.len(), 2, "Should generate 2 operations, got {:?}", ops);
+		assert!(
+			matches!(&ops[0], Operation::CreateTable { name, .. } if name == "users"),
+			"First operation should be CreateTable"
+		);
+		assert!(
+			matches!(&ops[1], Operation::CreateIndex { table, unique, .. }
+				if table == "users" && *unique),
+			"Second operation should be CreateIndex"
 		);
 	}
 
