@@ -1338,5 +1338,4 @@ mod tests {
 			content_type
 		);
 	}
-
 }

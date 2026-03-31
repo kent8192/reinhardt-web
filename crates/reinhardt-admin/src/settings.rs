@@ -300,7 +300,12 @@ mod inner {
 					"Admin CSP: script_src is missing `'self'`, admin panel assets may not load"
 				);
 			}
-			if !self.csp.script_src.iter().any(|s| s == "'wasm-unsafe-eval'") {
+			if !self
+				.csp
+				.script_src
+				.iter()
+				.any(|s| s == "'wasm-unsafe-eval'")
+			{
 				tracing::warn!(
 					"Admin CSP: script_src is missing `'wasm-unsafe-eval'`, WASM SPA will not function"
 				);
@@ -417,10 +422,7 @@ mod inner {
 
 			// Assert
 			assert_eq!(security.frame_options, "deny");
-			assert_eq!(
-				security.referrer_policy,
-				"strict-origin-when-cross-origin"
-			);
+			assert_eq!(security.referrer_policy, "strict-origin-when-cross-origin");
 			assert_eq!(
 				security.permissions_policy,
 				"camera=(), microphone=(), geolocation=(), payment=()"
@@ -531,8 +533,7 @@ img_src = ["'self'", "data:", "https://images.example.com"]
 
 			// Act
 			use reinhardt_conf::SettingsFragment;
-			let result =
-				settings.validate(&reinhardt_conf::settings::profile::Profile::Production);
+			let result = settings.validate(&reinhardt_conf::settings::profile::Profile::Production);
 
 			// Assert
 			assert!(result.is_ok());
@@ -545,8 +546,7 @@ img_src = ["'self'", "data:", "https://images.example.com"]
 
 			// Act
 			use reinhardt_conf::SettingsFragment;
-			let result =
-				settings.validate(&reinhardt_conf::settings::profile::Profile::Production);
+			let result = settings.validate(&reinhardt_conf::settings::profile::Profile::Production);
 
 			// Assert
 			assert!(result.is_ok());

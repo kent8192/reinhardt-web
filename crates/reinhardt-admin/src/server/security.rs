@@ -77,10 +77,7 @@ impl SecurityHeaders {
 		headers.insert("X-Frame-Options", self.frame_options.to_string());
 		headers.insert("X-XSS-Protection", "1; mode=block".to_string());
 		headers.insert("Referrer-Policy", self.referrer_policy.to_string());
-		headers.insert(
-			"Permissions-Policy",
-			self.permissions_policy.clone(),
-		);
+		headers.insert("Permissions-Policy", self.permissions_policy.clone());
 
 		headers
 	}
@@ -1117,7 +1114,10 @@ mod tests {
 	#[rstest]
 	fn test_frame_options_from_str_sameorigin() {
 		// Assert
-		assert_eq!(FrameOptions::from_str("sameorigin"), FrameOptions::SameOrigin);
+		assert_eq!(
+			FrameOptions::from_str("sameorigin"),
+			FrameOptions::SameOrigin
+		);
 	}
 
 	#[rstest]
