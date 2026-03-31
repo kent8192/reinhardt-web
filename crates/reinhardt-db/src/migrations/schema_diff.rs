@@ -248,6 +248,10 @@ pub struct SchemaDiffResult {
 	pub indexes_to_add: Vec<(String, IndexSchema)>,
 	/// Indexes to remove
 	pub indexes_to_remove: Vec<(String, IndexSchema)>,
+	/// Constraints to add (table_name, constraint)
+	pub constraints_to_add: Vec<(String, ConstraintSchema)>,
+	/// Constraints to remove (table_name, constraint)
+	pub constraints_to_remove: Vec<(String, ConstraintSchema)>,
 }
 
 impl SchemaDiff {
@@ -269,6 +273,8 @@ impl SchemaDiff {
 			columns_to_modify: Vec::new(),
 			indexes_to_add: Vec::new(),
 			indexes_to_remove: Vec::new(),
+			constraints_to_add: Vec::new(),
+			constraints_to_remove: Vec::new(),
 		};
 
 		// System tables to exclude from migration generation
@@ -343,6 +349,24 @@ impl SchemaDiff {
 						result
 							.indexes_to_remove
 							.push((table_name_owned.clone(), current_index.clone()));
+					}
+				}
+
+				// Constraint additions
+				for target_constraint in &target_table.constraints {
+					if !current_table.constraints.contains(target_constraint) {
+						result
+							.constraints_to_add
+							.push((table_name_owned.clone(), target_constraint.clone()));
+					}
+				}
+
+				// Constraint removals
+				for current_constraint in &current_table.constraints {
+					if !target_table.constraints.contains(current_constraint) {
+						result
+							.constraints_to_remove
+							.push((table_name_owned.clone(), current_constraint.clone()));
 					}
 				}
 			}
@@ -503,6 +527,23 @@ impl SchemaDiff {
 			});
 		}
 
+		// Add constraints
+		for (table_name, constraint) in &diff.constraints_to_add {
+			let constraint_sql = Self::constraint_schema_to_sql(constraint);
+			operations.push(Operation::AddConstraint {
+				table: table_name.clone(),
+				constraint_sql,
+			});
+		}
+
+		// Remove constraints
+		for (table_name, constraint) in &diff.constraints_to_remove {
+			operations.push(Operation::DropConstraint {
+				table: table_name.clone(),
+				constraint_name: constraint.name.clone(),
+			});
+		}
+
 		operations
 	}
 
@@ -513,6 +554,7 @@ impl SchemaDiff {
 			|| !diff.columns_to_remove.is_empty()
 			|| !diff.columns_to_modify.is_empty()
 			|| !diff.indexes_to_remove.is_empty()
+			|| !diff.constraints_to_remove.is_empty()
 	}
 
 	/// Check if a column has a unique constraint or index in a given schema
@@ -536,6 +578,66 @@ impl SchemaDiff {
 		});
 
 		has_unique_constraint || has_unique_index
+	}
+
+	/// Convert a ConstraintSchema to a SQL definition string for AddConstraint
+	fn constraint_schema_to_sql(constraint: &ConstraintSchema) -> String {
+		match constraint.constraint_type.to_uppercase().as_str() {
+			"UNIQUE" => {
+				format!(
+					"CONSTRAINT {} UNIQUE ({})",
+					constraint.name, constraint.definition
+				)
+			}
+			"CHECK" => {
+				format!(
+					"CONSTRAINT {} CHECK ({})",
+					constraint.name, constraint.definition
+				)
+			}
+			"FOREIGN KEY" | "FOREIGN_KEY" => {
+				if let Some(ref fk) = constraint.foreign_key_info {
+					format!(
+						"CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE {} ON UPDATE {}",
+						constraint.name,
+						fk.columns.join(", "),
+						fk.referenced_table,
+						fk.referenced_columns.join(", "),
+						fk.on_delete,
+						fk.on_update,
+					)
+				} else {
+					format!(
+						"CONSTRAINT {} FOREIGN KEY ({})",
+						constraint.name, constraint.definition
+					)
+				}
+			}
+			"ONE_TO_ONE" => {
+				if let Some(ref fk) = constraint.foreign_key_info {
+					format!(
+						"CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE {} ON UPDATE {}",
+						constraint.name,
+						fk.columns.join(", "),
+						fk.referenced_table,
+						fk.referenced_columns.join(", "),
+						fk.on_delete,
+						fk.on_update,
+					)
+				} else {
+					format!(
+						"CONSTRAINT {} UNIQUE ({})",
+						constraint.name, constraint.definition
+					)
+				}
+			}
+			_ => {
+				format!(
+					"CONSTRAINT {} {} ({})",
+					constraint.name, constraint.constraint_type, constraint.definition
+				)
+			}
+		}
 	}
 
 	/// Extract column-level constraints from table constraints and indexes
@@ -1209,6 +1311,407 @@ mod tests {
 				if table == "users" && *unique),
 			"Second operation should be CreateIndex"
 		);
+	}
+
+	// ================================================================
+	// Constraint detection and generation tests (issue #3203)
+	// ================================================================
+
+	/// Helper to create a ConstraintSchema
+	fn unique_constraint(name: &str, columns: &str) -> ConstraintSchema {
+		ConstraintSchema {
+			name: name.to_string(),
+			constraint_type: "UNIQUE".to_string(),
+			definition: columns.to_string(),
+			foreign_key_info: None,
+		}
+	}
+
+	fn check_constraint(name: &str, expression: &str) -> ConstraintSchema {
+		ConstraintSchema {
+			name: name.to_string(),
+			constraint_type: "CHECK".to_string(),
+			definition: expression.to_string(),
+			foreign_key_info: None,
+		}
+	}
+
+	fn fk_constraint(
+		name: &str,
+		col: &str,
+		ref_table: &str,
+		ref_col: &str,
+	) -> ConstraintSchema {
+		ConstraintSchema {
+			name: name.to_string(),
+			constraint_type: "FOREIGN KEY".to_string(),
+			definition: col.to_string(),
+			foreign_key_info: Some(ForeignKeySchemaInfo {
+				columns: vec![col.to_string()],
+				referenced_table: ref_table.to_string(),
+				referenced_columns: vec![ref_col.to_string()],
+				on_delete: "CASCADE".to_string(),
+				on_update: "NO ACTION".to_string(),
+			}),
+		}
+	}
+
+	#[test]
+	fn test_detect_constraint_addition() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"orders".to_string(),
+			table_with_cols("orders", vec![
+				("id", pk_col("id")),
+				("amount", col("amount", FieldType::Integer, false)),
+			]),
+		);
+
+		let mut target = DatabaseSchema::default();
+		let mut target_table = table_with_cols("orders", vec![
+			("id", pk_col("id")),
+			("amount", col("amount", FieldType::Integer, false)),
+		]);
+		target_table
+			.constraints
+			.push(check_constraint("ck_amount_positive", "amount > 0"));
+		target
+			.tables
+			.insert("orders".to_string(), target_table);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let result = diff.detect();
+
+		// Assert
+		assert_eq!(result.constraints_to_add.len(), 1);
+		assert_eq!(result.constraints_to_add[0].0, "orders");
+		assert_eq!(result.constraints_to_add[0].1.name, "ck_amount_positive");
+		assert!(result.constraints_to_remove.is_empty());
+	}
+
+	#[test]
+	fn test_detect_constraint_removal() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		let mut current_table = table_with_cols("orders", vec![
+			("id", pk_col("id")),
+			("amount", col("amount", FieldType::Integer, false)),
+		]);
+		current_table
+			.constraints
+			.push(check_constraint("ck_amount_positive", "amount > 0"));
+		current
+			.tables
+			.insert("orders".to_string(), current_table);
+
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"orders".to_string(),
+			table_with_cols("orders", vec![
+				("id", pk_col("id")),
+				("amount", col("amount", FieldType::Integer, false)),
+			]),
+		);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let result = diff.detect();
+
+		// Assert
+		assert!(result.constraints_to_add.is_empty());
+		assert_eq!(result.constraints_to_remove.len(), 1);
+		assert_eq!(result.constraints_to_remove[0].1.name, "ck_amount_positive");
+	}
+
+	#[test]
+	fn test_detect_constraint_modification() {
+		// Arrange: changing CHECK expression is detected as remove old + add new
+		let mut current = DatabaseSchema::default();
+		let mut current_table = table_with_cols("orders", vec![
+			("id", pk_col("id")),
+			("amount", col("amount", FieldType::Integer, false)),
+		]);
+		current_table
+			.constraints
+			.push(check_constraint("ck_amount", "amount > 0"));
+		current
+			.tables
+			.insert("orders".to_string(), current_table);
+
+		let mut target = DatabaseSchema::default();
+		let mut target_table = table_with_cols("orders", vec![
+			("id", pk_col("id")),
+			("amount", col("amount", FieldType::Integer, false)),
+		]);
+		target_table
+			.constraints
+			.push(check_constraint("ck_amount", "amount >= 0"));
+		target
+			.tables
+			.insert("orders".to_string(), target_table);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let result = diff.detect();
+
+		// Assert: old constraint removed, new added (same name, different definition)
+		assert_eq!(result.constraints_to_remove.len(), 1);
+		assert_eq!(result.constraints_to_add.len(), 1);
+		assert_eq!(
+			result.constraints_to_remove[0].1.definition,
+			"amount > 0"
+		);
+		assert_eq!(
+			result.constraints_to_add[0].1.definition,
+			"amount >= 0"
+		);
+	}
+
+	#[test]
+	fn test_generate_operations_add_constraint() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"orders".to_string(),
+			table_with_cols("orders", vec![
+				("id", pk_col("id")),
+				("amount", col("amount", FieldType::Integer, false)),
+			]),
+		);
+
+		let mut target = DatabaseSchema::default();
+		let mut target_table = table_with_cols("orders", vec![
+			("id", pk_col("id")),
+			("amount", col("amount", FieldType::Integer, false)),
+		]);
+		target_table
+			.constraints
+			.push(check_constraint("ck_amount_positive", "amount > 0"));
+		target
+			.tables
+			.insert("orders".to_string(), target_table);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 1);
+		match &ops[0] {
+			Operation::AddConstraint {
+				table,
+				constraint_sql,
+			} => {
+				assert_eq!(table, "orders");
+				assert!(
+					constraint_sql.contains("ck_amount_positive"),
+					"SQL should contain constraint name, got '{}'",
+					constraint_sql
+				);
+				assert!(
+					constraint_sql.contains("CHECK"),
+					"SQL should contain CHECK keyword, got '{}'",
+					constraint_sql
+				);
+				assert!(
+					constraint_sql.contains("amount > 0"),
+					"SQL should contain expression, got '{}'",
+					constraint_sql
+				);
+			}
+			other => panic!("Expected AddConstraint, got {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_generate_operations_drop_constraint() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		let mut current_table = table_with_cols("orders", vec![
+			("id", pk_col("id")),
+			("amount", col("amount", FieldType::Integer, false)),
+		]);
+		current_table
+			.constraints
+			.push(unique_constraint("uq_orders_amount", "amount"));
+		current
+			.tables
+			.insert("orders".to_string(), current_table);
+
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"orders".to_string(),
+			table_with_cols("orders", vec![
+				("id", pk_col("id")),
+				("amount", col("amount", FieldType::Integer, false)),
+			]),
+		);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 1);
+		match &ops[0] {
+			Operation::DropConstraint {
+				table,
+				constraint_name,
+			} => {
+				assert_eq!(table, "orders");
+				assert_eq!(constraint_name, "uq_orders_amount");
+			}
+			other => panic!("Expected DropConstraint, got {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_generate_operations_add_unique_constraint() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"users".to_string(),
+			table_with_cols("users", vec![
+				("id", pk_col("id")),
+				("email", col("email", FieldType::VarChar(255), false)),
+			]),
+		);
+
+		let mut target = DatabaseSchema::default();
+		let mut target_table = table_with_cols("users", vec![
+			("id", pk_col("id")),
+			("email", col("email", FieldType::VarChar(255), false)),
+		]);
+		target_table
+			.constraints
+			.push(unique_constraint("uq_users_email", "email"));
+		target
+			.tables
+			.insert("users".to_string(), target_table);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 1);
+		match &ops[0] {
+			Operation::AddConstraint {
+				table,
+				constraint_sql,
+			} => {
+				assert_eq!(table, "users");
+				assert!(constraint_sql.contains("UNIQUE"));
+				assert!(constraint_sql.contains("email"));
+			}
+			other => panic!("Expected AddConstraint, got {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_generate_operations_add_foreign_key_constraint() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"orders".to_string(),
+			table_with_cols("orders", vec![
+				("id", pk_col("id")),
+				("user_id", col("user_id", FieldType::Integer, false)),
+			]),
+		);
+
+		let mut target = DatabaseSchema::default();
+		let mut target_table = table_with_cols("orders", vec![
+			("id", pk_col("id")),
+			("user_id", col("user_id", FieldType::Integer, false)),
+		]);
+		target_table
+			.constraints
+			.push(fk_constraint("fk_orders_user", "user_id", "users", "id"));
+		target
+			.tables
+			.insert("orders".to_string(), target_table);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 1);
+		match &ops[0] {
+			Operation::AddConstraint {
+				table,
+				constraint_sql,
+			} => {
+				assert_eq!(table, "orders");
+				assert!(
+					constraint_sql.contains("FOREIGN KEY"),
+					"Should contain FOREIGN KEY, got '{}'",
+					constraint_sql
+				);
+				assert!(constraint_sql.contains("REFERENCES users"));
+				assert!(constraint_sql.contains("CASCADE"));
+			}
+			other => panic!("Expected AddConstraint, got {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_has_destructive_changes_constraint_drop() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		let mut current_table = table_with_cols("orders", vec![("id", pk_col("id"))]);
+		current_table
+			.constraints
+			.push(check_constraint("ck_test", "id > 0"));
+		current
+			.tables
+			.insert("orders".to_string(), current_table);
+
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"orders".to_string(),
+			table_with_cols("orders", vec![("id", pk_col("id"))]),
+		);
+
+		// Act & Assert
+		let diff = SchemaDiff::new(current, target);
+		assert!(
+			diff.has_destructive_changes(),
+			"Constraint removal should be flagged as destructive"
+		);
+	}
+
+	#[test]
+	fn test_unchanged_constraints_produce_no_operations() {
+		// Arrange: same constraint on both sides
+		let constraint = check_constraint("ck_amount", "amount > 0");
+
+		let mut current = DatabaseSchema::default();
+		let mut current_table = table_with_cols("orders", vec![("id", pk_col("id"))]);
+		current_table.constraints.push(constraint.clone());
+		current
+			.tables
+			.insert("orders".to_string(), current_table);
+
+		let mut target = DatabaseSchema::default();
+		let mut target_table = table_with_cols("orders", vec![("id", pk_col("id"))]);
+		target_table.constraints.push(constraint);
+		target
+			.tables
+			.insert("orders".to_string(), target_table);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let result = diff.detect();
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert!(result.constraints_to_add.is_empty());
+		assert!(result.constraints_to_remove.is_empty());
+		assert!(ops.is_empty());
 	}
 
 	#[test]
