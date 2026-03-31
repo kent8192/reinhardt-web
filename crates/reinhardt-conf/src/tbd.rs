@@ -6,9 +6,11 @@
 pub mod ast;
 pub mod error;
 pub mod parser;
+pub mod typechecker;
 pub mod types;
 
 pub use ast::{BinOp, Expr, Literal, NumberValue, SpannedExpr};
 pub use error::{EvalErrorKind, Span, TbdError};
 pub use parser::parse_expression;
+pub use typechecker::typecheck;
 pub use types::DslType;
