@@ -7,13 +7,14 @@
 //! in `admin_routes_with_di()`. On wasm32 targets, only the namespaced router is returned
 //! (server function registration is server-side only).
 
+use std::sync::Arc;
+
 use reinhardt_di::SingletonScope;
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt_pages::server_fn::ServerFnRouterExt;
 use reinhardt_urls::routers::ServerRouter;
 
 use crate::core::AdminSite;
-use std::sync::Arc;
 
 /// Resolves the directory containing WASM build artifacts.
 ///
