@@ -1,7 +1,6 @@
 //! Superuser creation support for management commands.
 //!
-//! Provides type-erased superuser creation that works with any user model
-//! decorated with `#[user(...)]` + `#[model(...)]` macros.
+//! Provides type-erased superuser creation that works with any user model.
 //!
 //! # Architecture
 //!
@@ -14,7 +13,7 @@
 //! layer, and [`TypedSuperuserCreator<U>`] bridges the two by combining
 //! [`SuperuserInit`] for construction with `Model` for ORM operations.
 //!
-//! # Global Registry
+//! # Registration
 //!
 //! When `#[user(full = true)]` and `#[model]` are both applied to a struct,
 //! the framework automatically registers a [`SuperuserCreator`] via the
@@ -23,12 +22,25 @@
 //! For advanced use cases (e.g., custom creator logic), manual registration
 //! is still supported and takes priority over auto-registration:
 //!
+//! ## Recommended: Using `#[user]` macro
+//!
+//! The simplest path is to use `#[user(full=true)]` with `#[model]`,
+//! which auto-generates [`SuperuserInit`]:
+//!
 //! ```rust,ignore
 //! use reinhardt_auth::{register_superuser_creator, superuser_creator_for};
 //! use myapp::models::CustomUser;
 //!
+//! // CustomUser has #[user(hasher = Argon2Hasher, username_field = "username", full = true)]
+//! // and #[model(table_name = "auth_user")] — SuperuserInit is auto-generated.
 //! register_superuser_creator(superuser_creator_for::<CustomUser>());
 //! ```
+//!
+//! ## Manual `BaseUser` implementors
+//!
+//! If you implement [`BaseUser`] manually without the `#[user]` macro,
+//! you can still use `createsuperuser` by implementing [`SuperuserInit`]
+//! yourself. See the [`SuperuserInit`] documentation for an example.
 
 use async_trait::async_trait;
 use std::marker::PhantomData;
@@ -38,15 +50,42 @@ use crate::core::BaseUser;
 
 /// Trait for initializing a user struct as a superuser.
 ///
-/// This trait is automatically implemented by the `#[user]` attribute macro.
-/// It uses compile-time field name resolution, so field renames via
+/// # Auto-generation (recommended)
+///
+/// This trait is automatically implemented by the `#[user(full=true)]`
+/// attribute macro when `#[model]` is also present. The macro uses
+/// compile-time field name resolution, so field renames via
 /// `#[user_field(...)]` are handled correctly.
 ///
-/// # Example
+/// # Manual implementation
 ///
-/// Given a struct with `#[user_field(date_joined)]` on a field named
-/// `created_at`, the generated implementation will correctly set
-/// `self.created_at` rather than looking for `self.date_joined`.
+/// Projects that implement [`BaseUser`] manually (without the `#[user]`
+/// macro) can implement this trait directly. The struct must also
+/// implement `Default`.
+///
+/// ```rust,ignore
+/// use reinhardt_auth::SuperuserInit;
+///
+/// impl SuperuserInit for MyUser {
+///     fn init_superuser(username: &str, email: &str) -> Self {
+///         Self {
+///             username: username.to_string(),
+///             email: email.to_string(),
+///             is_superuser: true,
+///             is_staff: true,
+///             is_active: true,
+///             date_joined: chrono::Utc::now(),
+///             ..Default::default()
+///         }
+///     }
+/// }
+/// ```
+///
+/// Then register in `manage.rs`:
+///
+/// ```rust,ignore
+/// register_superuser_creator(superuser_creator_for::<MyUser>());
+/// ```
 pub trait SuperuserInit: Default + Send + Sync {
 	/// Create a new instance configured as a superuser.
 	///
