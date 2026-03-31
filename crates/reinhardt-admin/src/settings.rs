@@ -262,10 +262,44 @@ mod inner {
 
 	impl AdminSettings {
 		/// Emit tracing warnings for CSP misconfigurations.
-		fn warn_csp_misconfigurations(&self) {}
+		fn warn_csp_misconfigurations(&self) {
+			if !self.csp.default_src.iter().any(|s| s == "'self'") {
+				tracing::warn!(
+					"Admin CSP: default_src is missing `'self'`, this may block admin resources"
+				);
+			}
+			if !self.csp.script_src.iter().any(|s| s == "'self'") {
+				tracing::warn!(
+					"Admin CSP: script_src is missing `'self'`, admin panel assets may not load"
+				);
+			}
+			if !self.csp.script_src.iter().any(|s| s == "'wasm-unsafe-eval'") {
+				tracing::warn!(
+					"Admin CSP: script_src is missing `'wasm-unsafe-eval'`, WASM SPA will not function"
+				);
+			}
+			if !self.csp.style_src.iter().any(|s| s == "'self'") {
+				tracing::warn!(
+					"Admin CSP: style_src is missing `'self'`, admin styles may not load"
+				);
+			}
+			if !self.csp.connect_src.iter().any(|s| s == "'self'") {
+				tracing::warn!(
+					"Admin CSP: connect_src is missing `'self'`, API calls will be blocked"
+				);
+			}
+		}
 
 		/// Emit tracing warnings for security header misconfigurations.
-		fn warn_security_misconfigurations(&self) {}
+		fn warn_security_misconfigurations(&self) {
+			let fo = self.security.frame_options.to_lowercase();
+			if fo != "deny" && fo != "sameorigin" {
+				tracing::warn!(
+					"Admin security: unrecognized frame_options value '{}', expected 'deny' or 'sameorigin'",
+					self.security.frame_options
+				);
+			}
+		}
 	}
 
 	#[cfg(test)]
@@ -388,6 +422,65 @@ img_src = ["'self'", "data:", "https://images.example.com"]
 
 			// Assert
 			assert_eq!(section, "admin");
+		}
+
+		#[rstest]
+		fn test_validate_warns_on_missing_self_in_script_src() {
+			// Arrange
+			let mut settings = AdminSettings::default();
+			settings.csp.script_src = vec!["'wasm-unsafe-eval'".to_string()];
+
+			// Act
+			use reinhardt_conf::SettingsFragment;
+			let result =
+				settings.validate(&reinhardt_conf::settings::profile::Profile::Development);
+
+			// Assert
+			assert!(result.is_ok());
+		}
+
+		#[rstest]
+		fn test_validate_warns_on_missing_wasm_unsafe_eval() {
+			// Arrange
+			let mut settings = AdminSettings::default();
+			settings.csp.script_src = vec!["'self'".to_string()];
+
+			// Act
+			use reinhardt_conf::SettingsFragment;
+			let result =
+				settings.validate(&reinhardt_conf::settings::profile::Profile::Development);
+
+			// Assert
+			assert!(result.is_ok());
+		}
+
+		#[rstest]
+		fn test_validate_warns_on_unrecognized_frame_options() {
+			// Arrange
+			let mut settings = AdminSettings::default();
+			settings.security.frame_options = "invalid-value".to_string();
+
+			// Act
+			use reinhardt_conf::SettingsFragment;
+			let result =
+				settings.validate(&reinhardt_conf::settings::profile::Profile::Production);
+
+			// Assert
+			assert!(result.is_ok());
+		}
+
+		#[rstest]
+		fn test_validate_ok_with_defaults() {
+			// Arrange
+			let settings = AdminSettings::default();
+
+			// Act
+			use reinhardt_conf::SettingsFragment;
+			let result =
+				settings.validate(&reinhardt_conf::settings::profile::Profile::Production);
+
+			// Assert
+			assert!(result.is_ok());
 		}
 
 		#[rstest]
