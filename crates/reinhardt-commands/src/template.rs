@@ -292,13 +292,10 @@ impl TemplateCommand {
 			// Render the non-example file with normal context (real values)
 			let rendered_content = self.render_template(&template_content, context)?;
 			// Process TBD DSL expressions (e.g., ![false | fixed | TBD])
-			let rendered_content =
-				reinhardt_conf::tbd::process_template(&rendered_content)
-					.map_err(|e| {
-						CommandError::ExecutionError(format!(
-							"TBD DSL processing error: {e}"
-						))
-					})?;
+			let rendered_content = reinhardt_conf::tbd::process_template(&rendered_content)
+				.map_err(|e| {
+					CommandError::ExecutionError(format!("TBD DSL processing error: {e}"))
+				})?;
 			let processed_name_without_example =
 				if let Some(pos) = processed_name.rfind(".example.") {
 					format!(

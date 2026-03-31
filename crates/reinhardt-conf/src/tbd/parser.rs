@@ -445,12 +445,12 @@ fn parse_boolean(input: &mut &str) -> ModalResult<SpannedExpr> {
 	let value = alt(("true", "false")).parse_next(input)?;
 
 	// Word boundary check: the next character must not be alphanumeric or underscore
-	if let Some(next_ch) = input.chars().next() {
-		if next_ch.is_alphanumeric() || next_ch == '_' {
-			// Restore input and fail so that the identifier parser can handle it
-			*input = &full[start..];
-			return Err(backtrack());
-		}
+	if let Some(next_ch) = input.chars().next()
+		&& (next_ch.is_alphanumeric() || next_ch == '_')
+	{
+		// Restore input and fail so that the identifier parser can handle it
+		*input = &full[start..];
+		return Err(backtrack());
 	}
 
 	let end = offset_in(full, input);
