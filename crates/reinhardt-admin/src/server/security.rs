@@ -39,6 +39,8 @@ pub struct SecurityHeaders {
 	pub frame_options: FrameOptions,
 	/// Referrer-Policy value
 	pub referrer_policy: ReferrerPolicy,
+	/// Permissions-Policy header value
+	pub permissions_policy: String,
 }
 
 impl Default for SecurityHeaders {
@@ -47,6 +49,7 @@ impl Default for SecurityHeaders {
 			csp: ContentSecurityPolicy::admin_default(),
 			frame_options: FrameOptions::Deny,
 			referrer_policy: ReferrerPolicy::StrictOriginWhenCrossOrigin,
+			permissions_policy: "camera=(), microphone=(), geolocation=(), payment=()".to_string(),
 		}
 	}
 }
@@ -76,7 +79,7 @@ impl SecurityHeaders {
 		headers.insert("Referrer-Policy", self.referrer_policy.to_string());
 		headers.insert(
 			"Permissions-Policy",
-			"camera=(), microphone=(), geolocation=(), payment=()".to_string(),
+			self.permissions_policy.clone(),
 		);
 
 		headers

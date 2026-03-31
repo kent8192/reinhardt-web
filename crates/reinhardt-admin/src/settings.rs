@@ -260,7 +260,34 @@ mod inner {
 		}
 	}
 
+	use crate::server::security::{
+		ContentSecurityPolicy, FrameOptions, ReferrerPolicy, SecurityHeaders,
+	};
+
 	impl AdminSettings {
+		/// Build [`SecurityHeaders`] from these settings.
+		///
+		/// Converts the TOML-friendly string configuration into the typed
+		/// security headers used by the admin SPA handler.
+		pub fn to_security_headers(&self) -> SecurityHeaders {
+			SecurityHeaders {
+				csp: ContentSecurityPolicy {
+					default_src: self.csp.default_src.clone(),
+					script_src: self.csp.script_src.clone(),
+					style_src: self.csp.style_src.clone(),
+					img_src: self.csp.img_src.clone(),
+					font_src: self.csp.font_src.clone(),
+					connect_src: self.csp.connect_src.clone(),
+					frame_ancestors: self.csp.frame_ancestors.clone(),
+					base_uri: self.csp.base_uri.clone(),
+					form_action: self.csp.form_action.clone(),
+				},
+				frame_options: FrameOptions::from_str(&self.security.frame_options),
+				referrer_policy: ReferrerPolicy::from_str(&self.security.referrer_policy),
+				permissions_policy: self.security.permissions_policy.clone(),
+			}
+		}
+
 		/// Emit tracing warnings for CSP misconfigurations.
 		fn warn_csp_misconfigurations(&self) {
 			if !self.csp.default_src.iter().any(|s| s == "'self'") {
@@ -493,6 +520,92 @@ img_src = ["'self'", "data:", "https://images.example.com"]
 
 			// Assert — all defaults applied
 			assert_eq!(settings, AdminSettings::default());
+		}
+
+		// ============================================================
+		// to_security_headers tests
+		// ============================================================
+
+		#[rstest]
+		fn test_to_security_headers_default_matches_security_headers_default() {
+			// Arrange
+			let admin_settings = AdminSettings::default();
+			let direct_headers = crate::server::security::SecurityHeaders::default();
+
+			// Act
+			let converted_headers = admin_settings.to_security_headers();
+
+			// Assert
+			let direct_map = direct_headers.to_header_map();
+			let converted_map = converted_headers.to_header_map();
+			assert_eq!(
+				direct_map.get("Content-Security-Policy"),
+				converted_map.get("Content-Security-Policy")
+			);
+			assert_eq!(
+				direct_map.get("X-Frame-Options"),
+				converted_map.get("X-Frame-Options")
+			);
+			assert_eq!(
+				direct_map.get("Referrer-Policy"),
+				converted_map.get("Referrer-Policy")
+			);
+			assert_eq!(
+				direct_map.get("Permissions-Policy"),
+				converted_map.get("Permissions-Policy")
+			);
+		}
+
+		#[rstest]
+		fn test_to_security_headers_custom_csp() {
+			// Arrange
+			let mut settings = AdminSettings::default();
+			settings.csp.script_src = vec![
+				"'self'".to_string(),
+				"'wasm-unsafe-eval'".to_string(),
+				"https://cdn.example.com".to_string(),
+			];
+
+			// Act
+			let headers = settings.to_security_headers();
+			let map = headers.to_header_map();
+			let csp = map.get("Content-Security-Policy").unwrap();
+
+			// Assert
+			assert!(csp.contains("https://cdn.example.com"));
+			assert!(csp.contains("'self'"));
+			assert!(csp.contains("'wasm-unsafe-eval'"));
+		}
+
+		#[rstest]
+		fn test_to_security_headers_custom_frame_options() {
+			// Arrange
+			let mut settings = AdminSettings::default();
+			settings.security.frame_options = "sameorigin".to_string();
+
+			// Act
+			let headers = settings.to_security_headers();
+			let map = headers.to_header_map();
+
+			// Assert
+			assert_eq!(map.get("X-Frame-Options").unwrap(), "SAMEORIGIN");
+		}
+
+		#[rstest]
+		fn test_to_security_headers_custom_permissions_policy() {
+			// Arrange
+			let mut settings = AdminSettings::default();
+			settings.security.permissions_policy = "camera=(), microphone=()".to_string();
+
+			// Act
+			let headers = settings.to_security_headers();
+			let map = headers.to_header_map();
+
+			// Assert
+			assert_eq!(
+				map.get("Permissions-Policy").unwrap(),
+				"camera=(), microphone=()"
+			);
 		}
 	}
 }
