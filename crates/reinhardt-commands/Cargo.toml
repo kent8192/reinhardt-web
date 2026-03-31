@@ -11,7 +11,7 @@ description = "Django-style management command framework for Reinhardt"
 [dependencies]
 reinhardt-apps = { workspace = true }
 reinhardt-mail = { workspace = true }
-reinhardt-conf = { workspace = true }
+reinhardt-conf = { workspace = true, features = ["tbd"] }
 reinhardt-dentdelion = { workspace = true, features = ["cli"], optional = true }
 reinhardt-urls = { workspace = true, features = ["routers", "database"], optional = true }
 reinhardt-db = { workspace = true, features = ["migrations", "backends-settings", "orm", "settings"], optional = true }
