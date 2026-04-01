@@ -284,6 +284,7 @@ pub use reinhardt_di_macros::{injectable, injectable_factory};
 
 /// Errors that can occur during dependency injection resolution.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum DiError {
 	/// The requested dependency was not found in the container.
 	#[error("Dependency not found: {0}")]
@@ -332,6 +333,14 @@ pub enum DiError {
 		/// A description of the internal error.
 		message: String,
 	},
+
+	/// An authorization error (insufficient permissions).
+	#[error("Authorization error: {0}")]
+	Authorization(String),
+
+	/// An authentication error (user not authenticated).
+	#[error("Authentication error: {0}")]
+	Authentication(String),
 }
 
 impl From<DiError> for reinhardt_core::exception::Error {
@@ -342,6 +351,12 @@ impl From<DiError> for reinhardt_core::exception::Error {
 			| DiError::DependencyNotRegistered { .. } => reinhardt_core::exception::Error::NotFound(
 				format!("Dependency injection error: {}", err),
 			),
+			DiError::Authorization(msg) => {
+				reinhardt_core::exception::Error::Authorization(msg.clone())
+			}
+			DiError::Authentication(msg) => {
+				reinhardt_core::exception::Error::Authentication(msg.clone())
+			}
 			_ => reinhardt_core::exception::Error::Internal(format!(
 				"Dependency injection error: {}",
 				err
@@ -356,6 +371,25 @@ pub type DiResult<T> = std::result::Result<T, DiError>;
 // Generator support
 #[cfg(feature = "generator")]
 pub mod generator;
+
+#[cfg(test)]
+mod tests {
+	use rstest::rstest;
+
+	use super::*;
+
+	#[rstest]
+	fn test_authorization_error_maps_to_403() {
+		// Arrange
+		let di_err = DiError::Authorization("Permission denied".to_string());
+
+		// Act
+		let err: reinhardt_core::exception::Error = di_err.into();
+
+		// Assert
+		assert_eq!(err.status_code(), 403);
+	}
+}
 
 // Development tools
 #[cfg(feature = "dev-tools")]
