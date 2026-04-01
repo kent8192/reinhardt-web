@@ -16,6 +16,7 @@ use reinhardt_http::Handler;
 use reinhardt_query::prelude::{
 	Alias, ColumnDef, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
 };
+use reinhardt_query::value::IntoValue;
 use reinhardt_test::fixtures::shared_postgres::shared_db_pool;
 use reinhardt_urls::routers::ServerRouter;
 use rstest::*;
@@ -194,15 +195,15 @@ async fn build_login_router(pool: sqlx::PgPool, with_jwt_secret: bool) -> Server
 			Alias::new("is_superuser"),
 			Alias::new("date_joined"),
 		])
-		.values_panic([
-			"$1".into(),
-			"test_staff".into(),
-			"staff@test.example".into(),
-			"$2".into(),
-			true.into(),
-			true.into(),
-			false.into(),
-			Expr::current_timestamp().into(),
+		.values_panic(vec![
+			"$1".into_value(),
+			"test_staff".into_value(),
+			"staff@test.example".into_value(),
+			"$2".into_value(),
+			true.into_value(),
+			true.into_value(),
+			false.into_value(),
+			chrono::Utc::now().into_value(),
 		])
 		.on_conflict(
 			reinhardt_query::prelude::OnConflict::column(Alias::new("id"))

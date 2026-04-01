@@ -979,85 +979,6 @@ impl ModelAdmin for DenyAllPermissionsModelAdmin {
 	}
 }
 
-/// A ModelAdmin implementation that grants only view permission.
-///
-/// Used for testing partial permission scenarios where a user can
-/// view/export records but cannot create, update, or delete them.
-pub struct ViewOnlyModelAdmin {
-	model_name: String,
-	table_name: String,
-	pk_field: String,
-	list_display: Vec<String>,
-	list_filter: Vec<String>,
-	search_fields: Vec<String>,
-}
-
-impl ViewOnlyModelAdmin {
-	/// Creates a new instance configured for the standard test model.
-	pub fn test_model(table_name: &str) -> Self {
-		Self {
-			model_name: "TestModel".to_string(),
-			table_name: table_name.to_string(),
-			pk_field: "id".to_string(),
-			list_display: vec![
-				"id".to_string(),
-				"name".to_string(),
-				"status".to_string(),
-				"created_at".to_string(),
-			],
-			list_filter: vec!["status".to_string()],
-			search_fields: vec!["name".to_string(), "description".to_string()],
-		}
-	}
-}
-
-#[async_trait::async_trait]
-impl ModelAdmin for ViewOnlyModelAdmin {
-	fn model_name(&self) -> &str {
-		&self.model_name
-	}
-
-	fn table_name(&self) -> &str {
-		&self.table_name
-	}
-
-	fn pk_field(&self) -> &str {
-		&self.pk_field
-	}
-
-	fn list_display(&self) -> Vec<&str> {
-		self.list_display.iter().map(|s| s.as_str()).collect()
-	}
-
-	fn list_filter(&self) -> Vec<&str> {
-		self.list_filter.iter().map(|s| s.as_str()).collect()
-	}
-
-	fn search_fields(&self) -> Vec<&str> {
-		self.search_fields.iter().map(|s| s.as_str()).collect()
-	}
-
-	fn fields(&self) -> Option<Vec<&str>> {
-		Some(vec!["id", "name", "status", "description", "created_at"])
-	}
-
-	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
-		true
-	}
-
-	async fn has_add_permission(&self, _user: &dyn AdminUser) -> bool {
-		false
-	}
-
-	async fn has_change_permission(&self, _user: &dyn AdminUser) -> bool {
-		false
-	}
-
-	async fn has_delete_permission(&self, _user: &dyn AdminUser) -> bool {
-		false
-	}
-}
-
 /// Composite fixture providing AdminSite + AdminDatabase with ALL permissions denied.
 ///
 /// Same structure as `server_fn_context` but registers `DenyAllPermissionsModelAdmin`
@@ -1099,7 +1020,7 @@ pub async fn server_fn_context_view_only(
 	let seed_sql = Query::insert()
 		.into_table(Alias::new("test_models"))
 		.columns([Alias::new("name"), Alias::new("status")])
-		.values_panic(["Seeded Record".into(), "active".into()])
+		.values_panic(["Seeded Record", "active"])
 		.to_string(PostgresQueryBuilder::new());
 	pool.execute(seed_sql.as_str())
 		.await
