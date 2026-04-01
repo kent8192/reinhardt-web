@@ -14,7 +14,7 @@ use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_http::Handler;
 use reinhardt_query::prelude::{
-	Alias, ColumnDef, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	Alias, ColumnDef, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
 use reinhardt_test::fixtures::shared_postgres::shared_db_pool;
 use reinhardt_urls::routers::ServerRouter;
@@ -195,13 +195,13 @@ async fn build_login_router(pool: sqlx::PgPool, with_jwt_secret: bool) -> Server
 			Alias::new("date_joined"),
 		])
 		.values_panic([
-			"$1".into(),
-			"test_staff".into(),
-			"staff@test.example".into(),
-			"$2".into(),
-			true.into(),
-			true.into(),
-			false.into(),
+			Value::from("$1"),
+			Value::from("test_staff"),
+			Value::from("staff@test.example"),
+			Value::from("$2"),
+			Value::from(true),
+			Value::from(true),
+			Value::from(false),
 			Expr::current_timestamp().into(),
 		])
 		.on_conflict(
