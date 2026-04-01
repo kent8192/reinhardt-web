@@ -102,7 +102,7 @@ where
 			.unwrap_or_else(AuthState::anonymous);
 
 		let perm_ctx = PermissionContext {
-			request: &request,
+			request,
 			is_authenticated: auth_state.is_authenticated(),
 			is_admin: auth_state.is_admin(),
 			is_active: auth_state.is_active(),
