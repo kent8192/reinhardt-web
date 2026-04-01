@@ -336,6 +336,10 @@ pub enum DiError {
 	/// An authorization error (insufficient permissions).
 	#[error("Authorization error: {0}")]
 	Authorization(String),
+
+	/// An authentication error (user not authenticated).
+	#[error("Authentication error: {0}")]
+	Authentication(String),
 }
 
 impl From<DiError> for reinhardt_core::exception::Error {
@@ -348,6 +352,9 @@ impl From<DiError> for reinhardt_core::exception::Error {
 			),
 			DiError::Authorization(msg) => {
 				reinhardt_core::exception::Error::Authorization(msg.clone())
+			}
+			DiError::Authentication(msg) => {
+				reinhardt_core::exception::Error::Authentication(msg.clone())
 			}
 			_ => reinhardt_core::exception::Error::Internal(format!(
 				"Dependency injection error: {}",
