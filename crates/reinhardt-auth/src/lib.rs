@@ -74,6 +74,11 @@ pub use current_user::CurrentUser;
 pub mod auth_info;
 pub use auth_info::AuthInfo;
 
+// Guard types for permission-based DI resolution
+/// Permission guard types and combinators for DI-based authorization.
+pub mod guard;
+pub use guard::{All, Any, Guard, Not, Public};
+
 // AuthUser authenticated user extractor
 pub mod auth_user;
 pub use auth_user::AuthUser;
