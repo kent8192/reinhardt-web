@@ -342,9 +342,14 @@ fn detect_auth_protection_from_inputs(
 }
 
 /// Convert `AuthDetection` into the `auth_protection` and `guard_description` token streams.
-fn auth_detection_to_tokens(detection: &AuthDetection, core_crate: &TokenStream) -> (TokenStream, TokenStream) {
+fn auth_detection_to_tokens(
+	detection: &AuthDetection,
+	core_crate: &TokenStream,
+) -> (TokenStream, TokenStream) {
 	let protection_ts = match detection.protection {
-		AuthProtectionKind::Protected => quote! { #core_crate::endpoint::AuthProtection::Protected },
+		AuthProtectionKind::Protected => {
+			quote! { #core_crate::endpoint::AuthProtection::Protected }
+		}
 		AuthProtectionKind::Optional => quote! { #core_crate::endpoint::AuthProtection::Optional },
 		AuthProtectionKind::Public => quote! { #core_crate::endpoint::AuthProtection::Public },
 		AuthProtectionKind::None => quote! { #core_crate::endpoint::AuthProtection::None },
