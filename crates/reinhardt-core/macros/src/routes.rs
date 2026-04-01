@@ -475,6 +475,8 @@ fn generate_view_type(
 				responses: &[],
 				headers: &[],
 				security: &[],
+				auth_protection: #core_crate::endpoint::AuthProtection::None,
+				guard_description: None,
 			}
 		}
 	};
@@ -761,6 +763,8 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 				responses: &[],
 				headers: &[],
 				security: &[],
+				auth_protection: #core_crate::endpoint::AuthProtection::None,
+				guard_description: None,
 			}
 		}
 	};

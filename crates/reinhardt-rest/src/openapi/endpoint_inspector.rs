@@ -360,6 +360,7 @@ impl Default for EndpointInspector {
 mod tests {
 	use super::*;
 	use crate::openapi::schema_registration::SchemaRegistration;
+	use reinhardt_core::endpoint::AuthProtection;
 	use utoipa::openapi::schema::ObjectBuilder;
 
 	// Register a test schema for qualified-path lookup verification.
@@ -456,6 +457,8 @@ mod tests {
 			responses: &[],
 			headers: &[],
 			security: &[],
+			auth_protection: AuthProtection::None,
+			guard_description: None,
 		};
 
 		let request_body = inspector.create_request_body(&metadata);
@@ -485,6 +488,8 @@ mod tests {
 			responses: &[],
 			headers: &[],
 			security: &[],
+			auth_protection: AuthProtection::None,
+			guard_description: None,
 		};
 
 		let request_body = inspector.create_request_body(&metadata);
@@ -506,6 +511,8 @@ mod tests {
 			responses: &[],
 			headers: &[],
 			security: &[],
+			auth_protection: AuthProtection::None,
+			guard_description: None,
 		};
 
 		let request_body = inspector.create_request_body(&metadata);
@@ -532,6 +539,8 @@ mod tests {
 			responses: &[],
 			headers: &[],
 			security: &[],
+			auth_protection: AuthProtection::None,
+			guard_description: None,
 		};
 
 		// Act
@@ -667,6 +676,8 @@ mod tests {
 			responses: &[],
 			headers: &[],
 			security: &[],
+			auth_protection: AuthProtection::None,
+			guard_description: None,
 		};
 
 		// Act
