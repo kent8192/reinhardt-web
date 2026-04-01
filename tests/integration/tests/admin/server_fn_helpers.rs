@@ -802,7 +802,7 @@ pub async fn server_fn_context_view_only(
 	let seed_sql = Query::insert()
 		.into_table(Alias::new("test_models"))
 		.columns([Alias::new("name"), Alias::new("status")])
-		.values_panic(["Seeded Record".into(), "active".into()])
+		.values_panic(["Seeded Record", "active"])
 		.to_string(PostgresQueryBuilder::new());
 	pool.execute(seed_sql.as_str())
 		.await

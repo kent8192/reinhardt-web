@@ -129,7 +129,6 @@ mod property_tests {
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_property_tests {
-	use proptest::proptest;
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
 	use wasm_bindgen_test::*;
 
