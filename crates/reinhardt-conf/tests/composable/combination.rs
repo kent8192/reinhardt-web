@@ -3,7 +3,7 @@ use reinhardt_conf::settings::core_settings::CoreSettings;
 use reinhardt_conf::settings::cors::CorsSettings;
 use reinhardt_conf::settings::database_config::DatabaseConfig;
 use reinhardt_conf::settings::email::EmailSettings;
-use reinhardt_conf::settings::fragment::SettingsFragment;
+use reinhardt_conf::settings::fragment::{SettingsFragment, SettingsValidation};
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::security::SecuritySettings;
 use reinhardt_conf::settings::session::SessionSettings;

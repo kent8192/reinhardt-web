@@ -5,7 +5,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod inner {
-	use reinhardt_conf::settings::fragment::{HasSettings, SettingsFragment};
+	use reinhardt_conf::settings::fragment::{HasSettings, SettingsFragment, SettingsValidation};
 	use reinhardt_conf::settings::profile::Profile;
 	use reinhardt_conf::settings::validation::ValidationResult;
 	use serde::{Deserialize, Serialize};
@@ -234,17 +234,19 @@ mod inner {
 		}
 	}
 
+	impl SettingsValidation for AdminSettings {
+		fn validate(&self, _profile: &Profile) -> ValidationResult {
+			self.warn_csp_misconfigurations();
+			self.warn_security_misconfigurations();
+			Ok(())
+		}
+	}
+
 	impl SettingsFragment for AdminSettings {
 		type Accessor = dyn HasAdminSettings;
 
 		fn section() -> &'static str {
 			"admin"
-		}
-
-		fn validate(&self, _profile: &Profile) -> ValidationResult {
-			self.warn_csp_misconfigurations();
-			self.warn_security_misconfigurations();
-			Ok(())
 		}
 	}
 

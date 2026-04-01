@@ -5,7 +5,7 @@ use reinhardt_conf::settings::contacts::ContactSettings;
 use reinhardt_conf::settings::core_settings::CoreSettings;
 use reinhardt_conf::settings::cors::CorsSettings;
 use reinhardt_conf::settings::email::EmailSettings;
-use reinhardt_conf::settings::fragment::SettingsFragment;
+use reinhardt_conf::settings::fragment::{SettingsFragment, SettingsValidation};
 use reinhardt_conf::settings::i18n::I18nSettings;
 use reinhardt_conf::settings::logging::LoggingSettings;
 use reinhardt_conf::settings::media::MediaSettings;
