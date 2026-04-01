@@ -1295,9 +1295,10 @@ async fn nc_15_unique_constraint_addition_creates_add_constraint() {
 	// Assert
 	let migration_result =
 		result.expect("Unique constraint addition should generate AddConstraint operation");
-	let has_add_constraint = migration_result.operations.iter().any(|op| {
-		matches!(op, Operation::AddConstraint { table, .. } if table == "todos")
-	});
+	let has_add_constraint = migration_result
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::AddConstraint { table, .. } if table == "todos"));
 	assert!(
 		has_add_constraint,
 		"Migration should contain AddConstraint operation for todos table"
@@ -1339,9 +1340,10 @@ async fn nc_16_index_deletion_creates_drop_index() {
 
 	// Assert
 	let migration_result = result.expect("Index deletion should generate DropIndex operation");
-	let has_drop_index = migration_result.operations.iter().any(|op| {
-		matches!(op, Operation::DropIndex { table, .. } if table == "todos")
-	});
+	let has_drop_index = migration_result
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::DropIndex { table, .. } if table == "todos"));
 	assert!(
 		has_drop_index,
 		"Migration should contain DropIndex operation for todos table"
@@ -1386,9 +1388,10 @@ async fn nc_17_constraint_deletion_creates_drop_constraint() {
 	// Assert
 	let migration_result =
 		result.expect("Constraint deletion should generate DropConstraint operation");
-	let has_drop_constraint = migration_result.operations.iter().any(|op| {
-		matches!(op, Operation::DropConstraint { table, .. } if table == "todos")
-	});
+	let has_drop_constraint = migration_result
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::DropConstraint { table, .. } if table == "todos"));
 	assert!(
 		has_drop_constraint,
 		"Migration should contain DropConstraint operation for todos table"

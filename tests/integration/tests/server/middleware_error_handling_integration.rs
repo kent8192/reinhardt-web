@@ -100,7 +100,10 @@ impl Middleware for CustomErrorResponseMiddleware {
 			// Transform server error response into custom JSON response
 			let error_json = format!(
 				r#"{{"error":"{}","type":"custom_error"}}"#,
-				response.status.canonical_reason().unwrap_or("Unknown Error")
+				response
+					.status
+					.canonical_reason()
+					.unwrap_or("Unknown Error")
 			);
 			Ok(Response::internal_server_error()
 				.with_body(error_json)
