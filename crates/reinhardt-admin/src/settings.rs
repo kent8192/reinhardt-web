@@ -248,6 +248,10 @@ mod inner {
 		fn section() -> &'static str {
 			"admin"
 		}
+
+		fn validate(&self, profile: &Profile) -> ValidationResult {
+			<Self as SettingsValidation>::validate(self, profile)
+		}
 	}
 
 	/// Trait for accessing [`AdminSettings`] from a composed settings type.

@@ -332,10 +332,31 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 
 	let field_count = field_policy_entries.len();
 
-	// Conditionally generate SettingsValidation impl
+	// Conditionally generate SettingsValidation impl and validate bridge.
+	//
+	// When `validate = true` (default): generate a no-op SettingsValidation impl.
+	//   SettingsFragment uses its default no-op validate().
+	// When `validate = false`: the user provides a custom SettingsValidation impl.
+	//   Generate a SettingsFragment::validate() that delegates to SettingsValidation.
 	let validation_impl = if should_generate_validation {
 		quote! {
 			impl #conf_crate::settings::fragment::SettingsValidation for #struct_name {}
+		}
+	} else {
+		quote! {}
+	};
+
+	// When custom validation is provided (validate = false), bridge
+	// SettingsFragment::validate to the user's SettingsValidation impl
+	// so that callers using SettingsFragment::validate get custom logic.
+	let validate_override = if !should_generate_validation {
+		quote! {
+			fn validate(
+				&self,
+				profile: &#conf_crate::settings::profile::Profile,
+			) -> #conf_crate::settings::validation::ValidationResult {
+				<Self as #conf_crate::settings::fragment::SettingsValidation>::validate(self, profile)
+			}
 		}
 	} else {
 		quote! {}
@@ -356,6 +377,8 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 			fn section() -> &'static str {
 				#section
 			}
+
+			#validate_override
 
 			fn field_policies() -> &'static [#conf_crate::settings::policy::FieldPolicy] {
 				static POLICIES: [#conf_crate::settings::policy::FieldPolicy; #field_count] = [

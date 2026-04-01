@@ -88,7 +88,7 @@ impl SettingsValidation for SecuritySettings {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use super::SecuritySettings;
 	use crate::settings::fragment::SettingsFragment;
 	use crate::settings::profile::Profile;
 	use rstest::rstest;

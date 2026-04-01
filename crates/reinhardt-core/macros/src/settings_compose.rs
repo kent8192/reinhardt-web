@@ -234,14 +234,15 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 		})
 		.collect();
 
-	// Generate validate() method calls using fully-qualified path
-	// to avoid requiring SettingsValidation import at the call site
+	// Generate validate() method calls using fully-qualified SettingsFragment path.
+	// For fragments with custom validation (validate = false), the macro-generated
+	// SettingsFragment::validate delegates to SettingsValidation::validate automatically.
 	let validate_calls: Vec<_> = includes
 		.iter()
 		.map(|(key, _, _)| {
 			let key_ident = format_ident!("{}", key);
 			quote! {
-				#conf_crate::settings::fragment::SettingsValidation::validate(&self.#key_ident, profile)?;
+				#conf_crate::settings::fragment::SettingsFragment::validate(&self.#key_ident, profile)?;
 			}
 		})
 		.collect();

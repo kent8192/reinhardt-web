@@ -88,7 +88,7 @@ pub trait SettingsValidation {
 /// Use `#[settings(fragment = true, section = "...")]` to auto-derive this trait,
 /// or implement it manually for custom validation.
 pub trait SettingsFragment:
-	SettingsValidation + Clone + Debug + Serialize + DeserializeOwned + Send + Sync + 'static
+	Clone + Debug + Serialize + DeserializeOwned + Send + Sync + 'static
 {
 	/// The accessor trait for this fragment.
 	///
@@ -99,6 +99,15 @@ pub trait SettingsFragment:
 
 	/// TOML section name (e.g., `"cache"`, `"core"`).
 	fn section() -> &'static str;
+
+	/// Validate this fragment against the given profile.
+	///
+	/// Default implementation: no-op (always valid).
+	/// For custom validation, implement [`SettingsValidation`] and override
+	/// this method to delegate to it.
+	fn validate(&self, _profile: &Profile) -> ValidationResult {
+		Ok(())
+	}
 
 	/// Returns the default field policies defined by the library author.
 	///
@@ -133,8 +142,6 @@ mod tests {
 	struct TestFragment {
 		pub value: String,
 	}
-
-	impl SettingsValidation for TestFragment {}
 
 	impl SettingsFragment for TestFragment {
 		type Accessor = ();

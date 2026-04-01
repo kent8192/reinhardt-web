@@ -2,7 +2,7 @@
 use reinhardt_conf::Settings;
 use reinhardt_conf::settings::cache::{CacheSettings, HasCacheSettings};
 use reinhardt_conf::settings::core_settings::{CoreSettings, HasCoreSettings};
-use reinhardt_conf::settings::fragment::{SettingsFragment, SettingsValidation};
+use reinhardt_conf::settings::fragment::SettingsFragment;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::security::SecuritySettings;
 use rstest::rstest;

@@ -130,7 +130,7 @@ impl SettingsValidation for CoreSettings {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use super::{CoreSettings, SecuritySettings};
 	use crate::settings::fragment::SettingsFragment;
 	use crate::settings::profile::Profile;
 	use rstest::rstest;

@@ -1,5 +1,5 @@
 use reinhardt_conf::settings::core_settings::CoreSettings;
-use reinhardt_conf::settings::fragment::{SettingsFragment, SettingsValidation};
+use reinhardt_conf::settings::fragment::SettingsFragment;
 use reinhardt_conf::settings::profile::Profile;
 use rstest::rstest;
 
