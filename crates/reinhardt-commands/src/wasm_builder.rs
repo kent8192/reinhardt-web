@@ -135,6 +135,34 @@ impl WasmBuilder {
 		Self { config }
 	}
 
+	/// Detect the cargo target directory by running `cargo metadata`.
+	///
+	/// In workspace setups, Cargo places build artifacts in the workspace root's
+	/// `target/` directory, not the individual crate's directory. This method
+	/// queries `cargo metadata` for the canonical `target_directory` path, which
+	/// respects `CARGO_TARGET_DIR`, `.cargo/config.toml`, and workspace layout.
+	///
+	/// Falls back to `project_dir/target` if `cargo metadata` is unavailable.
+	fn detect_target_dir(&self) -> PathBuf {
+		let output = Command::new("cargo")
+			.args(["metadata", "--no-deps", "--format-version=1"])
+			.current_dir(&self.config.project_dir)
+			.output();
+
+		if let Ok(output) = output {
+			if output.status.success() {
+				if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+					if let Some(target_dir) = json.get("target_directory").and_then(|v| v.as_str())
+					{
+						return PathBuf::from(target_dir);
+					}
+				}
+			}
+		}
+
+		self.config.project_dir.join("target")
+	}
+
 	/// Build the WASM target.
 	pub fn build(&self) -> Result<WasmBuildOutput, WasmBuildError> {
 		// Ensure wasm32 target is installed
@@ -166,7 +194,7 @@ impl WasmBuilder {
 			.target_dir
 			.as_ref()
 			.cloned()
-			.unwrap_or_else(|| self.config.project_dir.join("target"));
+			.unwrap_or_else(|| self.detect_target_dir());
 		let wasm_path = target_base
 			.join("wasm32-unknown-unknown")
 			.join(profile)
