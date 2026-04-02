@@ -506,7 +506,7 @@ img_src = ["'self'", "data:", "https://images.example.com"]
 			settings.csp.script_src = vec!["'wasm-unsafe-eval'".to_string()];
 
 			// Act
-			use reinhardt_conf::SettingsFragment;
+			use reinhardt_conf::settings::fragment::SettingsValidation;
 			let result =
 				settings.validate(&reinhardt_conf::settings::profile::Profile::Development);
 
@@ -521,7 +521,7 @@ img_src = ["'self'", "data:", "https://images.example.com"]
 			settings.csp.script_src = vec!["'self'".to_string()];
 
 			// Act
-			use reinhardt_conf::SettingsFragment;
+			use reinhardt_conf::settings::fragment::SettingsValidation;
 			let result =
 				settings.validate(&reinhardt_conf::settings::profile::Profile::Development);
 
@@ -536,7 +536,7 @@ img_src = ["'self'", "data:", "https://images.example.com"]
 			settings.security.frame_options = "invalid-value".to_string();
 
 			// Act
-			use reinhardt_conf::SettingsFragment;
+			use reinhardt_conf::settings::fragment::SettingsValidation;
 			let result = settings.validate(&reinhardt_conf::settings::profile::Profile::Production);
 
 			// Assert
@@ -549,7 +549,7 @@ img_src = ["'self'", "data:", "https://images.example.com"]
 			let settings = AdminSettings::default();
 
 			// Act
-			use reinhardt_conf::SettingsFragment;
+			use reinhardt_conf::settings::fragment::SettingsValidation;
 			let result = settings.validate(&reinhardt_conf::settings::profile::Profile::Production);
 
 			// Assert
