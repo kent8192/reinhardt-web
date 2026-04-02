@@ -236,7 +236,7 @@ pub fn setup_login_handler() {
 					// Update reactive auth state
 					let auth = auth_state();
 					auth.login_full(
-						response.user_id.parse::<i64>().unwrap_or(0),
+						response.user_id.clone(),
 						&response.username,
 						None,
 						response.is_staff,
