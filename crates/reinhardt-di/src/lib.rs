@@ -383,6 +383,7 @@ mod tests {
 	#[case::not_registered(DiError::NotRegistered { type_name: "Foo".to_string(), hint: "".to_string() }, 404)]
 	#[case::dependency_not_registered(DiError::DependencyNotRegistered { type_name: "Bar".to_string() }, 404)]
 	#[case::authorization(DiError::Authorization("forbidden".to_string()), 403)]
+	#[case::authentication(DiError::Authentication("not authenticated".to_string()), 401)]
 	#[case::circular_dependency(DiError::CircularDependency("A -> B -> A".to_string()), 500)]
 	#[case::provider_error(DiError::ProviderError("boom".to_string()), 500)]
 	#[case::type_mismatch(DiError::TypeMismatch { expected: "A".to_string(), actual: "B".to_string() }, 500)]

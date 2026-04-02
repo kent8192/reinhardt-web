@@ -260,12 +260,14 @@ async fn test_depends_lifetime_management() {
 // === DiError to HTTP Error Status Code Mapping ===
 
 #[derive(Clone, Debug)]
-struct NotFoundInjectService;
+struct AuthenticationFailService;
 
 #[async_trait::async_trait]
-impl Injectable for NotFoundInjectService {
+impl Injectable for AuthenticationFailService {
 	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
-		Err(DiError::NotFound("service not available".to_string()))
+		Err(DiError::Authentication(
+			"user is not authenticated".to_string(),
+		))
 	}
 }
 
@@ -279,20 +281,30 @@ impl Injectable for AuthorizationFailService {
 	}
 }
 
+#[derive(Clone, Debug)]
+struct NotFoundInjectService;
+
+#[async_trait::async_trait]
+impl Injectable for NotFoundInjectService {
+	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+		Err(DiError::NotFound("service not available".to_string()))
+	}
+}
+
 #[rstest]
 #[tokio::test]
-async fn test_not_found_di_error_maps_to_404_status() {
+async fn test_authentication_di_error_maps_to_401_status() {
 	// Arrange
 	let singleton = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton).build();
 
 	// Act
-	let result = NotFoundInjectService::inject(&ctx).await;
+	let result = AuthenticationFailService::inject(&ctx).await;
 
 	// Assert
 	let di_err = result.unwrap_err();
 	let http_err: Error = di_err.into();
-	assert_eq!(http_err.status_code(), 404);
+	assert_eq!(http_err.status_code(), 401);
 }
 
 #[rstest]
@@ -309,4 +321,20 @@ async fn test_authorization_di_error_maps_to_403_status() {
 	let di_err = result.unwrap_err();
 	let http_err: Error = di_err.into();
 	assert_eq!(http_err.status_code(), 403);
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_not_found_di_error_maps_to_404_status() {
+	// Arrange
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::builder(singleton).build();
+
+	// Act
+	let result = NotFoundInjectService::inject(&ctx).await;
+
+	// Assert
+	let di_err = result.unwrap_err();
+	let http_err: Error = di_err.into();
+	assert_eq!(http_err.status_code(), 404);
 }
