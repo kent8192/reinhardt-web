@@ -1,3 +1,4 @@
+#![cfg(not(target_arch = "wasm32"))]
 //! Property-based tests for static asset URL resolution
 //!
 //! Uses proptest to verify properties that should hold for all valid inputs.

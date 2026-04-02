@@ -1,3 +1,4 @@
+#![cfg(not(target_arch = "wasm32"))]
 //! Component System integration tests
 //!
 //! Success Criteria:
