@@ -613,7 +613,6 @@ insta = { version = "1.41", features = ["json", "toml"] }
 # TBD DSL
 rand_regex = "0.18"
 ulid = "1"
-winnow = "0.7"
 
 # Documentation
 aquamarine = "0.5"
