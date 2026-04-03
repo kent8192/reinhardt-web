@@ -139,7 +139,7 @@ fn admin_spa_html(site_title: &str) -> String {
 		meta { charset: "utf-8" }
 		meta { name: "viewport", content: "width=device-width, initial-scale=1.0" }
 		meta { name: "server-fn-prefix", content: "/admin" }
-		title { { site_title.to_string() } }
+		title { site_title.to_string() }
 		link { rel: "stylesheet", href: vendor_open_props }
 		link { rel: "stylesheet", href: vendor_animate }
 		link { rel: "stylesheet", href: css_url }

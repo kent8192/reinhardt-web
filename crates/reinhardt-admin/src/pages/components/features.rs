@@ -228,9 +228,17 @@ fn data_table(
 		.iter()
 		.map(|col| {
 			let label = col.label.clone();
-			page!(|| { th { { label } } })()
+			page!(|| {
+				th {
+					{ label }
+				}
+			})()
 		})
-		.chain(std::iter::once(page!(|| { th { "Actions" } })()))
+		.chain(std::iter::once(page!(|| {
+			th {
+				"Actions"
+			}
+		})()))
 		.collect();
 
 	let thead = page!(|| {
@@ -246,7 +254,11 @@ fn data_table(
 		.map(|record| table_row(columns, record, model_name))
 		.collect();
 
-	let tbody = page!(|| { tbody { { body_rows } } })();
+	let tbody = page!(|| {
+		tbody {
+			{ body_rows }
+		}
+	})();
 
 	page!(|| {
 		div {
@@ -273,13 +285,21 @@ fn table_row(
 				.get(&col.field)
 				.cloned()
 				.unwrap_or_else(|| "-".to_string());
-			page!(|| { td { { value } } })()
+			page!(|| {
+				td {
+					{ value }
+				}
+			})()
 		})
 		.collect();
 
 	let record_id = record.get("id").cloned().unwrap_or_else(|| "0".to_string());
 	let actions = action_buttons(model_name, &record_id);
-	let actions_cell = page!(|| { td { { actions } } })();
+	let actions_cell = page!(|| {
+		td {
+			{ actions }
+		}
+	})();
 
 	page!(|| {
 		tr {
@@ -540,7 +560,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 				id: input_id,
 				name: name,
 				value: value,
-				required,
+				required: true,
 			}
 		})()
 	} else {
@@ -611,14 +631,27 @@ fn create_filter_select(
 			let value = value.clone();
 			let label = label.clone();
 			if value == current_val {
-				page!(|| { option { value: value, selected: true, { label } } })()
+				page!(|| {
+					option {
+						value: value,
+						selected: true,
+						{ label }
+					}
+				})()
 			} else {
-				page!(|| { option { value: value, { label } } })()
+				page!(|| {
+					option {
+						value: value,
+						{ label }
+					}
+				})()
 			}
 		})
 		.collect();
 	let options_container = page!(|| {
-		span { { options } }
+		span {
+			{ options }
+		}
 	})();
 	let field_str = field.to_string();
 

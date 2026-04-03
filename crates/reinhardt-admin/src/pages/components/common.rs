@@ -58,7 +58,7 @@ impl ButtonVariant {
 /// let clicked = Signal::new(false);
 /// button("Click me", ButtonVariant::Primary, false, clicked)
 /// ```
-pub fn button(text: &str, variant: ButtonVariant, disabled: bool, on_click: Signal<bool>) -> Page {
+pub fn button(text: &str, variant: ButtonVariant, disabled: bool, _on_click: Signal<bool>) -> Page {
 	use reinhardt_pages::component::{IntoPage, PageElement};
 
 	let classes = format!("admin-btn {}", variant.class());
@@ -246,8 +246,8 @@ fn create_page_item<F>(
 	text: &str,
 	disabled: bool,
 	active: bool,
-	signal: Signal<u64>,
-	handler: F,
+	_signal: Signal<u64>,
+	_handler: F,
 ) -> Page
 where
 	F: Fn(Signal<u64>) + 'static,
@@ -259,7 +259,7 @@ where
 			span {
 				class: "admin-page-link admin-page-link-disabled",
 				aria_disabled: "true",
-				tabindex: (-1_i32).to_string(),
+				tabindex: (- 1_i32).to_string(),
 				{ text }
 			}
 		})()
