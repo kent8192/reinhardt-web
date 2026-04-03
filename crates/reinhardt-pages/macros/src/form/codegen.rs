@@ -1080,6 +1080,10 @@ fn generate_field_view(
 	let placeholder = field.display.placeholder.as_deref().unwrap_or("");
 	let required = field.validation.required;
 
+	let autocomplete_attr = field.display.autocomplete.as_deref().map(|val| {
+		quote! { .attr("autocomplete", #val) }
+	});
+
 	let wrapper_class = field.styling.wrapper_class();
 	let label_class = field.styling.label_class();
 	let input_class = field.styling.input_class();
@@ -1100,6 +1104,7 @@ fn generate_field_view(
 					.attr("class", #input_class)
 					.attr("placeholder", #placeholder)
 					.bool_attr("required", #required)
+					#autocomplete_attr
 					#custom_attrs
 					#event_listener
 			}
@@ -1113,6 +1118,7 @@ fn generate_field_view(
 					.attr("class", #input_class)
 					.bool_attr("required", #required)
 					.bool_attr("multiple", #multiple)
+					#autocomplete_attr
 					#custom_attrs
 					#event_listener
 			}
@@ -1151,6 +1157,7 @@ fn generate_field_view(
 					.attr("class", #input_class)
 					.attr("placeholder", #placeholder)
 					.bool_attr("required", #required)
+					#autocomplete_attr
 					#custom_attrs
 					#event_listener
 			}
