@@ -704,6 +704,13 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 	// Determine if CSRF protection is needed (non-GET methods)
 	let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
 
+	// Check if CSRF token should be auto-injected as a server_fn argument.
+	// This is needed when: non-GET method, using server_fn, and no explicit csrf_token field.
+	let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
+	let auto_csrf_arg = needs_csrf
+		&& matches!(macro_ast.action, TypedFormAction::ServerFn(_))
+		&& !has_explicit_csrf_field;
+
 	// Generate CSRF token injection for non-GET methods
 	let csrf_injection = if needs_csrf {
 		quote! {
@@ -768,6 +775,19 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 					quote! { #signal_name.get() }
 				})
 				.collect();
+
+			// Generate server_fn call expression (with auto CSRF token if needed)
+			let server_fn_call = if auto_csrf_arg {
+				quote! {
+					{
+						let __csrf_token = #pages_crate::csrf::get_csrf_token()
+							.unwrap_or_default();
+						#server_fn_ident(#(#field_names,)* __csrf_token).await
+					}
+				}
+			} else {
+				quote! { #server_fn_ident(#(#field_names),*).await }
+			};
 
 			// Generate callbacks
 			let callbacks = &macro_ast.callbacks;
@@ -889,7 +909,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 									#async_signal_clones
 
 									#pages_crate::spawn::spawn_task(async move {
-										match #server_fn_ident(#(#field_names),*).await {
+										match #server_fn_call {
 											Ok(_value) => {
 												#on_success_code
 												#redirect_code
@@ -924,7 +944,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 									#async_signal_clones
 
 									#pages_crate::spawn::spawn_task(async move {
-										match #server_fn_ident(#(#field_names),*).await {
+										match #server_fn_call {
 											Ok(_value) => {
 												#on_success_code
 												#redirect_code
@@ -1505,6 +1525,21 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 			let all_fields = collect_all_fields(&macro_ast.fields);
 			let field_names: Vec<&syn::Ident> = all_fields.iter().map(|f| &f.name).collect();
 
+			// Check if CSRF token should be auto-injected as a server_fn argument
+			let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
+			let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
+			let submit_server_fn_call = if needs_csrf && !has_explicit_csrf_field {
+				quote! {
+					{
+						let __csrf_token = #pages_crate::csrf::get_csrf_token()
+							.unwrap_or_default();
+						#server_fn_ident(#(self.#field_names.get(),)* __csrf_token).await
+					}
+				}
+			} else {
+				quote! { #server_fn_ident(#(self.#field_names.get()),*).await }
+			};
+
 			// Generate callback invocations
 			let on_submit_code = generate_on_submit_callback(callbacks);
 			let on_loading_start_code = generate_on_loading_callback(callbacks, state, true);
@@ -1523,7 +1558,7 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 					#on_loading_start_code
 
 					// Call the server function with individual field values as arguments
-					let result = #server_fn_ident(#(self.#field_names.get()),*).await;
+					let result = #submit_server_fn_call;
 
 					// Clear loading state
 					#on_loading_end_code
