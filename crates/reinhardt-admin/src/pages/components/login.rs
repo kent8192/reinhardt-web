@@ -3,7 +3,6 @@
 //! Provides a login form that authenticates admin users via JWT.
 
 use reinhardt_pages::component::Page;
-use reinhardt_pages::csrf::get_csrf_token;
 use reinhardt_pages::form;
 use reinhardt_pages::page;
 
@@ -98,9 +97,6 @@ fn build_login_form() -> Page {
 				autocomplete: "current-password",
 				placeholder: "Enter your password",
 			},
-			// WORKAROUND(#3337): form! macro with server_fn does not auto-pass
-			// CSRF token as a function argument. Define it explicitly until fixed.
-			csrf_token: HiddenField {},
 		},
 
 		on_success: |response| {
@@ -160,12 +156,6 @@ fn build_login_form() -> Page {
 			},
 		},
 	};
-
-	// WORKAROUND(#3337): Manually set CSRF token value since form! doesn't
-	// auto-populate it for server_fn calls.
-	login_form
-		.csrf_token()
-		.set(get_csrf_token().unwrap_or_default());
 
 	login_form.into_page()
 }
