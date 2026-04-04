@@ -20,14 +20,13 @@ use reinhardt_manouche::core::{
 	ClientValidator, ClientValidatorRule, FormAction, FormCallbacks, FormDerived, FormFieldDef,
 	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
 	FormSubmitButtonDef, FormValidator, FormWatch, IconPosition, TypedChoicesConfig,
-	TypedClientValidator,
-	TypedClientValidatorRule, TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay,
-	TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction, TypedFormCallbacks,
-	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
-	TypedSubmitButtonDef,
-	TypedFormSlots, TypedFormState, TypedFormStyling, TypedFormValidator, TypedFormWatch,
-	TypedFormWatchItem, TypedIcon, TypedIconAttr, TypedIconChild, TypedIconPosition,
-	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
+	TypedClientValidator, TypedClientValidatorRule, TypedCustomAttr, TypedDerivedItem,
+	TypedFieldDisplay, TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction,
+	TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
+	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormStyling,
+	TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon, TypedIconAttr,
+	TypedIconChild, TypedIconPosition, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget,
+	TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
 
 /// Allowlist of safe HTML tag names for wrapper and icon child elements.

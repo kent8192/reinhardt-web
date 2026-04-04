@@ -1015,9 +1015,7 @@ fn generate_field_entry_view(
 		TypedFormFieldEntry::Group(group) => {
 			generate_field_group_view(group, pages_crate, all_fields)
 		}
-		TypedFormFieldEntry::SubmitButton(btn) => {
-			generate_submit_button_view(btn)
-		}
+		TypedFormFieldEntry::SubmitButton(btn) => generate_submit_button_view(btn),
 	}
 }
 

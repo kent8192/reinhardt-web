@@ -13,9 +13,8 @@ use syn::{
 use crate::{
 	ClientValidator, ClientValidatorRule, CustomAttr, FormAction, FormDerived, FormDerivedItem,
 	FormFieldDef, FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormSlots,
-	FormSubmitButtonDef,
-	FormState, FormStateField, FormValidator, FormWatch, FormWatchItem, IconAttr, IconChild,
-	IconElement, IconPosition, ValidatorRule, WrapperAttr, WrapperElement,
+	FormState, FormStateField, FormSubmitButtonDef, FormValidator, FormWatch, FormWatchItem,
+	IconAttr, IconChild, IconElement, IconPosition, ValidatorRule, WrapperAttr, WrapperElement,
 };
 
 /// Parses a `form!` macro invocation into an untyped AST.

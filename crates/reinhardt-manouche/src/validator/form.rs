@@ -19,16 +19,14 @@ use syn::{Error, Result};
 use crate::core::{
 	ClientValidator, ClientValidatorRule, FormAction, FormCallbacks, FormDerived, FormFieldDef,
 	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
-	FormSubmitButtonDef,
-	FormValidator, FormWatch, IconAttr, IconChild, IconPosition, TypedChoicesConfig,
-	TypedClientValidator, TypedClientValidatorRule, TypedCustomAttr, TypedDerivedItem,
-	TypedFieldDisplay, TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction,
-	TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
+	FormSubmitButtonDef, FormValidator, FormWatch, IconAttr, IconChild, IconPosition,
+	TypedChoicesConfig, TypedClientValidator, TypedClientValidatorRule, TypedCustomAttr,
+	TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType, TypedFieldValidation,
+	TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
 	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormStyling,
-	TypedSubmitButtonDef,
 	TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon, TypedIconAttr,
-	TypedIconChild, TypedIconPosition, TypedValidatorRule, TypedWidget, TypedWrapper,
-	TypedWrapperAttr, ValidatorRule,
+	TypedIconChild, TypedIconPosition, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget,
+	TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
 
 /// Validates and transforms the FormMacro AST into a typed AST.
