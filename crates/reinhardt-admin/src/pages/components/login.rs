@@ -3,6 +3,7 @@
 //! Provides a login form that authenticates admin users via JWT.
 
 use reinhardt_pages::component::Page;
+use reinhardt_pages::form;
 use reinhardt_pages::page;
 
 #[cfg(target_arch = "wasm32")]
@@ -59,60 +60,59 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 	})()
 }
 
-/// Builds the login form HTML structure.
+/// Builds the login form HTML structure using the `form!` macro.
+///
+/// The struct name `AdminLoginForm` generates `id="admin-login-form"` on the
+/// form element, matching the ID expected by `setup_login_handler()`.
 fn build_login_form() -> Page {
-	page!(|| {
-		form {
-			id: "admin-login-form",
-			method: "post",
-			div {
-				class: "mb-4",
-				label {
-					for: "username",
-					class: "admin-label",
-					"Username"
-				}
-				input {
-					type: "text",
-					class: "admin-input",
-					id: "username",
-					name: "username",
-					required: true,
-					autocomplete: "username",
-					autofocus: true,
-					placeholder: "Enter your username",
-				}
-			}
-			div {
-				class: "mb-5",
-				label {
-					for: "password",
-					class: "admin-label",
-					"Password"
-				}
-				input {
-					type: "password",
-					class: "admin-input",
-					id: "password",
-					name: "password",
-					required: true,
-					autocomplete: "current-password",
-					placeholder: "Enter your password",
-				}
-			}
-			div {
-				id: "login-error",
-				class: "admin-alert admin-alert-danger hidden mb-4",
-				role: "alert",
-			}
-			button {
-				type: "submit",
-				class: "admin-btn admin-btn-primary w-full py-2.5 text-base",
-				id: "login-submit-btn",
-				"Sign in"
-			}
-		}
-	})()
+	let login_form = form! {
+		name: AdminLoginForm,
+		action: "",
+		method: Post,
+
+		fields: {
+			username: CharField {
+				required,
+				label: "Username",
+				label_class: "admin-label",
+				wrapper_class: "mb-4",
+				class: "admin-input",
+				autocomplete: "username",
+				autofocus,
+				placeholder: "Enter your username",
+			},
+			password: CharField {
+				required,
+				widget: PasswordInput,
+				label: "Password",
+				label_class: "admin-label",
+				wrapper_class: "mb-5",
+				class: "admin-input",
+				autocomplete: "current-password",
+				placeholder: "Enter your password",
+			},
+		},
+
+		slots: {
+			after_fields: || {
+				page!(|| {
+					div {
+						id: "login-error",
+						class: "admin-alert admin-alert-danger hidden mb-4",
+						role: "alert",
+					}
+					button {
+						type: "submit",
+						class: "admin-btn admin-btn-primary w-full py-2.5 text-base",
+						id: "login-submit-btn",
+						"Sign in"
+					}
+				})()
+			},
+		},
+	};
+
+	login_form.into_page()
 }
 
 /// Login view component for the WASM router.
