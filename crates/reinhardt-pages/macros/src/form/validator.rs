@@ -652,6 +652,7 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 	let mut disabled = false;
 	let mut readonly = false;
 	let mut autofocus = false;
+	let mut autocomplete = None;
 
 	for prop in properties {
 		match prop {
@@ -677,6 +678,13 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 					"help_text" => {
 						help_text =
 							Some(extract_string_value_from_expr(value, "help_text", *span)?);
+					}
+					"autocomplete" => {
+						autocomplete = Some(extract_string_value_from_expr(
+							value,
+							"autocomplete",
+							*span,
+						)?);
 					}
 					"disabled" => {
 						if let syn::Expr::Lit(lit) = value
@@ -737,6 +745,7 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 		disabled,
 		readonly,
 		autofocus,
+		autocomplete,
 	})
 }
 
