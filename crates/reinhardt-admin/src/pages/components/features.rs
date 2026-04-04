@@ -655,7 +655,7 @@ fn create_filter_select(
 	})();
 	let field_str = field.to_string();
 
-	page!(|field_str: String, filters_signal: Signal<HashMap<String, String>>| {
+	page!(|field_str: String, _filters_signal: Signal<HashMap<String, String>>| {
 		select {
 			class: "admin-select",
 			data_filter_field: field_str.clone(),
@@ -665,7 +665,7 @@ fn create_filter_select(
 					if let Ok(select_el) = target.dyn_into::<web_sys::HtmlSelectElement>() {
 						let value = select_el.value();
 						let field = field_str.clone();
-						filters_signal.update(move |map| {
+						_filters_signal.update(move |map| {
 							if value.is_empty() {
 								map.remove(&field);
 							} else {

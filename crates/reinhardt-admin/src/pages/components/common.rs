@@ -75,11 +75,11 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, on_click: Sign
 		})();
 	}
 
-	page!(|on_click: Signal<bool>| {
+	page!(|_on_click: Signal<bool>| {
 		button {
 			class: classes,
 			type: "button",
-			@click: move |_| { on_click.set(true); },
+			@click: move |_| { _on_click.set(true); },
 			{ text }
 		}
 	})(on_click)
@@ -259,11 +259,11 @@ where
 		})()
 	} else {
 		let handler: Arc<dyn Fn(Signal<u64>)> = Arc::new(handler);
-		page!(|signal: Signal<u64>, handler: Arc<dyn Fn(Signal<u64>)>| {
+		page!(|_signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>)>| {
 			a {
 				class: "admin-page-link",
 				href: "#",
-				@click: move |_| { handler(signal.clone()); },
+				@click: move |_| { _handler(_signal.clone()); },
 				{ text }
 			}
 		})(signal, handler)
