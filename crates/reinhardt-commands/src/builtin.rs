@@ -1365,20 +1365,20 @@ impl BaseCommand for RunServerCommand {
 			let no_wasm = ctx.has_option("no-wasm");
 			let force_wasm = ctx.has_option("force-wasm");
 			let wasm_optional = ctx.has_option("wasm-optional");
-			if with_pages && !no_wasm {
-				if let Err(e) = Self::build_pages_wasm(ctx, force_wasm) {
-					if wasm_optional {
-						ctx.warning(&format!(
-							"Pages WASM build failed: {}. Server will start without WASM frontend.",
-							e
-						));
-					} else {
-						ctx.error(&format!(
-							"WASM build failed: {}. Fix compilation errors or use --wasm-optional to start without WASM.",
-							e
-						));
-						return Ok(());
-					}
+			if with_pages
+				&& !no_wasm && let Err(e) = Self::build_pages_wasm(ctx, force_wasm)
+			{
+				if wasm_optional {
+					ctx.warning(&format!(
+						"Pages WASM build failed: {}. Server will start without WASM frontend.",
+						e
+					));
+				} else {
+					ctx.error(&format!(
+						"WASM build failed: {}. Fix compilation errors or use --wasm-optional to start without WASM.",
+						e
+					));
+					return Ok(());
 				}
 			}
 		}
@@ -3100,6 +3100,13 @@ mod tests {
 		use reinhardt_db::prelude::FieldType;
 		use tempfile::TempDir;
 
+		// Create a temporary project directory with the required structure
+		let project_dir = TempDir::new().unwrap();
+		std::fs::create_dir_all(project_dir.path().join("src/bin")).unwrap();
+		std::fs::write(project_dir.path().join("src/bin/manage.rs"), "fn main() {}").unwrap();
+		let original_dir = std::env::current_dir().unwrap();
+		std::env::set_current_dir(project_dir.path()).unwrap();
+
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
 		let migrations_dir = temp_dir.path();
@@ -3132,6 +3139,7 @@ mod tests {
 
 		let result = cmd.execute(&ctx).await;
 		unsafe { std::env::remove_var("DATABASE_URL") };
+		std::env::set_current_dir(&original_dir).unwrap();
 
 		// Should succeed (creates an empty migration)
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
@@ -3146,6 +3154,13 @@ mod tests {
 			prelude::FieldType,
 		};
 		use tempfile::TempDir;
+
+		// Create a temporary project directory with the required structure
+		let project_dir = TempDir::new().unwrap();
+		std::fs::create_dir_all(project_dir.path().join("src/bin")).unwrap();
+		std::fs::write(project_dir.path().join("src/bin/manage.rs"), "fn main() {}").unwrap();
+		let original_dir = std::env::current_dir().unwrap();
+		std::env::set_current_dir(project_dir.path()).unwrap();
 
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
@@ -3180,6 +3195,7 @@ mod tests {
 
 		let result = cmd.execute(&ctx).await;
 		unsafe { std::env::remove_var("DATABASE_URL") };
+		std::env::set_current_dir(&original_dir).unwrap();
 
 		// Should succeed (dry-run mode, no actual files created)
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
