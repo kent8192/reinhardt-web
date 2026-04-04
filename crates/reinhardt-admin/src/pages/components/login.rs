@@ -6,7 +6,6 @@ use reinhardt_pages::component::Page;
 use reinhardt_pages::form;
 use reinhardt_pages::page;
 
-
 /// Login form component
 ///
 /// Renders a login form with username and password fields.
