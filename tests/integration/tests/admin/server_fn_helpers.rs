@@ -29,6 +29,10 @@ pub const TEST_CSRF_TOKEN: &str = "test-csrf-token-for-integration-tests";
 /// Matches the row inserted into auth_user by `e2e_router_context`.
 pub const TEST_USER_UUID: &str = "00000000-0000-0000-0000-000000000001";
 
+/// Test host for E2E requests. Must match across Host and Origin headers
+/// to satisfy AdminOriginGuardMiddleware same-origin validation.
+pub const TEST_HOST: &str = "localhost";
+
 /// Creates a `ServerFnRequest` with staff authentication and CSRF cookie.
 ///
 /// The request has:
@@ -706,6 +710,8 @@ pub fn make_e2e_request(path: &str, body: serde_json::Value) -> reinhardt_http::
 	let request = reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
 		.header("cookie", format!("csrftoken={}", TEST_CSRF_TOKEN))
 		.body(hyper::body::Bytes::from(body_bytes))
@@ -726,6 +732,8 @@ pub fn make_e2e_request_no_csrf(path: &str, body: serde_json::Value) -> reinhard
 	let request = reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
 		.body(hyper::body::Bytes::from(body_bytes))
 		.build()
@@ -745,6 +753,8 @@ pub fn make_e2e_request_wrong_csrf(path: &str, body: serde_json::Value) -> reinh
 	let request = reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
 		.header("cookie", "csrftoken=wrong-token-value")
 		.body(hyper::body::Bytes::from(body_bytes))
@@ -768,6 +778,8 @@ pub fn make_e2e_request_non_staff(path: &str, body: serde_json::Value) -> reinha
 	let request = reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
 		.header("cookie", format!("__csrf_token={}", TEST_CSRF_TOKEN))
 		.body(hyper::body::Bytes::from(body_bytes))
@@ -792,6 +804,8 @@ pub fn make_e2e_request_inactive(path: &str, body: serde_json::Value) -> reinhar
 	let request = reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
 		.header("cookie", format!("__csrf_token={}", TEST_CSRF_TOKEN))
 		.body(hyper::body::Bytes::from(body_bytes))
@@ -813,6 +827,8 @@ pub fn make_e2e_request_no_auth(path: &str, body: serde_json::Value) -> reinhard
 	reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
 		.header("cookie", format!("csrftoken={}", TEST_CSRF_TOKEN))
 		.body(hyper::body::Bytes::from(body_bytes))
