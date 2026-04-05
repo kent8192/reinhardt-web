@@ -308,6 +308,20 @@ macro_rules! require_wasm {
 	};
 }
 
+/// Navigates within the WASM SPA without triggering a full page reload.
+///
+/// Uses `history.pushState` + `popstate` event to trigger the WASM router's
+/// re-render effect, then waits for the new view's async data to load.
+async fn spa_navigate(page: &CdpPage, path: &str) {
+	let js = format!(
+		"window.history.pushState({{}}, '', '{}'); \
+		 window.dispatchEvent(new PopStateEvent('popstate'));",
+		path
+	);
+	let _ = page.execute_js(&js).await;
+	tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+}
+
 /// Performs login through the WASM login form.
 ///
 /// JWT is set as an HTTP-Only cookie by the server (not exposed to JS),
@@ -491,8 +505,9 @@ async fn test_dashboard_shows_model_cards(#[future] e2e: E2eContext) {
 	let source = page.content().await.unwrap();
 	require_wasm!(&source);
 
+	// Login via form — on_success navigates to /admin/ via WASM router
 	inject_auth_token(&page, &ctx.server_url).await;
-	page.navigate(&format!("{}/admin/", ctx.server_url)).await.unwrap();
+	// Wait for dashboard server_fn (get_dashboard) to fetch and render
 	tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
 	let source = page.content().await.unwrap();
@@ -512,8 +527,7 @@ async fn test_dashboard_card_navigates_to_list(#[future] e2e: E2eContext) {
 	require_wasm!(&source);
 
 	inject_auth_token(&page, &ctx.server_url).await;
-	page.navigate(&format!("{}/admin/", ctx.server_url)).await.unwrap();
-	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+	tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
 	if page.click("a[href*='TestModel'], a[href*='testmodel']").await.is_ok() {
 		tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -536,8 +550,7 @@ async fn test_list_view_renders_table(#[future] e2e: E2eContext) {
 	require_wasm!(&source);
 
 	inject_auth_token(&page, &ctx.server_url).await;
-	page.navigate(&format!("{}/admin/TestModel/", ctx.server_url)).await.unwrap();
-	tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+	spa_navigate(&page, "/admin/TestModel/").await;
 
 	let source = page.content().await.unwrap();
 	assert!(source.contains("TestModel") || source.contains("List"), "Should show list heading");
@@ -559,8 +572,7 @@ async fn test_list_view_row_navigates_to_detail(#[future] e2e: E2eContext) {
 	require_wasm!(&source);
 
 	inject_auth_token(&page, &ctx.server_url).await;
-	page.navigate(&format!("{}/admin/TestModel/", ctx.server_url)).await.unwrap();
-	tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+	spa_navigate(&page, "/admin/TestModel/").await;
 
 	if page.click("a[href*='/admin/TestModel/1/']").await.is_ok() {
 		tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -586,8 +598,7 @@ async fn test_detail_view_has_edit_and_back(#[future] e2e: E2eContext) {
 	require_wasm!(&source);
 
 	inject_auth_token(&page, &ctx.server_url).await;
-	page.navigate(&format!("{}/admin/TestModel/1/", ctx.server_url)).await.unwrap();
-	tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+	spa_navigate(&page, "/admin/TestModel/1/").await;
 
 	let source = page.content().await.unwrap();
 	assert!(source.contains("Alice") || source.contains("Detail"), "Should show record data");
@@ -609,8 +620,7 @@ async fn test_create_form_renders(#[future] e2e: E2eContext) {
 	require_wasm!(&source);
 
 	inject_auth_token(&page, &ctx.server_url).await;
-	page.navigate(&format!("{}/admin/TestModel/add/", ctx.server_url)).await.unwrap();
-	tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+	spa_navigate(&page, "/admin/TestModel/add/").await;
 
 	let source = page.content().await.unwrap();
 	assert!(source.contains("Create") || source.contains("Add") || source.contains("form"), "Should show create form");
@@ -649,7 +659,7 @@ async fn test_edit_form_renders_with_values(#[future] e2e: E2eContext) {
 	require_wasm!(&source);
 
 	inject_auth_token(&page, &ctx.server_url).await;
-	page.navigate(&format!("{}/admin/TestModel/1/change/", ctx.server_url)).await.unwrap();
+	spa_navigate(&page, "/admin/TestModel/1/change/").await;
 	tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
 	let source = page.content().await.unwrap();
