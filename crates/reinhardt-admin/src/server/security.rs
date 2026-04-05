@@ -425,6 +425,7 @@ pub fn require_csrf_token(
 	Ok(())
 }
 
+
 /// Sanitizes mutation data values to prevent stored XSS.
 ///
 /// Checks all string values in the mutation data for dangerous HTML/JavaScript
