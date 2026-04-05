@@ -326,7 +326,7 @@ pub const CSRF_COOKIE_NAME: &str = "csrftoken";
 /// # Arguments
 ///
 /// * `headers` - The HTTP request headers
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub fn extract_csrf_header(headers: &hyper::HeaderMap) -> Option<String> {
 	headers
 		.get(CSRF_HEADER_NAME)
@@ -342,7 +342,7 @@ pub fn extract_csrf_header(headers: &hyper::HeaderMap) -> Option<String> {
 /// # Arguments
 ///
 /// * `headers` - The HTTP request headers
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub fn extract_csrf_cookie(headers: &hyper::HeaderMap) -> Option<String> {
 	headers
 		.get("cookie")
@@ -398,7 +398,7 @@ pub fn build_csrf_cookie(token: &str, is_secure: bool) -> String {
 /// - The `csrftoken` cookie is missing
 /// - The body token is empty
 /// - The tokens do not match
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub fn require_csrf_token(
 	body_token: &str,
 	headers: &hyper::HeaderMap,
@@ -580,8 +580,6 @@ pub fn extract_admin_auth_cookie(headers: &hyper::HeaderMap) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use std::str::FromStr;
-
 	use super::*;
 	use rstest::rstest;
 
@@ -1387,20 +1385,20 @@ mod tests {
 	#[rstest]
 	fn test_frame_options_from_str_deny() {
 		// Assert
-		assert_eq!(FrameOptions::from_str("deny").unwrap(), FrameOptions::Deny);
+		assert_eq!("deny".parse::<FrameOptions>().unwrap(), FrameOptions::Deny);
 	}
 
 	#[rstest]
 	fn test_frame_options_from_str_deny_uppercase() {
 		// Assert
-		assert_eq!(FrameOptions::from_str("DENY").unwrap(), FrameOptions::Deny);
+		assert_eq!("DENY".parse::<FrameOptions>().unwrap(), FrameOptions::Deny);
 	}
 
 	#[rstest]
 	fn test_frame_options_from_str_sameorigin() {
 		// Assert
 		assert_eq!(
-			FrameOptions::from_str("sameorigin").unwrap(),
+			"sameorigin".parse::<FrameOptions>().unwrap(),
 			FrameOptions::SameOrigin
 		);
 	}
@@ -1409,7 +1407,7 @@ mod tests {
 	fn test_frame_options_from_str_unknown_falls_back_to_deny() {
 		// Assert
 		assert_eq!(
-			FrameOptions::from_str("invalid").unwrap(),
+			"invalid".parse::<FrameOptions>().unwrap(),
 			FrameOptions::Deny
 		);
 	}
@@ -1422,7 +1420,7 @@ mod tests {
 	fn test_referrer_policy_from_str_no_referrer() {
 		// Assert
 		assert_eq!(
-			ReferrerPolicy::from_str("no-referrer").unwrap(),
+			"no-referrer".parse::<ReferrerPolicy>().unwrap(),
 			ReferrerPolicy::NoReferrer
 		);
 	}
@@ -1431,7 +1429,9 @@ mod tests {
 	fn test_referrer_policy_from_str_strict_origin() {
 		// Assert
 		assert_eq!(
-			ReferrerPolicy::from_str("strict-origin-when-cross-origin").unwrap(),
+			"strict-origin-when-cross-origin"
+				.parse::<ReferrerPolicy>()
+				.unwrap(),
 			ReferrerPolicy::StrictOriginWhenCrossOrigin
 		);
 	}
@@ -1440,7 +1440,7 @@ mod tests {
 	fn test_referrer_policy_from_str_same_origin() {
 		// Assert
 		assert_eq!(
-			ReferrerPolicy::from_str("same-origin").unwrap(),
+			"same-origin".parse::<ReferrerPolicy>().unwrap(),
 			ReferrerPolicy::SameOrigin
 		);
 	}
@@ -1449,7 +1449,7 @@ mod tests {
 	fn test_referrer_policy_from_str_unknown_falls_back() {
 		// Assert
 		assert_eq!(
-			ReferrerPolicy::from_str("invalid").unwrap(),
+			"invalid".parse::<ReferrerPolicy>().unwrap(),
 			ReferrerPolicy::StrictOriginWhenCrossOrigin
 		);
 	}

@@ -34,7 +34,7 @@
 
 // The `#[server_fn]` proc macro generates internal modules that cannot have doc comments.
 // Allow missing docs for all server function submodules.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub(crate) mod admin_auth;
 #[allow(missing_docs)]
 pub mod create;
@@ -45,7 +45,7 @@ pub mod delete;
 #[allow(missing_docs)]
 pub mod detail;
 /// Error handling utilities for server functions.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub mod error;
 #[allow(missing_docs)]
 pub mod export;
@@ -64,7 +64,7 @@ pub mod logout;
 mod serde_helpers;
 #[allow(missing_docs)]
 pub mod update;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub(crate) mod user;
 
 pub mod audit;
@@ -77,13 +77,13 @@ pub mod origin_guard;
 pub mod security;
 
 // Server-side only modules
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub mod type_inference;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub mod validation;
 
 // Re-exports
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub use admin_auth::AdminAuthenticatedUser;
 pub use create::*;
 pub use dashboard::*;
@@ -94,5 +94,5 @@ pub use fields::*;
 pub use import::*;
 pub use list::*;
 pub use update::*;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub use user::AdminDefaultUser;

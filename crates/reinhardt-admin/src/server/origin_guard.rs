@@ -268,10 +268,16 @@ mod tests {
 
 	#[test]
 	fn test_origin_matches_host() {
-		assert!(origin_matches_host("http://localhost:8000", "localhost:8000"));
+		assert!(origin_matches_host(
+			"http://localhost:8000",
+			"localhost:8000"
+		));
 		assert!(origin_matches_host("https://example.com", "example.com"));
 		assert!(!origin_matches_host("http://evil.com", "example.com"));
-		assert!(!origin_matches_host("http://localhost:9000", "localhost:8000"));
+		assert!(!origin_matches_host(
+			"http://localhost:9000",
+			"localhost:8000"
+		));
 	}
 
 	#[test]

@@ -55,7 +55,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 reinhardt-query = { workspace = true, features = ["derive"] }
 env_logger = "0.11"
-reqwest = { version = "0.12", features = ["json", "cookies"] }
+reqwest = { workspace = true, features = ["cookies"] }
 urlencoding = "2.1"
 serde_urlencoded = "0.7"
 tracing = { workspace = true }
@@ -98,6 +98,9 @@ mockall = { workspace = true }
 
 reinhardt-urls = { workspace = true, features = ["routers"] }
 reinhardt-conf = { workspace = true, features = ["settings", "async"], optional = true }
+
+[build-dependencies]
+cfg_aliases = "0.2"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

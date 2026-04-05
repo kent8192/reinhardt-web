@@ -25,9 +25,7 @@ use reinhardt_pages::server_fn::ServerFnRequest;
 /// // Browser deletes the auth cookie, subsequent requests are unauthenticated
 /// ```
 #[server_fn]
-pub async fn admin_logout(
-	#[inject] http_request: ServerFnRequest,
-) -> Result<(), ServerFnError> {
+pub async fn admin_logout(#[inject] http_request: ServerFnRequest) -> Result<(), ServerFnError> {
 	let cookie = build_admin_auth_cookie_clear();
 	let mut response_cookies = http_request
 		.inner()
