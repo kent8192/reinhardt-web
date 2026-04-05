@@ -213,10 +213,7 @@ pub mod http;
 pub mod i18n;
 #[cfg(all(feature = "mail", native))]
 pub mod mail;
-#[cfg(all(
-	any(feature = "standard", feature = "middleware"),
-	native
-))]
+#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
 pub mod middleware;
 #[cfg(all(feature = "rest", native))]
 pub mod rest;
@@ -665,11 +662,7 @@ pub use reinhardt_auth::{
 // Re-export argon2-hasher gated types (DefaultUser, DefaultUserManager, Argon2Hasher)
 // These require the argon2-hasher feature because the entire default_user module
 // in reinhardt-auth is conditionally compiled with #[cfg(feature = "argon2-hasher")]
-#[cfg(all(
-	feature = "auth",
-	feature = "argon2-hasher",
-	native
-))]
+#[cfg(all(feature = "auth", feature = "argon2-hasher", native))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "auth", feature = "argon2-hasher"))))]
 pub use reinhardt_auth::{Argon2Hasher, DefaultUser, DefaultUserManager};
 
@@ -730,11 +723,7 @@ pub use reinhardt_auth::{
 // Re-export middleware
 // AuthenticationMiddleware requires both sessions (for session backend) and
 // middleware (for the reinhardt-middleware crate dependency)
-#[cfg(all(
-	feature = "sessions",
-	feature = "middleware",
-	native
-))]
+#[cfg(all(feature = "sessions", feature = "middleware", native))]
 pub use reinhardt_middleware::AuthenticationMiddleware;
 
 // JWT authentication middleware (requires middleware-auth-jwt feature)
@@ -742,24 +731,14 @@ pub use reinhardt_middleware::AuthenticationMiddleware;
 pub use reinhardt_middleware::JwtAuthMiddleware;
 
 // Remote user authentication middleware (requires sessions + middleware)
-#[cfg(all(
-	feature = "sessions",
-	feature = "middleware",
-	native
-))]
+#[cfg(all(feature = "sessions", feature = "middleware", native))]
 pub use reinhardt_middleware::{PersistentRemoteUserMiddleware, RemoteUserMiddleware};
 
 // Login required middleware (available with any middleware feature)
-#[cfg(all(
-	any(feature = "standard", feature = "middleware"),
-	native
-))]
+#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
 pub use reinhardt_middleware::{LoginRequiredConfig, LoginRequiredMiddleware};
 
-#[cfg(all(
-	any(feature = "standard", feature = "middleware"),
-	native
-))]
+#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
 pub use reinhardt_middleware::LoggingMiddleware;
 
 #[cfg(all(feature = "middleware-cors", native))]
@@ -774,17 +753,11 @@ pub use reinhardt_middleware::SecurityMiddleware;
 pub use reinhardt_middleware::SecurityConfig;
 
 // CSP middleware (available with any middleware feature)
-#[cfg(all(
-	any(feature = "standard", feature = "middleware"),
-	native
-))]
+#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
 pub use reinhardt_middleware::{CspConfig, CspMiddleware, CspNonce};
 
 // XFrame middleware (available with any middleware feature)
-#[cfg(all(
-	any(feature = "standard", feature = "middleware"),
-	native
-))]
+#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
 pub use reinhardt_middleware::{XFrameOptions, XFrameOptionsMiddleware};
 
 // Re-export HTTP types (additional commonly used types)
@@ -904,11 +877,7 @@ pub use reinhardt_openapi::OpenApiRouter;
 #[cfg(all(feature = "shortcuts", native))]
 pub use reinhardt_shortcuts::{redirect, render_html, render_json, render_text};
 // ORM-integrated shortcuts require database feature
-#[cfg(all(
-	feature = "shortcuts",
-	feature = "database",
-	native
-))]
+#[cfg(all(feature = "shortcuts", feature = "database", native))]
 pub use reinhardt_shortcuts::{get_list_or_404, get_object_or_404};
 
 // Re-export URL utilities
@@ -941,11 +910,7 @@ pub use reinhardt_utils::cache::{Cache, CacheKeyBuilder, InMemoryCache};
 #[cfg(all(feature = "middleware", native))]
 pub use reinhardt_middleware::CacheMiddleware;
 
-#[cfg(all(
-	feature = "cache",
-	feature = "redis-backend",
-	native
-))]
+#[cfg(all(feature = "cache", feature = "redis-backend", native))]
 pub use reinhardt_utils::cache::RedisCache;
 
 // Re-export sessions (sessions feature)
@@ -954,11 +919,7 @@ pub use reinhardt_auth::sessions::{
 	CacheSessionBackend, InMemorySessionBackend, Session, SessionBackend, SessionError,
 };
 
-#[cfg(all(
-	feature = "sessions",
-	feature = "middleware",
-	native
-))]
+#[cfg(all(feature = "sessions", feature = "middleware", native))]
 pub use reinhardt_auth::sessions::{HttpSessionConfig, SameSite, SessionMiddleware};
 
 // Re-export contrib modules (contrib feature)
@@ -984,10 +945,7 @@ pub use reinhardt_di::{
 };
 
 // Re-export DI params - available in minimal, standard, and di features
-#[cfg(all(
-	any(feature = "minimal", feature = "standard", feature = "di"),
-	native
-))]
+#[cfg(all(any(feature = "minimal", feature = "standard", feature = "di"), native))]
 pub use reinhardt_di::params::{Body, Cookie, Header, Json, Path, Query};
 
 // Re-export template/rendering functionality from reinhardt-pages
@@ -1166,11 +1124,7 @@ pub mod prelude {
 	pub use crate::SecurityMiddleware;
 
 	// Sessions feature
-	#[cfg(all(
-		feature = "sessions",
-		feature = "middleware",
-		native
-	))]
+	#[cfg(all(feature = "sessions", feature = "middleware", native))]
 	pub use crate::AuthenticationMiddleware;
 	#[cfg(feature = "sessions")]
 	pub use crate::Session;

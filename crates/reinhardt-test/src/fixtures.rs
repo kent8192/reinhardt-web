@@ -37,32 +37,17 @@ pub use reinhardt_testkit::fixtures::*;
 pub mod auth;
 
 // Admin panel fixtures (depends on reinhardt-admin)
-#[cfg(all(
-	native,
-	feature = "admin",
-	feature = "testcontainers"
-))]
+#[cfg(all(native, feature = "admin", feature = "testcontainers"))]
 pub mod admin_panel;
 
 // Admin migration fixtures (depends on reinhardt-admin)
-#[cfg(all(
-	native,
-	feature = "admin",
-	feature = "testcontainers"
-))]
+#[cfg(all(native, feature = "admin", feature = "testcontainers"))]
 pub mod admin_migrations;
 
 // WASM frontend test fixtures and E2E browser testing fixtures
-#[cfg(any(
-	all(wasm, feature = "wasm"),
-	all(feature = "e2e", native)
-))]
+#[cfg(any(all(wasm, feature = "wasm"), all(feature = "e2e", native)))]
 pub mod wasm;
 
 // Admin integration fixtures (conditional on admin + testcontainers features)
-#[cfg(all(
-	native,
-	feature = "admin",
-	feature = "testcontainers"
-))]
+#[cfg(all(native, feature = "admin", feature = "testcontainers"))]
 pub use admin_migrations::{AdminTableCreator, admin_table_creator};
