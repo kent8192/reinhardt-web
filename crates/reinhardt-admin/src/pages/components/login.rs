@@ -5,9 +5,11 @@
 use reinhardt_pages::component::Page;
 use reinhardt_pages::form;
 use reinhardt_pages::page;
-use reinhardt_pages::ServerFnError;
-
+// Used in form! macro closure type annotations (WASM-only codegen)
+#[cfg(client)]
 use crate::types::responses::LoginResponse;
+#[cfg(client)]
+use reinhardt_pages::ServerFnError;
 
 /// Login form component
 ///
