@@ -179,6 +179,8 @@ pub mod request_id;
 #[cfg(feature = "security")]
 pub mod security_middleware;
 pub mod session;
+#[cfg(feature = "session-redis")]
+pub mod redis_session;
 pub mod site;
 pub mod timeout;
 pub mod tracing;
@@ -235,6 +237,8 @@ pub use request_id::{REQUEST_ID_HEADER, RequestIdConfig, RequestIdMiddleware};
 #[allow(deprecated)] // SecurityConfig is deprecated but still re-exported for compatibility
 pub use security_middleware::{SecurityConfig, SecurityMiddleware};
 pub use session::{SessionConfig, SessionData, SessionMiddleware, SessionStore};
+#[cfg(feature = "session-redis")]
+pub use redis_session::RedisSessionBackend;
 pub use site::{SITE_ID_HEADER, Site, SiteConfig, SiteMiddleware, SiteRegistry};
 pub use timeout::{TimeoutConfig, TimeoutMiddleware};
 pub use tracing::{
