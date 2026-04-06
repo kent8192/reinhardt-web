@@ -169,6 +169,7 @@ pub mod jwt_auth;
 pub mod locale;
 /// Structured request/response logging with configurable formats.
 pub mod logging;
+pub mod origin_guard;
 /// Login required middleware that redirects unauthenticated users to a login page.
 pub mod login_required;
 pub mod messages;
@@ -226,6 +227,7 @@ pub use cookie_session_auth::{CookieSessionAuthMiddleware, CookieSessionConfig};
 #[cfg(feature = "auth-jwt")]
 pub use jwt_auth::JwtAuthMiddleware;
 pub use locale::{LocaleConfig, LocaleMiddleware};
+pub use origin_guard::OriginGuardMiddleware;
 pub use logging::{LoggingConfig, LoggingMiddleware};
 pub use login_required::{
 	DEFAULT_LOGIN_URL, DEFAULT_REDIRECT_FIELD_NAME, LoginRequiredConfig, LoginRequiredMiddleware,
