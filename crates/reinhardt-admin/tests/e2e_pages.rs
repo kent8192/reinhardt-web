@@ -160,9 +160,17 @@ impl TestServer {
 		format!("http://127.0.0.1:{}", self.port)
 	}
 
-	/// URL reachable from inside Docker containers (macOS Docker Desktop).
+	/// URL reachable from inside Docker containers.
+	///
+	/// On macOS/Windows Docker Desktop, `host.docker.internal` resolves automatically.
+	/// On Linux (CI), the Docker bridge gateway `172.17.0.1` provides host access.
 	fn container_url(&self) -> String {
-		format!("http://host.docker.internal:{}", self.port)
+		let host = if cfg!(target_os = "macos") || cfg!(target_os = "windows") {
+			"host.docker.internal"
+		} else {
+			"172.17.0.1"
+		};
+		format!("http://{}:{}", host, self.port)
 	}
 }
 

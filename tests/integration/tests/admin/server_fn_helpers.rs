@@ -33,6 +33,10 @@ pub const TEST_USER_UUID: &str = "00000000-0000-0000-0000-000000000001";
 /// Matches the row inserted into auth_user by `e2e_router_context` with `is_active = false`.
 pub const TEST_INACTIVE_USER_UUID: &str = "00000000-0000-0000-0000-000000000002";
 
+/// Fixed UUID for the non-staff test user in E2E tests.
+/// Matches the row inserted into auth_user by `e2e_router_context` with `is_staff = false`.
+pub const TEST_NON_STAFF_USER_UUID: &str = "00000000-0000-0000-0000-000000000003";
+
 /// Test host for E2E requests. Must match across Host and Origin headers
 /// to satisfy AdminOriginGuardMiddleware same-origin validation.
 pub const TEST_HOST: &str = "localhost";
@@ -646,6 +650,18 @@ pub async fn e2e_router_context(
 	.await
 	.expect("Failed to insert inactive test staff user");
 
+	// Insert non-staff active user for testing is_staff rejection
+	pool.execute(
+		sqlx::query(
+			"INSERT INTO auth_user (id, username, email, is_active, is_staff, is_superuser, date_joined) \
+				 VALUES ($1, 'non_staff', 'nonstaff@test.example', true, false, false, NOW()) \
+				 ON CONFLICT (id) DO UPDATE SET is_active = true, is_staff = false",
+		)
+		.bind(Uuid::parse_str(TEST_NON_STAFF_USER_UUID).expect("Invalid TEST_NON_STAFF_USER_UUID")),
+	)
+	.await
+	.expect("Failed to insert non-staff test user");
+
 	// Build DatabaseConnection (shared between AdminDatabase and AuthUser injection)
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
@@ -802,10 +818,12 @@ pub fn make_e2e_request_non_staff(path: &str, body: serde_json::Value) -> reinha
 		.build()
 		.expect("Failed to build E2E request");
 
-	// Authenticated but NOT staff (is_admin=false)
-	request
-		.extensions
-		.insert(AuthState::authenticated(TEST_USER_UUID, false, true));
+	// Authenticated but NOT staff (is_admin=false) — uses the DB-non-staff user (Fixes #3367)
+	request.extensions.insert(AuthState::authenticated(
+		TEST_NON_STAFF_USER_UUID,
+		false,
+		true,
+	));
 
 	request
 }
