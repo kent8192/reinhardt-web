@@ -29,6 +29,10 @@ pub const TEST_CSRF_TOKEN: &str = "test-csrf-token-for-integration-tests";
 /// Matches the row inserted into auth_user by `e2e_router_context`.
 pub const TEST_USER_UUID: &str = "00000000-0000-0000-0000-000000000001";
 
+/// Fixed UUID for the inactive test user in E2E tests.
+/// Matches the row inserted into auth_user by `e2e_router_context` with `is_active = false`.
+pub const TEST_INACTIVE_USER_UUID: &str = "00000000-0000-0000-0000-000000000002";
+
 /// Test host for E2E requests. Must match across Host and Origin headers
 /// to satisfy AdminOriginGuardMiddleware same-origin validation.
 pub const TEST_HOST: &str = "localhost";
@@ -630,6 +634,18 @@ pub async fn e2e_router_context(
 	.await
 	.expect("Failed to insert test staff user");
 
+	// Insert inactive staff user for testing is_active rejection (Fixes #3367)
+	pool.execute(
+		sqlx::query(
+			"INSERT INTO auth_user (id, username, email, is_active, is_staff, is_superuser, date_joined) \
+				 VALUES ($1, 'inactive_staff', 'inactive@test.example', false, true, false, NOW()) \
+				 ON CONFLICT (id) DO UPDATE SET is_active = false, is_staff = true"
+		)
+		.bind(Uuid::parse_str(TEST_INACTIVE_USER_UUID).expect("Invalid TEST_INACTIVE_USER_UUID")),
+	)
+	.await
+	.expect("Failed to insert inactive test staff user");
+
 	// Build DatabaseConnection (shared between AdminDatabase and AuthUser injection)
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
@@ -812,10 +828,10 @@ pub fn make_e2e_request_inactive(path: &str, body: serde_json::Value) -> reinhar
 		.build()
 		.expect("Failed to build E2E request");
 
-	// Authenticated and staff but NOT active
+	// Authenticated and staff but NOT active — uses the DB-inactive user (Fixes #3367)
 	request
 		.extensions
-		.insert(AuthState::authenticated(TEST_USER_UUID, true, false));
+		.insert(AuthState::authenticated(TEST_INACTIVE_USER_UUID, true, false));
 
 	request
 }
