@@ -432,10 +432,7 @@ impl AdminSite {
 	/// # Deprecation
 	///
 	/// Use [`admin_routes_with_di()`] instead.
-	#[deprecated(
-		since = "0.1.0-rc.15",
-		note = "Use admin_routes_with_di(site) instead"
-	)]
+	#[deprecated(since = "0.1.0-rc.15", note = "Use admin_routes_with_di(site) instead")]
 	pub fn get_urls(self, _db: DatabaseConnection) -> ServerRouter {
 		let url_prefix = self.url_prefix.clone();
 		let (router, _registrations) = crate::core::router::admin_routes_with_di(Arc::new(self));
@@ -447,10 +444,7 @@ impl AdminSite {
 	/// # Deprecation
 	///
 	/// Use [`admin_routes_with_di()`] instead.
-	#[deprecated(
-		since = "0.1.0-rc.15",
-		note = "Use admin_routes_with_di(site) instead"
-	)]
+	#[deprecated(since = "0.1.0-rc.15", note = "Use admin_routes_with_di(site) instead")]
 	#[allow(deprecated)]
 	pub fn get_router(self, _db: DatabaseConnection) -> AdminRouter {
 		AdminRouter::from_arc(Arc::new(self))

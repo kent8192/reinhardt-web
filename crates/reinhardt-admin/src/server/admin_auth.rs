@@ -260,10 +260,9 @@ impl Injectable for AdminLoginAuthenticator {
 			.map(|arc| (*arc).clone())
 			.ok_or_else(|| DiError::NotRegistered {
 				type_name: "AdminLoginAuthenticator".into(),
-				hint:
-					"Call AdminSite::set_user_type::<U>() or use admin_routes_with_di() \
+				hint: "Call AdminSite::set_user_type::<U>() or use admin_routes_with_di() \
 				       which registers AdminDefaultUser as a fallback."
-						.into(),
+					.into(),
 			})
 	}
 }

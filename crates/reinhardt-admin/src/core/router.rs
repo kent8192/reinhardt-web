@@ -452,10 +452,7 @@ pub fn admin_routes_with_di(
 ///
 /// This struct is kept for backward compatibility with existing code.
 /// New code should use [`admin_routes_with_di()`] function directly.
-#[deprecated(
-	since = "0.1.0-rc.15",
-	note = "Use admin_routes_with_di(site) instead"
-)]
+#[deprecated(since = "0.1.0-rc.15", note = "Use admin_routes_with_di(site) instead")]
 pub struct AdminRouter {
 	site: Arc<AdminSite>,
 }
@@ -528,10 +525,7 @@ impl AdminRouter {
 	/// # Deprecation
 	///
 	/// Use [`admin_routes_with_di()`] instead.
-	#[deprecated(
-		since = "0.1.0-rc.15",
-		note = "Use admin_routes_with_di(site) instead"
-	)]
+	#[deprecated(since = "0.1.0-rc.15", note = "Use admin_routes_with_di(site) instead")]
 	pub fn routes(&self) -> ServerRouter {
 		let (router, _registrations) = admin_routes_with_di(Arc::clone(&self.site));
 		router
@@ -542,10 +536,7 @@ impl AdminRouter {
 	/// # Deprecation
 	///
 	/// Use [`admin_routes_with_di()`] instead.
-	#[deprecated(
-		since = "0.1.0-rc.15",
-		note = "Use admin_routes_with_di(site) instead"
-	)]
+	#[deprecated(since = "0.1.0-rc.15", note = "Use admin_routes_with_di(site) instead")]
 	pub fn build_with_di(self, singleton: &SingletonScope) -> ServerRouter {
 		let (router, registrations) = admin_routes_with_di(self.site);
 		registrations.apply_to(singleton);
@@ -557,10 +548,7 @@ impl AdminRouter {
 	/// # Deprecation
 	///
 	/// Use [`admin_routes_with_di()`] instead.
-	#[deprecated(
-		since = "0.1.0-rc.15",
-		note = "Use admin_routes_with_di(site) instead"
-	)]
+	#[deprecated(since = "0.1.0-rc.15", note = "Use admin_routes_with_di(site) instead")]
 	pub fn build(self) -> ServerRouter {
 		let (router, _registrations) = admin_routes_with_di(self.site);
 		router
