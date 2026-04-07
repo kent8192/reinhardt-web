@@ -21,7 +21,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use reinhardt_admin::core::{
-	AdminDatabase, AdminSite, AdminUser, ModelAdmin, admin_routes_with_di_deferred,
+	AdminDatabase, AdminSite, AdminUser, ModelAdmin, admin_routes_with_di,
 	admin_static_routes,
 };
 use reinhardt_auth::{Argon2Hasher, PasswordHasher};
@@ -263,7 +263,7 @@ async fn e2e(
 	site.register("TestModel", AllPermissionsModelAdmin::test_model("test_models"))
 		.expect("Failed to register TestModel");
 
-	let (admin_router, admin_di) = admin_routes_with_di_deferred(site);
+	let (admin_router, admin_di) = admin_routes_with_di(site);
 
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set_arc(db_conn);

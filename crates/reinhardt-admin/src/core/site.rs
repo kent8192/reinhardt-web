@@ -431,85 +431,40 @@ impl AdminSite {
 	///
 	/// # Deprecation
 	///
-	/// Use `admin_routes_with_di()` instead, which auto-registers `AdminSite`
-	/// in the singleton scope and does not require `DatabaseConnection`.
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_admin::core::{AdminSite, admin_routes_with_di};
-	/// use reinhardt_di::SingletonScope;
-	/// use std::sync::Arc;
-	///
-	/// let site = Arc::new(AdminSite::new("My Admin"));
-	/// let singleton = SingletonScope::new();
-	/// let router = admin_routes_with_di(site, &singleton);
-	/// ```
+	/// Use [`admin_routes_with_di()`] instead.
 	#[deprecated(
-		since = "0.1.0-rc.10",
-		note = "Use admin_routes_with_di(site, &singleton_scope) instead"
+		since = "0.1.0-rc.15",
+		note = "Use admin_routes_with_di(site) instead"
 	)]
-	#[allow(deprecated)]
 	pub fn get_urls(self, _db: DatabaseConnection) -> ServerRouter {
 		let url_prefix = self.url_prefix.clone();
-		let singleton = SingletonScope::new();
-		crate::core::router::admin_routes_with_di(Arc::new(self), &singleton)
-			.with_prefix(&url_prefix)
+		let (router, _registrations) = crate::core::router::admin_routes_with_di(Arc::new(self));
+		router.with_prefix(&url_prefix)
 	}
 
 	/// Get an AdminRouter for more control over route building
 	///
 	/// # Deprecation
 	///
-	/// Use `admin_routes_with_di()` or [`AdminRouter::build_with_di()`] instead.
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_admin::core::{AdminSite, AdminRouter};
-	/// use reinhardt_di::SingletonScope;
-	/// use std::sync::Arc;
-	///
-	/// let site = Arc::new(AdminSite::new("My Admin"));
-	/// let singleton = SingletonScope::new();
-	/// let router = AdminRouter::from_arc(site)
-	///     .build_with_di(&singleton);
-	/// ```
+	/// Use [`admin_routes_with_di()`] instead.
 	#[deprecated(
-		since = "0.1.0-rc.10",
-		note = "Use AdminRouter::build_with_di(&singleton_scope) or admin_routes_with_di(site, &singleton_scope) instead"
+		since = "0.1.0-rc.15",
+		note = "Use admin_routes_with_di(site) instead"
 	)]
+	#[allow(deprecated)]
 	pub fn get_router(self, _db: DatabaseConnection) -> AdminRouter {
 		AdminRouter::from_arc(Arc::new(self))
 	}
 
 	/// Configure dependency injection container for admin panel
 	///
-	/// Registers AdminSite, AdminDatabase, and optional favicon data
-	/// as singletons in the DI container. This allows handlers to use
-	/// `#[inject]` to automatically receive these dependencies.
-	///
 	/// # Deprecation
 	///
-	/// Use `admin_routes_with_di()` instead, which auto-registers `AdminSite`
-	/// in the singleton scope. `AdminDatabase` is now lazily constructed
-	/// from `DatabaseConnection` at request time.
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_admin::core::{AdminSite, admin_routes_with_di};
-	/// use reinhardt_di::{SingletonScope, InjectionContext};
-	/// use std::sync::Arc;
-	///
-	/// let site = Arc::new(AdminSite::new("My Admin"));
-	/// let singleton = Arc::new(SingletonScope::new());
-	/// let router = admin_routes_with_di(Arc::clone(&site), &singleton);
-	/// // AdminDatabase auto-constructs from DatabaseConnection at request time
-	/// ```
+	/// Use [`admin_routes_with_di()`] instead. `AdminDatabase` is now
+	/// lazily constructed from `DatabaseConnection` at request time.
 	#[deprecated(
-		since = "0.1.0-rc.10",
-		note = "Use admin_routes_with_di(site, &singleton_scope) instead. \
+		since = "0.1.0-rc.15",
+		note = "Use admin_routes_with_di(site) instead. \
 		        AdminDatabase is now auto-constructed from DatabaseConnection."
 	)]
 	pub fn configure_di(
@@ -518,15 +473,10 @@ impl AdminSite {
 		db: crate::core::AdminDatabase,
 		favicon_data: Option<Vec<u8>>,
 	) {
-		// Set favicon data on AdminSite if provided
 		if let Some(data) = favicon_data {
 			site.set_favicon(data);
 		}
-
-		// Register AdminSite as singleton (use set_arc to store with correct TypeId)
 		singleton.set_arc(site);
-
-		// Register AdminDatabase as singleton (use set_arc to store with correct TypeId)
 		singleton.set_arc(Arc::new(db));
 	}
 }
@@ -534,7 +484,7 @@ impl AdminSite {
 /// Injectable trait implementation for AdminSite
 ///
 /// Resolves `AdminSite` directly from the singleton scope.
-/// The `AdminSite` must be registered via `admin_routes_with_di_deferred()` which
+/// The `AdminSite` must be registered via `admin_routes_with_di()` which
 /// returns a `DiRegistrationList` to be attached to the router.
 #[async_trait]
 impl Injectable for AdminSite {
@@ -544,7 +494,7 @@ impl Injectable for AdminSite {
 			.ok_or_else(|| reinhardt_di::DiError::NotRegistered {
 				type_name: "AdminSite".into(),
 				hint: "AdminSite must be registered as a singleton. \
-				       Use admin_routes_with_di_deferred(site) and attach the returned \
+				       Use admin_routes_with_di(site) and attach the returned \
 				       DiRegistrationList via .with_di_registrations() on UnifiedRouter."
 					.into(),
 			})

@@ -591,7 +591,7 @@ fn build_auth_user_create_table_sql() -> String {
 pub async fn e2e_router_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
 ) -> (ServerRouter, Arc<AdminDatabase>) {
-	use reinhardt_admin::core::admin_routes_with_di_deferred;
+	use reinhardt_admin::core::admin_routes_with_di;
 
 	let (pool, _) = shared_db_pool.await;
 
@@ -642,7 +642,7 @@ pub async fn e2e_router_context(
 		.expect("Failed to register TestModel");
 
 	// Build admin router with deferred DI
-	let (admin_router, admin_di) = admin_routes_with_di_deferred(site);
+	let (admin_router, admin_di) = admin_routes_with_di(site);
 
 	// Build the complete router using UnifiedRouter API.
 	// Pre-seed singleton scope with DatabaseConnection so get_singleton() finds it.
@@ -663,7 +663,7 @@ pub async fn e2e_router_context(
 ///
 /// Intentionally omits `DatabaseConnection` from the singleton scope to test
 /// error behavior when DI dependencies are missing. All admin routes and
-/// `AdminUserLoader` are still registered via `admin_routes_with_di_deferred()`.
+/// `AdminUserLoader` are still registered via `admin_routes_with_di()`.
 ///
 /// Unlike `e2e_router_context`, this fixture:
 /// - Does NOT require a database pool
@@ -671,7 +671,7 @@ pub async fn e2e_router_context(
 /// - Returns only `ServerRouter` (no `AdminDatabase`)
 #[fixture]
 pub async fn e2e_router_context_no_db() -> ServerRouter {
-	use reinhardt_admin::core::admin_routes_with_di_deferred;
+	use reinhardt_admin::core::admin_routes_with_di;
 
 	// Build AdminSite and register test model
 	let site = Arc::new(AdminSite::new("E2E Test Admin (No DB)"));
@@ -680,7 +680,7 @@ pub async fn e2e_router_context_no_db() -> ServerRouter {
 		.expect("Failed to register TestModel");
 
 	// Build admin router with deferred DI
-	let (admin_router, admin_di) = admin_routes_with_di_deferred(site);
+	let (admin_router, admin_di) = admin_routes_with_di(site);
 
 	// Build singleton scope WITHOUT DatabaseConnection
 	let singleton = Arc::new(SingletonScope::new());
