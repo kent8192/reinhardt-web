@@ -4,7 +4,7 @@
 //! and error handling for various failure modes.
 
 use reinhardt_admin::adapters::LoginResponse;
-use reinhardt_admin::core::{AdminSite, admin_routes_with_di_deferred};
+use reinhardt_admin::core::{AdminSite, admin_routes_with_di};
 use reinhardt_admin::server::AdminDefaultUser;
 use reinhardt_admin::server::security::{CSRF_COOKIE_NAME, generate_csrf_token};
 use reinhardt_auth::BaseUser;
@@ -245,7 +245,7 @@ async fn build_login_router(pool: sqlx::PgPool, with_jwt_secret: bool) -> Server
 	let site = Arc::new(site);
 
 	// Build admin router with deferred DI
-	let (admin_router, admin_di) = admin_routes_with_di_deferred(site);
+	let (admin_router, admin_di) = admin_routes_with_di(site);
 
 	// Build complete router with DI
 	let singleton = Arc::new(SingletonScope::new());
@@ -462,7 +462,7 @@ async fn test_admin_login_authenticator_returns_error(
 	site.set_jwt_secret(TEST_JWT_SECRET);
 	let site = Arc::new(site);
 
-	let (admin_router, admin_di) = admin_routes_with_di_deferred(site);
+	let (admin_router, admin_di) = admin_routes_with_di(site);
 
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set_arc(db_conn);
