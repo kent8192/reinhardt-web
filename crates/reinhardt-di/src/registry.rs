@@ -37,7 +37,7 @@ pub trait FactoryTrait: Send + Sync {
 pub struct AsyncFactory<F, Fut, T>
 where
 	F: Fn(Arc<InjectionContext>) -> Fut + Send + Sync,
-	Fut: Future<Output = DiResult<T>> + Send + Sync,
+	Fut: Future<Output = DiResult<T>> + Send,
 	T: Any + Send + Sync + 'static,
 {
 	factory: F,
@@ -47,7 +47,7 @@ where
 impl<F, Fut, T> AsyncFactory<F, Fut, T>
 where
 	F: Fn(Arc<InjectionContext>) -> Fut + Send + Sync,
-	Fut: Future<Output = DiResult<T>> + Send + Sync,
+	Fut: Future<Output = DiResult<T>> + Send,
 	T: Any + Send + Sync + 'static,
 {
 	/// Creates a new async factory from the given closure.
@@ -63,7 +63,7 @@ where
 impl<F, Fut, T> FactoryTrait for AsyncFactory<F, Fut, T>
 where
 	F: Fn(Arc<InjectionContext>) -> Fut + Send + Sync,
-	Fut: Future<Output = DiResult<T>> + Send + Sync + 'static,
+	Fut: Future<Output = DiResult<T>> + Send + 'static,
 	T: Any + Send + Sync + 'static,
 {
 	async fn create(&self, ctx: &InjectionContext) -> DiResult<Arc<dyn Any + Send + Sync>> {
@@ -116,7 +116,7 @@ impl DependencyRegistry {
 	where
 		T: Any + Send + Sync + 'static,
 		F: Fn(Arc<InjectionContext>) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = DiResult<T>> + Send + Sync + 'static,
+		Fut: Future<Output = DiResult<T>> + Send + 'static,
 	{
 		self.register::<T>(scope, AsyncFactory::new(factory));
 	}
@@ -272,7 +272,7 @@ impl DependencyRegistration {
 	where
 		T: Any + Send + Sync + 'static,
 		F: Fn(Arc<InjectionContext>) -> Fut + Send + Sync + 'static + Clone,
-		Fut: Future<Output = DiResult<T>> + Send + Sync + 'static,
+		Fut: Future<Output = DiResult<T>> + Send + 'static,
 	{
 		let type_id = TypeId::of::<T>();
 		let register_fn = Box::new(move |registry: &DependencyRegistry| {
@@ -301,7 +301,7 @@ impl DependencyRegistration {
 	where
 		T: Any + Send + Sync + 'static,
 		F: Fn(Arc<InjectionContext>) -> Fut + Send + Sync + 'static + Clone,
-		Fut: Future<Output = DiResult<T>> + Send + Sync + 'static,
+		Fut: Future<Output = DiResult<T>> + Send + 'static,
 	{
 		let type_id = TypeId::of::<T>();
 		let deps_clone = dependencies.clone();
