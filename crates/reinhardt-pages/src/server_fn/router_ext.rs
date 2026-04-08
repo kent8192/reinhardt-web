@@ -91,7 +91,9 @@ impl ServerFnRouterExt for ServerRouter {
 		> {
 			Box::pin(async move {
 				// Clone extensions before moving the request into the handler.
-				// This allows extracting ResponseCookies set by the handler.
+				// Because Extensions uses Arc<Mutex<HashMap>>, the clone shares
+				// the same backing store. Any ResponseCookies the handler inserts
+				// into req.extensions will be visible through this clone.
 				let extensions = req.extensions.clone();
 
 				let mut response = match handler(req).await {
@@ -120,9 +122,9 @@ impl ServerFnRouterExt for ServerRouter {
 					}
 				};
 
-				// Apply response cookies set by the handler via request extensions.
-				// This enables server functions to set Set-Cookie headers
-				// (e.g., for CSRF double-submit cookie pattern).
+				// Extract ResponseCookies from the cloned extensions. Because
+				// the clone shares the same Arc<Mutex<HashMap>> backing store,
+				// cookies inserted by the handler are visible here.
 				if let Some(cookies) = extensions.remove::<ResponseCookies>() {
 					for cookie in cookies.cookies() {
 						response = response.append_header("Set-Cookie", cookie);

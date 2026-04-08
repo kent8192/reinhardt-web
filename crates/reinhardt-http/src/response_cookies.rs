@@ -1,26 +1,51 @@
 //! Response cookies for server function handlers.
 //!
 //! Allows server functions to set `Set-Cookie` headers on HTTP responses
-//! by inserting a [`ResponseCookies`] value into the request extensions.
-//! The server function router extracts these and applies them to the
-//! outgoing HTTP response.
+//! by inserting a [`ResponseCookies`] value into the request's
+//! [`Extensions`](crate::Extensions). The server function router
+//! automatically extracts these cookies and applies them as `Set-Cookie`
+//! headers on the outgoing HTTP response.
 //!
-//! # Example
+//! # How it works
+//!
+//! [`Extensions`](crate::Extensions) uses `Arc<Mutex<HashMap>>` internally,
+//! so cloning an `Extensions` value shares the same backing store. The
+//! server function router clones the request's extensions *before* calling
+//! the handler. Any [`ResponseCookies`] the handler inserts into
+//! `request.extensions` are therefore visible through the cloned reference,
+//! and the router can extract and apply them after the handler returns.
+//!
+//! # Usage in a handler
+//!
+//! Insert a [`ResponseCookies`] into the request's extensions inside your
+//! server function handler. **Do not** construct `ResponseCookies`
+//! separately and return it — it must be placed into the request's
+//! extensions so the router can find it.
 //!
 //! ```
 //! use reinhardt_http::ResponseCookies;
 //!
+//! // Inside a server function handler:
 //! let mut cookies = ResponseCookies::new();
 //! cookies.add("session=abc123; Path=/; HttpOnly".to_string());
+//! // request.extensions.insert(cookies);
+//!
 //! assert_eq!(cookies.cookies().len(), 1);
 //! ```
 
 /// A collection of `Set-Cookie` header values to include in the HTTP response.
 ///
-/// Server functions can insert this into the request's extensions to communicate
-/// cookies to the response layer. The server function router checks for this
-/// type in the request extensions and applies each cookie as a `Set-Cookie`
-/// header on the HTTP response.
+/// Server function handlers insert this into the request's
+/// [`Extensions`](crate::Extensions) to communicate cookies back to the
+/// response layer. Because `Extensions` is backed by `Arc<Mutex<HashMap>>`,
+/// cloning it shares the same underlying map. The server function router
+/// exploits this: it clones the extensions before invoking the handler, then
+/// extracts `ResponseCookies` from the clone afterwards. Each cookie is
+/// applied as a `Set-Cookie` header on the HTTP response.
+///
+/// **Important:** `ResponseCookies` must be inserted into the request's
+/// extensions — not held separately — for the cookies to reach the
+/// response.
 #[derive(Debug, Clone, Default)]
 pub struct ResponseCookies {
 	/// Cookie header values to include in the response
