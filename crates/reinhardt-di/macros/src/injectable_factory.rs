@@ -151,12 +151,14 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		#fn_vis async fn #fn_name(
 			ctx: ::std::sync::Arc<#di_crate::InjectionContext>,
 		) -> #di_crate::DiResult<#return_type> {
-			// Resolve #[inject] dependencies
-			#(#inject_resolutions)*
+			#di_crate::with_cycle_detection_scope(async {
+				// Resolve #[inject] dependencies
+				#(#inject_resolutions)*
 
-			// Call the original function
-			let result = #original_fn_name(#(#inject_param_names,)* #(#regular_param_names),*).await;
-			Ok(result)
+				// Call the original function
+				let result = #original_fn_name(#(#inject_param_names,)* #(#regular_param_names),*).await;
+				Ok(result)
+			}).await
 		}
 
 		// Registration function for const-safe inventory::submit
