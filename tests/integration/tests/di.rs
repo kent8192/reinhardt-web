@@ -57,3 +57,7 @@ mod provider_tests;
 
 #[path = "di/registry_tests.rs"]
 mod registry_tests;
+
+// Compile-time UI tests (trybuild)
+#[path = "di/ui.rs"]
+mod ui;
