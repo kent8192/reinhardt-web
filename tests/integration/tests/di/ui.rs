@@ -21,9 +21,6 @@ fn test_injectable_compile_fail_cases() {
 	// Test: Unknown macro argument should fail
 	t.compile_fail("tests/di/ui/fail/unknown_injectable_arg.rs");
 
-	// Test: scope attribute on struct injectable should fail (not yet supported)
-	t.compile_fail("tests/di/ui/fail/injectable_scope_unsupported.rs");
-
 	// Note: circular_dependency compiles but fails at runtime (tested in core_error_handling.rs)
 }
 
@@ -60,11 +57,17 @@ fn test_injectable_compile_pass_cases() {
 	// Test: Basic Injectable implementation
 	t.pass("tests/di/ui/pass/basic_injectable.rs");
 
+	// Test: Injectable with scope attribute
+	t.pass("tests/di/ui/pass/injectable_with_scope.rs");
+
 	// Test: Nested dependencies
 	t.pass("tests/di/ui/pass/nested_dependencies.rs");
 
 	// Test: Complex types (Vec, HashMap, Option)
 	t.pass("tests/di/ui/pass/complex_types.rs");
+
+	// Test: #[injectable_factory] with #[inject] parameters (T and Arc<T>)
+	t.pass("tests/di/ui/pass/injectable_factory_inject_params.rs");
 }
 
 // Note: Compile-pass tests for #[injectable_factory] are NOT possible via trybuild

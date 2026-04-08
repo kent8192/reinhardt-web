@@ -1,9 +1,9 @@
 //! Implementation of the `#[injectable_factory]` macro
 
 use crate::crate_paths::get_reinhardt_di_crate;
-use crate::utils::{extract_scope_from_args, is_inject_attr};
+use crate::utils::{extract_arc_inner_type, extract_scope_from_args, is_inject_attr};
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{FnArg, ItemFn, Pat, PatType, Result};
 
 /// Implementation of the `#[injectable_factory]` attribute macro
@@ -70,12 +70,26 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		));
 	}
 
-	// Generate dependency resolution code
+	// Generate dependency resolution code.
+	// `ctx.resolve::<T>()` returns `DiResult<Arc<T>>`, so we must handle two cases:
+	// - Parameter type is `Arc<T>`: resolve the inner `T`, result is already `Arc<T>`
+	// - Parameter type is `T` (non-Arc): resolve `T`, then clone out of the `Arc`
 	let inject_resolutions: Vec<_> = inject_params
 		.iter()
 		.map(|(pat, ty)| {
-			quote! {
-				let #pat: #ty = ctx.resolve::<#ty>().await?;
+			if let Some(inner_ty) = extract_arc_inner_type(ty) {
+				// Parameter is Arc<T>: resolve T, result Arc<T> matches directly
+				quote! {
+					let #pat: #ty = ctx.resolve::<#inner_ty>().await?;
+				}
+			} else {
+				// Parameter is T: resolve T, unwrap Arc<T> via clone
+				quote! {
+					let #pat: #ty = {
+						let __arc = ctx.resolve::<#ty>().await?;
+						(*__arc).clone()
+					};
+				}
 			}
 		})
 		.collect();
@@ -122,6 +136,9 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	// Generate type name for registration
 	let type_name = quote! { #return_type }.to_string();
 
+	// Generate registration function name for const-safe inventory submission
+	let register_fn_name = format_ident!("__reinhardt_register_{}", fn_name);
+
 	// Generate the expanded code
 	let expanded = quote! {
 		// Original implementation function (private)
@@ -142,12 +159,20 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 			Ok(result)
 		}
 
-		// Register with inventory
+		// Registration function for const-safe inventory::submit
+		fn #register_fn_name(registry: &#di_crate::DependencyRegistry) {
+			registry.register_async::<#return_type, _, _>(#scope_tokens, #fn_name);
+			registry.register_type_name(
+				::std::any::TypeId::of::<#return_type>(),
+				#type_name,
+			);
+		}
+
 		#di_crate::inventory::submit! {
-			#di_crate::DependencyRegistration::new::<#return_type, _, _>(
+			#di_crate::DependencyRegistration::new::<#return_type>(
 				#type_name,
 				#scope_tokens,
-				#fn_name
+				#register_fn_name
 			)
 		}
 	};
