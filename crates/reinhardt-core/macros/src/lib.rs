@@ -272,14 +272,11 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// # Usage
+/// # Supported Function Signatures
 ///
-/// In your `src/config/urls.rs`:
+/// ## 1. Sync function (standard)
 ///
 /// ```rust,ignore
-/// use reinhardt::prelude::*;
-/// use reinhardt::routes;
-///
 /// #[routes]
 /// pub fn routes() -> UnifiedRouter {
 ///     UnifiedRouter::new()
@@ -288,11 +285,35 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
+/// ## 2. Async function (no DI)
+///
+/// ```rust,ignore
+/// #[routes]
+/// pub async fn routes() -> UnifiedRouter {
+///     UnifiedRouter::new()
+///         .mount("/api/", api::routes())
+/// }
+/// ```
+///
+/// ## 3. Async function with `#[inject]` (DI-aware)
+///
+/// ```rust,ignore
+/// #[routes]
+/// pub async fn routes(#[inject] router: UnifiedRouter) -> UnifiedRouter {
+///     router
+/// }
+/// ```
+///
+/// When `#[inject]` parameters are present, the macro automatically creates
+/// a DI context (`SingletonScope` + `InjectionContext`) and resolves each
+/// injected dependency before calling the function.
+///
 /// # Notes
 ///
 /// - The function can have any name (e.g., `routes`, `app_routes`, `url_patterns`)
 /// - The return type must be `UnifiedRouter` (not `Arc<UnifiedRouter>`)
 /// - The framework automatically wraps the router in `Arc`
+/// - Sync functions cannot use `#[inject]` (DI resolution is inherently async)
 #[proc_macro_attribute]
 pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
