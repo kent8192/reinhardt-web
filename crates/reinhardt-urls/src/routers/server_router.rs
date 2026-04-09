@@ -1518,14 +1518,26 @@ impl ServerRouter {
 	/// let url = router.reverse("v1:users:detail", &[("id", "123")]);
 	/// ```
 	pub fn register_all_routes(&mut self) {
-		self.register_routes_recursive(None);
+		let registrations = self.collect_routes_recursive(None, "");
+		for (name, path) in registrations {
+			self.reverser.register_path(&name, &path);
+		}
 	}
 
-	/// Recursively register routes with namespaces
-	fn register_routes_recursive(&mut self, parent_namespace: Option<&str>) {
+	/// Recursively collect all routes with accumulated prefixes and namespaces.
+	///
+	/// Returns a list of `(qualified_name, full_path)` pairs to be registered
+	/// in the root router's reverser.
+	fn collect_routes_recursive(
+		&self,
+		parent_namespace: Option<&str>,
+		parent_prefix: &str,
+	) -> Vec<(String, String)> {
 		let full_namespace = self.get_full_namespace(parent_namespace);
+		let current_prefix = super::path_utils::join_prefix_path(parent_prefix, &self.prefix);
+		let mut registrations = Vec::new();
 
-		// Register routes from this router
+		// Collect routes from this router
 		for route in &self.routes {
 			if let Some(name) = &route.name {
 				let qualified_name = if let Some(ref ns) = full_namespace {
@@ -1534,12 +1546,12 @@ impl ServerRouter {
 					name.clone()
 				};
 
-				// Register with UrlReverser
-				self.reverser.register_path(&qualified_name, &route.path);
+				let full_path = super::path_utils::join_prefix_path(&current_prefix, &route.path);
+				registrations.push((qualified_name, full_path));
 			}
 		}
 
-		// Register function routes (if they get names in the future)
+		// Collect function routes
 		for func_route in &self.functions {
 			if let Some(ref name) = func_route.name {
 				let qualified_name = if let Some(ref ns) = full_namespace {
@@ -1548,12 +1560,13 @@ impl ServerRouter {
 					name.clone()
 				};
 
-				self.reverser
-					.register_path(&qualified_name, &func_route.path);
+				let full_path =
+					super::path_utils::join_prefix_path(&current_prefix, &func_route.path);
+				registrations.push((qualified_name, full_path));
 			}
 		}
 
-		// Register view routes (if they get names in the future)
+		// Collect view routes
 		for view_route in &self.views {
 			if let Some(ref name) = view_route.name {
 				let qualified_name = if let Some(ref ns) = full_namespace {
@@ -1562,21 +1575,21 @@ impl ServerRouter {
 					name.clone()
 				};
 
-				self.reverser
-					.register_path(&qualified_name, &view_route.path);
+				let full_path =
+					super::path_utils::join_prefix_path(&current_prefix, &view_route.path);
+				registrations.push((qualified_name, full_path));
 			}
 		}
 
-		// Register ViewSet routes with standard names
+		// Collect ViewSet routes with standard names
 		for prefix in self.viewsets.keys() {
-			let base_path = if self.prefix.is_empty() {
+			let base_path = if current_prefix.is_empty() {
 				format!("/{}", prefix)
 			} else {
-				format!("{}/{}", self.prefix, prefix)
+				format!("{}/{}", current_prefix, prefix)
 			};
 
-			// Standard ViewSet action names
-			let viewset_routes = vec![
+			let viewset_routes = [
 				(format!("{}-list", prefix), format!("{}/", base_path)),
 				(format!("{}-detail", prefix), format!("{}/<id>/", base_path)),
 			];
@@ -1588,14 +1601,17 @@ impl ServerRouter {
 					name
 				};
 
-				self.reverser.register_path(&qualified_name, &path);
+				registrations.push((qualified_name, path));
 			}
 		}
 
-		// Recursively register child routes
-		for child in &mut self.children {
-			child.register_routes_recursive(full_namespace.as_deref());
+		// Recursively collect child routes
+		for child in &self.children {
+			registrations
+				.extend(child.collect_routes_recursive(full_namespace.as_deref(), &current_prefix));
 		}
+
+		registrations
 	}
 
 	/// Reverse a URL by route name
@@ -2171,7 +2187,7 @@ mod tests {
 		// Assert
 		let url = api.reverse("v1:users:list", &[]);
 		assert!(url.is_some());
-		assert_eq!(url.unwrap(), "/list");
+		assert_eq!(url.unwrap(), "/api/v1/users/list");
 	}
 
 	#[rstest]
