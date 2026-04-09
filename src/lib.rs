@@ -635,8 +635,9 @@ pub use reinhardt_views::viewsets::{
 // Re-export routers
 #[cfg(native)]
 pub use reinhardt_urls::routers::{
-	DefaultRouter, PathMatcher, PathPattern, Route, Router, ServerRouter, UrlPatternsRegistration,
-	clear_router, get_router, is_router_registered, register_router, register_router_arc,
+	DefaultRouter, PathMatcher, PathPattern, Route, Router, RouterFactory, ServerRouter,
+	UrlPatternsRegistration, clear_router, get_router, is_router_registered, register_router,
+	register_router_arc,
 };
 
 // Re-export client-router types (requires client-router feature)
