@@ -171,27 +171,34 @@ impl<B: AsyncSessionBackend + 'static> Middleware for CookieSessionAuthMiddlewar
 								.get("user_id")
 								.and_then(|v| serde_json::from_value(v.clone()).ok())
 								.unwrap_or_default();
-							let is_staff: bool = session
-								.data
-								.get("is_staff")
-								.and_then(|v| serde_json::from_value(v.clone()).ok())
-								.unwrap_or(false);
-							let is_superuser: bool = session
-								.data
-								.get("is_superuser")
-								.and_then(|v| serde_json::from_value(v.clone()).ok())
-								.unwrap_or(false);
 
-							let is_admin = is_staff || is_superuser;
-							let is_active = true;
+							if user_id.is_empty() {
+								// Corrupted session: user_id missing or empty
+								let _ = self.backend.destroy(sid).await;
+								AuthState::anonymous()
+							} else {
+								let is_staff: bool = session
+									.data
+									.get("is_staff")
+									.and_then(|v| serde_json::from_value(v.clone()).ok())
+									.unwrap_or(false);
+								let is_superuser: bool = session
+									.data
+									.get("is_superuser")
+									.and_then(|v| serde_json::from_value(v.clone()).ok())
+									.unwrap_or(false);
 
-							// Insert backward compat values
-							request.extensions.insert(user_id.clone());
-							request.extensions.insert(IsAuthenticated(true));
-							request.extensions.insert(IsAdmin(is_admin));
-							request.extensions.insert(IsActive(is_active));
+								let is_admin = is_staff || is_superuser;
+								let is_active = true;
 
-							AuthState::authenticated(user_id, is_admin, is_active)
+								// Insert backward compat values
+								request.extensions.insert(user_id.clone());
+								request.extensions.insert(IsAuthenticated(true));
+								request.extensions.insert(IsAdmin(is_admin));
+								request.extensions.insert(IsActive(is_active));
+
+								AuthState::authenticated(user_id, is_admin, is_active)
+							}
 						}
 					}
 					_ => AuthState::anonymous(),
@@ -506,6 +513,51 @@ mod tests {
 		assert_eq!(body["user_id"], "super-1");
 		assert_eq!(body["is_admin"], true);
 		assert_eq!(body["is_active"], true);
+	}
+
+	/// Create a session with no "user_id" key in data.
+	fn make_session_without_user_id(id: &str) -> SessionData {
+		let mut session = make_session(id, "", false, false);
+		session.data.remove("user_id");
+		session
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_empty_user_id_produces_anonymous_and_destroys_session() {
+		// Arrange
+		let backend = Arc::new(MockBackend::new());
+		backend.insert(make_session("sess-empty", "", false, false));
+		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let handler = Arc::new(TestHandler);
+		let request = create_request_with_cookie("sessionid=sess-empty");
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert
+		let body = parse_response_body(&response);
+		assert_eq!(body["is_authenticated"], false);
+		assert!(backend.was_destroyed("sess-empty"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_missing_user_id_produces_anonymous_and_destroys_session() {
+		// Arrange
+		let backend = Arc::new(MockBackend::new());
+		backend.insert(make_session_without_user_id("sess-no-uid"));
+		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let handler = Arc::new(TestHandler);
+		let request = create_request_with_cookie("sessionid=sess-no-uid");
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert
+		let body = parse_response_body(&response);
+		assert_eq!(body["is_authenticated"], false);
+		assert!(backend.was_destroyed("sess-no-uid"));
 	}
 
 	#[rstest]
