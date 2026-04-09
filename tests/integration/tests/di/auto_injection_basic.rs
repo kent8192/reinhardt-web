@@ -210,8 +210,11 @@ async fn test_depends_resolve_for_registry_type() {
 
 /// Verify that `Depends<T>` caching works correctly for factory-registered types.
 ///
-/// When resolved twice with `use_cache=true`, the same `Arc` instance should
-/// be returned (singleton behavior).
+/// When resolved twice with `use_cache=true`, `T::inject()` (and the
+/// underlying registry factory) is invoked only once. The second call
+/// returns a value from the request-scope cache. Note that each
+/// `Depends` wraps a fresh `Arc`, so pointer identity is NOT preserved;
+/// only value equality is guaranteed.
 #[tokio::test]
 #[serial(di_auto_injection)]
 async fn test_depends_caching_for_registry_type() {
@@ -224,7 +227,7 @@ async fn test_depends_caching_for_registry_type() {
 	let depends1 = Depends::<AppConfig>::resolve(&ctx, true).await.unwrap();
 	let depends2 = Depends::<AppConfig>::resolve(&ctx, true).await.unwrap();
 
-	// Assert — both should wrap the same underlying Arc
+	// Assert — cached values are equal (fresh Arc wrappers, same inner value)
 	assert_eq!(*depends1, *depends2);
 }
 

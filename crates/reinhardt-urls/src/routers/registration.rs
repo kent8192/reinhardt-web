@@ -83,9 +83,8 @@ use std::sync::Arc;
 /// Used by `RouterFactory::Async` and `UrlPatternsRegistration::__macro_new_async`.
 pub type AsyncRouterFactoryFn = fn() -> Pin<
 	Box<
-		dyn Future<
-				Output = Result<Arc<ServerRouter>, Box<dyn std::error::Error + Send + Sync>>,
-			> + Send,
+		dyn Future<Output = Result<Arc<ServerRouter>, Box<dyn std::error::Error + Send + Sync>>>
+			+ Send,
 	>,
 >;
 
