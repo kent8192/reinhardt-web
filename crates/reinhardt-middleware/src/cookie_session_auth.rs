@@ -515,17 +515,9 @@ mod tests {
 
 	/// Create a session with no "user_id" key in data.
 	fn make_session_without_user_id(id: &str) -> SessionData {
-		let now = SystemTime::now();
-		let mut data = HashMap::new();
-		data.insert("is_staff".to_string(), serde_json::Value::Bool(false));
-		data.insert("is_superuser".to_string(), serde_json::Value::Bool(false));
-		SessionData {
-			id: id.to_string(),
-			data,
-			created_at: now,
-			last_accessed: now,
-			expires_at: now + Duration::from_secs(3600),
-		}
+		let mut session = make_session(id, "", false, false);
+		session.data.remove("user_id");
+		session
 	}
 
 	#[rstest]
@@ -549,7 +541,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_missing_user_id_produces_anonymous() {
+	async fn test_missing_user_id_produces_anonymous_and_destroys_session() {
 		// Arrange
 		let backend = Arc::new(MockBackend::new());
 		backend.insert(make_session_without_user_id("sess-no-uid"));
