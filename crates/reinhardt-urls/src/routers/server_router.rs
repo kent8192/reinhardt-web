@@ -1072,9 +1072,8 @@ impl ServerRouter {
 			// (e.g., server functions register as "/api/server_fn/login"). Since resolve()
 			// strips the prefix from incoming request paths before matching against matchit,
 			// we must also strip the prefix here during compilation.
-			let route_path_owned =
-				Self::strip_prefix_normalized(&self.prefix, &func_route.path)
-					.unwrap_or_else(|| Cow::Borrowed(&func_route.path));
+			let route_path_owned = Self::strip_prefix_normalized(&self.prefix, &func_route.path)
+				.unwrap_or_else(|| Cow::Borrowed(&func_route.path));
 			let route_path: &str = &route_path_owned;
 
 			// matchit uses {name} format which matches our pattern
@@ -1108,9 +1107,8 @@ impl ServerRouter {
 			};
 
 			// Strip prefix from route path (same reason as function routes above)
-			let route_path_owned =
-				Self::strip_prefix_normalized(&self.prefix, &view_route.path)
-					.unwrap_or_else(|| Cow::Borrowed(&view_route.path));
+			let route_path_owned = Self::strip_prefix_normalized(&self.prefix, &view_route.path)
+				.unwrap_or_else(|| Cow::Borrowed(&view_route.path));
 			let route_path: &str = &route_path_owned;
 
 			// Register view for all common HTTP methods
@@ -1142,9 +1140,8 @@ impl ServerRouter {
 			};
 
 			// Strip prefix from route path (same reason as function routes above)
-			let route_path_owned =
-				Self::strip_prefix_normalized(&self.prefix, &route.path)
-					.unwrap_or_else(|| Cow::Borrowed(&route.path));
+			let route_path_owned = Self::strip_prefix_normalized(&self.prefix, &route.path)
+				.unwrap_or_else(|| Cow::Borrowed(&route.path));
 			let route_path: &str = &route_path_owned;
 
 			// Register raw route for all common HTTP methods
@@ -1521,14 +1518,41 @@ impl ServerRouter {
 	/// let url = router.reverse("v1:users:detail", &[("id", "123")]);
 	/// ```
 	pub fn register_all_routes(&mut self) {
-		self.register_routes_recursive(None);
+		let registrations = self.collect_routes_recursive(None, "");
+		for (name, path) in registrations {
+			self.reverser.register_path(&name, &path);
+		}
 	}
 
-	/// Recursively register routes with namespaces
-	fn register_routes_recursive(&mut self, parent_namespace: Option<&str>) {
-		let full_namespace = self.get_full_namespace(parent_namespace);
+	/// Join a prefix and a path, collapsing any double slashes at the boundary.
+	fn join_prefix_path(prefix: &str, path: &str) -> String {
+		if prefix.is_empty() {
+			return path.to_string();
+		}
+		if path.is_empty() {
+			return prefix.to_string();
+		}
+		if prefix.ends_with('/') && path.starts_with('/') {
+			format!("{}{}", prefix, &path[1..])
+		} else {
+			format!("{}{}", prefix, path)
+		}
+	}
 
-		// Register routes from this router
+	/// Recursively collect all routes with accumulated prefixes and namespaces.
+	///
+	/// Returns a list of `(qualified_name, full_path)` pairs to be registered
+	/// in the root router's reverser.
+	fn collect_routes_recursive(
+		&self,
+		parent_namespace: Option<&str>,
+		parent_prefix: &str,
+	) -> Vec<(String, String)> {
+		let full_namespace = self.get_full_namespace(parent_namespace);
+		let current_prefix = Self::join_prefix_path(parent_prefix, &self.prefix);
+		let mut registrations = Vec::new();
+
+		// Collect routes from this router
 		for route in &self.routes {
 			if let Some(name) = &route.name {
 				let qualified_name = if let Some(ref ns) = full_namespace {
@@ -1537,12 +1561,12 @@ impl ServerRouter {
 					name.clone()
 				};
 
-				// Register with UrlReverser
-				self.reverser.register_path(&qualified_name, &route.path);
+				let full_path = Self::join_prefix_path(&current_prefix, &route.path);
+				registrations.push((qualified_name, full_path));
 			}
 		}
 
-		// Register function routes (if they get names in the future)
+		// Collect function routes
 		for func_route in &self.functions {
 			if let Some(ref name) = func_route.name {
 				let qualified_name = if let Some(ref ns) = full_namespace {
@@ -1551,12 +1575,12 @@ impl ServerRouter {
 					name.clone()
 				};
 
-				self.reverser
-					.register_path(&qualified_name, &func_route.path);
+				let full_path = Self::join_prefix_path(&current_prefix, &func_route.path);
+				registrations.push((qualified_name, full_path));
 			}
 		}
 
-		// Register view routes (if they get names in the future)
+		// Collect view routes
 		for view_route in &self.views {
 			if let Some(ref name) = view_route.name {
 				let qualified_name = if let Some(ref ns) = full_namespace {
@@ -1565,21 +1589,20 @@ impl ServerRouter {
 					name.clone()
 				};
 
-				self.reverser
-					.register_path(&qualified_name, &view_route.path);
+				let full_path = Self::join_prefix_path(&current_prefix, &view_route.path);
+				registrations.push((qualified_name, full_path));
 			}
 		}
 
-		// Register ViewSet routes with standard names
+		// Collect ViewSet routes with standard names
 		for prefix in self.viewsets.keys() {
-			let base_path = if self.prefix.is_empty() {
+			let base_path = if current_prefix.is_empty() {
 				format!("/{}", prefix)
 			} else {
-				format!("{}/{}", self.prefix, prefix)
+				format!("{}/{}", current_prefix, prefix)
 			};
 
-			// Standard ViewSet action names
-			let viewset_routes = vec![
+			let viewset_routes = [
 				(format!("{}-list", prefix), format!("{}/", base_path)),
 				(format!("{}-detail", prefix), format!("{}/<id>/", base_path)),
 			];
@@ -1591,14 +1614,17 @@ impl ServerRouter {
 					name
 				};
 
-				self.reverser.register_path(&qualified_name, &path);
+				registrations.push((qualified_name, path));
 			}
 		}
 
-		// Recursively register child routes
-		for child in &mut self.children {
-			child.register_routes_recursive(full_namespace.as_deref());
+		// Recursively collect child routes
+		for child in &self.children {
+			registrations
+				.extend(child.collect_routes_recursive(full_namespace.as_deref(), &current_prefix));
 		}
+
+		registrations
 	}
 
 	/// Reverse a URL by route name
@@ -2174,7 +2200,7 @@ mod tests {
 		// Assert
 		let url = api.reverse("v1:users:list", &[]);
 		assert!(url.is_some());
-		assert_eq!(url.unwrap(), "/list");
+		assert_eq!(url.unwrap(), "/api/v1/users/list");
 	}
 
 	#[rstest]
@@ -2783,10 +2809,7 @@ mod tests {
 	#[case("/", "")]
 	// Error: prefix longer than path
 	#[case("/api/v2/", "/api/")]
-	fn test_strip_prefix_normalized_returns_none(
-		#[case] prefix: &str,
-		#[case] path: &str,
-	) {
+	fn test_strip_prefix_normalized_returns_none(#[case] prefix: &str, #[case] path: &str) {
 		// Act
 		let result = ServerRouter::strip_prefix_normalized(prefix, path);
 
@@ -2827,9 +2850,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_resolve_trailing_slash_prefix_child_router_matches() {
 		// Arrange: parent with trailing-slash prefix, child with its own prefix
-		let child = ServerRouter::new()
-			.with_prefix("/auth/")
-			.function("/auth/register/", Method::POST, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/auth/").function(
+			"/auth/register/",
+			Method::POST,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api/")
 			.mount("/auth/", child);
@@ -2850,9 +2875,11 @@ mod tests {
 		// Arrange: parent with_prefix (no trailing slash) + child mounted with trailing slash
 		// Note: mount() requires trailing-slash prefix (Django convention),
 		// but with_prefix() allows non-trailing-slash prefix
-		let child = ServerRouter::new()
-			.with_prefix("/auth/")
-			.function("/auth/login/", Method::POST, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/auth/").function(
+			"/auth/login/",
+			Method::POST,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api")
 			.mount("/auth/", child);
@@ -2871,12 +2898,16 @@ mod tests {
 	#[tokio::test]
 	async fn test_resolve_multiple_children_with_trailing_slash_prefix() {
 		// Arrange: parent with trailing-slash prefix, multiple children
-		let auth = ServerRouter::new()
-			.with_prefix("/auth/")
-			.function("/auth/login/", Method::POST, dummy_handler);
-		let users = ServerRouter::new()
-			.with_prefix("/users/")
-			.function("/users/", Method::GET, dummy_handler);
+		let auth = ServerRouter::new().with_prefix("/auth/").function(
+			"/auth/login/",
+			Method::POST,
+			dummy_handler,
+		);
+		let users = ServerRouter::new().with_prefix("/users/").function(
+			"/users/",
+			Method::GET,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api/")
 			.mount("/auth/", auth)
@@ -2897,9 +2928,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_resolve_child_root_route_with_trailing_slash_prefix() {
 		// Arrange: child's own root route (prefix stripped → "/")
-		let child = ServerRouter::new()
-			.with_prefix("/dashboard/")
-			.function("/dashboard/", Method::GET, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/dashboard/").function(
+			"/dashboard/",
+			Method::GET,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/app/")
 			.mount("/dashboard/", child);
@@ -2918,9 +2951,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_resolve_parent_own_route_still_works_with_trailing_slash_prefix() {
 		// Arrange: parent has both own routes and children
-		let child = ServerRouter::new()
-			.with_prefix("/sub/")
-			.function("/sub/action/", Method::POST, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/sub/").function(
+			"/sub/action/",
+			Method::POST,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api/")
 			.function("/api/health", Method::GET, dummy_handler)
@@ -2943,9 +2978,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_resolve_deeply_nested_trailing_slash_prefixes() {
 		// Arrange: 3 levels of trailing-slash prefixes
-		let grandchild = ServerRouter::new()
-			.with_prefix("/profile/")
-			.function("/profile/", Method::GET, dummy_handler);
+		let grandchild = ServerRouter::new().with_prefix("/profile/").function(
+			"/profile/",
+			Method::GET,
+			dummy_handler,
+		);
 		let child = ServerRouter::new()
 			.with_prefix("/users/")
 			.mount("/profile/", grandchild);
@@ -2967,9 +3004,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_resolve_mixed_trailing_and_non_trailing_slash_nesting() {
 		// Arrange: with_prefix uses non-trailing slash, mount uses trailing slash
-		let grandchild = ServerRouter::new()
-			.with_prefix("/detail")
-			.function("/detail/", Method::GET, dummy_handler);
+		let grandchild = ServerRouter::new().with_prefix("/detail").function(
+			"/detail/",
+			Method::GET,
+			dummy_handler,
+		);
 		let child = ServerRouter::new()
 			.with_prefix("/items/")
 			.mount("/detail/", grandchild);
@@ -2993,9 +3032,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_resolve_path_not_matching_parent_prefix() {
 		// Arrange
-		let child = ServerRouter::new()
-			.with_prefix("/auth/")
-			.function("/auth/login/", Method::POST, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/auth/").function(
+			"/auth/login/",
+			Method::POST,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api/")
 			.mount("/auth/", child);
@@ -3014,9 +3055,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_resolve_path_matches_parent_but_not_child() {
 		// Arrange
-		let child = ServerRouter::new()
-			.with_prefix("/auth/")
-			.function("/auth/login/", Method::POST, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/auth/").function(
+			"/auth/login/",
+			Method::POST,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api/")
 			.mount("/auth/", child);
@@ -3035,9 +3078,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_resolve_wrong_method_through_child_with_trailing_slash_prefix() {
 		// Arrange: child only has POST route
-		let child = ServerRouter::new()
-			.with_prefix("/auth/")
-			.function("/auth/login/", Method::POST, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/auth/").function(
+			"/auth/login/",
+			Method::POST,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api/")
 			.mount("/auth/", child);
@@ -3058,9 +3103,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_exists_with_trailing_slash_prefix_and_child() {
 		// Arrange
-		let child = ServerRouter::new()
-			.with_prefix("/users/")
-			.function("/users/", Method::GET, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/users/").function(
+			"/users/",
+			Method::GET,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api/")
 			.mount("/users/", child);
@@ -3079,9 +3126,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_exists_nonexistent_path_with_trailing_slash_prefix() {
 		// Arrange
-		let child = ServerRouter::new()
-			.with_prefix("/users/")
-			.function("/users/", Method::GET, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/users/").function(
+			"/users/",
+			Method::GET,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api/")
 			.mount("/users/", child);
@@ -3100,9 +3149,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_exists_wrong_prefix_returns_false() {
 		// Arrange
-		let child = ServerRouter::new()
-			.with_prefix("/users/")
-			.function("/users/", Method::GET, dummy_handler);
+		let child = ServerRouter::new().with_prefix("/users/").function(
+			"/users/",
+			Method::GET,
+			dummy_handler,
+		);
 		let parent = ServerRouter::new()
 			.with_prefix("/api/")
 			.mount("/users/", child);
@@ -3121,9 +3172,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_exists_deeply_nested_with_trailing_slash_prefix() {
 		// Arrange: 3-level nesting
-		let grandchild = ServerRouter::new()
-			.with_prefix("/edit/")
-			.function("/edit/", Method::PUT, dummy_handler);
+		let grandchild = ServerRouter::new().with_prefix("/edit/").function(
+			"/edit/",
+			Method::PUT,
+			dummy_handler,
+		);
 		let child = ServerRouter::new()
 			.with_prefix("/items/")
 			.mount("/edit/", grandchild);
@@ -3167,23 +3220,19 @@ mod tests {
 	#[should_panic(expected = "URL route prefix cannot be an empty string")]
 	fn test_mount_with_empty_prefix_panics() {
 		// Arrange & Act: mounting with empty prefix should panic
-		let child = ServerRouter::new()
-			.function("/catch/", Method::GET, dummy_handler);
-		let _parent = ServerRouter::new()
-			.with_prefix("/api/")
-			.mount("", child);
+		let child = ServerRouter::new().function("/catch/", Method::GET, dummy_handler);
+		let _parent = ServerRouter::new().with_prefix("/api/").mount("", child);
 	}
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_resolve_child_with_slash_prefix_under_trailing_slash_parent() {
 		// Arrange: child router with "/" prefix under parent with trailing-slash prefix
-		let child = ServerRouter::new()
-			.with_prefix("/")
-			.function("/catch/", Method::GET, dummy_handler);
-		let parent = ServerRouter::new()
-			.with_prefix("/api/")
-			.mount("/", child);
+		let child =
+			ServerRouter::new()
+				.with_prefix("/")
+				.function("/catch/", Method::GET, dummy_handler);
+		let parent = ServerRouter::new().with_prefix("/api/").mount("/", child);
 
 		// Act
 		let result = parent.resolve("/api/catch/", &Method::GET);

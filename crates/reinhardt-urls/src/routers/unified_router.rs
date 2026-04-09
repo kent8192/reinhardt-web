@@ -442,7 +442,6 @@ impl UnifiedRouter {
 	/// Registers server router globally.
 	pub fn register_globally(mut self) {
 		self.flush_di_registrations();
-		self.server.register_all_routes();
 		crate::routers::register_router(self.server);
 	}
 
@@ -836,8 +835,12 @@ mod tests {
 		fn into_server_registers_routes_for_reverse() {
 			// Arrange
 			let router = UnifiedRouter::new().server(|s| {
-				s.with_namespace("api")
-					.function_named("/health", Method::GET, "health", dummy_handler)
+				s.with_namespace("api").function_named(
+					"/health",
+					Method::GET,
+					"health",
+					dummy_handler,
+				)
 			});
 
 			// Act
@@ -853,8 +856,12 @@ mod tests {
 		fn into_parts_registers_routes_for_reverse() {
 			// Arrange
 			let router = UnifiedRouter::new().server(|s| {
-				s.with_namespace("api")
-					.function_named("/health", Method::GET, "health", dummy_handler)
+				s.with_namespace("api").function_named(
+					"/health",
+					Method::GET,
+					"health",
+					dummy_handler,
+				)
 			});
 
 			// Act
