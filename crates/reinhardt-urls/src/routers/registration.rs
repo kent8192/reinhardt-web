@@ -82,7 +82,10 @@ use std::sync::Arc;
 /// Used by [`RouterFactory::Async`] and [`UrlPatternsRegistration::__macro_new_async`]
 /// when `#[routes]` is applied to an `async fn` with optional `#[inject]` DI parameters.
 type AsyncRouterFactoryFn = fn() -> Pin<
-	Box<dyn Future<Output = Result<Arc<ServerRouter>, Box<dyn std::error::Error + Send + Sync>>> + Send>,
+	Box<
+		dyn Future<Output = Result<Arc<ServerRouter>, Box<dyn std::error::Error + Send + Sync>>>
+			+ Send,
+	>,
 >;
 
 /// Factory for creating server routers, supporting both sync and async creation.
