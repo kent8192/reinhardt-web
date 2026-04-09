@@ -1150,10 +1150,7 @@ impl ServerRouter {
 
 			// Strip prefix from route path (same reason as function routes above)
 			let route_path = if !self.prefix.is_empty() {
-				route
-					.path
-					.strip_prefix(&self.prefix)
-					.unwrap_or(&route.path)
+				route.path.strip_prefix(&self.prefix).unwrap_or(&route.path)
 			} else {
 				&route.path
 			};
@@ -2680,9 +2677,11 @@ mod tests {
 	async fn test_function_route_with_prefix_strips_prefix_during_compilation() {
 		// Arrange: register a route whose path already contains the prefix,
 		// simulating server function registration (e.g., ServerFnRegistration::PATH)
-		let router = ServerRouter::new()
-			.with_prefix("/api")
-			.function("/api/server_fn/test", Method::POST, dummy_handler);
+		let router = ServerRouter::new().with_prefix("/api").function(
+			"/api/server_fn/test",
+			Method::POST,
+			dummy_handler,
+		);
 
 		// Act: resolve the full path (resolve() strips "/api" before matchit lookup)
 		let result = router.resolve("/api/server_fn/test", &Method::POST);
@@ -2698,9 +2697,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_function_route_post_with_prefix_no_405() {
 		// Arrange: register a POST route with a path that includes the prefix
-		let router = ServerRouter::new()
-			.with_prefix("/api")
-			.function("/api/users", Method::POST, dummy_handler);
+		let router = ServerRouter::new().with_prefix("/api").function(
+			"/api/users",
+			Method::POST,
+			dummy_handler,
+		);
 
 		// Act: resolve POST request (verifies no 405 Method Not Allowed)
 		let result = router.resolve("/api/users", &Method::POST);
@@ -2723,9 +2724,10 @@ mod tests {
 	#[tokio::test]
 	async fn test_function_route_without_prefix_overlap_still_works() {
 		// Arrange: route path does not start with the prefix
-		let router = ServerRouter::new()
-			.with_prefix("/api")
-			.function("/health", Method::GET, dummy_handler);
+		let router =
+			ServerRouter::new()
+				.with_prefix("/api")
+				.function("/health", Method::GET, dummy_handler);
 
 		// Act: resolve a path under the prefix
 		let result = router.resolve("/api/health", &Method::GET);
