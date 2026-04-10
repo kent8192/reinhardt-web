@@ -11,7 +11,7 @@ async fn main() {
 	let singleton = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton).build();
 	// This line should fail: NonInjectableService is not Injectable
-	let service = Depends::<NonInjectableService>::resolve(&ctx)
+	let service = Depends::<NonInjectableService>::resolve(&ctx, true)
 		.await
 		.unwrap();
 	println!("{}", service.value);
