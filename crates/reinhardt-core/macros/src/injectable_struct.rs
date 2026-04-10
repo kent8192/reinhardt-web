@@ -178,6 +178,11 @@ pub(crate) fn injectable_struct_impl(
 	let generics = &input.generics;
 	let where_clause = &generics.where_clause;
 
+	// Auto-derive Clone for DI-ready types (required by Depends<T>)
+	if !has_clone_derive(&input.attrs) {
+		input.attrs.push(syn::parse_quote!(#[derive(Clone)]));
+	}
+
 	// Prebuilt mode: skip field validation and Injectable impl generation.
 	// The struct is expected to have a manual Injectable impl and to be
 	// manually registered in SingletonScope via set_arc() before resolution.
@@ -263,11 +268,6 @@ pub(crate) fn injectable_struct_impl(
 				scope: options.scope,
 			});
 		}
-	}
-
-	// Auto-derive Clone for DI-ready types (required by Depends<T>)
-	if !has_clone_derive(&input.attrs) {
-		input.attrs.push(syn::parse_quote!(#[derive(Clone)]));
 	}
 
 	// Get dynamic crate paths
