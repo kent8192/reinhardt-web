@@ -614,13 +614,19 @@ mod tests {
 		let result = injectable_struct_impl(args, input);
 
 		// Assert
-		assert!(result.is_ok());
-		let output = result.unwrap().to_string();
-		// quote! emits "# [derive (Clone)]" with spaces; normalize for assertion
-		let normalized = output.replace(' ', "");
+		let output = result.unwrap();
+		let file: syn::File = syn::parse2(output.clone()).expect("output should parse");
+		let item_struct = file
+			.items
+			.iter()
+			.find_map(|item| match item {
+				syn::Item::Struct(s) if s.ident == "Foo" => Some(s),
+				_ => None,
+			})
+			.expect("output should contain struct Foo");
 		assert!(
-			normalized.contains("#[derive(Clone)]"),
-			"Output should contain Clone derive: {output}"
+			has_clone_derive(&item_struct.attrs),
+			"Output should derive Clone: {output}"
 		);
 	}
 
@@ -638,10 +644,31 @@ mod tests {
 		let result = injectable_struct_impl(args, input);
 
 		// Assert
-		assert!(result.is_ok());
-		let output = result.unwrap().to_string();
-		// Should contain exactly one Clone derive (the original), not two
-		let clone_count = output.matches("Clone").count();
-		assert_eq!(clone_count, 1, "Clone should appear exactly once: {output}");
+		let output = result.unwrap();
+		let file: syn::File = syn::parse2(output.clone()).expect("output should parse");
+		let item_struct = file
+			.items
+			.iter()
+			.find_map(|item| match item {
+				syn::Item::Struct(s) if s.ident == "Foo" => Some(s),
+				_ => None,
+			})
+			.expect("output should contain struct Foo");
+		let clone_count = item_struct
+			.attrs
+			.iter()
+			.filter(|attr| attr.path().is_ident("derive"))
+			.map(|attr| {
+				attr.parse_args_with(
+					syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+				)
+				.map(|paths| paths.iter().filter(|p| p.is_ident("Clone")).count())
+				.unwrap_or(0)
+			})
+			.sum::<usize>();
+		assert_eq!(
+			clone_count, 1,
+			"Clone should appear exactly once in derive attributes: {output}"
+		);
 	}
 }
