@@ -461,6 +461,42 @@ impl DefaultSource {
 		self.values.extend(defaults);
 		self
 	}
+
+	/// Create a `DefaultSource` pre-populated with the minimum required dynamic
+	/// fields for deserializing into `Settings`.
+	///
+	/// Only `base_dir` and `secret_key` need to be provided because all other
+	/// fields have `#[serde(default)]` attributes on the `Settings` and
+	/// `CoreSettings` structs. Use `.with_value()` to override specific defaults
+	/// when needed.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::sources::DefaultSource;
+	/// use std::path::Path;
+	///
+	/// // Minimal: only required dynamic fields
+	/// let source = DefaultSource::for_settings(
+	///     Path::new("/app"),
+	///     "my-secret-key".to_string(),
+	/// );
+	///
+	/// // With overrides for site-specific values
+	/// let source = DefaultSource::for_settings(
+	///     Path::new("/app"),
+	///     "my-secret-key".to_string(),
+	/// )
+	/// .with_value("use_i18n", serde_json::Value::Bool(false));
+	/// ```
+	pub fn for_settings(base_dir: &Path, secret_key: String) -> Self {
+		Self::new()
+			.with_value(
+				"base_dir",
+				Value::String(base_dir.to_string_lossy().into_owned()),
+			)
+			.with_value("secret_key", Value::String(secret_key))
+	}
 }
 
 impl Default for DefaultSource {
@@ -707,5 +743,42 @@ secret_key = "test-key"
 		assert_eq!(DotEnvSource::new().priority(), 90);
 		assert_eq!(TomlFileSource::new("test.toml").priority(), 50);
 		assert_eq!(DefaultSource::new().priority(), 0);
+	}
+
+	#[test]
+	fn test_default_source_for_settings() {
+		// Arrange / Act
+		let source =
+			DefaultSource::for_settings(Path::new("/my-app"), "my-secret-key".to_string());
+		let config = source.load().unwrap();
+
+		// Assert: only base_dir and secret_key are set
+		assert_eq!(
+			config.get("base_dir").unwrap(),
+			&Value::String("/my-app".to_string())
+		);
+		assert_eq!(
+			config.get("secret_key").unwrap(),
+			&Value::String("my-secret-key".to_string())
+		);
+		assert_eq!(config.len(), 2);
+	}
+
+	#[test]
+	fn test_default_source_for_settings_with_overrides() {
+		// Arrange / Act
+		let source =
+			DefaultSource::for_settings(Path::new("/app"), "secret".to_string())
+				.with_value("use_i18n", Value::Bool(false))
+				.with_value("static_root", Value::String("/app/static".to_string()));
+		let config = source.load().unwrap();
+
+		// Assert: base_dir, secret_key, plus overrides
+		assert_eq!(config.len(), 4);
+		assert_eq!(config.get("use_i18n").unwrap(), &Value::Bool(false));
+		assert_eq!(
+			config.get("static_root").unwrap(),
+			&Value::String("/app/static".to_string())
+		);
 	}
 }

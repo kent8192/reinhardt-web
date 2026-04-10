@@ -139,27 +139,34 @@ pub struct Settings {
 	/// **Note:** Currently not consumed by the framework. Reserved for future
 	/// template engine integration. Setting this value has no effect on framework
 	/// behavior.
+	#[serde(default = "default_templates")]
 	pub templates: Vec<TemplateConfig>,
 
 	/// Static files URL prefix.
+	#[serde(default = "default_static_url")]
 	pub static_url: String,
 
 	/// Static files root directory.
+	#[serde(default)]
 	pub static_root: Option<PathBuf>,
 
 	/// Additional static files directories (STATICFILES_DIRS).
+	#[serde(default)]
 	pub staticfiles_dirs: Vec<PathBuf>,
 
 	/// Media files URL prefix.
+	#[serde(default = "default_media_url")]
 	pub media_url: String,
 
 	/// Media files root directory.
+	#[serde(default)]
 	pub media_root: Option<PathBuf>,
 
 	/// Language code for internationalization.
 	///
 	/// **Note:** Currently not consumed by the framework. Reserved for future
 	/// i18n implementation. Setting this value has no effect on framework behavior.
+	#[serde(default = "default_language_code")]
 	pub language_code: String,
 
 	/// Time zone for datetime handling.
@@ -167,12 +174,14 @@ pub struct Settings {
 	/// **Note:** Currently not consumed by the framework. Reserved for future
 	/// timezone support implementation. Setting this value has no effect on
 	/// framework behavior.
+	#[serde(default = "default_time_zone")]
 	pub time_zone: String,
 
 	/// Enable internationalization.
 	///
 	/// **Note:** Currently not consumed by the framework. Reserved for future
 	/// i18n implementation. Setting this value has no effect on framework behavior.
+	#[serde(default = "default_use_i18n")]
 	pub use_i18n: bool,
 
 	/// Use timezone-aware datetimes.
@@ -180,6 +189,7 @@ pub struct Settings {
 	/// **Note:** Currently not consumed by the framework. Reserved for future
 	/// timezone support implementation. Setting this value has no effect on
 	/// framework behavior.
+	#[serde(default = "default_use_tz")]
 	pub use_tz: bool,
 
 	/// Default auto field type for models.
@@ -187,14 +197,17 @@ pub struct Settings {
 	/// **Note:** Currently not consumed by the framework. Reserved for future
 	/// auto field configuration. Setting this value has no effect on framework
 	/// behavior.
+	#[serde(default = "default_auto_field")]
 	pub default_auto_field: String,
 
 	/// List of administrators who receive error notifications.
 	/// Django equivalent: ADMINS = [('name', 'email'), ...]
+	#[serde(default)]
 	pub admins: Vec<Contact>,
 
 	/// List of managers who receive broken link notifications, etc.
 	/// Django equivalent: MANAGERS = [('name', 'email'), ...]
+	#[serde(default)]
 	pub managers: Vec<Contact>,
 }
 
@@ -228,17 +241,17 @@ impl Settings {
 				debug: true,
 				..Default::default()
 			},
-			templates: vec![TemplateConfig::default()],
-			static_url: "/static/".to_string(),
+			templates: default_templates(),
+			static_url: default_static_url(),
 			static_root: None,
 			staticfiles_dirs: vec![],
-			media_url: "/media/".to_string(),
+			media_url: default_media_url(),
 			media_root: None,
-			language_code: "en-us".to_string(),
-			time_zone: "UTC".to_string(),
-			use_i18n: true,
-			use_tz: true,
-			default_auto_field: "reinhardt.db.models.BigAutoField".to_string(),
+			language_code: default_language_code(),
+			time_zone: default_time_zone(),
+			use_i18n: default_use_i18n(),
+			use_tz: default_use_tz(),
+			default_auto_field: default_auto_field(),
 			admins: vec![],
 			managers: vec![],
 		}
@@ -448,6 +461,41 @@ impl Settings {
 			media_url: Some(self.media_url.clone()),
 		})
 	}
+}
+
+// Serde default functions for Settings fields.
+// These return the same values as Settings::new() to maintain a single source of truth.
+
+fn default_templates() -> Vec<TemplateConfig> {
+	vec![TemplateConfig::default()]
+}
+
+fn default_static_url() -> String {
+	"/static/".to_string()
+}
+
+fn default_media_url() -> String {
+	"/media/".to_string()
+}
+
+fn default_language_code() -> String {
+	"en-us".to_string()
+}
+
+fn default_time_zone() -> String {
+	"UTC".to_string()
+}
+
+fn default_use_i18n() -> bool {
+	true
+}
+
+fn default_use_tz() -> bool {
+	true
+}
+
+fn default_auto_field() -> String {
+	"reinhardt.db.models.BigAutoField".to_string()
 }
 
 #[allow(deprecated)] // Internal: Settings is deprecated but we still need to implement Default
@@ -739,5 +787,95 @@ mod tests {
 		assert_eq!(core.base_dir, PathBuf::from("/app"));
 		assert_eq!(core.secret_key, "test-secret");
 		assert!(core.debug);
+	}
+
+	#[rstest]
+	fn test_settings_deserialize_minimal_fields() {
+		// Arrange: only required fields (secret_key, base_dir)
+		let json = serde_json::json!({
+			"secret_key": "test-secret",
+			"base_dir": "/app"
+		});
+
+		// Act
+		let settings: Settings = serde_json::from_value(json).unwrap();
+
+		// Assert: all other fields use serde defaults matching Settings::new()
+		assert_eq!(settings.core.secret_key, "test-secret");
+		assert_eq!(settings.core.base_dir, PathBuf::from("/app"));
+		assert_eq!(settings.static_url, "/static/");
+		assert_eq!(settings.media_url, "/media/");
+		assert_eq!(settings.language_code, "en-us");
+		assert_eq!(settings.time_zone, "UTC");
+		assert!(settings.use_i18n);
+		assert!(settings.use_tz);
+		assert_eq!(
+			settings.default_auto_field,
+			"reinhardt.db.models.BigAutoField"
+		);
+		assert!(settings.static_root.is_none());
+		assert!(settings.media_root.is_none());
+		assert!(settings.staticfiles_dirs.is_empty());
+		assert!(settings.admins.is_empty());
+		assert!(settings.managers.is_empty());
+	}
+
+	#[rstest]
+	fn test_settings_deserialize_with_override() {
+		// Arrange: override some fields while omitting others
+		let json = serde_json::json!({
+			"secret_key": "test-secret",
+			"base_dir": "/app",
+			"static_url": "/assets/",
+			"use_i18n": false
+		});
+
+		// Act
+		let settings: Settings = serde_json::from_value(json).unwrap();
+
+		// Assert: overridden fields have custom values
+		assert_eq!(settings.static_url, "/assets/");
+		assert!(!settings.use_i18n);
+		// Assert: non-overridden fields still use defaults
+		assert_eq!(settings.media_url, "/media/");
+		assert!(settings.use_tz);
+		assert_eq!(settings.language_code, "en-us");
+	}
+
+	#[rstest]
+	fn test_settings_deserialize_all_fields_backward_compat() {
+		// Arrange: specify all fields explicitly (old pattern)
+		let json = serde_json::json!({
+			"secret_key": "my-secret",
+			"base_dir": "/my-app",
+			"debug": false,
+			"templates": [],
+			"static_url": "/static/",
+			"static_root": "/my-app/static",
+			"staticfiles_dirs": ["/extra"],
+			"media_url": "/media/",
+			"media_root": "/my-app/media",
+			"language_code": "ja",
+			"time_zone": "Asia/Tokyo",
+			"use_i18n": true,
+			"use_tz": true,
+			"default_auto_field": "reinhardt.db.models.BigAutoField",
+			"admins": [{"name": "Admin", "email": "admin@example.com"}],
+			"managers": []
+		});
+
+		// Act
+		let settings: Settings = serde_json::from_value(json).unwrap();
+
+		// Assert: all explicit values preserved
+		assert_eq!(settings.core.secret_key, "my-secret");
+		assert_eq!(settings.core.base_dir, PathBuf::from("/my-app"));
+		assert!(!settings.core.debug);
+		assert_eq!(settings.language_code, "ja");
+		assert_eq!(settings.time_zone, "Asia/Tokyo");
+		assert_eq!(settings.static_root, Some(PathBuf::from("/my-app/static")));
+		assert_eq!(settings.media_root, Some(PathBuf::from("/my-app/media")));
+		assert_eq!(settings.admins.len(), 1);
+		assert_eq!(settings.admins[0].name, "Admin");
 	}
 }
