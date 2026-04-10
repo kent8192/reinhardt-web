@@ -863,54 +863,15 @@ async fn execute_collectstatic(
 	let merged = SettingsBuilder::new()
 		.profile(profile)
 		.add_source(
-			DefaultSource::new()
-				.with_value(
-					"base_dir",
-					Value::String(
-						base_dir
-							.to_str()
-							.ok_or_else(|| {
-								format!("base_dir contains invalid UTF-8: {}", base_dir.display())
-							})?
-							.to_string(),
-					),
-				)
-				.with_value("debug", Value::Bool(true))
-				.with_value("secret_key", Value::String(default_secret_key))
-				.with_value("allowed_hosts", Value::Array(vec![]))
-				.with_value("installed_apps", Value::Array(vec![]))
-				.with_value("databases", serde_json::json!({}))
-				.with_value("templates", Value::Array(vec![]))
-				.with_value("static_url", Value::String("/static/".to_string()))
+			DefaultSource::for_settings(&base_dir, default_secret_key)
+				// Override: collectstatic needs static_root set
 				.with_value(
 					"static_root",
 					Value::String(base_dir.join("staticfiles").to_string_lossy().to_string()),
 				)
-				.with_value("staticfiles_dirs", Value::Array(vec![]))
-				.with_value("media_url", Value::String("/media/".to_string()))
-				.with_value("language_code", Value::String("en-us".to_string()))
-				.with_value("time_zone", Value::String("UTC".to_string()))
+				// Override: disable i18n/tz for CLI commands
 				.with_value("use_i18n", Value::Bool(false))
-				.with_value("use_tz", Value::Bool(false))
-				.with_value(
-					"default_auto_field",
-					Value::String("reinhardt.db.models.BigAutoField".to_string()),
-				)
-				.with_value("secure_ssl_redirect", Value::Bool(false))
-				.with_value("secure_hsts_include_subdomains", Value::Bool(false))
-				.with_value("secure_hsts_preload", Value::Bool(false))
-				.with_value("session_cookie_secure", Value::Bool(false))
-				.with_value("csrf_cookie_secure", Value::Bool(false))
-				.with_value("append_slash", Value::Bool(false))
-				// Middleware
-				.with_value("middleware", Value::Array(vec![]))
-				// URL configuration
-				.with_value("root_urlconf", Value::String(String::new()))
-				// Media files
-				.with_value("media_root", Value::Null)
-				// Admin/Manager contacts
-				.with_value("admins", Value::Array(vec![]))
-				.with_value("managers", Value::Array(vec![])),
+				.with_value("use_tz", Value::Bool(false)),
 		)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))

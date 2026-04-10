@@ -170,54 +170,10 @@ fn load_settings() -> Settings {
 	let merged = SettingsBuilder::new()
 		.profile(profile)
 		.add_source(
-			DefaultSource::new()
-				// Core settings
-				.with_value(
-					"base_dir",
-					serde_json::json!(base_dir.to_string_lossy().to_string()),
-				)
-				.with_value("debug", serde_json::json!(true))
-				.with_value(
-					"secret_key",
-					serde_json::json!(generate_random_secret_key()),
-				)
-				.with_value("allowed_hosts", serde_json::json!([]))
-				.with_value("installed_apps", serde_json::json!([]))
-				.with_value("databases", serde_json::json!({}))
-				.with_value("templates", serde_json::json!([]))
-				// Static/Media files
-				.with_value("static_url", serde_json::json!("/static/"))
-				.with_value("static_root", serde_json::json!(null))
-				.with_value("staticfiles_dirs", serde_json::json!([]))
-				.with_value("media_url", serde_json::json!("/media/"))
-				// Internationalization
-				.with_value("language_code", serde_json::json!("en-us"))
-				.with_value("time_zone", serde_json::json!("UTC"))
+			DefaultSource::for_settings(&base_dir, generate_random_secret_key())
+				// Override: dev server disables i18n/tz by default
 				.with_value("use_i18n", serde_json::json!(false))
-				.with_value("use_tz", serde_json::json!(false))
-				// Model settings
-				.with_value(
-					"default_auto_field",
-					serde_json::json!("reinhardt.db.models.BigAutoField"),
-				)
-				// Security settings
-				.with_value("secure_proxy_ssl_header", serde_json::json!(null))
-				.with_value("secure_ssl_redirect", serde_json::json!(false))
-				.with_value("secure_hsts_seconds", serde_json::json!(null))
-				.with_value("secure_hsts_include_subdomains", serde_json::json!(false))
-				.with_value("secure_hsts_preload", serde_json::json!(false))
-				.with_value("session_cookie_secure", serde_json::json!(false))
-				.with_value("csrf_cookie_secure", serde_json::json!(false))
-				.with_value("append_slash", serde_json::json!(true))
-				// Middleware
-				.with_value("middleware", serde_json::json!([]))
-				// URL configuration
-				.with_value("root_urlconf", serde_json::json!(""))
-				// Media files
-				.with_value("media_root", serde_json::json!(null))
-				// Admin/Manager contacts
-				.with_value("admins", serde_json::json!([]))
-				.with_value("managers", serde_json::json!([])),
+				.with_value("use_tz", serde_json::json!(false)),
 		)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))

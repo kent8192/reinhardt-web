@@ -2569,13 +2569,9 @@ fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
 	let merged = reinhardt_conf::settings::builder::SettingsBuilder::new()
 		.profile(profile)
 		.add_source(
+			// Only override debug=false; language_code and time_zone use serde defaults
 			reinhardt_conf::settings::sources::DefaultSource::new()
-				.with_value("debug", serde_json::Value::Bool(false))
-				.with_value(
-					"language_code",
-					serde_json::Value::String("en-us".to_string()),
-				)
-				.with_value("time_zone", serde_json::Value::String("UTC".to_string())),
+				.with_value("debug", serde_json::Value::Bool(false)),
 		)
 		.add_source(
 			reinhardt_conf::settings::sources::LowPriorityEnvSource::new()

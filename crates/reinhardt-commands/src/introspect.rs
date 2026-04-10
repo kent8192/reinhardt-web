@@ -307,10 +307,6 @@ fn build_settings(
 	use reinhardt_conf::settings::builder::SettingsBuilder;
 	use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 
-	let base_dir_str = base_dir
-		.to_str()
-		.ok_or_else(|| format!("base_dir contains invalid UTF-8: {}", base_dir.display()))?;
-
 	// Generate a random secret key to avoid shipping a hardcoded value,
 	// consistent with the approach used in execute_collectstatic.
 	let default_secret_key = crate::cli::generate_random_secret_key();
@@ -318,57 +314,17 @@ fn build_settings(
 	let merged = SettingsBuilder::new()
 		.profile(profile)
 		.add_source(
-			DefaultSource::new()
-				.with_value(
-					"base_dir",
-					serde_json::Value::String(base_dir_str.to_string()),
-				)
-				.with_value("debug", serde_json::Value::Bool(true))
-				.with_value("secret_key", serde_json::Value::String(default_secret_key))
-				.with_value("allowed_hosts", serde_json::Value::Array(vec![]))
-				.with_value("installed_apps", serde_json::Value::Array(vec![]))
-				.with_value("databases", serde_json::json!({}))
-				.with_value("templates", serde_json::Value::Array(vec![]))
-				.with_value(
-					"static_url",
-					serde_json::Value::String("/static/".to_string()),
-				)
+			DefaultSource::for_settings(base_dir, default_secret_key)
+				// Override: introspect needs static_root set
 				.with_value(
 					"static_root",
 					serde_json::Value::String(
 						base_dir.join("staticfiles").to_string_lossy().to_string(),
 					),
 				)
-				.with_value("staticfiles_dirs", serde_json::Value::Array(vec![]))
-				.with_value(
-					"media_url",
-					serde_json::Value::String("/media/".to_string()),
-				)
-				.with_value(
-					"language_code",
-					serde_json::Value::String("en-us".to_string()),
-				)
-				.with_value("time_zone", serde_json::Value::String("UTC".to_string()))
+				// Override: disable i18n/tz for introspection
 				.with_value("use_i18n", serde_json::Value::Bool(false))
-				.with_value("use_tz", serde_json::Value::Bool(false))
-				.with_value(
-					"default_auto_field",
-					serde_json::Value::String("reinhardt.db.models.BigAutoField".to_string()),
-				)
-				.with_value("secure_ssl_redirect", serde_json::Value::Bool(false))
-				.with_value(
-					"secure_hsts_include_subdomains",
-					serde_json::Value::Bool(false),
-				)
-				.with_value("secure_hsts_preload", serde_json::Value::Bool(false))
-				.with_value("session_cookie_secure", serde_json::Value::Bool(false))
-				.with_value("csrf_cookie_secure", serde_json::Value::Bool(false))
-				.with_value("append_slash", serde_json::Value::Bool(false))
-				.with_value("middleware", serde_json::Value::Array(vec![]))
-				.with_value("root_urlconf", serde_json::Value::String(String::new()))
-				.with_value("media_root", serde_json::Value::Null)
-				.with_value("admins", serde_json::Value::Array(vec![]))
-				.with_value("managers", serde_json::Value::Array(vec![])),
+				.with_value("use_tz", serde_json::Value::Bool(false)),
 		)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
