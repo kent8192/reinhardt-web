@@ -141,14 +141,37 @@ impl DependencyRegistry {
 		}
 	}
 
-	/// Register a factory for a type
+	/// Register a factory for a type.
+	///
+	/// # Panics
+	///
+	/// Panics if a factory for the same `TypeId` is already registered.
+	/// This prevents silent overwrites that lead to non-deterministic behavior
+	/// when multiple `#[injectable_factory]` or `#[injectable]` macros produce
+	/// the same return type. See [#3457].
+	///
+	/// To check before registering (e.g. in tests), use
+	/// [`is_registered`](Self::is_registered).
+	///
+	/// [#3457]: https://github.com/kent8192/reinhardt-web/issues/3457
 	pub fn register<T: Any + Send + Sync + 'static>(
 		&self,
 		scope: DependencyScope,
 		factory: impl FactoryTrait + 'static,
 	) {
 		let type_id = TypeId::of::<T>();
-		self.factories.insert(type_id, Box::new(factory));
+		let type_name = std::any::type_name::<T>();
+		// DashMap::insert returns the previous value if the key already existed.
+		if self.factories.insert(type_id, Box::new(factory)).is_some() {
+			panic!(
+				"Duplicate DependencyRegistry registration for type `{type_name}`.\n\n\
+				 Hint: reinhardt DI uses TypeId as the sole registry key. Two factories\n\
+				 returning the same type will conflict regardless of function name or scope.\n\
+				 Use a distinct newtype (e.g., `struct Primary{short}({short})`) for each.",
+				type_name = type_name,
+				short = type_name.rsplit("::").next().unwrap_or(type_name),
+			);
+		}
 		self.scopes.insert(type_id, scope);
 	}
 
@@ -442,5 +465,38 @@ mod tests {
 
 		let result = registry.create::<TestService>(&ctx).await;
 		assert!(result.is_err());
+	}
+
+	// Fixes #3457
+	#[test]
+	#[should_panic(expected = "Duplicate DependencyRegistry registration")]
+	fn test_duplicate_registration_panics() {
+		let registry = DependencyRegistry::new();
+
+		registry.register_async::<TestService, _, _>(DependencyScope::Singleton, |_ctx| async {
+			Ok(TestService { value: 1 })
+		});
+		registry.register_async::<TestService, _, _>(DependencyScope::Request, |_ctx| async {
+			Ok(TestService { value: 2 })
+		});
+	}
+
+	// Fixes #3457 — is_registered guard prevents panic (test helper pattern)
+	#[test]
+	fn test_is_registered_guard_allows_skip() {
+		let registry = DependencyRegistry::new();
+
+		registry.register_async::<TestService, _, _>(DependencyScope::Singleton, |_ctx| async {
+			Ok(TestService { value: 1 })
+		});
+
+		// Second registration guarded — no panic
+		if !registry.is_registered::<TestService>() {
+			registry.register_async::<TestService, _, _>(DependencyScope::Request, |_ctx| async {
+				Ok(TestService { value: 2 })
+			});
+		}
+
+		assert!(registry.is_registered::<TestService>());
 	}
 }
