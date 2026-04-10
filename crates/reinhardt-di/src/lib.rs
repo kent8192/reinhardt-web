@@ -306,7 +306,8 @@ pub use registry::{
 pub use resolve_context::{ContextLevel, get_di_context, try_get_di_context};
 pub use scope::{RequestScope, Scope, SingletonScope};
 
-// Re-export inventory for macro use
+// Re-export inventory and async_trait for macro use
+pub use async_trait;
 pub use inventory;
 
 // Re-export macros
