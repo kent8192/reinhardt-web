@@ -35,6 +35,13 @@ async fn test_auto_injectable_simple() {
 
 #[tokio::test]
 async fn test_auto_injectable_with_depends() {
+	// Register SimpleConfig in the global registry for Depends<T> resolution
+	let registry = reinhardt_di::global_registry();
+	registry.register_async::<SimpleConfig, _, _>(
+		reinhardt_di::DependencyScope::Request,
+		|_ctx| async { Ok(SimpleConfig::default()) },
+	);
+
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
 	let depends_config = Depends::<SimpleConfig>::builder()
