@@ -256,6 +256,30 @@ impl DependencyRegistry {
 	pub fn register_type_name(&self, type_id: TypeId, type_name: &'static str) {
 		self.type_names.insert(type_id, type_name);
 	}
+
+	/// Check if a type is registered by its `TypeId`.
+	///
+	/// Not intended for direct use; exposed for validation infrastructure.
+	#[doc(hidden)]
+	pub fn is_registered_by_id(&self, type_id: TypeId) -> bool {
+		self.factories.contains_key(&type_id)
+	}
+
+	/// Get the scope for a type by its `TypeId`.
+	///
+	/// Not intended for direct use; exposed for validation infrastructure.
+	#[doc(hidden)]
+	pub fn get_scope_by_id(&self, type_id: TypeId) -> Option<DependencyScope> {
+		self.scopes.get(&type_id).map(|entry| *entry.value())
+	}
+
+	/// Get the type name for a `TypeId`.
+	///
+	/// Not intended for direct use; exposed for validation infrastructure.
+	#[doc(hidden)]
+	pub fn get_type_name(&self, type_id: TypeId) -> Option<&'static str> {
+		self.type_names.get(&type_id).map(|entry| *entry.value())
+	}
 }
 
 impl Default for DependencyRegistry {
