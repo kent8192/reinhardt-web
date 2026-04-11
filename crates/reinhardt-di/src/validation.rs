@@ -19,6 +19,8 @@ pub enum ValidationErrorKind {
 	ScopeIncompatibility,
 	/// A circular dependency chain was detected.
 	CircularDependency,
+	/// A user-defined factory targets a framework-managed type.
+	FrameworkTypeOverride,
 }
 
 /// A single validation error discovered during registry validation.
@@ -40,6 +42,7 @@ impl fmt::Display for ValidationError {
 			ValidationErrorKind::MissingDependency => "[MISSING]",
 			ValidationErrorKind::ScopeIncompatibility => "[SCOPE]",
 			ValidationErrorKind::CircularDependency => "[CYCLE]",
+			ValidationErrorKind::FrameworkTypeOverride => "[OVERRIDE]",
 		};
 		write!(f, "{} {}", prefix, self.message)
 	}
@@ -77,6 +80,7 @@ impl RegistryValidator {
 		self.check_missing_dependencies(&mut errors);
 		self.check_scope_compatibility(&mut errors);
 		self.check_circular_dependencies(&mut errors);
+		self.check_framework_type_override(&mut errors);
 
 		if errors.is_empty() {
 			Ok(())
@@ -194,6 +198,29 @@ impl RegistryValidator {
 		}
 	}
 
+	/// Detect user-defined factories that target framework-managed types.
+	///
+	/// Uses the fully-qualified type name from `std::any::type_name` to check
+	/// if the registered type belongs to the reinhardt framework (pseudo orphan rule).
+	fn check_framework_type_override(&self, errors: &mut Vec<ValidationError>) {
+		for (type_id, qualified_name) in &self.registry.get_all_qualified_type_names() {
+			if is_framework_type(qualified_name) {
+				let display_name = self.resolve_type_name(*type_id);
+				errors.push(ValidationError {
+					kind: ValidationErrorKind::FrameworkTypeOverride,
+					type_name: display_name,
+					type_id: *type_id,
+					message: format!(
+						"Type `{qualified_name}` is a framework-managed type and cannot be \
+						 registered via #[injectable_factory] or #[injectable]. \
+						 Framework-managed types are automatically provided by the framework. \
+						 Help: Define your own wrapper type instead."
+					),
+				});
+			}
+		}
+	}
+
 	/// Resolve a human-readable name for a `TypeId`, falling back to debug format.
 	fn resolve_type_name(&self, type_id: TypeId) -> String {
 		self.registry
@@ -240,6 +267,19 @@ pub fn format_validation_report(errors: &[ValidationError]) -> String {
 	if !cycle.is_empty() {
 		report.push_str("Circular Dependencies:\n");
 		for err in &cycle {
+			report.push_str(&format!("  - {}\n", err.message));
+		}
+		report.push('\n');
+	}
+
+	let framework: Vec<_> = errors
+		.iter()
+		.filter(|e| e.kind == ValidationErrorKind::FrameworkTypeOverride)
+		.collect();
+
+	if !framework.is_empty() {
+		report.push_str("Framework Type Override:\n");
+		for err in &framework {
 			report.push_str(&format!("  - {}\n", err.message));
 		}
 		report.push('\n');
