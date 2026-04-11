@@ -803,4 +803,181 @@ mod tests {
 			"edge case failed: {description}"
 		);
 	}
+
+	// === Framework type override validation integration tests ===
+
+	#[rstest]
+	fn validate_framework_type_override_detected() {
+		// Arrange
+		let registry = Arc::new(DependencyRegistry::new());
+		let type_id = TypeId::of::<TypeA>();
+		register_dummy::<TypeA>(&registry, DependencyScope::Singleton);
+		registry.register_type_name(type_id, "TypeA");
+		registry.register_qualified_type_name(type_id, "reinhardt_db::pool::DatabasePool");
+
+		let validator = RegistryValidator::new(registry);
+
+		// Act
+		let result = validator.validate();
+
+		// Assert
+		let errors = result.unwrap_err();
+		assert_eq!(errors.len(), 1);
+		assert_eq!(errors[0].kind, ValidationErrorKind::FrameworkTypeOverride);
+	}
+
+	#[rstest]
+	fn validate_facade_crate_type_override_detected() {
+		// Arrange
+		let registry = Arc::new(DependencyRegistry::new());
+		let type_id = TypeId::of::<TypeA>();
+		register_dummy::<TypeA>(&registry, DependencyScope::Singleton);
+		registry.register_type_name(type_id, "TypeA");
+		registry.register_qualified_type_name(type_id, "reinhardt::settings::Settings");
+
+		let validator = RegistryValidator::new(registry);
+
+		// Act
+		let result = validator.validate();
+
+		// Assert
+		let errors = result.unwrap_err();
+		assert_eq!(errors.len(), 1);
+		assert_eq!(errors[0].kind, ValidationErrorKind::FrameworkTypeOverride);
+	}
+
+	#[rstest]
+	fn validate_user_type_passes() {
+		// Arrange
+		let registry = Arc::new(DependencyRegistry::new());
+		let type_id = TypeId::of::<TypeA>();
+		register_dummy::<TypeA>(&registry, DependencyScope::Singleton);
+		registry.register_type_name(type_id, "TypeA");
+		registry.register_qualified_type_name(type_id, "my_app::services::MyService");
+		registry.register_dependencies(type_id, vec![]);
+
+		let validator = RegistryValidator::new(registry);
+
+		// Act
+		let result = validator.validate();
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn validate_std_type_passes() {
+		// Arrange
+		let registry = Arc::new(DependencyRegistry::new());
+		let type_id = TypeId::of::<TypeA>();
+		register_dummy::<TypeA>(&registry, DependencyScope::Singleton);
+		registry.register_type_name(type_id, "TypeA");
+		registry.register_qualified_type_name(type_id, "alloc::string::String");
+		registry.register_dependencies(type_id, vec![]);
+
+		let validator = RegistryValidator::new(registry);
+
+		// Act
+		let result = validator.validate();
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn validate_multiple_framework_violations_reported() {
+		// Arrange
+		let registry = Arc::new(DependencyRegistry::new());
+
+		let type_a = TypeId::of::<TypeA>();
+		let type_b = TypeId::of::<TypeB>();
+		let type_c = TypeId::of::<TypeC>();
+
+		register_dummy::<TypeA>(&registry, DependencyScope::Singleton);
+		register_dummy::<TypeB>(&registry, DependencyScope::Request);
+		register_dummy::<TypeC>(&registry, DependencyScope::Singleton);
+
+		registry.register_type_name(type_a, "TypeA");
+		registry.register_type_name(type_b, "TypeB");
+		registry.register_type_name(type_c, "TypeC");
+
+		registry.register_qualified_type_name(type_a, "reinhardt_db::pool::DatabasePool");
+		registry.register_qualified_type_name(type_b, "reinhardt_http::request::HttpRequest");
+		registry.register_qualified_type_name(type_c, "my_app::MyService");
+
+		registry.register_dependencies(type_a, vec![]);
+		registry.register_dependencies(type_b, vec![]);
+		registry.register_dependencies(type_c, vec![]);
+
+		let validator = RegistryValidator::new(registry);
+
+		// Act
+		let result = validator.validate();
+
+		// Assert
+		let errors = result.unwrap_err();
+		let framework_errors: Vec<_> = errors
+			.iter()
+			.filter(|e| e.kind == ValidationErrorKind::FrameworkTypeOverride)
+			.collect();
+		assert_eq!(framework_errors.len(), 2);
+	}
+
+	#[rstest]
+	fn validate_framework_error_contains_type_name() {
+		// Arrange
+		let registry = Arc::new(DependencyRegistry::new());
+		let type_id = TypeId::of::<TypeA>();
+		register_dummy::<TypeA>(&registry, DependencyScope::Singleton);
+		registry.register_type_name(type_id, "TypeA");
+		registry.register_qualified_type_name(type_id, "reinhardt_db::pool::DatabasePool");
+
+		let validator = RegistryValidator::new(registry);
+
+		// Act
+		let errors = validator.validate().unwrap_err();
+
+		// Assert
+		assert!(errors[0].message.contains("reinhardt_db::pool::DatabasePool"));
+	}
+
+	#[rstest]
+	fn validate_framework_error_contains_newtype_hint() {
+		// Arrange
+		let registry = Arc::new(DependencyRegistry::new());
+		let type_id = TypeId::of::<TypeA>();
+		register_dummy::<TypeA>(&registry, DependencyScope::Singleton);
+		registry.register_type_name(type_id, "TypeA");
+		registry.register_qualified_type_name(type_id, "reinhardt_db::pool::DatabasePool");
+
+		let validator = RegistryValidator::new(registry);
+
+		// Act
+		let errors = validator.validate().unwrap_err();
+
+		// Assert
+		assert!(errors[0].message.contains("wrapper type"));
+	}
+
+	#[rstest]
+	fn validate_framework_check_independent_of_duplicate() {
+		// Arrange
+		let registry = Arc::new(DependencyRegistry::new());
+		let type_id = TypeId::of::<TypeA>();
+		register_dummy::<TypeA>(&registry, DependencyScope::Singleton);
+		registry.register_type_name(type_id, "TypeA");
+		registry.register_qualified_type_name(type_id, "reinhardt_di::context::InjectionContext");
+		registry.register_dependencies(type_id, vec![]);
+
+		let validator = RegistryValidator::new(registry);
+
+		// Act
+		let result = validator.validate();
+
+		// Assert
+		let errors = result.unwrap_err();
+		assert!(errors
+			.iter()
+			.any(|e| e.kind == ValidationErrorKind::FrameworkTypeOverride));
+	}
 }
