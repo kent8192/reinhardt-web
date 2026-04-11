@@ -604,7 +604,7 @@ impl Mutation {
 		let storage = ctx.data::<UserStorage>()?;
 
 		let user = User {
-			id: ID::from(uuid::Uuid::new_v4().to_string()),
+			id: ID::from(uuid::Uuid::now_v7().to_string()),
 			name: input.name.trim().to_string(),
 			email: input.email.trim().to_string(),
 			active: true,

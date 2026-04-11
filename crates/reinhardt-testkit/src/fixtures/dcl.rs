@@ -122,7 +122,7 @@ pub fn dcl_tracker() -> DclTracker {
 
 /// Generate a short unique suffix from UUID for naming
 fn unique_suffix() -> String {
-	Uuid::new_v4().simple().to_string()[..12].to_string()
+	Uuid::now_v7().simple().to_string()[..12].to_string()
 }
 
 /// Create a test table for DCL privilege testing

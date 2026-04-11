@@ -59,7 +59,7 @@ use crate::core::base_user::BaseUser;
 /// # #[cfg(feature = "argon2-hasher")]
 /// # {
 /// let user = MyUser {
-///     id: Uuid::new_v4(),
+///     id: Uuid::now_v7(),
 ///     username: "alice".to_string(),
 ///     email: "alice@example.com".to_string(),
 ///     first_name: "Alice".to_string(),
@@ -144,7 +144,7 @@ pub trait FullUser: BaseUser {
 	/// # #[cfg(feature = "argon2-hasher")]
 	/// # {
 	/// let user = MyUser {
-	///     id: Uuid::new_v4(),
+	///     id: Uuid::now_v7(),
 	///     username: "bob".to_string(),
 	///     email: "bob@example.com".to_string(),
 	///     first_name: "Bob".to_string(),
@@ -207,7 +207,7 @@ pub trait FullUser: BaseUser {
 	/// # #[cfg(feature = "argon2-hasher")]
 	/// # {
 	/// let user = MyUser {
-	///     id: Uuid::new_v4(),
+	///     id: Uuid::now_v7(),
 	///     username: "charlie".to_string(),
 	///     email: "charlie@example.com".to_string(),
 	///     first_name: "Charlie".to_string(),

@@ -27,7 +27,7 @@ reinhardt = { workspace = true, features = [
 clap = { version = "4", features = ["derive"] }
 console = "0.16.1"
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.11", features = ["v4", "serde"] }
+uuid = { version = "1.11", features = ["v4", "v7", "serde"] }
 ctor = "0.6.3"
 # Required for #[model(...)] macro's automatic relationship registration
 linkme = "0.3"

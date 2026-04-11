@@ -311,7 +311,7 @@ mod tests {
 
 	fn test_user() -> SimpleUser {
 		SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "proxy-user".to_string(),
 			email: "proxy@example.com".to_string(),
 			is_active: true,

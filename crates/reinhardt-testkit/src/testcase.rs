@@ -43,7 +43,7 @@ impl TransactionHandle {
 	/// Create a new transaction handle with a unique ID
 	pub fn new() -> Self {
 		Self {
-			id: uuid::Uuid::new_v4().to_string(),
+			id: uuid::Uuid::now_v7().to_string(),
 			committed: false,
 		}
 	}

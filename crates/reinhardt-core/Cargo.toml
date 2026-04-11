@@ -63,13 +63,13 @@ hyper = { workspace = true }
 jsonschema = { version = "0.26", optional = true }
 rayon = { version = "1.10", optional = true }
 unic-langid = { version = "0.9", optional = true }
-uuid = { version = "1.0", features = ["v4", "serde"] }
+uuid = { version = "1.7", features = ["v4", "v7", "serde"] }
 
 # WASM-specific dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 web-sys = { version = "0.3", features = ["Event"] }
 wasm-bindgen = "0.2"
-uuid = { version = "1.0", features = ["v4", "serde", "js"] }
+uuid = { version = "1.7", features = ["v4", "v7", "serde", "js"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [features]
