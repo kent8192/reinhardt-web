@@ -38,7 +38,7 @@ jobs:
     name: Release PR
     if: github.event_name == 'push'
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
-    timeout-minutes: 30
+    timeout-minutes: 360
     concurrency:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
@@ -76,7 +76,7 @@ jobs:
     name: Release
     if: github.event_name == 'push'
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
-    timeout-minutes: 30
+    timeout-minutes: 360
     concurrency:
       group: release-plz-release-${{ github.ref }}
       cancel-in-progress: false
