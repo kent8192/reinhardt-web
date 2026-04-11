@@ -38,6 +38,48 @@ fn extract_endpoint_paths(func: &ItemFn) -> Vec<TokenStream> {
 	paths
 }
 
+/// Build a re-export statement for a URL resolver module from an endpoint path.
+///
+/// Given an endpoint path like `views::login`, generates:
+/// `pub use super::views::__url_resolver_login::*;`
+///
+/// For absolute paths starting with `crate::` or `super::`, the `super::` prefix is omitted:
+/// `pub use crate::views::__url_resolver_login::*;`
+fn build_resolver_reexport(path: &TokenStream) -> TokenStream {
+	let parsed: syn::Path = match syn::parse2(path.clone()) {
+		Ok(p) => p,
+		Err(_) => return quote! {},
+	};
+
+	if parsed.segments.is_empty() {
+		return quote! {};
+	}
+
+	let last_segment = &parsed.segments.last().unwrap().ident;
+	let resolver_mod =
+		syn::Ident::new(&format!("__url_resolver_{last_segment}"), last_segment.span());
+
+	let first_segment = parsed.segments.first().unwrap().ident.to_string();
+	let is_absolute = first_segment == "crate" || first_segment == "super";
+
+	let parent_segments: Vec<&syn::Ident> = parsed
+		.segments
+		.iter()
+		.take(parsed.segments.len() - 1)
+		.map(|s| &s.ident)
+		.collect();
+
+	if is_absolute {
+		quote! {
+			pub use #(#parent_segments ::)* #resolver_mod::*;
+		}
+	} else {
+		quote! {
+			pub use super:: #(#parent_segments ::)* #resolver_mod::*;
+		}
+	}
+}
+
 /// Implementation of the `#[url_patterns]` attribute macro.
 pub(crate) fn url_patterns_impl(
 	_args: TokenStream,
@@ -46,11 +88,7 @@ pub(crate) fn url_patterns_impl(
 	let func: ItemFn = parse2(input)?;
 	let endpoint_paths = extract_endpoint_paths(&func);
 
-	let re_exports = endpoint_paths.iter().map(|path| {
-		quote! {
-			pub use super::#path::__url_resolver::*;
-		}
-	});
+	let re_exports = endpoint_paths.iter().map(build_resolver_reexport);
 
 	Ok(quote! {
 		#func
@@ -125,5 +163,37 @@ mod tests {
 
 		let paths = extract_endpoint_paths(&func);
 		assert_eq!(paths.len(), 2);
+	}
+
+	#[test]
+	fn build_reexport_relative_path() {
+		let path: TokenStream = quote! { views::login };
+		let result = build_resolver_reexport(&path);
+		let expected = "pub use super :: views :: __url_resolver_login :: * ;";
+		assert_eq!(result.to_string(), expected);
+	}
+
+	#[test]
+	fn build_reexport_crate_path() {
+		let path: TokenStream = quote! { crate::views::login };
+		let result = build_resolver_reexport(&path);
+		let expected = "pub use crate :: views :: __url_resolver_login :: * ;";
+		assert_eq!(result.to_string(), expected);
+	}
+
+	#[test]
+	fn build_reexport_super_path() {
+		let path: TokenStream = quote! { super::views::login };
+		let result = build_resolver_reexport(&path);
+		let expected = "pub use super :: views :: __url_resolver_login :: * ;";
+		assert_eq!(result.to_string(), expected);
+	}
+
+	#[test]
+	fn build_reexport_deeply_nested_path() {
+		let path: TokenStream = quote! { api::v1::views::login };
+		let result = build_resolver_reexport(&path);
+		let expected = "pub use super :: api :: v1 :: views :: __url_resolver_login :: * ;";
+		assert_eq!(result.to_string(), expected);
 	}
 }

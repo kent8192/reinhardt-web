@@ -656,7 +656,8 @@ fn generate_view_type(
 		}
 	};
 
-	let url_resolver_tokens = generate_url_resolver_tokens(&options.name, path, &reinhardt_crate);
+	let url_resolver_tokens =
+		generate_url_resolver_tokens(&options.name, &fn_name.to_string(), path, &reinhardt_crate);
 
 	Ok(quote! {
 		// Submit endpoint metadata to global inventory
@@ -753,13 +754,19 @@ fn extract_url_params(path: &str) -> Vec<String> {
 	params
 }
 
-/// Generate URL resolver extension trait and `__url_resolver` module tokens.
+/// Generate URL resolver extension trait and per-endpoint resolver module tokens.
+///
+/// Each endpoint gets a uniquely named `__url_resolver_<fn_name>` module to avoid
+/// name collisions when multiple routes are declared in the same Rust module.
+/// The `#[url_patterns]` macro references these modules by deriving the module name
+/// from the last segment of the endpoint path.
 ///
 /// Returns empty tokens if:
 /// - No route name is set
 /// - The path contains a wildcard
 fn generate_url_resolver_tokens(
 	route_name: &Option<String>,
+	fn_name: &str,
 	path: &str,
 	reinhardt_crate: &TokenStream,
 ) -> TokenStream {
@@ -772,12 +779,31 @@ fn generate_url_resolver_tokens(
 		return quote! {};
 	}
 
+	// Validate that the route name is a valid Rust identifier before creating
+	// Ident values. `syn::Ident::new` panics on invalid identifiers, so we
+	// catch that early and emit a readable compile error instead.
+	if syn::parse_str::<syn::Ident>(name).is_err() {
+		let msg = format!(
+			"Route name `{name}` is not a valid Rust identifier. \
+			 Route names used with url-resolver must be valid identifiers \
+			 (no hyphens, dots, or leading digits)."
+		);
+		return quote! { ::core::compile_error!(#msg); };
+	}
+
 	let trait_name_str = to_resolver_trait_name(name);
 	let trait_ident = syn::Ident::new(&trait_name_str, Span::call_site());
 	let method_ident = syn::Ident::new(name, Span::call_site());
+	let resolver_mod_ident =
+		syn::Ident::new(&format!("__url_resolver_{fn_name}"), Span::call_site());
 	let params = extract_url_params(path);
 	let doc_str = format!("Resolve URL for route `{}` (pattern: `{}`).", name, path);
 
+	// Gate with `feature = "url-resolver"` only (not `native`).
+	// The `UrlResolver` trait itself is not `native`-gated, so extension traits
+	// that only reference `UrlResolver` don't need the `native` gate.
+	// The `native` gate belongs on `ResolvedUrls` (in `routes_registration.rs`)
+	// because it depends on `ServerRouter` which is `native`-only.
 	if params.is_empty() {
 		quote! {
 			#[cfg(feature = "url-resolver")]
@@ -793,7 +819,7 @@ fn generate_url_resolver_tokens(
 
 			#[cfg(feature = "url-resolver")]
 			#[doc(hidden)]
-			pub mod __url_resolver {
+			pub mod #resolver_mod_ident {
 				pub use super::#trait_ident;
 			}
 		}
@@ -818,7 +844,7 @@ fn generate_url_resolver_tokens(
 
 			#[cfg(feature = "url-resolver")]
 			#[doc(hidden)]
-			pub mod __url_resolver {
+			pub mod #resolver_mod_ident {
 				pub use super::#trait_ident;
 			}
 		}
@@ -1071,7 +1097,7 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 	};
 
 	let url_resolver_tokens =
-		generate_url_resolver_tokens(&options.name, &path_str, &reinhardt_crate);
+		generate_url_resolver_tokens(&options.name, &fn_name.to_string(), &path_str, &reinhardt_crate);
 
 	Ok(quote! {
 		// Submit endpoint metadata to global inventory

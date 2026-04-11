@@ -345,18 +345,20 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 	};
 
 	// Generate ResolvedUrls struct + url_prelude module (url-resolver feature)
+	// Gate on both `native` and `url-resolver` to stay consistent with the
+	// underlying types (`ServerRouter`, `UrlResolver`) which are `native`-only.
 	let url_resolver_code = quote! {
 		/// Type-safe URL resolver backed by the global `ServerRouter`.
 		///
 		/// Provides URL resolution methods via extension traits generated
 		/// by view macros. Import `url_prelude::*` to bring all resolver
 		/// methods into scope.
-		#[cfg(feature = "url-resolver")]
+		#[cfg(all(native, feature = "url-resolver"))]
 		pub struct ResolvedUrls {
 			router: ::std::sync::Arc<#reinhardt::ServerRouter>,
 		}
 
-		#[cfg(feature = "url-resolver")]
+		#[cfg(all(native, feature = "url-resolver"))]
 		impl #reinhardt::UrlResolver for ResolvedUrls {
 			fn resolve_url(&self, name: &str, params: &[(&str, &str)]) -> String {
 				self.router
@@ -365,7 +367,7 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 			}
 		}
 
-		#[cfg(feature = "url-resolver")]
+		#[cfg(all(native, feature = "url-resolver"))]
 		impl ResolvedUrls {
 			/// Create a `ResolvedUrls` from the globally registered router.
 			///
@@ -384,7 +386,7 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 			}
 		}
 
-		#[cfg(feature = "url-resolver")]
+		#[cfg(all(native, feature = "url-resolver"))]
 		#[doc(hidden)]
 		macro_rules! __build_url_prelude {
 			($($app:ident),*) => {
@@ -396,8 +398,8 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 			};
 		}
 
-		#[cfg(feature = "url-resolver")]
-		crate::__for_each_app!(__build_url_prelude);
+		#[cfg(all(native, feature = "url-resolver"))]
+		crate::__reinhardt_for_each_app!(__build_url_prelude);
 	};
 
 	let combined = quote! {
