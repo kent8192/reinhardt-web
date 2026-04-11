@@ -266,14 +266,14 @@ jobs:
             fi
 
             # Stage 2: Generate announcement with Claude CLI
-            # Pass release data via stdin pipe (not command arg) to avoid ARG_MAX
+            # Redirect stdin from file (not command arg) to avoid ARG_MAX
             SYSTEM_PROMPT=$(cat scripts/prompts/announcement-system.md)
-            if cat "/tmp/release-data-${VERSION}.json" \
-              | claude --print \
+            if claude --print \
               --bare \
               --model sonnet \
               --system-prompt "$SYSTEM_PROMPT" \
               --tools "" \
+              < "/tmp/release-data-${VERSION}.json" \
               > "$ANNOUNCEMENT_FILE" 2>/dev/null; then
               echo "Generated announcement for $TAG"
             else
@@ -319,7 +319,7 @@ jobs:
           GENERATED=$(find announcements -name '*.md' ! -name '.gitkeep' | wc -l)
 
           if [ -n "$FAILED_TAGS" ]; then
-            echo "::error::Failed to process tags:$FAILED_TAGS"
+            echo "::error::Failed to process tags: $FAILED_TAGS"
             if [ "$GENERATED" -eq 0 ]; then
               echo "::error::All tags failed — no announcements generated"
               exit 1

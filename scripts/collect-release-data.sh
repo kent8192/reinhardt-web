@@ -147,10 +147,12 @@ fi
 echo "Found ${#PR_NUMBERS[@]} PRs in range"
 
 # --- Fetch PR details ---
-# Use a temp file to accumulate PR JSON objects (avoids ARG_MAX with large datasets)
+# Collect each PR as a separate JSON file, then combine with jq -s at the end.
+# This avoids O(n^2) re-parsing of the accumulator on every iteration.
 
-PRS_TMPFILE=$(mktemp)
-echo '[]' > "$PRS_TMPFILE"
+PRS_TMPDIR=$(mktemp -d)
+trap 'rm -rf "$PRS_TMPDIR"' EXIT
+PR_INDEX=0
 
 for pr_num in "${PR_NUMBERS[@]}"; do
   echo "  Fetching PR #$pr_num..."
@@ -172,15 +174,15 @@ for pr_num in "${PR_NUMBERS[@]}"; do
   fi
 
   # Check exclusions: skip release-plz PRs and bot authors
-  PR_TITLE=$(echo "$PR_DATA" | jq -r '.title')
-  PR_AUTHOR=$(echo "$PR_DATA" | jq -r '.author')
+  PR_TITLE=$(printf '%s' "$PR_DATA" | jq -r '.title')
+  PR_AUTHOR=$(printf '%s' "$PR_DATA" | jq -r '.author')
 
   if [ "$PR_TITLE" = "chore: release" ]; then
     echo "  Skipping release-plz PR #$pr_num"
     continue
   fi
 
-  if echo "$PR_AUTHOR" | grep -qE '\[bot\]$'; then
+  if printf '%s' "$PR_AUTHOR" | grep -qE '\[bot\]$'; then
     echo "  Skipping bot PR #$pr_num (author: $PR_AUTHOR)"
     continue
   fi
@@ -189,20 +191,23 @@ for pr_num in "${PR_NUMBERS[@]}"; do
   COMMENTS_TMPFILE=$(mktemp)
   gh api "repos/$REPO_OWNER/$REPO_NAME/issues/$pr_num/comments" \
     --jq "[.[] | select(.user.login | test(\"${BOT_AUTHORS}\") | not) | .body]" \
-    > "$COMMENTS_TMPFILE" 2>/dev/null || echo "[]" > "$COMMENTS_TMPFILE"
+    > "$COMMENTS_TMPFILE" 2>/dev/null || printf '%s' "[]" > "$COMMENTS_TMPFILE"
 
-  # Merge PR data with comments, append to accumulator file
-  PR_WITH_COMMENTS_TMPFILE=$(mktemp)
-  echo "$PR_DATA" | jq --slurpfile comments "$COMMENTS_TMPFILE" '. + {human_comments: $comments[0]}' \
-    > "$PR_WITH_COMMENTS_TMPFILE"
+  # Merge PR data with comments, write as individual file
+  printf '%s' "$PR_DATA" | jq --slurpfile comments "$COMMENTS_TMPFILE" '. + {human_comments: $comments[0]}' \
+    > "$PRS_TMPDIR/pr_$(printf '%04d' $PR_INDEX).json"
+  PR_INDEX=$((PR_INDEX + 1))
 
-  jq --slurpfile pr "$PR_WITH_COMMENTS_TMPFILE" '. += $pr' "$PRS_TMPFILE" > "${PRS_TMPFILE}.new"
-  mv "${PRS_TMPFILE}.new" "$PRS_TMPFILE"
-
-  rm -f "$COMMENTS_TMPFILE" "$PR_WITH_COMMENTS_TMPFILE"
+  rm -f "$COMMENTS_TMPFILE"
 done
 
-PRS_JSON_FILE="$PRS_TMPFILE"
+# Combine all PR files into a single JSON array
+if [ "$PR_INDEX" -gt 0 ]; then
+  jq -s '.' "$PRS_TMPDIR"/pr_*.json > "$PRS_TMPDIR/all_prs.json"
+else
+  printf '%s' '[]' > "$PRS_TMPDIR/all_prs.json"
+fi
+PRS_JSON_FILE="$PRS_TMPDIR/all_prs.json"
 
 # --- Fetch Breaking Changes Discussions ---
 
@@ -233,20 +238,20 @@ if [ -n "$PREV_TAG" ]; then
     --jq '.data.repository.discussions.nodes' 2>/dev/null || echo "[]")
 
   # Filter to discussions created after previous release date
-  BC_DISCUSSIONS=$(echo "$BC_RESULT" | jq --arg after "$PREV_DATE" \
+  BC_DISCUSSIONS=$(printf '%s' "$BC_RESULT" | jq --arg after "$PREV_DATE" \
     '[.[] | select(.createdAt > $after) | {number, title, url}]')
 fi
 
-BC_COUNT=$(echo "$BC_DISCUSSIONS" | jq 'length')
+BC_COUNT=$(printf '%s' "$BC_DISCUSSIONS" | jq 'length')
 echo "Found $BC_COUNT Breaking Changes Discussions since last release"
 
 # --- Assemble output JSON ---
 # Write intermediate data to temp files to avoid ARG_MAX limits with large PR data
 
 TMPDIR_ASSEMBLE=$(mktemp -d)
-trap 'rm -rf "$TMPDIR_ASSEMBLE" "$PRS_JSON_FILE"' EXIT
+trap 'rm -rf "$TMPDIR_ASSEMBLE" "$PRS_TMPDIR"' EXIT
 
-echo "$BC_DISCUSSIONS" > "$TMPDIR_ASSEMBLE/bc.json"
+printf '%s' "$BC_DISCUSSIONS" > "$TMPDIR_ASSEMBLE/bc.json"
 printf '%s' "$CHANGELOG_SECTION" > "$TMPDIR_ASSEMBLE/changelog.txt"
 
 jq -n \
