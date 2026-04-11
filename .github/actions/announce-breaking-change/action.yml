@@ -106,22 +106,27 @@ runs:
 
         # Write body to temp file to preserve formatting
         cat > /tmp/discussion-body.md <<EOF
-        ## Breaking Change: ${SOURCE_REPO}
+## Breaking Change: ${SOURCE_REPO}
 
-        **PR**: ${SOURCE_REPO}#${PR_NUMBER} — ${PR_TITLE}
-        **Merged**: ${merged_date}
-        **Link**: ${PR_URL}
+**PR**: ${SOURCE_REPO}#${PR_NUMBER} — ${PR_TITLE}
+**Merged**: ${merged_date}
+**Link**: ${PR_URL}
 
-        ### Details
+### Details
 
-        ${details}
-        EOF
+${details}
+EOF
 
-        url=$(gh discussion create \
+        if ! url=$(gh discussion create \
           --repo kent8192/reinhardt-web \
           --category "Breaking Changes" \
           --title "$disc_title" \
-          --body-file /tmp/discussion-body.md 2>&1)
+          --body-file /tmp/discussion-body.md); then
+          echo "::error::Failed to create discussion: ${disc_title}"
+          exit 1
+        fi
+
+        url=$(printf '%s' "$url" | tr -d '\r\n')
 
         echo "created=true" >> "$GITHUB_OUTPUT"
         echo "discussion-url=${url}" >> "$GITHUB_OUTPUT"

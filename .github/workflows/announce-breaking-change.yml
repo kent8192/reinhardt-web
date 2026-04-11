@@ -22,12 +22,12 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
       (
-        contains(join(github.event.pull_request.labels.*.name, ','), 'breaking-change')
+        contains(github.event.pull_request.labels.*.name, 'breaking-change')
         || contains(github.event.pull_request.title, '!:')
       )
     runs-on: ubuntu-latest
     steps:
-      - uses: kent8192/reinhardt-web/.github/actions/announce-breaking-change@main
+      - uses: ./.github/actions/announce-breaking-change
         with:
           source-repo: reinhardt-web
           pr-number: ${{ github.event.pull_request.number }}
@@ -107,16 +107,16 @@ jobs:
             local disc_title="${search_key} ${pr_title}"
 
             cat > /tmp/discussion-body.md <<BODY_EOF
-          ## Breaking Change: ${SOURCE_REPO}
+## Breaking Change: ${SOURCE_REPO}
 
-          **PR**: ${SOURCE_REPO}#${pr_number} — ${pr_title}
-          **Merged**: ${merged_date}
-          **Link**: ${pr_url}
+**PR**: ${SOURCE_REPO}#${pr_number} — ${pr_title}
+**Merged**: ${merged_date}
+**Link**: ${pr_url}
 
-          ### Details
+### Details
 
-          ${details}
-          BODY_EOF
+${details}
+BODY_EOF
 
             gh discussion create \
               --repo kent8192/reinhardt-web \
@@ -141,13 +141,16 @@ jobs:
 
           elif [ "$INPUT_MODE" = "all" ]; then
             echo "Scanning all merged PRs for breaking changes..."
-            gh pr list --repo "$TARGET_REPO" --state merged --limit 500 \
-              --json number,title,labels,body \
-              | jq -r '[.[] | select(
-                  ([.labels[].name] | any(. == "breaking-change")) or
-                  (.title | test("!:")) or
-                  (.body | test("\\[x\\] Breaking change"; "i"))
-                )] | sort_by(.number) | .[].number' \
+            gh api --paginate "repos/${TARGET_REPO}/pulls?state=closed&per_page=100" \
+              | jq -sr 'add
+                | map(select(.merged_at != null))
+                | map(select(
+                    ([.labels[].name] | any(. == "breaking-change")) or
+                    (.title | test("!:")) or
+                    (.body | test("\\[x\\] Breaking change"; "i"))
+                  ))
+                | sort_by(.number)
+                | .[].number' \
               | while read -r num; do
                 process_pr "$num" || true
               done
