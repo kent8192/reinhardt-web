@@ -289,12 +289,13 @@ impl DependencyRegistry {
 		self.qualified_type_names.get(type_id).map(|r| *r.value())
 	}
 
-	/// Get all qualified type name mappings.
-	pub fn get_all_qualified_type_names(&self) -> std::collections::HashMap<TypeId, &'static str> {
+	/// Iterate over all qualified type name mappings without allocating a new map.
+	pub fn iter_qualified_type_names(
+		&self,
+	) -> impl Iterator<Item = (TypeId, &'static str)> + '_ {
 		self.qualified_type_names
 			.iter()
 			.map(|entry| (*entry.key(), *entry.value()))
-			.collect()
 	}
 }
 

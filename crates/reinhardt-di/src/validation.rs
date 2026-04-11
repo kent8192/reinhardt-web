@@ -48,15 +48,60 @@ impl fmt::Display for ValidationError {
 	}
 }
 
+/// Known framework crate prefixes used by the pseudo orphan rule.
+///
+/// Each entry is checked as a prefix against `std::any::type_name` output
+/// (e.g., `"reinhardt_di::"` matches `"reinhardt_di::context::InjectionContext"`).
+/// Update this list when adding new framework crates.
+const FRAMEWORK_CRATE_PREFIXES: &[&str] = &[
+	"reinhardt::",
+	"reinhardt_admin::",
+	"reinhardt_admin_cli::",
+	"reinhardt_apps::",
+	"reinhardt_auth::",
+	"reinhardt_commands::",
+	"reinhardt_conf::",
+	"reinhardt_core::",
+	"reinhardt_db::",
+	"reinhardt_db_macros::",
+	"reinhardt_deeplink::",
+	"reinhardt_dentdelion::",
+	"reinhardt_di::",
+	"reinhardt_dispatch::",
+	"reinhardt_forms::",
+	"reinhardt_graphql::",
+	"reinhardt_grpc::",
+	"reinhardt_http::",
+	"reinhardt_i18n::",
+	"reinhardt_mail::",
+	"reinhardt_manouche::",
+	"reinhardt_middleware::",
+	"reinhardt_openapi::",
+	"reinhardt_pages::",
+	"reinhardt_query::",
+	"reinhardt_rest::",
+	"reinhardt_server::",
+	"reinhardt_shortcuts::",
+	"reinhardt_tasks::",
+	"reinhardt_test::",
+	"reinhardt_testkit::",
+	"reinhardt_throttling::",
+	"reinhardt_urls::",
+	"reinhardt_utils::",
+	"reinhardt_views::",
+	"reinhardt_websockets::",
+];
+
 /// Check if a type belongs to the reinhardt framework based on its
 /// fully-qualified name from `std::any::type_name`.
 ///
 /// Returns `true` for types whose qualified name starts with `reinhardt::`
-/// (the facade crate) or `reinhardt_` (any sub-crate like `reinhardt_di`,
-/// `reinhardt_db`, etc.).
+/// (the facade crate) or a known framework crate prefix such as
+/// `reinhardt_di::` or `reinhardt_db::`.
 fn is_framework_type(qualified_name: &str) -> bool {
-	qualified_name.starts_with("reinhardt::")
-		|| (qualified_name.starts_with("reinhardt_") && qualified_name.len() > "reinhardt_".len())
+	FRAMEWORK_CRATE_PREFIXES
+		.iter()
+		.any(|prefix| qualified_name.starts_with(prefix))
 }
 
 /// Validates a [`DependencyRegistry`] for integrity at startup.
@@ -203,18 +248,21 @@ impl RegistryValidator {
 	/// Uses the fully-qualified type name from `std::any::type_name` to check
 	/// if the registered type belongs to the reinhardt framework (pseudo orphan rule).
 	fn check_framework_type_override(&self, errors: &mut Vec<ValidationError>) {
-		for (type_id, qualified_name) in &self.registry.get_all_qualified_type_names() {
+		for (type_id, qualified_name) in self.registry.iter_qualified_type_names() {
 			if is_framework_type(qualified_name) {
-				let display_name = self.resolve_type_name(*type_id);
+				let display_name = self.resolve_type_name(type_id);
 				errors.push(ValidationError {
 					kind: ValidationErrorKind::FrameworkTypeOverride,
 					type_name: display_name,
-					type_id: *type_id,
+					type_id,
 					message: format!(
-						"Type `{qualified_name}` is a framework-managed type and cannot be \
-						 registered via #[injectable_factory] or #[injectable]. \
-						 Framework-managed types are automatically provided by the framework. \
-						 Help: Define your own wrapper type instead."
+						concat!(
+							"Type `{}` is a framework-managed type and cannot be ",
+							"registered via #[injectable_factory] or #[injectable]. ",
+							"Framework-managed types are automatically provided by the framework. ",
+							"Help: Define your own wrapper type instead."
+						),
+						qualified_name
 					),
 				});
 			}
@@ -782,7 +830,7 @@ mod tests {
 	#[rstest]
 	#[case("reinhardtson::MyType", false, "similar prefix different crate")]
 	#[case("reinhardts::MyType", false, "similar prefix no separator")]
-	#[case("reinhardt_like_crate::MyType", true, "starts with reinhardt_")]
+	#[case("reinhardt_like_crate::MyType", false, "unknown crate starting with reinhardt_")]
 	#[case("REINHARDT::Type", false, "uppercase")]
 	#[case("Reinhardt::Type", false, "capitalized")]
 	#[case("my_reinhardt_app::Type", false, "reinhardt in middle")]
