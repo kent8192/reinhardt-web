@@ -45,6 +45,17 @@ impl fmt::Display for ValidationError {
 	}
 }
 
+/// Check if a type belongs to the reinhardt framework based on its
+/// fully-qualified name from `std::any::type_name`.
+///
+/// Returns `true` for types whose qualified name starts with `reinhardt::`
+/// (the facade crate) or `reinhardt_` (any sub-crate like `reinhardt_di`,
+/// `reinhardt_db`, etc.).
+fn is_framework_type(qualified_name: &str) -> bool {
+    qualified_name.starts_with("reinhardt::")
+        || (qualified_name.starts_with("reinhardt_") && qualified_name.len() > "reinhardt_".len())
+}
+
 /// Validates a [`DependencyRegistry`] for integrity at startup.
 pub struct RegistryValidator {
 	registry: Arc<DependencyRegistry>,
@@ -675,6 +686,81 @@ mod tests {
 		assert_eq!(
 			registry.get_qualified_type_name(&type_id),
 			Some("my_crate::module::TypeA")
+		);
+	}
+
+	// === is_framework_type: abnormal cases (should detect) ===
+
+	#[rstest]
+	#[case("reinhardt::settings::Settings", "facade crate direct")]
+	#[case("reinhardt::SomeType", "facade crate top-level")]
+	#[case("reinhardt::deep::nested::module::Type", "facade deeply nested")]
+	#[case("reinhardt_db::pool::DatabasePool", "sub-crate direct")]
+	#[case("reinhardt_core::SomeType", "sub-crate top-level")]
+	#[case("reinhardt_di::context::scope::SingletonScope", "sub-crate deeply nested")]
+	#[case("reinhardt_http::request::HttpRequest", "http sub-crate")]
+	#[case("reinhardt_auth::backend::AuthBackend", "auth sub-crate")]
+	#[case("reinhardt_views::View", "views sub-crate")]
+	#[case("reinhardt_rest::serializers::Serializer", "rest sub-crate")]
+	#[case("reinhardt_middleware::Middleware", "middleware sub-crate")]
+	#[case("reinhardt_di::injected::Injected<my_app::MyType>", "generic framework type")]
+	fn test_framework_type_detected(#[case] type_name: &str, #[case] description: &str) {
+		assert!(
+			is_framework_type(type_name),
+			"should detect as framework type: {description}"
+		);
+	}
+
+	// === is_framework_type: normal cases (should allow) ===
+
+	#[rstest]
+	#[case("my_app::services::UserService", "user crate")]
+	#[case("my_app::MyType", "user crate top-level")]
+	#[case("my_app::deep::nested::module::Type", "user crate deeply nested")]
+	#[case("alloc::string::String", "std String")]
+	#[case("alloc::vec::Vec<i32>", "std Vec")]
+	#[case("core::option::Option<String>", "std Option")]
+	#[case("std::collections::HashMap<String, i32>", "std HashMap")]
+	#[case("serde::Serialize", "third-party crate")]
+	#[case("tokio::runtime::Runtime", "async runtime")]
+	#[case("sea_query::query::SelectStatement", "query builder")]
+	#[case("i32", "primitive type")]
+	#[case("bool", "primitive type bool")]
+	#[case("()", "unit type")]
+	fn test_non_framework_type_allowed(#[case] type_name: &str, #[case] description: &str) {
+		assert!(
+			!is_framework_type(type_name),
+			"should allow: {description}"
+		);
+	}
+
+	// === is_framework_type: edge cases ===
+
+	#[rstest]
+	#[case("reinhardtson::MyType", false, "similar prefix different crate")]
+	#[case("reinhardts::MyType", false, "similar prefix no separator")]
+	#[case("reinhardt_like_crate::MyType", true, "starts with reinhardt_")]
+	#[case("REINHARDT::Type", false, "uppercase")]
+	#[case("Reinhardt::Type", false, "capitalized")]
+	#[case("my_reinhardt_app::Type", false, "reinhardt in middle")]
+	#[case("not_reinhardt::Type", false, "reinhardt as suffix")]
+	#[case("core::reinhardt::Type", false, "reinhardt as submodule")]
+	#[case("_reinhardt::Type", false, "underscore prefix")]
+	#[case("alloc::vec::Vec<reinhardt_db::DatabasePool>", false, "generic wrapping framework")]
+	#[case("core::option::Option<reinhardt_di::Injected<Foo>>", false, "option wrapping framework")]
+	#[case("reinhardt", false, "bare crate name")]
+	#[case("reinhardt_", false, "underscore without path")]
+	#[case("reinhardt::", true, "facade prefix empty path")]
+	#[case("", false, "empty string")]
+	fn test_is_framework_type_edge_cases(
+		#[case] type_name: &str,
+		#[case] expected: bool,
+		#[case] description: &str,
+	) {
+		assert_eq!(
+			is_framework_type(type_name),
+			expected,
+			"edge case failed: {description}"
 		);
 	}
 }
