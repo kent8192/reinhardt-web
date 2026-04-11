@@ -161,17 +161,21 @@ impl DependencyRegistry {
 	) {
 		let type_id = TypeId::of::<T>();
 		let type_name = std::any::type_name::<T>();
-		// DashMap::insert returns the previous value if the key already existed.
-		if self.factories.insert(type_id, Box::new(factory)).is_some() {
+		// Check for duplicates before inserting so that no state is mutated on the
+		// error path. This avoids leaving the registry inconsistent if the panic is
+		// caught (e.g. factories pointing to the new registration while scopes still
+		// reflects the old one).
+		if self.factories.contains_key(&type_id) {
+			let short = type_name.rsplit("::").next().unwrap_or(type_name);
 			panic!(
-				"Duplicate DependencyRegistry registration for type `{type_name}`.\n\n\
-				 Hint: reinhardt DI uses TypeId as the sole registry key. Two factories\n\
-				 returning the same type will conflict regardless of function name or scope.\n\
-				 Use a distinct newtype (e.g., `struct Primary{short}({short})`) for each.",
-				type_name = type_name,
-				short = type_name.rsplit("::").next().unwrap_or(type_name),
+				"Duplicate DependencyRegistry registration for type `{type_name}`.\n\
+\n\
+Hint: reinhardt DI uses TypeId as the sole registry key. Two factories\n\
+returning the same type will conflict regardless of function name or scope.\n\
+Use a distinct newtype (e.g., `struct Primary{short}({short})`) for each."
 			);
 		}
+		self.factories.insert(type_id, Box::new(factory));
 		self.scopes.insert(type_id, scope);
 	}
 
@@ -430,12 +434,14 @@ macro_rules! submit_registration {
 mod tests {
 	use super::*;
 	use crate::scope::SingletonScope;
+	use rstest::*;
 
 	#[derive(Clone)]
 	struct TestService {
 		value: i32,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_basic() {
 		let registry = DependencyRegistry::new();
@@ -457,6 +463,7 @@ mod tests {
 		assert_eq!(service.value, 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_not_registered() {
 		let registry = DependencyRegistry::new();
@@ -468,21 +475,44 @@ mod tests {
 	}
 
 	// Fixes #3457
-	#[test]
-	#[should_panic(expected = "Duplicate DependencyRegistry registration")]
+	#[rstest]
 	fn test_duplicate_registration_panics() {
 		let registry = DependencyRegistry::new();
 
 		registry.register_async::<TestService, _, _>(DependencyScope::Singleton, |_ctx| async {
 			Ok(TestService { value: 1 })
 		});
-		registry.register_async::<TestService, _, _>(DependencyScope::Request, |_ctx| async {
-			Ok(TestService { value: 2 })
-		});
+
+		// Act
+		let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			registry.register_async::<TestService, _, _>(DependencyScope::Request, |_ctx| async {
+				Ok(TestService { value: 2 })
+			});
+		}));
+
+		// Assert
+		let err = result.expect_err("expected panic on duplicate registration");
+		let msg = err
+			.downcast_ref::<String>()
+			.map(|s| s.as_str())
+			.or_else(|| err.downcast_ref::<&str>().copied())
+			.expect("panic payload should be a string");
+		assert!(
+			msg.contains("Duplicate DependencyRegistry registration"),
+			"missing duplicate prefix: {msg}"
+		);
+		assert!(
+			msg.contains("TestService"),
+			"missing type name in panic message: {msg}"
+		);
+		assert!(
+			msg.contains("newtype"),
+			"missing newtype hint in panic message: {msg}"
+		);
 	}
 
 	// Fixes #3457 — is_registered guard prevents panic (test helper pattern)
-	#[test]
+	#[rstest]
 	fn test_is_registered_guard_allows_skip() {
 		let registry = DependencyRegistry::new();
 
