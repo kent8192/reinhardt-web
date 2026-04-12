@@ -368,6 +368,7 @@ pub(crate) fn get_mock_response(path: &str) -> Option<MockResponse> {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
 	use super::*;
 	use serde::{Deserialize, Serialize};

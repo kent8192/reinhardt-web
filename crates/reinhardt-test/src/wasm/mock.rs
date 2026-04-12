@@ -27,6 +27,7 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 
 // Re-export server function mocking from reinhardt-pages
+#[allow(deprecated)]
 pub use reinhardt_pages::testing::{
 	MockResponse, assert_server_fn_call_count, assert_server_fn_called,
 	assert_server_fn_called_with, assert_server_fn_not_called, clear_mocks, get_call_history,
