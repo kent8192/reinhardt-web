@@ -3,7 +3,7 @@
 //! This test suite verifies the automatic circular dependency detection functionality
 //! of the DI system.
 
-use reinhardt_di::{DiError, Injected, InjectionContext, SingletonScope, injectable};
+use reinhardt_di::{Depends, DiError, InjectionContext, SingletonScope, injectable};
 use std::sync::Arc;
 
 /// Test fixture: ServiceA (depends on ServiceB)
@@ -11,7 +11,7 @@ use std::sync::Arc;
 #[allow(dead_code)]
 struct ServiceA {
 	#[inject]
-	b: Injected<ServiceB>,
+	b: Depends<ServiceB>,
 }
 
 /// Test fixture: ServiceB (depends on ServiceC)
@@ -19,7 +19,7 @@ struct ServiceA {
 #[allow(dead_code)]
 struct ServiceB {
 	#[inject]
-	c: Injected<ServiceC>,
+	c: Depends<ServiceC>,
 }
 
 /// Test fixture: ServiceC (depends on ServiceA - circular!)
@@ -27,7 +27,7 @@ struct ServiceB {
 #[allow(dead_code)]
 struct ServiceC {
 	#[inject]
-	a: Injected<ServiceA>,
+	a: Depends<ServiceA>,
 }
 
 /// Direct circular dependency: A -> B -> A
@@ -37,19 +37,19 @@ async fn test_direct_circular_dependency() {
 	#[allow(dead_code)]
 	struct DirectA {
 		#[inject]
-		b: Injected<DirectB>,
+		b: Depends<DirectB>,
 	}
 
 	#[injectable]
 	#[allow(dead_code)]
 	struct DirectB {
 		#[inject]
-		a: Injected<DirectA>,
+		a: Depends<DirectA>,
 	}
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
-	let result = Injected::<DirectA>::resolve(&ctx).await;
+	let result = Depends::<DirectA>::resolve(&ctx, true).await;
 
 	assert!(
 		result.is_err(),
@@ -72,7 +72,7 @@ async fn test_direct_circular_dependency() {
 async fn test_indirect_circular_dependency() {
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
-	let result = Injected::<ServiceA>::resolve(&ctx).await;
+	let result = Depends::<ServiceA>::resolve(&ctx, true).await;
 
 	assert!(
 		result.is_err(),
@@ -100,12 +100,12 @@ async fn test_self_dependency() {
 	#[allow(dead_code)]
 	struct SelfDependent {
 		#[inject]
-		inner: Injected<SelfDependent>,
+		inner: Depends<SelfDependent>,
 	}
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
-	let result = Injected::<SelfDependent>::resolve(&ctx).await;
+	let result = Depends::<SelfDependent>::resolve(&ctx, true).await;
 
 	assert!(result.is_err(), "Self-dependency should be detected");
 	assert!(
@@ -121,33 +121,33 @@ async fn test_complex_circular_dependency() {
 	#[allow(dead_code)]
 	struct ComplexA {
 		#[inject]
-		b: Injected<ComplexB>,
+		b: Depends<ComplexB>,
 	}
 
 	#[injectable]
 	#[allow(dead_code)]
 	struct ComplexB {
 		#[inject]
-		c: Injected<ComplexC>,
+		c: Depends<ComplexC>,
 	}
 
 	#[injectable]
 	#[allow(dead_code)]
 	struct ComplexC {
 		#[inject]
-		d: Injected<ComplexD>,
+		d: Depends<ComplexD>,
 	}
 
 	#[injectable]
 	#[allow(dead_code)]
 	struct ComplexD {
 		#[inject]
-		b: Injected<ComplexB>, // Circular: B -> C -> D -> B
+		b: Depends<ComplexB>, // Circular: B -> C -> D -> B
 	}
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
-	let result = Injected::<ComplexA>::resolve(&ctx).await;
+	let result = Depends::<ComplexA>::resolve(&ctx, true).await;
 
 	assert!(
 		result.is_err(),
@@ -166,7 +166,7 @@ async fn test_no_circular_dependency_succeeds() {
 	#[allow(dead_code)]
 	struct NoCycleA {
 		#[inject]
-		b: Injected<NoCycleB>,
+		b: Depends<NoCycleB>,
 	}
 
 	#[injectable]
@@ -179,7 +179,7 @@ async fn test_no_circular_dependency_succeeds() {
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
-	let result = Injected::<NoCycleA>::resolve(&ctx).await;
+	let result = Depends::<NoCycleA>::resolve(&ctx, true).await;
 
 	assert!(result.is_ok(), "Non-circular dependency should succeed");
 }
@@ -194,30 +194,30 @@ async fn test_deep_dependency_chain_without_cycle() {
 	#[injectable]
 	struct Level2 {
 		#[inject]
-		_dep: Injected<Level1>,
+		_dep: Depends<Level1>,
 	}
 
 	#[injectable]
 	struct Level3 {
 		#[inject]
-		_dep: Injected<Level2>,
+		_dep: Depends<Level2>,
 	}
 
 	#[injectable]
 	struct Level4 {
 		#[inject]
-		_dep: Injected<Level3>,
+		_dep: Depends<Level3>,
 	}
 
 	#[injectable]
 	struct Level5 {
 		#[inject]
-		_dep: Injected<Level4>,
+		_dep: Depends<Level4>,
 	}
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
-	let result = Injected::<Level5>::resolve(&ctx).await;
+	let result = Depends::<Level5>::resolve(&ctx, true).await;
 
 	assert!(
 		result.is_ok(),

@@ -295,6 +295,7 @@ pub use override_registry::OverrideRegistry;
 pub use context::{ParamContext, Request};
 pub use depends::{Depends, DependsBuilder};
 pub use injectable::Injectable;
+#[allow(deprecated)]
 pub use injected::{
 	DependencyScope as InjectedScope, Injected, InjectionMetadata, OptionalInjected,
 };

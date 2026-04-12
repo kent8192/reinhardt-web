@@ -268,7 +268,7 @@ pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec
 
 			if use_cache {
 				quote::quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
 						.await
 						.map_err(|e| #core_crate::exception::Error::Internal(
 							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
@@ -277,7 +277,7 @@ pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec
 				}
 			} else {
 				quote::quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
 						.await
 						.map_err(|e| #core_crate::exception::Error::Internal(
 							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
@@ -313,14 +313,14 @@ where
 
 			if use_cache {
 				quote::quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
 						.await
 						.map_err(|e| #error_conversion)?
 						.into_inner();
 				}
 			} else {
 				quote::quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
 						.await
 						.map_err(|e| #error_conversion)?
 						.into_inner();
