@@ -291,11 +291,7 @@ pub(crate) fn injectable_struct_impl(
 							if let Some(cached) = __di_ctx.singleton_scope().get::<#ty>() {
 								(*cached).clone()
 							} else {
-								let __injected = if #use_cache {
-									#di_crate::Injected::<#ty>::resolve(__di_ctx).await
-								} else {
-									#di_crate::Injected::<#ty>::resolve_uncached(__di_ctx).await
-								}
+								let __injected = #di_crate::Depends::<#ty>::resolve(__di_ctx, #use_cache).await
 								.map_err(|e| {
 									tracing::debug!(
 										field = stringify!(#name),
@@ -314,11 +310,7 @@ pub(crate) fn injectable_struct_impl(
 				InjectionScope::Request => {
 					quote! {
 						{
-							let __injected = if #use_cache {
-								#di_crate::Injected::<#ty>::resolve(__di_ctx).await
-							} else {
-								#di_crate::Injected::<#ty>::resolve_uncached(__di_ctx).await
-							}
+							let __injected = #di_crate::Depends::<#ty>::resolve(__di_ctx, #use_cache).await
 							.map_err(|e| {
 								tracing::debug!(
 									field = stringify!(#name),

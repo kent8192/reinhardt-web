@@ -3,7 +3,7 @@
 //! This module demonstrates how to create custom services that can be
 //! automatically injected into HTTP handlers using `#[inject]`.
 
-use reinhardt::Injected;
+use reinhardt::Depends;
 use reinhardt::async_trait::async_trait;
 use reinhardt::di::{DiResult, Injectable, InjectionContext};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -115,12 +115,12 @@ impl RequestCounter {
 }
 
 // ---------------------------------------------------------------------------
-// Pattern 4: Service with nested `Injected<T>` dependency
+// Pattern 4: Service with nested `Depends<T>` dependency
 // ---------------------------------------------------------------------------
 
 /// A dashboard service that composes multiple injected dependencies.
 ///
-/// Demonstrates how one service can depend on others via `Injected<T>`,
+/// Demonstrates how one service can depend on others via `Depends<T>`,
 /// which provides circular dependency detection and request-scope caching.
 #[derive(Debug, Clone)]
 pub struct DashboardService {
@@ -131,9 +131,9 @@ pub struct DashboardService {
 #[async_trait]
 impl Injectable for DashboardService {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		// Resolve nested dependencies using Injected<T> for cycle detection
-		let app_config = Injected::<AppConfig>::resolve(ctx).await?.into_inner();
-		let greeting = Injected::<GreetingService>::resolve(ctx)
+		// Resolve nested dependencies using Depends<T> for cycle detection
+		let app_config = Depends::<AppConfig>::resolve(ctx, true).await?.into_inner();
+		let greeting = Depends::<GreetingService>::resolve(ctx, true)
 			.await?
 			.into_inner();
 

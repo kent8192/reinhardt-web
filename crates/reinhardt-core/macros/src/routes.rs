@@ -427,14 +427,14 @@ fn generate_wrapper_with_both(
 
 			if use_cache {
 				quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
 						.await
 						.map_err(#core_crate::exception::Error::from)?
 						.into_inner();
 				}
 			} else {
 				quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
 						.await
 						.map_err(#core_crate::exception::Error::from)?
 						.into_inner();

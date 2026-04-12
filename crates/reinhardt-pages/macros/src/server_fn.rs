@@ -777,10 +777,10 @@ fn generate_server_handler(
 				::std::sync::Arc::new((*__shared_ctx).fork_for_request(__di_request))
 			};
 
-			// Resolve each #[inject] parameter using reinhardt_di::Injected<T>
+			// Resolve each #[inject] parameter using reinhardt_di::Depends<T>
 			#(
 				let #inject_param_names: #inject_param_types =
-					#di_crate::Injected::<#inject_param_types>::resolve(&__di_ctx)
+					#di_crate::Depends::<#inject_param_types>::resolve(&__di_ctx, true)
 						.await
 						.map_err(|e| {
 							// Preserve HTTP status codes for auth-related DI errors

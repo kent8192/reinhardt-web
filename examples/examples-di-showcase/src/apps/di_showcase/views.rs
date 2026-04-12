@@ -8,7 +8,7 @@
 //! - Nested dependency resolution (`DashboardService` depends on multiple services)
 //! - Path parameter extraction combined with DI
 
-use reinhardt::Injected;
+use reinhardt::Depends;
 use reinhardt::core::serde::Serialize;
 use reinhardt::core::serde::json;
 use reinhardt::di::{InjectionContext, SingletonScope};
@@ -160,13 +160,13 @@ pub async fn multiple_deps(
 }
 
 // ---------------------------------------------------------------------------
-// Pattern: Manual `Injected<T>` resolution (without #[inject] macro)
+// Pattern: Manual `Depends<T>` resolution (without #[inject] macro)
 // ---------------------------------------------------------------------------
 
-/// Demonstrate programmatic `Injected<T>` resolution without `#[inject]` macro.
+/// Demonstrate programmatic `Depends<T>` resolution without `#[inject]` macro.
 ///
 /// This handler manually creates an `InjectionContext` and resolves
-/// dependencies using `Injected<T>::resolve()`, which provides:
+/// dependencies using `Depends<T>::resolve()`, which provides:
 /// - Circular dependency detection
 /// - Request-scope caching
 /// - Injection metadata tracking
@@ -178,19 +178,19 @@ pub async fn manual_injected() -> ViewResult<Response> {
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
 
-	// Act: resolve dependencies using Injected<T>
-	let config = Injected::<AppConfig>::resolve(&ctx).await?;
-	let greeter = Injected::<GreetingService>::resolve(&ctx).await?;
+	// Act: resolve dependencies using Depends<T>
+	let config = Depends::<AppConfig>::resolve(&ctx, true).await?;
+	let greeter = Depends::<GreetingService>::resolve(&ctx, true).await?;
 
-	// Injected<T> provides metadata about the resolution
+	// Depends<T> provides metadata about the resolution
 	let config_metadata = config.metadata();
 	let greeter_metadata = greeter.metadata();
 
 	// Access inner values via Deref
-	let message = greeter.greet("Injected");
+	let message = greeter.greet("Depends");
 
 	let body = json::json!({
-		"pattern": "manual Injected<T> resolution",
+		"pattern": "manual Depends<T> resolution",
 		"app": config.app_name,
 		"message": message,
 		"config_cached": config_metadata.cached,
@@ -201,7 +201,7 @@ pub async fn manual_injected() -> ViewResult<Response> {
 		.with_body(json::to_string(&body)?.into_bytes()))
 }
 
-/// Demonstrate `Injected<T>::resolve_uncached()` for fresh instances.
+/// Demonstrate `Depends<T>::resolve()` with `use_cache: false` for fresh instances.
 ///
 /// Each call creates a new `RequestCounter` instance, bypassing the cache.
 /// The counter metadata confirms `cached: false`.
@@ -213,15 +213,15 @@ pub async fn manual_uncached() -> ViewResult<Response> {
 	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// Resolve two separate uncached instances
-	let counter1 = Injected::<RequestCounter>::resolve_uncached(&ctx).await?;
-	let counter2 = Injected::<RequestCounter>::resolve_uncached(&ctx).await?;
+	let counter1 = Depends::<RequestCounter>::resolve(&ctx, false).await?;
+	let counter2 = Depends::<RequestCounter>::resolve(&ctx, false).await?;
 
 	// Each is a fresh instance starting from zero
 	let count1 = counter1.increment();
 	let count2 = counter2.increment();
 
 	let body = json::json!({
-		"pattern": "manual Injected<T> uncached resolution",
+		"pattern": "manual Depends<T> uncached resolution",
 		"counter1": count1,
 		"counter2": count2,
 		"both_start_from_one": count1 == 1 && count2 == 1,
