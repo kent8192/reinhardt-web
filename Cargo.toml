@@ -54,7 +54,6 @@ standard = [
   "reinhardt-rest/versioning",
   "reinhardt-rest/metadata",
   "reinhardt-rest/negotiation",
-  "url-resolver",
 ]
 
 # Individual feature flags for fine-grained control
@@ -134,7 +133,6 @@ browsable-api = ["reinhardt-browsable-api"]
 # Client-router feature: Enables UnifiedRouter<V> with both .server() and .client() methods
 # Required for unified client/server routing in WASM applications
 client-router = ["reinhardt-urls/client-router"]
-url-resolver = ["reinhardt-urls/url-resolver"]
 
 # Plugin system
 dentdelion = ["reinhardt-dentdelion"]
@@ -194,7 +192,6 @@ full = [
   "dentdelion",
   "client-router",
   "openapi-router",
-  "url-resolver",
 ]
 
 # API-only preset - REST without templates/forms
@@ -212,7 +209,6 @@ api-only = [
   "reinhardt-rest/pagination",
   "reinhardt-rest/filters",
   "reinhardt-rest/throttling",
-  "url-resolver",
 ]
 
 # GraphQL-focused preset

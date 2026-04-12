@@ -3,7 +3,7 @@
 //! Validates that the extension trait + blanket impl pattern works
 //! correctly with a mock resolver (simulating what the macros generate).
 
-#![cfg(feature = "url-resolver")]
+#![cfg(native)]
 
 use reinhardt_urls::routers::resolver::UrlResolver;
 use rstest::*;

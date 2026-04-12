@@ -97,10 +97,8 @@ pub(crate) fn url_patterns_impl(
 
 		#[doc(hidden)]
 		pub mod url_resolvers {
-			#![allow(unexpected_cfgs)]
-
 			#(
-				#[cfg(feature = "url-resolver")]
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				#re_exports
 			)*
 		}
