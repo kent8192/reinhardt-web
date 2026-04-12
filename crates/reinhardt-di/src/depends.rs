@@ -38,7 +38,7 @@
 //! ```
 
 use crate::injected::DependencyScope;
-use crate::{DiResult, context::InjectionContext, injected::InjectionMetadata};
+use crate::{DiError, DiResult, Injectable, context::InjectionContext, injected::InjectionMetadata};
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -47,9 +47,10 @@ use std::sync::Arc;
 /// Provides automatic dependency resolution with optional caching
 /// and circular dependency detection.
 ///
-/// `T` does not need to implement `Injectable` — resolution goes through
-/// the global dependency registry, so any type registered via
-/// `#[injectable_factory]` or `#[injectable]` can be used.
+/// Resolution first tries the global dependency registry (for types
+/// registered via `#[injectable]` or `#[injectable_factory]`), then
+/// falls back to `T::inject()` for types with manual `Injectable`
+/// implementations.
 #[derive(Debug)]
 pub struct Depends<T: Send + Sync + 'static> {
 	inner: Arc<T>,
@@ -154,15 +155,18 @@ impl<T: Send + Sync + 'static> Depends<T> {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn resolve(ctx: &InjectionContext, use_cache: bool) -> DiResult<Self> {
-		// Resolve via the global dependency registry.
-		// This does not require T: Injectable — any type registered via
-		// #[injectable_factory] or #[injectable] can be resolved.
-		// Cycle detection and caching are handled by ctx.resolve() based on
-		// the registered DependencyScope (Singleton/Request/Transient).
-		// The `use_cache` parameter is retained for API compatibility but
-		// does not affect resolution — use Transient scope for uncached behavior.
-		let arc = ctx.resolve::<T>().await?;
+	pub async fn resolve(ctx: &InjectionContext, use_cache: bool) -> DiResult<Self>
+	where
+		T: Injectable,
+	{
+		// Resolve via the global dependency registry first.
+		// If the type is not registered (e.g., manual `impl Injectable` without
+		// `#[injectable]`), fall back to `T::inject()` directly.
+		let arc = match ctx.resolve::<T>().await {
+			Ok(arc) => arc,
+			Err(DiError::DependencyNotRegistered { .. }) => Arc::new(T::inject(ctx).await?),
+			Err(e) => return Err(e),
+		};
 
 		Ok(Self {
 			inner: arc,
@@ -360,7 +364,10 @@ impl<T: Send + Sync + 'static> DependsBuilder<T> {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn resolve(self, ctx: &InjectionContext) -> DiResult<Depends<T>> {
+	pub async fn resolve(self, ctx: &InjectionContext) -> DiResult<Depends<T>>
+	where
+		T: Injectable,
+	{
 		Depends::resolve(ctx, self.use_cache).await
 	}
 }
@@ -397,6 +404,15 @@ mod tests {
 	#[derive(Clone, Default, Debug)]
 	struct TestConfig {
 		value: String,
+	}
+
+	#[async_trait::async_trait]
+	impl Injectable for TestConfig {
+		async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+			Ok(TestConfig {
+				value: "test".to_string(),
+			})
+		}
 	}
 
 	/// Register TestConfig in the global registry for resolution tests.
@@ -596,16 +612,26 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_depends_resolve_unregistered_type_returns_error() {
-		// Arrange
+	async fn test_depends_resolve_failing_injectable_returns_error() {
+		// Arrange: type whose inject() always fails
 		#[derive(Debug)]
-		struct UnregisteredType;
+		struct FailingType;
+
+		#[async_trait::async_trait]
+		impl Injectable for FailingType {
+			async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+				Err(crate::DiError::NotRegistered {
+					type_name: "FailingType".into(),
+					hint: "intentionally failing".into(),
+				})
+			}
+		}
 
 		let singleton_scope = Arc::new(SingletonScope::new());
 		let ctx = InjectionContext::builder(singleton_scope).build();
 
 		// Act
-		let result = Depends::<UnregisteredType>::resolve(&ctx, true).await;
+		let result = Depends::<FailingType>::resolve(&ctx, true).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -661,6 +687,15 @@ mod tests {
 		#[derive(Debug)]
 		struct NonCloneRouter {
 			prefix: String,
+		}
+
+		#[async_trait::async_trait]
+		impl Injectable for NonCloneRouter {
+			async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+				Ok(NonCloneRouter {
+					prefix: "/api".to_string(),
+				})
+			}
 		}
 
 		let registry = global_registry();

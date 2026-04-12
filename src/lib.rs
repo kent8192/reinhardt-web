@@ -285,7 +285,7 @@ pub use reinhardt_macros::{api_view, delete, get, patch, post, put};
 // Re-export routes attribute macro for URL pattern registration
 #[cfg(native)]
 pub use reinhardt_macros::routes;
-#[cfg(all(native, feature = "url-resolver"))]
+#[cfg(native)]
 pub use reinhardt_macros::url_patterns;
 
 // Re-export admin attribute macro (requires admin feature)
@@ -659,8 +659,8 @@ pub use reinhardt_urls::routers::{
 #[cfg(feature = "client-router")]
 pub use reinhardt_urls::routers::Path as ClientPath;
 
-// Re-export URL resolver trait (requires url-resolver feature)
-#[cfg(all(native, feature = "url-resolver"))]
+// Re-export URL resolver trait (native only)
+#[cfg(native)]
 pub use reinhardt_urls::routers::resolver::UrlResolver;
 
 // Re-export auth

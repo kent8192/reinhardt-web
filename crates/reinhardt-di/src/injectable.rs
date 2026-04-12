@@ -123,11 +123,11 @@ where
 ///
 /// The implementation delegates to `Depends::resolve()`, which resolves `T`
 /// from the global registry with caching and circular dependency detection.
-/// `T` does not need to implement `Injectable` — only `Send + Sync + 'static`.
+/// Falls back to `T::inject()` if the type is not in the global registry.
 #[async_trait::async_trait]
 impl<T> Injectable for crate::depends::Depends<T>
 where
-	T: Send + Sync + 'static,
+	T: Injectable,
 {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
 		crate::depends::Depends::<T>::resolve(ctx, true).await

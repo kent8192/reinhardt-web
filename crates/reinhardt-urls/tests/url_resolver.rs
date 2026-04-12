@@ -1,6 +1,6 @@
 //! Tests for the `UrlResolver` trait.
 
-#![cfg(feature = "url-resolver")]
+#![cfg(native)]
 
 use reinhardt_urls::routers::resolver::UrlResolver;
 use rstest::*;

@@ -799,18 +799,13 @@ fn generate_url_resolver_tokens(
 	let params = extract_url_params(path);
 	let doc_str = format!("Resolve URL for route `{}` (pattern: `{}`).", name, path);
 
-	// Gate with `feature = "url-resolver"` only (not `native`).
-	// The `UrlResolver` trait itself is not `native`-gated, so extension traits
-	// that only reference `UrlResolver` don't need the `native` gate.
-	// The `native` gate belongs on `ResolvedUrls` (in `routes_registration.rs`)
-	// because it depends on `ServerRouter` which is `native`-only.
+	// Gate with raw platform check (not `native` alias) because this code
+	// expands in consuming crates that do not have cfg_aliases.
 	if params.is_empty() {
 		quote! {
 			#[doc(hidden)]
 			pub mod #resolver_mod_ident {
-				#![allow(unexpected_cfgs)]
-
-				#[cfg(feature = "url-resolver")]
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				#[doc = #doc_str]
 				pub trait #trait_ident: #reinhardt_crate::UrlResolver {
 					#[doc = #doc_str]
@@ -818,7 +813,7 @@ fn generate_url_resolver_tokens(
 						self.resolve_url(#name, &[])
 					}
 				}
-				#[cfg(feature = "url-resolver")]
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				impl<T: #reinhardt_crate::UrlResolver> #trait_ident for T {}
 			}
 			#[doc(hidden)]
@@ -834,9 +829,7 @@ fn generate_url_resolver_tokens(
 		quote! {
 			#[doc(hidden)]
 			pub mod #resolver_mod_ident {
-				#![allow(unexpected_cfgs)]
-
-				#[cfg(feature = "url-resolver")]
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				#[doc = #doc_str]
 				pub trait #trait_ident: #reinhardt_crate::UrlResolver {
 					#[doc = #doc_str]
@@ -844,7 +837,7 @@ fn generate_url_resolver_tokens(
 						self.resolve_url(#name, &[#((#param_strs, #param_idents)),*])
 					}
 				}
-				#[cfg(feature = "url-resolver")]
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				impl<T: #reinhardt_crate::UrlResolver> #trait_ident for T {}
 			}
 			#[doc(hidden)]

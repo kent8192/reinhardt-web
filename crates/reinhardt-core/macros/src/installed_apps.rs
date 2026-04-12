@@ -651,9 +651,7 @@ pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 		/// in the consuming crate's root macro namespace.
 		#[doc(hidden)]
 		mod __for_each_app_cfg {
-			#![allow(unexpected_cfgs)]
-
-			#[cfg(feature = "url-resolver")]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#[doc(hidden)]
 			#[macro_export]
 			macro_rules! __reinhardt_for_each_app {

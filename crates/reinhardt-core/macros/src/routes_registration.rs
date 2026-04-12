@@ -350,27 +350,23 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 		}
 	};
 
-	// Generate ResolvedUrls struct + url_prelude module (url-resolver feature)
-	// Gate on both `native` and `url-resolver` to stay consistent with the
-	// underlying types (`ServerRouter`, `UrlResolver`) which are `native`-only.
-	// Wrapped in a module with inner `#![allow(unexpected_cfgs)]` so that
-	// consuming crates do not see check-cfg warnings for `url-resolver`/`native`.
+	// Generate ResolvedUrls struct + url_prelude module (native-only).
+	// Gate on `not(wasm)` using raw platform check because this code expands
+	// in consuming crates that do not have the `native` cfg alias.
 	let url_resolver_code = quote! {
 		#[doc(hidden)]
 		pub mod __url_resolver_support {
-			#![allow(unexpected_cfgs)]
-
 			/// Type-safe URL resolver backed by the global `ServerRouter`.
 			///
 			/// Provides URL resolution methods via extension traits generated
 			/// by view macros. Import `url_prelude::*` to bring all resolver
 			/// methods into scope.
-			#[cfg(all(native, feature = "url-resolver"))]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			pub struct ResolvedUrls {
 				router: ::std::sync::Arc<#reinhardt::ServerRouter>,
 			}
 
-			#[cfg(all(native, feature = "url-resolver"))]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			impl #reinhardt::UrlResolver for ResolvedUrls {
 				fn resolve_url(&self, name: &str, params: &[(&str, &str)]) -> String {
 					self.router
@@ -379,7 +375,7 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 				}
 			}
 
-			#[cfg(all(native, feature = "url-resolver"))]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			impl ResolvedUrls {
 				/// Create a `ResolvedUrls` from the globally registered router.
 				///
@@ -398,7 +394,7 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 				}
 			}
 
-			#[cfg(all(native, feature = "url-resolver"))]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#[doc(hidden)]
 			macro_rules! __build_url_prelude {
 				($($app:ident),*) => {
@@ -410,7 +406,7 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 				};
 			}
 
-			#[cfg(all(native, feature = "url-resolver"))]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			crate::__reinhardt_for_each_app!(__build_url_prelude);
 		}
 		pub use __url_resolver_support::*;

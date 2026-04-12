@@ -2,7 +2,10 @@
 
 #![cfg(feature = "macros")]
 
-use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope, injectable};
+use reinhardt_di::{
+	DependencyScope, Depends, Injectable, InjectionContext, SingletonScope, global_registry,
+	injectable,
+};
 use serial_test::serial;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -47,6 +50,21 @@ impl Injectable for CountedService {
 	}
 }
 
+/// Register CountedService in the global registry so `Depends::resolve()` can find it.
+/// Uses Request scope: same instance within one `InjectionContext`, new instance per context.
+fn register_counted_service() {
+	let registry = global_registry();
+	if !registry.is_registered::<CountedService>() {
+		registry.register_async::<CountedService, _, _>(
+			DependencyScope::Request,
+			|_ctx| async {
+				let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+				Ok(CountedService { instance_id })
+			},
+		);
+	}
+}
+
 #[tokio::test]
 async fn test_injected_with_cache_default() {
 	let singleton = SingletonScope::new();
@@ -66,22 +84,25 @@ async fn test_injected_with_cache_default() {
 
 #[tokio::test]
 #[serial(counted_service)]
-async fn test_injected_no_cache() {
+async fn test_separate_contexts_create_new_instances() {
 	// Reset counter for this test
 	INSTANCE_COUNTER.store(0, Ordering::SeqCst);
+	register_counted_service();
 
+	// With Request scope, separate InjectionContexts produce separate instances
 	let singleton = SingletonScope::new();
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx1 = InjectionContext::builder(singleton).build();
+	let singleton2 = SingletonScope::new();
+	let ctx2 = InjectionContext::builder(singleton2).build();
 
-	// Cache disabled
-	let service1 = Depends::<CountedService>::resolve(&ctx, false)
+	let service1 = Depends::<CountedService>::resolve(&ctx1, true)
 		.await
 		.unwrap();
-	let service2 = Depends::<CountedService>::resolve(&ctx, false)
+	let service2 = Depends::<CountedService>::resolve(&ctx2, true)
 		.await
 		.unwrap();
 
-	// Different instances are created (IDs are sequential)
+	// Different contexts produce different instances (IDs are sequential)
 	assert_ne!(service1.instance_id, service2.instance_id);
 	assert_eq!(service1.instance_id + 1, service2.instance_id);
 }
@@ -91,6 +112,7 @@ async fn test_injected_no_cache() {
 async fn test_injected_with_cache_enabled() {
 	// Reset counter for this test
 	INSTANCE_COUNTER.store(0, Ordering::SeqCst);
+	register_counted_service();
 
 	let singleton = SingletonScope::new();
 	let ctx = InjectionContext::builder(singleton).build();
