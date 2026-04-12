@@ -435,6 +435,10 @@ impl APIClient {
 	/// client.force_authenticate(Some(user)).await;
 	/// # });
 	/// ```
+	#[deprecated(
+		since = "0.2.0-rc.1",
+		note = "use `client.auth().session()` or `client.auth().jwt()` instead"
+	)]
 	pub async fn force_authenticate(&self, user: Option<Value>) {
 		let mut current_user = self.user.write().await;
 		*current_user = user;
@@ -469,10 +473,49 @@ impl APIClient {
 	/// # });
 	/// ```
 	pub async fn clear_auth(&self) -> ClientResult<()> {
+		#[allow(deprecated)]
 		self.force_authenticate(None).await;
 		let mut cookies = self.cookies.write().await;
 		cookies.clear();
 		Ok(())
+	}
+
+	/// Set a cookie that will be sent with subsequent requests.
+	pub async fn set_cookie(&self, name: &str, value: &str) -> ClientResult<()> {
+		validate_cookie_key(name);
+		validate_cookie_value(value);
+		let mut cookies = self.cookies.write().await;
+		cookies.insert(name.to_string(), value.to_string());
+		Ok(())
+	}
+
+	/// Remove a specific cookie.
+	pub async fn remove_cookie(&self, name: &str) -> ClientResult<()> {
+		let mut cookies = self.cookies.write().await;
+		cookies.remove(name);
+		Ok(())
+	}
+
+	/// Clear all authentication state (session cookies, auth headers, stored user).
+	///
+	/// This is the replacement for `force_authenticate(None)`.
+	pub async fn logout(&self) -> ClientResult<()> {
+		self.clear_auth().await
+	}
+
+	/// Start building an auth configuration for this client.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// client.auth()
+	///     .session(&user, &session_store)
+	///     .with_staff(true)
+	///     .apply().await?;
+	/// ```
+	#[cfg(feature = "auth-testing")]
+	pub fn auth(&self) -> crate::auth::AuthBuilder<'_> {
+		crate::auth::AuthBuilder::new(self)
 	}
 
 	/// Clean up all client state for teardown
