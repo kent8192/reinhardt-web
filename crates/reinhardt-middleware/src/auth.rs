@@ -57,7 +57,7 @@ use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 /// # impl AuthenticationBackend for TestAuthBackend {
 /// #     async fn authenticate(&self, _request: &Request) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
 /// #         Ok(Some(Box::new(SimpleUser {
-/// #             id: Uuid::new_v4(),
+/// #             id: Uuid::now_v7(),
 /// #             username: "testuser".to_string(),
 /// #             email: "test@example.com".to_string(),
 /// #             is_active: true,
@@ -140,7 +140,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
 	/// # impl AuthenticationBackend for TestAuthBackend {
 	/// #     async fn authenticate(&self, _request: &Request) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
 	/// #         Ok(Some(Box::new(SimpleUser {
-	/// #             id: Uuid::new_v4(),
+	/// #             id: Uuid::now_v7(),
 	/// #             username: "testuser".to_string(),
 	/// #             email: "test@example.com".to_string(),
 	/// #             is_active: true,
@@ -314,7 +314,7 @@ mod tests {
 	async fn test_auth_middleware_with_valid_session() {
 		let session_store = Arc::new(InMemorySessionStore::new());
 		let user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),
 			is_active: true,

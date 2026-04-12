@@ -552,7 +552,7 @@ mod tests {
 	#[test]
 	fn test_simple_user_implementation() {
 		let user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),
 			is_active: true,

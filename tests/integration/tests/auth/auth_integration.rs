@@ -352,7 +352,7 @@ mod user_model_tests {
 	#[tokio::test]
 	async fn test_simple_user_implementation() {
 		let user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),
 			is_active: true,
@@ -403,7 +403,7 @@ mod user_model_tests {
 		#[case] is_superuser: bool,
 	) {
 		let user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "user".to_string(),
 			email: "user@example.com".to_string(),
 			is_active,
@@ -495,7 +495,7 @@ mod database_integration_tests {
 
 		// Create a test user
 		let user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "session_user".to_string(),
 			email: "session@example.com".to_string(),
 			is_active: true,
@@ -529,7 +529,7 @@ mod database_integration_tests {
 		let (_container, _connection, _port, _url) = auth_test_db.await;
 
 		let mut user = DefaultUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "passworduser".to_string(),
 			email: "password@example.com".to_string(),
 			first_name: "Password".to_string(),
@@ -574,7 +574,7 @@ mod database_integration_tests {
 		let (_container, _connection, _port, _url) = auth_test_db.await;
 
 		let user = DefaultUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "permuser".to_string(),
 			email: "perm@example.com".to_string(),
 			first_name: "Permission".to_string(),
@@ -618,7 +618,7 @@ mod database_integration_tests {
 		let (_container, _connection, _port, _url) = auth_test_db.await;
 
 		let superuser = DefaultUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "superuser".to_string(),
 			email: "super@example.com".to_string(),
 			first_name: "Super".to_string(),

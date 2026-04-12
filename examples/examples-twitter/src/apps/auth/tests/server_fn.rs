@@ -28,7 +28,7 @@ use reinhardt::middleware::session::{SessionData, SessionStore, SessionStoreRef}
 fn new_test_session() -> SessionData {
 	let now = SystemTime::now();
 	SessionData {
-		id: uuid::Uuid::new_v4().to_string(),
+		id: uuid::Uuid::now_v7().to_string(),
 		data: HashMap::new(),
 		created_at: now,
 		last_accessed: now,
@@ -287,7 +287,7 @@ async fn test_logout_server_fn(#[future] twitter_db_pool: (PgPool, String)) {
 	let store = Arc::new(SessionStore::new());
 	let mut session = new_test_session();
 	session
-		.set("user_id".to_string(), uuid::Uuid::new_v4())
+		.set("user_id".to_string(), uuid::Uuid::now_v7())
 		.expect("Session set should succeed");
 	store.save(session.clone());
 	let store_ref = SessionStoreRef(Arc::clone(&store));

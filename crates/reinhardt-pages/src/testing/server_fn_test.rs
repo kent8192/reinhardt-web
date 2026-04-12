@@ -271,7 +271,7 @@ mod tests {
 		assert!(session.user_id.is_none());
 		assert!(session.extra_data.is_empty());
 
-		let user_id = uuid::Uuid::new_v4();
+		let user_id = uuid::Uuid::now_v7();
 		let session_with_user = TestSessionData::with_user(user_id);
 		assert_eq!(session_with_user.user_id, Some(user_id));
 	}

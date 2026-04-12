@@ -36,7 +36,7 @@ console_error_panic_hook = "0.1"
 gloo-net = "0.6"
 # WASM-compatible chrono and uuid
 chrono = { version = "0.4", features = ["serde", "wasmbind"] }
-uuid = { version = "1.11.0", features = ["serde", "v4", "js"] }
+uuid = { version = "1.11.0", features = ["serde", "v4", "v7", "js"] }
 
 # Server-specific dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
@@ -52,7 +52,7 @@ reinhardt = { workspace = true, features = [
 tokio = { version = "1.48.0", features = ["full"] }
 # Server-specific common dependencies
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.11.0", features = ["serde", "v4"] }
+uuid = { version = "1.11.0", features = ["serde", "v4", "v7"] }
 anyhow = { workspace = true }
 ctor = "0.6.1"
 inventory = "0.3"
