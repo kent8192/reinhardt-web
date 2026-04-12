@@ -9,7 +9,8 @@
 //! ## Examples
 //!
 //! ```rust,no_run
-//! use reinhardt_di::{Depends, DiResult, InjectionContext, SingletonScope, global_registry, DependencyScope};
+//! use reinhardt_di::{Depends, DiResult, Injectable, InjectionContext, SingletonScope, global_registry, DependencyScope};
+//! # use async_trait::async_trait;
 //! use std::sync::Arc;
 //!
 //! #[derive(Default)]
@@ -17,6 +18,12 @@
 //!     database_url: String,
 //! }
 //!
+//! # #[async_trait]
+//! # impl Injectable for Config {
+//! #     async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+//! #         Ok(Config::default())
+//! #     }
+//! # }
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Register Config in the global registry (normally done via #[injectable] or #[injectable_factory])
 //! let registry = global_registry();
