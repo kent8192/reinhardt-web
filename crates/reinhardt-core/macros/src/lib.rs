@@ -43,6 +43,7 @@ mod schema;
 mod settings_compose;
 mod settings_fragment;
 pub(crate) mod settings_parser;
+mod pascal_case;
 mod use_inject;
 mod user_attribute;
 mod user_field_mapping;
