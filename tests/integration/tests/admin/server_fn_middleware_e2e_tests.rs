@@ -21,7 +21,6 @@ use rstest::*;
 /// Verifies that an authenticated `get_dashboard` request succeeds through
 /// the full middleware pipeline (LoggingMW → OriginGuardMW → CookieAuthMW → handler).
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_get_dashboard_through_pipeline(
 	#[future] middleware_e2e_context: (
@@ -49,7 +48,6 @@ async fn test_middleware_e2e_get_dashboard_through_pipeline(
 /// pipeline, confirming DI resolves all dependencies from middleware-populated
 /// `AuthState` (AdminAuthenticatedUser, AdminSite, AdminDatabase).
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_get_list_through_pipeline(
 	#[future] middleware_e2e_context: (
@@ -84,7 +82,6 @@ async fn test_middleware_e2e_get_list_through_pipeline(
 /// Verifies that a valid JWT in `Authorization: Bearer` header authenticates
 /// through `AdminCookieAuthMiddleware` (fallback extraction path).
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_bearer_header_authenticates(
 	#[future] middleware_e2e_context: (
@@ -112,7 +109,6 @@ async fn test_middleware_e2e_bearer_header_authenticates(
 /// `AdminCookieAuthMiddleware` sets `AuthState::anonymous()`, and the handler
 /// rejects unauthenticated access.
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_no_auth_returns_401(
 	#[future] middleware_e2e_context: (
@@ -142,7 +138,6 @@ async fn test_middleware_e2e_no_auth_returns_401(
 
 /// Verifies that a malformed JWT token is treated as unauthenticated.
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_invalid_jwt_returns_401(
 	#[future] middleware_e2e_context: (
@@ -174,7 +169,6 @@ async fn test_middleware_e2e_invalid_jwt_returns_401(
 
 /// Verifies that a POST with a cross-origin Origin header is rejected with 403.
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_cross_origin_returns_403(
 	#[future] middleware_e2e_context: (
@@ -200,7 +194,6 @@ async fn test_middleware_e2e_cross_origin_returns_403(
 
 /// Verifies that a POST without Origin or Referer header is rejected with 403.
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_missing_origin_returns_403(
 	#[future] middleware_e2e_context: (
@@ -228,7 +221,6 @@ async fn test_middleware_e2e_missing_origin_returns_403(
 
 /// Verifies that `HttpServer` rejects request bodies exceeding the 10 MB limit.
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_oversized_body_rejected(
 	#[future] middleware_e2e_context: (
@@ -271,7 +263,6 @@ async fn test_middleware_e2e_oversized_body_rejected(
 /// Verifies that a JWT for a non-staff user is authenticated by the middleware
 /// but rejected by the admin handler (non-staff users cannot access admin).
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_non_staff_jwt_denied(
 	#[future] middleware_e2e_context: (
@@ -303,7 +294,6 @@ async fn test_middleware_e2e_non_staff_jwt_denied(
 /// Verifies that a JWT for an inactive user is authenticated by the middleware
 /// but rejected by the admin handler (inactive users cannot access admin).
 #[rstest]
-#[awt]
 #[tokio::test]
 async fn test_middleware_e2e_inactive_user_jwt_denied(
 	#[future] middleware_e2e_context: (
