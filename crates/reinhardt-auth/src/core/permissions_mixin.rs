@@ -59,7 +59,7 @@ use std::collections::HashSet;
 /// # #[cfg(feature = "argon2-hasher")]
 /// # {
 /// let mut user = MyUser {
-///     id: Uuid::new_v4(),
+///     id: Uuid::now_v7(),
 ///     email: "admin@example.com".to_string(),
 ///     password_hash: None,
 ///     last_login: None,

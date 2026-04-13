@@ -70,7 +70,7 @@ pub fn make_staff_request() -> ServerFnRequest {
 /// Creates an `AdminDefaultUser` with staff privileges for testing.
 pub fn make_staff_user() -> AdminDefaultUser {
 	AdminDefaultUser {
-		id: Uuid::new_v4(),
+		id: Uuid::now_v7(),
 		username: "test_staff".to_string(),
 		email: "staff@test.example".to_string(),
 		first_name: "Test".to_string(),

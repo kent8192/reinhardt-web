@@ -795,7 +795,7 @@ mod tests {
 	#[case("reinhardt_rest::serializers::Serializer", "rest sub-crate")]
 	#[case("reinhardt_middleware::Middleware", "middleware sub-crate")]
 	#[case(
-		"reinhardt_di::injected::Injected<my_app::MyType>",
+		"reinhardt_di::depends::Depends<my_app::MyType>",
 		"generic framework type"
 	)]
 	fn test_framework_type_detected(#[case] type_name: &str, #[case] description: &str) {
@@ -847,7 +847,7 @@ mod tests {
 		"generic wrapping framework"
 	)]
 	#[case(
-		"core::option::Option<reinhardt_di::Injected<Foo>>",
+		"core::option::Option<reinhardt_di::Depends<Foo>>",
 		false,
 		"option wrapping framework"
 	)]

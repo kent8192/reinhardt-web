@@ -427,14 +427,14 @@ fn generate_wrapper_with_both(
 
 			if use_cache {
 				quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
 						.await
 						.map_err(#core_crate::exception::Error::from)?
 						.into_inner();
 				}
 			} else {
 				quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
 						.await
 						.map_err(#core_crate::exception::Error::from)?
 						.into_inner();
@@ -799,32 +799,25 @@ fn generate_url_resolver_tokens(
 	let params = extract_url_params(path);
 	let doc_str = format!("Resolve URL for route `{}` (pattern: `{}`).", name, path);
 
-	// Gate with `feature = "url-resolver"` only (not `native`).
-	// The `UrlResolver` trait itself is not `native`-gated, so extension traits
-	// that only reference `UrlResolver` don't need the `native` gate.
-	// The `native` gate belongs on `ResolvedUrls` (in `routes_registration.rs`)
-	// because it depends on `ServerRouter` which is `native`-only.
+	// Gate with raw platform check (not `native` alias) because this code
+	// expands in consuming crates that do not have cfg_aliases.
 	if params.is_empty() {
 		quote! {
-			#[allow(unexpected_cfgs)]
-			#[cfg(feature = "url-resolver")]
-			#[doc = #doc_str]
-			pub trait #trait_ident: #reinhardt_crate::UrlResolver {
-				#[doc = #doc_str]
-				fn #method_ident(&self) -> String {
-					self.resolve_url(#name, &[])
-				}
-			}
-			#[allow(unexpected_cfgs)]
-			#[cfg(feature = "url-resolver")]
-			impl<T: #reinhardt_crate::UrlResolver> #trait_ident for T {}
-
-			#[allow(unexpected_cfgs)]
-			#[cfg(feature = "url-resolver")]
 			#[doc(hidden)]
 			pub mod #resolver_mod_ident {
-				pub use super::#trait_ident;
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				#[doc = #doc_str]
+				pub trait #trait_ident: #reinhardt_crate::UrlResolver {
+					#[doc = #doc_str]
+					fn #method_ident(&self) -> String {
+						self.resolve_url(#name, &[])
+					}
+				}
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				impl<T: #reinhardt_crate::UrlResolver> #trait_ident for T {}
 			}
+			#[doc(hidden)]
+			pub use #resolver_mod_ident::*;
 		}
 	} else {
 		let param_idents: Vec<syn::Ident> = params
@@ -834,25 +827,21 @@ fn generate_url_resolver_tokens(
 		let param_strs: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
 
 		quote! {
-			#[allow(unexpected_cfgs)]
-			#[cfg(feature = "url-resolver")]
-			#[doc = #doc_str]
-			pub trait #trait_ident: #reinhardt_crate::UrlResolver {
-				#[doc = #doc_str]
-				fn #method_ident(&self, #(#param_idents: &str),*) -> String {
-					self.resolve_url(#name, &[#((#param_strs, #param_idents)),*])
-				}
-			}
-			#[allow(unexpected_cfgs)]
-			#[cfg(feature = "url-resolver")]
-			impl<T: #reinhardt_crate::UrlResolver> #trait_ident for T {}
-
-			#[allow(unexpected_cfgs)]
-			#[cfg(feature = "url-resolver")]
 			#[doc(hidden)]
 			pub mod #resolver_mod_ident {
-				pub use super::#trait_ident;
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				#[doc = #doc_str]
+				pub trait #trait_ident: #reinhardt_crate::UrlResolver {
+					#[doc = #doc_str]
+					fn #method_ident(&self, #(#param_idents: &str),*) -> String {
+						self.resolve_url(#name, &[#((#param_strs, #param_idents)),*])
+					}
+				}
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				impl<T: #reinhardt_crate::UrlResolver> #trait_ident for T {}
 			}
+			#[doc(hidden)]
+			pub use #resolver_mod_ident::*;
 		}
 	}
 }

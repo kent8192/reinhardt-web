@@ -136,8 +136,7 @@ pub mod pattern;
 #[cfg(native)]
 pub mod registration;
 /// URL resolver trait for type-safe URL generation.
-#[cfg(all(native, feature = "url-resolver"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "url-resolver")))]
+#[cfg(native)]
 pub mod resolver;
 /// URL reverse resolution (name-to-URL mapping).
 #[cfg(native)]

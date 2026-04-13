@@ -285,8 +285,10 @@ pub use reinhardt_macros::{api_view, delete, get, patch, post, put};
 // Re-export routes attribute macro for URL pattern registration
 #[cfg(native)]
 pub use reinhardt_macros::routes;
-#[cfg(all(native, feature = "url-resolver"))]
+#[cfg(native)]
 pub use reinhardt_macros::url_patterns;
+#[cfg(native)]
+pub use reinhardt_macros::viewset;
 
 // Re-export admin attribute macro (requires admin feature)
 #[cfg(all(feature = "admin", native))]
@@ -659,8 +661,8 @@ pub use reinhardt_urls::routers::{
 #[cfg(feature = "client-router")]
 pub use reinhardt_urls::routers::Path as ClientPath;
 
-// Re-export URL resolver trait (requires url-resolver feature)
-#[cfg(all(native, feature = "url-resolver"))]
+// Re-export URL resolver trait (native only)
+#[cfg(native)]
 pub use reinhardt_urls::routers::resolver::UrlResolver;
 
 // Re-export auth
@@ -960,6 +962,7 @@ pub use reinhardt_forms::{
 
 // Re-export DI and parameters (FastAPI-style parameter extraction)
 #[cfg(all(feature = "di", native))]
+#[allow(deprecated)]
 pub use reinhardt_di::injected::{Injected, OptionalInjected};
 #[cfg(all(feature = "di", native))]
 pub use reinhardt_di::scope::{RequestScope, Scope, SingletonScope};

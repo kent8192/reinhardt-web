@@ -156,7 +156,7 @@ impl TestSavepoint {
 
 	/// Generate a unique savepoint name.
 	pub fn generate() -> Self {
-		Self::new(format!("sp_{}", uuid::Uuid::new_v4().simple()))
+		Self::new(format!("sp_{}", uuid::Uuid::now_v7().simple()))
 	}
 
 	/// Mark the savepoint as released.

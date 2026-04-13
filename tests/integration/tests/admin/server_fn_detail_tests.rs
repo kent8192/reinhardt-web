@@ -218,7 +218,7 @@ async fn test_get_detail_uuid_pk(
 
 	// Insert a record with UUID PK via sqlx (AdminDatabase::create returns u64,
 	// which cannot represent UUIDs)
-	let uuid_id = uuid::Uuid::new_v4();
+	let uuid_id = uuid::Uuid::now_v7();
 	sqlx::query("INSERT INTO uuid_test_models (id, name, status) VALUES ($1, $2, $3)")
 		.bind(uuid_id)
 		.bind("UUID Test Item")

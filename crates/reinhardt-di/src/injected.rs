@@ -102,12 +102,17 @@ pub enum DependencyScope {
 /// # Ok(())
 /// # }
 /// ```
+#[deprecated(
+	since = "0.1.0-rc.16",
+	note = "use `Depends<T>` instead. `Injected<T>` will be removed in a future version."
+)]
 #[derive(Debug)]
 pub struct Injected<T: Injectable> {
 	inner: Arc<T>,
 	metadata: InjectionMetadata,
 }
 
+#[allow(deprecated)]
 impl<T: Injectable> Injected<T> {
 	/// Resolve dependency with cache enabled (default)
 	///
@@ -332,6 +337,7 @@ impl<T: Injectable> Injected<T> {
 	}
 }
 
+#[allow(deprecated)]
 impl<T: Injectable + Clone> Injected<T> {
 	/// Extract inner value
 	///
@@ -361,6 +367,7 @@ impl<T: Injectable + Clone> Injected<T> {
 	}
 }
 
+#[allow(deprecated)]
 impl<T: Injectable> Deref for Injected<T> {
 	type Target = T;
 
@@ -369,6 +376,7 @@ impl<T: Injectable> Deref for Injected<T> {
 	}
 }
 
+#[allow(deprecated)]
 impl<T: Injectable> Clone for Injected<T> {
 	fn clone(&self) -> Self {
 		Self {
@@ -378,6 +386,7 @@ impl<T: Injectable> Clone for Injected<T> {
 	}
 }
 
+#[allow(deprecated)]
 impl<T: Injectable> AsRef<T> for Injected<T> {
 	fn as_ref(&self) -> &T {
 		&self.inner
@@ -434,9 +443,15 @@ impl<T: Injectable> AsRef<T> for Injected<T> {
 /// //     //                               ^^^^^^^^^^^^^^^^^^^^^^^^^ Error!
 /// // ) -> Result<String> { ... }
 /// ```
+#[deprecated(
+	since = "0.1.0-rc.16",
+	note = "use `Option<Depends<T>>` instead. `OptionalInjected<T>` will be removed in a future version."
+)]
+#[allow(deprecated)]
 pub type OptionalInjected<T> = Option<Injected<T>>;
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
 	use super::*;
 	use crate::SingletonScope;

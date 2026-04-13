@@ -39,7 +39,7 @@ mod tests {
 
 	fn make_full_test_user() -> FullTestUser {
 		FullTestUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),
 			first_name: "Test".to_string(),

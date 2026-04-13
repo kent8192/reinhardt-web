@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::exception::Result;
-use reinhardt_di::{Injectable, Injected, InjectionContext, SingletonScope, injectable};
+use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope, injectable};
 use reinhardt_http::{Request, Response};
 use reinhardt_views::viewsets::{Action, ViewSet};
 use std::sync::Arc;
@@ -43,9 +43,9 @@ impl Default for RedisCache {
 #[injectable]
 struct UserViewSet {
 	#[inject]
-	db: Injected<Database>,
+	db: Depends<Database>,
 	#[inject]
-	cache: Injected<RedisCache>,
+	cache: Depends<RedisCache>,
 	#[no_inject]
 	#[allow(dead_code)]
 	name: String,
@@ -126,9 +126,9 @@ async fn test_field_injection_with_viewset_dispatch() {
 #[injectable]
 struct ServiceViewSet {
 	#[inject]
-	cached_db: Injected<Database>,
+	cached_db: Depends<Database>,
 	#[inject(cache = false)]
-	fresh_db: Injected<Database>,
+	fresh_db: Depends<Database>,
 }
 
 #[async_trait]

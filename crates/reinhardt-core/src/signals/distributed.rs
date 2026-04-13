@@ -98,7 +98,7 @@ impl<T> DistributedEvent<T> {
 			payload,
 			source_service: source_service.into(),
 			timestamp,
-			event_id: uuid::Uuid::new_v4().to_string(),
+			event_id: uuid::Uuid::now_v7().to_string(),
 		}
 	}
 }
