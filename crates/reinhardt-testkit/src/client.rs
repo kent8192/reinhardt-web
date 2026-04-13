@@ -1074,10 +1074,7 @@ fn validate_cookie_key(key: &str) {
 ///
 /// Panics if the cookie value contains invalid characters.
 fn validate_cookie_value(value: &str) {
-	assert!(
-		!value.contains(';'),
-		"cookie value must not contain ';'"
-	);
+	assert!(!value.contains(';'), "cookie value must not contain ';'");
 	assert!(
 		!value.contains('\r') && !value.contains('\n'),
 		"cookie value must not contain newlines"
