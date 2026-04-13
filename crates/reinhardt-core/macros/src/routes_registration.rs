@@ -405,16 +405,14 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			.iter()
 			.filter(|s| !s.is_empty())
 			.map(|s| {
-				syn::parse_str::<syn::Ident>(s)
-					.map(Into::into)
-					.map_err(|_| {
-						syn::Error::new(
-							proc_macro2::Span::call_site(),
-							format!(
-								"Invalid installed app label `{s}`: expected a valid Rust identifier"
-							),
-						)
-					})
+				syn::parse_str::<syn::Ident>(s).map_err(|_| {
+					syn::Error::new(
+						proc_macro2::Span::call_site(),
+						format!(
+							"Invalid installed app label `{s}`: expected a valid Rust identifier"
+						),
+					)
+				})
 			})
 			.collect::<Result<Vec<_>>>()?;
 
