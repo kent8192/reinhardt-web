@@ -5,7 +5,7 @@
 use reinhardt::prelude::*;
 use reinhardt::routes;
 
-#[routes]
+#[routes(standalone)]
 pub fn routes() -> UnifiedRouter {
 	// Mount hello app routes
 	UnifiedRouter::new().mount("/", crate::apps::hello::urls::url_patterns())

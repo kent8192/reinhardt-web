@@ -7,7 +7,7 @@ use reinhardt::routes;
 
 use super::views;
 
-#[routes]
+#[routes(standalone)]
 pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new()
 		.endpoint(views::list_users)
