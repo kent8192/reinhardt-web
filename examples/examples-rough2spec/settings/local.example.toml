@@ -1,0 +1,8 @@
+# Copy this file to settings/local.toml for local development
+debug = true
+secret_key = "change-me-in-production"
+
+[lm_studio]
+url = "http://localhost:1234/v1/chat/completions"
+model = "glm-edge-v-5b"
+max_tokens = 1800
