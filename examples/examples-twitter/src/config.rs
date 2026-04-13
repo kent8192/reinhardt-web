@@ -2,6 +2,7 @@
 
 #[cfg(server)]
 pub mod admin;
+pub mod apps;
 #[cfg(server)]
 pub mod middleware;
 #[cfg(server)]
