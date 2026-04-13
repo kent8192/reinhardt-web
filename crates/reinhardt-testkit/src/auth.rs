@@ -5,11 +5,11 @@
 //!
 //! # Architecture
 //!
-//! - **[`ForceLoginUser`]**: Trait for extracting session identity from any user type.
+//! - **`ForceLoginUser`**: Trait for extracting session identity from any user type.
 //!   Blanket-implemented for all `AuthIdentity` types (requires `auth-testing` feature).
-//! - **[`SessionIdentity`]**: Type-erased identity struct matching `CookieSessionAuthMiddleware` fields.
-//! - **[`AuthBuilder`]**: Entry point returned by `APIClient::auth()`.
-//! - **[`SecondaryAuth`]**: Open trait for secondary auth layers (MFA, PassKey, etc.).
+//! - **`SessionIdentity`**: Type-erased identity struct matching `CookieSessionAuthMiddleware` fields.
+//! - **`AuthBuilder`**: Entry point returned by `APIClient::auth()`.
+//! - **`SecondaryAuth`**: Open trait for secondary auth layers (MFA, PassKey, etc.).
 //!
 //! # Feature Flags
 //!
