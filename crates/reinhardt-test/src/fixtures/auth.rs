@@ -30,7 +30,7 @@ pub use reinhardt_auth::{
 /// ```
 #[deprecated(
 	since = "0.1.0-rc.16",
-	note = "define your own user type with #[user] macro and use ForceLoginUser trait"
+	note = "define your own user type with `#[user]` macro and use `ForceLoginUser` trait"
 )]
 #[derive(Clone, Debug)]
 pub struct TestUser {
