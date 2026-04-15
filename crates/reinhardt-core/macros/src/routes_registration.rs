@@ -535,15 +535,19 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			}).collect();
 
 			// Generate per-app client URL resolver structs.
-			// These use runtime string-based resolution via ClientUrlResolver
-			// because client routes are defined inside closures where
-			// compile-time metadata cannot be placed at module scope.
+			// When #[url_patterns(client = true, app = "...")] is used,
+			// typed methods are generated via __for_each_client_url_resolver
+			// (same pattern as server-side). A fallback resolve() method is
+			// always available for runtime string-based resolution.
 			let per_app_client_code: Vec<_> = app_idents.iter().map(|app| {
 				let client_urls_struct_name = crate::pascal_case::to_pascal_case_with_suffix(
 					&app.to_string(), "ClientUrls",
 				);
 				let client_urls_struct = proc_macro2::Ident::new(
 					&client_urls_struct_name, proc_macro2::Span::call_site(),
+				);
+				let gen_client_method_macro = proc_macro2::Ident::new(
+					&format!("__gen_{}_client_method", app), proc_macro2::Span::call_site(),
 				);
 				let accessor_method = proc_macro2::Ident::new(
 					&format!("{}_client", app), proc_macro2::Span::call_site(),
@@ -556,27 +560,102 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					/// Access via `ResolvedUrls::#accessor_method()`.
 					pub struct #client_urls_struct<'a> {
 						resolver: &'a ResolvedUrls,
-						app_label: &'static str,
 					}
 
 					impl #client_urls_struct<'_> {
 						/// Resolve a client-side URL by route name and parameters.
 						///
-						/// The route name is automatically prefixed with the app label
-						/// (e.g., `"login_page"` becomes `"auth:login_page"`).
+						/// Fallback for routes not covered by typed methods.
+						/// The route name is automatically prefixed with the app label.
 						pub fn resolve(&self, route_name: &str, params: &[(&str, &str)]) -> String {
-							let full_name = ::std::format!("{}:{}", self.app_label, route_name);
+							let full_name = ::std::format!("{}:{}", #app_str, route_name);
 							self.resolver.resolve_client_url(&full_name, params)
 						}
 					}
 
-					impl ResolvedUrls {
-						/// Access client URL resolver for the `#app` app.
-						pub fn #accessor_method(&self) -> #client_urls_struct<'_> {
-							#client_urls_struct {
-								resolver: self,
-								app_label: #app_str,
+					// Callback macro for __for_each_client_url_resolver to generate
+					// typed methods (same pattern as server-side __gen_<app>_method).
+					macro_rules! #gen_client_method_macro {
+						// No params
+						($app_label:ident, $method:ident, $route_name:literal, ) => {
+							impl #client_urls_struct<'_> {
+								pub fn $method(&self) -> String {
+									self.resolver.resolve_client_url(
+										concat!(#app_str, ":", $route_name),
+										&[],
+									)
+								}
 							}
+						};
+						// 1 param
+						($app_label:ident, $method:ident, $route_name:literal, $p1:literal) => {
+							impl #client_urls_struct<'_> {
+								pub fn $method(&self, p1: &str) -> String {
+									self.resolver.resolve_client_url(
+										concat!(#app_str, ":", $route_name),
+										&[($p1, p1)],
+									)
+								}
+							}
+						};
+						// 2 params
+						($app_label:ident, $method:ident, $route_name:literal, $p1:literal, $p2:literal) => {
+							impl #client_urls_struct<'_> {
+								pub fn $method(&self, p1: &str, p2: &str) -> String {
+									self.resolver.resolve_client_url(
+										concat!(#app_str, ":", $route_name),
+										&[($p1, p1), ($p2, p2)],
+									)
+								}
+							}
+						};
+						// 3 params
+						($app_label:ident, $method:ident, $route_name:literal, $p1:literal, $p2:literal, $p3:literal) => {
+							impl #client_urls_struct<'_> {
+								pub fn $method(&self, p1: &str, p2: &str, p3: &str) -> String {
+									self.resolver.resolve_client_url(
+										concat!(#app_str, ":", $route_name),
+										&[($p1, p1), ($p2, p2), ($p3, p3)],
+									)
+								}
+							}
+						};
+						// 4 params
+						($app_label:ident, $method:ident, $route_name:literal, $p1:literal, $p2:literal, $p3:literal, $p4:literal) => {
+							impl #client_urls_struct<'_> {
+								pub fn $method(&self, p1: &str, p2: &str, p3: &str, p4: &str) -> String {
+									self.resolver.resolve_client_url(
+										concat!(#app_str, ":", $route_name),
+										&[($p1, p1), ($p2, p2), ($p3, p3), ($p4, p4)],
+									)
+								}
+							}
+						};
+						// 5 params
+						($app_label:ident, $method:ident, $route_name:literal, $p1:literal, $p2:literal, $p3:literal, $p4:literal, $p5:literal) => {
+							impl #client_urls_struct<'_> {
+								pub fn $method(&self, p1: &str, p2: &str, p3: &str, p4: &str, p5: &str) -> String {
+									self.resolver.resolve_client_url(
+										concat!(#app_str, ":", $route_name),
+										&[($p1, p1), ($p2, p2), ($p3, p3), ($p4, p4), ($p5, p5)],
+									)
+								}
+							}
+						};
+					}
+
+					// Invoke __for_each_client_url_resolver to populate typed methods.
+					// This is a no-op if the app has no client_url_resolvers module
+					// (i.e., does not use #[url_patterns(client = true)]).
+					crate::apps::#app::urls::client_url_resolvers::__for_each_client_url_resolver!(
+						#gen_client_method_macro, #app,
+						crate::apps::#app::urls::client_url_resolvers
+					);
+
+					// Accessor method on ResolvedUrls
+					impl ResolvedUrls {
+						pub fn #accessor_method(&self) -> #client_urls_struct<'_> {
+							#client_urls_struct { resolver: self }
 						}
 					}
 				}
