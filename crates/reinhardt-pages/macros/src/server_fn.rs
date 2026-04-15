@@ -975,6 +975,7 @@ fn generate_server_handler(
 
 		quote! {
 		mod __msw {
+			use super::super::*;
 			use ::serde::{Serialize, Deserialize};
 
 			/// Public Args struct for MSW type-safe mocking.
@@ -1003,6 +1004,7 @@ fn generate_server_handler(
 		quote! {
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		#vis mod #marker_module_name {
+			use super::*;
 			use ::serde::{Serialize, Deserialize};
 
 			#[doc = concat!("Marker struct for server function `", #name_str, "` (WASM MSW mock target)")]
@@ -1128,6 +1130,8 @@ fn generate_server_handler(
 		// ```
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#vis mod #marker_module_name {
+			use super::*;
+
 			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`)")]
 			pub struct marker;
 
