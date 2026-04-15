@@ -683,7 +683,10 @@ mod tests {
 		};
 
 		let result = url_patterns_impl(quote! { "users" }, input);
-		assert!(result.is_err(), "string literal should be rejected, expected Ident");
+		assert!(
+			result.is_err(),
+			"string literal should be rejected, expected Ident"
+		);
 	}
 
 	#[test]
