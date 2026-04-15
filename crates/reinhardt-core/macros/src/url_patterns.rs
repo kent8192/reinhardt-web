@@ -382,9 +382,9 @@ pub(crate) fn url_patterns_impl(args: TokenStream, input: TokenStream) -> syn::R
 			/// so that the metadata macros resolve at the call site.
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			macro_rules! __for_each_url_resolver {
-				($callback:ident, $app:ident, $base:path) => {
+				($callback:ident, $app:ident, $($base:tt)*) => {
 					#(
-						$base :: #meta_idents ! ($callback, $app);
+						$($base)* :: #meta_idents ! ($callback, $app);
 					)*
 				};
 			}
@@ -530,14 +530,26 @@ mod tests {
 		let result = url_patterns_impl(quote! {}, input).unwrap();
 		let output = result.to_string();
 
+		// Verify __for_each_url_resolver macro is generated
 		assert!(
 			output.contains("__for_each_url_resolver"),
 			"missing __for_each_url_resolver macro"
 		);
+
+		// Verify $base uses tt repetition (not :path) so it can be extended with ::
 		assert!(
-			output.contains("$base"),
-			"missing $base parameter in __for_each_url_resolver"
+			output.contains("$ ($ base : tt) *"),
+			"__for_each_url_resolver must use $($base:tt)* (not $base:path) \
+			 to allow path extension with ::"
 		);
+
+		// Verify the macro body uses $($base)* :: for path concatenation
+		assert!(
+			output.contains("$ ($ base) * ::"),
+			"__for_each_url_resolver body must use $($base)* :: to extend the base path"
+		);
+
+		// Verify meta idents for each endpoint are present
 		assert!(
 			output.contains("__url_resolver_meta_login"),
 			"missing login meta ident"
@@ -545,6 +557,60 @@ mod tests {
 		assert!(
 			output.contains("__url_resolver_meta_register"),
 			"missing register meta ident"
+		);
+	}
+
+	// --- Regression tests for __for_each_url_resolver syntax (Issue #3660) ---
+
+	#[test]
+	fn for_each_url_resolver_macro_is_syntactically_valid() {
+		// The generated code must be parseable as valid Rust.
+		// Previously, $base:path was used instead of $($base:tt)*,
+		// which made the generated macro unparseable because :path
+		// fragments cannot be extended with :: in declarative macros.
+		let input = quote! {
+			pub fn url_patterns() -> ServerRouter {
+				ServerRouter::new()
+					.endpoint(views::login)
+					.endpoint(views::register)
+			}
+		};
+
+		let result = url_patterns_impl(quote! {}, input).unwrap();
+
+		// Wrap in a module so it parses as a complete file
+		let wrapped = quote! {
+			mod __test_wrapper {
+				#result
+			}
+		};
+
+		let parsed: Result<syn::File, _> = syn::parse2(wrapped);
+		assert!(
+			parsed.is_ok(),
+			"generated code is not valid Rust: {}",
+			parsed.unwrap_err()
+		);
+	}
+
+	#[test]
+	fn for_each_url_resolver_no_path_fragment_specifier() {
+		// Ensure the generated macro does NOT use :path for $base,
+		// which would prevent extending the path with :: at call sites.
+		let input = quote! {
+			pub fn url_patterns() -> ServerRouter {
+				ServerRouter::new()
+					.endpoint(views::login)
+			}
+		};
+
+		let result = url_patterns_impl(quote! {}, input).unwrap();
+		let output = result.to_string();
+
+		assert!(
+			!output.contains("$ base : path"),
+			"__for_each_url_resolver must NOT use $base:path — \
+			 :path fragments cannot be extended with :: in declarative macros"
 		);
 	}
 
