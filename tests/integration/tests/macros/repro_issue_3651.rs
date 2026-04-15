@@ -65,5 +65,7 @@ fn test_user_macro_with_self_ref_m2m_compiles() {
 
 	// Assert -- basic field access works
 	assert_eq!(user.email, "");
-	assert!(user.is_active);
+	// NOTE: `#[field(default = true)]` is a DB-level default, not a Rust `Default` trait value.
+	// `#[derive(Default)]` produces `bool::default()` = `false`.
+	assert!(!user.is_active);
 }
