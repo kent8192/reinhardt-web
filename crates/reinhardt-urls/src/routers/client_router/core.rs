@@ -585,6 +585,23 @@ impl ClientRouter {
 		self.named_routes.contains_key(name)
 	}
 
+	/// Extract a lightweight, thread-safe URL reverser.
+	///
+	/// The returned [`ClientUrlReverser`] contains only the
+	/// named-route-to-pattern mapping and can be shared across threads
+	/// (unlike `ClientRouter` itself which holds reactive signals).
+	pub fn to_reverser(&self) -> super::reverser::ClientUrlReverser {
+		let named_patterns = self
+			.named_routes
+			.iter()
+			.map(|(name, &idx)| {
+				let pattern = self.routes[idx].pattern.pattern().to_string();
+				(name.clone(), pattern)
+			})
+			.collect();
+		super::reverser::ClientUrlReverser::new(named_patterns)
+	}
+
 	/// Sets up a popstate event listener for browser back/forward navigation.
 	///
 	/// This method registers a listener for the browser's `popstate` event,

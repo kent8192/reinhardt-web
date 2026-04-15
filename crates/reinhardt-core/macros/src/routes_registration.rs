@@ -581,13 +581,16 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		}
 	};
 
-	// Generate ResolvedUrls struct (native-only).
-	// Gate on `not(wasm)` using raw platform check because this code expands
-	// in consuming crates that do not have the `native` cfg alias.
+	// Generate ResolvedUrls struct.
+	// Native: holds both ServerRouter and ClientUrlReverser.
+	// WASM: holds only ClientUrlReverser.
+	// Gate using raw platform check because this code expands in consuming
+	// crates that do not have the `native` cfg alias.
 	let url_resolver_code = quote! {
 		#[doc(hidden)]
 		pub mod __url_resolver_support {
-			/// Type-safe URL resolver backed by the global `ServerRouter`.
+			/// Type-safe URL resolver backed by the global `ServerRouter`
+			/// and `ClientUrlReverser`.
 			///
 			/// Provides URL resolution methods via extension traits generated
 			/// by view macros. Import `url_prelude::*` to bring all resolver
@@ -595,6 +598,13 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			pub struct ResolvedUrls {
 				router: ::std::sync::Arc<#reinhardt::ServerRouter>,
+				client_reverser: ::std::sync::Arc<#reinhardt::ClientUrlReverser>,
+			}
+
+			/// WASM-only `ResolvedUrls` with client URL resolution only.
+			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+			pub struct ResolvedUrls {
+				client_reverser: ::std::sync::Arc<#reinhardt::ClientUrlReverser>,
 			}
 
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -603,6 +613,14 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					self.router
 						.reverse(name, params)
 						.unwrap_or_else(|| panic!("Route '{}' not found in router", name))
+				}
+			}
+
+			impl #reinhardt::ClientUrlResolver for ResolvedUrls {
+				fn resolve_client_url(&self, name: &str, params: &[(&str, &str)]) -> String {
+					self.client_reverser
+						.reverse(name, params)
+						.unwrap_or_else(|| panic!("Client route '{}' not found in router", name))
 				}
 			}
 
@@ -616,12 +634,38 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				pub fn from_global() -> Self {
 					let router = #reinhardt::get_router()
 						.expect("Global router not registered. Ensure the #[routes] function has been called.");
-					Self { router }
+					let client_reverser = #reinhardt::get_client_reverser()
+						.expect("Global client reverser not registered. Ensure the #[routes] function has been called.");
+					Self { router, client_reverser }
 				}
 
-				/// Create a `ResolvedUrls` from an explicit `ServerRouter`.
-				pub fn from_router(router: ::std::sync::Arc<#reinhardt::ServerRouter>) -> Self {
-					Self { router }
+				/// Create a `ResolvedUrls` from explicit router and client reverser.
+				pub fn from_router(
+					router: ::std::sync::Arc<#reinhardt::ServerRouter>,
+					client_reverser: ::std::sync::Arc<#reinhardt::ClientUrlReverser>,
+				) -> Self {
+					Self { router, client_reverser }
+				}
+			}
+
+			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+			impl ResolvedUrls {
+				/// Create a `ResolvedUrls` from the globally registered client reverser.
+				///
+				/// # Panics
+				///
+				/// Panics if no global client reverser has been registered via `#[routes]`.
+				pub fn from_global() -> Self {
+					let client_reverser = #reinhardt::get_client_reverser()
+						.expect("Global client reverser not registered. Ensure the #[routes] function has been called.");
+					Self { client_reverser }
+				}
+
+				/// Create a `ResolvedUrls` from an explicit client reverser.
+				pub fn from_reverser(
+					client_reverser: ::std::sync::Arc<#reinhardt::ClientUrlReverser>,
+				) -> Self {
+					Self { client_reverser }
 				}
 			}
 

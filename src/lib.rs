@@ -659,16 +659,18 @@ pub use reinhardt_urls::routers::{
 // These types enable UnifiedRouter<V> with both .server() and .client() methods
 #[cfg(feature = "client-router")]
 pub use reinhardt_urls::routers::{
-	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, FromPath, HistoryState,
-	NavigationType, ParamContext, SingleFromPath, UnifiedRouter,
+	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, ClientUrlReverser, FromPath,
+	HistoryState, NavigationType, ParamContext, SingleFromPath, UnifiedRouter,
+	clear_client_reverser, get_client_reverser, register_client_reverser,
 };
 // Path extractor for client-side routing (separate from server-side Path from reinhardt-di)
 #[cfg(feature = "client-router")]
 pub use reinhardt_urls::routers::Path as ClientPath;
 
-// Re-export URL resolver trait (native only)
+// Re-export URL resolver traits
 #[cfg(native)]
 pub use reinhardt_urls::routers::resolver::UrlResolver;
+pub use reinhardt_urls::routers::ClientUrlResolver;
 
 // Re-export auth
 #[cfg(all(feature = "auth", native))]
