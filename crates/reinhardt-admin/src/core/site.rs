@@ -3,8 +3,8 @@
 //! The `AdminSite` is the central registry for all admin models and provides
 //! routing, authentication, and rendering functionality.
 
-use crate::core::model_admin::AdminUser;
 use crate::core::ModelAdmin;
+use crate::core::model_admin::AdminUser;
 use crate::server::admin_auth::{AdminLoginAuthenticator, AdminUserLoader};
 use crate::types::{AdminError, AdminResult};
 use async_trait::async_trait;
