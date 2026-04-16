@@ -16,7 +16,6 @@ use syn::{ItemFn, ItemStruct, parse_macro_input};
 
 mod action;
 mod admin;
-mod export_endpoints;
 mod api_view;
 mod app_config_attribute;
 mod app_config_derive;
@@ -24,6 +23,7 @@ mod apply_update_attribute;
 mod apply_update_derive;
 mod collect_migrations;
 mod crate_paths;
+mod export_endpoints;
 mod hook;
 mod injectable_common;
 mod injectable_fn;
