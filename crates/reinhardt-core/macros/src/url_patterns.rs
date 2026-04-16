@@ -8,10 +8,7 @@ use syn::{ItemFn, parse2};
 /// invoking `$base :: $meta_ident ! ($callback, $app)` for each.
 /// This pattern is shared by server (`__for_each_url_resolver`) and
 /// client (`__for_each_client_url_resolver`) modes.
-fn gen_for_each_macro(
-	macro_name: &proc_macro2::Ident,
-	meta_idents: &[syn::Ident],
-) -> TokenStream {
+fn gen_for_each_macro(macro_name: &proc_macro2::Ident, meta_idents: &[syn::Ident]) -> TokenStream {
 	quote! {
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		macro_rules! #macro_name {
@@ -694,7 +691,10 @@ fn url_patterns_client_impl(
 	};
 
 	let for_each_client_resolver_macro = gen_for_each_macro(
-		&syn::Ident::new("__for_each_client_url_resolver", proc_macro2::Span::call_site()),
+		&syn::Ident::new(
+			"__for_each_client_url_resolver",
+			proc_macro2::Span::call_site(),
+		),
 		&meta_idents,
 	);
 
