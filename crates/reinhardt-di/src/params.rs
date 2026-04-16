@@ -131,7 +131,7 @@ pub enum ParamError {
 	/// constraint violations), this variant carries a full `ValidationErrors`
 	/// map for multi-field struct validation.
 	#[cfg(feature = "validation")]
-	#[error("Validation failed: {}", serde_json::to_string(.0).unwrap_or_default())]
+	#[error("Validation failed: {0:?}")]
 	ValidationFailed(Box<reinhardt_core::validators::ValidationErrors>),
 }
 
