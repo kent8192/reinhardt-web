@@ -448,11 +448,14 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					}
 
 					// Callback macro for __for_each_url_resolver to generate methods.
+					// Each arm imports UrlResolver trait to bring resolve_url() into
+					// scope. (Issue #3669)
 					macro_rules! #gen_method_macro {
 						// No params
 						($app_label:ident, $method:ident, $route_name:literal, ) => {
 							impl #urls_struct<'_> {
 								pub fn $method(&self) -> String {
+									use #reinhardt::UrlResolver as _;
 									self.resolver.resolve_url(
 										concat!(stringify!($app_label), ":", $route_name),
 										&[],
@@ -464,6 +467,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						($app_label:ident, $method:ident, $route_name:literal, $p1:literal) => {
 							impl #urls_struct<'_> {
 								pub fn $method(&self, p1: &str) -> String {
+									use #reinhardt::UrlResolver as _;
 									self.resolver.resolve_url(
 										concat!(stringify!($app_label), ":", $route_name),
 										&[($p1, p1)],
@@ -475,6 +479,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						($app_label:ident, $method:ident, $route_name:literal, $p1:literal, $p2:literal) => {
 							impl #urls_struct<'_> {
 								pub fn $method(&self, p1: &str, p2: &str) -> String {
+									use #reinhardt::UrlResolver as _;
 									self.resolver.resolve_url(
 										concat!(stringify!($app_label), ":", $route_name),
 										&[($p1, p1), ($p2, p2)],
@@ -486,6 +491,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						($app_label:ident, $method:ident, $route_name:literal, $p1:literal, $p2:literal, $p3:literal) => {
 							impl #urls_struct<'_> {
 								pub fn $method(&self, p1: &str, p2: &str, p3: &str) -> String {
+									use #reinhardt::UrlResolver as _;
 									self.resolver.resolve_url(
 										concat!(stringify!($app_label), ":", $route_name),
 										&[($p1, p1), ($p2, p2), ($p3, p3)],
@@ -497,6 +503,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						($app_label:ident, $method:ident, $route_name:literal, $p1:literal, $p2:literal, $p3:literal, $p4:literal) => {
 							impl #urls_struct<'_> {
 								pub fn $method(&self, p1: &str, p2: &str, p3: &str, p4: &str) -> String {
+									use #reinhardt::UrlResolver as _;
 									self.resolver.resolve_url(
 										concat!(stringify!($app_label), ":", $route_name),
 										&[($p1, p1), ($p2, p2), ($p3, p3), ($p4, p4)],
@@ -508,6 +515,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						($app_label:ident, $method:ident, $route_name:literal, $p1:literal, $p2:literal, $p3:literal, $p4:literal, $p5:literal) => {
 							impl #urls_struct<'_> {
 								pub fn $method(&self, p1: &str, p2: &str, p3: &str, p4: &str, p5: &str) -> String {
+									use #reinhardt::UrlResolver as _;
 									self.resolver.resolve_url(
 										concat!(stringify!($app_label), ":", $route_name),
 										&[($p1, p1), ($p2, p2), ($p3, p3), ($p4, p4), ($p5, p5)],
