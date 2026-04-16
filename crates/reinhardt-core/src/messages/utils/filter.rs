@@ -190,6 +190,7 @@ pub fn filter_by_tag(messages: &[Message], tag: &str) -> Vec<Message> {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // tests exercise deprecated functions for backward-compat coverage
 mod tests {
 	use super::*;
 

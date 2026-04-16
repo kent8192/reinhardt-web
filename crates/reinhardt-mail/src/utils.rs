@@ -304,10 +304,7 @@ async fn send_to_role(
 	match result {
 		Ok(()) => Ok(()),
 		Err(e) if fail_silently && e.is_transient() => {
-			eprintln!(
-				"Email to {} failed (fail_silently=true): {}",
-				role_name, e
-			);
+			eprintln!("Email to {} failed (fail_silently=true): {}", role_name, e);
 			Ok(())
 		}
 		Err(e) => Err(e),
