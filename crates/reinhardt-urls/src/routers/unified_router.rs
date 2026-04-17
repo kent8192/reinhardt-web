@@ -266,8 +266,11 @@ impl UnifiedRouter {
 	/// with `"<namespace>:"`. Fixes #3726.
 	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
 		let ns: String = namespace.into();
-		self.server = self.server.with_namespace(ns.clone());
+		// Borrow for the client (accepts `&str`) first, then move the owned
+		// `String` into the server (accepts `impl Into<String>`) to avoid a
+		// redundant `String` allocation.
 		self.client = self.client.with_namespace(&ns);
+		self.server = self.server.with_namespace(ns);
 		self
 	}
 
@@ -771,6 +774,10 @@ mod tests {
 		assert!(
 			router.client_ref().has_route("app:login"),
 			"WASM UnifiedRouter::with_namespace must propagate to ClientRouter"
+		);
+		assert!(
+			!router.client_ref().has_route("login"),
+			"unprefixed name should no longer resolve after with_namespace on WASM"
 		);
 	}
 
