@@ -350,7 +350,7 @@
 //! - `crates/reinhardt-apps/README.md` for comprehensive usage guide
 //! - Tutorial: `docs/tutorials/en/basis/1-project-setup.md`
 
-use crate::crate_paths::get_reinhardt_core_crate;
+use crate::crate_paths::{get_reinhardt_apps_crate, get_reinhardt_core_crate};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
@@ -488,6 +488,7 @@ impl Parse for InstalledApps {
 /// - `lib.rs` for public API documentation
 pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 	let core_crate = get_reinhardt_core_crate();
+	let apps_crate = get_reinhardt_apps_crate();
 	let InstalledApps { apps } = syn::parse2(input)?;
 
 	// Handle empty input: generate an uninhabited enum with valid implementations.
@@ -525,6 +526,13 @@ pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 				/// Get the path for this app
 				///
 				pub fn path(&self) -> &'static str {
+					match *self {}
+				}
+			}
+
+			// AppLabel trait impl for typed #[url_patterns] (Issue #3670).
+			impl #apps_crate::apps::AppLabel for InstalledApp {
+				fn path(&self) -> &'static str {
 					match *self {}
 				}
 			}
@@ -650,6 +658,14 @@ pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 				match self {
 					#(InstalledApp::#labels => #paths),*
 				}
+			}
+		}
+
+		// AppLabel trait impl for typed #[url_patterns] (Issue #3670).
+		// Delegates to the inherent `path()` method defined above.
+		impl #apps_crate::apps::AppLabel for InstalledApp {
+			fn path(&self) -> &'static str {
+				<Self>::path(self)
 			}
 		}
 
