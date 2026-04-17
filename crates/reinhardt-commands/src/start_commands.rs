@@ -634,11 +634,7 @@ fn update_installed_apps_block(app_name: &str) -> CommandResult<()> {
 	}
 
 	let src = fs::read_to_string(&apps_file).map_err(|e| {
-		CommandError::ExecutionError(format!(
-			"Failed to read {}: {}",
-			apps_file.display(),
-			e
-		))
+		CommandError::ExecutionError(format!("Failed to read {}: {}", apps_file.display(), e))
 	})?;
 
 	// Idempotency: skip if the label is already present.
@@ -703,11 +699,7 @@ fn update_installed_apps_block(app_name: &str) -> CommandResult<()> {
 	out.push_str(&src[close_idx..]);
 
 	fs::write(&apps_file, out).map_err(|e| {
-		CommandError::ExecutionError(format!(
-			"Failed to write {}: {}",
-			apps_file.display(),
-			e
-		))
+		CommandError::ExecutionError(format!("Failed to write {}: {}", apps_file.display(), e))
 	})?;
 
 	Ok(())

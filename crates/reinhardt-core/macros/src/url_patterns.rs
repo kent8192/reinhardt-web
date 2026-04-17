@@ -476,9 +476,7 @@ fn parse_url_patterns_args(args: TokenStream) -> syn::Result<UrlPatternsArgs> {
 			other => {
 				return Err(syn::Error::new(
 					mode_ident.span(),
-					format!(
-						"unknown mode `{other}`, expected `server`, `client`, or `unified`"
-					),
+					format!("unknown mode `{other}`, expected `server`, `client`, or `unified`"),
 				));
 			}
 		};
@@ -497,9 +495,7 @@ fn parse_url_patterns_args(args: TokenStream) -> syn::Result<UrlPatternsArgs> {
 ///
 /// For `crate::config::apps::InstalledApp::auth`, yields
 /// (`crate::config::apps::InstalledApp`, `crate::config::apps::InstalledApp::auth`).
-fn split_enum_type_and_variant(
-	app_path: &syn::ExprPath,
-) -> syn::Result<(syn::Path, syn::Path)> {
+fn split_enum_type_and_variant(app_path: &syn::ExprPath) -> syn::Result<(syn::Path, syn::Path)> {
 	if app_path.path.segments.len() < 2 {
 		return Err(syn::Error::new_spanned(
 			app_path,
@@ -512,8 +508,8 @@ fn split_enum_type_and_variant(
 		.path
 		.segments
 		.iter()
-		.cloned()
 		.take(app_path.path.segments.len() - 1)
+		.cloned()
 		.collect();
 	let mut rebuilt: syn::punctuated::Punctuated<syn::PathSegment, syn::Token![::]> =
 		syn::punctuated::Punctuated::new();
@@ -536,13 +532,10 @@ fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream
 	let viewset_calls = extract_chain_calls(body_tokens, "viewset");
 	let mount_calls = extract_chain_calls(body_tokens, "mount");
 
-	let endpoint_re_exports: Vec<_> =
-		endpoint_paths.iter().map(build_resolver_reexport).collect();
-	let viewset_re_exports: Vec<_> =
-		viewset_calls.iter().map(build_viewset_reexport).collect();
+	let endpoint_re_exports: Vec<_> = endpoint_paths.iter().map(build_resolver_reexport).collect();
+	let viewset_re_exports: Vec<_> = viewset_calls.iter().map(build_viewset_reexport).collect();
 	let mount_re_exports: Vec<_> = mount_calls.iter().map(build_mount_reexport).collect();
-	let meta_idents: Vec<syn::Ident> =
-		endpoint_paths.iter().filter_map(build_meta_ident).collect();
+	let meta_idents: Vec<syn::Ident> = endpoint_paths.iter().filter_map(build_meta_ident).collect();
 	let for_each_resolver_macro = gen_for_each_macro(
 		&syn::Ident::new("__for_each_url_resolver", proc_macro2::Span::call_site()),
 		&meta_idents,

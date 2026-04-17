@@ -36,7 +36,10 @@ fn installed_app_all_variants_resolve_through_app_label() {
 		<InstalledApp as AppLabel>::path(&InstalledApp::accounts),
 		"accounts"
 	);
-	assert_eq!(<InstalledApp as AppLabel>::path(&InstalledApp::blog), "blog");
+	assert_eq!(
+		<InstalledApp as AppLabel>::path(&InstalledApp::blog),
+		"blog"
+	);
 }
 
 // --- Server mode: two apps in separate submodules (resolver modules collide
