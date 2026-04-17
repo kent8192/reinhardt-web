@@ -37,8 +37,6 @@ use syn::{ExprMacro, Macro, parse_file};
 pub(crate) enum SkipReason {
 	/// File-wide ignore-all marker detected
 	FileWideMarker,
-	/// No page! macro found in file
-	NoPageMacro,
 	/// All page! macros were individually ignored
 	AllMacrosIgnored,
 }
@@ -47,7 +45,6 @@ impl std::fmt::Display for SkipReason {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			SkipReason::FileWideMarker => write!(f, "file-wide ignore marker"),
-			SkipReason::NoPageMacro => write!(f, "no page! macro"),
 			SkipReason::AllMacrosIgnored => write!(f, "all macros ignored"),
 		}
 	}
