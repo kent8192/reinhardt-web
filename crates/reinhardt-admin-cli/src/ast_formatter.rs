@@ -437,12 +437,13 @@ impl AstPageFormatter {
 	/// Uses AST parsing for accurate macro detection. Falls back to returning
 	/// the original content if parsing fails.
 	pub(crate) fn format(&self, content: &str) -> Result<FormatResult, String> {
-		// Safety check FIRST: If no page! pattern exists, return unchanged
+		// Safety check FIRST: If no page! pattern exists, return unchanged.
+		// This is a successful no-op, not an intentional skip — skipped stays None.
 		if !content.contains("page!(") {
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
-				skipped: Some(SkipReason::NoPageMacro),
+				skipped: None,
 			});
 		}
 
@@ -459,11 +460,12 @@ impl AstPageFormatter {
 		let macros = self.find_page_macros(content)?;
 
 		if macros.is_empty() {
-			// Safety check passed but no actual macros found (e.g., in comments)
+			// Substring matched but AST found no real invocation (e.g., inside
+			// a comment or string literal). Successful no-op, not a skip.
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
-				skipped: Some(SkipReason::NoPageMacro),
+				skipped: None,
 			});
 		}
 
