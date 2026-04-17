@@ -26,7 +26,10 @@ use crate::crate_paths::{
 /// Extract the inner type `T` from `Depends<T>`.
 ///
 /// Returns `Some(T)` if the type is `Depends<T>`, `None` otherwise.
-/// Mirrors the helper in `reinhardt-core/macros/src/routes_registration.rs`.
+/// Mirrors the helper in `crates/reinhardt-core/macros/src/routes_registration.rs`.
+/// Keep this implementation in sync with that file; the two proc-macro crates
+/// cannot share code directly without introducing a new non-proc-macro helper
+/// crate, and the helper is small enough that duplication is preferred.
 fn extract_depends_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
 	if let syn::Type::Path(type_path) = ty {
 		let last_segment = type_path.path.segments.last()?;
