@@ -804,15 +804,25 @@ fn generate_server_handler(
 							#di_crate::Depends::<#inner_ty>::resolve_from_registry(&__di_ctx, true)
 								.await
 								.map_err(|e| {
-									// Preserve HTTP status codes for auth-related DI errors
+									// Auth errors (401/403) expose framework-provided user-facing
+									// messages. Any other DI failure is treated as an internal
+									// error: the detailed cause is logged server-side, and the
+									// client receives a generic message to avoid leaking internals.
 									let (status, msg) = match &e {
 										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
 										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
-										other => (500u16, format!("Dependency injection failed for {}: {:?}", stringify!(#ty), other)),
+										other => {
+											::tracing::error!(
+												error = ?other,
+												param = stringify!(#ty),
+												"Dependency injection failed",
+											);
+											(500u16, "Internal server error".to_string())
+										}
 									};
 									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
 									::serde_json::to_string(&server_err)
-										.unwrap_or_else(|_| format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e))
+										.unwrap_or_else(|_| "Internal server error".to_string())
 								})?;
 					}
 				} else {
@@ -821,15 +831,25 @@ fn generate_server_handler(
 							#di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
 								.await
 								.map_err(|e| {
-									// Preserve HTTP status codes for auth-related DI errors
+									// Auth errors (401/403) expose framework-provided user-facing
+									// messages. Any other DI failure is treated as an internal
+									// error: the detailed cause is logged server-side, and the
+									// client receives a generic message to avoid leaking internals.
 									let (status, msg) = match &e {
 										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
 										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
-										other => (500u16, format!("Dependency injection failed for {}: {:?}", stringify!(#ty), other)),
+										other => {
+											::tracing::error!(
+												error = ?other,
+												param = stringify!(#ty),
+												"Dependency injection failed",
+											);
+											(500u16, "Internal server error".to_string())
+										}
 									};
 									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
 									::serde_json::to_string(&server_err)
-										.unwrap_or_else(|_| format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e))
+										.unwrap_or_else(|_| "Internal server error".to_string())
 								})?
 								.into_inner();
 					}
