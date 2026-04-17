@@ -1,12 +1,11 @@
 //! Integration tests for the typed `#[url_patterns]` syntax (Issue #3670).
 //!
 //! Verifies that:
-//! - `#[url_patterns(InstalledApp::<variant>, mode = server|client|unified)]`
+//! - `#[url_patterns(InstalledApp::variant, mode = server|client|unified)]`
 //!   applies the namespace at runtime via `AppLabel::path()`.
 //! - `installed_apps!` generates the `AppLabel` impl correctly.
 
 use reinhardt::installed_apps;
-use reinhardt::url_patterns;
 use reinhardt_apps::apps::AppLabel;
 use reinhardt_urls::routers::ServerRouter;
 
@@ -90,4 +89,70 @@ fn server_mode_two_apps_in_separate_modules_have_distinct_namespaces() {
 	// Assert
 	assert_eq!(a.namespace(), Some("accounts"));
 	assert_eq!(b.namespace(), Some("blog"));
+}
+
+// --- Client / unified modes: the wrapper applies `.with_namespace(...)` to
+// every router type, so verify the namespace reaches client-side named
+// routes as well. ---
+
+#[cfg(feature = "client-router")]
+mod accounts_client_app {
+	use super::InstalledApp;
+	use reinhardt::url_patterns;
+	use reinhardt_core::page::Page;
+	use reinhardt_urls::routers::ClientRouter;
+
+	#[url_patterns(super::InstalledApp::accounts, mode = client)]
+	pub fn client_url_patterns() -> ClientRouter {
+		ClientRouter::new().named_route("login", "/login/", || Page::Empty)
+	}
+}
+
+#[cfg(feature = "client-router")]
+mod accounts_unified_app {
+	use super::InstalledApp;
+	use reinhardt::url_patterns;
+	use reinhardt_core::page::Page;
+	use reinhardt_urls::routers::UnifiedRouter;
+
+	#[url_patterns(super::InstalledApp::accounts, mode = unified)]
+	pub fn unified_url_patterns() -> UnifiedRouter {
+		UnifiedRouter::new().client(|c| c.named_route("login", "/login/", || Page::Empty))
+	}
+}
+
+#[cfg(feature = "client-router")]
+#[test]
+fn client_mode_applies_namespace_to_named_route_keys() {
+	// Arrange / Act
+	let router = accounts_client_app::client_url_patterns();
+
+	// Assert
+	assert!(
+		router.has_route("accounts:login"),
+		"client-mode wrapper must prefix named routes with the AppLabel path"
+	);
+	assert!(
+		!router.has_route("login"),
+		"unprefixed name should no longer resolve after the wrapper applies the namespace"
+	);
+}
+
+#[cfg(feature = "client-router")]
+#[test]
+fn unified_mode_applies_namespace_to_both_server_and_client_sides() {
+	// Arrange / Act
+	let router = accounts_unified_app::unified_url_patterns();
+
+	// Assert: client side is namespaced via key rewriting.
+	assert!(
+		router.client_ref().has_route("accounts:login"),
+		"unified-mode wrapper must propagate the namespace to the inner ClientRouter"
+	);
+	// Assert: server side carries the same namespace.
+	assert_eq!(
+		router.server_ref().namespace(),
+		Some("accounts"),
+		"unified-mode wrapper must propagate the namespace to the inner ServerRouter"
+	);
 }
