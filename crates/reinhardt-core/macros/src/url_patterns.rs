@@ -503,25 +503,21 @@ fn split_enum_type_and_variant(app_path: &syn::ExprPath) -> syn::Result<(syn::Pa
 		));
 	}
 
-	// Rebuild the enum-type path (strip the final variant segment).
-	let segments_vec: Vec<syn::PathSegment> = app_path
+	// Rebuild the enum-type path by collecting all but the final variant
+	// segment back into a `Punctuated`. The `FromIterator<T>` impl inserts a
+	// default separator between elements and leaves no trailing punctuation,
+	// yielding a well-formed path (cf. raw `Punctuated::pop`, which preserves
+	// the trailing separator and would emit an invalid `A::B::`).
+	let segments: syn::punctuated::Punctuated<_, syn::Token![::]> = app_path
 		.path
 		.segments
 		.iter()
 		.take(app_path.path.segments.len() - 1)
 		.cloned()
 		.collect();
-	let mut rebuilt: syn::punctuated::Punctuated<syn::PathSegment, syn::Token![::]> =
-		syn::punctuated::Punctuated::new();
-	for (i, seg) in segments_vec.into_iter().enumerate() {
-		if i > 0 {
-			rebuilt.push_punct(<syn::Token![::]>::default());
-		}
-		rebuilt.push_value(seg);
-	}
 	let type_path = syn::Path {
 		leading_colon: app_path.path.leading_colon,
-		segments: rebuilt,
+		segments,
 	};
 	Ok((type_path, app_path.path.clone()))
 }
@@ -641,13 +637,13 @@ fn build_client_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> syn::Result
 ///
 /// Supports three modes, dispatched by the required `mode = ...` argument:
 ///
-/// - `#[url_patterns(InstalledApp::<variant>, mode = server)]` — scans for
+/// - `#[url_patterns(InstalledApp::variant, mode = server)]` — scans for
 ///   `.endpoint()`, `.viewset()`, `.mount()` calls on a `ServerRouter`;
 ///   generates the `url_resolvers` module.
-/// - `#[url_patterns(InstalledApp::<variant>, mode = client)]` — scans for
+/// - `#[url_patterns(InstalledApp::variant, mode = client)]` — scans for
 ///   `.named_route()` family calls on a `ClientRouter`; generates the
 ///   `client_url_resolvers` module.
-/// - `#[url_patterns(InstalledApp::<variant>, mode = unified)]` — scans both
+/// - `#[url_patterns(InstalledApp::variant, mode = unified)]` — scans both
 ///   inside `.server(|s| ...)` and `.client(|c| ...)` closures on a
 ///   `UnifiedRouter`; emits both resolver modules.
 ///
