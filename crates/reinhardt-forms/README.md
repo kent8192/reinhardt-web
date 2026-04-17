@@ -234,7 +234,9 @@ let mut form = form! {
                 => "Username must be at least 3 characters",
         ],
         password: [
-            #[client(on = input)]
+            // Unscoped rule: executed by server-side `form.is_valid()`.
+            // Add `#[client(on = input)]` on a separate rule to also run
+            // the check in the browser (see reinhardt-pages docs).
             |v: &serde_json::Value| v.as_str().map_or(false, |s| s.len() >= 8)
                 => "Password must be at least 8 characters",
         ],
