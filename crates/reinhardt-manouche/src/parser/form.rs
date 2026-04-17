@@ -3511,10 +3511,7 @@ mod scope_tests {
 		"[ #[unknown] |v| v.len() > 0 => \"err\" ]",
 		"unknown validator attribute"
 	)]
-	#[case(
-		"[ #[server] #[server] |v| v.len() > 0 => \"err\" ]",
-		"duplicate"
-	)]
+	#[case("[ #[server] #[server] |v| v.len() > 0 => \"err\" ]", "duplicate")]
 	fn test_scope_parsing_errors(#[case] input: &str, #[case] expected_fragment: &str) {
 		// Act
 		let result: Result<ValidatorRulesWrapper> = syn::parse_str(input);
