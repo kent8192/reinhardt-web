@@ -868,10 +868,13 @@ mod tests {
 /// ```
 pub trait AppLabel {
 	/// The unique label for this application when the implementor is a
-	/// type-level marker (unit struct). Enum-style implementors should
-	/// leave this at the default `""` and override [`path`](AppLabel::path)
-	/// instead.
-	const LABEL: &'static str = "";
+	/// type-level marker (unit struct). Enum-style implementors that
+	/// dispatch on `self` via [`path`](AppLabel::path) should still
+	/// declare `const LABEL: &'static str = "";` explicitly; the trait
+	/// intentionally has no default so that forgetting both `LABEL` *and*
+	/// a `path()` override fails at compile time rather than silently
+	/// producing an empty label at runtime.
+	const LABEL: &'static str;
 
 	/// Returns the registered path/label string for this specific value.
 	///

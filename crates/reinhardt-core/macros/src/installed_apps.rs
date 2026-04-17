@@ -531,7 +531,11 @@ pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 			}
 
 			// AppLabel trait impl for typed #[url_patterns] (Issue #3670).
+			// `LABEL` is required by the trait but unused here: an empty enum
+			// has no values, so `path()` is unreachable.
 			impl #apps_crate::apps::AppLabel for InstalledApp {
+				const LABEL: &'static str = "";
+
 				fn path(&self) -> &'static str {
 					match *self {}
 				}
@@ -662,10 +666,16 @@ pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 		}
 
 		// AppLabel trait impl for typed #[url_patterns] (Issue #3670).
-		// Delegates to the inherent `path()` method defined above.
+		// Delegates to the inherent `InstalledApp::path()` method defined above.
+		// The inherent method is named explicitly to avoid ambiguity with the
+		// trait method of the same name (which would otherwise recurse).
+		// `LABEL` is required by the trait but unused for enum implementors,
+		// which dispatch on `self` via `path()`.
 		impl #apps_crate::apps::AppLabel for InstalledApp {
+			const LABEL: &'static str = "";
+
 			fn path(&self) -> &'static str {
-				<Self>::path(self)
+				InstalledApp::path(self)
 			}
 		}
 
