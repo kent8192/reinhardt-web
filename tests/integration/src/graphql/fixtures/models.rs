@@ -102,17 +102,14 @@ impl Iden for Tables {
 
 /// Creates a test user in the database and returns it with the schema.
 ///
-/// This fixture demonstrates the pattern of wrapping generic database fixtures
-/// with specialized test data insertion.
+/// This fixture composes on `graphql_schema_fixture`, which owns the shared
+/// testcontainer-backed `PgPool`. The pool is threaded through so data seeded
+/// here lives in the same Postgres instance the schema is wired to.
 #[fixture]
 async fn user_model_fixture(
-	#[future] graphql_schema_fixture: Schema<Query, Mutation, EmptySubscription>,
+	#[future] graphql_schema_fixture: (Schema<Query, Mutation, EmptySubscription>, Arc<PgPool>),
 ) -> (Schema<Query, Mutation, EmptySubscription>, User) {
-	let schema = graphql_schema_fixture.await;
-
-	// Get database pool from schema context (simplified - in real implementation
-	// we would extract it from schema data)
-	let pool = get_pool_from_test_container().await;
+	let (schema, pool) = graphql_schema_fixture.await;
 
 	// Create user using reinhardt-query (not raw SQL)
 	let user = create_test_user_with_query(&pool).await;
@@ -123,12 +120,11 @@ async fn user_model_fixture(
 /// Creates a test post with author relationship.
 #[fixture]
 async fn post_model_fixture(
-	#[future] user_model_fixture: (Schema<Query, Mutation, EmptySubscription>, User),
+	#[future] graphql_schema_fixture: (Schema<Query, Mutation, EmptySubscription>, Arc<PgPool>),
 ) -> (Schema<Query, Mutation, EmptySubscription>, User, Post) {
-	let (schema, user) = user_model_fixture.await;
-	let pool = get_pool_from_test_container().await;
+	let (schema, pool) = graphql_schema_fixture.await;
 
-	// Create post using reinhardt-query
+	let user = create_test_user_with_query(&pool).await;
 	let post = create_test_post_with_query(&pool, user.id).await;
 
 	(schema, user, post)
@@ -137,21 +133,6 @@ async fn post_model_fixture(
 // ============================================================================
 // Helper Functions using reinhardt-query
 // ============================================================================
-
-/// Get database pool from test container (simplified implementation).
-///
-/// In a real implementation, this would extract the pool from the schema
-/// or use a shared test container fixture.
-// Allow: pool extraction is a placeholder for fixture pattern (permanently excluded)
-#[allow(clippy::unimplemented)]
-async fn get_pool_from_test_container() -> Arc<PgPool> {
-	use reinhardt_test::fixtures::postgres_container;
-	use rstest::*;
-
-	// This is a simplified implementation - in real tests we would
-	// use the actual postgres_container fixture
-	unimplemented!("Need to implement pool extraction from test container")
-}
 
 /// Create a test user in the database using reinhardt-query.
 async fn create_test_user_with_query(pool: &PgPool) -> User {
@@ -200,10 +181,9 @@ async fn create_test_post_with_query(pool: &PgPool, author_id: i32) -> Post {
 /// Creates multiple test users for batch testing.
 #[fixture]
 async fn multiple_users_fixture(
-	#[future] graphql_schema_fixture: Schema<Query, Mutation, EmptySubscription>,
+	#[future] graphql_schema_fixture: (Schema<Query, Mutation, EmptySubscription>, Arc<PgPool>),
 ) -> (Schema<Query, Mutation, EmptySubscription>, Vec<User>) {
-	let schema = graphql_schema_fixture.await;
-	let pool = get_pool_from_test_container().await;
+	let (schema, pool) = graphql_schema_fixture.await;
 
 	let users = vec![
 		create_test_user_with_query(&pool).await,
