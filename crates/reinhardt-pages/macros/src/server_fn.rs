@@ -23,6 +23,24 @@ use crate::crate_paths::{
 	get_reinhardt_pages_crate, get_reinhardt_pages_crate_info,
 };
 
+/// Extract the inner type `T` from `Depends<T>`.
+///
+/// Returns `Some(T)` if the type is `Depends<T>`, `None` otherwise.
+/// Mirrors the helper in `reinhardt-core/macros/src/routes_registration.rs`.
+fn extract_depends_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+	if let syn::Type::Path(type_path) = ty {
+		let last_segment = type_path.path.segments.last()?;
+		if last_segment.ident == "Depends"
+			&& let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+			&& args.args.len() == 1
+			&& let syn::GenericArgument::Type(inner) = args.args.first()?
+		{
+			return Some(inner);
+		}
+	}
+	None
+}
+
 /// Convert snake_case identifier to UpperCamelCase for struct naming
 ///
 /// # Examples
@@ -738,9 +756,8 @@ fn generate_server_handler(
 	let regular_param_names: Vec<_> = regular_params.iter().map(|p| &p.pat).collect();
 	let regular_param_types: Vec<_> = regular_params.iter().map(|p| &p.ty).collect();
 
-	// Extract inject parameter names and types
+	// Extract inject parameter names (types handled per-param in di_resolution below)
 	let inject_param_names: Vec<_> = inject_params.iter().map(|p| &p.pat).collect();
-	let inject_param_types: Vec<_> = inject_params.iter().map(|p| &p.ty).collect();
 
 	// Generate unique names to avoid conflicts
 	let handler_name = quote::format_ident!("__server_fn_handler_{}", name);
@@ -762,11 +779,60 @@ fn generate_server_handler(
 	};
 
 	// Generate DI resolution code
-	// Pattern copied from reinhardt-core/crates/macros/src/use_inject.rs
+	//
+	// For `Depends<T>` parameters we resolve via `resolve_from_registry()`, which
+	// has no `T: Injectable` trait bound. This allows factory-produced types
+	// (registered via `#[injectable_factory]`) to be injected without manually
+	// implementing `Injectable`. This mirrors the fix applied to `#[routes]` in
+	// commit `98adb15b9`.
 	let di_resolution = if !inject_params.is_empty() {
 		// Dynamically resolve crate paths
 		let di_crate = get_reinhardt_di_crate();
 		let pages_crate_for_di = get_reinhardt_pages_crate();
+
+		let param_resolutions: Vec<_> = inject_params
+			.iter()
+			.map(|p| {
+				let pat = &p.pat;
+				let ty = &p.ty;
+				if let Some(inner_ty) = extract_depends_inner_type(&p.ty) {
+					quote! {
+						let #pat: #ty =
+							#di_crate::Depends::<#inner_ty>::resolve_from_registry(&__di_ctx, true)
+								.await
+								.map_err(|e| {
+									// Preserve HTTP status codes for auth-related DI errors
+									let (status, msg) = match &e {
+										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
+										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
+										other => (500u16, format!("Dependency injection failed for {}: {:?}", stringify!(#ty), other)),
+									};
+									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
+									::serde_json::to_string(&server_err)
+										.unwrap_or_else(|_| format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e))
+								})?;
+					}
+				} else {
+					quote! {
+						let #pat: #ty =
+							#di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
+								.await
+								.map_err(|e| {
+									// Preserve HTTP status codes for auth-related DI errors
+									let (status, msg) = match &e {
+										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
+										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
+										other => (500u16, format!("Dependency injection failed for {}: {:?}", stringify!(#ty), other)),
+									};
+									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
+									::serde_json::to_string(&server_err)
+										.unwrap_or_else(|_| format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e))
+								})?
+								.into_inner();
+					}
+				}
+			})
+			.collect();
 
 		quote! {
 			// Get DI context from request and fork for per-request isolation
@@ -777,24 +843,8 @@ fn generate_server_handler(
 				::std::sync::Arc::new((*__shared_ctx).fork_for_request(__di_request))
 			};
 
-			// Resolve each #[inject] parameter using reinhardt_di::Depends<T>
-			#(
-				let #inject_param_names: #inject_param_types =
-					#di_crate::Depends::<#inject_param_types>::resolve(&__di_ctx, true)
-						.await
-						.map_err(|e| {
-							// Preserve HTTP status codes for auth-related DI errors
-							let (status, msg) = match &e {
-								#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
-								#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
-								other => (500u16, format!("Dependency injection failed for {}: {:?}", stringify!(#inject_param_types), other)),
-							};
-							let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
-							::serde_json::to_string(&server_err)
-								.unwrap_or_else(|_| format!("Dependency injection failed for {}: {:?}", stringify!(#inject_param_types), e))
-						})?
-						.into_inner();
-			)*
+			// Resolve each #[inject] parameter
+			#(#param_resolutions)*
 		}
 	} else {
 		quote! {}
