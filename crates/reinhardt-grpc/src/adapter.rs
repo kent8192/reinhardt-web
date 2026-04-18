@@ -33,10 +33,10 @@ use async_trait::async_trait;
 ///     type Error = Status;
 ///
 ///     async fn call(&self, input: Self::Input) -> Result<Self::Output, Self::Error> {
-///         // Example implementation: Fetch user information using gRPC client
+///         // Example: replace the body below with your gRPC service implementation.
 ///         // let response = self.grpc_client.get_user(input).await?;
 ///         // Ok(User::from_proto(response))
-///         # unimplemented!("Replace with actual gRPC implementation")
+///         # unimplemented!("doctest placeholder; replace with your gRPC service call")
 ///     }
 /// }
 /// # Ok(())
