@@ -2072,20 +2072,29 @@ impl Operation {
 	/// Generate `CreateCompositePrimaryKey` SQL
 	///
 	/// Produces `ALTER TABLE ... ADD CONSTRAINT ... PRIMARY KEY (...)` for
-	/// every supported backend. Returns a descriptive error comment if the
-	/// column list is empty so the upstream error surfaces visibly in migration
-	/// output instead of silently emitting invalid SQL.
+	/// every supported backend. Emits guaranteed-fail SQL if the column list
+	/// is empty so the migration aborts at execution time instead of silently
+	/// succeeding.
+	///
+	/// NOTE: The infallible `String` return type is shared with every other
+	/// `to_sql` arm; converting the entire pipeline to `Result` would cascade
+	/// through dozens of call sites. Emitting syntactically invalid SQL
+	/// (containing a `RAISE` via `SELECT 1/0`) guarantees the database rejects
+	/// the statement, which surfaces the error through the existing execution
+	/// error path. Ideal implementation would change the signature to
+	/// `Result<String, MigrationError>`.
 	fn create_composite_pk_to_sql(
 		table: &str,
 		columns: &[String],
 		constraint_name: Option<&str>,
 	) -> String {
 		if columns.is_empty() {
-			// Mirrors the runtime error returned from `to_statement`; surfaces
-			// the same signal when callers go through `to_sql` directly.
+			// Guaranteed-fail SQL: every supported backend evaluates `1/0` as a
+			// division-by-zero runtime error, halting the migration with a
+			// visible message rather than silently succeeding on a comment.
 			return format!(
-				"-- ERROR: CreateCompositePrimaryKey on {} requires at least one column",
-				quote_identifier(table)
+				"SELECT 1/0 AS \"CreateCompositePrimaryKey on {} requires at least one column\";",
+				table.replace('"', "\"\"")
 			);
 		}
 
@@ -6004,9 +6013,10 @@ mod tests {
 	}
 
 	#[test]
-	fn test_composite_pk_empty_columns_produces_error_marker() {
-		// Arrange: empty column list is invalid SQL; we surface that as an
-		// error comment rather than emitting `PRIMARY KEY ()`.
+	fn test_composite_pk_empty_columns_produces_failing_sql() {
+		// Arrange: empty column list is invalid SQL; we emit guaranteed-fail
+		// SQL (`SELECT 1/0`) rather than a silent comment so the migration
+		// aborts at execution time with a visible error.
 		let op = Operation::CreateCompositePrimaryKey {
 			table: "tbl".to_string(),
 			columns: vec![],
@@ -6018,8 +6028,8 @@ mod tests {
 
 		// Assert
 		assert!(
-			sql.starts_with("-- ERROR"),
-			"Empty column list must surface as an error: {}",
+			sql.contains("1/0") && sql.contains("requires at least one column"),
+			"Empty column list must emit guaranteed-fail SQL with diagnostic: {}",
 			sql
 		);
 	}
