@@ -260,11 +260,13 @@ async fn test_least_privilege_principle_adherence(
 	let db_err = err
 		.as_database_error()
 		.expect("Expected a database error from PostgreSQL");
-	// PostgreSQL SQLSTATE 42501 = insufficient_privilege; 0LP01 / 42xxx class.
+	// PostgreSQL SQLSTATE 42501 = insufficient_privilege. `CREATE DATABASE`
+	// without the CREATEDB role attribute is rejected with this specific code
+	// (not 0LP01 `invalid_grant_operation`, which applies to GRANT/REVOKE flow).
 	let code = db_err.code().unwrap_or_default().to_string();
-	assert!(
-		code.starts_with("42") || code == "0LP01",
-		"Expected permission-denied SQLSTATE (42xxx / 0LP01), got: {code}"
+	assert_eq!(
+		code, "42501",
+		"Expected SQLSTATE 42501 (insufficient_privilege), got: {code}"
 	);
 
 	restricted_pool.close().await;
