@@ -483,14 +483,25 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 					.fields
 					.into_iter()
 					.map(|field_info| {
-						let value = if let Some(ref values) = response.values {
-							values
-								.get(&field_info.name)
-								.and_then(|v| v.as_str())
-								.unwrap_or("")
-								.to_string()
+						let (value, values) = if let Some(ref vals) = response.values {
+							match vals.get(&field_info.name) {
+								// Multi-valued arrays become `values`
+								Some(v) if v.is_array() => {
+									let list: Vec<String> = v
+										.as_array()
+										.map(|arr| {
+											arr.iter()
+												.filter_map(|x| x.as_str().map(|s| s.to_string()))
+												.collect()
+										})
+										.unwrap_or_default();
+									(String::new(), list)
+								}
+								Some(v) => (v.as_str().unwrap_or("").to_string(), Vec::new()),
+								None => (String::new(), Vec::new()),
+							}
 						} else {
-							String::new()
+							(String::new(), Vec::new())
 						};
 
 						FormField {
@@ -499,6 +510,7 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 							label: field_info.label,
 							required: field_info.required,
 							value,
+							values,
 						}
 					})
 					.collect();
