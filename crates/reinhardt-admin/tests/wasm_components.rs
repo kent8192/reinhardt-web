@@ -128,7 +128,9 @@ fn test_model_form_create_mode() {
 	let fields = vec![FormField {
 		name: "username".to_string(),
 		label: "Username".to_string(),
-		spec: FormFieldSpec::Input { html_type: "text".to_string() },
+		spec: FormFieldSpec::Input {
+			html_type: "text".to_string(),
+		},
 		required: true,
 		value: String::new(),
 	}];
@@ -150,7 +152,9 @@ fn test_model_form_edit_mode() {
 	let fields = vec![FormField {
 		name: "username".to_string(),
 		label: "Username".to_string(),
-		spec: FormFieldSpec::Input { html_type: "text".to_string() },
+		spec: FormFieldSpec::Input {
+			html_type: "text".to_string(),
+		},
 		required: true,
 		value: "john_doe".to_string(),
 	}];

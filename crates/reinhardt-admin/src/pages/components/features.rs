@@ -583,7 +583,10 @@ fn render_option_elements(choices: &[(String, String)], selected: &[&str]) -> Ve
 /// as a comma-separated list (e.g., `"read,write,delete"`). Empty entries
 /// are skipped so an empty value yields no selected options.
 fn parse_multi_value(raw: &str) -> Vec<&str> {
-	raw.split(',').map(str::trim).filter(|s| !s.is_empty()).collect()
+	raw.split(',')
+		.map(str::trim)
+		.filter(|s| !s.is_empty())
+		.collect()
 }
 
 /// Generates an input element for a form field
@@ -599,9 +602,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 		FormFieldSpec::Input { html_type } => {
 			render_input(html_type.clone(), input_id, name, value, required)
 		}
-		FormFieldSpec::File => {
-			render_input("file".to_string(), input_id, name, value, required)
-		}
+		FormFieldSpec::File => render_input("file".to_string(), input_id, name, value, required),
 		FormFieldSpec::Hidden => {
 			render_input("hidden".to_string(), input_id, name, value, required)
 		}
