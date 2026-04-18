@@ -346,16 +346,8 @@ pub struct FormField {
 	pub spec: crate::types::FormFieldSpec,
 	/// Whether this field is required
 	pub required: bool,
-	/// Current field value (for edit forms).
-	///
-	/// Used by all single-value specs (`Input`, `TextArea`, `Select`, `File`,
-	/// `Hidden`). For `MultiSelect`, use `values` instead; `value` is ignored.
+	/// Current field value (for edit forms)
 	pub value: String,
-	/// Current field values for multi-valued specs (e.g., `MultiSelect`).
-	///
-	/// Each entry is matched against option values to mark `selected` on all
-	/// matching `<option>` elements. Ignored for single-value specs.
-	pub values: Vec<String>,
 }
 
 /// Detail view component
@@ -467,7 +459,6 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 ///         spec: FormFieldSpec::Input { html_type: "text".to_string() },
 ///         required: true,
 ///         value: "".to_string(),
-///         values: Vec::new(),
 ///     },
 /// ];
 /// model_form("User", &fields, None)
@@ -556,18 +547,19 @@ fn form_group(field: &FormField) -> Page {
 }
 
 /// Render `<option>` elements for a list of `(value, label)` choices,
-/// marking every option for which `is_selected` returns `true` as `selected`.
-fn render_options<F>(choices: &[(String, String)], is_selected: F) -> Vec<Page>
-where
-	F: Fn(&str) -> bool,
-{
+/// marking each option whose value appears in `selected` as `selected`.
+///
+/// `selected` is a slice so that both single-select (`[current]`) and
+/// multi-select (`split` of the `FormField::value` string) can share the
+/// same renderer. See `parse_multi_value` for the multi-select wire format.
+fn render_option_elements(choices: &[(String, String)], selected: &[&str]) -> Vec<Page> {
 	choices
 		.iter()
 		.map(|(value, label)| {
-			let selected = is_selected(value);
 			let value = value.clone();
 			let label = label.clone();
-			if selected {
+			let is_selected = selected.iter().any(|s| *s == value);
+			if is_selected {
 				page!(|| {
 					option {
 						value: value,
@@ -584,6 +576,16 @@ where
 				})()
 			}
 		})
+		.collect()
+}
+
+/// Multi-select wire format: `FormField::value` carries the selected values
+/// as a comma-separated list (e.g., `"read,write,delete"`). Empty entries
+/// are skipped so an empty value yields no selected options.
+fn parse_multi_value(raw: &str) -> Vec<&str> {
+	raw.split(',')
+		.map(str::trim)
+		.filter(|s| !s.is_empty())
 		.collect()
 }
 
@@ -629,8 +631,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 			}
 		}
 		FormFieldSpec::Select { choices } => {
-			let current = value.clone();
-			let options = render_options(choices, |v| v == current);
+			let options = render_option_elements(choices, &[value.as_str()]);
 			if required {
 				page!(|| {
 					select {
@@ -653,8 +654,8 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 			}
 		}
 		FormFieldSpec::MultiSelect { choices } => {
-			let selected_values = field.values.clone();
-			let options = render_options(choices, |v| selected_values.iter().any(|s| s == v));
+			let selected = parse_multi_value(&value);
+			let options = render_option_elements(choices, &selected);
 			if required {
 				page!(|| {
 					select {
@@ -785,6 +786,11 @@ fn create_filter_select(
 			}
 		})
 		.collect();
+	let options_container = page!(|| {
+		span {
+			{ options }
+		}
+	})();
 	let field_str = field.to_string();
 
 	page!(|field_str: String, _filters_signal: Signal<HashMap<String, String>>| {
@@ -807,7 +813,7 @@ fn create_filter_select(
 							}
 						}
 					},
-			{ options }
+			{ options_container }
 		}
 	})(field_str, filters_signal)
 }

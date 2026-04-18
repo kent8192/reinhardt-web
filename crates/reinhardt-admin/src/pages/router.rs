@@ -413,7 +413,6 @@ fn create_view_component(model_name: String) -> Page {
 						label: field_info.label,
 						required: field_info.required,
 						value: String::new(),
-						values: Vec::new(),
 					})
 					.collect();
 				model_form(&model_name, &fields, None)
@@ -443,7 +442,6 @@ fn create_view_component(model_name: String) -> Page {
 			},
 			required: true,
 			value: String::new(),
-			values: Vec::new(),
 		},
 		FormField {
 			name: "email".to_string(),
@@ -453,7 +451,6 @@ fn create_view_component(model_name: String) -> Page {
 			},
 			required: true,
 			value: String::new(),
-			values: Vec::new(),
 		},
 	];
 
@@ -544,7 +541,6 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 			},
 			required: true,
 			value: "Existing Value".to_string(),
-			values: Vec::new(),
 		},
 		FormField {
 			name: "email".to_string(),
@@ -554,7 +550,6 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 			},
 			required: true,
 			value: "user@example.com".to_string(),
-			values: Vec::new(),
 		},
 	];
 

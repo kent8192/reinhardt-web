@@ -77,6 +77,10 @@ pub enum FormFieldSpec {
 	Input {
 		/// Value for the HTML `type` attribute (e.g., "text", "email",
 		/// "number", "checkbox", "date", "datetime-local").
+		///
+		/// Owned `String` (not `&'static str`) so the variant can round-trip
+		/// through `serde` deserialization at API boundaries — borrowed
+		/// `'static` strings cannot be reconstructed from incoming JSON.
 		html_type: String,
 	},
 	/// `<textarea>` element for multi-line text.
