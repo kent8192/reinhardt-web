@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ValidatorScope` and `ClientTrigger` enums in `reinhardt-manouche::core::form_node`. Validator rules now carry a `scope` field that is propagated through the typed AST to codegen, where `.validate()` is filtered to server-scoped rules (`Both`, `Server`, `ServerAndClient`). (#3654)
+
+### Deprecated
+
+- `form!` macro: `client_validators: { ... }` is now rejected with a customized compile error that directs users to the unified `validators:` block with `#[client(on = submit|input|blur)]` annotations. The feature had no code generation path in any released version; no runtime behavior is lost. The identifier will be removed from the parser entirely in 0.2.0. See `docs/migration/0.2.0-client-validators-removal.md`. (#3654)
+
 ## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.14...reinhardt-web@v0.1.0-rc.15) - 2026-03-29
 
 ### Added
