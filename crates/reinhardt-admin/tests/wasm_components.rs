@@ -128,9 +128,12 @@ fn test_model_form_create_mode() {
 	let fields = vec![FormField {
 		name: "username".to_string(),
 		label: "Username".to_string(),
-		spec: FormFieldSpec::Input { html_type: "text" },
+		spec: FormFieldSpec::Input {
+			html_type: "text".to_string(),
+		},
 		required: true,
 		value: String::new(),
+		values: Vec::new(),
 	}];
 
 	let page = model_form("User", &fields, None);
@@ -150,9 +153,12 @@ fn test_model_form_edit_mode() {
 	let fields = vec![FormField {
 		name: "username".to_string(),
 		label: "Username".to_string(),
-		spec: FormFieldSpec::Input { html_type: "text" },
+		spec: FormFieldSpec::Input {
+			html_type: "text".to_string(),
+		},
 		required: true,
 		value: "john_doe".to_string(),
+		values: Vec::new(),
 	}];
 
 	let page = model_form("User", &fields, Some("42"));
@@ -228,6 +234,7 @@ fn textarea_renders_as_textarea_element() {
 		spec: FormFieldSpec::TextArea,
 		required: false,
 		value: "hello world".to_string(),
+		values: Vec::new(),
 	}];
 
 	// Act
@@ -261,6 +268,7 @@ fn textarea_required_renders_required_attr() {
 		spec: FormFieldSpec::TextArea,
 		required: true,
 		value: String::new(),
+		values: Vec::new(),
 	}];
 
 	// Act
@@ -295,6 +303,7 @@ fn select_renders_options_with_selected_current_value() {
 		},
 		required: false,
 		value: "published".to_string(),
+		values: Vec::new(),
 	}];
 
 	// Act
@@ -314,13 +323,27 @@ fn select_renders_options_with_selected_current_value() {
 		html.contains(r#"name="status""#),
 		"select must carry the field name attribute"
 	);
+	let draft_start = html
+		.find(r#"<option value="draft""#)
+		.expect("draft option must be present");
+	let draft_end = html[draft_start..]
+		.find('>')
+		.expect("draft option opening tag must close");
+	let draft_tag = &html[draft_start..draft_start + draft_end];
 	assert!(
-		html.contains(r#"<option value="draft">Draft</option>"#),
-		"non-selected `draft` option must render without `selected`"
+		!draft_tag.contains("selected"),
+		"non-selected `draft` option must render without `selected`, got: {draft_tag}"
 	);
+	let archived_start = html
+		.find(r#"<option value="archived""#)
+		.expect("archived option must be present");
+	let archived_end = html[archived_start..]
+		.find('>')
+		.expect("archived option opening tag must close");
+	let archived_tag = &html[archived_start..archived_start + archived_end];
 	assert!(
-		html.contains(r#"<option value="archived">Archived</option>"#),
-		"non-selected `archived` option must render without `selected`"
+		!archived_tag.contains("selected"),
+		"non-selected `archived` option must render without `selected`, got: {archived_tag}"
 	);
 	// The currently-selected option's opening tag must carry `selected`.
 	let published_start = html
@@ -347,6 +370,7 @@ fn select_required_renders_required_attr() {
 		},
 		required: true,
 		value: String::new(),
+		values: Vec::new(),
 	}];
 
 	// Act
@@ -380,6 +404,7 @@ fn multiselect_renders_as_select_with_multiple_attr() {
 		},
 		required: false,
 		value: String::new(),
+		values: Vec::new(),
 	}];
 
 	// Act
@@ -398,11 +423,11 @@ fn multiselect_renders_as_select_with_multiple_attr() {
 		"MultiSelect opening tag must contain `multiple`, got: {opening_tag}"
 	);
 	assert!(
-		html.contains(r#"<option value="rust">Rust</option>"#),
+		html.contains(r#"<option value="rust""#),
 		"first MultiSelect option must be rendered"
 	);
 	assert!(
-		html.contains(r#"<option value="wasm">WASM</option>"#),
+		html.contains(r#"<option value="wasm""#),
 		"second MultiSelect option must be rendered"
 	);
 }
@@ -418,6 +443,7 @@ fn multiselect_required_renders_required_attr() {
 		},
 		required: true,
 		value: String::new(),
+		values: Vec::new(),
 	}];
 
 	// Act

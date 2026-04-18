@@ -346,8 +346,16 @@ pub struct FormField {
 	pub spec: crate::types::FormFieldSpec,
 	/// Whether this field is required
 	pub required: bool,
-	/// Current field value (for edit forms)
+	/// Current field value (for edit forms).
+	///
+	/// Used by all single-value specs (`Input`, `TextArea`, `Select`, `File`,
+	/// `Hidden`). For `MultiSelect`, use `values` instead; `value` is ignored.
 	pub value: String,
+	/// Current field values for multi-valued specs (e.g., `MultiSelect`).
+	///
+	/// Each entry is matched against option values to mark `selected` on all
+	/// matching `<option>` elements. Ignored for single-value specs.
+	pub values: Vec<String>,
 }
 
 /// Detail view component
@@ -456,9 +464,10 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 ///     FormField {
 ///         name: "username".to_string(),
 ///         label: "Username".to_string(),
-///         spec: FormFieldSpec::Input { html_type: "text" },
+///         spec: FormFieldSpec::Input { html_type: "text".to_string() },
 ///         required: true,
 ///         value: "".to_string(),
+///         values: Vec::new(),
 ///     },
 /// ];
 /// model_form("User", &fields, None)
@@ -547,14 +556,18 @@ fn form_group(field: &FormField) -> Page {
 }
 
 /// Render `<option>` elements for a list of `(value, label)` choices,
-/// marking the option matching `current` as `selected`.
-fn render_options(choices: &[(String, String)], current: &str) -> Vec<Page> {
+/// marking every option for which `is_selected` returns `true` as `selected`.
+fn render_options<F>(choices: &[(String, String)], is_selected: F) -> Vec<Page>
+where
+	F: Fn(&str) -> bool,
+{
 	choices
 		.iter()
 		.map(|(value, label)| {
+			let selected = is_selected(value);
 			let value = value.clone();
 			let label = label.clone();
-			if value == current {
+			if selected {
 				page!(|| {
 					option {
 						value: value,
@@ -585,8 +598,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 
 	match &field.spec {
 		FormFieldSpec::Input { html_type } => {
-			let html_type = (*html_type).to_string();
-			render_input(html_type, input_id, name, value, required)
+			render_input(html_type.clone(), input_id, name, value, required)
 		}
 		FormFieldSpec::File => render_input("file".to_string(), input_id, name, value, required),
 		FormFieldSpec::Hidden => {
@@ -617,12 +629,8 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 			}
 		}
 		FormFieldSpec::Select { choices } => {
-			let options = render_options(choices, &value);
-			let options_container = page!(|| {
-				span {
-					{ options }
-				}
-			})();
+			let current = value.clone();
+			let options = render_options(choices, |v| v == current);
 			if required {
 				page!(|| {
 					select {
@@ -630,7 +638,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						id: input_id,
 						name: name,
 						required: true,
-						{ options_container }
+						{ options }
 					}
 				})()
 			} else {
@@ -639,18 +647,14 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						class: "admin-select",
 						id: input_id,
 						name: name,
-						{ options_container }
+						{ options }
 					}
 				})()
 			}
 		}
 		FormFieldSpec::MultiSelect { choices } => {
-			let options = render_options(choices, &value);
-			let options_container = page!(|| {
-				span {
-					{ options }
-				}
-			})();
+			let selected_values = field.values.clone();
+			let options = render_options(choices, |v| selected_values.iter().any(|s| s == v));
 			if required {
 				page!(|| {
 					select {
@@ -659,7 +663,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						name: name,
 						multiple: true,
 						required: true,
-						{ options_container }
+						{ options }
 					}
 				})()
 			} else {
@@ -669,7 +673,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						id: input_id,
 						name: name,
 						multiple: true,
-						{ options_container }
+						{ options }
 					}
 				})()
 			}
@@ -781,11 +785,6 @@ fn create_filter_select(
 			}
 		})
 		.collect();
-	let options_container = page!(|| {
-		span {
-			{ options }
-		}
-	})();
 	let field_str = field.to_string();
 
 	page!(|field_str: String, _filters_signal: Signal<HashMap<String, String>>| {
@@ -808,7 +807,7 @@ fn create_filter_select(
 							}
 						}
 					},
-			{ options_container }
+			{ options }
 		}
 	})(field_str, filters_signal)
 }
