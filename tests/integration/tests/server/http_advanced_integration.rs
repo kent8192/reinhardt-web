@@ -153,10 +153,14 @@ impl Handler for MultipartHandler {
 			}
 
 			let count_str = report.len().to_string();
+			// Use ASCII Record Separator (0x1E) as an unambiguous delimiter
+			// between field summaries. Field bodies may contain arbitrary bytes
+			// including `\n`, so line-based parsing on the client would be
+			// ambiguous.
 			Ok(Response::ok()
 				.with_header("X-Multipart-Processed", "true")
 				.with_header("X-Multipart-Field-Count", &count_str)
-				.with_body(report.join("\n")))
+				.with_body(report.join("\x1e")))
 		} else {
 			Ok(Response::bad_request().with_body("Expected multipart/form-data"))
 		}
@@ -432,24 +436,26 @@ async fn test_multipart_form_data(http_client: reqwest::Client) {
 	assert_eq!(field_count_header, "3");
 
 	let response_body = response.text().await.expect("Failed to read response body");
-	let lines: Vec<&str> = response_body.lines().collect();
-	assert_eq!(lines.len(), 3, "expected exactly 3 parsed fields");
+	// Fields are separated by ASCII Record Separator (0x1E); field bodies may
+	// contain `\n`, so we MUST NOT use line-based splitting here.
+	let entries: Vec<&str> = response_body.split('\x1e').collect();
+	assert_eq!(entries.len(), 3, "expected exactly 3 parsed fields");
 
-	// Each line is a structured summary: name=...;filename=...;content_type=...;len=...;body=...
-	let field1 = lines
+	// Each entry is a structured summary: name=...;filename=...;content_type=...;len=...;body=...
+	let field1 = entries
 		.iter()
 		.find(|l| l.starts_with("name=field1;"))
 		.expect("field1 missing");
 	assert!(field1.contains("body=value1"));
 	assert!(field1.contains("filename=;"));
 
-	let field2 = lines
+	let field2 = entries
 		.iter()
 		.find(|l| l.starts_with("name=field2;"))
 		.expect("field2 missing");
 	assert!(field2.contains("body=value2"));
 
-	let file_part = lines
+	let file_part = entries
 		.iter()
 		.find(|l| l.starts_with("name=file;"))
 		.expect("file part missing");
