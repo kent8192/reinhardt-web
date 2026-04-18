@@ -4238,13 +4238,8 @@ impl MigrationOperation for Operation {
 				table,
 				column,
 				value,
-			} => format!(
-				"Set auto-increment of {}.{} to {}",
-				table, column, value
-			),
-			Operation::CreateCompositePrimaryKey {
-				table, columns, ..
-			} => format!(
+			} => format!("Set auto-increment of {}.{} to {}", table, column, value),
+			Operation::CreateCompositePrimaryKey { table, columns, .. } => format!(
 				"Create composite primary key on {} ({})",
 				table,
 				columns.join(", ")
