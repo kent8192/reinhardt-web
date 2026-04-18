@@ -161,8 +161,8 @@ pub mod auth;
 pub mod csrf;
 // Static form metadata types for form! macro (WASM-compatible)
 pub mod form_generated;
-// FormComponent requires reinhardt-forms which is not WASM-compatible yet
-// For now, client-side forms should use PageElement
+// FormComponent requires reinhardt-forms which is not WASM-compatible yet;
+// client-side forms should use PageElement instead.
 #[cfg(native)]
 pub mod form;
 

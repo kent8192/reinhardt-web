@@ -176,7 +176,7 @@
 //! - Compile-time path validation
 //! - Better CDN integration
 //!
-//! For now, use `resolve_static()` for all static URL resolution needs.
+//! Prefer `resolve_static()` for all static URL resolution needs.
 //!
 //! ## Thread Safety
 //!

@@ -210,8 +210,7 @@ impl E2ETestEnv {
 		// we return the router as-is. Users should add CORS middleware
 		// to their router if needed.
 		//
-		// In a real implementation, you would wrap the router with
-		// a CORS middleware layer.
+		// Production code would wrap the router with a CORS middleware layer.
 		router
 	}
 
