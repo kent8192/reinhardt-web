@@ -706,18 +706,28 @@ async fn test_e2e_get_list_fails_without_database_connection(
 	);
 	// Body intentionally redacted by `security(macros)` (commit c451e02c8) to
 	// avoid leaking DI internals (type names, configuration hints) to clients.
-	// Verify the redacted contract: a generic `ServerFnError::Server` envelope
-	// with no DI type names echoed back. Tracks issue #3740.
+	// Verify the redacted JSON envelope contract by structural parsing rather
+	// than substring matching, then explicitly guard against re-leaking the
+	// DI type name. Tracks issue #3740.
 	let body = String::from_utf8_lossy(&response.body);
-	assert!(
-		body.contains("\"Server\"") && body.contains("Internal server error"),
-		"Expected redacted ServerFnError::Server envelope, got: {}",
-		body
+	let parsed: serde_json::Value = serde_json::from_str(&body)
+		.unwrap_or_else(|e| panic!("Body is not valid JSON ({e}): {body}"));
+	let server = parsed
+		.get("Server")
+		.unwrap_or_else(|| panic!("Expected top-level `Server` envelope, got: {body}"));
+	assert_eq!(
+		server.get("status").and_then(serde_json::Value::as_u64),
+		Some(500),
+		"Expected `Server.status` == 500, got: {body}"
+	);
+	assert_eq!(
+		server.get("message").and_then(serde_json::Value::as_str),
+		Some("Internal server error"),
+		"Expected redacted `Server.message`, got: {body}"
 	);
 	assert!(
 		!body.contains("DatabaseConnection"),
-		"DI type name leaked into client body (security regression): {}",
-		body
+		"DI type name leaked into client body (security regression): {body}"
 	);
 }
 
