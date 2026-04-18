@@ -1,0 +1,126 @@
+rules:
+  - id: rust-stub-impl
+    patterns:
+      - pattern-regex: "(?i)//[/!]?[^\\n]*\\bstub(?:\\s*:|\\s+impl(?:ementation)?\\b|bed(?:\\s+out)?\\b)"
+    message: >-
+      Stub implementation marker detected. Replace with a real implementation
+      before merging, or remove the marker if the code is already complete.
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.rs"
+      exclude:
+        - "**/tests/**"
+        - "**/benches/**"
+        - "**/*_test.rs"
+        - "**/*_tests.rs"
+        - "**/test_*.rs"
+
+  - id: rust-mock-impl
+    patterns:
+      - pattern-regex: "(?i)//[/!]?[^\\n]*\\bmock(?:\\s*:|\\s+impl(?:ementation)?\\b|ed(?:\\s+for\\s+now)?\\b)"
+    message: >-
+      Mock implementation marker detected in production code. Mocks belong
+      in tests only; replace with a real implementation before merging.
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.rs"
+      exclude:
+        - "**/tests/**"
+        - "**/benches/**"
+        - "**/*_test.rs"
+        - "**/*_tests.rs"
+        - "**/test_*.rs"
+
+  - id: rust-placeholder-impl
+    patterns:
+      - pattern-regex: "(?i)//[/!]?[^\\n]*\\b(?:placeholder(?:\\s*:|\\s+impl(?:ementation)?\\b)|stand-?in\\s+impl(?:ementation)?\\b)"
+    message: >-
+      Placeholder implementation marker detected. Replace with the real
+      implementation before merging.
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.rs"
+      exclude:
+        - "**/tests/**"
+        - "**/benches/**"
+        - "**/*_test.rs"
+        - "**/*_tests.rs"
+        - "**/test_*.rs"
+
+  - id: rust-note-action-required
+    patterns:
+      - pattern-regex: "(?i)//[/!]?[^\\n]*\\bnote\\s*:[^\\n]*\\b(?:must|should|need\\s+to|action\\s+required|revisit)\\b"
+    message: >-
+      Action-required NOTE comment detected. Resolve the noted concern
+      (or restate without the action verb) before merging.
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.rs"
+      exclude:
+        - "**/tests/**"
+        - "**/benches/**"
+        - "**/*_test.rs"
+        - "**/*_tests.rs"
+        - "**/test_*.rs"
+
+  - id: rust-not-real-impl
+    patterns:
+      - pattern-regex: "(?i)//[/!]?[^\\n]*\\bnot\\s+(?:a\\s+)?real\\s+impl(?:ementation)?\\b"
+    message: >-
+      Non-real-implementation disclaimer detected. Promote the code to a
+      real implementation, or remove the comment if inaccurate.
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.rs"
+      exclude:
+        - "**/tests/**"
+        - "**/benches/**"
+        - "**/*_test.rs"
+        - "**/*_tests.rs"
+        - "**/test_*.rs"
+
+  - id: rust-for-now-impl
+    patterns:
+      - pattern-regex: "(?i)//[/!]?[^\\n]*\\bfor\\s+now\\b"
+    message: >-
+      "For now" marker detected — a temporary proxy implementation is
+      likely present. Replace with the final implementation before merging.
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.rs"
+      exclude:
+        - "**/tests/**"
+        - "**/benches/**"
+        - "**/*_test.rs"
+        - "**/*_tests.rs"
+        - "**/test_*.rs"
+
+  - id: rust-commented-out-code
+    patterns:
+      - pattern-regex: "(?m)^[ \\t]*//[ \\t]+(?:let(?:\\s+mut)?\\s+[A-Za-z_]|fn\\s+[A-Za-z_]\\w*\\s*[(<]|pub(?:\\s*\\([^)]*\\))?\\s+fn\\s+[A-Za-z_]|impl(?:\\s*<|\\s+[A-Za-z_])|use\\s+(?:crate|super|self|[A-Za-z_]\\w*)::|if\\s+[A-Za-z_(]|match\\s+[A-Za-z_(]|return(?:\\s+[^\\n]*)?;|struct\\s+[A-Za-z_]\\w*\\s*[{<(]|enum\\s+[A-Za-z_]\\w*\\s*[{<]|println!\\s*\\(|eprintln!\\s*\\(|dbg!\\s*\\(|assert(?:_eq|_ne)?!\\s*\\()"
+    message: >-
+      Commented-out code detected. Remove dead code before merging; use
+      git history to recover it later if needed.
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.rs"
+      exclude:
+        - "**/tests/**"
+        - "**/benches/**"
+        - "**/*_test.rs"
+        - "**/*_tests.rs"
+        - "**/test_*.rs"
