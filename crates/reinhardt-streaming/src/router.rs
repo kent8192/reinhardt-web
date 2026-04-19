@@ -48,6 +48,11 @@ impl StreamingRouter {
         self
     }
 
+    /// Consume the router and return the registered handlers.
+    pub fn into_handlers(self) -> Vec<StreamingHandlerRegistration> {
+        self.handlers
+    }
+
     /// Register a consumer handler with a factory.
     pub fn consumer(
         mut self,

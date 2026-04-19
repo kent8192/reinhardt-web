@@ -87,6 +87,8 @@ pub struct UnifiedRouter {
 	server: ServerRouter,
 	client: ClientRouter,
 	di_registrations: reinhardt_di::DiRegistrationList,
+	#[cfg(feature = "streaming")]
+	streaming_handlers: Vec<reinhardt_streaming::StreamingHandlerRegistration>,
 }
 
 #[cfg(all(feature = "client-router", native))]
@@ -97,6 +99,8 @@ impl UnifiedRouter {
 			server: ServerRouter::new(),
 			client: ClientRouter::new(),
 			di_registrations: reinhardt_di::DiRegistrationList::new(),
+			#[cfg(feature = "streaming")]
+			streaming_handlers: Vec::new(),
 		}
 	}
 
@@ -313,6 +317,19 @@ impl UnifiedRouter {
 		self.mount(prefix, child.server)
 	}
 
+	/// Mount streaming handlers (producers and consumers) on this router.
+	///
+	/// Consumer worker tasks are started when the server starts.
+	/// For now, registrations are stored for Phase 3 worker startup.
+	#[cfg(feature = "streaming")]
+	pub fn mount_streaming(
+		mut self,
+		router: reinhardt_streaming::StreamingRouter,
+	) -> Self {
+		self.streaming_handlers.extend(router.into_handlers());
+		self
+	}
+
 	/// Register an endpoint on server router.
 	///
 	/// This is a convenience method that delegates to [`ServerRouter::endpoint`].
@@ -400,6 +417,8 @@ impl Default for UnifiedRouter {
 pub struct UnifiedRouter {
 	server: ServerRouter,
 	di_registrations: reinhardt_di::DiRegistrationList,
+	#[cfg(feature = "streaming")]
+	streaming_handlers: Vec<reinhardt_streaming::StreamingHandlerRegistration>,
 }
 
 #[cfg(not(feature = "client-router"))]
@@ -409,6 +428,8 @@ impl UnifiedRouter {
 		Self {
 			server: ServerRouter::new(),
 			di_registrations: reinhardt_di::DiRegistrationList::new(),
+			#[cfg(feature = "streaming")]
+			streaming_handlers: Vec::new(),
 		}
 	}
 
@@ -519,6 +540,16 @@ impl UnifiedRouter {
 	/// Mount a child UnifiedRouter on this router.
 	pub fn mount_unified(self, prefix: &str, child: UnifiedRouter) -> Self {
 		self.mount(prefix, child.server)
+	}
+
+	/// Mount streaming handlers on this router.
+	#[cfg(feature = "streaming")]
+	pub fn mount_streaming(
+		mut self,
+		router: reinhardt_streaming::StreamingRouter,
+	) -> Self {
+		self.streaming_handlers.extend(router.into_handlers());
+		self
 	}
 
 	/// Register an endpoint on server router.
@@ -662,6 +693,15 @@ impl UnifiedRouter {
 	pub fn mount_unified(mut self, _prefix: &str, child: UnifiedRouter) -> Self {
 		// Merge child client routes into parent
 		self.client = self.client.merge(child.client);
+		self
+	}
+
+	/// No-op on WASM: streaming is only available on native targets.
+	#[cfg(feature = "streaming")]
+	pub fn mount_streaming(
+		self,
+		_router: reinhardt_streaming::StreamingRouter,
+	) -> Self {
 		self
 	}
 
