@@ -177,9 +177,10 @@ impl HmrServer {
 			}
 		};
 
-		// Track recently sent paths to deduplicate within a short window
+		// Track recently sent paths to deduplicate within a short window.
+		// Use config.debounce_ms so the clearing interval matches the configured debounce.
 		let mut recent_paths: HashSet<String> = HashSet::new();
-		let mut debounce_interval = tokio::time::interval(std::time::Duration::from_millis(100));
+		let mut debounce_interval = tokio::time::interval(std::time::Duration::from_millis(watcher.config().debounce_ms));
 
 		loop {
 			tokio::select! {
