@@ -1079,3 +1079,82 @@ mod tests {
 		sqlite::temp_file_url(name);
 	}
 }
+
+// ---------------------------------------------------------------------------
+// KafkaContainer
+// ---------------------------------------------------------------------------
+
+/// A single-broker Kafka container using `bitnami/kafka:3.7` in KRaft mode.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use reinhardt_testkit::containers::KafkaContainer;
+///
+/// # #[tokio::main]
+/// # async fn main() {
+/// let container = KafkaContainer::new().await;
+/// let brokers = container.brokers();
+/// # }
+/// ```
+pub struct KafkaContainer {
+	#[allow(dead_code)] // must be held to prevent automatic cleanup
+	container: ContainerAsync<GenericImage>,
+	host: String,
+	port: u16,
+}
+
+/// Start a Kafka container and return it with its broker list.
+pub async fn start_kafka() -> (KafkaContainer, Vec<String>) {
+	let container = KafkaContainer::new().await;
+	let brokers = container.brokers();
+	(container, brokers)
+}
+
+impl KafkaContainer {
+	/// Start a new Kafka container.
+	pub async fn new() -> Self {
+		use testcontainers::core::IntoContainerPort;
+
+		let image = GenericImage::new("bitnami/kafka", "3.7")
+			.with_env_var("KAFKA_CFG_NODE_ID", "0")
+			.with_env_var("KAFKA_CFG_PROCESS_ROLES", "controller,broker")
+			.with_env_var(
+				"KAFKA_CFG_LISTENERS",
+				"PLAINTEXT://:9092,CONTROLLER://:9093",
+			)
+			.with_env_var(
+				"KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP",
+				"CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT",
+			)
+			.with_env_var("KAFKA_CFG_CONTROLLER_QUORUM_VOTERS", "0@localhost:9093")
+			.with_env_var("KAFKA_CFG_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
+			.with_exposed_port(9092.tcp())
+			.with_wait_for(WaitFor::message_on_stdout("Kafka Server started"));
+
+		let container = AsyncRunner::start(image)
+			.await
+			.expect("Failed to start Kafka container");
+
+		let host = container
+			.get_host()
+			.await
+			.expect("Failed to get Kafka host")
+			.to_string();
+		let port = container
+			.get_host_port_ipv4(9092)
+			.await
+			.expect("Failed to get Kafka port");
+
+		Self {
+			container,
+			host,
+			port,
+		}
+	}
+
+	/// Returns broker addresses as `vec!["host:port"]`.
+	pub fn brokers(&self) -> Vec<String> {
+		vec![format!("{}:{}", self.host, self.port)]
+	}
+}
