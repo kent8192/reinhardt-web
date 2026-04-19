@@ -85,8 +85,13 @@ impl HmrServer {
 		client_count: Arc<Mutex<usize>>,
 	) {
 		loop {
-			let Ok((stream, _addr)) = listener.accept().await else {
-				continue;
+			let (stream, _addr) = match listener.accept().await {
+				Ok(conn) => conn,
+				Err(err) => {
+					tracing::error!(error = %err, "[HMR] Failed to accept connection");
+					tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+					continue;
+				}
 			};
 
 			let mut rx = tx.subscribe();
