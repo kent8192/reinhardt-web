@@ -142,8 +142,15 @@ impl HmrServer {
 						}
 						ws_msg = read.next() => {
 							match ws_msg {
+								Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => break,
+								Some(Ok(tokio_tungstenite::tungstenite::Message::Ping(payload))) => {
+									if write.send(tokio_tungstenite::tungstenite::Message::Pong(payload)).await.is_err() {
+										break;
+									}
+								}
+								Some(Ok(tokio_tungstenite::tungstenite::Message::Pong(_))) => {}
 								Some(Ok(_)) => {
-									// Ignore client messages; HMR is server-push only
+									// Ignore other client messages; HMR is server-push only
 								}
 								_ => break, // Connection closed or error
 							}
