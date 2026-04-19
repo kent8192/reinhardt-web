@@ -158,6 +158,14 @@ pub(crate) fn generate_ws_url_resolver_tokens(
 /// Main implementation for `#[websocket]` proc macro.
 /// Parallel to `route_impl()` in routes.rs.
 pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<TokenStream> {
+    // Handlers must be `async fn`; otherwise the generated `.await` in the
+    // WebSocketConsumer impl produces a confusing type error.
+    if input.sig.asyncness.is_none() {
+        return Err(syn::Error::new_spanned(
+            &input.sig.fn_token,
+            "`#[websocket]` handlers must be `async fn`",
+        ));
+    }
     let reinhardt_crate = get_reinhardt_crate();
     let ws_crate = crate::crate_paths::get_reinhardt_websockets_crate();
     let ws_args = WebSocketArgs::parse(args)?;
