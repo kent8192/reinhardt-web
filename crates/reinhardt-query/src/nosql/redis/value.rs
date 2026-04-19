@@ -65,7 +65,7 @@ impl ToRedisBytes for Vec<u8> {
     }
 }
 
-impl<'a> ToRedisBytes for &'a [u8] {
+impl ToRedisBytes for &[u8] {
     fn to_redis_bytes(self) -> Vec<u8> {
         self.to_vec()
     }

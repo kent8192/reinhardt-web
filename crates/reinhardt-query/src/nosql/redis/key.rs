@@ -24,7 +24,7 @@ pub trait IntoRedisKey {
     fn into_redis_key(self) -> RedisKey;
 }
 
-impl<'a> IntoRedisKey for &'a str {
+impl IntoRedisKey for &str {
     fn into_redis_key(self) -> RedisKey {
         RedisKey(Alias::new(self).into_iden())
     }
