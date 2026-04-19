@@ -114,6 +114,8 @@ pub struct WebSocketRouter {
 	names: Arc<RwLock<HashMap<String, String>>>, // name -> path mapping
 	/// Middleware chain applied to upgrade requests before WebSocket handshake
 	middleware: Option<Arc<crate::middleware::MiddlewareChain>>,
+	/// Build-time consumer registrations (populated by consumer() builder).
+	pending_consumers: Vec<WebSocketRoute>,
 }
 
 impl WebSocketRouter {
@@ -123,7 +125,43 @@ impl WebSocketRouter {
 			routes: Arc::new(RwLock::new(HashMap::new())),
 			names: Arc::new(RwLock::new(HashMap::new())),
 			middleware: None,
+			pending_consumers: Vec::new(),
 		}
+	}
+
+	/// Register a WebSocket consumer by its factory function.
+	///
+	/// Parallel to `ServerRouter::endpoint()`. The path and name are derived
+	/// from `C`'s `WebSocketEndpointInfo` impl at compile time.
+	pub fn consumer<C, F>(mut self, _f: F) -> Self
+	where
+		F: Fn() -> C,
+		C: crate::consumers::WebSocketConsumer
+			+ crate::endpoint::WebSocketEndpointInfo
+			+ 'static,
+	{
+		self.pending_consumers.push(WebSocketRoute::new(
+			C::path().to_string(),
+			C::name().map(|s| s.to_string()),
+		));
+		self
+	}
+
+	/// Find a pending consumer route by name.
+	pub fn find_pending(&self, name: &str) -> Option<&WebSocketRoute> {
+		self.pending_consumers
+			.iter()
+			.find(|r| r.name() == Some(name))
+	}
+
+	/// Resolve a WebSocket URL by route name, substituting path parameters.
+	///
+	/// Returns `None` if the route name is not registered.
+	pub fn reverse(&self, name: &str, params: &[(&str, &str)]) -> Option<String> {
+		self.pending_consumers
+			.iter()
+			.find(|r| r.name() == Some(name))
+			.map(|r| crate::endpoint::substitute_ws_params(r.path(), params))
 	}
 
 	/// Set the middleware chain applied to upgrade requests before WebSocket handshake
@@ -401,6 +439,79 @@ mod tests {
 
 		let url = reverse_websocket_url(&router, "chat").await;
 		assert_eq!(url, Some("/ws/chat".to_string()));
+	}
+
+	mod consumer_tests {
+		use super::*;
+		use crate::consumers::{ConsumerContext, WebSocketConsumer};
+		use crate::connection::{Message, WebSocketResult};
+		use crate::endpoint::WebSocketEndpointInfo;
+		use async_trait::async_trait;
+		use rstest::rstest;
+
+		struct NotifConsumer;
+		impl WebSocketEndpointInfo for NotifConsumer {
+			fn path() -> &'static str { "/ws/notif/" }
+			fn name() -> Option<&'static str> { Some("notif_ws") }
+		}
+		#[async_trait]
+		impl WebSocketConsumer for NotifConsumer {
+			async fn on_connect(&self, _ctx: &mut ConsumerContext) -> WebSocketResult<()> { Ok(()) }
+			async fn on_message(&self, _ctx: &mut ConsumerContext, _msg: Message) -> WebSocketResult<()> { Ok(()) }
+			async fn on_disconnect(&self, _ctx: &mut ConsumerContext) -> WebSocketResult<()> { Ok(()) }
+		}
+
+		struct ChatConsumer;
+		impl WebSocketEndpointInfo for ChatConsumer {
+			fn path() -> &'static str { "/ws/chat/{room_id}/" }
+			fn name() -> Option<&'static str> { Some("chat_ws") }
+		}
+		#[async_trait]
+		impl WebSocketConsumer for ChatConsumer {
+			async fn on_connect(&self, _ctx: &mut ConsumerContext) -> WebSocketResult<()> { Ok(()) }
+			async fn on_message(&self, _ctx: &mut ConsumerContext, _msg: Message) -> WebSocketResult<()> { Ok(()) }
+			async fn on_disconnect(&self, _ctx: &mut ConsumerContext) -> WebSocketResult<()> { Ok(()) }
+		}
+
+		#[rstest]
+		fn test_consumer_registers_route() {
+			// Act
+			let router = WebSocketRouter::new().consumer(|| NotifConsumer);
+			// Assert
+			let route = router.find_pending("notif_ws");
+			assert!(route.is_some());
+			assert_eq!(route.unwrap().path(), "/ws/notif/");
+		}
+
+		#[rstest]
+		fn test_reverse_with_params() {
+			// Arrange
+			let router = WebSocketRouter::new().consumer(|| ChatConsumer);
+			// Act
+			let url = router.reverse("chat_ws", &[("room_id", "42")]);
+			// Assert
+			assert_eq!(url, Some("/ws/chat/42/".to_string()));
+		}
+
+		#[rstest]
+		fn test_reverse_no_params() {
+			// Arrange
+			let router = WebSocketRouter::new().consumer(|| NotifConsumer);
+			// Act
+			let url = router.reverse("notif_ws", &[]);
+			// Assert
+			assert_eq!(url, Some("/ws/notif/".to_string()));
+		}
+
+		#[rstest]
+		fn test_reverse_not_found() {
+			// Arrange
+			let router = WebSocketRouter::new();
+			// Act
+			let url = router.reverse("nonexistent", &[]);
+			// Assert
+			assert_eq!(url, None);
+		}
 	}
 
 	#[tokio::test]
