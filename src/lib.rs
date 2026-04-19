@@ -232,10 +232,10 @@ pub mod rest;
 pub mod server;
 #[cfg(all(feature = "shortcuts", native))]
 pub mod shortcuts;
-#[cfg(all(feature = "tasks", native))]
-pub mod tasks;
 #[cfg(feature = "streaming")]
 pub mod streaming;
+#[cfg(all(feature = "tasks", native))]
+pub mod tasks;
 #[cfg(all(feature = "templates", native))]
 pub mod template;
 #[cfg(all(feature = "test", native))]
@@ -688,6 +688,8 @@ pub use reinhardt_urls::routers::Path as ClientPath;
 pub use reinhardt_urls::routers::ClientUrlResolver;
 #[cfg(native)]
 pub use reinhardt_urls::routers::resolver::UrlResolver;
+#[cfg(native)]
+pub use reinhardt_urls::routers::resolver::WebSocketUrlResolver;
 
 // Re-export auth
 #[cfg(all(feature = "auth", native))]

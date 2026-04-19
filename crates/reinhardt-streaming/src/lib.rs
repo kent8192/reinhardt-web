@@ -3,7 +3,9 @@
 //! # Features
 //!
 //! - `kafka` — Kafka backend using rskafka (pure Rust, no C bindings)
-//! - `task-backend` — `KafkaTaskBackend` bridging Kafka into reinhardt-tasks
+//!
+//! The Kafka-backed `TaskBackend` lives in `reinhardt-tasks` behind its
+//! `kafka-backend` feature (not here).
 //!
 //! # Direct API
 //!

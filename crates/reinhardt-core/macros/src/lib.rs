@@ -74,6 +74,7 @@ use routes::{delete_impl, get_impl, patch_impl, post_impl, put_impl};
 use routes_registration::routes_impl;
 mod url_patterns;
 mod viewset_macro;
+mod websocket;
 use schema::derive_schema_impl;
 use url_patterns::url_patterns_impl;
 use use_inject::use_inject_impl;
@@ -1060,6 +1061,35 @@ pub fn settings(args: TokenStream, input: TokenStream) -> TokenStream {
 			.unwrap_or_else(|e| e.to_compile_error())
 			.into()
 	}
+}
+
+/// WebSocket consumer macro. Parallel to `#[get]` / `#[post]`.
+///
+/// Annotates an `async fn` that handles WebSocket messages (`on_message`).
+/// Generates a `{FnName}Consumer` struct implementing `WebSocketConsumer`,
+/// a factory function, inventory metadata, and URL resolver extension traits.
+///
+/// # Example
+///
+/// ```ignore
+/// use reinhardt::websocket;
+/// use reinhardt_websockets::consumers::{ConsumerContext, WebSocketResult};
+/// use reinhardt_websockets::connection::Message;
+///
+/// #[websocket("/ws/chat/{room_id}/", name = "chat_ws")]
+/// pub async fn chat_ws(
+///     context: &mut ConsumerContext,
+///     message: Message,
+/// ) -> WebSocketResult<()> {
+///     context.send_text("pong".to_string()).await
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn websocket(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemFn);
+	websocket::websocket_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Function-like proc macro for multi-file view modules.
