@@ -8,11 +8,12 @@ use reinhardt_admin::server::{AdminAuthenticatedUser, AdminDefaultUser};
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
 use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
+use reinhardt_di::Depends;
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_http::AuthState;
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_query::prelude::{
-	Alias, ColumnDef, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
+	Alias, ColumnDef, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
 };
 use reinhardt_test::fixtures::shared_postgres::shared_db_pool;
 use reinhardt_urls::routers::ServerRouter;
@@ -29,15 +30,33 @@ pub const TEST_CSRF_TOKEN: &str = "test-csrf-token-for-integration-tests";
 /// Matches the row inserted into auth_user by `e2e_router_context`.
 pub const TEST_USER_UUID: &str = "00000000-0000-0000-0000-000000000001";
 
+/// Fixed UUID for the inactive test user in E2E tests.
+/// Matches the row inserted into auth_user by `e2e_router_context` with `is_active = false`.
+pub const TEST_INACTIVE_USER_UUID: &str = "00000000-0000-0000-0000-000000000002";
+
+/// Fixed UUID for the non-staff test user in E2E tests.
+/// Matches the row inserted into auth_user by `e2e_router_context` with `is_staff = false`.
+pub const TEST_NON_STAFF_USER_UUID: &str = "00000000-0000-0000-0000-000000000003";
+
+/// Test host for E2E requests. Must match across Host and Origin headers
+/// to satisfy AdminOriginGuardMiddleware same-origin validation.
+pub const TEST_HOST: &str = "localhost";
+
 /// Creates a `ServerFnRequest` with staff authentication and CSRF cookie.
 ///
 /// The request has:
 /// - `AuthState::authenticated` with is_admin=true, is_active=true
-/// - `Cookie` header containing `__csrf_token={TEST_CSRF_TOKEN}`
+/// - `Cookie` header containing `csrftoken={TEST_CSRF_TOKEN}`
+///
+/// **Note on middleware bypass**: This function injects `AuthState` directly into
+/// request extensions, intentionally bypassing the authentication middleware pipeline.
+/// This is correct for unit-level server function testing where we want to test
+/// business logic in isolation. For middleware-level integration tests (CSRF validation,
+/// auth rejection, etc.), see `make_e2e_request*()` helpers and `server_fn_e2e_tests.rs`.
 pub fn make_staff_request() -> ServerFnRequest {
 	let request = reinhardt_http::Request::builder()
 		.uri("/admin/test")
-		.header("cookie", format!("__csrf_token={}", TEST_CSRF_TOKEN))
+		.header("cookie", format!("csrftoken={}", TEST_CSRF_TOKEN))
 		.build()
 		.expect("Failed to build test request");
 
@@ -51,7 +70,7 @@ pub fn make_staff_request() -> ServerFnRequest {
 /// Creates an `AdminDefaultUser` with staff privileges for testing.
 pub fn make_staff_user() -> AdminDefaultUser {
 	AdminDefaultUser {
-		id: Uuid::new_v4(),
+		id: Uuid::now_v7(),
 		username: "test_staff".to_string(),
 		email: "staff@test.example".to_string(),
 		first_name: "Test".to_string(),
@@ -73,6 +92,164 @@ pub fn make_staff_user() -> AdminDefaultUser {
 /// authentication used by admin server functions.
 pub fn make_auth_user() -> AdminAuthenticatedUser {
 	AdminAuthenticatedUser(Arc::new(make_staff_user()))
+}
+
+/// A ModelAdmin implementation that denies all permissions.
+///
+/// Used for testing permission-denial code paths. All `has_*_permission` methods
+/// return `false`, causing server functions to respond with 403 Permission denied.
+pub struct DenyAllModelAdmin {
+	model_name: String,
+	table_name: String,
+	pk_field: String,
+	list_display: Vec<String>,
+	list_filter: Vec<String>,
+	search_fields: Vec<String>,
+}
+
+impl DenyAllModelAdmin {
+	/// Creates a new instance configured for the standard test model.
+	pub fn test_model(table_name: &str) -> Self {
+		Self {
+			model_name: "TestModel".to_string(),
+			table_name: table_name.to_string(),
+			pk_field: "id".to_string(),
+			list_display: vec![
+				"id".to_string(),
+				"name".to_string(),
+				"status".to_string(),
+				"created_at".to_string(),
+			],
+			list_filter: vec!["status".to_string()],
+			search_fields: vec!["name".to_string(), "description".to_string()],
+		}
+	}
+}
+
+#[async_trait::async_trait]
+impl ModelAdmin for DenyAllModelAdmin {
+	fn model_name(&self) -> &str {
+		&self.model_name
+	}
+
+	fn table_name(&self) -> &str {
+		&self.table_name
+	}
+
+	fn pk_field(&self) -> &str {
+		&self.pk_field
+	}
+
+	fn list_display(&self) -> Vec<&str> {
+		self.list_display.iter().map(|s| s.as_str()).collect()
+	}
+
+	fn list_filter(&self) -> Vec<&str> {
+		self.list_filter.iter().map(|s| s.as_str()).collect()
+	}
+
+	fn search_fields(&self) -> Vec<&str> {
+		self.search_fields.iter().map(|s| s.as_str()).collect()
+	}
+
+	fn fields(&self) -> Option<Vec<&str>> {
+		Some(vec!["id", "name", "status", "description", "created_at"])
+	}
+
+	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
+		false
+	}
+
+	async fn has_add_permission(&self, _user: &dyn AdminUser) -> bool {
+		false
+	}
+
+	async fn has_change_permission(&self, _user: &dyn AdminUser) -> bool {
+		false
+	}
+
+	async fn has_delete_permission(&self, _user: &dyn AdminUser) -> bool {
+		false
+	}
+}
+
+/// A ModelAdmin implementation that grants only view permission.
+///
+/// Used for testing that read operations succeed while write operations
+/// (create, update, delete) are denied with 403 Permission denied.
+pub struct ViewOnlyModelAdmin {
+	model_name: String,
+	table_name: String,
+	pk_field: String,
+	list_display: Vec<String>,
+	list_filter: Vec<String>,
+	search_fields: Vec<String>,
+}
+
+impl ViewOnlyModelAdmin {
+	/// Creates a new instance configured for the standard test model.
+	pub fn test_model(table_name: &str) -> Self {
+		Self {
+			model_name: "TestModel".to_string(),
+			table_name: table_name.to_string(),
+			pk_field: "id".to_string(),
+			list_display: vec![
+				"id".to_string(),
+				"name".to_string(),
+				"status".to_string(),
+				"created_at".to_string(),
+			],
+			list_filter: vec!["status".to_string()],
+			search_fields: vec!["name".to_string(), "description".to_string()],
+		}
+	}
+}
+
+#[async_trait::async_trait]
+impl ModelAdmin for ViewOnlyModelAdmin {
+	fn model_name(&self) -> &str {
+		&self.model_name
+	}
+
+	fn table_name(&self) -> &str {
+		&self.table_name
+	}
+
+	fn pk_field(&self) -> &str {
+		&self.pk_field
+	}
+
+	fn list_display(&self) -> Vec<&str> {
+		self.list_display.iter().map(|s| s.as_str()).collect()
+	}
+
+	fn list_filter(&self) -> Vec<&str> {
+		self.list_filter.iter().map(|s| s.as_str()).collect()
+	}
+
+	fn search_fields(&self) -> Vec<&str> {
+		self.search_fields.iter().map(|s| s.as_str()).collect()
+	}
+
+	fn fields(&self) -> Option<Vec<&str>> {
+		Some(vec!["id", "name", "status", "description", "created_at"])
+	}
+
+	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
+		true
+	}
+
+	async fn has_add_permission(&self, _user: &dyn AdminUser) -> bool {
+		false
+	}
+
+	async fn has_change_permission(&self, _user: &dyn AdminUser) -> bool {
+		false
+	}
+
+	async fn has_delete_permission(&self, _user: &dyn AdminUser) -> bool {
+		false
+	}
 }
 
 /// A ModelAdmin implementation that grants all permissions.
@@ -168,7 +345,7 @@ impl ModelAdmin for AllPermissionsModelAdmin {
 }
 
 /// Builds the CREATE TABLE SQL for the standard `test_models` table using SeaQuery.
-fn build_test_models_create_table_sql() -> String {
+pub(super) fn build_test_models_create_table_sql() -> String {
 	Query::create_table()
 		.table(Alias::new("test_models"))
 		.if_not_exists()
@@ -199,7 +376,7 @@ fn build_test_models_create_table_sql() -> String {
 }
 
 /// Builds the TRUNCATE TABLE SQL for the standard `test_models` table using SeaQuery.
-fn build_test_models_truncate_sql() -> String {
+pub(super) fn build_test_models_truncate_sql() -> String {
 	Query::truncate_table()
 		.table(Alias::new("test_models"))
 		.restart_identity()
@@ -208,7 +385,7 @@ fn build_test_models_truncate_sql() -> String {
 }
 
 /// Creates the test_models table and truncates any leftover data.
-async fn setup_test_models_table(pool: &sqlx::PgPool) {
+pub(super) async fn setup_test_models_table(pool: &sqlx::PgPool) {
 	pool.execute(build_test_models_create_table_sql().as_str())
 		.await
 		.expect("Failed to create test_models table");
@@ -226,7 +403,7 @@ async fn setup_test_models_table(pool: &sqlx::PgPool) {
 #[fixture]
 pub async fn server_fn_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Arc<AdminSite>, Arc<AdminDatabase>) {
+) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -235,11 +412,96 @@ pub async fn server_fn_context(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Arc::new(AdminDatabase::new(connection));
+	let db = Depends::from_value(AdminDatabase::new(connection));
 
 	// Create AdminSite and register with all permissions
-	let site = Arc::new(AdminSite::new("Test Admin Site"));
+	let site = Depends::from_value(AdminSite::new("Test Admin Site"));
 	let admin = AllPermissionsModelAdmin::test_model("test_models");
+	site.register("TestModel", admin)
+		.expect("Failed to register TestModel");
+
+	(site, db)
+}
+
+/// Composite fixture providing AdminSite + AdminDatabase with a deny-all ModelAdmin.
+///
+/// Same table setup as `server_fn_context`, but registers a `DenyAllModelAdmin`
+/// that denies all permissions. Used for testing permission-denial code paths.
+#[fixture]
+pub async fn deny_all_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
+	let (pool, _) = shared_db_pool.await;
+
+	pool.execute(
+		"CREATE TABLE IF NOT EXISTS test_models (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'active',
+			description TEXT,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)",
+	)
+	.await
+	.expect("Failed to create test_models table");
+
+	pool.execute("TRUNCATE TABLE test_models RESTART IDENTITY CASCADE")
+		.await
+		.expect("Failed to truncate test_models table");
+
+	let backend = Arc::new(PostgresBackend::new(pool));
+	let backends_conn = BackendsConnection::new(backend);
+	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
+	let db = Depends::from_value(AdminDatabase::new(connection));
+
+	let site = Depends::from_value(AdminSite::new("Deny All Test Admin"));
+	let admin = DenyAllModelAdmin::test_model("test_models");
+	site.register("TestModel", admin)
+		.expect("Failed to register TestModel");
+
+	(site, db)
+}
+
+/// Composite fixture providing AdminSite + AdminDatabase with a view-only ModelAdmin.
+///
+/// Same table setup as `server_fn_context`, but registers a `ViewOnlyModelAdmin`
+/// that only grants view permission. Used for testing read-allowed/write-denied scenarios.
+#[fixture]
+pub async fn view_only_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
+	let (pool, _) = shared_db_pool.await;
+
+	pool.execute(
+		"CREATE TABLE IF NOT EXISTS test_models (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'active',
+			description TEXT,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)",
+	)
+	.await
+	.expect("Failed to create test_models table");
+
+	pool.execute("TRUNCATE TABLE test_models RESTART IDENTITY CASCADE")
+		.await
+		.expect("Failed to truncate test_models table");
+
+	// Insert a test record for view/detail operations
+	pool.execute(
+		"INSERT INTO test_models (name, status, description) VALUES ('ViewTest', 'active', 'view only test')",
+	)
+	.await
+	.expect("Failed to insert test record");
+
+	let backend = Arc::new(PostgresBackend::new(pool));
+	let backends_conn = BackendsConnection::new(backend);
+	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
+	let db = Depends::from_value(AdminDatabase::new(connection));
+
+	let site = Depends::from_value(AdminSite::new("View Only Test Admin"));
+	let admin = ViewOnlyModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
@@ -254,7 +516,7 @@ pub async fn server_fn_context(
 /// into `AdminDefaultUser`. Every field in the struct must have a matching column.
 /// Note: `user_permissions` and `groups` use `TEXT` (not `TEXT[]`) because the ORM
 /// row-mapping uses JSON deserialization for `Vec<String>` fields.
-fn build_auth_user_create_table_sql() -> String {
+pub(super) fn build_auth_user_create_table_sql() -> String {
 	Query::create_table()
 		.table(Alias::new("auth_user"))
 		.if_not_exists()
@@ -341,8 +603,8 @@ fn build_auth_user_create_table_sql() -> String {
 #[fixture]
 pub async fn e2e_router_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (ServerRouter, Arc<AdminDatabase>) {
-	use reinhardt_admin::core::admin_routes_with_di_deferred;
+) -> (ServerRouter, Depends<AdminDatabase>) {
+	use reinhardt_admin::core::admin_routes_with_di;
 
 	let (pool, _) = shared_db_pool.await;
 
@@ -377,6 +639,30 @@ pub async fn e2e_router_context(
 	.await
 	.expect("Failed to insert test staff user");
 
+	// Insert inactive staff user for testing is_active rejection (Fixes #3367)
+	pool.execute(
+		sqlx::query(
+			"INSERT INTO auth_user (id, username, email, is_active, is_staff, is_superuser, date_joined) \
+				 VALUES ($1, 'inactive_staff', 'inactive@test.example', false, true, false, NOW()) \
+				 ON CONFLICT (id) DO UPDATE SET is_active = false, is_staff = true",
+		)
+		.bind(Uuid::parse_str(TEST_INACTIVE_USER_UUID).expect("Invalid TEST_INACTIVE_USER_UUID")),
+	)
+	.await
+	.expect("Failed to insert inactive test staff user");
+
+	// Insert non-staff active user for testing is_staff rejection
+	pool.execute(
+		sqlx::query(
+			"INSERT INTO auth_user (id, username, email, is_active, is_staff, is_superuser, date_joined) \
+				 VALUES ($1, 'non_staff', 'nonstaff@test.example', true, false, false, NOW()) \
+				 ON CONFLICT (id) DO UPDATE SET is_active = true, is_staff = false",
+		)
+		.bind(Uuid::parse_str(TEST_NON_STAFF_USER_UUID).expect("Invalid TEST_NON_STAFF_USER_UUID")),
+	)
+	.await
+	.expect("Failed to insert non-staff test user");
+
 	// Build DatabaseConnection (shared between AdminDatabase and AuthUser injection)
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
@@ -384,16 +670,16 @@ pub async fn e2e_router_context(
 	let db_conn = Arc::new(connection);
 
 	// Build AdminDatabase for test data setup
-	let admin_db = Arc::new(AdminDatabase::new((*db_conn).clone()));
+	let admin_db = Depends::from_value(AdminDatabase::new((*db_conn).clone()));
 
 	// Build AdminSite and register test model
-	let site = Arc::new(AdminSite::new("E2E Test Admin"));
+	let site = Depends::from_value(AdminSite::new("E2E Test Admin"));
 	let admin = AllPermissionsModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
 	// Build admin router with deferred DI
-	let (admin_router, admin_di) = admin_routes_with_di_deferred(site);
+	let (admin_router, admin_di) = admin_routes_with_di(Arc::clone(site.as_arc()));
 
 	// Build the complete router using UnifiedRouter API.
 	// Pre-seed singleton scope with DatabaseConnection so get_singleton() finds it.
@@ -414,7 +700,7 @@ pub async fn e2e_router_context(
 ///
 /// Intentionally omits `DatabaseConnection` from the singleton scope to test
 /// error behavior when DI dependencies are missing. All admin routes and
-/// `AdminUserLoader` are still registered via `admin_routes_with_di_deferred()`.
+/// `AdminUserLoader` are still registered via `admin_routes_with_di()`.
 ///
 /// Unlike `e2e_router_context`, this fixture:
 /// - Does NOT require a database pool
@@ -422,16 +708,16 @@ pub async fn e2e_router_context(
 /// - Returns only `ServerRouter` (no `AdminDatabase`)
 #[fixture]
 pub async fn e2e_router_context_no_db() -> ServerRouter {
-	use reinhardt_admin::core::admin_routes_with_di_deferred;
+	use reinhardt_admin::core::admin_routes_with_di;
 
 	// Build AdminSite and register test model
-	let site = Arc::new(AdminSite::new("E2E Test Admin (No DB)"));
+	let site = Depends::from_value(AdminSite::new("E2E Test Admin (No DB)"));
 	let admin = AllPermissionsModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
 	// Build admin router with deferred DI
-	let (admin_router, admin_di) = admin_routes_with_di_deferred(site);
+	let (admin_router, admin_di) = admin_routes_with_di(Arc::clone(site.as_arc()));
 
 	// Build singleton scope WITHOUT DatabaseConnection
 	let singleton = Arc::new(SingletonScope::new());
@@ -448,7 +734,7 @@ pub async fn e2e_router_context_no_db() -> ServerRouter {
 ///
 /// Includes:
 /// - `Content-Type: application/json`
-/// - `Cookie: __csrf_token={TEST_CSRF_TOKEN}`
+/// - `Cookie: csrftoken={TEST_CSRF_TOKEN}`
 /// - `AuthState::authenticated` in request extensions (staff user)
 /// - JSON-serialized body
 pub fn make_e2e_request(path: &str, body: serde_json::Value) -> reinhardt_http::Request {
@@ -457,8 +743,10 @@ pub fn make_e2e_request(path: &str, body: serde_json::Value) -> reinhardt_http::
 	let request = reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
-		.header("cookie", format!("__csrf_token={}", TEST_CSRF_TOKEN))
+		.header("cookie", format!("csrftoken={}", TEST_CSRF_TOKEN))
 		.body(hyper::body::Bytes::from(body_bytes))
 		.build()
 		.expect("Failed to build E2E request");
@@ -477,6 +765,8 @@ pub fn make_e2e_request_no_csrf(path: &str, body: serde_json::Value) -> reinhard
 	let request = reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
 		.body(hyper::body::Bytes::from(body_bytes))
 		.build()
@@ -496,8 +786,10 @@ pub fn make_e2e_request_wrong_csrf(path: &str, body: serde_json::Value) -> reinh
 	let request = reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
-		.header("cookie", "__csrf_token=wrong-token-value")
+		.header("cookie", "csrftoken=wrong-token-value")
 		.body(hyper::body::Bytes::from(body_bytes))
 		.build()
 		.expect("Failed to build E2E request");
@@ -509,6 +801,62 @@ pub fn make_e2e_request_wrong_csrf(path: &str, body: serde_json::Value) -> reinh
 	request
 }
 
+/// Builds an HTTP POST request for a non-staff user for testing staff check rejection.
+///
+/// The user is authenticated and active, but `is_admin` (is_staff) is false.
+/// This tests the middleware-level staff check that rejects non-staff users.
+pub fn make_e2e_request_non_staff(path: &str, body: serde_json::Value) -> reinhardt_http::Request {
+	let body_bytes = serde_json::to_vec(&body).expect("Failed to serialize request body");
+
+	let request = reinhardt_http::Request::builder()
+		.method(hyper::Method::POST)
+		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
+		.header("content-type", "application/json")
+		.header("cookie", format!("csrftoken={}", TEST_CSRF_TOKEN))
+		.body(hyper::body::Bytes::from(body_bytes))
+		.build()
+		.expect("Failed to build E2E request");
+
+	// Authenticated but NOT staff (is_admin=false) — uses the DB-non-staff user (Fixes #3367)
+	request.extensions.insert(AuthState::authenticated(
+		TEST_NON_STAFF_USER_UUID,
+		false,
+		true,
+	));
+
+	request
+}
+
+/// Builds an HTTP POST request for an inactive user for testing active check rejection.
+///
+/// The user is authenticated and staff, but `is_active` is false.
+/// This tests the middleware-level active check that rejects inactive users.
+pub fn make_e2e_request_inactive(path: &str, body: serde_json::Value) -> reinhardt_http::Request {
+	let body_bytes = serde_json::to_vec(&body).expect("Failed to serialize request body");
+
+	let request = reinhardt_http::Request::builder()
+		.method(hyper::Method::POST)
+		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
+		.header("content-type", "application/json")
+		.header("cookie", format!("csrftoken={}", TEST_CSRF_TOKEN))
+		.body(hyper::body::Bytes::from(body_bytes))
+		.build()
+		.expect("Failed to build E2E request");
+
+	// Authenticated and staff but NOT active — uses the DB-inactive user (Fixes #3367)
+	request.extensions.insert(AuthState::authenticated(
+		TEST_INACTIVE_USER_UUID,
+		true,
+		false,
+	));
+
+	request
+}
+
 /// Builds an HTTP POST request without authentication for testing auth rejection.
 pub fn make_e2e_request_no_auth(path: &str, body: serde_json::Value) -> reinhardt_http::Request {
 	let body_bytes = serde_json::to_vec(&body).expect("Failed to serialize request body");
@@ -516,8 +864,10 @@ pub fn make_e2e_request_no_auth(path: &str, body: serde_json::Value) -> reinhard
 	reinhardt_http::Request::builder()
 		.method(hyper::Method::POST)
 		.uri(path)
+		.header("host", TEST_HOST)
+		.header("origin", format!("http://{}", TEST_HOST))
 		.header("content-type", "application/json")
-		.header("cookie", format!("__csrf_token={}", TEST_CSRF_TOKEN))
+		.header("cookie", format!("csrftoken={}", TEST_CSRF_TOKEN))
 		.body(hyper::body::Bytes::from(body_bytes))
 		.build()
 		.expect("Failed to build E2E request")
@@ -532,7 +882,7 @@ pub fn make_e2e_request_no_auth(path: &str, body: serde_json::Value) -> reinhard
 #[fixture]
 pub async fn uuid_pk_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Arc<AdminSite>, Arc<AdminDatabase>, sqlx::PgPool) {
+) -> (Depends<AdminSite>, Depends<AdminDatabase>, sqlx::PgPool) {
 	let (pool, _) = shared_db_pool.await;
 
 	// Create a table with UUID primary key using SeaQuery
@@ -591,9 +941,9 @@ pub async fn uuid_pk_context(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Arc::new(AdminDatabase::new(connection));
+	let db = Depends::from_value(AdminDatabase::new(connection));
 
-	let site = Arc::new(AdminSite::new("UUID Test Admin Site"));
+	let site = Depends::from_value(AdminSite::new("UUID Test Admin Site"));
 	let admin = AllPermissionsModelAdmin::uuid_pk_model("uuid_test_models");
 	site.register("UuidModel", admin)
 		.expect("Failed to register UuidModel");
@@ -682,85 +1032,6 @@ impl ModelAdmin for DenyAllPermissionsModelAdmin {
 	}
 }
 
-/// A ModelAdmin implementation that grants only view permission.
-///
-/// Used for testing partial permission scenarios where a user can
-/// view/export records but cannot create, update, or delete them.
-pub struct ViewOnlyModelAdmin {
-	model_name: String,
-	table_name: String,
-	pk_field: String,
-	list_display: Vec<String>,
-	list_filter: Vec<String>,
-	search_fields: Vec<String>,
-}
-
-impl ViewOnlyModelAdmin {
-	/// Creates a new instance configured for the standard test model.
-	pub fn test_model(table_name: &str) -> Self {
-		Self {
-			model_name: "TestModel".to_string(),
-			table_name: table_name.to_string(),
-			pk_field: "id".to_string(),
-			list_display: vec![
-				"id".to_string(),
-				"name".to_string(),
-				"status".to_string(),
-				"created_at".to_string(),
-			],
-			list_filter: vec!["status".to_string()],
-			search_fields: vec!["name".to_string(), "description".to_string()],
-		}
-	}
-}
-
-#[async_trait::async_trait]
-impl ModelAdmin for ViewOnlyModelAdmin {
-	fn model_name(&self) -> &str {
-		&self.model_name
-	}
-
-	fn table_name(&self) -> &str {
-		&self.table_name
-	}
-
-	fn pk_field(&self) -> &str {
-		&self.pk_field
-	}
-
-	fn list_display(&self) -> Vec<&str> {
-		self.list_display.iter().map(|s| s.as_str()).collect()
-	}
-
-	fn list_filter(&self) -> Vec<&str> {
-		self.list_filter.iter().map(|s| s.as_str()).collect()
-	}
-
-	fn search_fields(&self) -> Vec<&str> {
-		self.search_fields.iter().map(|s| s.as_str()).collect()
-	}
-
-	fn fields(&self) -> Option<Vec<&str>> {
-		Some(vec!["id", "name", "status", "description", "created_at"])
-	}
-
-	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
-		true
-	}
-
-	async fn has_add_permission(&self, _user: &dyn AdminUser) -> bool {
-		false
-	}
-
-	async fn has_change_permission(&self, _user: &dyn AdminUser) -> bool {
-		false
-	}
-
-	async fn has_delete_permission(&self, _user: &dyn AdminUser) -> bool {
-		false
-	}
-}
-
 /// Composite fixture providing AdminSite + AdminDatabase with ALL permissions denied.
 ///
 /// Same structure as `server_fn_context` but registers `DenyAllPermissionsModelAdmin`
@@ -768,7 +1039,7 @@ impl ModelAdmin for ViewOnlyModelAdmin {
 #[fixture]
 pub async fn server_fn_context_deny_all(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Arc<AdminSite>, Arc<AdminDatabase>) {
+) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -776,9 +1047,9 @@ pub async fn server_fn_context_deny_all(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Arc::new(AdminDatabase::new(connection));
+	let db = Depends::from_value(AdminDatabase::new(connection));
 
-	let site = Arc::new(AdminSite::new("Deny All Test Site"));
+	let site = Depends::from_value(AdminSite::new("Deny All Test Site"));
 	let admin = DenyAllPermissionsModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
@@ -793,7 +1064,7 @@ pub async fn server_fn_context_deny_all(
 #[fixture]
 pub async fn server_fn_context_view_only(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Arc<AdminSite>, Arc<AdminDatabase>) {
+) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -802,7 +1073,7 @@ pub async fn server_fn_context_view_only(
 	let seed_sql = Query::insert()
 		.into_table(Alias::new("test_models"))
 		.columns([Alias::new("name"), Alias::new("status")])
-		.values_panic([Value::from("Seeded Record"), Value::from("active")])
+		.values_panic(["Seeded Record", "active"])
 		.to_string(PostgresQueryBuilder::new());
 	pool.execute(seed_sql.as_str())
 		.await
@@ -811,9 +1082,9 @@ pub async fn server_fn_context_view_only(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Arc::new(AdminDatabase::new(connection));
+	let db = Depends::from_value(AdminDatabase::new(connection));
 
-	let site = Arc::new(AdminSite::new("View Only Test Site"));
+	let site = Depends::from_value(AdminSite::new("View Only Test Site"));
 	let admin = ViewOnlyModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");

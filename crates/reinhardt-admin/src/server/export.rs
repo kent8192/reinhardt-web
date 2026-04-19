@@ -2,17 +2,17 @@
 //!
 //! Provides export operations for admin models.
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, ExportFormat, ExportResponse};
-#[cfg(not(target_arch = "wasm32"))]
+use reinhardt_di::Depends;
+#[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
-use std::sync::Arc;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::error::{AdminAuth, MapServerFnError, ModelPermission};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::limits::MAX_EXPORT_RECORDS;
 
 /// Serialize records as delimiter-separated values (CSV or TSV).
@@ -20,7 +20,7 @@ use super::limits::MAX_EXPORT_RECORDS;
 /// Uses `BTreeMap` for consistent column ordering across records and
 /// `write_record` for compatibility with the csv crate (which does not
 /// support serializing maps via `serialize`).
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 fn serialize_delimited(
 	results: &[std::collections::HashMap<String, serde_json::Value>],
 	delimiter: u8,
@@ -100,8 +100,8 @@ fn serialize_delimited(
 pub async fn export_data(
 	model_name: String,
 	format: ExportFormat,
-	#[inject] site: Arc<AdminSite>,
-	#[inject] db: Arc<AdminDatabase>,
+	#[inject] site: Depends<AdminSite>,
+	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<ExportResponse, ServerFnError> {

@@ -40,10 +40,14 @@ wasm = [
   "dep:regex",
 ]
 wasm-full = ["wasm", "reinhardt-pages/web-sys-full"]
+# MSW-style network-level request interception (requires wasm)
+msw = ["wasm", "reinhardt-pages/msw"]
 # Server function testing utilities
 server-fn-test = []
 # E2E browser testing via WebDriver (fantoccini)
 e2e = ["dep:fantoccini", "dep:url"]
+# E2E browser testing via Chrome DevTools Protocol (chromiumoxide) + containerized Chrome
+e2e-cdp = ["dep:chromiumoxide", "dep:futures", "dep:testcontainers", "dep:url"]
 full = ["testcontainers", "static", "websockets", "graphql", "property-based", "viewsets", "messages", "tasks", "admin"]
 
 [dependencies]
@@ -103,14 +107,27 @@ web-sys = { version = "0.3.83", optional = true, features = [
   "HtmlDocument",
   "Location",
   "History",
+  "Headers",
+  "Request",
+  "RequestInit",
+  "RequestMode",
+  "Response",
+  "ResponseInit",
+  "console",
 ] }
 
 # Optional E2E testing dependencies (feature-gated)
 fantoccini = { workspace = true, optional = true }
+chromiumoxide = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+testcontainers = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 
+[build-dependencies]
+cfg_aliases = "0.2"
+
 # Native-only dependencies (cannot compile on wasm32-unknown-unknown)
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 # Core: delegate to reinhardt-testkit
 reinhardt-testkit = { workspace = true }
 
@@ -132,7 +149,7 @@ sqlx = { workspace = true, optional = true }
 # Re-exported dependencies needed for backward compatibility
 tokio = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
 tokio-test = "0.4"
 scopeguard = "1.2"

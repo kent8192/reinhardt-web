@@ -16,22 +16,23 @@
 
 use super::server_fn_helpers::{
 	TEST_CSRF_TOKEN, e2e_router_context, e2e_router_context_no_db, make_e2e_request,
-	make_e2e_request_no_auth, make_e2e_request_no_csrf, make_e2e_request_wrong_csrf,
+	make_e2e_request_inactive, make_e2e_request_no_auth, make_e2e_request_no_csrf,
+	make_e2e_request_non_staff, make_e2e_request_wrong_csrf,
 };
 use hyper::StatusCode;
 use reinhardt_admin::adapters::MutationRequest;
 use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+use reinhardt_di::Depends;
 use reinhardt_http::Handler;
 use reinhardt_urls::routers::ServerRouter;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 // ==================== Helper ====================
 
 /// Creates a test record via direct DB access and returns its ID as string.
-async fn insert_test_record(db: &Arc<AdminDatabase>, name: &str, status: &str) -> String {
+async fn insert_test_record(db: &Depends<AdminDatabase>, name: &str, status: &str) -> String {
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), json!(name));
 	data.insert("status".to_string(), json!(status));
@@ -46,11 +47,11 @@ async fn insert_test_record(db: &Arc<AdminDatabase>, name: &str, status: &str) -
 // ==================== Category 1: DI Resolution Pipeline Tests (#3046) ====================
 
 /// Verify get_dashboard resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, ServerFnRequest (no AuthUser — no DB lookup needed)
+/// Injects: Depends<AdminSite>, ServerFnRequest (no AuthUser — no DB lookup needed)
 #[rstest]
 #[tokio::test]
 async fn test_e2e_get_dashboard_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -74,11 +75,11 @@ async fn test_e2e_get_dashboard_resolves_di(
 }
 
 /// Verify get_list resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, Arc<AdminDatabase>, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, AuthUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_get_list_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -109,11 +110,11 @@ async fn test_e2e_get_list_resolves_di(
 }
 
 /// Verify get_detail resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, Arc<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_get_detail_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, db) = e2e_router_context.await;
@@ -145,11 +146,11 @@ async fn test_e2e_get_detail_resolves_di(
 }
 
 /// Verify get_fields resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, Arc<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_get_fields_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -180,11 +181,11 @@ async fn test_e2e_get_fields_resolves_di(
 }
 
 /// Verify create_record resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, Arc<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_create_record_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -224,11 +225,11 @@ async fn test_e2e_create_record_resolves_di(
 }
 
 /// Verify update_record resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, Arc<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_update_record_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, db) = e2e_router_context.await;
@@ -270,11 +271,11 @@ async fn test_e2e_update_record_resolves_di(
 }
 
 /// Verify delete_record resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, Arc<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_delete_record_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, db) = e2e_router_context.await;
@@ -308,11 +309,11 @@ async fn test_e2e_delete_record_resolves_di(
 }
 
 /// Verify bulk_delete_records resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, Arc<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_bulk_delete_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, db) = e2e_router_context.await;
@@ -348,11 +349,11 @@ async fn test_e2e_bulk_delete_resolves_di(
 }
 
 /// Verify export_data resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, Arc<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_export_data_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -383,11 +384,11 @@ async fn test_e2e_export_data_resolves_di(
 }
 
 /// Verify import_data resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Arc<AdminSite>, Arc<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_import_data_resolves_di(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -427,7 +428,7 @@ async fn test_e2e_import_data_resolves_di(
 #[rstest]
 #[tokio::test]
 async fn test_e2e_mutation_csrf_valid(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -465,7 +466,7 @@ async fn test_e2e_mutation_csrf_valid(
 #[rstest]
 #[tokio::test]
 async fn test_e2e_mutation_csrf_missing_cookie(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -504,7 +505,7 @@ async fn test_e2e_mutation_csrf_missing_cookie(
 #[rstest]
 #[tokio::test]
 async fn test_e2e_mutation_csrf_mismatch(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -547,7 +548,7 @@ async fn test_e2e_mutation_csrf_mismatch(
 #[rstest]
 #[tokio::test]
 async fn test_e2e_unauthenticated_request_returns_401(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 ) {
 	// Arrange
 	let (router, _db) = e2e_router_context.await;
@@ -584,7 +585,7 @@ async fn test_e2e_unauthenticated_request_returns_401(
 #[case::export_data("/admin/api/server_fn/export_data", json!({"model_name": "TestModel", "format": "JSON"}))]
 #[tokio::test]
 async fn test_e2e_auth_protected_endpoints_return_401(
-	#[future] e2e_router_context: (ServerRouter, Arc<AdminDatabase>),
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
 	#[case] path: &str,
 	#[case] body: serde_json::Value,
 ) {
@@ -603,6 +604,69 @@ async fn test_e2e_auth_protected_endpoints_return_401(
 		"Endpoint {} must return 401 for unauthenticated requests, got: {}",
 		path,
 		response.status
+	);
+}
+
+/// Verify non-staff user is denied at the middleware level.
+/// The user is authenticated and active but is_admin=false (not staff).
+/// AdminAuthenticatedUser::inject() should reject non-staff users before
+/// the handler is invoked.
+#[rstest]
+#[tokio::test]
+async fn test_e2e_non_staff_user_denied(
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
+) {
+	// Arrange
+	let (router, _db) = e2e_router_context.await;
+
+	let request = make_e2e_request_non_staff(
+		"/admin/api/server_fn/get_list",
+		json!({
+			"model_name": "TestModel",
+			"params": {}
+		}),
+	);
+
+	// Act
+	let response = router.handle(request).await;
+
+	// Assert - non-staff user should not get 200
+	let response = response.expect("Router should handle request");
+	assert_ne!(
+		response.status,
+		StatusCode::OK,
+		"Non-staff user should not succeed"
+	);
+}
+
+/// Verify inactive user is denied at the middleware level.
+/// The user is authenticated and staff but is_active=false.
+/// The auth pipeline should reject inactive users.
+#[rstest]
+#[tokio::test]
+async fn test_e2e_inactive_user_denied(
+	#[future] e2e_router_context: (ServerRouter, Depends<AdminDatabase>),
+) {
+	// Arrange
+	let (router, _db) = e2e_router_context.await;
+
+	let request = make_e2e_request_inactive(
+		"/admin/api/server_fn/get_list",
+		json!({
+			"model_name": "TestModel",
+			"params": {}
+		}),
+	);
+
+	// Act
+	let response = router.handle(request).await;
+
+	// Assert - inactive user should not get 200
+	let response = response.expect("Router should handle request");
+	assert_ne!(
+		response.status,
+		StatusCode::OK,
+		"Inactive user should not succeed"
 	);
 }
 
@@ -640,11 +704,30 @@ async fn test_e2e_get_list_fails_without_database_connection(
 		"Expected 4xx/5xx error status, got: {}",
 		response.status
 	);
+	// Body intentionally redacted by `security(macros)` (commit c451e02c8) to
+	// avoid leaking DI internals (type names, configuration hints) to clients.
+	// Verify the redacted JSON envelope contract by structural parsing rather
+	// than substring matching, then explicitly guard against re-leaking the
+	// DI type name. Tracks issue #3740.
 	let body = String::from_utf8_lossy(&response.body);
+	let parsed: serde_json::Value = serde_json::from_str(&body)
+		.unwrap_or_else(|e| panic!("Body is not valid JSON ({e}): {body}"));
+	let server = parsed
+		.get("Server")
+		.unwrap_or_else(|| panic!("Expected top-level `Server` envelope, got: {body}"));
+	assert_eq!(
+		server.get("status").and_then(serde_json::Value::as_u64),
+		Some(500),
+		"Expected `Server.status` == 500, got: {body}"
+	);
+	assert_eq!(
+		server.get("message").and_then(serde_json::Value::as_str),
+		Some("Internal server error"),
+		"Expected redacted `Server.message`, got: {body}"
+	);
 	assert!(
-		body.contains("DatabaseConnection") || body.contains("injection"),
-		"Error body should mention DI failure, got: {}",
-		body
+		!body.contains("DatabaseConnection"),
+		"DI type name leaked into client body (security regression): {body}"
 	);
 }
 
@@ -692,7 +775,7 @@ async fn test_e2e_create_record_fails_without_database_connection(
 }
 
 /// Verify get_dashboard behavior when DatabaseConnection is missing.
-/// get_dashboard injects Arc<AdminSite> and ServerFnRequest but NOT AdminDatabase
+/// get_dashboard injects Depends<AdminSite> and ServerFnRequest but NOT AdminDatabase
 /// or AuthUser, so it may still succeed depending on its DI requirements.
 #[rstest]
 #[tokio::test]

@@ -337,7 +337,9 @@ mod tests {
 		let user_id = "user123".to_string();
 		let username = "testuser".to_string();
 
-		let token = jwt_auth.generate_token(user_id, username).unwrap();
+		let token = jwt_auth
+			.generate_token(user_id, username, false, false)
+			.unwrap();
 
 		assert!(!token.is_empty());
 	}
@@ -550,7 +552,7 @@ mod tests {
 	#[test]
 	fn test_simple_user_implementation() {
 		let user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),
 			is_active: true,

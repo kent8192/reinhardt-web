@@ -304,7 +304,7 @@ mod tests {
 
 	#[test]
 	fn test_authenticated_user() {
-		let user_id = Uuid::new_v4();
+		let user_id = Uuid::now_v7();
 		let user = TestUser {
 			id: user_id,
 			username: "testuser".to_string(),
@@ -329,7 +329,7 @@ mod tests {
 
 	#[test]
 	fn test_into_user_authenticated() {
-		let user_id = Uuid::new_v4();
+		let user_id = Uuid::now_v7();
 		let user = TestUser {
 			id: user_id,
 			username: "testuser".to_string(),

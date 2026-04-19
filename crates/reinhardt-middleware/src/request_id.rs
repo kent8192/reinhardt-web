@@ -170,7 +170,7 @@ impl RequestIdMiddleware {
 
 	/// Generate a new request ID
 	fn generate_id(&self) -> String {
-		Uuid::new_v4().to_string()
+		Uuid::now_v7().to_string()
 	}
 
 	/// Get or generate request ID from request

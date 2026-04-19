@@ -2,24 +2,24 @@
 //!
 //! Provides delete operations for admin models (single and bulk).
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{
 	AdminDatabase, AdminRecord, AdminSite, BulkDeleteRequest, BulkDeleteResponse,
 };
 use crate::types::MutationResponse;
-#[cfg(not(target_arch = "wasm32"))]
+use reinhardt_di::Depends;
+#[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
-use std::sync::Arc;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::audit;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::error::{AdminAuth, MapServerFnError, ModelPermission};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::limits::MAX_BULK_DELETE_IDS;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::security::require_csrf_token;
 
 /// Delete a single model instance by ID
@@ -50,8 +50,8 @@ pub async fn delete_record(
 	model_name: String,
 	id: String,
 	csrf_token: String,
-	#[inject] site: Arc<AdminSite>,
-	#[inject] db: Arc<AdminDatabase>,
+	#[inject] site: Depends<AdminSite>,
+	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<MutationResponse, ServerFnError> {
@@ -135,8 +135,8 @@ pub async fn delete_record(
 pub async fn bulk_delete_records(
 	model_name: String,
 	request: BulkDeleteRequest,
-	#[inject] site: Arc<AdminSite>,
-	#[inject] db: Arc<AdminDatabase>,
+	#[inject] site: Depends<AdminSite>,
+	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<BulkDeleteResponse, ServerFnError> {

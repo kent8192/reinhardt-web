@@ -2,22 +2,22 @@
 //!
 //! Provides update operations for admin models.
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite};
 use crate::types::{MutationRequest, MutationResponse};
-#[cfg(not(target_arch = "wasm32"))]
+use reinhardt_di::Depends;
+#[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
-use std::sync::Arc;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::audit;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::error::{AdminAuth, MapServerFnError, ModelPermission};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::security::{require_csrf_token, sanitize_mutation_values};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::validation::validate_mutation_data;
 
 /// Update an existing model instance
@@ -54,8 +54,8 @@ pub async fn update_record(
 	model_name: String,
 	id: String,
 	request: MutationRequest,
-	#[inject] site: Arc<AdminSite>,
-	#[inject] db: Arc<AdminDatabase>,
+	#[inject] site: Depends<AdminSite>,
+	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<MutationResponse, ServerFnError> {
@@ -77,6 +77,9 @@ pub async fn update_record(
 	// Sanitize string values to prevent stored XSS
 	let mut sanitized_data = request.data;
 	sanitize_mutation_values(&mut sanitized_data);
+
+	// Inject current timestamp for auto_now fields (updated on every save)
+	super::create::inject_auto_now_timestamps(&mut sanitized_data, table_name);
 
 	let user_id = auth.user_id().unwrap_or("unknown").to_string();
 

@@ -2,15 +2,15 @@
 //!
 //! Provides detail view operations for admin models.
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, DetailResponse};
-#[cfg(not(target_arch = "wasm32"))]
+use reinhardt_di::Depends;
+#[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
-use std::sync::Arc;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::error::{AdminAuth, MapServerFnError, ModelPermission};
 
 /// Get detail view data for a single model instance
@@ -40,8 +40,8 @@ use super::error::{AdminAuth, MapServerFnError, ModelPermission};
 pub async fn get_detail(
 	model_name: String,
 	id: String,
-	#[inject] site: Arc<AdminSite>,
-	#[inject] db: Arc<AdminDatabase>,
+	#[inject] site: Depends<AdminSite>,
+	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<DetailResponse, ServerFnError> {

@@ -5,7 +5,7 @@
 //!
 //! **Run with**: `cargo make wasm-test`
 
-#![cfg(target_arch = "wasm32")]
+#![cfg(wasm)]
 
 use wasm_bindgen_test::*;
 

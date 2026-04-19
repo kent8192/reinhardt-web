@@ -549,6 +549,19 @@ impl BaseCommand for MakeMigrationsCommand {
 			.unwrap_or_else(|| "migrations".to_string());
 		let migrations_dir = PathBuf::from(migrations_dir_str);
 
+		// Validate that we are running inside a Reinhardt project directory.
+		// A valid project must contain src/bin/manage.rs (the management command
+		// entry point). Running makemigrations from the wrong directory would
+		// silently create migration files in unexpected locations.
+		if !PathBuf::from("src/bin/manage.rs").exists() {
+			return Err(crate::CommandError::ExecutionError(
+				"Cannot find src/bin/manage.rs in the current directory. \
+				 Please run makemigrations from your Reinhardt project root \
+				 (the directory containing src/bin/manage.rs)."
+					.to_string(),
+			));
+		}
+
 		if is_dry_run {
 			ctx.warning("Dry run mode: No files will be created");
 		}
@@ -1352,20 +1365,20 @@ impl BaseCommand for RunServerCommand {
 			let no_wasm = ctx.has_option("no-wasm");
 			let force_wasm = ctx.has_option("force-wasm");
 			let wasm_optional = ctx.has_option("wasm-optional");
-			if with_pages && !no_wasm {
-				if let Err(e) = Self::build_pages_wasm(ctx, force_wasm) {
-					if wasm_optional {
-						ctx.warning(&format!(
-							"Pages WASM build failed: {}. Server will start without WASM frontend.",
-							e
-						));
-					} else {
-						ctx.error(&format!(
-							"WASM build failed: {}. Fix compilation errors or use --wasm-optional to start without WASM.",
-							e
-						));
-						return Ok(());
-					}
+			if with_pages
+				&& !no_wasm && let Err(e) = Self::build_pages_wasm(ctx, force_wasm)
+			{
+				if wasm_optional {
+					ctx.warning(&format!(
+						"Pages WASM build failed: {}. Server will start without WASM frontend.",
+						e
+					));
+				} else {
+					ctx.error(&format!(
+						"WASM build failed: {}. Fix compilation errors or use --wasm-optional to start without WASM.",
+						e
+					));
+					return Ok(());
 				}
 			}
 		}
@@ -1594,6 +1607,20 @@ impl RunServerCommand {
 			shutdown_tx.shutdown();
 		});
 
+		// Collect and validate runserver hooks (#3442)
+		let hooks = crate::runserver_hooks::collect_hooks();
+		if !hooks.is_empty() {
+			ctx.verbose(&format!("Found {} runserver hook(s)", hooks.len()));
+		}
+		for collected in &hooks {
+			collected.hook.validate().await.map_err(|e| {
+				crate::CommandError::ExecutionError(format!(
+					"Runserver hook validation failed for {}: {}",
+					collected.type_name, e
+				))
+			})?;
+		}
+
 		// OpenAPI documentation is shown in startup banner above
 
 		// Resolve DI context: reuse user-provided context from router, or create a new one.
@@ -1649,6 +1676,26 @@ impl RunServerCommand {
 				reinhardt_di::InjectionContext::builder(singleton_scope).build(),
 			),
 		};
+
+		// Invoke runserver hook startup phase (#3442)
+		if !hooks.is_empty() {
+			let runserver_ctx = crate::runserver_hooks::RunserverContext {
+				shutdown_coordinator: coordinator.clone(),
+				di_context: di_context.clone(),
+			};
+			for collected in &hooks {
+				collected
+					.hook
+					.on_server_start(&runserver_ctx)
+					.await
+					.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Runserver hook startup failed for {}: {}",
+							collected.type_name, e
+						))
+					})?;
+			}
+		}
 
 		// Create HTTP server with DI context and logging middleware
 		let mut server = HttpServer::new(router)
@@ -3087,6 +3134,13 @@ mod tests {
 		use reinhardt_db::prelude::FieldType;
 		use tempfile::TempDir;
 
+		// Create a temporary project directory with the required structure
+		let project_dir = TempDir::new().unwrap();
+		std::fs::create_dir_all(project_dir.path().join("src/bin")).unwrap();
+		std::fs::write(project_dir.path().join("src/bin/manage.rs"), "fn main() {}").unwrap();
+		let original_dir = std::env::current_dir().unwrap();
+		std::env::set_current_dir(project_dir.path()).unwrap();
+
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
 		let migrations_dir = temp_dir.path();
@@ -3119,6 +3173,7 @@ mod tests {
 
 		let result = cmd.execute(&ctx).await;
 		unsafe { std::env::remove_var("DATABASE_URL") };
+		std::env::set_current_dir(&original_dir).unwrap();
 
 		// Should succeed (creates an empty migration)
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
@@ -3133,6 +3188,13 @@ mod tests {
 			prelude::FieldType,
 		};
 		use tempfile::TempDir;
+
+		// Create a temporary project directory with the required structure
+		let project_dir = TempDir::new().unwrap();
+		std::fs::create_dir_all(project_dir.path().join("src/bin")).unwrap();
+		std::fs::write(project_dir.path().join("src/bin/manage.rs"), "fn main() {}").unwrap();
+		let original_dir = std::env::current_dir().unwrap();
+		std::env::set_current_dir(project_dir.path()).unwrap();
 
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
@@ -3167,6 +3229,7 @@ mod tests {
 
 		let result = cmd.execute(&ctx).await;
 		unsafe { std::env::remove_var("DATABASE_URL") };
+		std::env::set_current_dir(&original_dir).unwrap();
 
 		// Should succeed (dry-run mode, no actual files created)
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());

@@ -317,7 +317,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 pub const CSRF_HEADER_NAME: &str = "x-csrf-token";
 
 /// The cookie name used for CSRF token storage (double-submit cookie pattern).
-pub const CSRF_COOKIE_NAME: &str = "__csrf_token";
+pub const CSRF_COOKIE_NAME: &str = "csrftoken";
 
 /// Extracts the CSRF token from the `X-CSRF-Token` request header.
 ///
@@ -326,7 +326,7 @@ pub const CSRF_COOKIE_NAME: &str = "__csrf_token";
 /// # Arguments
 ///
 /// * `headers` - The HTTP request headers
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub fn extract_csrf_header(headers: &hyper::HeaderMap) -> Option<String> {
 	headers
 		.get(CSRF_HEADER_NAME)
@@ -334,15 +334,15 @@ pub fn extract_csrf_header(headers: &hyper::HeaderMap) -> Option<String> {
 		.map(|s| s.to_string())
 }
 
-/// Extracts the CSRF token from the `__csrf_token` cookie.
+/// Extracts the CSRF token from the `csrftoken` cookie.
 ///
-/// Parses the `Cookie` header and returns the value of the `__csrf_token`
+/// Parses the `Cookie` header and returns the value of the `csrftoken`
 /// cookie if present.
 ///
 /// # Arguments
 ///
 /// * `headers` - The HTTP request headers
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub fn extract_csrf_cookie(headers: &hyper::HeaderMap) -> Option<String> {
 	headers
 		.get("cookie")
@@ -383,7 +383,7 @@ pub fn build_csrf_cookie(token: &str, is_secure: bool) -> String {
 /// Validates CSRF tokens using the double-submit cookie pattern.
 ///
 /// Compares the token submitted in the request body (or `X-CSRF-Token` header)
-/// against the token stored in the `__csrf_token` cookie. The cookie is set by the
+/// against the token stored in the `csrftoken` cookie. The cookie is set by the
 /// server and cannot be read or forged by a cross-origin attacker, making this
 /// pattern secure against CSRF attacks.
 ///
@@ -395,19 +395,27 @@ pub fn build_csrf_cookie(token: &str, is_secure: bool) -> String {
 /// # Errors
 ///
 /// Returns a `ServerFnError` with status 403 if:
-/// - The `__csrf_token` cookie is missing
+/// - The `csrftoken` cookie is missing
 /// - The body token is empty
 /// - The tokens do not match
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 pub fn require_csrf_token(
 	body_token: &str,
 	headers: &hyper::HeaderMap,
 ) -> Result<(), reinhardt_pages::server_fn::ServerFnError> {
-	let cookie_token = extract_csrf_cookie(headers).ok_or_else(|| {
-		reinhardt_pages::server_fn::ServerFnError::server(403, "CSRF token missing from cookie")
-	})?;
+	// Double-submit cookie pattern: compare body token with cookie token.
+	// Fallback: accept the X-CSRFToken header when cookies are unavailable
+	// (e.g. WASM reqwest client which does not send browser cookies).
+	let expected_token = extract_csrf_cookie(headers)
+		.or_else(|| extract_csrf_header(headers))
+		.ok_or_else(|| {
+			reinhardt_pages::server_fn::ServerFnError::server(
+				403,
+				"CSRF token missing from cookie and header",
+			)
+		})?;
 
-	if !validate_csrf_token(body_token, &cookie_token) {
+	if !validate_csrf_token(body_token, &expected_token) {
 		return Err(reinhardt_pages::server_fn::ServerFnError::server(
 			403,
 			"CSRF token validation failed",
@@ -483,18 +491,98 @@ fn needs_html_escaping(s: &str) -> bool {
 
 /// Escapes HTML special characters in a string.
 fn escape_html(input: &str) -> String {
-	input
-		.replace('&', "&amp;")
-		.replace('<', "&lt;")
-		.replace('>', "&gt;")
-		.replace('"', "&quot;")
-		.replace('\'', "&#x27;")
+	reinhardt_core::security::escape_html(input)
+}
+
+// --- Admin authentication cookie ---
+
+/// The cookie name used for admin JWT authentication.
+///
+/// This cookie stores the JWT token as an HTTP-Only, `SameSite=Strict` cookie,
+/// preventing JavaScript access (XSS protection) and cross-origin sending
+/// (CSRF protection).
+pub const ADMIN_AUTH_COOKIE_NAME: &str = "reinhardt_admin_token";
+
+/// Builds a `Set-Cookie` header value for the admin authentication JWT.
+///
+/// Cookie attributes:
+/// - `HttpOnly`: not accessible via JavaScript (XSS protection)
+/// - `SameSite=Strict`: never sent on cross-origin requests (CSRF protection)
+/// - `Secure`: HTTPS-only (skipped for localhost development)
+/// - `Path=/admin`: scoped to admin panel routes only
+/// - `Max-Age=86400`: 24-hour expiry (aligned with JWT expiry)
+///
+/// # Arguments
+///
+/// * `token` - The JWT token string
+/// * `is_secure` - Whether to add the `Secure` flag (false for localhost)
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_admin::server::security::build_admin_auth_cookie;
+///
+/// let cookie = build_admin_auth_cookie("eyJhbGciOiJIUzI1NiJ9.test", true);
+/// assert!(cookie.contains("HttpOnly"));
+/// assert!(cookie.contains("SameSite=Strict"));
+/// assert!(cookie.contains("Secure"));
+/// assert!(cookie.contains("Path=/admin"));
+/// ```
+pub fn build_admin_auth_cookie(token: &str, is_secure: bool) -> String {
+	let secure_flag = if is_secure { "; Secure" } else { "" };
+	format!(
+		"{}={}; HttpOnly; SameSite=Strict; Path=/admin; Max-Age=86400{}",
+		ADMIN_AUTH_COOKIE_NAME, token, secure_flag
+	)
+}
+
+/// Builds a `Set-Cookie` header value that clears the admin authentication cookie.
+///
+/// Sets `Max-Age=0` to instruct the browser to delete the cookie immediately.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_admin::server::security::build_admin_auth_cookie_clear;
+///
+/// let cookie = build_admin_auth_cookie_clear();
+/// assert!(cookie.contains("Max-Age=0"));
+/// ```
+pub fn build_admin_auth_cookie_clear() -> String {
+	format!(
+		"{}=; HttpOnly; SameSite=Strict; Path=/admin; Max-Age=0",
+		ADMIN_AUTH_COOKIE_NAME
+	)
+}
+
+/// Extracts the admin JWT token from the `Cookie` header.
+///
+/// Parses the `Cookie` header and returns the value of the
+/// `reinhardt_admin_token` cookie if present.
+///
+/// # Arguments
+///
+/// * `headers` - The HTTP request headers
+#[cfg(not(target_arch = "wasm32"))]
+pub fn extract_admin_auth_cookie(headers: &hyper::HeaderMap) -> Option<String> {
+	headers
+		.get("cookie")
+		.and_then(|v| v.to_str().ok())
+		.and_then(|cookie_header| {
+			cookie_header.split(';').find_map(|pair| {
+				let pair = pair.trim();
+				let (name, value) = pair.split_once('=')?;
+				if name.trim() == ADMIN_AUTH_COOKIE_NAME {
+					Some(value.trim().to_string())
+				} else {
+					None
+				}
+			})
+		})
 }
 
 #[cfg(test)]
 mod tests {
-	use std::str::FromStr;
-
 	use super::*;
 	use rstest::rstest;
 
@@ -941,7 +1029,7 @@ mod tests {
 		let mut headers = hyper::HeaderMap::new();
 		headers.insert(
 			"cookie",
-			"session=abc; __csrf_token=test-token-value; other=xyz"
+			"session=abc; csrftoken=test-token-value; other=xyz"
 				.parse()
 				.unwrap(),
 		);
@@ -982,7 +1070,7 @@ mod tests {
 	fn test_extract_csrf_cookie_only_csrf() {
 		// Arrange
 		let mut headers = hyper::HeaderMap::new();
-		headers.insert("cookie", "__csrf_token=solo-value".parse().unwrap());
+		headers.insert("cookie", "csrftoken=solo-value".parse().unwrap());
 
 		// Act
 		let result = extract_csrf_cookie(&headers);
@@ -1003,7 +1091,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			cookie,
-			"__csrf_token=token123; SameSite=Strict; Path=/admin; Secure"
+			"csrftoken=token123; SameSite=Strict; Path=/admin; Secure"
 		);
 	}
 
@@ -1013,10 +1101,7 @@ mod tests {
 		let cookie = build_csrf_cookie("token123", false);
 
 		// Assert
-		assert_eq!(
-			cookie,
-			"__csrf_token=token123; SameSite=Strict; Path=/admin"
-		);
+		assert_eq!(cookie, "csrftoken=token123; SameSite=Strict; Path=/admin");
 	}
 
 	// ============================================================
@@ -1028,7 +1113,7 @@ mod tests {
 		// Arrange
 		let token = generate_csrf_token();
 		let mut headers = hyper::HeaderMap::new();
-		let cookie_value = format!("__csrf_token={}", token);
+		let cookie_value = format!("csrftoken={}", token);
 		headers.insert("cookie", cookie_value.parse().unwrap());
 
 		// Act & Assert
@@ -1042,7 +1127,7 @@ mod tests {
 		let body_token = generate_csrf_token();
 		let cookie_token = generate_csrf_token();
 		let mut headers = hyper::HeaderMap::new();
-		let cookie_value = format!("__csrf_token={}", cookie_token);
+		let cookie_value = format!("csrftoken={}", cookie_token);
 		headers.insert("cookie", cookie_value.parse().unwrap());
 
 		// Act
@@ -1073,7 +1158,7 @@ mod tests {
 		match err {
 			reinhardt_pages::server_fn::ServerFnError::Server { status, message } => {
 				assert_eq!(status, 403);
-				assert_eq!(message, "CSRF token missing from cookie");
+				assert_eq!(message, "CSRF token missing from cookie and header");
 			}
 			other => panic!("Expected Server error with status 403, got: {:?}", other),
 		}
@@ -1084,7 +1169,7 @@ mod tests {
 		// Arrange
 		let cookie_token = generate_csrf_token();
 		let mut headers = hyper::HeaderMap::new();
-		let cookie_value = format!("__csrf_token={}", cookie_token);
+		let cookie_value = format!("csrftoken={}", cookie_token);
 		headers.insert("cookie", cookie_value.parse().unwrap());
 
 		// Act
@@ -1147,7 +1232,7 @@ mod tests {
 		// Arrange
 		let token = generate_csrf_token();
 		let mut headers = hyper::HeaderMap::new();
-		let cookie_value = format!("__csrf_token={}", token);
+		let cookie_value = format!("csrftoken={}", token);
 		headers.insert("cookie", cookie_value.parse().unwrap());
 
 		// Act
@@ -1165,7 +1250,7 @@ mod tests {
 		// Arrange
 		let cookie_token = generate_csrf_token();
 		let mut headers = hyper::HeaderMap::new();
-		let cookie_value = format!("__csrf_token={}", cookie_token);
+		let cookie_value = format!("csrftoken={}", cookie_token);
 		headers.insert("cookie", cookie_value.parse().unwrap());
 
 		// Act
@@ -1187,7 +1272,7 @@ mod tests {
 		// Arrange
 		let cookie_token = generate_csrf_token();
 		let mut headers = hyper::HeaderMap::new();
-		let cookie_value = format!("__csrf_token={}", cookie_token);
+		let cookie_value = format!("csrftoken={}", cookie_token);
 		headers.insert("cookie", cookie_value.parse().unwrap());
 
 		// Act
@@ -1303,20 +1388,20 @@ mod tests {
 	#[rstest]
 	fn test_frame_options_from_str_deny() {
 		// Assert
-		assert_eq!(FrameOptions::from_str("deny").unwrap(), FrameOptions::Deny);
+		assert_eq!("deny".parse::<FrameOptions>().unwrap(), FrameOptions::Deny);
 	}
 
 	#[rstest]
 	fn test_frame_options_from_str_deny_uppercase() {
 		// Assert
-		assert_eq!(FrameOptions::from_str("DENY").unwrap(), FrameOptions::Deny);
+		assert_eq!("DENY".parse::<FrameOptions>().unwrap(), FrameOptions::Deny);
 	}
 
 	#[rstest]
 	fn test_frame_options_from_str_sameorigin() {
 		// Assert
 		assert_eq!(
-			FrameOptions::from_str("sameorigin").unwrap(),
+			"sameorigin".parse::<FrameOptions>().unwrap(),
 			FrameOptions::SameOrigin
 		);
 	}
@@ -1325,7 +1410,7 @@ mod tests {
 	fn test_frame_options_from_str_unknown_falls_back_to_deny() {
 		// Assert
 		assert_eq!(
-			FrameOptions::from_str("invalid").unwrap(),
+			"invalid".parse::<FrameOptions>().unwrap(),
 			FrameOptions::Deny
 		);
 	}
@@ -1338,7 +1423,7 @@ mod tests {
 	fn test_referrer_policy_from_str_no_referrer() {
 		// Assert
 		assert_eq!(
-			ReferrerPolicy::from_str("no-referrer").unwrap(),
+			"no-referrer".parse::<ReferrerPolicy>().unwrap(),
 			ReferrerPolicy::NoReferrer
 		);
 	}
@@ -1347,7 +1432,9 @@ mod tests {
 	fn test_referrer_policy_from_str_strict_origin() {
 		// Assert
 		assert_eq!(
-			ReferrerPolicy::from_str("strict-origin-when-cross-origin").unwrap(),
+			"strict-origin-when-cross-origin"
+				.parse::<ReferrerPolicy>()
+				.unwrap(),
 			ReferrerPolicy::StrictOriginWhenCrossOrigin
 		);
 	}
@@ -1356,7 +1443,7 @@ mod tests {
 	fn test_referrer_policy_from_str_same_origin() {
 		// Assert
 		assert_eq!(
-			ReferrerPolicy::from_str("same-origin").unwrap(),
+			"same-origin".parse::<ReferrerPolicy>().unwrap(),
 			ReferrerPolicy::SameOrigin
 		);
 	}
@@ -1365,7 +1452,7 @@ mod tests {
 	fn test_referrer_policy_from_str_unknown_falls_back() {
 		// Assert
 		assert_eq!(
-			ReferrerPolicy::from_str("invalid").unwrap(),
+			"invalid".parse::<ReferrerPolicy>().unwrap(),
 			ReferrerPolicy::StrictOriginWhenCrossOrigin
 		);
 	}

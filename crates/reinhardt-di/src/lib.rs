@@ -110,6 +110,34 @@
 //!     .build();
 //! ```
 //!
+//! ## Resolve Context
+//!
+//! The [`get_di_context`] function provides access to the active
+//! [`InjectionContext`] within `#[injectable_factory]` and `#[injectable]`
+//! function bodies, without requiring `#[inject]`.
+//!
+//! This enables factories to access the DI context for purposes like
+//! passing it to downstream consumers:
+//!
+//! ```rust,ignore
+//! use reinhardt_di::{ContextLevel, Depends, get_di_context};
+//!
+//! #[injectable_factory(scope = "transient")]
+//! async fn make_router(
+//!     #[inject] config: Depends<AppConfig>,
+//! ) -> Router {
+//!     let di_ctx = get_di_context(ContextLevel::Current);
+//!     Router::new().with_di_context(di_ctx)
+//! }
+//! ```
+//!
+//! [`ContextLevel::Root`] returns the application-level context, while
+//! [`ContextLevel::Current`] returns the currently active context
+//! (which may be a request-scoped fork).
+//!
+//! Use [`try_get_di_context`] for a non-panicking variant that returns
+//! `None` when called outside of a DI resolution context.
+//!
 //! ## Circular Dependency Detection
 //!
 //! The DI system automatically detects circular dependencies at runtime using an optimized
@@ -250,7 +278,9 @@ pub mod override_registry;
 pub mod provider;
 pub mod registration;
 pub mod registry;
+pub mod resolve_context;
 pub mod scope;
+pub mod validation;
 
 use thiserror::Error;
 
@@ -265,17 +295,22 @@ pub use override_registry::OverrideRegistry;
 pub use context::{ParamContext, Request};
 pub use depends::{Depends, DependsBuilder};
 pub use injectable::Injectable;
+#[allow(deprecated)]
 pub use injected::{
 	DependencyScope as InjectedScope, Injected, InjectionMetadata, OptionalInjected,
 };
 pub use provider::{Provider, ProviderFn};
 pub use registration::DiRegistrationList;
 pub use registry::{
-	DependencyRegistration, DependencyRegistry, DependencyScope, FactoryTrait, global_registry,
+	DependencyRegistration, DependencyRegistry, DependencyScope, FactoryTrait, InjectableFactory,
+	InjectableRegistration, global_registry,
 };
+pub use resolve_context::{ContextLevel, get_di_context, try_get_di_context};
 pub use scope::{RequestScope, Scope, SingletonScope};
+pub use validation::{RegistryValidator, ValidationError, ValidationErrorKind};
 
-// Re-export inventory for macro use
+// Re-export inventory and async_trait for macro use
+pub use async_trait;
 pub use inventory;
 
 // Re-export macros

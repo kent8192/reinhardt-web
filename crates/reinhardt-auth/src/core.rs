@@ -23,7 +23,7 @@
 //! use uuid::Uuid;
 //!
 //! let user = SimpleUser {
-//!     id: Uuid::new_v4(),
+//!     id: Uuid::now_v7(),
 //!     username: "alice".to_string(),
 //!     email: "alice@example.com".to_string(),
 //!     is_active: true,
@@ -72,7 +72,7 @@
 //! # #[cfg(feature = "argon2-hasher")]
 //! # {
 //! let mut user = MyUser {
-//!     id: Uuid::new_v4(),
+//!     id: Uuid::now_v7(),
 //!     email: "user@example.com".to_string(),
 //!     password_hash: None,
 //!     last_login: None,

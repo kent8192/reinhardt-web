@@ -70,7 +70,7 @@ use std::collections::HashMap;
 ///         extra: HashMap<String, Value>,
 ///     ) -> Result<MyUser> {
 ///         let mut user = MyUser {
-///             id: Uuid::new_v4(),
+///             id: Uuid::now_v7(),
 ///             email: username.to_string(),
 ///             password_hash: None,
 ///             last_login: None,

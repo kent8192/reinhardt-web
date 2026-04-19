@@ -3554,7 +3554,7 @@ fn is_auto_generated_field(field: &FieldInfo) -> bool {
 		return true;
 	}
 
-	// UUID primary key is auto-generated with Uuid::new_v4()
+	// UUID primary key is auto-generated with Uuid::now_v7()
 	if config.primary_key && is_uuid_type(&field.ty) {
 		return true;
 	}
@@ -3612,9 +3612,9 @@ fn get_auto_field_default_value(field: &FieldInfo) -> TokenStream {
 	if config.primary_key && is_uuid_type(&field.ty) {
 		let (is_option, _) = extract_option_type(&field.ty);
 		if is_option {
-			return quote! { Some(::uuid::Uuid::new_v4()) };
+			return quote! { Some(::uuid::Uuid::now_v7()) };
 		} else {
-			return quote! { ::uuid::Uuid::new_v4() };
+			return quote! { ::uuid::Uuid::now_v7() };
 		}
 	}
 
@@ -3858,7 +3858,7 @@ fn generate_new_function(
 			/// Create a new instance with user-specified fields.
 			///
 			/// Auto-generated fields are initialized automatically:
-			/// - UUID primary keys: Generated with `Uuid::new_v4()`
+			/// - UUID primary keys: Generated with `Uuid::now_v7()`
 			/// - Timestamp fields (created_at, updated_at, etc.): Set to `Utc::now()`
 			/// - Fields with `#[field(auto_now_add)]` or `#[field(auto_now)]`: Set to `Utc::now()`
 			/// - ManyToManyField: Initialized with `Default::default()`

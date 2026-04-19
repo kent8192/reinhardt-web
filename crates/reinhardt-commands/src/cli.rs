@@ -1208,9 +1208,12 @@ async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 		}
 	}
 
-	// Get and register the router
+	// Get and register the router (supports both sync and async factories)
 	let registration = &registrations[0];
-	let router = (registration.get_server_router)();
+	let router = registration
+		.server_router_async()
+		.await
+		.map_err(|e| format!("Failed to create router from #[routes] function: {e}"))?;
 	register_router_arc(router);
 
 	Ok(())

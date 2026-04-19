@@ -77,7 +77,7 @@ pub type GroupManagementResult<T> = Result<T, GroupManagementError>;
 /// use uuid::Uuid;
 ///
 /// let group = Group {
-///     id: Uuid::new_v4(),
+///     id: Uuid::now_v7(),
 ///     name: "Editors".to_string(),
 ///     description: Some("Content editors".to_string()),
 /// };
@@ -220,7 +220,7 @@ impl GroupManager {
 
 		// Create group
 		let group = Group {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			name: data.name.clone(),
 			description: data.description,
 		};

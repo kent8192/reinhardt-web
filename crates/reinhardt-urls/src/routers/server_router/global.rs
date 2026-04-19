@@ -35,14 +35,22 @@ static GLOBAL_DI_REGISTRATIONS: OnceCell<StdRwLock<Option<reinhardt_di::DiRegist
 /// // No Arc::new() needed!
 /// register_router(router);
 /// ```
-pub fn register_router(router: ServerRouter) {
+pub fn register_router(mut router: ServerRouter) {
+	let errors = router.register_all_routes();
+	for error in &errors {
+		tracing::warn!("{}", error);
+	}
 	register_router_arc(Arc::new(router));
 }
 
-/// Register a router that is already wrapped in Arc
+/// Register a router that is already wrapped in Arc.
 ///
 /// This is provided for cases where you already have an `Arc<ServerRouter>`.
-/// In most cases, you should use `register_router()` instead.
+/// In most cases, you should use [`register_router()`] instead.
+///
+/// **Important:** Unlike [`register_router()`], this function does **not** call
+/// `register_all_routes()` because `Arc<ServerRouter>` cannot be mutated.
+/// Callers must ensure routes have been registered before wrapping in `Arc`.
 pub fn register_router_arc(router: Arc<ServerRouter>) {
 	let cell = GLOBAL_ROUTER.get_or_init(|| StdRwLock::new(None));
 	let mut guard = cell.write().unwrap_or_else(PoisonError::into_inner);

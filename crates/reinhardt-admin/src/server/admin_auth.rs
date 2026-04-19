@@ -9,7 +9,7 @@
 
 use crate::core::AdminUser;
 use async_trait::async_trait;
-use reinhardt_auth::{BaseUser, FullUser};
+use reinhardt_auth::BaseUser;
 use reinhardt_db::orm::{DatabaseConnection, Model};
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
 use reinhardt_http::AuthState;
@@ -112,7 +112,7 @@ impl Injectable for AdminAuthenticatedUser {
 				.ok_or_else(|| DiError::NotRegistered {
 					type_name: "AdminUserLoader".into(),
 					hint: "Call AdminSite::set_user_type::<U>() before building admin routes, \
-					       or use the default by calling admin_routes_with_di_deferred() which \
+					       or use the default by calling admin_routes_with_di() which \
 					       registers AdminDefaultUser as a fallback."
 						.into(),
 				})?;
@@ -135,6 +135,20 @@ impl Injectable for AdminAuthenticatedUser {
 		// Call the type-erased loader to query the user from the database
 		let user = (loader.0)(user_id, db).await?;
 
+		// Verify user account is active
+		if !user.is_active() {
+			return Err(DiError::Authentication(
+				"User account is not active".to_string(),
+			));
+		}
+
+		// Verify user has staff privileges
+		if !user.is_staff() {
+			return Err(DiError::Authentication(
+				"User does not have staff privileges".to_string(),
+			));
+		}
+
 		Ok(AdminAuthenticatedUser(user))
 	}
 }
@@ -147,14 +161,14 @@ impl Injectable for AdminAuthenticatedUser {
 ///
 /// # Type requirements
 ///
-/// `U` must implement both the auth traits (`BaseUser`, `FullUser`) and the
-/// ORM trait (`Model`). This is guaranteed for any type annotated with both
-/// `#[model]` and `#[user(full = true)]`.
+/// `U` must implement `BaseUser`, `AdminUser`, and the ORM trait (`Model`).
+/// Types with `FullUser` satisfy `AdminUser` automatically via the blanket impl.
+/// Simpler `BaseUser`-only models can manually implement `AdminUser`.
 ///
 /// [`AuthUser<U>::inject`]: reinhardt_auth::AuthUser
 pub(crate) fn create_admin_user_loader<U>() -> AdminUserLoader
 where
-	U: BaseUser + FullUser + Model + Clone + Send + Sync + 'static,
+	U: BaseUser + AdminUser + Model + Clone + Send + Sync + 'static,
 	<U as BaseUser>::PrimaryKey: std::str::FromStr + ToString + Send + Sync,
 	<<U as BaseUser>::PrimaryKey as std::str::FromStr>::Err: std::fmt::Debug,
 	<U as Model>::PrimaryKey: From<<U as BaseUser>::PrimaryKey>,
@@ -246,10 +260,9 @@ impl Injectable for AdminLoginAuthenticator {
 			.map(|arc| (*arc).clone())
 			.ok_or_else(|| DiError::NotRegistered {
 				type_name: "AdminLoginAuthenticator".into(),
-				hint:
-					"Call AdminSite::set_user_type::<U>() or use admin_routes_with_di_deferred() \
+				hint: "Call AdminSite::set_user_type::<U>() or use admin_routes_with_di() \
 				       which registers AdminDefaultUser as a fallback."
-						.into(),
+					.into(),
 			})
 	}
 }
@@ -259,11 +272,11 @@ impl Injectable for AdminLoginAuthenticator {
 /// The authenticator:
 /// 1. Queries the user by username using ORM filter
 /// 2. Verifies the password using `BaseUser::check_password()`
-/// 3. Checks that the user is active and has staff privileges
+/// 3. Checks that the user is active and has staff privileges (via `AdminUser`)
 /// 4. Returns user info for JWT token generation
 pub(crate) fn create_admin_login_authenticator<U>() -> AdminLoginAuthenticator
 where
-	U: BaseUser + FullUser + Model + Clone + Send + Sync + 'static,
+	U: BaseUser + AdminUser + Model + Clone + Send + Sync + 'static,
 	<U as BaseUser>::PrimaryKey: ToString + Send + Sync,
 {
 	use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
@@ -305,7 +318,7 @@ where
 			}
 
 			// Check active and staff status
-			if !user.is_active() {
+			if !AdminUser::is_active(&user) {
 				::tracing::debug!(username = %username, "AdminLoginAuthenticator: User is not active");
 				return Ok(None);
 			}
@@ -322,7 +335,7 @@ where
 
 			Ok(Some(AuthenticatedUserInfo {
 				user_id,
-				username: user.username().to_string(),
+				username: AdminUser::get_username(&user).to_string(),
 				is_staff: user.is_staff(),
 				is_superuser: user.is_superuser(),
 			}))

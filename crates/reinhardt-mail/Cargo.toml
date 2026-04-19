@@ -15,7 +15,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 reinhardt-core = { workspace = true, features = ["exception", "types"] }
 async-trait = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
 lettre = { version = "0.11", features = [
   "tokio1",
   "tokio1-native-tls",
@@ -46,5 +46,5 @@ rstest = { workspace = true }
 # avoiding dev-dependency version resolution failure during `cargo publish`.
 # When upstream cargo resolves these issues, replace with `workspace = true`.
 reinhardt-testkit = { path = "../reinhardt-testkit", features = ["testcontainers"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { workspace = true }
 futures = { workspace = true }

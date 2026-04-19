@@ -14,6 +14,8 @@ categories = ["wasm", "web-programming"]
 default = []
 msgpack = ["dep:rmp-serde"]
 testing = []
+# Exposes MockableServerFn trait for MSW-style testing
+msw = ["reinhardt-pages-macros/msw"]
 pages-full = ["msgpack", "web-sys-full"]
 static = []
 urls = []
@@ -132,6 +134,7 @@ web-sys = { version = "0.3.83", features = [
 	"HtmlCollection",
 	"NodeList",
 	"HtmlDocument",
+	"HtmlHeadElement",
 	# History API (for router)
 	"History",
 	"Location",
@@ -150,14 +153,14 @@ reinhardt-core = {workspace = true, features = ["reactive", "page"]}
 syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
 quote = "1.0"
 proc-macro2 = "1.0"
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
-gloo-net = "0.6"
+reqwest = { workspace = true }
 getrandom = { version = "0.3", features = ["wasm_js"] }
-uuid = { version = "1.0", features = ["js"] }
+uuid = { version = "1.7", features = ["v7", "js"] }
 
 # Server-side only dependencies (DI, HTTP, Forms, Server Function Registry)
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 reinhardt-forms = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
@@ -167,8 +170,9 @@ reinhardt-server = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["staticfiles"] }
 hyper = { workspace = true }
 async-trait = "0.1"
-uuid = { version = "1.0", features = ["v4"] }
+uuid = { version = "1.7", features = ["v4", "v7"] }
 tokio = { workspace = true }
+tracing = { workspace = true }
 
 [build-dependencies]
 cfg_aliases = "0.2"
@@ -179,10 +183,12 @@ reinhardt-forms = { workspace = true }
 wasm-bindgen-test = "0.3.56"
 serial_test = "3"
 trybuild = "1.0"
-criterion = { workspace = true }
 rstest = { workspace = true }
-proptest = { workspace = true }
 tempfile = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
 
 [lib]
 crate-type = ["rlib"]
