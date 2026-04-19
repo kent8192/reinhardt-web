@@ -110,6 +110,7 @@ static-files = ["reinhardt-utils/staticfiles"]
 storage = ["reinhardt-utils/storage"]
 shortcuts = ["reinhardt-shortcuts"]
 tasks = ["reinhardt-tasks"]
+streaming = ["dep:reinhardt-streaming"]
 server = ["reinhardt-server"]
 commands = ["reinhardt-commands", "reinhardt-commands/migrations"]
 introspect = ["reinhardt-commands/introspect"]
@@ -304,6 +305,7 @@ reinhardt-forms = { workspace = true, optional = true }
 reinhardt-middleware = { workspace = true, optional = true }
 reinhardt-shortcuts = { workspace = true, optional = true }
 reinhardt-tasks = { workspace = true, optional = true }
+reinhardt-streaming = { workspace = true, optional = true }
 reinhardt-server = { workspace = true, optional = true }
 reinhardt-i18n = { workspace = true, optional = true }
 reinhardt-mail = { workspace = true, optional = true }

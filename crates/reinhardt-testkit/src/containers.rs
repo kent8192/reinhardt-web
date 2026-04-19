@@ -1117,6 +1117,8 @@ impl KafkaContainer {
 		use testcontainers::core::IntoContainerPort;
 
 		let image = GenericImage::new("bitnami/kafka", "3.7")
+			.with_exposed_port(9092.tcp())
+			.with_wait_for(WaitFor::message_on_stdout("Kafka Server started"))
 			.with_env_var("KAFKA_CFG_NODE_ID", "0")
 			.with_env_var("KAFKA_CFG_PROCESS_ROLES", "controller,broker")
 			.with_env_var(
@@ -1128,9 +1130,7 @@ impl KafkaContainer {
 				"CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT",
 			)
 			.with_env_var("KAFKA_CFG_CONTROLLER_QUORUM_VOTERS", "0@localhost:9093")
-			.with_env_var("KAFKA_CFG_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
-			.with_exposed_port(9092.tcp())
-			.with_wait_for(WaitFor::message_on_stdout("Kafka Server started"));
+			.with_env_var("KAFKA_CFG_CONTROLLER_LISTENER_NAMES", "CONTROLLER");
 
 		let container = AsyncRunner::start(image)
 			.await
