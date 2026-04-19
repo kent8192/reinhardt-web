@@ -1400,8 +1400,14 @@ impl Injectable for SessionData {
 			.map(|cn| cn.as_str())
 			.unwrap_or(DEFAULT_SESSION_COOKIE_NAME);
 
-		// Extract session ID from Cookie header
-		let session_id = extract_session_id_from_request(&request, cookie_name)?;
+		// Prefer the SessionId injected by SessionMiddleware (present for all requests,
+		// including those without a Cookie header such as the initial login request).
+		// Fall back to parsing the Cookie header for requests that bypass the middleware.
+		let session_id = if let Some(sid) = request.extensions.get::<SessionId>() {
+			sid.as_ref().to_string()
+		} else {
+			extract_session_id_from_request(&request, cookie_name)?
+		};
 
 		// Load SessionData from store
 		store
