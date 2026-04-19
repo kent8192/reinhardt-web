@@ -28,7 +28,6 @@ if [ "$USAGE" -ge "$THRESHOLD_PERCENT" ]; then
 	if [ "$NEW_USAGE" -ge "$THRESHOLD_PERCENT" ]; then
 		echo "$LOG_PREFIX Still above threshold. Running aggressive cleanup..."
 		docker system prune -af --filter "until=24h"
-		docker volume prune -f
 
 		FINAL_USAGE=$(df -h / | awk 'NR==2 {gsub(/%/,""); print $5}')
 		echo "$LOG_PREFIX Aggressive cleanup complete. Disk usage: ${FINAL_USAGE}%"
