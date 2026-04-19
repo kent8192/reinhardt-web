@@ -864,7 +864,12 @@ header so future readers understand why the more verbose path is used.
 **Direct call (preferred):**
 
 ```rust
+// Schematic — adapt types, imports, and fixture names to your project.
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use rstest::*;
+use serde_json::json;
 
 #[rstest]
 #[tokio::test]
@@ -918,8 +923,8 @@ fixtures (auth, transactions, mocked HTTP request, CSRF token). Prefer
 that helper over hand-rolled DI scaffolding.
 
 See: #3826 (convention), #3525 (HTTP-routed exception rationale),
-`tests/integration/admin_integration_tests.rs` for representative direct
-call test examples.
+`tests/integration/tests/admin/` for representative direct call test
+examples.
 
 ---
 
