@@ -2,6 +2,12 @@
 target-dir = "target"
 rustflags = ["-Wunreachable_pub"]
 
+[profile.dev]
+debug = 1
+
+[profile.test]
+debug = 1
+
 # rust-analyzer settings
 # Enable all features to improve type checking in the editor
 [env]
