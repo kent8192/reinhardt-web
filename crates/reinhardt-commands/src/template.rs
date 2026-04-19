@@ -349,8 +349,7 @@ impl BaseCommand for TemplateCommand {
 			)
 		})?;
 
-		let source = crate::template_source::FilesystemSource::new(template_dir)
-			.map_err(|e| CommandError::ExecutionError(e.to_string()))?;
+		let source = crate::template_source::FilesystemSource::new(template_dir)?;
 
 		let context = TemplateContext::new();
 

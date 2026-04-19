@@ -389,6 +389,12 @@ fn resolve_source(
 	subdir: &str,
 ) -> CommandResult<Box<dyn TemplateSource>> {
 	if let Some(root) = override_root {
+		if !root.exists() || !root.is_dir() {
+			return Err(CommandError::ExecutionError(format!(
+				"template override root does not exist or is not a directory: {}",
+				root.display()
+			)));
+		}
 		let subdir_path = root.join(subdir);
 		if subdir_path.exists() {
 			let primary = FilesystemSource::new(&subdir_path)?;
@@ -397,12 +403,14 @@ fn resolve_source(
 				fallback: EmbeddedSource::new(subdir),
 			}));
 		}
+		// Override root exists but has no subdir for this template type;
+		// fall through to embedded-only so partial override trees are still valid.
 	}
 	Ok(Box::new(EmbeddedSource::new(subdir)))
 }
 
 fn effective_template_dir_override(ctx: &CommandContext) -> Option<PathBuf> {
-	if let Some(v) = ctx.option("template-dir") {
+	if let Some(v) = ctx.option("template-dir").filter(|v| !v.trim().is_empty()) {
 		return Some(PathBuf::from(v));
 	}
 	if let Some(v) = env::var("REINHARDT_TEMPLATE_DIR")

@@ -4,11 +4,13 @@
 use reinhardt_commands::start_commands::StartProjectCommand;
 use reinhardt_commands::{BaseCommand, CommandContext};
 use rstest::*;
+use serial_test::serial;
 use std::collections::HashMap;
 use tempfile::TempDir;
 
 #[rstest]
 #[tokio::test]
+#[serial(cwd)]
 async fn startproject_restful_from_embedded_only() {
 	// Arrange
 	let tmp = TempDir::new().unwrap();
@@ -39,6 +41,7 @@ async fn startproject_restful_from_embedded_only() {
 
 #[rstest]
 #[tokio::test]
+#[serial(cwd)]
 async fn startproject_pages_from_embedded_only() {
 	// Arrange
 	let tmp = TempDir::new().unwrap();

@@ -19,9 +19,12 @@ pub struct MergedSource {
 
 impl TemplateSource for MergedSource {
 	fn list_entries(&self, rel: &Path) -> CommandResult<Vec<TemplateEntry>> {
-		let primary_entries: Vec<TemplateEntry> =
-			self.primary.list_entries(rel).unwrap_or_default();
-		let fallback_entries = self.fallback.list_entries(rel).unwrap_or_default();
+		let primary_entries: Vec<TemplateEntry> = if self.primary.exists(rel) {
+			self.primary.list_entries(rel)?
+		} else {
+			Vec::new()
+		};
+		let fallback_entries = self.fallback.list_entries(rel)?;
 
 		let mut seen: HashSet<PathBuf> =
 			primary_entries.iter().map(|e| e.rel_path.clone()).collect();

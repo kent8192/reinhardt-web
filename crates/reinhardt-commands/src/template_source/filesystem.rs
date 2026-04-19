@@ -50,7 +50,24 @@ impl FilesystemSource {
 
 	fn resolve(&self, rel: &Path) -> CommandResult<PathBuf> {
 		reject_traversal(rel)?;
-		Ok(self.root.join(rel))
+		let path = self.root.join(rel);
+		if path == self.root {
+			return Ok(path);
+		}
+		let canonical = fs::canonicalize(&path).map_err(|e| {
+			CommandError::ExecutionError(format!(
+				"template path does not exist or is not readable: {} ({})",
+				path.display(),
+				e
+			))
+		})?;
+		if !canonical.starts_with(&self.root) {
+			return Err(CommandError::ExecutionError(format!(
+				"template path escapes root: {}",
+				rel.display()
+			)));
+		}
+		Ok(canonical)
 	}
 }
 

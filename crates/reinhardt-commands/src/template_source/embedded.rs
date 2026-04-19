@@ -44,12 +44,14 @@ fn reject_traversal(rel: &Path) -> CommandResult<()> {
 fn rel_to_embed_key(rel: &Path) -> CommandResult<String> {
 	reject_traversal(rel)?;
 	let mut key = String::new();
-	for (i, comp) in rel.components().enumerate() {
+	let mut first = true;
+	for comp in rel.components() {
 		if let Component::Normal(s) = comp {
-			if i > 0 {
+			if !first {
 				key.push('/');
 			}
 			key.push_str(&s.to_string_lossy());
+			first = false;
 		}
 	}
 	Ok(key)
