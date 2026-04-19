@@ -195,6 +195,8 @@ tempfile = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 criterion = { workspace = true }
 proptest = { workspace = true }
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
 
 [lib]
 crate-type = ["rlib"]

@@ -169,4 +169,80 @@ mod tests {
 		// Assert
 		assert!(watcher.is_ok());
 	}
+
+	// --- Edge cases ---
+
+	#[rstest]
+	fn test_file_watcher_mixed_existing_and_missing_paths() {
+		// Existing path + nonexistent path — creation should succeed and only the
+		// existing path is watched (nonexistent are silently skipped)
+		let tmp_dir = TempDir::new().unwrap();
+		let config = HmrConfig::builder()
+			.watch_path(tmp_dir.path().to_path_buf())
+			.watch_path("/tmp/reinhardt_hmr_definitely_missing_abc999")
+			.build();
+
+		let watcher = FileWatcher::new(config);
+		assert!(watcher.is_ok());
+	}
+
+	#[rstest]
+	fn test_file_change_event_debug_and_clone() {
+		// FileChangeEvent must implement Debug and Clone
+		let event = FileChangeEvent {
+			path: PathBuf::from("src/main.rs"),
+			kind: ChangeKind::Rust,
+		};
+		let cloned = event.clone();
+		let _ = format!("{:?}", cloned);
+		assert_eq!(event.kind, ChangeKind::Rust);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_file_watcher_detects_rs_change() {
+		// Arrange
+		let tmp_dir = TempDir::new().unwrap();
+		let config = HmrConfig::builder()
+			.watch_path(tmp_dir.path().to_path_buf())
+			.debounce_ms(50)
+			.build();
+		let mut watcher = FileWatcher::new(config).unwrap();
+
+		// Act
+		let rs_path = tmp_dir.path().join("lib.rs");
+		fs::write(&rs_path, "pub fn hello() {}").unwrap();
+
+		let event = tokio::time::timeout(Duration::from_secs(5), watcher.rx.recv()).await;
+
+		// Assert
+		assert!(event.is_ok(), "Should receive file change event within timeout");
+		if let Ok(Some(change)) = event {
+			assert_eq!(change.kind, ChangeKind::Rust);
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_file_watcher_detects_template_change() {
+		// Arrange
+		let tmp_dir = TempDir::new().unwrap();
+		let config = HmrConfig::builder()
+			.watch_path(tmp_dir.path().to_path_buf())
+			.debounce_ms(50)
+			.build();
+		let mut watcher = FileWatcher::new(config).unwrap();
+
+		// Act
+		let html_path = tmp_dir.path().join("index.html");
+		fs::write(&html_path, "<html></html>").unwrap();
+
+		let event = tokio::time::timeout(Duration::from_secs(5), watcher.rx.recv()).await;
+
+		// Assert
+		assert!(event.is_ok(), "Should receive file change event within timeout");
+		if let Ok(Some(change)) = event {
+			assert_eq!(change.kind, ChangeKind::Template);
+		}
+	}
 }

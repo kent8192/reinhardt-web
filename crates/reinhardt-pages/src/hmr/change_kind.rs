@@ -82,4 +82,79 @@ mod tests {
 		// Act & Assert
 		assert_eq!(kind.supports_hot_swap(), expected);
 	}
+
+	// --- Edge cases and boundary values ---
+
+	#[rstest]
+	// No extension
+	#[case("Makefile", ChangeKind::Unknown)]
+	#[case(".gitignore", ChangeKind::Unknown)]
+	#[case(".env", ChangeKind::Unknown)]
+	// Uppercase extensions are NOT recognized (case-sensitive matching)
+	#[case("styles/MAIN.CSS", ChangeKind::Unknown)]
+	#[case("src/app.RS", ChangeKind::Unknown)]
+	#[case("templates/PAGE.HTML", ChangeKind::Unknown)]
+	// Directory name contains a dot, extension still detected correctly
+	#[case("src.bak/main.rs", ChangeKind::Rust)]
+	#[case("styles.v2/app.css", ChangeKind::Css)]
+	// Preprocessor stylesheets — not hot-swappable (unknown)
+	#[case("styles/main.scss", ChangeKind::Unknown)]
+	#[case("styles/main.sass", ChangeKind::Unknown)]
+	#[case("styles/main.less", ChangeKind::Unknown)]
+	// Additional image/font formats
+	#[case("static/photo.jpeg", ChangeKind::Asset)]
+	#[case("static/icon.ico", ChangeKind::Asset)]
+	#[case("static/anim.gif", ChangeKind::Asset)]
+	#[case("static/image.webp", ChangeKind::Asset)]
+	#[case("static/font.ttf", ChangeKind::Asset)]
+	#[case("static/font.eot", ChangeKind::Asset)]
+	#[case("static/font.woff", ChangeKind::Asset)]
+	// TypeScript/JSX variants
+	#[case("src/app.ts", ChangeKind::Asset)]
+	#[case("src/component.tsx", ChangeKind::Asset)]
+	#[case("src/component.jsx", ChangeKind::Asset)]
+	// Jinja2 alias
+	#[case("templates/page.j2", ChangeKind::Template)]
+	fn test_change_kind_edge_cases(#[case] path: &str, #[case] expected: ChangeKind) {
+		// Arrange
+		let path = Path::new(path);
+
+		// Act
+		let kind = ChangeKind::from_path(path);
+
+		// Assert
+		assert_eq!(kind, expected);
+	}
+
+	#[rstest]
+	fn test_change_kind_empty_path() {
+		// Arrange
+		let path = Path::new("");
+
+		// Act
+		let kind = ChangeKind::from_path(path);
+
+		// Assert
+		assert_eq!(kind, ChangeKind::Unknown);
+	}
+
+	#[rstest]
+	fn test_change_kind_only_dot() {
+		// Arrange — path that is just "."
+		let path = Path::new(".");
+
+		// Act
+		let kind = ChangeKind::from_path(path);
+
+		// Assert
+		assert_eq!(kind, ChangeKind::Unknown);
+	}
+
+	#[rstest]
+	fn test_change_kind_debug_clone() {
+		let kind = ChangeKind::Css;
+		let cloned = kind;
+		assert_eq!(format!("{:?}", kind), "Css");
+		assert_eq!(kind, cloned);
+	}
 }

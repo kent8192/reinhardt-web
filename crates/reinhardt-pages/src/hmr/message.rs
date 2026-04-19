@@ -101,4 +101,93 @@ mod tests {
 			}
 		);
 	}
+
+	// --- Error cases ---
+
+	#[rstest]
+	fn test_from_json_invalid_json_returns_err() {
+		// Arrange
+		let json = "not valid json at all {{";
+
+		// Act
+		let result = HmrMessage::from_json(json);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_from_json_unknown_type_returns_err() {
+		// Arrange — `type` field exists but is not a known variant
+		let json = r#"{"type":"hot_update","data":"something"}"#;
+
+		// Act
+		let result = HmrMessage::from_json(json);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_from_json_missing_type_returns_err() {
+		// Arrange
+		let json = r#"{"path":"app.css"}"#;
+
+		// Act
+		let result = HmrMessage::from_json(json);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	// --- Edge cases ---
+
+	#[rstest]
+	fn test_css_update_empty_path() {
+		// Arrange
+		let msg = HmrMessage::CssUpdate { path: String::new() };
+
+		// Act
+		let json = msg.to_json().unwrap();
+		let deserialized = HmrMessage::from_json(&json).unwrap();
+
+		// Assert
+		assert_eq!(msg, deserialized);
+		assert!(json.contains("\"path\":\"\""));
+	}
+
+	#[rstest]
+	fn test_css_update_unicode_path() {
+		// Arrange
+		let msg = HmrMessage::CssUpdate {
+			path: "スタイル/main.css".to_string(),
+		};
+
+		// Act
+		let json = msg.to_json().unwrap();
+		let deserialized = HmrMessage::from_json(&json).unwrap();
+
+		// Assert
+		assert_eq!(msg, deserialized);
+	}
+
+	#[rstest]
+	fn test_full_reload_empty_reason() {
+		// Arrange
+		let msg = HmrMessage::FullReload { reason: String::new() };
+
+		// Act
+		let json = msg.to_json().unwrap();
+		let deserialized = HmrMessage::from_json(&json).unwrap();
+
+		// Assert
+		assert_eq!(msg, deserialized);
+	}
+
+	#[rstest]
+	fn test_hmr_message_clone_and_eq() {
+		let msg = HmrMessage::CssUpdate { path: "a.css".to_string() };
+		let cloned = msg.clone();
+		assert_eq!(msg, cloned);
+	}
 }

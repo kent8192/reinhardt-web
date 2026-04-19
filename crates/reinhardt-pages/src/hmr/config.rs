@@ -198,4 +198,81 @@ mod tests {
 		assert_eq!(config.ws_port, 9000);
 		assert!(config.enabled);
 	}
+
+	// --- Boundary values ---
+
+	#[rstest]
+	fn test_builder_debounce_ms_zero() {
+		// Boundary: debounce_ms = 0 means no debouncing
+		let config = HmrConfig::builder().debounce_ms(0).build();
+		assert_eq!(config.debounce_ms, 0);
+	}
+
+	#[rstest]
+	fn test_builder_ws_port_zero() {
+		// Boundary: port 0 = OS-assigned ephemeral port
+		let config = HmrConfig::builder().ws_port(0).build();
+		assert_eq!(config.ws_port, 0);
+	}
+
+	#[rstest]
+	fn test_builder_ws_port_max() {
+		// Boundary: port 65535 = maximum valid TCP port
+		let config = HmrConfig::builder().ws_port(65535).build();
+		assert_eq!(config.ws_port, 65535);
+	}
+
+	#[rstest]
+	fn test_builder_watch_paths_bulk() {
+		// Arrange
+		let paths = vec![
+			PathBuf::from("a"),
+			PathBuf::from("b"),
+			PathBuf::from("c"),
+		];
+
+		// Act
+		let config = HmrConfig::builder().watch_paths(paths.clone()).build();
+
+		// Assert
+		assert_eq!(config.watch_paths, paths);
+	}
+
+	#[rstest]
+	fn test_builder_watch_paths_combined_with_watch_path() {
+		// watch_paths() and watch_path() are additive
+		let config = HmrConfig::builder()
+			.watch_path("first")
+			.watch_paths(vec![PathBuf::from("second"), PathBuf::from("third")])
+			.watch_path("fourth")
+			.build();
+		assert_eq!(config.watch_paths.len(), 4);
+	}
+
+	#[rstest]
+	fn test_builder_disabled_preserves_watch_paths() {
+		// enabled=false should still store watch_paths
+		let config = HmrConfig::builder()
+			.watch_path("src")
+			.enabled(false)
+			.build();
+		assert!(!config.enabled);
+		assert_eq!(config.watch_paths, vec![PathBuf::from("src")]);
+	}
+
+	#[rstest]
+	fn test_builder_produces_independent_instances() {
+		// Two builds from the same builder chain must be independent values
+		let builder = HmrConfig::builder().ws_port(1234);
+		let config1 = builder.clone().build();
+		let config2 = builder.ws_port(5678).build();
+		assert_eq!(config1.ws_port, 1234);
+		assert_eq!(config2.ws_port, 5678);
+	}
+
+	#[rstest]
+	fn test_config_debug_does_not_panic() {
+		let config = HmrConfig::default();
+		let _ = format!("{:?}", config);
+	}
 }

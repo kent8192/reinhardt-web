@@ -341,4 +341,100 @@ mod tests {
 		// Assert
 		assert_ne!(addr.port(), 0);
 	}
+
+	// --- Additional notify_change variant coverage ---
+
+	#[rstest]
+	fn test_notify_change_template() {
+		// Arrange
+		let config = HmrConfig::default();
+		let server = HmrServer::new(config);
+		let mut rx = server.sender().subscribe();
+
+		// Act
+		server.notify_change("templates/index.html", ChangeKind::Template);
+
+		// Assert
+		let msg = rx.try_recv().unwrap();
+		let parsed: HmrMessage = serde_json::from_str(&msg).unwrap();
+		assert!(matches!(parsed, HmrMessage::FullReload { .. }));
+	}
+
+	#[rstest]
+	fn test_notify_change_asset() {
+		// Arrange
+		let config = HmrConfig::default();
+		let server = HmrServer::new(config);
+		let mut rx = server.sender().subscribe();
+
+		// Act
+		server.notify_change("static/logo.png", ChangeKind::Asset);
+
+		// Assert
+		let msg = rx.try_recv().unwrap();
+		let parsed: HmrMessage = serde_json::from_str(&msg).unwrap();
+		assert!(matches!(parsed, HmrMessage::FullReload { .. }));
+	}
+
+	#[rstest]
+	fn test_notify_change_unknown() {
+		// Arrange
+		let config = HmrConfig::default();
+		let server = HmrServer::new(config);
+		let mut rx = server.sender().subscribe();
+
+		// Act
+		server.notify_change("Makefile", ChangeKind::Unknown);
+
+		// Assert
+		let msg = rx.try_recv().unwrap();
+		let parsed: HmrMessage = serde_json::from_str(&msg).unwrap();
+		assert!(matches!(parsed, HmrMessage::FullReload { .. }));
+	}
+
+	#[rstest]
+	fn test_notify_change_no_receivers_does_not_panic() {
+		// Arrange — no subscriber; send should silently succeed (channel ignores missing receivers)
+		let config = HmrConfig::default();
+		let server = HmrServer::new(config);
+
+		// Act & Assert — must not panic
+		server.notify_change("src/main.rs", ChangeKind::Rust);
+	}
+
+	#[rstest]
+	fn test_sender_multiple_receivers_get_same_message() {
+		// Arrange
+		let config = HmrConfig::default();
+		let server = HmrServer::new(config);
+		let mut rx1 = server.sender().subscribe();
+		let mut rx2 = server.sender().subscribe();
+		let mut rx3 = server.sender().subscribe();
+
+		// Act
+		server.notify_change("styles/app.css", ChangeKind::Css);
+
+		// Assert — all receivers get the same message
+		let msg1 = rx1.try_recv().unwrap();
+		let msg2 = rx2.try_recv().unwrap();
+		let msg3 = rx3.try_recv().unwrap();
+		assert_eq!(msg1, msg2);
+		assert_eq!(msg2, msg3);
+	}
+
+	#[rstest]
+	fn test_sender_cloned_independently() {
+		// Cloned senders must share the same broadcast channel
+		let config = HmrConfig::default();
+		let server = HmrServer::new(config);
+		let sender_clone = server.sender();
+		let mut rx = server.sender().subscribe();
+
+		// Send via cloned sender
+		let msg = HmrMessage::Connected.to_json().unwrap();
+		let _ = sender_clone.send(msg.clone());
+
+		// Assert — receiver on original channel gets the message
+		assert_eq!(rx.try_recv().unwrap(), msg);
+	}
 }

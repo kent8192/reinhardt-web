@@ -153,4 +153,65 @@ mod tests {
 		assert!(HMR_CLIENT_SCRIPT.contains("cacheBust"));
 		assert!(HMR_CLIENT_SCRIPT.contains("stylesheet"));
 	}
+
+	// --- Boundary values ---
+
+	#[rstest]
+	fn test_hmr_script_tag_port_zero() {
+		// Boundary: port 0 should be stringified as "0"
+		let tag = hmr_script_tag(0);
+		assert!(tag.contains("var HMR_WS_PORT = 0;"));
+		assert!(!tag.contains("__HMR_WS_PORT__"));
+	}
+
+	#[rstest]
+	fn test_hmr_script_tag_port_max() {
+		// Boundary: port 65535 = maximum valid TCP port
+		let tag = hmr_script_tag(65535);
+		assert!(tag.contains("65535"));
+		assert!(!tag.contains("__HMR_WS_PORT__"));
+	}
+
+	#[rstest]
+	fn test_hmr_client_script_placeholder_appears_once() {
+		// The placeholder must appear exactly once so replacement is unambiguous
+		let count = HMR_CLIENT_SCRIPT
+			.matches("__HMR_WS_PORT__")
+			.count();
+		assert_eq!(count, 1, "__HMR_WS_PORT__ must appear exactly once in the template");
+	}
+
+	#[rstest]
+	fn test_hmr_script_tag_no_placeholder_after_replacement() {
+		// After replacement, no placeholder remains regardless of the port value
+		for port in [0u16, 1, 1024, 35729, 65535] {
+			let tag = hmr_script_tag(port);
+			assert!(
+				!tag.contains("__HMR_WS_PORT__"),
+				"placeholder still present for port {port}"
+			);
+		}
+	}
+
+	#[rstest]
+	fn test_hmr_script_tag_wrapped_in_script_element() {
+		// The output must be a well-formed <script> element
+		let tag = hmr_script_tag(35729);
+		assert!(tag.starts_with("<script>"));
+		assert!(tag.ends_with("</script>"));
+		// No attributes on the opening tag (no src= or type= that could break inline scripts)
+		assert!(!tag.starts_with("<script "));
+	}
+
+	#[rstest]
+	fn test_hmr_client_script_uses_ws_protocol_detection() {
+		// The script must detect wss vs ws based on page protocol
+		assert!(HMR_CLIENT_SCRIPT.contains("replace(\"http\", \"ws\")"));
+	}
+
+	#[rstest]
+	fn test_hmr_client_script_handles_unknown_message_type() {
+		// Unknown message types should be warned, not crash
+		assert!(HMR_CLIENT_SCRIPT.contains("Unknown message type"));
+	}
 }
