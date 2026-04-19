@@ -6,6 +6,8 @@ use syn::{
     Token,
 };
 
+use crate::crate_paths::get_inventory_crate;
+
 // ─────────────────────────────────────────────────────────
 // #[producer] macro
 // ─────────────────────────────────────────────────────────
@@ -53,6 +55,16 @@ pub(crate) fn producer_impl(args: TokenStream, input: ItemFn) -> syn::Result<Tok
     let topic = &args.topic;
     let name = &args.name;
 
+    // `#[producer]` generates a wrapper that awaits the inner fn, so the
+    // annotated function must be `async`. Reject non-async fns with a clear
+    // compile error instead of silently emitting `.await` on a non-future.
+    if input.sig.asyncness.is_none() {
+        return Err(syn::Error::new_spanned(
+            &input.sig.fn_token,
+            "#[producer] can only be applied to `async fn`",
+        ));
+    }
+
     let fn_name = &input.sig.ident;
     let fn_vis = &input.vis;
     let fn_sig = &input.sig;
@@ -88,17 +100,25 @@ pub(crate) fn producer_impl(args: TokenStream, input: ItemFn) -> syn::Result<Tok
         })
         .collect();
 
-    // Build inner function signature without #[inject] attrs on params
+    // Build inner function signature: drop #[inject] parameters entirely so
+    // the inner fn's arity matches `call_args` (which also filters them out).
+    // Without this, the wrapper would call `inner(ctx, msg)` against a fn that
+    // expects `(ctx, svc, msg)`, producing an arity mismatch.
     let inner_inputs: Vec<_> = input
         .sig
         .inputs
         .iter()
-        .map(|arg| {
-            if let FnArg::Typed(mut pt) = arg.clone() {
+        .filter_map(|arg| {
+            if let FnArg::Typed(pt) = arg {
+                let is_inject = pt.attrs.iter().any(|a| a.path().is_ident("inject"));
+                if is_inject {
+                    return None;
+                }
+                let mut pt = pt.clone();
                 pt.attrs.retain(|a| !a.path().is_ident("inject"));
-                FnArg::Typed(pt)
+                Some(FnArg::Typed(pt))
             } else {
-                arg.clone()
+                Some(arg.clone())
             }
         })
         .collect();
@@ -119,6 +139,7 @@ pub(crate) fn producer_impl(args: TokenStream, input: ItemFn) -> syn::Result<Tok
     let method_ident = syn::Ident::new(name, Span::call_site());
 
     let streaming_crate = quote! { ::reinhardt_streaming };
+    let inventory = get_inventory_crate();
 
     Ok(quote! {
         // Metadata module (consumed by streaming_routes! and #[routes])
@@ -149,13 +170,25 @@ pub(crate) fn producer_impl(args: TokenStream, input: ItemFn) -> syn::Result<Tok
         #(#fn_attrs)*
         #fn_vis #fn_sig {
             let __result = #inner_fn_name(#(#call_args),*).await;
-            #[cfg(feature = "streaming")]
             if let Ok(ref __payload) = __result {
                 if let Some(__producer) = #streaming_crate::global_producer() {
                     let _ = __producer.send(#topic, __payload).await;
                 }
             }
             __result
+        }
+
+        // Register handler metadata so `resolve_streaming_topic(name)` can
+        // find the corresponding topic at runtime.
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        #inventory::submit! {
+            #streaming_crate::StreamingHandlerMetadata {
+                name: #name,
+                topic: #topic,
+                kind: #streaming_crate::StreamingHandlerKind::Producer,
+                group: ::core::option::Option::None,
+                module_path: ::core::module_path!(),
+            }
         }
     })
 }
@@ -211,7 +244,17 @@ impl Parse for ConsumerArgs {
 pub(crate) fn consumer_impl(args: TokenStream, input: ItemFn) -> syn::Result<TokenStream> {
     let args: ConsumerArgs = syn::parse2(args)?;
     let topic = &args.topic;
+    let group = &args.group;
     let name = &args.name;
+
+    // Consumers are invoked by async workers, so the annotated function must
+    // be `async fn`. Reject non-async inputs with a clear compile error.
+    if input.sig.asyncness.is_none() {
+        return Err(syn::Error::new_spanned(
+            &input.sig.fn_token,
+            "#[consumer] can only be applied to `async fn`",
+        ));
+    }
 
     let fn_name = &input.sig.ident;
     let fn_vis = &input.vis;
@@ -228,6 +271,9 @@ pub(crate) fn consumer_impl(args: TokenStream, input: ItemFn) -> syn::Result<Tok
         Span::call_site(),
     );
     let method_ident = syn::Ident::new(name, Span::call_site());
+
+    let streaming_crate = quote! { ::reinhardt_streaming };
+    let inventory = get_inventory_crate();
 
     Ok(quote! {
         // Metadata module (consumed by streaming_routes! and #[routes])
@@ -250,6 +296,19 @@ pub(crate) fn consumer_impl(args: TokenStream, input: ItemFn) -> syn::Result<Tok
         #(#fn_attrs)*
         #fn_vis #fn_sig {
             #fn_block
+        }
+
+        // Register handler metadata so `resolve_streaming_topic(name)` can
+        // find the corresponding topic at runtime.
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        #inventory::submit! {
+            #streaming_crate::StreamingHandlerMetadata {
+                name: #name,
+                topic: #topic,
+                kind: #streaming_crate::StreamingHandlerKind::Consumer,
+                group: ::core::option::Option::Some(#group),
+                module_path: ::core::module_path!(),
+            }
         }
     })
 }
