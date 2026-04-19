@@ -1,0 +1,35 @@
+[package]
+name = "reinhardt-streaming"
+version = "0.1.0-alpha"
+description = "Backend-agnostic streaming abstraction with Kafka support"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+# Kafka backend (optional)
+rskafka = { workspace = true, optional = true, features = ["rustls"] }
+time = { workspace = true, optional = true }
+
+# Task backend integration (optional)
+reinhardt-tasks = { workspace = true, optional = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+[features]
+default = []
+kafka = ["dep:rskafka", "dep:time"]
+task-backend = ["dep:reinhardt-tasks"]
+full = ["kafka", "task-backend"]
