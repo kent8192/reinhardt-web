@@ -55,6 +55,16 @@ pub(crate) fn producer_impl(args: TokenStream, input: ItemFn) -> syn::Result<Tok
     let topic = &args.topic;
     let name = &args.name;
 
+    // `#[producer]` generates a wrapper that awaits the inner fn, so the
+    // annotated function must be `async`. Reject non-async fns with a clear
+    // compile error instead of silently emitting `.await` on a non-future.
+    if input.sig.asyncness.is_none() {
+        return Err(syn::Error::new_spanned(
+            &input.sig.fn_token,
+            "#[producer] can only be applied to `async fn`",
+        ));
+    }
+
     let fn_name = &input.sig.ident;
     let fn_vis = &input.vis;
     let fn_sig = &input.sig;
@@ -236,6 +246,15 @@ pub(crate) fn consumer_impl(args: TokenStream, input: ItemFn) -> syn::Result<Tok
     let topic = &args.topic;
     let group = &args.group;
     let name = &args.name;
+
+    // Consumers are invoked by async workers, so the annotated function must
+    // be `async fn`. Reject non-async inputs with a clear compile error.
+    if input.sig.asyncness.is_none() {
+        return Err(syn::Error::new_spanned(
+            &input.sig.fn_token,
+            "#[consumer] can only be applied to `async fn`",
+        ));
+    }
 
     let fn_name = &input.sig.ident;
     let fn_vis = &input.vis;
