@@ -232,10 +232,10 @@ pub mod rest;
 pub mod server;
 #[cfg(all(feature = "shortcuts", native))]
 pub mod shortcuts;
-#[cfg(all(feature = "tasks", native))]
-pub mod tasks;
 #[cfg(feature = "streaming")]
 pub mod streaming;
+#[cfg(all(feature = "tasks", native))]
+pub mod tasks;
 #[cfg(all(feature = "templates", native))]
 pub mod template;
 #[cfg(all(feature = "test", native))]

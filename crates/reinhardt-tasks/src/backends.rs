@@ -14,6 +14,7 @@ pub mod sqs;
 #[cfg(feature = "rabbitmq-backend")]
 pub mod rabbitmq;
 
+/// Kafka-backed task queue implementation.
 #[cfg(feature = "kafka-backend")]
 pub mod kafka;
 

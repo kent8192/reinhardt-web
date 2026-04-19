@@ -1113,8 +1113,20 @@ pub async fn start_kafka() -> (KafkaContainer, Vec<String>) {
 
 impl KafkaContainer {
 	/// Start a new Kafka container.
+	///
+	/// The broker is configured with `KAFKA_CFG_ADVERTISED_LISTENERS` pointing to
+	/// the mapped host port so that Kafka clients (including `rskafka`) receive
+	/// a reachable bootstrap address in their metadata response.
+	///
+	/// Because testcontainers assigns the host port dynamically *after* the
+	/// container is created, we pre-pick a free ephemeral port on the host and
+	/// publish 9092 to that fixed port via `with_mapped_port`. The broker then
+	/// starts with `KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://<host>:<port>`
+	/// already set to the correct value — no post-start reconfiguration needed.
 	pub async fn new() -> Self {
 		use testcontainers::core::IntoContainerPort;
+
+		let host_port = reserve_free_port();
 
 		let image = GenericImage::new("bitnami/kafka", "3.7")
 			.with_exposed_port(9092.tcp())
@@ -1130,7 +1142,17 @@ impl KafkaContainer {
 				"CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT",
 			)
 			.with_env_var("KAFKA_CFG_CONTROLLER_QUORUM_VOTERS", "0@localhost:9093")
-			.with_env_var("KAFKA_CFG_CONTROLLER_LISTENER_NAMES", "CONTROLLER");
+			.with_env_var("KAFKA_CFG_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
+			.with_env_var("KAFKA_CFG_INTER_BROKER_LISTENER_NAME", "PLAINTEXT")
+			// Required by Bitnami images for PLAINTEXT listeners.
+			.with_env_var("ALLOW_PLAINTEXT_LISTENER", "yes")
+			// Advertise the externally reachable host:port so clients connect to
+			// the mapped host port (not the container-internal 9092).
+			.with_env_var(
+				"KAFKA_CFG_ADVERTISED_LISTENERS",
+				format!("PLAINTEXT://localhost:{host_port}"),
+			)
+			.with_mapped_port(host_port, 9092.tcp());
 
 		let container = AsyncRunner::start(image)
 			.await
@@ -1141,15 +1163,11 @@ impl KafkaContainer {
 			.await
 			.expect("Failed to get Kafka host")
 			.to_string();
-		let port = container
-			.get_host_port_ipv4(9092)
-			.await
-			.expect("Failed to get Kafka port");
 
 		Self {
 			container,
 			host,
-			port,
+			port: host_port,
 		}
 	}
 
@@ -1157,4 +1175,20 @@ impl KafkaContainer {
 	pub fn brokers(&self) -> Vec<String> {
 		vec![format!("{}:{}", self.host, self.port)]
 	}
+}
+
+/// Pick a free TCP port on the loopback interface.
+///
+/// Binds to port 0, reads the assigned port, and drops the socket. There is an
+/// inherent race window between the socket close and the Docker port binding,
+/// but it is small enough in practice for local integration testing. Used to
+/// pre-wire `KAFKA_CFG_ADVERTISED_LISTENERS` with the same port that Docker
+/// will publish the broker on.
+fn reserve_free_port() -> u16 {
+	use std::net::TcpListener;
+	TcpListener::bind("127.0.0.1:0")
+		.expect("Failed to bind ephemeral port for Kafka")
+		.local_addr()
+		.expect("Failed to read local_addr")
+		.port()
 }
