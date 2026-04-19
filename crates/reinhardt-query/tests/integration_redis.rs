@@ -14,9 +14,18 @@ mod redis_integration {
     use tokio::net::TcpStream;
 
     async fn connect(port: u16) -> TcpStream {
-        TcpStream::connect(format!("127.0.0.1:{}", port))
-            .await
-            .expect("failed to connect to Redis")
+        // Retry with exponential backoff while Redis is starting up inside the container.
+        let mut retries = 0u32;
+        loop {
+            match TcpStream::connect(format!("127.0.0.1:{}", port)).await {
+                Ok(stream) => return stream,
+                Err(_) if retries < 8 => {
+                    retries += 1;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100 * 2u64.pow(retries))).await;
+                }
+                Err(e) => panic!("failed to connect to Redis after {} retries: {}", retries, e),
+            }
+        }
     }
 
     async fn send(stream: &mut TcpStream, cmd: &RespCommand) {
