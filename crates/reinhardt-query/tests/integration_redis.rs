@@ -12,6 +12,7 @@ mod redis_integration {
     use testcontainers::runners::AsyncRunner;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpStream;
+    use tokio::time::{Duration, timeout};
 
     async fn connect(port: u16) -> TcpStream {
         // Retry with exponential backoff while Redis is starting up inside the container.
@@ -21,7 +22,7 @@ mod redis_integration {
                 Ok(stream) => return stream,
                 Err(_) if retries < 8 => {
                     retries += 1;
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100 * 2u64.pow(retries))).await;
+                    tokio::time::sleep(Duration::from_millis(100 * 2u64.pow(retries))).await;
                 }
                 Err(e) => panic!("failed to connect to Redis after {} retries: {}", retries, e),
             }
@@ -34,9 +35,96 @@ mod redis_integration {
 
     async fn send_recv(stream: &mut TcpStream, cmd: &RespCommand) -> Vec<u8> {
         stream.write_all(&cmd.to_resp3_bytes()).await.unwrap();
-        let mut buf = vec![0u8; 4096];
-        let n = stream.read(&mut buf).await.unwrap();
-        buf[..n].to_vec()
+        read_until_complete(stream).await
+    }
+
+    /// Read RESP frames from the stream until at least one complete frame is
+    /// buffered. TCP reads may return partial data, so a single `read()` call
+    /// is not sufficient. This loops until the accumulated buffer contains a
+    /// complete frame (or no more data arrives within a short timeout).
+    async fn read_until_complete(stream: &mut TcpStream) -> Vec<u8> {
+        let mut buf: Vec<u8> = Vec::with_capacity(4096);
+        let mut tmp = [0u8; 4096];
+        loop {
+            match timeout(Duration::from_millis(500), stream.read(&mut tmp)).await {
+                Ok(Ok(0)) => break,
+                Ok(Ok(n)) => {
+                    buf.extend_from_slice(&tmp[..n]);
+                    if resp_frame_complete(&buf) {
+                        break;
+                    }
+                }
+                Ok(Err(e)) => panic!("read error: {}", e),
+                // Timed out waiting for more data; return what we have.
+                Err(_) => break,
+            }
+        }
+        buf
+    }
+
+    /// Check if the buffer contains at least one complete RESP2/RESP3 frame.
+    /// Returns the total consumed length on success, or `None` if incomplete.
+    fn resp_frame_len(buf: &[u8]) -> Option<usize> {
+        if buf.is_empty() {
+            return None;
+        }
+        match buf[0] {
+            // Simple string / error / integer / null / boolean / big-number:
+            // terminated by the first CRLF.
+            b'+' | b'-' | b':' | b'_' | b'#' | b'(' => {
+                let rel = find_crlf(&buf[1..])?;
+                Some(1 + rel + 2)
+            }
+            // Bulk string: $<len>\r\n<payload>\r\n (len == -1 means null bulk).
+            b'$' => {
+                let rel = find_crlf(&buf[1..])?;
+                let header_end = 1 + rel + 2;
+                let len: i64 = std::str::from_utf8(&buf[1..1 + rel]).ok()?.parse().ok()?;
+                if len < 0 {
+                    return Some(header_end);
+                }
+                let total = header_end + len as usize + 2;
+                if buf.len() >= total { Some(total) } else { None }
+            }
+            // Array / map / set: aggregate types contain N child frames.
+            b'*' | b'~' => {
+                let rel = find_crlf(&buf[1..])?;
+                let mut cursor = 1 + rel + 2;
+                let count: i64 = std::str::from_utf8(&buf[1..1 + rel]).ok()?.parse().ok()?;
+                if count < 0 {
+                    return Some(cursor);
+                }
+                for _ in 0..count {
+                    let child_len = resp_frame_len(&buf[cursor..])?;
+                    cursor += child_len;
+                }
+                Some(cursor)
+            }
+            b'%' => {
+                let rel = find_crlf(&buf[1..])?;
+                let mut cursor = 1 + rel + 2;
+                let count: i64 = std::str::from_utf8(&buf[1..1 + rel]).ok()?.parse().ok()?;
+                if count < 0 {
+                    return Some(cursor);
+                }
+                // Maps have 2 * count child frames (key + value pairs).
+                for _ in 0..count * 2 {
+                    let child_len = resp_frame_len(&buf[cursor..])?;
+                    cursor += child_len;
+                }
+                Some(cursor)
+            }
+            // Unknown prefix: fall back to the next CRLF so the loop can stop.
+            _ => find_crlf(buf).map(|r| r + 2),
+        }
+    }
+
+    fn resp_frame_complete(buf: &[u8]) -> bool {
+        resp_frame_len(buf).is_some()
+    }
+
+    fn find_crlf(buf: &[u8]) -> Option<usize> {
+        buf.windows(2).position(|w| w == b"\r\n")
     }
 
     fn parse_bulk_string(resp: &[u8]) -> Option<Vec<u8>> {
@@ -163,9 +251,10 @@ mod redis_integration {
         }
         conn.write_all(&all_bytes).await.unwrap();
 
-        // Read all responses (MULTI/EXEC produce multiple lines)
-        let mut buf = vec![0u8; 4096];
-        let _ = conn.read(&mut buf).await.unwrap();
+        // Read all responses (MULTI/EXEC produce multiple lines). Loop until
+        // no more data arrives so partial TCP reads don't leave responses in
+        // the kernel buffer for the next test call.
+        let _ = read_until_complete(&mut conn).await;
 
         // Verify final state
         let get_resp = send_recv(&mut conn, &StringCommand::get("tx_key").build()).await;
