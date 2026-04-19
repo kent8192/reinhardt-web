@@ -50,6 +50,7 @@ impl SessionIdentity {
 			created_at: now,
 			last_accessed: now,
 			expires_at: now + ttl,
+			id_holder: None,
 		}
 	}
 }
