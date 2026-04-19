@@ -162,11 +162,6 @@
       "title": "Security Hardening",
       "purpose": "Document security hardening across the framework: error response sanitization, UUID generation strategy, authentication strictness, admin access controls, SQL injection surface reduction, and DI registry type safety.",
       "parent": null
-    },
-    {
-      "title": "Migration Guide: rc.15 → rc.16",
-      "purpose": "Step-by-step migration guide for rc.16 breaking changes covering: DI system, URL routing, authentication, admin interface, configuration, background tasks, and forms.",
-      "parent": null
     }
   ]
 }
