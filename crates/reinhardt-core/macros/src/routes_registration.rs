@@ -820,6 +820,15 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					impl WsUrls<'_> {
 						#(#ws_app_accessors)*
 					}
+
+					// urls.ws() accessor lives inside this module so that WsUrls.resolver
+					// (a private field) is accessible via struct-literal syntax (E0451 fix).
+					impl ResolvedUrls {
+						/// Access WebSocket URL resolvers via `urls.ws().<app>().<route>()`.
+						pub fn ws(&self) -> WsUrls<'_> {
+							WsUrls { resolver: self }
+						}
+					}
 				}
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				pub use __namespaced_ws_resolvers::*;
@@ -834,15 +843,6 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 							"WebSocket URL resolution requires reinhardt-websockets. \
 							 Call impl_ws_url_resolver!(ResolvedUrls) to enable it."
 						)
-					}
-				}
-
-				// Add urls.ws() accessor to ResolvedUrls
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				impl ResolvedUrls {
-					/// Access WebSocket URL resolvers via `urls.ws().<app>().<route>()`.
-					pub fn ws(&self) -> WsUrls<'_> {
-						WsUrls { resolver: self }
 					}
 				}
 
