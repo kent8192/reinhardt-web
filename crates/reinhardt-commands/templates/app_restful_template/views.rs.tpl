@@ -12,15 +12,19 @@
 // use reinhardt::{get, JwtAuth, JwtError, Response, StatusCode};
 // use reinhardt::http::ViewResult;
 // use axum::extract::Query;
-// use std::collections::HashMap;
+// use serde::Deserialize;
+//
+// #[derive(Deserialize)]
+// struct TokenQuery {
+//     token: String,
+// }
 //
 // #[get("/protected/", name = "{{ app_name }}_protected")]
 // pub async fn protected(
-//     Query(params): Query<HashMap<String, String>>,
+//     Query(params): Query<TokenQuery>,
 // ) -> ViewResult<Response> {
-//     let token = params.get("token").ok_or("missing token")?;
 //     let jwt = JwtAuth::new(b"your_secret"); // load from settings in practice
-//     match jwt.verify_token(token) {
+//     match jwt.verify_token(&params.token) {
 //         Ok(claims) => Ok(Response::new(StatusCode::OK).with_body(claims.username)),
 //         Err(JwtError::TokenExpired) => {
 //             Ok(Response::new(StatusCode::UNAUTHORIZED).with_body("Token expired"))
