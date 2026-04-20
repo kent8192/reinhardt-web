@@ -7,31 +7,18 @@
 //     pub mod example;
 // }
 //
-// Example of a JWT-protected endpoint using typed `JwtError` (rc.15+):
+// Example of an authenticated endpoint using `AuthUser<U>` (rc.15+):
+// `AuthUser<U>` resolves the authenticated user via DI — JWT verification
+// is handled automatically by the auth middleware.
 //
-// use reinhardt::{get, JwtAuth, JwtError, Response, StatusCode};
+// use crate::models::User; // replace with your user model
+// use reinhardt::{get, use_inject, AuthUser, Response, StatusCode};
 // use reinhardt::http::ViewResult;
-// use axum::extract::Query;
-// use serde::Deserialize;
 //
-// #[derive(Deserialize)]
-// struct TokenQuery {
-//     token: String,
-// }
-//
-// #[get("/protected/", name = "{{ app_name }}_protected")]
-// pub async fn protected(
-//     Query(params): Query<TokenQuery>,
+// #[use_inject]
+// #[get("/me/", name = "{{ app_name }}_me")]
+// pub async fn me(
+//     #[inject] AuthUser(user): AuthUser<User>,
 // ) -> ViewResult<Response> {
-//     let jwt = JwtAuth::new(b"your_secret"); // load from settings in practice
-//     match jwt.verify_token(&params.token) {
-//         Ok(claims) => Ok(Response::new(StatusCode::OK).with_body(claims.username)),
-//         Err(JwtError::TokenExpired) => {
-//             Ok(Response::new(StatusCode::UNAUTHORIZED).with_body("Token expired"))
-//         }
-//         Err(JwtError::InvalidSignature(_)) => {
-//             Ok(Response::new(StatusCode::UNAUTHORIZED).with_body("Invalid signature"))
-//         }
-//         Err(e) => Ok(Response::new(StatusCode::INTERNAL_SERVER_ERROR).with_body(e.to_string())),
-//     }
+//     Ok(Response::new(StatusCode::OK).with_body(user.email().to_string()))
 // }
