@@ -12,6 +12,7 @@ categories = ["wasm", "web-programming"]
 
 [features]
 default = []
+console_error_panic_hook = ["dep:console_error_panic_hook"]
 msgpack = ["dep:rmp-serde"]
 testing = []
 # Exposes MockableServerFn trait for MSW-style testing
@@ -97,6 +98,9 @@ thiserror = { workspace = true }
 
 # Router pattern matching
 regex = "1.11"
+
+# Optional panic hook for readable WASM console errors (used by ClientLauncher)
+console_error_panic_hook = { version = "0.1", optional = true }
 
 # Optional type support for path parameters
 uuid = { version = "1.0", optional = true, features = ["std"] }

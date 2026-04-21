@@ -179,6 +179,9 @@ pub mod hydration;
 // Client-side routing
 pub mod router;
 
+// WASM application launcher
+pub mod app;
+
 // Integration modules (runtime support for special macros)
 pub mod integ;
 
@@ -245,6 +248,7 @@ pub use reinhardt_forms::{
 	Widget,
 	wasm_compat::{FieldMetadata, FormMetadata},
 };
+pub use app::{ClientLauncher, with_router};
 pub use router::{Link, PathPattern, Route, Router, RouterOutlet};
 pub use server_fn::{ServerFn, ServerFnError};
 pub use ssr::{SsrOptions, SsrRenderer, SsrState};
