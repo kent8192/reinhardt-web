@@ -26,6 +26,7 @@ where
 	})
 }
 
+#[cfg(wasm)]
 fn store_router(router: Router) {
 	APP_ROUTER.with(|r| {
 		*r.borrow_mut() = Some(router);
@@ -52,6 +53,7 @@ fn store_router(router: Router) {
 /// }
 /// ```
 pub struct ClientLauncher {
+	#[cfg_attr(not(wasm), allow(dead_code))]
 	root_selector: &'static str,
 	router_init: Option<Box<dyn FnOnce() -> Router>>,
 }
