@@ -747,7 +747,6 @@ mod tests {
 	/// nested under `[core]`.
 	#[test]
 	fn test_flat_core_key_warning_is_emitted() {
-
 		// Capture stderr by redirecting it temporarily via a pipe.
 		// Because `eprintln!` writes to the process stderr we use a simple
 		// integration approach: call `warn_flat_core_keys` directly and assert
@@ -755,7 +754,10 @@ mod tests {
 
 		let mut merged: IndexMap<String, Value> = IndexMap::new();
 		// Add a flat CoreSettings key (not under a [core] section).
-		merged.insert("secret_key".to_string(), Value::String("flat-key".to_string()));
+		merged.insert(
+			"secret_key".to_string(),
+			Value::String("flat-key".to_string()),
+		);
 
 		// Adding a key that is NOT a CoreSettings field — must not trigger warning.
 		merged.insert("port".to_string(), Value::Number(8080.into()));
@@ -791,7 +793,11 @@ mod tests {
 
 		// None of the CoreSettings fields are present at the top level.
 		for field in CORE_SETTINGS_FIELDS {
-			assert!(!merged.contains_key(*field), "field {} should not be at top level", field);
+			assert!(
+				!merged.contains_key(*field),
+				"field {} should not be at top level",
+				field
+			);
 		}
 	}
 
