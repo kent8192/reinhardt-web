@@ -179,6 +179,9 @@ pub mod hydration;
 // Client-side routing
 pub mod router;
 
+// WASM application launcher
+pub mod app;
+
 // Integration modules (runtime support for special macros)
 pub mod integ;
 
@@ -231,6 +234,7 @@ pub use reactive::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
 };
 // Re-export Hooks API
+pub use app::{ClientLauncher, with_router};
 pub use reactive::{Action, ActionPhase, use_action};
 #[allow(deprecated)] // Intentional: re-exporting deprecated items for backward compatibility
 pub use reactive::{

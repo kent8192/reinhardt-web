@@ -50,11 +50,10 @@ pub fn main() -> Result<(), JsValue> {
 		}
 
 		// Render and mount the view (events are attached during mount)
-		if let Some(view) = router.render_current() {
-			if let Err(e) = view.mount(&root_element) {
-				web_sys::console::error_1(&format!("Failed to mount view: {:?}", e).into());
-				return;
-			}
+		let view = router.render_current();
+		if let Err(e) = view.mount(&root_element) {
+			web_sys::console::error_1(&format!("Failed to mount view: {:?}", e).into());
+			return;
 		}
 	});
 
