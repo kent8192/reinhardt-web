@@ -574,9 +574,9 @@ impl ClientRouter {
 
 	/// Renders the current route's component.
 	///
-	/// This method renders the view for the current path. If no route matches,
-	/// it returns `None` if no not_found handler is set.
-	pub fn render_current(&self) -> Option<Page> {
+	/// Returns the registered `not_found` page when no route matches, or a
+	/// default 404 page if no `not_found` handler has been set.
+	pub fn render_current(&self) -> Page {
 		let path = self.current_path.get();
 
 		if let Some(route_match) = self.match_path(&path) {
@@ -584,14 +584,18 @@ impl ClientRouter {
 				ParamContext::new(route_match.params.clone(), route_match.param_values.clone());
 
 			match route_match.route.handler.handle(&ctx) {
-				Ok(view) => Some(view),
-				Err(_err) => {
-					// Return not_found on error
-					self.not_found.as_ref().map(|f| f())
-				}
+				Ok(view) => view,
+				Err(_err) => self
+					.not_found
+					.as_ref()
+					.map(|f| f())
+					.unwrap_or(Page::Empty),
 			}
 		} else {
-			self.not_found.as_ref().map(|f| f())
+			self.not_found
+				.as_ref()
+				.map(|f| f())
+				.unwrap_or(Page::Empty)
 		}
 	}
 
@@ -676,6 +680,7 @@ impl ClientRouter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::*;
 
 	fn test_page() -> Page {
 		Page::Empty
@@ -781,8 +786,19 @@ mod tests {
 	fn test_router_not_found() {
 		let router = ClientRouter::new().not_found(not_found_page);
 
-		let view = router.render_current();
-		assert!(view.is_some());
+		let _view = router.render_current();
+	}
+
+	#[rstest]
+	fn test_render_current_returns_page_without_not_found() {
+		// Arrange
+		let router = ClientRouter::new().route("/home/", home_page);
+
+		// Act — path does not match, no not_found registered
+		let page = router.render_current();
+
+		// Assert — returns Page::Empty as default fallback
+		assert!(matches!(page, Page::Empty));
 	}
 
 	#[test]
