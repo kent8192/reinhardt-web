@@ -190,6 +190,11 @@ cfg_aliases = "0.2"
 [dev-dependencies]
 insta = { workspace = true }
 reinhardt-forms = { workspace = true }
+# Enable `validation` feature for trybuild UI tests that exercise
+# `Validated<Form<T>>` extractors in `tests/ui/server_fn/with_extractors.rs`
+# (Issue #3858). The non-dev target dependency intentionally leaves this
+# feature off for slimmer default builds.
+reinhardt-di = { workspace = true, features = ["validation"] }
 wasm-bindgen-test = "0.3.56"
 serial_test = "3"
 trybuild = "1.0"
