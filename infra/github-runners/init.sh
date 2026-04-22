@@ -112,13 +112,14 @@ fi
 if [[ "$CURRENT_TRACKED_VERSION" != "$MODULE_VERSION" && -n "$CURRENT_TRACKED_VERSION" ]]; then
   echo "  [version-change] Lambda version changed: v${CURRENT_TRACKED_VERSION} -> v${MODULE_VERSION}"
   echo "  [cleanup] Removing outdated Lambda zip files..."
-  for zip_name in webhook runners runner-binaries-syncer; do
+  for zip_name in webhook runners runner-binaries-syncer termination-watcher; do
     rm -f "${LAMBDA_DIR}/${zip_name}.zip"
   done
 fi
 
 # Download each required Lambda zip (skip if already downloaded for this version)
-for LAMBDA_NAME in webhook runners runner-binaries-syncer; do
+# termination-watcher: Lambda for spot interruption handling (cancels GitHub job on 2-min warning)
+for LAMBDA_NAME in webhook runners runner-binaries-syncer termination-watcher; do
   DEST="${LAMBDA_DIR}/${LAMBDA_NAME}.zip"
   # Check if the file exists and is non-empty
   if [[ -f "$DEST" && -s "$DEST" ]]; then
