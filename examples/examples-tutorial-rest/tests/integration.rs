@@ -45,21 +45,19 @@ mod tests {
 
 	#[rstest]
 	fn test_snippet_model() {
-		use chrono::Utc;
 		use examples_tutorial_rest::apps::snippets::models::Snippet;
 
-		let snippet = Snippet {
-			id: 0,
-			title: "Hello World".to_string(),
-			code: "println!(\"Hello, world!\");".to_string(),
-			language: "rust".to_string(),
-			created_at: Utc::now(),
-		};
+		// Arrange / Act
+		let snippet = Snippet::new(
+			"Hello World".to_string(),
+			"println!(\"Hello, world!\");".to_string(),
+			"rust".to_string(),
+		);
 
+		// Assert
 		assert_eq!(snippet.title, "Hello World");
 		assert_eq!(snippet.code, "println!(\"Hello, world!\");");
 		assert_eq!(snippet.language, "rust");
-		assert_eq!(snippet.id, 0);
 	}
 
 	#[rstest]

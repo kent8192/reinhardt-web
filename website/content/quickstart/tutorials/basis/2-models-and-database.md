@@ -511,8 +511,8 @@ dependencies to `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-rstest = "0.22"
-testcontainers = "0.23"
+rstest = "0.26.1"
+testcontainers = "0.27.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
