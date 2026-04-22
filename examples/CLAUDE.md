@@ -12,16 +12,12 @@ The `examples/` directory contains example projects and shared utilities in a fl
 
 ```
 examples/
-├── examples-hello-world/
-├── examples-rest-api/
-├── examples-database-integration/
-├── examples-tutorial-basis/
-├── examples-tutorial-rest/
-├── examples-github-issues/
-├── examples-twitter/
+├── examples-tutorial-basis/       # Polls tutorial (MTV/Pages-style)
+├── examples-tutorial-rest/        # Snippets tutorial (REST API)
+├── examples-twitter/              # End-to-end Twitter-clone demo
 ├── .cargo/
-│   └── config.local.toml  # Template for local development
-├── Cargo.toml           # Workspace configuration
+│   └── config.local.toml          # Template for local development
+├── Cargo.toml                     # Workspace configuration
 └── README.md
 ```
 
@@ -39,7 +35,7 @@ By default, examples use published versions from crates.io:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web", features = ["standard"] }
+reinhardt = { version = "0.1.0-rc.17", package = "reinhardt-web", features = ["standard"] }
 ```
 
 ### Local Development Mode
@@ -72,7 +68,7 @@ rm -f .cargo/config.toml
 ```toml
 [dependencies]
 # ✅ Main reinhardt crate only
-reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web", features = ["core", "database"] }
+reinhardt = { version = "0.1.0-rc.17", package = "reinhardt-web", features = ["core", "database"] }
 
 # ✅ External crates are fine
 tokio = { workspace = true }
@@ -80,14 +76,14 @@ serde = { workspace = true }
 
 [dev-dependencies]
 # ✅ External test crates are fine
-rstest = "0.23"
+rstest = "0.26.1"
 ```
 
 #### ❌ INCORRECT Pattern
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web", features = ["core"] }
+reinhardt = { version = "0.1.0-rc.17", package = "reinhardt-web", features = ["core"] }
 reinhardt-http = { path = "../../../crates/reinhardt-http" }      # ❌ NEVER
 reinhardt-routers = { path = "../../../crates/reinhardt-urls/crates/routers" }  # ❌ NEVER
 reinhardt-di = { path = "../../../crates/reinhardt-di" }          # ❌ NEVER
@@ -331,7 +327,7 @@ pub struct User { ... }
 
 ```toml
 [dev-dependencies]
-rstest = "0.23"
+rstest = "0.26.1"
 tokio = { workspace = true, features = ["rt", "macros"] }
 ```
 
