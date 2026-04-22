@@ -37,17 +37,16 @@ resource "aws_ssm_parameter" "orphan_detector_processed" {
   }
 }
 
-# --- SNS topic for CI alerts ------------------------------------
-resource "aws_sns_topic" "ci_alert" {
-  count = local.orphan_detector_enabled
-  name  = "${var.prefix}-ci-alert"
-}
-
-resource "aws_sns_topic_subscription" "ci_alert_email" {
-  count     = local.orphan_detector_enabled
-  topic_arn = aws_sns_topic.ci_alert[0].arn
+# --- SNS subscription (reuses shared ci_alerts topic from alerting.tf) -------
+# The orphan detector publishes to the existing aws_sns_topic.ci_alerts topic
+# created by alerting.tf (PR #3902), keeping all CI infra alerts on one channel.
+# If orphan_detector_alert_email is set AND differs from budget_alert_email,
+# register it as an additional subscriber to the shared topic.
+resource "aws_sns_topic_subscription" "orphan_detector_extra_email" {
+  count     = local.orphan_detector_enabled > 0 && length(var.orphan_detector_alert_email) > 0 && var.orphan_detector_alert_email != var.budget_alert_email ? 1 : 0
+  topic_arn = aws_sns_topic.ci_alerts.arn
   protocol  = "email"
-  endpoint  = length(var.orphan_detector_alert_email) > 0 ? var.orphan_detector_alert_email : var.budget_alert_email
+  endpoint  = var.orphan_detector_alert_email
 }
 
 # --- IAM role and policy ---------------------------------------
@@ -97,7 +96,7 @@ data "aws_iam_policy_document" "orphan_detector" {
   statement {
     sid       = "PublishAlerts"
     actions   = ["sns:Publish"]
-    resources = [aws_sns_topic.ci_alert[0].arn]
+    resources = [aws_sns_topic.ci_alerts.arn]
   }
 
   # PutMetricData does not support resource-level permissions; scope by namespace.
@@ -183,7 +182,7 @@ resource "aws_lambda_function" "orphan_detector" {
       STALENESS_MIN              = tostring(var.orphan_detector_staleness_min)
       CIRCUIT_BREAKER_MAX        = tostring(var.runner_max_count + var.orphan_detector_circuit_breaker_margin)
       SSM_DEDUP_PARAM            = aws_ssm_parameter.orphan_detector_processed[0].name
-      SNS_ALERT_TOPIC_ARN        = aws_sns_topic.ci_alert[0].arn
+      SNS_ALERT_TOPIC_ARN        = aws_sns_topic.ci_alerts.arn
       METRIC_NAMESPACE           = "ReinhardtCI/OrphanDetector"
       LOG_LEVEL                  = "info"
     }
@@ -232,7 +231,7 @@ resource "aws_cloudwatch_metric_alarm" "orphan_detector_circuit_breaker" {
   statistic           = "Sum"
   threshold           = 1
   treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.ci_alert[0].arn]
+  alarm_actions       = [aws_sns_topic.ci_alerts.arn]
   alarm_description   = "Orphan detector circuit breaker tripped: orphan count exceeded ${var.runner_max_count + var.orphan_detector_circuit_breaker_margin}."
   dimensions          = local.orphan_detector_repo_dim
 }
@@ -248,7 +247,7 @@ resource "aws_cloudwatch_metric_alarm" "orphan_detector_persistent" {
   statistic           = "Maximum"
   threshold           = 0
   treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.ci_alert[0].arn]
+  alarm_actions       = [aws_sns_topic.ci_alerts.arn]
   alarm_description   = "Orphan jobs detected in 3 consecutive scans - republish is not resolving the issue."
   dimensions          = local.orphan_detector_repo_dim
 }
@@ -264,7 +263,7 @@ resource "aws_cloudwatch_metric_alarm" "orphan_detector_lambda_errors" {
   statistic           = "Sum"
   threshold           = 0
   treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.ci_alert[0].arn]
+  alarm_actions       = [aws_sns_topic.ci_alerts.arn]
   alarm_description   = "Orphan detector Lambda failed 2+ consecutive runs - scanning halted."
   dimensions = {
     FunctionName = aws_lambda_function.orphan_detector[0].function_name
@@ -282,6 +281,6 @@ resource "aws_cloudwatch_metric_alarm" "orphan_detector_rate_limit_low" {
   statistic           = "Minimum"
   threshold           = 500
   treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.ci_alert[0].arn]
+  alarm_actions       = [aws_sns_topic.ci_alerts.arn]
   alarm_description   = "GitHub App API rate limit low (< 500 remaining) - detector at risk of 429 throttling."
 }
