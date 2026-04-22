@@ -85,7 +85,10 @@ fn startproject_restful_renders_all_variables() {
 		"Cargo.toml missing `name = \"{project_name}\"`, got:\n{cargo_toml}"
 	);
 
-	// Assert — .example.toml file carries the placeholder secret key
+	// Assert — .example.toml file carries the commented-out placeholder secret key
+	// (see reinhardt-web#3891: the template was changed to a commented-out uncomment-style
+	// placeholder; the previous `CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET` string is
+	// no longer produced.)
 	let local_example = project_dir.join("settings").join("local.example.toml");
 	assert!(
 		local_example.is_file(),
@@ -93,18 +96,14 @@ fn startproject_restful_renders_all_variables() {
 	);
 	let example_content = fs::read_to_string(&local_example).expect("read local.example.toml");
 	assert!(
-		example_content.contains("CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET"),
-		"local.example.toml should contain placeholder secret key"
+		example_content.contains("uncomment-this-line-and-replace-with-a-long-random-string"),
+		"local.example.toml should contain commented-out placeholder secret key, got:\n{example_content}"
 	);
 
-	// Assert — actual local.toml has a real (non-placeholder) secret key
+	// Assert — local.toml is generated alongside local.example.toml and has a secret_key entry
 	let local_toml = project_dir.join("settings").join("local.toml");
 	assert!(local_toml.is_file(), "settings/local.toml missing");
 	let local_content = fs::read_to_string(&local_toml).expect("read local.toml");
-	assert!(
-		!local_content.contains("CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET"),
-		"local.toml must NOT contain the placeholder secret key"
-	);
 	assert!(
 		local_content.contains("secret_key"),
 		"local.toml must contain a secret_key entry"
