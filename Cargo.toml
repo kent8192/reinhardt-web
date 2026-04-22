@@ -76,6 +76,7 @@ api = [
 auth = ["reinhardt-auth", "reinhardt-commands?/auth"]
 argon2-hasher = ["auth", "reinhardt-auth/argon2-hasher"]
 admin = [
+  "pages",
   "reinhardt-admin",
   "reinhardt-admin/adapters",
   "reinhardt-admin/server",
