@@ -12,16 +12,12 @@ The `examples/` directory contains example projects and shared utilities in a fl
 
 ```
 examples/
-├── examples-hello-world/
-├── examples-rest-api/
-├── examples-database-integration/
-├── examples-tutorial-basis/
-├── examples-tutorial-rest/
-├── examples-github-issues/
-├── examples-twitter/
+├── examples-tutorial-basis/       # Polls tutorial (MTV/Pages-style)
+├── examples-tutorial-rest/        # Snippets tutorial (REST API)
+├── examples-twitter/              # End-to-end Twitter-clone demo
 ├── .cargo/
-│   └── config.local.toml  # Template for local development
-├── Cargo.toml           # Workspace configuration
+│   └── config.local.toml          # Template for local development
+├── Cargo.toml                     # Workspace configuration
 └── README.md
 ```
 

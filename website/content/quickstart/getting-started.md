@@ -174,7 +174,7 @@ serde = { version = "1.0", features = ["derive"] }
 For this guide, we'll use the **Standard** flavor (default).
 
 **💡 Want more control?** See the [Feature Flags Guide](/docs/feature-flags/) for
-detailed information on 70+ individual feature flags to fine-tune your build.
+detailed information on 60+ individual feature flags to fine-tune your build.
 
 The project template already includes all necessary dependencies in
 `Cargo.toml`.
