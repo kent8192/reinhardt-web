@@ -131,7 +131,7 @@ jobs:
           echo "Downloading Lambda zips for v${MODULE_VERSION}..."
           mkdir -p lambdas
           BASE_URL="https://github.com/github-aws-runners/terraform-aws-github-runner/releases/download/v${MODULE_VERSION}"
-          for name in webhook runners runner-binaries-syncer; do
+          for name in webhook runners runner-binaries-syncer termination-watcher; do
             curl -fsSL -o "lambdas/${name}.zip" "${BASE_URL}/${name}.zip"
             echo "  Downloaded ${name}.zip"
           done
