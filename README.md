@@ -239,7 +239,7 @@ For a modern WASM-based frontend with SSR:
 
 ```bash
 # Create a pages project
-reinhardt-admin startproject my-app --template-type mtv
+reinhardt-admin startproject my-app --template pages
 cd my-app
 
 # Install WASM build tools (first time only)
