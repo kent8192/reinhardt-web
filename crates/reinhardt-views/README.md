@@ -14,13 +14,14 @@ rendering.
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.19", features = ["views"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["views"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.21", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.21", features = ["full"] }      # All features
 ```
 
 Then import view features:
@@ -255,12 +256,13 @@ let list_create_view = ListCreateAPIView::<Article, JsonSerializer<Article>>::ne
 
 ### OpenAPI Schema Generation
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::views::{OpenAPISpec, Info, PathItem, Operation};
 
 let spec = OpenAPISpec::new(Info::new(
     "My API".into(),
-    "1.0.0".into()
+    "0.1.0-rc.21".into()
 ));
 ```
 

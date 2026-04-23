@@ -19,13 +19,14 @@ Plugin system for the Reinhardt framework - easy to create, distribute, and inst
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.19", features = ["dentdelion"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["dentdelion"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.21", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.21", features = ["full"] }      # All features
 ```
 
 Then import dentdelion features:
@@ -50,6 +51,7 @@ use reinhardt::dentdelion::prelude::*;
 
 ### Creating a Static Plugin
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::dentdelion::prelude::*;
 
@@ -60,7 +62,7 @@ pub struct MyPlugin {
 impl MyPlugin {
     pub fn new() -> Self {
         Self {
-            metadata: PluginMetadata::builder("my-plugin", "1.0.0")
+            metadata: PluginMetadata::builder("my-plugin", "0.1.0-rc.21")
                 .description("My custom plugin")
                 .author("Your Name")
                 .build()
@@ -221,8 +223,9 @@ timeout_seconds = 30
 
 Dentdelion uses the WebAssembly Interface Types (WIT) standard for plugin interfaces. The complete interface is defined in `wit/dentdelion.wit`:
 
+<!-- reinhardt-version-sync -->
 ```wit
-package reinhardt:dentdelion@0.1.0;
+package reinhardt:dentdelion@0.1.0-rc.21;
 
 // Host functions available to plugins
 interface host {

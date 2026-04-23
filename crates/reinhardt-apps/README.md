@@ -16,13 +16,14 @@ Application configuration and registry for Reinhardt framework.
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.13", package = "reinhardt-web", features = ["apps"] }
+reinhardt = { version = "0.1.0-rc.21", package = "reinhardt-web", features = ["apps"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.13", package = "reinhardt-web", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.13", package = "reinhardt-web", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.21", package = "reinhardt-web", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.21", package = "reinhardt-web", features = ["full"] }      # All features
 ```
 
 Then import app features:
@@ -48,10 +49,11 @@ installed_apps! {
 
 **For built-in framework features, use Cargo feature flags:**
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
 reinhardt = {
-	version = "0.1.0-rc.13",
+	version = "0.1.0-rc.21",
 	package = "reinhardt-web",
 	features = ["auth", "sessions", "admin"]
 }
@@ -142,10 +144,11 @@ pub fn get_installed_apps() -> Vec<String> {
 
 **Framework features are enabled separately via Cargo.toml:**
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
 reinhardt = {
-	version = "0.1.0-rc.13",
+	version = "0.1.0-rc.21",
 	package = "reinhardt-web",
 	features = ["auth", "sessions", "admin", "static-files"]
 }
@@ -232,11 +235,12 @@ pub fn get_installed_apps() -> Vec<String> {
 }
 ```
 
+<!-- reinhardt-version-sync -->
 ```toml
 # Cargo.toml
 [dependencies]
 reinhardt = {
-	version = "0.1.0-rc.13",
+	version = "0.1.0-rc.21",
 	package = "reinhardt-web",
 	features = ["auth", "sessions", "database"]
 }
@@ -292,10 +296,11 @@ INSTALLED_APPS = [
 ```
 
 **Reinhardt (Rust):**
+<!-- reinhardt-version-sync -->
 ```toml
 # Cargo.toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.13", package = "reinhardt-web", features = ["auth", "admin"] }
+reinhardt = { version = "0.1.0-rc.21", package = "reinhardt-web", features = ["auth", "admin"] }
 ```
 
 ```rust

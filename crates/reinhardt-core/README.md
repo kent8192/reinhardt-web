@@ -87,18 +87,20 @@ This crate provides the following modules:
 
 Add this to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-core = "0.1.0-rc.19"
+reinhardt-core = "0.1.0-rc.21"
 ```
 
 ### Optional Features
 
 Enable specific modules based on your needs:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-core = { version = "0.1.0-rc.19", features = ["signals", "macros", "security"] }
+reinhardt-core = { version = "0.1.0-rc.21", features = ["signals", "macros", "security"] }
 ```
 
 Available features:

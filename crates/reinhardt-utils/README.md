@@ -12,13 +12,14 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.19", features = ["utils"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["utils"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.21", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.21", features = ["full"] }      # All features
 ```
 
 Then import utility features:
@@ -305,6 +306,7 @@ use reinhardt::utils::core::html::{escape, unescape};
 
 **Usage Example**:
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::utils::logging::security::{SecurityLogger, SecurityError};
 
@@ -321,7 +323,7 @@ logger.log_security_error(&SecurityError::CsrfViolation);  // ERROR level
 logger.log_csrf_violation("http://evil.com");
 
 // Log rate limit exceeded
-logger.log_rate_limit_exceeded("192.168.1.1", 100);
+logger.log_rate_limit_exceeded("0.1.0-rc.21.1", 100);
 
 // Log suspicious file operations
 logger.log_suspicious_file_operation("delete", Path::new("/etc/passwd"));

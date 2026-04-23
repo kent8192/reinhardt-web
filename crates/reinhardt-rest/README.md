@@ -10,13 +10,14 @@ This crate serves as a **convenience layer** that combines multiple Reinhardt cr
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.19", features = ["rest"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["rest"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.21", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.21", features = ["full"] }      # All features
 ```
 
 Then import REST features:

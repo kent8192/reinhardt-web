@@ -26,13 +26,14 @@ This crate provides the following modules:
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.19", features = ["conf"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["conf"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.21", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.21", features = ["full"] }      # All features
 ```
 
 Then import configuration features:
@@ -48,15 +49,16 @@ use reinhardt::conf::settings::sources::ConfigSource;
 
 Enable specific features based on your needs:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 # With async support
-reinhardt = { version = "0.1.0-rc.19", features = ["conf", "async"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["conf", "async"] }
 
 # With encryption
-reinhardt = { version = "0.1.0-rc.19", features = ["conf", "encryption"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["conf", "encryption"] }
 
 # With Vault integration
-reinhardt = { version = "0.1.0-rc.19", features = ["conf", "vault"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["conf", "vault"] }
 ```
 
 Available features:

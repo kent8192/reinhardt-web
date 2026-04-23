@@ -104,13 +104,14 @@ Users should depend on `` `reinhardt-graphql` `` (this facade crate) for all Gra
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.19", features = ["graphql"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["graphql"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.21", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.21", features = ["full"] }      # All features
 ```
 
 Then import GraphQL features:
@@ -124,12 +125,13 @@ use reinhardt::graphql::types::{UserStorage, UserEvent};
 
 ### Optional Features
 
+<!-- reinhardt-version-sync:2 -->
 ```toml
 # With dependency injection
-reinhardt = { version = "0.1.0-rc.19", features = ["graphql", "di"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["graphql", "di"] }
 
 # With gRPC transport
-reinhardt = { version = "0.1.0-rc.19", features = ["graphql", "grpc"] }
+reinhardt = { version = "0.1.0-rc.21", features = ["graphql", "grpc"] }
 ```
 
 ## Examples
@@ -248,6 +250,7 @@ async fn handler(
 
 ### GraphQL over gRPC Server
 
+<!-- reinhardt-version-sync -->
 ```rust
 use async_graphql::{EmptySubscription, Schema};
 use reinhardt::graphql::grpc_service::GraphQLGrpcService;
@@ -267,7 +270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Server::builder()
         .add_service(grpc_service)
-        .serve("127.0.0.1:50051".parse()?)
+        .serve("0.1.0-rc.21.1:50051".parse()?)
         .await?;
 
     Ok(())
@@ -276,6 +279,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### GraphQL over gRPC Client
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::grpc::proto::graphql::{
     graph_ql_service_client::GraphQlServiceClient,
@@ -284,7 +288,7 @@ use reinhardt::grpc::proto::graphql::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = GraphQlServiceClient::connect("http://127.0.0.1:50051").await?;
+    let mut client = GraphQlServiceClient::connect("http://0.1.0-rc.21.1:50051").await?;
 
     let request = tonic::Request::new(GraphQlRequest {
         query: r#"{ hello(name: "gRPC") }"#.to_string(),

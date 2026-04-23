@@ -41,9 +41,10 @@ A type-safe SQL query builder for the Reinhardt framework.
 
 Add to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-query = { version = "0.1.0-rc.13" }
+reinhardt-query = { version = "0.1.0-rc.21" }
 ```
 
 ## Quick Start
