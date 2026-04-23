@@ -720,22 +720,16 @@ Use JWT authentication in your app's `views/profile.rs`:
 ```rust
 // users/views/profile.rs
 use reinhardt::{Response, StatusCode, ViewResult, get};
-use reinhardt::auth::{IsAuthenticated, User};
-use reinhardt::di::Depends;
-use reinhardt::db::DatabaseConnection;
-use crate::models::User as AppUser;
+use reinhardt::auth::AuthUser;
+use crate::models::User;
 
-// JwtAuthMiddleware must be registered in urls.rs for this view
+// JwtAuthMiddleware must be registered in urls.rs to populate AuthState in request extensions
 #[get("/profile", name = "get_profile")]
 pub async fn get_profile(
-	IsAuthenticated(user_id): IsAuthenticated,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] AuthUser(user): AuthUser<User>,
 ) -> ViewResult<Response> {
-	// IsAuthenticated extractor is populated by JwtAuthMiddleware
-	let user = AppUser::objects()
-		.get(AppUser::field_id().eq(user_id))
-		.await?;
-
+	// AuthUser<U> loads the full user model from the database using the AuthState
+	// set by authentication middleware. Returns an injection error if unauthenticated.
 	if !user.is_active() {
 		return Err("User account is inactive".into());
 	}
