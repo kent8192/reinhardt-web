@@ -106,4 +106,39 @@ run_case "02 markdown toml block single marker" \
 	"0.1.0-rc.99" \
 	"demo.md"
 
+# Fixture 03: Markdown with toml block containing multiple versions
+cat > "$fx_dir/03-input.md" <<'MD_EOF'
+```toml
+# Core components
+# reinhardt-version-sync
+reinhardt-http = "0.1.0-rc.17"
+# reinhardt-version-sync
+reinhardt-urls = "0.1.0-rc.17"
+
+# Optional: Database
+# reinhardt-version-sync
+reinhardt-db = "0.1.0-rc.17"
+```
+MD_EOF
+
+cat > "$fx_dir/03-expected.md" <<'MD_EOF'
+```toml
+# Core components
+# reinhardt-version-sync
+reinhardt-http = "0.1.0-rc.99"
+# reinhardt-version-sync
+reinhardt-urls = "0.1.0-rc.99"
+
+# Optional: Database
+# reinhardt-version-sync
+reinhardt-db = "0.1.0-rc.99"
+```
+MD_EOF
+
+run_case "03 multi-version block" \
+	"$fx_dir/03-input.md" \
+	"$fx_dir/03-expected.md" \
+	"0.1.0-rc.99" \
+	"multi.md"
+
 exit "$FAIL"
