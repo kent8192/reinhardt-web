@@ -774,7 +774,6 @@ Use JWT authentication in your app's `views/profile.rs`:
 use reinhardt::auth::{JwtAuth, BaseUser};
 use reinhardt::{Request, Response, StatusCode, ViewResult, get};
 use reinhardt::db::DatabaseConnection;
-use reinhardt::db::orm::{Filter, FilterOperator, FilterValue};
 use std::sync::Arc;
 use crate::models::User;
 
@@ -797,7 +796,7 @@ pub async fn get_profile(
 
 	// Load user from database using claims.user_id
 	let user = User::objects()
-		.filter(Filter::new("id", FilterOperator::Eq, FilterValue::String(claims.user_id.clone())))
+		.filter(User::field_id().eq(claims.user_id.clone()))
 		.first_with_db(&db)
 		.await?
 		.ok_or("User not found")?;
@@ -896,7 +895,6 @@ In your app's `views/user.rs`:
 // users/views/user.rs
 use reinhardt::{Request, Response, StatusCode, ViewResult, get};
 use reinhardt::db::DatabaseConnection;
-use reinhardt::db::orm::{Filter, FilterOperator, FilterValue};
 use crate::models::User;
 use std::sync::Arc;
 
@@ -918,7 +916,7 @@ pub async fn get_user(
 
 	// Fetch user from database using injected connection
 	let user = User::objects()
-		.filter(Filter::new("id", FilterOperator::Eq, FilterValue::Int(id)))
+		.filter(User::field_id().eq(id))
 		.first_with_db(&db)
 		.await?
 		.ok_or("User not found")?;
