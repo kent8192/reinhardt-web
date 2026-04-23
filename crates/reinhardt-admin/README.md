@@ -102,31 +102,28 @@ first request, so no database connection is needed during route setup.
 
 ### Customizing the Admin
 
-Implement `ModelAdmin` for your admin structs using the trait-based approach:
+Use the `#[admin]` proc macro to register a model with the admin panel. The macro
+automatically implements `ModelAdmin` — no manual `impl` block is needed:
 
 ```rust
-use reinhardt::admin::ModelAdmin;
+use reinhardt::admin;
+use crate::models::User;
 
-struct UserAdmin {
-	list_display: Vec<String>,
-	list_filter: Vec<String>,
-	search_fields: Vec<String>,
-}
-
-impl Default for UserAdmin {
-	fn default() -> Self {
-		Self {
-			list_display: vec!["username".to_string(), "email".to_string(), "is_active".to_string()],
-			list_filter: vec!["is_active".to_string()],
-			search_fields: vec!["username".to_string(), "email".to_string()],
-		}
-	}
-}
-
-impl ModelAdmin for UserAdmin {
-	// Customize admin behavior by overriding trait methods
-}
+#[admin(model,
+	for = User,
+	name = "User",
+	list_display = [username, email, is_active],
+	list_filter = [is_active],
+	search_fields = [username, email],
+	ordering = [(date_joined, desc)],
+	list_per_page = 25,
+)]
+pub struct UserAdmin;
 ```
+
+The `#[admin(model, ...)]` attribute expands to a full `ModelAdmin` implementation
+at compile time, so you never need to write boilerplate field structs or
+`impl Default` blocks.
 
 ## Architecture
 
