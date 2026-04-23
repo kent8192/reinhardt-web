@@ -35,6 +35,7 @@ By default, examples use published versions from crates.io:
 
 ```toml
 [dependencies]
+# reinhardt-version-sync
 reinhardt = { version = "0.1.0-rc.17", package = "reinhardt-web", features = ["standard"] }
 ```
 
@@ -68,6 +69,7 @@ rm -f .cargo/config.toml
 ```toml
 [dependencies]
 # ✅ Main reinhardt crate only
+# reinhardt-version-sync
 reinhardt = { version = "0.1.0-rc.17", package = "reinhardt-web", features = ["core", "database"] }
 
 # ✅ External crates are fine
