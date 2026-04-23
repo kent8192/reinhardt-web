@@ -309,6 +309,63 @@ assert!(admin.is_superuser);
 - **Demonstration Purpose**: For testing and prototyping (use ORM-based manager
   in production)
 
+#### `#[user]` Macro
+
+The `#[user]` attribute macro generates the full user model implementation from
+a plain struct definition. It is the recommended approach for defining custom
+user models in reinhardt-web applications.
+
+**Parameters:**
+
+- `hasher`: Password hasher type (e.g., `Argon2Hasher`)
+- `username_field`: Name of the field used as the login identifier (e.g.,
+  `"username"`, `"email"`)
+- `full`: When `true`, generates the complete user interface including
+  `FullUser` and `PermissionsMixin` implementations
+
+**Notes:**
+
+- `#[user]` does NOT auto-derive `Serialize`, `Deserialize`, or `Default`;
+  add `#[derive(...)]` explicitly for those traits
+- `#[model]` is still required for database integration; `app_label` and
+  `table_name` are configured there
+- Each field uses `#[field(...)]` attributes to declare constraints such as
+  `primary_key`, `unique`, `max_length`, `default`, and `include_in_new`
+
+```rust
+use reinhardt::Argon2Hasher;
+use reinhardt::macros::user;
+use reinhardt::prelude::*;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[user(hasher = Argon2Hasher, username_field = "username", full = true)]
+#[derive(Default, Serialize, Deserialize)]
+#[model(app_label = "auth", table_name = "users")]
+pub struct User {
+	#[field(primary_key = true, include_in_new = false)]
+	pub id: Uuid,
+
+	#[field(max_length = 150, unique = true)]
+	pub username: String,
+
+	#[field(max_length = 254, unique = true)]
+	pub email: String,
+
+	#[field(max_length = 512)]
+	pub password_hash: Option<String>,
+
+	#[field(default = true)]
+	pub is_active: bool,
+
+	#[field(default = false)]
+	pub is_staff: bool,
+
+	#[field(default = false)]
+	pub is_superuser: bool,
+}
+```
+
 ### Password Security
 
 #### Password Hashing
