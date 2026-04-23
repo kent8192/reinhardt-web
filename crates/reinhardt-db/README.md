@@ -154,7 +154,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-reinhardt-db = "0.1.0-rc.19"
+reinhardt-db = "0.1.0-rc.13"
 ```
 
 ### Optional Features
@@ -163,7 +163,7 @@ Enable specific features based on your needs:
 
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.1.0-rc.19", features = ["postgres", "orm", "migrations"] }
+reinhardt-db = { version = "0.1.0-rc.13", features = ["postgres", "orm", "migrations"] }
 ```
 
 Available features:
@@ -187,7 +187,7 @@ Available features:
 ### Define Models
 
 ```rust
-use reinhardt_db::prelude::*;
+use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 
@@ -229,7 +229,7 @@ pub struct User {
 - `#[field(default = value)]` - Default value
 - `#[field(foreign_key = "ModelType")]` - Foreign key relationship
 
-For a complete list of field attributes, see the `#[field(...)]` macro documentation in `reinhardt-db-macros`.
+For a complete list of field attributes, see the [Field Attributes Guide](../../docs/field_attributes.md).
 
 **Note**: The `#[model(...)]` attribute macro automatically generates:
 - `Model` trait implementation
@@ -240,7 +240,7 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 ### Query with QuerySet
 
 ```rust
-use reinhardt_db::orm::{QuerySet, Model};
+use reinhardt::db::{QuerySet, Model};
 
 // Get all users
 let users = User::objects().all().await?;
@@ -262,7 +262,7 @@ let user = User::objects()
 ### Create Migrations
 
 ```rust
-use reinhardt_db::migrations::{Migration, CreateModel, AddField};
+use reinhardt::db::migrations::{Migration, CreateModel, AddField};
 
 // Create a new migration
 let migration = Migration::new("0001_initial")
@@ -282,17 +282,16 @@ migration.apply(db).await?;
 ### Connection Pooling
 
 ```rust
-use reinhardt_db::pool::{ConnectionPool, PoolConfig};
+use reinhardt_db::pool::ConnectionPool;
 
 // Create a connection pool
-let config = PoolConfig {
-    max_connections: 10,
-    ..PoolConfig::default()
-};
-let pool = ConnectionPool::new_postgres("postgres://user:pass@localhost/db", config).await?;
+let pool = ConnectionPool::new("postgres://user:pass@localhost/db")
+    .max_connections(10)
+    .build()
+    .await?;
 
-// Acquire a connection
-let conn = pool.acquire().await?;
+// Get a connection
+let conn = pool.get().await?;
 ```
 
 ## Module Organization
@@ -317,9 +316,9 @@ let conn = pool.acquire().await?;
 ### Using Modules
 
 ```rust
-use reinhardt_db::orm::{Model, QuerySet};
-use reinhardt_db::migrations::Migration;
-use reinhardt_db::pool::ConnectionPool;
+use reinhardt::db::orm::{Model, QuerySet};
+use reinhardt::db::migrations::Migration;
+use reinhardt::db::pool::ConnectionPool;
 ```
 
 ## Supported Databases
@@ -371,7 +370,7 @@ Database tests automatically use TestContainers to:
 **Standard Fixtures** from `reinhardt-test` are available:
 
 ```rust
-use reinhardt_test::fixtures::postgres_container;
+use reinhardt::test::fixtures::postgres_container;
 use rstest::*;
 
 #[rstest]
