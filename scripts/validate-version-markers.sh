@@ -30,26 +30,59 @@ fi
 
 AWK_PROG='
 BEGIN {
-	marker_re  = "^[[:space:]]*(#|//)[[:space:]]*reinhardt-version-sync[[:space:]]*$"
-	marker_re2 = "^[[:space:]]*<!--[[:space:]]*reinhardt-version-sync[[:space:]]*-->[[:space:]]*$"
+	marker_re      = "^[[:space:]]*(#|//)[[:space:]]*reinhardt-version-sync[[:space:]]*$"
+	marker_html_re = "^[[:space:]]*<!--[[:space:]]*reinhardt-version-sync[[:space:]]*-->[[:space:]]*$"
+	marker_html_n  = "^[[:space:]]*<!--[[:space:]]*reinhardt-version-sync:[0-9]+[[:space:]]*-->[[:space:]]*$"
 	# Hints that a line carries a Reinhardt version we should have marked.
 	hint_re    = "(reinhardt[a-z-]*[[:space:]]*=|reinhardt_version[[:space:]]*=|package[[:space:]]*=[[:space:]]*\"reinhardt-web\")"
 	version_re = "[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.]+)?"
 	fence_re   = "^[[:space:]]*```"
 	blank_re   = "^[[:space:]]*$"
-	state = "SCANNING"
-	findings = 0
+	state       = "SCANNING"
+	armed_count = 0
+	findings    = 0
 	marker_line = 0
+	in_code_block = 0
+	is_md_file    = 0
+}
+FNR == 1 {
+	# Detect if file is a Markdown file by checking FILENAME suffix
+	is_md_file = (FILENAME ~ /\.md$/)
+	in_code_block = 0
 }
 {
+	# Track fenced code block state for Markdown files
+	if (is_md_file && $0 ~ fence_re) {
+		in_code_block = !in_code_block
+	}
+
 	if (state == "SCANNING") {
-		if ($0 ~ marker_re || $0 ~ marker_re2) {
+		# In Markdown, # or // markers inside a code block are migration errors
+		if (is_md_file && in_code_block && $0 ~ marker_re) {
+			printf("MARKER_IN_CODE_BLOCK %s:%d: use '\''<!-- reinhardt-version-sync[:N] -->'\'' outside the code block instead: %s\n", FILENAME, NR, $0) > "/dev/stderr"
+			findings++
+			next
+		}
+		if ($0 ~ marker_re || $0 ~ marker_html_re) {
+			armed_count = 1
 			state = "ARMED"
 			marker_line = NR
 			next
 		}
-		# Unmarked hardcoded version detection.
-		if ($0 ~ hint_re && match($0, version_re)) {
+		if ($0 ~ marker_html_n) {
+			tmp = $0
+			if (match(tmp, ":[0-9]+")) {
+				armed_count = int(substr(tmp, RSTART + 1, RLENGTH - 1))
+			} else {
+				armed_count = 1
+			}
+			if (armed_count < 1) armed_count = 1
+			state = "ARMED"
+			marker_line = NR
+			next
+		}
+		# Unmarked hardcoded version detection (skip inside md code blocks).
+		if (!(is_md_file && in_code_block) && $0 ~ hint_re && match($0, version_re)) {
 			printf("UNMARKED %s:%d: no preceding marker: %s\n", FILENAME, NR, $0) > "/dev/stderr"
 			findings++
 		}
@@ -58,7 +91,8 @@ BEGIN {
 	# ARMED
 	if ($0 ~ fence_re || $0 ~ blank_re) next
 	if (match($0, version_re)) {
-		state = "SCANNING"
+		armed_count--
+		if (armed_count <= 0) state = "SCANNING"
 		next
 	}
 	printf("ORPHAN_MARKER %s:%d: no version follows marker\n", FILENAME, marker_line) > "/dev/stderr"
