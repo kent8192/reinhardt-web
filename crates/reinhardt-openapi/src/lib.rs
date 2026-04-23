@@ -14,11 +14,11 @@
 //!
 //! ```rust,ignore
 //! use reinhardt_openapi::OpenApiRouter;
-//! use reinhardt_urls::routers::BasicRouter;
+//! use reinhardt_urls::routers::UnifiedRouter;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create your existing router
-//!     let router = BasicRouter::new();
+//!     let router = UnifiedRouter::new();
 //!
 //!     // Wrap with OpenAPI endpoints
 //!     let wrapped = OpenApiRouter::wrap(router)?;
