@@ -141,4 +141,41 @@ run_case "03 multi-version block" \
 	"0.1.0-rc.99" \
 	"multi.md"
 
+# Orphan marker case (expects non-zero exit)
+
+run_orphan_case() {
+	local name="$1"
+	local input_file="$2"
+	local target_rel="$3"
+
+	local tmpdir
+	tmpdir=$(mktemp -d)
+	mkdir -p "$tmpdir/scripts" "$(dirname "$tmpdir/$target_rel")"
+	cp "$SCRIPT" "$tmpdir/scripts/update-version-refs.sh"
+	cp "$input_file" "$tmpdir/$target_rel"
+
+	set +e
+	REINHARDT_VERSION_SYNC_TARGETS="$target_rel" \
+		bash "$tmpdir/scripts/update-version-refs.sh" "0.1.0-rc.99" \
+		>/dev/null 2>"$tmpdir/err.log"
+	rc=$?
+	set -e
+
+	if [ "$rc" -eq 2 ] && grep -q "ORPHAN_MARKER" "$tmpdir/err.log"; then
+		pass "$name"
+	else
+		fail "$name (rc=$rc, stderr below)"
+		cat "$tmpdir/err.log" >&2
+	fi
+	rm -rf "$tmpdir"
+}
+
+# Fixture 04: marker with no following version
+cat > "$fx_dir/04-input.md" <<'MD_EOF'
+<!-- reinhardt-version-sync -->
+This paragraph has no version on the next line.
+MD_EOF
+
+run_orphan_case "04 orphan marker" "$fx_dir/04-input.md" "bad.md"
+
 exit "$FAIL"
