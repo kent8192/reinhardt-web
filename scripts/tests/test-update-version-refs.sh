@@ -178,4 +178,50 @@ MD_EOF
 
 run_orphan_case "04 orphan marker" "$fx_dir/04-input.md" "bad.md"
 
+# Fixture 05: counter marker N=3 — HTML comment arms three replacements
+cat > "$fx_dir/05-input.md" <<'MD_EOF'
+<!-- reinhardt-version-sync:3 -->
+```toml
+reinhardt-http = "0.1.0-rc.17"
+reinhardt-urls = "0.1.0-rc.17"
+reinhardt-db   = "0.1.0-rc.17"
+```
+MD_EOF
+
+cat > "$fx_dir/05-expected.md" <<'MD_EOF'
+<!-- reinhardt-version-sync:3 -->
+```toml
+reinhardt-http = "0.1.0-rc.99"
+reinhardt-urls = "0.1.0-rc.99"
+reinhardt-db   = "0.1.0-rc.99"
+```
+MD_EOF
+
+run_case "05 counter marker N=3" \
+	"$fx_dir/05-input.md" \
+	"$fx_dir/05-expected.md" \
+	"0.1.0-rc.99" \
+	"counter3.md"
+
+# Fixture 06: counter marker default (N=1, no colon) — equivalent to original HTML marker
+cat > "$fx_dir/06-input.md" <<'MD_EOF'
+<!-- reinhardt-version-sync -->
+```toml
+reinhardt = { version = "0.1.0-rc.17", package = "reinhardt-web" }
+```
+MD_EOF
+
+cat > "$fx_dir/06-expected.md" <<'MD_EOF'
+<!-- reinhardt-version-sync -->
+```toml
+reinhardt = { version = "0.1.0-rc.99", package = "reinhardt-web" }
+```
+MD_EOF
+
+run_case "06 counter marker default N=1" \
+	"$fx_dir/06-input.md" \
+	"$fx_dir/06-expected.md" \
+	"0.1.0-rc.99" \
+	"counter1.md"
+
 exit "$FAIL"

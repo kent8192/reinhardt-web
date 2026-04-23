@@ -73,4 +73,15 @@ reinhardt = { version = "0.1.0-rc.17", package = "reinhardt-web" }
 EOF
 run_validate_case "V3 unmarked hardcoded version" "$fx_dir/unmarked.toml" "bad.toml" 1 "UNMARKED"
 
+# V4: marker inside a Markdown fenced code block -> rc 1, MARKER_IN_CODE_BLOCK
+cat > "$fx_dir/v4-marker-in-block.md" <<'MD_EOF'
+# Example
+
+```toml
+# reinhardt-version-sync
+reinhardt = { version = "0.1.0-rc.17", package = "reinhardt-web" }
+```
+MD_EOF
+run_validate_case "V4 marker in code block" "$fx_dir/v4-marker-in-block.md" "bad.md" 1 "MARKER_IN_CODE_BLOCK"
+
 exit "$FAIL"
