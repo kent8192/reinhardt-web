@@ -385,59 +385,33 @@ Settings are automatically loaded in `src/config/settings.rs`:
 
 ```rust
 // src/config/settings.rs
-use reinhardt::conf::settings::builder::SettingsBuilder;
-use reinhardt::conf::settings::profile::Profile;
-use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
-use reinhardt::core::Settings;
-use std::env;
-use std::path::PathBuf;
-use std::str::FromStr;
+use reinhardt::prelude::*;
 
-pub fn get_settings() -> Settings {
-	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
-	let profile = Profile::from_str(&profile_str).unwrap_or(Profile::Development);
-
-	let base_dir = env::current_dir().expect("Failed to get current directory");
-	let settings_dir = base_dir.join("settings");
-
-	let merged = SettingsBuilder::new()
-		.profile(profile)
-		.add_source(
-			DefaultSource::new()
-				.with_value("debug", serde_json::Value::Bool(false))
-				.with_value("language_code", serde_json::Value::String("en-us".to_string()))
-				.with_value("time_zone", serde_json::Value::String("UTC".to_string()))
-		)
-		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
-		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
-		.add_source(TomlFileSource::new(settings_dir.join(format!("{}.toml", profile_str))))
-		.build()
-		.expect("Failed to build settings");
-
-	merged.into_typed().expect("Failed to convert settings to Settings struct")
+#[settings]
+pub struct ProjectSettings {
+	pub debug: bool,
+	pub secret_key: String,
+	pub language_code: String,
+	pub time_zone: String,
+	pub database: DatabaseSettings,
 }
 ```
 
-**Environment Variable Sources:**
+The `#[settings]` macro automatically:
+- Detects the active profile from `REINHARDT_ENV` (default: `local`)
+- Loads `settings/base.toml`, then `settings/{profile}.toml`
+- Applies environment variable overrides with the `REINHARDT_` prefix (TOML files take precedence by default)
 
-Reinhardt provides two types of environment variable sources with different priorities:
+To override this priority — for example in production where environment variables should win:
 
-- **`EnvSource`** (priority: 100) - High priority environment variables that override TOML files
-  ```rust
-  .add_source(EnvSource::new().with_prefix("REINHARDT_"))
-  ```
-
-- **`LowPriorityEnvSource`** (priority: 40) - Low priority environment variables that fall back to TOML files
-  ```rust
-  .add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
-  ```
+```rust
+#[settings(env_priority = "high")]
+pub struct ProjectSettings { ... }
+```
 
 **Priority Order**:
-- Using `EnvSource`: Environment Variables > `{profile}.toml` > `base.toml` > Defaults
-- Using `LowPriorityEnvSource` (shown above): `{profile}.toml` > `base.toml` > Environment Variables > Defaults
-
-Choose `EnvSource` when environment variables should always take precedence (e.g., production deployments).
-Choose `LowPriorityEnvSource` when TOML files should be the primary configuration source (e.g., development).
+- Default (`env_priority = "low"`): `{profile}.toml` > `base.toml` > Environment Variables > Defaults
+- High priority (`env_priority = "high"`): Environment Variables > `{profile}.toml` > `base.toml` > Defaults
 
 See [Settings Documentation](https://reinhardt-web.dev/docs/settings/) for more details.
 
@@ -448,9 +422,9 @@ Reinhardt provides a ready-to-use `DefaultUser` implementation (requires `argon2
 ```rust
 // users/models.rs
 use reinhardt::prelude::*;
-use reinhardt::DefaultUser;
 
-// Re-export DefaultUser as User for your app
+// Alias DefaultUser as your app's User type
+#[user]
 pub type User = DefaultUser;
 
 // DefaultUser includes:
@@ -475,14 +449,13 @@ pub type User = DefaultUser;
 
 **Defining Custom User Models:**
 
-If you need custom fields, define your own model:
+If you need custom fields, define your own model using `#[user]` + `#[model]`:
 
 ```rust
 // users/models.rs
 use reinhardt::prelude::*;
-use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
 
+#[user]
 #[model(app_label = "users", table_name = "users")]
 pub struct CustomUser {
 	#[field(primary_key = true)]
@@ -505,6 +478,8 @@ pub struct CustomUser {
 	pub phone_number: Option<String>,
 }
 ```
+
+The `#[user]` macro automatically implements `BaseUser`, `FullUser`, and `PermissionsMixin`.
 
 **Model Attribute Macro:**
 
@@ -696,15 +671,13 @@ pub type User = DefaultUser;
 
 **For Custom User Models:**
 
-If you need additional fields beyond DefaultUser, define your own:
+If you need additional fields beyond DefaultUser, define your own using `#[user]` + `#[model]`:
 
 ```rust
 // users/models.rs
-use reinhardt::auth::{BaseUser, FullUser, PermissionsMixin, Argon2Hasher};
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use reinhardt::prelude::*;
 
+#[user]
 #[model(app_label = "users", table_name = "users")]
 pub struct CustomUser {
 	#[field(primary_key = true)]
@@ -742,70 +715,36 @@ pub struct CustomUser {
 	#[field(max_length = 20, null = true)]
 	pub phone_number: Option<String>,
 }
-
-impl BaseUser for CustomUser {
-	type PrimaryKey = Uuid;
-	type Hasher = Argon2Hasher;
-
-	fn get_username_field() -> &'static str { "username" }
-	fn get_username(&self) -> &str { &self.username }
-	fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
-	fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
-	fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-	fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
-	fn is_active(&self) -> bool { self.is_active }
-}
-
-impl FullUser for CustomUser {
-	fn username(&self) -> &str { &self.username }
-	fn email(&self) -> &str { &self.email }
-	fn first_name(&self) -> &str { &self.first_name }
-	fn last_name(&self) -> &str { &self.last_name }
-	fn is_staff(&self) -> bool { self.is_staff }
-	fn is_superuser(&self) -> bool { self.is_superuser }
-	fn date_joined(&self) -> DateTime<Utc> { self.date_joined }
-}
 ```
+
+The `#[user]` macro automatically implements `BaseUser`, `FullUser`, and `PermissionsMixin` based on the standard field names. Override individual methods by implementing the traits manually when non-standard behavior is needed.
 
 Use JWT authentication in your app's `views/profile.rs`:
 
 ```rust
 // users/views/profile.rs
-use reinhardt::auth::{JwtAuth, BaseUser};
-use reinhardt::{Request, Response, StatusCode, ViewResult, get};
+use reinhardt::auth::JwtAuth;
+use reinhardt::{Response, StatusCode, ViewResult, get};
 use reinhardt::db::DatabaseConnection;
 use std::sync::Arc;
 use crate::models::User;
 
 #[get("/profile", name = "get_profile")]
 pub async fn get_profile(
-	req: Request,
+	JwtAuth(claims): JwtAuth,
 	#[inject] db: Arc<DatabaseConnection>,
 ) -> ViewResult<Response> {
-	// Extract JWT token from Authorization header
-	let auth_header = req.headers.get("authorization")
-		.and_then(|h| h.to_str().ok())
-		.ok_or("Missing Authorization header")?;
+	// JwtAuth extractor validates the Bearer token and extracts claims
+	let user = User::objects()
+		.get(User::field_id().eq(claims.user_id))
+		.await?;
 
-	let token = auth_header.strip_prefix("Bearer ")
-		.ok_or("Invalid Authorization header format")?;
-
-	// Verify token and get user ID
-	let jwt_auth = JwtAuth::new(b"your-secret-key");
-	let claims = jwt_auth.verify_token(token)?;
-
-	// Load user from database using claims.user_id
-	let user = User::find_by_id(&db, &claims.user_id).await?;
-
-	// Check if user is active
 	if !user.is_active() {
 		return Err("User account is inactive".into());
 	}
 
-	// Return user profile as JSON
 	let json = serde_json::to_string(&user)?;
-	Ok(Response::new(StatusCode::OK)
-		.with_body(json))
+	Ok(Response::new(StatusCode::OK).with_body(json))
 }
 ```
 
@@ -818,16 +757,16 @@ Reinhardt uses HTTP method decorators to define endpoints:
 Use `#[get]`, `#[post]`, `#[put]`, `#[delete]` to define routes:
 
 ```rust
-use reinhardt::{get, post, Request, Response, ViewResult};
+use reinhardt::{get, post, Response, ViewResult};
 use serde_json::json;
 
 #[get("/")]
-pub async fn hello(_req: Request) -> ViewResult<Response> {
+pub async fn hello() -> ViewResult<Response> {
 	Ok(Response::ok().with_body("Hello, World!"))
 }
 
 #[post("/users")]
-pub async fn create_user(_req: Request) -> ViewResult<Response> {
+pub async fn create_user() -> ViewResult<Response> {
 	let body = json!({"status": "created"});
 	Response::ok().with_json(&body).map_err(Into::into)
 }
@@ -844,28 +783,24 @@ pub async fn create_user(_req: Request) -> ViewResult<Response> {
 Combine HTTP method decorators with `#[inject]` for automatic dependency injection:
 
 ```rust
-use reinhardt::{get, Request, Response, StatusCode, ViewResult};
+use reinhardt::{get, Response, StatusCode, ViewResult};
+use reinhardt::extractors::Path;
 use reinhardt::db::DatabaseConnection;
 use std::sync::Arc;
+use crate::models::User;
 
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
-	req: Request,
-	#[inject] db: Arc<DatabaseConnection>,  // Automatically injected
+	Path(id): Path<i64>,
+	#[inject] db: Arc<DatabaseConnection>,
 ) -> ViewResult<Response> {
-	let id = req.path_params.get("id")
-		.ok_or("Missing id")?
-		.parse::<i64>()?;
-
-	// Use injected database connection
-	let user = db.query("SELECT * FROM users WHERE id = $1")
-		.bind(id)
-		.fetch_one()
+	// Path extractor parses and validates the {id} segment automatically
+	let user = User::objects()
+		.get(User::field_id().eq(id))
 		.await?;
 
 	let json = serde_json::to_string(&user)?;
-	Ok(Response::new(StatusCode::OK)
-		.with_body(json))
+	Ok(Response::new(StatusCode::OK).with_body(json))
 }
 ```
 
@@ -889,39 +824,34 @@ In your app's `views/user.rs`:
 
 ```rust
 // users/views/user.rs
-use reinhardt::{Request, Response, StatusCode, ViewResult, get};
+use reinhardt::{Response, StatusCode, ViewResult, get};
+use reinhardt::extractors::{Path, Query};
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
 use std::sync::Arc;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct GetUserParams {
+	pub include_inactive: Option<bool>,
+}
 
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
-	req: Request,
+	Path(id): Path<i64>,
+	Query(params): Query<GetUserParams>,
 	#[inject] db: Arc<DatabaseConnection>,
 ) -> ViewResult<Response> {
-	// Extract path parameter from request
-	let id = req.path_params.get("id")
-		.ok_or("Missing id parameter")?
-		.parse::<i64>()
-		.map_err(|_| "Invalid id format")?;
+	let user = User::objects()
+		.get(User::field_id().eq(id))
+		.await?;
 
-	// Extract query parameters (e.g., ?include_inactive=true)
-	let include_inactive = req.query_params.get("include_inactive")
-		.and_then(|v| v.parse::<bool>().ok())
-		.unwrap_or(false);
-
-	// Fetch user from database using injected connection
-	let user = User::find_by_id(&db, id).await?;
-
-	// Check active status if needed
-	if !include_inactive && !user.is_active {
+	if !params.include_inactive.unwrap_or(false) && !user.is_active {
 		return Err("User is inactive".into());
 	}
 
-	// Return as JSON
 	let json = serde_json::to_string(&user)?;
-	Ok(Response::new(StatusCode::OK)
-		.with_body(json))
+	Ok(Response::new(StatusCode::OK).with_body(json))
 }
 ```
 
@@ -982,47 +912,34 @@ In your app's `views/user.rs`:
 
 ```rust
 // users/views/user.rs
-use reinhardt::{Request, Response, StatusCode, ViewResult, post};
+use reinhardt::{Response, StatusCode, ViewResult, post};
+use reinhardt::extractors::Json;
+use reinhardt::validation::Validated;
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
 use crate::serializers::{CreateUserRequest, UserResponse};
-use reinhardt::Validate;
 use std::sync::Arc;
 
 #[post("/users", name = "create_user")]
 pub async fn create_user(
-	mut req: Request,
+	Json(Validated(create_req)): Json<Validated<CreateUserRequest>>,
 	#[inject] db: Arc<DatabaseConnection>,
 ) -> ViewResult<Response> {
-	// Parse request body
-	let body_bytes = std::mem::take(&mut req.body);
-	let create_req: CreateUserRequest = serde_json::from_slice(&body_bytes)?;
+	// Validated<T> extractor automatically validates before the handler runs
 
-	// Validate request
-	create_req.validate()?;
+	// Create user using the auto-generated new() function from #[user] + #[model]
+	let mut user = User::new(create_req.username, create_req.email);
 
-	// Create user
-	let mut user = User {
-		id: 0, // Will be set by database
-		username: create_req.username,
-		email: create_req.email,
-		password_hash: None,
-		is_active: true,
-		created_at: Utc::now(),
-	};
-
-	// Hash password using BaseUser trait
+	// Hash and set password using BaseUser trait
 	user.set_password(&create_req.password)?;
 
-	// Save to database using injected connection
+	// Save to database
 	user.save(&db).await?;
 
-	// Convert to response
 	let response_data = UserResponse::from(user);
 	let json = serde_json::to_string(&response_data)?;
 
-	Ok(Response::new(StatusCode::CREATED)
-		.with_body(json))
+	Ok(Response::new(StatusCode::CREATED).with_body(json))
 }
 ```
 
