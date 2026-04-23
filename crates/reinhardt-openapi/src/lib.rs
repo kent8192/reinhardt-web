@@ -12,33 +12,32 @@
 //!
 //! ## Example
 //!
-//! Define your application routes in a `routes()` function, then wrap
-//! the router with `OpenApiRouter` during server setup:
+//! Define your application routes in a `routes()` function returning a
+//! `UnifiedRouter`, then wrap the router with `OpenApiRouter` at the server
+//! setup level — outside of `routes()` itself.
 //!
 //! ```rust,ignore
 //! use reinhardt_openapi::OpenApiRouter;
-//! use reinhardt_urls::routers::BasicRouter;
+//! use reinhardt_urls::routers::UnifiedRouter;
 //!
 //! // Define routes using the project-standard routes() function.
 //! // The #[cfg_attr(native, routes(standalone))] attribute registers
 //! // this function as the application entry point in native builds.
 //! #[cfg_attr(native, routes(standalone))]
-//! pub fn routes() -> BasicRouter {
-//!     BasicRouter::new()
+//! pub fn routes() -> UnifiedRouter {
+//!     UnifiedRouter::new()
 //!     // ... mount app routes here ...
 //! }
 //!
-//! // In server setup, wrap the routes() output with OpenApiRouter:
+//! // In server setup or tests, wrap the routes() output with OpenApiRouter.
+//! // Note: in production, the `runserver` command applies this automatically.
 //! fn start_server() -> Result<(), Box<dyn std::error::Error>> {
-//!     let router = routes();
+//!     let handler = OpenApiRouter::wrap(routes())?;
 //!
-//!     // Wrap with OpenAPI endpoints
-//!     let api_router = OpenApiRouter::wrap(router)?;
-//!
-//!     // api_router now serves:
-//!     // - /api/openapi.json (OpenAPI spec)
-//!     // - /api/docs (Swagger UI)
-//!     // - /api/redoc (Redoc UI)
+//!     // handler now serves:
+//!     // - /openapi.json (OpenAPI spec)
+//!     // - /docs (Swagger UI)
+//!     // - /redoc (Redoc UI)
 //!     Ok(())
 //! }
 //! ```

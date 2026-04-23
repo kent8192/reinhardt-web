@@ -8,19 +8,20 @@
 //!
 //! ```rust,ignore
 //! use reinhardt_openapi::OpenApiRouter;
-//! use reinhardt_urls::routers::BasicRouter;
+//! use reinhardt_urls::routers::UnifiedRouter;
 //!
+//! // In server setup or tests, apply OpenApiRouter after building your router.
+//! // Note: in production, the `runserver` command applies this automatically.
 //! fn main() {
-//!     // Create your existing router
-//!     let router = BasicRouter::new();
+//!     let router = UnifiedRouter::new();
 //!
 //!     // Wrap with OpenAPI endpoints
 //!     let wrapped = OpenApiRouter::wrap(router)?;
 //!
 //!     // The wrapped router now serves:
-//!     // - /api/openapi.json (OpenAPI spec)
-//!     // - /api/docs (Swagger UI)
-//!     // - /api/redoc (Redoc UI)
+//!     // - /openapi.json (OpenAPI spec)
+//!     // - /docs (Swagger UI)
+//!     // - /redoc (Redoc UI)
 //! }
 //! ```
 
