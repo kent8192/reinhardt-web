@@ -24,7 +24,7 @@ Then import REST features:
 ```rust
 use reinhardt::rest::{ApiResponse, ResponseBuilder, IntoApiResponse};
 use reinhardt::rest::{JwtAuth, IsAuthenticated, AllowAny, User, SimpleUser};
-use reinhardt::urls::routers::{UnifiedRouter, Router, Route};
+use reinhardt::urls::routers::UnifiedRouter;
 use reinhardt::rest::{PaginatedResponse};
 ```
 
