@@ -143,8 +143,8 @@ pub trait ComposedSettings: Sized + DeserializeOwned {
     /// The merged data is an IndexMap<String, serde_json::Value> from MergedSettings.
     fn validate_requirements(merged: &IndexMap<String, serde_json::Value>) -> Result<(), BuildError>;
 
-    /// Run all fragment validate() methods.
-    fn validate(&self, profile: &Profile) -> ValidationResult;
+    /// Run all fragment validate_fragments() methods.
+    fn validate_fragments(&self, profile: &Profile) -> ValidationResult;
 }
 ```
 
