@@ -777,7 +777,7 @@ Combine HTTP method decorators with `#[inject]` for automatic dependency injecti
 use reinhardt::{get, Response, StatusCode, ViewResult};
 use reinhardt::extractors::Path;
 use reinhardt::di::Depends;
-use reinhardt::db::DatabaseConnection;
+use reinhardt::db::{DatabaseConnection, Filter, FilterOperator, FilterValue};
 use crate::models::User;
 
 #[get("/users/{id}/", name = "get_user")]
@@ -787,7 +787,8 @@ pub async fn get_user(
 ) -> ViewResult<Response> {
 	// Path extractor parses and validates the {id} segment automatically
 	let user = User::objects()
-		.get(User::field_id().eq(id))
+		.filter(Filter::new("id", FilterOperator::Eq, FilterValue::from(id)))
+		.get()
 		.await?;
 
 	let json = serde_json::to_string(&user)?;
@@ -818,7 +819,7 @@ In your app's `views/user.rs`:
 use reinhardt::{Response, StatusCode, ViewResult, get};
 use reinhardt::extractors::{Path, Query};
 use reinhardt::di::Depends;
-use reinhardt::db::DatabaseConnection;
+use reinhardt::db::{DatabaseConnection, Filter, FilterOperator, FilterValue};
 use crate::models::User;
 use serde::Deserialize;
 
@@ -834,7 +835,8 @@ pub async fn get_user(
 	#[inject] db: Depends<DatabaseConnection>,
 ) -> ViewResult<Response> {
 	let user = User::objects()
-		.get(User::field_id().eq(id))
+		.filter(Filter::new("id", FilterOperator::Eq, FilterValue::from(id)))
+		.get()
 		.await?;
 
 	if !params.include_inactive.unwrap_or(false) && !user.is_active {
