@@ -12,11 +12,11 @@ Add `reinhardt` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.19", features = ["dispatch"] }
+reinhardt = { version = "0.1.0-rc.13", features = ["dispatch"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.13", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.13", features = ["full"] }      # All features
 ```
 
 Then import dispatch features:
@@ -62,44 +62,22 @@ async fn handle_request(request: Request) -> Result<Response, DispatchError> {
 
 ```rust
 use reinhardt::dispatch::{BaseHandler, MiddlewareChain};
-use reinhardt_http::{Handler, Middleware, Request, Response};
-use reinhardt_core::exception::Result;
+use reinhardt_http::{Handler, Middleware};
 use std::sync::Arc;
 
-// Example middleware implementations
-struct LoggingMiddleware;
-struct AuthMiddleware;
-
-#[async_trait::async_trait]
-impl Middleware for LoggingMiddleware {
-    async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
-        // Log the incoming request, then delegate to the next handler
-        next.handle(request).await
-    }
-}
-
-#[async_trait::async_trait]
-impl Middleware for AuthMiddleware {
-    async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
-        // Authenticate the request, then delegate to the next handler
-        next.handle(request).await
-    }
-}
-
-async fn setup_handler() -> Result<Arc<dyn Handler>, Box<dyn std::error::Error>> {
+async fn setup_handler() -> Arc<dyn Handler> {
     let handler = Arc::new(BaseHandler::new());
 
-    let chain = MiddlewareChain::new(handler)
-        .add_middleware(Arc::new(LoggingMiddleware))?
-        .add_middleware(Arc::new(AuthMiddleware))?
-        .build();
-    Ok(chain)
+    MiddlewareChain::new(handler)
+        .add_middleware(Arc::new(LoggingMiddleware))
+        .add_middleware(Arc::new(AuthMiddleware))
+        .build()
 }
 ```
 
 ### Exception Handling
 
-The exception handler automatically converts errors into HTTP responses:
+The `DefaultExceptionHandler` automatically converts errors into HTTP responses:
 
 - `DispatchError::View` → 500 Internal Server Error
 - `DispatchError::UrlResolution` → 404 Not Found
@@ -124,8 +102,8 @@ Composes multiple middleware components into a processing pipeline:
 
 ```rust
 let chain = MiddlewareChain::new(handler)
-    .add_middleware(middleware1)?
-    .add_middleware(middleware2)?
+    .add_middleware(middleware1)
+    .add_middleware(middleware2)
     .build();
 ```
 
@@ -147,6 +125,7 @@ let response = dispatcher.dispatch(request).await?;
 The exception module provides:
 
 - `ExceptionHandler` trait for custom exception handling
+- `DefaultExceptionHandler` for standard error responses
 - `convert_exception_to_response` helper function
 - `IntoResponse` trait for converting types to HTTP responses
 

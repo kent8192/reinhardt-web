@@ -58,17 +58,20 @@ use reinhardt::admin::types::{ListQueryParams, AdminError};
 
 ## Quick Start
 
-### Configuring Admin Models
-
-Define admin configuration for your models using `impl ModelAdmin for ...`:
+### Using the Admin Panel
 
 ```rust
 use reinhardt::admin::{AdminSite, ModelAdmin};
 
-fn configure_admin() -> AdminSite {
-	let mut site = AdminSite::new("My Admin");
-	site.register::<User>(UserAdmin::default());
-	site
+#[tokio::main]
+async fn main() {
+    let mut admin = AdminSite::new("My Admin");
+
+    // Register your models
+    admin.register::<User>(UserAdmin::default()).await;
+
+    // Start admin server
+    admin.serve("127.0.0.1:8001").await.unwrap();
 }
 ```
 
@@ -78,63 +81,21 @@ fn configure_admin() -> AdminSite {
 use reinhardt::admin::ModelAdmin;
 
 struct UserAdmin {
-	list_display: Vec<String>,
-	list_filter: Vec<String>,
-	search_fields: Vec<String>,
+    list_display: Vec<String>,
+    list_filter: Vec<String>,
+    search_fields: Vec<String>,
 }
 
 impl Default for UserAdmin {
-	fn default() -> Self {
-		Self {
-			list_display: vec!["username".to_string(), "email".to_string(), "is_active".to_string()],
-			list_filter: vec!["is_active".to_string()],
-			search_fields: vec!["username".to_string(), "email".to_string()],
-		}
-	}
-}
-
-impl ModelAdmin for UserAdmin {
-	// Customize admin behavior by overriding trait methods
+    fn default() -> Self {
+        Self {
+            list_display: vec!["username".to_string(), "email".to_string(), "is_active".to_string()],
+            list_filter: vec!["is_active".to_string()],
+            search_fields: vec!["username".to_string(), "email".to_string()],
+        }
+    }
 }
 ```
-
-### Mounting Admin Routes
-
-Admin routes are registered inside the `routes()` function decorated with
-`#[routes(standalone)]`. Use `admin_routes_with_di()` to mount the admin
-panel with deferred DI registration:
-
-```rust
-use reinhardt::UnifiedRouter;
-use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
-use reinhardt::routes;
-use std::sync::Arc;
-
-#[cfg_attr(native, routes(standalone))]
-pub fn routes() -> UnifiedRouter {
-	// Configure admin site (registration only, no DB needed yet)
-	#[cfg(native)]
-	let admin_site = Arc::new(configure_admin());
-
-	let router = UnifiedRouter::new()
-		// Mount your app routes here
-		;
-
-	// Mount admin panel routes and static assets (server-only)
-	#[cfg(native)]
-	let router = {
-		let (admin_router, admin_di) = admin_routes_with_di(admin_site);
-		router
-			.mount("/admin/", admin_router)
-			.mount("/static/admin/", admin_static_routes())
-			.with_di_registrations(admin_di)
-	};
-	router
-}
-```
-
-The `AdminDatabase` is lazily constructed from `DatabaseConnection` at the
-first request, so no database connection is needed during route setup.
 
 ## Panel Architecture
 

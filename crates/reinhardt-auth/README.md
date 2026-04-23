@@ -72,22 +72,6 @@ let result = auth.authenticate(&request).unwrap();
 
 ### User Management
 
-#### `#[user]` Macro (Recommended)
-
-The `#[user]` attribute macro is the recommended way to define custom user models.
-It automatically implements `BaseUser`, `SuperuserInit`, and `AuthIdentity`:
-
-```rust
-use reinhardt::auth::prelude::*;
-
-#[user]
-#[model(table_name = "users")]
-pub struct AppUser {
-	pub email: String,
-	pub is_active: bool,
-}
-```
-
 #### User Trait
 
 - **Core User Interface**: Unified trait for authenticated and anonymous users
@@ -494,21 +478,11 @@ oauth2.register_application(
 ).await?;
 
 // Authorization code flow
-let code = oauth2.generate_authorization_code(
-	"client123",
-	"https://example.com/callback",
-	"user123",
-	Some("read write".to_string()),
-).await?;
-let token = oauth2.exchange_code(
-	&code,
-	"client123",
-	"secret456",
-	"https://example.com/callback",
-).await?;
+let code = oauth2.generate_authorization_code("client123", "user123", vec!["read", "write"]).await?;
+let token = oauth2.exchange_code(&code, "client123").await?;
 
-// Use the access token value
-println!("Access token: {}", token.token);
+// Use access token
+let claims = oauth2.verify_token(&token.access_token).await?;
 ```
 
 ### Token Blacklist & Rotation
