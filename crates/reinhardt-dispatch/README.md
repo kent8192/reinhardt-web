@@ -62,8 +62,29 @@ async fn handle_request(request: Request) -> Result<Response, DispatchError> {
 
 ```rust
 use reinhardt::dispatch::{BaseHandler, MiddlewareChain};
-use reinhardt_http::{Handler, Middleware};
+use reinhardt_http::{Handler, Middleware, Request, Response};
+use reinhardt_core::exception::Result;
 use std::sync::Arc;
+
+// Example middleware implementations
+struct LoggingMiddleware;
+struct AuthMiddleware;
+
+#[async_trait::async_trait]
+impl Middleware for LoggingMiddleware {
+    async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+        // Log the incoming request, then delegate to the next handler
+        next.handle(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl Middleware for AuthMiddleware {
+    async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+        // Authenticate the request, then delegate to the next handler
+        next.handle(request).await
+    }
+}
 
 async fn setup_handler() -> Result<Arc<dyn Handler>, Box<dyn std::error::Error>> {
     let handler = Arc::new(BaseHandler::new());
