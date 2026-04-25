@@ -1,7 +1,7 @@
 //! Client-side (WASM) modules for {{ project_name }}.
 //!
-//! - `lib`        — `#[wasm_bindgen(start)]` entry point
-//! - `router`     — client-side router definition
+//! - `lib`        — `#[wasm_bindgen(start)]` entry point (delegates to `ClientLauncher`)
+//! - `router`     — client-side router definition (`init_router` + re-exported `with_router`)
 //! - `pages`      — top-level page components
 //! - `components` — reusable UI components grouped per app
 

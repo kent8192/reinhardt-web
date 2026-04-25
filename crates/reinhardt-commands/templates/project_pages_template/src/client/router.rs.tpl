@@ -1,42 +1,15 @@
 //! Client-side router for {{ project_name }}.
 //!
-//! The router is built once at startup by [`init_global_router`]. Use
-//! [`with_router`] from any component to inspect routing state.
+//! [`init_router`] is invoked once by `super::lib::main` through
+//! `ClientLauncher::router`. From any component, call [`with_router`]
+//! (re-exported from `reinhardt::pages`) to inspect or push routing state.
 
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 use reinhardt::pages::router::Router;
-use std::cell::RefCell;
 
-// Global Router instance
-thread_local! {
-	static ROUTER: RefCell<Option<Router>> = const { RefCell::new(None) };
-}
-
-/// Initialize the global router instance.
-///
-/// Must be called once at application startup before any routing operations.
-pub fn init_global_router() {
-	ROUTER.with(|r| {
-		*r.borrow_mut() = Some(init_router());
-	});
-}
-
-/// Provides access to the global router instance.
-///
-/// # Panics
-///
-/// Panics if the router has not been initialized via [`init_global_router`].
-pub fn with_router<F, R>(f: F) -> R
-where
-	F: FnOnce(&Router) -> R,
-{
-	ROUTER.with(|r| {
-		f(r.borrow()
-			.as_ref()
-			.expect("Router not initialized. Call init_global_router() first."))
-	})
-}
+// Re-export so callers can `use crate::client::router::with_router`.
+pub use reinhardt::pages::with_router;
 
 /// Build the application router.
 ///
@@ -45,7 +18,7 @@ where
 /// ```rust,ignore
 /// .route("/", || crate::client::pages::index_page())
 /// ```
-fn init_router() -> Router {
+pub fn init_router() -> Router {
 	Router::new()
 		// Add routes here
 		.not_found(|| not_found_page("Page not found"))
