@@ -104,8 +104,11 @@ pub fn polls_detail(question_id: i64) -> Page {
 		);
 
 	// Create the voting form using form! macro
-	// - server_fn: submit_vote accepts (question_id: String, choice_id: String)
-	// - method: Post enables automatic CSRF token injection
+	// - server_fn: submit_vote accepts (question_id, choice_id, csrf_token)
+	// - method: Post enables CSRF hidden input rendering for non-WASM submits
+	// - strip_arguments: explicitly routes the CSRF token to the trailing
+	//   server_fn argument (reinhardt-web#3971), replacing the implicit
+	//   auto-injection that broke when server_fn signatures evolved.
 	// - state: loading/error signals for form submission feedback
 	// - watch blocks for reactive UI updates
 	let voting_form = form! {
@@ -127,6 +130,11 @@ pub fn polls_detail(question_id: i64) -> Page {
 				choice_value: "id",
 				choice_label: "choice_text",
 			},
+		},
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
 		},
 
 		watch: {
