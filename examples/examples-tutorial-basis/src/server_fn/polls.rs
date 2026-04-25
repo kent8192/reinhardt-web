@@ -148,10 +148,17 @@ pub async fn get_vote_form_metadata() -> std::result::Result<FormMetadata, Serve
 ///
 /// Wrapper function that accepts individual field values from form! macro's submit.
 /// Converts String field values to the required types and calls the underlying vote function.
+///
+/// The trailing `_csrf_token: String` argument is supplied by `form!`'s
+/// `strip_arguments` block (reinhardt-web#3971). Actual CSRF verification is
+/// performed by the server-side CSRF middleware before this handler runs;
+/// receiving the value here keeps the WASM client stub's positional argument
+/// list aligned with the server signature.
 #[server_fn]
 pub async fn submit_vote(
 	question_id: String,
 	choice_id: String,
+	_csrf_token: String,
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	let question_id: i64 = question_id
