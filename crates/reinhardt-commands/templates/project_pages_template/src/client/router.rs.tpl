@@ -1,19 +1,44 @@
-//! Client-side routing for {{ project_name }}
+//! Client-side router for {{ project_name }}.
 //!
-//! Add routes inside `init_router()` using `.route(path, handler)`.
-//! Use `with_router(|r| r.push("/path/"))` to navigate from components.
+//! [`init_router`] is invoked once by `super::lib::main` through
+//! `ClientLauncher::router`. From any component, call [`with_router`]
+//! (re-exported from `reinhardt::pages`) to inspect or push routing state.
 
+use reinhardt::pages::component::Page;
+use reinhardt::pages::page;
 use reinhardt::pages::router::Router;
 
-/// Re-export for ergonomic access within this module and sub-modules.
+// Re-export so callers can `use crate::client::router::with_router`.
 pub use reinhardt::pages::with_router;
 
 /// Build the application router.
 ///
-/// Called once by [`super::bootstrap`] via `ClientLauncher::router(init_router)`.
+/// Add new routes here, e.g.:
+///
+/// ```rust,ignore
+/// .route("/", || crate::client::pages::index_page())
+/// ```
 pub fn init_router() -> Router {
 	Router::new()
-		// Add routes here, e.g.:
-		// .route("/", || home_page())
-		// .route("/about/", || about_page())
+		// Add routes here
+		.not_found(|| not_found_page("Page not found"))
+}
+
+/// Default 404 / error page used by `init_router`.
+fn not_found_page(message: &str) -> Page {
+	let message = message.to_string();
+	page!(|message: String| {
+		div {
+			class: "container mt-5",
+			div {
+				class: "alert alert-danger",
+				{ message }
+			}
+			a {
+				href: "/",
+				class: "btn btn-primary",
+				"Back to Home"
+			}
+		}
+	})(message)
 }
