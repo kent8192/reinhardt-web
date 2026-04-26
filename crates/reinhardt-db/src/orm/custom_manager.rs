@@ -33,10 +33,14 @@
 //! Returning `Err(_)` from any hook vetoes the operation, mirroring the event
 //! veto behavior already present on `Model::save`/`Model::delete`.
 //!
-//! # Example
+//! # Quick Start
+//!
+//! Define a custom manager with `Default`, implement [`CustomManager`], and
+//! either implement [`HasCustomManager`] manually or use the
+//! `#[model(manager = ...)]` attribute:
 //!
 //! ```ignore
-//! use reinhardt_db::orm::{CustomManager, Manager, Model};
+//! use reinhardt_db::orm::{CustomManager, HasCustomManager};
 //! use reinhardt_core::exception::Result;
 //!
 //! #[derive(Default)]
@@ -57,8 +61,57 @@
 //!     }
 //! }
 //!
+//! // Option A: macro-generated wiring.
 //! #[reinhardt_macros::model(table_name = "users", manager = ActiveUserManager)]
 //! struct User { /* ... */ }
+//!
+//! // Option B: equivalent manual impl (the macro generates this).
+//! // impl HasCustomManager for User {
+//! //     type Manager = ActiveUserManager;
+//! // }
+//!
+//! let manager = User::custom_manager();
+//! ```
+//!
+//! # Backward Compatibility
+//!
+//! The blanket `impl<M: Model> CustomManager for Manager<M>` makes every
+//! existing manager — the value returned by `Model::objects()` — satisfy
+//! [`CustomManager`] automatically. Generic code can therefore accept either
+//! the canonical [`Manager<M>`] or any user-defined manager:
+//!
+//! ```
+//! use reinhardt_db::orm::custom_manager::CustomManager;
+//! use reinhardt_db::orm::manager::Manager;
+//! use reinhardt_db::orm::model::{FieldSelector, Model};
+//! use serde::{Deserialize, Serialize};
+//!
+//! #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+//! struct Article { id: Option<i64>, title: String }
+//!
+//! #[derive(Clone)]
+//! struct ArticleFields;
+//! impl FieldSelector for ArticleFields {
+//!     fn with_alias(self, _alias: &str) -> Self { self }
+//! }
+//!
+//! impl Model for Article {
+//!     type PrimaryKey = i64;
+//!     type Fields = ArticleFields;
+//!     fn table_name() -> &'static str { "articles" }
+//!     fn new_fields() -> Self::Fields { ArticleFields }
+//!     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+//!     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+//! }
+//!
+//! // Generic helper accepting any CustomManager bound to Article.
+//! fn count_filters<M: CustomManager<Model = Article>>(m: &M) -> usize {
+//!     m.all().filters().len()
+//! }
+//!
+//! // Existing Manager<Article> satisfies the trait via blanket impl.
+//! let m = Manager::<Article>::new();
+//! assert_eq!(count_filters(&m), 0);
 //! ```
 
 use std::collections::HashMap;
