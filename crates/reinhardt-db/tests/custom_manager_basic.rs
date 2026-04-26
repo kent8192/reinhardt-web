@@ -154,7 +154,7 @@ fn blanket_impl_lets_existing_manager_satisfy_custom_manager() {
 #[rstest]
 fn user_defined_manager_can_be_passed_through_generic_api() {
 	// Arrange
-	let manager = ActiveArticleManager::default();
+	let manager = ActiveArticleManager;
 
 	// Act
 	let filter_count = count_via(&manager);
@@ -257,7 +257,7 @@ fn before_save_default_is_a_noop() {
 #[rstest]
 fn custom_before_save_can_veto_with_error() {
 	// Arrange
-	let manager = GuardedArticleManager::default();
+	let manager = GuardedArticleManager;
 	let mut article = Article {
 		id: None,
 		title: "   ".into(),
@@ -274,7 +274,7 @@ fn custom_before_save_can_veto_with_error() {
 #[rstest]
 fn custom_before_save_passes_for_valid_input() {
 	// Arrange
-	let manager = GuardedArticleManager::default();
+	let manager = GuardedArticleManager;
 	let mut article = Article {
 		id: None,
 		title: "Custom Managers in Reinhardt".into(),
@@ -466,7 +466,7 @@ fn user_defined_manager_inherits_sql_builders_via_default_impl() {
 	// Arrange: ActiveArticleManager only overrides `all()` and inherits
 	// every other method from the trait's default implementation. Verify the
 	// default impl reaches the same Manager<M>-backed SQL builder.
-	let active = ActiveArticleManager::default();
+	let active = ActiveArticleManager;
 	let manager = Manager::<Article>::new();
 	let models = vec![Article {
 		id: None,
