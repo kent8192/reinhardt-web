@@ -525,6 +525,13 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Build the bulk-update SQL using `CASE` expressions.
+	///
+	/// The `(PrimaryKey, HashMap<String, Value>)` slice mirrors the shape used
+	/// by [`Manager::bulk_update_sql_detailed`]; routing it through an
+	/// associated-type projection trips `clippy::type_complexity`, which we
+	/// silence here because the signature is fixed by the underlying inherent
+	/// method we delegate to.
+	#[allow(clippy::type_complexity)]
 	fn bulk_update_sql_detailed(
 		&self,
 		updates: &[(
