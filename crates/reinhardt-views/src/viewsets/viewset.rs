@@ -777,6 +777,41 @@ where
 	}
 }
 
+// Manually re-assert the `UnwindSafe` / `RefUnwindSafe` auto traits for the
+// public viewset structs. The new `Arc<dyn Serializer ...>` / `Arc<dyn
+// Permission>` / `Arc<dyn FilterBackend>` fields introduced by this PR do
+// not propagate these markers because trait objects do not implement them
+// by default, which would otherwise surface as cargo-semver-checks
+// `auto_trait_impl_removed` under the RC phase's no-breaking-change policy.
+// The trait objects are only accessed via `&self` / `Arc::clone`, and the
+// `Send + Sync` supertraits already guarantee thread safety, so manually
+// re-implementing the markers preserves the pre-PR public-API contract.
+impl<M, S> std::panic::UnwindSafe for ModelViewSet<M, S>
+where
+	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
+	S: Send + Sync + 'static,
+{
+}
+impl<M, S> std::panic::RefUnwindSafe for ModelViewSet<M, S>
+where
+	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
+	S: Send + Sync + 'static,
+{
+}
+
+impl<M, S> std::panic::UnwindSafe for ReadOnlyModelViewSet<M, S>
+where
+	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
+	S: Send + Sync + 'static,
+{
+}
+impl<M, S> std::panic::RefUnwindSafe for ReadOnlyModelViewSet<M, S>
+where
+	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
+	S: Send + Sync + 'static,
+{
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
