@@ -44,6 +44,11 @@ const TEST_PASSWORD: &str = "e2e-test-password-2026";
 const TEST_USER_UUID: &str = "00000000-0000-0000-0000-000000000001";
 const JWT_SECRET: &[u8] = b"e2e-test-jwt-secret-at-least-32-bytes!!";
 
+// Non-staff user credentials used by `test_dashboard_non_staff_user_blocked`.
+const NON_STAFF_USERNAME: &str = "test_non_staff";
+const NON_STAFF_PASSWORD: &str = "e2e-test-non-staff-pw-2026";
+const NON_STAFF_UUID: &str = "00000000-0000-0000-0000-000000000002";
+
 // ============================================================================
 // AllPermissionsModelAdmin (same pattern as server_fn_helpers.rs)
 // ============================================================================
@@ -190,23 +195,39 @@ struct E2eContext {
 	/// The browser page (one per test).
 	#[allow(dead_code)]
 	browser: CdpBrowser,
+	/// The configured admin `site_header` (sourced from `AdminSettings::default()`).
+	///
+	/// Tests assert against this value rather than hard-coding "Administration",
+	/// so changes to the default propagate automatically.
+	site_header: String,
+	/// Direct pool handle for tests that need additional DB setup
+	/// (e.g., inserting a non-staff user).
+	#[allow(dead_code)]
+	pool: sqlx::PgPool,
 	// Hold server and db alive for the test lifetime.
 	_server: TestServer,
 	_admin_db: Arc<AdminDatabase>,
 }
 
-/// Fixture that creates a fully isolated E2E environment:
-/// 1. Fresh PostgreSQL database with test data (testcontainers)
-/// 2. HTTP server on a random port bound to 0.0.0.0
-/// 3. Headless Chrome in a Docker container (testcontainers)
-#[fixture]
-async fn e2e(
-	#[future] shared_db_pool: (sqlx::PgPool, String),
-	#[future] cdp_browser: CdpBrowser,
-) -> E2eContext {
-	let (pool, _) = shared_db_pool.await;
-	let browser = cdp_browser.await;
-
+/// Build a fully isolated E2E context with caller-controlled model registration.
+///
+/// Common setup performed here:
+/// 1. Creates `test_models` and `test_models_b` tables (idempotent) and seeds
+///    `test_models` with three records.
+/// 2. Drops and recreates `auth_user`, inserting one staff user.
+/// 3. Constructs `AdminSite`, invokes `register_models` to register zero or more
+///    `ModelAdmin` instances, builds the router, and starts the test HTTP server.
+///
+/// The closure pattern lets tests vary which models are registered while sharing
+/// the rest of the setup, avoiding ~80 lines of duplication per fixture.
+async fn build_e2e_context<F>(
+	pool: sqlx::PgPool,
+	browser: CdpBrowser,
+	register_models: F,
+) -> E2eContext
+where
+	F: FnOnce(&Arc<AdminSite>),
+{
 	// ---- Database setup ----
 
 	pool.execute(
@@ -233,6 +254,21 @@ async fn e2e(
 	)
 	.await
 	.expect("Failed to insert test data");
+
+	// Second table for `e2e_multi_models`. Created unconditionally because
+	// CREATE TABLE IF NOT EXISTS is harmless for fixtures that ignore it.
+	pool.execute(
+		"CREATE TABLE IF NOT EXISTS test_models_b (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL
+		)",
+	)
+	.await
+	.expect("Failed to create test_models_b table");
+
+	pool.execute("TRUNCATE TABLE test_models_b RESTART IDENTITY CASCADE")
+		.await
+		.expect("Failed to truncate test_models_b");
 
 	pool.execute("DROP TABLE IF EXISTS auth_user CASCADE")
 		.await
@@ -277,6 +313,16 @@ async fn e2e(
 
 	// ---- Build router ----
 
+	// Snapshot the configured site_header before consuming the pool so tests
+	// can compare against it without re-fetching.
+	let site_header = reinhardt_admin::settings::get_admin_settings()
+		.site_header
+		.clone();
+
+	// Clone the pool for retention in E2eContext; sqlx::PgPool is Arc-backed
+	// so the clone is cheap.
+	let pool_for_ctx = pool.clone();
+
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
@@ -286,11 +332,7 @@ async fn e2e(
 	let mut site = AdminSite::new("E2E Test Admin");
 	site.set_jwt_secret(JWT_SECRET);
 	let site = Arc::new(site);
-	site.register(
-		"TestModel",
-		AllPermissionsModelAdmin::test_model("test_models"),
-	)
-	.expect("Failed to register TestModel");
+	register_models(&site);
 
 	let (admin_router, admin_di) = admin_routes_with_di(site);
 
@@ -313,9 +355,71 @@ async fn e2e(
 	E2eContext {
 		server_url,
 		browser,
+		site_header,
+		pool: pool_for_ctx,
 		_server: server,
 		_admin_db: admin_db,
 	}
+}
+
+/// Fixture that creates a fully isolated E2E environment with one TestModel registered:
+/// 1. Fresh PostgreSQL database with test data (testcontainers)
+/// 2. HTTP server on a random port bound to 0.0.0.0
+/// 3. Headless Chrome in a Docker container (testcontainers)
+#[fixture]
+async fn e2e(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+	#[future] cdp_browser: CdpBrowser,
+) -> E2eContext {
+	let (pool, _) = shared_db_pool.await;
+	let browser = cdp_browser.await;
+	build_e2e_context(pool, browser, |site| {
+		site.register(
+			"TestModel",
+			AllPermissionsModelAdmin::test_model("test_models"),
+		)
+		.expect("Failed to register TestModel");
+	})
+	.await
+}
+
+/// Fixture variant: no models registered. Used to exercise the dashboard
+/// empty-state branch (`No models registered` admin alert).
+#[fixture]
+async fn e2e_no_models(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+	#[future] cdp_browser: CdpBrowser,
+) -> E2eContext {
+	let (pool, _) = shared_db_pool.await;
+	let browser = cdp_browser.await;
+	build_e2e_context(pool, browser, |_site| {
+		// Intentionally register no models.
+	})
+	.await
+}
+
+/// Fixture variant: two distinct models registered. Used to verify the
+/// dashboard renders one card per registered model.
+#[fixture]
+async fn e2e_multi_models(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+	#[future] cdp_browser: CdpBrowser,
+) -> E2eContext {
+	let (pool, _) = shared_db_pool.await;
+	let browser = cdp_browser.await;
+	build_e2e_context(pool, browser, |site| {
+		site.register(
+			"TestModel",
+			AllPermissionsModelAdmin::test_model("test_models"),
+		)
+		.expect("Failed to register TestModel");
+		site.register(
+			"TestModelB",
+			AllPermissionsModelAdmin::test_model("test_models_b"),
+		)
+		.expect("Failed to register TestModelB");
+	})
+	.await
 }
 
 // ============================================================================
@@ -395,6 +499,14 @@ async fn wait_for_wasm_init(page: &CdpPage) {
 ///
 /// Waits for WASM to fully load and hydrate before interacting with form elements.
 async fn login_via_form(page: &CdpPage, server_url: &str) {
+	login_via_form_as(page, server_url, TEST_USERNAME, TEST_PASSWORD).await;
+}
+
+/// Performs login as the specified user. Generalization of `login_via_form`.
+///
+/// Used by tests that need to authenticate as a non-default user
+/// (e.g., the non-staff user in `test_dashboard_non_staff_user_blocked`).
+async fn login_via_form_as(page: &CdpPage, server_url: &str, username: &str, password: &str) {
 	page.navigate(&format!("{}/admin/login/", server_url))
 		.await
 		.expect("Failed to navigate to login page");
@@ -402,10 +514,10 @@ async fn login_via_form(page: &CdpPage, server_url: &str) {
 	// Wait for WASM to initialize (downloads ~5.6MB WASM binary in dev mode)
 	wait_for_wasm_init(page).await;
 
-	page.type_into("input[name='username']", TEST_USERNAME)
+	page.type_into("input[name='username']", username)
 		.await
 		.expect("Failed to type username");
-	page.type_into("input[name='password']", TEST_PASSWORD)
+	page.type_into("input[name='password']", password)
 		.await
 		.expect("Failed to type password");
 	page.click("button[type='submit']")
@@ -414,6 +526,71 @@ async fn login_via_form(page: &CdpPage, server_url: &str) {
 
 	// Wait for login server function call to complete and WASM to navigate
 	tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+}
+
+/// Polls until the dashboard resource resolves: either model cards or the
+/// empty-state alert appear inside `.dashboard-container`.
+///
+/// Centralizes wait logic so individual dashboard tests do not need to
+/// guess sleep durations. The poll interval is short (200 ms) and the
+/// total timeout is 15 s, which exceeds typical `get_dashboard()` server
+/// function latencies on CI.
+async fn wait_for_dashboard_loaded(page: &CdpPage) {
+	let start = std::time::Instant::now();
+	let timeout = std::time::Duration::from_secs(15);
+	let poll = std::time::Duration::from_millis(200);
+
+	loop {
+		let ready = page
+			.execute_js(
+				"(() => { \
+				 const c = document.querySelector('.dashboard-container'); \
+				 if (!c) return false; \
+				 return c.querySelector('.admin-card, .admin-alert-info, .admin-alert-danger') !== null; \
+				 })()",
+			)
+			.await
+			.ok()
+			.and_then(|v| v.as_bool())
+			.unwrap_or(false);
+
+		if ready {
+			// Brief settle for any reactive effects after the card grid commits.
+			tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+			return;
+		}
+
+		if start.elapsed() > timeout {
+			panic!(
+				"Dashboard did not finish loading within {:?} (looked for .admin-card, .admin-alert-info, or .admin-alert-danger inside .dashboard-container)",
+				timeout
+			);
+		}
+
+		tokio::time::sleep(poll).await;
+	}
+}
+
+/// Inserts an active non-staff user (`is_active=true`, `is_staff=false`) into
+/// `auth_user`. Used by `test_dashboard_non_staff_user_blocked` to verify the
+/// dashboard rejects users who lack admin privileges.
+async fn create_non_staff_user(pool: &sqlx::PgPool, username: &str, password: &str) {
+	let hasher = Argon2Hasher::new();
+	let password_hash = hasher
+		.hash(password)
+		.expect("Failed to hash non-staff password");
+
+	sqlx::query(
+		"INSERT INTO auth_user (id, username, password_hash, is_active, is_staff, date_joined)
+		 VALUES ($1, $2, $3, true, false, NOW())
+		 ON CONFLICT (id) DO UPDATE SET password_hash = $3, is_staff = false, is_active = true",
+	)
+	.bind(uuid::Uuid::parse_str(NON_STAFF_UUID).unwrap())
+	.bind(username)
+	.bind(&password_hash)
+	.execute(pool)
+	.await
+	.expect("Failed to insert non-staff user");
 }
 
 // ============================================================================
