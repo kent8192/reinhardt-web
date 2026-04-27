@@ -491,9 +491,7 @@ impl ClientLauncher {
 					fire
 				};
 
-				if should_fire
-					&& let Some(params) = new_match
-				{
+				if should_fire && let Some(params) = new_match {
 					let ctx = PathCtx {
 						document: &document_for_effect,
 						path: &path_string,
@@ -861,11 +859,15 @@ mod tests {
 	#[rstest]
 	fn test_on_path_subscriptions_start_with_no_recorded_match() {
 		// Arrange / Act
-		let launcher =
-			ClientLauncher::new("#root").on_path("/", |_ctx: &PathCtx<'_>| {});
+		let launcher = ClientLauncher::new("#root").on_path("/", |_ctx: &PathCtx<'_>| {});
 		// Assert: last_params is None at registration time so the very
 		// first Effect run will be detected as a `None -> Some(_)` transition.
-		assert!(launcher.path_subscriptions[0].last_params.borrow().is_none());
+		assert!(
+			launcher.path_subscriptions[0]
+				.last_params
+				.borrow()
+				.is_none()
+		);
 	}
 
 	// --- transition logic regression test ---
