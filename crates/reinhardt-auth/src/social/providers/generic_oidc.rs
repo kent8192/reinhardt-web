@@ -18,9 +18,11 @@
 //!   `exp`, and (with skew) `iat` are all checked. The `alg: none` JWT
 //!   "algorithm" and any symmetric `HS*` algorithm are rejected.
 //! - Allowed signing algorithms: `RS256` / `RS384` / `RS512`,
-//!   `PS256` / `PS384` / `PS512`. Asymmetric ECDSA (`ES256`, `ES384`)
-//!   appears in the spec but is not yet supported by the bundled
-//!   [`JwksCache`] (RSA-only); EC support is tracked as a follow-up.
+//!   `PS256` / `PS384` / `PS512`, `ES256` / `ES384`. EC JWKs on the
+//!   `P-256`, `P-384`, and `P-521` curves can be decoded by the bundled
+//!   [`JwksCache`], but `ES512` (P-521) signature verification is not
+//!   exposed by the underlying `jsonwebtoken` crate, so P-521 keys cannot
+//!   currently be used to validate ID-token signatures.
 //! - The discovery document and the JWKS are cached in-memory with
 //!   configurable TTLs (defaults: 1 hour each).
 //! - All endpoint URLs returned by discovery are required to use HTTPS
@@ -82,8 +84,9 @@ const DEFAULT_CACHE_TTL_SECS: i64 = 3600;
 /// Asymmetric algorithms that the bundled [`JwksCache`] supports today.
 ///
 /// `HS*` is intentionally absent (symmetric secrets must never be accepted
-/// for OIDC ID tokens). `ES*` is also absent because `Jwk::to_decoding_key`
-/// does not yet support EC keys.
+/// for OIDC ID tokens). `ES512` is absent because the underlying
+/// `jsonwebtoken` crate (v10.3) does not expose a P-521 / `ES512`
+/// `Algorithm` variant; only `ES256` and `ES384` are wired up here.
 const SUPPORTED_ASYMMETRIC_ALGORITHMS: &[Algorithm] = &[
 	Algorithm::RS256,
 	Algorithm::RS384,
@@ -91,6 +94,8 @@ const SUPPORTED_ASYMMETRIC_ALGORITHMS: &[Algorithm] = &[
 	Algorithm::PS256,
 	Algorithm::PS384,
 	Algorithm::PS512,
+	Algorithm::ES256,
+	Algorithm::ES384,
 ];
 
 /// Function type for transforming a raw UserInfo JSON document into
