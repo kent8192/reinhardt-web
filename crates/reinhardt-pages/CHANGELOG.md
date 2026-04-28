@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(pages)* `ClientLauncher::intercept_links(bool)` for built-in SPA link
+  interception (default: `true`). Skips external URLs, `target="_blank"`,
+  `download`, `rel="external"`, and modifier-key clicks. Closes #3994.
+- *(pages)* `ClientLauncher::before_launch` and `after_launch` lifecycle
+  hooks. `before_launch` runs after scheduler setup but before router
+  init; `after_launch` runs after the first DOM mount and receives a
+  `LaunchCtx` with borrows of `window`, `document`, and the root element.
+  Multiple hooks accumulate in registration order. Closes #3996.
+- *(pages)* `ClientLauncher::on_path` and `on_path_pattern` for
+  declarative path-driven side effects. Each registration becomes a
+  leaked reactive `Effect` that fires only on transitions into the
+  matching path (entering a match or pattern-internal parameter
+  changes); same-path re-renders do not re-fire. Callbacks receive a
+  `PathCtx` with the current `document`, path, and extracted params,
+  plus `PathCtx::ensure_portal(id, factory)` for idempotent body-level
+  mounts. Closes #3995.
+
+### Changed
+
+- *(pages)* `ClientLauncher::launch()` now installs a document-level click
+  listener by default. Apps with hand-rolled SPA link interception should
+  call `.intercept_links(false)` to opt out.
+
 ## [0.1.0-rc.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.21...reinhardt-pages@v0.1.0-rc.22) - 2026-04-25
 
 ### Testing
