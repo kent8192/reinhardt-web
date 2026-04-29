@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.22...reinhardt-commands@v0.1.0-rc.23) - 2026-04-29
+
+### Documentation
+
+- update version references to v0.1.0-rc.23
+
 ## [0.1.0-rc.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.21...reinhardt-commands@v0.1.0-rc.22) - 2026-04-25
 
 ### Changed
