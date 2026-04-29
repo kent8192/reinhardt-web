@@ -6666,6 +6666,162 @@ mod tests {
 	}
 
 	#[rstest]
+	fn detect_added_unique_together_via_offline_reconstructed_from_state() {
+		// Arrange — regression for issue #4032.
+		//
+		// When `makemigrations` falls back to file-based state reconstruction
+		// (no DB available), `from_state` is rebuilt from migration
+		// `Operation::CreateTable` entries and keyed by the PascalCase form
+		// of the table name (e.g. table `"clusters"` -> key `"Clusters"`),
+		// while `to_state` is keyed by the registered struct name
+		// (e.g. `"Cluster"`). Both share the same `table_name`.
+		//
+		// Constraint diffing must locate the corresponding model by
+		// `table_name` rather than by struct-name key, otherwise added
+		// `unique_together` constraints are silently dropped.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		// from_state: keyed by table-derived name "Clusters", no constraints.
+		let mut from_model = build_model_state(
+			"clusters",
+			"Clusters",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		// to_state: keyed by struct name "Cluster", carries the unique constraint.
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Clusters".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — exactly one AddConstraint, targeted at the shared table.
+		// No spurious operations (in particular no AlterColumn/RenameModel)
+		// must leak through from the model-name mismatch.
+		assert_eq!(
+			operations.len(),
+			1,
+			"expected exactly one AddConstraint operation, got: {:?}",
+			operations
+		);
+		let super::super::Operation::AddConstraint {
+			table,
+			constraint_sql,
+		} = &operations[0]
+		else {
+			panic!(
+				"expected Operation::AddConstraint, got: {:?}",
+				operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert!(
+			constraint_sql.contains("clusters_cluster_organization_id_name_uniq"),
+			"constraint SQL should carry the constraint name, got: {}",
+			constraint_sql
+		);
+	}
+
+	#[rstest]
+	fn detect_removed_unique_together_via_offline_reconstructed_from_state() {
+		// Arrange — symmetric regression for issue #4032 covering the
+		// removal direction: offline-reconstructed `from_state` retains a
+		// `unique_together` constraint, and the registered model in
+		// `to_state` no longer declares it. The diff must emit a
+		// `DropConstraint` despite the model-name key mismatch.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let mut from_model = build_model_state(
+			"clusters",
+			"Clusters",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		let to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			Vec::new(),
+		);
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Clusters".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(
+			operations.len(),
+			1,
+			"expected exactly one DropConstraint operation, got: {:?}",
+			operations
+		);
+		let super::super::Operation::DropConstraint {
+			table,
+			constraint_name,
+		} = &operations[0]
+		else {
+			panic!(
+				"expected Operation::DropConstraint, got: {:?}",
+				operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert_eq!(
+			constraint_name,
+			"clusters_cluster_organization_id_name_uniq"
+		);
+	}
+
+	#[rstest]
 	fn detect_added_composite_pk_does_not_double_emit_add_constraint() {
 		// Arrange — adding a composite PK should be emitted by the
 		// `CreateCompositePrimaryKey` path only. The new
