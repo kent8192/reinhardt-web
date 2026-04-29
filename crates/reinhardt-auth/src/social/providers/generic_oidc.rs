@@ -568,6 +568,11 @@ fn compute_allowed_algorithms(advertised: Option<&[String]>) -> Vec<Algorithm> {
 			"PS256" => Some(Algorithm::PS256),
 			"PS384" => Some(Algorithm::PS384),
 			"PS512" => Some(Algorithm::PS512),
+			"ES256" => Some(Algorithm::ES256),
+			"ES384" => Some(Algorithm::ES384),
+			// `ES512` is intentionally not mapped: jsonwebtoken v10.3 does not
+			// expose an `Algorithm::ES512` variant, so even though P-521 JWKs
+			// can be decoded, ID tokens signed with ES512 cannot be verified.
 			// HS* and "none" are intentionally not mapped — they must
 			// never be accepted for OIDC ID tokens.
 			_ => None,
@@ -767,8 +772,10 @@ mod tests {
 		let advertised = vec![
 			"RS256".to_string(),
 			"PS256".to_string(),
-			// Unsupported entries must be filtered out, not error.
 			"ES256".to_string(),
+			"ES384".to_string(),
+			// Unsupported entries must be filtered out, not error.
+			"ES512".to_string(),
 			"none".to_string(),
 			"HS256".to_string(),
 		];
@@ -777,7 +784,15 @@ mod tests {
 		let allowed = compute_allowed_algorithms(Some(&advertised));
 
 		// Assert
-		assert_eq!(allowed, vec![Algorithm::RS256, Algorithm::PS256]);
+		assert_eq!(
+			allowed,
+			vec![
+				Algorithm::RS256,
+				Algorithm::PS256,
+				Algorithm::ES256,
+				Algorithm::ES384,
+			]
+		);
 		assert!(
 			!allowed.contains(&Algorithm::HS256),
 			"HS* must never be allowed for OIDC ID tokens"
