@@ -5138,6 +5138,73 @@ impl MigrationAutodetector {
 			}
 		}
 
+		// Group DropConstraint for non-PK constraints removed from existing tables.
+		//
+		// Composite primary keys (constraint_type == "primary_key" with 2+ fields)
+		// are handled by `removed_composite_primary_keys` above and must be skipped
+		// here to avoid emitting a duplicate DropConstraint.
+		//
+		// Mirrors the parallel block in `generate_operations()`. See issue #4040 —
+		// previously this loop was missing here, so `cargo make makemigrations`
+		// silently dropped `Operation::DropConstraint` for non-PK constraint
+		// removals (e.g. `unique_together`).
+		for (app_label, model_name, constraint_name) in &changes.removed_constraints {
+			let Some(from_model) = self.from_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			let is_composite_pk = from_model
+				.constraints
+				.iter()
+				.find(|c| &c.name == constraint_name)
+				.is_some_and(|c| c.constraint_type == "primary_key" && c.fields.len() >= 2);
+			if is_composite_pk {
+				continue;
+			}
+			migrations_by_app
+				.entry(app_label.clone())
+				.or_default()
+				.push(super::Operation::DropConstraint {
+					table: from_model.table_name.clone(),
+					constraint_name: constraint_name.clone(),
+				});
+		}
+
+		// Group AddConstraint for non-PK constraints added to existing tables.
+		//
+		// This covers `unique_together`, `Check`, `ForeignKey`, and `OneToOne`
+		// constraints declared on a model that already exists in `from_state`.
+		// Composite primary keys are emitted via `added_composite_primary_keys`
+		// using `CreateCompositePrimaryKey` and must be skipped here to avoid
+		// duplicate emission.
+		//
+		// The constraint SQL is rendered through the existing
+		// `ConstraintDefinition::to_constraint()` -> `Constraint: Display` path,
+		// which mirrors the SQL produced for the same constraint when emitted as
+		// part of a `CreateTable` operation. This keeps the on-disk schema for a
+		// "create + add later" sequence equivalent to a single "create with
+		// constraint" sequence.
+		//
+		// Mirrors the parallel block in `generate_operations()`. See issue #4040 —
+		// previously this loop was missing here, so `cargo make makemigrations`
+		// silently dropped `Operation::AddConstraint` for non-PK constraint
+		// additions (e.g. `unique_together`).
+		for (app_label, model_name, constraint) in &changes.added_constraints {
+			if constraint.constraint_type == "primary_key" && constraint.fields.len() >= 2 {
+				continue;
+			}
+			let Some(to_model) = self.to_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			let constraint_sql = constraint.to_constraint().to_string();
+			migrations_by_app
+				.entry(app_label.clone())
+				.or_default()
+				.push(super::Operation::AddConstraint {
+					table: to_model.table_name.clone(),
+					constraint_sql,
+				});
+		}
+
 		// Group auto-increment sequence resets by app
 		for (app_label, model_name, column, value) in &changes.auto_increment_resets {
 			if let Some(model) = self.to_state.get_model(app_label, model_name) {
@@ -6812,6 +6879,179 @@ mod tests {
 			panic!(
 				"expected Operation::DropConstraint, got: {:?}",
 				operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert_eq!(
+			constraint_name,
+			"clusters_cluster_organization_id_name_uniq"
+		);
+	}
+
+	#[rstest]
+	fn generate_migrations_emits_add_constraint_for_added_unique_together() {
+		// Arrange — regression for issue #4040.
+		//
+		// `generate_migrations()` is the entry point used by the
+		// `makemigrations` CLI, in contrast to `generate_operations()`
+		// which is used by tests / direct callers. PR #3998 added
+		// `added_constraints` handling to `generate_operations()` but the
+		// symmetric loop was missing from `generate_migrations()`, so the
+		// CLI silently dropped `Operation::AddConstraint` for non-PK
+		// constraints (e.g. `unique_together`) added to existing models.
+		//
+		// This test exercises the CLI path directly and asserts the
+		// migration carries an `Operation::AddConstraint`.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		// from_state mirrors the CLI's offline-reconstructed state with no
+		// constraints declared on the existing model (matching what the
+		// `0001_initial` migration produces before the constraint is added).
+		let mut from_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		// to_state carries the unique_together constraint declared via the
+		// macro on the registered struct.
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let mut to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		to_model.table_name = "clusters_cluster".to_string();
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let migrations = detector.generate_migrations();
+
+		// Assert — exactly one Migration for app "clusters" with exactly
+		// one AddConstraint operation, targeted at the shared table.
+		assert_eq!(
+			migrations.len(),
+			1,
+			"expected exactly one Migration, got: {:?}",
+			migrations
+		);
+		assert_eq!(migrations[0].app_label, "clusters");
+		assert_eq!(
+			migrations[0].operations.len(),
+			1,
+			"expected exactly one operation in the migration, got: {:?}",
+			migrations[0].operations
+		);
+		let super::super::Operation::AddConstraint {
+			table,
+			constraint_sql,
+		} = &migrations[0].operations[0]
+		else {
+			panic!(
+				"expected Operation::AddConstraint, got: {:?}",
+				migrations[0].operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert!(
+			constraint_sql.contains("clusters_cluster_organization_id_name_uniq"),
+			"constraint SQL should carry the constraint name, got: {}",
+			constraint_sql
+		);
+	}
+
+	#[rstest]
+	fn generate_migrations_emits_drop_constraint_for_removed_unique_together() {
+		// Arrange — symmetric regression for issue #4040 covering the
+		// removal direction: the existing model declares a
+		// `unique_together` constraint, the new struct has dropped it, and
+		// the CLI path must emit `Operation::DropConstraint`.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let mut from_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		let mut to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			Vec::new(),
+		);
+		to_model.table_name = "clusters_cluster".to_string();
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let migrations = detector.generate_migrations();
+
+		// Assert
+		assert_eq!(
+			migrations.len(),
+			1,
+			"expected exactly one Migration, got: {:?}",
+			migrations
+		);
+		assert_eq!(migrations[0].app_label, "clusters");
+		assert_eq!(
+			migrations[0].operations.len(),
+			1,
+			"expected exactly one operation in the migration, got: {:?}",
+			migrations[0].operations
+		);
+		let super::super::Operation::DropConstraint {
+			table,
+			constraint_name,
+		} = &migrations[0].operations[0]
+		else {
+			panic!(
+				"expected Operation::DropConstraint, got: {:?}",
+				migrations[0].operations[0]
 			);
 		};
 		assert_eq!(table, "clusters_cluster");
