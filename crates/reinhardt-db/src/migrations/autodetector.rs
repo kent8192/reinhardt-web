@@ -4348,7 +4348,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1500-1600
 	fn detect_added_indexes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			if let Some(from_model) = self.from_state.get_model(app_label, model_name) {
+			if let Some(from_model) = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name)
+			{
 				for to_index in &to_model.indexes {
 					// Check if this index exists in from_model
 					if !from_model
@@ -4373,7 +4376,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1600-1700
 	fn detect_removed_indexes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
-			if let Some(to_model) = self.to_state.get_model(app_label, model_name) {
+			if let Some(to_model) = self
+				.to_state
+				.get_model_by_table_name(app_label, &from_model.table_name)
+			{
 				for from_index in &from_model.indexes {
 					// Check if this index still exists in to_model
 					if !to_model
@@ -4398,7 +4404,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1700-1800
 	fn detect_added_constraints(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			if let Some(from_model) = self.from_state.get_model(app_label, model_name) {
+			if let Some(from_model) = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name)
+			{
 				for to_constraint in &to_model.constraints {
 					// Check if this constraint exists in from_model
 					if !from_model
@@ -4423,7 +4432,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1800-1900
 	fn detect_removed_constraints(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
-			if let Some(to_model) = self.to_state.get_model(app_label, model_name) {
+			if let Some(to_model) = self
+				.to_state
+				.get_model_by_table_name(app_label, &from_model.table_name)
+			{
 				for from_constraint in &from_model.constraints {
 					// Check if this constraint still exists in to_model
 					if !to_model
@@ -4453,7 +4465,9 @@ impl MigrationAutodetector {
 	/// - Unchanged: same constraint name and identical fields → no operation
 	fn detect_composite_pk_changes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			let from_model = self.from_state.get_model(app_label, model_name);
+			let from_model = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name);
 			for constraint in &to_model.constraints {
 				if constraint.constraint_type != "primary_key" || constraint.fields.len() < 2 {
 					continue;
@@ -6616,6 +6630,162 @@ mod tests {
 
 		let from_state = build_project_state(vec![(
 			("clusters".to_string(), "Cluster".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(
+			operations.len(),
+			1,
+			"expected exactly one DropConstraint operation, got: {:?}",
+			operations
+		);
+		let super::super::Operation::DropConstraint {
+			table,
+			constraint_name,
+		} = &operations[0]
+		else {
+			panic!(
+				"expected Operation::DropConstraint, got: {:?}",
+				operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert_eq!(
+			constraint_name,
+			"clusters_cluster_organization_id_name_uniq"
+		);
+	}
+
+	#[rstest]
+	fn detect_added_unique_together_via_offline_reconstructed_from_state() {
+		// Arrange — regression for issue #4032.
+		//
+		// When `makemigrations` falls back to file-based state reconstruction
+		// (no DB available), `from_state` is rebuilt from migration
+		// `Operation::CreateTable` entries and keyed by the PascalCase form
+		// of the table name (e.g. table `"clusters"` -> key `"Clusters"`),
+		// while `to_state` is keyed by the registered struct name
+		// (e.g. `"Cluster"`). Both share the same `table_name`.
+		//
+		// Constraint diffing must locate the corresponding model by
+		// `table_name` rather than by struct-name key, otherwise added
+		// `unique_together` constraints are silently dropped.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		// from_state: keyed by table-derived name "Clusters", no constraints.
+		let mut from_model = build_model_state(
+			"clusters",
+			"Clusters",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		// to_state: keyed by struct name "Cluster", carries the unique constraint.
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Clusters".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — exactly one AddConstraint, targeted at the shared table.
+		// No spurious operations (in particular no AlterColumn/RenameModel)
+		// must leak through from the model-name mismatch.
+		assert_eq!(
+			operations.len(),
+			1,
+			"expected exactly one AddConstraint operation, got: {:?}",
+			operations
+		);
+		let super::super::Operation::AddConstraint {
+			table,
+			constraint_sql,
+		} = &operations[0]
+		else {
+			panic!(
+				"expected Operation::AddConstraint, got: {:?}",
+				operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert!(
+			constraint_sql.contains("clusters_cluster_organization_id_name_uniq"),
+			"constraint SQL should carry the constraint name, got: {}",
+			constraint_sql
+		);
+	}
+
+	#[rstest]
+	fn detect_removed_unique_together_via_offline_reconstructed_from_state() {
+		// Arrange — symmetric regression for issue #4032 covering the
+		// removal direction: offline-reconstructed `from_state` retains a
+		// `unique_together` constraint, and the registered model in
+		// `to_state` no longer declares it. The diff must emit a
+		// `DropConstraint` despite the model-name key mismatch.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let mut from_model = build_model_state(
+			"clusters",
+			"Clusters",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		let to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			Vec::new(),
+		);
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Clusters".to_string()),
 			from_model,
 		)]);
 		let to_state = build_project_state(vec![(
