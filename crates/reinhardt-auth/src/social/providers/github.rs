@@ -174,6 +174,25 @@ impl OAuthProvider for GitHubProvider {
 			SocialAuthError::InvalidConfiguration("Missing UserInfo endpoint".into())
 		})?;
 
+		self.fetch_github_userinfo(userinfo_endpoint, access_token)
+			.await
+	}
+}
+
+impl GitHubProvider {
+	/// Fetches and maps the GitHub `/user` payload to [`StandardClaims`].
+	///
+	/// Lives in a dedicated method (rather than inlined in
+	/// [`OAuthProvider::get_user_info`]) so the `userinfo_endpoint` argument
+	/// crosses a function boundary after [`validate_endpoint_url`] has
+	/// rejected non-HTTPS schemes — mirroring the
+	/// [`UserInfoClient::get_user_info`](crate::social::oidc::userinfo::UserInfoClient::get_user_info)
+	/// pattern.
+	async fn fetch_github_userinfo(
+		&self,
+		userinfo_endpoint: &str,
+		access_token: &str,
+	) -> Result<StandardClaims, SocialAuthError> {
 		// Enforce HTTPS (or loopback HTTP) before transmitting the bearer token.
 		// Mirrors the validation performed by `UserInfoClient` and by
 		// `GenericOidcProvider::get_user_info` so the bearer token is never sent
