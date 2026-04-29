@@ -4348,7 +4348,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1500-1600
 	fn detect_added_indexes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			if let Some(from_model) = self.from_state.get_model(app_label, model_name) {
+			if let Some(from_model) = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name)
+			{
 				for to_index in &to_model.indexes {
 					// Check if this index exists in from_model
 					if !from_model
@@ -4373,7 +4376,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1600-1700
 	fn detect_removed_indexes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
-			if let Some(to_model) = self.to_state.get_model(app_label, model_name) {
+			if let Some(to_model) = self
+				.to_state
+				.get_model_by_table_name(app_label, &from_model.table_name)
+			{
 				for from_index in &from_model.indexes {
 					// Check if this index still exists in to_model
 					if !to_model
@@ -4398,7 +4404,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1700-1800
 	fn detect_added_constraints(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			if let Some(from_model) = self.from_state.get_model(app_label, model_name) {
+			if let Some(from_model) = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name)
+			{
 				for to_constraint in &to_model.constraints {
 					// Check if this constraint exists in from_model
 					if !from_model
@@ -4423,7 +4432,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1800-1900
 	fn detect_removed_constraints(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
-			if let Some(to_model) = self.to_state.get_model(app_label, model_name) {
+			if let Some(to_model) = self
+				.to_state
+				.get_model_by_table_name(app_label, &from_model.table_name)
+			{
 				for from_constraint in &from_model.constraints {
 					// Check if this constraint still exists in to_model
 					if !to_model
@@ -4453,7 +4465,9 @@ impl MigrationAutodetector {
 	/// - Unchanged: same constraint name and identical fields → no operation
 	fn detect_composite_pk_changes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			let from_model = self.from_state.get_model(app_label, model_name);
+			let from_model = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name);
 			for constraint in &to_model.constraints {
 				if constraint.constraint_type != "primary_key" || constraint.fields.len() < 2 {
 					continue;
