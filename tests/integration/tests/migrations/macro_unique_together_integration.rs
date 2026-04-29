@@ -68,7 +68,7 @@ fn unique_together_propagates_into_model_metadata() {
 		.expect("Membership model should be registered by the #[model] macro");
 
 	// Act
-	let constraints = &metadata.constraints;
+	let constraints = metadata.constraints();
 
 	// Assert
 	assert_eq!(
@@ -132,9 +132,9 @@ fn models_without_unique_together_emit_no_extra_constraints() {
 
 	// Act / Assert
 	assert!(
-		metadata.constraints.is_empty(),
-		"ModelMetadata.constraints must stay empty when no unique_together \
+		metadata.constraints().is_empty(),
+		"ModelMetadata.constraints() must stay empty when no unique_together \
 		 attribute is declared, got {:?}",
-		metadata.constraints
+		metadata.constraints()
 	);
 }

@@ -60,7 +60,11 @@ pub struct ModelMetadata {
 	/// and other peer-constraint attributes. Field-level `unique = true` is
 	/// still synthesized inside `to_model_state()` and not stored here, to
 	/// preserve the existing single-field UNIQUE behavior.
-	pub constraints: Vec<ConstraintDefinition>,
+	///
+	/// Kept private so that adding the field to a previously
+	/// externally-constructible struct does not break the public API.
+	/// Read via [`Self::constraints`]; write via [`Self::add_constraint`].
+	constraints: Vec<ConstraintDefinition>,
 }
 
 impl ModelMetadata {
@@ -100,6 +104,15 @@ impl ModelMetadata {
 	/// (e.g., `#[model(unique_together = ...)]`).
 	pub fn add_constraint(&mut self, constraint: ConstraintDefinition) {
 		self.constraints.push(constraint);
+	}
+
+	/// Returns model-level constraints registered by the `#[model(...)]`
+	/// macro (currently composite UNIQUE from `unique_together`).
+	///
+	/// Field-level `unique = true` is not included here; it is synthesized
+	/// inside [`Self::to_model_state`] from `FieldMetadata` parameters.
+	pub fn constraints(&self) -> &[ConstraintDefinition] {
+		&self.constraints
 	}
 
 	/// Convert to ModelState for migrations
