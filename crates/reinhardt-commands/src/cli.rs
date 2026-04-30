@@ -1264,6 +1264,50 @@ pub async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 	Ok(())
 }
 
+/// Start the HTTP server bound to `addr`, performing automatic route
+/// registration via [`auto_register_router`] beforehand.
+///
+/// This is a one-call convenience wrapper around the
+/// [`auto_register_router`] + [`RunServerCommand`](crate::RunServerCommand)
+/// composition. It is intended for **non-CLI server entrypoints** — for
+/// example, a container entrypoint binary that should expose only an HTTP
+/// server without the full `manage` clap surface.
+///
+/// All [`RunServerCommand`](crate::RunServerCommand) options other than the
+/// bind address use their built-in defaults (autoreload enabled, no WASM
+/// frontend, `dist` static directory, etc.). Callers needing finer control
+/// should compose with [`auto_register_router`] and
+/// [`RunServerCommand`](crate::RunServerCommand) directly.
+///
+/// Use [`execute_from_command_line`] instead when you want full clap argument
+/// parsing for the `manage` subcommand surface.
+///
+/// # Arguments
+///
+/// * `addr` - Bind address in `host:port` form (e.g. `"0.0.0.0:8080"`).
+///
+/// # Returns
+///
+/// Returns `Ok(())` on graceful shutdown, or an error if route registration
+/// or the server itself fails.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_commands::start_server;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     start_server("0.0.0.0:8080").await
+/// }
+/// ```
+#[cfg(feature = "server")]
+pub async fn start_server(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
+	auto_register_router().await?;
+	let ctx = CommandContext::new(vec![addr.to_string()]);
+	RunServerCommand.execute(&ctx).await.map_err(Into::into)
+}
+
 /// Generate a cryptographically random secret key for fallback use.
 ///
 /// Produces a 50-character hex string (200 bits of entropy). This is used
