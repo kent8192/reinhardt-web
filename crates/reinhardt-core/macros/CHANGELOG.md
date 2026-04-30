@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.23...reinhardt-macros@v0.1.0-rc.24) - 2026-04-30
+
+### Fixed
+
+- *(macros)* propagate unique_together into ModelMetadata
+- *(macros)* suppress null=true emission for Option<T> primary keys
+
 ## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.22...reinhardt-macros@v0.1.0-rc.23) - 2026-04-29
 
 ### Added
