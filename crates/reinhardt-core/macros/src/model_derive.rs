@@ -2657,14 +2657,23 @@ fn generate_registration_code(
 		{
 			params.push(quote! { .with_param("unique", "true") });
 		}
-		// Infer nullable from Rust type when not explicitly set
+		// Infer nullable from Rust type when not explicitly set.
+		//
+		// PK columns are always NOT NULL at the DB level. The Option<T>
+		// wrapper for PKs is a Rust-side convention to allow `id = None`
+		// before the DB assigns the auto-increment value, not a DB-level
+		// nullability statement. Emitting `null = "true"` for `Option<T>`
+		// PKs would diverge from `column_def_to_field_state`'s migration-
+		// replay output (which derives nullability from `not_null`) and
+		// surface as a spurious `AlterColumn` for the unchanged PK under
+		// offline state reconstruction.
+		//
+		// See reinhardt-web#4052 for the residual regression.
 		if config.null.is_none() {
 			let (is_option, _) = extract_option_type(&field_info.ty);
-			if is_option {
-				params.push(quote! { .with_param("null", "true") });
-			} else {
-				params.push(quote! { .with_param("null", "false") });
-			}
+			let nullable = !config.primary_key && is_option;
+			let null_str = nullable.to_string();
+			params.push(quote! { .with_param("null", #null_str) });
 		}
 		// auto_increment: explicit value or default true for integer PKs
 		if config.primary_key && is_integer_primary_key_type(&field_info.ty) {

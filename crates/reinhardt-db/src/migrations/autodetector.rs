@@ -6945,6 +6945,158 @@ mod tests {
 	}
 
 	#[rstest]
+	fn generate_operations_no_spurious_altercolumn_for_option_pk_via_apply_migration_operations() {
+		// Arrange — regression for issue #4052 (residual after #4050).
+		//
+		// Reproduces the production CLI path that #4050's regression test
+		// missed: from_state is built by feeding a synthetic
+		// `Operation::CreateTable` (modeled on `0001_initial.rs`) through
+		// `ProjectState::apply_migration_operations`, so its `id` FieldState
+		// flows through `column_def_to_field_state`. to_state mirrors the
+		// `#[model]` macro's output for `id: Option<i64>` with
+		// `#[field(primary_key = true)]` AFTER the macro fix that suppresses
+		// `null = "true"` for primary keys (the Option<T> wrapper for PKs
+		// reflects "id is None until DB assigns it on insert", not DB-level
+		// nullability).
+		//
+		// Pre-fix, the macro emitted `null = "true"` for any Option<T>
+		// field, including PKs. `to_model_state` then set
+		// `FieldState.nullable = true` while `column_def_to_field_state`
+		// produced `nullable = false`. `has_field_changed`'s direct
+		// `nullable != nullable` short-circuit (added by #4050 to keep the
+		// authoritative NOT NULL bit on the canonical comparison path)
+		// returned true before the canonical `ColumnDefinition::from_field_state`
+		// folding could absorb the asymmetry, surfacing as a no-op
+		// `Operation::AlterColumn { old_definition: None, .. }` for the
+		// unchanged PK.
+
+		// Build to_state via the model registry layer that the macro feeds.
+		// Mirror the FIXED macro params for `id: Option<i64>` with
+		// `#[field(primary_key = true)]`: `null = "false"` (forced by the
+		// fix), `not_null = "true"`, `primary_key = "true"`,
+		// `auto_increment = "true"`. The dense param population is exactly
+		// what `ModelMetadata::to_model_state` consumes.
+		let mut id_meta =
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::BigInteger);
+		id_meta = id_meta
+			.with_param("primary_key", "true")
+			.with_param("auto_increment", "true")
+			.with_param("not_null", "true")
+			.with_param("null", "false");
+		let mut name_meta =
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::VarChar(255));
+		name_meta = name_meta
+			.with_param("max_length", "255")
+			.with_param("not_null", "true")
+			.with_param("null", "false");
+
+		let mut metadata =
+			super::super::model_registry::ModelMetadata::new("clusters", "Cluster", "clusters");
+		metadata.add_field("id".to_string(), id_meta);
+		metadata.add_field("name".to_string(), name_meta);
+
+		let to_model = metadata.to_model_state();
+		// Sanity: the FIXED macro contract must fold `null = "false"` into
+		// `FieldState.nullable = false` for the PK, matching the migration
+		// replay side.
+		let to_id = to_model.fields.get("id").expect("id field present");
+		assert!(
+			!to_id.nullable,
+			"to_state PK FieldState.nullable must be false; got nullable=true \
+			 with params={:?}. Did the #[model] macro regress to emitting \
+			 null=\"true\" for Option<T> PKs?",
+			to_id.params
+		);
+
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+
+		// Build from_state via the production CLI path: feed a CreateTable
+		// (modeled on 0001_initial.rs) through apply_migration_operations.
+		// This populates from_state via column_def_to_field_state, which
+		// derives nullability from `not_null` (sparse params).
+		let create_clusters = super::super::Operation::CreateTable {
+			name: "clusters".to_string(),
+			columns: vec![
+				super::super::ColumnDefinition {
+					name: "id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: true,
+					auto_increment: true,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "name".to_string(),
+					type_definition: super::super::FieldType::VarChar(255),
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let mut from_state = ProjectState::new();
+		from_state.apply_migration_operations(&[create_clusters], "clusters");
+
+		// Sanity: the migration-replay path must produce nullable=false for
+		// the PK.
+		let from_clusters = from_state
+			.find_model_by_table("clusters")
+			.expect("clusters model present in from_state");
+		assert!(
+			!from_clusters
+				.fields
+				.get("id")
+				.expect("id field in from_state")
+				.nullable,
+			"from_state PK FieldState.nullable must be false (column_def_to_field_state derives \
+			 from not_null); got nullable=true"
+		);
+
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act — call BOTH lower-level generate_operations() and the CLI
+		// entry generate_migrations(), since #4052's reproducer asserts
+		// against both.
+		let direct_ops = detector.generate_operations();
+		let migrations = detector.generate_migrations();
+		let migration_ops: Vec<&super::super::Operation> = migrations
+			.iter()
+			.flat_map(|m| m.operations.iter())
+			.collect();
+
+		// Assert — neither path may emit AlterColumn for the unchanged `id`
+		// PK. Pre-fix, both emitted exactly such an AlterColumn.
+		assert!(
+			!direct_ops.iter().any(|op| matches!(
+				op,
+				super::super::Operation::AlterColumn { column, .. } if column == "id"
+			)),
+			"generate_operations() emitted spurious AlterColumn for unchanged `id` PK \
+			 under apply_migration_operations from_state. ops={:?}",
+			direct_ops
+		);
+		assert!(
+			!migration_ops.iter().any(|op| matches!(
+				op,
+				super::super::Operation::AlterColumn { column, .. } if column == "id"
+			)),
+			"generate_migrations() emitted spurious AlterColumn for unchanged `id` PK \
+			 under apply_migration_operations from_state. ops={:?}",
+			migration_ops
+		);
+	}
+
+	#[rstest]
 	fn generate_migrations_emits_add_constraint_for_added_unique_together() {
 		// Arrange — regression for issue #4040.
 		//

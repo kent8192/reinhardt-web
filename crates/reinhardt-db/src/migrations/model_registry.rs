@@ -663,4 +663,62 @@ mod tests {
 		let field_state = model_state.fields.get("description").unwrap();
 		assert_eq!(field_state.nullable, expected_nullable);
 	}
+
+	#[rstest]
+	fn to_model_state_nullable_false_for_primary_key_matches_macro_contract() {
+		// Arrange — regression for issue #4052.
+		//
+		// The `#[model]` macro must emit `null = "false"` for primary key
+		// fields regardless of whether the Rust type is `Option<T>`. The
+		// `Option<T>` wrapper for PKs is a Rust-side convention to allow
+		// `id = None` before the DB assigns the auto-increment value, not
+		// a DB-level nullability statement. PK columns are always NOT NULL
+		// at the DB level.
+		//
+		// This test codifies the contract that `to_model_state` consumes
+		// from the macro: with the fixed macro params, the resulting
+		// `FieldState.nullable` for an `Option<i64>` PK must be `false`,
+		// matching the migration-replay path's
+		// `column_def_to_field_state(...).nullable = !col.not_null = false`.
+		//
+		// Pre-fix, the macro emitted `null = "true"` for any Option<T>
+		// field including PKs, producing `FieldState.nullable = true` and
+		// surfacing as a spurious `AlterColumn` for the unchanged PK in
+		// offline `makemigrations` runs.
+		let mut metadata = ModelMetadata::new("clusters", "Cluster", "clusters");
+		// Mirror the fixed macro params for `id: Option<i64>` with
+		// `#[field(primary_key = true)]`: `null = "false"` (forced by the
+		// fix), `not_null = "true"`, `primary_key = "true"`,
+		// `auto_increment = "true"`.
+		let id_field = FieldMetadata::new(FieldType::BigInteger)
+			.with_param("primary_key", "true")
+			.with_param("auto_increment", "true")
+			.with_param("not_null", "true")
+			.with_param("null", "false");
+		metadata.add_field("id".to_string(), id_field);
+
+		// Act
+		let model_state = metadata.to_model_state();
+
+		// Assert — nullable=false on the FieldState side, regardless of
+		// the underlying Rust Option<T> wrapping.
+		let id_state = model_state
+			.fields
+			.get("id")
+			.expect("id field present in to_model_state output");
+		assert!(
+			!id_state.nullable,
+			"PK FieldState.nullable must be false even when the Rust type is \
+			 Option<i64>. Did the #[model] macro regress to emitting \
+			 null=\"true\" for Option<T> PKs? params={:?}",
+			id_state.params
+		);
+		assert_eq!(
+			id_state.params.get("null").map(String::as_str),
+			Some("false"),
+			"PK params[\"null\"] must be \"false\" (fixed macro contract). \
+			 Got params={:?}",
+			id_state.params
+		);
+	}
 }
