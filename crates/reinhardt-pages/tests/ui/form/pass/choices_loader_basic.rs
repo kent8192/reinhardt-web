@@ -21,3 +21,7 @@ fn main() {
 		},
 	};
 }
+
+// Mock server functions (would normally be defined with #[server_fn])
+fn submit_vote() {}
+fn get_poll_choices() {}

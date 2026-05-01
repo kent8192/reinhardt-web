@@ -1584,7 +1584,12 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				pub async fn submit(&self) -> Result<(), #pages_crate::ServerFnError> {
-					// On server, submit is a no-op (form is submitted via HTTP)
+					// Reference server_fn on native so the user's `use` statement
+					// stays live and `unused_imports` does not fire under
+					// `-D warnings` (reinhardt-web#4070). The wasm branch is the
+					// only path that actually invokes it; on native the form is
+					// submitted over HTTP, so this is a pure compile-time sink.
+					let _ = &#server_fn_ident;
 					Ok(())
 				}
 			}
