@@ -462,8 +462,8 @@ impl ClientLauncher {
 		// the Router thread-local is NOT borrowed; track_dependency then sees
 		// the launcher Effect as the current observer regardless of any nested
 		// reactive nodes that may run during the subsequent view.mount(...).
-		let path_signal = with_router(|r| r.current_path().clone());
-		let params_signal = with_router(|r| r.current_params().clone());
+		let (path_signal, params_signal) =
+			with_router(|r| (r.current_path().clone(), r.current_params().clone()));
 		let root_clone = root_el.clone();
 		let _effect = crate::reactive::Effect::new(move || {
 			// Subscribe outside the with_router borrow.

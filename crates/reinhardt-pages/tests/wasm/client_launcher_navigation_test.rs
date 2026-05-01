@@ -6,7 +6,11 @@
 //! every subsequent `Router::push` updates the path Signal but the
 //! root view is never re-mounted.
 //!
-//! **Run with**: `wasm-pack test --headless --chrome -p reinhardt-pages`
+//! **Run with** (from the workspace root):
+//!   `wasm-pack test --headless --chrome crates/reinhardt-pages -- --test client_launcher_navigation_test`
+//!
+//! Cargo args (such as `--test ...`) must follow `--`; `wasm-pack` does not
+//! accept Cargo flags before the path argument.
 
 #![cfg(wasm)]
 
