@@ -341,8 +341,15 @@ impl UnifiedRouter {
 
 	/// Mount a child UnifiedRouter on this router.
 	///
-	/// Extracts the server router from the child and mounts it.
-	pub fn mount_unified(self, prefix: &str, child: UnifiedRouter) -> Self {
+	/// Mounts the child's server router under `prefix` and merges its client
+	/// routes into the parent. Client named routes are preserved with index
+	/// offset adjustment so that `url_for("app:route")` resolves on the
+	/// project-level reverser obtained from `client_ref().to_reverser()`.
+	///
+	/// The `prefix` argument is applied to server routes only; client routes
+	/// keep their patterns as-declared, mirroring the WASM behavior.
+	pub fn mount_unified(mut self, prefix: &str, child: UnifiedRouter) -> Self {
+		self.client = self.client.merge(child.client);
 		self.mount(prefix, child.server)
 	}
 
@@ -821,6 +828,63 @@ mod tests {
 		assert!(
 			!router.client_ref().has_route("login"),
 			"unprefixed name should no longer resolve after with_namespace"
+		);
+	}
+
+	#[cfg(all(feature = "client-router", native))]
+	#[test]
+	fn mount_unified_merges_client_routes_on_native() {
+		// Arrange: a child UnifiedRouter that declares a client named route,
+		// mirroring what `#[url_patterns(InstalledApp::<app>, mode = client)]`
+		// produces on native via `client_url_patterns()`.
+		let child =
+			UnifiedRouter::new().client(|c| c.named_route("login_page", "/login/", || Page::Empty));
+		let parent = UnifiedRouter::new().client(|c| c.named_route("home", "/", || Page::Empty));
+
+		// Act
+		let merged = parent.mount_unified("/", child);
+
+		// Assert: both parent and child client routes are reachable on the
+		// resulting router, so a project-level reverser built from
+		// `client_ref().to_reverser()` can resolve `url_for(name)` for both.
+		assert!(merged.client_ref().has_route("home"));
+		assert!(
+			merged.client_ref().has_route("login_page"),
+			"native mount_unified must merge child client routes (#4076)"
+		);
+		assert_eq!(merged.client_ref().route_count(), 2);
+
+		let reverser = merged.client_ref().to_reverser();
+		assert_eq!(
+			reverser.reverse("login_page", &[]),
+			Some("/login/".to_string()),
+			"merged client routes must be resolvable via the reverser on native"
+		);
+	}
+
+	#[cfg(all(feature = "client-router", native))]
+	#[test]
+	fn mount_unified_merges_namespaced_client_routes_on_native() {
+		// Arrange: child router applies its own namespace before being mounted,
+		// matching the per-app composition pattern `mount_unified("/", auth::routes())`
+		// where `auth::routes()` already called `.with_namespace("auth")`.
+		let child = UnifiedRouter::new()
+			.client(|c| c.named_route("login_page", "/login/", || Page::Empty))
+			.with_namespace("auth");
+		let parent = UnifiedRouter::new();
+
+		// Act
+		let merged = parent.mount_unified("/", child);
+
+		// Assert
+		assert!(
+			merged.client_ref().has_route("auth:login_page"),
+			"namespaced child client routes must survive native mount_unified"
+		);
+		let reverser = merged.client_ref().to_reverser();
+		assert_eq!(
+			reverser.reverse("auth:login_page", &[]),
+			Some("/login/".to_string())
 		);
 	}
 
