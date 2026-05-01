@@ -440,13 +440,36 @@ impl ClientLauncher {
 			}
 		}
 
+		// Workaround for kent8192/reinhardt-web#4075
+		// Remove this workaround when the upstream issue is resolved.
+		//
+		// Ideal implementation (without workaround):
+		//   let _effect = crate::reactive::Effect::new(move || {
+		//       let view = with_router(|r| {
+		//           let _ = r.current_path().get();
+		//           let _ = r.current_params().get();
+		//           r.render_current()
+		//       });
+		//       crate::component::cleanup_reactive_nodes();
+		//       root_clone.set_inner_html("");
+		//       let wrapper = crate::dom::Element::new(root_clone.clone());
+		//       if let Err(e) = view.mount(&wrapper) {
+		//           web_sys::console::error_1(&format!("re-render failed: {e:?}").into());
+		//       }
+		//   });
+		//
+		// Hoist Signal clones out of with_router so Signal::get() runs while
+		// the Router thread-local is NOT borrowed; track_dependency then sees
+		// the launcher Effect as the current observer regardless of any nested
+		// reactive nodes that may run during the subsequent view.mount(...).
+		let (path_signal, params_signal) =
+			with_router(|r| (r.current_path().clone(), r.current_params().clone()));
 		let root_clone = root_el.clone();
 		let _effect = crate::reactive::Effect::new(move || {
-			let view = with_router(|r| {
-				let _ = r.current_path().get();
-				let _ = r.current_params().get();
-				r.render_current()
-			});
+			// Subscribe outside the with_router borrow.
+			let _ = path_signal.get();
+			let _ = params_signal.get();
+			let view = with_router(|r| r.render_current());
 			crate::component::cleanup_reactive_nodes();
 			root_clone.set_inner_html("");
 			let wrapper = crate::dom::Element::new(root_clone.clone());
