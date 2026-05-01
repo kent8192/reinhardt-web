@@ -196,6 +196,11 @@ trybuild = "1.0"
 rstest = { workspace = true }
 tempfile = { workspace = true }
 
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+# Used by tests/wasm/client_launcher_navigation_test.rs (Refs #4075) to
+# yield to the reactive scheduler between `Router::push` calls.
+gloo-timers = { version = "0.3", features = ["futures"] }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 criterion = { workspace = true }
 proptest = { workspace = true }
@@ -232,4 +237,9 @@ required-features = []
 [[test]]
 name = "suspense_boundary_wasm_test"
 path = "tests/wasm/suspense_boundary_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "client_launcher_navigation_test"
+path = "tests/wasm/client_launcher_navigation_test.rs"
 required-features = []
