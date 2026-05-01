@@ -64,3 +64,64 @@ fn test_effect_refires_on_direct_signal_access() {
 		"Variant 1 (direct Signal access) — if this fails, the runtime is broken; abort fix and file core issue"
 	);
 }
+
+/// Variant 2 (repro): the Effect closure reads the path Signal *through*
+/// a thread-local `RefCell::borrow()` of a Router — the exact pattern
+/// `ClientLauncher::launch` uses via `with_router`. If Task 1 passes
+/// and this fails, H1 is confirmed: `Signal::get`'s `track_dependency`
+/// fails to register the parent Effect when invoked through the
+/// thread-local borrow.
+#[test]
+#[serial]
+fn test_effect_refires_through_thread_local_borrow() {
+	thread_local! {
+		static TEST_ROUTER: RefCell<Option<Router>> = const { RefCell::new(None) };
+	}
+
+	fn with_test_router<F, R>(f: F) -> R
+	where
+		F: FnOnce(&Router) -> R,
+	{
+		TEST_ROUTER.with(|r| {
+			f(r.borrow()
+				.as_ref()
+				.expect("Test router not initialized"))
+		})
+	}
+
+	// Arrange: build the router with two routes, seed the current path
+	// to "/a" via the public push API (mirroring the Task 1 fallback).
+	let router = Router::new()
+		.route("/a", page_a)
+		.route("/b", page_b);
+	router.push("/a").expect("seed /a");
+	with_runtime(|rt| rt.flush_updates());
+
+	TEST_ROUTER.with(|r| *r.borrow_mut() = Some(router));
+
+	let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+	let log_clone = log.clone();
+
+	let _effect = Effect::new(move || {
+		// Mirror the launcher closure: read the path Signal *through*
+		// the thread-local borrow.
+		let path = with_test_router(|r| r.current_path().get());
+		log_clone.borrow_mut().push(path);
+	});
+
+	assert_eq!(*log.borrow(), vec!["/a".to_string()], "initial run");
+
+	// Act.
+	with_test_router(|r| r.push("/b").expect("push /b"));
+	with_runtime(|rt| rt.flush_updates());
+
+	// Assert.
+	assert_eq!(
+		*log.borrow(),
+		vec!["/a".to_string(), "/b".to_string()],
+		"Variant 2 (thread-local borrow) — if this fails, H1 is confirmed (track_dependency lost during RefCell::borrow)"
+	);
+
+	// Cleanup the test thread-local so other tests don't see stale state.
+	TEST_ROUTER.with(|r| *r.borrow_mut() = None);
+}
