@@ -36,9 +36,7 @@ fn test_effect_refires_on_direct_signal_access() {
 	// "/a" via the public `push` API (Router has no test-only setter and the
 	// native fallback for `current_path()` is "/", so we push + flush before
 	// creating the Effect to establish the initial state).
-	let router = Router::new()
-		.route("/a", page_a)
-		.route("/b", page_b);
+	let router = Router::new().route("/a", page_a).route("/b", page_b);
 	router.push("/a").expect("push /a");
 	with_runtime(|rt| rt.flush_updates());
 
@@ -82,18 +80,12 @@ fn test_effect_refires_through_thread_local_borrow() {
 	where
 		F: FnOnce(&Router) -> R,
 	{
-		TEST_ROUTER.with(|r| {
-			f(r.borrow()
-				.as_ref()
-				.expect("Test router not initialized"))
-		})
+		TEST_ROUTER.with(|r| f(r.borrow().as_ref().expect("Test router not initialized")))
 	}
 
 	// Arrange: build the router with two routes, seed the current path
 	// to "/a" via the public push API (mirroring the Task 1 fallback).
-	let router = Router::new()
-		.route("/a", page_a)
-		.route("/b", page_b);
+	let router = Router::new().route("/a", page_a).route("/b", page_b);
 	router.push("/a").expect("seed /a");
 	with_runtime(|rt| rt.flush_updates());
 
