@@ -341,8 +341,15 @@ impl UnifiedRouter {
 
 	/// Mount a child UnifiedRouter on this router.
 	///
-	/// Extracts the server router from the child and mounts it.
-	pub fn mount_unified(self, prefix: &str, child: UnifiedRouter) -> Self {
+	/// Mounts the child's server router under `prefix` and merges its client
+	/// routes into the parent. Client named routes are preserved with index
+	/// offset adjustment so that `url_for("app:route")` resolves on the
+	/// project-level reverser obtained from `client_ref().to_reverser()`.
+	///
+	/// The `prefix` argument is applied to server routes only; client routes
+	/// keep their patterns as-declared, mirroring the WASM behavior.
+	pub fn mount_unified(mut self, prefix: &str, child: UnifiedRouter) -> Self {
+		self.client = self.client.merge(child.client);
 		self.mount(prefix, child.server)
 	}
 
