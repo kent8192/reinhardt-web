@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(pages)* `ClientLauncher` render Effect now re-fires when `Router::push`
+  updates the path Signal, restoring SPA navigation. Hoist `current_path` /
+  `current_params` Signal clones out of the `with_router(|r| ...)`
+  thread-local borrow so the launcher Effect tracks both Signals as a
+  direct subscriber, independent of nested reactive nodes spawned during
+  `view.mount(...)`. Downstream report:
+  [reinhardt-cloud#514](https://github.com/kent8192/reinhardt-cloud/issues/514).
+  ([#4075](https://github.com/kent8192/reinhardt-web/issues/4075))
+
 ## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.22...reinhardt-pages@v0.1.0-rc.23) - 2026-04-29
 
 ### Added

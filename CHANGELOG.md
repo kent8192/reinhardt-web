@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(pages)* restore SPA navigation: `ClientLauncher`'s render Effect now
+  re-fires on `Router::push` ([#4075](https://github.com/kent8192/reinhardt-web/issues/4075)).
+
 ## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.24...reinhardt-web@v0.1.0-rc.25) - 2026-04-30
 
 ### Added
