@@ -12,6 +12,11 @@
 //! | `${VAR:?message}`  | fails with `message` if `VAR` is unset OR empty  |
 //! | `$$`               | escape — emits a literal `$`                     |
 //!
+//! Inside the default/message text of `${VAR:-default}` and
+//! `${VAR:?message}`, `$$` is the only special sequence — a lone `$` is
+//! preserved literally, and a nested `${...}` is rejected as a syntax
+//! error (nested expansion is not supported in v1).
+//!
 //! ## Invariants
 //!
 //! 1. **Single-pass expansion** — Resolved values are not re-expanded.
@@ -309,6 +314,10 @@ mod tests {
 		"${VAR:-foo$$bar}",
 		vec![Segment::Default { var: "VAR".into(), default: "foo$bar".into() }]
 	)]
+	#[case::lone_dollar_in_default(
+		"${VAR:-foo$bar}",
+		vec![Segment::Default { var: "VAR".into(), default: "foo$bar".into() }]
+	)]
 	fn parse_template_ok(#[case] input: &str, #[case] expected: Vec<Segment>) {
 		// Arrange / Act
 		let result = parse_template(input);
@@ -334,12 +343,16 @@ mod tests {
 		// Arrange / Act
 		let result = parse_template(input);
 
-		// Assert
-		match result {
-			Err(_) => {}
-			Ok((rest, _segments)) => {
-				assert_ne!(rest, "", "input `{}` parsed successfully but should fail", input);
-			}
-		}
+		// Assert — every case enters parse_placeholder (consumes `${`),
+		// so failures MUST propagate as `nom::Err::Failure` due to the
+		// `cut` boundary. Asserting `Err::Failure` specifically locks
+		// in the cut-driven semantics: a future refactor that drops
+		// `cut` would surface here as a regression.
+		assert!(
+			matches!(result, Err(nom::Err::Failure(_))),
+			"input `{}` should produce Err::Failure (cut-protected), got {:?}",
+			input,
+			result,
+		);
 	}
 }
