@@ -9,6 +9,7 @@ pub use super::advanced::{
 };
 pub use super::builder::{BuildError, GetError, MergedSettings, SettingsBuilder};
 pub use super::env::{Env, EnvError};
+pub use super::interpolation::InterpolationError;
 pub use super::env_loader::{EnvLoader, load_env, load_env_auto, load_env_optional};
 pub use super::env_parser::{
 	CacheUrl, DatabaseUrl, parse_bool, parse_cache_url, parse_database_url, parse_dict, parse_list,

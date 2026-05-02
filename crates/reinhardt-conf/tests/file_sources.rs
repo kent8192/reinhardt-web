@@ -337,3 +337,23 @@ fn auto_source_rejects_no_extension() {
 	// Assert
 	assert!(result.is_err());
 }
+
+#[rstest]
+fn source_error_interpolation_variant_is_constructible() {
+	// Arrange
+	use reinhardt_conf::settings::interpolation::InterpolationError;
+	use reinhardt_conf::settings::sources::SourceError;
+	let inner = InterpolationError::Required {
+		var: "X".into(),
+		path: std::path::PathBuf::from("a.toml"),
+		key_path: "x".into(),
+	};
+
+	// Act
+	let err: SourceError = inner.into();
+
+	// Assert — Display chains both messages
+	let msg = err.to_string();
+	assert!(msg.contains("Interpolation error"));
+	assert!(msg.contains("X"));
+}

@@ -51,6 +51,23 @@ pub enum SourceError {
 	/// The configuration source is invalid or misconfigured.
 	#[error("Invalid source: {0}")]
 	InvalidSource(String),
+
+	/// A `${VAR}` interpolation failed during TOML loading.
+	///
+	/// `InterpolationError` is boxed so that adding this variant does
+	/// not push `BuildError::Source` over the `result_large_err` clippy
+	/// threshold (the `Syntax` variant carries four heap-owning fields).
+	#[error("Interpolation error: {0}")]
+	Interpolation(#[from] Box<super::interpolation::InterpolationError>),
+}
+
+// Allow the `?` operator to convert a bare `InterpolationError` into a
+// `SourceError::Interpolation`. The auto-derived `From<Box<...>>` from
+// `#[from]` would otherwise force every call site to box explicitly.
+impl From<super::interpolation::InterpolationError> for SourceError {
+	fn from(err: super::interpolation::InterpolationError) -> Self {
+		SourceError::Interpolation(Box::new(err))
+	}
 }
 
 /// Environment variable configuration source
