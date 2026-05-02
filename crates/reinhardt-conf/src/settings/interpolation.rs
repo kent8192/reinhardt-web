@@ -27,11 +27,12 @@
 //!
 //! [`TomlFileSource::with_interpolation(true)`]: super::sources::TomlFileSource::with_interpolation
 //!
-//! The parser AST and helpers are introduced ahead of the evaluator and
-//! `TomlFileSource` wire-up. They are exercised by this module's own tests
-//! but have no non-test caller yet, so `dead_code` would fire on every
-//! public-but-internal helper. The follow-up commit (`Interpolator` +
-//! `walk_value`) consumes them and the allow can be removed at that point.
+//! `Interpolator` and the parser AST are exercised by this module's own
+//! tests but the `TomlFileSource` wire-up that turns them into a runtime
+//! caller is added in a follow-up commit. Until that lands, the module's
+//! `pub(super)` items are unreachable from non-test code, so `dead_code`
+//! is locally allowed. The allow MUST be removed once `TomlFileSource`
+//! invokes `Interpolator::interpolate_value`.
 #![allow(dead_code)]
 
 use std::path::PathBuf;
@@ -227,6 +228,81 @@ fn parse_rest_until_brace(input: &str) -> IResult<&str, String> {
 	}
 }
 
+/// String-template interpolator with injected env lookup.
+///
+/// Constructed per `TomlFileSource::load()` invocation. The `lookup`
+/// closure isolates the interpolator from `std::env`, which keeps unit
+/// tests free of `unsafe { env::set_var }` and `#[serial]` requirements.
+pub(super) struct Interpolator<'a> {
+	lookup: &'a dyn Fn(&str) -> Option<String>,
+}
+
+impl<'a> Interpolator<'a> {
+	/// Create an interpolator that resolves variables via `lookup`.
+	pub(super) fn new(lookup: &'a dyn Fn(&str) -> Option<String>) -> Self {
+		Self { lookup }
+	}
+
+	/// Resolve a single template string. Returns the substituted result
+	/// or an `InterpolationError` whose `path` and `key_path` fields are
+	/// left empty — the caller (`interpolate_value`) fills them in.
+	pub(super) fn interpolate_str(
+		&self,
+		input: &str,
+	) -> Result<String, InterpolationError> {
+		let (_rest, segments) = parse_template(input).map_err(|e| {
+			InterpolationError::Syntax {
+				detail: format!("{}", e),
+				snippet: input.to_string(),
+				path: PathBuf::new(),
+				key_path: String::new(),
+			}
+		})?;
+
+		let mut out = String::with_capacity(input.len());
+		for segment in segments {
+			match segment {
+				Segment::Literal(s) => out.push_str(&s),
+				Segment::Required { var } => match self.resolve(&var) {
+					Some(v) => out.push_str(&v),
+					None => {
+						return Err(InterpolationError::Required {
+							var,
+							path: PathBuf::new(),
+							key_path: String::new(),
+						});
+					}
+				},
+				Segment::Default { var, default } => match self.resolve(&var) {
+					Some(v) => out.push_str(&v),
+					None => out.push_str(&default),
+				},
+				Segment::RequiredMsg { var, message } => match self.resolve(&var) {
+					Some(v) => out.push_str(&v),
+					None => {
+						return Err(InterpolationError::RequiredWithMessage {
+							var,
+							message,
+							path: PathBuf::new(),
+							key_path: String::new(),
+						});
+					}
+				},
+			}
+		}
+		Ok(out)
+	}
+
+	/// Look up `name`. Returns `None` for both unset variables and empty
+	/// strings, enforcing the strict-empty invariant.
+	fn resolve(&self, name: &str) -> Option<String> {
+		match (self.lookup)(name) {
+			Some(s) if !s.is_empty() => Some(s),
+			_ => None,
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -354,5 +430,108 @@ mod tests {
 			input,
 			result,
 		);
+	}
+
+	// --- interpolate_str: positive and error cases ------------------------
+
+	use std::collections::HashMap;
+
+	macro_rules! envmap {
+		( $( $k:expr => $v:expr ),* $(,)? ) => {{
+			// `mut` is unused when the macro is invoked with zero pairs, but
+			// is required for the variadic case. Allow it locally to keep
+			// the macro single-arm.
+			#[allow(unused_mut)]
+			let mut m: HashMap<&'static str, &'static str> = HashMap::new();
+			$( m.insert($k, $v); )*
+			m
+		}};
+	}
+
+	#[rstest]
+	#[case::set_value(envmap!{"VAR" => "value"}, "${VAR}", "value")]
+	#[case::with_prefix_suffix(envmap!{"H" => "ex"}, "http://${H}/x", "http://ex/x")]
+	#[case::default_used(envmap!{}, "${VAR:-fallback}", "fallback")]
+	#[case::default_overridden(envmap!{"V" => "x"}, "${V:-fallback}", "x")]
+	#[case::empty_default_explicit(envmap!{}, "${VAR:-}", "")]
+	#[case::empty_env_treated_as_unset(envmap!{"V" => ""}, "${V:-fb}", "fb")]
+	#[case::escape_passthrough(envmap!{}, "$$50", "$50")]
+	fn interpolate_str_ok(
+		#[case] env: HashMap<&'static str, &'static str>,
+		#[case] tmpl: &str,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		let result = interp.interpolate_str(tmpl).expect("interpolation should succeed");
+
+		// Assert
+		assert_eq!(result, expected);
+	}
+
+	#[rstest]
+	fn interpolate_str_required_unset_returns_required_error() {
+		// Arrange
+		let env: HashMap<&'static str, &'static str> = HashMap::new();
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		let err = interp.interpolate_str("${MISSING}").unwrap_err();
+
+		// Assert
+		assert!(matches!(
+			&err,
+			InterpolationError::Required { var, .. } if var == "MISSING"
+		));
+	}
+
+	#[rstest]
+	fn interpolate_str_required_empty_returns_required_error() {
+		// Arrange — empty string is treated as unset (strict semantics)
+		let env = envmap!{"V" => ""};
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		let err = interp.interpolate_str("${V}").unwrap_err();
+
+		// Assert
+		assert!(matches!(err, InterpolationError::Required { .. }));
+	}
+
+	#[rstest]
+	fn interpolate_str_required_msg_returns_message() {
+		// Arrange
+		let env: HashMap<&'static str, &'static str> = HashMap::new();
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		let err = interp.interpolate_str("${P:?Set via direnv}").unwrap_err();
+
+		// Assert
+		assert!(matches!(
+			&err,
+			InterpolationError::RequiredWithMessage { var, message, .. }
+				if var == "P" && message == "Set via direnv"
+		));
+	}
+
+	#[rstest]
+	fn interpolate_str_syntax_error_for_unclosed_brace() {
+		// Arrange
+		let env: HashMap<&'static str, &'static str> = HashMap::new();
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		let err = interp.interpolate_str("${UNCLOSED").unwrap_err();
+
+		// Assert
+		assert!(matches!(err, InterpolationError::Syntax { .. }));
 	}
 }
