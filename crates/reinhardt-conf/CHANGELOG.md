@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- TOML configuration interpolation with `${VAR}`, `${VAR:-default}`,
+  `${VAR:-}` (explicit empty), and `${VAR:?message}` syntax. Opt-in via
+  `TomlFileSource::new(path).with_interpolation(true)`. Strings inside
+  TOML values are scanned at load time; numeric, boolean, datetime, and
+  array fields are unaffected. Composes with `HighPriorityEnvSource`
+  (priority 60 > TOML's 50) for fine-grained overrides without
+  duplicating per-environment TOML files. Fixes #4086.
+- `SourceError::Interpolation(InterpolationError)` variant for surfacing
+  interpolation failures (missing variables, syntax errors) with file
+  path and TOML key path context.
+
 ## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.24...reinhardt-conf@v0.1.0-rc.25) - 2026-04-30
 
 ### Changed
