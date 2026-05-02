@@ -26,14 +26,6 @@
 //! 4. **Type-bounded scope** — Only `toml::Value::String` is rewritten.
 //!
 //! [`TomlFileSource::with_interpolation(true)`]: super::sources::TomlFileSource::with_interpolation
-//!
-//! `Interpolator` and the parser AST are exercised by this module's own
-//! tests but the `TomlFileSource` wire-up that turns them into a runtime
-//! caller is added in a follow-up commit. Until that lands, the module's
-//! `pub(super)` items are unreachable from non-test code, so `dead_code`
-//! is locally allowed. The allow MUST be removed once `TomlFileSource`
-//! invokes `Interpolator::interpolate_value`.
-#![allow(dead_code)]
 
 use std::path::PathBuf;
 

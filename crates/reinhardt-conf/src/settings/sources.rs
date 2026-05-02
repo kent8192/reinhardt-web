@@ -325,10 +325,14 @@ impl ConfigSource for DotEnvSource {
 /// TOML file configuration source
 pub struct TomlFileSource {
 	path: PathBuf,
+	interpolate: bool,
 }
 
 impl TomlFileSource {
-	/// Create a new TOML file configuration source
+	/// Create a new TOML file configuration source.
+	///
+	/// Interpolation is disabled by default. Call
+	/// [`Self::with_interpolation`] to enable `${VAR}` expansion.
 	///
 	/// # Examples
 	///
@@ -339,7 +343,40 @@ impl TomlFileSource {
 	/// let source = TomlFileSource::new(PathBuf::from("config.toml"));
 	/// ```
 	pub fn new(path: impl Into<PathBuf>) -> Self {
-		Self { path: path.into() }
+		Self {
+			path: path.into(),
+			interpolate: false,
+		}
+	}
+
+	/// Enable `${VAR}` and `${VAR:-default}` interpolation against process
+	/// environment variables.
+	///
+	/// When enabled, every TOML string value is scanned for interpolation
+	/// tokens before being merged into the configuration:
+	///
+	/// | Token              | Meaning                                          |
+	/// |--------------------|--------------------------------------------------|
+	/// | `${VAR}`           | required — fails if `VAR` is unset or empty      |
+	/// | `${VAR:-default}`  | substitutes `default` if `VAR` is unset or empty |
+	/// | `${VAR:?message}`  | fails with `message` if `VAR` is unset or empty  |
+	/// | `$$`               | escape — produces a literal `$`                  |
+	///
+	/// Numeric, boolean, datetime, and array fields are never
+	/// interpolated; only TOML string values are scanned.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::sources::TomlFileSource;
+	/// use std::path::PathBuf;
+	///
+	/// let source = TomlFileSource::new(PathBuf::from("settings.toml"))
+	///     .with_interpolation(true);
+	/// ```
+	pub fn with_interpolation(mut self, enabled: bool) -> Self {
+		self.interpolate = enabled;
+		self
 	}
 }
 
@@ -350,7 +387,16 @@ impl ConfigSource for TomlFileSource {
 		}
 
 		let content = fs::read_to_string(&self.path)?;
-		let toml_value: toml::Value = toml::from_str(&content)?;
+		let mut toml_value: toml::Value = toml::from_str(&content)?;
+
+		// Apply ${VAR} interpolation if enabled. The lookup closure
+		// resolves variables from process env at load time.
+		if self.interpolate {
+			let lookup = |name: &str| std::env::var(name).ok();
+			let interpolator =
+				super::interpolation::Interpolator::new(&lookup);
+			interpolator.interpolate_value(&mut toml_value, &self.path)?;
+		}
 
 		// Convert TOML value to JSON value
 		let json_str = serde_json::to_string(&toml_value)?;
@@ -844,6 +890,25 @@ secret_key = "test-key"
 		// Assert
 		assert!(description.contains("REINHARDT_TEST_"));
 		assert!(description.contains("high priority"));
+	}
+
+	#[test]
+	fn toml_file_source_default_does_not_interpolate() {
+		// Arrange
+		let temp_dir = TempDir::new().unwrap();
+		let config_path = temp_dir.path().join("config.toml");
+		let mut file = File::create(&config_path).unwrap();
+		writeln!(file, r#"host = "${{LITERAL_VAR}}""#).unwrap();
+
+		// Act — no with_interpolation call
+		let source = TomlFileSource::new(&config_path);
+		let config = source.load().unwrap();
+
+		// Assert — literal preserved (back-compat)
+		assert_eq!(
+			config.get("host").unwrap(),
+			&Value::String("${LITERAL_VAR}".to_string())
+		);
 	}
 
 	#[test]
