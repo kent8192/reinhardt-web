@@ -602,7 +602,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						&client_urls_struct,
 						&quote! { resolve_client_url },
 						&quote! { #app_str },
-						&quote! {},
+						&quote! { use #reinhardt::ClientUrlResolver as _; },
 					);
 
 					quote! {
