@@ -303,6 +303,127 @@ impl<'a> Interpolator<'a> {
 	}
 }
 
+use std::path::Path;
+
+/// One segment of a TOML key path — either a table key or an array index.
+#[derive(Debug, Clone)]
+enum KeyPathSegment {
+	Key(String),
+	Index(usize),
+}
+
+/// Stack of key-path segments accumulated during the AST walk.
+#[derive(Default)]
+struct KeyPath(Vec<KeyPathSegment>);
+
+impl KeyPath {
+	fn push_key(&mut self, key: &str) {
+		self.0.push(KeyPathSegment::Key(key.to_string()));
+	}
+
+	fn push_index(&mut self, idx: usize) {
+		self.0.push(KeyPathSegment::Index(idx));
+	}
+
+	fn pop(&mut self) {
+		self.0.pop();
+	}
+}
+
+impl std::fmt::Display for KeyPath {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		for (i, seg) in self.0.iter().enumerate() {
+			match seg {
+				KeyPathSegment::Key(k) if i == 0 => write!(f, "{}", k)?,
+				KeyPathSegment::Key(k) => write!(f, ".{}", k)?,
+				KeyPathSegment::Index(idx) => write!(f, "[{}]", idx)?,
+			}
+		}
+		Ok(())
+	}
+}
+
+impl<'a> Interpolator<'a> {
+	/// Recursively interpolate every `toml::Value::String` in the tree.
+	/// `toml_path` is recorded in errors for diagnostics.
+	pub(super) fn interpolate_value(
+		&self,
+		value: &mut toml::Value,
+		toml_path: &Path,
+	) -> Result<(), InterpolationError> {
+		let mut key_path = KeyPath::default();
+		self.walk(value, toml_path, &mut key_path)
+	}
+
+	fn walk(
+		&self,
+		value: &mut toml::Value,
+		toml_path: &Path,
+		key_path: &mut KeyPath,
+	) -> Result<(), InterpolationError> {
+		match value {
+			toml::Value::String(s) => match self.interpolate_str(s) {
+				Ok(replaced) => {
+					*s = replaced;
+					Ok(())
+				}
+				Err(err) => Err(attach_context(err, toml_path, key_path)),
+			},
+			toml::Value::Table(table) => {
+				for (k, child) in table.iter_mut() {
+					key_path.push_key(k);
+					self.walk(child, toml_path, key_path)?;
+					key_path.pop();
+				}
+				Ok(())
+			}
+			toml::Value::Array(arr) => {
+				for (idx, child) in arr.iter_mut().enumerate() {
+					key_path.push_index(idx);
+					self.walk(child, toml_path, key_path)?;
+					key_path.pop();
+				}
+				Ok(())
+			}
+			// Numeric, boolean, datetime — left untouched per the
+			// type-bounded scope invariant.
+			_ => Ok(()),
+		}
+	}
+}
+
+/// Replace empty `path` / `key_path` fields on an error produced by
+/// `interpolate_str` with the surrounding TOML context.
+fn attach_context(
+	err: InterpolationError,
+	toml_path: &Path,
+	key_path: &KeyPath,
+) -> InterpolationError {
+	let path = toml_path.to_path_buf();
+	let key_path_str = key_path.to_string();
+	match err {
+		InterpolationError::Required { var, .. } => InterpolationError::Required {
+			var,
+			path,
+			key_path: key_path_str,
+		},
+		InterpolationError::RequiredWithMessage { var, message, .. } => {
+			InterpolationError::RequiredWithMessage {
+				var,
+				message,
+				path,
+				key_path: key_path_str,
+			}
+		}
+		InterpolationError::Syntax { detail, snippet, .. } => InterpolationError::Syntax {
+			detail,
+			snippet,
+			path,
+			key_path: key_path_str,
+		},
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -533,5 +654,140 @@ mod tests {
 
 		// Assert
 		assert!(matches!(err, InterpolationError::Syntax { .. }));
+	}
+
+	// --- interpolate_value: AST walker ------------------------------------
+
+	#[rstest]
+	fn interpolate_value_walks_nested_table() {
+		// Arrange
+		let mut value: toml::Value = toml::from_str(
+			r#"
+			[database]
+			host = "${DB_HOST}"
+			port = 5432
+			"#,
+		)
+		.unwrap();
+		let env = envmap!{"DB_HOST" => "postgres"};
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		interp
+			.interpolate_value(&mut value, Path::new("test.toml"))
+			.expect("walk should succeed");
+
+		// Assert
+		assert_eq!(value["database"]["host"].as_str(), Some("postgres"));
+		assert_eq!(value["database"]["port"].as_integer(), Some(5432));
+	}
+
+	#[rstest]
+	fn interpolate_value_propagates_key_path_in_error() {
+		// Arrange
+		let mut value: toml::Value = toml::from_str(
+			r#"
+			[core.databases.default]
+			host = "${MISSING_VAR}"
+			"#,
+		)
+		.unwrap();
+		let env: HashMap<&'static str, &'static str> = HashMap::new();
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		let err = interp
+			.interpolate_value(&mut value, Path::new("local.toml"))
+			.unwrap_err();
+
+		// Assert
+		let msg = err.to_string();
+		assert!(msg.contains("local.toml"), "msg = {}", msg);
+		assert!(msg.contains("core.databases.default.host"), "msg = {}", msg);
+		assert!(msg.contains("MISSING_VAR"), "msg = {}", msg);
+	}
+
+	#[rstest]
+	fn interpolate_value_walks_array_with_index_in_path() {
+		// Arrange
+		let mut value: toml::Value = toml::from_str(
+			r#"
+			services = ["${SVC_A}", "${SVC_B:-default-b}"]
+			"#,
+		)
+		.unwrap();
+		let env = envmap!{"SVC_A" => "alpha"};
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		interp.interpolate_value(&mut value, Path::new("test.toml")).unwrap();
+
+		// Assert
+		let arr = value["services"].as_array().unwrap();
+		assert_eq!(arr[0].as_str(), Some("alpha"));
+		assert_eq!(arr[1].as_str(), Some("default-b"));
+	}
+
+	#[rstest]
+	fn interpolate_value_array_error_includes_index_in_path() {
+		// Arrange
+		let mut value: toml::Value = toml::from_str(
+			r#"services = ["${MISSING_SVC}"]"#,
+		)
+		.unwrap();
+		let env: HashMap<&'static str, &'static str> = HashMap::new();
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		let err = interp
+			.interpolate_value(&mut value, Path::new("test.toml"))
+			.unwrap_err();
+
+		// Assert
+		let msg = err.to_string();
+		assert!(msg.contains("services[0]"), "msg = {}", msg);
+	}
+
+	#[rstest]
+	fn interpolate_value_does_not_recurse_into_resolved_value() {
+		// Arrange — VAR resolves to "${INNER}", which must NOT be re-expanded
+		let mut value = toml::Value::String("${OUTER}".to_string());
+		let env = envmap!{"OUTER" => "${INNER}"};
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		interp.interpolate_value(&mut value, Path::new("x.toml")).unwrap();
+
+		// Assert — single-pass invariant
+		assert_eq!(value.as_str(), Some("${INNER}"));
+	}
+
+	#[rstest]
+	fn interpolate_value_skips_non_string_types() {
+		// Arrange
+		let mut value: toml::Value = toml::from_str(
+			r#"
+			port = 5432
+			enabled = true
+			rate = 1.5
+			"#,
+		)
+		.unwrap();
+		let env: HashMap<&'static str, &'static str> = HashMap::new();
+		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
+		let interp = Interpolator::new(&lookup);
+
+		// Act
+		interp.interpolate_value(&mut value, Path::new("x.toml")).unwrap();
+
+		// Assert — non-string types passthrough
+		assert_eq!(value["port"].as_integer(), Some(5432));
+		assert_eq!(value["enabled"].as_bool(), Some(true));
+		assert_eq!(value["rate"].as_float(), Some(1.5));
 	}
 }
