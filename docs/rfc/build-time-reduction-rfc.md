@@ -16,9 +16,9 @@
 
 The Reinhardt workspace has grown to **40 crates**, with `reinhardt-core` alone producing a `target/` of 553 MB. Daily development is bottlenecked by build time, especially during the inner edit-compile loop. The pain manifests primarily in three forms (in order of priority):
 
-1. **Incremental build (B)**: editing a file and waiting for `cargo check` / `cargo build` / rust-analyzer.
-2. **Cold build (A)**: `cargo clean && cargo build`, fresh CI checkouts, new contributor onboarding.
-3. **Test build (C)**: `cargo nextest run --no-run` link phase before tests can execute.
+1. **Incremental build**: editing a file and waiting for `cargo check` / `cargo build` / rust-analyzer.
+2. **Cold build**: `cargo clean && cargo build`, fresh CI checkouts, new contributor onboarding.
+3. **Test build**: `cargo nextest run --no-run` link phase before tests can execute.
 
 Build performance is also a public-facing concern: any project that depends on `reinhardt = "..."` inherits the framework's compile cost. Improvements to the framework's internal structure propagate to user projects automatically.
 
@@ -26,7 +26,7 @@ A diagnostic pass on the current state surfaced several "free wins" that have no
 
 - `[profile.dev]` carries only `debug = 1`. No `codegen-units` tuning, no `split-debuginfo`, no `incremental` declaration.
 - `.cargo/config.toml` has no linker configuration; macOS uses Apple `ld`, Ubuntu CI uses default `ld`.
-- `sccache` is configured globally in `~/.cargo/config.toml`, but **its Rust cache hit rate is 0.32 %** (309 of 309 Rust compile attempts marked `non-cacheable due to: incremental`). It is effectively unused.
+- `sccache` is configured globally in `~/.cargo/config.toml`, but **its Rust cache hit rate is 0.32 %** (1 hit out of 310 cacheable Rust compile requests, plus an additional 409 invocations marked `non-cacheable due to: incremental` that bypass the cache entirely). It is effectively unused.
 - 10 proc-macro crates exist; their generated-code sizes have not been audited.
 - `reinhardt-core/target` is 553 MB while its `src/` is 50 KB, which strongly suggests excess monomorphization or large macro output.
 
@@ -76,7 +76,7 @@ Targets are placeholders; they are recalibrated against the actual Phase 0 basel
 
 ## 4. Recommended approach
 
-Execute Phase 0 → Phase A → Phase B as a connected PR series, totaling **15 PRs** (1 + 6 + 8) over ~2–3 weeks. Each PR is independently revertable. Phase C is intentionally out of scope and will be re-brainstormed against the post-Phase-B baseline.
+Execute Phase 0 → Phase A → Phase B as a connected PR series, totaling **15 PRs** (1 + 6 + 8) over ~2–3 weeks. Each PR is independently revertible. Phase C is intentionally out of scope and will be re-brainstormed against the post-Phase-B baseline.
 
 ### 4.1 Phase 0 — Measurement infrastructure (1 PR)
 
@@ -371,7 +371,7 @@ Decision criteria for entering Phase C will incorporate the actual numbers produ
 ## 6. PR sequence and rollback
 
 ```text
-Phase 0 (1 PR)              Phase A (5–6 PRs)                 Phase B (8 PRs)
+Phase 0 (1 PR)              Phase A (6 PRs)                   Phase B (8 PRs)
 ─────────────              ─────────────────                  ─────────────────
 PR-0  baseline      ──┬──▶  PR-A1  profile-dev          ──▶  PR-B1a  monomorph-analysis
                       │      PR-A2  deps-opt-level             PR-B1b  monomorph-reduction
@@ -389,7 +389,7 @@ PR-0  baseline      ──┬──▶  PR-A1  profile-dev          ──▶  P
 |---|---|
 | Branch naming | `feature/issue-XXXX-<description>` per `instructions/PR_GUIDELINE.md` PC-3 |
 | Base branch | `main` (RC, non-breaking work) |
-| Worktree | Required, under `/Users/kent8192/Projects/reinhardt-faimily/` (per `.wtp.yml`) |
+| Worktree | Required, under `/tmp/<worktree-name>/` per `instructions/PR_GUIDELINE.md` CR-1 |
 | Merge strategy | Squash and merge (default per MP-2) |
 
 ### 6.2 Issue layout
@@ -487,7 +487,7 @@ The work described in this RFC is complete when:
 # scripts/bench-build.sh
 set -euo pipefail
 HW=$(uname -ms)
-DATE=$(date +%Y%m%d)
+DATE=$(date +%Y-%m-%d)
 OUT="docs/build-perf/baseline-${DATE}.json"
 
 hyperfine --warmup 1 --runs 3 --export-json "${OUT}" \
