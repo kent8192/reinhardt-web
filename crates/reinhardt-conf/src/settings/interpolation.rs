@@ -69,9 +69,7 @@ pub enum InterpolationError {
 	},
 
 	/// A `${VAR:?message}` token failed; `message` is the user-supplied hint.
-	#[error(
-		"environment variable `{var}` is required at {path}:{key_path}: {message}"
-	)]
+	#[error("environment variable `{var}` is required at {path}:{key_path}: {message}")]
 	RequiredWithMessage {
 		/// Variable name.
 		var: String,
@@ -171,8 +169,12 @@ fn parse_var_name(input: &str) -> IResult<&str, &str> {
 /// Optional modifier after the variable name: `:-default` or `:?message`.
 fn parse_modifier(input: &str) -> IResult<&str, Option<Modifier>> {
 	alt((
-		map(preceded(tag(":-"), parse_rest_until_brace), |s| Some(Modifier::Default(s))),
-		map(preceded(tag(":?"), parse_rest_until_brace), |s| Some(Modifier::RequiredMsg(s))),
+		map(preceded(tag(":-"), parse_rest_until_brace), |s| {
+			Some(Modifier::Default(s))
+		}),
+		map(preceded(tag(":?"), parse_rest_until_brace), |s| {
+			Some(Modifier::RequiredMsg(s))
+		}),
 		// No modifier: nothing consumed.
 		parse_no_modifier,
 	))
@@ -238,17 +240,12 @@ impl<'a> Interpolator<'a> {
 	/// Resolve a single template string. Returns the substituted result
 	/// or an `InterpolationError` whose `path` and `key_path` fields are
 	/// left empty — the caller (`interpolate_value`) fills them in.
-	pub(super) fn interpolate_str(
-		&self,
-		input: &str,
-	) -> Result<String, InterpolationError> {
-		let (_rest, segments) = parse_template(input).map_err(|e| {
-			InterpolationError::Syntax {
-				detail: format!("{}", e),
-				snippet: input.to_string(),
-				path: PathBuf::new(),
-				key_path: String::new(),
-			}
+	pub(super) fn interpolate_str(&self, input: &str) -> Result<String, InterpolationError> {
+		let (_rest, segments) = parse_template(input).map_err(|e| InterpolationError::Syntax {
+			detail: format!("{}", e),
+			snippet: input.to_string(),
+			path: PathBuf::new(),
+			key_path: String::new(),
 		})?;
 
 		let mut out = String::with_capacity(input.len());
@@ -407,7 +404,9 @@ fn attach_context(
 				key_path: key_path_str,
 			}
 		}
-		InterpolationError::Syntax { detail, snippet, .. } => InterpolationError::Syntax {
+		InterpolationError::Syntax {
+			detail, snippet, ..
+		} => InterpolationError::Syntax {
 			detail,
 			snippet,
 			path,
@@ -428,8 +427,14 @@ mod tests {
 	fn segment_variants_construct() {
 		let _lit = Segment::Literal("x".into());
 		let _req = Segment::Required { var: "V".into() };
-		let _def = Segment::Default { var: "V".into(), default: "d".into() };
-		let _msg = Segment::RequiredMsg { var: "V".into(), message: "m".into() };
+		let _def = Segment::Default {
+			var: "V".into(),
+			default: "d".into(),
+		};
+		let _msg = Segment::RequiredMsg {
+			var: "V".into(),
+			message: "m".into(),
+		};
 	}
 
 	#[test]
@@ -579,7 +584,9 @@ mod tests {
 		let interp = Interpolator::new(&lookup);
 
 		// Act
-		let result = interp.interpolate_str(tmpl).expect("interpolation should succeed");
+		let result = interp
+			.interpolate_str(tmpl)
+			.expect("interpolation should succeed");
 
 		// Assert
 		assert_eq!(result, expected);
@@ -605,7 +612,7 @@ mod tests {
 	#[rstest]
 	fn interpolate_str_required_empty_returns_required_error() {
 		// Arrange — empty string is treated as unset (strict semantics)
-		let env = envmap!{"V" => ""};
+		let env = envmap! {"V" => ""};
 		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
 		let interp = Interpolator::new(&lookup);
 
@@ -661,7 +668,7 @@ mod tests {
 			"#,
 		)
 		.unwrap();
-		let env = envmap!{"DB_HOST" => "postgres"};
+		let env = envmap! {"DB_HOST" => "postgres"};
 		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
 		let interp = Interpolator::new(&lookup);
 
@@ -710,12 +717,14 @@ mod tests {
 			"#,
 		)
 		.unwrap();
-		let env = envmap!{"SVC_A" => "alpha"};
+		let env = envmap! {"SVC_A" => "alpha"};
 		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
 		let interp = Interpolator::new(&lookup);
 
 		// Act
-		interp.interpolate_value(&mut value, Path::new("test.toml")).unwrap();
+		interp
+			.interpolate_value(&mut value, Path::new("test.toml"))
+			.unwrap();
 
 		// Assert
 		let arr = value["services"].as_array().unwrap();
@@ -726,10 +735,7 @@ mod tests {
 	#[rstest]
 	fn interpolate_value_array_error_includes_index_in_path() {
 		// Arrange
-		let mut value: toml::Value = toml::from_str(
-			r#"services = ["${MISSING_SVC}"]"#,
-		)
-		.unwrap();
+		let mut value: toml::Value = toml::from_str(r#"services = ["${MISSING_SVC}"]"#).unwrap();
 		let env: HashMap<&'static str, &'static str> = HashMap::new();
 		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
 		let interp = Interpolator::new(&lookup);
@@ -748,12 +754,14 @@ mod tests {
 	fn interpolate_value_does_not_recurse_into_resolved_value() {
 		// Arrange — VAR resolves to "${INNER}", which must NOT be re-expanded
 		let mut value = toml::Value::String("${OUTER}".to_string());
-		let env = envmap!{"OUTER" => "${INNER}"};
+		let env = envmap! {"OUTER" => "${INNER}"};
 		let lookup = |n: &str| env.get(n).map(|s| s.to_string());
 		let interp = Interpolator::new(&lookup);
 
 		// Act
-		interp.interpolate_value(&mut value, Path::new("x.toml")).unwrap();
+		interp
+			.interpolate_value(&mut value, Path::new("x.toml"))
+			.unwrap();
 
 		// Assert — single-pass invariant
 		assert_eq!(value.as_str(), Some("${INNER}"));
@@ -775,7 +783,9 @@ mod tests {
 		let interp = Interpolator::new(&lookup);
 
 		// Act
-		interp.interpolate_value(&mut value, Path::new("x.toml")).unwrap();
+		interp
+			.interpolate_value(&mut value, Path::new("x.toml"))
+			.unwrap();
 
 		// Assert — non-string types passthrough
 		assert_eq!(value["port"].as_integer(), Some(5432));

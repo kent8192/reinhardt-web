@@ -148,9 +148,8 @@ fn required_with_message_surface_user_message() {
 	let _guard = EnvGuard(vec!["IT_NEEDS_MESSAGE"]);
 	// SAFETY: serial-protected.
 	unsafe { env::remove_var("IT_NEEDS_MESSAGE") };
-	let (_dir, path) = write_toml_file(
-		r#"password = "${IT_NEEDS_MESSAGE:?Set via direnv or 1Password CLI}""#,
-	);
+	let (_dir, path) =
+		write_toml_file(r#"password = "${IT_NEEDS_MESSAGE:?Set via direnv or 1Password CLI}""#);
 
 	// Act
 	let result = TomlFileSource::new(&path).with_interpolation(true).load();

@@ -393,8 +393,7 @@ impl ConfigSource for TomlFileSource {
 		// resolves variables from process env at load time.
 		if self.interpolate {
 			let lookup = |name: &str| std::env::var(name).ok();
-			let interpolator =
-				super::interpolation::Interpolator::new(&lookup);
+			let interpolator = super::interpolation::Interpolator::new(&lookup);
 			interpolator.interpolate_value(&mut toml_value, &self.path)?;
 		}
 
