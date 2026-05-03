@@ -1,0 +1,30 @@
+name: WASM Check (Standalone)
+
+# Re-exposes wasm-check.yml on push to main so the WASM regression suite runs
+# after a PR merges. ci.yml already invokes wasm-check.yml on pull_request, so
+# this wrapper is push-to-main only to avoid duplicate runs (Fixes #4093).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wasm-check-standalone-${{ github.ref }}
+  # Use false to prevent the long-running wasm-test (~10 min headless Chrome)
+  # from being cancelled by a follow-up push. With false, a new run queues
+  # behind the current one, ensuring at least one run always completes per
+  # main-branch state. Matches semver-check-standalone.yml /
+  # examples-test-standalone.yml.
+  cancel-in-progress: false
+
+jobs:
+  wasm-check:
+    name: WASM Check
+    uses: ./.github/workflows/wasm-check.yml
+    with:
+      runner: '"ubuntu-latest"'
+      cargo-build-jobs: '1'
