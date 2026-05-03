@@ -49,10 +49,12 @@ fn test_resolve_static_strips_leading_slash() {
 /// Tests that is_initialized returns boolean correctly.
 #[rstest]
 fn test_is_initialized_returns_bool() {
-	// The function should return a boolean
-	// We can't test the exact value since it depends on global state
-	let result = is_initialized();
-	assert!(result == true || result == false);
+	// The function returns a bool that depends on global state, so we
+	// cannot assert a concrete value. Type-pin via annotation so this
+	// test still verifies the return type (a signature change to non-bool
+	// would fail to compile here) and that the call does not panic.
+	// Refs #4115.
+	let _: bool = is_initialized();
 }
 
 /// Tests multiple files can be resolved.
