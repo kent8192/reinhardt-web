@@ -147,3 +147,36 @@ jobs:
             cargo test --target wasm32-unknown-unknown \
               --test csrf_wasm_test --test server_fn_wasm_test \
               --test client_launcher_navigation_test
+
+  # Native e2e regression test for the SPA link interceptor -> Router::push
+  # -> re-render path. Boots a Chrome container via testcontainers and drives
+  # it through the fixture SPA. Refs #4088.
+  e2e-test:
+    name: E2E Test (Chrome via CDP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          cache-key: "e2e-cdp-test"
+
+      - name: Install wasm32-unknown-unknown target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Pull headless-shell image (warm cache)
+        run: docker pull chromedp/headless-shell:latest
+
+      - name: Run e2e_cdp regression test
+        run: |
+          cargo test \
+            -p reinhardt-pages \
+            --features e2e-cdp-test \
+            --test spa_navigation_e2e_test \
+            -- --nocapture

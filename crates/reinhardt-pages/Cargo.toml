@@ -24,6 +24,15 @@ debug-hooks = []
 uuid = ["dep:uuid"]
 chrono = ["dep:chrono"]
 ast = []
+# Enables the `tests/integration/spa_navigation_e2e_test.rs` integration
+# test (Refs #4088). This is a marker feature: the actual test deps
+# (`reinhardt-test`, `axum`, `tower-http`) live as native-only path
+# dev-dependencies (see `[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]`).
+# Per CLAUDE.md KI-2, `reinhardt-test` is a path-only dev-dep here to avoid
+# both cyclic publishable dependencies and release-plz publish ordering
+# breakage. Cargo dev-dependencies cannot be optional, so feature gating
+# is achieved via `#![cfg(feature = "e2e-cdp-test")]` and `required-features`.
+e2e-cdp-test = []
 hmr = ["dep:notify", "dep:tokio-tungstenite", "dep:futures-util"]
 # web-sys features for WASM applications
 # Applications should use this feature to get all required web-sys features
@@ -216,6 +225,13 @@ futures-util = "0.3"
 # cannot build for `wasm32-unknown-unknown`. The trybuild harness itself is
 # already gated with `#![cfg(not(target_arch = "wasm32"))]`.
 reinhardt-di = { workspace = true, features = ["validation"] }
+# E2E CDP regression test (`tests/integration/spa_navigation_e2e_test.rs`,
+# Refs #4088). Path-only per CLAUDE.md KI-2: avoids both release-plz publish
+# ordering breakage and cyclic publish dependencies. Test compilation is
+# gated by `[[test]] required-features = ["e2e-cdp-test"]`.
+reinhardt-test = { path = "../reinhardt-test", default-features = false, features = ["e2e-cdp"] }
+axum = "0.7"
+tower-http = { version = "0.5", features = ["fs"] }
 
 [lib]
 crate-type = ["rlib"]
@@ -243,3 +259,8 @@ required-features = []
 name = "client_launcher_navigation_test"
 path = "tests/wasm/client_launcher_navigation_test.rs"
 required-features = []
+
+[[test]]
+name = "spa_navigation_e2e_test"
+path = "tests/integration/spa_navigation_e2e_test.rs"
+required-features = ["e2e-cdp-test"]

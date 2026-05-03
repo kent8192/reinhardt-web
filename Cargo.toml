@@ -387,7 +387,10 @@ members = [
 ]
 
 # Exclude examples (independent workspace with own dependency management)
-exclude = ["examples"]
+exclude = [
+	"examples",
+	"crates/reinhardt-pages/tests/fixtures/spa_navigation_app",
+]
 
 default-members = [
   "crates/reinhardt-views",
