@@ -230,6 +230,46 @@ struct PathSubscription {
 	last_params: RefCell<Option<HashMap<String, String>>>,
 }
 
+/// Diff state machine shared by `on_path` / `on_path_pattern`
+/// subscriptions.
+///
+/// Evaluates `pattern` against `path`, updates `last_params` with the
+/// new match (or `None`) regardless of the transition, and returns
+/// `Some(new_params)` only on transitions that should fire the user
+/// callback:
+///
+/// - `None -> Some` (entering a match): fires.
+/// - `Some(a) -> Some(b)` where `a != b` (param change inside the
+///   same pattern): fires.
+/// - `Some(_) -> None` (leaving a match): does not fire.
+/// - `None -> None` (still unmatched): does not fire.
+///
+/// Extracted so the launcher's Phase C path-subscription registration
+/// (`launch()`) and its native unit tests share a single diff
+/// implementation; the same helper is invoked once at registration to
+/// deliver the bootstrap route and again from each `Router::on_navigate`
+/// dispatch (Refs #4101).
+#[cfg_attr(not(any(wasm, test)), allow(dead_code))]
+pub(crate) fn next_path_subscription_match(
+	pattern: &PathPattern,
+	path: &str,
+	last_params: &RefCell<Option<HashMap<String, String>>>,
+) -> Option<HashMap<String, String>> {
+	let new_match: Option<HashMap<String, String>> = pattern.matches(path).map(|(p, _)| p);
+	let should_fire = {
+		let mut prev = last_params.borrow_mut();
+		let fire = match (&*prev, &new_match) {
+			(None, Some(_)) => true,
+			(Some(_), None) => false,
+			(Some(a), Some(b)) => a != b,
+			(None, None) => false,
+		};
+		*prev = new_match.clone();
+		fire
+	};
+	if should_fire { new_match } else { None }
+}
+
 impl ClientLauncher {
 	/// Create a new launcher targeting the given CSS selector (e.g. `"#root"`).
 	pub fn new(root_selector: &'static str) -> Self {
@@ -366,7 +406,6 @@ impl ClientLauncher {
 	/// listener registered in Phase C).
 	///
 	/// Refs #4101.
-	#[cfg(wasm)]
 	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
 		let view = with_router(|r| r.render_current());
 		crate::component::cleanup_reactive_nodes();
@@ -481,8 +520,11 @@ impl ClientLauncher {
 		});
 		std::mem::forget(render_subscription);
 
-		// Step 9: drain after_launch callbacks now that the router is live and
-		// the first DOM mount has completed.
+		// Phase C (between part 1 and part 2): drain after_launch
+		// callbacks now that the router is live, the first DOM mount
+		// has completed, and the render listener is active. Path
+		// subscriptions registered below see whatever path the
+		// after_launch hooks may have pushed.
 		if !self.after_launch_hooks.is_empty() {
 			let ctx = LaunchCtx {
 				window: &window,
@@ -495,52 +537,67 @@ impl ClientLauncher {
 		}
 
 		// Phase C (part 2, #4101): register one leaked
-		// Router::on_navigate listener per path subscription. Each
-		// listener re-evaluates the pattern against the new path and
-		// fires the user callback only on transitions in or between
-		// matched param sets. The RefCell<Option<HashMap>> diff state
-		// is preserved verbatim from the previous Effect-based
-		// implementation; only the subscription mechanism changes
-		// (Signal auto-tracking -> explicit on_navigate callback).
+		// Router::on_navigate listener per path subscription, then
+		// manually evaluate the current path once so subscriptions
+		// whose pattern matches the bootstrap route deliver the initial
+		// route at startup. The previous Effect-based implementation
+		// got the initial-route delivery for free because Effects run
+		// their closure once at creation; the on_navigate-based
+		// implementation only fires on subsequent navigations, so the
+		// initial evaluation is restored explicitly here.
+		//
+		// The listener is registered BEFORE the initial evaluation so
+		// that any `Router::push` triggered from inside the user
+		// callback during initial eval is observed by this listener
+		// (matching the previous behaviour where the reactive runtime
+		// would re-execute the Effect on the same Signal change). The
+		// `Rc<RefCell<Option<HashMap>>>` diff state is shared between
+		// the listener closure and the initial-eval site so transitions
+		// between the two are detected by the same state machine.
 		for sub in self.path_subscriptions.into_iter() {
 			let PathSubscription {
 				pattern,
 				callback,
 				last_params,
 			} = sub;
-			let document_for_listener = document.clone();
+			let pattern: std::rc::Rc<PathPattern> = std::rc::Rc::new(pattern);
+			let callback: std::rc::Rc<dyn Fn(&PathCtx<'_>) + 'static> = std::rc::Rc::from(callback);
+			let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
+				std::rc::Rc::new(last_params);
 
+			let pattern_for_listener = pattern.clone();
+			let callback_for_listener = callback.clone();
+			let last_params_for_listener = last_params.clone();
+			let document_for_listener = document.clone();
 			let listener_subscription = with_router(|r| {
 				r.on_navigate(move |path, _params_from_router| {
-					let new_match: Option<HashMap<String, String>> =
-						pattern.matches(path).map(|(p, _)| p);
-
-					// Compare against the previous match state to
-					// detect transitions; release the borrow before
-					// invoking user code.
-					let should_fire = {
-						let mut prev = last_params.borrow_mut();
-						let fire = match (&*prev, &new_match) {
-							(None, Some(_)) => true,
-							(Some(_), None) => false,
-							(Some(a), Some(b)) => a != b,
-							(None, None) => false,
-						};
-						*prev = new_match.clone();
-						fire
-					};
-
-					if should_fire && let Some(params) = new_match {
+					if let Some(params) = next_path_subscription_match(
+						&pattern_for_listener,
+						path,
+						&last_params_for_listener,
+					) {
 						let ctx = PathCtx {
 							document: &document_for_listener,
 							path,
 							params: &params,
 						};
-						callback(&ctx);
+						callback_for_listener(&ctx);
 					}
 				})
 			});
 			std::mem::forget(listener_subscription);
+
+			let initial_path = with_router(|r| r.current_path().get());
+			if let Some(params) =
+				next_path_subscription_match(&pattern, &initial_path, &last_params)
+			{
+				let ctx = PathCtx {
+					document: &document,
+					path: &initial_path,
+					params: &params,
+				};
+				callback(&ctx);
+			}
 		}
 
 		Ok(())
@@ -969,6 +1026,188 @@ mod tests {
 		let new = None;
 		// Act / Assert
 		assert!(!fire_decision(&prev, &new));
+	}
+
+	// --- Phase C path-subscription registration regression tests ---
+
+	/// Mirror of the launcher's Phase C (part 2) path-subscription
+	/// registration algorithm: register an on_navigate listener that
+	/// runs the diff-and-fire helper, then immediately evaluate the
+	/// current path through the same helper so an already-matching
+	/// bootstrap route delivers its callback at registration time.
+	///
+	/// Returns the `NavigationSubscription` so the test can `mem::forget`
+	/// it (matching the launcher) or drop it to unregister.
+	fn register_path_subscription_for_test<F>(
+		router: &Router,
+		pattern: PathPattern,
+		last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>>,
+		on_match: F,
+	) -> crate::router::NavigationSubscription
+	where
+		F: Fn(&str, &HashMap<String, String>) + 'static,
+	{
+		let on_match = std::rc::Rc::new(on_match);
+		let pattern = std::rc::Rc::new(pattern);
+
+		let on_match_listener = on_match.clone();
+		let pattern_listener = pattern.clone();
+		let last_params_listener = last_params.clone();
+		let subscription = router.on_navigate(move |path, _params_from_router| {
+			if let Some(params) =
+				next_path_subscription_match(&pattern_listener, path, &last_params_listener)
+			{
+				on_match_listener(path, &params);
+			}
+		});
+
+		let initial_path = router.current_path().get();
+		if let Some(params) = next_path_subscription_match(&pattern, &initial_path, &last_params) {
+			on_match(&initial_path, &params);
+		}
+
+		subscription
+	}
+
+	/// Initial-route delivery: a subscription whose pattern matches the
+	/// router's current path at registration time MUST fire the user
+	/// callback once with the bootstrap params.
+	///
+	/// The previous Effect-based implementation got this for free
+	/// because Effects run their closure once at creation; the
+	/// on_navigate-based implementation only fires on subsequent
+	/// navigations, so the launcher restores the initial evaluation
+	/// explicitly. Removing that explicit step would break this test.
+	///
+	/// Refs #4101.
+	#[rstest]
+	fn path_subscription_delivers_initial_route() {
+		use crate::component::Page;
+
+		// Arrange
+		let router = Router::new()
+			.route("/users/{id}/", || Page::text("user"))
+			.route("/about/", || Page::text("about"));
+		router.push("/users/1/").expect("push /users/1/");
+
+		let observed: std::rc::Rc<RefCell<Vec<HashMap<String, String>>>> =
+			std::rc::Rc::new(RefCell::new(Vec::new()));
+		let observed_inner = observed.clone();
+		let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
+			std::rc::Rc::new(RefCell::new(None));
+
+		// Act: register subscription AFTER the router has been navigated.
+		let _sub = register_path_subscription_for_test(
+			&router,
+			PathPattern::new("/users/{id}/"),
+			last_params,
+			move |_path, params| {
+				observed_inner.borrow_mut().push(params.clone());
+			},
+		);
+
+		// Assert: callback fired once for the bootstrap route.
+		let calls = observed.borrow();
+		assert_eq!(
+			calls.len(),
+			1,
+			"expected initial-route delivery; got: {:?}",
+			calls
+		);
+		assert_eq!(calls[0].get("id").map(String::as_str), Some("1"));
+	}
+
+	/// End-to-end sequence covering initial-route delivery plus the
+	/// transition state machine, exercised through the launcher's
+	/// registration algorithm rather than the diff helper alone.
+	///
+	/// Refs #4101.
+	#[rstest]
+	fn path_subscription_initial_then_navigation_sequence() {
+		use crate::component::Page;
+
+		// Arrange
+		let router = Router::new()
+			.route("/users/{id}/", || Page::text("user"))
+			.route("/about/", || Page::text("about"));
+		router.push("/users/1/").expect("push /users/1/");
+
+		let observed: std::rc::Rc<RefCell<Vec<HashMap<String, String>>>> =
+			std::rc::Rc::new(RefCell::new(Vec::new()));
+		let observed_inner = observed.clone();
+		let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
+			std::rc::Rc::new(RefCell::new(None));
+
+		// Act
+		let _sub = register_path_subscription_for_test(
+			&router,
+			PathPattern::new("/users/{id}/"),
+			last_params,
+			move |_path, params| {
+				observed_inner.borrow_mut().push(params.clone());
+			},
+		);
+		// Initial delivery already happened; following sequence exercises
+		// the diff state machine through the on_navigate listener.
+		router.push("/users/1/").expect("re-push /users/1/"); // no fire (Some -> Some same)
+		router.push("/users/2/").expect("push /users/2/"); // fire (Some(a) -> Some(b), a != b)
+		router.push("/about/").expect("push /about/"); // no fire (Some -> None)
+		router
+			.push("/users/3/")
+			.expect("push /users/3/ after /about/"); // fire (None -> Some)
+
+		// Assert
+		let calls = observed.borrow();
+		assert_eq!(
+			calls.len(),
+			3,
+			"expected initial + 2 transitions; got: {:?}",
+			calls
+		);
+		assert_eq!(calls[0].get("id").map(String::as_str), Some("1"));
+		assert_eq!(calls[1].get("id").map(String::as_str), Some("2"));
+		assert_eq!(calls[2].get("id").map(String::as_str), Some("3"));
+	}
+
+	/// Non-matching bootstrap route: a subscription whose pattern does
+	/// not match the router's current path at registration MUST NOT
+	/// fire at registration. Locks in the `None -> None` branch of the
+	/// diff state machine for the initial-eval path.
+	///
+	/// Refs #4101.
+	#[rstest]
+	fn path_subscription_does_not_fire_when_initial_route_does_not_match() {
+		use crate::component::Page;
+
+		// Arrange
+		let router = Router::new()
+			.route("/users/{id}/", || Page::text("user"))
+			.route("/about/", || Page::text("about"));
+		router.push("/about/").expect("push /about/");
+
+		let observed: std::rc::Rc<RefCell<Vec<HashMap<String, String>>>> =
+			std::rc::Rc::new(RefCell::new(Vec::new()));
+		let observed_inner = observed.clone();
+		let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
+			std::rc::Rc::new(RefCell::new(None));
+
+		// Act
+		let _sub = register_path_subscription_for_test(
+			&router,
+			PathPattern::new("/users/{id}/"),
+			last_params,
+			move |_path, params| {
+				observed_inner.borrow_mut().push(params.clone());
+			},
+		);
+
+		// Assert: callback did not fire because the bootstrap route does
+		// not match the pattern.
+		assert!(
+			observed.borrow().is_empty(),
+			"expected no firing; got: {:?}",
+			observed.borrow()
+		);
 	}
 
 	#[rstest]
