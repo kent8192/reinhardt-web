@@ -602,7 +602,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						&client_urls_struct,
 						&quote! { resolve_client_url },
 						&quote! { #app_str },
-						&quote! {},
+						&quote! { use #reinhardt::ClientUrlResolver as _; },
 					);
 
 					quote! {
@@ -619,6 +619,9 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 							/// Fallback for routes not covered by typed methods.
 							/// The route name is automatically prefixed with the app label.
 							pub fn resolve(&self, route_name: &str, params: &[(&str, &str)]) -> String {
+								// Bring `ClientUrlResolver` into scope so that
+								// `resolve_client_url` is callable on `&ResolvedUrls`.
+								use #reinhardt::ClientUrlResolver as _;
 								let full_name = ::std::format!("{}:{}", #app_str, route_name);
 								self.resolver.resolve_client_url(&full_name, params)
 							}
