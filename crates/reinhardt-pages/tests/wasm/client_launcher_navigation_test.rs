@@ -301,3 +301,62 @@ async fn client_launcher_re_renders_on_popstate() {
 		"on_navigate listener must fire for each push and the popstate, in order"
 	);
 }
+
+/// Regression coverage for the structural fragility class
+/// (#3348, #4075, #4088). Multiple back-to-back navigations exercise
+/// the full render -> cleanup_reactive_nodes -> remount cycle
+/// repeatedly. Once PR #4101 removes the launcher's render Effect,
+/// the Effect/Signal auto-tracking corruption pattern is structurally
+/// impossible regardless of the reactive primitives embedded in route
+/// views; this test guards the navigation cycle itself.
+///
+/// Refs #4101, #4088, #4075, #3348.
+#[wasm_bindgen_test]
+async fn client_launcher_handles_back_to_back_navigations() {
+	let root = install_app_root();
+
+	ClientLauncher::new("#app")
+		.router(|| {
+			Router::new()
+				.route("/", page_root)
+				.route("/a", page_a)
+				.route("/b", page_b)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+
+	// Act: bounce between /a and /b multiple times. The regression
+	// class manifested as the second or third navigation no longer
+	// re-mounting.
+	for iteration in 0..3 {
+		with_router(|r| r.push("/a")).expect("push /a");
+		yield_to_microtasks().await;
+		yield_to_microtasks().await;
+		assert!(
+			root.inner_html().contains("ROUTE-A-CONTENT"),
+			"iteration {iteration}: expected /a view after push('/a'), got: {}",
+			root.inner_html()
+		);
+		assert!(
+			!root.inner_html().contains("ROUTE-B-CONTENT"),
+			"iteration {iteration}: /b view should be gone after push('/a'), got: {}",
+			root.inner_html()
+		);
+
+		with_router(|r| r.push("/b")).expect("push /b");
+		yield_to_microtasks().await;
+		yield_to_microtasks().await;
+		assert!(
+			root.inner_html().contains("ROUTE-B-CONTENT"),
+			"iteration {iteration}: expected /b view after push('/b'), got: {}",
+			root.inner_html()
+		);
+		assert!(
+			!root.inner_html().contains("ROUTE-A-CONTENT"),
+			"iteration {iteration}: /a view should be gone after push('/b'), got: {}",
+			root.inner_html()
+		);
+	}
+}
