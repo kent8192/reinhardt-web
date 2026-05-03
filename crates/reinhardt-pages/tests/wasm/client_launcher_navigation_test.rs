@@ -215,3 +215,89 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 		root.inner_html()
 	);
 }
+
+/// Regression test for the popstate gap fixed in #4108: browser
+/// back/forward must trigger the launcher's render path, which means
+/// the underlying `on_navigate` observers must fire from popstate.
+/// Before the fix, only programmatic `Router::push` / `Router::replace`
+/// woke observers.
+#[wasm_bindgen_test]
+async fn client_launcher_re_renders_on_popstate() {
+	let root = install_app_root();
+
+	let observed_paths: std::rc::Rc<std::cell::RefCell<Vec<String>>> =
+		std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+	let observed_paths_for_listener = observed_paths.clone();
+
+	ClientLauncher::new("#app")
+		.router(|| {
+			Router::new()
+				.route("/", page_root)
+				.route("/a", page_a)
+				.route("/b", page_b)
+		})
+		.after_launch(move |_ctx| {
+			// after_launch is FnOnce, so observed_paths_for_listener can
+			// be moved straight into the listener body without an extra
+			// clone.
+			let sub = with_router(move |r| {
+				r.on_navigate(move |path, _params| {
+					observed_paths_for_listener
+						.borrow_mut()
+						.push(path.to_string());
+				})
+			});
+			// Leak the subscription for the lifetime of the test; it is
+			// dropped naturally when the WASM module exits.
+			std::mem::forget(sub);
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+
+	// Arrange: navigate forward to /a then /b so popstate has somewhere
+	// to pop back to.
+	with_router(|r| r.push("/a")).expect("push /a");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	with_router(|r| r.push("/b")).expect("push /b");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	let html_at_b = root.inner_html();
+	assert!(
+		html_at_b.contains("ROUTE-B-CONTENT"),
+		"setup precondition: should be on /b before history.back, got: {html_at_b}"
+	);
+
+	// Act: simulate the browser back button.
+	let history = web_sys::window().unwrap().history().unwrap();
+	history.back().expect("history.back");
+	// popstate is dispatched as a macrotask. The yield_to_microtasks
+	// helper uses TimeoutFuture::new(0), which is itself a macrotask
+	// boundary (setTimeout(0)), so two yields suffice to let popstate
+	// fire and then for the launcher's render Effect (or, post-#4101,
+	// on_navigate listener) to commit the DOM update.
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	// Assert: DOM reflects /a, and the on_navigate observer received the
+	// popstate path (this is the bit that used to silently break).
+	let html_after_back = root.inner_html();
+	assert!(
+		html_after_back.contains("ROUTE-A-CONTENT"),
+		"expected /a view after history.back from /b, got: {html_after_back}"
+	);
+	assert!(
+		!html_after_back.contains("ROUTE-B-CONTENT"),
+		"/b view should be gone after history.back, got: {html_after_back}"
+	);
+
+	let paths = observed_paths.borrow();
+	assert_eq!(
+		paths.as_slice(),
+		&["/a".to_string(), "/b".to_string(), "/a".to_string()],
+		"on_navigate listener must fire for each push and the popstate, in order"
+	);
+}
