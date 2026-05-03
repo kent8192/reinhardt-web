@@ -496,6 +496,10 @@ impl Router {
 	/// `NavigationSubscription` handles without panicking on `RefCell`
 	/// reentry. Dropped subscriptions are pruned on every dispatch.
 	///
+	/// The popstate listener inlines the same snapshot pattern (it does
+	/// not have access to `&self`); keep both call sites in sync if this
+	/// helper changes.
+	///
 	/// Refs #4088, #4108.
 	fn notify_observers(&self, path: &str, params: &HashMap<String, String>) {
 		let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
@@ -641,19 +645,37 @@ impl Router {
 		let path_signal = self.current_path.clone();
 		let params_signal = self.current_params.clone();
 		let route_name_signal = self.current_route_name.clone();
+		let navigation_observers = self.navigation_observers.clone();
 
 		let closure = setup_popstate_listener(move |path, state| {
-			// Update path signal
-			path_signal.set(path);
+			// Update Signals first, then notify observers, so listeners that
+			// read `Signal::get` from inside their closure see the new
+			// state. Mirrors `Router::navigate`. Refs #4088, #4108.
+			path_signal.set(path.clone());
 
-			// Update params and route name from history state if available
-			if let Some(hist_state) = state {
+			let params_for_observers = if let Some(hist_state) = state {
+				let params = hist_state.params.clone();
 				params_signal.set(hist_state.params);
 				route_name_signal.set(hist_state.route_name);
+				params
 			} else {
-				// Clear params when no state is available
+				// Clear params when no state is available.
 				params_signal.set(HashMap::new());
 				route_name_signal.set(None);
+				HashMap::new()
+			};
+
+			// Dispatch on_navigate observers using the same snapshot-then-
+			// iterate pattern as Router::notify_observers. Inlined here
+			// because this closure does not have access to `&self`.
+			// Keep in sync with Router::notify_observers.
+			let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
+				let mut observers = navigation_observers.borrow_mut();
+				observers.retain(|w| w.strong_count() > 0);
+				observers.iter().filter_map(|w| w.upgrade()).collect()
+			};
+			for listener in listeners_snapshot {
+				listener(&path, &params_for_observers);
 			}
 		});
 
