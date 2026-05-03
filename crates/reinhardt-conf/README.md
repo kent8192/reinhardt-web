@@ -135,9 +135,11 @@ db_password = "${DB_PASSWORD:?Set DB_PASSWORD via direnv or 1Password CLI}"
   explicit empty fallback, write `${VAR:-}`.
 - **Single-pass**: resolved values are not re-expanded, so `${OUTER}` whose value
   happens to contain `${INNER}` resolves to literally `${INNER}`.
-- **String-only scope**: only `toml::Value::String` is rewritten. Numeric, boolean,
-  datetime, and array fields pass through untouched. To inject a typed override use
-  `HighPriorityEnvSource` (priority 60 — beats interpolated TOML at priority 50).
+- **String-only scope**: only `toml::Value::String` is rewritten, but every string
+  in the TOML tree is scanned — strings inside nested tables and arrays are
+  interpolated as well. Numeric, boolean, and datetime values pass through
+  untouched. To inject a typed override use `HighPriorityEnvSource`
+  (priority 60 — beats interpolated TOML at priority 50).
 - **Composition**: interpolation runs at `TomlFileSource::load()` time. The resolved
   value participates in the normal source-priority merge; later sources at higher
   priority still override.

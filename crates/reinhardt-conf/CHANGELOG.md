@@ -11,14 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - TOML configuration interpolation with `${VAR}`, `${VAR:-default}`,
   `${VAR:-}` (explicit empty), and `${VAR:?message}` syntax. Opt-in via
-  `TomlFileSource::new(path).with_interpolation(true)`. Strings inside
-  TOML values are scanned at load time; numeric, boolean, datetime, and
-  array fields are unaffected. Composes with `HighPriorityEnvSource`
-  (priority 60 > TOML's 50) for fine-grained overrides without
-  duplicating per-environment TOML files. Fixes #4086.
-- `SourceError::Interpolation(InterpolationError)` variant for surfacing
-  interpolation failures (missing variables, syntax errors) with file
-  path and TOML key path context.
+  `TomlFileSource::new(path).with_interpolation(true)`. Every string in
+  the TOML tree is scanned at load time, including strings nested inside
+  tables and arrays; numeric, boolean, and datetime values are
+  unaffected. Composes with `HighPriorityEnvSource` (priority 60 > TOML's
+  50) for fine-grained overrides without duplicating per-environment
+  TOML files. Fixes #4086.
+- `SourceError::Interpolation(Box<InterpolationError>)` variant for
+  surfacing interpolation failures (missing variables, syntax errors)
+  with file path and TOML key path context. The boxed payload keeps the
+  enum within `clippy::result_large_err` limits.
 
 ## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.24...reinhardt-conf@v0.1.0-rc.25) - 2026-04-30
 

@@ -362,8 +362,10 @@ impl TomlFileSource {
 	/// | `${VAR:?message}`  | fails with `message` if `VAR` is unset or empty  |
 	/// | `$$`               | escape — produces a literal `$`                  |
 	///
-	/// Numeric, boolean, datetime, and array fields are never
-	/// interpolated; only TOML string values are scanned.
+	/// Only `toml::Value::String` nodes are scanned, but the walker
+	/// recurses into nested tables and arrays — strings located
+	/// anywhere in the TOML tree are subject to interpolation.
+	/// Numeric, boolean, and datetime values are never rewritten.
 	///
 	/// # Examples
 	///
