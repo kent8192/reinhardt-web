@@ -449,26 +449,26 @@ impl Router {
 		self.navigate(path, NavigationType::Replace)
 	}
 
-	/// Registers a navigation observer.
+	/// Subscribe to navigation events.
 	///
-	/// Inspired by React Router's `router.subscribe(listener)` design.
-	/// The listener is invoked synchronously on every successful navigation
-	/// ([`Self::push`] or [`Self::replace`]) with the new path and matched
-	/// params. The listener fires **after** the path / params Signals have
-	/// been updated, so calling `Signal::get` from within the listener
-	/// returns the new values.
+	/// The listener fires on every successful navigation, including:
+	///
+	/// - `Router::push` and `Router::replace` (programmatic navigation).
+	/// - Browser back / forward (popstate). This is dispatched by
+	///   `setup_history_listener` after it updates the `current_path` /
+	///   `current_params` / `current_route_name` Signals.
 	///
 	/// Returns a [`NavigationSubscription`] handle. Drop the handle to
 	/// unregister the listener. The router itself does not retain a strong
 	/// reference; if all subscriptions are dropped, the listener is freed
 	/// at the next `navigate` call (see `navigate` body which prunes dead
-	/// Weak references on every invocation).
+	/// `Weak` references on every invocation).
 	///
 	/// Robust against nested reactive nodes spawned during view rendering
-	/// because this subscription is independent of the Effect / Signal
+	/// because this subscription is independent of the `Effect` / `Signal`
 	/// auto-tracking system.
 	///
-	/// Refs #4088, #4075, #3348.
+	/// Refs #4088, #4108.
 	pub fn on_navigate<F>(&self, listener: F) -> NavigationSubscription
 	where
 		F: Fn(&str, &HashMap<String, String>) + 'static,
