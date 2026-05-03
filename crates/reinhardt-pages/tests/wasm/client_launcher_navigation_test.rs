@@ -1,10 +1,16 @@
 //! WASM regression test for issues #4075 and #4088 — verifies that
-//! `ClientLauncher::launch()` installs a render Effect that re-fires
-//! when `Router::push` updates the path Signal.
+//! `ClientLauncher::launch()` registers a `Router::on_navigate`
+//! listener that re-mounts the root view on every `Router::push`.
 //!
 //! Without the fix, the SPA renders only the route mounted at boot;
 //! every subsequent `Router::push` updates the path Signal but the
 //! root view is never re-mounted.
+//!
+//! Refs #4101: the launcher migrated from reactive `Effect`/`Signal`
+//! auto-tracking to explicit `Router::on_navigate` callbacks, so the
+//! historical `debug_subscribers(path_signal_id)` diagnostic is no
+//! longer meaningful — the user-observable HTML assertions below are
+//! the authoritative regression check.
 //!
 //! **Run with** (from the workspace root):
 //!   `wasm-pack test --headless --chrome crates/reinhardt-pages -- --test client_launcher_navigation_test`
@@ -79,17 +85,6 @@ async fn client_launcher_re_renders_on_router_push() {
 
 	yield_to_microtasks().await;
 
-	// === Diagnostic: launcher Effect must be subscribed to path Signal ===
-	let path_signal_id = with_router(|r| r.current_path().id());
-	let subscribers_after_launch = with_runtime(|rt| rt.debug_subscribers(path_signal_id));
-	assert!(
-		!subscribers_after_launch.is_empty(),
-		"[DIAG #4088] path_signal has no subscribers after launch — launcher Effect was not tracked. \
-		 observer_stack: {:?}, dependencies: {:?}",
-		with_runtime(|rt| rt.debug_observer_stack()),
-		with_runtime(|rt| rt.debug_dependencies(path_signal_id)),
-	);
-
 	// Navigate to /a and confirm the body switches.
 	with_router(|r| r.push("/a")).expect("push /a");
 	let pending_after_push_a = with_runtime(|rt| rt.debug_pending_updates());
@@ -100,11 +95,8 @@ async fn client_launcher_re_renders_on_router_push() {
 	assert!(
 		html_after_a.contains("ROUTE-A-CONTENT"),
 		"[DIAG #4088] expected /a view after push('/a'). \
-		 pending_updates immediately after push: {:?}, \
-		 subscribers of path_signal now: {:?}, \
-		 actual html: {}",
+		 pending_updates immediately after push: {:?}, actual html: {}",
 		pending_after_push_a,
-		with_runtime(|rt| rt.debug_subscribers(path_signal_id)),
 		html_after_a,
 	);
 	assert!(
@@ -122,11 +114,8 @@ async fn client_launcher_re_renders_on_router_push() {
 	assert!(
 		html_after_b.contains("ROUTE-B-CONTENT"),
 		"[DIAG #4088] expected /b view after push('/b'). \
-		 pending_updates immediately after push: {:?}, \
-		 subscribers of path_signal now: {:?}, \
-		 actual html: {}",
+		 pending_updates immediately after push: {:?}, actual html: {}",
 		pending_after_push_b,
-		with_runtime(|rt| rt.debug_subscribers(path_signal_id)),
 		html_after_b,
 	);
 	assert!(
@@ -300,4 +289,63 @@ async fn client_launcher_re_renders_on_popstate() {
 		&["/a".to_string(), "/b".to_string(), "/a".to_string()],
 		"on_navigate listener must fire for each push and the popstate, in order"
 	);
+}
+
+/// Regression coverage for the structural fragility class
+/// (#3348, #4075, #4088). Multiple back-to-back navigations exercise
+/// the full render -> cleanup_reactive_nodes -> remount cycle
+/// repeatedly. Once PR #4101 removes the launcher's render Effect,
+/// the Effect/Signal auto-tracking corruption pattern is structurally
+/// impossible regardless of the reactive primitives embedded in route
+/// views; this test guards the navigation cycle itself.
+///
+/// Refs #4101, #4088, #4075, #3348.
+#[wasm_bindgen_test]
+async fn client_launcher_handles_back_to_back_navigations() {
+	let root = install_app_root();
+
+	ClientLauncher::new("#app")
+		.router(|| {
+			Router::new()
+				.route("/", page_root)
+				.route("/a", page_a)
+				.route("/b", page_b)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+
+	// Act: bounce between /a and /b multiple times. The regression
+	// class manifested as the second or third navigation no longer
+	// re-mounting.
+	for iteration in 0..3 {
+		with_router(|r| r.push("/a")).expect("push /a");
+		yield_to_microtasks().await;
+		yield_to_microtasks().await;
+		assert!(
+			root.inner_html().contains("ROUTE-A-CONTENT"),
+			"iteration {iteration}: expected /a view after push('/a'), got: {}",
+			root.inner_html()
+		);
+		assert!(
+			!root.inner_html().contains("ROUTE-B-CONTENT"),
+			"iteration {iteration}: /b view should be gone after push('/a'), got: {}",
+			root.inner_html()
+		);
+
+		with_router(|r| r.push("/b")).expect("push /b");
+		yield_to_microtasks().await;
+		yield_to_microtasks().await;
+		assert!(
+			root.inner_html().contains("ROUTE-B-CONTENT"),
+			"iteration {iteration}: expected /b view after push('/b'), got: {}",
+			root.inner_html()
+		);
+		assert!(
+			!root.inner_html().contains("ROUTE-A-CONTENT"),
+			"iteration {iteration}: /a view should be gone after push('/b'), got: {}",
+			root.inner_html()
+		);
+	}
 }
