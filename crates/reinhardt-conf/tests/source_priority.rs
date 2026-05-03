@@ -3,7 +3,8 @@
 
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::sources::{
-	ConfigSource, DefaultSource, EnvSource, JsonFileSource, LowPriorityEnvSource, TomlFileSource,
+	ConfigSource, DefaultSource, EnvSource, HighPriorityEnvSource, JsonFileSource,
+	LowPriorityEnvSource, TomlFileSource,
 };
 use rstest::rstest;
 use serde_json::Value;
@@ -482,4 +483,46 @@ fn full_chain_partial_overlap() {
 
 	// Cleanup
 	unsafe { remove_env_vars(&["FCTEST3_HOST"]) };
+}
+
+// ===========================================================================
+// Interpolation × priority composition
+// ===========================================================================
+
+#[rstest]
+#[serial(env)]
+fn high_priority_env_overrides_interpolated_toml() {
+	// Verifies that HighPriorityEnvSource (priority 60) wins against
+	// values produced by an interpolated TomlFileSource (priority 50).
+
+	// Arrange — reuse the file-local set/remove helpers for consistency
+	// with the other 17 tests in this file.
+	unsafe {
+		set_env_vars(&[
+			("IT_PG_PORT_PRIO", "8080"),  // for TOML interpolation
+			("PRIO_TEST_PORT", "9999"),   // for HighPriorityEnvSource override
+		])
+	};
+	let (_dir, path) = write_toml_file(r#"port = "${IT_PG_PORT_PRIO:-5432}""#);
+
+	// Act
+	let settings = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(&path).with_interpolation(true)) // priority 50
+		.add_source(HighPriorityEnvSource::new().with_prefix("PRIO_TEST_")) // priority 60
+		.build()
+		.unwrap();
+
+	// Assert — HighPriorityEnvSource (60) beats interpolated TOML (50).
+	// Note: HighPriorityEnvSource performs smart type inference and parses
+	// "9999" as a number, so we read it back as `u16`. The interpolated TOML
+	// value is a string ("8080"), but it gets overridden before deserialization.
+	let port: u16 = settings.get("port").unwrap();
+
+	// Cleanup
+	unsafe { remove_env_vars(&["IT_PG_PORT_PRIO", "PRIO_TEST_PORT"]) };
+
+	assert_eq!(
+		port, 9999,
+		"HighPriorityEnvSource (60) must override interpolated TOML (50)"
+	);
 }
