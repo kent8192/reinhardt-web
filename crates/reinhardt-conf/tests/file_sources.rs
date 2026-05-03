@@ -1,10 +1,16 @@
 // Integration tests for TomlFileSource, JsonFileSource, and auto_source.
 // Covers: real file reading, type parsing, missing/invalid files, and extension detection.
+//
+// `JsonFileSource` and `auto_source` are deprecated until removal in 0.2.0
+// (issue #4087); these tests must keep covering the deprecated paths so
+// regressions during the deprecation window are caught. Deprecation warnings
+// are silenced per import / per test function below so that any new
+// deprecation added elsewhere in this file still surfaces.
 
 use reinhardt_conf::settings::builder::SettingsBuilder;
-use reinhardt_conf::settings::sources::{
-	ConfigSource, JsonFileSource, TomlFileSource, auto_source,
-};
+use reinhardt_conf::settings::sources::{ConfigSource, TomlFileSource};
+#[allow(deprecated)] // Deprecated alongside *.json support (issue #4087).
+use reinhardt_conf::settings::sources::{JsonFileSource, auto_source};
 use rstest::rstest;
 use serde_json::Value;
 use std::io::Write;
@@ -162,6 +168,7 @@ fn toml_source_priority_is_50() {
 // ===========================================================================
 
 #[rstest]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn json_source_loads_string_and_bool_via_builder() {
 	// Arrange
 	let (_dir, path) = write_json_file(r#"{"debug": false, "name": "app"}"#);
@@ -180,6 +187,7 @@ fn json_source_loads_string_and_bool_via_builder() {
 }
 
 #[rstest]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn json_source_loads_integer_value() {
 	// Arrange
 	let (_dir, path) = write_json_file(r#"{"port": 3000}"#);
@@ -196,6 +204,7 @@ fn json_source_loads_integer_value() {
 }
 
 #[rstest]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn json_source_loads_array_value() {
 	// Arrange
 	let (_dir, path) = write_json_file(r#"{"tags": ["web", "api"]}"#);
@@ -216,6 +225,7 @@ fn json_source_loads_array_value() {
 }
 
 #[rstest]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn json_source_loads_nested_object() {
 	// Arrange
 	let (_dir, path) = write_json_file(r#"{"database": {"engine": "mysql", "port": 3306}}"#);
@@ -238,6 +248,7 @@ fn json_source_loads_nested_object() {
 }
 
 #[rstest]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn json_source_missing_file_returns_empty() {
 	// Arrange
 	let path = PathBuf::from("/tmp/nonexistent_reinhardt_config.json");
@@ -253,6 +264,7 @@ fn json_source_missing_file_returns_empty() {
 }
 
 #[rstest]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn json_source_invalid_content_returns_error() {
 	// Arrange
 	let (_dir, path) = write_json_file("{not valid json}");
@@ -267,6 +279,7 @@ fn json_source_invalid_content_returns_error() {
 }
 
 #[rstest]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn json_source_priority_is_50() {
 	// Assert
 	assert_eq!(JsonFileSource::new("any.json").priority(), 50);
@@ -277,6 +290,7 @@ fn json_source_priority_is_50() {
 // ===========================================================================
 
 #[rstest]
+#[allow(deprecated)] // auto_source is deprecated (issue #4087); test must keep covering it.
 fn auto_source_detects_toml_extension() {
 	// Arrange
 	let (_dir, path) = write_toml_file("key = \"val\"\n");
@@ -294,6 +308,7 @@ fn auto_source_detects_toml_extension() {
 }
 
 #[rstest]
+#[allow(deprecated)] // auto_source is deprecated (issue #4087); test must keep covering it.
 fn auto_source_detects_json_extension() {
 	// Arrange
 	let (_dir, path) = write_json_file(r#"{"key": "val"}"#);
@@ -311,6 +326,7 @@ fn auto_source_detects_json_extension() {
 }
 
 #[rstest]
+#[allow(deprecated)] // auto_source is deprecated (issue #4087); test must keep covering it.
 fn auto_source_rejects_unsupported_extension() {
 	// Arrange
 	let dir = TempDir::new().unwrap();
@@ -325,6 +341,7 @@ fn auto_source_rejects_unsupported_extension() {
 }
 
 #[rstest]
+#[allow(deprecated)] // auto_source is deprecated (issue #4087); test must keep covering it.
 fn auto_source_rejects_no_extension() {
 	// Arrange
 	let dir = TempDir::new().unwrap();

@@ -1,10 +1,17 @@
 // Integration tests for EnvSource type inference, LowPriorityEnvSource, and cross-priority merging.
 // Covers: smart parsing, prefix handling, priority chain (Default → LowPriorityEnv → Toml/Json → Env).
+//
+// `JsonFileSource` is deprecated until removal in 0.2.0 (issue #4087); the
+// JSON priority cases must keep running during the deprecation window.
+// Deprecation warnings are silenced per import / per test function below so
+// that any new deprecation added elsewhere in this file still surfaces.
 
 use reinhardt_conf::settings::builder::SettingsBuilder;
+#[allow(deprecated)] // Deprecated alongside *.json support (issue #4087).
+use reinhardt_conf::settings::sources::JsonFileSource;
 use reinhardt_conf::settings::sources::{
-	ConfigSource, DefaultSource, EnvSource, HighPriorityEnvSource, JsonFileSource,
-	LowPriorityEnvSource, TomlFileSource,
+	ConfigSource, DefaultSource, EnvSource, HighPriorityEnvSource, LowPriorityEnvSource,
+	TomlFileSource,
 };
 use rstest::rstest;
 use serde_json::Value;
@@ -352,6 +359,7 @@ fn low_priority_env_overrides_default() {
 }
 
 #[rstest]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn json_overrides_default() {
 	// Arrange
 	let (_dir, json_path) = write_json_file(r#"{"name": "from_json"}"#);
@@ -371,6 +379,7 @@ fn json_overrides_default() {
 
 #[rstest]
 #[serial(env)]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn env_overrides_json() {
 	// Arrange
 	let (_dir, json_path) = write_json_file(r#"{"port": 2000}"#);
