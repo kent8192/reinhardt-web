@@ -348,6 +348,48 @@ impl Runtime {
 			.map(|node| node.subscribers.len())
 			.unwrap_or(0)
 	}
+
+	/// Returns the list of NodeIds subscribed to the given node.
+	///
+	/// Diagnostic-only. Used by `reinhardt-pages` WASM tests to verify
+	/// dependency-tracking shape (Refs #4088). Analogous to React's
+	/// internal subscriber tracking inside `useSyncExternalStore`.
+	#[doc(hidden)]
+	pub fn debug_subscribers(&self, node_id: NodeId) -> alloc::vec::Vec<NodeId> {
+		self.dependency_graph
+			.borrow()
+			.get(&node_id)
+			.map(|n| n.subscribers.clone())
+			.unwrap_or_default()
+	}
+
+	/// Returns the list of NodeIds the given observer depends on.
+	///
+	/// Diagnostic-only (Refs #4088).
+	#[doc(hidden)]
+	pub fn debug_dependencies(&self, node_id: NodeId) -> alloc::vec::Vec<NodeId> {
+		self.dependency_graph
+			.borrow()
+			.get(&node_id)
+			.map(|n| n.dependencies.clone())
+			.unwrap_or_default()
+	}
+
+	/// Returns the current observer stack as a list of NodeIds (bottom to top).
+	///
+	/// Diagnostic-only (Refs #4088).
+	#[doc(hidden)]
+	pub fn debug_observer_stack(&self) -> alloc::vec::Vec<NodeId> {
+		self.observer_stack.borrow().iter().map(|o| o.id).collect()
+	}
+
+	/// Returns the pending updates queue as a snapshot (does not drain).
+	///
+	/// Diagnostic-only (Refs #4088).
+	#[doc(hidden)]
+	pub fn debug_pending_updates(&self) -> alloc::vec::Vec<NodeId> {
+		self.pending_updates.borrow().clone()
+	}
 }
 
 impl Default for Runtime {
@@ -533,5 +575,98 @@ mod tests {
 
 		let effect_node = graph.get(&effect_id).unwrap();
 		assert!(effect_node.dependencies.is_empty());
+	}
+
+	#[test]
+	#[serial]
+	fn debug_subscribers_returns_registered_observers_in_insertion_order() {
+		// Arrange
+		let runtime = Runtime::new();
+		let signal_id = NodeId::new();
+		let effect_id_a = NodeId::new();
+		let effect_id_b = NodeId::new();
+		{
+			let mut graph = runtime.dependency_graph.borrow_mut();
+			let node = graph.entry(signal_id).or_default();
+			node.subscribers.push(effect_id_a);
+			node.subscribers.push(effect_id_b);
+		}
+
+		// Act
+		let subs = runtime.debug_subscribers(signal_id);
+
+		// Assert
+		assert_eq!(subs, alloc::vec![effect_id_a, effect_id_b]);
+	}
+
+	#[test]
+	#[serial]
+	fn debug_dependencies_returns_observer_dependency_list() {
+		// Arrange
+		let runtime = Runtime::new();
+		let observer_id = NodeId::new();
+		let signal_a = NodeId::new();
+		let signal_b = NodeId::new();
+		{
+			let mut graph = runtime.dependency_graph.borrow_mut();
+			let node = graph.entry(observer_id).or_default();
+			node.dependencies.push(signal_a);
+			node.dependencies.push(signal_b);
+		}
+
+		// Act
+		let deps = runtime.debug_dependencies(observer_id);
+
+		// Assert
+		assert_eq!(deps, alloc::vec![signal_a, signal_b]);
+	}
+
+	#[test]
+	#[serial]
+	fn debug_observer_stack_returns_pushed_observers_bottom_to_top() {
+		// Arrange
+		let runtime = Runtime::new();
+		let outer_id = NodeId::new();
+		let inner_id = NodeId::new();
+		runtime.push_observer(Observer {
+			id: outer_id,
+			node_type: NodeType::Effect,
+			timing: EffectTiming::default(),
+			cleanup: None,
+		});
+		runtime.push_observer(Observer {
+			id: inner_id,
+			node_type: NodeType::Effect,
+			timing: EffectTiming::default(),
+			cleanup: None,
+		});
+
+		// Act
+		let stack = runtime.debug_observer_stack();
+
+		// Assert
+		assert_eq!(stack, alloc::vec![outer_id, inner_id]);
+	}
+
+	#[test]
+	#[serial]
+	fn debug_pending_updates_returns_scheduled_node_ids_snapshot() {
+		// Arrange
+		let runtime = Runtime::new();
+		let pending_a = NodeId::new();
+		let pending_b = NodeId::new();
+		{
+			let mut p = runtime.pending_updates.borrow_mut();
+			p.push(pending_a);
+			p.push(pending_b);
+		}
+
+		// Act
+		let snapshot = runtime.debug_pending_updates();
+
+		// Assert
+		assert_eq!(snapshot, alloc::vec![pending_a, pending_b]);
+		// Snapshot must not drain the queue
+		assert_eq!(runtime.pending_updates.borrow().len(), 2);
 	}
 }
