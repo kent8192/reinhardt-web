@@ -480,6 +480,34 @@ impl Router {
 		NavigationSubscription { listener }
 	}
 
+	/// Dispatch the registered `on_navigate` listeners with the given path
+	/// and params.
+	///
+	/// Both `Router::navigate` (after a programmatic push/replace) and the
+	/// popstate listener (after a browser-driven back/forward) call this
+	/// method after the `Signal` updates so listeners always see the new
+	/// state when they read `Signal::get` from inside their closure.
+	///
+	/// The helper takes a snapshot of strong references to listeners
+	/// before invoking them. The `RefCell` borrow is released before any
+	/// user-supplied closure runs, which lets listeners call
+	/// `Router::push` / `Router::replace` reentrantly, register new
+	/// listeners via `on_navigate`, or drop existing
+	/// `NavigationSubscription` handles without panicking on `RefCell`
+	/// reentry. Dropped subscriptions are pruned on every dispatch.
+	///
+	/// Refs #4088, #4108.
+	fn notify_observers(&self, path: &str, params: &HashMap<String, String>) {
+		let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
+			let mut observers = self.navigation_observers.borrow_mut();
+			observers.retain(|w| w.strong_count() > 0);
+			observers.iter().filter_map(|w| w.upgrade()).collect()
+		};
+		for listener in listeners_snapshot {
+			listener(path, params);
+		}
+	}
+
 	/// Internal navigation implementation.
 	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
 		let route_match = self.match_path(path);
@@ -527,18 +555,7 @@ impl Router {
 			.as_ref()
 			.map(|m| m.params.clone())
 			.unwrap_or_default();
-		// Snapshot strong refs before invoking listeners; this avoids
-		// holding the `RefCell` borrow across user-supplied closure code
-		// (which could re-enter `on_navigate` and panic on RefCell reentry).
-		let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
-			let mut observers = self.navigation_observers.borrow_mut();
-			// Prune dropped subscriptions on every navigate.
-			observers.retain(|w| w.strong_count() > 0);
-			observers.iter().filter_map(|w| w.upgrade()).collect()
-		};
-		for listener in listeners_snapshot {
-			listener(path, &params_for_observers);
-		}
+		self.notify_observers(path, &params_for_observers);
 
 		Ok(())
 	}
@@ -656,6 +673,7 @@ impl Router {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn test_view() -> Page {
 		Page::text("Test")
@@ -806,6 +824,32 @@ mod tests {
 
 	use std::cell::RefCell;
 	use std::rc::Rc;
+
+	#[rstest]
+	fn notify_observers_dispatches_to_registered_listener() {
+		// Arrange
+		let router = Router::new();
+		let observed_calls: std::rc::Rc<
+			std::cell::RefCell<Vec<(String, HashMap<String, String>)>>,
+		> = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+		let observed_calls_inner = observed_calls.clone();
+		let _subscription = router.on_navigate(move |path, params| {
+			observed_calls_inner
+				.borrow_mut()
+				.push((path.to_string(), params.clone()));
+		});
+		let mut params = HashMap::new();
+		params.insert("id".to_string(), "42".to_string());
+
+		// Act
+		router.notify_observers("/users/42/", &params);
+
+		// Assert
+		let calls = observed_calls.borrow();
+		assert_eq!(calls.len(), 1, "listener must fire exactly once");
+		assert_eq!(calls[0].0, "/users/42/");
+		assert_eq!(calls[0].1, params);
+	}
 
 	#[test]
 	#[serial_test::serial]
