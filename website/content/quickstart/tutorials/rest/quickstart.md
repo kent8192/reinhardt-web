@@ -20,7 +20,7 @@ will also work.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.0-rc.25"
+cargo install reinhardt-admin-cli --version "0.1.0-rc.26"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not `reinhardt-admin-cli`.
