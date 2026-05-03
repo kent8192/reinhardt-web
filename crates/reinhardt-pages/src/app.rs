@@ -475,49 +475,53 @@ impl ClientLauncher {
 			}
 		}
 
-		// Step 11: register one leaked Effect per path subscription. Each
-		// Effect re-reads the router's `current_path` Signal, so the
-		// reactive system wakes them on navigation.
+		// Phase C (part 2, #4101): register one leaked
+		// Router::on_navigate listener per path subscription. Each
+		// listener re-evaluates the pattern against the new path and
+		// fires the user callback only on transitions in or between
+		// matched param sets. The RefCell<Option<HashMap>> diff state
+		// is preserved verbatim from the previous Effect-based
+		// implementation; only the subscription mechanism changes
+		// (Signal auto-tracking -> explicit on_navigate callback).
 		for sub in self.path_subscriptions.into_iter() {
 			let PathSubscription {
 				pattern,
 				callback,
 				last_params,
 			} = sub;
-			let document_for_effect = document.clone();
+			let document_for_listener = document.clone();
 
-			let sub_effect = crate::reactive::Effect::new(move || {
-				// Subscribe to the path Signal — Signal::get() registers
-				// this Effect as a dependent.
-				let path_string: String = with_router(|r| r.current_path().get());
+			let listener_subscription = with_router(|r| {
+				r.on_navigate(move |path, _params_from_router| {
+					let new_match: Option<HashMap<String, String>> =
+						pattern.matches(path).map(|(p, _)| p);
 
-				let new_match: Option<HashMap<String, String>> =
-					pattern.matches(&path_string).map(|(p, _)| p);
-
-				// Compare against the previous match state to detect
-				// transitions; release the borrow before invoking user code.
-				let should_fire = {
-					let mut prev = last_params.borrow_mut();
-					let fire = match (&*prev, &new_match) {
-						(None, Some(_)) => true,
-						(Some(_), None) => false,
-						(Some(a), Some(b)) => a != b,
-						(None, None) => false,
+					// Compare against the previous match state to
+					// detect transitions; release the borrow before
+					// invoking user code.
+					let should_fire = {
+						let mut prev = last_params.borrow_mut();
+						let fire = match (&*prev, &new_match) {
+							(None, Some(_)) => true,
+							(Some(_), None) => false,
+							(Some(a), Some(b)) => a != b,
+							(None, None) => false,
+						};
+						*prev = new_match.clone();
+						fire
 					};
-					*prev = new_match.clone();
-					fire
-				};
 
-				if should_fire && let Some(params) = new_match {
-					let ctx = PathCtx {
-						document: &document_for_effect,
-						path: &path_string,
-						params: &params,
-					};
-					callback(&ctx);
-				}
+					if should_fire && let Some(params) = new_match {
+						let ctx = PathCtx {
+							document: &document_for_listener,
+							path,
+							params: &params,
+						};
+						callback(&ctx);
+					}
+				})
 			});
-			std::mem::forget(sub_effect);
+			std::mem::forget(listener_subscription);
 		}
 
 		Ok(())
