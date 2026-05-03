@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with file path and TOML key path context. The boxed payload keeps the
   enum within `clippy::result_large_err` limits.
 
+### Deprecated
+
+- `JsonFileSource::new` and `auto_source` are deprecated and will be
+  removed in 0.2.0. TOML is the canonical Reinhardt configuration format
+  and the framework will no longer ship a privileged JSON source.
+  Migrate `.json` configuration files to `.toml` (TOML is a superset of
+  typical JSON config use cases including nested tables and arrays), or
+  implement the public `ConfigSource` trait against `serde_json` to keep
+  JSON support out of tree. For new TOML-only code, prefer
+  `TomlFileSource::new(path)` directly over `auto_source` to make the
+  configuration format explicit at the call site. Refs #4087.
+
 ## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.24...reinhardt-conf@v0.1.0-rc.25) - 2026-04-30
 
 ### Changed

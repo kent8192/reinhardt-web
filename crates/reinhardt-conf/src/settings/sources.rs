@@ -421,6 +421,12 @@ impl ConfigSource for TomlFileSource {
 }
 
 /// JSON file configuration source
+///
+/// **Deprecated since 0.1.0**: TOML is the canonical Reinhardt configuration
+/// format. `JsonFileSource` will be removed in 0.2.0. Migrate `.json` files to
+/// `.toml` (TOML is a superset of typical JSON config use cases) or implement
+/// the public `ConfigSource` trait against `serde_json` if you need to keep
+/// JSON support out of tree. See <https://github.com/kent8192/reinhardt-web/issues/4087>.
 pub struct JsonFileSource {
 	path: PathBuf,
 }
@@ -431,11 +437,16 @@ impl JsonFileSource {
 	/// # Examples
 	///
 	/// ```
+	/// # #![allow(deprecated)]
 	/// use reinhardt_conf::settings::sources::JsonFileSource;
 	/// use std::path::PathBuf;
 	///
 	/// let source = JsonFileSource::new(PathBuf::from("config.json"));
 	/// ```
+	#[deprecated(
+		since = "0.1.0",
+		note = "Use TomlFileSource::new instead. JsonFileSource will be removed in 0.2.0 (issue #4087)"
+	)]
 	pub fn new(path: impl Into<PathBuf>) -> Self {
 		Self { path: path.into() }
 	}
@@ -548,18 +559,28 @@ impl ConfigSource for DefaultSource {
 }
 /// Auto-detect configuration source based on file extension
 ///
+/// **Deprecated since 0.1.0**: The `*.json` branch is going away in 0.2.0
+/// alongside [`JsonFileSource`]. For TOML usage, prefer constructing
+/// [`TomlFileSource::new`] directly — it makes the configuration format
+/// explicit at the call site. See <https://github.com/kent8192/reinhardt-web/issues/4087>.
+///
 /// # Examples
 ///
 /// ```
+/// # #![allow(deprecated)]
 /// use reinhardt_conf::settings::sources::auto_source;
 /// use std::path::PathBuf;
 ///
 /// // Automatically detects TOML source from extension
 /// let source = auto_source(PathBuf::from("config.toml")).unwrap();
 ///
-/// // Or JSON source
+/// // Or JSON source (deprecated; will be removed in 0.2.0)
 /// let source = auto_source(PathBuf::from("settings.json")).unwrap();
 /// ```
+#[deprecated(
+	since = "0.1.0",
+	note = "Use TomlFileSource::new directly. The *.json branch will be removed in 0.2.0 (issue #4087)"
+)]
 pub fn auto_source(path: impl AsRef<Path>) -> Result<Box<dyn ConfigSource>, SourceError> {
 	let path = path.as_ref();
 	let ext = path
@@ -569,6 +590,9 @@ pub fn auto_source(path: impl AsRef<Path>) -> Result<Box<dyn ConfigSource>, Sour
 
 	match ext {
 		"toml" => Ok(Box::new(TomlFileSource::new(path))),
+		// JsonFileSource::new is deprecated alongside this function (issue #4087);
+		// keep wiring it through until the *.json branch is removed in 0.2.0.
+		#[allow(deprecated)]
 		"json" => Ok(Box::new(JsonFileSource::new(path))),
 		_ => Err(SourceError::InvalidSource(format!(
 			"Unsupported file extension: {}",
@@ -816,6 +840,9 @@ secret_key = "test-key"
 		);
 	}
 
+	// `JsonFileSource::new` is deprecated until removal in 0.2.0 (issue #4087);
+	// the test exercises load behavior so we still want to construct one here.
+	#[allow(deprecated)]
 	#[test]
 	fn test_json_source() {
 		let temp_dir = TempDir::new().unwrap();

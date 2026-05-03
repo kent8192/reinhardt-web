@@ -15,6 +15,11 @@ pub use super::env_parser::{
 };
 pub use super::interpolation::InterpolationError;
 pub use super::profile::Profile;
+// `JsonFileSource` and `auto_source` are deprecated alongside *.json
+// configuration support and will be removed in 0.2.0 (issue #4087). The prelude
+// continues to surface them during the deprecation window so existing user code
+// keeps compiling unchanged.
+#[allow(deprecated)]
 pub use super::sources::{
 	ConfigSource, DefaultSource, DotEnvSource, EnvSource, HighPriorityEnvSource, JsonFileSource,
 	LowPriorityEnvSource, SourceError, TomlFileSource, auto_source,

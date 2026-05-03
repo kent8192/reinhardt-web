@@ -1,5 +1,9 @@
 // Integration tests for EnvSource type inference, LowPriorityEnvSource, and cross-priority merging.
 // Covers: smart parsing, prefix handling, priority chain (Default → LowPriorityEnv → Toml/Json → Env).
+//
+// `JsonFileSource` is deprecated until removal in 0.2.0 (issue #4087); the
+// JSON priority cases must keep running during the deprecation window.
+#![allow(deprecated)]
 
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::sources::{

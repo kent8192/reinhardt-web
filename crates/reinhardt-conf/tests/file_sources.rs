@@ -1,5 +1,10 @@
 // Integration tests for TomlFileSource, JsonFileSource, and auto_source.
 // Covers: real file reading, type parsing, missing/invalid files, and extension detection.
+//
+// `JsonFileSource` and `auto_source` are deprecated until removal in 0.2.0
+// (issue #4087); these tests must keep covering the deprecated paths so
+// regressions during the deprecation window are caught.
+#![allow(deprecated)]
 
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::sources::{
