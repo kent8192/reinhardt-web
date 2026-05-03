@@ -44,15 +44,35 @@ fn build_fixture_bundle() -> Result<Option<PathBuf>, String> {
 	Ok(Some(dir.join("pkg")))
 }
 
+/// RAII guard that aborts the server task on drop, ensuring deterministic
+/// cleanup regardless of test outcome (including panics).
+struct ServerGuard {
+	abort: tokio::task::AbortHandle,
+}
+
+impl Drop for ServerGuard {
+	fn drop(&mut self) {
+		self.abort.abort();
+	}
+}
+
 /// Boots an axum server on an ephemeral port, serving the fixture index.html
-/// and the WASM bundle. Returns the bound URL and a `JoinHandle` whose Drop
-/// shuts down the server.
-async fn boot_test_server(fixture_dir: &Path) -> (String, tokio::task::JoinHandle<()>) {
+/// and the WASM bundle. Returns the bound URL and a `ServerGuard` whose Drop
+/// aborts the spawned task. Without the guard, dropping a bare `JoinHandle`
+/// only detaches the task — the server would keep running until the tokio
+/// runtime is torn down.
+async fn boot_test_server(fixture_dir: &Path) -> (String, ServerGuard) {
 	use axum::Router;
 	use tower_http::services::ServeDir;
 
-	// ServeDir serves the fixture directory. index.html and pkg/ are siblings.
-	let app = Router::new().nest_service("/", ServeDir::new(fixture_dir));
+	// `append_index_html_on_directories(true)` makes ServeDir serve
+	// `index.html` for directory requests like `/`. This is the documented
+	// default in tower-http but is set explicitly so the test does not rely
+	// on version-specific behavior.
+	let app = Router::new().nest_service(
+		"/",
+		ServeDir::new(fixture_dir).append_index_html_on_directories(true),
+	);
 
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
 		.await
@@ -61,7 +81,10 @@ async fn boot_test_server(fixture_dir: &Path) -> (String, tokio::task::JoinHandl
 	let handle = tokio::spawn(async move {
 		axum::serve(listener, app).await.expect("axum serve");
 	});
-	(format!("http://host.docker.internal:{port}"), handle)
+	let guard = ServerGuard {
+		abort: handle.abort_handle(),
+	};
+	(format!("http://host.docker.internal:{port}"), guard)
 }
 
 #[rstest]

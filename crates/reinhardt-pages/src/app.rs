@@ -426,8 +426,18 @@ impl ClientLauncher {
 		// in a state that interfered with dependency tracking on the second
 		// run (Refs #3348, #4075).
 		//
+		// The initial mount result is captured here and propagated as the
+		// return value of `launch()` so callers retain the previous "fail
+		// fast on boot mount error" behavior. Errors from subsequent
+		// re-renders are still logged (not propagated) because there is no
+		// caller frame to receive them after `launch()` returns.
+		//
 		// Fixes #4088, Refs #4075, #3348.
 		let root_clone = root_el.clone();
+		let initial_mount_result: std::rc::Rc<
+			std::cell::RefCell<Option<Result<(), crate::component::MountError>>>,
+		> = std::rc::Rc::new(std::cell::RefCell::new(None));
+		let initial_mount_result_inner = initial_mount_result.clone();
 		let _effect = crate::reactive::Effect::new_with_timing(
 			move || {
 				let view = with_router(|r| {
@@ -438,8 +448,13 @@ impl ClientLauncher {
 				crate::component::cleanup_reactive_nodes();
 				root_clone.set_inner_html("");
 				let wrapper = crate::dom::Element::new(root_clone.clone());
-				if let Err(e) = view.mount(&wrapper) {
-					web_sys::console::error_1(&format!("re-render failed: {e:?}").into());
+				let mount_result = view.mount(&wrapper);
+				// Record only the first run; later re-renders log instead.
+				let mut slot = initial_mount_result_inner.borrow_mut();
+				if slot.is_none() {
+					*slot = Some(mount_result.clone());
+				} else if let Err(e) = &mount_result {
+					web_sys::console::error_1(&format!("re-render failed: {e}").into());
 				}
 			},
 			crate::reactive::EffectTiming::Layout,
@@ -447,6 +462,17 @@ impl ClientLauncher {
 		// Intentional leak: Effect must persist for the entire application lifetime.
 		// WASM modules never terminate, so there is no destructor to run.
 		std::mem::forget(_effect);
+
+		// EffectTiming::Layout runs synchronously, so the initial mount has
+		// already completed by the time we reach this point.
+		match initial_mount_result.borrow_mut().take() {
+			Some(Err(e)) => {
+				return Err(wasm_bindgen::JsValue::from_str(&format!(
+					"initial mount failed: {e}"
+				)));
+			}
+			Some(Ok(())) | None => {}
+		}
 
 		// Step 9: drain after_launch callbacks now that the router is live and
 		// the first DOM mount has completed.
