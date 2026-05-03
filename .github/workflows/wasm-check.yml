@@ -1,6 +1,9 @@
 name: WASM Check
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_call:
     inputs:
       runner:
@@ -87,7 +90,11 @@ jobs:
   # Only triggered via workflow_call or workflow_dispatch (not on every push).
   wasm-test:
     name: WASM Test (headless Chrome)
-    if: github.event_name != 'push'
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_call' ||
+      github.event_name == 'workflow_dispatch'
     # Always use GitHub-hosted x86_64 runner: browser-actions/setup-chrome
     # does not support ARM64 Linux (Fixes #3491)
     runs-on: ubuntu-latest
