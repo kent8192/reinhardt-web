@@ -416,16 +416,63 @@ impl ClientLauncher {
 				))
 			})?;
 
-		let view = with_router(|r| {
-			let _ = r.current_path().get();
-			let _ = r.current_params().get();
-			r.render_current()
-		});
-		crate::component::cleanup_reactive_nodes();
-		root_el.set_inner_html("");
-		let wrapper = crate::dom::Element::new(root_el.clone());
-		view.mount(&wrapper)
-			.map_err(|e| wasm_bindgen::JsValue::from_str(&format!("mount failed: {e:?}")))?;
+		// Step 8 (consolidated): single-phase reactive mount.
+		//
+		// The launcher's render Effect performs both the initial mount and
+		// every subsequent re-render. EffectTiming::Layout makes signal-driven
+		// re-execution synchronous (no microtask delay), matching React's
+		// useSyncExternalStore semantics for synchronous external-store reads.
+		// This eliminates the previous two-phase mount that left REACTIVE_NODES
+		// in a state that interfered with dependency tracking on the second
+		// run (Refs #3348, #4075).
+		//
+		// The initial mount result is captured here and propagated as the
+		// return value of `launch()` so callers retain the previous "fail
+		// fast on boot mount error" behavior. Errors from subsequent
+		// re-renders are still logged (not propagated) because there is no
+		// caller frame to receive them after `launch()` returns.
+		//
+		// Fixes #4088, Refs #4075, #3348.
+		let root_clone = root_el.clone();
+		let initial_mount_result: std::rc::Rc<
+			std::cell::RefCell<Option<Result<(), crate::component::MountError>>>,
+		> = std::rc::Rc::new(std::cell::RefCell::new(None));
+		let initial_mount_result_inner = initial_mount_result.clone();
+		let _effect = crate::reactive::Effect::new_with_timing(
+			move || {
+				let view = with_router(|r| {
+					let _ = r.current_path().get();
+					let _ = r.current_params().get();
+					r.render_current()
+				});
+				crate::component::cleanup_reactive_nodes();
+				root_clone.set_inner_html("");
+				let wrapper = crate::dom::Element::new(root_clone.clone());
+				let mount_result = view.mount(&wrapper);
+				// Record only the first run; later re-renders log instead.
+				let mut slot = initial_mount_result_inner.borrow_mut();
+				if slot.is_none() {
+					*slot = Some(mount_result.clone());
+				} else if let Err(e) = &mount_result {
+					web_sys::console::error_1(&format!("re-render failed: {e}").into());
+				}
+			},
+			crate::reactive::EffectTiming::Layout,
+		);
+		// Intentional leak: Effect must persist for the entire application lifetime.
+		// WASM modules never terminate, so there is no destructor to run.
+		std::mem::forget(_effect);
+
+		// EffectTiming::Layout runs synchronously, so the initial mount has
+		// already completed by the time we reach this point.
+		match initial_mount_result.borrow_mut().take() {
+			Some(Err(e)) => {
+				return Err(wasm_bindgen::JsValue::from_str(&format!(
+					"initial mount failed: {e}"
+				)));
+			}
+			Some(Ok(())) | None => {}
+		}
 
 		// Step 9: drain after_launch callbacks now that the router is live and
 		// the first DOM mount has completed.
@@ -439,47 +486,6 @@ impl ClientLauncher {
 				hook(&ctx);
 			}
 		}
-
-		// Workaround for kent8192/reinhardt-web#4075
-		// Remove this workaround when the upstream issue is resolved.
-		//
-		// Ideal implementation (without workaround):
-		//   let _effect = crate::reactive::Effect::new(move || {
-		//       let view = with_router(|r| {
-		//           let _ = r.current_path().get();
-		//           let _ = r.current_params().get();
-		//           r.render_current()
-		//       });
-		//       crate::component::cleanup_reactive_nodes();
-		//       root_clone.set_inner_html("");
-		//       let wrapper = crate::dom::Element::new(root_clone.clone());
-		//       if let Err(e) = view.mount(&wrapper) {
-		//           web_sys::console::error_1(&format!("re-render failed: {e:?}").into());
-		//       }
-		//   });
-		//
-		// Hoist Signal clones out of with_router so Signal::get() runs while
-		// the Router thread-local is NOT borrowed; track_dependency then sees
-		// the launcher Effect as the current observer regardless of any nested
-		// reactive nodes that may run during the subsequent view.mount(...).
-		let (path_signal, params_signal) =
-			with_router(|r| (r.current_path().clone(), r.current_params().clone()));
-		let root_clone = root_el.clone();
-		let _effect = crate::reactive::Effect::new(move || {
-			// Subscribe outside the with_router borrow.
-			let _ = path_signal.get();
-			let _ = params_signal.get();
-			let view = with_router(|r| r.render_current());
-			crate::component::cleanup_reactive_nodes();
-			root_clone.set_inner_html("");
-			let wrapper = crate::dom::Element::new(root_clone.clone());
-			if let Err(e) = view.mount(&wrapper) {
-				web_sys::console::error_1(&format!("re-render failed: {e:?}").into());
-			}
-		});
-		// Intentional leak: Effect must persist for the entire application lifetime.
-		// WASM modules never terminate, so there is no destructor to run.
-		std::mem::forget(_effect);
 
 		// Step 11: register one leaked Effect per path subscription. Each
 		// Effect re-reads the router's `current_path` Signal, so the
