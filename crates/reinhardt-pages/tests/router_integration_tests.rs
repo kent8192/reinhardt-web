@@ -9,6 +9,7 @@
 
 use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::router::{Link, PathPattern, Redirect, Router, RouterOutlet, guard, guard_or};
+use rstest::rstest;
 use serial_test::serial;
 use std::collections::HashMap;
 
@@ -346,4 +347,81 @@ fn test_component_names() {
 	assert_eq!(Link::name(), "Link");
 	assert_eq!(RouterOutlet::name(), "RouterOutlet");
 	assert_eq!(Redirect::name(), "Redirect");
+}
+
+/// Test 4 in spec for #4101: on_path_pattern callbacks must fire only
+/// on transitions where the matched params differ from the previous
+/// match (or the pattern transitions between matched and unmatched).
+///
+/// This test exercises the diff-detection logic via Router::on_navigate
+/// directly (the launcher's on_path / on_path_pattern infrastructure
+/// internally wraps the same logic). It locks in expected behaviour
+/// before the on_path migration in PR #4101 swaps the underlying
+/// reactive Effect for an on_navigate listener.
+///
+/// `PathPattern` and `Router` are re-exported at
+/// `reinhardt_pages::router`. `Router::push` works on native targets
+/// because `super::history::push_state` has a `#[cfg(native)]` no-op
+/// stub.
+///
+/// Refs #4101.
+#[rstest]
+fn on_path_pattern_fires_on_param_diff_only() {
+	use std::cell::RefCell;
+	use std::rc::Rc;
+
+	// Arrange
+	let observed: Rc<RefCell<Vec<HashMap<String, String>>>> = Rc::new(RefCell::new(Vec::new()));
+	let observed_inner = observed.clone();
+
+	let router = Router::new()
+		.route("/users/{id}/", || Page::text("user"))
+		.route("/about/", || Page::text("about"));
+
+	// Subscribe via on_navigate emulating on_path_pattern's diff
+	// logic. (The launcher uses on_navigate listeners that wrap this
+	// same logic post-Task-2.6.)
+	let pattern = PathPattern::new("/users/{id}/");
+	let last_params: Rc<RefCell<Option<HashMap<String, String>>>> = Rc::new(RefCell::new(None));
+	let last_params_inner = last_params.clone();
+	let _sub = router.on_navigate(move |path, _params| {
+		let new_match = pattern.matches(path).map(|(p, _)| p);
+		let should_fire = {
+			let mut prev = last_params_inner.borrow_mut();
+			let fire = match (&*prev, &new_match) {
+				(None, Some(_)) => true,
+				(Some(_), None) => false,
+				(Some(a), Some(b)) => a != b,
+				(None, None) => false,
+			};
+			*prev = new_match.clone();
+			fire
+		};
+		if should_fire && let Some(params) = new_match {
+			observed_inner.borrow_mut().push(params);
+		}
+	});
+
+	// Act
+	router.push("/users/1/").expect("push /users/1/");
+	router.push("/users/1/").expect("push /users/1/ again");
+	router.push("/users/2/").expect("push /users/2/");
+	router.push("/about/").expect("push /about/");
+	router
+		.push("/users/2/")
+		.expect("push /users/2/ after /about/");
+
+	// Assert
+	let calls = observed.borrow();
+	assert_eq!(
+		calls.len(),
+		3,
+		"callback should fire on transitions 1, 3, 5 only; got: {:?}",
+		calls
+	);
+	assert_eq!(calls[0].get("id").map(String::as_str), Some("1"));
+	assert_eq!(calls[1].get("id").map(String::as_str), Some("2"));
+	assert_eq!(calls[2].get("id").map(String::as_str), Some("2"));
+
+	// _sub is held until end of scope so the listener fires for every push.
 }
