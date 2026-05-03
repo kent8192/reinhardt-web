@@ -103,16 +103,30 @@ async fn spa_navigation_link_click_re_renders_view(#[future] cdp_browser: CdpBro
 		.parent()
 		.expect("pkg dir has parent (the fixture crate root)");
 	let (base_url, _server) = boot_test_server(fixture_root).await;
+	eprintln!("[e2e] base_url = {base_url}");
 	let browser = cdp_browser.await;
 	let page = browser
 		.new_page(&base_url)
 		.await
 		.expect("open new page at fixture URL");
 
-	// Boot mount: home page is rendered with the link to /login
-	page.wait_for("#route-home")
-		.await
-		.expect("wait for #route-home");
+	// Boot mount: home page is rendered with the link to /login.
+	// On failure, dump the URL Chrome actually navigated to and the page
+	// HTML so CI logs reveal whether the WASM bundle loaded at all (e.g.
+	// `host.docker.internal` resolution failures vs. mount-time errors).
+	if let Err(e) = page.wait_for("#route-home").await {
+		let actual_url = page.url().await.ok().flatten().unwrap_or_default();
+		let html = page
+			.content()
+			.await
+			.unwrap_or_else(|err| format!("<failed to read page content: {err:?}>"));
+		panic!(
+			"wait for #route-home failed: {e:?}\n\
+			 base_url:   {base_url}\n\
+			 actual url: {actual_url}\n\
+			 html:       {html}"
+		);
+	}
 	let go_to_login = page
 		.find("#go-to-login")
 		.await
