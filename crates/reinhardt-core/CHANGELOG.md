@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.25...reinhardt-core@v0.1.0-rc.26) - 2026-05-03
+
+### Added
+
+- *(reactive)* add #[doc(hidden)] diagnostic API for dependency graph inspection
+
+### Documentation
+
+- *(pages)* document [[#4088](https://github.com/kent8192/reinhardt-web/issues/4088)](https://github.com/kent8192/reinhardt-web/issues/4088) fix and on_navigate API in CHANGELOGs
+
 ### Added
 
 - `Runtime::debug_subscribers`, `debug_dependencies`, `debug_observer_stack`,

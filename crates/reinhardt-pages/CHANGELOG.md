@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.25...reinhardt-pages@v0.1.0-rc.26) - 2026-05-03
+
+### Added
+
+- *(router)* add on_navigate explicit subscription API as escape hatch
+
+### Changed
+
+- *(pages)* extract render_and_mount helper from launcher Effect
+- *(pages)* [**breaking**] switch ClientLauncher render to Router::on_navigate
+- *(pages)* [**breaking**] switch on_path subscriptions to Router::on_navigate
+
+### Documentation
+
+- *(changelog)* note SPA navigation fix (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* document [[#4088](https://github.com/kent8192/reinhardt-web/issues/4088)](https://github.com/kent8192/reinhardt-web/issues/4088) fix and on_navigate API in CHANGELOGs
+- *(pages)* note that on_navigate fires on popstate as well
+- *(pages)* rewrite launch() pipeline doc for on_navigate-based design
+
+### Fixed
+
+- *(pages-macros)* reference server_fn ident on native to silence unused_imports
+- *(pages)* hoist Router signal reads out of with_router in launcher Effect
+- *(pages)* address Copilot review feedback on launcher Effect and wasm test docs
+- *(pages)* eliminate two-phase mount in ClientLauncher to fix SPA navigation
+- *(pages)* propagate initial mount error and harden e2e test setup
+- *(pages)* extract notify_observers helper from Router::navigate
+- *(pages)* invoke notify_observers from popstate listener
+
+### Styling
+
+- *(pages)* apply rustfmt to native repro tests (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+
+### Testing
+
+- *(pages)* add native Effect+Router control test (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* add native thread-local-borrow repro for [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075) (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* add wasm regression test for ClientLauncher SPA navigation
+- *(pages)* reproduce Issue [[#4088](https://github.com/kent8192/reinhardt-web/issues/4088)](https://github.com/kent8192/reinhardt-web/issues/4088) navigation flow with diagnostic asserts
+- *(pages)* add e2e_cdp regression test for SPA link interceptor navigation
+- *(pages)* dump page state on e2e wait_for failure for diagnosis
+- *(pages)* cover popstate-driven on_navigate dispatch
+- *(pages)* cover back-to-back navigation regression class
+- *(pages)* cover on_path_pattern param diff detection
+- *(pages)* drop stale path-signal subscriber diagnostic
+
 ### Added
 
 - *(router)* `Router::on_navigate(callback) -> NavigationSubscription`
