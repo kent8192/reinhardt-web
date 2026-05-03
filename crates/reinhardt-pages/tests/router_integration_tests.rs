@@ -350,8 +350,16 @@ fn test_component_names() {
 }
 
 /// Test 4 in spec for #4101: on_path_pattern callbacks must fire only
-/// on transitions where the matched params differ from the previous
-/// match (or the pattern transitions between matched and unmatched).
+/// on transitions that change the matched parameter set.
+///
+/// Concretely, the diff state machine fires on:
+/// - `None -> Some` (entering a match), and
+/// - `Some(a) -> Some(b)` where `a != b` (param change inside the
+///   same pattern).
+///
+/// It intentionally does NOT fire on:
+/// - `Some(_) -> None` (leaving a match), or
+/// - `None -> None` (still unmatched).
 ///
 /// This test exercises the diff-detection logic via Router::on_navigate
 /// directly (the launcher's on_path / on_path_pattern infrastructure
