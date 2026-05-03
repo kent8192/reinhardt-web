@@ -356,6 +356,31 @@ impl ClientLauncher {
 
 #[cfg(wasm)]
 impl ClientLauncher {
+	/// Render the current route into the given root element.
+	///
+	/// Performs `Router::render_current` -> `cleanup_reactive_nodes` ->
+	/// clears `innerHTML` -> `view.mount`. Used by `launch()` for both
+	/// the initial mount (called inline in Phase B) and every
+	/// subsequent re-mount (called from a `Router::on_navigate`
+	/// listener in Phase C, after Task 2.4 lands).
+	///
+	/// During this transitional commit (Task 2.3) the launcher's
+	/// reactive `Effect` still drives re-renders by reading
+	/// `current_path` / `current_params` Signals; the body of that
+	/// `Effect` delegates to this helper. Task 2.4 removes the
+	/// `Effect` and registers an `on_navigate` listener that calls
+	/// the same helper instead.
+	///
+	/// Refs #4101.
+	#[cfg(wasm)]
+	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
+		let view = with_router(|r| r.render_current());
+		crate::component::cleanup_reactive_nodes();
+		root_el.set_inner_html("");
+		let wrapper = crate::dom::Element::new(root_el.clone());
+		view.mount(&wrapper)
+	}
+
 	/// Start the WASM client application.
 	///
 	/// Performs in order:
@@ -416,23 +441,12 @@ impl ClientLauncher {
 				))
 			})?;
 
-		// Step 8 (consolidated): single-phase reactive mount.
-		//
-		// The launcher's render Effect performs both the initial mount and
-		// every subsequent re-render. EffectTiming::Layout makes signal-driven
-		// re-execution synchronous (no microtask delay), matching React's
-		// useSyncExternalStore semantics for synchronous external-store reads.
-		// This eliminates the previous two-phase mount that left REACTIVE_NODES
-		// in a state that interfered with dependency tracking on the second
-		// run (Refs #3348, #4075).
-		//
-		// The initial mount result is captured here and propagated as the
-		// return value of `launch()` so callers retain the previous "fail
-		// fast on boot mount error" behavior. Errors from subsequent
-		// re-renders are still logged (not propagated) because there is no
-		// caller frame to receive them after `launch()` returns.
-		//
-		// Fixes #4088, Refs #4075, #3348.
+		// Step 8 (transitional, #4101): the render Effect now delegates
+		// to ClientLauncher::render_and_mount. The Effect still
+		// subscribes to current_path / current_params Signals to drive
+		// re-renders; this delegation is a refactor only. The next
+		// commit (Task 2.4 of #4101) replaces the Effect with an
+		// on_navigate listener.
 		let root_clone = root_el.clone();
 		let initial_mount_result: std::rc::Rc<
 			std::cell::RefCell<Option<Result<(), crate::component::MountError>>>,
@@ -440,16 +454,14 @@ impl ClientLauncher {
 		let initial_mount_result_inner = initial_mount_result.clone();
 		let _effect = crate::reactive::Effect::new_with_timing(
 			move || {
-				let view = with_router(|r| {
+				// Subscribe to Signals so the Effect re-runs on
+				// navigation. Reads happen INSIDE the Effect closure
+				// to enrol this Effect as a Signal subscriber.
+				with_router(|r| {
 					let _ = r.current_path().get();
 					let _ = r.current_params().get();
-					r.render_current()
 				});
-				crate::component::cleanup_reactive_nodes();
-				root_clone.set_inner_html("");
-				let wrapper = crate::dom::Element::new(root_clone.clone());
-				let mount_result = view.mount(&wrapper);
-				// Record only the first run; later re-renders log instead.
+				let mount_result = Self::render_and_mount(&root_clone);
 				let mut slot = initial_mount_result_inner.borrow_mut();
 				if slot.is_none() {
 					*slot = Some(mount_result.clone());
@@ -459,12 +471,8 @@ impl ClientLauncher {
 			},
 			crate::reactive::EffectTiming::Layout,
 		);
-		// Intentional leak: Effect must persist for the entire application lifetime.
-		// WASM modules never terminate, so there is no destructor to run.
 		std::mem::forget(_effect);
 
-		// EffectTiming::Layout runs synchronously, so the initial mount has
-		// already completed by the time we reach this point.
 		match initial_mount_result.borrow_mut().take() {
 			Some(Err(e)) => {
 				return Err(wasm_bindgen::JsValue::from_str(&format!(
