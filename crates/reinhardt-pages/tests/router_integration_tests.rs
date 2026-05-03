@@ -218,6 +218,11 @@ fn test_link_external() {
 #[test]
 fn test_router_outlet() {
 	use std::sync::Arc;
+	// `Router` is not Send/Sync, but `RouterOutlet::new` accepts
+	// `Arc<Router>` to mirror the production API. This test runs
+	// single-threaded and never crosses thread boundaries, so the
+	// non-Send/Sync `Arc` is safe here. Refs #4115.
+	#[allow(clippy::arc_with_non_send_sync)]
 	let router = Arc::new(Router::new());
 	let outlet = RouterOutlet::new(router)
 		.id("main-content")
