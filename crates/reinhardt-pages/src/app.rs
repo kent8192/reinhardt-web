@@ -37,8 +37,8 @@ fn store_router(router: Router) {
 /// WASM client application launcher.
 ///
 /// Encapsulates all client-side startup boilerplate: panic hook, reactive
-/// scheduler, DOM mounting, reactive `Effect` for route changes,
-/// history listener, and built-in SPA link interception. Optional
+/// scheduler, DOM mounting, `Router::on_navigate` listeners for route
+/// changes, history listener, and built-in SPA link interception. Optional
 /// lifecycle hooks (`before_launch`, `after_launch`) and path-driven
 /// side effects (`on_path`, `on_path_pattern`) plug into the builder
 /// chain so app-level wiring stays declarative.
@@ -218,9 +218,9 @@ impl<'a> PathCtx<'a> {
 
 /// Internal record produced by every `.on_path` / `.on_path_pattern` call.
 ///
-/// `last_params` tracks the previous match state so the Effect can
-/// detect transitions (entering a match, or a parameter-set change
-/// inside the same pattern) without re-firing on every render.
+/// `last_params` tracks the previous match state so the `on_navigate`
+/// listener can detect transitions (entering a match, or a parameter-set
+/// change inside the same pattern) without re-firing on every navigation.
 struct PathSubscription {
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pattern: PathPattern,
@@ -312,12 +312,13 @@ impl ClientLauncher {
 	/// The callback receives a [`PathCtx`] with the current document and
 	/// path; for exact-match registrations, `params()` is always empty.
 	///
-	/// Internally each registration becomes a leaked reactive `Effect`,
-	/// so callers never write `std::mem::forget` themselves. The Effect
-	/// fires when the application enters the matching path; it does
-	/// **not** fire on every render of the same path. Leaving the path
-	/// does not fire the callback either — register a separate
-	/// `on_path` for the destination if you need exit cleanup.
+	/// Internally each registration becomes a leaked [`Router::on_navigate`]
+	/// listener; the callback fires when the application enters the matching
+	/// path and is independent of the reactive `Effect` / `Signal`
+	/// auto-tracking system. It does **not** fire on repeated navigations
+	/// to the same path. Leaving the path does not fire the callback either
+	/// — register a separate `on_path` for the destination if you need exit
+	/// cleanup.
 	pub fn on_path<F>(mut self, path: &'static str, callback: F) -> Self
 	where
 		F: Fn(&PathCtx<'_>) + 'static,
@@ -376,24 +377,42 @@ impl ClientLauncher {
 
 	/// Start the WASM client application.
 	///
-	/// Performs in order:
-	/// 1. Sets up the panic hook for readable console errors
-	/// 2. Configures the reactive scheduler for async contexts
-	/// 3. Runs registered `before_launch` callbacks in registration order
-	/// 4. Initialises the router and stores it in the global thread-local
-	/// 5. Registers the `popstate` history listener (browser back/forward)
-	/// 6. Queries the DOM for `root_selector`; returns `Err` if not found
-	/// 7. Installs the SPA link-interception listener on `document`
-	///    (when `intercept_links` is `true`, the default)
-	/// 8. Initial render: `render_current()` → `cleanup_reactive_nodes()` → `mount()`
-	/// 9. Runs registered `after_launch` callbacks in registration order,
-	///    each receiving a [`LaunchCtx`] borrowing `window`, `document`,
-	///    and the root element
-	/// 10. Creates a reactive `Effect` that re-renders on route changes;
-	///    leaks it intentionally so it persists for the application lifetime
-	/// 11. Registers one leaked reactive `Effect` per `on_path` /
-	///    `on_path_pattern` subscription; each fires only on transitions
-	///    into a matching path (not on every render)
+	/// Performs three phases in order:
+	///
+	/// 1. **Phase A — Setup.** Sets up the panic hook for readable
+	///    console errors, configures the reactive scheduler for async
+	///    contexts, runs registered `before_launch` callbacks,
+	///    initialises the [`Router`] and stores it in the global
+	///    thread-local, registers the `popstate` history listener,
+	///    queries the DOM for `root_selector` (returns `Err` if not
+	///    found), and installs the SPA link-interception listener on
+	///    `document` when `intercept_links` is `true` (the default).
+	///
+	/// 2. **Phase B — Initial mount.** Inline (no `Effect`):
+	///    `Router::render_current()` -> `cleanup_reactive_nodes()` ->
+	///    clears `innerHTML` -> `view.mount()`. On mount failure
+	///    `launch()` returns `Err` and Phase C is skipped.
+	///
+	/// 3. **Phase C — Persistent subscriptions.** Registers the
+	///    launcher's render listener via [`Router::on_navigate`] (the
+	///    returned [`NavigationSubscription`] is leaked via
+	///    `mem::forget` so it persists for the WASM module lifetime),
+	///    runs registered `after_launch` callbacks, then registers
+	///    one `Router::on_navigate` listener per `on_path` /
+	///    `on_path_pattern` subscription. Each path-subscription
+	///    listener fires only on transitions into or between matching
+	///    param sets (de-duplicated through a
+	///    `RefCell<Option<HashMap>>` state).
+	///
+	/// The launcher does **not** create any reactive `Effect`. The
+	/// render pipeline is driven entirely by [`Router::on_navigate`]
+	/// callbacks, which are independent of the reactive runtime. This
+	/// is structurally robust against nested reactive nodes spawned
+	/// during view rendering (Refs #3348, #4075, #4088, #4101).
+	///
+	/// [`Router::on_navigate`] fires for both programmatic navigation
+	/// (`Router::push` / `Router::replace`) and browser back/forward
+	/// (popstate).
 	pub fn launch(mut self) -> Result<(), wasm_bindgen::JsValue> {
 		#[cfg(feature = "console_error_panic_hook")]
 		console_error_panic_hook::set_once();
@@ -882,7 +901,7 @@ mod tests {
 		// Arrange / Act
 		let launcher = ClientLauncher::new("#root").on_path("/", |_ctx: &PathCtx<'_>| {});
 		// Assert: last_params is None at registration time so the very
-		// first Effect run will be detected as a `None -> Some(_)` transition.
+		// first listener invocation will be detected as a `None -> Some(_)` transition.
 		assert!(
 			launcher.path_subscriptions[0]
 				.last_params
