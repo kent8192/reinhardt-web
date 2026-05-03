@@ -36,9 +36,9 @@ use chromiumoxide::browser::Browser;
 use chromiumoxide::error::CdpError;
 use futures::StreamExt;
 use rstest::*;
-use testcontainers::core::{ContainerPort, WaitFor};
+use testcontainers::core::{ContainerPort, Host, WaitFor};
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, GenericImage};
+use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use tokio::task::JoinHandle;
 
 // Re-export chromiumoxide types for downstream convenience
@@ -126,7 +126,17 @@ impl CdpBrowser {
 	pub async fn start(config: CdpConfig) -> Result<Self, CdpError> {
 		let image = GenericImage::new(&config.chrome_image, &config.chrome_tag)
 			.with_exposed_port(ContainerPort::Tcp(CDP_PORT))
-			.with_wait_for(WaitFor::message_on_stderr("DevTools listening on"));
+			.with_wait_for(WaitFor::message_on_stderr("DevTools listening on"))
+			// Make `host.docker.internal` resolve to the host gateway inside
+			// the container on every supported platform. macOS Docker Desktop
+			// configures this automatically, but Linux containers (e.g. on
+			// the GitHub Actions `ubuntu-latest` runner) require an explicit
+			// `--add-host=host.docker.internal:host-gateway` mapping.
+			//
+			// Without this, browser tests that load resources from a host
+			// HTTP server via `http://host.docker.internal:NNNN/` fail with
+			// `ERR_NAME_NOT_RESOLVED` on Linux. (Refs #4106.)
+			.with_host("host.docker.internal", Host::HostGateway);
 
 		let container = image.start().await.map_err(|e| {
 			CdpError::Io(std::io::Error::new(
