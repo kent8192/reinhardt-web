@@ -89,6 +89,61 @@ let settings = SettingsBuilder::new()
 let database_url = settings.get::<String>("DATABASE_URL")?;
 ```
 
+## Configuration Sources
+
+### TOML Interpolation
+
+Opt-in `${VAR}` substitution for TOML string values.
+
+| Token              | Behavior                                           |
+|--------------------|----------------------------------------------------|
+| `${VAR}`           | required — fails if `VAR` is unset OR empty        |
+| `${VAR:-default}`  | substitutes `default` if `VAR` is unset OR empty   |
+| `${VAR:-}`         | explicit empty fallback (special case of `:-`)     |
+| `${VAR:?message}`  | fails with `message` if `VAR` is unset OR empty    |
+| `$$`               | escape — emits a literal `$`                       |
+
+Variable names follow POSIX conventions: `[A-Za-z_][A-Za-z0-9_]*`.
+
+```rust,ignore
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::sources::TomlFileSource;
+
+let settings = SettingsBuilder::new()
+    .add_source(
+        TomlFileSource::new("settings/local.toml")
+            .with_interpolation(true),
+    )
+    .build()?;
+```
+
+Example TOML:
+
+```toml
+[database]
+host = "${REINHARDT_DB_HOST:-localhost}"
+port = "${REINHARDT_DB_PORT:-5432}"
+
+[secrets]
+db_password = "${DB_PASSWORD:?Set DB_PASSWORD via direnv or 1Password CLI}"
+```
+
+#### Behavior Notes
+
+- **Strict empty handling**: an empty environment-variable value is treated identically
+  to "unset". This catches typos like `export REINHARDT_DB_HOST=` early. To allow an
+  explicit empty fallback, write `${VAR:-}`.
+- **Single-pass**: resolved values are not re-expanded, so `${OUTER}` whose value
+  happens to contain `${INNER}` resolves to literally `${INNER}`.
+- **String-only scope**: only `toml::Value::String` is rewritten, but every string
+  in the TOML tree is scanned — strings inside nested tables and arrays are
+  interpolated as well. Numeric, boolean, and datetime values pass through
+  untouched. To inject a typed override use `HighPriorityEnvSource`
+  (priority 60 — beats interpolated TOML at priority 50).
+- **Composition**: interpolation runs at `TomlFileSource::load()` time. The resolved
+  value participates in the normal source-priority merge; later sources at higher
+  priority still override.
+
 ## Field Status
 
 The `Settings` struct contains fields that are either actively consumed by the framework or reserved for future implementation.

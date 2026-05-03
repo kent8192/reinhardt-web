@@ -13,6 +13,7 @@ pub use super::env_loader::{EnvLoader, load_env, load_env_auto, load_env_optiona
 pub use super::env_parser::{
 	CacheUrl, DatabaseUrl, parse_bool, parse_cache_url, parse_database_url, parse_dict, parse_list,
 };
+pub use super::interpolation::InterpolationError;
 pub use super::profile::Profile;
 pub use super::sources::{
 	ConfigSource, DefaultSource, DotEnvSource, EnvSource, HighPriorityEnvSource, JsonFileSource,

@@ -38,6 +38,7 @@
 //! - [`settings`]: Core settings management with layered configuration and builder pattern
 //!   - `builder`: `SettingsBuilder` for composing config from multiple sources
 //!   - `sources`: Configuration source adapters (files, env vars, `.env` files)
+//!   - `interpolation`: `${VAR}` expansion for TOML configuration files
 //!   - `profile`: Environment profiles (Development, Staging, Production)
 //!   - `dynamic`: Redis and database-backed dynamic settings
 //!   - `secrets`: Secrets management integration (Vault, AWS, Azure)

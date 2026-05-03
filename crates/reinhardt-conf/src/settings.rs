@@ -17,6 +17,7 @@ pub mod env_loader;
 pub mod env_parser;
 pub mod fragment;
 pub mod i18n;
+pub mod interpolation;
 pub mod logging;
 pub mod media;
 /// OpenAPI documentation endpoint configuration.
