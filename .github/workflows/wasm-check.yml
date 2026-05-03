@@ -1,9 +1,6 @@
 name: WASM Check
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_call:
     inputs:
       runner:
@@ -87,14 +84,13 @@ jobs:
 
   # Run existing wasm_bindgen_test tests in headless Chrome.
   # Catches runtime errors in WASM code paths that cargo check cannot detect.
-  # Only triggered via workflow_call or workflow_dispatch (not on every push).
+  # Invocation paths:
+  #   - PRs via ci.yml (workflow_call)
+  #   - Pushes to main via wasm-check-standalone.yml (workflow_call)
+  #   - Manual workflow_dispatch
+  # Per-feature-branch pushes do not pay the headless Chrome cost.
   wasm-test:
     name: WASM Test (headless Chrome)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      github.event_name == 'workflow_call' ||
-      github.event_name == 'workflow_dispatch'
     # Always use GitHub-hosted x86_64 runner: browser-actions/setup-chrome
     # does not support ARM64 Linux (Fixes #3491)
     runs-on: ubuntu-latest
