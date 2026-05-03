@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.25...reinhardt-conf@v0.1.0-rc.26) - 2026-05-03
+
+### Added
+
+- *(conf)* scaffold Interpolator types for TOML interpolation
+- *(conf)* add nom-based template parser for TOML interpolation
+- *(conf)* add Interpolator::interpolate_str with strict empty handling
+- *(conf)* walk TOML AST in Interpolator::interpolate_value
+- *(conf)* add SourceError::Interpolation variant
+- *(conf)* add TomlFileSource::with_interpolation opt-in
+
+### Documentation
+
+- *(conf)* document TOML interpolation feature
+- *(conf)* correct interpolation scope wording
+
+### Maintenance
+
+- *(conf)* pull workspace nom dependency
+
+### Styling
+
+- *(conf)* restore alphabetical order of prelude re-exports
+- *(conf)* apply cargo fmt to interpolation module
+- *(conf)* apply rustfmt to source_priority.rs
+
+### Testing
+
+- *(conf)* tighten interpolation parser negative assertions
+- *(conf)* integration tests for TOML interpolation
+- *(conf)* priority composition with interpolated TOML
+- *(conf)* align test conventions with project standards
+- *(conf)* reuse remove_env_vars helper for consistency
+
 ### Added
 
 - TOML configuration interpolation with `${VAR}`, `${VAR:-default}`,
