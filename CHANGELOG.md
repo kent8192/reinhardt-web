@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.25...reinhardt-web@v0.1.0-rc.26) - 2026-05-03
+
+### Added
+
+- *(conf)* scaffold Interpolator types for TOML interpolation
+- *(conf)* add nom-based template parser for TOML interpolation
+- *(conf)* add Interpolator::interpolate_str with strict empty handling
+- *(conf)* walk TOML AST in Interpolator::interpolate_value
+- *(conf)* add SourceError::Interpolation variant
+- *(conf)* add TomlFileSource::with_interpolation opt-in
+
+### Documentation
+
+- add release announcement(s)
+- *(changelog)* note SPA navigation fix (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(conf)* document TOML interpolation feature
+- *(conf)* correct interpolation scope wording
+
+### Fixed
+
+- *(pages)* hoist Router signal reads out of with_router in launcher Effect
+- *(pages)* address Copilot review feedback on launcher Effect and wasm test docs
+- *(ci)* ignore RUSTSEC-2026-0118 / RUSTSEC-2026-0119 (hickory-proto via mongodb)
+
+### Maintenance
+
+- *(wasm-check)* wire client_launcher_navigation_test into CI
+- *(conf)* pull workspace nom dependency
+
+### Styling
+
+- *(pages)* apply rustfmt to native repro tests (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(conf)* restore alphabetical order of prelude re-exports
+- *(conf)* apply cargo fmt to interpolation module
+
+### Testing
+
+- *(pages)* add native Effect+Router control test (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* add native thread-local-borrow repro for [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075) (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* add wasm regression test for ClientLauncher SPA navigation
+- *(conf)* tighten interpolation parser negative assertions
+- *(conf)* integration tests for TOML interpolation
+- *(conf)* priority composition with interpolated TOML
+- *(conf)* align test conventions with project standards
+- *(conf)* reuse remove_env_vars helper for consistency
+
 ### Fixed
 
 - *(pages)* restore SPA navigation: `ClientLauncher`'s render Effect now
