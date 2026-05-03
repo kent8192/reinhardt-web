@@ -499,8 +499,8 @@ fn high_priority_env_overrides_interpolated_toml() {
 	// with the other 17 tests in this file.
 	unsafe {
 		set_env_vars(&[
-			("IT_PG_PORT_PRIO", "8080"),  // for TOML interpolation
-			("PRIO_TEST_PORT", "9999"),   // for HighPriorityEnvSource override
+			("IT_PG_PORT_PRIO", "8080"), // for TOML interpolation
+			("PRIO_TEST_PORT", "9999"),  // for HighPriorityEnvSource override
 		])
 	};
 	let (_dir, path) = write_toml_file(r#"port = "${IT_PG_PORT_PRIO:-5432}""#);
