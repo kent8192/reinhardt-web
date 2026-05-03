@@ -1,7 +1,8 @@
 // Integration tests for TOML interpolation via TomlFileSource.
 //
 // These tests mutate `std::env`, so they MUST run under
-// `#[serial(env_vars)]`. The `EnvGuard` ensures cleanup even on panic.
+// `#[serial(env)]` (matching `tests/source_priority.rs`). The `EnvGuard`
+// ensures cleanup even on panic.
 
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::interpolation::InterpolationError;
@@ -35,7 +36,7 @@ fn write_toml_file(content: &str) -> (TempDir, PathBuf) {
 }
 
 #[rstest]
-#[serial(env_vars)]
+#[serial(env)]
 fn with_interpolation_resolves_env_var() {
 	// Arrange
 	let _guard = EnvGuard(vec!["IT_DB_HOST"]);
@@ -55,7 +56,7 @@ fn with_interpolation_resolves_env_var() {
 }
 
 #[rstest]
-#[serial(env_vars)]
+#[serial(env)]
 fn without_interpolation_preserves_literal_pattern() {
 	// Arrange — back-compat regression: default constructor must NOT expand
 	let (_dir, path) = write_toml_file(r#"host = "${SHOULD_NOT_EXPAND}""#);
@@ -72,7 +73,7 @@ fn without_interpolation_preserves_literal_pattern() {
 }
 
 #[rstest]
-#[serial(env_vars)]
+#[serial(env)]
 fn default_value_used_when_var_unset() {
 	// Arrange
 	let _guard = EnvGuard(vec!["IT_UNSET_HOST"]);
@@ -92,7 +93,7 @@ fn default_value_used_when_var_unset() {
 }
 
 #[rstest]
-#[serial(env_vars)]
+#[serial(env)]
 fn default_value_used_when_var_empty() {
 	// Arrange — strict-empty contract
 	let _guard = EnvGuard(vec!["IT_EMPTY_HOST"]);
@@ -112,7 +113,7 @@ fn default_value_used_when_var_empty() {
 }
 
 #[rstest]
-#[serial(env_vars)]
+#[serial(env)]
 fn required_var_unset_propagates_source_error() {
 	// Arrange
 	let _guard = EnvGuard(vec!["IT_REQUIRED_VAR"]);
@@ -142,7 +143,7 @@ fn required_var_unset_propagates_source_error() {
 }
 
 #[rstest]
-#[serial(env_vars)]
+#[serial(env)]
 fn required_with_message_surface_user_message() {
 	// Arrange
 	let _guard = EnvGuard(vec!["IT_NEEDS_MESSAGE"]);
@@ -169,7 +170,7 @@ fn required_with_message_surface_user_message() {
 }
 
 #[rstest]
-#[serial(env_vars)]
+#[serial(env)]
 fn nested_table_interpolation_resolves_keys() {
 	// Arrange
 	let _guard = EnvGuard(vec!["IT_DB_HOST_NESTED", "IT_DB_PORT_NESTED"]);

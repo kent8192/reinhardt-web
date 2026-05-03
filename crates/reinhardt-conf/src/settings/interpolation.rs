@@ -421,23 +421,11 @@ mod tests {
 	use rstest::rstest;
 	use std::path::PathBuf;
 
-	// --- existing smoke tests retained -----------------------------------
+	// `Segment` variants are exhaustively constructed and verified by the
+	// `parse_template_ok` parameterized cases below, so a separate
+	// construction-only smoke test would only duplicate that coverage.
 
-	#[test]
-	fn segment_variants_construct() {
-		let _lit = Segment::Literal("x".into());
-		let _req = Segment::Required { var: "V".into() };
-		let _def = Segment::Default {
-			var: "V".into(),
-			default: "d".into(),
-		};
-		let _msg = Segment::RequiredMsg {
-			var: "V".into(),
-			message: "m".into(),
-		};
-	}
-
-	#[test]
+	#[rstest]
 	fn interpolation_error_displays_context() {
 		let err = InterpolationError::Required {
 			var: "DB_HOST".into(),
