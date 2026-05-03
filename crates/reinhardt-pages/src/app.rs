@@ -362,14 +362,7 @@ impl ClientLauncher {
 	/// clears `innerHTML` -> `view.mount`. Used by `launch()` for both
 	/// the initial mount (called inline in Phase B) and every
 	/// subsequent re-mount (called from a `Router::on_navigate`
-	/// listener in Phase C, after Task 2.4 lands).
-	///
-	/// During this transitional commit (Task 2.3) the launcher's
-	/// reactive `Effect` still drives re-renders by reading
-	/// `current_path` / `current_params` Signals; the body of that
-	/// `Effect` delegates to this helper. Task 2.4 removes the
-	/// `Effect` and registers an `on_navigate` listener that calls
-	/// the same helper instead.
+	/// listener registered in Phase C).
 	///
 	/// Refs #4101.
 	#[cfg(wasm)]
@@ -441,46 +434,33 @@ impl ClientLauncher {
 				))
 			})?;
 
-		// Step 8 (transitional, #4101): the render Effect now delegates
-		// to ClientLauncher::render_and_mount. The Effect still
-		// subscribes to current_path / current_params Signals to drive
-		// re-renders; this delegation is a refactor only. The next
-		// commit (Task 2.4 of #4101) replaces the Effect with an
-		// on_navigate listener.
-		let root_clone = root_el.clone();
-		let initial_mount_result: std::rc::Rc<
-			std::cell::RefCell<Option<Result<(), crate::component::MountError>>>,
-		> = std::rc::Rc::new(std::cell::RefCell::new(None));
-		let initial_mount_result_inner = initial_mount_result.clone();
-		let _effect = crate::reactive::Effect::new_with_timing(
-			move || {
-				// Subscribe to Signals so the Effect re-runs on
-				// navigation. Reads happen INSIDE the Effect closure
-				// to enrol this Effect as a Signal subscriber.
-				with_router(|r| {
-					let _ = r.current_path().get();
-					let _ = r.current_params().get();
-				});
-				let mount_result = Self::render_and_mount(&root_clone);
-				let mut slot = initial_mount_result_inner.borrow_mut();
-				if slot.is_none() {
-					*slot = Some(mount_result.clone());
-				} else if let Err(e) = &mount_result {
+		// Phase B: initial mount runs inline (no Effect). Errors
+		// propagate directly because no Effect/Signal indirection
+		// captures them. Refs #4101.
+		Self::render_and_mount(&root_el)
+			.map_err(|e| wasm_bindgen::JsValue::from_str(&format!("initial mount failed: {e}")))?;
+
+		// Phase C (part 1): register the launcher's render listener
+		// via Router::on_navigate. Registered BEFORE the after_launch
+		// drain so that any router.push() / router.replace()
+		// triggered from an after_launch hook re-renders, matching
+		// the previous behaviour where the render Effect was already
+		// active by that point. Router::on_navigate fires for both
+		// programmatic navigation and popstate (popstate dispatch
+		// added in #4108).
+		//
+		// The subscription is leaked for the entire WASM module
+		// lifetime (modules never terminate, so there is no
+		// destructor to run). Refs #4101, #4108, #4088.
+		let render_root = root_el.clone();
+		let render_subscription = with_router(|r| {
+			r.on_navigate(move |_path, _params| {
+				if let Err(e) = Self::render_and_mount(&render_root) {
 					web_sys::console::error_1(&format!("re-render failed: {e}").into());
 				}
-			},
-			crate::reactive::EffectTiming::Layout,
-		);
-		std::mem::forget(_effect);
-
-		match initial_mount_result.borrow_mut().take() {
-			Some(Err(e)) => {
-				return Err(wasm_bindgen::JsValue::from_str(&format!(
-					"initial mount failed: {e}"
-				)));
-			}
-			Some(Ok(())) | None => {}
-		}
+			})
+		});
+		std::mem::forget(render_subscription);
 
 		// Step 9: drain after_launch callbacks now that the router is live and
 		// the first DOM mount has completed.
