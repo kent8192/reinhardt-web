@@ -1,10 +1,16 @@
 //! WASM regression test for issues #4075 and #4088 — verifies that
-//! `ClientLauncher::launch()` installs a render Effect that re-fires
-//! when `Router::push` updates the path Signal.
+//! `ClientLauncher::launch()` registers a `Router::on_navigate`
+//! listener that re-mounts the root view on every `Router::push`.
 //!
 //! Without the fix, the SPA renders only the route mounted at boot;
 //! every subsequent `Router::push` updates the path Signal but the
 //! root view is never re-mounted.
+//!
+//! Refs #4101: the launcher migrated from reactive `Effect`/`Signal`
+//! auto-tracking to explicit `Router::on_navigate` callbacks, so the
+//! historical `debug_subscribers(path_signal_id)` diagnostic is no
+//! longer meaningful — the user-observable HTML assertions below are
+//! the authoritative regression check.
 //!
 //! **Run with** (from the workspace root):
 //!   `wasm-pack test --headless --chrome crates/reinhardt-pages -- --test client_launcher_navigation_test`
@@ -79,17 +85,6 @@ async fn client_launcher_re_renders_on_router_push() {
 
 	yield_to_microtasks().await;
 
-	// === Diagnostic: launcher Effect must be subscribed to path Signal ===
-	let path_signal_id = with_router(|r| r.current_path().id());
-	let subscribers_after_launch = with_runtime(|rt| rt.debug_subscribers(path_signal_id));
-	assert!(
-		!subscribers_after_launch.is_empty(),
-		"[DIAG #4088] path_signal has no subscribers after launch — launcher Effect was not tracked. \
-		 observer_stack: {:?}, dependencies: {:?}",
-		with_runtime(|rt| rt.debug_observer_stack()),
-		with_runtime(|rt| rt.debug_dependencies(path_signal_id)),
-	);
-
 	// Navigate to /a and confirm the body switches.
 	with_router(|r| r.push("/a")).expect("push /a");
 	let pending_after_push_a = with_runtime(|rt| rt.debug_pending_updates());
@@ -100,11 +95,8 @@ async fn client_launcher_re_renders_on_router_push() {
 	assert!(
 		html_after_a.contains("ROUTE-A-CONTENT"),
 		"[DIAG #4088] expected /a view after push('/a'). \
-		 pending_updates immediately after push: {:?}, \
-		 subscribers of path_signal now: {:?}, \
-		 actual html: {}",
+		 pending_updates immediately after push: {:?}, actual html: {}",
 		pending_after_push_a,
-		with_runtime(|rt| rt.debug_subscribers(path_signal_id)),
 		html_after_a,
 	);
 	assert!(
@@ -122,11 +114,8 @@ async fn client_launcher_re_renders_on_router_push() {
 	assert!(
 		html_after_b.contains("ROUTE-B-CONTENT"),
 		"[DIAG #4088] expected /b view after push('/b'). \
-		 pending_updates immediately after push: {:?}, \
-		 subscribers of path_signal now: {:?}, \
-		 actual html: {}",
+		 pending_updates immediately after push: {:?}, actual html: {}",
 		pending_after_push_b,
-		with_runtime(|rt| rt.debug_subscribers(path_signal_id)),
 		html_after_b,
 	);
 	assert!(
