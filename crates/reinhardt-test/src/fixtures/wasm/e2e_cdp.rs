@@ -127,15 +127,21 @@ impl CdpBrowser {
 		let image = GenericImage::new(&config.chrome_image, &config.chrome_tag)
 			.with_exposed_port(ContainerPort::Tcp(CDP_PORT))
 			.with_wait_for(WaitFor::message_on_stderr("DevTools listening on"))
-			// Make `host.docker.internal` resolve to the host gateway inside
-			// the container on every supported platform. macOS Docker Desktop
-			// configures this automatically, but Linux containers (e.g. on
-			// the GitHub Actions `ubuntu-latest` runner) require an explicit
-			// `--add-host=host.docker.internal:host-gateway` mapping.
+			// Map `host.docker.internal` to the Docker host gateway inside
+			// the container. macOS and Windows Docker Desktop configure this
+			// automatically, but Linux containers (e.g. the GitHub Actions
+			// `ubuntu-latest` runner) require an explicit
+			// `--add-host=host.docker.internal:host-gateway` mapping, which
+			// the `host-gateway` sentinel value enables.
 			//
-			// Without this, browser tests that load resources from a host
-			// HTTP server via `http://host.docker.internal:NNNN/` fail with
-			// `ERR_NAME_NOT_RESOLVED` on Linux. (Refs #4106.)
+			// Engine requirement: the `host-gateway` sentinel was added in
+			// Docker Engine 20.10 (2020-12). On older daemons the mapping
+			// is silently ignored, in which case host-served URLs must use
+			// a literal IP address instead of `host.docker.internal`.
+			//
+			// Without this mapping, browser tests that load resources from
+			// a host HTTP server via `http://host.docker.internal:NNNN/`
+			// fail with `ERR_NAME_NOT_RESOLVED` on Linux. (Refs #4106.)
 			.with_host("host.docker.internal", Host::HostGateway);
 
 		let container = image.start().await.map_err(|e| {
