@@ -405,12 +405,26 @@ impl Router {
 		self
 	}
 
-	/// Returns the current path signal.
+	/// Returns a reactive subscription to the current path.
+	///
+	/// This [`Signal`] is the subscription point for **downstream
+	/// reactive DOM consumers** (for example `ReactiveIfNode`,
+	/// `ReactiveNode`) that want to react to navigation changes
+	/// through the reactive runtime.
+	///
+	/// `ClientLauncher` itself no longer subscribes to this Signal;
+	/// it drives re-renders through [`Router::on_navigate`] (Refs
+	/// #4101).
 	pub fn current_path(&self) -> &Signal<String> {
 		&self.current_path
 	}
 
-	/// Returns the current params signal.
+	/// Returns a reactive subscription to the current route's path
+	/// parameters.
+	///
+	/// As with [`Router::current_path`], this Signal is intended for
+	/// downstream reactive DOM consumers; the launcher uses
+	/// [`Router::on_navigate`] for re-renders.
 	pub fn current_params(&self) -> &Signal<HashMap<String, String>> {
 		&self.current_params
 	}
