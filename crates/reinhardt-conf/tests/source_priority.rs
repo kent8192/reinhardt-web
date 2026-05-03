@@ -495,22 +495,14 @@ fn high_priority_env_overrides_interpolated_toml() {
 	// Verifies that HighPriorityEnvSource (priority 60) wins against
 	// values produced by an interpolated TomlFileSource (priority 50).
 
-	// Arrange — drop-based cleanup-on-panic, matching env_loader.rs precedent
-	struct EnvGuard(Vec<&'static str>);
-	impl Drop for EnvGuard {
-		fn drop(&mut self) {
-			for k in &self.0 {
-				// SAFETY: serial-protected (#[serial(env)]).
-				unsafe { std::env::remove_var(k) };
-			}
-		}
-	}
-	let _guard = EnvGuard(vec!["IT_PG_PORT_PRIO", "PRIO_TEST_PORT"]);
-	// SAFETY: serial-protected (#[serial(env)]).
+	// Arrange — reuse the file-local set/remove helpers for consistency
+	// with the other 17 tests in this file.
 	unsafe {
-		std::env::set_var("IT_PG_PORT_PRIO", "8080"); // for TOML interpolation
-		std::env::set_var("PRIO_TEST_PORT", "9999"); // for HighPriorityEnvSource override
-	}
+		set_env_vars(&[
+			("IT_PG_PORT_PRIO", "8080"),  // for TOML interpolation
+			("PRIO_TEST_PORT", "9999"),   // for HighPriorityEnvSource override
+		])
+	};
 	let (_dir, path) = write_toml_file(r#"port = "${IT_PG_PORT_PRIO:-5432}""#);
 
 	// Act
@@ -525,6 +517,10 @@ fn high_priority_env_overrides_interpolated_toml() {
 	// "9999" as a number, so we read it back as `u16`. The interpolated TOML
 	// value is a string ("8080"), but it gets overridden before deserialization.
 	let port: u16 = settings.get("port").unwrap();
+
+	// Cleanup
+	unsafe { remove_env_vars(&["IT_PG_PORT_PRIO", "PRIO_TEST_PORT"]) };
+
 	assert_eq!(
 		port, 9999,
 		"HighPriorityEnvSource (60) must override interpolated TOML (50)"
