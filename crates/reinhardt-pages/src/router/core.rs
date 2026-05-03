@@ -210,6 +210,33 @@ pub struct Router {
 	current_route_name: Signal<Option<String>>,
 	/// Not found handler.
 	not_found: Option<Arc<dyn Fn() -> Page + Send + Sync>>,
+	/// Navigation observers registered via `on_navigate`.
+	///
+	/// Inspired by React Router's `router.subscribe(listener)` design:
+	/// listeners are registered explicitly and notified on every successful
+	/// navigation, independent of any reactive Effect / Signal tracking.
+	/// Refs #4088, #4075, #3348.
+	navigation_observers: NavigationObservers,
+}
+
+/// Type alias for the navigation observer storage.
+///
+/// `Rc<RefCell<...>>` because Routers are not `Send` on wasm32 anyway,
+/// and the borrow is released before listeners run (see `navigate`).
+type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<NavigationListener>>>>;
+
+/// Boxed closure stored behind a `Weak<...>` so a dropped `NavigationSubscription`
+/// drops its strong `Rc`, after which `navigate` filters out the dead `Weak`.
+type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
+
+/// RAII handle returned by [`Router::on_navigate`].
+///
+/// While alive, the registered listener fires on every [`Router::push`] /
+/// [`Router::replace`]. Dropping this handle removes the listener (no
+/// explicit `unsubscribe` call needed).
+pub struct NavigationSubscription {
+	#[allow(dead_code)] // Dropped automatically; presence keeps the Weak alive.
+	listener: std::rc::Rc<NavigationListener>,
 }
 
 impl std::fmt::Debug for Router {
@@ -242,6 +269,7 @@ impl Router {
 			current_params: Signal::new(HashMap::new()),
 			current_route_name: Signal::new(None),
 			not_found: None,
+			navigation_observers: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
 		}
 	}
 
@@ -421,6 +449,37 @@ impl Router {
 		self.navigate(path, NavigationType::Replace)
 	}
 
+	/// Registers a navigation observer.
+	///
+	/// Inspired by React Router's `router.subscribe(listener)` design.
+	/// The listener is invoked synchronously on every successful navigation
+	/// ([`Self::push`] or [`Self::replace`]) with the new path and matched
+	/// params. The listener fires **after** the path / params Signals have
+	/// been updated, so calling `Signal::get` from within the listener
+	/// returns the new values.
+	///
+	/// Returns a [`NavigationSubscription`] handle. Drop the handle to
+	/// unregister the listener. The router itself does not retain a strong
+	/// reference; if all subscriptions are dropped, the listener is freed
+	/// at the next `navigate` call (see `navigate` body which prunes dead
+	/// Weak references on every invocation).
+	///
+	/// Robust against nested reactive nodes spawned during view rendering
+	/// because this subscription is independent of the Effect / Signal
+	/// auto-tracking system.
+	///
+	/// Refs #4088, #4075, #3348.
+	pub fn on_navigate<F>(&self, listener: F) -> NavigationSubscription
+	where
+		F: Fn(&str, &HashMap<String, String>) + 'static,
+	{
+		let listener: std::rc::Rc<NavigationListener> = std::rc::Rc::new(listener);
+		self.navigation_observers
+			.borrow_mut()
+			.push(std::rc::Rc::downgrade(&listener));
+		NavigationSubscription { listener }
+	}
+
 	/// Internal navigation implementation.
 	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
 		let route_match = self.match_path(path);
@@ -460,6 +519,26 @@ impl Router {
 				.as_ref()
 				.and_then(|m| m.route.name().map(|s| s.to_string())),
 		);
+
+		// Invoke registered navigation observers AFTER signal updates so
+		// listeners reading `Signal::get` from inside their closure see the
+		// new state. Refs #4088.
+		let params_for_observers = route_match
+			.as_ref()
+			.map(|m| m.params.clone())
+			.unwrap_or_default();
+		// Snapshot strong refs before invoking listeners; this avoids
+		// holding the `RefCell` borrow across user-supplied closure code
+		// (which could re-enter `on_navigate` and panic on RefCell reentry).
+		let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
+			let mut observers = self.navigation_observers.borrow_mut();
+			// Prune dropped subscriptions on every navigate.
+			observers.retain(|w| w.strong_count() > 0);
+			observers.iter().filter_map(|w| w.upgrade()).collect()
+		};
+		for listener in listeners_snapshot {
+			listener(path, &params_for_observers);
+		}
 
 		Ok(())
 	}
@@ -723,5 +802,48 @@ mod tests {
 
 		// Non-WASM replace should succeed
 		assert!(router.replace("/").is_ok());
+	}
+
+	use std::cell::RefCell;
+	use std::rc::Rc;
+
+	#[test]
+	#[serial_test::serial]
+	fn on_navigate_fires_listener_after_router_push() {
+		// Arrange
+		let calls: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+		let calls_clone = calls.clone();
+		let router = Router::new().route("/", home_view).route("/foo", user_view);
+		let _sub = router.on_navigate(
+			move |path: &str, _params: &std::collections::HashMap<String, String>| {
+				calls_clone.borrow_mut().push(path.to_string());
+			},
+		);
+
+		// Act
+		router.push("/foo").expect("push /foo");
+
+		// Assert
+		assert_eq!(*calls.borrow(), vec!["/foo".to_string()]);
+	}
+
+	#[test]
+	#[serial_test::serial]
+	fn on_navigate_subscription_drop_unregisters_listener() {
+		// Arrange
+		let calls = Rc::new(RefCell::new(0_usize));
+		let calls_clone = calls.clone();
+		let router = Router::new().route("/", home_view).route("/foo", user_view);
+		let sub = router.on_navigate(move |_p, _ps| {
+			*calls_clone.borrow_mut() += 1;
+		});
+
+		// Act
+		router.push("/foo").expect("push /foo");
+		drop(sub);
+		router.push("/").expect("push /");
+
+		// Assert: listener fired exactly once (before drop), not twice
+		assert_eq!(*calls.borrow(), 1);
 	}
 }
