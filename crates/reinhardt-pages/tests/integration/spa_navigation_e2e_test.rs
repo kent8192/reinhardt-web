@@ -74,7 +74,13 @@ async fn boot_test_server(fixture_dir: &Path) -> (String, ServerGuard) {
 		ServeDir::new(fixture_dir).append_index_html_on_directories(true),
 	);
 
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+	// Bind to 0.0.0.0 so the chromedp container can reach the listener via
+	// `host.docker.internal` on Linux CI. With `--add-host=...:host-gateway`
+	// (set by `reinhardt-test`'s `cdp_browser` fixture), the name resolves
+	// to the host's bridge interface (e.g. 172.17.0.1), which a 127.0.0.1
+	// only listener will not accept. Refs #4111. See also the same pattern
+	// used by `reinhardt-test::E2eTestServer` in `e2e_cdp.rs`.
+	let listener = tokio::net::TcpListener::bind("0.0.0.0:0")
 		.await
 		.expect("bind ephemeral port");
 	let port = listener.local_addr().expect("local_addr").port();
