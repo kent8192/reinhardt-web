@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Runtime::debug_subscribers`, `debug_dependencies`, `debug_observer_stack`,
+  `debug_pending_updates` `#[doc(hidden)]` diagnostic methods for inspecting
+  the reactive dependency graph in cross-crate WASM tests.
+  ([#4088](https://github.com/kent8192/reinhardt-web/issues/4088))
+
 ## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.24...reinhardt-core@v0.1.0-rc.25) - 2026-04-30
 
 ### Fixed

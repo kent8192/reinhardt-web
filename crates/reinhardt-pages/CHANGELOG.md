@@ -7,16 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(router)* `Router::on_navigate(callback) -> NavigationSubscription`
+  explicit subscription API, inspired by React Router's
+  `router.subscribe(listener)`. The listener is invoked synchronously after
+  every successful `push`/`replace` with the new path and params, independent
+  of any Signal/Effect auto-tracking. Robust against the reactivity-tracking
+  corruption class that affected #3348, #4075, and #4088.
+  ([#4088](https://github.com/kent8192/reinhardt-web/issues/4088))
+
 ### Fixed
 
-- *(pages)* `ClientLauncher` render Effect now re-fires when `Router::push`
-  updates the path Signal, restoring SPA navigation. Hoist `current_path` /
-  `current_params` Signal clones out of the `with_router(|r| ...)`
-  thread-local borrow so the launcher Effect tracks both Signals as a
-  direct subscriber, independent of nested reactive nodes spawned during
-  `view.mount(...)`. Downstream report:
+- *(pages)* `ClientLauncher::launch` SPA navigation regression where the
+  render Effect did not re-fire on `Router::push`, leaving the boot-time
+  view rendered for every subsequent route. Eliminated the two-phase mount
+  (initial inline mount + later Effect) and consolidated into a single
+  `EffectTiming::Layout` Effect that performs both the first mount and
+  every subsequent re-render. The post-#4078 hoisted Signal clones are no
+  longer needed. Downstream report:
   [reinhardt-cloud#514](https://github.com/kent8192/reinhardt-cloud/issues/514).
-  ([#4075](https://github.com/kent8192/reinhardt-web/issues/4075))
+  ([#4088](https://github.com/kent8192/reinhardt-web/issues/4088),
+  [#4075](https://github.com/kent8192/reinhardt-web/issues/4075),
+  [#3348](https://github.com/kent8192/reinhardt-web/issues/3348))
 
 ## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.22...reinhardt-pages@v0.1.0-rc.23) - 2026-04-29
 
