@@ -136,8 +136,48 @@ fn click_link(href: &str) {
 
 // ---- Test ----
 
+/// Yields execution to the event loop's microtask queue. Used after
+/// each synthesized click so any pending async work scheduled by the
+/// reactive runtime (Effect scheduling lives behind
+/// `wasm_bindgen_futures::spawn_local` per `app.rs::launch::Phase A`)
+/// has a chance to run before the test samples counters or DOM state.
+///
+/// The current navigate -> notify_observers -> render_and_mount path
+/// is fully synchronous, so this yield is defensive insurance against
+/// future async refactors of that path. Without it, a hypothetical
+/// async render would make this test flake by sampling before the
+/// dispatch / render completes (Copilot review feedback on PR #4129).
+async fn yield_microtask() {
+	let promise = js_sys::Promise::resolve(&wasm_bindgen::JsValue::UNDEFINED);
+	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}
+
+/// Polls `query_selector(selector)` until it returns `Some`, yielding
+/// to the microtask queue between attempts. Errors out with a clear
+/// message after `max_iterations` (each iteration costs ~one
+/// microtask, so 100 iterations corresponds to "give the runtime a
+/// few frames to settle"). Used by the Tier 3 test as a defensive
+/// post-click wait.
+async fn await_element(selector: &str, max_iterations: u32) {
+	let document = web_sys::window().unwrap().document().unwrap();
+	for _ in 0..max_iterations {
+		if document
+			.query_selector(selector)
+			.expect("query_selector")
+			.is_some()
+		{
+			return;
+		}
+		yield_microtask().await;
+	}
+	panic!(
+		"timed out waiting for `{}` to appear after {} microtask yields",
+		selector, max_iterations
+	);
+}
+
 #[wasm_bindgen_test]
-fn tier3_invariants_inv1_through_inv4_with_dom_swap() {
+async fn tier3_invariants_inv1_through_inv4_with_dom_swap() {
 	let _root = install_app_root();
 
 	ClientLauncher::new("#app")
@@ -153,22 +193,19 @@ fn tier3_invariants_inv1_through_inv4_with_dom_swap() {
 		observer_count_initial
 	);
 
-	// DOM check: home content is mounted at boot.
+	// DOM check: home content is mounted at boot. Wait for it explicitly
+	// so the test does not assume a fully synchronous initial mount.
+	await_element("#route-home", 100).await;
 	let document = web_sys::window().unwrap().document().unwrap();
-	assert!(
-		document
-			.query_selector("#route-home")
-			.expect("query_selector")
-			.is_some(),
-		"home page should be mounted at boot"
-	);
 
 	// Capture baselines after launch but before any navigation.
 	let dispatch_before = with_router(|r| r.__diag_dispatch_count());
 	let render_before = ClientLauncher::__diag_render_count();
 
-	// First navigation: / -> /clusters via synthesized click.
+	// First navigation: / -> /clusters via synthesized click. Wait for
+	// the post-click DOM to settle before sampling counters.
 	click_link("/clusters");
+	await_element("#route-clusters", 100).await;
 
 	let observer_after_one = with_router(|r| r.__diag_observer_count());
 	let dispatch_after_one = with_router(|r| r.__diag_dispatch_count());
@@ -216,8 +253,10 @@ fn tier3_invariants_inv1_through_inv4_with_dom_swap() {
 		"home page must be removed from DOM after navigation to /clusters"
 	);
 
-	// Second navigation: /clusters -> /login.
+	// Second navigation: /clusters -> /login. Wait for the post-click
+	// DOM to settle before sampling counters.
 	click_link("/login");
+	await_element("#route-login", 100).await;
 
 	let observer_after_two = with_router(|r| r.__diag_observer_count());
 	let dispatch_after_two = with_router(|r| r.__diag_dispatch_count());

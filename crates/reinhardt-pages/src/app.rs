@@ -429,8 +429,11 @@ impl ClientLauncher {
 	/// re-mount. Used by tests in
 	/// `tests/wasm/spa_navigation_diag_test.rs` to assert Inv-4.
 	///
-	/// Returns 0 on non-WASM targets (the function exists only under
-	/// `cfg(wasm)`). Hidden API for testing only. Refs #4122.
+	/// Only available under `cfg(wasm)`: the entire `impl ClientLauncher`
+	/// block in this scope is gated, and `RENDER_COUNT` is a `cfg(wasm)`-
+	/// only thread_local. Calling from a non-wasm32 build results in a
+	/// compile error rather than a no-op zero. Hidden API for testing
+	/// only. Refs #4122.
 	#[doc(hidden)]
 	pub fn __diag_render_count() -> u64 {
 		RENDER_COUNT.with(|c| c.get())

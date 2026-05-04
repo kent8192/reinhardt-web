@@ -41,9 +41,20 @@ fn fixture_dir() -> PathBuf {
 }
 
 /// Builds the fixture WASM bundle via `wasm-pack build --target web`.
-/// Returns `Ok(Some(pkg_dir))` on success, `Ok(None)` if `wasm-pack` is missing.
+///
+/// Returns `Ok(Some(pkg_dir))` on success and `Ok(None)` when `wasm-pack`
+/// is missing on a developer workstation. **In CI** (`CI=true`) a missing
+/// `wasm-pack` is escalated to an error so a misconfigured runner cannot
+/// silently disable the regression net (Copilot review feedback on
+/// PR #4129).
 fn build_fixture_bundle() -> Result<Option<PathBuf>, String> {
 	if Command::new("wasm-pack").arg("--version").output().is_err() {
+		if std::env::var("CI").is_ok() {
+			return Err(
+				"wasm-pack not on PATH but CI=true; refusing to skip the Tier 3 e2e regression net silently"
+					.to_string(),
+			);
+		}
 		return Ok(None);
 	}
 	let dir = fixture_dir();
