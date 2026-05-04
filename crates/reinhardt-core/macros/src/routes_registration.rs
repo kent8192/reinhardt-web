@@ -469,10 +469,14 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 	// This replaces the __reinhardt_for_each_app callback pattern that triggers
 	// macro_expanded_macro_exports_accessed_by_absolute_paths on Rust 1.94+.
 	// Fixes #3639.
-	let url_prelude_code = if standalone || crate::macro_state::is_wasm_target() {
+	let url_prelude_code = if standalone {
 		// Standalone mode: projects that don't use installed_apps!.
-		// WASM target: URL resolvers are native-only; skip reading the state file
-		// to avoid failures when installed_apps! hasn't written it for WASM builds.
+		// Note: wasm targets are no longer skipped here. Server / ws resolver
+		// blocks inside the generated tokens are individually gated with
+		// `#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]`,
+		// while the client-side `__client_router_gate` block emits
+		// unconditionally so that `urls.client().<app>().<route>()` typed
+		// accessors compile on `wasm32-unknown-unknown`. Fixes #4119.
 		quote! {}
 	} else {
 		let app_labels = match crate::macro_state::read_installed_apps() {
