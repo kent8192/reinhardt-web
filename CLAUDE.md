@@ -142,10 +142,11 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - **NEVER** execute batch commits without user confirmation
 
 **Draft PR Policy:**
-- **NEVER** convert a Draft PR to Ready for Review without explicit user instruction
-- **NO EXCEPTIONS**: Plan Mode approval does NOT authorize Draft PR conversion (unlike commits/pushes)
-- Before converting, ensure all CI checks pass and tests pass locally
-- Use `gh pr ready <number>` for conversion
+- The agent MAY convert a Draft PR to Ready for Review autonomously once the PR meets readiness criteria (worth requesting Copilot Review): implementation complete, CI green, tests pass, fmt/clippy clean, description follows template
+- Explicit user instruction also authorizes conversion at any time (overrides readiness check)
+- The agent MUST NOT convert when readiness criteria are unmet, unless the user explicitly overrides
+- Use `gh pr ready <number>` (or GitHub MCP equivalent) for conversion
+- See instructions/PR_GUIDELINE.md § PC-4a for the full readiness checklist
 
 **Branch Operations:**
 - When merging branches and resolving conflicts, execute immediately without entering Plan Mode
@@ -516,7 +517,7 @@ Before submitting code:
 - Delete temp files from `/tmp` immediately
 - Wait for explicit user instruction before commits
 - Understand that Plan Mode approval authorizes both implementation and commits
-- Wait for explicit user instruction before converting Draft PRs to Ready for Review (Plan Mode approval does NOT authorize conversion)
+- Convert Draft PRs to Ready for Review autonomously once readiness criteria are met (implementation complete, CI green, fmt/clippy clean) OR upon explicit user instruction (see instructions/PR_GUIDELINE.md § PC-4a)
 - Mark placeholders with `todo!()` or `// TODO:`
 - Use `#[serial(group_name)]` for global state tests
 - Split commits by specific intent, not features
@@ -589,7 +590,7 @@ Before submitting code:
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
 - Commit without user instruction (except Plan Mode approval)
-- Convert Draft PRs to Ready for Review without explicit user instruction (Plan Mode approval does NOT count)
+- Convert Draft PRs to Ready for Review while readiness criteria are unmet (incomplete impl, failing CI/tests, dirty fmt/clippy) without explicit user override
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
 - Save files to project directory (use `/tmp`)
