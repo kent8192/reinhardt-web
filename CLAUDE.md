@@ -22,7 +22,7 @@ See README.md for project details.
 
 - **Language**: Rust 2024 Edition
 - **Module System**: MUST use 2024 edition (NO `mod.rs`)
-- **Database**: SeaQuery v1.0.0-rc for building SQL queries
+- **Database**: `reinhardt-query` for building SQL queries (in-house wrapper, replaces direct SeaQuery usage)
 - **Testing**: Rust's built-in framework + TestContainers for infrastructure
 - **Build**: Cargo workspace with multiple crates
 
@@ -545,7 +545,7 @@ Before submitting code:
 - Follow Arrange-Act-Assert (AAA) pattern with `// Arrange`, `// Act`, `// Assert` comments for test structure
 - Use `reinhardt-test` fixtures for test setup/teardown
 - Create specialized fixtures wrapping generic `reinhardt-test` fixtures for test data injection
-- Use SeaQuery (not raw SQL) for SQL construction in tests
+- Use `reinhardt-query` (not raw SQL or direct SeaQuery) for SQL construction in tests
 - Wrap generic types in backticks in doc comments: `` `Result<T>` ``, NOT `Result<T>`
 - Wrap macro attributes in backticks: `` `#[inject]` ``, NOT `#[inject]`
 - Wrap URLs in angle brackets or backticks: `<https://...>` or `` `https://...` ``
@@ -625,7 +625,7 @@ Before submitting code:
 - Skip preceding PRs for cross-crate shared utilities
 - Use plain `#[test]` instead of `#[rstest]`
 - Use non-standard phase labels in tests (`// Setup`, `// Execute`, `// Verify` -- use `// Arrange`, `// Act`, `// Assert`)
-- Write raw SQL strings in tests (use SeaQuery instead)
+- Write raw SQL strings or call SeaQuery directly in tests (use `reinhardt-query` instead)
 - Duplicate infrastructure setup code (use `reinhardt-test` fixtures)
 - Write generic types without backticks in doc comments (causes HTML tag warnings)
 - Write macro attributes without backticks in doc comments (causes unresolved link warnings)

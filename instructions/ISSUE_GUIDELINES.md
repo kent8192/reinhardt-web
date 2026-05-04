@@ -435,7 +435,7 @@ NEVER apply `good first issue` when any of the following apply:
 
 - Security-related issues (any `security` label)
 - API-breaking changes (any `breaking-change` or `rc-migration` label)
-- Issues requiring deep knowledge of SeaQuery internals
+- Issues requiring deep knowledge of `reinhardt-query` (or its underlying SeaQuery) internals
 - Cross-crate refactoring
 - Issues with `agent-suspect` label (unverified — may not be a real issue)
 - Issues with `needs more info` label (insufficient specification)
