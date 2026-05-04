@@ -66,10 +66,9 @@ jobs:
             --project-name=reinhardt-web
             --branch=${{ github.head_ref || github.ref_name }}
 
-      # NOTE: Still on Node.js 20 - update when Node.js 24 version becomes available
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: website-preview
           message: |
