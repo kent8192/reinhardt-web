@@ -166,17 +166,18 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - This preserves commit history and avoids force-push risks
 
 **GitHub Integration:**
-- **MUST** use GitHub CLI (`gh`) for all GitHub operations
-- Use `gh pr create` for creating pull requests
-- Use `gh pr view` for viewing PR details
-- Use `gh issue create` for creating issues
-- Use `gh issue view` for viewing issue details
-- Use `gh api` for accessing GitHub API
-- Use `gh discussion list` for viewing discussions
-- Use `gh discussion create` for creating discussions
+- **DEFAULT**: Use GitHub MCP tools for all GitHub operations (PR, issues, discussions, releases)
+- **FALLBACK**: Use GitHub CLI (`gh`) **only** when GitHub MCP is unavailable, errors out (e.g., 404), or lacks the required capability
+- When GitHub MCP returns an error, immediately fall back to `gh` CLI without retrying the MCP call
+- **NEVER** use raw `curl` or web browser for GitHub operations
 - For usage questions, prefer GitHub Discussions over Issues
-- **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
-- When GitHub MCP tools return errors (e.g., 404), immediately fall back to `gh` CLI instead of retrying
+- Common operations and their MCP/CLI equivalents:
+  - PR create: MCP `create_pull_request` / CLI `gh pr create`
+  - PR view: MCP `pull_request_read` / CLI `gh pr view`
+  - PR update: MCP `update_pull_request` / CLI `gh pr edit`
+  - Issue create: MCP `issue_write` / CLI `gh issue create`
+  - Issue view: MCP `issue_read` / CLI `gh issue view`
+  - Raw API: CLI `gh api` (use only when no MCP equivalent)
 
 **GitHub Comments & Interactions:**
 - **NEVER** post comments on PRs or Issues without authorization
@@ -532,7 +533,7 @@ Before submitting code:
 - Verify no circular dev-dependency chains exist before publishing (functional crates must not dev-depend on other Reinhardt crates)
 - Include `version` field in `reinhardt-test` workspace dependency (published crate, same as others)
 - Follow RP-1 procedure in instructions/RELEASE_PROCESS.md for partial release failures
-- Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
+- Use GitHub MCP by default for all GitHub operations (PR, issues, releases); use `gh` CLI only as fallback when MCP is unavailable or errors
 - Search existing issues before creating new ones
 - Use appropriate issue templates for all issues
 - Apply at least one type label to every issue
