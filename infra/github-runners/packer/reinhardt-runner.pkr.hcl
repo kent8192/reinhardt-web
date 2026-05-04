@@ -58,7 +58,10 @@ variable "ami_prefix" {
 
 locals {
 	source_ami_filter = var.runner_arch == "arm64" ? "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-arm64-server-*" : "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
-	build_instance_type = var.runner_arch == "arm64" ? "t4g.small" : "t3.medium"
+	# arm64 uses t4g.medium (4 GB RAM) instead of t4g.small (2 GB) so the
+	# cargo-make prebake (full LTO + codegen-units=1) does not get OOM-killed
+	# during rustc's link step. See reinhardt-web#4137.
+	build_instance_type = var.runner_arch == "arm64" ? "t4g.medium" : "t3.medium"
 	protoc_arch         = var.runner_arch == "arm64" ? "linux-aarch_64" : "linux-x86_64"
 	awscli_arch         = var.runner_arch == "arm64" ? "aarch64" : "x86_64"
 	cloudwatch_arch     = var.runner_arch == "arm64" ? "arm64" : "amd64"
