@@ -36,11 +36,25 @@ use syn::{ItemFn, parse2};
 ///
 /// Produces a `macro_rules!` definition that iterates over `meta_idents`,
 /// invoking `$base :: $meta_ident ! ($callback, $app)` for each.
-/// This pattern is shared by server (`__for_each_url_resolver`) and
-/// client (`__for_each_client_url_resolver`) modes.
-fn gen_for_each_macro(macro_name: &proc_macro2::Ident, meta_idents: &[syn::Ident]) -> TokenStream {
+///
+/// `native_only` controls whether the emitted macro is gated to non-wasm
+/// targets. Server (`__for_each_url_resolver`) and ws
+/// (`__for_each_ws_url_resolver`) modes are native-only because they depend on
+/// `ServerRouter`. Client (`__for_each_client_url_resolver`) mode must be
+/// available on wasm so that `urls.client().<app>().<route>()` typed accessors
+/// can be generated for SPA targets (issue #4119).
+fn gen_for_each_macro(
+	macro_name: &proc_macro2::Ident,
+	meta_idents: &[syn::Ident],
+	native_only: bool,
+) -> TokenStream {
+	let gate = if native_only {
+		quote! { #[cfg(not(all(target_family = "wasm", target_os = "unknown")))] }
+	} else {
+		quote! {}
+	};
 	quote! {
-		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+		#gate
 		macro_rules! #macro_name {
 			($callback:ident, $app:ident, $($base:tt)+) => {
 				#(
@@ -48,7 +62,7 @@ fn gen_for_each_macro(macro_name: &proc_macro2::Ident, meta_idents: &[syn::Ident
 				)*
 			};
 		}
-		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+		#gate
 		pub(crate) use #macro_name;
 	}
 }
@@ -564,6 +578,7 @@ fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream
 	let for_each_resolver_macro = gen_for_each_macro(
 		&syn::Ident::new("__for_each_url_resolver", proc_macro2::Span::call_site()),
 		&meta_idents,
+		true,
 	);
 
 	quote! {
@@ -641,19 +656,23 @@ fn build_client_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> syn::Result
 		meta_idents.push(meta_macro_ident);
 	}
 
+	// Client resolvers are cross-target (native + wasm) so that
+	// `urls.client().<app>().<route>()` typed accessors compile on
+	// `wasm32-unknown-unknown`. Server / ws resolvers stay native-only.
+	// Fixes #4119.
 	let for_each_client_resolver_macro = gen_for_each_macro(
 		&syn::Ident::new(
 			"__for_each_client_url_resolver",
 			proc_macro2::Span::call_site(),
 		),
 		&meta_idents,
+		false,
 	);
 
 	Ok(quote! {
 		#[doc(hidden)]
 		pub mod client_url_resolvers {
 			#(
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				#meta_macro_defs
 			)*
 
@@ -814,6 +833,7 @@ fn build_ws_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream {
 	let for_each_macro = gen_for_each_macro(
 		&syn::Ident::new("__for_each_ws_url_resolver", proc_macro2::Span::call_site()),
 		&meta_idents,
+		true,
 	);
 
 	quote! {
