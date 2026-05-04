@@ -112,17 +112,21 @@ build {
 	# -- System packages -----------------------------------------------------
 	provisioner "shell" {
 		execute_command = "sudo sh -c '{{ .Vars }} {{ .Path }}'"
-		# Disable the `command-not-found` post-invoke hook on apt-get update.
-		# On arm64 Ubuntu jammy, partial fetches via `-qq` can omit the
+		# Disable the `command-not-found` post-invoke hook globally for the
+		# duration of the AMI build. On arm64 Ubuntu jammy, `apt-get update`
+		# (including transitive calls from `add-apt-repository`) can omit
 		# `*_cnf_Commands-arm64` index files; `cnf-update-db` then fails to
 		# read them and aborts apt with exit 100, even though the update
-		# itself succeeded. The runner AMI does not need this DB.
-		# Tracked in reinhardt-web#4140.
+		# itself succeeded. The per-call `-o` flag is insufficient because
+		# `add-apt-repository -y universe` invokes `apt-get update`
+		# internally without inheriting it. The runner AMI does not need
+		# this DB. Tracked in reinhardt-web#4140.
 		inline = [
-			"DEBIAN_FRONTEND=noninteractive apt-get -o APT::Update::Post-Invoke-Success::=true update -qq",
+			"echo 'APT::Update::Post-Invoke-Success \"\";' > /etc/apt/apt.conf.d/99-disable-cnf-hook",
+			"DEBIAN_FRONTEND=noninteractive apt-get update -qq",
 			"DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends software-properties-common",
 			"add-apt-repository -y universe",
-			"apt-get -o APT::Update::Post-Invoke-Success::=true update -qq",
+			"apt-get update -qq",
 			"DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \\",
 			"  docker.io \\",
 			"  docker-compose-v2 \\",
@@ -148,7 +152,7 @@ build {
 			"curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg",
 			"chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg",
 			"echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null",
-			"apt-get -o APT::Update::Post-Invoke-Success::=true update -qq",
+			"apt-get update -qq",
 			"apt-get install -y gh",
 		]
 	}
