@@ -64,13 +64,3 @@ pub(crate) fn read_installed_apps() -> Result<Vec<String>, String> {
 		.map(|line| line.to_string())
 		.collect())
 }
-
-/// Returns true if the current compilation target is WASM.
-///
-/// Checks `CARGO_CFG_TARGET_FAMILY` and `CARGO_CFG_TARGET_OS` environment
-/// variables set by Cargo during crate compilation.
-pub(crate) fn is_wasm_target() -> bool {
-	let family = std::env::var("CARGO_CFG_TARGET_FAMILY").unwrap_or_default();
-	let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-	family == "wasm" && os == "unknown"
-}
