@@ -671,6 +671,7 @@ For comprehensive guidelines, see:
 - **Module System**: instructions/MODULE_SYSTEM.md
 - **Testing**: instructions/TESTING_STANDARDS.md
 - **Anti-Patterns**: instructions/ANTI_PATTERNS.md
+- **Macro Usage**: instructions/MACRO_USAGE.md (includes `#[model(...)]` rules)
 - **Documentation**: instructions/DOCUMENTATION_STANDARDS.md
 - **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
 - **Release Process**: instructions/RELEASE_PROCESS.md
