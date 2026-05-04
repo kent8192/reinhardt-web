@@ -124,9 +124,10 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
+          install-chromedriver: true
 
       - name: Run WASM lib tests (reinhardt-pages)
         working-directory: crates/reinhardt-pages

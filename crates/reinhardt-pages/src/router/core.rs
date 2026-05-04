@@ -217,6 +217,10 @@ pub struct Router {
 	/// navigation, independent of any reactive Effect / Signal tracking.
 	/// Refs #4088, #4075, #3348.
 	navigation_observers: NavigationObservers,
+	/// Cumulative count of `notify_observers` invocations since this Router
+	/// was constructed. Hidden diagnostic counter used by tests to assert
+	/// invariants that DOM-only assertions cannot reach (Refs #4122).
+	dispatch_count: std::rc::Rc<std::cell::Cell<u64>>,
 }
 
 /// Type alias for the navigation observer storage.
@@ -270,6 +274,7 @@ impl Router {
 			current_route_name: Signal::new(None),
 			not_found: None,
 			navigation_observers: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+			dispatch_count: std::rc::Rc::new(std::cell::Cell::new(0)),
 		}
 	}
 
@@ -516,6 +521,7 @@ impl Router {
 	///
 	/// Refs #4088, #4108.
 	fn notify_observers(&self, path: &str, params: &HashMap<String, String>) {
+		self.dispatch_count.set(self.dispatch_count.get() + 1);
 		let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
 			let mut observers = self.navigation_observers.borrow_mut();
 			observers.retain(|w| w.strong_count() > 0);
@@ -626,6 +632,35 @@ impl Router {
 		self.named_routes.contains_key(name)
 	}
 
+	/// Diagnostic counter: number of currently-alive navigation observers.
+	///
+	/// Returns the count of `Weak<NavigationListener>` entries in
+	/// `navigation_observers` whose `strong_count() > 0`. Used by tests in
+	/// `tests/wasm/spa_navigation_diag_test.rs` to assert Inv-1 / Inv-2.
+	///
+	/// Hidden API for testing only — `#[doc(hidden)]` keeps it out of the
+	/// rendered documentation and out of the SemVer surface. Refs #4122.
+	#[doc(hidden)]
+	pub fn __diag_observer_count(&self) -> usize {
+		self.navigation_observers
+			.borrow()
+			.iter()
+			.filter(|w| w.strong_count() > 0)
+			.count()
+	}
+
+	/// Diagnostic counter: cumulative `notify_observers` invocation count.
+	///
+	/// Includes invocations from `Router::push`, `Router::replace`, and the
+	/// popstate listener. Used by tests in
+	/// `tests/wasm/spa_navigation_diag_test.rs` to assert Inv-3.
+	///
+	/// Hidden API for testing only. Refs #4122.
+	#[doc(hidden)]
+	pub fn __diag_dispatch_count(&self) -> u64 {
+		self.dispatch_count.get()
+	}
+
 	/// Sets up a popstate event listener for browser back/forward navigation.
 	///
 	/// This method registers a listener for the browser's `popstate` event,
@@ -660,6 +695,7 @@ impl Router {
 		let params_signal = self.current_params.clone();
 		let route_name_signal = self.current_route_name.clone();
 		let navigation_observers = self.navigation_observers.clone();
+		let dispatch_count = self.dispatch_count.clone();
 
 		let closure = setup_popstate_listener(move |path, state| {
 			// Update Signals first, then notify observers, so listeners that
@@ -678,6 +714,11 @@ impl Router {
 				route_name_signal.set(None);
 				HashMap::new()
 			};
+
+			// Bump the diagnostic counter to mirror `Router::notify_observers`,
+			// so tests can assert that popstate-driven dispatches are
+			// counted identically to push/replace-driven ones (Refs #4122).
+			dispatch_count.set(dispatch_count.get() + 1);
 
 			// Dispatch on_navigate observers using the same snapshot-then-
 			// iterate pattern as Router::notify_observers. Inlined here
@@ -925,5 +966,52 @@ mod tests {
 
 		// Assert: listener fired exactly once (before drop), not twice
 		assert_eq!(*calls.borrow(), 1);
+	}
+
+	#[rstest]
+	fn diag_dispatch_count_starts_at_zero_and_increments_on_navigate() {
+		// Arrange
+		let router = Router::new()
+			.route("/a", || Page::text("A"))
+			.route("/b", || Page::text("B"));
+		assert_eq!(router.__diag_dispatch_count(), 0);
+
+		// Act
+		router.push("/a").expect("push /a");
+
+		// Assert
+		assert_eq!(router.__diag_dispatch_count(), 1);
+
+		// Act 2: a second navigation
+		router.push("/b").expect("push /b");
+
+		// Assert 2
+		assert_eq!(router.__diag_dispatch_count(), 2);
+	}
+
+	#[rstest]
+	fn diag_observer_count_reflects_alive_subscriptions() {
+		// Arrange
+		let router = Router::new();
+		assert_eq!(router.__diag_observer_count(), 0);
+
+		// Act
+		let sub1 = router.on_navigate(|_path, _params| {});
+		let sub2 = router.on_navigate(|_path, _params| {});
+
+		// Assert
+		assert_eq!(router.__diag_observer_count(), 2);
+
+		// Act 2: drop one
+		drop(sub1);
+
+		// Assert 2
+		assert_eq!(router.__diag_observer_count(), 1);
+
+		// Act 3: drop the other
+		drop(sub2);
+
+		// Assert 3
+		assert_eq!(router.__diag_observer_count(), 0);
 	}
 }

@@ -33,6 +33,12 @@ ast = []
 # breakage. Cargo dev-dependencies cannot be optional, so feature gating
 # is achieved via `#![cfg(feature = "e2e-cdp-test")]` and `required-features`.
 e2e-cdp-test = []
+# Marker feature for wasm-bindgen-test diagnostic suite that asserts
+# observer-system invariants Inv-1 ~ Inv-4 against the Tier 2 / Tier 3
+# fixtures. Activated by:
+#   wasm-pack test --chrome --headless --features wasm-diag-test
+# Refs #4122.
+wasm-diag-test = []
 hmr = ["dep:notify", "dep:tokio-tungstenite", "dep:futures-util"]
 # web-sys features for WASM applications
 # Applications should use this feature to get all required web-sys features
@@ -263,4 +269,19 @@ required-features = []
 [[test]]
 name = "spa_navigation_e2e_test"
 path = "tests/integration/spa_navigation_e2e_test.rs"
+required-features = ["e2e-cdp-test"]
+
+[[test]]
+name = "spa_navigation_diag_test"
+path = "tests/wasm/spa_navigation_diag_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "spa_navigation_diag_tier3_test"
+path = "tests/wasm/spa_navigation_diag_tier3_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "spa_navigation_full_layout_e2e_test"
+path = "tests/integration/spa_navigation_full_layout_e2e_test.rs"
 required-features = ["e2e-cdp-test"]
