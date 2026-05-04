@@ -673,7 +673,7 @@ For comprehensive guidelines, see:
 - **Anti-Patterns**: instructions/ANTI_PATTERNS.md
 - **Macro Usage**: instructions/MACRO_USAGE.md (includes `#[model(...)]` rules)
 - **Documentation**: instructions/DOCUMENTATION_STANDARDS.md
-- **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
+- **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines and excluded artifacts)
 - **Research Escalation**: instructions/RESEARCH_ESCALATION.md (when to use Perplexity/Tavily/Brave)
 - **Release Process**: instructions/RELEASE_PROCESS.md
 - **Stability Policy**: instructions/STABILITY_POLICY.md (includes DB-1 ~ DB-7 develop branch strategy)
