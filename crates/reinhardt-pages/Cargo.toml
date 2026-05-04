@@ -275,3 +275,13 @@ required-features = ["e2e-cdp-test"]
 name = "spa_navigation_diag_test"
 path = "tests/wasm/spa_navigation_diag_test.rs"
 required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "spa_navigation_diag_tier3_test"
+path = "tests/wasm/spa_navigation_diag_tier3_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "spa_navigation_full_layout_e2e_test"
+path = "tests/integration/spa_navigation_full_layout_e2e_test.rs"
+required-features = ["e2e-cdp-test"]
