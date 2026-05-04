@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(router, pages)* Hidden diagnostic counter API
+  (`Router::__diag_observer_count`, `Router::__diag_dispatch_count`,
+  `ClientLauncher::__diag_render_count` on `cfg(wasm)`). All three are
+  `#[doc(hidden)]` and intended only as an internal regression-test surface.
+  Backed by a Tier 2 (sidebar-signal) and Tier 3 (full layout shell)
+  fixture suite plus a real-Chrome `e2e_cdp` test that assert observer-system
+  invariants Inv-1 ~ Inv-4 on every navigation. Replaces the DOM-only
+  assertions whose silence allowed earlier false-positive fixes (#4075 → #4078
+  regressed, #4088 → #4102 regressed in form). Issue #4122 itself was
+  reclassified during diagnosis as a stale-wasm-bundle false positive; the
+  underlying dev-loop hazard is tracked separately as #4127 (`runserver`
+  --with-pages does not auto-rebuild WASM) and #4128 (hot-reload WASM
+  rebuild verification).
+  ([#4122](https://github.com/kent8192/reinhardt-web/issues/4122),
+  [#4127](https://github.com/kent8192/reinhardt-web/issues/4127),
+  [#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
 - *(router)* `Router::on_navigate(callback) -> NavigationSubscription`
   explicit subscription API, inspired by React Router's
   `router.subscribe(listener)`. The listener is invoked synchronously after

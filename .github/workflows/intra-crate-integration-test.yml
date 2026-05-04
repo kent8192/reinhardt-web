@@ -42,6 +42,13 @@ env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
   RUST_MIN_STACK: 8388608  # 8MB - prevent stack overflow in deep async fixture chains
+  # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
+  # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
+  # once all three upstreams ship node24 releases.
+  #
+  # Ideal implementation (without workaround):
+  #   (no env override; let runner default kick in)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   intra-crate-integration-test:

@@ -11,6 +11,14 @@ thread_local! {
 	static APP_ROUTER: RefCell<Option<Router>> = const { RefCell::new(None) };
 }
 
+#[cfg(wasm)]
+thread_local! {
+	/// Cumulative count of `ClientLauncher::render_and_mount` invocations
+	/// since the WASM module loaded. Backs `ClientLauncher::__diag_render_count()`.
+	/// Hidden diagnostic counter for testing — Refs #4122.
+	static RENDER_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 /// Access the globally registered client router.
 ///
 /// # Panics
@@ -407,11 +415,28 @@ impl ClientLauncher {
 	///
 	/// Refs #4101.
 	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
+		RENDER_COUNT.with(|c| c.set(c.get() + 1));
 		let view = with_router(|r| r.render_current());
 		crate::component::cleanup_reactive_nodes();
 		root_el.set_inner_html("");
 		let wrapper = crate::dom::Element::new(root_el.clone());
 		view.mount(&wrapper)
+	}
+
+	/// Diagnostic counter: cumulative count of `render_and_mount`
+	/// invocations since the WASM module loaded. Includes the initial
+	/// Phase B mount and every subsequent `Router::on_navigate`-driven
+	/// re-mount. Used by tests in
+	/// `tests/wasm/spa_navigation_diag_test.rs` to assert Inv-4.
+	///
+	/// Only available under `cfg(wasm)`: the entire `impl ClientLauncher`
+	/// block in this scope is gated, and `RENDER_COUNT` is a `cfg(wasm)`-
+	/// only thread_local. Calling from a non-wasm32 build results in a
+	/// compile error rather than a no-op zero. Hidden API for testing
+	/// only. Refs #4122.
+	#[doc(hidden)]
+	pub fn __diag_render_count() -> u64 {
+		RENDER_COUNT.with(|c| c.get())
 	}
 
 	/// Start the WASM client application.
