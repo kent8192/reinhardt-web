@@ -15,7 +15,9 @@ use hyper::{Request, Response, StatusCode, body::Incoming};
 use hyper_util::rt::TokioIo;
 use reinhardt_commands::WelcomePage;
 use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions};
-use reinhardt_commands::{WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml};
+use reinhardt_commands::{
+	WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml, is_wasm_stale,
+};
 use reinhardt_pages::component::Component;
 use reinhardt_pages::ssr::SsrRenderer;
 use reinhardt_utils::safe_path_join;
@@ -73,11 +75,12 @@ struct Args {
 	#[arg(long)]
 	self_signed: bool,
 
-	/// Skip WASM builds at startup
+	/// Skip WASM builds at startup (also skips staleness checks; existing artifacts
+	/// are served as-is regardless of source changes).
 	#[arg(long)]
 	no_wasm: bool,
 
-	/// Force rebuild WASM even if artifacts exist
+	/// Force rebuild WASM even when artifacts are up-to-date relative to sources.
 	#[arg(long)]
 	force_wasm: bool,
 
@@ -437,6 +440,10 @@ fn generate_random_secret_key() -> String {
 
 /// Build the admin WASM bundle from the reinhardt-admin crate.
 ///
+/// Skips the build only when the existing `_bg.wasm` artifact is newer than every
+/// tracked source file in the admin crate (mtime-based staleness check). See
+/// [`build_pages_wasm`] for the rationale (issue #4127).
+///
 /// Returns `true` if the build succeeded or was skipped, `false` on failure.
 #[cfg(feature = "admin")]
 fn build_admin_wasm(force: bool) -> bool {
@@ -454,16 +461,23 @@ fn build_admin_wasm(force: bool) -> bool {
 
 	let artifact = admin_crate_dir
 		.join("dist-admin")
-		.join("reinhardt_admin.js");
-	if artifact.exists() && !force {
+		.join("reinhardt_admin_bg.wasm");
+	if !force && !is_wasm_stale(&admin_crate_dir, &artifact) {
 		println!(
 			"{}",
-			"Admin WASM: artifacts exist, skipping build (use --force-wasm to rebuild)".dimmed()
+			"Admin WASM: artifacts up to date, skipping build".dimmed()
 		);
 		return true;
 	}
 
-	println!("{}", "Building admin WASM...".cyan());
+	let reason = if force {
+		"forced rebuild"
+	} else if artifact.exists() {
+		"source changed since last build"
+	} else {
+		"no existing artifact"
+	};
+	println!("{}", format!("Building admin WASM ({})...", reason).cyan());
 	let config = WasmBuildConfig::new(&admin_crate_dir)
 		.output_dir("dist-admin")
 		.target_name("reinhardt-admin");
@@ -483,6 +497,15 @@ fn build_admin_wasm(force: bool) -> bool {
 }
 
 /// Build the pages WASM bundle from the current project (if it declares cdylib).
+///
+/// Staleness handling:
+/// - If `dist/<crate>_bg.wasm` is missing or older than any tracked source file
+///   (every `.rs` under `src/` plus `Cargo.toml`), the bundle is rebuilt.
+/// - If the artifact is newer than every source file, the build is skipped.
+/// - When `force` is `true`, the artifact is always rebuilt regardless of mtimes.
+///
+/// This guards against the dev-loop hazard where stale `dist/` content is served
+/// after the developer edits Rust source — see issue #4127.
 ///
 /// Returns `true` if the build succeeded or was skipped, `false` on failure or if the
 /// current project is not a cdylib.
@@ -538,18 +561,25 @@ fn build_pages_wasm(force: bool) -> bool {
 	};
 
 	let js_name = crate_name.replace('-', "_");
-	let artifact = cwd.join("dist").join(format!("{}.js", js_name));
-	if artifact.exists() && !force {
+	let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
+	if !force && !is_wasm_stale(&cwd, &artifact) {
 		println!(
 			"{}",
-			"Pages WASM: artifacts exist, skipping build (use --force-wasm to rebuild)".dimmed()
+			"Pages WASM: artifacts up to date, skipping build".dimmed()
 		);
 		return true;
 	}
 
+	let reason = if force {
+		"forced rebuild"
+	} else if artifact.exists() {
+		"source changed since last build"
+	} else {
+		"no existing artifact"
+	};
 	println!(
 		"{}",
-		format!("Building pages WASM for {}...", crate_name).cyan()
+		format!("Building pages WASM for {} ({})...", crate_name, reason).cyan()
 	);
 	// Resolve workspace root so wasm-bindgen finds the artifact in the
 	// workspace-level target directory, not relative to the member crate CWD.
