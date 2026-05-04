@@ -110,6 +110,15 @@ jobs:
         with:
           tool: nextest
 
+      # Required by Tier 3 E2E tests (e.g. spa_navigation_full_layout_e2e in
+      # crates/reinhardt-pages) which build a fixture WASM bundle via
+      # `wasm-pack build`. The test refuses to skip silently when CI=true.
+      # Tracked in #4134.
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
       - name: Pull Docker images
         uses: ./.github/actions/pull-docker-images
         with:
