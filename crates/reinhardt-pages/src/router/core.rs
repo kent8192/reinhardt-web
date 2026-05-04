@@ -496,12 +496,6 @@ impl Router {
 		self.navigation_observers
 			.borrow_mut()
 			.push(std::rc::Rc::downgrade(&listener));
-		tracing::debug!(
-			target: "reinhardt_pages::router::diag",
-			observer_count = self.__diag_observer_count(),
-			router_ptr = format!("{:p}", self),
-			"router::on_navigate registered new listener"
-		);
 		NavigationSubscription { listener }
 	}
 
@@ -528,23 +522,11 @@ impl Router {
 	/// Refs #4088, #4108.
 	fn notify_observers(&self, path: &str, params: &HashMap<String, String>) {
 		self.dispatch_count.set(self.dispatch_count.get() + 1);
-		tracing::debug!(
-			target: "reinhardt_pages::router::diag",
-			path = %path,
-			dispatch_count = self.dispatch_count.get(),
-			observer_count = self.__diag_observer_count(),
-			"router::notify_observers entered"
-		);
 		let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
 			let mut observers = self.navigation_observers.borrow_mut();
 			observers.retain(|w| w.strong_count() > 0);
 			observers.iter().filter_map(|w| w.upgrade()).collect()
 		};
-		tracing::debug!(
-			target: "reinhardt_pages::router::diag",
-			snapshot_len = listeners_snapshot.len(),
-			"router::notify_observers snapshot taken"
-		);
 		for listener in listeners_snapshot {
 			listener(path, params);
 		}
@@ -597,14 +579,6 @@ impl Router {
 			.as_ref()
 			.map(|m| m.params.clone())
 			.unwrap_or_default();
-		tracing::debug!(
-			target: "reinhardt_pages::router::diag",
-			path = %path,
-			dispatch_count_before = self.dispatch_count.get(),
-			observer_count = self.__diag_observer_count(),
-			router_ptr = format!("{:p}", self),
-			"router::navigate about to notify_observers"
-		);
 		self.notify_observers(path, &params_for_observers);
 
 		Ok(())
@@ -744,11 +718,6 @@ impl Router {
 			// Bump the diagnostic counter to mirror `Router::notify_observers`,
 			// so tests can assert that popstate-driven dispatches are
 			// counted identically to push/replace-driven ones (Refs #4122).
-			tracing::debug!(
-				target: "reinhardt_pages::router::diag",
-				path = %path,
-				"router::popstate listener invoked, about to bump dispatch_count"
-			);
 			dispatch_count.set(dispatch_count.get() + 1);
 
 			// Dispatch on_navigate observers using the same snapshot-then-

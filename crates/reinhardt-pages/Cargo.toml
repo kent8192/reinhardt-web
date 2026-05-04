@@ -172,7 +172,6 @@ wasm-bindgen-futures = "0.4.56"
 reqwest = { workspace = true }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1.7", features = ["v7", "js"] }
-tracing = { workspace = true }
 
 # Server-side only dependencies (DI, HTTP, Forms, Server Function Registry)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]

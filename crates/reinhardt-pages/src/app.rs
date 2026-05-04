@@ -416,11 +416,6 @@ impl ClientLauncher {
 	/// Refs #4101.
 	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
 		RENDER_COUNT.with(|c| c.set(c.get() + 1));
-		tracing::debug!(
-			target: "reinhardt_pages::app::diag",
-			render_count = RENDER_COUNT.with(|c| c.get()),
-			"ClientLauncher::render_and_mount entered"
-		);
 		let view = with_router(|r| r.render_current());
 		crate::component::cleanup_reactive_nodes();
 		root_el.set_inner_html("");
