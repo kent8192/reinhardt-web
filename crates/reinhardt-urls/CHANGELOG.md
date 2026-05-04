@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.25...reinhardt-urls@v0.1.0-rc.26) - 2026-05-04
+
+### Fixed
+
+- *(urls)* merge child client routes in native mount_unified
+
+### Testing
+
+- *(urls)* cover native mount_unified client merge
+
 ## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.24...reinhardt-urls@v0.1.0-rc.25) - 2026-04-30
 
 ### Documentation

@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.25...reinhardt-web@v0.1.0-rc.26) - 2026-05-04
+
+### Deprecated
+
+- *(conf)* mark JsonFileSource and auto_source as deprecated
+
+### Documentation
+
+- add release announcement(s)
+- *(changelog)* note SPA navigation fix (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(rfc)* add build time reduction RFC for Phase 0/A/B
+- *(rfc)* address Copilot review feedback on build time reduction RFC
+- *(test)* document Docker Engine 20.10 requirement for host-gateway
+- *(pages)* note that on_navigate fires on popstate as well
+- redirect SQL construction guidance to reinhardt-query
+- *(pr-policy)* allow autonomous draft pr conversion when readiness criteria met
+- make github mcp the default and gh cli the fallback
+- add macro usage guideline for #[model(...)]
+- add research escalation policy
+- *(commit)* exclude superpowers and agent runtime artifacts from commits
+- address copilot review feedback on macro usage and sql guidance
+
+### Fixed
+
+- *(pages)* hoist Router signal reads out of with_router in launcher Effect
+- *(pages)* address Copilot review feedback on launcher Effect and wasm test docs
+- *(ci)* trigger wasm-check on pull_request and push to main
+- *(ci)* split wasm-check into reusable + standalone wrapper
+- *(test)* make host.docker.internal resolvable in cdp_browser fixture
+- *(pages)* extract notify_observers helper from Router::navigate
+- *(pages)* invoke notify_observers from popstate listener
+- *(pages)* bind spa e2e test server to 0.0.0.0 for container access
+- *(pages)* silence clippy violations in two test targets
+- *(conf)* tighten JsonFileSource deprecation per Copilot review
+- *(macros)* emit per-app client URL accessors on wasm32
+- *(ci)* bump arm64 AMI build instance to t4g.medium
+- *(ci)* disable command-not-found post-invoke hook in AMI build
+
+### Maintenance
+
+- *(wasm-check)* wire client_launcher_navigation_test into CI
+
+### Styling
+
+- *(pages)* apply rustfmt to native repro tests (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(conf)* apply rustfmt to source_priority.rs
+
+### Testing
+
+- *(pages)* add native Effect+Router control test (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* add native thread-local-borrow repro for [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075) (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* add wasm regression test for ClientLauncher SPA navigation
+- *(pages)* cover popstate-driven on_navigate dispatch
+
 ### Fixed
 
 - *(pages)* restore SPA navigation: `ClientLauncher`'s render Effect now
