@@ -485,7 +485,7 @@ When providing context for external coding agents (GitHub Copilot, Devin, etc.) 
 
 ### Project Constraints
 - **Module system:** Rust 2024 edition (`module.rs` + `module/` directory, NO `mod.rs`)
-- **SQL construction:** `reinhardt-query` (no raw SQL or direct SeaQuery usage)
+- **SQL construction:** `reinhardt-query` is the default; raw SQL and direct SeaQuery are permitted only as documented fallbacks for cases `reinhardt-query` cannot express yet (e.g., partial indexes and select schema operations)
 - **Testing:** `rstest` framework with Arrange-Act-Assert pattern
 - **Comments:** English only
 - **Indent:** Tab (not spaces)
