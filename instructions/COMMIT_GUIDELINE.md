@@ -136,6 +136,18 @@ git apply --cached /tmp/changes.patch
 - Verify staged files before committing
 - Use `git status` to confirm no ignored files are included
 
+### CE-4a (MUST): Excluded Tooling Artifacts
+
+The following categories of files MUST NOT be committed, even if not in `.gitignore`:
+
+- **Superpowers skill documentation**: Any documentation, prompts, or reference material from the `superpowers` skill family or its sub-skills.
+  - Why: These are agent-runtime artifacts and are not part of the project's source of truth.
+  - How to apply: If `git status` shows files under paths like `superpowers/`, `.superpowers/`, or skill prompt dumps, exclude them from staging. If you find them already tracked, remove them in a dedicated `chore:` commit.
+- **Claude/agent runtime caches and tool-result spills**: Files under `.claude/projects/.../tool-results/`, `.claude/projects/.../memory/`, or similar runtime locations.
+  - Why: Per-machine, per-session, and may contain sensitive context.
+
+If unsure whether an artifact qualifies, default to excluding it and ask the user.
+
 ### CE-5: Automated Releases with release-plz
 
 **Overview:**

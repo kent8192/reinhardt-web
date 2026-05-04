@@ -22,7 +22,7 @@ See README.md for project details.
 
 - **Language**: Rust 2024 Edition
 - **Module System**: MUST use 2024 edition (NO `mod.rs`)
-- **Database**: SeaQuery v1.0.0-rc for building SQL queries
+- **Database**: `reinhardt-query` for building SQL queries (in-house wrapper, replaces direct SeaQuery usage)
 - **Testing**: Rust's built-in framework + TestContainers for infrastructure
 - **Build**: Cargo workspace with multiple crates
 
@@ -142,10 +142,11 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - **NEVER** execute batch commits without user confirmation
 
 **Draft PR Policy:**
-- **NEVER** convert a Draft PR to Ready for Review without explicit user instruction
-- **NO EXCEPTIONS**: Plan Mode approval does NOT authorize Draft PR conversion (unlike commits/pushes)
-- Before converting, ensure all CI checks pass and tests pass locally
-- Use `gh pr ready <number>` for conversion
+- The agent MAY convert a Draft PR to Ready for Review autonomously once the PR meets readiness criteria (worth requesting Copilot Review): implementation complete, CI green, tests pass, fmt/clippy clean, description follows template
+- Explicit user instruction also authorizes conversion at any time (overrides readiness check)
+- The agent MUST NOT convert when readiness criteria are unmet, unless the user explicitly overrides
+- Use `gh pr ready <number>` (or GitHub MCP equivalent) for conversion
+- See instructions/PR_GUIDELINE.md § PC-4a for the full readiness checklist
 
 **Branch Operations:**
 - When merging branches and resolving conflicts, execute immediately without entering Plan Mode
@@ -165,17 +166,18 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - This preserves commit history and avoids force-push risks
 
 **GitHub Integration:**
-- **MUST** use GitHub CLI (`gh`) for all GitHub operations
-- Use `gh pr create` for creating pull requests
-- Use `gh pr view` for viewing PR details
-- Use `gh issue create` for creating issues
-- Use `gh issue view` for viewing issue details
-- Use `gh api` for accessing GitHub API
-- Use `gh discussion list` for viewing discussions
-- Use `gh discussion create` for creating discussions
+- **DEFAULT**: Use GitHub MCP tools for all GitHub operations (PR, issues, discussions, releases)
+- **FALLBACK**: Use GitHub CLI (`gh`) **only** when GitHub MCP is unavailable, errors out (e.g., 404), or lacks the required capability
+- When GitHub MCP returns an error, immediately fall back to `gh` CLI without retrying the MCP call
+- **NEVER** use raw `curl` or web browser for GitHub operations
 - For usage questions, prefer GitHub Discussions over Issues
-- **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
-- When GitHub MCP tools return errors (e.g., 404), immediately fall back to `gh` CLI instead of retrying
+- Common operations and their MCP/CLI equivalents:
+  - PR create: MCP `create_pull_request` / CLI `gh pr create`
+  - PR view: MCP `pull_request_read` / CLI `gh pr view`
+  - PR update: MCP `update_pull_request` / CLI `gh pr edit`
+  - Issue create: MCP `issue_write` / CLI `gh issue create`
+  - Issue view: MCP `issue_read` / CLI `gh issue view`
+  - Raw API: CLI `gh api` (use only when no MCP equivalent)
 
 **GitHub Comments & Interactions:**
 - **NEVER** post comments on PRs or Issues without authorization
@@ -516,7 +518,7 @@ Before submitting code:
 - Delete temp files from `/tmp` immediately
 - Wait for explicit user instruction before commits
 - Understand that Plan Mode approval authorizes both implementation and commits
-- Wait for explicit user instruction before converting Draft PRs to Ready for Review (Plan Mode approval does NOT authorize conversion)
+- Convert Draft PRs to Ready for Review autonomously once readiness criteria are met (implementation complete, CI green, fmt/clippy clean) OR upon explicit user instruction (see instructions/PR_GUIDELINE.md § PC-4a)
 - Mark placeholders with `todo!()` or `// TODO:`
 - Use `#[serial(group_name)]` for global state tests
 - Split commits by specific intent, not features
@@ -531,7 +533,7 @@ Before submitting code:
 - Verify no circular dev-dependency chains exist before publishing (functional crates must not dev-depend on other Reinhardt crates)
 - Include `version` field in `reinhardt-test` workspace dependency (published crate, same as others)
 - Follow RP-1 procedure in instructions/RELEASE_PROCESS.md for partial release failures
-- Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
+- Use GitHub MCP by default for all GitHub operations (PR, issues, releases); use `gh` CLI only as fallback when MCP is unavailable or errors
 - Search existing issues before creating new ones
 - Use appropriate issue templates for all issues
 - Apply at least one type label to every issue
@@ -545,7 +547,7 @@ Before submitting code:
 - Follow Arrange-Act-Assert (AAA) pattern with `// Arrange`, `// Act`, `// Assert` comments for test structure
 - Use `reinhardt-test` fixtures for test setup/teardown
 - Create specialized fixtures wrapping generic `reinhardt-test` fixtures for test data injection
-- Use SeaQuery (not raw SQL) for SQL construction in tests
+- Use `reinhardt-query` (not raw SQL or direct SeaQuery) for SQL construction in tests
 - Wrap generic types in backticks in doc comments: `` `Result<T>` ``, NOT `Result<T>`
 - Wrap macro attributes in backticks: `` `#[inject]` ``, NOT `#[inject]`
 - Wrap URLs in angle brackets or backticks: `<https://...>` or `` `https://...` ``
@@ -589,7 +591,7 @@ Before submitting code:
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
 - Commit without user instruction (except Plan Mode approval)
-- Convert Draft PRs to Ready for Review without explicit user instruction (Plan Mode approval does NOT count)
+- Convert Draft PRs to Ready for Review while readiness criteria are unmet (incomplete impl, failing CI/tests, dirty fmt/clippy) without explicit user override
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
 - Save files to project directory (use `/tmp`)
@@ -625,7 +627,7 @@ Before submitting code:
 - Skip preceding PRs for cross-crate shared utilities
 - Use plain `#[test]` instead of `#[rstest]`
 - Use non-standard phase labels in tests (`// Setup`, `// Execute`, `// Verify` -- use `// Arrange`, `// Act`, `// Assert`)
-- Write raw SQL strings in tests (use SeaQuery instead)
+- Write raw SQL strings or call SeaQuery directly in tests (use `reinhardt-query` instead)
 - Duplicate infrastructure setup code (use `reinhardt-test` fixtures)
 - Write generic types without backticks in doc comments (causes HTML tag warnings)
 - Write macro attributes without backticks in doc comments (causes unresolved link warnings)
@@ -669,8 +671,10 @@ For comprehensive guidelines, see:
 - **Module System**: instructions/MODULE_SYSTEM.md
 - **Testing**: instructions/TESTING_STANDARDS.md
 - **Anti-Patterns**: instructions/ANTI_PATTERNS.md
+- **Macro Usage**: instructions/MACRO_USAGE.md (includes `#[model(...)]` rules)
 - **Documentation**: instructions/DOCUMENTATION_STANDARDS.md
-- **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
+- **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines and excluded artifacts)
+- **Research Escalation**: instructions/RESEARCH_ESCALATION.md (when to use Perplexity/Tavily/Brave)
 - **Release Process**: instructions/RELEASE_PROCESS.md
 - **Stability Policy**: instructions/STABILITY_POLICY.md (includes DB-1 ~ DB-7 develop branch strategy)
 - **Agent Bug Discovery**: instructions/STABILITY_POLICY.md (SC-2a)

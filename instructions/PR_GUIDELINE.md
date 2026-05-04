@@ -161,28 +161,28 @@ gitGraph
 gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
 ```
 
-### PC-4a (MUST): Draft PR Conversion Protection
+### PC-4a (MUST): Draft PR Conversion Readiness
 
-Converting a Draft PR to Ready for Review is a **visibility-affecting action** that exposes the PR to reviewers and triggers notifications. This conversion **MUST** require explicit user instruction.
+Converting a Draft PR to Ready for Review is a **review-readiness decision**. The agent MAY perform the conversion autonomously **once the PR meets readiness criteria** (i.e., it is in a state worth requesting Copilot Review). Explicit user instruction is also accepted at any time.
 
 **Rules:**
-- **NEVER** convert a Draft PR to Ready for Review without explicit user instruction
-- **Plan Mode approval does NOT authorize Draft PR conversion** (unlike commits/pushes)
-  - Rationale: Plan Mode authorizes *implementation work* (code changes, commits, pushes), but Draft PR conversion is a *review readiness decision* that only the user can make
-- Before converting, ensure all CI checks pass and tests pass locally
-- Use `gh pr ready <number>` for conversion
+- The agent MAY convert a Draft PR to Ready for Review when ALL readiness criteria below are satisfied
+- The agent MUST convert immediately when the user explicitly instructs it (regardless of CI state — the user accepts the trade-off)
+- The agent MUST NOT convert when any readiness criterion is unmet, unless the user explicitly overrides
+- Use `gh pr ready <number>` (or the equivalent GitHub MCP call) for conversion
 
-**Pre-Conversion Checklist:**
-- [ ] User has explicitly instructed conversion
-- [ ] All CI checks pass
-- [ ] All tests pass locally
-- [ ] PR description is complete and accurate
-- [ ] Code follows project style guidelines
-- [ ] Documentation is updated (if applicable)
+**Readiness Criteria (ALL must be true for autonomous conversion):**
+- [ ] Implementation is complete (no remaining `todo!()` or `// TODO:` introduced by this PR)
+- [ ] All CI checks pass on the latest commit
+- [ ] All relevant local tests pass (`cargo nextest run` for affected scope)
+- [ ] PR description follows the template and accurately reflects the diff
+- [ ] Code follows project style (`cargo make fmt-check` + `cargo make clippy-check` clean)
+- [ ] Documentation updated where applicable
+- [ ] PR is at a quality level worth submitting for Copilot Review
 
 **Example:**
 ```bash
-# Convert Draft PR to Ready for Review (ONLY after explicit user instruction)
+# Autonomous conversion once readiness criteria are met
 gh pr ready 123
 
 # Verify PR status after conversion
@@ -191,12 +191,12 @@ gh pr view 123 --json isDraft
 
 **Authorization Comparison:**
 
-| Action | Explicit Instruction | Plan Mode Approval |
-|--------|---------------------|-------------------|
-| Commit | ✅ Authorized | ✅ Authorized |
-| Push | ✅ Authorized | ✅ Authorized |
-| GitHub Comments | ✅ Authorized | ✅ Authorized |
-| Draft PR → Ready | ✅ Authorized | ❌ NOT Authorized |
+| Action | Explicit Instruction | Plan Mode Approval | Readiness Criteria Met |
+|--------|---------------------|-------------------|------------------------|
+| Commit | ✅ Authorized | ✅ Authorized | n/a |
+| Push | ✅ Authorized | ✅ Authorized | n/a |
+| GitHub Comments | ✅ Authorized | ✅ Authorized | n/a |
+| Draft PR → Ready | ✅ Authorized | ✅ Authorized (when readiness met) | ✅ Authorized |
 
 The following diagram illustrates the Draft PR lifecycle:
 
@@ -205,9 +205,9 @@ stateDiagram-v2
     [*] --> Draft: gh pr create --draft
     Draft --> Draft: Implementation continues
     Draft --> Draft: CI checks run
-    Draft --> ReadyForReview: User explicitly instructs conversion
-    note right of ReadyForReview: Requires explicit user instruction\nPlan Mode approval NOT sufficient
-    ReadyForReview --> Review: Reviewers notified
+    Draft --> ReadyForReview: Readiness criteria met OR user instructs
+    note right of ReadyForReview: Agent may convert autonomously\nonce ready for Copilot Review
+    ReadyForReview --> Review: Reviewers notified (incl. Copilot)
     Review --> Merged: Approved and merged
     Review --> Draft: Converted back to draft
     Merged --> [*]
@@ -814,7 +814,7 @@ docs(readme): add installation instructions
 - Address all review comments
 - Ensure all CI checks pass before merge
 - Use three-dot diff (`main...branch`) for PR verification to exclude merge history noise
-- Wait for explicit user instruction before converting Draft PRs to Ready for Review (Plan Mode approval does NOT authorize conversion)
+- Convert Draft PRs to Ready for Review autonomously once PC-4a readiness criteria are satisfied, OR upon explicit user instruction
 
 ### ❌ NEVER DO
 - Write PR titles or descriptions in non-English languages
@@ -827,7 +827,7 @@ docs(readme): add installation instructions
 - Force push after review has started (unless explicitly requested)
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
 - Use two-dot diff (`main..branch`) for PR verification (includes merge history noise)
-- Convert Draft PRs to Ready for Review without explicit user instruction (Plan Mode approval does NOT count)
+- Convert Draft PRs to Ready for Review while PC-4a readiness criteria are unmet (incomplete implementation, failing CI/tests, dirty fmt/clippy) without explicit user override
 
 ---
 
