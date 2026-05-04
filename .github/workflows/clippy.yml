@@ -19,6 +19,13 @@ env:
   CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_INCREMENTAL: 0
   CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
+  # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
+  # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
+  # once all three upstreams ship node24 releases.
+  #
+  # Ideal implementation (without workaround):
+  #   (no env override; let runner default kick in)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   clippy:
