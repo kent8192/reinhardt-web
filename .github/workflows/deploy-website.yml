@@ -22,6 +22,15 @@ concurrency:
   group: deploy-website-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
+env:
+  # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
+  # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
+  # once all three upstreams ship node24 releases.
+  #
+  # Ideal implementation (without workaround):
+  #   (no env override; let runner default kick in)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build-and-deploy:
     name: Build & Deploy
@@ -66,10 +75,9 @@ jobs:
             --project-name=reinhardt-web
             --branch=${{ github.head_ref || github.ref_name }}
 
-      # NOTE: Still on Node.js 20 - update when Node.js 24 version becomes available
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: website-preview
           message: |
