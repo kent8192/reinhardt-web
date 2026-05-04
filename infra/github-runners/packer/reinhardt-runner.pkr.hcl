@@ -159,6 +159,42 @@ build {
 		]
 	}
 
+	# -- cargo-make (aarch64-only prebake; workaround for missing upstream artifact) ---
+	#
+	# Workaround for sagiegurari/cargo-make#1327 (tracked in reinhardt-web#4133).
+	# `taiki-e/install-action` has no `aarch64_linux` entry for cargo-make in its
+	# manifest because upstream does not publish an aarch64-linux prebuilt binary,
+	# so it falls back to `cargo binstall` and emits a `::warning::` on every job.
+	# Prebaking cargo-make into the AMI avoids that runtime install entirely on
+	# self-hosted aarch64 runners; CI workflows skip the install-action step when
+	# `cargo-make` is already on PATH (separate Stage B PR).
+	#
+	# Remove this provisioner once cargo-make publishes aarch64-linux artifacts
+	# AND `taiki-e/install-action`'s manifest covers `aarch64_linux`.
+	#
+	# Ideal implementation (without workaround):
+	#   (no provisioner; let `taiki-e/install-action` install cargo-make at job time)
+	provisioner "shell" {
+		execute_command = "sudo sh -c '{{ .Vars }} {{ .Path }}'"
+		environment_vars = [
+			"RUNNER_ARCH=${var.runner_arch}",
+		]
+		inline = [
+			"if [ \"$${RUNNER_ARCH}\" != \"arm64\" ]; then",
+			"  echo \"Skipping cargo-make prebake on x64 (install-action has prebuilt for x86_64-linux)\"",
+			"  exit 0",
+			"fi",
+			"CARGO_MAKE_VERSION=0.37.24",
+			# Install rustup + stable toolchain temporarily (minimal profile, no docs/components)
+			"su - ubuntu -c 'curl --proto =https --tlsv1.2 -sSfL https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal'",
+			"su - ubuntu -c \"~/.cargo/bin/cargo install --locked cargo-make@$${CARGO_MAKE_VERSION}\"",
+			"cp /home/ubuntu/.cargo/bin/cargo-make /usr/local/bin/cargo-make",
+			"chmod 0755 /usr/local/bin/cargo-make",
+			# Verify installation succeeded before AMI snapshot
+			"/usr/local/bin/cargo-make --version",
+		]
+	}
+
 	# -- AWS CLI v2 (architecture-aware) --------------------------------------
 	provisioner "shell" {
 		execute_command = "sudo sh -c '{{ .Vars }} {{ .Path }}'"
