@@ -68,9 +68,8 @@ jobs:
           - module: github-runners
             dir: infra/github-runners
             backend: s3
-          - module: bootstrap
-            dir: infra/github-runners/bootstrap
-            backend: local
+          # Note: `bootstrap` is intentionally excluded — its local backend
+          # cannot survive CI re-runs. See reinhardt-web#4145.
           - module: website
             dir: infra/website
             backend: local
@@ -147,9 +146,7 @@ jobs:
           - module: github-runners
             dir: infra/github-runners
             backend: s3
-          - module: bootstrap
-            dir: infra/github-runners/bootstrap
-            backend: local
+          # Note: `bootstrap` is intentionally excluded. See reinhardt-web#4145.
           - module: website
             dir: infra/website
             backend: local

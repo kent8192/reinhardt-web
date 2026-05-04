@@ -28,9 +28,12 @@ jobs:
           - module: github-runners
             dir: infra/github-runners
             backend: s3
-          - module: bootstrap
-            dir: infra/github-runners/bootstrap
-            backend: local
+          # Note: `bootstrap` (infra/github-runners/bootstrap) is intentionally
+          # excluded from CI. It uses a local backend that does not persist
+          # across runs, so every CI run would re-plan the S3 state bucket
+          # as a new resource and fail apply with `BucketAlreadyExists`.
+          # Bootstrap is run-once and must be applied manually with state in
+          # hand. See reinhardt-web#4145.
           - module: website
             dir: infra/website
             backend: local
@@ -91,7 +94,7 @@ jobs:
           TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
         run: |
           case "${{ matrix.module }}" in
-            bootstrap|github-runners)
+            github-runners)
               [ -z "$TF_VAR_aws_account_id" ] && SKIP=true ;;
             organizations)
               [ -z "$TF_VAR_account_email" ] && SKIP=true ;;
