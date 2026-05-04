@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.25...reinhardt-macros@v0.1.0-rc.26) - 2026-05-04
+
+### Fixed
+
+- *(macros)* bring ClientUrlResolver into scope in client typed accessors
+- *(macros)* bring ClientUrlResolver into scope in resolve() fallback
+- *(macros)* emit per-app client URL accessors on wasm32
+
 ## [0.1.0-rc.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.23...reinhardt-macros@v0.1.0-rc.24) - 2026-04-30
 
 ### Fixed
