@@ -197,6 +197,17 @@ pub async fn run_watcher(
 									&outcome,
 								) {
 								eprintln!("{}", line);
+								// On Failed, indent each detail line by two
+								// spaces (mirrors ServerRebuildPipeline) so
+								// the summary stays a single greppable line
+								// even when the underlying error embeds
+								// multi-line cargo stderr.
+								for detail in
+									crate::wasm_rebuild_pipeline::WasmRebuildPipeline::detail_lines(
+										&outcome,
+									) {
+									eprintln!("  {}", detail);
+								}
 								if matches!(
 									outcome,
 									crate::wasm_rebuild_pipeline::WasmRebuildOutcome::Failed { .. }
