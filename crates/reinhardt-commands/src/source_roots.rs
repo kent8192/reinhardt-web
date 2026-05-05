@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 /// Directories and manifest files to watch for hot-reload.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SourceRoots {
+pub struct SourceRoots {
 	/// Per-package `src/` directories to watch recursively.
 	pub src_dirs: Vec<PathBuf>,
 	/// Per-package `Cargo.toml` files to watch as single files.
@@ -35,7 +35,7 @@ impl SourceRoots {
 	/// Registry and git dependencies are skipped (their `Dependency::path`
 	/// is `None`). If no package in the metadata matches `cwd_manifest`,
 	/// the result is empty.
-	pub(crate) fn from_metadata(metadata: &cargo_metadata::Metadata, cwd_manifest: &Path) -> Self {
+	pub fn from_metadata(metadata: &cargo_metadata::Metadata, cwd_manifest: &Path) -> Self {
 		// Index packages by manifest path and by name for two lookup styles
 		// (BFS uses the `path` field on a Dependency to find the next pkg).
 		let pkg_by_manifest: std::collections::HashMap<PathBuf, &cargo_metadata::Package> =

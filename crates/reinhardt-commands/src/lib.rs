@@ -153,7 +153,8 @@ pub mod context;
 pub(crate) mod createsuperuser;
 /// Debounced file-system watcher for hot-reload (replaces inline watcher).
 #[cfg(feature = "autoreload")]
-pub(crate) mod debounced_watcher;
+#[doc(hidden)]
+pub mod debounced_watcher;
 /// Embedded Tera templates for project/app scaffolding.
 pub mod embedded_templates;
 /// Code formatting utilities for generated code.
@@ -177,10 +178,12 @@ pub mod registry;
 pub mod runserver_hooks;
 /// Hot-reload server rebuild pipeline (cargo build + child process swap).
 #[cfg(feature = "autoreload")]
-pub(crate) mod server_rebuild_pipeline;
+#[doc(hidden)]
+pub mod server_rebuild_pipeline;
 /// Source-tree enumeration for hot-reload watch targets.
 #[cfg(feature = "autoreload")]
-pub(crate) mod source_roots;
+#[doc(hidden)]
+pub mod source_roots;
 /// Project and app scaffolding commands (startproject, startapp).
 pub mod start_commands;
 /// Template-based code generation utilities.
@@ -191,9 +194,28 @@ pub mod template_source;
 pub mod wasm_builder;
 /// Hot-reload WASM rebuild pipeline (timing + structured logging wrapper).
 #[cfg(all(feature = "autoreload", feature = "pages"))]
-pub(crate) mod wasm_rebuild_pipeline;
+#[doc(hidden)]
+pub mod wasm_rebuild_pipeline;
 /// Development server welcome page.
 pub mod welcome_page;
+
+/// Internal test surface for the hot-reload integration tests.
+///
+/// This module is intentionally `#[doc(hidden)]` and re-exports the otherwise
+/// crate-private hot-reload pieces so that integration tests living under
+/// `tests/` (a separate crate target) can drive them end-to-end. It is not
+/// part of the public API and may change without notice.
+#[cfg(feature = "autoreload")]
+#[doc(hidden)]
+pub mod __hot_reload_test_api {
+	pub use crate::debounced_watcher::{
+		DEBOUNCE_WINDOW, WatcherConfig, debounce_next, is_relevant_change,
+	};
+	pub use crate::server_rebuild_pipeline::{ServerRebuildOutcome, ServerRebuildPipeline};
+	pub use crate::source_roots::SourceRoots;
+	#[cfg(feature = "pages")]
+	pub use crate::wasm_rebuild_pipeline::{WasmRebuildOutcome, WasmRebuildPipeline};
+}
 
 use thiserror::Error;
 

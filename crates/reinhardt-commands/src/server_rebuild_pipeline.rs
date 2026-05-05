@@ -10,7 +10,7 @@ use tokio::process::{Child, Command};
 
 /// Outcome of a single server rebuild attempt triggered by the hot-reload loop.
 #[derive(Debug)]
-pub(crate) enum ServerRebuildOutcome {
+pub enum ServerRebuildOutcome {
 	/// Build succeeded and the child was respawned.
 	Ok {
 		/// Wall-clock time for the entire rebuild + restart.
@@ -37,14 +37,14 @@ pub(crate) enum ServerRebuildOutcome {
 
 /// Stateless pipeline runner. Held as a unit struct so callers have a
 /// consistent type-based entry point (mirrors `WasmRebuildPipeline`).
-pub(crate) struct ServerRebuildPipeline;
+pub struct ServerRebuildPipeline;
 
 impl ServerRebuildPipeline {
 	/// Run `cargo build --bin <bin_name>` and, on success, swap the child.
 	///
 	/// On `BuildFailed` we deliberately leave `current_child` running so the
 	/// developer keeps a working server while the source has compile errors.
-	pub(crate) async fn run(
+	pub async fn run(
 		bin_name: &str,
 		current_child: &mut Child,
 		respawn: impl FnOnce() -> std::io::Result<Child>,
@@ -125,7 +125,7 @@ impl ServerRebuildPipeline {
 	}
 
 	/// Format the single-line summary printed to stderr by the watcher.
-	pub(crate) fn format_log_line(outcome: &ServerRebuildOutcome) -> String {
+	pub fn format_log_line(outcome: &ServerRebuildOutcome) -> String {
 		match outcome {
 			ServerRebuildOutcome::Ok { duration } => format!(
 				"[hot-reload] Server rebuild + restart OK (took {})",
@@ -146,7 +146,7 @@ impl ServerRebuildPipeline {
 	/// Return the last `n` lines of `stderr` joined by `\n`.
 	///
 	/// When the input has fewer than `n` lines, all lines are returned.
-	pub(crate) fn tail_lines(stderr: &str, n: usize) -> String {
+	pub fn tail_lines(stderr: &str, n: usize) -> String {
 		if n == 0 {
 			return String::new();
 		}

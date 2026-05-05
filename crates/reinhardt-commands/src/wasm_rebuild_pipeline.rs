@@ -12,7 +12,7 @@ use crate::wasm_builder::WasmBuildError;
 
 /// Outcome of a single WASM rebuild attempt triggered by the hot-reload loop.
 #[derive(Debug)]
-pub(crate) enum WasmRebuildOutcome {
+pub enum WasmRebuildOutcome {
 	/// The builder ran successfully.
 	Ok {
 		/// Wall-clock time the builder took.
@@ -35,14 +35,14 @@ pub(crate) enum WasmRebuildOutcome {
 
 /// Stateless pipeline runner. Held as a unit struct so callers can use a
 /// consistent type-based entry point (mirroring `ServerRebuildPipeline`).
-pub(crate) struct WasmRebuildPipeline;
+pub struct WasmRebuildPipeline;
 
 impl WasmRebuildPipeline {
 	/// Run the WASM builder once and capture the outcome with timing.
 	///
 	/// The underlying builder is synchronous, so we offload it onto a blocking
 	/// task to avoid stalling the tokio runtime that drives the watcher.
-	pub(crate) async fn run(ctx: &CommandContext) -> WasmRebuildOutcome {
+	pub async fn run(ctx: &CommandContext) -> WasmRebuildOutcome {
 		let start = Instant::now();
 		let ctx_clone = ctx.clone();
 		let join_result = tokio::task::spawn_blocking(move || {
@@ -68,7 +68,7 @@ impl WasmRebuildPipeline {
 	/// is the only thing asserted by tests; multi-line decoration (error
 	/// detail, "watching for next change..." footer) is appended by the
 	/// caller.
-	pub(crate) fn format_log_line(outcome: &WasmRebuildOutcome) -> Option<String> {
+	pub fn format_log_line(outcome: &WasmRebuildOutcome) -> Option<String> {
 		match outcome {
 			WasmRebuildOutcome::Ok { duration } => Some(format!(
 				"[hot-reload] WASM rebuild OK (took {})",

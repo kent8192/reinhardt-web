@@ -22,7 +22,7 @@ use crate::source_roots::SourceRoots;
 
 /// Time window over which bursts of events are coalesced into a single
 /// rebuild trigger. Matches cargo-leptos / dx serve precedent.
-pub(crate) const DEBOUNCE_WINDOW: Duration = Duration::from_millis(300);
+pub const DEBOUNCE_WINDOW: Duration = Duration::from_millis(300);
 
 /// Decide whether a `notify::Event` should trigger a rebuild.
 ///
@@ -31,7 +31,7 @@ pub(crate) const DEBOUNCE_WINDOW: Duration = Duration::from_millis(300);
 /// * At least one path must end in `.rs` or `.toml`.
 /// * Paths inside `target/` or `.git/`, and editor sidecar files
 ///   (`~`, `.swp`, `.tmp`), are rejected.
-pub(crate) fn is_relevant_change(event: &Event) -> bool {
+pub fn is_relevant_change(event: &Event) -> bool {
 	use notify::EventKind;
 
 	if !matches!(
@@ -56,10 +56,7 @@ pub(crate) fn is_relevant_change(event: &Event) -> bool {
 ///
 /// Returns the deduplicated, sorted set of paths from all coalesced events,
 /// or `None` if the channel closes before any relevant event arrives.
-pub(crate) async fn debounce_next(
-	rx: &mut Receiver<Event>,
-	window: Duration,
-) -> Option<Vec<PathBuf>> {
+pub async fn debounce_next(rx: &mut Receiver<Event>, window: Duration) -> Option<Vec<PathBuf>> {
 	// Phase 1: wait for the first relevant event (drop noise silently).
 	let first = loop {
 		match rx.recv().await {
@@ -96,7 +93,7 @@ pub(crate) async fn debounce_next(
 }
 
 /// Configuration for `run_watcher`.
-pub(crate) struct WatcherConfig {
+pub struct WatcherConfig {
 	/// Bin name passed to `cargo build --bin`.
 	pub bin_name: String,
 	/// Source directories and manifest files to subscribe to.
@@ -124,7 +121,7 @@ pub(crate) struct WatcherConfig {
 /// Only watcher infrastructure errors (e.g. `notify::Watcher::new` failure
 /// or a failed `watch` subscription on an existing path) propagate as
 /// `Err`.
-pub(crate) async fn run_watcher(
+pub async fn run_watcher(
 	ctx: &CommandContext,
 	config: &WatcherConfig,
 	shutdown_rx: oneshot::Receiver<()>,
