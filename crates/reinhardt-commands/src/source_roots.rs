@@ -35,17 +35,30 @@ impl SourceRoots {
 	/// Registry and git dependencies are skipped (their `Dependency::path`
 	/// is `None`). If no package in the metadata matches `cwd_manifest`,
 	/// the result is empty.
+	///
+	/// All manifest paths are canonicalized before comparison so that a
+	/// `cwd_manifest` that traverses a symlink (or differs in case on
+	/// case-insensitive filesystems) still matches the corresponding
+	/// `cargo metadata` entry.
 	pub fn from_metadata(metadata: &cargo_metadata::Metadata, cwd_manifest: &Path) -> Self {
-		// Index packages by manifest path and by name for two lookup styles
-		// (BFS uses the `path` field on a Dependency to find the next pkg).
+		// Index packages by canonicalized manifest path. Falling back to the
+		// raw value when canonicalization fails preserves behavior for
+		// synthetic test fixtures whose paths don't exist on disk.
 		let pkg_by_manifest: std::collections::HashMap<PathBuf, &cargo_metadata::Package> =
 			metadata
 				.packages
 				.iter()
-				.map(|p| (PathBuf::from(p.manifest_path.as_str()), p))
+				.map(|p| {
+					(
+						canonicalize_or_keep(Path::new(p.manifest_path.as_str())),
+						p,
+					)
+				})
 				.collect();
 
-		let Some(anchor) = pkg_by_manifest.get(cwd_manifest).copied() else {
+		let cwd_canonical = canonicalize_or_keep(cwd_manifest);
+
+		let Some(anchor) = pkg_by_manifest.get(&cwd_canonical).copied() else {
 			return SourceRoots {
 				src_dirs: Vec::new(),
 				manifest_files: Vec::new(),
@@ -61,7 +74,7 @@ impl SourceRoots {
 		visited.insert(anchor.id.repr.clone());
 
 		while let Some(pkg) = queue.pop_front() {
-			let manifest = PathBuf::from(pkg.manifest_path.as_str());
+			let manifest = canonicalize_or_keep(Path::new(pkg.manifest_path.as_str()));
 			if let Some(parent) = manifest.parent() {
 				src_dirs.insert(parent.join("src"));
 			}
@@ -73,7 +86,8 @@ impl SourceRoots {
 				let Some(dep_path) = dep.path.as_ref() else {
 					continue;
 				};
-				let dep_manifest = PathBuf::from(dep_path.as_str()).join("Cargo.toml");
+				let dep_manifest =
+					canonicalize_or_keep(&PathBuf::from(dep_path.as_str()).join("Cargo.toml"));
 				let Some(next) = pkg_by_manifest.get(&dep_manifest).copied() else {
 					continue;
 				};
@@ -88,6 +102,16 @@ impl SourceRoots {
 			manifest_files: manifest_files.into_iter().collect(),
 		}
 	}
+}
+
+/// Resolve symlinks and case differences via `std::fs::canonicalize`, falling
+/// back to the input path when the file cannot be resolved (does not exist,
+/// permission denied, etc.).
+///
+/// The fallback keeps the function total so synthetic test fixtures that
+/// reference paths under `/fixtures/...` continue to round-trip unchanged.
+fn canonicalize_or_keep(path: &Path) -> PathBuf {
+	std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[cfg(test)]
@@ -171,5 +195,88 @@ mod tests {
 			roots.manifest_files,
 			vec![PathBuf::from("/fixtures/registry_dep/Cargo.toml")]
 		);
+	}
+
+	/// Build a one-package metadata blob whose `manifest_path` points at
+	/// `manifest_path_str`. Used by the canonicalization regression test.
+	fn synthetic_single_crate_metadata(manifest_path_str: &str) -> cargo_metadata::Metadata {
+		let parent = Path::new(manifest_path_str)
+			.parent()
+			.expect("manifest path must have a parent")
+			.to_string_lossy()
+			.into_owned();
+		let id = format!("path+file://{parent}#0.1.0");
+		let json = format!(
+			r#"{{
+  "packages": [{{
+    "name": "anchor",
+    "version": "0.1.0",
+    "id": "{id}",
+    "license": null,
+    "license_file": null,
+    "description": null,
+    "source": null,
+    "dependencies": [],
+    "targets": [],
+    "features": {{}},
+    "manifest_path": "{manifest_path_str}",
+    "metadata": null,
+    "publish": null,
+    "authors": [],
+    "categories": [],
+    "keywords": [],
+    "readme": null,
+    "repository": null,
+    "homepage": null,
+    "documentation": null,
+    "edition": "2024",
+    "links": null,
+    "default_run": null,
+    "rust_version": null
+  }}],
+  "workspace_members": ["{id}"],
+  "workspace_default_members": ["{id}"],
+  "resolve": null,
+  "target_directory": "/tmp/canonicalize_test_target",
+  "build_directory": "/tmp/canonicalize_test_target",
+  "version": 1,
+  "workspace_root": "{parent}",
+  "metadata": null
+}}"#,
+		);
+		serde_json::from_str(&json).expect("synthetic metadata must deserialize")
+	}
+
+	/// `cwd_manifest` going through a symlink must still resolve to the
+	/// canonicalized package manifest entry — without canonicalization the
+	/// PathBuf comparison fails and the watcher silently watches nothing.
+	#[cfg(unix)]
+	#[rstest]
+	fn cwd_manifest_through_symlink_resolves_to_canonical_package() {
+		// Arrange: real crate dir + Cargo.toml on disk, plus a symlink dir
+		// pointing at the real one. cargo metadata reports the real path;
+		// the user's cwd_manifest goes through the symlink.
+		let tmp = tempfile::tempdir().expect("create tempdir");
+		let real_dir = tmp.path().join("real_crate");
+		std::fs::create_dir(&real_dir).unwrap();
+		let real_manifest = real_dir.join("Cargo.toml");
+		std::fs::write(&real_manifest, b"[package]\nname = \"anchor\"\n").unwrap();
+
+		let link_dir = tmp.path().join("link_crate");
+		std::os::unix::fs::symlink(&real_dir, &link_dir).expect("create symlink");
+		let link_manifest = link_dir.join("Cargo.toml");
+
+		let metadata = synthetic_single_crate_metadata(&real_manifest.to_string_lossy());
+
+		// Act: anchor lookup must succeed even though the `cwd_manifest`
+		// path traverses the symlink.
+		let roots = SourceRoots::from_metadata(&metadata, &link_manifest);
+
+		// Assert: a non-empty result indicates the lookup matched. Compare
+		// against the canonicalized manifest path (the function exposes
+		// canonicalized paths to callers).
+		let canonical = std::fs::canonicalize(&real_manifest).unwrap();
+		assert_eq!(roots.manifest_files, vec![canonical.clone()]);
+		assert_eq!(roots.src_dirs, vec![canonical.parent().unwrap().join("src")]);
 	}
 }
