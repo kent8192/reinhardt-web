@@ -172,6 +172,9 @@ pub mod registry;
 /// Runserver lifecycle hooks for concurrent services and pre-listen validation.
 #[cfg(feature = "server")]
 pub mod runserver_hooks;
+/// Hot-reload server rebuild pipeline (cargo build + child process swap).
+#[cfg(feature = "autoreload")]
+pub(crate) mod server_rebuild_pipeline;
 /// Source-tree enumeration for hot-reload watch targets.
 #[cfg(feature = "autoreload")]
 pub(crate) mod source_roots;
