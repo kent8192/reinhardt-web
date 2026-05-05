@@ -2010,7 +2010,7 @@ impl RunServerCommand {
 	/// when the WASM compilation fails so the caller can decide whether to
 	/// abort or continue.
 	#[cfg(feature = "pages")]
-	fn build_pages_wasm(
+	pub(crate) fn build_pages_wasm(
 		ctx: &CommandContext,
 		force: bool,
 	) -> Result<(), crate::wasm_builder::WasmBuildError> {

@@ -123,6 +123,9 @@ pub enum WasmBuildError {
 	/// An I/O error occurred during WASM build operations.
 	#[error("IO error: {0}")]
 	Io(#[from] std::io::Error),
+	/// A miscellaneous build failure with a free-form message.
+	#[error("{0}")]
+	Other(String),
 }
 
 /// WASM build executor.

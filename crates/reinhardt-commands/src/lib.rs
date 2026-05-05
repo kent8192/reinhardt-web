@@ -183,6 +183,9 @@ pub mod template;
 pub mod template_source;
 /// WASM build tooling for client-side compilation.
 pub mod wasm_builder;
+/// Hot-reload WASM rebuild pipeline (timing + structured logging wrapper).
+#[cfg(all(feature = "autoreload", feature = "pages"))]
+pub(crate) mod wasm_rebuild_pipeline;
 /// Development server welcome page.
 pub mod welcome_page;
 
