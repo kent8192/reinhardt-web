@@ -12,7 +12,7 @@
 //! - **Interactive Mode**: Support for interactive prompts
 //! - **Colored Output**: Rich terminal output
 //! - **AST-Based Code Generation**: Robust code generation using Abstract Syntax Trees
-//! - **Auto-Reload**: Development server auto-reload with bacon integration
+//! - **Auto-Reload**: Built-in hot-reload for the development server (server + wasm)
 //! - **Tera Template Engine**: Powerful template rendering for project/app generation
 //!
 //! ## Example
@@ -104,39 +104,20 @@
 //!
 //! ## Auto-Reload for Development Server
 //!
-//! The `runserver` command supports automatic reloading when code changes are detected,
-//! using bacon for complete rebuild and restart functionality.
+//! The `runserver` command reloads automatically on file changes. No external
+//! tool (such as `cargo-watch` or `bacon`) is required — the watcher is built
+//! into the `autoreload` feature.
 //!
-//! ### Using bacon
-//!
-//! Install bacon:
-//!
-//! ```bash
-//! cargo install --locked bacon
+//! ```text
+//! cargo run --bin manage -- runserver --with-pages
 //! ```
 //!
-//! Run the development server with auto-reload:
+//! Edit any Rust source file (server-side or wasm-side) and the bundle plus
+//! the server are rebuilt in place. Pass `--noreload` to disable auto-reload
+//! entirely, or `--no-wasm-rebuild` to keep server reload but manage the wasm
+//! build yourself.
 //!
-//! ```bash
-//! # Using bacon directly
-//! bacon runserver
-//!
-//! # Or using cargo make
-//! cargo make watch
-//! ```
-//!
-//! ### How It Works
-//!
-//! Bacon provides a background code checker that:
-//! 1. Detects file changes in `src/`, `Cargo.toml`, and other watched paths
-//! 2. Automatically runs the configured job (check, clippy, test, runserver, etc.)
-//! 3. Displays build output and errors in real-time
-//! 4. Supports keyboard shortcuts for switching between different jobs
-//!
-//! ### Configuration
-//!
-//! Bacon can be configured via `bacon.toml` in the project root. See the bacon
-//! documentation for more details: <https://dystroy.org/bacon/>
+//! See [`runserver_hooks`] for the full hot-reload runbook and failure modes.
 
 /// Base command trait and argument/option definitions.
 pub mod base;
