@@ -182,29 +182,37 @@ pub async fn run_watcher(
 					paths.len()
 				));
 
-				#[cfg(feature = "pages")]
-				if config.pages_enabled && !config.no_wasm_rebuild {
-					let outcome = crate::wasm_rebuild_pipeline::WasmRebuildPipeline::run(ctx).await;
-					if let Some(line) =
-						crate::wasm_rebuild_pipeline::WasmRebuildPipeline::format_log_line(&outcome)
+				// Spec §4: run wasm + server pipelines in parallel. They
+				// touch disjoint cargo target directories (`wasm32-unknown-unknown`
+				// vs `debug`) and the wasm pipeline does not interact with the
+				// running child process, so concurrent execution is safe.
+				let wasm_fut = async {
+					#[cfg(feature = "pages")]
 					{
-						eprintln!("{}", line);
-						if matches!(
-							outcome,
-							crate::wasm_rebuild_pipeline::WasmRebuildOutcome::Failed { .. }
-						) {
-							eprintln!("[hot-reload] watching for next change...");
+						if config.pages_enabled && !config.no_wasm_rebuild {
+							let outcome =
+								crate::wasm_rebuild_pipeline::WasmRebuildPipeline::run(ctx).await;
+							if let Some(line) =
+								crate::wasm_rebuild_pipeline::WasmRebuildPipeline::format_log_line(
+									&outcome,
+								) {
+								eprintln!("{}", line);
+								if matches!(
+									outcome,
+									crate::wasm_rebuild_pipeline::WasmRebuildOutcome::Failed { .. }
+								) {
+									eprintln!("[hot-reload] watching for next change...");
+								}
+							}
 						}
 					}
-				}
-
-				let (_outcome, new_child) =
-					crate::server_rebuild_pipeline::ServerRebuildPipeline::run(
-						&config.bin_name,
-						&mut current_child,
-						&respawn,
-					)
-					.await;
+				};
+				let server_fut = crate::server_rebuild_pipeline::ServerRebuildPipeline::run(
+					&config.bin_name,
+					&mut current_child,
+					&respawn,
+				);
+				let ((), (_outcome, new_child)) = tokio::join!(wasm_fut, server_fut);
 				if let Some(child) = new_child {
 					current_child = child;
 				}
