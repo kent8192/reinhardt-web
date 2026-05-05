@@ -110,6 +110,27 @@ jobs:
         with:
           tool: nextest
 
+      # Scope mold to the host target only. A global `RUSTFLAGS=...-fuse-ld=mold`
+      # leaks into wasm32 builds and clang rejects `-fuse-ld=mold` for that
+      # target. See reinhardt-web#4147.
+      - name: Configure mold linker (host target only)
+        run: |
+          cat > /tmp/clang-mold-wrapper << 'WRAPPER'
+          #!/bin/sh
+          exec clang -fuse-ld=mold "$@"
+          WRAPPER
+          chmod +x /tmp/clang-mold-wrapper
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "aarch64" ]; then
+            ENV_KEY="CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"
+          elif [ "$ARCH" = "x86_64" ]; then
+            ENV_KEY="CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+          else
+            echo "Unsupported architecture for mold linker configuration: $ARCH" >&2
+            exit 1
+          fi
+          echo "${ENV_KEY}=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
+
       - name: Additional disk cleanup before tests
         if: ${{ !contains(inputs.runner, 'self-hosted') }}
         run: |
@@ -148,7 +169,6 @@ jobs:
 
       - name: Run unit tests (partition ${{ matrix.partition }}/${{ inputs.partition-count || '8' }})
         env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
           CARGO_PACKAGES: ${{ inputs.cargo-packages }}
