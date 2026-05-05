@@ -272,13 +272,16 @@ reinhardt-urls = { workspace = true }
 
 reinhardt-core = {workspace = true, features = ["types"]}
 
+# Proc-macro crate: runs host-side at compile time, safe on every target
+# (re-exported as `reinhardt::routes` / `reinhardt::url_patterns` for cross-target consumers)
+reinhardt-macros = { workspace = true }
+
 # Server-side dependencies (NOT for WASM)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 # Core dependencies
 reinhardt-utils = { workspace = true }
 reinhardt-views = { workspace = true }
 reinhardt-http = { workspace = true }
-reinhardt-macros = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }

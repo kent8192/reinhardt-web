@@ -303,9 +303,7 @@ macro_rules! define_views {
         $crate::flatten_imports!($($tt)*)
     };
 }
-#[cfg(native)]
 pub use reinhardt_macros::routes;
-#[cfg(native)]
 pub use reinhardt_macros::url_patterns;
 #[cfg(native)]
 pub use reinhardt_macros::viewset;
