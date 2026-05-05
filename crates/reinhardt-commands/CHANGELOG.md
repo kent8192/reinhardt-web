@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `runserver --with-pages` (without `--noreload`) now rebuilds the WASM bundle and the server binary on file changes. Previously the watcher restarted the server process without rebuilding either artefact, so source edits had no effect on the running app. Pipeline failures no longer terminate the watcher: a fresh save retriggers the failed pipeline. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
+
+### Added
+- `runserver --no-wasm-rebuild` opts out of the in-process WASM rebuild while keeping server hot-reload, for users who manage the wasm build externally. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
+
+### Changed
+- `cargo make watch`, `watch-test`, `watch-clippy`, `runserver-watch`, `dev-watch`, and `install-bacon` were removed from the workspace, the project templates, and the bundled examples. The built-in runserver hot-reload supersedes them; users who relied on `bacon` for unrelated workflows can invoke `bacon` directly. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.25...reinhardt-commands@v0.1.0-rc.26) - 2026-05-05
 
 ### Added
