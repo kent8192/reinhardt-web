@@ -209,7 +209,7 @@ build {
 			# cargo-make enforces invocation as a cargo subcommand and its
 			# internal `cliparser` raises `InvalidCommandLine` on bare argv.
 			# See reinhardt-web#4162.
-			"makers --version",
+			"/usr/local/bin/makers --version",
 		]
 	}
 
