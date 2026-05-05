@@ -282,7 +282,11 @@ mod tests {
 	#[tokio::test(flavor = "current_thread", start_paused = true)]
 	async fn debounce_coalesces_burst_into_single_trigger() {
 		// Arrange: three rapid events, two of them on the same path so the
-		// dedup logic also gets exercised.
+		// dedup logic also gets exercised. Drop the sender after queueing
+		// so phase 2's `timeout_at(deadline, rx.recv())` resolves on
+		// `Ok(None)` (channel closed) — under `start_paused = true` the
+		// virtual clock never advances on its own, so a pending deadline
+		// would otherwise hang the test.
 		let (tx, mut rx) = mpsc::channel::<Event>(8);
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/a.rs"))
 			.await
@@ -293,6 +297,7 @@ mod tests {
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/b.rs"))
 			.await
 			.unwrap();
+		drop(tx);
 
 		// Act
 		let result = debounce_next(&mut rx, Duration::from_millis(300)).await;
