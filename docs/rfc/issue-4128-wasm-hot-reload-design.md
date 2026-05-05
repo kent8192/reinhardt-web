@@ -91,16 +91,16 @@ file save
   → notify::Event
   → 300ms debounce window collects bursts (IDE save flurries)
   → single coalesced "rebuild request"
-  → spawn 2 tokio tasks (wasm_task, server_task) — fire-and-track
-  → each task logs its own outcome
-  → dispatcher returns to recv loop immediately (does NOT await tasks)
-  → next event may arrive while tasks still running; dispatcher coalesces
-    by aborting in-flight tasks and starting fresh ones (latest-wins)
+  → wasm + server pipelines run concurrently via tokio::join!
+  → each pipeline logs its own outcome
+  → dispatcher awaits both pipelines, then returns to recv loop
 ```
 
-Latest-wins semantics matter: if the developer saves three times in two seconds, we want to rebuild only the final state, not queue three sequential rebuilds.
-
-"Abort in-flight task" is implemented by killing the spawned `cargo` child process (via the stored `Child::kill` handle), then awaiting its exit before starting the replacement. Dropping the `tokio::task::JoinHandle` alone is insufficient because cargo would continue running detached.
+Note: Latest-wins coalescing of events that arrive *during* an in-flight
+rebuild is deferred to a follow-up issue (see [#4164](https://github.com/kent8192/reinhardt-web/issues/4164)).
+The current implementation processes the next debounced event after the
+current rebuild completes; rapid burst saves within a single 300 ms
+window are still coalesced into one rebuild via `debounce_next`.
 
 ## 6. Resilience requirements
 
