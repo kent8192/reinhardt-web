@@ -202,9 +202,14 @@ build {
 			"su - ubuntu -c 'curl --proto =https --tlsv1.2 -sSfL https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal'",
 			"su - ubuntu -c \"~/.cargo/bin/cargo install --locked cargo-make@$${CARGO_MAKE_VERSION}\"",
 			"cp /home/ubuntu/.cargo/bin/cargo-make /usr/local/bin/cargo-make",
-			"chmod 0755 /usr/local/bin/cargo-make",
-			# Verify installation succeeded before AMI snapshot
-			"/usr/local/bin/cargo-make --version",
+			"cp /home/ubuntu/.cargo/bin/makers /usr/local/bin/makers",
+			"chmod 0755 /usr/local/bin/cargo-make /usr/local/bin/makers",
+			# Verify installation succeeded before AMI snapshot.
+			# Use the `makers` alias rather than bare `cargo-make --version`:
+			# cargo-make enforces invocation as a cargo subcommand and its
+			# internal `cliparser` raises `InvalidCommandLine` on bare argv.
+			# See reinhardt-web#4162.
+			"makers --version",
 		]
 	}
 
