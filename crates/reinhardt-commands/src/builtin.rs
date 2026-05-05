@@ -1306,6 +1306,11 @@ impl BaseCommand for RunServerCommand {
 	fn options(&self) -> Vec<CommandOption> {
 		vec![
 			CommandOption::flag(None, "noreload", "Disable auto-reload"),
+			CommandOption::flag(
+				None,
+				"no-wasm-rebuild",
+				"Disable WASM rebuild during hot-reload (server pipeline still runs)",
+			),
 			CommandOption::option(
 				None,
 				"watch-delay",
@@ -1343,6 +1348,7 @@ impl BaseCommand for RunServerCommand {
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
 		let address = ctx.arg(0).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000");
 		let noreload = ctx.has_option("noreload");
+		let no_wasm_rebuild = ctx.has_option("no-wasm-rebuild");
 		let insecure = ctx.has_option("insecure");
 		let no_docs = ctx.has_option("no_docs");
 		let with_pages = ctx.has_option("with-pages");
@@ -1502,6 +1508,7 @@ impl BaseCommand for RunServerCommand {
 				ctx,
 				&actual_address,
 				noreload,
+				no_wasm_rebuild,
 				insecure,
 				no_docs,
 				with_pages,
@@ -1544,6 +1551,8 @@ impl RunServerCommand {
 		#[allow(unused_variables)] ctx: &CommandContext,
 		address: &str,
 		noreload: bool,
+		// Only consumed by the autoreload pipeline; allow unused when feature is off.
+		#[cfg_attr(not(feature = "autoreload"), allow(unused_variables))] no_wasm_rebuild: bool,
 		_insecure: bool,
 		no_docs: bool,
 		with_pages: bool,
@@ -1761,9 +1770,6 @@ impl RunServerCommand {
 			#[cfg(feature = "autoreload")]
 			{
 				let index_raw = ctx.option("index").map(|s| s.to_string());
-				// `no_wasm_rebuild` is hard-coded to `false` here; Task 6
-				// wires the actual `--no-wasm-rebuild` CLI flag.
-				let no_wasm_rebuild = false;
 				Self::run_with_autoreload(
 					ctx,
 					address,
