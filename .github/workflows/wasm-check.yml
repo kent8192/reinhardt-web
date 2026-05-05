@@ -181,3 +181,40 @@ jobs:
             --features e2e-cdp-test \
             --test spa_navigation_e2e_test \
             -- --nocapture
+
+  # Generate a downstream-shaped consumer via reinhardt-admin and exercise
+  # #[url_patterns(... mode = unified|ws)] at a wasm SPA call site, closing
+  # the gap exposed by #4161 (workspace `cargo check` of reinhardt-web alone
+  # cannot detect macro-emission references to native-only re-exports).
+  wasm-consumer-fixture:
+    name: WASM Consumer Fixture (#4161 regression)
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
+    timeout-minutes: 30
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          cache-key: "wasm-consumer-fixture"
+
+      - name: Install wasm32-unknown-unknown target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Generate fixture via reinhardt-admin and run wasm check
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: bash .github/scripts/build-wasm-consumer-fixture.sh
