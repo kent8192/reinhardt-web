@@ -172,6 +172,9 @@ pub mod registry;
 /// Runserver lifecycle hooks for concurrent services and pre-listen validation.
 #[cfg(feature = "server")]
 pub mod runserver_hooks;
+/// Source-tree enumeration for hot-reload watch targets.
+#[cfg(feature = "autoreload")]
+pub(crate) mod source_roots;
 /// Project and app scaffolding commands (startproject, startapp).
 pub mod start_commands;
 /// Template-based code generation utilities.
