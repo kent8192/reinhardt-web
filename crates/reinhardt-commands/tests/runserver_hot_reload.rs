@@ -44,8 +44,9 @@ use std::time::Duration;
 
 use reinhardt_commands::__hot_reload_test_api::{
 	DEBOUNCE_WINDOW, ServerRebuildOutcome, ServerRebuildPipeline, SourceRoots, WatcherConfig,
-	is_relevant_change,
+	is_relevant_change, run_watcher,
 };
+use reinhardt_commands::CommandContext;
 use reinhardt_commands::{WasmBuildConfig, WasmBuilder};
 use serial_test::serial;
 
@@ -440,6 +441,132 @@ async fn hr_6_issue_4128_reproduction() {
 	assert!(
 		after > before,
 		"wasm bundle mtime must advance after a wasm-side edit (before={before:?}, after={after:?})"
+	);
+}
+
+// ---------------------------------------------------------------------------
+// HR-7: run_watcher loop processes events end-to-end and survives a failed
+// build (OL-1 transitively).
+//
+// Drives the actual `run_watcher` loop against a real fixture tempdir.
+// Subscribes notify to the fixture's `src/` directory, then performs two
+// sequential edits:
+//
+// 1. Break `src/lib.rs` so the next `cargo build --bin manage` fails.
+//    The watcher must dispatch the rebuild, observe the failure, log it,
+//    and survive — no respawn occurs because the build never succeeded.
+// 2. Restore `src/lib.rs`. The watcher must dispatch a second rebuild,
+//    succeed, and call the respawn closure to swap in a new child.
+//
+// If the loop crashed after step 1 (violating OL-1) the respawn counter
+// would remain at zero. A non-zero counter after step 2 proves the loop
+// processed both events and survived the intermediate failure.
+//
+// Finally, sending the shutdown oneshot must drive the loop to a clean
+// `Ok(())` return within the timeout.
+// ---------------------------------------------------------------------------
+#[tokio::test(flavor = "multi_thread")]
+#[serial(server_pipeline)]
+async fn hr_7_run_watcher_processes_events() {
+	use std::sync::Arc;
+	use std::sync::atomic::{AtomicUsize, Ordering};
+
+	// Arrange: fixture + initial server child + cwd switched so cargo
+	// resolves the fixture's manifest. Mirrors `run_server_pipeline`.
+	let fixture = Fixture::new("hr7_fixture", 700);
+	let initial_child = spawn_long_running_child(&fixture).await;
+	let saved_cwd = std::env::current_dir().expect("current dir");
+	std::env::set_current_dir(fixture.path()).expect("set fixture cwd");
+
+	let bin_path = fixture_manage_bin(&fixture);
+	let respawn_count = Arc::new(AtomicUsize::new(0));
+	let respawn_count_for_closure = Arc::clone(&respawn_count);
+	let respawn = move || -> std::io::Result<tokio::process::Child> {
+		respawn_count_for_closure.fetch_add(1, Ordering::SeqCst);
+		tokio::process::Command::new(&bin_path)
+			.kill_on_drop(true)
+			.spawn()
+	};
+
+	let ctx = CommandContext::default();
+	let config = WatcherConfig {
+		bin_name: "manage".to_string(),
+		roots: SourceRoots {
+			src_dirs: vec![fixture.path().join("src")],
+			manifest_files: vec![fixture.path().join("Cargo.toml")],
+		},
+		no_wasm_rebuild: true,
+		pages_enabled: false,
+	};
+
+	let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
+	// Spawn the watcher on the multi-thread runtime so the cargo subprocess
+	// it shells out to does not block the test's main task.
+	let watcher_handle = tokio::spawn(async move {
+		run_watcher(&ctx, &config, shutdown_rx, initial_child, respawn).await
+	});
+
+	// Give notify a moment to register its FSEvents subscription on macOS;
+	// edits made before the subscription is live are silently lost.
+	tokio::time::sleep(Duration::from_millis(500)).await;
+
+	// Act 1: introduce a server-side syntax error. Watcher must dispatch
+	// a rebuild that fails; the loop must survive (no respawn).
+	fixture.introduce_server_syntax_error();
+
+	// Wait for the failed rebuild to complete. cargo on a warm cache
+	// reports a syntax error in well under 30s; double that for safety.
+	tokio::time::sleep(Duration::from_secs(60)).await;
+	assert_eq!(
+		respawn_count.load(Ordering::SeqCst),
+		0,
+		"a failed build must not call respawn"
+	);
+	assert!(
+		!watcher_handle.is_finished(),
+		"OL-1: watcher loop must survive a failed build"
+	);
+
+	// Act 2: restore the source. Watcher must dispatch a successful
+	// rebuild and respawn the child.
+	fixture.restore_server(701);
+
+	// Poll for the respawn for up to 90s. Cold-cache rebuilds of the
+	// fixture's `manage` bin can take a while.
+	let respawn_observed = {
+		let deadline = tokio::time::Instant::now() + Duration::from_secs(90);
+		loop {
+			if respawn_count.load(Ordering::SeqCst) >= 1 {
+				break true;
+			}
+			if tokio::time::Instant::now() >= deadline {
+				break false;
+			}
+			tokio::time::sleep(Duration::from_millis(500)).await;
+		}
+	};
+	assert!(
+		respawn_observed,
+		"recovered build must trigger exactly one respawn (got {})",
+		respawn_count.load(Ordering::SeqCst)
+	);
+
+	// Act 3: shutdown — the watcher must return Ok within a generous
+	// timeout (it has to kill+reap the current child first).
+	let _ = shutdown_tx.send(());
+	let join_result = tokio::time::timeout(Duration::from_secs(15), watcher_handle).await;
+
+	// Cleanup: restore cwd before any assertion can panic.
+	std::env::set_current_dir(&saved_cwd).expect("restore cwd");
+
+	// Assert
+	let watcher_result = join_result
+		.expect("watcher must shut down within timeout")
+		.expect("watcher task must not panic");
+	assert!(
+		watcher_result.is_ok(),
+		"watcher must return Ok on graceful shutdown, got {watcher_result:?}"
 	);
 }
 
