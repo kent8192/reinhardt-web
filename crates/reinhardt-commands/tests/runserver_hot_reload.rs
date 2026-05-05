@@ -31,11 +31,14 @@
 //!
 //! # Cost model
 //!
-//! Each test that builds Rust runs in its own tempdir but shares
-//! `CARGO_TARGET_DIR` (set per process to a stable directory under
-//! `/tmp`) so subsequent test cases benefit from cargo's incremental
-//! cache. Cold-cache first-test runtime is ~30-60s; warm-cache subsequent
-//! cases are <5s.
+//! Each fixture builds inside its own tempdir with a per-fixture
+//! `target/` directory; the test harness does not set
+//! `CARGO_TARGET_DIR`, so cargo's incremental cache is not shared
+//! across fixtures. The first cargo build for a fresh fixture
+//! typically takes ~30–60 s on a cold workspace cache; subsequent
+//! rebuilds *within the same fixture* (e.g. `edit_marker` followed by
+//! another `build_wasm`) finish in <5 s thanks to per-fixture
+//! incremental compilation.
 
 #![cfg(all(feature = "server", feature = "autoreload", feature = "pages"))]
 
