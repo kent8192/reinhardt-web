@@ -277,8 +277,8 @@ pub mod views;
 #[cfg(all(feature = "core", native))]
 pub use reinhardt_apps::{AppConfig, AppError, AppResult, Apps};
 
-// Re-export macros
-#[cfg(all(feature = "core", native))]
+// Re-export macros (cross-target so #[app_config] is reachable on wasm).
+#[cfg(feature = "core")]
 pub use reinhardt_macros::{AppConfig, app_config, installed_apps};
 
 // Re-export settings attribute macro (requires conf feature)
