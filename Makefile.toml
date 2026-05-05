@@ -529,39 +529,6 @@ command = "cargo"
 args = ["make", "--list-all-steps"]
 
 # ============================================================================
-# Watch Tasks (using bacon)
-# ============================================================================
-
-[tasks.watch]
-description = "Watch for changes and run checks (requires bacon)"
-command = "bacon"
-dependencies = ["install-bacon"]
-
-[tasks.watch-test]
-description = "Watch for changes and run tests (requires bacon)"
-command = "bacon"
-args = ["test"]
-dependencies = ["install-bacon"]
-
-[tasks.watch-clippy]
-description = "Watch for changes and run clippy (requires bacon)"
-command = "bacon"
-args = ["clippy"]
-dependencies = ["install-bacon"]
-
-[tasks.install-bacon]
-description = "Install bacon if not already installed"
-script = '''
-if ! command -v bacon &> /dev/null
-then
-	echo "Installing bacon..."
-	cargo install --locked bacon
-else
-	echo "bacon is already installed"
-fi
-'''
-
-# ============================================================================
 # Examples Tasks
 # ============================================================================
 

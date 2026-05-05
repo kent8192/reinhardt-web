@@ -26,11 +26,6 @@ dependencies = ["docker-up"]
 command = "cargo"
 args = ["run", "runserver"]
 
-[tasks.runserver-watch]
-description = "Start the development server with auto-reload (requires bacon)"
-command = "bacon"
-args = ["runserver"]
-
 # ============================================================================
 # Docker Services
 # ============================================================================
@@ -110,11 +105,6 @@ args = ["nextest", "run", "--lib", "--all-features"]
 description = "Run integration tests only"
 command = "cargo"
 args = ["nextest", "run", "--test", "*", "--all-features"]
-
-[tasks.test-watch]
-description = "Run tests with auto-reload (requires bacon)"
-command = "bacon"
-args = ["test"]
 
 # ============================================================================
 # Code Quality
@@ -315,10 +305,6 @@ fi
 echo "🚀 Starting development server with WASM frontend..."
 cargo run --bin examples-twitter -- runserver --with-pages --noreload
 '''
-
-[tasks.dev-watch]
-description = "Start development with auto-reload"
-dependencies = ["build", "runserver-watch"]
 
 [tasks.dev-release]
 description = "Build optimized WASM and start server"

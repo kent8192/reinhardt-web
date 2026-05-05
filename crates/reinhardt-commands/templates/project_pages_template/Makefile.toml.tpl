@@ -23,15 +23,10 @@ WASM_BINDGEN_VERSION = "0.2.100"
 # ============================================================================
 
 [tasks.runserver]
-description = "Start the development server with static files"
+description = "Start the development server with static files (auto-reloads)"
 command = "cargo"
 args = ["run", "--bin", "manage", "runserver", "--with-pages"]
 dependencies = ["wasm-build-dev"]
-
-[tasks.runserver-watch]
-description = "Start the development server with auto-reload (requires bacon)"
-command = "bacon"
-args = ["runserver"]
 
 # ============================================================================
 # WASM Build
@@ -219,11 +214,6 @@ description = "Run integration tests only"
 command = "cargo"
 args = ["nextest", "run", "--test", "*", "--all-features"]
 
-[tasks.test-watch]
-description = "Run tests with auto-reload (requires bacon)"
-command = "bacon"
-args = ["test"]
-
 # ============================================================================
 # Code Quality
 # ============================================================================
@@ -280,12 +270,8 @@ args = ["clean"]
 # ============================================================================
 
 [tasks.dev]
-description = "Start development environment (checks, builds WASM, runs server)"
+description = "Start development environment (checks, builds WASM, runs server with auto-reload)"
 dependencies = ["clean-cache", "quality", "wasm-build-dev", "runserver"]
-
-[tasks.dev-watch]
-description = "Start development with auto-reload"
-dependencies = ["clean-cache", "quality", "wasm-build-dev", "runserver-watch"]
 
 # ============================================================================
 # CI/CD Workflow
@@ -323,10 +309,8 @@ description = "Show available tasks"
 script = '''
 echo "Available tasks:"
 echo "  Development:"
-echo "    runserver          - Start the development server (with WASM)"
-echo "    runserver-watch    - Start server with auto-reload"
-echo "    dev                - Run checks + build WASM + start server"
-echo "    dev-watch          - Development with auto-reload"
+echo "    runserver          - Start the development server (with WASM); auto-reloads on changes"
+echo "    dev                - Run checks + build WASM + start server (auto-reloads)"
 echo ""
 echo "  WASM Build:"
 echo "    wasm-build-dev     - Build WASM (debug mode)"
@@ -351,7 +335,6 @@ echo "  Testing:"
 echo "    test               - Run all tests"
 echo "    test-unit          - Run unit tests"
 echo "    test-integration   - Run integration tests"
-echo "    test-watch         - Tests with auto-reload"
 echo ""
 echo "  Code Quality:"
 echo "    fmt-check          - Check formatting"
