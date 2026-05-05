@@ -114,11 +114,34 @@ pub mod reinhardt_types {
 	pub use reinhardt_core::types::*;
 }
 
-// Server-side only re-exports (NOT for WASM)
+// Native: full re-export of the `reinhardt-apps` crate.
 #[cfg(all(feature = "core", native))]
 #[doc(hidden)]
 pub mod reinhardt_apps {
 	pub use reinhardt_apps::*;
+}
+
+// Wasm: inert shim exposing only the surface the macros emit
+// (`::reinhardt::reinhardt_apps::apps::AppLabel`). The full `reinhardt-apps`
+// crate is not wasm-compatible (transitively depends on tokio/hyper), so we
+// re-publish a minimal trait with the same signature so #[app_config] /
+// #[url_patterns] expansions type-check on wasm.
+#[cfg(all(feature = "core", not(native)))]
+#[doc(hidden)]
+pub mod reinhardt_apps {
+	pub mod apps {
+		/// Wasm-only inert mirror of `reinhardt_apps::apps::AppLabel`.
+		///
+		/// Matches the native trait signature so macro expansions referring to
+		/// `::reinhardt::reinhardt_apps::apps::AppLabel` resolve on wasm.
+		pub trait AppLabel {
+			const LABEL: &'static str;
+
+			fn path(&self) -> &'static str {
+				Self::LABEL
+			}
+		}
+	}
 }
 
 #[cfg(all(feature = "di", native))]
