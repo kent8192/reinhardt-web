@@ -48,12 +48,7 @@ impl SourceRoots {
 			metadata
 				.packages
 				.iter()
-				.map(|p| {
-					(
-						canonicalize_or_keep(Path::new(p.manifest_path.as_str())),
-						p,
-					)
-				})
+				.map(|p| (canonicalize_or_keep(Path::new(p.manifest_path.as_str())), p))
 				.collect();
 
 		let cwd_canonical = canonicalize_or_keep(cwd_manifest);
@@ -277,6 +272,9 @@ mod tests {
 		// canonicalized paths to callers).
 		let canonical = std::fs::canonicalize(&real_manifest).unwrap();
 		assert_eq!(roots.manifest_files, vec![canonical.clone()]);
-		assert_eq!(roots.src_dirs, vec![canonical.parent().unwrap().join("src")]);
+		assert_eq!(
+			roots.src_dirs,
+			vec![canonical.parent().unwrap().join("src")]
+		);
 	}
 }
