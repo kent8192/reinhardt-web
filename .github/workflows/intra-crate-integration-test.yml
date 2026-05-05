@@ -119,6 +119,21 @@ jobs:
         with:
           tool: wasm-pack
 
+      # Required by hot-reload integration tests in
+      # crates/reinhardt-commands/tests/runserver_hot_reload.rs. Each
+      # fixture builds a wasm cdylib via the in-house `WasmBuilder`, which
+      # shells to `cargo build --target wasm32-unknown-unknown` and then
+      # to a `wasm-bindgen` binary on PATH. wasm-pack vendors its own copy
+      # of wasm-bindgen but does not expose it on PATH, so we install the
+      # CLI directly. Issue #4128.
+      - name: Install wasm32-unknown-unknown target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli
+
       # Scope mold to the host target only. A global `RUSTFLAGS=...-fuse-ld=mold`
       # leaks into wasm32 builds (e.g. wasm-pack fixtures) and clang rejects
       # `-fuse-ld=mold` for that target. See reinhardt-web#4147.
