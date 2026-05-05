@@ -263,7 +263,9 @@ pub mod tasks;
 pub mod template;
 #[cfg(all(feature = "test", native))]
 pub mod test;
-#[cfg(native)]
+// `urls` is cross-target — `reinhardt-urls` already builds for
+// wasm32-unknown-unknown, and macro expansions of #[url_patterns]
+// reference `reinhardt::urls::prelude::*`.
 pub mod urls;
 #[cfg(native)]
 pub mod utils;
