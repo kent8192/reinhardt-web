@@ -1251,6 +1251,7 @@ pub struct WebSocketRouter {
 }
 
 #[cfg(all(feature = "websockets", not(native)))]
+#[allow(missing_docs)] // wasm-only inert stub; surface mirrors `reinhardt_core::ws::WebSocketRouter` (#4161)
 impl WebSocketRouter {
 	pub fn new() -> Self {
 		Self { _private: () }
