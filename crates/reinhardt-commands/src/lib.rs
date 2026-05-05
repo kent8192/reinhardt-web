@@ -151,6 +151,9 @@ pub mod context;
 /// Superuser creation command.
 #[cfg(feature = "auth")]
 pub(crate) mod createsuperuser;
+/// Debounced file-system watcher for hot-reload (replaces inline watcher).
+#[cfg(feature = "autoreload")]
+pub(crate) mod debounced_watcher;
 /// Embedded Tera templates for project/app scaffolding.
 pub mod embedded_templates;
 /// Code formatting utilities for generated code.

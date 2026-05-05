@@ -26,7 +26,10 @@ pub(crate) enum WasmRebuildOutcome {
 		error: WasmBuildError,
 	},
 	/// The pipeline did not run (e.g. the project does not declare a cdylib
-	/// target). No log line is emitted in this case.
+	/// target). No log line is emitted in this case. Reserved for callers
+	/// that want to suppress the pipeline at the source level; the watcher
+	/// currently only constructs `Ok`/`Failed`.
+	#[allow(dead_code)]
 	Skipped,
 }
 
@@ -39,7 +42,6 @@ impl WasmRebuildPipeline {
 	///
 	/// The underlying builder is synchronous, so we offload it onto a blocking
 	/// task to avoid stalling the tokio runtime that drives the watcher.
-	#[allow(dead_code)] // Used by run_watcher in a later task.
 	pub(crate) async fn run(ctx: &CommandContext) -> WasmRebuildOutcome {
 		let start = Instant::now();
 		let ctx_clone = ctx.clone();
@@ -54,10 +56,7 @@ impl WasmRebuildPipeline {
 			Ok(Err(error)) => WasmRebuildOutcome::Failed { duration, error },
 			Err(join_err) => WasmRebuildOutcome::Failed {
 				duration,
-				error: WasmBuildError::Other(format!(
-					"WASM rebuild task panicked: {}",
-					join_err
-				)),
+				error: WasmBuildError::Other(format!("WASM rebuild task panicked: {}", join_err)),
 			},
 		}
 	}
@@ -88,7 +87,6 @@ impl WasmRebuildPipeline {
 /// Format a `Duration` as `"{:.1}s"` seconds.
 ///
 /// Centralised so the Server pipeline can reuse the exact same shape later.
-#[allow(dead_code)] // Used via format_log_line; called indirectly in tests.
 fn format_duration(d: Duration) -> String {
 	format!("{:.1}s", d.as_secs_f32())
 }

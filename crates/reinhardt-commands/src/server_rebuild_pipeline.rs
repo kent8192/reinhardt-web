@@ -44,7 +44,6 @@ impl ServerRebuildPipeline {
 	///
 	/// On `BuildFailed` we deliberately leave `current_child` running so the
 	/// developer keeps a working server while the source has compile errors.
-	#[allow(dead_code)] // Used by run_watcher in a later task.
 	pub(crate) async fn run(
 		bin_name: &str,
 		current_child: &mut Child,

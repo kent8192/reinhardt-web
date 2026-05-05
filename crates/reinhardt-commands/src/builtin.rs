@@ -1761,6 +1761,9 @@ impl RunServerCommand {
 			#[cfg(feature = "autoreload")]
 			{
 				let index_raw = ctx.option("index").map(|s| s.to_string());
+				// `no_wasm_rebuild` is hard-coded to `false` here; Task 6
+				// wires the actual `--no-wasm-rebuild` CLI flag.
+				let no_wasm_rebuild = false;
 				Self::run_with_autoreload(
 					ctx,
 					address,
@@ -1770,6 +1773,7 @@ impl RunServerCommand {
 					static_dir,
 					no_spa,
 					index_raw.as_deref(),
+					no_wasm_rebuild,
 				)
 				.await
 			}
@@ -1788,7 +1792,11 @@ impl RunServerCommand {
 		}
 	}
 
-	/// Run server with file watching and auto-reload
+	/// Run server with file watching, debounced dispatch to the wasm + server
+	/// rebuild pipelines, and Django-style outer-loop resilience.
+	///
+	/// Pipeline failures are logged but never propagate as `Err` — only
+	/// watcher infrastructure errors (e.g. notify subscribe failed) do.
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	// Allow many arguments: autoreload handler mirrors run_server configuration options
 	#[allow(clippy::too_many_arguments)]
@@ -1801,18 +1809,62 @@ impl RunServerCommand {
 		static_dir: &str,
 		no_spa: bool,
 		index: Option<&str>,
+		no_wasm_rebuild: bool,
 	) -> CommandResult<()> {
-		use std::time::{Duration, Instant};
+		// Resolve the cargo metadata for the current working directory.
+		let metadata = cargo_metadata::MetadataCommand::new().exec().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("cargo metadata failed: {}", e))
+		})?;
 
-		ctx.info("Starting autoreload mode...");
-		ctx.verbose("Watching for file changes in src/ and Cargo.toml");
+		let cwd = std::env::current_dir().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("Failed to get current directory: {}", e))
+		})?;
+		let cwd_manifest = cwd.join("Cargo.toml");
 
-		let mut restart_count = 0;
-		let max_restarts_per_minute = 10;
-		let mut last_restart_time = Instant::now();
+		let roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &cwd_manifest);
 
-		// Set up Ctrl+C handler
-		let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+		// Derive the bin name from the current executable file stem. The
+		// child server is always re-spawned by re-execing the same binary,
+		// but `cargo build --bin <name>` needs the cargo bin name and that
+		// matches the executable file stem in every project layout we
+		// ship templates for.
+		let current_exe_for_bin = std::env::current_exe().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
+		})?;
+		let bin_name = current_exe_for_bin
+			.file_stem()
+			.and_then(|s| s.to_str())
+			.unwrap_or("manage")
+			.to_string();
+
+		// Startup banner (spec §7).
+		ctx.info("[hot-reload] enabled");
+		ctx.info(&format!(
+			"  watching: {} source roots",
+			roots.src_dirs.len() + roots.manifest_files.len()
+		));
+		for dir in &roots.src_dirs {
+			ctx.info(&format!("    - {}", dir.display()));
+		}
+		for manifest in &roots.manifest_files {
+			ctx.info(&format!("    - {}", manifest.display()));
+		}
+		#[cfg(feature = "pages")]
+		{
+			if with_pages && !no_wasm_rebuild {
+				ctx.info("  pipelines: server rebuild + restart, wasm rebuild");
+			} else {
+				ctx.info("  pipelines: server rebuild + restart");
+			}
+		}
+		#[cfg(not(feature = "pages"))]
+		{
+			ctx.info("  pipelines: server rebuild + restart");
+		}
+		ctx.info("  on failure: keep watching (Ctrl+C to quit)");
+
+		// Set up Ctrl+C handler.
+		let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 		let ctx_clone = ctx.clone();
 		tokio::spawn(async move {
 			if let Err(e) = tokio::signal::ctrl_c().await {
@@ -1823,84 +1875,43 @@ impl RunServerCommand {
 			let _ = shutdown_tx.send(());
 		});
 
-		loop {
-			// Check restart frequency limit (stop if more than 10 restarts per minute)
-			if restart_count >= max_restarts_per_minute {
-				let elapsed = last_restart_time.elapsed();
-				if elapsed < Duration::from_secs(60) {
-					return Err(crate::CommandError::ExecutionError(format!(
-						"Too many restarts ({} in {:?}). Aborting to prevent infinite loop.",
-						restart_count, elapsed
-					)));
-				} else {
-					// Reset counter if more than 1 minute has elapsed
-					restart_count = 0;
-					last_restart_time = Instant::now();
-				}
-			}
+		// Captured state for the respawn closure.
+		let address_owned = address.to_string();
+		let static_dir_owned = static_dir.to_string();
+		let index_owned = index.map(|s| s.to_string());
 
-			// Start child process
-			ctx.verbose("Starting server subprocess...");
-			let mut child = Self::spawn_server_process(
-				address, insecure, no_docs, with_pages, static_dir, no_spa, index,
-			)?;
-			restart_count += 1;
+		let respawn = move || -> std::io::Result<tokio::process::Child> {
+			Self::spawn_server_process(
+				&address_owned,
+				insecure,
+				no_docs,
+				with_pages,
+				&static_dir_owned,
+				no_spa,
+				index_owned.as_deref(),
+			)
+			.map_err(|e| std::io::Error::other(e.to_string()))
+		};
 
-			// Wait for file change, child process exit, or Ctrl+C
-			tokio::select! {
-				change_result = Self::watch_files_async() => {
-					match change_result {
-						Ok(_) => {
-							ctx.info("\n📝 File change detected. Restarting server...");
-							// Stop child process
-							if let Err(e) = child.kill().await {
-								ctx.warning(&format!("Failed to kill child process: {}", e));
-							}
-							// Ensure cleanup with wait() (prevent zombie processes)
-							let _ = child.wait().await;
+		// Spawn the initial child via the respawn closure so identical
+		// argument handling applies to startup and every reload.
+		let child = respawn().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("Failed to spawn initial server: {}", e))
+		})?;
 
-							// Wait for port release + debounce
-							tokio::time::sleep(Duration::from_millis(500)).await;
-							continue; // Return to loop start and restart
-						}
-						Err(e) => {
-							return Err(crate::CommandError::ExecutionError(format!(
-								"File watcher error: {}",
-								e
-							)));
-						}
-					}
-				}
+		let cfg = crate::debounced_watcher::WatcherConfig {
+			bin_name,
+			roots,
+			no_wasm_rebuild,
+			#[cfg(feature = "pages")]
+			pages_enabled: with_pages,
+		};
 
-				exit_status = child.wait() => {
-					match exit_status {
-						Ok(status) if status.success() => {
-							ctx.info("Server process exited cleanly.");
-							break; // Exit parent if clean exit
-						}
-						Ok(status) => {
-							return Err(crate::CommandError::ExecutionError(format!(
-								"Server process crashed with status: {}",
-								status
-							)));
-						}
-						Err(e) => {
-							return Err(crate::CommandError::ExecutionError(format!(
-								"Failed to wait for child process: {}",
-								e
-							)));
-						}
-					}
-				}
-
-				_ = &mut shutdown_rx => {
-					ctx.info("Shutdown signal received. Stopping server...");
-					let _ = child.kill().await;
-					let _ = child.wait().await;
-					break;
-				}
-			}
-		}
+		crate::debounced_watcher::run_watcher(ctx, &cfg, shutdown_rx, child, respawn)
+			.await
+			.map_err(|e| {
+				crate::CommandError::ExecutionError(format!("File watcher error: {}", e))
+			})?;
 
 		Ok(())
 	}
@@ -1951,56 +1962,6 @@ impl RunServerCommand {
 
 		cmd.spawn().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to spawn server process: {}", e))
-		})
-	}
-
-	/// Watch for file changes asynchronously
-	#[cfg(all(feature = "server", feature = "autoreload"))]
-	async fn watch_files_async() -> Result<(), notify::Error> {
-		use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
-		use std::path::Path;
-
-		let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-
-		let mut watcher = RecommendedWatcher::new(
-			move |res: Result<Event, notify::Error>| {
-				if let Ok(event) = res {
-					let _ = tx.blocking_send(event);
-				}
-			},
-			Config::default(),
-		)?;
-
-		// Directories to watch
-		watcher.watch(Path::new("src"), RecursiveMode::Recursive)?;
-		watcher.watch(Path::new("Cargo.toml"), RecursiveMode::NonRecursive)?;
-
-		// Wait for the first relevant change event
-		while let Some(event) = rx.recv().await {
-			if Self::is_relevant_change(&event) {
-				return Ok(());
-			}
-		}
-
-		Ok(())
-	}
-
-	/// Check if the change event is relevant
-	#[cfg(all(feature = "server", feature = "autoreload"))]
-	fn is_relevant_change(event: &notify::Event) -> bool {
-		use notify::EventKind;
-
-		matches!(
-			event.kind,
-			EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
-		) && event.paths.iter().any(|p| {
-			let path_str = p.to_string_lossy();
-			!path_str.contains("/target/")
-				&& !path_str.contains("/.git/")
-				&& !path_str.ends_with('~')
-				&& !path_str.ends_with(".swp")
-				&& !path_str.ends_with(".tmp")
-				&& (path_str.ends_with(".rs") || path_str.ends_with(".toml"))
 		})
 	}
 
@@ -3600,110 +3561,6 @@ port = 5432
 		}
 	}
 
-	#[cfg(all(feature = "server", feature = "autoreload"))]
-	mod autoreload_tests {
-		use super::*;
-		use notify::{Event, EventKind};
-		use std::path::PathBuf;
-
-		#[test]
-		fn test_is_relevant_change_rust_file() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/main.rs")],
-				attrs: Default::default(),
-			};
-			assert!(RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_toml_file() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/Cargo.toml")],
-				attrs: Default::default(),
-			};
-			assert!(RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_target_dir_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/target/debug/main.rs")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_git_dir_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/.git/objects/abc")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_swap_file_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/main.rs.swp")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_backup_file_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/main.rs~")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_tmp_file_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/temp.tmp")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_non_rust_file_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/style.css")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_create_event() {
-			let event = Event {
-				kind: EventKind::Create(notify::event::CreateKind::File),
-				paths: vec![PathBuf::from("/project/src/new.rs")],
-				attrs: Default::default(),
-			};
-			assert!(RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_remove_event() {
-			let event = Event {
-				kind: EventKind::Remove(notify::event::RemoveKind::File),
-				paths: vec![PathBuf::from("/project/src/old.rs")],
-				attrs: Default::default(),
-			};
-			assert!(RunServerCommand::is_relevant_change(&event));
-		}
-	}
+	// `is_relevant_change` unit tests now live in
+	// `crate::debounced_watcher::tests` after the watcher refactor.
 }

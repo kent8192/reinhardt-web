@@ -20,10 +20,6 @@ use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 /// Directories and manifest files to watch for hot-reload.
-//
-// `dead_code` allowed: this type is consumed by `debounced_watcher` (Task 5).
-// Remove the attribute once the watcher pipeline lands.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceRoots {
 	/// Per-package `src/` directories to watch recursively.
@@ -39,10 +35,6 @@ impl SourceRoots {
 	/// Registry and git dependencies are skipped (their `Dependency::path`
 	/// is `None`). If no package in the metadata matches `cwd_manifest`,
 	/// the result is empty.
-	//
-	// `dead_code` allowed: callers land in subsequent tasks (Task 5
-	// wires this into `debounced_watcher`).
-	#[allow(dead_code)]
 	pub(crate) fn from_metadata(metadata: &cargo_metadata::Metadata, cwd_manifest: &Path) -> Self {
 		// Index packages by manifest path and by name for two lookup styles
 		// (BFS uses the `path` field on a Dependency to find the next pkg).
