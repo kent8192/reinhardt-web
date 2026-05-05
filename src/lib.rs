@@ -1228,6 +1228,54 @@ pub use reinhardt_websockets::{
 	get_websocket_router, register_websocket_router, reverse_websocket_url,
 };
 
+// Wasm-only inert shim of `WebSocketRouter`.
+//
+// `reinhardt-websockets` (and the underlying `reinhardt_core::ws`) is gated
+// `#[cfg(native)]` and is not wasm-compatible. The `#[url_patterns(... mode = ws)]`
+// macro expansion emits builder calls of the form
+// `WebSocketRouter::new().with_namespace(...).consumer(handler_fn)` whose return
+// type is referenced from the user-facing function signature, so the symbol must
+// resolve on wasm even though no real router is wired up there.
+//
+// The shim mirrors the call-shape of the real builder
+// (`reinhardt_core::ws::WebSocketRouter`) — `new`, `with_namespace`, and
+// `consumer<C, F>(self, F) -> Self where F: Fn() -> C, C: 'static` — but does
+// nothing. The `WebSocketEndpointInfo` bound from the real signature is dropped
+// because that trait lives in `reinhardt_core::ws`, which is itself
+// `#[cfg(native)]` and unreachable from wasm; `C: 'static` is sufficient for
+// type-checking macro-emitted call sites.
+#[cfg(all(feature = "websockets", not(native)))]
+#[doc(hidden)]
+pub struct WebSocketRouter {
+	_private: (),
+}
+
+#[cfg(all(feature = "websockets", not(native)))]
+impl WebSocketRouter {
+	pub fn new() -> Self {
+		Self { _private: () }
+	}
+
+	pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
+		self
+	}
+
+	pub fn consumer<C, F>(self, _f: F) -> Self
+	where
+		F: Fn() -> C,
+		C: 'static,
+	{
+		self
+	}
+}
+
+#[cfg(all(feature = "websockets", not(native)))]
+impl Default for WebSocketRouter {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 /// SQL query builder module.
 ///
 /// Re-exports [`reinhardt_query`] for building type-safe SQL queries.
