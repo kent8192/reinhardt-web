@@ -164,8 +164,9 @@ fn format_duration(d: Duration) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn format_log_line_ok_includes_restart_and_duration() {
 		// Arrange
 		let outcome = ServerRebuildOutcome::Ok {
@@ -179,7 +180,7 @@ mod tests {
 		assert_eq!(line, "[hot-reload] Server rebuild + restart OK (took 2.5s)");
 	}
 
-	#[test]
+	#[rstest]
 	fn format_log_line_build_failed_starts_with_failed_prefix() {
 		// Arrange
 		let outcome = ServerRebuildOutcome::BuildFailed {
@@ -197,27 +198,20 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn tail_lines_returns_last_n_lines() {
-		// Arrange
-		let stderr = "line1\nline2\nline3\nline4\nline5";
-
+	#[rstest]
+	#[case::keeps_last_three("line1\nline2\nline3\nline4\nline5", 3, "line3\nline4\nline5")]
+	#[case::n_larger_than_input_returns_all(
+		"only-line-1\nonly-line-2",
+		20,
+		"only-line-1\nonly-line-2"
+	)]
+	#[case::n_zero_returns_empty("anything", 0, "")]
+	#[case::single_line_input("single", 5, "single")]
+	fn tail_lines_keeps_last_n(#[case] stderr: &str, #[case] n: usize, #[case] expected: &str) {
 		// Act
-		let tail = ServerRebuildPipeline::tail_lines(stderr, 3);
+		let tail = ServerRebuildPipeline::tail_lines(stderr, n);
 
 		// Assert
-		assert_eq!(tail, "line3\nline4\nline5");
-	}
-
-	#[test]
-	fn tail_lines_returns_all_when_fewer_than_n() {
-		// Arrange
-		let stderr = "only-line-1\nonly-line-2";
-
-		// Act
-		let tail = ServerRebuildPipeline::tail_lines(stderr, 20);
-
-		// Assert
-		assert_eq!(tail, "only-line-1\nonly-line-2");
+		assert_eq!(tail, expected);
 	}
 }
