@@ -363,7 +363,13 @@ pub mod views;
 pub use reinhardt_apps::{AppConfig, AppError, AppResult, Apps};
 
 // Re-export macros
-#[cfg(all(feature = "core", native))]
+// Issue #4161: `AppConfig` (derive), `app_config` (attribute), and `installed_apps`
+// are proc-macros that run host-side; the macro-emitted code references
+// `::reinhardt::macros::AppConfig` and `::reinhardt::reinhardt_apps::*`.
+// Re-exporting them on wasm (matching #4156's pattern for routes/url_patterns)
+// enables downstream client crates to use `#[app_config]` and `#[url_patterns]`
+// cross-target. The actual runtime types they reference are provided by the
+// wasm shim modules below.
 pub use reinhardt_macros::{AppConfig, app_config, installed_apps};
 
 // Re-export settings attribute macro (requires conf feature)
@@ -389,7 +395,10 @@ pub use migrations as reinhardt_migrations;
 
 // Re-export reinhardt_macros as a module for hierarchical imports
 // This allows macro-generated code to use ::reinhardt::macros::Model
-#[cfg(native)]
+// Ungated on wasm (Issue #4161): the `#[app_config]` attribute macro
+// emits `#[derive(::reinhardt::macros::AppConfig)]`, so downstream wasm
+// consumers need this path to resolve. `reinhardt-macros` is a proc-macro
+// crate that runs host-side and is wasm-safe to re-export.
 #[doc(hidden)]
 pub mod macros {
 	pub use reinhardt_macros::*;
