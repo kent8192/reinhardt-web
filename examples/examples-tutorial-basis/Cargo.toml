@@ -13,6 +13,10 @@ crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 name = "examples-tutorial-basis"
 path = "src/bin/manage.rs"
 
+[[bin]]
+name = "manage"
+path = "src/bin/manage.rs"
+
 [dependencies]
 # Common dependencies (both WASM and server)
 serde = { version = "1.0.228", features = ["derive"] }
