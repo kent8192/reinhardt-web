@@ -53,7 +53,6 @@ my-api/
 ├── .gitignore
 ├── Cargo.toml
 ├── Makefile.toml
-├── bacon.toml
 ├── settings/
 │   ├── base.toml
 │   ├── local.toml
@@ -92,7 +91,6 @@ my-app/
 ├── .gitignore
 ├── Cargo.toml
 ├── Makefile.toml
-├── bacon.toml
 ├── build.rs
 ├── index.html
 ├── settings/

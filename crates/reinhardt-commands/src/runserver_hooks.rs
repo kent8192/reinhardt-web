@@ -7,6 +7,33 @@
 //! 2. **Startup** ([`RunserverHook::on_server_start`]) — after DI is ready, before listen.
 //!
 //! Register hooks with the `#[hook(on = runserver)]` attribute macro.
+//!
+//! # Hot-reload
+//!
+//! When the `autoreload` feature is enabled, `runserver` watches the workspace
+//! source roots and rebuilds in place on every change:
+//!
+//! ```text
+//! cargo run --bin manage -- runserver --with-pages
+//! ```
+//!
+//! Edit any Rust source file (server-side or wasm-side) and the bundle plus
+//! the server are rebuilt automatically. Pass `--noreload` to disable
+//! auto-reload entirely, or `--no-wasm-rebuild` to keep server reload but
+//! manage the wasm build yourself.
+//!
+//! ## Failure modes
+//!
+//! - **OL-1 (loop persistence)**: a build failure never terminates the watch
+//!   loop. Termination requires SIGINT/SIGTERM or an explicit user quit.
+//! - **OL-2 (greppable logs)**: every rebuild emits a single summary line
+//!   prefixed `[hot-reload]`, e.g. `[hot-reload] WASM rebuild OK (took 1.2s)`
+//!   on success or `[hot-reload] WASM rebuild FAILED (took 2.3s):` followed
+//!   by the cargo exit code and the last lines of stderr on failure.
+//! - **OL-3 (partial-failure preservation)**: if only one pipeline fails, the
+//!   other side's last-good output is kept — failed wasm leaves the previous
+//!   `dist/` in place; failed server keeps the previous server process. The
+//!   next save retriggers both pipelines.
 
 use std::error::Error;
 use std::sync::Arc;
