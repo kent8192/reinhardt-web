@@ -48,19 +48,42 @@ def enable_features(manifest: Path, extra_features: list[str]) -> None:
 
 
 def workspace_form(manifest: Path, reinhardt_path: Path) -> None:
-	"""Replace `reinhardt = { version = "..." }` with `path = "<reinhardt_path>"`."""
+	"""Repoint every `reinhardt` dependency at the workspace checkout.
+
+	Two forms are produced by the project_pages_template:
+	  1. `[dependencies] reinhardt = { version = "...", ... }`     (inline form)
+	  2. `[dev-dependencies.reinhardt] \\n version = "..."`        (table form)
+	Both must be rewritten — leaving either at `version = "..."` while the other
+	uses `path = "..."` triggers Cargo's
+	`Dependency 'reinhardt' has different source paths depending on the build target`
+	error, since dev-deps and prod-deps are treated as separate resolution targets.
+	"""
 	text = manifest.read_text()
-	pattern = re.compile(
+	# Form 1: inline `reinhardt = { version = "...", ... }`
+	inline_pattern = re.compile(
 		r'^reinhardt\s*=\s*\{\s*version\s*=\s*"[^"]*"\s*,',
 		re.MULTILINE,
 	)
-	new_text, count = pattern.subn(
+	new_text, inline_count = inline_pattern.subn(
 		f'reinhardt = {{ path = "{reinhardt_path}",',
 		text,
 	)
-	if count == 0:
+	# Form 2: `[dev-dependencies.reinhardt]` table whose first key is `version`.
+	# Match the `version = "..."` line that immediately follows the section
+	# header (allowing intervening blank/comment lines) and replace just that
+	# line with `path = "<reinhardt_path>"`.
+	table_pattern = re.compile(
+		r'(^\[dev-dependencies\.reinhardt\][^\[]*?\n)version\s*=\s*"[^"]*"',
+		re.MULTILINE,
+	)
+	new_text, table_count = table_pattern.subn(
+		lambda m: f'{m.group(1)}path = "{reinhardt_path}"',
+		new_text,
+	)
+	if inline_count == 0 and table_count == 0:
 		print(
-			"error: no `reinhardt = { version = \"...\" }` line found in manifest",
+			"error: no `reinhardt = { version = \"...\" }` or "
+			"`[dev-dependencies.reinhardt]` block found in manifest",
 			file=sys.stderr,
 		)
 		sys.exit(2)
