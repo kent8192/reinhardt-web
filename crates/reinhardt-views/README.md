@@ -17,11 +17,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.26", features = ["views"] }
+reinhardt = { version = "0.1.0-rc.27", features = ["views"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.26", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.26", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.27", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.27", features = ["full"] }      # All features
 ```
 
 Then import view features:
@@ -262,7 +262,7 @@ use reinhardt::views::{OpenAPISpec, Info, PathItem, Operation};
 
 let spec = OpenAPISpec::new(Info::new(
     "My API".into(),
-    "0.1.0-rc.26".into()
+    "0.1.0-rc.27".into()
 ));
 ```
 
