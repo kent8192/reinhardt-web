@@ -295,54 +295,78 @@ pub mod urls;
 
 /// WASM shim for the `urls` module (Issue #4161).
 ///
-/// Provides only the namespace structure that `#[url_patterns]` and
-/// downstream wasm SPAs reference (`reinhardt::urls::prelude::UnifiedRouter`,
-/// `reinhardt::urls::proxy`). The real `reinhardt-urls` crate is wasm-safe
-/// in principle, but its `prelude` is gated `#[cfg(all(feature = "routers",
-/// native))]`, so the umbrella exposes inert shims here. None of these
-/// types perform real routing on wasm — they exist so that macro
-/// expansions and downstream client code compile.
+/// Provides the namespace structure that `#[url_patterns]` and downstream
+/// wasm SPAs reference (`reinhardt::urls::prelude::UnifiedRouter`,
+/// `reinhardt::urls::proxy`). The real `reinhardt-urls` crate is wasm-safe,
+/// but its `prelude` is gated `#[cfg(all(feature = "routers", native))]`.
+///
+/// When the `client-router` feature is enabled (the realistic configuration
+/// for wasm consumers that use `mode = unified`), this re-exports the real
+/// wasm-side `UnifiedRouter` from `reinhardt_urls::routers`. That type
+/// provides the correct closure signatures
+/// (`server: FnOnce(ServerRouterStub) -> ServerRouterStub`,
+/// `client: FnOnce(ClientRouter) -> ClientRouter`) so user-supplied bodies
+/// such as `.client(|c| c.named_route(...))` type-check on wasm.
+///
+/// Without `client-router`, an inert stub is exposed so that the path
+/// resolves; user bodies that invoke `.server`/`.client` on the stub are
+/// expected to be no-ops in that minimal configuration.
 #[cfg(not(native))]
 pub mod urls {
 	/// Wasm-side stub mirroring `reinhardt_urls::prelude`.
 	pub mod prelude {
-		/// Inert `UnifiedRouter` stub for wasm consumers.
-		///
-		/// The macro expansion of `#[url_patterns(.., mode = unified)]`
-		/// calls `.with_namespace(...)` on the value the user's function
-		/// returns; this stub provides the matching builder methods so
-		/// the generated code type-checks.
-		pub struct UnifiedRouter {
-			_private: (),
-		}
+		// Real wasm `UnifiedRouter` (with `ServerRouterStub` / `ClientRouter`
+		// builder closures). Available when `client-router` is enabled.
+		#[cfg(feature = "client-router")]
+		pub use reinhardt_urls::routers::{ClientRouter, UnifiedRouter};
+		#[cfg(feature = "client-router")]
+		pub use reinhardt_urls::routers::unified_router::ServerRouterStub;
 
-		impl UnifiedRouter {
-			pub fn new() -> Self {
-				Self { _private: () }
+		// Inert fallback for wasm builds without `client-router`. Closures
+		// receive a stub parameter typed to match the real wasm API shape so
+		// that no-argument forms (`.server(|_| _)`) still type-check.
+		#[cfg(not(feature = "client-router"))]
+		pub use stub::*;
+
+		#[cfg(not(feature = "client-router"))]
+		mod stub {
+			/// Empty stand-in for `reinhardt_urls::routers::ServerRouterStub`.
+			pub struct ServerRouterStub;
+			/// Empty stand-in for `reinhardt_urls::routers::client_router::ClientRouter`.
+			pub struct ClientRouter;
+
+			pub struct UnifiedRouter {
+				_private: (),
 			}
 
-			pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
-				self
+			impl UnifiedRouter {
+				pub fn new() -> Self {
+					Self { _private: () }
+				}
+
+				pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
+					self
+				}
+
+				pub fn server<F>(self, _f: F) -> Self
+				where
+					F: FnOnce(ServerRouterStub) -> ServerRouterStub,
+				{
+					self
+				}
+
+				pub fn client<F>(self, _f: F) -> Self
+				where
+					F: FnOnce(ClientRouter) -> ClientRouter,
+				{
+					self
+				}
 			}
 
-			pub fn server<F>(self, _f: F) -> Self
-			where
-				F: FnOnce(&mut ()),
-			{
-				self
-			}
-
-			pub fn client<F>(self, _f: F) -> Self
-			where
-				F: FnOnce(&mut ()),
-			{
-				self
-			}
-		}
-
-		impl Default for UnifiedRouter {
-			fn default() -> Self {
-				Self::new()
+			impl Default for UnifiedRouter {
+				fn default() -> Self {
+					Self::new()
+				}
 			}
 		}
 	}
@@ -1330,7 +1354,9 @@ pub use reinhardt_websockets::{
 /// `reinhardt-websockets`, which depends on `tokio-tungstenite` and is
 /// native-only. This stub matches the surface the macro emits and the
 /// user-facing imports (`use reinhardt::WebSocketRouter`) so that wasm
-/// consumers compile.
+/// consumers compile, including the typical
+/// `WebSocketRouter::new().consumer(my_ws).consumer(other_ws)` body
+/// pattern.
 #[cfg(not(native))]
 pub struct WebSocketRouter {
 	_private: (),
@@ -1343,6 +1369,20 @@ impl WebSocketRouter {
 	}
 
 	pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
+		self
+	}
+
+	/// Inert wasm counterpart of `WebSocketRouter::consumer`.
+	///
+	/// The native variant requires `C: WebSocketEndpointInfo`, but that
+	/// trait lives behind `#[cfg(native)]` in `reinhardt-core::ws`. To
+	/// keep `#[url_patterns(.., mode = ws)]` user bodies such as
+	/// `.consumer(chat_ws)` compiling on wasm, this stub accepts any
+	/// factory `Fn() -> C` with no further bounds and discards it.
+	pub fn consumer<C, F>(self, _f: F) -> Self
+	where
+		F: Fn() -> C,
+	{
 		self
 	}
 }
