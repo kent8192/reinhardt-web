@@ -121,6 +121,56 @@ pub mod reinhardt_apps {
 	pub use reinhardt_apps::*;
 }
 
+// WASM shim for `reinhardt_apps` (Issue #4161).
+//
+// `#[url_patterns(...)]` and `#[app_config(...)]` expand to code that
+// references `::reinhardt::reinhardt_apps::apps::AppLabel` and
+// `::reinhardt::reinhardt_apps::AppConfig`. The real `reinhardt-apps`
+// crate depends on `tokio` / `reinhardt-server` and is decidedly
+// native-only, so on wasm we expose only the surface the macro emits.
+//
+// These shims compile but never execute: the dashboard-style SPA
+// imports them transitively, but only constructs `UnifiedRouter` /
+// `WebSocketRouter`, which are themselves wasm-side stubs (see below).
+#[cfg(not(native))]
+#[doc(hidden)]
+pub mod reinhardt_apps {
+	/// Application label trait (wasm shim).
+	///
+	/// Mirrors the trait emitted by `installed_apps!` and required by
+	/// `#[url_patterns]` expansions. The native build re-exports the real
+	/// trait from `reinhardt-apps`.
+	pub mod apps {
+		pub trait AppLabel {
+			const LABEL: &'static str;
+			fn path(&self) -> &'static str {
+				Self::LABEL
+			}
+		}
+	}
+
+	/// Application configuration (wasm shim).
+	///
+	/// `#[app_config(name = "...", label = "...")]` expands to
+	/// `pub fn config() -> AppConfig { AppConfig::new(name, label).with_verbose_name(...) }`.
+	/// On wasm we provide a builder-shaped stub with the same signatures so
+	/// the expansion compiles. None of these methods are intended to be
+	/// invoked at runtime in a wasm consumer.
+	pub struct AppConfig {
+		_private: (),
+	}
+
+	impl AppConfig {
+		pub fn new(_name: impl Into<String>, _label: impl Into<String>) -> Self {
+			Self { _private: () }
+		}
+
+		pub fn with_verbose_name(self, _verbose_name: impl Into<String>) -> Self {
+			self
+		}
+	}
+}
+
 #[cfg(all(feature = "di", native))]
 #[doc(hidden)]
 pub mod reinhardt_di {
@@ -242,6 +292,90 @@ pub mod template;
 pub mod test;
 #[cfg(native)]
 pub mod urls;
+
+/// WASM shim for the `urls` module (Issue #4161).
+///
+/// Provides the namespace structure that `#[url_patterns]` and downstream
+/// wasm SPAs reference (`reinhardt::urls::prelude::UnifiedRouter`,
+/// `reinhardt::urls::proxy`). The real `reinhardt-urls` crate is wasm-safe,
+/// but its `prelude` is gated `#[cfg(all(feature = "routers", native))]`.
+///
+/// When the `client-router` feature is enabled (the realistic configuration
+/// for wasm consumers that use `mode = unified`), this re-exports the real
+/// wasm-side `UnifiedRouter` from `reinhardt_urls::routers`. That type
+/// provides the correct closure signatures
+/// (`server: FnOnce(ServerRouterStub) -> ServerRouterStub`,
+/// `client: FnOnce(ClientRouter) -> ClientRouter`) so user-supplied bodies
+/// such as `.client(|c| c.named_route(...))` type-check on wasm.
+///
+/// Without `client-router`, an inert stub is exposed so that the path
+/// resolves; user bodies that invoke `.server`/`.client` on the stub are
+/// expected to be no-ops in that minimal configuration.
+#[cfg(not(native))]
+pub mod urls {
+	/// Wasm-side stub mirroring `reinhardt_urls::prelude`.
+	pub mod prelude {
+		// Real wasm `UnifiedRouter` (with `ServerRouterStub` / `ClientRouter`
+		// builder closures). Available when `client-router` is enabled.
+		#[cfg(feature = "client-router")]
+		pub use reinhardt_urls::routers::unified_router::ServerRouterStub;
+		#[cfg(feature = "client-router")]
+		pub use reinhardt_urls::routers::{ClientRouter, UnifiedRouter};
+
+		// Inert fallback for wasm builds without `client-router`. Closures
+		// receive a stub parameter typed to match the real wasm API shape so
+		// that no-argument forms (`.server(|_| _)`) still type-check.
+		#[cfg(not(feature = "client-router"))]
+		pub use stub::*;
+
+		#[cfg(not(feature = "client-router"))]
+		mod stub {
+			/// Empty stand-in for `reinhardt_urls::routers::ServerRouterStub`.
+			pub struct ServerRouterStub;
+			/// Empty stand-in for `reinhardt_urls::routers::client_router::ClientRouter`.
+			pub struct ClientRouter;
+
+			pub struct UnifiedRouter {
+				_private: (),
+			}
+
+			impl UnifiedRouter {
+				pub fn new() -> Self {
+					Self { _private: () }
+				}
+
+				pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
+					self
+				}
+
+				pub fn server<F>(self, _f: F) -> Self
+				where
+					F: FnOnce(ServerRouterStub) -> ServerRouterStub,
+				{
+					self
+				}
+
+				pub fn client<F>(self, _f: F) -> Self
+				where
+					F: FnOnce(ClientRouter) -> ClientRouter,
+				{
+					self
+				}
+			}
+
+			impl Default for UnifiedRouter {
+				fn default() -> Self {
+					Self::new()
+				}
+			}
+		}
+	}
+
+	/// Wasm-side stub for the `proxy` submodule referenced by
+	/// `crate_paths::get_reinhardt_proxy_crate()`. Empty on wasm.
+	pub mod proxy {}
+}
+
 #[cfg(native)]
 pub mod utils;
 #[cfg(native)]
@@ -253,7 +387,13 @@ pub mod views;
 pub use reinhardt_apps::{AppConfig, AppError, AppResult, Apps};
 
 // Re-export macros
-#[cfg(all(feature = "core", native))]
+// Issue #4161: `AppConfig` (derive), `app_config` (attribute), and `installed_apps`
+// are proc-macros that run host-side; the macro-emitted code references
+// `::reinhardt::macros::AppConfig` and `::reinhardt::reinhardt_apps::*`.
+// Re-exporting them on wasm (matching #4156's pattern for routes/url_patterns)
+// enables downstream client crates to use `#[app_config]` and `#[url_patterns]`
+// cross-target. The actual runtime types they reference are provided by the
+// wasm shim modules below.
 pub use reinhardt_macros::{AppConfig, app_config, installed_apps};
 
 // Re-export settings attribute macro (requires conf feature)
@@ -279,7 +419,10 @@ pub use migrations as reinhardt_migrations;
 
 // Re-export reinhardt_macros as a module for hierarchical imports
 // This allows macro-generated code to use ::reinhardt::macros::Model
-#[cfg(native)]
+// Ungated on wasm (Issue #4161): the `#[app_config]` attribute macro
+// emits `#[derive(::reinhardt::macros::AppConfig)]`, so downstream wasm
+// consumers need this path to resolve. `reinhardt-macros` is a proc-macro
+// crate that runs host-side and is wasm-safe to re-export.
 #[doc(hidden)]
 pub mod macros {
 	pub use reinhardt_macros::*;
@@ -1202,6 +1345,54 @@ pub use reinhardt_websockets::{
 	RouteError, RouteResult, WebSocketRoute, WebSocketRouter, clear_websocket_router,
 	get_websocket_router, register_websocket_router, reverse_websocket_url,
 };
+
+/// WASM shim for `WebSocketRouter` (Issue #4161).
+///
+/// `#[url_patterns(.., mode = ws)]` expansions call `.with_namespace(...)`
+/// on the function's return value, and the function's return type
+/// references `WebSocketRouter`. The real type lives in
+/// `reinhardt-websockets`, which depends on `tokio-tungstenite` and is
+/// native-only. This stub matches the surface the macro emits and the
+/// user-facing imports (`use reinhardt::WebSocketRouter`) so that wasm
+/// consumers compile, including the typical
+/// `WebSocketRouter::new().consumer(my_ws).consumer(other_ws)` body
+/// pattern.
+#[cfg(not(native))]
+pub struct WebSocketRouter {
+	_private: (),
+}
+
+#[cfg(not(native))]
+impl WebSocketRouter {
+	pub fn new() -> Self {
+		Self { _private: () }
+	}
+
+	pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
+		self
+	}
+
+	/// Inert wasm counterpart of `WebSocketRouter::consumer`.
+	///
+	/// The native variant requires `C: WebSocketEndpointInfo`, but that
+	/// trait lives behind `#[cfg(native)]` in `reinhardt-core::ws`. To
+	/// keep `#[url_patterns(.., mode = ws)]` user bodies such as
+	/// `.consumer(chat_ws)` compiling on wasm, this stub accepts any
+	/// factory `Fn() -> C` with no further bounds and discards it.
+	pub fn consumer<C, F>(self, _f: F) -> Self
+	where
+		F: Fn() -> C,
+	{
+		self
+	}
+}
+
+#[cfg(not(native))]
+impl Default for WebSocketRouter {
+	fn default() -> Self {
+		Self::new()
+	}
+}
 
 /// SQL query builder module.
 ///
