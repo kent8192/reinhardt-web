@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.26...reinhardt-commands@v0.1.0-rc.27) - 2026-05-06
+
+### Added
+
+- *(commands)* add SourceRoots derived from cargo metadata
+- *(commands)* add WasmRebuildPipeline with structured log lines
+- *(commands)* add ServerRebuildPipeline with cargo build + swap
+- *(commands)* add --no-wasm-rebuild flag to runserver
+
+### Documentation
+
+- document built-in runserver hot-reload, drop bacon mentions
+- *(changelog)* record hot-reload fix and bacon removal
+
+### Fixed
+
+- *(commands)* rebuild wasm bundle on hot-reload file change
+- *(commands)* run wasm + server rebuild pipelines in parallel
+- *(commands)* drop unused WasmBuildError::Other variant to keep RC enum exhaustive
+
+### Maintenance
+
+- *(commands)* expose cargo_metadata under autoreload feature
+- *(build)* remove bacon-based watch tasks
+
+### Testing
+
+- *(commands)* add HR-1..HR-6 hot-reload integration tests
+- *(commands)* add run_watcher integration test for OL-1 resilience
+
 ### Fixed
 - `runserver --with-pages` (without `--noreload`) now rebuilds the WASM bundle and the server binary on file changes. Previously the watcher restarted the server process without rebuilding either artefact, so source edits had no effect on the running app. Pipeline failures no longer terminate the watcher: a fresh save retriggers the failed pipeline. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
 
