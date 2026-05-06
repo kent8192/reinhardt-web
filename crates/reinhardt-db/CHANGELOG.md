@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.26...reinhardt-db@v0.1.0-rc.27) - 2026-05-06
+
+### Documentation
+
+- *(db)* refine SQLite AUTOINCREMENT and BIGINT-affinity comments
+
+### Fixed
+
+- *(db)* emit INTEGER PRIMARY KEY AUTOINCREMENT for SQLite regardless of integer width
+
 ## [0.1.0-rc.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.23...reinhardt-db@v0.1.0-rc.24) - 2026-04-30
 
 ### Added
