@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(urls)* stub `ServerRouter` builder methods on `ServerRouterStub` so `#[url_patterns(mode = unified | server)]` closures compile on wasm (#4185)
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.25...reinhardt-urls@v0.1.0-rc.26) - 2026-05-05
 
 ### Fixed
