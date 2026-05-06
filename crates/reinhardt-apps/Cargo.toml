@@ -35,6 +35,7 @@ linkme = "0.3"
 inventory = "0.3"
 reinhardt-conf = {workspace = true, features = ["settings"]}
 reinhardt-core = {workspace = true, features = ["types"]}
+reinhardt-utils = { workspace = true }
 
 [features]
 default = []
