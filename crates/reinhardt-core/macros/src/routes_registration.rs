@@ -512,18 +512,27 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		// consumers. Fixes #4175.
 		quote! {}
 	} else {
-		let app_labels = match crate::macro_state::read_installed_apps() {
-			Ok(labels) => labels,
-			Err(msg) => {
-				return Err(syn::Error::new(
-					proc_macro2::Span::call_site(),
-					format!(
-						"Failed to read installed apps: {msg}. \
-						 Ensure `installed_apps!` is invoked before `#[routes]`."
-					),
-				));
-			}
-		};
+		// Soft-fallback when the installed-apps state file is missing
+		// (Issue #4189). Hard-erroring here breaks wasm SPA consumers
+		// where the scaffold's `mod apps` (containing `installed_apps!`)
+		// is gated `#[cfg(server)]`, so the file is never written for
+		// wasm builds. Cargo does not expose `CARGO_CFG_TARGET_FAMILY`
+		// to proc-macro processes (only to build scripts), so the macro
+		// cannot detect the consumer's target at expansion time. Falling
+		// back to an empty label list joins the existing
+		// `app_idents.is_empty()` branch below, which emits only the
+		// minimal `url_prelude { pub use super::ResolvedUrls; }` block —
+		// exactly the surface wasm SPA consumers need.
+		// `read_installed_apps()` returns `Ok(empty)` when the state file is
+		// absent (the expected wasm soft-fallback) and `Err` for all other IO
+		// failures, so genuine misconfigurations still surface as macro errors
+		// rather than being silently swallowed.
+		let app_labels = crate::macro_state::read_installed_apps().map_err(|e| {
+			syn::Error::new(
+				proc_macro2::Span::call_site(),
+				format!("Failed to read installed apps state: {e}"),
+			)
+		})?;
 
 		let app_idents: Vec<proc_macro2::Ident> = app_labels
 			.iter()
