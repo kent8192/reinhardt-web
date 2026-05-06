@@ -181,19 +181,18 @@
 
 				// Re-render any Mermaid diagrams already on the page so colors match the new theme.
 				// Restore the original source via textContent (safe DOM mutation; no innerHTML).
-				if (window.__reinhardtMermaidLoaded && Array.isArray(window.__reinhardtMermaidNodes)) {
-					window.__reinhardtMermaidNodes.forEach(function(node) {
+				var rw = window.__reinhardt;
+				if (rw && rw.mermaidLoaded && Array.isArray(rw.mermaidNodes)) {
+					rw.mermaidNodes.forEach(function(node) {
 						var src = node.getAttribute('data-source');
 						if (src == null) return;
 						node.removeAttribute('data-processed');
-						// Clear the previously-rendered SVG by removing all children, then restore source text.
-						while (node.firstChild) {
-							node.removeChild(node.firstChild);
-						}
+						// Assigning textContent replaces all existing children (including the
+						// previously-rendered SVG) in a single operation.
 						node.textContent = src;
 					});
-					if (typeof window.__reinhardtRunMermaid === 'function') {
-						window.__reinhardtRunMermaid();
+					if (typeof rw.runMermaid === 'function') {
+						rw.runMermaid();
 					}
 				}
 			});
@@ -210,7 +209,9 @@
 			var MERMAID_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/' + MERMAID_VERSION + '/mermaid.min.js';
 			var MERMAID_SRI = 'sha384-o+g/BxPwhi0C3RK7oQBxQuNimeafQ3GE/ST4iT2BxVI4Wzt60SH4pq9iXVYujjaS';
 			var mermaidNodes = [];
-			window.__reinhardtMermaidNodes = mermaidNodes;
+			// Single namespace for Reinhardt-injected globals to keep window surface small.
+			var rw = window.__reinhardt = window.__reinhardt || {};
+			rw.mermaidNodes = mermaidNodes;
 
 			document.querySelectorAll('pre code').forEach(function(block) {
 				var wrapper = block.closest('pre');
@@ -287,14 +288,14 @@
 				window.mermaid.run({ querySelector: '.mermaid' });
 			}
 
-			window.__reinhardtRunMermaid = runMermaid;
+			rw.runMermaid = runMermaid;
 
 			var script = document.createElement('script');
 			script.src = MERMAID_SRC;
 			script.integrity = MERMAID_SRI;
 			script.crossOrigin = 'anonymous';
 			script.onload = function() {
-				window.__reinhardtMermaidLoaded = true;
+				rw.mermaidLoaded = true;
 				runMermaid();
 			};
 			script.onerror = function() {
