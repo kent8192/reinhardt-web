@@ -1368,7 +1368,20 @@ impl Operation {
 					parts.push("AUTO_INCREMENT".to_string().into());
 				}
 				SqlDialect::Sqlite => {
-					parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+					// SQLite requires the literal token `INTEGER` (not `BIGINT`/`SMALLINT`)
+					// for AUTOINCREMENT columns. Widen any integer width to `INTEGER`
+					// because SQLite's storage classes do not distinguish integer widths.
+					match &col.type_definition {
+						FieldType::BigInteger | FieldType::Integer | FieldType::SmallInteger => {
+							parts.push("INTEGER".to_string().into());
+						}
+						_ => {
+							// Non-integer auto_increment is invalid for SQLite; emit the
+							// original type and let SQLite surface the error rather than
+							// silently mis-emitting.
+							parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+						}
+					}
 					// For SQLite, if part of composite PK, we don't add AUTOINCREMENT here
 					// It will be handled by the table-level PRIMARY KEY constraint
 				}
@@ -1437,7 +1450,22 @@ impl Operation {
 					parts.push("AUTO_INCREMENT".to_string().into());
 				}
 				SqlDialect::Sqlite => {
-					parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+					// SQLite requires the literal token `INTEGER` (not `BIGINT`/`SMALLINT`)
+					// for AUTOINCREMENT columns. Widen any integer width to `INTEGER`
+					// because SQLite's storage classes do not distinguish integer widths,
+					// and `BIGINT PRIMARY KEY AUTOINCREMENT` is rejected at apply time
+					// with: "AUTOINCREMENT is only allowed on an INTEGER PRIMARY KEY".
+					match &col.type_definition {
+						FieldType::BigInteger | FieldType::Integer | FieldType::SmallInteger => {
+							parts.push("INTEGER".to_string().into());
+						}
+						_ => {
+							// Non-integer auto_increment is invalid for SQLite; emit the
+							// original type and let SQLite surface the error rather than
+							// silently mis-emitting.
+							parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+						}
+					}
 					// SQLite: INTEGER PRIMARY KEY is implicitly AUTOINCREMENT
 					// But we need explicit AUTOINCREMENT keyword for tests
 					if col.primary_key {
@@ -6032,6 +6060,116 @@ mod tests {
 		assert!(
 			sql.contains("1/0") && sql.contains("requires at least one column"),
 			"Empty column list must emit guaranteed-fail SQL with diagnostic: {}",
+			sql
+		);
+	}
+
+	// ========================================================================
+	// column_to_sql — SQLite AUTOINCREMENT type widening (Issue #4184)
+	//
+	// SQLite rejects `BIGINT PRIMARY KEY AUTOINCREMENT` at apply time with:
+	//   "AUTOINCREMENT is only allowed on an INTEGER PRIMARY KEY"
+	// The default `BigAutoField` from CoreSettings produces FieldType::BigInteger
+	// + auto_increment, so the SQLite emitter must widen integer widths to the
+	// literal `INTEGER` token.
+	// ========================================================================
+
+	#[rstest]
+	#[case::big_integer(FieldType::BigInteger)]
+	#[case::integer(FieldType::Integer)]
+	#[case::small_integer(FieldType::SmallInteger)]
+	fn test_column_to_sql_sqlite_auto_increment_pk_emits_integer(#[case] field_type: FieldType) {
+		// Arrange: BigAutoField/AutoField/SmallAutoField PK with auto_increment.
+		let mut col = ColumnDefinition::new("id", field_type);
+		col.primary_key = true;
+		col.auto_increment = true;
+		col.not_null = true;
+
+		// Act
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Sqlite);
+
+		// Assert: must use the literal `INTEGER` token (not BIGINT/SMALLINT)
+		// to satisfy SQLite's AUTOINCREMENT constraint.
+		assert!(
+			sql.contains("INTEGER PRIMARY KEY AUTOINCREMENT"),
+			"SQLite auto_increment PK must emit `INTEGER PRIMARY KEY AUTOINCREMENT`: {}",
+			sql
+		);
+		assert!(
+			!sql.contains("BIGINT"),
+			"SQLite auto_increment must not emit BIGINT (rejected by SQLite): {}",
+			sql
+		);
+		assert!(
+			!sql.contains("SMALLINT"),
+			"SQLite auto_increment must not emit SMALLINT (rejected by SQLite): {}",
+			sql
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_sqlite_big_integer_without_auto_increment_no_autoincrement() {
+		// Arrange: plain BigInteger column without auto_increment must not emit
+		// the AUTOINCREMENT keyword. SQLite represents all integer widths as
+		// INTEGER (storage class), so emitting INTEGER (per to_sql_for_dialect)
+		// is correct even without auto_increment.
+		let mut col = ColumnDefinition::new("count", FieldType::BigInteger);
+		col.not_null = true;
+
+		// Act
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Sqlite);
+
+		// Assert
+		assert!(
+			!sql.contains("AUTOINCREMENT"),
+			"Non-auto_increment column must not emit AUTOINCREMENT: {}",
+			sql
+		);
+		assert!(
+			!sql.contains("BIGINT"),
+			"SQLite must not declare BIGINT (use INTEGER per type affinity): {}",
+			sql
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_postgres_big_integer_auto_increment_unchanged() {
+		// Arrange: regression guard — Postgres path must remain GENERATED AS IDENTITY.
+		let mut col = ColumnDefinition::new("id", FieldType::BigInteger);
+		col.primary_key = true;
+		col.auto_increment = true;
+		col.not_null = true;
+
+		// Act
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Postgres);
+
+		// Assert
+		assert!(
+			sql.contains("BIGINT GENERATED BY DEFAULT AS IDENTITY"),
+			"Postgres auto_increment BigInteger must emit identity syntax: {}",
+			sql
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_without_pk_sqlite_auto_increment_emits_integer() {
+		// Arrange: composite PK path also widens to INTEGER for SQLite.
+		let mut col = ColumnDefinition::new("id", FieldType::BigInteger);
+		col.auto_increment = true;
+		col.not_null = true;
+
+		// Act
+		let sql = Operation::column_to_sql_without_pk(&col, &SqlDialect::Sqlite);
+
+		// Assert
+		assert!(
+			sql.contains("INTEGER"),
+			"SQLite auto_increment column (composite PK path) must emit INTEGER: {}",
+			sql
+		);
+		assert!(
+			!sql.contains("BIGINT"),
+			"SQLite auto_increment must not emit BIGINT in composite PK path: {}",
 			sql
 		);
 	}
