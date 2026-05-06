@@ -1158,6 +1158,25 @@ pub use reinhardt_test::{APIClient, APIRequestFactory, APITestCase, TestResponse
 #[cfg(all(feature = "storage", native))]
 pub use reinhardt_utils::storage::{InMemoryStorage, LocalStorage, Storage};
 
+/// Wasm-side `prelude` shim (Issue #4189).
+///
+/// The native `prelude` module is `#[cfg(native)]`-gated, but the
+/// `--with-pages` scaffold emits `use reinhardt::prelude::*;` in the
+/// generated `src/config/urls.rs`, which must compile on
+/// `wasm32-unknown-unknown` so wasm SPA consumers can `cargo check --lib`
+/// without modifying the scaffolded sources.
+///
+/// This wasm-only stub re-exports the minimum surface the scaffold uses
+/// (`UnifiedRouter` from the wasm-side `urls::prelude` shim, gated behind
+/// the `client-router` feature; the module is empty when that feature is
+/// disabled). Native builds keep using the full server-side `prelude`
+/// declared below.
+#[cfg(all(not(native), target_family = "wasm"))]
+pub mod prelude {
+	#[cfg(feature = "client-router")]
+	pub use crate::urls::prelude::UnifiedRouter;
+}
+
 /// Convenience re-exports of commonly used types (server-side only).
 #[cfg(native)]
 pub mod prelude {
