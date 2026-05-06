@@ -26,6 +26,8 @@ pub mod processing;
 pub mod storage;
 /// Template engine integration for static file URLs.
 pub mod template_integration;
+/// Vendor asset subsystem (declarative external JS/CSS/font management).
+pub mod vendor;
 
 /// Development static file server with live reload.
 #[cfg(feature = "dev-server")]
@@ -59,6 +61,8 @@ pub use storage::{AzureBlobConfig, AzureBlobStorage};
 pub use storage::{GcsConfig, GcsStorage};
 
 pub use template_integration::TemplateStaticConfig;
+
+pub use vendor::{AppVendorAsset, VendorAssetError};
 
 pub use processing::{ProcessingConfig, ProcessingPipeline, ProcessingResult, Processor};
 
