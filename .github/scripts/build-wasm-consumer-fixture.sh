@@ -53,9 +53,9 @@ echo "::group::4) Apply augment patch (#[url_patterns mode=unified|ws])"
 # `git apply` needs to be inside a git repo for context line resolution.
 git init --quiet
 git add -A
-git commit --quiet -m "snapshot before augment" \
-	--author "ci-fixture <ci@local>" \
-	-c user.name="ci-fixture" -c user.email="ci@local"
+git -c user.name="ci-fixture" -c user.email="ci@local" \
+	commit --quiet -m "snapshot before augment" \
+	--author "ci-fixture <ci@local>"
 git apply "$GITHUB_WORKSPACE/.github/fixtures/wasm-consumer-augment.patch"
 echo "::endgroup::"
 
