@@ -10,18 +10,27 @@ ungated (`app_config`, `urls`, `reinhardt_apps::apps::AppLabel`, and
 
 Tracks: kent8192/reinhardt-web#4161
 ---
+diff --git a/src/apps/demo.rs b/src/apps/demo.rs
+--- a/src/apps/demo.rs
++++ b/src/apps/demo.rs
+@@ -9,6 +9,7 @@ pub mod admin;
+ pub mod models;
+ pub mod serializers;
+ pub mod urls;
++pub mod ws_urls;
+ pub mod views;
+ 
+ #[app_config(name = "demo", label = "demo")]
 diff --git a/src/apps/demo/urls.rs b/src/apps/demo/urls.rs
 --- a/src/apps/demo/urls.rs
 +++ b/src/apps/demo/urls.rs
-@@ -1,15 +1,16 @@
+@@ -1,17 +1,16 @@
 -//! URL routing for the demo app.
 -//!
 -//! The `routes` function is mounted from the project-level `config/urls.rs`
 -//! via `.mount("/demo/", crate::apps::demo::urls::routes())`.
 -//! Do not annotate this function with `#[routes]` directly — that would
 -//! register it without the mount prefix.
--
--use reinhardt::ServerRouter;
 +// Augmented for Issue #4161 regression coverage.
 +// Replaces the generated `routes()` with a #[url_patterns(... mode = unified)]
 +// invocation so the macro expands at a wasm SPA call site against the
@@ -29,12 +38,14 @@ diff --git a/src/apps/demo/urls.rs b/src/apps/demo/urls.rs
 +// re-exports.
 +use reinhardt::UnifiedRouter;
 +use reinhardt::url_patterns;
-
+ 
+-use reinhardt::ServerRouter;
+-
 -#[allow(unused_imports)] // `views` will be used once endpoints are added.
 +#[allow(unused_imports)]
  use super::views;
 +use crate::config::apps::InstalledApp;
-
+ 
 -pub fn routes() -> ServerRouter {
 -	ServerRouter::new()
 -	// Register endpoints here, e.g.:
@@ -43,17 +54,6 @@ diff --git a/src/apps/demo/urls.rs b/src/apps/demo/urls.rs
 +pub fn url_patterns() -> UnifiedRouter {
 +	UnifiedRouter::new()
  }
-diff --git a/src/apps/demo.rs b/src/apps/demo.rs
---- a/src/apps/demo.rs
-+++ b/src/apps/demo.rs
-@@ -8,6 +8,7 @@ pub mod admin;
- pub mod models;
- pub mod serializers;
- pub mod urls;
-+pub mod ws_urls;
- pub mod views;
-
- #[app_config(name = "demo", label = "demo")]
 diff --git a/src/apps/demo/ws_urls.rs b/src/apps/demo/ws_urls.rs
 new file mode 100644
 --- /dev/null
