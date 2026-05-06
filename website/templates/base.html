@@ -178,6 +178,23 @@
 				localStorage.setItem('rw-theme', wasDark ? 'light' : 'dark');
 				syncHljsTheme(!wasDark);
 				syncToggleIcon(!wasDark);
+
+				// Re-render any Mermaid diagrams already on the page so colors match the new theme.
+				// Restore the original source via textContent (safe DOM mutation; no innerHTML).
+				var rw = window.__reinhardt;
+				if (rw && rw.mermaidLoaded && Array.isArray(rw.mermaidNodes)) {
+					rw.mermaidNodes.forEach(function(node) {
+						var src = node.getAttribute('data-source');
+						if (src == null) return;
+						node.removeAttribute('data-processed');
+						// Assigning textContent replaces all existing children (including the
+						// previously-rendered SVG) in a single operation.
+						node.textContent = src;
+					});
+					if (typeof rw.runMermaid === 'function') {
+						rw.runMermaid();
+					}
+				}
 			});
 		})();
 	</script>
@@ -185,6 +202,17 @@
 	{# highlight.js init + code block enhancements #}
 	<script>
 		document.addEventListener('DOMContentLoaded', function() {
+			// Mermaid: collect language-mermaid blocks and dynamically load mermaid.min.js
+			// when at least one such block exists. Pinned via SRI.
+			// Issue: https://github.com/kent8192/reinhardt-web/issues/4178
+			var MERMAID_VERSION = '11.12.0';
+			var MERMAID_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/' + MERMAID_VERSION + '/mermaid.min.js';
+			var MERMAID_SRI = 'sha384-o+g/BxPwhi0C3RK7oQBxQuNimeafQ3GE/ST4iT2BxVI4Wzt60SH4pq9iXVYujjaS';
+			var mermaidNodes = [];
+			// Single namespace for Reinhardt-injected globals to keep window surface small.
+			var rw = window.__reinhardt = window.__reinhardt || {};
+			rw.mermaidNodes = mermaidNodes;
+
 			document.querySelectorAll('pre code').forEach(function(block) {
 				var wrapper = block.closest('pre');
 				if (!wrapper) return;
@@ -195,6 +223,19 @@
 					block.classList.forEach(function(cls) {
 						if (cls.startsWith('language-')) lang = cls.replace('language-', '');
 					});
+				}
+
+				// Mermaid blocks: replace pre/code with <div class="mermaid"> and skip
+				// highlight.js, language badge, and Copy button entirely.
+				if (lang === 'mermaid') {
+					var source = block.textContent;
+					var div = document.createElement('div');
+					div.className = 'mermaid';
+					div.setAttribute('data-source', source);
+					div.textContent = source;
+					wrapper.replaceWith(div);
+					mermaidNodes.push(div);
+					return;
 				}
 
 				// Strip Zola/giallo markup — replace with plain text for highlight.js
@@ -229,6 +270,38 @@
 				});
 				wrapper.appendChild(copyBtn);
 			});
+
+			// If no Mermaid blocks were found, skip loading the runtime entirely.
+			if (mermaidNodes.length === 0) return;
+
+			function resolveMermaidTheme() {
+				return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
+			}
+
+			function runMermaid() {
+				if (!window.mermaid) return;
+				window.mermaid.initialize({
+					startOnLoad: false,
+					securityLevel: 'strict',
+					theme: resolveMermaidTheme()
+				});
+				window.mermaid.run({ querySelector: '.mermaid' });
+			}
+
+			rw.runMermaid = runMermaid;
+
+			var script = document.createElement('script');
+			script.src = MERMAID_SRC;
+			script.integrity = MERMAID_SRI;
+			script.crossOrigin = 'anonymous';
+			script.onload = function() {
+				rw.mermaidLoaded = true;
+				runMermaid();
+			};
+			script.onerror = function() {
+				console.warn('[reinhardt] Failed to load Mermaid from ' + MERMAID_SRC);
+			};
+			document.head.appendChild(script);
 		});
 	</script>
 	<script>
