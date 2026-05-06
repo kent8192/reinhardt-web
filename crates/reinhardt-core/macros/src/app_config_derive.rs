@@ -3,24 +3,36 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Result, parse_macro_input};
 
-/// Configuration from `#[app_config(...)]` attribute
+/// One vendor asset declaration from
+/// `vendor_assets(asset(url=..., target=..., sha256=?))`.
+#[derive(Debug, Clone)]
+struct VendorAssetEntry {
+	url: String,
+	target: String,
+	sha256: Option<String>,
+}
+
+/// Configuration from `#[app_config(...)]` attribute.
 #[derive(Debug, Clone)]
 struct AppConfigAttr {
 	name: String,
 	label: String,
 	verbose_name: Option<String>,
+	vendor_assets: Vec<VendorAssetEntry>,
 }
 
 impl AppConfigAttr {
-	/// Parse `#[app_config(...)]` or `#[app_config_internal(...)]` attribute
+	/// Parse `#[app_config(...)]` or `#[app_config_internal(...)]` attribute.
 	fn from_attrs(attrs: &[syn::Attribute], struct_name: &syn::Ident) -> Result<Self> {
 		let mut name = None;
 		let mut label = None;
 		let mut verbose_name = None;
+		let mut vendor_assets: Vec<VendorAssetEntry> = Vec::new();
 
 		for attr in attrs {
-			// Accept both #[app_config(...)] and #[app_config_internal(...)] helper attributes
-			if !attr.path().is_ident("app_config") && !attr.path().is_ident("app_config_internal") {
+			if !attr.path().is_ident("app_config")
+				&& !attr.path().is_ident("app_config_internal")
+			{
 				continue;
 			}
 
@@ -37,6 +49,48 @@ impl AppConfigAttr {
 					let value: syn::LitStr = meta.value()?.parse()?;
 					verbose_name = Some(value.value());
 					Ok(())
+				} else if meta.path.is_ident("vendor_assets") {
+					// vendor_assets( asset(...), asset(...), ... )
+					meta.parse_nested_meta(|asset_meta| {
+						if !asset_meta.path.is_ident("asset") {
+							return Err(asset_meta.error(
+								"vendor_assets entries must use \
+								 `asset(url = ..., target = ..., sha256 = ?)`",
+							));
+						}
+						let mut url: Option<String> = None;
+						let mut target: Option<String> = None;
+						let mut sha256: Option<String> = None;
+						asset_meta.parse_nested_meta(|field| {
+							if field.path.is_ident("url") {
+								let v: syn::LitStr = field.value()?.parse()?;
+								url = Some(v.value());
+								Ok(())
+							} else if field.path.is_ident("target") {
+								let v: syn::LitStr = field.value()?.parse()?;
+								target = Some(v.value());
+								Ok(())
+							} else if field.path.is_ident("sha256") {
+								let v: syn::LitStr = field.value()?.parse()?;
+								sha256 = Some(v.value());
+								Ok(())
+							} else {
+								Err(field.error(
+									"asset() supports only `url`, `target`, `sha256`",
+								))
+							}
+						})?;
+						let url =
+							url.ok_or_else(|| asset_meta.error("asset() requires `url`"))?;
+						let target = target
+							.ok_or_else(|| asset_meta.error("asset() requires `target`"))?;
+						vendor_assets.push(VendorAssetEntry {
+							url,
+							target,
+							sha256,
+						});
+						Ok(())
+					})
 				} else {
 					Err(meta.error("unsupported app_config attribute"))
 				}
@@ -61,14 +115,14 @@ impl AppConfigAttr {
 			name,
 			label,
 			verbose_name,
+			vendor_assets,
 		})
 	}
 }
 
-/// Derive AppConfig implementation
+/// Derive AppConfig implementation.
 pub(crate) fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
-
 	match derive_impl(input) {
 		Ok(tokens) => tokens.into(),
 		Err(err) => err.to_compile_error().into(),
@@ -77,12 +131,8 @@ pub(crate) fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 
 fn derive_impl(input: DeriveInput) -> Result<TokenStream> {
 	let apps_crate = get_reinhardt_apps_crate();
-
 	let struct_name = &input.ident;
 
-	// Check if app_config_internal helper attribute exists
-	// This attribute is added by the #[app_config(...)] attribute macro
-	// If it doesn't exist, it means the user directly used #[derive(AppConfig)]
 	let has_internal_attr = input
 		.attrs
 		.iter()
@@ -112,13 +162,34 @@ fn derive_impl(input: DeriveInput) -> Result<TokenStream> {
 		}
 	};
 
+	// One inventory::submit! per declared asset; the inventory crate handles
+	// merging across crates at link time.
+	let vendor_submissions = config.vendor_assets.iter().map(|entry| {
+		let url = &entry.url;
+		let target = &entry.target;
+		let sha256 = entry.sha256.clone().unwrap_or_default();
+		quote! {
+			#apps_crate::inventory::submit! {
+				#apps_crate::AppVendorAsset {
+					app_label: #label,
+					url: #url,
+					target: #target,
+					sha256: #sha256,
+				}
+			}
+		}
+	});
+
 	let expanded = quote! {
 		impl #struct_name {
-			/// Create AppConfig instance
+			/// Create AppConfig instance.
 			pub fn config() -> #apps_crate::AppConfig {
 				#config_builder
 			}
 		}
+
+		// Vendor asset registrations (one inventory::submit! per declared asset).
+		#( #vendor_submissions )*
 	};
 
 	Ok(expanded)
