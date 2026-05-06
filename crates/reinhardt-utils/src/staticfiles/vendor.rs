@@ -6,5 +6,7 @@
 //! on first request, and served through the existing static files pipeline.
 
 pub mod asset;
+pub mod downloader;
 
 pub use asset::{AppVendorAsset, VendorAssetError};
+pub use downloader::{VendorDownloadError, verify_integrity};
