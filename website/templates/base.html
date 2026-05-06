@@ -206,6 +206,19 @@
 					});
 				}
 
+				// Mermaid blocks: replace pre/code with <div class="mermaid"> and skip
+				// highlight.js, language badge, and Copy button entirely.
+				if (lang === 'mermaid') {
+					var source = block.textContent;
+					var div = document.createElement('div');
+					div.className = 'mermaid';
+					div.setAttribute('data-source', source);
+					div.textContent = source;
+					wrapper.replaceWith(div);
+					mermaidNodes.push(div);
+					return;
+				}
+
 				// Strip Zola/giallo markup — replace with plain text for highlight.js
 				var plainText = block.textContent;
 				block.textContent = plainText;
