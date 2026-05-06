@@ -1108,6 +1108,9 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 
 			#url_prelude_code
 		}
+		// Explicit re-export so consumers can write `<path>::ResolvedUrls`
+		// without reaching into the underscore-prefixed implementation module.
+		pub use __url_resolver_support::ResolvedUrls;
 		pub use __url_resolver_support::*;
 	};
 
