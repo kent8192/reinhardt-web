@@ -27,8 +27,8 @@ diff --git a/src/apps/demo/urls.rs b/src/apps/demo/urls.rs
 +// invocation so the macro expands at a wasm SPA call site against the
 +// (now-ungated) `app_config` / `urls` / `reinhardt_apps::apps::AppLabel`
 +// re-exports.
++use reinhardt::UnifiedRouter;
 +use reinhardt::url_patterns;
-+use reinhardt::urls::prelude::UnifiedRouter;
 
 -#[allow(unused_imports)] // `views` will be used once endpoints are added.
 +#[allow(unused_imports)]
@@ -58,16 +58,22 @@ diff --git a/src/apps/demo/ws_urls.rs b/src/apps/demo/ws_urls.rs
 new file mode 100644
 --- /dev/null
 +++ b/src/apps/demo/ws_urls.rs
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,18 @@
 +// Augmented for Issue #4161 regression coverage (mode = ws variant).
 +// Exercises the wasm-side stub of `WebSocketRouter` against macro
-+// expansion produced by `#[url_patterns(... mode = ws)]`.
++// expansion produced by `#[url_patterns(... mode = ws)]`, including the
++// `.with_namespace(...)` and `.consumer(...)` builder calls that the
++// shim must keep compatible with the native router's signature.
 +use reinhardt::WebSocketRouter;
 +use reinhardt::url_patterns;
 +
 +use crate::config::apps::InstalledApp;
 +
++fn make_consumer() {}
++
 +#[url_patterns(InstalledApp::demo, mode = ws)]
 +pub fn ws_url_patterns() -> WebSocketRouter {
 +	WebSocketRouter::new()
++		.with_namespace("demo")
++		.consumer(make_consumer)
 +}

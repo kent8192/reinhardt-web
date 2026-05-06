@@ -263,9 +263,15 @@ pub mod tasks;
 pub mod template;
 #[cfg(all(feature = "test", native))]
 pub mod test;
-// `urls` is cross-target — `reinhardt-urls` already builds for
-// wasm32-unknown-unknown, and macro expansions of #[url_patterns]
-// reference `reinhardt::urls::prelude::*`.
+// `urls` is cross-target — `reinhardt-urls` itself builds for
+// wasm32-unknown-unknown (the `pub mod routers;` inside it is not
+// `#[cfg(native)]`), and `#[url_patterns(... mode = unified|ws)]` emits
+// references to types reachable via this module path (e.g.
+// `reinhardt_apps::apps::AppLabel`, `WebSocketRouter`). The `urls::prelude`
+// re-exports under `reinhardt-urls` are still gated on `native` + the
+// `routers` feature, so wasm consumers must reach `UnifiedRouter` etc.
+// through `reinhardt::UnifiedRouter` (top-level re-export under
+// `feature = "client-router"`) or `reinhardt::urls::routers::UnifiedRouter`.
 pub mod urls;
 #[cfg(native)]
 pub mod utils;
