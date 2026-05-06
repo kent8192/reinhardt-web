@@ -45,7 +45,11 @@ impl fmt::Display for VendorAssetError {
 				write!(f, "vendor asset target {:?} must start with \"vendor/\"", t)
 			}
 			Self::PathTraversal(t) => {
-				write!(f, "vendor asset target {:?} must not contain \"..\" segments", t)
+				write!(
+					f,
+					"vendor asset target {:?} must not contain \"..\" segments",
+					t
+				)
 			}
 			Self::NullByte(t) => {
 				write!(f, "vendor asset target {:?} must not contain null byte", t)
@@ -95,7 +99,12 @@ mod tests {
 		let result = asset.validate();
 
 		// Assert
-		assert!(result.is_ok(), "expected {:?} to be accepted, got {:?}", target, result);
+		assert!(
+			result.is_ok(),
+			"expected {:?} to be accepted, got {:?}",
+			target,
+			result
+		);
 	}
 
 	#[rstest]
@@ -104,7 +113,10 @@ mod tests {
 	#[case::absolute_unix("/etc/passwd", "must start with \"vendor/\"")]
 	#[case::null_byte("vendor/foo\0.js", "must not contain null byte")]
 	#[case::empty("", "must start with \"vendor/\"")]
-	fn validate_target_rejects_bad(#[case] target: &'static str, #[case] expected_msg: &'static str) {
+	fn validate_target_rejects_bad(
+		#[case] target: &'static str,
+		#[case] expected_msg: &'static str,
+	) {
 		// Arrange
 		let asset = AppVendorAsset {
 			app_label: "blog",

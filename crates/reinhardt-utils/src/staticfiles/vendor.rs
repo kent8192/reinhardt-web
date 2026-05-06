@@ -9,4 +9,7 @@ pub mod asset;
 pub mod downloader;
 
 pub use asset::{AppVendorAsset, VendorAssetError};
-pub use downloader::{VendorDownloadError, verify_integrity};
+pub use downloader::{
+	VendorDownloadError, Verbosity, download_all_vendor_assets, download_assets,
+	ensure_vendor_assets_for_app, verify_integrity,
+};
