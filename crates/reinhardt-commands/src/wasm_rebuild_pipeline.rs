@@ -56,7 +56,10 @@ impl WasmRebuildPipeline {
 			Ok(Err(error)) => WasmRebuildOutcome::Failed { duration, error },
 			Err(join_err) => WasmRebuildOutcome::Failed {
 				duration,
-				error: WasmBuildError::Other(format!("WASM rebuild task panicked: {}", join_err)),
+				error: WasmBuildError::Io(std::io::Error::other(format!(
+					"WASM rebuild task panicked: {}",
+					join_err
+				))),
 			},
 		}
 	}
@@ -117,7 +120,7 @@ mod tests {
 		// Arrange
 		let outcome = WasmRebuildOutcome::Failed {
 			duration: Duration::from_millis(2300),
-			error: WasmBuildError::Other("boom".to_string()),
+			error: WasmBuildError::CargoBuildFailed("boom".to_string()),
 		};
 
 		// Act
