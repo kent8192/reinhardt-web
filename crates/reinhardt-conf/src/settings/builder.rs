@@ -175,9 +175,10 @@ impl SettingsBuilder {
 		self.sources.sort_by_key(|a| a.priority());
 
 		let mut merged = IndexMap::new();
-		// Track each user-controlled source's loaded map alongside its description so
-		// that flat-key diagnostics can be attributed to the originating source rather
-		// than to the post-merge view.
+		// Track every loaded source's map alongside its description so that flat-key
+		// diagnostics can be attributed to the originating source rather than to the
+		// post-merge view. Internal sources (e.g., DefaultSource) are filtered out
+		// during warning emission rather than at collection time.
 		let mut per_source: Vec<(String, IndexMap<String, Value>)> =
 			Vec::with_capacity(self.sources.len());
 
