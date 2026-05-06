@@ -25,7 +25,7 @@ echo "::group::1) Scaffold project via reinhardt-admin startproject --with-pages
 cargo run --quiet \
 	--manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
 	-p reinhardt-admin-cli -- \
-	startproject verifier --with-pages "$WORK"
+	startproject verifier --with-pages "$WORK/verifier"
 echo "::endgroup::"
 
 cd "$WORK/verifier"
