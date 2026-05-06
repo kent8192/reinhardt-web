@@ -17,6 +17,36 @@ import tarfile
 from pathlib import Path
 
 
+def enable_features(manifest: Path, extra_features: list[str]) -> None:
+	"""Append additional features to the fixture's `reinhardt = { ..., features = [...] }`
+	array. Idempotent: features already present are skipped.
+
+	Operates on the raw text because the multi-line features array spans the
+	template-rendered manifest. The regex is bounded to the `reinhardt = { ... }`
+	dependency block to avoid touching unrelated arrays.
+	"""
+	text = manifest.read_text()
+	pattern = re.compile(
+		r'(reinhardt\s*=\s*\{[^}]*?features\s*=\s*\[)([^\]]*?)(\][^}]*?\})',
+		re.DOTALL,
+	)
+	match = pattern.search(text)
+	if not match:
+		print(
+			"error: could not locate `reinhardt = { ..., features = [...] }` in manifest",
+			file=sys.stderr,
+		)
+		sys.exit(4)
+	prefix, body, suffix = match.group(1), match.group(2), match.group(3)
+	existing = {tok.strip().strip(",").strip('"') for tok in body.split() if tok.strip()}
+	additions = [f for f in extra_features if f not in existing]
+	if not additions:
+		return
+	insertion = "".join(f'\t"{f}",\n' for f in additions)
+	new_body = body.rstrip() + "\n" + insertion
+	manifest.write_text(text[: match.start()] + prefix + new_body + suffix + text[match.end() :])
+
+
 def workspace_form(manifest: Path, reinhardt_path: Path) -> None:
 	"""Replace `reinhardt = { version = "..." }` with `path = "<reinhardt_path>"`."""
 	text = manifest.read_text()
@@ -35,6 +65,12 @@ def workspace_form(manifest: Path, reinhardt_path: Path) -> None:
 		)
 		sys.exit(2)
 	manifest.write_text(new_text)
+	# UnifiedRouter (used by `mode = unified` in the augment patch) is gated
+	# `cfg(any(native, feature = "client-router"))` in reinhardt-urls. The
+	# fixture's `["full", "admin"]` features pulled from project_pages_template
+	# do NOT include client-router, so wasm builds cannot resolve UnifiedRouter
+	# without this augmentation. Tracked as a follow-up template fix.
+	enable_features(manifest, ["client-router"])
 
 
 def _safe_extract(tf: tarfile.TarFile, dest: Path) -> None:
@@ -92,6 +128,10 @@ def packaged_form(manifest: Path, pkg_stage: Path) -> None:
 		sys.exit(3)
 
 	manifest.write_text(manifest.read_text() + "\n" + "\n".join(patch_lines) + "\n")
+	# Same client-router rationale as in workspace_form: the augment patch's
+	# `mode = unified` invocation requires UnifiedRouter, which is only
+	# re-exported on wasm when reinhardt-urls/client-router is enabled.
+	enable_features(manifest, ["client-router"])
 
 
 def main() -> int:

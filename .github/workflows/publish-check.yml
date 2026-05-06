@@ -83,6 +83,15 @@ jobs:
         run: |
           mkdir -p /tmp/pkg-stage
           find target/package -maxdepth 1 -name '*.crate' -exec cp {} /tmp/pkg-stage/ \;
+          # The workspace cargo-package step above excludes reinhardt-web
+          # (umbrella crate), so it never lands in target/package. Package
+          # it separately so the publish-form fixture exercises THIS PR's
+          # local src/lib.rs (e.g., #4161 wasm shims) instead of the older
+          # rc version already on crates.io. Without this, [patch.crates-io]
+          # has no entry for reinhardt-web and the fixture silently resolves
+          # to the published copy that lacks the changes under test.
+          cargo package -p reinhardt-web --no-verify --allow-dirty
+          cp target/package/reinhardt-web-*.crate /tmp/pkg-stage/
           ls -la /tmp/pkg-stage
 
       - name: Install wasm32-unknown-unknown target
