@@ -52,5 +52,3 @@ dist/
 postman/reports/*.xml
 postman/reports/*.html
 !postman/reports/.gitkeep
-# Generated migrations (run `cargo run --bin manage -- makemigrations` to generate)
-migrations/

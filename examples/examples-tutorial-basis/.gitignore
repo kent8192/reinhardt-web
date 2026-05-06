@@ -53,5 +53,3 @@ dist-wasm/
 static/*.js
 static/*.wasm
 static/*_bg.wasm
-# Generated migrations (run `cargo run --bin manage -- makemigrations` to generate)
-migrations/
