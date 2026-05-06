@@ -4,7 +4,12 @@
 
 Usage:
   patch-fixture-cargo-toml.py --manifest Cargo.toml --reinhardt-path /path/to/repo
-  patch-fixture-cargo-toml.py --manifest Cargo.toml --use-packaged --pkg-stage /tmp/pkg-stage
+  patch-fixture-cargo-toml.py --manifest Cargo.toml --use-packaged --pkg-stage /tmp/pkg-stage [--reinhardt-path /path/to/repo]
+
+`--reinhardt-path` may be combined with `--use-packaged` to also patch the
+umbrella `reinhardt-web` crate (which the publish-check workflow excludes from
+`cargo package`) to the local workspace, ensuring the publish-form fixture
+exercises this PR's `src/lib.rs` rather than the already-published version.
 
 Tracks: kent8192/reinhardt-web#4161
 """
@@ -58,9 +63,18 @@ def _safe_extract(tf: tarfile.TarFile, dest: Path) -> None:
 		tf.extract(member, dest)  # noqa: S202 — path validated above
 
 
-def packaged_form(manifest: Path, pkg_stage: Path) -> None:
+def packaged_form(
+	manifest: Path,
+	pkg_stage: Path,
+	reinhardt_path: Path | None = None,
+) -> None:
 	"""Extract every `*.crate` under `pkg_stage` and append a `[patch.crates-io]`
 	block to the manifest pointing each `reinhardt-*` crate at its extracted dir.
+
+	When `reinhardt_path` is provided and the umbrella `reinhardt-web` crate is
+	not present in `pkg_stage` (publish-check excludes it from `cargo package`),
+	patch `reinhardt-web` to that workspace path so the fixture exercises the
+	local `src/lib.rs` instead of the already-published version on crates.io.
 	"""
 	extract_dir = pkg_stage / "extracted"
 	extract_dir.mkdir(parents=True, exist_ok=True)
@@ -79,6 +93,8 @@ def packaged_form(manifest: Path, pkg_stage: Path) -> None:
 		crates[m.group("name")] = extracted
 
 	patch_lines = ["", "[patch.crates-io]"]
+	if reinhardt_path is not None and "reinhardt-web" not in crates:
+		patch_lines.append(f'reinhardt-web = {{ path = "{reinhardt_path}" }}')
 	for name, path in sorted(crates.items()):
 		if not name.startswith("reinhardt"):
 			continue
@@ -109,7 +125,7 @@ def main() -> int:
 	if args.use_packaged:
 		if args.pkg_stage is None:
 			ap.error("--use-packaged requires --pkg-stage")
-		packaged_form(args.manifest, args.pkg_stage)
+		packaged_form(args.manifest, args.pkg_stage, args.reinhardt_path)
 	else:
 		if args.reinhardt_path is None:
 			ap.error("workspace form requires --reinhardt-path")

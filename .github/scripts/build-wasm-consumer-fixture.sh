@@ -38,10 +38,15 @@ echo "::endgroup::"
 
 echo "::group::3) Rewrite Cargo.toml to point at PR HEAD (or packaged tarballs)"
 if [[ $USE_PACKAGED -eq 1 ]]; then
+	# Pass --reinhardt-path so the umbrella `reinhardt-web` (excluded from
+	# `cargo package` in publish-check.yml) is patched to the local workspace.
+	# Sub-crates remain patched to their freshly-built tarballs, exercising the
+	# publish-form regression surface for #4161.
 	python3 "$GITHUB_WORKSPACE/.github/scripts/patch-fixture-cargo-toml.py" \
 		--manifest Cargo.toml \
 		--use-packaged \
-		--pkg-stage "$PKG_STAGE"
+		--pkg-stage "$PKG_STAGE" \
+		--reinhardt-path "$GITHUB_WORKSPACE"
 else
 	python3 "$GITHUB_WORKSPACE/.github/scripts/patch-fixture-cargo-toml.py" \
 		--manifest Cargo.toml \
