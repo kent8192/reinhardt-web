@@ -288,21 +288,16 @@ cargo run --bin manage runserver
 
 **Auto-Reload Support:**
 
-For automatic reloading on code changes (requires bacon):
+The development server reloads automatically on file changes:
 
 ```bash
-# Install bacon
-cargo install --locked bacon
-
-# Run with auto-reload
-bacon runserver
-
-# Or use cargo make
-cargo make watch
-
-# For tests
-bacon test
+cargo run --bin manage -- runserver --with-pages
 ```
+
+Edit any Rust source file (server-side or wasm-side) and the bundle
+plus the server are rebuilt in place. Pass `--noreload` to disable
+auto-reload entirely, or `--no-wasm-rebuild` to keep server reload
+but manage the wasm build yourself.
 
 ### 4. Create Your First App
 
