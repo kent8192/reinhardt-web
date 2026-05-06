@@ -251,6 +251,38 @@
 				});
 				wrapper.appendChild(copyBtn);
 			});
+
+			// If no Mermaid blocks were found, skip loading the runtime entirely.
+			if (mermaidNodes.length === 0) return;
+
+			function resolveMermaidTheme() {
+				return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
+			}
+
+			function runMermaid() {
+				if (!window.mermaid) return;
+				window.mermaid.initialize({
+					startOnLoad: false,
+					securityLevel: 'strict',
+					theme: resolveMermaidTheme()
+				});
+				window.mermaid.run({ querySelector: '.mermaid' });
+			}
+
+			window.__reinhardtRunMermaid = runMermaid;
+
+			var script = document.createElement('script');
+			script.src = MERMAID_SRC;
+			script.integrity = MERMAID_SRI;
+			script.crossOrigin = 'anonymous';
+			script.onload = function() {
+				window.__reinhardtMermaidLoaded = true;
+				runMermaid();
+			};
+			script.onerror = function() {
+				console.warn('[reinhardt] Failed to load Mermaid from ' + MERMAID_SRC);
+			};
+			document.head.appendChild(script);
 		});
 	</script>
 	<script>
