@@ -669,6 +669,40 @@ only.
 
 ---
 
+## Macro Emission Referencing Native-Only Re-exports
+
+A facade re-export gated `#[cfg(native)]` (or
+`#[cfg(all(feature = "X", native))]`) can be invisible to a procedural macro's
+**expansion path** even when the procedural macro itself is reachable.
+Cross-target macros emit absolute paths like
+`::reinhardt::reinhardt_apps::apps::AppLabel`; if any segment of that path is
+gated to native, downstream wasm consumers fail to compile with
+`unresolved import` errors that point to the upstream `lib.rs` line — far
+from the apparent crime scene.
+
+❌ **Symptom example:**
+
+```text
+error[E0432]: unresolved import `reinhardt::WebSocketRouter`
+note: found an item that was configured out
+  --> reinhardt-web/src/lib.rs:1201
+```
+
+**Avoid:** When ungating a macro re-export for wasm, audit every symbol the
+macro **expansion body** references — not just the macro path itself. Each
+emitted absolute path must resolve on every target the macro claims to
+support.
+
+✅ **Pattern to apply:** Either lift the gate (when the underlying crate is
+already cross-target) or add a `#[cfg(not(native))]` `#[doc(hidden)]` inert
+shim that matches the upstream type's call shape. Document both arms with a
+tracking issue link.
+
+**Canonical example:** kent8192/reinhardt-web#4161 (PR ungating four re-exports
+plus adding wasm consumer fixture CI to detect the gap that hid the bug).
+
+---
+
 ## Related Documentation
 
 - **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)

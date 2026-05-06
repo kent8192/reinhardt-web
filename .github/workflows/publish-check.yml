@@ -73,3 +73,32 @@ jobs:
           eval cargo package --workspace --no-verify --allow-dirty $EXCLUDES
           echo ""
           echo "=== All crates passed packaging check ==="
+
+      # Below: publish-form regression for #4161. After packaging the workspace
+      # above, stage the .crate tarballs and re-run the wasm consumer fixture
+      # against them via [patch.crates-io] overrides — catches any divergence
+      # between workspace `path =` resolution and registry-form
+      # `proc_macro_crate` resolution that the alpha-form fixture cannot see.
+      - name: Stage packaged tarballs
+        run: |
+          mkdir -p /tmp/pkg-stage
+          find target/package -maxdepth 1 -name '*.crate' -exec cp {} /tmp/pkg-stage/ \;
+          # The workspace cargo-package step above excludes reinhardt-web
+          # (umbrella crate), so it never lands in target/package. Package
+          # it separately so the publish-form fixture exercises THIS PR's
+          # local src/lib.rs (e.g., #4161 wasm shims) instead of the older
+          # rc version already on crates.io. Without this, [patch.crates-io]
+          # has no entry for reinhardt-web and the fixture silently resolves
+          # to the published copy that lacks the changes under test.
+          cargo package -p reinhardt-web --no-verify --allow-dirty
+          cp target/package/reinhardt-web-*.crate /tmp/pkg-stage/
+          ls -la /tmp/pkg-stage
+
+      - name: Install wasm32-unknown-unknown target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Wasm consumer fixture (publish-form, #4161 regression)
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          PKG_STAGE: /tmp/pkg-stage
+        run: bash .github/scripts/build-wasm-consumer-fixture.sh --use-packaged

@@ -1,0 +1,79 @@
+From: ci-fixture <ci@local>
+Subject: [PATCH] Augment generated wasm-consumer fixture for #4161 regression coverage
+
+Replaces the auto-generated `apps/demo/urls.rs` `routes()` with a
+`#[url_patterns(InstalledApp::demo, mode = unified)]` invocation, adds
+`apps/demo/ws_urls.rs` with `mode = ws`, and registers the new module in
+`apps/demo.rs`. This exercises the four macro re-exports that #4161
+ungated (`app_config`, `urls`, `reinhardt_apps::apps::AppLabel`, and
+`WebSocketRouter`) at a wasm SPA call site.
+
+Tracks: kent8192/reinhardt-web#4161
+---
+diff --git a/src/apps/demo/urls.rs b/src/apps/demo/urls.rs
+--- a/src/apps/demo/urls.rs
++++ b/src/apps/demo/urls.rs
+@@ -1,15 +1,16 @@
+-//! URL routing for the demo app.
+-//!
+-//! The `routes` function is mounted from the project-level `config/urls.rs`
+-//! via `.mount("/demo/", crate::apps::demo::urls::routes())`.
+-//! Do not annotate this function with `#[routes]` directly — that would
+-//! register it without the mount prefix.
+-
+-use reinhardt::ServerRouter;
++// Augmented for Issue #4161 regression coverage.
++// Replaces the generated `routes()` with a #[url_patterns(... mode = unified)]
++// invocation so the macro expands at a wasm SPA call site against the
++// (now-ungated) `app_config` / `urls` / `reinhardt_apps::apps::AppLabel`
++// re-exports.
++use reinhardt::UnifiedRouter;
++use reinhardt::url_patterns;
+
+-#[allow(unused_imports)] // `views` will be used once endpoints are added.
++#[allow(unused_imports)]
+ use super::views;
++use crate::config::apps::InstalledApp;
+
+-pub fn routes() -> ServerRouter {
+-	ServerRouter::new()
+-	// Register endpoints here, e.g.:
+-	//     .endpoint(views::index)
++#[url_patterns(InstalledApp::demo, mode = unified)]
++pub fn url_patterns() -> UnifiedRouter {
++	UnifiedRouter::new()
+ }
+diff --git a/src/apps/demo.rs b/src/apps/demo.rs
+--- a/src/apps/demo.rs
++++ b/src/apps/demo.rs
+@@ -8,6 +8,7 @@ pub mod admin;
+ pub mod models;
+ pub mod serializers;
+ pub mod urls;
++pub mod ws_urls;
+ pub mod views;
+
+ #[app_config(name = "demo", label = "demo")]
+diff --git a/src/apps/demo/ws_urls.rs b/src/apps/demo/ws_urls.rs
+new file mode 100644
+--- /dev/null
++++ b/src/apps/demo/ws_urls.rs
+@@ -0,0 +1,18 @@
++// Augmented for Issue #4161 regression coverage (mode = ws variant).
++// Exercises the wasm-side stub of `WebSocketRouter` against macro
++// expansion produced by `#[url_patterns(... mode = ws)]`, including the
++// `.with_namespace(...)` and `.consumer(...)` builder calls that the
++// shim must keep compatible with the native router's signature.
++use reinhardt::WebSocketRouter;
++use reinhardt::url_patterns;
++
++use crate::config::apps::InstalledApp;
++
++fn make_consumer() {}
++
++#[url_patterns(InstalledApp::demo, mode = ws)]
++pub fn ws_url_patterns() -> WebSocketRouter {
++	WebSocketRouter::new()
++		.with_namespace("demo")
++		.consumer(make_consumer)
++}
