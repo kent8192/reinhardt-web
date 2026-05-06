@@ -12,7 +12,7 @@
 //! - **Interactive Mode**: Support for interactive prompts
 //! - **Colored Output**: Rich terminal output
 //! - **AST-Based Code Generation**: Robust code generation using Abstract Syntax Trees
-//! - **Auto-Reload**: Development server auto-reload with bacon integration
+//! - **Auto-Reload**: Built-in hot-reload for the development server (server + wasm)
 //! - **Tera Template Engine**: Powerful template rendering for project/app generation
 //!
 //! ## Example
@@ -104,39 +104,20 @@
 //!
 //! ## Auto-Reload for Development Server
 //!
-//! The `runserver` command supports automatic reloading when code changes are detected,
-//! using bacon for complete rebuild and restart functionality.
+//! The `runserver` command reloads automatically on file changes. No external
+//! tool (such as `cargo-watch` or `bacon`) is required — the watcher is built
+//! into the `autoreload` feature.
 //!
-//! ### Using bacon
-//!
-//! Install bacon:
-//!
-//! ```bash
-//! cargo install --locked bacon
+//! ```text
+//! cargo run --bin manage -- runserver --with-pages
 //! ```
 //!
-//! Run the development server with auto-reload:
+//! Edit any Rust source file (server-side or wasm-side) and the bundle plus
+//! the server are rebuilt in place. Pass `--noreload` to disable auto-reload
+//! entirely, or `--no-wasm-rebuild` to keep server reload but manage the wasm
+//! build yourself.
 //!
-//! ```bash
-//! # Using bacon directly
-//! bacon runserver
-//!
-//! # Or using cargo make
-//! cargo make watch
-//! ```
-//!
-//! ### How It Works
-//!
-//! Bacon provides a background code checker that:
-//! 1. Detects file changes in `src/`, `Cargo.toml`, and other watched paths
-//! 2. Automatically runs the configured job (check, clippy, test, runserver, etc.)
-//! 3. Displays build output and errors in real-time
-//! 4. Supports keyboard shortcuts for switching between different jobs
-//!
-//! ### Configuration
-//!
-//! Bacon can be configured via `bacon.toml` in the project root. See the bacon
-//! documentation for more details: <https://dystroy.org/bacon/>
+//! See [`runserver_hooks`] for the full hot-reload runbook and failure modes.
 
 /// Base command trait and argument/option definitions.
 pub mod base;
@@ -151,6 +132,10 @@ pub mod context;
 /// Superuser creation command.
 #[cfg(feature = "auth")]
 pub(crate) mod createsuperuser;
+/// Debounced file-system watcher for hot-reload (replaces inline watcher).
+#[cfg(feature = "autoreload")]
+#[doc(hidden)]
+pub mod debounced_watcher;
 /// Embedded Tera templates for project/app scaffolding.
 pub mod embedded_templates;
 /// Code formatting utilities for generated code.
@@ -172,6 +157,14 @@ pub mod registry;
 /// Runserver lifecycle hooks for concurrent services and pre-listen validation.
 #[cfg(feature = "server")]
 pub mod runserver_hooks;
+/// Hot-reload server rebuild pipeline (cargo build + child process swap).
+#[cfg(feature = "autoreload")]
+#[doc(hidden)]
+pub mod server_rebuild_pipeline;
+/// Source-tree enumeration for hot-reload watch targets.
+#[cfg(feature = "autoreload")]
+#[doc(hidden)]
+pub mod source_roots;
 /// Project and app scaffolding commands (startproject, startapp).
 pub mod start_commands;
 /// Template-based code generation utilities.
@@ -180,8 +173,30 @@ pub mod template;
 pub mod template_source;
 /// WASM build tooling for client-side compilation.
 pub mod wasm_builder;
+/// Hot-reload WASM rebuild pipeline (timing + structured logging wrapper).
+#[cfg(all(feature = "autoreload", feature = "pages"))]
+#[doc(hidden)]
+pub mod wasm_rebuild_pipeline;
 /// Development server welcome page.
 pub mod welcome_page;
+
+/// Internal test surface for the hot-reload integration tests.
+///
+/// This module is intentionally `#[doc(hidden)]` and re-exports the otherwise
+/// crate-private hot-reload pieces so that integration tests living under
+/// `tests/` (a separate crate target) can drive them end-to-end. It is not
+/// part of the public API and may change without notice.
+#[cfg(feature = "autoreload")]
+#[doc(hidden)]
+pub mod __hot_reload_test_api {
+	pub use crate::debounced_watcher::{
+		DEBOUNCE_WINDOW, WatcherConfig, debounce_next, is_relevant_change, run_watcher,
+	};
+	pub use crate::server_rebuild_pipeline::{ServerRebuildOutcome, ServerRebuildPipeline};
+	pub use crate::source_roots::SourceRoots;
+	#[cfg(feature = "pages")]
+	pub use crate::wasm_rebuild_pipeline::{WasmRebuildOutcome, WasmRebuildPipeline};
+}
 
 use thiserror::Error;
 

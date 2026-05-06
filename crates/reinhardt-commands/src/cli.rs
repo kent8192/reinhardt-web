@@ -130,6 +130,10 @@ pub enum Commands {
 		#[arg(long)]
 		noreload: bool,
 
+		/// Disable the WASM rebuild pipeline during hot-reload (server pipeline still runs).
+		#[arg(long = "no-wasm-rebuild")]
+		no_wasm_rebuild: bool,
+
 		/// Serve static files in development mode
 		#[arg(long)]
 		insecure: bool,
@@ -521,6 +525,7 @@ pub async fn run_command_with_registry(
 		Commands::Runserver {
 			address,
 			noreload,
+			no_wasm_rebuild,
 			insecure,
 			no_docs,
 			with_pages,
@@ -531,6 +536,7 @@ pub async fn run_command_with_registry(
 			execute_runserver(RunServerOptions {
 				address,
 				noreload,
+				no_wasm_rebuild,
 				insecure,
 				no_docs,
 				with_pages,
@@ -761,6 +767,7 @@ async fn execute_migrate(params: MigrateParams) -> Result<(), Box<dyn std::error
 struct RunServerOptions {
 	address: String,
 	noreload: bool,
+	no_wasm_rebuild: bool,
 	insecure: bool,
 	no_docs: bool,
 	with_pages: bool,
@@ -778,6 +785,9 @@ async fn execute_runserver(options: RunServerOptions) -> Result<(), Box<dyn std:
 
 	if options.noreload {
 		ctx.set_option("noreload".to_string(), "true".to_string());
+	}
+	if options.no_wasm_rebuild {
+		ctx.set_option("no-wasm-rebuild".to_string(), "true".to_string());
 	}
 	if options.insecure {
 		ctx.set_option("insecure".to_string(), "true".to_string());
@@ -1337,6 +1347,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			no_wasm_rebuild: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: false,
@@ -1519,6 +1530,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			no_wasm_rebuild: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: true,
@@ -1541,6 +1553,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			no_wasm_rebuild: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: false,
@@ -1563,6 +1576,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			no_wasm_rebuild: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: true,
@@ -1586,6 +1600,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			no_wasm_rebuild: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: false,
@@ -1604,6 +1619,37 @@ mod tests {
 		} else {
 			panic!("Expected Runserver command");
 		}
+	}
+
+	#[rstest]
+	fn test_runserver_with_no_wasm_rebuild_flag() {
+		// Arrange: build options as the CLI parser would after `--no-wasm-rebuild`
+		let options = RunServerOptions {
+			address: "127.0.0.1:8000".to_string(),
+			noreload: false,
+			no_wasm_rebuild: true,
+			insecure: false,
+			no_docs: false,
+			with_pages: false,
+			static_dir: "dist".to_string(),
+			no_spa: false,
+			index: None,
+			verbosity: 0,
+		};
+
+		// Act: replicate execute_runserver's option propagation onto a CommandContext
+		let mut ctx = CommandContext::default();
+		ctx.set_verbosity(options.verbosity);
+		ctx.add_arg(options.address);
+		if options.noreload {
+			ctx.set_option("noreload".to_string(), "true".to_string());
+		}
+		if options.no_wasm_rebuild {
+			ctx.set_option("no-wasm-rebuild".to_string(), "true".to_string());
+		}
+
+		// Assert
+		assert_eq!(ctx.option("no-wasm-rebuild"), Some(&"true".to_string()));
 	}
 
 	#[rstest]
@@ -1633,6 +1679,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			no_wasm_rebuild: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: false,

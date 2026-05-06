@@ -109,11 +109,6 @@ description = "Clean build artifacts"
 command = "cargo"
 args = ["clean"]
 
-[tasks.runserver-watch]
-description = "Start the development server with auto-reload (requires bacon)"
-command = "bacon"
-args = ["runserver"]
-
 [tasks.makemigrations-app]
 description = "Create new migrations for a specific app (usage: cargo make makemigrations-app -- <app_label>)"
 command = "cargo"
@@ -138,15 +133,6 @@ args = ["run", "--bin", "examples-tutorial-rest", "showurls"]
 description = "Run an interactive Rust shell (REPL)"
 command = "cargo"
 args = ["run", "--bin", "examples-tutorial-rest", "shell"]
-
-[tasks.test-watch]
-description = "Run tests with auto-reload (requires bacon)"
-command = "bacon"
-args = ["test"]
-
-[tasks.dev-watch]
-description = "Start development with auto-reload"
-dependencies = ["build", "runserver-watch"]
 
 [tasks.runserver-v]
 description = "Start the development server with verbose output"
