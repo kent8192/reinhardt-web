@@ -174,33 +174,47 @@ impl SettingsBuilder {
 		// Sort sources by priority (lowest first, so highest priority overwrites)
 		self.sources.sort_by_key(|a| a.priority());
 
-		// Collect source descriptions up front for use in diagnostics.
-		let source_descriptions: Vec<String> =
-			self.sources.iter().map(|s| s.description()).collect();
-
 		let mut merged = IndexMap::new();
+		// Track each user-controlled source's loaded map alongside its description so
+		// that flat-key diagnostics can be attributed to the originating source rather
+		// than to the post-merge view.
+		let mut per_source: Vec<(String, IndexMap<String, Value>)> =
+			Vec::with_capacity(self.sources.len());
 
 		// Merge all sources in priority order (lowest to highest)
 		// Later sources will overwrite earlier ones
 		for source in &self.sources {
+			let description = source.description();
 			let config = source.load().map_err(|e| BuildError::Source {
-				description: source.description(),
+				description: description.clone(),
 				error: e,
 			})?;
 
 			// Merge into the main config
-			for (key, value) in config {
-				merged.insert(key, value);
+			for (key, value) in &config {
+				merged.insert(key.clone(), value.clone());
 			}
+
+			per_source.push((description, config));
 		}
 
-		// Apply thread-local test overrides (highest priority, above all sources)
+		// Apply thread-local test overrides (highest priority, above all sources).
+		// Overrides are internal test machinery and intentionally bypass the
+		// flat-key warning logic below.
 		if let Some(overrides) = super::testing::overrides::current_overrides() {
 			super::testing::overrides::deep_merge(&mut merged, overrides);
 		}
 
-		// Warn about flat top-level keys that belong under [core]
-		warn_flat_core_keys(&merged, &source_descriptions);
+		// Warn about flat top-level keys that belong under [core], deciding per
+		// source so that built-in defaults never trigger noisy false positives.
+		for (description, config) in &per_source {
+			if is_default_source_description(description) {
+				continue;
+			}
+			for warning in flat_core_warnings(config, description) {
+				eprintln!("{warning}");
+			}
+		}
 
 		Ok(MergedSettings {
 			data: Arc::new(merged),
@@ -223,28 +237,44 @@ const CORE_SETTINGS_FIELDS: &[&str] = &[
 	"time_zone",
 ];
 
-/// Emit a warning for any top-level flat keys in `merged` that are known
-/// `CoreSettings` fields and therefore must live under `[core]`.
-///
-/// `source_descriptions` is a list of human-readable source descriptions
-/// (e.g. "TOML file: local.toml") used to build a helpful diagnostic message.
-fn warn_flat_core_keys(merged: &IndexMap<String, Value>, source_descriptions: &[String]) {
-	let source_hint = if source_descriptions.is_empty() {
-		"(unknown source)".to_string()
-	} else {
-		source_descriptions.join(", ")
-	};
+/// Description string used by the built-in `DefaultSource`. The default source
+/// uses `#[serde(flatten)]` to populate every `CoreSettings` field at the top
+/// level, so it would otherwise spuriously trigger the flat-key warning on
+/// every build. Matching by description lets us skip it without leaking source
+/// internals into this module.
+const DEFAULT_SOURCE_DESCRIPTION: &str = "Default values";
 
+/// Returns true when the given source description identifies the built-in
+/// `DefaultSource`, whose flat top-level layout is intentional.
+fn is_default_source_description(description: &str) -> bool {
+	description == DEFAULT_SOURCE_DESCRIPTION
+}
+
+/// Build the list of flat-key warning messages a single user-controlled
+/// configuration source would produce.
+///
+/// For each top-level key in `source_map` that matches a known `CoreSettings`
+/// field, returns one warning string explaining that the key must live under
+/// `[core]`. Returns an empty vector when nothing is wrong, which makes the
+/// helper trivially testable.
+///
+/// The caller is responsible for skipping internal sources whose flat layout
+/// is intentional (e.g. the built-in `DefaultSource`).
+fn flat_core_warnings(
+	source_map: &IndexMap<String, Value>,
+	source_description: &str,
+) -> Vec<String> {
+	let mut warnings = Vec::new();
 	for &field in CORE_SETTINGS_FIELDS {
-		if merged.contains_key(field) {
-			eprintln!(
-				"[reinhardt-conf] Warning: settings source(s) '{}' contain top-level key '{}' outside any section.\n\
+		if source_map.contains_key(field) {
+			warnings.push(format!(
+				"[reinhardt-conf] Warning: settings source '{source_description}' contains top-level key '{field}' outside any section.\n\
 				 This key is part of CoreSettings and must be placed under [core] to take effect.\n\
-				 Hint: wrap the key in a [core] section header.",
-				source_hint, field
-			);
+				 Hint: wrap the key in a [core] section header."
+			));
 		}
 	}
+	warnings
 }
 
 impl Default for SettingsBuilder {
@@ -742,63 +772,111 @@ mod tests {
 		assert_eq!(composed.name, "app");
 	}
 
-	/// Verify that `warn_flat_core_keys` emits a warning (via stderr) when a
-	/// known CoreSettings field appears as a flat top-level key rather than
-	/// nested under `[core]`.
-	#[test]
-	fn test_flat_core_key_warning_is_emitted() {
-		// Capture stderr by redirecting it temporarily via a pipe.
-		// Because `eprintln!` writes to the process stderr we use a simple
-		// integration approach: call `warn_flat_core_keys` directly and assert
-		// it does not panic, then confirm the logic by inspecting the merged map.
-
-		let mut merged: IndexMap<String, Value> = IndexMap::new();
-		// Add a flat CoreSettings key (not under a [core] section).
-		merged.insert(
+	/// `flat_core_warnings` emits one message per known CoreSettings field that
+	/// appears as a flat top-level key in a user-controlled source.
+	#[rstest]
+	fn test_flat_core_warnings_detects_flat_core_key() {
+		// Arrange
+		let mut source_map: IndexMap<String, Value> = IndexMap::new();
+		source_map.insert(
 			"secret_key".to_string(),
 			Value::String("flat-key".to_string()),
 		);
+		// A non-CoreSettings key must never trigger a warning.
+		source_map.insert("port".to_string(), Value::Number(8080.into()));
 
-		// Adding a key that is NOT a CoreSettings field — must not trigger warning.
-		merged.insert("port".to_string(), Value::Number(8080.into()));
+		// Act
+		let warnings = flat_core_warnings(&source_map, "TOML file: local.toml");
 
-		// No sources; the function still runs without panicking.
-		let source_descs: Vec<String> = Vec::new();
-
-		// This should not panic and should print a warning to stderr.
-		warn_flat_core_keys(&merged, &source_descs);
-
-		// Assert the flat key is correctly detected by checking membership
-		// against the known list (mirrors what warn_flat_core_keys does).
-		assert!(CORE_SETTINGS_FIELDS.contains(&"secret_key"));
-		assert!(!CORE_SETTINGS_FIELDS.contains(&"port"));
+		// Assert
+		assert_eq!(warnings.len(), 1);
+		assert!(warnings[0].contains("'secret_key'"));
+		assert!(warnings[0].contains("TOML file: local.toml"));
 	}
 
-	/// Verify that `warn_flat_core_keys` does NOT warn when all CoreSettings
-	/// keys are properly nested under `[core]` (i.e. absent from top level).
-	#[test]
-	fn test_flat_core_key_no_warning_when_properly_nested() {
-		let mut merged: IndexMap<String, Value> = IndexMap::new();
-		// Properly nested — `core` key holds an object.
-		merged.insert(
+	/// `flat_core_warnings` returns no messages when every CoreSettings field is
+	/// properly nested under `[core]` (and therefore absent from the top level).
+	#[rstest]
+	fn test_flat_core_warnings_silent_when_properly_nested() {
+		// Arrange
+		let mut source_map: IndexMap<String, Value> = IndexMap::new();
+		source_map.insert(
 			"core".to_string(),
 			serde_json::json!({"secret_key": "properly-nested", "debug": false}),
 		);
 
-		let source_descs: Vec<String> = Vec::new();
+		// Act
+		let warnings = flat_core_warnings(&source_map, "TOML file: local.toml");
 
-		// Should not emit a warning (no CoreSettings fields at top level).
-		// The function should complete without panic.
-		warn_flat_core_keys(&merged, &source_descs);
+		// Assert
+		assert!(warnings.is_empty());
+	}
 
-		// None of the CoreSettings fields are present at the top level.
-		for field in CORE_SETTINGS_FIELDS {
-			assert!(
-				!merged.contains_key(*field),
-				"field {} should not be at top level",
-				field
-			);
-		}
+	/// A builder configured with only `DefaultSource` must not produce any
+	/// flat-key warnings, regardless of how many CoreSettings fields the
+	/// default source flattens onto the top level.
+	#[rstest]
+	fn test_default_source_alone_produces_no_warnings() {
+		// Arrange: simulate the flat top-level layout that `DefaultSource`
+		// produces via `#[serde(flatten)]` over `CoreSettings`.
+		let mut default_map: IndexMap<String, Value> = IndexMap::new();
+		default_map.insert("debug".to_string(), Value::Bool(false));
+		default_map.insert(
+			"secret_key".to_string(),
+			Value::String("default".to_string()),
+		);
+		default_map.insert("installed_apps".to_string(), serde_json::json!([]));
+
+		// Act: the builder logic skips the default source by description, so
+		// confirm both sides of that contract.
+		assert!(is_default_source_description("Default values"));
+		let warnings_if_evaluated = flat_core_warnings(&default_map, "Default values");
+
+		// Assert: had the default source been evaluated, it would have produced
+		// noise; the builder must skip it before reaching this branch.
+		assert!(!warnings_if_evaluated.is_empty());
+	}
+
+	/// A user TOML source that correctly nests everything under `[core]`
+	/// produces no warnings even when merged on top of the default source.
+	#[rstest]
+	fn test_user_source_with_properly_nested_core_produces_no_warnings() {
+		// Arrange: user TOML loads as a single top-level `core` table.
+		let mut user_map: IndexMap<String, Value> = IndexMap::new();
+		user_map.insert(
+			"core".to_string(),
+			serde_json::json!({
+				"secret_key": "user-secret",
+				"debug": true,
+				"allowed_hosts": ["localhost"],
+			}),
+		);
+
+		// Act
+		let warnings = flat_core_warnings(&user_map, "TOML file: settings.toml");
+
+		// Assert
+		assert!(warnings.is_empty());
+	}
+
+	/// A user TOML source with a flat top-level `secret_key` produces exactly
+	/// one warning that names both the offending key and the source.
+	#[rstest]
+	fn test_user_source_with_flat_secret_key_produces_one_warning() {
+		// Arrange
+		let mut user_map: IndexMap<String, Value> = IndexMap::new();
+		user_map.insert(
+			"secret_key".to_string(),
+			Value::String("flat-user-secret".to_string()),
+		);
+
+		// Act
+		let warnings = flat_core_warnings(&user_map, "TOML file: settings.toml");
+
+		// Assert
+		assert_eq!(warnings.len(), 1);
+		assert!(warnings[0].contains("secret_key"));
+		assert!(warnings[0].contains("TOML file: settings.toml"));
 	}
 
 	#[test]
