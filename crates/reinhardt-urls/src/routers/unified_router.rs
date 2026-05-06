@@ -657,8 +657,183 @@ impl reinhardt_http::Handler for UnifiedRouter {
 /// On WASM, server-side routing is not available. This stub allows
 /// `UnifiedRouter::server()` closures to compile by accepting and
 /// ignoring the server configuration closure.
+///
+/// The stub mirrors the public builder surface of
+/// [`ServerRouter`](crate::routers::ServerRouter): every builder method
+/// has a same-named no-op counterpart that consumes `self`, drops its
+/// arguments, and returns `Self`. This lets the same
+/// `.server(|s| s.with_prefix(...).endpoint(...).function(...))` body
+/// emitted by `#[url_patterns(mode = unified | server)]` compile
+/// uniformly on both native and WASM targets — the result is discarded
+/// by [`UnifiedRouter::server`] on WASM.
+///
+/// Generic bounds from `ServerRouter` are intentionally relaxed here:
+/// many of the upstream bound types (`Handler`, `Middleware`, `ViewSet`,
+/// `InjectionContext`, `Method`, …) live behind `#[cfg(native)]` and
+/// would not resolve on WASM. The stub only needs call-site arity to
+/// match.
 #[cfg(wasm)]
 pub struct ServerRouterStub;
+
+#[cfg(wasm)]
+impl ServerRouterStub {
+	/// Construct a new stub. No-op on WASM.
+	pub fn new() -> Self {
+		Self
+	}
+
+	/// No-op stub for `ServerRouter::with_prefix`.
+	pub fn with_prefix(self, _prefix: impl Into<String>) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::with_namespace`.
+	pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::with_di_context`.
+	pub fn with_di_context<C>(self, _ctx: C) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::with_middleware`.
+	pub fn with_middleware<M>(self, _middleware: M) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::with_route_middleware`.
+	pub fn with_route_middleware<M>(self, _middleware: M) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::exclude`.
+	pub fn exclude(self, _pattern: &str) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::mount`.
+	pub fn mount<R>(self, _prefix: &str, _child: R) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::group`.
+	pub fn group<R>(self, _routers: Vec<R>) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::function`.
+	pub fn function<M, F>(self, _path: &str, _method: M, _func: F) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::function_named`.
+	pub fn function_named<M, F>(self, _path: &str, _method: M, _name: &str, _func: F) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::route`.
+	pub fn route<M, F>(self, _path: &str, _method: M, _func: F) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::route_named`.
+	pub fn route_named<M, F>(self, _path: &str, _method: M, _name: &str, _func: F) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::handler`.
+	pub fn handler<H>(self, _path: &str, _handler: H) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::handler_arc`.
+	pub fn handler_arc<H>(self, _path: &str, _handler: H) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::handler_with_method`.
+	pub fn handler_with_method<M, H>(self, _path: &str, _method: M, _handler: H) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::handler_with_method_named`.
+	pub fn handler_with_method_named<M, H>(
+		self,
+		_path: &str,
+		_method: M,
+		_name: &str,
+		_handler: H,
+	) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::view`.
+	pub fn view<V>(self, _path: &str, _view: V) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::view_named`.
+	pub fn view_named<V>(self, _path: &str, _name: &str, _view: V) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::viewset`.
+	pub fn viewset<V>(self, _prefix: &str, _viewset: V) -> Self {
+		self
+	}
+
+	/// No-op stub for `ServerRouter::endpoint`.
+	pub fn endpoint<F>(self, _f: F) -> Self {
+		self
+	}
+}
+
+#[cfg(wasm)]
+impl Default for ServerRouterStub {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+// Drift detection (Fixes #4185).
+//
+// `#[url_patterns(mode = unified | server)]` re-emits the user-supplied
+// `.server(|s| ...)` closure body verbatim on WASM, so every builder
+// method called inside that closure must exist on `ServerRouterStub`.
+// The `const _` below type-checks the canonical builder chain on every
+// `cargo check --target wasm32-unknown-unknown`; if a future change
+// drops a stub method while the corresponding `ServerRouter` builder
+// still exists on native, this assertion fails to compile and CI
+// catches the drift.
+#[cfg(all(wasm, feature = "client-router"))]
+#[doc(hidden)]
+const _: fn() = || {
+	let _ = UnifiedRouter::new()
+		.server(|s| {
+			s.with_prefix("/api")
+				.with_namespace("api")
+				.with_di_context(())
+				.with_middleware(())
+				.with_route_middleware(())
+				.exclude("/internal")
+				.mount("/v1/", ServerRouterStub::new())
+				.group(Vec::<ServerRouterStub>::new())
+				.function("/f", (), || ())
+				.function_named("/f", (), "f", || ())
+				.route("/r", (), || ())
+				.route_named("/r", (), "r", || ())
+				.handler("/h", ())
+				.handler_arc("/h", ())
+				.handler_with_method("/h", (), ())
+				.handler_with_method_named("/h", (), "h", ())
+				.view("/v", ())
+				.view_named("/v", "v", ())
+				.viewset("/vs/", ())
+				.endpoint(|| ())
+		})
+		.client(|c| c);
+};
 
 /// Unified router for WASM targets with client-side routing.
 ///
