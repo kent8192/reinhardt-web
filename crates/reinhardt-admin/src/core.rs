@@ -13,8 +13,6 @@ pub mod import;
 pub mod model_admin;
 pub mod router;
 pub mod site;
-#[cfg(server)]
-pub mod vendor;
 
 // Re-exports
 pub use crate::types::{

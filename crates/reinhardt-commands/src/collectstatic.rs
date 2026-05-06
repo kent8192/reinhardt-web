@@ -131,74 +131,69 @@ impl CollectStaticCommand {
 			fs::create_dir_all(&self.config.static_root)?;
 		}
 
-		// Download vendor assets for the admin panel before collecting static files.
-		// This step is only active when the "server" feature is enabled.
-		//
-		// The download target is resolved from the admin app's registered static_dir
-		// (via inventory) to ensure consistency with the path that find_all() will
-		// later walk. Falling back to a CARGO_MANIFEST_DIR-relative path would
-		// silently diverge when the crate is consumed from the cargo registry or
-		// across git worktrees.
+		// Download vendor assets across all registered apps before collecting
+		// static files. Each app's `vendor_assets` (declared via inventory) is
+		// fetched into that app's registered `static_dir`. Apps without a
+		// registered static directory are skipped.
 		#[cfg(feature = "server")]
 		{
-			let admin_assets_dir: Option<PathBuf> = {
-				let app_configs = ::reinhardt_apps::get_app_static_files();
-				app_configs
+			use reinhardt_utils::staticfiles::vendor::{Verbosity, download_all_vendor_assets};
+
+			let static_dirs: std::collections::HashMap<&'static str, PathBuf> =
+				::reinhardt_apps::get_app_static_files()
 					.iter()
-					.find(|c| c.app_label == "admin")
-					.map(|c| PathBuf::from(c.static_dir))
+					.map(|c| (c.app_label, PathBuf::from(c.static_dir)))
+					.collect();
+
+			// Ensure each registered static directory exists so vendor downloads
+			// have a valid target.
+			if !self.options.dry_run {
+				for dir in static_dirs.values() {
+					fs::create_dir_all(dir).ok();
+				}
+			}
+
+			let verbosity = match self.options.verbosity {
+				0 => Verbosity::Silent,
+				1 => Verbosity::Normal,
+				_ => Verbosity::Verbose,
 			};
 
-			if let Some(admin_assets_dir) = admin_assets_dir {
-				// Ensure the directory exists so vendor downloads have a target
-				if !self.options.dry_run {
-					fs::create_dir_all(&admin_assets_dir).ok();
-				}
+			let resolver = |label: &str| static_dirs.get(label).cloned();
 
-				use reinhardt_admin::core::vendor::{Verbosity, download_vendor_assets};
+			// Bridge sync->async: try the current tokio runtime handle first,
+			// then fall back to a freshly created single-threaded runtime.
+			let result: Result<(), String> = match tokio::runtime::Handle::try_current() {
+				Ok(handle) => tokio::task::block_in_place(|| {
+					handle
+						.block_on(download_all_vendor_assets(resolver, verbosity))
+						.map_err(|e| e.to_string())
+				}),
+				Err(_) => match tokio::runtime::Builder::new_current_thread()
+					.enable_all()
+					.build()
+				{
+					Ok(rt) => rt
+						.block_on(download_all_vendor_assets(resolver, verbosity))
+						.map_err(|e| e.to_string()),
+					Err(e) => Err(format!("failed to create tokio runtime: {}", e)),
+				},
+			};
 
-				let verbosity = match self.options.verbosity {
-					0 => Verbosity::Silent,
-					1 => Verbosity::Normal,
-					_ => Verbosity::Verbose,
-				};
-
-				// Bridge sync->async: try the current tokio runtime handle first,
-				// then fall back to a freshly created single-threaded runtime.
-				let result: Result<(), String> = match tokio::runtime::Handle::try_current() {
-					Ok(handle) => tokio::task::block_in_place(|| {
-						handle
-							.block_on(download_vendor_assets(&admin_assets_dir, verbosity))
-							.map_err(|e| e.to_string())
-					}),
-					Err(_) => match tokio::runtime::Builder::new_current_thread()
-						.enable_all()
-						.build()
-					{
-						Ok(rt) => rt
-							.block_on(download_vendor_assets(&admin_assets_dir, verbosity))
-							.map_err(|e| e.to_string()),
-						Err(e) => Err(format!("failed to create tokio runtime: {}", e)),
-					},
-				};
-
-				match result {
-					Ok(()) => {
-						if self.options.verbosity > 0 {
-							println!("All vendor assets up-to-date");
-						}
-					}
-					Err(e) => {
-						// Vendor download failures are non-fatal; warn and continue
-						// with whatever assets already exist in the directory.
-						eprintln!(
-							"Warning: vendor asset download failed (continuing with existing files): {}",
-							e
-						);
+			match result {
+				Ok(()) => {
+					if self.options.verbosity > 0 {
+						println!("All vendor assets up-to-date");
 					}
 				}
-			} else if self.options.verbosity > 0 {
-				println!("Admin static files not registered; skipping vendor asset download");
+				Err(e) => {
+					// Vendor download failures are non-fatal; warn and continue
+					// with whatever assets already exist on disk.
+					eprintln!(
+						"Warning: vendor asset download failed (continuing with existing files): {}",
+						e
+					);
+				}
 			}
 		}
 
