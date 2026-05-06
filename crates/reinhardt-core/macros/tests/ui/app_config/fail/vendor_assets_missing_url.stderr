@@ -1,5 +1,0 @@
-error: asset() requires `url`
- --> tests/ui/app_config/fail/vendor_assets_missing_url.rs:9:9
-  |
-9 |         asset(target = "vendor/x.js"),
-  |         ^^^^^
