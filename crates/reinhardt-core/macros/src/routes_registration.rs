@@ -523,7 +523,16 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		// `app_idents.is_empty()` branch below, which emits only the
 		// minimal `url_prelude { pub use super::ResolvedUrls; }` block —
 		// exactly the surface wasm SPA consumers need.
-		let app_labels = crate::macro_state::read_installed_apps().unwrap_or_default();
+		// `read_installed_apps()` returns `Ok(empty)` when the state file is
+		// absent (the expected wasm soft-fallback) and `Err` for all other IO
+		// failures, so genuine misconfigurations still surface as macro errors
+		// rather than being silently swallowed.
+		let app_labels = crate::macro_state::read_installed_apps().map_err(|e| {
+			syn::Error::new(
+				proc_macro2::Span::call_site(),
+				format!("Failed to read installed apps state: {e}"),
+			)
+		})?;
 
 		let app_idents: Vec<proc_macro2::Ident> = app_labels
 			.iter()

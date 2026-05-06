@@ -1167,9 +1167,11 @@ pub use reinhardt_utils::storage::{InMemoryStorage, LocalStorage, Storage};
 /// without modifying the scaffolded sources.
 ///
 /// This wasm-only stub re-exports the minimum surface the scaffold uses
-/// (`UnifiedRouter` from the wasm-side `urls::prelude` shim defined above).
-/// Native builds keep using the full server-side `prelude` declared below.
-#[cfg(not(native))]
+/// (`UnifiedRouter` from the wasm-side `urls::prelude` shim, gated behind
+/// the `client-router` feature; the module is empty when that feature is
+/// disabled). Native builds keep using the full server-side `prelude`
+/// declared below.
+#[cfg(all(not(native), target_family = "wasm"))]
 pub mod prelude {
 	#[cfg(feature = "client-router")]
 	pub use crate::urls::prelude::UnifiedRouter;
