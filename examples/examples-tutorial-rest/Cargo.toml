@@ -10,6 +10,10 @@ default-run = "examples-tutorial-rest"
 name = "examples-tutorial-rest"
 path = "src/bin/manage.rs"
 
+[[bin]]
+name = "manage"
+path = "src/bin/manage.rs"
+
 [dependencies]
 reinhardt = { workspace = true, features = [
     "minimal",
