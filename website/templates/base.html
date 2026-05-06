@@ -178,6 +178,24 @@
 				localStorage.setItem('rw-theme', wasDark ? 'light' : 'dark');
 				syncHljsTheme(!wasDark);
 				syncToggleIcon(!wasDark);
+
+				// Re-render any Mermaid diagrams already on the page so colors match the new theme.
+				// Restore the original source via textContent (safe DOM mutation; no innerHTML).
+				if (window.__reinhardtMermaidLoaded && Array.isArray(window.__reinhardtMermaidNodes)) {
+					window.__reinhardtMermaidNodes.forEach(function(node) {
+						var src = node.getAttribute('data-source');
+						if (src == null) return;
+						node.removeAttribute('data-processed');
+						// Clear the previously-rendered SVG by removing all children, then restore source text.
+						while (node.firstChild) {
+							node.removeChild(node.firstChild);
+						}
+						node.textContent = src;
+					});
+					if (typeof window.__reinhardtRunMermaid === 'function') {
+						window.__reinhardtRunMermaid();
+					}
+				}
 			});
 		})();
 	</script>
