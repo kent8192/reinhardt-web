@@ -10,4 +10,4 @@ The Reinhardt changelog is maintained in the repository.
 
 ## Announcements
 
-{% announcement_links() %}
+{{ announcement_links() }}

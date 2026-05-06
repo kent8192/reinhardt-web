@@ -4,20 +4,15 @@
     headers=["User-Agent=reinhardt-web-site (zola)"],
     required=false
 ) -%}
-
 {%- if data -%}
-{%- set_global rows = [] -%}
-{%- for item in data -%}
-  {%- if item.type == "file" and item.name is starting_with("v") and item.name is ending_with(".md") -%}
-    {%- set version = item.name | trim_end_matches(pat=".md") -%}
-    {%- set_global rows = rows | concat(with=[{"version": version, "url": item.html_url}]) -%}
+{%- set files = data | filter(attribute="type", value="file") | sort(attribute="name") | reverse -%}
+<ul>
+{%- for item in files -%}
+  {%- if item.name is starting_with("v") and item.name is ending_with(".md") %}
+  <li><a href="{{ item.html_url | safe }}">{{ item.name | trim_end_matches(pat=".md") }}</a></li>
   {%- endif -%}
-{%- endfor -%}
-
-{%- for row in rows | sort(attribute="version") | reverse -%}
-- [{{ row.version }}]({{ row.url }})
-{%- endfor -%}
-{%- else -%}
-- Announcement list is currently unavailable. Please check the repository directly:
-  [announcements directory](https://github.com/kent8192/reinhardt-web/tree/main/announcements)
+{%- endfor %}
+</ul>
+{%- else %}
+<p>Announcement list is currently unavailable. Please check the <a href="https://github.com/kent8192/reinhardt-web/tree/main/announcements">announcements directory</a> directly.</p>
 {%- endif -%}
