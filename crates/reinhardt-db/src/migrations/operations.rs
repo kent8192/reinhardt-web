@@ -1466,8 +1466,10 @@ impl Operation {
 							parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
 						}
 					}
-					// SQLite: INTEGER PRIMARY KEY is implicitly AUTOINCREMENT
-					// But we need explicit AUTOINCREMENT keyword for tests
+					// SQLite: AUTOINCREMENT requires `INTEGER PRIMARY KEY AUTOINCREMENT`.
+					// Note that `INTEGER PRIMARY KEY` alone only enables rowid auto-assignment
+					// (alias for the rowid); the explicit AUTOINCREMENT keyword is required to
+					// guarantee monotonic, non-reused IDs (backed by sqlite_sequence).
 					if col.primary_key {
 						parts.push("PRIMARY KEY AUTOINCREMENT".to_string().into());
 						// Return early to avoid duplicate PRIMARY KEY
@@ -6125,9 +6127,13 @@ mod tests {
 			"Non-auto_increment column must not emit AUTOINCREMENT: {}",
 			sql
 		);
+		// SQLite accepts `BIGINT` declarations via type affinity, but our emitter
+		// normalizes integer widths to `INTEGER` for consistency with the
+		// auto_increment path. This assertion guards that normalization, not a
+		// SQLite-level prohibition on BIGINT.
 		assert!(
 			!sql.contains("BIGINT"),
-			"SQLite must not declare BIGINT (use INTEGER per type affinity): {}",
+			"emitter is expected to normalize BigInteger to INTEGER for SQLite: {}",
 			sql
 		);
 	}
