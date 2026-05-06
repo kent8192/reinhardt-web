@@ -185,6 +185,15 @@
 	{# highlight.js init + code block enhancements #}
 	<script>
 		document.addEventListener('DOMContentLoaded', function() {
+			// Mermaid: collect language-mermaid blocks and dynamically load mermaid.min.js
+			// when at least one such block exists. Pinned via SRI.
+			// Issue: https://github.com/kent8192/reinhardt-web/issues/4178
+			var MERMAID_VERSION = '11.12.0';
+			var MERMAID_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/' + MERMAID_VERSION + '/mermaid.min.js';
+			var MERMAID_SRI = 'sha384-o+g/BxPwhi0C3RK7oQBxQuNimeafQ3GE/ST4iT2BxVI4Wzt60SH4pq9iXVYujjaS';
+			var mermaidNodes = [];
+			window.__reinhardtMermaidNodes = mermaidNodes;
+
 			document.querySelectorAll('pre code').forEach(function(block) {
 				var wrapper = block.closest('pre');
 				if (!wrapper) return;
