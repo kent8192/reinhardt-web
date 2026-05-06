@@ -318,9 +318,9 @@ pub mod urls {
 		// Real wasm `UnifiedRouter` (with `ServerRouterStub` / `ClientRouter`
 		// builder closures). Available when `client-router` is enabled.
 		#[cfg(feature = "client-router")]
-		pub use reinhardt_urls::routers::{ClientRouter, UnifiedRouter};
-		#[cfg(feature = "client-router")]
 		pub use reinhardt_urls::routers::unified_router::ServerRouterStub;
+		#[cfg(feature = "client-router")]
+		pub use reinhardt_urls::routers::{ClientRouter, UnifiedRouter};
 
 		// Inert fallback for wasm builds without `client-router`. Closures
 		// receive a stub parameter typed to match the real wasm API shape so
