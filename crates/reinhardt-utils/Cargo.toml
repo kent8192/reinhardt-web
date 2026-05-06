@@ -65,6 +65,8 @@ webp = { version = "0.3", optional = true }
 uuid = { workspace = true }
 tempfile = "3.14"
 chrono-tz = { workspace = true }
+inventory = "0.3"
+reqwest = { version = "0.13.2", default-features = false, features = ["rustls"] }
 
 [features]
 default = []
@@ -106,7 +108,7 @@ dev-server = ["dep:notify"]
 
 [dev-dependencies]
 insta = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 proptest = { workspace = true }
 regex = "1.0"
 bytes = { workspace = true }
@@ -117,3 +119,4 @@ testcontainers-modules = { workspace = true }
 uuid = { workspace = true }
 tokio-test = "0.4"
 tempfile = "3.8"
+wiremock = "0.6"
