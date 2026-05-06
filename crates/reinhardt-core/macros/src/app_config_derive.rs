@@ -30,9 +30,7 @@ impl AppConfigAttr {
 		let mut vendor_assets: Vec<VendorAssetEntry> = Vec::new();
 
 		for attr in attrs {
-			if !attr.path().is_ident("app_config")
-				&& !attr.path().is_ident("app_config_internal")
-			{
+			if !attr.path().is_ident("app_config") && !attr.path().is_ident("app_config_internal") {
 				continue;
 			}
 
@@ -75,15 +73,12 @@ impl AppConfigAttr {
 								sha256 = Some(v.value());
 								Ok(())
 							} else {
-								Err(field.error(
-									"asset() supports only `url`, `target`, `sha256`",
-								))
+								Err(field.error("asset() supports only `url`, `target`, `sha256`"))
 							}
 						})?;
-						let url =
-							url.ok_or_else(|| asset_meta.error("asset() requires `url`"))?;
-						let target = target
-							.ok_or_else(|| asset_meta.error("asset() requires `target`"))?;
+						let url = url.ok_or_else(|| asset_meta.error("asset() requires `url`"))?;
+						let target =
+							target.ok_or_else(|| asset_meta.error("asset() requires `target`"))?;
 						vendor_assets.push(VendorAssetEntry {
 							url,
 							target,

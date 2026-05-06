@@ -61,8 +61,7 @@ async fn download_then_skip_on_second_call() {
 	let base = tmp.path();
 
 	// Build asset descriptors. We need 'static URLs — leak intentionally for the test.
-	let htmx_url: &'static str =
-		Box::leak(format!("{}/htmx.js", server.uri()).into_boxed_str());
+	let htmx_url: &'static str = Box::leak(format!("{}/htmx.js", server.uri()).into_boxed_str());
 	let alpine_url: &'static str =
 		Box::leak(format!("{}/alpine.js", server.uri()).into_boxed_str());
 	let htmx_sha: &'static str = Box::leak(sha256_hex(HTMX_BODY).into_boxed_str());
@@ -110,8 +109,7 @@ async fn download_then_skip_on_second_call() {
 	);
 
 	// Pinned SHA verifies cleanly.
-	verify_integrity(&base.join("vendor/htmx.js"), htmx_sha)
-		.expect("pinned SHA must verify");
+	verify_integrity(&base.join("vendor/htmx.js"), htmx_sha).expect("pinned SHA must verify");
 }
 
 #[rstest]
@@ -146,9 +144,5 @@ async fn download_errors_on_sha_mismatch() {
 
 	// Assert — the function attempts the download, then fails the post-write SHA check.
 	assert!(result.is_err(), "expected SHA mismatch error");
-	assert_eq!(
-		request_count.load(Ordering::SeqCst),
-		1,
-		"URL fetched once"
-	);
+	assert_eq!(request_count.load(Ordering::SeqCst), 1, "URL fetched once");
 }
