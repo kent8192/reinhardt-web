@@ -114,11 +114,34 @@ pub mod reinhardt_types {
 	pub use reinhardt_core::types::*;
 }
 
-// Server-side only re-exports (NOT for WASM)
+// Native: full re-export of the `reinhardt-apps` crate.
 #[cfg(all(feature = "core", native))]
 #[doc(hidden)]
 pub mod reinhardt_apps {
 	pub use reinhardt_apps::*;
+}
+
+// Wasm: inert shim exposing only the surface the macros emit
+// (`::reinhardt::reinhardt_apps::apps::AppLabel`). The full `reinhardt-apps`
+// crate is not wasm-compatible (transitively depends on tokio/hyper), so we
+// re-publish a minimal trait with the same signature so #[app_config] /
+// #[url_patterns] expansions type-check on wasm.
+#[cfg(all(feature = "core", not(native)))]
+#[doc(hidden)]
+pub mod reinhardt_apps {
+	pub mod apps {
+		/// Wasm-only inert mirror of `reinhardt_apps::apps::AppLabel`.
+		///
+		/// Matches the native trait signature so macro expansions referring to
+		/// `::reinhardt::reinhardt_apps::apps::AppLabel` resolve on wasm.
+		pub trait AppLabel {
+			const LABEL: &'static str;
+
+			fn path(&self) -> &'static str {
+				Self::LABEL
+			}
+		}
+	}
 }
 
 #[cfg(all(feature = "di", native))]
@@ -240,7 +263,9 @@ pub mod tasks;
 pub mod template;
 #[cfg(all(feature = "test", native))]
 pub mod test;
-#[cfg(native)]
+// `urls` is cross-target — `reinhardt-urls` already builds for
+// wasm32-unknown-unknown, and macro expansions of #[url_patterns]
+// reference `reinhardt::urls::prelude::*`.
 pub mod urls;
 #[cfg(native)]
 pub mod utils;
@@ -252,8 +277,8 @@ pub mod views;
 #[cfg(all(feature = "core", native))]
 pub use reinhardt_apps::{AppConfig, AppError, AppResult, Apps};
 
-// Re-export macros
-#[cfg(all(feature = "core", native))]
+// Re-export macros (cross-target so #[app_config] is reachable on wasm).
+#[cfg(feature = "core")]
 pub use reinhardt_macros::{AppConfig, app_config, installed_apps};
 
 // Re-export settings attribute macro (requires conf feature)
@@ -1202,6 +1227,55 @@ pub use reinhardt_websockets::{
 	RouteError, RouteResult, WebSocketRoute, WebSocketRouter, clear_websocket_router,
 	get_websocket_router, register_websocket_router, reverse_websocket_url,
 };
+
+// Wasm-only inert shim of `WebSocketRouter`.
+//
+// `reinhardt-websockets` (and the underlying `reinhardt_core::ws`) is gated
+// `#[cfg(native)]` and is not wasm-compatible. The `#[url_patterns(... mode = ws)]`
+// macro expansion emits builder calls of the form
+// `WebSocketRouter::new().with_namespace(...).consumer(handler_fn)` whose return
+// type is referenced from the user-facing function signature, so the symbol must
+// resolve on wasm even though no real router is wired up there.
+//
+// The shim mirrors the call-shape of the real builder
+// (`reinhardt_core::ws::WebSocketRouter`) — `new`, `with_namespace`, and
+// `consumer<C, F>(self, F) -> Self where F: Fn() -> C, C: 'static` — but does
+// nothing. The `WebSocketEndpointInfo` bound from the real signature is dropped
+// because that trait lives in `reinhardt_core::ws`, which is itself
+// `#[cfg(native)]` and unreachable from wasm; `C: 'static` is sufficient for
+// type-checking macro-emitted call sites.
+#[cfg(all(feature = "websockets", not(native)))]
+#[doc(hidden)]
+pub struct WebSocketRouter {
+	_private: (),
+}
+
+#[cfg(all(feature = "websockets", not(native)))]
+#[allow(missing_docs)] // wasm-only inert stub; surface mirrors `reinhardt_core::ws::WebSocketRouter` (#4161)
+impl WebSocketRouter {
+	pub fn new() -> Self {
+		Self { _private: () }
+	}
+
+	pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
+		self
+	}
+
+	pub fn consumer<C, F>(self, _f: F) -> Self
+	where
+		F: Fn() -> C,
+		C: 'static,
+	{
+		self
+	}
+}
+
+#[cfg(all(feature = "websockets", not(native)))]
+impl Default for WebSocketRouter {
+	fn default() -> Self {
+		Self::new()
+	}
+}
 
 /// SQL query builder module.
 ///
