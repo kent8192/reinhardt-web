@@ -269,6 +269,20 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		));
 	}
 
+	// Wasm-not gate applied to every item emitted in `#expanded` below
+	// (the user's `routes()` function, the inventory registration block, and
+	// the linker-marker static). These items reference native-only types
+	// (`ServerRouter`, `inventory`, DI scopes) and the user-written body is
+	// allowed to reference any native-only items the consumer crate uses
+	// (admin / middleware / Redis / `#[inject]` / etc.). Gating them out on
+	// `wasm32-unknown-unknown` lets the surrounding module compile cleanly
+	// on wasm so that `__url_resolver_support::ResolvedUrls` (defined in
+	// `#url_resolver_code` below, which is internally cfg-aware) is reachable
+	// from wasm SPA consumers. Fixes #4175.
+	let native_only = quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+	};
+
 	let expanded = if !is_async {
 		// Case 1: Sync, no #[inject] — existing behavior unchanged
 		let fn_sig = &input.sig;
@@ -276,12 +290,14 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			// private_interfaces: The macro forces `pub` visibility, but users
 			// legitimately use `pub(crate)` newtype wrappers for DI parameters
 			// (see #3498, #3468 DI pseudo orphan rule).
+			#native_only
 			#[allow(private_interfaces)]
 			#(#fn_attrs)*
 			#fn_vis #fn_sig #fn_block
 
 			// Allow unsafe attributes used by inventory::submit! (#[link_section])
 			// Required for Rust 2024 edition compatibility
+			#native_only
 			#[allow(unsafe_attr_outside_unsafe)]
 			const _: () = {
 				// Server router extraction function
@@ -297,6 +313,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			};
 
 			// Linker marker to enforce single #[routes] usage.
+			#native_only
 			#[doc(hidden)]
 			#[unsafe(no_mangle)]
 			#[allow(non_upper_case_globals, dead_code)]
@@ -308,10 +325,12 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		// Case 2: Async, no #[inject]
 		let fn_sig = &input.sig;
 		quote! {
+			#native_only
 			#[allow(private_interfaces)]
 			#(#fn_attrs)*
 			#fn_vis #fn_sig #fn_block
 
+			#native_only
 			#[allow(unsafe_attr_outside_unsafe)]
 			const _: () = {
 				fn __get_server_router() -> ::std::pin::Pin<
@@ -335,6 +354,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				}
 			};
 
+			#native_only
 			#[doc(hidden)]
 			#[unsafe(no_mangle)]
 			#[allow(non_upper_case_globals, dead_code)]
@@ -410,10 +430,12 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			.collect();
 
 		quote! {
+			#native_only
 			#[allow(private_interfaces)]
 			#(#fn_attrs)*
 			#fn_vis async fn #fn_name #fn_generics(#(#stripped_params),*) #fn_return #fn_block
 
+			#native_only
 			#[allow(unsafe_attr_outside_unsafe)]
 			const _: () = {
 				fn __get_server_router() -> ::std::pin::Pin<
@@ -448,6 +470,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				}
 			};
 
+			#native_only
 			#[doc(hidden)]
 			#[unsafe(no_mangle)]
 			#[allow(non_upper_case_globals, dead_code)]
@@ -477,6 +500,16 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		// while the client-side `__client_router_gate` block emits
 		// unconditionally so that `urls.client().<app>().<route>()` typed
 		// accessors compile on `wasm32-unknown-unknown`. Fixes #4119.
+		//
+		// The `#expanded` token stream above (the user's `routes()` function
+		// body, the `inventory::submit!` registration, and the linker marker)
+		// is wasm-gated as a whole via `#native_only` because the
+		// user-written body is allowed to reference any native-only items
+		// (admin / middleware / Redis sessions / `#[inject]` / server fns)
+		// the consuming crate uses. Gating it out on wasm lets the
+		// surrounding module compile cleanly so that
+		// `__url_resolver_support::ResolvedUrls` is reachable from wasm SPA
+		// consumers. Fixes #4175.
 		quote! {}
 	} else {
 		let app_labels = match crate::macro_state::read_installed_apps() {
