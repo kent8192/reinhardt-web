@@ -178,11 +178,39 @@ macro_rules! error_log {
 	($($arg:tt)*) => {{}};
 }
 
+/// Diagnostic trace for the SPA navigation pipeline.
+///
+/// Emits a single `console.debug` line in WASM dev builds; no-op
+/// everywhere else (including native and release WASM). Used to
+/// reproduce and classify the SPA navigation regression class
+/// (#4075 / #4088 / #4122 / #4203) by reading the browser DevTools
+/// console without rebuilding for a tracing subscriber.
+///
+/// Always emit a `site=...` field first so log filters can group by
+/// trace point (`store_router`, `register_render_listener`,
+/// `link_interceptor`, `navigate`, `notify_observers`, `popstate`).
+#[macro_export]
+#[cfg(all(debug_assertions, wasm))]
+macro_rules! nav_diag {
+	($($arg:tt)*) => {{
+		::web_sys::console::debug_1(
+			&format!("reinhardt-pages/nav-diag {}", format_args!($($arg)*)).into(),
+		);
+	}};
+}
+
+/// No-op `nav_diag` outside WASM dev builds.
+#[macro_export]
+#[cfg(not(all(debug_assertions, wasm)))]
+macro_rules! nav_diag {
+	($($arg:tt)*) => {{}};
+}
+
 #[cfg(test)]
 mod tests {
 	// Import macros from crate root
 	#[allow(unused_imports)]
-	use crate::{debug_log, error_log, info_log, warn_log};
+	use crate::{debug_log, error_log, info_log, nav_diag, warn_log};
 
 	#[test]
 	fn test_logging_macros_compile() {
@@ -191,6 +219,7 @@ mod tests {
 		info_log!("Info message: {}", "test");
 		warn_log!("Warning message: {:?}", vec![1, 2, 3]);
 		error_log!("Error message: {}", "error");
+		nav_diag!("site=test_compile router_id={} flag={}", 42_usize, true);
 	}
 
 	#[test]
@@ -200,5 +229,6 @@ mod tests {
 		info_log!("Simple info");
 		warn_log!("Simple warning");
 		error_log!("Simple error");
+		nav_diag!("site=test_no_args");
 	}
 }
