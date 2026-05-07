@@ -183,6 +183,11 @@ wasm-bindgen-futures = "0.4.56"
 reqwest = { workspace = true }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1.7", features = ["v7", "js"] }
+# Issue #4217: depend on reinhardt-urls on wasm to consume the canonical
+# `client_router::history` primitives (deduplicates with the server-side
+# dep below). Server-only deps inside reinhardt-urls are gated by the
+# wasm target, so the default features are safe on wasm.
+reinhardt-urls = { workspace = true, features = ["client-router"] }
 
 # Server-side only dependencies (DI, HTTP, Forms, Server Function Registry)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
@@ -190,7 +195,7 @@ reinhardt-forms = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-middleware = { workspace = true }
-reinhardt-urls = { workspace = true, features = ["routers"] }
+reinhardt-urls = { workspace = true, features = ["routers", "client-router"] }
 reinhardt-server = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["staticfiles"] }
 hyper = { workspace = true }

@@ -2,6 +2,13 @@
 //!
 //! This module provides integration with the browser's History API
 //! for navigation without full page reloads.
+//!
+//! This is the **canonical** implementation. `reinhardt-pages` re-exports
+//! these primitives via its own `router::history` shim. Prior to issue
+//! #4217, the two crates kept parallel copies that drifted whenever a
+//! fix landed only on one side, producing the SPA navigation regression
+//! chain (#4075 / #4088 / #4122 / #4203 / #4213). Single source of
+//! truth lives here.
 
 use std::collections::HashMap;
 
@@ -108,15 +115,22 @@ struct HistoryStateJson {
 }
 
 /// Pushes a new state to the browser history.
+///
+/// Serializes [`HistoryState`] to a structured JS object (not a JSON
+/// string) so external consumers can read `history.state.route_name`
+/// and friends through normal JS property access. Storing the state as
+/// `JsValue::from_str(&json)` was the root cause of the SPA navigation
+/// regression class (#4075 / #4088 / #4122 / #4203 / #4217): the
+/// framework's own popstate handler parsed the JSON string back, so
+/// internal flow worked, but any external reader on `history.state.x`
+/// got `undefined` because property lookup on a JS string returns
+/// nothing.
 #[cfg(wasm)]
 pub fn push_state(state: &HistoryState) -> Result<(), String> {
-	use wasm_bindgen::JsValue;
-
 	let window = web_sys::window().ok_or("Window not available")?;
 	let history = window.history().map_err(|_| "History not available")?;
 
-	let state_json = state.to_json().map_err(|e| e.to_string())?;
-	let js_state = JsValue::from_str(&state_json);
+	let js_state = state_to_js_object(state)?;
 
 	history
 		.push_state_with_url(&js_state, "", Some(&state.path))
@@ -130,15 +144,15 @@ pub fn push_state(_state: &HistoryState) -> Result<(), String> {
 }
 
 /// Replaces the current state in the browser history.
+///
+/// See [`push_state`] for the rationale behind serializing state as a
+/// JS object rather than a JSON string (Refs #4203 / #4217).
 #[cfg(wasm)]
 pub fn replace_state(state: &HistoryState) -> Result<(), String> {
-	use wasm_bindgen::JsValue;
-
 	let window = web_sys::window().ok_or("Window not available")?;
 	let history = window.history().map_err(|_| "History not available")?;
 
-	let state_json = state.to_json().map_err(|e| e.to_string())?;
-	let js_state = JsValue::from_str(&state_json);
+	let js_state = state_to_js_object(state)?;
 
 	history
 		.replace_state_with_url(&js_state, "", Some(&state.path))
@@ -151,10 +165,53 @@ pub fn replace_state(_state: &HistoryState) -> Result<(), String> {
 	Ok(())
 }
 
+/// Serialize [`HistoryState`] to a structured JS object so external
+/// consumers can read fields via property access. Refs #4203.
+#[cfg(wasm)]
+fn state_to_js_object(state: &HistoryState) -> Result<wasm_bindgen::JsValue, String> {
+	let wire = HistoryStateJson {
+		path: state.path.clone(),
+		params: state.params.clone(),
+		route_name: state.route_name.clone(),
+		data: state.data.clone(),
+		scroll_x: state.scroll_position.map(|(x, _)| x),
+		scroll_y: state.scroll_position.map(|(_, y)| y),
+	};
+	serde_wasm_bindgen::to_value(&wire).map_err(|e| format!("serialize state: {e}"))
+}
+
+/// Deserialize a `history.state` JS value into a [`HistoryState`].
+///
+/// Accepts either the new structured-object format produced by
+/// [`state_to_js_object`] or the legacy JSON-string format that older
+/// builds wrote (so a tab still in flight when the framework upgrades
+/// does not panic on its first popstate). Returns `None` for `null`,
+/// `undefined`, or any value that is neither a serializable object nor
+/// a parseable JSON string.
+#[cfg(wasm)]
+fn state_from_js_value(value: wasm_bindgen::JsValue) -> Option<HistoryState> {
+	if value.is_null() || value.is_undefined() {
+		return None;
+	}
+	if let Some(s) = value.as_string() {
+		// Legacy format: stored as a JSON string. Refs #4203 backwards-compat.
+		return HistoryState::from_json(&s).ok();
+	}
+	let wire: HistoryStateJson = serde_wasm_bindgen::from_value(value).ok()?;
+	Some(HistoryState {
+		path: wire.path,
+		params: wire.params,
+		route_name: wire.route_name,
+		data: wire.data,
+		scroll_position: match (wire.scroll_x, wire.scroll_y) {
+			(Some(x), Some(y)) => Some((x, y)),
+			_ => None,
+		},
+	})
+}
+
 /// Navigates back in the browser history.
 #[cfg(wasm)]
-// Allow dead_code: public History API for WASM client-side back navigation
-#[allow(dead_code)]
 pub fn go_back() -> Result<(), String> {
 	let window = web_sys::window().ok_or("Window not available")?;
 	let history = window.history().map_err(|_| "History not available")?;
@@ -164,16 +221,12 @@ pub fn go_back() -> Result<(), String> {
 
 /// Non-WASM version for testing.
 #[cfg(native)]
-// Allow dead_code: non-WASM stub matching the WASM go_back() signature for cross-platform builds
-#[allow(dead_code)]
 pub fn go_back() -> Result<(), String> {
 	Ok(())
 }
 
 /// Navigates forward in the browser history.
 #[cfg(wasm)]
-// Allow dead_code: public History API for WASM client-side forward navigation
-#[allow(dead_code)]
 pub fn go_forward() -> Result<(), String> {
 	let window = web_sys::window().ok_or("Window not available")?;
 	let history = window.history().map_err(|_| "History not available")?;
@@ -185,17 +238,13 @@ pub fn go_forward() -> Result<(), String> {
 
 /// Non-WASM version for testing.
 #[cfg(native)]
-// Allow dead_code: non-WASM stub matching the WASM go_forward() signature for cross-platform builds
-#[allow(dead_code)]
 pub fn go_forward() -> Result<(), String> {
 	Ok(())
 }
 
 /// Navigates to a specific position in the history.
 #[cfg(wasm)]
-// Allow dead_code: public History API for WASM relative history navigation by delta offset
-#[allow(dead_code)]
-pub(super) fn go(delta: i32) -> Result<(), String> {
+pub fn go(delta: i32) -> Result<(), String> {
 	let window = web_sys::window().ok_or("Window not available")?;
 	let history = window.history().map_err(|_| "History not available")?;
 
@@ -206,9 +255,7 @@ pub(super) fn go(delta: i32) -> Result<(), String> {
 
 /// Non-WASM version for testing.
 #[cfg(native)]
-// Allow dead_code: non-WASM stub matching the WASM go() signature for cross-platform builds
-#[allow(dead_code)]
-pub(crate) fn go(_delta: i32) -> Result<(), String> {
+pub fn go(_delta: i32) -> Result<(), String> {
 	Ok(())
 }
 
@@ -230,9 +277,7 @@ pub fn current_path() -> Result<String, String> {
 
 /// Gets the current search query from the browser.
 #[cfg(wasm)]
-// Allow dead_code: public API for WASM query string retrieval from browser location
-#[allow(dead_code)]
-pub(super) fn current_search() -> Result<String, String> {
+pub fn current_search() -> Result<String, String> {
 	let window = web_sys::window().ok_or("Window not available")?;
 	let location = window.location();
 	location
@@ -242,17 +287,13 @@ pub(super) fn current_search() -> Result<String, String> {
 
 /// Non-WASM version for testing.
 #[cfg(native)]
-// Allow dead_code: non-WASM stub matching the WASM current_search() signature for cross-platform builds
-#[allow(dead_code)]
-pub(crate) fn current_search() -> Result<String, String> {
+pub fn current_search() -> Result<String, String> {
 	Ok(String::new())
 }
 
 /// Gets the current hash from the browser.
 #[cfg(wasm)]
-// Allow dead_code: public API for WASM URL hash fragment retrieval from browser location
-#[allow(dead_code)]
-pub(super) fn current_hash() -> Result<String, String> {
+pub fn current_hash() -> Result<String, String> {
 	let window = web_sys::window().ok_or("Window not available")?;
 	let location = window.location();
 	location
@@ -262,9 +303,7 @@ pub(super) fn current_hash() -> Result<String, String> {
 
 /// Non-WASM version for testing.
 #[cfg(native)]
-// Allow dead_code: non-WASM stub matching the WASM current_hash() signature for cross-platform builds
-#[allow(dead_code)]
-pub(crate) fn current_hash() -> Result<String, String> {
+pub fn current_hash() -> Result<String, String> {
 	Ok(String::new())
 }
 
@@ -272,6 +311,17 @@ pub(crate) fn current_hash() -> Result<String, String> {
 ///
 /// The callback receives the current path and an optional `HistoryState` if one was
 /// stored in the history entry.
+///
+/// # Example
+///
+/// ```ignore
+/// setup_popstate_listener(|path, state| {
+///     println!("Navigated to: {}", path);
+///     if let Some(s) = state {
+///         println!("Route: {:?}", s.route_name);
+///     }
+/// })?;
+/// ```
 ///
 /// # Returns
 ///
@@ -282,7 +332,7 @@ pub(crate) fn current_hash() -> Result<String, String> {
 ///
 /// Returns an error if the window object is not available.
 #[cfg(wasm)]
-pub(super) fn setup_popstate_listener<F>(
+pub fn setup_popstate_listener<F>(
 	callback: F,
 ) -> Result<wasm_bindgen::closure::Closure<dyn FnMut(web_sys::PopStateEvent)>, wasm_bindgen::JsValue>
 where
@@ -300,11 +350,10 @@ where
 				.and_then(|w| w.location().pathname().ok())
 				.unwrap_or_else(|| "/".to_string());
 
-			// Try to restore state from history
-			let state = event
-				.state()
-				.as_string()
-				.and_then(|s: String| HistoryState::from_json(&s).ok());
+			// Try to restore state from history. Accepts both the new
+			// structured-object format and the legacy JSON-string format
+			// for tabs that survive an upgrade in flight (Refs #4203).
+			let state = state_from_js_value(event.state());
 
 			callback(path, state);
 		}) as Box<dyn FnMut(_)>);
@@ -316,9 +365,7 @@ where
 
 /// Non-WASM version for testing.
 #[cfg(native)]
-// Allow dead_code: non-WASM stub matching the WASM setup_popstate_listener() signature for cross-platform builds
-#[allow(dead_code)]
-pub(crate) fn setup_popstate_listener<F>(_callback: F) -> Result<(), String>
+pub fn setup_popstate_listener<F>(_callback: F) -> Result<(), String>
 where
 	F: Fn(String, Option<HistoryState>) + 'static,
 {

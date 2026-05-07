@@ -24,6 +24,11 @@ matchit = "0.9.0"
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Event", "History", "Location", "PopStateEvent", "Url", "Window"] }
 js-sys = "0.3"
+# serde-wasm-bindgen: serialize HistoryState directly to a JS object so
+# `history.state.field` works for external consumers. Replaces the
+# JSON-string-in-JsValue convention that surfaced as the SPA navigation
+# regression class (#4075 / #4088 / #4122 / #4203 / #4217).
+serde-wasm-bindgen = "0.6"
 
 # Server-only dependencies (not available on WASM)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
