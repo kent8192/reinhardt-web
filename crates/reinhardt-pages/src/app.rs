@@ -508,8 +508,7 @@ impl ClientLauncher {
 		}
 
 		let root_el = document
-			.query_selector(self.root_selector)
-			.map_err(|e| e)?
+			.query_selector(self.root_selector)?
 			.ok_or_else(|| {
 				wasm_bindgen::JsValue::from_str(&format!(
 					"element '{}' not found",

@@ -325,12 +325,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				crate::dom::Element::new(parent.clone().unchecked_into::<web_sys::Element>());
 
 			// Use the nested marker as the anchor point
-			let nested_node = ReactiveIfNode::new(
-				&temp_parent,
-				move || condition(),
-				move || then_view(),
-				move || else_view(),
-			);
+			let nested_node = ReactiveIfNode::new(&temp_parent, condition, then_view, else_view);
 
 			// Store the nested node to keep it alive
 			store_reactive_node(nested_node);
@@ -350,7 +345,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			let render = reactive.into_render();
 
 			// Create the nested ReactiveNode
-			let nested_node = ReactiveNode::new(&temp_parent, move || render());
+			let nested_node = ReactiveNode::new(&temp_parent, render);
 
 			// Store the nested node to keep it alive
 			store_reactive_node(nested_node);

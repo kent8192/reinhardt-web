@@ -107,14 +107,14 @@ impl IslandDetector {
 		// Query all elements with data-rh-island="true"
 		if let Ok(node_list) = self.document.query_selector_all("[data-rh-island='true']") {
 			for i in 0..node_list.length() {
-				if let Some(node) = node_list.item(i) {
-					if let Some(element) = node.dyn_ref::<Element>() {
-						// Check if this element is nested within another island
-						if !self.is_within_island(element, &islands) {
-							if let Some(island_node) = IslandNode::from_element(element.clone()) {
-								islands.push(island_node);
-							}
-						}
+				if let Some(node) = node_list.item(i)
+					&& let Some(element) = node.dyn_ref::<Element>()
+				{
+					// Check if this element is nested within another island
+					if !self.is_within_island(element, &islands)
+						&& let Some(island_node) = IslandNode::from_element(element.clone())
+					{
+						islands.push(island_node);
 					}
 				}
 			}
@@ -131,10 +131,10 @@ impl IslandDetector {
 
 		if let Ok(node_list) = self.document.query_selector_all("[data-rh-static='true']") {
 			for i in 0..node_list.length() {
-				if let Some(node) = node_list.item(i) {
-					if let Some(element) = node.dyn_ref::<Element>() {
-						static_nodes.push(element.clone());
-					}
+				if let Some(node) = node_list.item(i)
+					&& let Some(element) = node.dyn_ref::<Element>()
+				{
+					static_nodes.push(element.clone());
 				}
 			}
 		}

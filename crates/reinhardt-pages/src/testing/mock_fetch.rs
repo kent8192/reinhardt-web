@@ -114,7 +114,7 @@ async fn real_fetch(
 		.await
 		.map_err(|e| ServerFnError::deserialization(e.to_string()))?;
 
-	if status >= 200 && status < 300 {
+	if (200..300).contains(&status) {
 		Ok((status, text))
 	} else {
 		Err(ServerFnError::server(status, text))

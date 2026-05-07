@@ -15,7 +15,7 @@ pub use reinhardt_core::types::page::DummyEvent;
 // Re-export boolean attribute utilities (used in WASM mount)
 // Note: EventType is re-exported from dom::event module
 #[cfg(wasm)]
-pub use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
+pub(super) use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
 #[cfg(wasm)]
 use crate::component::reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
@@ -141,12 +141,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			// Create a ReactiveIfNode that manages DOM updates reactively.
 			// The node uses an Effect to monitor condition changes and swaps
 			// DOM nodes when the condition value changes.
-			let node = ReactiveIfNode::new(
-				parent,
-				move || condition(),
-				move || then_view(),
-				move || else_view(),
-			);
+			let node = ReactiveIfNode::new(parent, condition, then_view, else_view);
 			// Store the node to keep it alive for the lifetime of the DOM element
 			store_reactive_node(node);
 		}
@@ -157,7 +152,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			// Create a ReactiveNode that manages DOM updates reactively.
 			// The node uses an Effect to monitor dependency changes and
 			// re-renders when they change.
-			let node = ReactiveNode::new(parent, move || render());
+			let node = ReactiveNode::new(parent, render);
 			// Store the node to keep it alive for the lifetime of the DOM element
 			store_reactive_node(node);
 		}
