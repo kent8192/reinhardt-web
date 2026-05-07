@@ -82,6 +82,68 @@ jobs:
             ${TARGET_FLAGS} \
             --quiet
 
+  # Run clippy against wasm32-unknown-unknown for the same targets as wasm-check.
+  # Catches lint violations in cfg(target_arch = "wasm32") code paths and
+  # wasm-specific trait/inference differences that the host clippy never sees.
+  wasm-clippy:
+    name: WASM Clippy (${{ matrix.target.name }})
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: reinhardt-web
+            package: reinhardt-web
+            flags: ""
+          - name: reinhardt-web (wasm-features)
+            package: reinhardt-web
+            flags: "--no-default-features --features pages,client-router,pages-web-sys-full,di"
+          - name: reinhardt-pages
+            package: reinhardt-pages
+            flags: "--all-features"
+          - name: reinhardt-query
+            package: reinhardt-query
+            flags: "--no-default-features"
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust with clippy
+        uses: ./.github/actions/setup-rust
+        with:
+          components: clippy
+          cache-key: "wasm-clippy-${{ matrix.target.name }}"
+
+      - name: Install wasm32-unknown-unknown target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Run clippy for WASM target (${{ matrix.target.name }})
+        env:
+          # Pass matrix values through env to avoid direct shell injection.
+          # Values are workflow-defined constants (not user input).
+          TARGET_PACKAGE: ${{ matrix.target.package }}
+          TARGET_FLAGS: ${{ matrix.target.flags }}
+        run: |
+          cargo clippy \
+            --target wasm32-unknown-unknown \
+            -p "${TARGET_PACKAGE}" \
+            ${TARGET_FLAGS} \
+            --all-targets \
+            -- -D warnings
+
   # Run existing wasm_bindgen_test tests in headless Chrome.
   # Catches runtime errors in WASM code paths that cargo check cannot detect.
   # Invocation paths:
