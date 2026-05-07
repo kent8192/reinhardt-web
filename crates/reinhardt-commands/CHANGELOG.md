@@ -12,9 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `runserver --no-wasm-rebuild` opts out of the in-process WASM rebuild while keeping server hot-reload, for users who manage the wasm build externally. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
+- `runserver --no-override-wasm` reuses existing WASM artifacts in `dist/` when present/up-to-date, for callers that explicitly opt out of rebuilds (e.g. cargo-make tasks that pre-run `wasm-build-dev`). ([#4205](https://github.com/kent8192/reinhardt-web/issues/4205))
 
 ### Changed
 - `cargo make watch`, `watch-test`, `watch-clippy`, `runserver-watch`, `dev-watch`, and `install-bacon` were removed from the workspace, the project templates, and the bundled examples. The built-in runserver hot-reload supersedes them; users who relied on `bacon` for unrelated workflows can invoke `bacon` directly. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
+- `runserver --with-pages` now rebuilds the Pages/Admin WASM bundle by default at startup and on every hot-reload restart. The previous "skip if artifacts exist / up-to-date" behavior is now opt-in via `--no-override-wasm`, preventing stale `dist/` content from being served after edits to client-side Rust code. ([#4205](https://github.com/kent8192/reinhardt-web/issues/4205))
+
+### Deprecated
+- `runserver --force-wasm` is now redundant (rebuild is the default) and emits a deprecation warning when invoked. To be removed in a future major release. ([#4205](https://github.com/kent8192/reinhardt-web/issues/4205))
 
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.25...reinhardt-commands@v0.1.0-rc.26) - 2026-05-05
 
