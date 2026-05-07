@@ -74,6 +74,12 @@ pub struct AppConfig {
 	pub models_ready: bool,
 }
 
+/// Re-export of the vendor asset descriptor from `reinhardt-utils` so that the
+/// `#[app_config]` attribute macro can refer to it via
+/// `reinhardt_apps::AppVendorAsset` without forcing user crates to depend on
+/// `reinhardt-utils` directly.
+pub use reinhardt_utils::staticfiles::vendor::AppVendorAsset;
+
 impl AppConfig {
 	/// Create a new AppConfig with required fields
 	pub fn new(name: impl Into<String>, label: impl Into<String>) -> Self {

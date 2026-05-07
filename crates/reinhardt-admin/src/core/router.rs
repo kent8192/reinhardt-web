@@ -77,7 +77,9 @@ async fn admin_spa_handler(
 	// this lazy download guarantees the admin panel renders correctly on the
 	// very first request without requiring a manual collectstatic step.
 	let assets_dir = std::path::PathBuf::from(ADMIN_ASSETS_DIR);
-	crate::core::vendor::ensure_vendor_assets(&assets_dir).await;
+	let _ =
+		reinhardt_utils::staticfiles::vendor::ensure_vendor_assets_for_app("admin", &assets_dir)
+			.await;
 
 	let settings = crate::settings::get_admin_settings();
 	let security_headers = settings.to_security_headers();
