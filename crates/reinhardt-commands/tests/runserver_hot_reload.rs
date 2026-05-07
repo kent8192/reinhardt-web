@@ -295,6 +295,7 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 		roots: SourceRoots {
 			src_dirs: Vec::new(),
 			manifest_files: Vec::new(),
+			lockfile: None,
 		},
 		no_wasm_rebuild: true,
 		pages_enabled: true,
@@ -494,6 +495,7 @@ async fn hr_7_run_watcher_processes_events() {
 		roots: SourceRoots {
 			src_dirs: vec![fixture.path().join("src")],
 			manifest_files: vec![fixture.path().join("Cargo.toml")],
+			lockfile: None,
 		},
 		no_wasm_rebuild: true,
 		pages_enabled: false,
