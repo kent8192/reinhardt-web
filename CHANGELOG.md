@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.26...reinhardt-web@v0.1.0-rc.27) - 2026-05-07
+
+### Added
+
+- *(macros)* expose ResolvedUrls via explicit pub use
+- *(ci)* add wasm-clippy matrix to wasm-check.yml
+- *(ci)* expand wasm matrix and add cache-seed for feature combos
+
+### Documentation
+
+- *(ci)* clarify cache-seed comment to match CARGO_INCREMENTAL=0
+
+### Fixed
+
+- *(macros)* expose routes/url_patterns re-exports on wasm targets
+- *(infra/packer)* use makers alias for cargo-make smoke test
+- *(infra/packer)* pin smoke test to /usr/local/bin/makers absolute path
+- *(website)* correct Tera template syntax for announcement_links shortcode
+- *(website)* semver-aware sort and pinned ref for announcement_links
+- *(ci)* install wasm-bindgen-cli in intra-crate integration test workflow
+- *(ci)* narrow wasm-clippy from --all-targets to --lib
+- resolve wasm-target clippy violations in pages and urls
+- *(ci)* apply rustfmt to admin vendor shim
+- *(routing)* deduplicate client_router::history module
+- *(routing)* gate wasm-only history fns to wasm targets
+
+### Maintenance
+
+- *(serena)* add additional_workspace_folders config option
+
+### Other
+
+- make announcement list dynamic via GitHub API
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.25...reinhardt-web@v0.1.0-rc.26) - 2026-05-05
 
 ### Deprecated

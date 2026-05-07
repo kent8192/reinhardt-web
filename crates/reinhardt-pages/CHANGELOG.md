@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.26...reinhardt-pages@v0.1.0-rc.27) - 2026-05-07
+
+### Fixed
+
+- resolve wasm-target clippy violations in pages and urls
+- *(routing)* deduplicate client_router::history module
+- *(routing)* gate wasm-only history fns to wasm targets
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.25...reinhardt-pages@v0.1.0-rc.26) - 2026-05-05
 
 ### Added

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.26...reinhardt-urls@v0.1.0-rc.27) - 2026-05-07
+
+### Fixed
+
+- *(urls)* stub ServerRouter builder methods on ServerRouterStub for wasm
+- resolve wasm-target clippy violations in pages and urls
+- *(routing)* deduplicate client_router::history module
+- *(routing)* gate wasm-only history fns to wasm targets
+
 ### Fixed
 
 - *(urls)* stub `ServerRouter` builder methods on `ServerRouterStub` so `#[url_patterns(mode = unified | server)]` closures compile on wasm (#4185)
