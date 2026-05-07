@@ -1,0 +1,32 @@
+[package]
+name = "spa-navigation-with-named-routes-app"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Detached from the parent Cargo workspace so wasm-pack can build this
+# crate independently. The parent workspace's `exclude` array also lists
+# this path. Refs #4203.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+reinhardt-pages = { path = "../../../" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+	"Window",
+	"Document",
+	"Element",
+	"HtmlElement",
+	"History",
+] }
+console_error_panic_hook = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+
+[build-dependencies]
+cfg_aliases = "0.2"

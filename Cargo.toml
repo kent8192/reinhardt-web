@@ -395,6 +395,7 @@ exclude = [
 	"crates/reinhardt-pages/tests/fixtures/spa_navigation_app",
 	"crates/reinhardt-pages/tests/fixtures/spa_navigation_with_sidebar_signal_app",
 	"crates/reinhardt-pages/tests/fixtures/spa_navigation_with_full_layout_app",
+	"crates/reinhardt-pages/tests/fixtures/spa_navigation_with_named_routes_app",
 ]
 
 default-members = [
