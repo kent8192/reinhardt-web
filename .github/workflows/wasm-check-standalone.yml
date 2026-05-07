@@ -26,7 +26,9 @@ jobs:
   # restore from a populated cache. Mirrors the pattern in
   # reinhardt-feature-check.yml's cache-seed. Runs ONE wasm32 cargo check
   # against the largest representative feature preset; downstream matrix
-  # entries reuse the resulting incremental artifacts.
+  # entries reuse the resulting registry/build/dep artifacts (CARGO_INCREMENTAL=0
+  # disables incremental compilation, so this is non-incremental dependency
+  # caching only).
   cache-seed:
     name: Cache Seed (wasm-feature-check)
     runs-on: [self-hosted, linux, arm64, reinhardt-ci]
