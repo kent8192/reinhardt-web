@@ -3,7 +3,8 @@
 //! Mirrors Tier 3 (`spa_navigation_with_full_layout_app`) — persistent
 //! `<aside>` sidebar + per-route content swap inside `<main>` — but uses
 //! **named** routes with namespace-style names matching the Reinhardt
-//! Cloud convention (`auth:login_page`, `dashboard:home`, etc.).
+//! Cloud convention (`auth:login`, `dashboard:home`, etc. — see the
+//! Routes table below for the exact names this fixture registers).
 //!
 //! Tier 1〜3 only exercise anonymous `Router::route(...)` registrations;
 //! `Router::navigate` writes `route_match.route.name().unwrap_or("")`

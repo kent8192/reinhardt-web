@@ -1,10 +1,12 @@
 //! Client-side router for the Tier 4 fixture.
 //!
 //! Registers four **named** routes whose names follow the
-//! `namespace:identifier` convention used by Reinhardt Cloud
-//! (`auth:login_page`, `dashboard:home`, ...). Tier 4 exists
-//! specifically to give Inv-5 (`history.state.route_name == matched
-//! route.name()`) a code path with a non-empty `name()` to read.
+//! `namespace:identifier` convention used by Reinhardt Cloud — see
+//! [`init_router`] below for the exact names (`auth:login`,
+//! `dashboard:home`, `clusters:list`, `deployments:list`). Tier 4
+//! exists specifically to give Inv-5 (`history.state.route_name ==
+//! matched route.name()`) a code path with a non-empty `name()` to
+//! read.
 //!
 //! [`init_router`] is invoked once by `super::lib::main` through
 //! `ClientLauncher::router`. From any component, call [`with_router`]
