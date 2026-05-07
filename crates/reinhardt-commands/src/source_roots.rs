@@ -26,6 +26,11 @@ pub struct SourceRoots {
 	pub src_dirs: Vec<PathBuf>,
 	/// Per-package `Cargo.toml` files to watch as single files.
 	pub manifest_files: Vec<PathBuf>,
+	/// Workspace `Cargo.lock`. Watched separately so that `cargo update`
+	/// against git/registry deps still triggers a rebuild, even when no
+	/// path-dep source changes. `None` only when `from_metadata` cannot
+	/// anchor on the supplied manifest. See issue #4214.
+	pub lockfile: Option<PathBuf>,
 }
 
 impl SourceRoots {
@@ -49,6 +54,7 @@ impl SourceRoots {
 			return SourceRoots {
 				src_dirs: Vec::new(),
 				manifest_files: Vec::new(),
+				lockfile: None,
 			};
 		};
 
@@ -86,6 +92,7 @@ impl SourceRoots {
 		SourceRoots {
 			src_dirs: src_dirs.into_iter().collect(),
 			manifest_files: manifest_files.into_iter().collect(),
+			lockfile: Some(PathBuf::from(metadata.workspace_root.as_str()).join("Cargo.lock")),
 		}
 	}
 }
@@ -124,6 +131,10 @@ mod tests {
 			roots.manifest_files,
 			vec![PathBuf::from("/fixtures/single_crate/Cargo.toml")]
 		);
+		assert_eq!(
+			roots.lockfile,
+			Some(PathBuf::from("/fixtures/single_crate/Cargo.lock"))
+		);
 	}
 
 	#[rstest]
@@ -150,6 +161,10 @@ mod tests {
 				PathBuf::from("/fixtures/ws/shared/Cargo.toml"),
 			]
 		);
+		assert_eq!(
+			roots.lockfile,
+			Some(PathBuf::from("/fixtures/ws/Cargo.lock"))
+		);
 	}
 
 	#[rstest]
@@ -171,5 +186,26 @@ mod tests {
 			roots.manifest_files,
 			vec![PathBuf::from("/fixtures/registry_dep/Cargo.toml")]
 		);
+		assert_eq!(
+			roots.lockfile,
+			Some(PathBuf::from("/fixtures/registry_dep/Cargo.lock"))
+		);
+	}
+
+	#[rstest]
+	fn anchor_not_in_metadata_yields_no_lockfile() {
+		// Arrange: use the workspace fixture but a manifest path that
+		// matches no package. The function should hit the early-return
+		// branch where every output (including lockfile) is empty/None.
+		let metadata = parse_metadata(WORKSPACE_JSON);
+		let anchor_manifest = PathBuf::from("/nonexistent/Cargo.toml");
+
+		// Act
+		let roots = SourceRoots::from_metadata(&metadata, &anchor_manifest);
+
+		// Assert
+		assert!(roots.src_dirs.is_empty());
+		assert!(roots.manifest_files.is_empty());
+		assert_eq!(roots.lockfile, None);
 	}
 }
