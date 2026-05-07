@@ -108,15 +108,21 @@ struct HistoryStateJson {
 }
 
 /// Pushes a new state to the browser history.
+///
+/// Serializes [`HistoryState`] to a structured JS object (not a JSON
+/// string) so external consumers can read `history.state.route_name`
+/// and friends through normal JS property access. Storing the state as
+/// `JsValue::from_str(&json)` was the root cause of the SPA navigation
+/// regression class (#4075 / #4088 / #4122 / #4203): the framework's
+/// own popstate handler parsed the JSON string back, so internal flow
+/// worked, but any external reader on `history.state.x` got `undefined`
+/// because property lookup on a JS string returns nothing.
 #[cfg(wasm)]
 pub(super) fn push_state(state: &HistoryState) -> Result<(), String> {
-	use wasm_bindgen::JsValue;
-
 	let window = web_sys::window().ok_or("Window not available")?;
 	let history = window.history().map_err(|_| "History not available")?;
 
-	let state_json = state.to_json().map_err(|e| e.to_string())?;
-	let js_state = JsValue::from_str(&state_json);
+	let js_state = state_to_js_object(state)?;
 
 	history
 		.push_state_with_url(&js_state, "", Some(&state.path))
@@ -130,19 +136,64 @@ pub(super) fn push_state(_state: &HistoryState) -> Result<(), String> {
 }
 
 /// Replaces the current state in the browser history.
+///
+/// See [`push_state`] for the rationale behind serializing state as a
+/// JS object rather than a JSON string (Refs #4203).
 #[cfg(wasm)]
 pub(super) fn replace_state(state: &HistoryState) -> Result<(), String> {
-	use wasm_bindgen::JsValue;
-
 	let window = web_sys::window().ok_or("Window not available")?;
 	let history = window.history().map_err(|_| "History not available")?;
 
-	let state_json = state.to_json().map_err(|e| e.to_string())?;
-	let js_state = JsValue::from_str(&state_json);
+	let js_state = state_to_js_object(state)?;
 
 	history
 		.replace_state_with_url(&js_state, "", Some(&state.path))
 		.map_err(|_| "Failed to replace state".to_string())
+}
+
+/// Serialize [`HistoryState`] to a structured JS object so external
+/// consumers can read fields via property access. Refs #4203.
+#[cfg(wasm)]
+fn state_to_js_object(state: &HistoryState) -> Result<wasm_bindgen::JsValue, String> {
+	let wire = HistoryStateJson {
+		path: state.path.clone(),
+		params: state.params.clone(),
+		route_name: state.route_name.clone(),
+		data: state.data.clone(),
+		scroll_x: state.scroll_position.map(|(x, _)| x),
+		scroll_y: state.scroll_position.map(|(_, y)| y),
+	};
+	serde_wasm_bindgen::to_value(&wire).map_err(|e| format!("serialize state: {e}"))
+}
+
+/// Deserialize a `history.state` JS value into a [`HistoryState`].
+///
+/// Accepts either the new structured-object format produced by
+/// [`state_to_js_object`] or the legacy JSON-string format that older
+/// builds wrote (so a tab still in flight when the framework upgrades
+/// does not panic on its first popstate). Returns `None` for `null`,
+/// `undefined`, or any value that is neither a serializable object nor
+/// a parseable JSON string.
+#[cfg(wasm)]
+fn state_from_js_value(value: wasm_bindgen::JsValue) -> Option<HistoryState> {
+	if value.is_null() || value.is_undefined() {
+		return None;
+	}
+	if let Some(s) = value.as_string() {
+		// Legacy format: stored as a JSON string. Refs #4203 backwards-compat.
+		return HistoryState::from_json(&s).ok();
+	}
+	let wire: HistoryStateJson = serde_wasm_bindgen::from_value(value).ok()?;
+	Some(HistoryState {
+		path: wire.path,
+		params: wire.params,
+		route_name: wire.route_name,
+		data: wire.data,
+		scroll_position: match (wire.scroll_x, wire.scroll_y) {
+			(Some(x), Some(y)) => Some((x, y)),
+			_ => None,
+		},
+	})
 }
 
 /// Non-WASM version for testing.
@@ -311,11 +362,10 @@ where
 				.and_then(|w| w.location().pathname().ok())
 				.unwrap_or_else(|| "/".to_string());
 
-			// Try to restore state from history
-			let state = event
-				.state()
-				.as_string()
-				.and_then(|s: String| HistoryState::from_json(&s).ok());
+			// Try to restore state from history. Accepts both the new
+			// structured-object format and the legacy JSON-string format
+			// for tabs that survive an upgrade in flight (Refs #4203).
+			let state = state_from_js_value(event.state());
 
 			callback(path, state);
 		}) as Box<dyn FnMut(_)>);
