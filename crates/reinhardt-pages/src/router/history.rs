@@ -8,9 +8,15 @@
 //! only one side. Issue #4217 collapses them to a single source of
 //! truth.
 
-pub use reinhardt_urls::routers::client_router::history::{
-	HistoryState, NavigationType, setup_popstate_listener,
-};
+pub use reinhardt_urls::routers::client_router::history::{HistoryState, NavigationType};
+
+// `setup_popstate_listener` is wasm-only: its return type
+// (`Closure<dyn FnMut(PopStateEvent)>`) has no meaningful native
+// counterpart. The previous native stub silently no-op'd, which made the
+// signature appear cross-platform while in fact requiring `cfg` at every
+// call site.
+#[cfg(wasm)]
+pub use reinhardt_urls::routers::client_router::history::setup_popstate_listener;
 
 // Internal helpers consumed by `super::core`. Tightened to `pub(super)`
 // so they remain hidden from the crate's public API surface.

@@ -43,6 +43,9 @@ mod pattern;
 
 pub use components::{Link, Redirect, RouterOutlet, guard, guard_or};
 pub use core::{NavigationSubscription, PathError, Route, RouteMatch, Router, RouterError};
-pub use history::{HistoryState, NavigationType, setup_popstate_listener};
+pub use history::{HistoryState, NavigationType};
+// `setup_popstate_listener` is wasm-only — see `history` module docs.
+#[cfg(wasm)]
+pub use history::setup_popstate_listener;
 pub use params::{FromPath, ParamContext, PathParams};
 pub use pattern::{PathParam, PathPattern};

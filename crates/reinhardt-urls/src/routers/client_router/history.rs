@@ -276,6 +276,11 @@ pub fn current_path() -> Result<String, String> {
 }
 
 /// Gets the current search query from the browser.
+///
+/// Wasm-only by design: the value reflects `window.location.search`, which
+/// has no meaningful equivalent on non-wasm targets. Exposing a native
+/// stub that silently returned `""` was a public-API footgun for callers
+/// that consumed the result.
 #[cfg(wasm)]
 pub fn current_search() -> Result<String, String> {
 	let window = web_sys::window().ok_or("Window not available")?;
@@ -285,13 +290,9 @@ pub fn current_search() -> Result<String, String> {
 		.map_err(|_| "Failed to get search".to_string())
 }
 
-/// Non-WASM version for testing.
-#[cfg(native)]
-pub fn current_search() -> Result<String, String> {
-	Ok(String::new())
-}
-
 /// Gets the current hash from the browser.
+///
+/// Wasm-only by design (see [`current_search`] for the rationale).
 #[cfg(wasm)]
 pub fn current_hash() -> Result<String, String> {
 	let window = web_sys::window().ok_or("Window not available")?;
@@ -301,16 +302,18 @@ pub fn current_hash() -> Result<String, String> {
 		.map_err(|_| "Failed to get hash".to_string())
 }
 
-/// Non-WASM version for testing.
-#[cfg(native)]
-pub fn current_hash() -> Result<String, String> {
-	Ok(String::new())
-}
-
 /// Sets up a popstate event listener that triggers when browser back/forward is used.
 ///
 /// The callback receives the current path and an optional `HistoryState` if one was
 /// stored in the history entry.
+///
+/// Wasm-only by design: the function's contract is to attach a listener
+/// to `window`'s `popstate` event and return a `Closure` whose handle
+/// must be kept alive for the listener to fire. Neither the operation
+/// nor the return type has a meaningful native counterpart, so a `cfg`
+/// at every call site is required regardless. Exposing a divergent
+/// native signature (returning `Result<(), String>`) would force callers
+/// to write target-specific code while pretending the API was uniform.
 ///
 /// # Example
 ///
@@ -325,7 +328,7 @@ pub fn current_hash() -> Result<String, String> {
 ///
 /// # Returns
 ///
-/// On WASM, returns a `Closure` that must be kept alive for the listener to work.
+/// Returns a `Closure` that must be kept alive for the listener to work.
 /// Call `.forget()` on the closure to keep it active for the lifetime of the page.
 ///
 /// # Errors
@@ -361,16 +364,6 @@ where
 	window.add_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref())?;
 
 	Ok(closure)
-}
-
-/// Non-WASM version for testing.
-#[cfg(native)]
-pub fn setup_popstate_listener<F>(_callback: F) -> Result<(), String>
-where
-	F: Fn(String, Option<HistoryState>) + 'static,
-{
-	// No-op on non-WASM targets
-	Ok(())
 }
 
 #[cfg(test)]
@@ -446,9 +439,10 @@ mod tests {
 	}
 
 	#[test]
-	fn test_current_location_non_wasm() {
+	fn test_current_path_non_wasm() {
+		// `current_search` / `current_hash` are wasm-only (the native
+		// stubs were removed to avoid a public-API footgun where callers
+		// would silently receive empty strings on non-wasm targets).
 		assert_eq!(current_path().unwrap(), "/");
-		assert_eq!(current_search().unwrap(), "");
-		assert_eq!(current_hash().unwrap(), "");
 	}
 }
