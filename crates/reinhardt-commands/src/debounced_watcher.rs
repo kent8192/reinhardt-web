@@ -271,6 +271,13 @@ mod tests {
 		false
 	)]
 	#[case::markdown_rejected(EventKind::Modify(ModifyKind::Any), "/project/README.md", false)]
+	#[case::cargo_lock_modify(EventKind::Modify(ModifyKind::Any), "/project/Cargo.lock", true)]
+	#[case::cargo_lock_bak_rejected(
+		EventKind::Modify(ModifyKind::Any),
+		"/project/Cargo.lock.bak",
+		false
+	)]
+	#[case::generic_lock_rejected(EventKind::Modify(ModifyKind::Any), "/project/foo.lock", false)]
 	fn is_relevant_change_filter_cases(
 		#[case] kind: EventKind,
 		#[case] path: &str,
