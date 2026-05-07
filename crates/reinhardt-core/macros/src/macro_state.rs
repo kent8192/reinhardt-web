@@ -56,8 +56,15 @@ pub(crate) fn write_installed_apps(labels: &[String]) -> Result<(), String> {
 pub(crate) fn read_installed_apps() -> Result<Vec<String>, String> {
 	let dir = state_dir_path()?;
 	let path = dir.join(STATE_FILE_NAME);
-	let content = std::fs::read_to_string(&path)
-		.map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+	let content = match std::fs::read_to_string(&path) {
+		Ok(c) => c,
+		// Missing file is the expected soft-fallback case (Issue #4189): wasm SPA
+		// consumers never run `installed_apps!`, so the state file simply does not
+		// exist. Other IO errors (permission denied, corrupt FS, etc.) are
+		// surfaced so they cannot be silently swallowed.
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+		Err(e) => return Err(format!("Cannot read {}: {e}", path.display())),
+	};
 	Ok(content
 		.lines()
 		.filter(|line| !line.is_empty())

@@ -770,3 +770,18 @@ table {
 		color: var(--color-text);
 	}
 }
+
+// Mermaid diagrams (rendered client-side via cdnjs, see base.html).
+// Issue: https://github.com/kent8192/reinhardt-web/issues/4178
+.mermaid {
+	display: block;
+	margin: var(--spacing-lg) auto;
+	max-width: 100%;
+	overflow-x: auto;
+	text-align: center;
+
+	svg {
+		max-width: 100%;
+		height: auto;
+	}
+}
