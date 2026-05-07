@@ -495,6 +495,12 @@ impl ClientLauncher {
 			.expect("ClientLauncher::router() must be called before launch()")();
 		store_router(router);
 
+		crate::nav_diag!(
+			"site=store_router router_id={} route_count={}",
+			with_router(|r| r.__diag_router_id()),
+			with_router(|r| r.route_count())
+		);
+
 		with_router(|r| r.setup_history_listener());
 
 		let window = web_sys::window()
@@ -544,6 +550,12 @@ impl ClientLauncher {
 			})
 		});
 		std::mem::forget(render_subscription);
+
+		crate::nav_diag!(
+			"site=register_render_listener router_id={} observer_count_after={}",
+			with_router(|r| r.__diag_router_id()),
+			with_router(|r| r.__diag_observer_count())
+		);
 
 		// Phase C (between part 1 and part 2): drain after_launch
 		// callbacks now that the router is live, the first DOM mount
@@ -719,6 +731,32 @@ fn install_link_interceptor(document: &web_sys::Document) -> Result<(), wasm_bin
 		};
 
 		event.prevent_default();
+
+		// Diagnostic snapshot of the click-time router state. Gated on
+		// debug builds so release WASM does not run the extra
+		// `match_path` lookup (Refs #4203).
+		#[cfg(debug_assertions)]
+		{
+			let (router_id, match_some, match_name) = with_router(|r| {
+				let m = r.match_path(href);
+				(
+					r.__diag_router_id(),
+					m.is_some(),
+					m.as_ref()
+						.and_then(|rm| rm.route.name())
+						.unwrap_or("")
+						.to_string(),
+				)
+			});
+			crate::nav_diag!(
+				"site=link_interceptor router_id={} href={} match_some={} match_name={}",
+				router_id,
+				href,
+				match_some,
+				match_name
+			);
+		}
+
 		with_router(|r| {
 			let _ = r.push(href);
 		});

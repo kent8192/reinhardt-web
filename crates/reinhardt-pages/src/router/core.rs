@@ -527,6 +527,13 @@ impl Router {
 			observers.retain(|w| w.strong_count() > 0);
 			observers.iter().filter_map(|w| w.upgrade()).collect()
 		};
+		crate::nav_diag!(
+			"site=notify_observers router_id={} path={} dispatch_count={} listeners_alive={}",
+			self.__diag_router_id(),
+			path,
+			self.dispatch_count.get(),
+			listeners_snapshot.len()
+		);
 		for listener in listeners_snapshot {
 			listener(path, params);
 		}
@@ -535,6 +542,18 @@ impl Router {
 	/// Internal navigation implementation.
 	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
 		let route_match = self.match_path(path);
+
+		crate::nav_diag!(
+			"site=navigate router_id={} path={} nav_type={:?} match_some={} match_name={}",
+			self.__diag_router_id(),
+			path,
+			nav_type,
+			route_match.is_some(),
+			route_match
+				.as_ref()
+				.and_then(|m| m.route.name())
+				.unwrap_or("")
+		);
 
 		let state = HistoryState::new(path)
 			.with_params(
@@ -661,6 +680,26 @@ impl Router {
 		self.dispatch_count.get()
 	}
 
+	/// Stable per-instance router id for diagnostic correlation.
+	///
+	/// Returns the pointer of the `Rc` backing `navigation_observers`.
+	/// Two `Router` values share an id iff they share the same observer
+	/// list, which only happens within the same logical instance: the
+	/// `Rc` is constructed fresh in `Router::new` and never reseated.
+	///
+	/// Used by Tier 4 diag tests (Inv-6) and `nav_diag!` traces to
+	/// confirm that the link interceptor's `Router::push`, the launcher's
+	/// render listener, and the popstate handler all observe the same
+	/// router instance. A divergence between the id at registration and
+	/// the id at click time falsifies the orphan-listener hypothesis
+	/// (Refs #4203 H4).
+	///
+	/// Hidden API for testing only.
+	#[doc(hidden)]
+	pub fn __diag_router_id(&self) -> usize {
+		std::rc::Rc::as_ptr(&self.navigation_observers) as usize
+	}
+
 	/// Sets up a popstate event listener for browser back/forward navigation.
 	///
 	/// This method registers a listener for the browser's `popstate` event,
@@ -696,6 +735,7 @@ impl Router {
 		let route_name_signal = self.current_route_name.clone();
 		let navigation_observers = self.navigation_observers.clone();
 		let dispatch_count = self.dispatch_count.clone();
+		let router_id_for_diag = self.__diag_router_id();
 
 		let closure = setup_popstate_listener(move |path, state| {
 			// Update Signals first, then notify observers, so listeners that
@@ -729,6 +769,13 @@ impl Router {
 				observers.retain(|w| w.strong_count() > 0);
 				observers.iter().filter_map(|w| w.upgrade()).collect()
 			};
+			crate::nav_diag!(
+				"site=popstate router_id={} path={} dispatch_count={} listeners_alive={}",
+				router_id_for_diag,
+				path,
+				dispatch_count.get(),
+				listeners_snapshot.len()
+			);
 			for listener in listeners_snapshot {
 				listener(&path, &params_for_observers);
 			}
@@ -987,6 +1034,47 @@ mod tests {
 
 		// Assert 2
 		assert_eq!(router.__diag_dispatch_count(), 2);
+	}
+
+	#[rstest]
+	fn diag_router_id_is_stable_within_instance_and_distinct_across_instances() {
+		// Arrange
+		let r1 = Router::new();
+		let r2 = Router::new();
+
+		// Act
+		let id1_first = r1.__diag_router_id();
+		let id1_second = r1.__diag_router_id();
+		let id2 = r2.__diag_router_id();
+
+		// Assert
+		assert_eq!(
+			id1_first, id1_second,
+			"router id must be stable across calls on the same instance"
+		);
+		assert_ne!(
+			id1_first, id2,
+			"router ids must differ across freshly-constructed instances"
+		);
+	}
+
+	#[rstest]
+	fn diag_router_id_unaffected_by_navigation() {
+		// Arrange
+		let router = Router::new()
+			.named_route("home", "/", home_view)
+			.named_route("user", "/users/{id}/", user_view);
+		let id_before = router.__diag_router_id();
+
+		// Act
+		router.push("/users/42/").expect("push");
+
+		// Assert
+		assert_eq!(
+			router.__diag_router_id(),
+			id_before,
+			"router id must not change after Router::push"
+		);
 	}
 
 	#[rstest]
