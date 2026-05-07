@@ -111,8 +111,6 @@ pub async fn download_vendor_assets(
 	note = "Use reinhardt_utils::staticfiles::vendor::ensure_vendor_assets_for_app instead"
 )]
 pub async fn ensure_vendor_assets(base_dir: &std::path::Path) {
-	let _ = reinhardt_utils::staticfiles::vendor::ensure_vendor_assets_for_app(
-		"admin", base_dir,
-	)
-	.await;
+	let _ =
+		reinhardt_utils::staticfiles::vendor::ensure_vendor_assets_for_app("admin", base_dir).await;
 }
