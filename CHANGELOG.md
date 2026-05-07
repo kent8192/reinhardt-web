@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.26...reinhardt-web@v0.1.0-rc.27) - 2026-05-07
+
+### Added
+
+- *(macros)* expose ResolvedUrls via explicit pub use
+- *(ci)* add wasm-clippy matrix to wasm-check.yml
+- *(ci)* expand wasm matrix and add cache-seed for feature combos
+
+### Documentation
+
+- *(ci)* clarify cache-seed comment to match CARGO_INCREMENTAL=0
+- *(commands)* document Cargo.lock subscription in watcher rustdoc
+
+### Fixed
+
+- *(macros)* expose routes/url_patterns re-exports on wasm targets
+- *(infra/packer)* use makers alias for cargo-make smoke test
+- *(infra/packer)* pin smoke test to /usr/local/bin/makers absolute path
+- *(website)* correct Tera template syntax for announcement_links shortcode
+- *(website)* semver-aware sort and pinned ref for announcement_links
+- *(ci)* install wasm-bindgen-cli in intra-crate integration test workflow
+- *(ci)* narrow wasm-clippy from --all-targets to --lib
+- resolve wasm-target clippy violations in pages and urls
+- *(commands)* include Cargo.lock in hot-reload watcher
+
+### Maintenance
+
+- *(serena)* add additional_workspace_folders config option
+
+### Other
+
+- make announcement list dynamic via GitHub API
+
+### Testing
+
+- *(commands)* cover Cargo.lock detection in source_roots and watcher filter
+- *(commands)* update runserver_hot_reload fixtures for SourceRoots.lockfile
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.25...reinhardt-web@v0.1.0-rc.26) - 2026-05-05
 
 ### Deprecated
