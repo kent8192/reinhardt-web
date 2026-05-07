@@ -590,10 +590,10 @@ pub fn get_jwt_token() -> Option<String> {
 /// The token persists for the lifetime of the browser tab.
 #[cfg(wasm)]
 pub fn set_jwt_token(token: &str) {
-	if let Some(window) = web_sys::window() {
-		if let Ok(Some(storage)) = window.session_storage() {
-			let _ = storage.set_item(JWT_STORAGE_KEY, token);
-		}
+	if let Some(window) = web_sys::window()
+		&& let Ok(Some(storage)) = window.session_storage()
+	{
+		let _ = storage.set_item(JWT_STORAGE_KEY, token);
 	}
 }
 
@@ -608,10 +608,10 @@ pub fn set_jwt_token(_token: &str) {
 /// This should be called on logout or when a 401 response is received.
 #[cfg(wasm)]
 pub fn clear_jwt_token() {
-	if let Some(window) = web_sys::window() {
-		if let Ok(Some(storage)) = window.session_storage() {
-			let _ = storage.remove_item(JWT_STORAGE_KEY);
-		}
+	if let Some(window) = web_sys::window()
+		&& let Ok(Some(storage)) = window.session_storage()
+	{
+		let _ = storage.remove_item(JWT_STORAGE_KEY);
 	}
 }
 

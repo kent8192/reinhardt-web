@@ -259,12 +259,11 @@ pub fn attach_events_recursive(
 		// Find event bindings for this element by checking data-rh-id
 		if let Some(element_id) = element.get_attribute("data-rh-id") {
 			for binding in bindings {
-				if binding.element_id == element_id {
-					if let Some(handler) = handlers.get(&binding.event_type) {
-						if let Some(event_type) = event_type_from_string(&binding.event_type) {
-							attach_event(element, &event_type, handler.clone(), registry)?;
-						}
-					}
+				if binding.element_id == element_id
+					&& let Some(handler) = handlers.get(&binding.event_type)
+					&& let Some(event_type) = event_type_from_string(&binding.event_type)
+				{
+					attach_event(element, &event_type, handler.clone(), registry)?;
 				}
 			}
 		}
@@ -330,10 +329,10 @@ pub(super) fn attach_events(
 	registry: &mut EventRegistry,
 ) -> Result<(), EventAttachError> {
 	for binding in bindings {
-		if let Some(handler) = handlers.get(&binding.event_type) {
-			if let Some(event_type) = event_type_from_string(&binding.event_type) {
-				attach_event(element, &event_type, handler.clone(), registry)?;
-			}
+		if let Some(handler) = handlers.get(&binding.event_type)
+			&& let Some(event_type) = event_type_from_string(&binding.event_type)
+		{
+			attach_event(element, &event_type, handler.clone(), registry)?;
 		}
 	}
 	Ok(())

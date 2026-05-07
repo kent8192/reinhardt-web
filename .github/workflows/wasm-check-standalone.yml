@@ -22,8 +22,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Seed the shared rust-cache for wasm-feature-check so PR matrix entries
+  # restore from a populated cache. Mirrors the pattern in
+  # reinhardt-feature-check.yml's cache-seed. Runs ONE wasm32 cargo check
+  # against the largest representative feature preset; downstream matrix
+  # entries reuse the resulting registry/build/dep artifacts (CARGO_INCREMENTAL=0
+  # disables incremental compilation, so this is non-incremental dependency
+  # caching only).
+  cache-seed:
+    name: Cache Seed (wasm-feature-check)
+    runs-on: [self-hosted, linux, arm64, reinhardt-ci]
+    timeout-minutes: 360
+    env:
+      CARGO_TARGET_DIR: /tmp/cargo_target
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          cache: 'false'
+
+      - name: Cache Rust dependencies (shared)
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "wasm-feature-check"
+          cache-targets: "false"
+          cache-directories: /tmp/cargo_target
+          cache-on-failure: "true"
+
+      - name: Install wasm32-unknown-unknown target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Seed cache with wasm-app feature set
+        run: |
+          cargo check \
+            --target wasm32-unknown-unknown \
+            -p reinhardt-web \
+            --no-default-features \
+            --features pages,client-router,pages-web-sys-full,di \
+            --quiet
+
   wasm-check:
     name: WASM Check
+    needs: [cache-seed]
     uses: ./.github/workflows/wasm-check.yml
     with:
       runner: '"ubuntu-latest"'

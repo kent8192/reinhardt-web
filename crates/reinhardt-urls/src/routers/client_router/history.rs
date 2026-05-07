@@ -195,7 +195,7 @@ pub fn go_forward() -> Result<(), String> {
 #[cfg(wasm)]
 // Allow dead_code: public History API for WASM relative history navigation by delta offset
 #[allow(dead_code)]
-pub fn go(delta: i32) -> Result<(), String> {
+pub(super) fn go(delta: i32) -> Result<(), String> {
 	let window = web_sys::window().ok_or("Window not available")?;
 	let history = window.history().map_err(|_| "History not available")?;
 
@@ -232,7 +232,7 @@ pub fn current_path() -> Result<String, String> {
 #[cfg(wasm)]
 // Allow dead_code: public API for WASM query string retrieval from browser location
 #[allow(dead_code)]
-pub fn current_search() -> Result<String, String> {
+pub(super) fn current_search() -> Result<String, String> {
 	let window = web_sys::window().ok_or("Window not available")?;
 	let location = window.location();
 	location
@@ -252,7 +252,7 @@ pub(crate) fn current_search() -> Result<String, String> {
 #[cfg(wasm)]
 // Allow dead_code: public API for WASM URL hash fragment retrieval from browser location
 #[allow(dead_code)]
-pub fn current_hash() -> Result<String, String> {
+pub(super) fn current_hash() -> Result<String, String> {
 	let window = web_sys::window().ok_or("Window not available")?;
 	let location = window.location();
 	location
@@ -282,7 +282,7 @@ pub(crate) fn current_hash() -> Result<String, String> {
 ///
 /// Returns an error if the window object is not available.
 #[cfg(wasm)]
-pub fn setup_popstate_listener<F>(
+pub(super) fn setup_popstate_listener<F>(
 	callback: F,
 ) -> Result<wasm_bindgen::closure::Closure<dyn FnMut(web_sys::PopStateEvent)>, wasm_bindgen::JsValue>
 where
