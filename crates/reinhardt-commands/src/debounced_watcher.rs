@@ -42,12 +42,15 @@ pub fn is_relevant_change(event: &Event) -> bool {
 	}
 	event.paths.iter().any(|p| {
 		let path_str = p.to_string_lossy();
+		// `Path::file_name` (not suffix matching) so that `Cargo.lock.bak`
+		// and unrelated `.lock` files do not slip through. See issue #4214.
+		let is_cargo_lock = p.file_name() == Some(std::ffi::OsStr::new("Cargo.lock"));
 		!path_str.contains("/target/")
 			&& !path_str.contains("/.git/")
 			&& !path_str.ends_with('~')
 			&& !path_str.ends_with(".swp")
 			&& !path_str.ends_with(".tmp")
-			&& (path_str.ends_with(".rs") || path_str.ends_with(".toml"))
+			&& (path_str.ends_with(".rs") || path_str.ends_with(".toml") || is_cargo_lock)
 	})
 }
 
@@ -157,6 +160,13 @@ pub async fn run_watcher(
 		if manifest.exists() {
 			watcher.watch(manifest, RecursiveMode::NonRecursive)?;
 		}
+	}
+	// Subscribe the workspace Cargo.lock so `cargo update` triggers a
+	// rebuild even when no path-dep source files change. See issue #4214.
+	if let Some(lockfile) = &config.roots.lockfile
+		&& lockfile.exists()
+	{
+		watcher.watch(lockfile, RecursiveMode::NonRecursive)?;
 	}
 
 	let mut shutdown_rx = shutdown_rx;

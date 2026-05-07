@@ -26,6 +26,11 @@ pub struct SourceRoots {
 	pub src_dirs: Vec<PathBuf>,
 	/// Per-package `Cargo.toml` files to watch as single files.
 	pub manifest_files: Vec<PathBuf>,
+	/// Workspace `Cargo.lock`. Watched separately so that `cargo update`
+	/// against git/registry deps still triggers a rebuild, even when no
+	/// path-dep source changes. `None` only when `from_metadata` cannot
+	/// anchor on the supplied manifest. See issue #4214.
+	pub lockfile: Option<PathBuf>,
 }
 
 impl SourceRoots {
@@ -49,6 +54,7 @@ impl SourceRoots {
 			return SourceRoots {
 				src_dirs: Vec::new(),
 				manifest_files: Vec::new(),
+				lockfile: None,
 			};
 		};
 
@@ -86,6 +92,7 @@ impl SourceRoots {
 		SourceRoots {
 			src_dirs: src_dirs.into_iter().collect(),
 			manifest_files: manifest_files.into_iter().collect(),
+			lockfile: Some(PathBuf::from(metadata.workspace_root.as_str()).join("Cargo.lock")),
 		}
 	}
 }
