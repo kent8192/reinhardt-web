@@ -287,7 +287,8 @@ if [ "$CURRENT_DIR" != "examples-tutorial-basis" ]; then
 fi
 
 echo "🚀 Starting development server with WASM frontend..."
-cargo run --bin examples-tutorial-basis -- runserver --with-pages --noreload
+# wasm-build-dev already produced fresh artifacts; skip runserver's own rebuild.
+cargo run --bin examples-tutorial-basis -- runserver --with-pages --noreload --no-override-wasm
 '''
 
 [tasks.dev-release]
@@ -298,7 +299,8 @@ dependencies = ["clean-cache", "wasm-build-release", "collectstatic", "run-dev-r
 script = '''
 #!/bin/bash
 echo "🚀 Starting server with optimized WASM frontend..."
-cargo run --release --bin examples-tutorial-basis -- runserver --with-pages --noreload
+# wasm-build-release already produced optimized artifacts; skip runserver's own rebuild.
+cargo run --release --bin examples-tutorial-basis -- runserver --with-pages --noreload --no-override-wasm
 '''
 
 # ============================================================================
