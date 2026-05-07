@@ -156,11 +156,14 @@ jobs:
           TARGET_PACKAGE: ${{ matrix.target.package }}
           TARGET_FLAGS: ${{ matrix.target.flags }}
         run: |
+          # Scope to library targets only. Test targets in dependent crates
+          # (e.g. mio via tokio) do not compile to wasm32-unknown-unknown,
+          # so --all-targets would always fail compile before lint stage.
           cargo clippy \
             --target wasm32-unknown-unknown \
             -p "${TARGET_PACKAGE}" \
             ${TARGET_FLAGS} \
-            --all-targets \
+            --lib \
             -- -D warnings
 
   # Run existing wasm_bindgen_test tests in headless Chrome.
