@@ -25,7 +25,8 @@ WASM_BINDGEN_VERSION = "0.2.100"
 [tasks.runserver]
 description = "Start the development server with static files (auto-reloads)"
 command = "cargo"
-args = ["run", "--bin", "manage", "runserver", "--with-pages"]
+# `wasm-build-dev` already produced fresh artifacts; skip runserver's own rebuild.
+args = ["run", "--bin", "manage", "runserver", "--with-pages", "--no-override-wasm"]
 dependencies = ["wasm-build-dev"]
 
 # ============================================================================
