@@ -28,7 +28,9 @@ pub const DEBOUNCE_WINDOW: Duration = Duration::from_millis(300);
 ///
 /// The accept rules are intentionally narrow:
 /// * Event kind must be `Modify`, `Create`, or `Remove`.
-/// * At least one path must end in `.rs` or `.toml`.
+/// * At least one path must end in `.rs` or `.toml`, or have the exact
+///   file name `Cargo.lock` (matched via `Path::file_name`, so unrelated
+///   `.lock` files and `Cargo.lock.bak` do not slip through).
 /// * Paths inside `target/` or `.git/`, and editor sidecar files
 ///   (`~`, `.swp`, `.tmp`), are rejected.
 pub fn is_relevant_change(event: &Event) -> bool {
@@ -113,8 +115,11 @@ pub struct WatcherConfig {
 /// The loop handles three concerns:
 ///
 /// 1. Subscribes the recommended `notify` watcher to every existing
-///    `roots.src_dirs` (recursively) and `roots.manifest_files`
-///    (non-recursively). Non-existent paths are skipped without error.
+///    `roots.src_dirs` (recursively), `roots.manifest_files`
+///    (non-recursively), and `roots.lockfile` when present
+///    (non-recursively, so `cargo update` triggers a rebuild even when
+///    no path-dep source files change; see issue #4214). Non-existent
+///    paths are skipped without error.
 /// 2. Awaits debounced events, dispatching each to the WASM pipeline
 ///    (when `pages_enabled && !no_wasm_rebuild`) and then the server
 ///    pipeline. Pipeline failures are logged but never returned as `Err`.
