@@ -1334,8 +1334,13 @@ impl BaseCommand for RunServerCommand {
 			CommandOption::flag(None, "no-wasm", "Skip WASM build at startup"),
 			CommandOption::flag(
 				None,
+				"no-override-wasm",
+				"Reuse existing WASM artifacts in dist/ if present (default: rebuild)",
+			),
+			CommandOption::flag(
+				None,
 				"force-wasm",
-				"Force rebuild WASM even if artifacts exist",
+				"DEPRECATED: rebuild is now the default. Use --no-override-wasm to opt out.",
 			),
 			CommandOption::flag(
 				None,
@@ -1361,10 +1366,18 @@ impl BaseCommand for RunServerCommand {
 		#[cfg(feature = "pages")]
 		{
 			let no_wasm = ctx.has_option("no-wasm");
-			let force_wasm = ctx.has_option("force-wasm");
+			let no_override_wasm = ctx.has_option("no-override-wasm");
+			let force_wasm_legacy = ctx.has_option("force-wasm");
+			if force_wasm_legacy {
+				ctx.warning(
+					"--force-wasm is now the default behavior; this flag is deprecated. \
+					 Use --no-override-wasm to opt out of rebuilds.",
+				);
+			}
+			let force = !no_override_wasm;
 			let wasm_optional = ctx.has_option("wasm-optional");
 			if with_pages
-				&& !no_wasm && let Err(e) = Self::build_pages_wasm(ctx, force_wasm)
+				&& !no_wasm && let Err(e) = Self::build_pages_wasm(ctx, force)
 			{
 				if wasm_optional {
 					ctx.warning(&format!(
@@ -2024,7 +2037,10 @@ impl RunServerCommand {
 		let js_name = crate_name.replace('-', "_");
 		let artifact = cwd.join("dist").join(format!("{}.js", js_name));
 		if artifact.exists() && !force {
-			ctx.info("Pages WASM: artifacts exist, skipping build (use --force-wasm to rebuild)");
+			ctx.info(&format!(
+				"Pages WASM: --no-override-wasm set and dist/{}.js exists, skipping build",
+				js_name
+			));
 			return Ok(());
 		}
 
@@ -3285,6 +3301,28 @@ mod tests {
 		let options = cmd.options();
 		// Should have migration-related options
 		assert!(!options.is_empty());
+	}
+
+	#[test]
+	fn test_runserver_command_options_include_no_override_wasm() {
+		// Arrange
+		let cmd = RunServerCommand;
+
+		// Act
+		let options = cmd.options();
+		let option_names: Vec<&str> = options.iter().map(|o| o.long.as_str()).collect();
+
+		// Assert: --no-override-wasm replaces --force-wasm as the supported opt-out;
+		// --force-wasm is retained as a deprecated alias.
+		assert!(
+			option_names.contains(&"no-override-wasm"),
+			"--no-override-wasm must be registered as a runserver option"
+		);
+		assert!(
+			option_names.contains(&"force-wasm"),
+			"--force-wasm must remain registered (deprecated alias)"
+		);
+		assert!(option_names.contains(&"no-wasm"));
 	}
 
 	#[test]

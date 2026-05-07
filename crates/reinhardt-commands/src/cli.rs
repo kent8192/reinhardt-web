@@ -134,6 +134,22 @@ pub enum Commands {
 		#[arg(long = "no-wasm-rebuild")]
 		no_wasm_rebuild: bool,
 
+		/// Skip the WASM build at startup (existing artifacts in dist/ are served as-is).
+		#[arg(long = "no-wasm")]
+		no_wasm: bool,
+
+		/// Reuse existing WASM artifacts in dist/ if present (default: rebuild on every start).
+		#[arg(long = "no-override-wasm")]
+		no_override_wasm: bool,
+
+		/// DEPRECATED: rebuild is now the default. Use --no-override-wasm to opt out.
+		#[arg(long = "force-wasm")]
+		force_wasm: bool,
+
+		/// Allow the server to start even when the WASM build fails.
+		#[arg(long = "wasm-optional")]
+		wasm_optional: bool,
+
 		/// Serve static files in development mode
 		#[arg(long)]
 		insecure: bool,
@@ -526,6 +542,10 @@ pub async fn run_command_with_registry(
 			address,
 			noreload,
 			no_wasm_rebuild,
+			no_wasm,
+			no_override_wasm,
+			force_wasm,
+			wasm_optional,
 			insecure,
 			no_docs,
 			with_pages,
@@ -537,6 +557,10 @@ pub async fn run_command_with_registry(
 				address,
 				noreload,
 				no_wasm_rebuild,
+				no_wasm,
+				no_override_wasm,
+				force_wasm,
+				wasm_optional,
 				insecure,
 				no_docs,
 				with_pages,
@@ -768,6 +792,10 @@ struct RunServerOptions {
 	address: String,
 	noreload: bool,
 	no_wasm_rebuild: bool,
+	no_wasm: bool,
+	no_override_wasm: bool,
+	force_wasm: bool,
+	wasm_optional: bool,
 	insecure: bool,
 	no_docs: bool,
 	with_pages: bool,
@@ -788,6 +816,18 @@ async fn execute_runserver(options: RunServerOptions) -> Result<(), Box<dyn std:
 	}
 	if options.no_wasm_rebuild {
 		ctx.set_option("no-wasm-rebuild".to_string(), "true".to_string());
+	}
+	if options.no_wasm {
+		ctx.set_option("no-wasm".to_string(), "true".to_string());
+	}
+	if options.no_override_wasm {
+		ctx.set_option("no-override-wasm".to_string(), "true".to_string());
+	}
+	if options.force_wasm {
+		ctx.set_option("force-wasm".to_string(), "true".to_string());
+	}
+	if options.wasm_optional {
+		ctx.set_option("wasm-optional".to_string(), "true".to_string());
 	}
 	if options.insecure {
 		ctx.set_option("insecure".to_string(), "true".to_string());
@@ -1348,6 +1388,10 @@ mod tests {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
 			no_wasm_rebuild: false,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: false,
@@ -1531,6 +1575,10 @@ mod tests {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
 			no_wasm_rebuild: false,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: true,
@@ -1554,6 +1602,10 @@ mod tests {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
 			no_wasm_rebuild: false,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: false,
@@ -1577,6 +1629,10 @@ mod tests {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
 			no_wasm_rebuild: false,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: true,
@@ -1601,6 +1657,10 @@ mod tests {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
 			no_wasm_rebuild: false,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: false,
@@ -1628,6 +1688,10 @@ mod tests {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
 			no_wasm_rebuild: true,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: false,
@@ -1650,6 +1714,120 @@ mod tests {
 
 		// Assert
 		assert_eq!(ctx.option("no-wasm-rebuild"), Some(&"true".to_string()));
+	}
+
+	#[rstest]
+	fn test_runserver_no_override_wasm_flag_propagates() {
+		// Arrange: build options as the CLI parser would after `--no-override-wasm`
+		let options = RunServerOptions {
+			address: "127.0.0.1:8000".to_string(),
+			noreload: false,
+			no_wasm_rebuild: false,
+			no_wasm: false,
+			no_override_wasm: true,
+			force_wasm: false,
+			wasm_optional: false,
+			insecure: false,
+			no_docs: false,
+			with_pages: true,
+			static_dir: "dist".to_string(),
+			no_spa: false,
+			index: None,
+			verbosity: 0,
+		};
+
+		// Act: replicate execute_runserver's option propagation onto a CommandContext
+		let mut ctx = CommandContext::default();
+		ctx.add_arg(options.address);
+		if options.no_override_wasm {
+			ctx.set_option("no-override-wasm".to_string(), "true".to_string());
+		}
+		if options.with_pages {
+			ctx.set_option("with-pages".to_string(), "true".to_string());
+		}
+
+		// Assert
+		assert_eq!(ctx.option("no-override-wasm"), Some(&"true".to_string()));
+		assert_eq!(ctx.option("with-pages"), Some(&"true".to_string()));
+	}
+
+	#[rstest]
+	fn test_runserver_force_wasm_legacy_flag_propagates() {
+		// Arrange: legacy `--force-wasm` is still parsed but emits a deprecation
+		// warning at runtime; the CommandContext key is preserved so RunServerCommand
+		// can detect it and emit the warning.
+		let options = RunServerOptions {
+			address: "127.0.0.1:8000".to_string(),
+			noreload: false,
+			no_wasm_rebuild: false,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: true,
+			wasm_optional: false,
+			insecure: false,
+			no_docs: false,
+			with_pages: true,
+			static_dir: "dist".to_string(),
+			no_spa: false,
+			index: None,
+			verbosity: 0,
+		};
+
+		// Act
+		let mut ctx = CommandContext::default();
+		ctx.add_arg(options.address);
+		if options.force_wasm {
+			ctx.set_option("force-wasm".to_string(), "true".to_string());
+		}
+
+		// Assert
+		assert_eq!(ctx.option("force-wasm"), Some(&"true".to_string()));
+	}
+
+	#[rstest]
+	fn test_runserver_clap_accepts_no_override_wasm() {
+		use clap::Parser;
+
+		// Arrange & Act: clap parsing must accept the new flag.
+		let cli = Cli::parse_from(["manage", "runserver", "--with-pages", "--no-override-wasm"]);
+
+		// Assert
+		match cli.command {
+			Commands::Runserver {
+				with_pages,
+				no_override_wasm,
+				force_wasm,
+				..
+			} => {
+				assert!(with_pages, "--with-pages should be parsed");
+				assert!(no_override_wasm, "--no-override-wasm should be parsed");
+				assert!(!force_wasm, "--force-wasm was not provided");
+			}
+			#[allow(unreachable_patterns)]
+			_ => panic!("Expected Commands::Runserver"),
+		}
+	}
+
+	#[rstest]
+	fn test_runserver_clap_accepts_force_wasm_legacy() {
+		use clap::Parser;
+
+		// Arrange & Act: legacy `--force-wasm` must still parse for back-compat.
+		let cli = Cli::parse_from(["manage", "runserver", "--with-pages", "--force-wasm"]);
+
+		// Assert
+		match cli.command {
+			Commands::Runserver {
+				force_wasm,
+				no_override_wasm,
+				..
+			} => {
+				assert!(force_wasm, "--force-wasm should still parse (deprecated)");
+				assert!(!no_override_wasm, "--no-override-wasm was not provided");
+			}
+			#[allow(unreachable_patterns)]
+			_ => panic!("Expected Commands::Runserver"),
+		}
 	}
 
 	#[rstest]
@@ -1680,6 +1858,10 @@ mod tests {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
 			no_wasm_rebuild: false,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
 			insecure: false,
 			no_docs: false,
 			with_pages: false,

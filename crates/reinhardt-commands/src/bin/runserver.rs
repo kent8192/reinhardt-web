@@ -80,7 +80,12 @@ struct Args {
 	#[arg(long)]
 	no_wasm: bool,
 
-	/// Force rebuild WASM even when artifacts are up-to-date relative to sources.
+	/// Reuse existing WASM artifacts in dist/ when they are up-to-date relative to
+	/// sources (the prior default). Without this flag, WASM is always rebuilt.
+	#[arg(long)]
+	no_override_wasm: bool,
+
+	/// DEPRECATED: rebuild is now the default. Use --no-override-wasm to opt out.
 	#[arg(long)]
 	force_wasm: bool,
 
@@ -465,7 +470,7 @@ fn build_admin_wasm(force: bool) -> bool {
 	if !force && !is_wasm_stale(&admin_crate_dir, &artifact) {
 		println!(
 			"{}",
-			"Admin WASM: artifacts up to date, skipping build".dimmed()
+			"Admin WASM: artifacts up to date, skipping build (--no-override-wasm)".dimmed()
 		);
 		return true;
 	}
@@ -565,7 +570,7 @@ fn build_pages_wasm(force: bool) -> bool {
 	if !force && !is_wasm_stale(&cwd, &artifact) {
 		println!(
 			"{}",
-			"Pages WASM: artifacts up to date, skipping build".dimmed()
+			"Pages WASM: artifacts up to date, skipping build (--no-override-wasm)".dimmed()
 		);
 		return true;
 	}
@@ -610,17 +615,33 @@ fn build_pages_wasm(force: bool) -> bool {
 }
 
 /// Orchestrate WASM builds for all enabled targets.
-fn build_wasm_targets(no_wasm: bool, force_wasm: bool) {
+///
+/// `no_override_wasm` honours up-to-date `dist/` artifacts (the prior default);
+/// without it, WASM is rebuilt unconditionally to avoid serving stale bundles.
+/// `force_wasm_legacy` accepts the deprecated `--force-wasm` flag and emits a
+/// warning; rebuild is otherwise the default.
+fn build_wasm_targets(no_wasm: bool, no_override_wasm: bool, force_wasm_legacy: bool) {
 	if no_wasm {
 		println!("{}", "WASM builds skipped (--no-wasm)".dimmed());
 		return;
 	}
 
+	if force_wasm_legacy {
+		eprintln!(
+			"{}",
+			"Warning: --force-wasm is now the default behavior; this flag is deprecated. \
+			 Use --no-override-wasm to opt out of rebuilds."
+				.yellow()
+		);
+	}
+
+	let force = !no_override_wasm;
+
 	#[cfg(feature = "admin")]
-	build_admin_wasm(force_wasm);
+	build_admin_wasm(force);
 
 	#[cfg(feature = "pages")]
-	build_pages_wasm(force_wasm);
+	build_pages_wasm(force);
 }
 
 /// Run collectstatic to copy all static files into STATIC_ROOT.
@@ -736,7 +757,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 
 	// Phase 1: Build WASM targets
-	build_wasm_targets(args.no_wasm, args.force_wasm);
+	build_wasm_targets(args.no_wasm, args.no_override_wasm, args.force_wasm);
 
 	// Load settings at startup
 	let settings = Arc::new(load_settings());
