@@ -145,8 +145,8 @@ impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 	// unreachable when the top-level value is an object). Remaining shapes
 	// still forward to `deserialize_any` until later phases.
 	forward_to_deserialize_any! {
-		str string unit unit_struct newtype_struct seq tuple tuple_struct
-		identifier ignored_any
+		str string unit unit_struct newtype_struct seq identifier
+		ignored_any
 	}
 
 	fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -352,9 +352,73 @@ impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 	where
 		V: Visitor<'de>,
 	{
+		// String -> struct has no defined coercion. Surface a clear
+		// `UnsupportedShape` error directing callers to use field-by-field
+		// interpolation instead, rather than letting an opaque serde
+		// "expected map, got string" error escape via `deserialize_map`.
+		if matches!(self.value, serde_json::Value::String(_)) {
+			return Err(CoercionError::UnsupportedShape {
+				target: "struct",
+				key_path: self.key_path.to_string(),
+			});
+		}
 		// Structs deserialize via `visit_map`; route through the same
 		// adapter as `deserialize_map`.
 		self.deserialize_map(visitor)
+	}
+
+	fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
+	where
+		V: Visitor<'de>,
+	{
+		// String -> tuple has no defined coercion. Same rationale as
+		// `deserialize_struct`: emit `UnsupportedShape` to direct callers
+		// to per-element interpolation. Native arrays still flow through
+		// `serde_json`'s deserializer.
+		if matches!(self.value, serde_json::Value::String(_)) {
+			return Err(CoercionError::UnsupportedShape {
+				target: "tuple",
+				key_path: self.key_path.to_string(),
+			});
+		}
+		self.value
+			.clone()
+			.deserialize_tuple(len, visitor)
+			.map_err(|e| CoercionError::Parse {
+				target_type: "tuple".to_string(),
+				value: self.value.to_string(),
+				key_path: self.key_path.to_string(),
+				source: Box::new(e),
+			})
+	}
+
+	fn deserialize_tuple_struct<V>(
+		self,
+		name: &'static str,
+		len: usize,
+		visitor: V,
+	) -> Result<V::Value, Self::Error>
+	where
+		V: Visitor<'de>,
+	{
+		// String -> tuple struct has no defined coercion. Same rationale
+		// as `deserialize_tuple`: emit `UnsupportedShape` instead of a
+		// generic serde error.
+		if matches!(self.value, serde_json::Value::String(_)) {
+			return Err(CoercionError::UnsupportedShape {
+				target: "tuple struct",
+				key_path: self.key_path.to_string(),
+			});
+		}
+		self.value
+			.clone()
+			.deserialize_tuple_struct(name, len, visitor)
+			.map_err(|e| CoercionError::Parse {
+				target_type: format!("tuple struct {name}"),
+				value: self.value.to_string(),
+				key_path: self.key_path.to_string(),
+				source: Box::new(e),
+			})
 	}
 
 	fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>

@@ -211,3 +211,114 @@ fn bytes_coerce_invalid_base64_errors() {
 		"msg = {msg}"
 	);
 }
+
+// --- UnsupportedShape: struct from string ----------------------------
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct Endpoint {
+	host: String,
+	port: u16,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct WithEndpoint {
+	endpoint: Endpoint,
+}
+
+#[rstest]
+fn nested_struct_from_string_is_unsupported() {
+	// Arrange
+	let v = json!({ "endpoint": "{\"host\":\"localhost\",\"port\":5432}" });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let err = WithEndpoint::deserialize(de).unwrap_err();
+
+	// Assert
+	let msg = err.to_string();
+	assert!(
+		matches!(err, CoercionError::UnsupportedShape { .. }),
+		"got: {err:?}"
+	);
+	assert!(msg.contains("struct"), "msg = {msg}");
+	assert!(msg.contains("endpoint"), "msg = {msg}");
+}
+
+#[rstest]
+fn nested_struct_from_object_works() {
+	// Arrange — per-field interpolation is the recommended pattern
+	let v = json!({ "endpoint": { "host": "localhost", "port": "5432" } });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let got: WithEndpoint = WithEndpoint::deserialize(de).expect("ok");
+
+	// Assert
+	assert_eq!(
+		got,
+		WithEndpoint {
+			endpoint: Endpoint {
+				host: "localhost".into(),
+				port: 5432
+			}
+		}
+	);
+}
+
+// --- UnsupportedShape: tuple from string -----------------------------
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct WithTuple {
+	pair: (u16, u16),
+}
+
+#[rstest]
+fn tuple_from_string_is_unsupported() {
+	// Arrange
+	let v = json!({ "pair": "(1, 2)" });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let err = WithTuple::deserialize(de).unwrap_err();
+
+	// Assert
+	let msg = err.to_string();
+	assert!(
+		matches!(err, CoercionError::UnsupportedShape { .. }),
+		"got: {err:?}"
+	);
+	assert!(msg.contains("tuple"), "msg = {msg}");
+	assert!(msg.contains("pair"), "msg = {msg}");
+}
+
+// --- UnsupportedShape: tuple_struct from string ----------------------
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct Pair(u16, u16);
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct WithTupleStruct {
+	pair: Pair,
+}
+
+#[rstest]
+fn tuple_struct_from_string_is_unsupported() {
+	// Arrange
+	let v = json!({ "pair": "(1, 2)" });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let err = WithTupleStruct::deserialize(de).unwrap_err();
+
+	// Assert
+	let msg = err.to_string();
+	assert!(
+		matches!(err, CoercionError::UnsupportedShape { .. }),
+		"got: {err:?}"
+	);
+	assert!(
+		msg.contains("tuple struct") || msg.contains("tuple"),
+		"msg = {msg}"
+	);
+	assert!(msg.contains("pair"), "msg = {msg}");
+}
