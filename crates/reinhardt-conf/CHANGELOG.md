@@ -7,30 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `CoercionError` and `BuildError::Coercion` for typed string-to-T failures during
-  settings deserialization (#4226).
-- `SettingsBuilder::with_typed_coercion(bool)` to opt in or out of typed coercion;
-  default is on (#4226).
-- `TypedSettingsDeserializer` (public) wrapping `&serde_json::Value` for type-aware
-  coercion at the visitor boundary (#4226).
-
 ### Changed
 
-- **BREAKING**: `${VAR}` interpolation results are now coerced into the destination
-  Rust type at deserialize time. `port = "5432"` / `port = "${PORT:-5432}"` now
-  deserialize into `u16` directly. Coercion failures are reported at
-  `SettingsBuilder::build_composed()` time with full TOML key path, target type,
-  original value, and underlying parse error. Restore the legacy passthrough with
-  `.with_typed_coercion(false)` (#4226).
-- `base64` is now a required (non-optional) dependency of `reinhardt-conf` (#4226).
+- *(conf)* **BREAKING CHANGE**: `TomlFileSource::new(path)` now enables `${VAR}` interpolation by default. The previous opt-in behavior caused silent failures when a developer forgot `.with_interpolation(true)` and a literal `${DB_PASSWORD}` landed in the merged settings tree. Interpolation is required by 95%+ of real-world settings files; the new default matches the common case (issue #4224).
 
-### Migration
+  Migration:
 
-- Manual `serde` shims that coerced strings into typed fields can be removed.
-- If your code relied on string-typed TOML producing serde mismatch errors, opt out
-  via `.with_typed_coercion(false)` or fix the data so it parses correctly.
+  | Old call                              | New call                               |
+  |---------------------------------------|----------------------------------------|
+  | `.with_interpolation(true)`           | drop the call (or `.with_interpolation()`) |
+  | `.with_interpolation(false)`          | `.without_interpolation()`             |
+  | `.with_interpolation(some_bool_var)`  | `if some_bool_var { .with_interpolation() } else { .without_interpolation() }` |
+
+- *(conf)* `with_interpolation()` is now a no-argument method (the default-on no-op for explicitness). Add the new `without_interpolation()` opt-out method.
+
+### Deprecated
+
+- *(conf)* `TomlFileSource::set_interpolation(bool)` (the legacy 0.1.0-rc form of the boolean setter) is deprecated and will be removed in `0.2.0`. Use `with_interpolation()` / `without_interpolation()` instead (issue #4224).
 
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.25...reinhardt-conf@v0.1.0-rc.26) - 2026-05-05
 

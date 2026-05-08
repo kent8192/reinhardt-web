@@ -105,16 +105,22 @@ Opt-in `${VAR}` substitution for TOML string values.
 
 Variable names follow POSIX conventions: `[A-Za-z_][A-Za-z0-9_]*`.
 
+Interpolation is **enabled by default** since `0.1.0-rc.27`. Call
+`.without_interpolation()` if you need raw `${...}` strings to survive
+the load (for example, when the TOML is itself a template that
+downstream code expands).
+
 ```rust,ignore
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::sources::TomlFileSource;
 
 let settings = SettingsBuilder::new()
-    .add_source(
-        TomlFileSource::new("settings/local.toml")
-            .with_interpolation(true),
-    )
+    // Interpolation is on by default — no builder method required.
+    .add_source(TomlFileSource::new("settings/local.toml"))
     .build()?;
+
+// Opt out when literal `${...}` must survive:
+// .add_source(TomlFileSource::new("settings/template.toml").without_interpolation())
 ```
 
 Example TOML:
