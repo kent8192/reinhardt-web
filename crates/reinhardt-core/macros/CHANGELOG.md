@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.26...reinhardt-macros@v0.1.0-rc.27) - 2026-05-08
+
+### Added
+
+- *(macros)* extend #[app_config] to declare vendor_assets via inventory
+
+### Fixed
+
+- *(macros)* gate #[routes] body on wasm so ResolvedUrls is reachable
+
+### Styling
+
+- apply rustfmt to vendor subsystem files
+
+### Testing
+
+- *(macros)* add trybuild fail case for vendor_assets missing url
+- *(macros)* remove brittle vendor_assets fail trybuild
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.25...reinhardt-macros@v0.1.0-rc.26) - 2026-05-05
 
 ### Fixed

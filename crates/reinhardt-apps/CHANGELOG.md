@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.0-rc.26...reinhardt-apps@v0.1.0-rc.27) - 2026-05-08
+
+### Added
+
+- *(apps)* re-export AppVendorAsset from reinhardt-utils for macro use
+
+### Changed
+
+- *(admin)* migrate vendor assets to inventory-based registration
+
 ## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.0-rc.24...reinhardt-apps@v0.1.0-rc.25) - 2026-04-30
 
 ### Fixed

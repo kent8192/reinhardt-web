@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-rc.26...reinhardt-admin@v0.1.0-rc.27) - 2026-05-08
+
+### Changed
+
+- *(admin)* migrate vendor assets to inventory-based registration
+- *(commands)* migrate collectstatic to inventory-based vendor download
+
+### Fixed
+
+- *(ci)* restore admin/core/vendor as deprecated shim to satisfy semver
+- *(ci)* apply rustfmt to admin vendor shim
+
+### Styling
+
+- apply rustfmt to vendor subsystem files
+
 ## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-rc.22...reinhardt-admin@v0.1.0-rc.23) - 2026-04-29
 
 ### Changed
