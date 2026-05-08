@@ -449,3 +449,76 @@ fn map_string_with_array_inside_errors() {
 	// Assert
 	assert!(matches!(err, CoercionError::Parse { .. }));
 }
+
+// --- builder integration --------------------------------------------
+
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::sources::DefaultSource;
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct DbSettings {
+	host: String,
+	port: u16,
+	read_only: bool,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct WithDb {
+	database: DbSettings,
+}
+
+#[rstest]
+fn builder_coerces_strings_to_typed_fields() {
+	// Arrange — DefaultSource pushes string-typed values that still
+	// need to coerce into DbSettings.
+	let settings = SettingsBuilder::new()
+		.add_source(DefaultSource::new().with_value(
+			"database",
+			json!({
+				"host": "localhost",
+				"port": "5432",
+				"read_only": "false",
+			}),
+		))
+		.build()
+		.expect("build");
+
+	// Act
+	let got: WithDb = settings.into_typed().expect("into_typed");
+
+	// Assert
+	assert_eq!(
+		got,
+		WithDb {
+			database: DbSettings {
+				host: "localhost".into(),
+				port: 5432,
+				read_only: false
+			}
+		}
+	);
+}
+
+#[rstest]
+fn builder_with_typed_coercion_disabled_falls_through_to_legacy() {
+	// Arrange — same input as above, but coercion disabled.
+	let result: Result<WithDb, _> = SettingsBuilder::new()
+		.with_typed_coercion(false)
+		.add_source(DefaultSource::new().with_value(
+			"database",
+			json!({
+				"host": "localhost",
+				"port": "5432",
+				"read_only": "false",
+			}),
+		))
+		.build()
+		.unwrap()
+		.into_typed();
+
+	// Act / Assert — expect the legacy serde error path.
+	assert!(
+		result.is_err(),
+		"legacy path should reject string-typed port"
+	);
+}
