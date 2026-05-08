@@ -19,6 +19,8 @@
 //! consumed exactly once.
 
 use super::interpolation::KeyPath;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use serde::de::{DeserializeSeed, Deserializer, MapAccess, Visitor};
 use serde::forward_to_deserialize_any;
 
@@ -134,17 +136,17 @@ impl<'de> TypedSettingsDeserializer<'de> {
 impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 	type Error = CoercionError;
 
-	// Phase 3a + 3b + 3c (#4226): bool, integers, floats, char, enum, and
-	// `Option<T>` are explicitly overridden below to coerce `Value::String`
-	// via `FromStr` (or, for `char`, `enum`, and `Option`, via shape-
-	// specific rules). `map`/`struct` are also overridden so that per-field
-	// dispatch flows through this deserializer (otherwise the scalar
-	// overrides would be unreachable when the top-level value is an
-	// object). Remaining shapes still forward to `deserialize_any` until
-	// later phases.
+	// Phase 3a + 3b + 3c + 3d (#4226): bool, integers, floats, char, enum,
+	// `Option<T>`, and bytes are explicitly overridden below to coerce
+	// `Value::String` via `FromStr` (or, for `char`, `enum`, `Option`, and
+	// `bytes`, via shape-specific rules — bytes use base64 STANDARD).
+	// `map`/`struct` are also overridden so that per-field dispatch flows
+	// through this deserializer (otherwise the scalar overrides would be
+	// unreachable when the top-level value is an object). Remaining shapes
+	// still forward to `deserialize_any` until later phases.
 	forward_to_deserialize_any! {
-		str string bytes byte_buf unit unit_struct newtype_struct seq tuple
-		tuple_struct identifier ignored_any
+		str string unit unit_struct newtype_struct seq tuple tuple_struct
+		identifier ignored_any
 	}
 
 	fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -353,6 +355,50 @@ impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 		// Structs deserialize via `visit_map`; route through the same
 		// adapter as `deserialize_map`.
 		self.deserialize_map(visitor)
+	}
+
+	fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+	where
+		V: Visitor<'de>,
+	{
+		// `forward_to_deserialize_any!` would route bytes through
+		// `deserialize_any`, which for `Value::String` calls `visit_str` —
+		// not `visit_bytes`. Override here so visitors that ask for bytes
+		// (e.g. `serde_bytes`) receive base64-decoded bytes when the source
+		// value is a JSON string. Native `Value::Array` of integers is
+		// preserved by delegating to `serde_json`'s own deserializer.
+		match self.value {
+			serde_json::Value::String(s) => {
+				let decoded = BASE64_STANDARD
+					.decode(s)
+					.map_err(|e| CoercionError::Parse {
+						target_type: "bytes".to_string(),
+						value: s.clone(),
+						key_path: self.key_path.to_string(),
+						source: Box::new(e),
+					})?;
+				visitor.visit_byte_buf(decoded)
+			}
+			other => other
+				.clone()
+				.deserialize_bytes(visitor)
+				.map_err(|e| CoercionError::Parse {
+					target_type: "bytes".to_string(),
+					value: other.to_string(),
+					key_path: self.key_path.to_string(),
+					source: Box::new(e),
+				}),
+		}
+	}
+
+	fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+	where
+		V: Visitor<'de>,
+	{
+		// Same coercion rules as `deserialize_bytes`; serde permits routing
+		// `byte_buf` through `bytes` because the visitor is required to
+		// accept either via `visit_bytes` / `visit_byte_buf`.
+		self.deserialize_bytes(visitor)
 	}
 }
 

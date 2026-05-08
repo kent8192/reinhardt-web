@@ -167,3 +167,47 @@ fn option_coerce(#[case] v: serde_json::Value, #[case] expected: OptionalPort) {
 	// Assert
 	assert_eq!(got, expected);
 }
+
+// --- bytes / Vec<u8> -------------------------------------------------
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct WithKey {
+	#[serde(with = "serde_bytes")]
+	key: Vec<u8>,
+}
+
+#[rstest]
+fn bytes_coerce_from_base64() {
+	// Arrange — "hello" in base64 = "aGVsbG8="
+	let v = json!({ "key": "aGVsbG8=" });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let got: WithKey = WithKey::deserialize(de).expect("ok");
+
+	// Assert
+	assert_eq!(
+		got,
+		WithKey {
+			key: b"hello".to_vec()
+		}
+	);
+}
+
+#[rstest]
+fn bytes_coerce_invalid_base64_errors() {
+	// Arrange
+	let v = json!({ "key": "not-valid-base64!@#" });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let err = WithKey::deserialize(de).unwrap_err();
+
+	// Assert
+	let msg = err.to_string();
+	assert!(matches!(err, CoercionError::Parse { .. }));
+	assert!(
+		msg.contains("bytes") || msg.contains("base64"),
+		"msg = {msg}"
+	);
+}

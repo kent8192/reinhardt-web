@@ -92,3 +92,4 @@ serial_test = { workspace = true }
 quickcheck = "1.0"
 quickcheck_macros = "1.0"
 proptest = { workspace = true }
+serde_bytes = { workspace = true }
