@@ -60,7 +60,7 @@ fn read_dataset_nav_site() -> Option<String> {
 }
 
 #[wasm_bindgen_test]
-async fn nav_diag_dom_writes_store_router_at_launch() {
+async fn nav_diag_dom_writes_some_site_at_launch() {
 	let _root = install_app_root();
 	// Clear any leftover attribute from a prior test in the same harness.
 	if let Some(body) = web_sys::window()
@@ -75,9 +75,11 @@ async fn nav_diag_dom_writes_store_router_at_launch() {
 		.launch()
 		.expect("launch");
 
-	// `store_router` is the first nav_diag_dom! site to fire after launch.
-	// Subsequent launch-time sites (notify_observers from the initial render)
-	// may overwrite, so we only assert the attribute is *present* and non-empty.
+	// `store_router` is the first nav_diag_dom! site to fire after launch,
+	// but subsequent launch-time sites (e.g. `notify_observers` from the
+	// initial render) may overwrite it under last-write-wins semantics.
+	// We therefore only assert the attribute is *present* and non-empty —
+	// a separate test exercises a specific post-launch site.
 	let site = read_dataset_nav_site();
 	assert!(
 		site.is_some(),
@@ -90,7 +92,7 @@ async fn nav_diag_dom_writes_store_router_at_launch() {
 }
 
 #[wasm_bindgen_test]
-async fn nav_diag_dom_advances_to_navigate_after_router_push() {
+async fn nav_diag_dom_writes_notify_observers_after_router_push() {
 	let _root = install_app_root();
 
 	ClientLauncher::new("#app")
@@ -98,16 +100,33 @@ async fn nav_diag_dom_advances_to_navigate_after_router_push() {
 		.launch()
 		.expect("launch");
 
+	// The launch path itself ends with a `notify_observers` write, so
+	// asserting `Some("notify_observers")` directly after launch would
+	// pass even if `Router::push()` did nothing. Stamp a sentinel so the
+	// post-push assertion can only succeed if `push → navigate →
+	// notify_observers` actually wrote the attribute.
+	let body = web_sys::window()
+		.and_then(|w| w.document())
+		.and_then(|d| d.body())
+		.expect("body");
+	body.set_attribute("data-reinhardt-nav-site", "test_sentinel")
+		.expect("set sentinel");
+
 	// Drive a programmatic navigation. After this returns, the most recent
-	// nav_diag_dom! site to have written is `notify_observers` (link click
-	// path: link_interceptor → navigate → notify_observers, but here we
-	// skip the link click so the path is push → navigate → notify_observers).
+	// nav_diag_dom! site to have written is `notify_observers` (push path:
+	// push → navigate → notify_observers).
 	with_router(|r| r.push("/clusters")).expect("push /clusters");
 
 	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
 	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 
 	let site = read_dataset_nav_site();
+	assert_ne!(
+		site.as_deref(),
+		Some("test_sentinel"),
+		"nav-diag-dom: Router::push() did not overwrite the pre-push sentinel; \
+		 nav_diag_dom! sites are not firing on the push path."
+	);
 	assert_eq!(
 		site.as_deref(),
 		Some("notify_observers"),
