@@ -1,8 +1,10 @@
 //! TOML configuration interpolation.
 //!
-//! When [`TomlFileSource::with_interpolation(true)`] is set, every TOML
-//! `Value::String` is scanned for the following tokens before the value
-//! is merged into the configuration:
+//! Interpolation runs by default for every [`TomlFileSource`]. Call
+//! [`TomlFileSource::without_interpolation`] to opt out and keep the
+//! tokens below as literal strings. Every TOML `Value::String` is
+//! scanned for the following tokens before the value is merged into
+//! the configuration:
 //!
 //! | Token              | Behavior                                         |
 //! |--------------------|--------------------------------------------------|
@@ -25,7 +27,8 @@
 //! 3. **Fail-fast** — Any failure aborts `TomlFileSource::load()`.
 //! 4. **Type-bounded scope** — Only `toml::Value::String` is rewritten.
 //!
-//! [`TomlFileSource::with_interpolation(true)`]: super::sources::TomlFileSource::with_interpolation
+//! [`TomlFileSource`]: super::sources::TomlFileSource
+//! [`TomlFileSource::without_interpolation`]: super::sources::TomlFileSource::without_interpolation
 
 use std::path::PathBuf;
 
