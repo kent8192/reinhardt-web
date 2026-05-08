@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(conf)* **BREAKING CHANGE**: `TomlFileSource::new(path)` now enables `${VAR}` interpolation by default. The previous opt-in behavior caused silent failures when a developer forgot `.with_interpolation(true)` and a literal `${DB_PASSWORD}` landed in the merged settings tree. Interpolation is required by 95%+ of real-world settings files; the new default matches the common case (issue #4224).
+
+  Migration:
+
+  | Old call                              | New call                               |
+  |---------------------------------------|----------------------------------------|
+  | `.with_interpolation(true)`           | drop the call (or `.with_interpolation()`) |
+  | `.with_interpolation(false)`          | `.without_interpolation()`             |
+  | `.with_interpolation(some_bool_var)`  | `if some_bool_var { .with_interpolation() } else { .without_interpolation() }` |
+
+- *(conf)* `with_interpolation()` is now a no-argument method (the default-on no-op for explicitness). Add the new `without_interpolation()` opt-out method.
+
+### Deprecated
+
+- *(conf)* `TomlFileSource::set_interpolation(bool)` (the legacy 0.1.0-rc form of the boolean setter) is deprecated and will be removed in `0.2.0`. Use `with_interpolation()` / `without_interpolation()` instead (issue #4224).
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.25...reinhardt-conf@v0.1.0-rc.26) - 2026-05-05
 
 ### Added
