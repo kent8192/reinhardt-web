@@ -12,8 +12,10 @@
 //! | `Vec<T>`            | parse as JSON array, recurse per item  |
 //! | `Map<K, V>`         | parse as JSON object, recurse per item |
 //! | `Vec<u8>` (bytes)   | base64 (STANDARD)                      |
-//! | struct/tuple/non-   | `CoercionError::UnsupportedShape`      |
-//! |   unit enum         |                                        |
+//! | enum                | delegate to `serde_json`; failures     |
+//! |                     |   wrap as `CoercionError::Parse`       |
+//! | struct / tuple /    | `CoercionError::UnsupportedShape`      |
+//! |   tuple struct      |                                        |
 //!
 //! The wrapper never re-runs interpolation: the resolved string is
 //! consumed exactly once.
@@ -87,7 +89,7 @@ pub enum CoercionError {
 	/// Failed to parse a string into the visitor's expected scalar /
 	/// bytes / collection-element shape.
 	#[error(
-		"failed to coerce string `{value}` into {target_type} at \
+		"failed to coerce value `{value}` into {target_type} at \
 		key `{key_path}`: {source}"
 	)]
 	Parse {
