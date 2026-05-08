@@ -22,27 +22,31 @@ use super::interpolation::KeyPath;
 use serde::de::{DeserializeSeed, Deserializer, MapAccess, Visitor};
 use serde::forward_to_deserialize_any;
 
-/// Implement a `deserialize_<int>` method that coerces `Value::String`
-/// into the target integer type via `FromStr`. For non-string inputs, it
+/// Implement a `deserialize_<scalar>` method that coerces `Value::String`
+/// into the target scalar type via `FromStr`. For non-string inputs, it
 /// delegates to `serde_json::Value`'s deserializer and re-wraps any
 /// resulting error as `CoercionError::Parse` so callers always see a
 /// uniform error shape carrying `key_path` / `target_type`.
-macro_rules! impl_int_coerce {
-	($method:ident, $visit:ident, $ty:ty, $type_name:expr) => {
+///
+/// `$err_ty` is the concrete error type returned by `<$ty as FromStr>::Err`
+/// (e.g. `std::str::ParseBoolError`, `std::num::ParseIntError`,
+/// `std::num::ParseFloatError`). It is required because `s.parse()` infers
+/// `Err = <$ty as FromStr>::Err`, and the closure's `e:` annotation must
+/// match for `Box::new(e)` to coerce into `Box<dyn Error + Send + Sync>`.
+macro_rules! impl_scalar_coerce {
+	($method:ident, $visit:ident, $ty:ty, $err_ty:ty, $type_name:expr) => {
 		fn $method<V>(self, visitor: V) -> Result<V::Value, Self::Error>
 		where
 			V: Visitor<'de>,
 		{
 			match self.value {
 				serde_json::Value::String(s) => {
-					let parsed: $ty =
-						s.parse()
-							.map_err(|e: std::num::ParseIntError| CoercionError::Parse {
-								target_type: $type_name.to_string(),
-								value: s.clone(),
-								key_path: self.key_path.to_string(),
-								source: Box::new(e),
-							})?;
+					let parsed: $ty = s.parse().map_err(|e: $err_ty| CoercionError::Parse {
+						target_type: $type_name.to_string(),
+						value: s.clone(),
+						key_path: self.key_path.to_string(),
+						source: Box::new(e),
+					})?;
 					visitor.$visit(parsed)
 				}
 				other => other
@@ -130,15 +134,16 @@ impl<'de> TypedSettingsDeserializer<'de> {
 impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 	type Error = CoercionError;
 
-	// Phase 3a (#4226): bool + integers are explicitly overridden below
-	// to coerce `Value::String` via `FromStr`. `map`/`struct` are also
-	// overridden so that per-field dispatch flows through this
+	// Phase 3a + 3b (#4226): bool, integers, floats, char, and enum are
+	// explicitly overridden below to coerce `Value::String` via `FromStr`
+	// (or, for `char` and `enum`, via shape-specific rules). `map`/`struct`
+	// are also overridden so that per-field dispatch flows through this
 	// deserializer (otherwise the scalar overrides would be unreachable
-	// when the top-level value is an object). Other shapes still forward
-	// to `deserialize_any` until later phases.
+	// when the top-level value is an object). Remaining shapes still
+	// forward to `deserialize_any` until later phases.
 	forward_to_deserialize_any! {
-		f32 f64 char str string bytes byte_buf option unit unit_struct
-		newtype_struct seq tuple tuple_struct enum identifier ignored_any
+		str string bytes byte_buf option unit unit_struct
+		newtype_struct seq tuple tuple_struct identifier ignored_any
 	}
 
 	fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -157,27 +162,118 @@ impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 			})
 	}
 
-	fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+	impl_scalar_coerce!(
+		deserialize_bool,
+		visit_bool,
+		bool,
+		std::str::ParseBoolError,
+		"bool"
+	);
+	impl_scalar_coerce!(deserialize_i8, visit_i8, i8, std::num::ParseIntError, "i8");
+	impl_scalar_coerce!(
+		deserialize_i16,
+		visit_i16,
+		i16,
+		std::num::ParseIntError,
+		"i16"
+	);
+	impl_scalar_coerce!(
+		deserialize_i32,
+		visit_i32,
+		i32,
+		std::num::ParseIntError,
+		"i32"
+	);
+	impl_scalar_coerce!(
+		deserialize_i64,
+		visit_i64,
+		i64,
+		std::num::ParseIntError,
+		"i64"
+	);
+	impl_scalar_coerce!(
+		deserialize_i128,
+		visit_i128,
+		i128,
+		std::num::ParseIntError,
+		"i128"
+	);
+	impl_scalar_coerce!(deserialize_u8, visit_u8, u8, std::num::ParseIntError, "u8");
+	impl_scalar_coerce!(
+		deserialize_u16,
+		visit_u16,
+		u16,
+		std::num::ParseIntError,
+		"u16"
+	);
+	impl_scalar_coerce!(
+		deserialize_u32,
+		visit_u32,
+		u32,
+		std::num::ParseIntError,
+		"u32"
+	);
+	impl_scalar_coerce!(
+		deserialize_u64,
+		visit_u64,
+		u64,
+		std::num::ParseIntError,
+		"u64"
+	);
+	impl_scalar_coerce!(
+		deserialize_u128,
+		visit_u128,
+		u128,
+		std::num::ParseIntError,
+		"u128"
+	);
+	impl_scalar_coerce!(
+		deserialize_f32,
+		visit_f32,
+		f32,
+		std::num::ParseFloatError,
+		"f32"
+	);
+	impl_scalar_coerce!(
+		deserialize_f64,
+		visit_f64,
+		f64,
+		std::num::ParseFloatError,
+		"f64"
+	);
+
+	fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
 	where
 		V: Visitor<'de>,
 	{
 		match self.value {
 			serde_json::Value::String(s) => {
-				let parsed: bool =
-					s.parse()
-						.map_err(|e: std::str::ParseBoolError| CoercionError::Parse {
-							target_type: "bool".to_string(),
-							value: s.clone(),
-							key_path: self.key_path.to_string(),
-							source: Box::new(e),
-						})?;
-				visitor.visit_bool(parsed)
+				let mut iter = s.chars();
+				let c = iter.next().ok_or_else(|| CoercionError::Parse {
+					target_type: "char".to_string(),
+					value: s.clone(),
+					key_path: self.key_path.to_string(),
+					source: "expected exactly one char, got empty string".into(),
+				})?;
+				if iter.next().is_some() {
+					return Err(CoercionError::Parse {
+						target_type: "char".to_string(),
+						value: s.clone(),
+						key_path: self.key_path.to_string(),
+						source: format!(
+							"expected exactly one char, got {} chars",
+							s.chars().count()
+						)
+						.into(),
+					});
+				}
+				visitor.visit_char(c)
 			}
 			other => other
 				.clone()
-				.deserialize_bool(visitor)
+				.deserialize_char(visitor)
 				.map_err(|e| CoercionError::Parse {
-					target_type: "bool".to_string(),
+					target_type: "char".to_string(),
 					value: other.to_string(),
 					key_path: self.key_path.to_string(),
 					source: Box::new(e),
@@ -185,16 +281,25 @@ impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 		}
 	}
 
-	impl_int_coerce!(deserialize_i8, visit_i8, i8, "i8");
-	impl_int_coerce!(deserialize_i16, visit_i16, i16, "i16");
-	impl_int_coerce!(deserialize_i32, visit_i32, i32, "i32");
-	impl_int_coerce!(deserialize_i64, visit_i64, i64, "i64");
-	impl_int_coerce!(deserialize_i128, visit_i128, i128, "i128");
-	impl_int_coerce!(deserialize_u8, visit_u8, u8, "u8");
-	impl_int_coerce!(deserialize_u16, visit_u16, u16, "u16");
-	impl_int_coerce!(deserialize_u32, visit_u32, u32, "u32");
-	impl_int_coerce!(deserialize_u64, visit_u64, u64, "u64");
-	impl_int_coerce!(deserialize_u128, visit_u128, u128, "u128");
+	fn deserialize_enum<V>(
+		self,
+		name: &'static str,
+		variants: &'static [&'static str],
+		visitor: V,
+	) -> Result<V::Value, Self::Error>
+	where
+		V: Visitor<'de>,
+	{
+		self.value
+			.clone()
+			.deserialize_enum(name, variants, visitor)
+			.map_err(|e| CoercionError::Parse {
+				target_type: format!("enum {name}"),
+				value: self.value.to_string(),
+				key_path: self.key_path.to_string(),
+				source: Box::new(e),
+			})
+	}
 
 	fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
 	where
