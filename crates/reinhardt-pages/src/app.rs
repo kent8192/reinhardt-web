@@ -500,6 +500,7 @@ impl ClientLauncher {
 			with_router(|r| r.__diag_router_id()),
 			with_router(|r| r.route_count())
 		);
+		crate::nav_diag_dom!("store_router");
 
 		with_router(|r| r.setup_history_listener());
 
@@ -730,6 +731,11 @@ fn install_link_interceptor(document: &web_sys::Document) -> Result<(), wasm_bin
 		};
 
 		event.prevent_default();
+
+		// Opt-in DOM-based diagnostic. Off by default (zero overhead in
+		// release WASM); enabled via `pages-nav-diag-dom` feature for
+		// SPA navigation regression debugging (Refs #4221).
+		crate::nav_diag_dom!("link_interceptor");
 
 		// Diagnostic snapshot of the click-time router state. Gated on
 		// debug builds so release WASM does not run the extra

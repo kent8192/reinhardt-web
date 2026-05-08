@@ -534,6 +534,8 @@ impl Router {
 			self.dispatch_count.get(),
 			listeners_snapshot.len()
 		);
+		// Opt-in DOM diagnostic; off by default. Refs #4221.
+		crate::nav_diag_dom!("notify_observers");
 		for listener in listeners_snapshot {
 			listener(path, params);
 		}
@@ -554,6 +556,8 @@ impl Router {
 				.and_then(|m| m.route.name())
 				.unwrap_or("")
 		);
+		// Opt-in DOM diagnostic; off by default. Refs #4221.
+		crate::nav_diag_dom!("navigate");
 
 		let state = HistoryState::new(path)
 			.with_params(
@@ -776,6 +780,8 @@ impl Router {
 				dispatch_count.get(),
 				listeners_snapshot.len()
 			);
+			// Opt-in DOM diagnostic; off by default. Refs #4221.
+			crate::nav_diag_dom!("popstate");
 			for listener in listeners_snapshot {
 				listener(&path, &params_for_observers);
 			}
