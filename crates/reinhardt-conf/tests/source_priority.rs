@@ -516,7 +516,7 @@ fn high_priority_env_overrides_interpolated_toml() {
 
 	// Act
 	let settings = SettingsBuilder::new()
-		.add_source(TomlFileSource::new(&path).with_interpolation(true)) // priority 50
+		.add_source(TomlFileSource::new(&path).with_interpolation()) // priority 50
 		.add_source(HighPriorityEnvSource::new().with_prefix("PRIO_TEST_")) // priority 60
 		.build()
 		.unwrap();
