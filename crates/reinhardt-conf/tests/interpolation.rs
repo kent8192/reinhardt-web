@@ -46,7 +46,7 @@ fn with_interpolation_resolves_env_var() {
 
 	// Act
 	let settings = SettingsBuilder::new()
-		.add_source(TomlFileSource::new(&path).with_interpolation(true))
+		.add_source(TomlFileSource::new(&path).with_interpolation())
 		.build()
 		.unwrap();
 
@@ -58,18 +58,70 @@ fn with_interpolation_resolves_env_var() {
 #[rstest]
 #[serial(env)]
 fn without_interpolation_preserves_literal_pattern() {
-	// Arrange — back-compat regression: default constructor must NOT expand
+	// Arrange — explicit opt-out keeps `${...}` strings verbatim
 	let (_dir, path) = write_toml_file(r#"host = "${SHOULD_NOT_EXPAND}""#);
 
 	// Act
 	let settings = SettingsBuilder::new()
-		.add_source(TomlFileSource::new(&path))
+		.add_source(TomlFileSource::new(&path).without_interpolation())
 		.build()
 		.unwrap();
 
 	// Assert
 	let host: String = settings.get("host").unwrap();
 	assert_eq!(host, "${SHOULD_NOT_EXPAND}");
+}
+
+#[rstest]
+#[serial(env)]
+fn default_constructor_interpolates_var() {
+	// Arrange — new default in 0.1.0-rc.27: interpolation is ON without
+	// any builder method. Issue #4224.
+	let _guard = EnvGuard(vec!["IT_DEFAULT_ON_HOST"]);
+	// SAFETY: serial-protected.
+	unsafe { env::set_var("IT_DEFAULT_ON_HOST", "default-on-host") };
+	let (_dir, path) = write_toml_file(r#"host = "${IT_DEFAULT_ON_HOST}""#);
+
+	// Act
+	let settings = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(&path)) // no interpolation method
+		.build()
+		.unwrap();
+
+	// Assert
+	let host: String = settings.get("host").unwrap();
+	assert_eq!(host, "default-on-host");
+}
+
+#[rstest]
+#[serial(env)]
+#[allow(deprecated)] // exercising the deprecated set_interpolation path on purpose
+fn deprecated_set_interpolation_still_works() {
+	// Arrange — set_interpolation(bool) is deprecated since 0.1.0-rc.27
+	// but must remain functional until removal in 0.2.0 (issue #4224).
+	let _guard = EnvGuard(vec!["IT_DEPRECATED_HOST"]);
+	// SAFETY: serial-protected.
+	unsafe { env::set_var("IT_DEPRECATED_HOST", "legacy-host") };
+	let (_dir, path) = write_toml_file(r#"host = "${IT_DEPRECATED_HOST}""#);
+	let (_dir2, path2) = write_toml_file(r#"host = "${IT_DEPRECATED_HOST}""#);
+
+	// Act — true keeps interpolation on; false opts out and preserves literal
+	let on: String = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(&path).set_interpolation(true))
+		.build()
+		.unwrap()
+		.get("host")
+		.unwrap();
+	let off: String = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(&path2).set_interpolation(false))
+		.build()
+		.unwrap()
+		.get("host")
+		.unwrap();
+
+	// Assert
+	assert_eq!(on, "legacy-host");
+	assert_eq!(off, "${IT_DEPRECATED_HOST}");
 }
 
 #[rstest]
@@ -83,7 +135,7 @@ fn default_value_used_when_var_unset() {
 
 	// Act
 	let settings = SettingsBuilder::new()
-		.add_source(TomlFileSource::new(&path).with_interpolation(true))
+		.add_source(TomlFileSource::new(&path).with_interpolation())
 		.build()
 		.unwrap();
 
@@ -103,7 +155,7 @@ fn default_value_used_when_var_empty() {
 
 	// Act
 	let settings = SettingsBuilder::new()
-		.add_source(TomlFileSource::new(&path).with_interpolation(true))
+		.add_source(TomlFileSource::new(&path).with_interpolation())
 		.build()
 		.unwrap();
 
@@ -122,7 +174,7 @@ fn required_var_unset_propagates_source_error() {
 	let (_dir, path) = write_toml_file(r#"host = "${IT_REQUIRED_VAR}""#);
 
 	// Act
-	let result = TomlFileSource::new(&path).with_interpolation(true).load();
+	let result = TomlFileSource::new(&path).with_interpolation().load();
 
 	// Assert
 	let err = result.unwrap_err();
@@ -153,7 +205,7 @@ fn required_with_message_surface_user_message() {
 		write_toml_file(r#"password = "${IT_NEEDS_MESSAGE:?Set via direnv or 1Password CLI}""#);
 
 	// Act
-	let result = TomlFileSource::new(&path).with_interpolation(true).load();
+	let result = TomlFileSource::new(&path).with_interpolation().load();
 
 	// Assert
 	let err = result.unwrap_err();
@@ -189,7 +241,7 @@ fn nested_table_interpolation_resolves_keys() {
 	);
 
 	// Act
-	let source = TomlFileSource::new(&path).with_interpolation(true);
+	let source = TomlFileSource::new(&path).with_interpolation();
 	let config = source.load().unwrap();
 
 	// Assert — top-level "database" object holds resolved children

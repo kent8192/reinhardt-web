@@ -331,8 +331,13 @@ pub struct TomlFileSource {
 impl TomlFileSource {
 	/// Create a new TOML file configuration source.
 	///
-	/// Interpolation is disabled by default. Call
-	/// [`Self::with_interpolation`] to enable `${VAR}` expansion.
+	/// `${VAR}` interpolation is **enabled by default** because the vast
+	/// majority of real-world settings files (secrets, per-environment
+	/// hosts, 12-factor overrides) require it. Call
+	/// [`Self::without_interpolation`] to opt out and preserve raw TOML
+	/// strings verbatim.
+	///
+	/// See [`Self::with_interpolation`] for the supported syntax.
 	///
 	/// # Examples
 	///
@@ -340,20 +345,24 @@ impl TomlFileSource {
 	/// use reinhardt_conf::settings::sources::TomlFileSource;
 	/// use std::path::PathBuf;
 	///
+	/// // Interpolation enabled by default — `${VAR}` is substituted from env.
 	/// let source = TomlFileSource::new(PathBuf::from("config.toml"));
 	/// ```
 	pub fn new(path: impl Into<PathBuf>) -> Self {
 		Self {
 			path: path.into(),
-			interpolate: false,
+			interpolate: true,
 		}
 	}
 
-	/// Enable `${VAR}` and `${VAR:-default}` interpolation against process
-	/// environment variables.
+	/// Explicitly opt **in** to `${VAR}` interpolation.
 	///
-	/// When enabled, every TOML string value is scanned for interpolation
-	/// tokens before being merged into the configuration:
+	/// This is a no-op for the default state — interpolation is on by
+	/// default since `0.1.0-rc.27`. The method exists so call sites can
+	/// document intent or re-enable interpolation after a previous
+	/// [`Self::without_interpolation`] call in a builder chain.
+	///
+	/// Supported syntax (applied to every `toml::Value::String` in the tree):
 	///
 	/// | Token              | Meaning                                          |
 	/// |--------------------|--------------------------------------------------|
@@ -362,10 +371,9 @@ impl TomlFileSource {
 	/// | `${VAR:?message}`  | fails with `message` if `VAR` is unset or empty  |
 	/// | `$$`               | escape — produces a literal `$`                  |
 	///
-	/// Only `toml::Value::String` nodes are scanned, but the walker
-	/// recurses into nested tables and arrays — strings located
-	/// anywhere in the TOML tree are subject to interpolation.
-	/// Numeric, boolean, and datetime values are never rewritten.
+	/// Only string nodes are scanned, but the walker recurses into nested
+	/// tables and arrays. Numeric, boolean, and datetime values are
+	/// never rewritten.
 	///
 	/// # Examples
 	///
@@ -374,9 +382,44 @@ impl TomlFileSource {
 	/// use std::path::PathBuf;
 	///
 	/// let source = TomlFileSource::new(PathBuf::from("settings.toml"))
-	///     .with_interpolation(true);
+	///     .with_interpolation();
 	/// ```
-	pub fn with_interpolation(mut self, enabled: bool) -> Self {
+	pub fn with_interpolation(mut self) -> Self {
+		self.interpolate = true;
+		self
+	}
+
+	/// Opt **out** of `${VAR}` interpolation and keep all TOML strings as
+	/// literal values.
+	///
+	/// Use this when you intend `${...}` substrings to survive the load —
+	/// for example, when the configuration is itself a template that
+	/// downstream code expands later.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::sources::TomlFileSource;
+	/// use std::path::PathBuf;
+	///
+	/// let source = TomlFileSource::new(PathBuf::from("template.toml"))
+	///     .without_interpolation();
+	/// ```
+	pub fn without_interpolation(mut self) -> Self {
+		self.interpolate = false;
+		self
+	}
+
+	/// Set interpolation explicitly via a boolean flag.
+	///
+	/// This is the legacy 0.1.0-rc API surface. New code should use
+	/// [`Self::with_interpolation`] / [`Self::without_interpolation`]
+	/// instead.
+	#[deprecated(
+		since = "0.1.0-rc.27",
+		note = "Use with_interpolation()/without_interpolation() instead; will be removed in 0.2.0 (issue #4224)"
+	)]
+	pub fn set_interpolation(mut self, enabled: bool) -> Self {
 		self.interpolate = enabled;
 		self
 	}
@@ -927,18 +970,18 @@ secret_key = "test-key"
 	}
 
 	#[test]
-	fn toml_file_source_default_does_not_interpolate() {
-		// Arrange
+	fn toml_file_source_without_interpolation_preserves_literal() {
+		// Arrange — issue #4224: explicit opt-out keeps `${...}` verbatim.
 		let temp_dir = TempDir::new().unwrap();
 		let config_path = temp_dir.path().join("config.toml");
 		let mut file = File::create(&config_path).unwrap();
 		writeln!(file, r#"host = "${{LITERAL_VAR}}""#).unwrap();
 
-		// Act — no with_interpolation call
-		let source = TomlFileSource::new(&config_path);
+		// Act
+		let source = TomlFileSource::new(&config_path).without_interpolation();
 		let config = source.load().unwrap();
 
-		// Assert — literal preserved (back-compat)
+		// Assert
 		assert_eq!(
 			config.get("host").unwrap(),
 			&Value::String("${LITERAL_VAR}".to_string())
