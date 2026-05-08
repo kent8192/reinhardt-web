@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `runserver --no-wasm-rebuild` opts out of the in-process WASM rebuild while keeping server hot-reload, for users who manage the wasm build externally. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
 - `runserver --no-override-wasm` reuses existing WASM artifacts in `dist/` when present/up-to-date, for callers that explicitly opt out of rebuilds (e.g. cargo-make tasks that pre-run `wasm-build-dev`). ([#4205](https://github.com/kent8192/reinhardt-web/issues/4205))
+- `createsuperuser --noinput` now reads the password from the `REINHARDT_SUPERUSER_PASSWORD` environment variable, unblocking automated provisioning flows (CI, devcontainers, agent-driven setup). Combining `--no-password` with the env var is rejected as mutually exclusive, and env-var passwords below 8 characters are rejected with the same length rule the interactive prompt enforces. ([#4233](https://github.com/kent8192/reinhardt-web/issues/4233))
 
 ### Changed
 - `cargo make watch`, `watch-test`, `watch-clippy`, `runserver-watch`, `dev-watch`, and `install-bacon` were removed from the workspace, the project templates, and the bundled examples. The built-in runserver hot-reload supersedes them; users who relied on `bacon` for unrelated workflows can invoke `bacon` directly. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
