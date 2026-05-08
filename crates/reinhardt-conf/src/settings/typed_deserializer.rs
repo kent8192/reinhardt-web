@@ -134,16 +134,17 @@ impl<'de> TypedSettingsDeserializer<'de> {
 impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 	type Error = CoercionError;
 
-	// Phase 3a + 3b (#4226): bool, integers, floats, char, and enum are
-	// explicitly overridden below to coerce `Value::String` via `FromStr`
-	// (or, for `char` and `enum`, via shape-specific rules). `map`/`struct`
-	// are also overridden so that per-field dispatch flows through this
-	// deserializer (otherwise the scalar overrides would be unreachable
-	// when the top-level value is an object). Remaining shapes still
-	// forward to `deserialize_any` until later phases.
+	// Phase 3a + 3b + 3c (#4226): bool, integers, floats, char, enum, and
+	// `Option<T>` are explicitly overridden below to coerce `Value::String`
+	// via `FromStr` (or, for `char`, `enum`, and `Option`, via shape-
+	// specific rules). `map`/`struct` are also overridden so that per-field
+	// dispatch flows through this deserializer (otherwise the scalar
+	// overrides would be unreachable when the top-level value is an
+	// object). Remaining shapes still forward to `deserialize_any` until
+	// later phases.
 	forward_to_deserialize_any! {
-		str string bytes byte_buf option unit unit_struct
-		newtype_struct seq tuple tuple_struct identifier ignored_any
+		str string bytes byte_buf unit unit_struct newtype_struct seq tuple
+		tuple_struct identifier ignored_any
 	}
 
 	fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -241,6 +242,22 @@ impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 		std::num::ParseFloatError,
 		"f64"
 	);
+
+	fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+	where
+		V: Visitor<'de>,
+	{
+		// `Value::Null` and the empty string both map to `None`. The empty-
+		// string rule supports env-var defaults like `${VAR:-}` where an
+		// optional field naturally produces `""`. For any other value, recurse
+		// into `self` so that scalar coercion (Phase 3a/3b) fires for the
+		// `Some(_)` payload's inner type.
+		match self.value {
+			serde_json::Value::Null => visitor.visit_none(),
+			serde_json::Value::String(s) if s.is_empty() => visitor.visit_none(),
+			_ => visitor.visit_some(self),
+		}
+	}
 
 	fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
 	where

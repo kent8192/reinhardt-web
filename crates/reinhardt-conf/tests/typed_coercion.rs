@@ -143,3 +143,27 @@ fn enum_unit_coerce_from_string() {
 		}
 	);
 }
+
+// --- Option<T> -------------------------------------------------------
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct OptionalPort {
+	port: Option<u16>,
+}
+
+#[rstest]
+#[case::some_str(json!({ "port": "5432" }),  OptionalPort { port: Some(5432) })]
+#[case::some_native(json!({ "port": 5432 }), OptionalPort { port: Some(5432) })]
+#[case::none_empty(json!({ "port": "" }),    OptionalPort { port: None })]
+#[case::none_null(json!({ "port": null }),   OptionalPort { port: None })]
+#[case::none_missing(json!({}),              OptionalPort { port: None })]
+fn option_coerce(#[case] v: serde_json::Value, #[case] expected: OptionalPort) {
+	// Arrange
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let got: OptionalPort = OptionalPort::deserialize(de).expect("ok");
+
+	// Assert
+	assert_eq!(got, expected);
+}
