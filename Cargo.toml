@@ -91,6 +91,13 @@ pages = ["reinhardt-pages", "reinhardt-commands/pages"]
 templates = ["reinhardt-pages"]
 # pages + web-sys full features for WASM applications
 pages-web-sys-full = ["pages", "reinhardt-pages/web-sys-full"]
+# Opt-in DOM-based navigation diagnostic for SPA navigation regression
+# debugging. When enabled, the framework writes the most recent SPA
+# navigation site to `document.body.dataset.reinhardtNavSite`, bypassing
+# `console.debug` capture, the wasm-bindgen import-shim, and the cargo
+# profile's `debug_assertions` setting. Off by default — production
+# builds incur zero overhead. Refs #4221.
+pages-nav-diag-dom = ["pages", "reinhardt-pages/nav-diag-dom"]
 uuid = ["reinhardt-pages/uuid"]
 chrono = ["reinhardt-pages/chrono"]
 websockets = ["reinhardt-websockets"]

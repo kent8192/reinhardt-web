@@ -206,6 +206,53 @@ macro_rules! nav_diag {
 	($($arg:tt)*) => {{}};
 }
 
+/// Opt-in DOM-based navigation diagnostic. Writes the given site name to
+/// `document.body.dataset.reinhardtNavSite` so external observers (Playwright
+/// `getAttribute('data-reinhardt-nav-site')`, plain DOM inspection) can see
+/// which SPA navigation code path executed without depending on `console.debug`
+/// capture, the wasm-bindgen import-shim, or the cargo profile's
+/// `debug_assertions` setting.
+///
+/// Last-write-wins: each call overwrites the attribute. After a single SPA
+/// click the attribute holds the *last* site name in the call chain (typically
+/// `notify_observers`). To prove that an earlier site (e.g. `link_interceptor`)
+/// ran, snapshot the attribute synchronously from a Playwright hook between
+/// expected sites, or look for the *transition* `link_interceptor` →
+/// `navigate` → `notify_observers` over multiple synchronous reads.
+///
+/// Activated by:
+///
+/// ```text
+/// reinhardt = { features = [..., "client-router", "pages-nav-diag-dom"] }
+/// ```
+///
+/// Off by default — production builds incur zero overhead. Designed as a
+/// temporary debugging aid for the SPA navigation regression class
+/// (#4075 / #4088 / #4122 / #4203 / #4213 / #4217 / #4221) when the existing
+/// `nav_diag!` console traces are obscured by JS-side console capture
+/// quirks.
+#[macro_export]
+#[cfg(all(feature = "nav-diag-dom", wasm))]
+macro_rules! nav_diag_dom {
+	($site:expr) => {{
+		if let Some(window) = ::web_sys::window() {
+			if let Some(document) = window.document() {
+				if let Some(body) = document.body() {
+					let _ = body.set_attribute("data-reinhardt-nav-site", $site);
+				}
+			}
+		}
+	}};
+}
+
+/// No-op `nav_diag_dom` when the `nav-diag-dom` feature is disabled or on
+/// non-WASM targets.
+#[macro_export]
+#[cfg(not(all(feature = "nav-diag-dom", wasm)))]
+macro_rules! nav_diag_dom {
+	($site:expr) => {{}};
+}
+
 #[cfg(test)]
 mod tests {
 	// Import macros from crate root

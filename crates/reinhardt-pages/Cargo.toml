@@ -39,6 +39,17 @@ e2e-cdp-test = []
 #   wasm-pack test --chrome --headless --features wasm-diag-test
 # Refs #4122.
 wasm-diag-test = []
+# Opt-in DOM-based navigation diagnostic. When enabled, the framework writes
+# the most recent SPA navigation site (`store_router`, `link_interceptor`,
+# `navigate`, `notify_observers`, `popstate`) to
+# `document.body.dataset.reinhardtNavSite`, bypassing `console.debug` /
+# wasm-bindgen import-shim subtleties. Use this when downstream debugging
+# the SPA navigation regression class (#4075/#4088/#4122/#4203/#4213/
+# #4217/#4221) needs a runtime trace that survives release builds, JS-side
+# console wrapping, and Playwright filter quirks.
+#
+# OFF by default: production builds incur zero overhead.
+nav-diag-dom = []
 hmr = ["dep:notify", "dep:tokio-tungstenite", "dep:futures-util"]
 # web-sys features for WASM applications
 # Applications should use this feature to get all required web-sys features
@@ -295,6 +306,11 @@ required-features = ["wasm-diag-test"]
 name = "spa_navigation_diag_named_test"
 path = "tests/wasm/spa_navigation_diag_named_test.rs"
 required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "nav_diag_dom_test"
+path = "tests/wasm/nav_diag_dom_test.rs"
+required-features = ["wasm-diag-test", "nav-diag-dom"]
 
 [[test]]
 name = "history_state_shape_test"
