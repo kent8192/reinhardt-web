@@ -343,23 +343,55 @@ impl<'de, 'a> Deserializer<'de> for TypedSettingsDeserializer<'a> {
 	where
 		V: Visitor<'de>,
 	{
-		match self.value {
-			serde_json::Value::Object(map) => visitor.visit_map(TypedMapAccess {
-				iter: map.iter(),
-				pending_key: None,
-				pending_value: None,
-				key_path: self.key_path,
-			}),
-			other => other
-				.clone()
-				.deserialize_map(visitor)
-				.map_err(|e| CoercionError::Parse {
-					target_type: "map".to_string(),
+		// Accept both native `Value::Object(...)` and JSON-object literals
+		// embedded in `Value::String(...)`. The string path supports
+		// operator-friendly env-var defaults like
+		// `${WEIGHTS:-{"a":1,"b":2}}`. Per-entry dispatch flows back through
+		// `TypedSettingsDeserializer` so per-value scalar coercion fires
+		// (e.g. `HashMap<String, i32>` from `{"a": "1"}` parses each string
+		// value via the `i32` `FromStr` override).
+		let object: serde_json::Map<String, serde_json::Value> = match self.value {
+			serde_json::Value::Object(o) => o.clone(),
+			serde_json::Value::String(s) => {
+				let parsed: serde_json::Value =
+					serde_json::from_str(s).map_err(|e| CoercionError::Parse {
+						target_type: "object".to_string(),
+						value: s.clone(),
+						key_path: self.key_path.to_string(),
+						source: Box::new(e),
+					})?;
+				match parsed {
+					serde_json::Value::Object(o) => o,
+					other => {
+						return Err(CoercionError::Parse {
+							target_type: "object".to_string(),
+							value: s.clone(),
+							key_path: self.key_path.to_string(),
+							source: format!(
+								"expected JSON object after parsing string, got {}",
+								json_kind_name(&other)
+							)
+							.into(),
+						});
+					}
+				}
+			}
+			other => {
+				return Err(CoercionError::Parse {
+					target_type: "object".to_string(),
 					value: other.to_string(),
 					key_path: self.key_path.to_string(),
-					source: Box::new(e),
-				}),
-		}
+					source: format!("expected object, got {}", json_kind_name(other)).into(),
+				});
+			}
+		};
+
+		visitor.visit_map(TypedMapAccess {
+			entries: object.into_iter(),
+			pending_value: None,
+			pending_key: None,
+			key_path: self.key_path,
+		})
 	}
 
 	fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -544,33 +576,30 @@ impl<'de, 'a> Deserializer<'de> for TypedSettingsDeserializer<'a> {
 /// pushes the current key onto `KeyPath` so error messages identify the
 /// failing field.
 ///
-/// The struct lifetime `'a` is the borrow lifetime of the wrapped
-/// `serde_json::Map`, decoupled from the serde `'de` deserialization
-/// lifetime to mirror `TypedSettingsDeserializer`.
-struct TypedMapAccess<'a> {
-	iter: serde_json::map::Iter<'a>,
-	pending_key: Option<&'a str>,
-	pending_value: Option<&'a serde_json::Value>,
+/// The struct owns its `serde_json::Map` iterator because the source may
+/// be a parsed-from-string object whose backing storage does not outlive
+/// `'de`. Children borrow from `self.pending_value` for the duration of
+/// `next_value_seed`, which is shorter than (or equal to) `'de` — and
+/// the child deserializer's struct lifetime is decoupled from `'de`, so
+/// this is sound. Mirrors `TypedSeqAccess`.
+struct TypedMapAccess {
+	entries: serde_json::map::IntoIter,
+	pending_key: Option<String>,
+	pending_value: Option<serde_json::Value>,
 	key_path: KeyPath,
 }
 
-impl<'de, 'a> MapAccess<'de> for TypedMapAccess<'a> {
+impl<'de> MapAccess<'de> for TypedMapAccess {
 	type Error = CoercionError;
 
 	fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
 	where
 		K: DeserializeSeed<'de>,
 	{
-		match self.iter.next() {
+		match self.entries.next() {
 			Some((k, v)) => {
-				self.pending_key = Some(k.as_str());
-				self.pending_value = Some(v);
 				// Keys are always strings in JSON objects; deserialize
 				// directly via serde_json's owned-string deserializer.
-				// We pass an owned `String` (cloned from the borrowed
-				// `&'a str`) because the deserialization lifetime `'de`
-				// is decoupled from the value-borrow lifetime `'a`, and
-				// `BorrowedStrDeserializer` would require `'a: 'de`.
 				let key = seed
 					.deserialize(serde::de::value::StringDeserializer::<
 						serde::de::value::Error,
@@ -581,6 +610,8 @@ impl<'de, 'a> MapAccess<'de> for TypedMapAccess<'a> {
 						key_path: self.key_path.to_string(),
 						source: Box::new(e),
 					})?;
+				self.pending_key = Some(k);
+				self.pending_value = Some(v);
 				Ok(Some(key))
 			}
 			None => Ok(None),
@@ -605,11 +636,11 @@ impl<'de, 'a> MapAccess<'de> for TypedMapAccess<'a> {
 		// Build a child `KeyPath` that includes the current field name
 		// so coercion errors identify the failing key.
 		let mut child_path = self.key_path.clone();
-		if let Some(k) = key {
+		if let Some(k) = key.as_deref() {
 			child_path.push_key(k);
 		}
 		let de = TypedSettingsDeserializer {
-			value,
+			value: &value,
 			key_path: child_path,
 		};
 		seed.deserialize(de)

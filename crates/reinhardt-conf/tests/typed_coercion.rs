@@ -385,3 +385,67 @@ fn vec_string_with_object_inside_errors() {
 	// Assert
 	assert!(matches!(err, CoercionError::Parse { .. }));
 }
+
+// --- HashMap<K, V> ---------------------------------------------------
+
+use std::collections::HashMap;
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct WithWeights {
+	weights: HashMap<String, i32>,
+}
+
+#[rstest]
+#[case::map_native(
+	json!({ "weights": { "a": 1, "b": 2 } }),
+	WithWeights { weights: HashMap::from([("a".into(), 1), ("b".into(), 2)]) }
+)]
+#[case::map_string_with_native_values(
+	json!({ "weights": "{\"a\": 1, \"b\": 2}" }),
+	WithWeights { weights: HashMap::from([("a".into(), 1), ("b".into(), 2)]) }
+)]
+#[case::map_string_with_string_values(
+	json!({ "weights": "{\"a\": \"1\", \"b\": \"2\"}" }),
+	WithWeights { weights: HashMap::from([("a".into(), 1), ("b".into(), 2)]) }
+)]
+fn map_coerce_happy(#[case] v: serde_json::Value, #[case] expected: WithWeights) {
+	// Arrange
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let got: WithWeights = WithWeights::deserialize(de).expect("ok");
+
+	// Assert
+	assert_eq!(got, expected);
+}
+
+#[rstest]
+fn map_invalid_json_errors() {
+	// Arrange — Map<String, i32> field whose source string isn't JSON
+	let v = json!({ "weights": "not-json-at-all" });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let err = WithWeights::deserialize(de).unwrap_err();
+
+	// Assert
+	assert!(matches!(err, CoercionError::Parse { .. }));
+	let msg = err.to_string();
+	assert!(
+		msg.contains("object") || msg.contains("weights"),
+		"msg = {msg}"
+	);
+}
+
+#[rstest]
+fn map_string_with_array_inside_errors() {
+	// Arrange — string contains JSON array (not object)
+	let v = json!({ "weights": "[1, 2, 3]" });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let err = WithWeights::deserialize(de).unwrap_err();
+
+	// Assert
+	assert!(matches!(err, CoercionError::Parse { .. }));
+}
