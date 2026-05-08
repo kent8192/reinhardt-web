@@ -302,7 +302,7 @@ pub(super) enum KeyPathSegment {
 }
 
 /// Stack of key-path segments accumulated during the AST walk.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub(super) struct KeyPath(Vec<KeyPathSegment>);
 
 impl KeyPath {
