@@ -151,6 +151,17 @@ async fn nav_diag_dom_writes_notify_observers_after_router_push() {
 async fn nav_diag_dom_advances_through_full_link_click_chain() {
 	let _root = install_app_root();
 
+	// `Router::new()` reads `current_path()` from `window.location` at
+	// construction time, so a previous test in the same wasm test binary
+	// that navigated away from `/` would make this reproducer start on a
+	// non-`/` path. Reset history to `/` before launching to keep the
+	// initial state deterministic regardless of test execution order.
+	let history = web_sys::window()
+		.expect("window")
+		.history()
+		.expect("history");
+	let _ = history.replace_state_with_url(&JsValue::NULL, "", Some("/"));
+
 	ClientLauncher::new("#app")
 		.router(build_router)
 		.launch()
@@ -164,11 +175,18 @@ async fn nav_diag_dom_advances_through_full_link_click_chain() {
 	// Inject a real `<a href="/clusters">` anchor that the link interceptor
 	// must pick up on click. Append to body (outside `#app`) so re-renders
 	// of the route view do not detach the anchor before the click fires.
+	// Use a stable id so we can remove any leftover anchor from a previous
+	// run of this test in the same wasm test binary.
+	const ANCHOR_ID: &str = "test-link-click-reproducer-anchor";
+	if let Some(prev) = document.get_element_by_id(ANCHOR_ID) {
+		prev.remove();
+	}
 	let anchor: web_sys::HtmlElement = document
 		.create_element("a")
 		.expect("create a")
 		.dyn_into()
 		.expect("dyn HtmlElement");
+	anchor.set_id(ANCHOR_ID);
 	anchor.set_attribute("href", "/clusters").expect("set href");
 	anchor.set_text_content(Some("go to clusters"));
 	body.append_child(&anchor).expect("append a");
@@ -180,10 +198,6 @@ async fn nav_diag_dom_advances_through_full_link_click_chain() {
 
 	// Snapshot `history.state` shape before the click so we can prove the
 	// click transitioned it to a JS object (the canonical post-#4218 shape).
-	let history = web_sys::window()
-		.expect("window")
-		.history()
-		.expect("history");
 	let state_before = history.state().expect("state_before");
 
 	// `HtmlElement::click()` dispatches a real, bubbling MouseEvent so the
@@ -232,4 +246,11 @@ async fn nav_diag_dom_advances_through_full_link_click_chain() {
 		 click. Post-click state: {:?}",
 		state_after
 	);
+
+	// Cleanup so subsequent tests in the same wasm test binary start with a
+	// clean DOM and history state, mirroring `wasm_bindgen_abi_pin_test`.
+	if let Some(prev) = document.get_element_by_id(ANCHOR_ID) {
+		prev.remove();
+	}
+	let _ = history.replace_state_with_url(&JsValue::NULL, "", Some("/"));
 }
