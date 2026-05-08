@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `CoercionError` and `BuildError::Coercion` for typed string-to-T failures during
+  settings deserialization (#4226).
+- `SettingsBuilder::with_typed_coercion(bool)` to opt in or out of typed coercion;
+  default is on (#4226).
+- `TypedSettingsDeserializer` (public) wrapping `&serde_json::Value` for type-aware
+  coercion at the visitor boundary (#4226).
+
+### Changed
+
+- **BREAKING**: `${VAR}` interpolation results are now coerced into the destination
+  Rust type at deserialize time. `port = "5432"` / `port = "${PORT:-5432}"` now
+  deserialize into `u16` directly. Coercion failures are reported at
+  `SettingsBuilder::build_composed()` time with full TOML key path, target type,
+  original value, and underlying parse error. Restore the legacy passthrough with
+  `.with_typed_coercion(false)` (#4226).
+- `base64` is now a required (non-optional) dependency of `reinhardt-conf` (#4226).
+
+### Migration
+
+- Manual `serde` shims that coerced strings into typed fields can be removed.
+- If your code relied on string-typed TOML producing serde mismatch errors, opt out
+  via `.with_typed_coercion(false)` or fix the data so it parses correctly.
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.25...reinhardt-conf@v0.1.0-rc.26) - 2026-05-05
 
 ### Added

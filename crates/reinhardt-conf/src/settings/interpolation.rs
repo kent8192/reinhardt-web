@@ -24,6 +24,11 @@
 //!    as `None` so `${VAR}` and `${VAR:-default}` apply uniformly.
 //! 3. **Fail-fast** — Any failure aborts `TomlFileSource::load()`.
 //! 4. **Type-bounded scope** — Only `toml::Value::String` is rewritten.
+//! 5. **Typed coercion at deserialize time** — When the merged
+//!    `serde_json::Value` tree is deserialized into a project-defined
+//!    settings struct, `Value::String` values whose destination is
+//!    non-`String` are coerced via [`super::typed_deserializer`]. See
+//!    that module for the per-shape strategy.
 //!
 //! [`TomlFileSource::with_interpolation(true)`]: super::sources::TomlFileSource::with_interpolation
 
