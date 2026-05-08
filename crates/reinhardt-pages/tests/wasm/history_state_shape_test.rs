@@ -20,7 +20,8 @@
 #![cfg(wasm)]
 
 use reinhardt_pages::app::{ClientLauncher, with_router};
-use reinhardt_pages::component::{IntoPage, Page, PageElement};
+use reinhardt_pages::component::Page;
+use reinhardt_pages::page;
 use reinhardt_pages::router::Router;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
@@ -28,17 +29,21 @@ use wasm_bindgen_test::*;
 wasm_bindgen_test_configure!(run_in_browser);
 
 fn home_page() -> Page {
-	PageElement::new("div")
-		.attr("id", "route-home")
-		.child("HOME")
-		.into_page()
+	page!(|| {
+		div {
+			id: "route-home",
+			"HOME"
+		}
+	})()
 }
 
 fn clusters_page() -> Page {
-	PageElement::new("div")
-		.attr("id", "route-clusters")
-		.child("CLUSTERS")
-		.into_page()
+	page!(|| {
+		div {
+			id: "route-clusters",
+			"CLUSTERS"
+		}
+	})()
 }
 
 fn install_app_root() -> web_sys::Element {
@@ -58,16 +63,20 @@ fn build_router() -> Router {
 		.named_route("clusters:list", "/clusters", clusters_page)
 }
 
-/// Read `typeof history.state` via `js_sys::Reflect`.
+/// Classify `history.state` into a JS-`typeof`-style label using
+/// `wasm_bindgen` helpers (`is_null`, `is_string`, `is_object`, ...).
 ///
-/// Returns the JS-level `typeof` result so the assertion can be expressed
-/// in the same vocabulary as the Issue #4221 reproduction (DevTools
-/// `typeof history.state`).
+/// This is a coarse heuristic, not a call into JS `typeof`, but it
+/// covers every shape relevant to the Issue #4221 reproduction
+/// (object vs. string) and is expressed in the same vocabulary as
+/// DevTools `typeof history.state`.
 fn typeof_history_state() -> String {
 	let window = web_sys::window().expect("window");
 	let history = window.history().expect("history");
 	let state = history.state().expect("state");
-	// JS-level typeof: cheaper than building a typeof helper via eval.
+	// Heuristic mapping mirroring JS `typeof` for the cases that matter
+	// to #4221. Avoids the cost (and global-scope pollution) of injecting
+	// an eval'd JS `typeof` helper.
 	if state.is_null() {
 		"object".to_string() // typeof null === "object" in JS
 	} else if state.is_undefined() {
@@ -107,9 +116,10 @@ async fn history_state_is_object_after_router_push() {
 	// `with_router(|r| r.push(href))` call site exactly.
 	with_router(|r| r.push("/clusters")).expect("push /clusters");
 
-	// Yield once so any async observers / scheduler tasks settle. The
-	// state assertion does not depend on observer ordering, but the DOM
-	// re-render guards do, and we want consistent failure shape.
+	// Yield once so any async observers / scheduler tasks settle before
+	// we read `history.state`. The state assertions below are independent
+	// of observer ordering, but yielding keeps the failure shape stable
+	// across runs.
 	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
 	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 
