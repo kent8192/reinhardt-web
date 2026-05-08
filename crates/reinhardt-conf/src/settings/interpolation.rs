@@ -296,25 +296,25 @@ use std::path::Path;
 
 /// One segment of a TOML key path — either a table key or an array index.
 #[derive(Debug, Clone)]
-enum KeyPathSegment {
+pub(super) enum KeyPathSegment {
 	Key(String),
 	Index(usize),
 }
 
 /// Stack of key-path segments accumulated during the AST walk.
 #[derive(Default)]
-struct KeyPath(Vec<KeyPathSegment>);
+pub(super) struct KeyPath(Vec<KeyPathSegment>);
 
 impl KeyPath {
-	fn push_key(&mut self, key: &str) {
+	pub(super) fn push_key(&mut self, key: &str) {
 		self.0.push(KeyPathSegment::Key(key.to_string()));
 	}
 
-	fn push_index(&mut self, idx: usize) {
+	pub(super) fn push_index(&mut self, idx: usize) {
 		self.0.push(KeyPathSegment::Index(idx));
 	}
 
-	fn pop(&mut self) {
+	pub(super) fn pop(&mut self) {
 		self.0.pop();
 	}
 }
