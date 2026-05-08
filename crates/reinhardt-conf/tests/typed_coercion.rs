@@ -322,3 +322,66 @@ fn tuple_struct_from_string_is_unsupported() {
 	);
 	assert!(msg.contains("pair"), "msg = {msg}");
 }
+
+// --- Vec<T> ----------------------------------------------------------
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct VecCases {
+	ports: Vec<u16>,
+	hosts: Vec<String>,
+}
+
+#[rstest]
+#[case::vec_native(
+	json!({ "ports": [5432, 5433], "hosts": ["a", "b"] }),
+	VecCases { ports: vec![5432, 5433], hosts: vec!["a".into(), "b".into()] }
+)]
+#[case::vec_string_native_array(
+	json!({ "ports": "[5432, 5433]", "hosts": "[\"a\", \"b\"]" }),
+	VecCases { ports: vec![5432, 5433], hosts: vec!["a".into(), "b".into()] }
+)]
+#[case::vec_string_with_string_elements(
+	json!({ "ports": "[\"5432\", \"5433\"]", "hosts": "[\"a\", \"b\"]" }),
+	VecCases { ports: vec![5432, 5433], hosts: vec!["a".into(), "b".into()] }
+)]
+fn vec_coerce_happy(#[case] v: serde_json::Value, #[case] expected: VecCases) {
+	// Arrange
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let got: VecCases = VecCases::deserialize(de).expect("ok");
+
+	// Assert
+	assert_eq!(got, expected);
+}
+
+#[rstest]
+fn vec_invalid_json_errors() {
+	// Arrange — a Vec<u16> field whose source is a string that doesn't parse as JSON array
+	let v = json!({ "ports": "not-an-array", "hosts": [] });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let err = VecCases::deserialize(de).unwrap_err();
+
+	// Assert
+	assert!(matches!(err, CoercionError::Parse { .. }));
+	let msg = err.to_string();
+	assert!(
+		msg.contains("array") || msg.contains("ports"),
+		"msg = {msg}"
+	);
+}
+
+#[rstest]
+fn vec_string_with_object_inside_errors() {
+	// Arrange — string contains JSON object (not array)
+	let v = json!({ "ports": "{\"5432\":\"x\"}", "hosts": [] });
+	let de = TypedSettingsDeserializer::new(&v);
+
+	// Act
+	let err = VecCases::deserialize(de).unwrap_err();
+
+	// Assert
+	assert!(matches!(err, CoercionError::Parse { .. }));
+}

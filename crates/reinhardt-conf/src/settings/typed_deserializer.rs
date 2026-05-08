@@ -21,8 +21,23 @@
 use super::interpolation::KeyPath;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use serde::de::{DeserializeSeed, Deserializer, MapAccess, Visitor};
+use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::forward_to_deserialize_any;
+
+/// Short, human-readable name for a `serde_json::Value` variant.
+///
+/// Used in `CoercionError::Parse` source messages to disambiguate
+/// "expected JSON array, got <kind>" failures.
+fn json_kind_name(v: &serde_json::Value) -> &'static str {
+	match v {
+		serde_json::Value::Null => "null",
+		serde_json::Value::Bool(_) => "bool",
+		serde_json::Value::Number(_) => "number",
+		serde_json::Value::String(_) => "string",
+		serde_json::Value::Array(_) => "array",
+		serde_json::Value::Object(_) => "object",
+	}
+}
 
 /// Implement a `deserialize_<scalar>` method that coerces `Value::String`
 /// into the target scalar type via `FromStr`. For non-string inputs, it
@@ -116,16 +131,21 @@ impl serde::de::Error for CoercionError {
 /// Phase 2 skeleton: forwards every `deserialize_*` to `serde_json`'s
 /// own deserializer. Subsequent phases override individual visitor
 /// callbacks to coerce `Value::String` into the target Rust type.
-pub struct TypedSettingsDeserializer<'de> {
-	value: &'de serde_json::Value,
+///
+/// The struct's lifetime `'a` is the borrow lifetime of the wrapped
+/// value. It is decoupled from the serde `'de` deserialization
+/// lifetime so that `TypedSeqAccess` can own its element storage and
+/// hand out children that borrow from it for shorter than `'de`.
+pub struct TypedSettingsDeserializer<'a> {
+	value: &'a serde_json::Value,
 	key_path: KeyPath,
 }
 
-impl<'de> TypedSettingsDeserializer<'de> {
+impl<'a> TypedSettingsDeserializer<'a> {
 	/// Wrap a borrowed `serde_json::Value`. The returned deserializer
 	/// coerces string values when the visitor expects a non-String
 	/// target.
-	pub fn new(value: &'de serde_json::Value) -> Self {
+	pub fn new(value: &'a serde_json::Value) -> Self {
 		Self {
 			value,
 			key_path: KeyPath::default(),
@@ -133,20 +153,19 @@ impl<'de> TypedSettingsDeserializer<'de> {
 	}
 }
 
-impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
+impl<'de, 'a> Deserializer<'de> for TypedSettingsDeserializer<'a> {
 	type Error = CoercionError;
 
-	// Phase 3a + 3b + 3c + 3d (#4226): bool, integers, floats, char, enum,
-	// `Option<T>`, and bytes are explicitly overridden below to coerce
-	// `Value::String` via `FromStr` (or, for `char`, `enum`, `Option`, and
-	// `bytes`, via shape-specific rules — bytes use base64 STANDARD).
+	// Phase 3a + 3b + 3c + 3d + 4 (#4226): bool, integers, floats, char,
+	// enum, `Option<T>`, bytes, and sequences are explicitly overridden
+	// below. Scalars use `FromStr`; bytes use base64 STANDARD; sequences
+	// recurse element-by-element so per-element scalar coercion fires.
 	// `map`/`struct` are also overridden so that per-field dispatch flows
 	// through this deserializer (otherwise the scalar overrides would be
 	// unreachable when the top-level value is an object). Remaining shapes
-	// still forward to `deserialize_any` until later phases.
+	// still forward to `deserialize_any`.
 	forward_to_deserialize_any! {
-		str string unit unit_struct newtype_struct seq identifier
-		ignored_any
+		str string unit unit_struct newtype_struct identifier ignored_any
 	}
 
 	fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -343,6 +362,60 @@ impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 		}
 	}
 
+	fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+	where
+		V: Visitor<'de>,
+	{
+		// Accept both native `Value::Array(...)` and JSON-array literals
+		// embedded in `Value::String(...)`. The string path supports
+		// operator-friendly env-var defaults like `${PORTS:-[5432, 5433]}`.
+		// Element-wise dispatch flows back through
+		// `TypedSettingsDeserializer` so per-element scalar coercion fires
+		// (e.g. `Vec<u16>` from `["5432", "5433"]` parses each element via
+		// the `u16` `FromStr` override).
+		let array: Vec<serde_json::Value> = match self.value {
+			serde_json::Value::Array(a) => a.clone(),
+			serde_json::Value::String(s) => {
+				let parsed: serde_json::Value =
+					serde_json::from_str(s).map_err(|e| CoercionError::Parse {
+						target_type: "array".to_string(),
+						value: s.clone(),
+						key_path: self.key_path.to_string(),
+						source: Box::new(e),
+					})?;
+				match parsed {
+					serde_json::Value::Array(a) => a,
+					other => {
+						return Err(CoercionError::Parse {
+							target_type: "array".to_string(),
+							value: s.clone(),
+							key_path: self.key_path.to_string(),
+							source: format!(
+								"expected JSON array after parsing string, got {}",
+								json_kind_name(&other)
+							)
+							.into(),
+						});
+					}
+				}
+			}
+			other => {
+				return Err(CoercionError::Parse {
+					target_type: "array".to_string(),
+					value: other.to_string(),
+					key_path: self.key_path.to_string(),
+					source: format!("expected array, got {}", json_kind_name(other)).into(),
+				});
+			}
+		};
+
+		visitor.visit_seq(TypedSeqAccess {
+			values: array,
+			index: 0,
+			key_path: self.key_path,
+		})
+	}
+
 	fn deserialize_struct<V>(
 		self,
 		_name: &'static str,
@@ -470,14 +543,18 @@ impl<'de> Deserializer<'de> for TypedSettingsDeserializer<'de> {
 /// `TypedSettingsDeserializer` so per-field type overrides apply, and
 /// pushes the current key onto `KeyPath` so error messages identify the
 /// failing field.
-struct TypedMapAccess<'de> {
-	iter: serde_json::map::Iter<'de>,
-	pending_key: Option<&'de str>,
-	pending_value: Option<&'de serde_json::Value>,
+///
+/// The struct lifetime `'a` is the borrow lifetime of the wrapped
+/// `serde_json::Map`, decoupled from the serde `'de` deserialization
+/// lifetime to mirror `TypedSettingsDeserializer`.
+struct TypedMapAccess<'a> {
+	iter: serde_json::map::Iter<'a>,
+	pending_key: Option<&'a str>,
+	pending_value: Option<&'a serde_json::Value>,
 	key_path: KeyPath,
 }
 
-impl<'de> MapAccess<'de> for TypedMapAccess<'de> {
+impl<'de, 'a> MapAccess<'de> for TypedMapAccess<'a> {
 	type Error = CoercionError;
 
 	fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
@@ -489,12 +566,15 @@ impl<'de> MapAccess<'de> for TypedMapAccess<'de> {
 				self.pending_key = Some(k.as_str());
 				self.pending_value = Some(v);
 				// Keys are always strings in JSON objects; deserialize
-				// directly via serde_json's borrowed-str deserializer.
+				// directly via serde_json's owned-string deserializer.
+				// We pass an owned `String` (cloned from the borrowed
+				// `&'a str`) because the deserialization lifetime `'de`
+				// is decoupled from the value-borrow lifetime `'a`, and
+				// `BorrowedStrDeserializer` would require `'a: 'de`.
 				let key = seed
-					.deserialize(serde::de::value::BorrowedStrDeserializer::<
-						'de,
+					.deserialize(serde::de::value::StringDeserializer::<
 						serde::de::value::Error,
-					>::new(k.as_str()))
+					>::new(k.clone()))
 					.map_err(|e| CoercionError::Parse {
 						target_type: "map_key".to_string(),
 						value: k.clone(),
@@ -533,6 +613,50 @@ impl<'de> MapAccess<'de> for TypedMapAccess<'de> {
 			key_path: child_path,
 		};
 		seed.deserialize(de)
+	}
+}
+
+/// `SeqAccess` adapter that re-wraps each element in a
+/// `TypedSettingsDeserializer` so per-element type overrides apply,
+/// and pushes the current index onto `KeyPath` so error messages
+/// identify the failing element.
+///
+/// The struct owns its `Vec<Value>` because the source may be a parsed
+/// JSON string whose backing storage does not outlive `'de`. Children
+/// borrow from `self.values` for the duration of `next_element_seed`,
+/// which is shorter than (or equal to) `'de` — but the child
+/// deserializer's struct lifetime is decoupled from `'de`, so this is
+/// sound.
+struct TypedSeqAccess {
+	values: Vec<serde_json::Value>,
+	index: usize,
+	key_path: KeyPath,
+}
+
+impl<'de> SeqAccess<'de> for TypedSeqAccess {
+	type Error = CoercionError;
+
+	fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
+	where
+		T: DeserializeSeed<'de>,
+	{
+		if self.index >= self.values.len() {
+			return Ok(None);
+		}
+		let value = &self.values[self.index];
+		let mut child_path = self.key_path.clone();
+		child_path.push_index(self.index);
+		self.index += 1;
+
+		let de = TypedSettingsDeserializer {
+			value,
+			key_path: child_path,
+		};
+		seed.deserialize(de).map(Some)
+	}
+
+	fn size_hint(&self) -> Option<usize> {
+		Some(self.values.len().saturating_sub(self.index))
 	}
 }
 
