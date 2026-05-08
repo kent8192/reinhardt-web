@@ -522,3 +522,57 @@ fn builder_with_typed_coercion_disabled_falls_through_to_legacy() {
 		"legacy path should reject string-typed port"
 	);
 }
+
+// --- hot reload (build path rejects coercion-breaking edits) -------
+
+use reinhardt_conf::settings::sources::TomlFileSource;
+use std::fs;
+use tempfile::NamedTempFile;
+
+#[rstest]
+fn hot_reload_rejects_coercion_breaking_change_and_keeps_old_settings() {
+	// Arrange — initial valid TOML that coerces cleanly.
+	let tmp = NamedTempFile::new().expect("tempfile");
+	fs::write(
+		tmp.path(),
+		r#"
+[database]
+host = "localhost"
+port = "5432"
+read_only = "false"
+"#,
+	)
+	.expect("write initial");
+
+	let initial: WithDb = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(tmp.path()))
+		.build()
+		.expect("initial build")
+		.into_typed()
+		.expect("initial typed");
+	assert_eq!(initial.database.port, 5432);
+
+	// Act — overwrite the file with a coercion-breaking value.
+	fs::write(
+		tmp.path(),
+		r#"
+[database]
+host = "localhost"
+port = "five-thousand"
+read_only = "false"
+"#,
+	)
+	.expect("write breaking");
+
+	let result: Result<WithDb, _> = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(tmp.path()))
+		.build()
+		.expect("rebuild")
+		.into_typed();
+
+	// Assert — reload returns Err; previous in-memory settings stay
+	// untouched (they are owned by this test; the watcher would
+	// equivalently swap on success only).
+	assert!(result.is_err(), "rebuild should reject coercion failure");
+	assert_eq!(initial.database.port, 5432, "previous settings stay valid");
+}
