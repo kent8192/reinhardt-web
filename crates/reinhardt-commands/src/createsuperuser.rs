@@ -260,7 +260,7 @@ pub(crate) async fn execute_createsuperuser(
 #[cfg(test)]
 mod tests {
 	use super::{
-		NoninteractivePassword, PasswordResolutionError, SUPERUSER_PASSWORD_ENV,
+		MIN_PASSWORD_LEN, NoninteractivePassword, PasswordResolutionError, SUPERUSER_PASSWORD_ENV,
 		resolve_noninteractive_password,
 	};
 	use rstest::rstest;
@@ -285,7 +285,7 @@ mod tests {
 	#[rstest]
 	#[case::seven_chars("1234567")]
 	#[case::single_char("a")]
-	#[case::empty_after_filter("ab")]
+	#[case::two_chars("ab")]
 	fn rejects_env_var_password_below_minimum_length(#[case] password: &str) {
 		// Arrange
 		let env = Some(password);
@@ -388,9 +388,10 @@ mod tests {
 			too_short.contains(SUPERUSER_PASSWORD_ENV),
 			"TooShort must mention {SUPERUSER_PASSWORD_ENV}, got: {too_short}"
 		);
+		let min_len = MIN_PASSWORD_LEN.to_string();
 		assert!(
-			too_short.contains('8'),
-			"TooShort must mention the 8-char minimum, got: {too_short}"
+			too_short.contains(&min_len),
+			"TooShort must mention the {MIN_PASSWORD_LEN}-char minimum, got: {too_short}"
 		);
 	}
 }
