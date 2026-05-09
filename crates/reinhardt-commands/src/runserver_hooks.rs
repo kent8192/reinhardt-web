@@ -8,6 +8,16 @@
 //!
 //! Register hooks with the `#[hook(on = runserver)]` attribute macro.
 //!
+//! ## Autoreload semantics
+//!
+//! When the `autoreload` feature is enabled and `runserver` is invoked
+//! without `--noreload`, only [`RunserverHook::validate`] runs in the parent
+//! process; [`RunserverHook::on_server_start`] runs **only inside the spawned
+//! `--noreload` child** that actually binds the listening port. Listeners
+//! opened in `on_server_start` therefore live in the child and exit with the
+//! child on each rebuild, which prevents parent-side listeners from blocking
+//! the child's HTTP bind (#4244).
+//!
 //! # Hot-reload
 //!
 //! When the `autoreload` feature is enabled, `runserver` watches the workspace
@@ -70,6 +80,12 @@ pub struct RunserverContext {
 ///
 /// Both methods have default no-op implementations. Implement only
 /// the phases your hook needs.
+///
+/// Under the `autoreload` feature, `validate()` runs once in the parent
+/// (and again in each child invocation) while `on_server_start()` runs
+/// **only inside the spawned `--noreload` child** so concurrent-service
+/// listeners do not survive across rebuilds and do not collide with the
+/// child's own server bind (#4244).
 ///
 /// # Examples
 ///
