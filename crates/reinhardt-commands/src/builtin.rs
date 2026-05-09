@@ -2732,8 +2732,11 @@ fn get_database_url() -> Result<String, crate::CommandError> {
 ///
 /// Used for startup validation to detect configuration mismatches between
 /// the `DATABASE_URL` environment variable and `settings/*.toml` files.
+///
+/// Visibility is `pub(crate)` so the in-crate regression tests for issue
+/// #4247 can call the real loader without going through a public API.
 #[cfg(feature = "reinhardt-db")]
-fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
+pub(crate) fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
 	use std::env;
 
 	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
@@ -3817,4 +3820,159 @@ port = 5432
 
 	// `is_relevant_change` unit tests now live in
 	// `crate::debounced_watcher::tests` after the watcher refactor.
+
+	// End-to-end regression coverage for issue #4247.
+	//
+	// `get_database_url_from_settings` opts into
+	// `TomlFileSource::with_interpolation()` (PR #4239). The interpolation
+	// tests in `reinhardt-conf/tests/interpolation.rs` build a fresh
+	// `TomlFileSource`, so they will keep passing even if a future
+	// refactor accidentally drops the opt-in here. These tests exercise
+	// the real loader so that regression fails loudly.
+	//
+	// The loader reads cwd via `env::current_dir()`. Tests change cwd
+	// under `#[serial(env)]` and restore it via the drop guard.
+	#[cfg(feature = "reinhardt-db")]
+	mod interpolation_4247 {
+		use super::super::get_database_url_from_settings;
+		use rstest::rstest;
+		use serial_test::serial;
+		use std::env;
+		use std::io::Write;
+		use std::path::{Path, PathBuf};
+		use tempfile::TempDir;
+
+		// Captures each key's value on construction and restores it (or
+		// removes it if previously unset) on drop. This prevents the
+		// guard from leaking state into ambient env vars that existed
+		// before the test ran.
+		struct EnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+		impl EnvGuard {
+			fn new(keys: Vec<&'static str>) -> Self {
+				let captured = keys.into_iter().map(|k| (k, env::var_os(k))).collect();
+				Self(captured)
+			}
+		}
+
+		impl Drop for EnvGuard {
+			fn drop(&mut self) {
+				for (key, prev) in &self.0 {
+					// SAFETY: env mutation in tests is protected by #[serial(env)].
+					unsafe {
+						match prev {
+							Some(value) => env::set_var(key, value),
+							None => env::remove_var(key),
+						}
+					}
+				}
+			}
+		}
+
+		struct CwdGuard(PathBuf);
+
+		impl Drop for CwdGuard {
+			fn drop(&mut self) {
+				// Best-effort restore; if the original cwd vanished there is
+				// nothing the test process can do, and dropping silently is
+				// preferable to panicking from Drop.
+				let _ = env::set_current_dir(&self.0);
+			}
+		}
+
+		fn write_settings_dir(profile: &str, base_toml: &str) -> TempDir {
+			let temp = TempDir::new().expect("create temp dir");
+			let settings_dir = temp.path().join("settings");
+			std::fs::create_dir_all(&settings_dir).expect("create settings dir");
+			write_file(&settings_dir.join("base.toml"), base_toml);
+			write_file(&settings_dir.join(format!("{profile}.toml")), "");
+			temp
+		}
+
+		fn write_file(path: &Path, contents: &str) {
+			let mut f = std::fs::File::create(path).expect("create file");
+			f.write_all(contents.as_bytes()).expect("write file");
+		}
+
+		#[rstest]
+		#[serial(env)]
+		fn loader_expands_env_var_in_host() {
+			// Arrange
+			let _env = EnvGuard::new(vec!["IT4247C_DB_HOST", "REINHARDT_ENV"]);
+			// SAFETY: serial-protected.
+			unsafe {
+				env::set_var("REINHARDT_ENV", "local");
+				env::set_var("IT4247C_DB_HOST", "production-db.example.com");
+			}
+			let temp = write_settings_dir(
+				"local",
+				r#"
+[database]
+engine = "postgresql"
+name = "appdb"
+user = "app"
+password = "secret"
+host = "${IT4247C_DB_HOST}"
+port = 5432
+"#,
+			);
+			let original_cwd = env::current_dir().expect("read cwd");
+			let _cwd = CwdGuard(original_cwd);
+			env::set_current_dir(temp.path()).expect("set cwd");
+
+			// Act
+			let url = get_database_url_from_settings().expect("loader returns a URL");
+
+			// Assert
+			assert!(
+				url.contains("production-db.example.com"),
+				"expected expanded host in URL, got: {url}"
+			);
+			assert!(
+				!url.contains("${"),
+				"URL still contains literal interpolation pattern: {url}"
+			);
+		}
+
+		#[rstest]
+		#[serial(env)]
+		fn loader_uses_inline_default_when_var_unset() {
+			// Arrange — declare the var in the guard even though we never set
+			// it, so an ambient value cannot silence the inline `:-fallback`.
+			let _env = EnvGuard::new(vec!["IT4247C_DB_HOST_OPT", "REINHARDT_ENV"]);
+			// SAFETY: serial-protected.
+			unsafe {
+				env::remove_var("IT4247C_DB_HOST_OPT");
+				env::set_var("REINHARDT_ENV", "local");
+			}
+			let temp = write_settings_dir(
+				"local",
+				r#"
+[database]
+engine = "postgresql"
+name = "appdb"
+user = "app"
+password = "secret"
+host = "${IT4247C_DB_HOST_OPT:-fallback-host}"
+port = 5432
+"#,
+			);
+			let original_cwd = env::current_dir().expect("read cwd");
+			let _cwd = CwdGuard(original_cwd);
+			env::set_current_dir(temp.path()).expect("set cwd");
+
+			// Act
+			let url = get_database_url_from_settings().expect("loader returns a URL");
+
+			// Assert
+			assert!(
+				url.contains("fallback-host"),
+				"expected fallback host in URL, got: {url}"
+			);
+			assert!(
+				!url.contains("${"),
+				"URL still contains literal interpolation pattern: {url}"
+			);
+		}
+	}
 }
