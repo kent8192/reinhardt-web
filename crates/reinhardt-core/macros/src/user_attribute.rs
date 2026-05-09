@@ -318,7 +318,14 @@ fn generate_permissions_mixin_impl(
 	})
 }
 
-/// Returns `(is_uuid, is_option)` for a Uuid-shaped primary-key field.
+/// Inspects a primary-key field type and returns `(is_uuid, is_option)`.
+///
+/// `is_uuid` is true only when the (inner, if `Option<...>`) type's last
+/// path segment is `Uuid`. `is_option` is true whenever the outer type is
+/// `Option<T>` — for any inner `T`, not just `Uuid` (e.g. `Option<i64>`
+/// returns `(false, true)`). The two flags are independent: callers must
+/// branch on `is_uuid` first, since `is_option` alone does not imply a
+/// UUID-shaped field.
 ///
 /// Mirrors the detection that `model_derive.rs::is_uuid_type` performs
 /// for `#[model]` PKs, kept local to avoid widening the visibility of a
