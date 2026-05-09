@@ -1856,6 +1856,17 @@ impl RunServerCommand {
 			.unwrap_or("manage")
 			.to_string();
 
+		// Optional diagnostic snapshot at autoreload startup. See issue #4236.
+		// Gated on `REINHARDT_AUTORELOAD_DEBUG=1` so production runs stay
+		// quiet but the user can capture full state with one env flip.
+		if Self::autoreload_debug_enabled() {
+			eprintln!(
+				"[autoreload-debug] bin_name={} {}",
+				bin_name,
+				Self::spawn_diagnostics(&current_exe_for_bin),
+			);
+		}
+
 		// Startup banner (spec §7).
 		ctx.info("[hot-reload] enabled");
 		ctx.info(&format!(
@@ -1935,6 +1946,87 @@ impl RunServerCommand {
 		Ok(())
 	}
 
+	/// Collect diagnostic state about the candidate spawn target.
+	///
+	/// Used to (a) enrich the always-on spawn error message and (b) emit a
+	/// startup snapshot when `REINHARDT_AUTORELOAD_DEBUG=1`. See issue #4236
+	/// for the failure class this targets: an initial spawn that returns
+	/// `os error 2` (`ENOENT`) for a path `current_exe()` just produced. On
+	/// Linux the most common failure mode is `/proc/self/exe` carrying a
+	/// `(deleted)` suffix when cargo replaced the binary's inode while the
+	/// parent was already running.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_diagnostics(exe: &std::path::Path) -> String {
+		let mut parts: Vec<String> = Vec::with_capacity(12);
+		parts.push(format!("exe={}", exe.display()));
+		parts.push(format!("exists={}", exe.exists()));
+
+		match exe.metadata() {
+			Ok(m) => {
+				parts.push(format!("size={}", m.len()));
+				#[cfg(unix)]
+				{
+					use std::os::unix::fs::MetadataExt;
+					parts.push(format!("inode={} nlink={}", m.ino(), m.nlink()));
+				}
+				if let Ok(mt) = m.modified()
+					&& let Ok(d) = mt.duration_since(std::time::UNIX_EPOCH)
+				{
+					parts.push(format!("mtime_unix={}", d.as_secs()));
+				}
+			}
+			Err(e) => parts.push(format!("metadata_err={}", e)),
+		}
+
+		match exe.canonicalize() {
+			Ok(c) => parts.push(format!("canonical={}", c.display())),
+			Err(e) => parts.push(format!("canonical_err={}", e)),
+		}
+
+		#[cfg(target_os = "linux")]
+		{
+			match std::fs::read_link("/proc/self/exe") {
+				Ok(p) => {
+					let s = p.to_string_lossy();
+					let deleted_suffix = s.contains("(deleted)");
+					parts.push(format!(
+						"proc_self_exe={} deleted_suffix={}",
+						p.display(),
+						deleted_suffix
+					));
+				}
+				Err(e) => parts.push(format!("proc_self_exe_err={}", e)),
+			}
+		}
+
+		parts.push(format!("pid={}", std::process::id()));
+		parts.push(format!(
+			"CARGO_TARGET_DIR={:?}",
+			std::env::var_os("CARGO_TARGET_DIR")
+		));
+		parts.push(format!(
+			"RUSTC_WRAPPER={:?}",
+			std::env::var_os("RUSTC_WRAPPER")
+		));
+		parts.push(format!(
+			"REINHARDT_IS_AUTORELOAD_CHILD={:?}",
+			std::env::var_os("REINHARDT_IS_AUTORELOAD_CHILD")
+		));
+
+		parts.join(" ")
+	}
+
+	/// Returns true when the user opted into autoreload debug logging via
+	/// `REINHARDT_AUTORELOAD_DEBUG=1`. Off by default to keep release output
+	/// quiet; on for issue #4236 root-cause diagnosis.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn autoreload_debug_enabled() -> bool {
+		matches!(
+			std::env::var("REINHARDT_AUTORELOAD_DEBUG").ok().as_deref(),
+			Some("1") | Some("true") | Some("TRUE")
+		)
+	}
+
 	/// Spawn server in child process
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn spawn_server_process(
@@ -1950,7 +2042,14 @@ impl RunServerCommand {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
 		})?;
 
-		let mut cmd = tokio::process::Command::new(current_exe);
+		// Snapshot diagnostics BEFORE the spawn syscall so the error path can
+		// quote the same state the kernel saw. See issue #4236.
+		let diag = Self::spawn_diagnostics(&current_exe);
+		if Self::autoreload_debug_enabled() {
+			eprintln!("[autoreload-debug] pre-spawn {}", diag);
+		}
+
+		let mut cmd = tokio::process::Command::new(&current_exe);
 		cmd.arg("runserver").arg(address).arg("--noreload");
 
 		if insecure {
@@ -1980,7 +2079,16 @@ impl RunServerCommand {
 		cmd.stderr(std::process::Stdio::inherit());
 
 		cmd.spawn().map_err(|e| {
-			crate::CommandError::ExecutionError(format!("Failed to spawn server process: {}", e))
+			// Always-on enrichment (#4236): include the resolved path,
+			// `raw_os_error`, error kind, and Linux `/proc/self/exe` state in
+			// the error so the first failure log is actionable.
+			crate::CommandError::ExecutionError(format!(
+				"Failed to spawn server process: {} (raw_os_error={:?} kind={:?}) [{}]",
+				e,
+				e.raw_os_error(),
+				e.kind(),
+				diag,
+			))
 		})
 	}
 
