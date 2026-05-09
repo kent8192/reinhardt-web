@@ -2005,15 +2005,87 @@ impl RunServerCommand {
 
 	/// Collect diagnostic state about the candidate spawn target.
 	///
-	/// Used to (a) enrich the always-on spawn error message and (b) emit a
-	/// startup snapshot when `REINHARDT_AUTORELOAD_DEBUG=1`. See issue #4236
-	/// for the failure class this targets: an initial spawn that returns
-	/// `os error 2` (`ENOENT`) for a path `current_exe()` just produced. On
-	/// Linux the most common failure mode is `/proc/self/exe` carrying a
-	/// `(deleted)` suffix when cargo replaced the binary's inode while the
-	/// parent was already running.
+	/// Two output modes guard against accidental filesystem-layout leakage
+	/// in shared log bundles (issue #4250) while preserving the issue #4236
+	/// root-cause signals (`(deleted)` suffix on `/proc/self/exe`,
+	/// `raw_os_error == 2` / `ENOENT`):
+	///
+	/// - `debug == false` (default): redacted allowlist of non-sensitive
+	///   fields (`exe_filename`, `exists`, `inode`/`nlink`, `pid`,
+	///   `proc_self_exe_deleted_suffix`). Embedded into the always-on
+	///   `Failed to spawn server process: ...` error message.
+	/// - `debug == true` (`REINHARDT_AUTORELOAD_DEBUG=1`): full snapshot
+	///   including absolute paths, canonicalised path, file metadata, and
+	///   toolchain environment values. Opt-in only.
+	///
+	/// `raw_os_error` and the `io::ErrorKind` are emitted by the
+	/// surrounding `CommandError::ExecutionError` format string and are not
+	/// duplicated here.
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn spawn_diagnostics(exe: &std::path::Path, debug: bool) -> String {
+		if debug {
+			Self::spawn_diagnostics_full(exe)
+		} else {
+			Self::spawn_diagnostics_redacted(exe)
+		}
+	}
+
+	/// Redacted always-on diagnostic body (issue #4250).
+	///
+	/// Strict allowlist that intentionally excludes any field carrying an
+	/// absolute path, file size/mtime, or toolchain environment values.
+	/// `proc_self_exe_deleted_suffix` is emitted as `true`, `false`, or
+	/// `unknown` so the issue #4236 signal is preserved across read_link
+	/// failures.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_diagnostics_redacted(exe: &std::path::Path) -> String {
+		let mut parts: Vec<String> = Vec::with_capacity(5);
+		let filename = exe
+			.file_name()
+			.map(|s| s.to_string_lossy().into_owned())
+			.unwrap_or_else(|| "?".to_string());
+		parts.push(format!("exe_filename={}", filename));
+		parts.push(format!("exists={}", exe.exists()));
+
+		#[cfg(unix)]
+		{
+			if let Ok(m) = exe.metadata() {
+				use std::os::unix::fs::MetadataExt;
+				parts.push(format!("inode={} nlink={}", m.ino(), m.nlink()));
+			}
+		}
+
+		parts.push(format!("pid={}", std::process::id()));
+
+		#[cfg(target_os = "linux")]
+		{
+			// Linux marks a path read from /proc/self/exe whose backing
+			// inode was unlinked with the literal " (deleted)" suffix.
+			// Match the suffix exactly so paths that legitimately contain
+			// "(deleted)" elsewhere don't trip the flag.
+			let suffix = match std::fs::read_link("/proc/self/exe") {
+				Ok(p) => {
+					if p.to_string_lossy().ends_with(" (deleted)") {
+						"true"
+					} else {
+						"false"
+					}
+				}
+				Err(_) => "unknown",
+			};
+			parts.push(format!("proc_self_exe_deleted_suffix={}", suffix));
+		}
+
+		parts.join(" ")
+	}
+
+	/// Full diagnostic snapshot, opt-in via `REINHARDT_AUTORELOAD_DEBUG=1`.
+	///
+	/// Includes absolute paths, the canonicalised path, file metadata, and
+	/// toolchain environment values that may leak filesystem layout. Only
+	/// invoked from explicit debug code paths.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_diagnostics_full(exe: &std::path::Path) -> String {
 		let mut parts: Vec<String> = Vec::with_capacity(12);
 		parts.push(format!("exe={}", exe.display()));
 		parts.push(format!("exists={}", exe.exists()));
@@ -2044,10 +2116,6 @@ impl RunServerCommand {
 		{
 			match std::fs::read_link("/proc/self/exe") {
 				Ok(p) => {
-					// Linux marks a path read from /proc/self/exe whose backing
-					// inode was unlinked with the literal " (deleted)" suffix.
-					// Match the suffix exactly so paths that legitimately
-					// contain "(deleted)" elsewhere don't trip the flag.
 					let s = p.to_string_lossy();
 					let deleted_suffix = s.ends_with(" (deleted)");
 					parts.push(format!(
@@ -2061,28 +2129,14 @@ impl RunServerCommand {
 		}
 
 		parts.push(format!("pid={}", std::process::id()));
-		// Env var values can leak local toolchain/filesystem layout into
-		// always-on logs. Emit only presence in non-debug mode and full
-		// values when the user explicitly opted into debug output.
-		if debug {
-			parts.push(format!(
-				"CARGO_TARGET_DIR={:?}",
-				std::env::var_os("CARGO_TARGET_DIR")
-			));
-			parts.push(format!(
-				"RUSTC_WRAPPER={:?}",
-				std::env::var_os("RUSTC_WRAPPER")
-			));
-		} else {
-			parts.push(format!(
-				"CARGO_TARGET_DIR_set={}",
-				std::env::var_os("CARGO_TARGET_DIR").is_some()
-			));
-			parts.push(format!(
-				"RUSTC_WRAPPER_set={}",
-				std::env::var_os("RUSTC_WRAPPER").is_some()
-			));
-		}
+		parts.push(format!(
+			"CARGO_TARGET_DIR={:?}",
+			std::env::var_os("CARGO_TARGET_DIR")
+		));
+		parts.push(format!(
+			"RUSTC_WRAPPER={:?}",
+			std::env::var_os("RUSTC_WRAPPER")
+		));
 		parts.push(format!(
 			"REINHARDT_IS_AUTORELOAD_CHILD={:?}",
 			std::env::var_os("REINHARDT_IS_AUTORELOAD_CHILD")
