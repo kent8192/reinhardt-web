@@ -3395,15 +3395,13 @@ fn generate_relationship_metadata(
 	}
 }
 
-/// Check if a type is Uuid or `Option<Uuid>`
+/// Check if a type is Uuid or `Option<Uuid>`.
+///
+/// Thin projection of the shared `crate::pk_shape::pk_uuid_shape`
+/// helper — see issue #4246 for why the underlying detection lives in
+/// one place.
 fn is_uuid_type(ty: &Type) -> bool {
-	let (_, inner_ty) = extract_option_type(ty);
-	if let Type::Path(type_path) = inner_ty
-		&& let Some(last_segment) = type_path.path.segments.last()
-	{
-		return last_segment.ident == "Uuid";
-	}
-	false
+	crate::pk_shape::pk_uuid_shape(ty).0
 }
 
 /// Check if a type is String or `Option<String>`
