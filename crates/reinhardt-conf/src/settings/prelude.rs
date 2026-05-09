@@ -19,6 +19,7 @@ pub use super::sources::{
 	ConfigSource, DefaultSource, DotEnvSource, EnvSource, HighPriorityEnvSource,
 	LowPriorityEnvSource, SourceError, TomlFileSource,
 };
+pub use super::typed_deserializer::CoercionError;
 // `JsonFileSource` and `auto_source` are deprecated alongside *.json
 // configuration support and will be removed in 0.2.0 (issue #4087). The prelude
 // continues to surface them during the deprecation window so existing user code
