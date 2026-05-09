@@ -33,6 +33,33 @@
 //! // Reverse URL lookup
 //! let url = router.reverse("user_detail", &[("id", "42")]);
 //! ```
+//!
+//! # Migration to `urls::ClientRouter`
+//!
+//! As of `0.1.0-rc.27`, `Router` and its related types are
+//! `#[deprecated]`. New code should use
+//! `reinhardt_urls::routers::ClientRouter` instead. The migration
+//! map for the most common patterns is:
+//!
+//! Note: in the table below, `urls::*` abbreviates
+//! `reinhardt_urls::routers::*`.
+//!
+//! ```text
+//! pages::Router               -> urls::ClientRouter
+//! pages::Route                -> urls::ClientRoute
+//! pages::RouteMatch           -> urls::ClientRouteMatch
+//! pages::PathPattern          -> urls::ClientPathPattern
+//! pages::PathParams<T>        -> urls::Path<T>
+//! pages::NavigationSubscription -> urls::NavigationSubscription
+//! pages::RouterError          -> urls::RouterError
+//! pages::PathError            -> urls::PathError
+//! ClientLauncher::router(F)   -> ClientLauncher::router_client(F)
+//! ```
+//!
+//! `Link` and `RouterOutlet` remain in this module and are NOT
+//! deprecated — they are rendering primitives with no migration target.
+//!
+//! See `kent8192/reinhardt-web#4234` for the full design.
 
 mod components;
 mod core;

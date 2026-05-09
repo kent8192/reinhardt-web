@@ -117,7 +117,7 @@ pub trait FromPath: Sized {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[deprecated(
 	since = "0.1.0-rc.27",
-	note = "Use `reinhardt_urls::routers::client_router::Path<T>` instead. Refs #4234, cloud#578."
+	note = "Use `reinhardt_urls::routers::Path<T>` instead. Refs #4234, cloud#578."
 )]
 pub struct PathParams<T>(pub T);
 
