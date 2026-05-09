@@ -3785,13 +3785,29 @@ port = 5432
 		use std::path::{Path, PathBuf};
 		use tempfile::TempDir;
 
-		struct EnvGuard(Vec<&'static str>);
+		// Captures each key's value on construction and restores it (or
+		// removes it if previously unset) on drop. This prevents the
+		// guard from leaking state into ambient env vars that existed
+		// before the test ran.
+		struct EnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+		impl EnvGuard {
+			fn new(keys: Vec<&'static str>) -> Self {
+				let captured = keys.into_iter().map(|k| (k, env::var_os(k))).collect();
+				Self(captured)
+			}
+		}
 
 		impl Drop for EnvGuard {
 			fn drop(&mut self) {
-				for key in &self.0 {
+				for (key, prev) in &self.0 {
 					// SAFETY: env mutation in tests is protected by #[serial(env)].
-					unsafe { env::remove_var(key) };
+					unsafe {
+						match prev {
+							Some(value) => env::set_var(key, value),
+							None => env::remove_var(key),
+						}
+					}
 				}
 			}
 		}
@@ -3825,7 +3841,7 @@ port = 5432
 		#[serial(env)]
 		fn loader_expands_env_var_in_host() {
 			// Arrange
-			let _env = EnvGuard(vec!["IT4247C_DB_HOST", "REINHARDT_ENV"]);
+			let _env = EnvGuard::new(vec!["IT4247C_DB_HOST", "REINHARDT_ENV"]);
 			// SAFETY: serial-protected.
 			unsafe {
 				env::set_var("REINHARDT_ENV", "local");
@@ -3866,7 +3882,7 @@ port = 5432
 		fn loader_uses_inline_default_when_var_unset() {
 			// Arrange — declare the var in the guard even though we never set
 			// it, so an ambient value cannot silence the inline `:-fallback`.
-			let _env = EnvGuard(vec!["IT4247C_DB_HOST_OPT", "REINHARDT_ENV"]);
+			let _env = EnvGuard::new(vec!["IT4247C_DB_HOST_OPT", "REINHARDT_ENV"]);
 			// SAFETY: serial-protected.
 			unsafe {
 				env::remove_var("IT4247C_DB_HOST_OPT");

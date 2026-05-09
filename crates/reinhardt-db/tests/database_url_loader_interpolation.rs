@@ -23,21 +23,36 @@ use std::io::Write;
 use std::path::Path;
 use tempfile::TempDir;
 
-/// Drop-based env-var cleanup. Removes named keys when the guard is
-/// dropped, even on panic.
-struct EnvGuard(Vec<&'static str>);
+/// Drop-based env-var cleanup. Captures each key's value on
+/// construction and restores it (or removes it if previously unset) on
+/// drop, so the guard never leaks state into ambient env vars that
+/// existed before the test ran.
+struct EnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+impl EnvGuard {
+	fn new(keys: Vec<&'static str>) -> Self {
+		let captured = keys.into_iter().map(|k| (k, env::var_os(k))).collect();
+		Self(captured)
+	}
+}
 
 impl Drop for EnvGuard {
 	fn drop(&mut self) {
-		for key in &self.0 {
+		for (key, prev) in &self.0 {
 			// SAFETY: env mutation in tests is protected by #[serial(env)].
-			unsafe { env::remove_var(key) };
+			unsafe {
+				match prev {
+					Some(value) => env::set_var(key, value),
+					None => env::remove_var(key),
+				}
+			}
 		}
 	}
 }
 
 /// Build a `<temp>/settings/{base.toml,<profile>.toml}` tree and return
-/// the temp dir + the base path the loader should be pointed at.
+/// the owned `TempDir`. Callers point the loader at `temp.path()` and
+/// must keep the returned guard alive for the duration of the test.
 fn write_settings_dir(profile: &str, base_toml: &str) -> TempDir {
 	let temp = TempDir::new().expect("create temp dir");
 	let settings_dir = temp.path().join("settings");
@@ -60,7 +75,7 @@ fn write_file(path: &Path, contents: &str) {
 fn loader_expands_env_var_in_host() {
 	// Arrange — DATABASE_URL would short-circuit the settings path, so
 	// list it in the guard alongside the test-specific keys.
-	let _guard = EnvGuard(vec!["IT4247_DB_HOST", "DATABASE_URL", "REINHARDT_ENV"]);
+	let _guard = EnvGuard::new(vec!["IT4247_DB_HOST", "DATABASE_URL", "REINHARDT_ENV"]);
 	// SAFETY: serial-protected.
 	unsafe {
 		env::remove_var("DATABASE_URL");
@@ -103,7 +118,7 @@ fn loader_uses_inline_default_when_var_unset() {
 	// Arrange — declare the var in the guard even though we never set it,
 	// so an ambient value from a prior test cannot leak in and silence
 	// the inline `:-fallback` branch.
-	let _guard = EnvGuard(vec!["IT4247_DB_HOST_OPT", "DATABASE_URL", "REINHARDT_ENV"]);
+	let _guard = EnvGuard::new(vec!["IT4247_DB_HOST_OPT", "DATABASE_URL", "REINHARDT_ENV"]);
 	// SAFETY: serial-protected.
 	unsafe {
 		env::remove_var("DATABASE_URL");
