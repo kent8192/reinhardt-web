@@ -51,3 +51,6 @@ mod permission_composition_integration;
 
 #[path = "auth/concurrent_auth_integration.rs"]
 mod concurrent_auth_integration;
+
+#[path = "auth/superuser_init_integration.rs"]
+mod superuser_init_integration;
