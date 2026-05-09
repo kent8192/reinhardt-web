@@ -1517,6 +1517,32 @@ impl BaseCommand for RunServerCommand {
 		// Server implementation with conditional features
 		#[cfg(feature = "server")]
 		{
+			// Autoreload PARENT path: run only stateless hook validation,
+			// then dispatch directly to the watcher. The full bring-up
+			// (DI / DB / on_server_start / HttpServer / static-files
+			// middleware) lives in the spawned `--noreload` child so any
+			// listeners opened by `on_server_start` hooks (e.g. gRPC) do
+			// not collide with the child's HTTP bind (#4244).
+			#[cfg(feature = "autoreload")]
+			if !noreload {
+				Self::validate_hooks_only(ctx).await?;
+				let index_raw = ctx.option("index").map(|s| s.to_string());
+				return Self::run_with_autoreload(
+					ctx,
+					&actual_address,
+					insecure,
+					no_docs,
+					with_pages,
+					&static_dir_raw,
+					no_spa,
+					index_raw.as_deref(),
+					no_wasm_rebuild,
+				)
+				.await;
+			}
+
+			// `--noreload` (autoreload child or explicit opt-out) OR
+			// `feature = "autoreload"` is off: full bring-up + listen.
 			Self::run_server(
 				ctx,
 				&actual_address,
@@ -1555,6 +1581,46 @@ impl BaseCommand for RunServerCommand {
 }
 
 impl RunServerCommand {
+	/// Collect runserver hooks from inventory and run their `validate()` phase.
+	///
+	/// Used in two places:
+	/// - `run_server` (the actual listening process) calls this and then reuses
+	///   the returned hooks for `on_server_start`.
+	/// - The autoreload parent path in `execute()` calls this for fail-fast
+	///   validation but discards the returned hooks; `on_server_start` only
+	///   runs in the spawned `--noreload` child so hooks that open listeners
+	///   do not collide with the child's HTTP bind (#4244).
+	#[cfg(feature = "server")]
+	async fn validate_hooks_only(
+		ctx: &CommandContext,
+	) -> CommandResult<Vec<crate::runserver_hooks::CollectedRunserverHook>> {
+		let hooks = crate::runserver_hooks::collect_hooks();
+		if !hooks.is_empty() {
+			ctx.verbose(&format!("Found {} runserver hook(s)", hooks.len()));
+		}
+		for collected in &hooks {
+			collected.hook.validate().await.map_err(|e| {
+				crate::CommandError::ExecutionError(format!(
+					"Runserver hook validation failed for {}: {}",
+					collected.type_name, e
+				))
+			})?;
+		}
+		Ok(hooks)
+	}
+
+	/// Test-only entry point exercising the autoreload-parent validation path.
+	///
+	/// Mirrors `validate_hooks_only` but returns `()` so it can cross the
+	/// crate boundary without leaking the crate-private
+	/// `CollectedRunserverHook` type. Re-exported via
+	/// `crate::__hot_reload_test_api::validate_hooks_only` for integration
+	/// tests; not part of the public API.
+	#[cfg(feature = "server")]
+	pub(crate) async fn validate_hooks_only_for_tests(ctx: &CommandContext) -> CommandResult<()> {
+		Self::validate_hooks_only(ctx).await.map(|_| ())
+	}
+
 	/// Run the development server
 	#[cfg(feature = "server")]
 	// Allow many arguments: CLI command handler needs to accept all server configuration options
@@ -1621,19 +1687,10 @@ impl RunServerCommand {
 			shutdown_tx.shutdown();
 		});
 
-		// Collect and validate runserver hooks (#3442)
-		let hooks = crate::runserver_hooks::collect_hooks();
-		if !hooks.is_empty() {
-			ctx.verbose(&format!("Found {} runserver hook(s)", hooks.len()));
-		}
-		for collected in &hooks {
-			collected.hook.validate().await.map_err(|e| {
-				crate::CommandError::ExecutionError(format!(
-					"Runserver hook validation failed for {}: {}",
-					collected.type_name, e
-				))
-			})?;
-		}
+		// Collect and validate runserver hooks (#3442). The validate phase is
+		// shared with the autoreload-parent path so misconfigured hooks fail
+		// fast in the parent before any child is spawned (#4244).
+		let hooks = Self::validate_hooks_only(ctx).await?;
 
 		// OpenAPI documentation is shown in startup banner above
 

@@ -196,6 +196,16 @@ pub mod __hot_reload_test_api {
 	pub use crate::source_roots::SourceRoots;
 	#[cfg(feature = "pages")]
 	pub use crate::wasm_rebuild_pipeline::{WasmRebuildOutcome, WasmRebuildPipeline};
+
+	/// HR-8 regression entry point (#4244): exercise only the
+	/// autoreload-parent validation step. Wraps the crate-private
+	/// `RunServerCommand::validate_hooks_only_for_tests` so the surface stays
+	/// inside `__hot_reload_test_api` instead of widening
+	/// `RunServerCommand`'s public API.
+	#[cfg(feature = "server")]
+	pub async fn validate_hooks_only(ctx: &crate::CommandContext) -> crate::CommandResult<()> {
+		crate::RunServerCommand::validate_hooks_only_for_tests(ctx).await
+	}
 }
 
 use thiserror::Error;
