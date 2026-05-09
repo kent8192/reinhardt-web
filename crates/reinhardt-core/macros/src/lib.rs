@@ -38,6 +38,7 @@ mod pascal_case;
 mod path_macro;
 mod permission_macro;
 mod permissions;
+mod pk_shape;
 mod query_fields;
 mod receiver;
 mod rel;
