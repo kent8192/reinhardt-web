@@ -50,6 +50,7 @@ pub(crate) trait SpaRouter: 'static {
 	fn current_path(&self) -> &Signal<String>;
 
 	/// Reactive subscription to the current route's path parameters.
+	#[allow(dead_code)] // Part of the symmetric dispatch surface (mirrors `current_path`); not yet read by `launch`.
 	fn current_params(&self) -> &Signal<HashMap<String, String>>;
 
 	/// Match `path` against registered routes, returning a
@@ -69,6 +70,7 @@ pub(crate) trait SpaRouter: 'static {
 
 	/// Replace the current history entry and dispatch navigation
 	/// observers.
+	#[allow(dead_code)] // Part of the symmetric dispatch surface (mirrors `push`); not yet read by `launch`.
 	fn replace(&self, path: &str) -> Result<(), SpaRouterError>;
 
 	/// Number of registered routes. Used by the launcher's
