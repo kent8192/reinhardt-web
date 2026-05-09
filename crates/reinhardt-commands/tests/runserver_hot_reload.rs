@@ -46,8 +46,10 @@ use reinhardt_commands::__hot_reload_test_api::{
 	DEBOUNCE_WINDOW, ServerRebuildOutcome, ServerRebuildPipeline, SourceRoots, WatcherConfig,
 	is_relevant_change, run_watcher,
 };
-use reinhardt_commands::CommandContext;
-use reinhardt_commands::{WasmBuildConfig, WasmBuilder};
+use reinhardt_commands::{
+	CommandContext, RunServerCommand, RunserverContext, RunserverHook, RunserverHookRegistration,
+	WasmBuildConfig, WasmBuilder,
+};
 use serial_test::serial;
 
 const FIXTURE_CARGO_TPL: &str = include_str!("fixtures/hot_reload_fixture/Cargo.toml.tpl");
@@ -569,6 +571,81 @@ async fn hr_7_run_watcher_processes_events() {
 	assert!(
 		watcher_result.is_ok(),
 		"watcher must return Ok on graceful shutdown, got {watcher_result:?}"
+	);
+}
+
+// ---------------------------------------------------------------------------
+// HR-8 — autoreload parent must not invoke `on_server_start` (#4244)
+// ---------------------------------------------------------------------------
+//
+// Regression for #4244: when `runserver` is invoked with autoreload on, the
+// PARENT process must run `validate()` (fail-fast for misconfigured hooks)
+// but MUST NOT run `on_server_start()` — that lifecycle phase only fires in
+// the spawned `--noreload` child that actually binds the listening port.
+// Otherwise, hooks that open auxiliary listeners (e.g. gRPC) leak into the
+// parent and block the child's HTTP bind with `EADDRINUSE (os error 98)`.
+
+use std::sync::atomic::{AtomicU32, Ordering};
+
+use async_trait::async_trait;
+
+static HR8_VALIDATE_COUNTER: AtomicU32 = AtomicU32::new(0);
+static HR8_ON_START_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+/// Sentinel hook for HR-8. `on_server_start()` defensively binds a TCP
+/// listener on an ephemeral port to mimic the dashboard gRPC hook
+/// pattern that originally surfaced #4244.
+struct Hr8SentinelHook;
+
+#[async_trait]
+impl RunserverHook for Hr8SentinelHook {
+	async fn validate(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+		HR8_VALIDATE_COUNTER.fetch_add(1, Ordering::SeqCst);
+		Ok(())
+	}
+
+	async fn on_server_start(
+		&self,
+		_ctx: &RunserverContext,
+	) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+		HR8_ON_START_COUNTER.fetch_add(1, Ordering::SeqCst);
+		// Mimic the dashboard's gRPC listener: open a port then drop it.
+		// Port 0 is ephemeral so the test stays parallel-safe.
+		let _listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok();
+		Ok(())
+	}
+}
+
+inventory::submit! {
+	RunserverHookRegistration::__macro_new(
+		|| Box::new(Hr8SentinelHook) as Box<dyn RunserverHook>,
+		"Hr8SentinelHook",
+	)
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn hr_8_autoreload_parent_skips_on_server_start_4244() {
+	// Arrange
+	HR8_VALIDATE_COUNTER.store(0, Ordering::SeqCst);
+	HR8_ON_START_COUNTER.store(0, Ordering::SeqCst);
+	let ctx = CommandContext::default();
+
+	// Act: the autoreload-parent path runs only this validation step.
+	RunServerCommand::__validate_hooks_only_for_tests(&ctx)
+		.await
+		.expect("validate phase must succeed for the no-op sentinel hook");
+
+	// Assert
+	assert!(
+		HR8_VALIDATE_COUNTER.load(Ordering::SeqCst) >= 1,
+		"validate() must run in the autoreload-parent path so misconfigured hooks fail fast"
+	);
+	assert_eq!(
+		HR8_ON_START_COUNTER.load(Ordering::SeqCst),
+		0,
+		"on_server_start() must NOT run in the autoreload-parent path (#4244): \
+		 hooks opening listeners would otherwise block the child's bind with EADDRINUSE"
 	);
 }
 
