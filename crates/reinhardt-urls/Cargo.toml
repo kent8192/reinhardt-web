@@ -63,15 +63,49 @@ streaming = ["dep:reinhardt-streaming"]
 urls-full = ["routers", "routers-macros", "proxy"]
 full = ["database", "unified-router"]
 unified-router = []
+# Marker feature for wasm-bindgen-test diagnostic suite that asserts
+# observer-system invariants (Inv-1, Inv-2, Inv-4, Inv-5, Inv-6) on
+# `ClientRouter`. Mirrors the `wasm-diag-test` feature on
+# `reinhardt-pages`. Activated by:
+#   wasm-pack test --chrome --headless --features wasm-diag-test
+#     crates/reinhardt-urls
+# (Refs #4234)
+wasm-diag-test = ["client-router"]
 
 [build-dependencies]
 cfg_aliases = "0.2"
 
 [dev-dependencies]
 insta = { workspace = true }
+rstest = { workspace = true }
+serial_test = { workspace = true }
+
+# Native-only dev dependencies. These pull in heavy non-wasm crates
+# (`reinhardt-testkit` -> sqlx, `tokio`, `hyper`) and must not appear
+# on the wasm32 dev-dep graph or wasm-pack test will fail to build
+# `getrandom@0.2` (which lacks a wasm32-unknown-unknown backend).
+# (Refs #4234)
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 tokio = { version = "1.41", features = ["full"] }
 bytes = { workspace = true }
 hyper = { workspace = true }
-rstest = { workspace = true }
-serial_test = { workspace = true }
 reinhardt-testkit = { path = "../reinhardt-testkit" }
+
+# WASM-only dev dependencies (used by tests/wasm/*).
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test = "0.3.56"
+
+[[test]]
+name = "client_router_observer_dispatch_test"
+path = "tests/wasm/client_router_observer_dispatch_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "client_router_subscription_drop_test"
+path = "tests/wasm/client_router_subscription_drop_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "client_router_listener_panic_isolation_test"
+path = "tests/wasm/client_router_listener_panic_isolation_test.rs"
+required-features = ["wasm-diag-test"]
