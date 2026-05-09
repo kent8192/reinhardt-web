@@ -337,8 +337,7 @@ fn nested_db_config_falls_back_to_default_when_var_unset() {
 		.unwrap();
 	let db_value = merged.get_raw("database").expect("database key present");
 	let db_config: reinhardt_conf::settings::DatabaseConfig =
-		serde_json::from_value(db_value.clone())
-			.expect("deserializes into DatabaseConfig");
+		serde_json::from_value(db_value.clone()).expect("deserializes into DatabaseConfig");
 	let url = db_config.to_url();
 
 	// Assert
