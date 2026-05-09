@@ -3,6 +3,8 @@
 //! This module provides Django-style path pattern matching compatible
 //! with reinhardt-urls patterns.
 
+#![allow(deprecated)] // (Refs #4234) Internal references to deprecated routing types are intentional during the deprecation cycle.
+
 use std::collections::HashMap;
 
 /// A path parameter extracted from a URL.

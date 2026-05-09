@@ -2,7 +2,8 @@
 
 mod spa_router;
 
-#[allow(deprecated)] // (Refs #4234) Importing deprecated routing types intentionally during the deprecation cycle.
+#[allow(deprecated)]
+// (Refs #4234) Importing deprecated routing types intentionally during the deprecation cycle.
 use crate::router::{PathPattern, Router};
 use spa_router::SpaRouter;
 use std::cell::RefCell;
@@ -385,7 +386,8 @@ impl ClientLauncher {
 	///
 	/// `router_client` and [`ClientLauncher::router`] are mutually
 	/// exclusive — calling both on the same launcher causes
-	/// [`ClientLauncher::launch`] to return an error. Pick one.
+	/// `ClientLauncher::launch` to return an error. Pick one.
+	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
 	pub fn router_client<F>(mut self, f: F) -> Self
 	where
 		F: FnOnce() -> reinhardt_urls::routers::ClientRouter + 'static,
@@ -599,12 +601,10 @@ impl ClientLauncher {
 					));
 				}
 				(Some(f), None) => {
-					// `Router` will be deprecated in a follow-up commit;
-					// keep this arm building until that lands.
-					#[allow(deprecated)]
-					{
-						Box::new(f())
-					}
+					// (Refs #4234) `Router` is deprecated as of rc.27; the
+					// parent `impl ClientLauncher` block carries
+					// `#[allow(deprecated)]` so this arm continues to build.
+					Box::new(f())
 				}
 				(None, Some(f)) => Box::new(f()),
 				(None, None) => {
@@ -908,10 +908,8 @@ mod tests {
 	}
 
 	// (Refs #4234) Exercises the deprecated `router(...)` builder; the
-	// `#[allow(deprecated)]` opts the test out of the new builder
-	// deprecation warning while the old API is still supported.
+	// module-level `#[allow(deprecated)]` on `mod tests` covers this test.
 	#[rstest]
-	#[allow(deprecated)]
 	fn test_client_launcher_router_stores_init_fn() {
 		let launcher = ClientLauncher::new("#root");
 
@@ -926,8 +924,7 @@ mod tests {
 	fn test_client_launcher_router_client_stores_init_fn() {
 		let launcher = ClientLauncher::new("#root");
 
-		let launcher =
-			launcher.router_client(reinhardt_urls::routers::ClientRouter::new);
+		let launcher = launcher.router_client(reinhardt_urls::routers::ClientRouter::new);
 
 		assert!(launcher.client_router_init.is_some());
 	}

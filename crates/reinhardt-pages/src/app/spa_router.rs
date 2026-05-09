@@ -8,6 +8,11 @@
 //! ([`crate::app::ClientLauncher::router`] or
 //! [`crate::app::ClientLauncher::router_client`]) the application picked.
 //!
+//! On non-wasm targets, the launcher's `launch()` body is largely behind
+//! `#[cfg(wasm)]`, so the trait methods are not invoked at compile time.
+//! The `#![cfg_attr(not(wasm), allow(dead_code))]` below silences the
+//! resulting native-only `dead_code` warnings.
+//!
 //! The trait is intentionally **object-safe**: every method takes
 //! concrete (non-generic) inputs and outputs, and the user-supplied
 //! navigation listener is taken as a `Box<dyn Fn ...>` rather than a
@@ -19,6 +24,8 @@
 //! translations are intentionally lossy (route name -> `Option<String>`,
 //! errors -> `String`) because the launcher only needs the path string,
 //! parameter map, optional route name, and printable error message.
+
+#![cfg_attr(not(wasm), allow(dead_code))] // (Refs #4234) On native, the launcher's launch() body is largely #[cfg(wasm)], so the trait methods appear unused.
 
 use crate::component::Page;
 use crate::reactive::Signal;
@@ -74,6 +81,7 @@ pub(crate) trait SpaRouter: 'static {
 	/// underlying `NavigationSubscription`; the launcher calls
 	/// `mem::forget` on it (matching the previous `Router::on_navigate`
 	/// flow) so the listener lives for the entire WASM module lifetime.
+	#[allow(clippy::type_complexity)] // The boxed listener signature is dictated by trait object-safety; extracting a type alias would not improve readability.
 	fn on_navigate_dyn(
 		&self,
 		listener: Box<dyn Fn(&str, &HashMap<String, String>) + 'static>,
@@ -179,6 +187,7 @@ impl SpaRouter for crate::router::Router {
 		self.route_count()
 	}
 
+	#[allow(clippy::type_complexity)] // The boxed listener signature mirrors the trait method; see `SpaRouter::on_navigate_dyn`.
 	fn on_navigate_dyn(
 		&self,
 		listener: Box<dyn Fn(&str, &HashMap<String, String>) + 'static>,
@@ -246,6 +255,7 @@ impl SpaRouter for reinhardt_urls::routers::ClientRouter {
 		self.route_count()
 	}
 
+	#[allow(clippy::type_complexity)] // The boxed listener signature mirrors the trait method; see `SpaRouter::on_navigate_dyn`.
 	fn on_navigate_dyn(
 		&self,
 		listener: Box<dyn Fn(&str, &HashMap<String, String>) + 'static>,

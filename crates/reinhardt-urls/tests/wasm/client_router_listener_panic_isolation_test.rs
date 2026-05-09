@@ -44,7 +44,9 @@ fn reentrant_on_navigate_does_not_panic_inv4() {
 
 	// Act
 	router.push("/a").expect("first push must succeed");
-	router.push("/a").expect("second push must not panic on RefCell");
+	router
+		.push("/a")
+		.expect("second push must not panic on RefCell");
 
 	// Assert: the second listener (registered mid-dispatch) was dropped
 	// before the second push, so it never fired.
