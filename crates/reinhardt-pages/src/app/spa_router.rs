@@ -144,9 +144,10 @@ impl std::fmt::Display for SpaRouterError {
 
 impl std::error::Error for SpaRouterError {}
 
-// (Refs #4234) `Router` will be deprecated in a follow-up commit; this
-// impl block is anticipatorily wrapped in `#[allow(deprecated)]` so it
-// keeps compiling once the type carries `#[deprecated]`.
+// (Refs #4234) `Router` is deprecated as of 0.1.0-rc.27. The bridge
+// trait implementation below is wrapped in `#[allow(deprecated)]` so
+// the deprecated `Router` path keeps compiling during the migration
+// window.
 #[allow(deprecated)]
 impl SpaRouter for crate::router::Router {
 	fn current_path(&self) -> &Signal<String> {
