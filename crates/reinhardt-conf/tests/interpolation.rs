@@ -250,3 +250,120 @@ fn nested_table_interpolation_resolves_keys() {
 	assert_eq!(db["port"], serde_json::json!("5433"));
 	assert_eq!(db["engine"], serde_json::json!("postgresql"));
 }
+
+// Regression coverage for issue #4235: end-to-end pipeline
+// `[database].host = "${VAR:-default}"` → SettingsBuilder merge
+// → DatabaseConfig deserialize → DatabaseConfig::to_url(). The
+// pre-existing `nested_table_interpolation_resolves_keys` covers
+// only the TomlFileSource::load() return value, but the actual
+// `manage migrate` path goes through SettingsBuilder.build() and
+// then constructs the DATABASE_URL from a typed DatabaseConfig.
+// A regression here would let a literal `${...}` reach DATABASE_URL
+// and trip the URL parser with a misleading "invalid port number".
+
+#[rstest]
+#[serial(env)]
+fn nested_db_config_through_settings_builder_resolves_db_host() {
+	// Arrange — env override takes effect; literal `${...}` must not
+	// reach the constructed DATABASE_URL.
+	let _guard = EnvGuard(vec!["IT_DB_HOST_E2E"]);
+	// SAFETY: serial-protected.
+	unsafe { env::set_var("IT_DB_HOST_E2E", "postgres") };
+	let (_dir, path) = write_toml_file(
+		r#"
+		[database]
+		engine = "postgresql"
+		name = "appdb"
+		user = "app"
+		password = "secret"
+		host = "${IT_DB_HOST_E2E:-localhost}"
+		port = 5432
+		"#,
+	);
+
+	// Act
+	let merged = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(&path).with_interpolation())
+		.build()
+		.unwrap();
+	let db_value = merged
+		.get_raw("database")
+		.expect("database key present after merge");
+	let db_config: reinhardt_conf::settings::DatabaseConfig =
+		serde_json::from_value(db_value.clone())
+			.expect("database deserializes into DatabaseConfig");
+	let url = db_config.to_url();
+	let parsed = url::Url::parse(&url).expect("DATABASE_URL is a valid URL");
+
+	// Assert — `${IT_DB_HOST_E2E:-localhost}` is fully resolved before
+	// reaching DATABASE_URL. The env value (`postgres`) wins over the
+	// `:-localhost` fallback. Compare against parsed URL fields to avoid
+	// coupling to formatting (percent-encoding, optional userinfo, etc.).
+	assert!(
+		!url.contains("${"),
+		"DATABASE_URL still contains a literal interpolation token: {url}",
+	);
+	assert_eq!(
+		parsed.host_str(),
+		Some("postgres"),
+		"DATABASE_URL host is not the env-resolved value: {url}",
+	);
+	assert_eq!(
+		parsed.port(),
+		Some(5432),
+		"DATABASE_URL port is not the configured value: {url}",
+	);
+}
+
+#[rstest]
+#[serial(env)]
+fn nested_db_config_falls_back_to_default_when_var_unset() {
+	// Companion to the env-set case: with the variable cleared, the
+	// `:-fallback` default must reach the URL — confirming that the
+	// fallback branch is never bypassed by the SettingsBuilder merge.
+
+	// Arrange
+	let _guard = EnvGuard(vec!["IT_DB_HOST_E2E_UNSET"]);
+	// SAFETY: serial-protected.
+	unsafe { env::remove_var("IT_DB_HOST_E2E_UNSET") };
+	let (_dir, path) = write_toml_file(
+		r#"
+		[database]
+		engine = "postgresql"
+		name = "appdb"
+		user = "app"
+		password = "secret"
+		host = "${IT_DB_HOST_E2E_UNSET:-fallback-host}"
+		port = 5432
+		"#,
+	);
+
+	// Act
+	let merged = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(&path).with_interpolation())
+		.build()
+		.unwrap();
+	let db_value = merged.get_raw("database").expect("database key present");
+	let db_config: reinhardt_conf::settings::DatabaseConfig =
+		serde_json::from_value(db_value.clone()).expect("deserializes into DatabaseConfig");
+	let url = db_config.to_url();
+	let parsed = url::Url::parse(&url).expect("DATABASE_URL is a valid URL");
+
+	// Assert — compare against parsed URL fields rather than substrings so
+	// the test stays robust against formatting differences (percent-encoded
+	// userinfo, optional trailing slash, etc.).
+	assert!(
+		!url.contains("${"),
+		"DATABASE_URL still contains a literal interpolation token: {url}",
+	);
+	assert_eq!(
+		parsed.host_str(),
+		Some("fallback-host"),
+		"DATABASE_URL host did not resolve to `:-default` fallback: {url}",
+	);
+	assert_eq!(
+		parsed.port(),
+		Some(5432),
+		"DATABASE_URL port is not the configured value: {url}",
+	);
+}

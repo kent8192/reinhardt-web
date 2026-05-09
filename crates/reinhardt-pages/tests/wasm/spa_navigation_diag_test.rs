@@ -27,6 +27,7 @@
 //! comparable to the post-click values from a previous case.
 
 #![cfg(all(target_arch = "wasm32", feature = "wasm-diag-test"))]
+#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
 use reinhardt_pages::app::{ClientLauncher, with_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};

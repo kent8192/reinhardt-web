@@ -2,6 +2,12 @@
 //!
 //! This module defines the client-side router for the polling application.
 
+// (Refs #4234) Migration to reinhardt_urls::routers::ClientRouter pending separate follow-up issue.
+// `reinhardt::pages::router::Router` is `#[deprecated]` since 0.1.0-rc.27; this module
+// uses it pervasively (struct, `Router::new()`, closure params, `thread_local!`),
+// so file-scope suppression is preferred over per-usage `#[allow(deprecated)]` attribute spam.
+#![allow(deprecated)]
+
 use crate::client::pages::{index_page, polls_detail_page, polls_results_page};
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;

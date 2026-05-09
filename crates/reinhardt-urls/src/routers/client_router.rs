@@ -60,6 +60,16 @@
 //! ```
 //!
 //! [`Page`]: reinhardt_core::page::Page
+//!
+//! # Reactive navigation observation
+//!
+//! `ClientRouter` exposes [`ClientRouter::on_navigate`] returning a
+//! [`NavigationSubscription`] handle, plus diagnostic counters
+//! (`__diag_observer_count`, `__diag_dispatch_count`,
+//! `__diag_router_id`). These were ported from `pages::Router` in
+//! `0.1.0-rc.27`; behaviour matches the pages-side invariants
+//! Inv-1 ~ Inv-6 documented in `pages::router::core`.
+//! See `kent8192/reinhardt-web#4234`.
 
 mod core;
 mod error;
@@ -75,7 +85,7 @@ mod pattern;
 mod reverser;
 
 // Public re-exports
-pub use core::{ClientRoute, ClientRouteMatch, ClientRouter};
+pub use core::{ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription};
 pub use error::{PathError, RouterError};
 pub use global::{clear_client_reverser, get_client_reverser, register_client_reverser};
 pub use handler::RouteHandler;

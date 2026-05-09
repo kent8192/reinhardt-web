@@ -3,6 +3,8 @@
 //! This module provides Link and RouterOutlet components for
 //! declarative navigation in component trees.
 
+#![allow(deprecated)] // (Refs #4234) Internal references to deprecated routing types are intentional during the deprecation cycle.
+
 use crate::component::{Component, IntoPage, Page, PageElement};
 
 /// A link component that navigates without full page reload.

@@ -1,4 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
+#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 //! Native repro tests for issue #4075 — verifies that an Effect created
 //! against `Router::current_path()` re-fires when `Router::push` updates
 //! the path Signal.

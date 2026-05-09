@@ -1,3 +1,5 @@
+#![allow(deprecated)] // (Refs #4234) Fixture exercises deprecated `pages::Router` surface.
+
 //! Client-side router for the Tier 4 fixture.
 //!
 //! Registers four **named** routes whose names follow the
