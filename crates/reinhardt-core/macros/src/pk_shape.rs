@@ -18,8 +18,10 @@ use syn::Type;
 /// - `is_uuid` is `true` when the (optionally `Option`-wrapped) type
 ///   has a final path segment of `Uuid`. Both bare `Uuid` and
 ///   fully-qualified `uuid::Uuid` resolve to `true`.
-/// - `is_option` is `true` when the outer type's last segment is
-///   `Option`, regardless of the inner type.
+/// - `is_option` is `true` when the type is syntactically `Option<T>`
+///   with a first generic *type* argument (the inner `T` itself is not
+///   inspected for `is_option`; only its presence is required, so e.g.
+///   bare `Option` with no generic arguments resolves to `false`).
 ///
 /// Detection is deliberately last-segment only: the macros never see
 /// the resolved type, so `MyUuid` or `UuidV4` correctly report
