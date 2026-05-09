@@ -226,6 +226,10 @@ jobs:
         # with the runner that wasm-pack cached. (See #3365)
         run: |
           RUNNER=$(find "${HOME}/.cache/.wasm-pack" -name "wasm-bindgen-test-runner" -type f 2>/dev/null | head -1)
+          if [ -z "$RUNNER" ]; then
+            echo "::error::wasm-bindgen-test-runner not found under ${HOME}/.cache/.wasm-pack. The preceding wasm-pack step should have cached it; check that step's logs."
+            exit 1
+          fi
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER="$RUNNER" \
           CHROMEDRIVER="$(which chromedriver)" \
           WASM_BINDGEN_TEST_ONLY_WEB=1 \
@@ -242,6 +246,10 @@ jobs:
         # lib step above. (Refs #4234)
         run: |
           RUNNER=$(find "${HOME}/.cache/.wasm-pack" -name "wasm-bindgen-test-runner" -type f 2>/dev/null | head -1)
+          if [ -z "$RUNNER" ]; then
+            echo "::error::wasm-bindgen-test-runner not found under ${HOME}/.cache/.wasm-pack. The preceding wasm-pack step should have cached it; check that step's logs."
+            exit 1
+          fi
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER="$RUNNER" \
           CHROMEDRIVER="$(which chromedriver)" \
           WASM_BINDGEN_TEST_ONLY_WEB=1 \

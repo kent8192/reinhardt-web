@@ -602,10 +602,12 @@ impl ClientRouter {
 	/// Register a listener for navigation events.
 	///
 	/// Returns a [`NavigationSubscription`] handle. Drop the handle to
-	/// deregister the listener. The router itself does not retain a strong
-	/// reference; if all subscriptions are dropped, the listener is freed
-	/// at the next `notify_observers` call (which prunes dead `Weak`
-	/// references on every invocation).
+	/// deregister the listener. The router itself only retains a `Weak`
+	/// reference, so dropping the subscription frees the listener
+	/// closure immediately. The stale `Weak` entry in
+	/// `navigation_observers` is pruned lazily on the next
+	/// `notify_observers` call (the listener itself is already gone by
+	/// then).
 	///
 	/// Robust against nested reactive nodes spawned during view rendering
 	/// because this subscription is independent of the reactive
@@ -627,37 +629,24 @@ impl ClientRouter {
 	/// and params.
 	///
 	/// Both `ClientRouter::navigate` (after a programmatic push/replace) and
-	/// the popstate listener (after a browser-driven back/forward) call this
-	/// method (or its inlined twin) after the `Signal` updates so listeners
-	/// always see the new state when they read `Signal::get` from inside
-	/// their closure.
+	/// the popstate listener (after a browser-driven back/forward) end up
+	/// calling [`dispatch_navigation_observers`] after the `Signal` updates
+	/// so listeners always see the new state when they read `Signal::get`
+	/// from inside their closure.
 	///
-	/// The helper takes a snapshot of strong references to listeners
-	/// before invoking them. The `RefCell` borrow is released before any
-	/// user-supplied closure runs, which lets listeners call
-	/// `ClientRouter::push` / `ClientRouter::replace` reentrantly, register
-	/// new listeners via `on_navigate`, or drop existing
-	/// `NavigationSubscription` handles without panicking on `RefCell`
-	/// reentry. Dropped subscriptions are pruned on every dispatch (Inv-6).
-	///
-	/// The popstate listener inlines the same snapshot pattern (it does
-	/// not have access to `&self`); keep both call sites in sync if this
-	/// helper changes. (Refs #4234, Inv-4)
+	/// (Refs #4234, Inv-4)
 	fn notify_observers(&self, path: &str, params: &HashMap<String, String>) {
-		self.dispatch_count.set(self.dispatch_count.get() + 1);
-		let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
-			let mut observers = self.navigation_observers.borrow_mut();
-			observers.retain(|w| w.strong_count() > 0);
-			observers.iter().filter_map(|w| w.upgrade()).collect()
-		};
 		// (Refs #4234) `nav_diag_dom!` invocation from
 		// `pages::Router::notify_observers` is intentionally not mirrored
 		// here. The nav-diag-dom feature can be added separately in a
 		// follow-up if downstream consumers need urls-side runtime
 		// diagnostics.
-		for listener in listeners_snapshot {
-			listener(path, params);
-		}
+		dispatch_navigation_observers(
+			&self.navigation_observers,
+			&self.dispatch_count,
+			path,
+			params,
+		);
 	}
 
 	/// Diagnostic counter: number of currently-alive navigation observers.
@@ -666,8 +655,10 @@ impl ClientRouter {
 	/// `navigation_observers` whose `strong_count() > 0`. Used by tests in
 	/// `tests/wasm/` to assert observer-lifecycle invariants.
 	///
-	/// Hidden API for testing only — `#[doc(hidden)]` keeps it out of the
-	/// rendered documentation and out of the SemVer surface. (Refs #4234)
+	/// Internal diagnostic API. `#[doc(hidden)]` removes this from the
+	/// rendered documentation, but it remains technically part of the
+	/// public API surface. Treat it as unstable: callers outside this
+	/// crate's own tests should not depend on it. (Refs #4234)
 	#[doc(hidden)]
 	pub fn __diag_observer_count(&self) -> usize {
 		self.navigation_observers
@@ -812,25 +803,16 @@ impl ClientRouter {
 				HashMap::new()
 			};
 
-			// (Refs #4234, Inv-5) Bump the diagnostic counter to mirror
-			// `ClientRouter::notify_observers`, so tests can assert that
-			// popstate-driven dispatches are counted identically to
-			// push/replace-driven ones.
-			dispatch_count.set(dispatch_count.get() + 1);
-
-			// (Refs #4234, Inv-4, Inv-6) Dispatch on_navigate observers
-			// using the same snapshot-then-iterate pattern as
-			// `ClientRouter::notify_observers`. Inlined here because this
-			// closure does not have access to `&self`. Keep in sync with
-			// `ClientRouter::notify_observers`.
-			let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
-				let mut observers = navigation_observers.borrow_mut();
-				observers.retain(|w| w.strong_count() > 0);
-				observers.iter().filter_map(|w| w.upgrade()).collect()
-			};
-			for listener in listeners_snapshot {
-				listener(&path, &params_for_observers);
-			}
+			// (Refs #4234, Inv-4, Inv-5, Inv-6) Bump the diagnostic counter
+			// and dispatch on_navigate observers via the shared helper so
+			// popstate-driven dispatches are counted and ordered
+			// identically to push/replace-driven ones.
+			dispatch_navigation_observers(
+				&navigation_observers,
+				&dispatch_count,
+				&path,
+				&params_for_observers,
+			);
 		});
 
 		if let Ok(c) = closure {
@@ -843,6 +825,37 @@ impl ClientRouter {
 	#[cfg(native)]
 	pub fn setup_history_listener(&self) {
 		// No-op on non-WASM targets
+	}
+}
+
+/// Snapshot, prune, and invoke navigation observers.
+///
+/// Bumps `dispatch_count` first so even a no-listener dispatch is
+/// counted (Inv-5), then collects strong `Rc` references to live
+/// listeners while pruning dead `Weak` entries (Inv-6). The `RefCell`
+/// borrow is released before any user-supplied closure runs (Inv-4),
+/// which lets listeners call `ClientRouter::push` /
+/// `ClientRouter::replace` reentrantly, register new listeners via
+/// `on_navigate`, or drop existing `NavigationSubscription` handles
+/// without panicking on `RefCell` reentry.
+///
+/// Used by both `ClientRouter::notify_observers` (programmatic
+/// push/replace) and the popstate listener (browser back/forward) so
+/// the two code paths stay observably identical. (Refs #4234, Inv-4)
+fn dispatch_navigation_observers(
+	navigation_observers: &NavigationObservers,
+	dispatch_count: &std::rc::Rc<std::cell::Cell<u64>>,
+	path: &str,
+	params: &HashMap<String, String>,
+) {
+	dispatch_count.set(dispatch_count.get() + 1);
+	let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
+		let mut observers = navigation_observers.borrow_mut();
+		observers.retain(|w| w.strong_count() > 0);
+		observers.iter().filter_map(|w| w.upgrade()).collect()
+	};
+	for listener in listeners_snapshot {
+		listener(path, params);
 	}
 }
 

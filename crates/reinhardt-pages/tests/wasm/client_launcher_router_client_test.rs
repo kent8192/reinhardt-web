@@ -45,9 +45,15 @@ fn install_app_root() -> web_sys::Element {
 }
 
 #[wasm_bindgen_test]
-fn router_client_mounts_and_dispatches_observer_on_push() {
-	// Arrange: install DOM root and build a ClientRouter; track
-	// observer fires through a Cell so we can assert on it later.
+fn router_client_launcher_accepts_configured_router() {
+	// Arrange: install DOM root and build a ClientRouter. The
+	// `dispatched` counter is wired up to ensure that registering an
+	// `on_navigate` listener inside the builder closure does not
+	// itself prevent `launch()` from succeeding; we do NOT assert on
+	// observer dispatch here because no navigation is triggered, and
+	// the returned subscription is dropped at the end of the builder
+	// closure (observer-survival semantics are covered by
+	// `urls/tests/wasm/`).
 	let _root = install_app_root();
 	let dispatched = Rc::new(Cell::new(0u64));
 	let dispatched_clone = dispatched.clone();
@@ -58,13 +64,6 @@ fn router_client_mounts_and_dispatches_observer_on_push() {
 			let r = ClientRouter::new()
 				.named_route("home", "/", home)
 				.named_route("about", "/about", about);
-			// Register listener BEFORE mount so the first dispatch is
-			// captured. NOTE: the returned subscription drops at the
-			// end of this closure; for a test that wants the listener
-			// alive past launch, we have to keep it elsewhere. For
-			// this acceptance test we only check that the launcher
-			// *accepts* a ClientRouter — observer-survival semantics
-			// are exercised in `urls/tests/wasm/`.
 			let _sub = r.on_navigate(move |_, _| {
 				dispatched_clone.set(dispatched_clone.get() + 1);
 			});
@@ -72,7 +71,7 @@ fn router_client_mounts_and_dispatches_observer_on_push() {
 		})
 		.launch();
 
-	// Assert
+	// Assert: launcher accepts the configured ClientRouter.
 	assert!(
 		launcher_result.is_ok(),
 		"router_client launch must succeed, got: {:?}",
