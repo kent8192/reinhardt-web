@@ -2700,12 +2700,21 @@ fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
 			reinhardt_conf::settings::sources::LowPriorityEnvSource::new()
 				.with_prefix("REINHARDT_"),
 		)
-		.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-			settings_dir.join("base.toml"),
-		))
-		.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-			settings_dir.join(format!("{}.toml", profile_str)),
-		))
+		// Explicitly opt in to ${VAR:-default} interpolation so the
+		// validation comparison sees the same expanded host that the ORM
+		// init path uses; otherwise a literal `${...}` host would be
+		// compared against an env-derived URL and produce a false
+		// "DATABASE_URL mismatch" warning (issue #4235).
+		.add_source(
+			reinhardt_conf::settings::sources::TomlFileSource::new(settings_dir.join("base.toml"))
+				.with_interpolation(),
+		)
+		.add_source(
+			reinhardt_conf::settings::sources::TomlFileSource::new(
+				settings_dir.join(format!("{}.toml", profile_str)),
+			)
+			.with_interpolation(),
+		)
 		.build()
 		.map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to load settings: {}", e))
