@@ -149,6 +149,34 @@ db_password = "${DB_PASSWORD:?Set DB_PASSWORD via direnv or 1Password CLI}"
 - **Composition**: interpolation runs at `TomlFileSource::load()` time. The resolved
   value participates in the normal source-priority merge; later sources at higher
   priority still override.
+- **Typed coercion** (since 0.1.0-rc.27, default ON): a resolved string value whose
+  destination Rust type is non-`String` is coerced into the target at deserialize
+  time. Supported destinations:
+
+  | Target                          | Source string format                              |
+  |---------------------------------|---------------------------------------------------|
+  | `bool`, integers, floats, `char`| `FromStr`-parseable text                          |
+  | enum unit variant               | variant name (matched via serde's normal rules)   |
+  | `Option<T>`                     | empty string -> `None`, otherwise recurse into `T`|
+  | `Vec<T>`                        | JSON array literal: `"[1, 2, 3]"`                 |
+  | `HashMap<K, V>` / `BTreeMap`    | JSON object literal: `"{\"a\": 1}"`               |
+  | `Vec<u8>`                       | base64 (STANDARD)                                 |
+
+  Coercion failures abort `SettingsBuilder::build_composed()` with
+  `BuildError::Coercion`, naming the TOML key path, target type, original value,
+  and parser cause.
+
+  Disable with `SettingsBuilder::with_typed_coercion(false)` to fall back to the
+  legacy serde-json passthrough.
+
+- **Nested struct from a single string is rejected** with
+  `CoercionError::UnsupportedShape`. Use per-field interpolation instead:
+
+  ```toml
+  [endpoint]
+  host = "${HOST:-localhost}"
+  port = "${PORT:-5432}"
+  ```
 
 ## Field Status
 
