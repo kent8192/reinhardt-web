@@ -1,6 +1,11 @@
 //! WASM client application launcher.
 
+mod spa_router;
+
+#[allow(deprecated)]
+// (Refs #4234) Importing deprecated routing types intentionally during the deprecation cycle.
 use crate::router::{PathPattern, Router};
+use spa_router::SpaRouter;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -8,7 +13,12 @@ use std::collections::HashMap;
 use crate::component::PageExt as _;
 
 thread_local! {
-	static APP_ROUTER: RefCell<Option<Router>> = const { RefCell::new(None) };
+	/// Globally stored SPA router used by [`ClientLauncher::launch`] and
+	/// the public deprecated [`with_router`] helper. Holds a
+	/// `Box<dyn SpaRouter>` so the same slot can back either the
+	/// deprecated `Router`-based API or the canonical `ClientRouter`-
+	/// based API. (Refs #4234)
+	static APP_ROUTER: RefCell<Option<Box<dyn SpaRouter>>> = const { RefCell::new(None) };
 }
 
 #[cfg(wasm)]
@@ -23,20 +33,70 @@ thread_local! {
 ///
 /// # Panics
 ///
-/// Panics if `ClientLauncher::launch` has not been called yet.
+/// Panics if `ClientLauncher::launch` has not been called yet, or if
+/// the application initialised the launcher with the new
+/// [`ClientLauncher::router_client`] builder rather than the
+/// deprecated [`ClientLauncher::router`] builder. The `router_client`
+/// path stores a [`reinhardt_urls::routers::ClientRouter`] which
+/// cannot be downcast to a `Router`.
+///
+/// New code should access reactive routing state through the
+/// [`reinhardt_urls::routers::ClientRouter`] returned by the
+/// `router_client` builder closure (capture it in a local + clone its
+/// `Signal`s) rather than relying on the global `with_router` helper.
+/// (Refs #4234)
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "If you used `ClientLauncher::router_client(...)`, capture the \
+	        `urls::ClientRouter` locally instead — `with_router` panics in that \
+	        case. Refs #4234, cloud#578 Phase E."
+)]
+#[allow(deprecated)] // (Refs #4234) Body operates on the deprecated `Router` by design.
 pub fn with_router<F, R>(f: F) -> R
 where
 	F: FnOnce(&Router) -> R,
 {
 	APP_ROUTER.with(|r| {
-		f(r.borrow()
+		let borrow = r.borrow();
+		let spa = borrow
 			.as_ref()
-			.expect("Router not initialized. Call ClientLauncher::launch() first."))
+			.expect("Router not initialized. Call ClientLauncher::launch() first.");
+		let router = spa.as_any().downcast_ref::<Router>().expect(
+			"with_router() requires the deprecated `ClientLauncher::router` builder; \
+			 the `router_client` builder stores a `ClientRouter` which cannot be \
+			 downcast to `Router`. See ClientLauncher::router_client docs.",
+		);
+		f(router)
+	})
+}
+
+/// Internal helper: access the globally registered SPA router as a
+/// trait object.
+///
+/// Mirrors [`with_router`] but operates against `&dyn SpaRouter` so
+/// internal launcher code (render mount, link interceptor, history
+/// listener wiring) stays agnostic of which builder was used. (Refs
+/// #4234)
+///
+/// # Panics
+///
+/// Panics if `ClientLauncher::launch` has not been called yet.
+#[cfg_attr(not(wasm), allow(dead_code))]
+pub(crate) fn with_spa_router<F, R>(f: F) -> R
+where
+	F: FnOnce(&dyn SpaRouter) -> R,
+{
+	APP_ROUTER.with(|r| {
+		let borrow = r.borrow();
+		let spa = borrow
+			.as_ref()
+			.expect("Router not initialized. Call ClientLauncher::launch() first.");
+		f(&**spa)
 	})
 }
 
 #[cfg(wasm)]
-fn store_router(router: Router) {
+fn store_spa_router(router: Box<dyn SpaRouter>) {
 	APP_ROUTER.with(|r| {
 		*r.borrow_mut() = Some(router);
 	});
@@ -85,10 +145,17 @@ fn store_router(router: Router) {
 ///         .launch()
 /// }
 /// ```
+#[allow(deprecated)] // (Refs #4234) `router_init` field stores a closure producing the deprecated `Router`.
 pub struct ClientLauncher {
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	root_selector: &'static str,
 	router_init: Option<Box<dyn FnOnce() -> Router>>,
+	/// Optional `ClientRouter` initialiser registered via
+	/// [`ClientLauncher::router_client`]. Mutually exclusive with
+	/// `router_init`; `launch()` rejects the launcher if both are set
+	/// or both are `None`. (Refs #4234)
+	#[cfg_attr(not(wasm), allow(dead_code))]
+	client_router_init: Option<Box<dyn FnOnce() -> reinhardt_urls::routers::ClientRouter>>,
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	intercept_links: bool,
 	#[cfg_attr(not(wasm), allow(dead_code))]
@@ -229,6 +296,7 @@ impl<'a> PathCtx<'a> {
 /// `last_params` tracks the previous match state so the `on_navigate`
 /// listener can detect transitions (entering a match, or a parameter-set
 /// change inside the same pattern) without re-firing on every navigation.
+#[allow(deprecated)] // (Refs #4234) `pattern` field stores the deprecated `PathPattern`.
 struct PathSubscription {
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pattern: PathPattern,
@@ -258,6 +326,7 @@ struct PathSubscription {
 /// deliver the bootstrap route and again from each `Router::on_navigate`
 /// dispatch (Refs #4101).
 #[cfg_attr(not(any(wasm, test)), allow(dead_code))]
+#[allow(deprecated)] // (Refs #4234) Operates on the deprecated `PathPattern` by design.
 pub(crate) fn next_path_subscription_match(
 	pattern: &PathPattern,
 	path: &str,
@@ -278,12 +347,14 @@ pub(crate) fn next_path_subscription_match(
 	if should_fire { new_match } else { None }
 }
 
+#[allow(deprecated)] // (Refs #4234) Builder consumes the deprecated `Router` via `router(...)`.
 impl ClientLauncher {
 	/// Create a new launcher targeting the given CSS selector (e.g. `"#root"`).
 	pub fn new(root_selector: &'static str) -> Self {
 		Self {
 			root_selector,
 			router_init: None,
+			client_router_init: None,
 			intercept_links: true,
 			before_launch_hooks: Vec::new(),
 			after_launch_hooks: Vec::new(),
@@ -294,8 +365,34 @@ impl ClientLauncher {
 	/// Register the router initializer function.
 	///
 	/// The function is called once during `launch()` before the first render.
+	#[deprecated(
+		since = "0.1.0-rc.27",
+		note = "Use `ClientLauncher::router_client` with `urls::ClientRouter` instead. \
+				Refs cloud#578 Phase E."
+	)]
 	pub fn router<F: FnOnce() -> Router + 'static>(mut self, f: F) -> Self {
 		self.router_init = Some(Box::new(f));
+		self
+	}
+
+	/// Use a [`reinhardt_urls::routers::ClientRouter`] as the SPA route
+	/// table.
+	///
+	/// Recommended over [`ClientLauncher::router`] for new code; the
+	/// latter is `#[deprecated]` and consumes the deprecated
+	/// `pages::Router`. (Refs #4234, cloud#578 Phase E)
+	///
+	/// # Conflict
+	///
+	/// `router_client` and [`ClientLauncher::router`] are mutually
+	/// exclusive — calling both on the same launcher causes
+	/// `ClientLauncher::launch` to return an error. Pick one.
+	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
+	pub fn router_client<F>(mut self, f: F) -> Self
+	where
+		F: FnOnce() -> reinhardt_urls::routers::ClientRouter + 'static,
+	{
+		self.client_router_init = Some(Box::new(f));
 		self
 	}
 
@@ -404,6 +501,7 @@ impl ClientLauncher {
 }
 
 #[cfg(wasm)]
+#[allow(deprecated)] // (Refs #4234) Launch path bridges deprecated `Router` and new `ClientRouter`.
 impl ClientLauncher {
 	/// Render the current route into the given root element.
 	///
@@ -416,7 +514,7 @@ impl ClientLauncher {
 	/// Refs #4101.
 	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
 		RENDER_COUNT.with(|c| c.set(c.get() + 1));
-		let view = with_router(|r| r.render_current());
+		let view = with_spa_router(|r| r.render_current());
 		crate::component::cleanup_reactive_nodes();
 		root_el.set_inner_html("");
 		let wrapper = crate::dom::Element::new(root_el.clone());
@@ -490,19 +588,42 @@ impl ClientLauncher {
 			hook();
 		}
 
-		let router = self
-			.router_init
-			.expect("ClientLauncher::router() must be called before launch()")();
-		store_router(router);
+		// (Refs #4234) Pick exactly one router source. The deprecated
+		// `router(...)` builder produces a `Router`; the new
+		// `router_client(...)` builder produces a `ClientRouter`.
+		// Either is valid; both set or neither set is an error.
+		let spa_router: Box<dyn SpaRouter> =
+			match (self.router_init.take(), self.client_router_init.take()) {
+				(Some(_), Some(_)) => {
+					return Err(wasm_bindgen::JsValue::from_str(
+						"ClientLauncher: `router(...)` and `router_client(...)` \
+						 are mutually exclusive; configure only one.",
+					));
+				}
+				(Some(f), None) => {
+					// (Refs #4234) `Router` is deprecated as of rc.27; the
+					// parent `impl ClientLauncher` block carries
+					// `#[allow(deprecated)]` so this arm continues to build.
+					Box::new(f())
+				}
+				(None, Some(f)) => Box::new(f()),
+				(None, None) => {
+					return Err(wasm_bindgen::JsValue::from_str(
+						"ClientLauncher: `router(...)` or `router_client(...)` \
+						 must be called before `launch()`.",
+					));
+				}
+			};
+		store_spa_router(spa_router);
 
 		crate::nav_diag!(
 			"site=store_router router_id={} route_count={}",
-			with_router(|r| r.__diag_router_id()),
-			with_router(|r| r.route_count())
+			with_spa_router(|r| r.__diag_router_id()),
+			with_spa_router(|r| r.route_count())
 		);
 		crate::nav_diag_dom!("store_router");
 
-		with_router(|r| r.setup_history_listener());
+		with_spa_router(|r| r.setup_history_listener());
 
 		let window = web_sys::window()
 			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no global `window`"))?;
@@ -542,19 +663,19 @@ impl ClientLauncher {
 		// lifetime (modules never terminate, so there is no
 		// destructor to run). Refs #4101, #4108, #4088.
 		let render_root = root_el.clone();
-		let render_subscription = with_router(|r| {
-			r.on_navigate(move |_path, _params| {
+		let render_subscription = with_spa_router(|r| {
+			r.on_navigate_dyn(Box::new(move |_path, _params| {
 				if let Err(e) = Self::render_and_mount(&render_root) {
 					web_sys::console::error_1(&format!("re-render failed: {e}").into());
 				}
-			})
+			}))
 		});
 		std::mem::forget(render_subscription);
 
 		crate::nav_diag!(
 			"site=register_render_listener router_id={} observer_count_after={}",
-			with_router(|r| r.__diag_router_id()),
-			with_router(|r| r.__diag_observer_count())
+			with_spa_router(|r| r.__diag_router_id()),
+			with_spa_router(|r| r.__diag_observer_count())
 		);
 
 		// Phase C (between part 1 and part 2): drain after_launch
@@ -606,8 +727,8 @@ impl ClientLauncher {
 			let callback_for_listener = callback.clone();
 			let last_params_for_listener = last_params.clone();
 			let document_for_listener = document.clone();
-			let listener_subscription = with_router(|r| {
-				r.on_navigate(move |path, _params_from_router| {
+			let listener_subscription = with_spa_router(|r| {
+				r.on_navigate_dyn(Box::new(move |path, _params_from_router| {
 					if let Some(params) = next_path_subscription_match(
 						&pattern_for_listener,
 						path,
@@ -620,11 +741,11 @@ impl ClientLauncher {
 						};
 						callback_for_listener(&ctx);
 					}
-				})
+				}))
 			});
 			std::mem::forget(listener_subscription);
 
-			let initial_path = with_router(|r| r.current_path().get());
+			let initial_path = with_spa_router(|r| r.current_path().get());
 			if let Some(params) =
 				next_path_subscription_match(&pattern, &initial_path, &last_params)
 			{
@@ -742,15 +863,14 @@ fn install_link_interceptor(document: &web_sys::Document) -> Result<(), wasm_bin
 		// `match_path` lookup (Refs #4203).
 		#[cfg(debug_assertions)]
 		{
-			let (router_id, match_some, match_name) = with_router(|r| {
+			let (router_id, match_some, match_name) = with_spa_router(|r| {
 				let m = r.match_path(href);
 				(
 					r.__diag_router_id(),
 					m.is_some(),
 					m.as_ref()
-						.and_then(|rm| rm.route.name())
-						.unwrap_or("")
-						.to_string(),
+						.and_then(|rm| rm.name.clone())
+						.unwrap_or_default(),
 				)
 			});
 			crate::nav_diag!(
@@ -762,7 +882,7 @@ fn install_link_interceptor(document: &web_sys::Document) -> Result<(), wasm_bin
 			);
 		}
 
-		with_router(|r| {
+		with_spa_router(|r| {
 			let _ = r.push(href);
 		});
 	}) as Box<dyn FnMut(_)>);
@@ -773,6 +893,7 @@ fn install_link_interceptor(document: &web_sys::Document) -> Result<(), wasm_bin
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // (Refs #4234) Tests exercise deprecated `pages::Router` / `PathPattern` directly.
 mod tests {
 	use super::*;
 	use rstest::*;
@@ -783,8 +904,11 @@ mod tests {
 
 		assert_eq!(launcher.root_selector, "#root");
 		assert!(launcher.router_init.is_none());
+		assert!(launcher.client_router_init.is_none());
 	}
 
+	// (Refs #4234) Exercises the deprecated `router(...)` builder; the
+	// module-level `#[allow(deprecated)]` on `mod tests` covers this test.
 	#[rstest]
 	fn test_client_launcher_router_stores_init_fn() {
 		let launcher = ClientLauncher::new("#root");
@@ -792,6 +916,17 @@ mod tests {
 		let launcher = launcher.router(Router::new);
 
 		assert!(launcher.router_init.is_some());
+	}
+
+	// (Refs #4234) Mirrors `test_client_launcher_router_stores_init_fn`
+	// for the new `router_client(...)` builder.
+	#[rstest]
+	fn test_client_launcher_router_client_stores_init_fn() {
+		let launcher = ClientLauncher::new("#root");
+
+		let launcher = launcher.router_client(reinhardt_urls::routers::ClientRouter::new);
+
+		assert!(launcher.client_router_init.is_some());
 	}
 
 	#[rstest]

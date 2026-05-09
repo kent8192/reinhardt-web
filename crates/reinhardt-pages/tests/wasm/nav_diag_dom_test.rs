@@ -13,6 +13,7 @@
 //!        -- --test nav_diag_dom_test`
 
 #![cfg(all(wasm, feature = "nav-diag-dom"))]
+#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
 use reinhardt_pages::app::{ClientLauncher, with_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};

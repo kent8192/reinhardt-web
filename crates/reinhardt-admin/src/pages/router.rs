@@ -8,6 +8,12 @@
 //! - `/admin/{model}/add/` - Create form
 //! - `/admin/{model}/{id}/change/` - Edit form
 
+// (Refs #4234) Migration to reinhardt_urls::routers::ClientRouter pending separate follow-up issue.
+// `reinhardt_pages::router::Router` is `#[deprecated]` since 0.1.0-rc.27; this module
+// references it pervasively (struct, `Router::new()`, `Arc<Router>`, closure params),
+// so file-scope suppression is preferred over per-usage `#[allow(deprecated)]` attribute spam.
+#![allow(deprecated)]
+
 use crate::pages::components::features::{
 	Column, FormField, ListViewData, dashboard, detail_view, list_view, model_form,
 };

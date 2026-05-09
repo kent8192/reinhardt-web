@@ -2,6 +2,8 @@
 //!
 //! This module provides the main Router struct and routing logic.
 
+#![allow(deprecated)] // (Refs #4234) Internal references to deprecated routing types are intentional during the deprecation cycle.
+
 use super::handler::{RouteHandler, no_params_handler, result_handler, with_params_handler};
 #[cfg(wasm)]
 use super::history::setup_popstate_listener;
@@ -18,6 +20,10 @@ pub(super) type RouteGuard = Arc<dyn Fn(&RouteMatch) -> bool + Send + Sync>;
 
 /// Error type for path parameter extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::PathError` instead. Refs #4234, cloud#578."
+)]
 pub enum PathError {
 	/// Failed to parse a parameter value.
 	ParseError {
@@ -80,6 +86,10 @@ impl std::error::Error for PathError {}
 
 /// Error type for router operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::RouterError` instead. Refs #4234, cloud#578."
+)]
 pub enum RouterError {
 	/// Route not found.
 	NotFound(String),
@@ -109,6 +119,10 @@ impl std::error::Error for RouterError {}
 
 /// A matched route with extracted parameters.
 #[derive(Debug, Clone)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::ClientRouteMatch` instead. Refs #4234, cloud#578."
+)]
 pub struct RouteMatch {
 	/// The matched route.
 	pub route: Route,
@@ -123,6 +137,10 @@ pub struct RouteMatch {
 
 /// A single route definition.
 #[derive(Clone)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::ClientRoute` instead. Refs #4234, cloud#578."
+)]
 pub struct Route {
 	/// The path pattern.
 	pattern: PathPattern,
@@ -197,6 +215,10 @@ impl Route {
 }
 
 /// The main router.
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::ClientRouter` instead. Refs #4234, cloud#578."
+)]
 pub struct Router {
 	/// Registered routes.
 	routes: Vec<Route>,
@@ -238,6 +260,10 @@ type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
 /// While alive, the registered listener fires on every [`Router::push`] /
 /// [`Router::replace`]. Dropping this handle removes the listener (no
 /// explicit `unsubscribe` call needed).
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::NavigationSubscription` instead. Refs #4234, cloud#578."
+)]
 pub struct NavigationSubscription {
 	#[allow(dead_code)] // Dropped automatically; presence keeps the Weak alive.
 	listener: std::rc::Rc<NavigationListener>,

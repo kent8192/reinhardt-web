@@ -172,6 +172,10 @@ pub fn footer(version: &str) -> Page {
 /// let router = Arc::new(Router::new());
 /// main_layout("My Admin", &models, None, "0.1.0", router)
 /// ```
+// (Refs #4234) Migration to reinhardt_urls::routers::ClientRouter pending separate follow-up issue.
+// Only this signature references the deprecated `pages::router::Router` type;
+// `Link` and `RouterOutlet` used in the body are not deprecated.
+#[allow(deprecated)]
 pub fn main_layout(
 	site_name: &str,
 	models: &[ModelInfo],

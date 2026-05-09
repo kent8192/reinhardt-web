@@ -18,6 +18,7 @@
 //!        --features wasm-diag-test -- --test history_state_shape_test`
 
 #![cfg(wasm)]
+#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
 use reinhardt_pages::app::{ClientLauncher, with_router};
 use reinhardt_pages::component::Page;
