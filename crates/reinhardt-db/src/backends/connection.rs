@@ -513,12 +513,22 @@ impl DatabaseConnection {
 				reinhardt_conf::settings::sources::LowPriorityEnvSource::new()
 					.with_prefix("REINHARDT_"),
 			)
-			.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-				settings_dir.join("base.toml"),
-			))
-			.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-				settings_dir.join(format!("{}.toml", profile_str)),
-			))
+			// Explicitly opt in to ${VAR:-default} interpolation so that
+			// `[database].host = "${RC_DB_HOST:-localhost}"` style entries
+			// expand at load time. This avoids relying on the
+			// `TomlFileSource::new()` default, which is currently `true`
+			// but may flip again or be overridden by future builder changes
+			// (issue #4235).
+			.add_source(
+				reinhardt_conf::settings::sources::TomlFileSource::new(settings_dir.join("base.toml"))
+					.with_interpolation(),
+			)
+			.add_source(
+				reinhardt_conf::settings::sources::TomlFileSource::new(
+					settings_dir.join(format!("{}.toml", profile_str)),
+				)
+				.with_interpolation(),
+			)
 			.build()
 			.map_err(|e| {
 				super::error::DatabaseError::ConnectionError(format!(
