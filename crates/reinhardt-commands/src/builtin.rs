@@ -1863,7 +1863,7 @@ impl RunServerCommand {
 			eprintln!(
 				"[autoreload-debug] bin_name={} {}",
 				bin_name,
-				Self::spawn_diagnostics(&current_exe_for_bin),
+				Self::spawn_diagnostics(&current_exe_for_bin, true),
 			);
 		}
 
@@ -1956,7 +1956,7 @@ impl RunServerCommand {
 	/// `(deleted)` suffix when cargo replaced the binary's inode while the
 	/// parent was already running.
 	#[cfg(all(feature = "server", feature = "autoreload"))]
-	fn spawn_diagnostics(exe: &std::path::Path) -> String {
+	fn spawn_diagnostics(exe: &std::path::Path, debug: bool) -> String {
 		let mut parts: Vec<String> = Vec::with_capacity(12);
 		parts.push(format!("exe={}", exe.display()));
 		parts.push(format!("exists={}", exe.exists()));
@@ -1987,8 +1987,12 @@ impl RunServerCommand {
 		{
 			match std::fs::read_link("/proc/self/exe") {
 				Ok(p) => {
+					// Linux marks a path read from /proc/self/exe whose backing
+					// inode was unlinked with the literal " (deleted)" suffix.
+					// Match the suffix exactly so paths that legitimately
+					// contain "(deleted)" elsewhere don't trip the flag.
 					let s = p.to_string_lossy();
-					let deleted_suffix = s.contains("(deleted)");
+					let deleted_suffix = s.ends_with(" (deleted)");
 					parts.push(format!(
 						"proc_self_exe={} deleted_suffix={}",
 						p.display(),
@@ -2000,14 +2004,28 @@ impl RunServerCommand {
 		}
 
 		parts.push(format!("pid={}", std::process::id()));
-		parts.push(format!(
-			"CARGO_TARGET_DIR={:?}",
-			std::env::var_os("CARGO_TARGET_DIR")
-		));
-		parts.push(format!(
-			"RUSTC_WRAPPER={:?}",
-			std::env::var_os("RUSTC_WRAPPER")
-		));
+		// Env var values can leak local toolchain/filesystem layout into
+		// always-on logs. Emit only presence in non-debug mode and full
+		// values when the user explicitly opted into debug output.
+		if debug {
+			parts.push(format!(
+				"CARGO_TARGET_DIR={:?}",
+				std::env::var_os("CARGO_TARGET_DIR")
+			));
+			parts.push(format!(
+				"RUSTC_WRAPPER={:?}",
+				std::env::var_os("RUSTC_WRAPPER")
+			));
+		} else {
+			parts.push(format!(
+				"CARGO_TARGET_DIR_set={}",
+				std::env::var_os("CARGO_TARGET_DIR").is_some()
+			));
+			parts.push(format!(
+				"RUSTC_WRAPPER_set={}",
+				std::env::var_os("RUSTC_WRAPPER").is_some()
+			));
+		}
 		parts.push(format!(
 			"REINHARDT_IS_AUTORELOAD_CHILD={:?}",
 			std::env::var_os("REINHARDT_IS_AUTORELOAD_CHILD")
@@ -2021,10 +2039,13 @@ impl RunServerCommand {
 	/// quiet; on for issue #4236 root-cause diagnosis.
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn autoreload_debug_enabled() -> bool {
-		matches!(
-			std::env::var("REINHARDT_AUTORELOAD_DEBUG").ok().as_deref(),
-			Some("1") | Some("true") | Some("TRUE")
-		)
+		match std::env::var("REINHARDT_AUTORELOAD_DEBUG") {
+			Ok(v) => {
+				let v = v.trim();
+				v == "1" || v.eq_ignore_ascii_case("true")
+			}
+			Err(_) => false,
+		}
 	}
 
 	/// Spawn server in child process
@@ -2042,12 +2063,22 @@ impl RunServerCommand {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
 		})?;
 
-		// Snapshot diagnostics BEFORE the spawn syscall so the error path can
-		// quote the same state the kernel saw. See issue #4236.
-		let diag = Self::spawn_diagnostics(&current_exe);
-		if Self::autoreload_debug_enabled() {
-			eprintln!("[autoreload-debug] pre-spawn {}", diag);
-		}
+		// Diagnostics policy (issue #4236):
+		// - Debug enabled: snapshot BEFORE the spawn syscall and emit so the
+		//   pre-spawn state is logged even on success.
+		// - Debug disabled: defer the snapshot to the error path to avoid
+		//   per-spawn filesystem cost on the success hot path. The post-spawn
+		//   read is acceptable because the kernel-visible state for an ENOENT
+		//   failure is effectively unchanged in the few microseconds between
+		//   the syscall returning and reading the diagnostics.
+		let debug = Self::autoreload_debug_enabled();
+		let pre_spawn_diag = if debug {
+			let d = Self::spawn_diagnostics(&current_exe, true);
+			eprintln!("[autoreload-debug] pre-spawn {}", d);
+			Some(d)
+		} else {
+			None
+		};
 
 		let mut cmd = tokio::process::Command::new(&current_exe);
 		cmd.arg("runserver").arg(address).arg("--noreload");
@@ -2081,7 +2112,12 @@ impl RunServerCommand {
 		cmd.spawn().map_err(|e| {
 			// Always-on enrichment (#4236): include the resolved path,
 			// `raw_os_error`, error kind, and Linux `/proc/self/exe` state in
-			// the error so the first failure log is actionable.
+			// the error so the first failure log is actionable. Reuse the
+			// pre-spawn snapshot when debug emitted one; otherwise compute it
+			// lazily here so the success path pays no diagnostic cost.
+			let diag = pre_spawn_diag
+				.clone()
+				.unwrap_or_else(|| Self::spawn_diagnostics(&current_exe, false));
 			crate::CommandError::ExecutionError(format!(
 				"Failed to spawn server process: {} (raw_os_error={:?} kind={:?}) [{}]",
 				e,
