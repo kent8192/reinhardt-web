@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.26...reinhardt-conf@v0.1.0-rc.27) - 2026-05-09
+
+### Added
+
+- *(conf)* [**breaking**] enable TomlFileSource interpolation by default
+
+### Documentation
+
+- *(conf)* clarify per_source comment to reflect post-collection filtering
+- *(conf)* document TomlFileSource interpolation default flip
+
+### Fixed
+
+- *(conf)* suppress flat-core-key warning when only DefaultSource provides it
+
+### Styling
+
+- *(conf)* apply rustfmt to one-line the regression test deserialize chain
+
+### Testing
+
+- *(conf)* regression coverage for nested ${VAR:-default} via SettingsBuilder
+- *(conf)* assert DATABASE_URL via parsed url::Url fields
+
 ### Changed
 
 - *(conf)* **BREAKING CHANGE**: `TomlFileSource::new(path)` now enables `${VAR}` interpolation by default. The previous opt-in behavior caused silent failures when a developer forgot `.with_interpolation(true)` and a literal `${DB_PASSWORD}` landed in the merged settings tree. Interpolation is required by 95%+ of real-world settings files; the new default matches the common case (issue #4224).

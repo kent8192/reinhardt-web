@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.26...reinhardt-web@v0.1.0-rc.27) - 2026-05-09
+
+### Added
+
+- *(macros)* expose ResolvedUrls via explicit pub use
+- *(ci)* add wasm-clippy matrix to wasm-check.yml
+- *(ci)* expand wasm matrix and add cache-seed for feature combos
+- *(pages)* add `pages/nav-diag-dom` opt-in DOM navigation diagnostic
+
+### Documentation
+
+- *(ci)* clarify cache-seed comment to match CARGO_INCREMENTAL=0
+
+### Fixed
+
+- *(macros)* expose routes/url_patterns re-exports on wasm targets
+- *(infra/packer)* use makers alias for cargo-make smoke test
+- *(infra/packer)* pin smoke test to /usr/local/bin/makers absolute path
+- *(website)* correct Tera template syntax for announcement_links shortcode
+- *(website)* semver-aware sort and pinned ref for announcement_links
+- *(ci)* install wasm-bindgen-cli in intra-crate integration test workflow
+- *(ci)* narrow wasm-clippy from --all-targets to --lib
+- resolve wasm-target clippy violations in pages and urls
+- *(ci)* apply rustfmt to admin vendor shim
+- *(routing)* deduplicate client_router::history module
+- *(routing)* gate wasm-only history fns to wasm targets
+- *(ci)* include reinhardt-web in workspace package step
+- *(db)* opt DATABASE_URL settings loader explicitly in to TOML interpolation
+- *(commands)* opt DATABASE_URL validation helper explicitly in to TOML interpolation
+- *(commands)* redact spawn_diagnostics non-debug output ([[#4250](https://github.com/kent8192/reinhardt-web/issues/4250)](https://github.com/kent8192/reinhardt-web/issues/4250))
+
+### Maintenance
+
+- *(serena)* add additional_workspace_folders config option
+- *(commands)* expose get_database_url_from_settings as pub(crate)
+
+### Other
+
+- make announcement list dynamic via GitHub API
+
+### Styling
+
+- *(conf)* apply rustfmt to one-line the regression test deserialize chain
+
+### Testing
+
+- *(pages)* address Copilot review on nav_diag_dom_test
+- *(pages)* add link-click reproducer to nav_diag_dom suite
+- *(pages)* isolate link-click reproducer from sibling wasm tests
+- *(conf)* regression coverage for nested ${VAR:-default} via SettingsBuilder
+- *(conf)* assert DATABASE_URL via parsed url::Url fields
+- *(db,commands)* cover DATABASE_URL loaders against interpolation default
+- *(db,commands)* preserve prior env values in EnvGuard, fix doc
+- *(commands)* assert redacted vs full spawn_diagnostics output ([[#4250](https://github.com/kent8192/reinhardt-web/issues/4250)](https://github.com/kent8192/reinhardt-web/issues/4250))
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.25...reinhardt-web@v0.1.0-rc.26) - 2026-05-05
 
 ### Deprecated
