@@ -2675,8 +2675,11 @@ fn get_database_url() -> Result<String, crate::CommandError> {
 ///
 /// Used for startup validation to detect configuration mismatches between
 /// the `DATABASE_URL` environment variable and `settings/*.toml` files.
+///
+/// Visibility is `pub(crate)` so the in-crate regression tests for issue
+/// #4247 can call the real loader without going through a public API.
 #[cfg(feature = "reinhardt-db")]
-fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
+pub(crate) fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
 	use std::env;
 
 	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
