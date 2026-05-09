@@ -24,6 +24,7 @@
 //!        -- --test wasm_bindgen_abi_pin_test`
 
 #![cfg(wasm)]
+#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -2,6 +2,7 @@
 
 mod spa_router;
 
+#[allow(deprecated)] // (Refs #4234) Importing deprecated routing types intentionally during the deprecation cycle.
 use crate::router::{PathPattern, Router};
 use spa_router::SpaRouter;
 use std::cell::RefCell;
@@ -43,6 +44,13 @@ thread_local! {
 /// `router_client` builder closure (capture it in a local + clone its
 /// `Signal`s) rather than relying on the global `with_router` helper.
 /// (Refs #4234)
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "If you used `ClientLauncher::router_client(...)`, capture the \
+	        `urls::ClientRouter` locally instead — `with_router` panics in that \
+	        case. Refs #4234, cloud#578 Phase E."
+)]
+#[allow(deprecated)] // (Refs #4234) Body operates on the deprecated `Router` by design.
 pub fn with_router<F, R>(f: F) -> R
 where
 	F: FnOnce(&Router) -> R,
@@ -136,6 +144,7 @@ fn store_spa_router(router: Box<dyn SpaRouter>) {
 ///         .launch()
 /// }
 /// ```
+#[allow(deprecated)] // (Refs #4234) `router_init` field stores a closure producing the deprecated `Router`.
 pub struct ClientLauncher {
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	root_selector: &'static str,
@@ -286,6 +295,7 @@ impl<'a> PathCtx<'a> {
 /// `last_params` tracks the previous match state so the `on_navigate`
 /// listener can detect transitions (entering a match, or a parameter-set
 /// change inside the same pattern) without re-firing on every navigation.
+#[allow(deprecated)] // (Refs #4234) `pattern` field stores the deprecated `PathPattern`.
 struct PathSubscription {
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pattern: PathPattern,
@@ -315,6 +325,7 @@ struct PathSubscription {
 /// deliver the bootstrap route and again from each `Router::on_navigate`
 /// dispatch (Refs #4101).
 #[cfg_attr(not(any(wasm, test)), allow(dead_code))]
+#[allow(deprecated)] // (Refs #4234) Operates on the deprecated `PathPattern` by design.
 pub(crate) fn next_path_subscription_match(
 	pattern: &PathPattern,
 	path: &str,
@@ -335,6 +346,7 @@ pub(crate) fn next_path_subscription_match(
 	if should_fire { new_match } else { None }
 }
 
+#[allow(deprecated)] // (Refs #4234) Builder consumes the deprecated `Router` via `router(...)`.
 impl ClientLauncher {
 	/// Create a new launcher targeting the given CSS selector (e.g. `"#root"`).
 	pub fn new(root_selector: &'static str) -> Self {
@@ -487,6 +499,7 @@ impl ClientLauncher {
 }
 
 #[cfg(wasm)]
+#[allow(deprecated)] // (Refs #4234) Launch path bridges deprecated `Router` and new `ClientRouter`.
 impl ClientLauncher {
 	/// Render the current route into the given root element.
 	///
@@ -880,6 +893,7 @@ fn install_link_interceptor(document: &web_sys::Document) -> Result<(), wasm_bin
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // (Refs #4234) Tests exercise deprecated `pages::Router` / `PathPattern` directly.
 mod tests {
 	use super::*;
 	use rstest::*;

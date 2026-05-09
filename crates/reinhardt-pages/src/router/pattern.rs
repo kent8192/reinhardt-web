@@ -22,6 +22,10 @@ pub struct PathParam {
 /// - `/users/{id}/posts/{post_id}/` - Multiple parameters
 /// - `/static/{path:*}/` - Wildcard matching (rest of path)
 #[derive(Debug, Clone)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::ClientPathPattern` instead. Refs #4234, cloud#578."
+)]
 pub struct PathPattern {
 	/// The original pattern string.
 	pattern: String,

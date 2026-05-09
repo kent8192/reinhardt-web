@@ -42,10 +42,13 @@ mod params;
 mod pattern;
 
 pub use components::{Link, Redirect, RouterOutlet, guard, guard_or};
+#[allow(deprecated)] // (Refs #4234) Re-exporting deprecated symbols intentionally.
 pub use core::{NavigationSubscription, PathError, Route, RouteMatch, Router, RouterError};
 pub use history::{HistoryState, NavigationType};
 // `setup_popstate_listener` is wasm-only — see `history` module docs.
 #[cfg(wasm)]
 pub use history::setup_popstate_listener;
+#[allow(deprecated)] // (Refs #4234) Re-exporting deprecated `PathParams` intentionally.
 pub use params::{FromPath, ParamContext, PathParams};
+#[allow(deprecated)] // (Refs #4234) Re-exporting deprecated `PathPattern` intentionally.
 pub use pattern::{PathParam, PathPattern};

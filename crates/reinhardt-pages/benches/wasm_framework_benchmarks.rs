@@ -1,3 +1,5 @@
+#![allow(deprecated)] // (Refs #4234) Benchmark exercises deprecated `pages::Router` surface.
+
 //! WASM Framework Benchmarks
 //!
 //! Comprehensive performance benchmarks for the reinhardt-pages framework.

@@ -11,6 +11,7 @@
 //!   `wasm-pack test --headless --chrome crates/reinhardt-pages -- --test client_launcher_router_client_test`
 
 #![cfg(wasm)]
+#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` for mutual-exclusion check.
 
 use reinhardt_core::page::Page;
 use reinhardt_pages::app::ClientLauncher;
@@ -85,7 +86,7 @@ fn router_client_and_router_are_mutually_exclusive() {
 	let _root = install_app_root();
 
 	// Act: configure both routers; `launch()` must reject this.
-	#[allow(deprecated)]
+	// File-scope `#![allow(deprecated)]` covers `router(...)` and `Router::new`.
 	let result = ClientLauncher::new("#app")
 		.router(reinhardt_pages::router::Router::new)
 		.router_client(ClientRouter::new)
