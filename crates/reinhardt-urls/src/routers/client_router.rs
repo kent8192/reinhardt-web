@@ -75,7 +75,7 @@ mod pattern;
 mod reverser;
 
 // Public re-exports
-pub use core::{ClientRoute, ClientRouteMatch, ClientRouter};
+pub use core::{ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription};
 pub use error::{PathError, RouterError};
 pub use global::{clear_client_reverser, get_client_reverser, register_client_reverser};
 pub use handler::RouteHandler;
