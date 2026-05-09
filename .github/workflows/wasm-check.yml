@@ -233,6 +233,24 @@ jobs:
               --test csrf_wasm_test --test server_fn_wasm_test \
               --test client_launcher_navigation_test
 
+      - name: Run WASM observer-system tests (reinhardt-urls)
+        working-directory: crates/reinhardt-urls
+        # Mirrors the pages integration step pattern. The three urls-side
+        # tests under tests/wasm/ are gated by `required-features =
+        # ["wasm-diag-test"]`, so the feature flag is required to compile
+        # them. Reuses the wasm-bindgen-test-runner cached by the pages
+        # lib step above. (Refs #4234)
+        run: |
+          RUNNER=$(find "${HOME}/.cache/.wasm-pack" -name "wasm-bindgen-test-runner" -type f 2>/dev/null | head -1)
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER="$RUNNER" \
+          CHROMEDRIVER="$(which chromedriver)" \
+          WASM_BINDGEN_TEST_ONLY_WEB=1 \
+            cargo test --target wasm32-unknown-unknown \
+              --features wasm-diag-test \
+              --test client_router_observer_dispatch_test \
+              --test client_router_subscription_drop_test \
+              --test client_router_listener_panic_isolation_test
+
   # Native e2e regression test for the SPA link interceptor -> Router::push
   # -> re-render path. Boots a Chrome container via testcontainers and drives
   # it through the fixture SPA. Refs #4088.
