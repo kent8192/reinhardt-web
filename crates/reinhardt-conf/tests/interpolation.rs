@@ -293,17 +293,25 @@ fn nested_db_config_through_settings_builder_resolves_db_host() {
 		serde_json::from_value(db_value.clone())
 			.expect("database deserializes into DatabaseConfig");
 	let url = db_config.to_url();
+	let parsed = url::Url::parse(&url).expect("DATABASE_URL is a valid URL");
 
 	// Assert — `${IT_DB_HOST_E2E:-localhost}` is fully resolved before
 	// reaching DATABASE_URL. The env value (`postgres`) wins over the
-	// `:-localhost` fallback.
+	// `:-localhost` fallback. Compare against parsed URL fields to avoid
+	// coupling to formatting (percent-encoding, optional userinfo, etc.).
 	assert!(
 		!url.contains("${"),
 		"DATABASE_URL still contains a literal interpolation token: {url}",
 	);
-	assert!(
-		url.contains("@postgres:5432/"),
-		"DATABASE_URL host segment is not the env-resolved value: {url}",
+	assert_eq!(
+		parsed.host_str(),
+		Some("postgres"),
+		"DATABASE_URL host is not the env-resolved value: {url}",
+	);
+	assert_eq!(
+		parsed.port(),
+		Some(5432),
+		"DATABASE_URL port is not the configured value: {url}",
 	);
 }
 
@@ -339,14 +347,23 @@ fn nested_db_config_falls_back_to_default_when_var_unset() {
 	let db_config: reinhardt_conf::settings::DatabaseConfig =
 		serde_json::from_value(db_value.clone()).expect("deserializes into DatabaseConfig");
 	let url = db_config.to_url();
+	let parsed = url::Url::parse(&url).expect("DATABASE_URL is a valid URL");
 
-	// Assert
+	// Assert — compare against parsed URL fields rather than substrings so
+	// the test stays robust against formatting differences (percent-encoded
+	// userinfo, optional trailing slash, etc.).
 	assert!(
 		!url.contains("${"),
 		"DATABASE_URL still contains a literal interpolation token: {url}",
 	);
-	assert!(
-		url.contains("@fallback-host:5432/"),
+	assert_eq!(
+		parsed.host_str(),
+		Some("fallback-host"),
 		"DATABASE_URL host did not resolve to `:-default` fallback: {url}",
+	);
+	assert_eq!(
+		parsed.port(),
+		Some(5432),
+		"DATABASE_URL port is not the configured value: {url}",
 	);
 }
