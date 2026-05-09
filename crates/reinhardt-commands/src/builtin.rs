@@ -4029,4 +4029,153 @@ port = 5432
 			);
 		}
 	}
+
+	// Issue #4250: the always-on spawn diagnostic must not leak absolute
+	// filesystem paths or toolchain env values, while still preserving the
+	// issue #4236 root-cause signals. Verify the redacted (debug=false)
+	// allowlist and the full (debug=true) snapshot independently.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	mod spawn_diagnostics_4250 {
+		use super::*;
+		use tempfile::TempDir;
+
+		fn temp_exe() -> (TempDir, std::path::PathBuf) {
+			let tmp = tempfile::tempdir().expect("create tempdir");
+			let exe = tmp.path().join("manage_test_bin");
+			std::fs::write(&exe, b"#!/bin/sh\nexit 0\n").expect("write fake exe");
+			(tmp, exe)
+		}
+
+		#[test]
+		fn redacted_omits_absolute_paths_and_keeps_filename() {
+			// Arrange
+			let (tmp, exe) = temp_exe();
+			let parent = tmp.path().to_string_lossy().into_owned();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, false);
+
+			// Assert: allowlist present.
+			assert!(
+				out.contains("exe_filename=manage_test_bin"),
+				"redacted must include filename, got: {out}"
+			);
+			assert!(
+				out.contains("exists=true"),
+				"redacted missing exists: {out}"
+			);
+			assert!(out.contains("pid="), "redacted missing pid: {out}");
+
+			// Assert: no absolute paths or path-bearing fields.
+			assert!(
+				!out.contains(&parent),
+				"redacted leaks parent dir {parent}: {out}"
+			);
+			assert!(
+				!out.contains("canonical="),
+				"redacted leaks canonical path: {out}"
+			);
+			assert!(
+				!out.contains("canonical_err="),
+				"redacted leaks canonical_err message: {out}"
+			);
+			assert!(
+				!out.contains("size="),
+				"size dropped per #4250 allowlist: {out}"
+			);
+			assert!(
+				!out.contains("mtime_unix="),
+				"mtime dropped per #4250 allowlist: {out}"
+			);
+			assert!(
+				!out.contains("CARGO_TARGET_DIR"),
+				"redacted must not emit CARGO_TARGET_DIR in any form: {out}"
+			);
+			assert!(
+				!out.contains("RUSTC_WRAPPER"),
+				"redacted must not emit RUSTC_WRAPPER in any form: {out}"
+			);
+
+			// Assert: outer CommandError format owns raw_os_error/kind, so
+			// spawn_diagnostics must not duplicate them.
+			assert!(
+				!out.contains("raw_os_error="),
+				"redacted must not duplicate raw_os_error from outer format: {out}"
+			);
+		}
+
+		#[test]
+		#[cfg(target_os = "linux")]
+		fn redacted_keeps_4236_deleted_suffix_signal() {
+			// Arrange
+			let (_tmp, exe) = temp_exe();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, false);
+
+			// Assert: the load-bearing #4236 signal is preserved.
+			assert!(
+				out.contains("proc_self_exe_deleted_suffix="),
+				"redacted missing #4236 deleted_suffix signal: {out}"
+			);
+			// The full /proc/self/exe path must be redacted out.
+			assert!(
+				!out.contains("proc_self_exe=/"),
+				"redacted leaks /proc/self/exe path: {out}"
+			);
+		}
+
+		#[test]
+		#[cfg(unix)]
+		fn redacted_includes_inode_nlink_when_metadata_ok() {
+			// Arrange
+			let (_tmp, exe) = temp_exe();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, false);
+
+			// Assert
+			assert!(
+				out.contains("inode="),
+				"redacted missing inode field: {out}"
+			);
+			assert!(
+				out.contains("nlink="),
+				"redacted missing nlink field: {out}"
+			);
+		}
+
+		#[test]
+		fn full_includes_absolute_paths_and_env_values() {
+			// Arrange
+			let (tmp, exe) = temp_exe();
+			let parent = tmp.path().to_string_lossy().into_owned();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, true);
+
+			// Assert: full mode intentionally leaks paths for debugging.
+			assert!(
+				out.contains(&parent),
+				"full mode must keep parent path {parent}: {out}"
+			);
+			assert!(
+				out.contains("canonical=") || out.contains("canonical_err="),
+				"full mode must emit canonical: {out}"
+			);
+			// Full env-var values, not the redacted `_set` presence flag.
+			assert!(
+				out.contains("CARGO_TARGET_DIR="),
+				"full mode must emit CARGO_TARGET_DIR value: {out}"
+			);
+			assert!(
+				!out.contains("CARGO_TARGET_DIR_set="),
+				"redacted-only field must not appear in full mode: {out}"
+			);
+			assert!(
+				out.contains("REINHARDT_IS_AUTORELOAD_CHILD="),
+				"full mode must emit REINHARDT_IS_AUTORELOAD_CHILD value: {out}"
+			);
+		}
+	}
 }
