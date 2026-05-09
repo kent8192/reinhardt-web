@@ -2005,15 +2005,87 @@ impl RunServerCommand {
 
 	/// Collect diagnostic state about the candidate spawn target.
 	///
-	/// Used to (a) enrich the always-on spawn error message and (b) emit a
-	/// startup snapshot when `REINHARDT_AUTORELOAD_DEBUG=1`. See issue #4236
-	/// for the failure class this targets: an initial spawn that returns
-	/// `os error 2` (`ENOENT`) for a path `current_exe()` just produced. On
-	/// Linux the most common failure mode is `/proc/self/exe` carrying a
-	/// `(deleted)` suffix when cargo replaced the binary's inode while the
-	/// parent was already running.
+	/// Two output modes guard against accidental filesystem-layout leakage
+	/// in shared log bundles (issue #4250) while preserving the issue #4236
+	/// root-cause signals (`(deleted)` suffix on `/proc/self/exe`,
+	/// `raw_os_error == 2` / `ENOENT`):
+	///
+	/// - `debug == false` (default): redacted allowlist of non-sensitive
+	///   fields (`exe_filename`, `exists`, `inode`/`nlink`, `pid`,
+	///   `proc_self_exe_deleted_suffix`). Embedded into the always-on
+	///   `Failed to spawn server process: ...` error message.
+	/// - `debug == true` (`REINHARDT_AUTORELOAD_DEBUG=1`): full snapshot
+	///   including absolute paths, canonicalised path, file metadata, and
+	///   toolchain environment values. Opt-in only.
+	///
+	/// `raw_os_error` and the `io::ErrorKind` are emitted by the
+	/// surrounding `CommandError::ExecutionError` format string and are not
+	/// duplicated here.
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn spawn_diagnostics(exe: &std::path::Path, debug: bool) -> String {
+		if debug {
+			Self::spawn_diagnostics_full(exe)
+		} else {
+			Self::spawn_diagnostics_redacted(exe)
+		}
+	}
+
+	/// Redacted always-on diagnostic body (issue #4250).
+	///
+	/// Strict allowlist that intentionally excludes any field carrying an
+	/// absolute path, file size/mtime, or toolchain environment values.
+	/// `proc_self_exe_deleted_suffix` is emitted as `true`, `false`, or
+	/// `unknown` so the issue #4236 signal is preserved across read_link
+	/// failures.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_diagnostics_redacted(exe: &std::path::Path) -> String {
+		let mut parts: Vec<String> = Vec::with_capacity(5);
+		let filename = exe
+			.file_name()
+			.map(|s| s.to_string_lossy().into_owned())
+			.unwrap_or_else(|| "?".to_string());
+		parts.push(format!("exe_filename={}", filename));
+		parts.push(format!("exists={}", exe.exists()));
+
+		#[cfg(unix)]
+		{
+			if let Ok(m) = exe.metadata() {
+				use std::os::unix::fs::MetadataExt;
+				parts.push(format!("inode={} nlink={}", m.ino(), m.nlink()));
+			}
+		}
+
+		parts.push(format!("pid={}", std::process::id()));
+
+		#[cfg(target_os = "linux")]
+		{
+			// Linux marks a path read from /proc/self/exe whose backing
+			// inode was unlinked with the literal " (deleted)" suffix.
+			// Match the suffix exactly so paths that legitimately contain
+			// "(deleted)" elsewhere don't trip the flag.
+			let suffix = match std::fs::read_link("/proc/self/exe") {
+				Ok(p) => {
+					if p.to_string_lossy().ends_with(" (deleted)") {
+						"true"
+					} else {
+						"false"
+					}
+				}
+				Err(_) => "unknown",
+			};
+			parts.push(format!("proc_self_exe_deleted_suffix={}", suffix));
+		}
+
+		parts.join(" ")
+	}
+
+	/// Full diagnostic snapshot, opt-in via `REINHARDT_AUTORELOAD_DEBUG=1`.
+	///
+	/// Includes absolute paths, the canonicalised path, file metadata, and
+	/// toolchain environment values that may leak filesystem layout. Only
+	/// invoked from explicit debug code paths.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_diagnostics_full(exe: &std::path::Path) -> String {
 		let mut parts: Vec<String> = Vec::with_capacity(12);
 		parts.push(format!("exe={}", exe.display()));
 		parts.push(format!("exists={}", exe.exists()));
@@ -2044,10 +2116,6 @@ impl RunServerCommand {
 		{
 			match std::fs::read_link("/proc/self/exe") {
 				Ok(p) => {
-					// Linux marks a path read from /proc/self/exe whose backing
-					// inode was unlinked with the literal " (deleted)" suffix.
-					// Match the suffix exactly so paths that legitimately
-					// contain "(deleted)" elsewhere don't trip the flag.
 					let s = p.to_string_lossy();
 					let deleted_suffix = s.ends_with(" (deleted)");
 					parts.push(format!(
@@ -2061,28 +2129,14 @@ impl RunServerCommand {
 		}
 
 		parts.push(format!("pid={}", std::process::id()));
-		// Env var values can leak local toolchain/filesystem layout into
-		// always-on logs. Emit only presence in non-debug mode and full
-		// values when the user explicitly opted into debug output.
-		if debug {
-			parts.push(format!(
-				"CARGO_TARGET_DIR={:?}",
-				std::env::var_os("CARGO_TARGET_DIR")
-			));
-			parts.push(format!(
-				"RUSTC_WRAPPER={:?}",
-				std::env::var_os("RUSTC_WRAPPER")
-			));
-		} else {
-			parts.push(format!(
-				"CARGO_TARGET_DIR_set={}",
-				std::env::var_os("CARGO_TARGET_DIR").is_some()
-			));
-			parts.push(format!(
-				"RUSTC_WRAPPER_set={}",
-				std::env::var_os("RUSTC_WRAPPER").is_some()
-			));
-		}
+		parts.push(format!(
+			"CARGO_TARGET_DIR={:?}",
+			std::env::var_os("CARGO_TARGET_DIR")
+		));
+		parts.push(format!(
+			"RUSTC_WRAPPER={:?}",
+			std::env::var_os("RUSTC_WRAPPER")
+		));
 		parts.push(format!(
 			"REINHARDT_IS_AUTORELOAD_CHILD={:?}",
 			std::env::var_os("REINHARDT_IS_AUTORELOAD_CHILD")
@@ -3972,6 +4026,155 @@ port = 5432
 			assert!(
 				!url.contains("${"),
 				"URL still contains literal interpolation pattern: {url}"
+			);
+		}
+	}
+
+	// Issue #4250: the always-on spawn diagnostic must not leak absolute
+	// filesystem paths or toolchain env values, while still preserving the
+	// issue #4236 root-cause signals. Verify the redacted (debug=false)
+	// allowlist and the full (debug=true) snapshot independently.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	mod spawn_diagnostics_4250 {
+		use super::*;
+		use tempfile::TempDir;
+
+		fn temp_exe() -> (TempDir, std::path::PathBuf) {
+			let tmp = tempfile::tempdir().expect("create tempdir");
+			let exe = tmp.path().join("manage_test_bin");
+			std::fs::write(&exe, b"#!/bin/sh\nexit 0\n").expect("write fake exe");
+			(tmp, exe)
+		}
+
+		#[test]
+		fn redacted_omits_absolute_paths_and_keeps_filename() {
+			// Arrange
+			let (tmp, exe) = temp_exe();
+			let parent = tmp.path().to_string_lossy().into_owned();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, false);
+
+			// Assert: allowlist present.
+			assert!(
+				out.contains("exe_filename=manage_test_bin"),
+				"redacted must include filename, got: {out}"
+			);
+			assert!(
+				out.contains("exists=true"),
+				"redacted missing exists: {out}"
+			);
+			assert!(out.contains("pid="), "redacted missing pid: {out}");
+
+			// Assert: no absolute paths or path-bearing fields.
+			assert!(
+				!out.contains(&parent),
+				"redacted leaks parent dir {parent}: {out}"
+			);
+			assert!(
+				!out.contains("canonical="),
+				"redacted leaks canonical path: {out}"
+			);
+			assert!(
+				!out.contains("canonical_err="),
+				"redacted leaks canonical_err message: {out}"
+			);
+			assert!(
+				!out.contains("size="),
+				"size dropped per #4250 allowlist: {out}"
+			);
+			assert!(
+				!out.contains("mtime_unix="),
+				"mtime dropped per #4250 allowlist: {out}"
+			);
+			assert!(
+				!out.contains("CARGO_TARGET_DIR"),
+				"redacted must not emit CARGO_TARGET_DIR in any form: {out}"
+			);
+			assert!(
+				!out.contains("RUSTC_WRAPPER"),
+				"redacted must not emit RUSTC_WRAPPER in any form: {out}"
+			);
+
+			// Assert: outer CommandError format owns raw_os_error/kind, so
+			// spawn_diagnostics must not duplicate them.
+			assert!(
+				!out.contains("raw_os_error="),
+				"redacted must not duplicate raw_os_error from outer format: {out}"
+			);
+		}
+
+		#[test]
+		#[cfg(target_os = "linux")]
+		fn redacted_keeps_4236_deleted_suffix_signal() {
+			// Arrange
+			let (_tmp, exe) = temp_exe();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, false);
+
+			// Assert: the load-bearing #4236 signal is preserved.
+			assert!(
+				out.contains("proc_self_exe_deleted_suffix="),
+				"redacted missing #4236 deleted_suffix signal: {out}"
+			);
+			// The full /proc/self/exe path must be redacted out.
+			assert!(
+				!out.contains("proc_self_exe=/"),
+				"redacted leaks /proc/self/exe path: {out}"
+			);
+		}
+
+		#[test]
+		#[cfg(unix)]
+		fn redacted_includes_inode_nlink_when_metadata_ok() {
+			// Arrange
+			let (_tmp, exe) = temp_exe();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, false);
+
+			// Assert
+			assert!(
+				out.contains("inode="),
+				"redacted missing inode field: {out}"
+			);
+			assert!(
+				out.contains("nlink="),
+				"redacted missing nlink field: {out}"
+			);
+		}
+
+		#[test]
+		fn full_includes_absolute_paths_and_env_values() {
+			// Arrange
+			let (tmp, exe) = temp_exe();
+			let parent = tmp.path().to_string_lossy().into_owned();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, true);
+
+			// Assert: full mode intentionally leaks paths for debugging.
+			assert!(
+				out.contains(&parent),
+				"full mode must keep parent path {parent}: {out}"
+			);
+			assert!(
+				out.contains("canonical=") || out.contains("canonical_err="),
+				"full mode must emit canonical: {out}"
+			);
+			// Full env-var values, not the redacted `_set` presence flag.
+			assert!(
+				out.contains("CARGO_TARGET_DIR="),
+				"full mode must emit CARGO_TARGET_DIR value: {out}"
+			);
+			assert!(
+				!out.contains("CARGO_TARGET_DIR_set="),
+				"redacted-only field must not appear in full mode: {out}"
+			);
+			assert!(
+				out.contains("REINHARDT_IS_AUTORELOAD_CHILD="),
+				"full mode must emit REINHARDT_IS_AUTORELOAD_CHILD value: {out}"
 			);
 		}
 	}
