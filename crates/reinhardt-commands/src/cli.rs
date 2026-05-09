@@ -256,7 +256,13 @@ pub enum Commands {
 		postman: bool,
 	},
 
-	/// Create a superuser account
+	/// Create a superuser account.
+	///
+	/// In non-interactive mode (`--noinput`), the password is read from the
+	/// `REINHARDT_SUPERUSER_PASSWORD` environment variable. Use `--no-password`
+	/// to create an account with no password (the account will not be able to
+	/// log in). Setting `--no-password` together with `REINHARDT_SUPERUSER_PASSWORD`
+	/// is rejected as mutually exclusive.
 	#[cfg(feature = "auth")]
 	Createsuperuser {
 		/// Username for the superuser
@@ -267,11 +273,13 @@ pub enum Commands {
 		#[arg(long, value_name = "EMAIL")]
 		email: Option<String>,
 
-		/// Skip the password prompt (use with caution)
+		/// Skip the password prompt and create an account with no password
+		/// (cannot log in; mutually exclusive with REINHARDT_SUPERUSER_PASSWORD)
 		#[arg(long)]
 		no_password: bool,
 
-		/// Non-interactive mode (requires --username and --email)
+		/// Non-interactive mode (requires --username, --email, and either
+		/// REINHARDT_SUPERUSER_PASSWORD or --no-password)
 		#[arg(long)]
 		noinput: bool,
 

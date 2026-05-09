@@ -16,6 +16,7 @@ pub struct SettingsBuilder {
 	sources: Vec<Box<dyn ConfigSource>>,
 	profile: Option<Profile>,
 	strict: bool,
+	typed_coercion: bool,
 }
 
 impl SettingsBuilder {
@@ -37,6 +38,7 @@ impl SettingsBuilder {
 			sources: Vec::new(),
 			profile: None,
 			strict: false,
+			typed_coercion: true,
 		}
 	}
 	/// Set the application profile
@@ -74,6 +76,30 @@ impl SettingsBuilder {
 	/// ```
 	pub fn strict(mut self, enabled: bool) -> Self {
 		self.strict = enabled;
+		self
+	}
+	/// Enable or disable typed string coercion at deserialize time.
+	///
+	/// When `true` (default), `Value::String` values whose target type is
+	/// not `String` are parsed via the type's `FromStr` / JSON
+	/// representation. When `false`, the legacy `serde_json::from_value`
+	/// passthrough is used and string-typed fields surface as serde
+	/// type-mismatch errors.
+	///
+	/// See [issue #4226](https://github.com/kent8192/reinhardt-web/issues/4226).
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	///
+	/// // Disable typed coercion to fall through to the legacy path.
+	/// let builder = SettingsBuilder::new().with_typed_coercion(false);
+	/// let settings = builder.build().unwrap();
+	/// assert_eq!(settings.keys().count(), 0);
+	/// ```
+	pub fn with_typed_coercion(mut self, enable: bool) -> Self {
+		self.typed_coercion = enable;
 		self
 	}
 	/// Add a configuration source
@@ -143,10 +169,26 @@ impl SettingsBuilder {
 	/// Fragment-level validation (`validate_fragments()`) should be called
 	/// separately by the caller with the appropriate profile.
 	pub fn build_composed<T: ComposedSettings>(self) -> Result<T, BuildError> {
+		// Capture the flag before `self.build()` consumes self.
+		let typed_coercion = self.typed_coercion;
 		let merged = self.build()?;
 		T::validate_requirements(merged.as_map())?;
-		let settings: T = merged.into_typed().map_err(BuildError::from)?;
-		Ok(settings)
+
+		if typed_coercion {
+			use crate::settings::typed_deserializer::TypedSettingsDeserializer;
+			let json_value = Value::Object(
+				merged
+					.as_map()
+					.iter()
+					.map(|(k, v)| (k.clone(), v.clone()))
+					.collect(),
+			);
+			let de = TypedSettingsDeserializer::new(&json_value);
+			T::deserialize(de).map_err(BuildError::Coercion)
+		} else {
+			let settings: T = merged.into_typed().map_err(BuildError::from)?;
+			Ok(settings)
+		}
 	}
 
 	/// Build the configuration by merging all sources
@@ -220,6 +262,7 @@ impl SettingsBuilder {
 		Ok(MergedSettings {
 			data: Arc::new(merged),
 			profile: self.profile,
+			typed_coercion: self.typed_coercion,
 		})
 	}
 }
@@ -289,6 +332,7 @@ impl Default for SettingsBuilder {
 pub struct MergedSettings {
 	data: Arc<IndexMap<String, Value>>,
 	profile: Option<Profile>,
+	typed_coercion: bool,
 }
 
 impl MergedSettings {
@@ -484,10 +528,24 @@ impl MergedSettings {
 				.collect(),
 		);
 
-		serde_json::from_value(json_value).map_err(|e| GetError::Deserialize {
-			key: "<root>".to_string(),
-			error: e,
-		})
+		if self.typed_coercion {
+			use crate::settings::typed_deserializer::TypedSettingsDeserializer;
+			use serde::de::Error as _;
+			let de = TypedSettingsDeserializer::new(&json_value);
+			T::deserialize(de).map_err(|e| GetError::Deserialize {
+				key: "<root>".to_string(),
+				// Bridge: CoercionError's Display preserves all the structured info
+				// (target type, key path, parse source). We surface the message
+				// through `serde_json::Error::custom` so the existing GetError shape
+				// is preserved without breaking downstream pattern matches.
+				error: serde_json::Error::custom(e.to_string()),
+			})
+		} else {
+			serde_json::from_value(json_value).map_err(|e| GetError::Deserialize {
+				key: "<root>".to_string(),
+				error: e,
+			})
+		}
 	}
 	/// Get all data as a HashMap
 	///
@@ -546,6 +604,10 @@ pub enum BuildError {
 	/// Failed to deserialize merged settings into the target type.
 	#[error("settings deserialization failed: {0}")]
 	Deserialization(String),
+
+	/// Type coercion failed during the typed deserialize pass (issue #4226).
+	#[error(transparent)]
+	Coercion(#[from] crate::settings::typed_deserializer::CoercionError),
 }
 
 impl From<GetError> for BuildError {

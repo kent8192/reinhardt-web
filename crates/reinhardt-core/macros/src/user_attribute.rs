@@ -318,6 +318,37 @@ fn generate_permissions_mixin_impl(
 	})
 }
 
+/// Inspects a primary-key field type and returns `(is_uuid, is_option)`.
+///
+/// `is_uuid` is true only when the (inner, if `Option<...>`) type's last
+/// path segment is `Uuid`. `is_option` is true whenever the outer type is
+/// `Option<T>` — for any inner `T`, not just `Uuid` (e.g. `Option<i64>`
+/// returns `(false, true)`). The two flags are independent: callers must
+/// branch on `is_uuid` first, since `is_option` alone does not imply a
+/// UUID-shaped field.
+///
+/// Mirrors the detection that `model_derive.rs::is_uuid_type` performs
+/// for `#[model]` PKs, kept local to avoid widening the visibility of a
+/// helper that is otherwise only used by the model derive itself. The
+/// `#[model]` derive injects `Uuid::now_v7()` into its generated `new()`
+/// constructor, but `init_superuser` builds the row via `Self::default()`,
+/// where `Uuid::default()` is `Uuid::nil()` — issue #4237. Detecting the
+/// shape here lets us inject the same fresh-UUID assignment.
+fn pk_uuid_shape(ty: &syn::Type) -> (bool, bool) {
+	fn last_segment_is(ty: &syn::Type, name: &str) -> bool {
+		matches!(ty, syn::Type::Path(p) if p.path.segments.last().is_some_and(|s| s.ident == name))
+	}
+	if let syn::Type::Path(type_path) = ty
+		&& let Some(last_segment) = type_path.path.segments.last()
+		&& last_segment.ident == "Option"
+		&& let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+		&& let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+	{
+		return (last_segment_is(inner, "Uuid"), true);
+	}
+	(last_segment_is(ty, "Uuid"), false)
+}
+
 fn generate_superuser_init_impl(
 	struct_name: &Ident,
 	mapping: &FieldMapping,
@@ -325,6 +356,25 @@ fn generate_superuser_init_impl(
 ) -> TokenStream {
 	let auth_crate = get_reinhardt_auth_crate();
 	let username_field_ident = Ident::new(&args.username_field, proc_macro2::Span::call_site());
+
+	// PK setter: when the primary key is a Uuid (or `Option<Uuid>`), `Self::default()`
+	// would leave it as `Uuid::nil()`, which causes a hard PK collision on the
+	// second `createsuperuser` run (issue #4237). Reseed the field with a fresh
+	// v7 UUID immediately after the `Self::default()` call. Non-Uuid PKs (e.g.
+	// integer auto-increment) are left untouched.
+	let pk_setter = if let (Some(pk_ident), Some(pk_type)) =
+		(mapping.pk_field.as_ref(), mapping.pk_type.as_ref())
+	{
+		match pk_uuid_shape(pk_type) {
+			(true, false) => quote! { user.#pk_ident = ::uuid::Uuid::now_v7(); },
+			(true, true) => {
+				quote! { user.#pk_ident = ::core::option::Option::Some(::uuid::Uuid::now_v7()); }
+			}
+			_ => quote! {},
+		}
+	} else {
+		quote! {}
+	};
 
 	// email field: use mapping if available, fall back to convention name
 	let email_setter = if let Some(email_ident) = mapping.get(FieldRole::Email) {
@@ -362,6 +412,7 @@ fn generate_superuser_init_impl(
 		impl #auth_crate::SuperuserInit for #struct_name {
 			fn init_superuser(username: &str, email: &str) -> Self {
 				let mut user = Self::default();
+				#pk_setter
 				user.#username_field_ident = username.to_string();
 				#email_setter
 				#is_staff_setter
@@ -459,4 +510,101 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 		#auth_identity_impl
 		#superuser_init_impl
 	})
+}
+
+#[cfg(test)]
+mod tests {
+	use super::pk_uuid_shape;
+	use syn::parse_quote;
+
+	// Regression coverage for issue #4237: the macro decides whether to
+	// emit a `Uuid::now_v7()` PK setter based on `pk_uuid_shape`. Each
+	// case below corresponds to a real-world PK declaration we expect
+	// users to write in `#[user(full = true)] #[model(...)] ...` types.
+
+	#[test]
+	fn pk_uuid_shape_detects_bare_uuid() {
+		// Arrange / Act
+		let ty: syn::Type = parse_quote!(Uuid);
+
+		// Assert — bare `Uuid` is the canonical superuser-PK shape.
+		assert_eq!(pk_uuid_shape(&ty), (true, false));
+	}
+
+	#[test]
+	fn pk_uuid_shape_detects_qualified_uuid_path() {
+		// Arrange / Act
+		let ty: syn::Type = parse_quote!(uuid::Uuid);
+
+		// Assert — fully-qualified path must still resolve, otherwise
+		// users who write `pub id: uuid::Uuid` would silently slip
+		// back into the nil-UUID bug.
+		assert_eq!(pk_uuid_shape(&ty), (true, false));
+	}
+
+	#[test]
+	fn pk_uuid_shape_detects_option_uuid() {
+		// Arrange / Act
+		let ty: syn::Type = parse_quote!(Option<Uuid>);
+
+		// Assert — `Option<Uuid>` is uncommon for a PK but legal; the
+		// macro must wrap the seed value in `Some(now_v7())` to keep
+		// type-checking happy.
+		assert_eq!(pk_uuid_shape(&ty), (true, true));
+	}
+
+	#[test]
+	fn pk_uuid_shape_detects_option_qualified_uuid() {
+		// Arrange / Act
+		let ty: syn::Type = parse_quote!(Option<uuid::Uuid>);
+
+		// Assert — Option around a fully-qualified Uuid still counts.
+		assert_eq!(pk_uuid_shape(&ty), (true, true));
+	}
+
+	#[test]
+	fn pk_uuid_shape_skips_integer_pk() {
+		// Arrange / Act
+		let ty: syn::Type = parse_quote!(i64);
+
+		// Assert — integer PK types must NOT receive the `now_v7()`
+		// assignment; the existing `Self::default()` path is correct
+		// for non-Uuid PKs and the macro must not corrupt that.
+		assert_eq!(pk_uuid_shape(&ty), (false, false));
+	}
+
+	#[test]
+	fn pk_uuid_shape_skips_string_pk() {
+		// Arrange / Act
+		let ty: syn::Type = parse_quote!(String);
+
+		// Assert — string PK (e.g. natural keys) is also untouched.
+		assert_eq!(pk_uuid_shape(&ty), (false, false));
+	}
+
+	#[test]
+	fn pk_uuid_shape_skips_option_non_uuid() {
+		// Arrange / Act
+		let ty: syn::Type = parse_quote!(Option<i64>);
+
+		// Assert — Option of a non-Uuid scalar must report
+		// `is_uuid = false`, so the macro emits no setter.
+		assert_eq!(pk_uuid_shape(&ty), (false, true));
+	}
+
+	#[test]
+	fn pk_uuid_shape_does_not_match_lookalike_named_types() {
+		// Arrange / Act — `MyUuid` shares a substring with `Uuid` but is
+		// a different identifier. The helper compares whole identifiers
+		// (not substrings), so it must not falsely seed a v7 UUID into
+		// an unrelated user-defined PK type.
+		let aliased: syn::Type = parse_quote!(MyUuid);
+		let suffixed: syn::Type = parse_quote!(UuidV4);
+
+		// Assert — neither lookalike resolves to `Uuid`, so the macro
+		// will skip the `now_v7()` setter (and the user's existing
+		// `Default` for the type takes effect, just as before).
+		assert_eq!(pk_uuid_shape(&aliased), (false, false));
+		assert_eq!(pk_uuid_shape(&suffixed), (false, false));
+	}
 }

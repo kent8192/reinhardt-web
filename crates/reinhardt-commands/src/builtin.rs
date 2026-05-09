@@ -1856,6 +1856,17 @@ impl RunServerCommand {
 			.unwrap_or("manage")
 			.to_string();
 
+		// Optional diagnostic snapshot at autoreload startup. See issue #4236.
+		// Gated on `REINHARDT_AUTORELOAD_DEBUG=1` so production runs stay
+		// quiet but the user can capture full state with one env flip.
+		if Self::autoreload_debug_enabled() {
+			eprintln!(
+				"[autoreload-debug] bin_name={} {}",
+				bin_name,
+				Self::spawn_diagnostics(&current_exe_for_bin, true),
+			);
+		}
+
 		// Startup banner (spec §7).
 		ctx.info("[hot-reload] enabled");
 		ctx.info(&format!(
@@ -1935,6 +1946,108 @@ impl RunServerCommand {
 		Ok(())
 	}
 
+	/// Collect diagnostic state about the candidate spawn target.
+	///
+	/// Used to (a) enrich the always-on spawn error message and (b) emit a
+	/// startup snapshot when `REINHARDT_AUTORELOAD_DEBUG=1`. See issue #4236
+	/// for the failure class this targets: an initial spawn that returns
+	/// `os error 2` (`ENOENT`) for a path `current_exe()` just produced. On
+	/// Linux the most common failure mode is `/proc/self/exe` carrying a
+	/// `(deleted)` suffix when cargo replaced the binary's inode while the
+	/// parent was already running.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_diagnostics(exe: &std::path::Path, debug: bool) -> String {
+		let mut parts: Vec<String> = Vec::with_capacity(12);
+		parts.push(format!("exe={}", exe.display()));
+		parts.push(format!("exists={}", exe.exists()));
+
+		match exe.metadata() {
+			Ok(m) => {
+				parts.push(format!("size={}", m.len()));
+				#[cfg(unix)]
+				{
+					use std::os::unix::fs::MetadataExt;
+					parts.push(format!("inode={} nlink={}", m.ino(), m.nlink()));
+				}
+				if let Ok(mt) = m.modified()
+					&& let Ok(d) = mt.duration_since(std::time::UNIX_EPOCH)
+				{
+					parts.push(format!("mtime_unix={}", d.as_secs()));
+				}
+			}
+			Err(e) => parts.push(format!("metadata_err={}", e)),
+		}
+
+		match exe.canonicalize() {
+			Ok(c) => parts.push(format!("canonical={}", c.display())),
+			Err(e) => parts.push(format!("canonical_err={}", e)),
+		}
+
+		#[cfg(target_os = "linux")]
+		{
+			match std::fs::read_link("/proc/self/exe") {
+				Ok(p) => {
+					// Linux marks a path read from /proc/self/exe whose backing
+					// inode was unlinked with the literal " (deleted)" suffix.
+					// Match the suffix exactly so paths that legitimately
+					// contain "(deleted)" elsewhere don't trip the flag.
+					let s = p.to_string_lossy();
+					let deleted_suffix = s.ends_with(" (deleted)");
+					parts.push(format!(
+						"proc_self_exe={} deleted_suffix={}",
+						p.display(),
+						deleted_suffix
+					));
+				}
+				Err(e) => parts.push(format!("proc_self_exe_err={}", e)),
+			}
+		}
+
+		parts.push(format!("pid={}", std::process::id()));
+		// Env var values can leak local toolchain/filesystem layout into
+		// always-on logs. Emit only presence in non-debug mode and full
+		// values when the user explicitly opted into debug output.
+		if debug {
+			parts.push(format!(
+				"CARGO_TARGET_DIR={:?}",
+				std::env::var_os("CARGO_TARGET_DIR")
+			));
+			parts.push(format!(
+				"RUSTC_WRAPPER={:?}",
+				std::env::var_os("RUSTC_WRAPPER")
+			));
+		} else {
+			parts.push(format!(
+				"CARGO_TARGET_DIR_set={}",
+				std::env::var_os("CARGO_TARGET_DIR").is_some()
+			));
+			parts.push(format!(
+				"RUSTC_WRAPPER_set={}",
+				std::env::var_os("RUSTC_WRAPPER").is_some()
+			));
+		}
+		parts.push(format!(
+			"REINHARDT_IS_AUTORELOAD_CHILD={:?}",
+			std::env::var_os("REINHARDT_IS_AUTORELOAD_CHILD")
+		));
+
+		parts.join(" ")
+	}
+
+	/// Returns true when the user opted into autoreload debug logging via
+	/// `REINHARDT_AUTORELOAD_DEBUG=1`. Off by default to keep release output
+	/// quiet; on for issue #4236 root-cause diagnosis.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn autoreload_debug_enabled() -> bool {
+		match std::env::var("REINHARDT_AUTORELOAD_DEBUG") {
+			Ok(v) => {
+				let v = v.trim();
+				v == "1" || v.eq_ignore_ascii_case("true")
+			}
+			Err(_) => false,
+		}
+	}
+
 	/// Spawn server in child process
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn spawn_server_process(
@@ -1950,7 +2063,24 @@ impl RunServerCommand {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
 		})?;
 
-		let mut cmd = tokio::process::Command::new(current_exe);
+		// Diagnostics policy (issue #4236):
+		// - Debug enabled: snapshot BEFORE the spawn syscall and emit so the
+		//   pre-spawn state is logged even on success.
+		// - Debug disabled: defer the snapshot to the error path to avoid
+		//   per-spawn filesystem cost on the success hot path. The post-spawn
+		//   read is acceptable because the kernel-visible state for an ENOENT
+		//   failure is effectively unchanged in the few microseconds between
+		//   the syscall returning and reading the diagnostics.
+		let debug = Self::autoreload_debug_enabled();
+		let pre_spawn_diag = if debug {
+			let d = Self::spawn_diagnostics(&current_exe, true);
+			eprintln!("[autoreload-debug] pre-spawn {}", d);
+			Some(d)
+		} else {
+			None
+		};
+
+		let mut cmd = tokio::process::Command::new(&current_exe);
 		cmd.arg("runserver").arg(address).arg("--noreload");
 
 		if insecure {
@@ -1980,7 +2110,21 @@ impl RunServerCommand {
 		cmd.stderr(std::process::Stdio::inherit());
 
 		cmd.spawn().map_err(|e| {
-			crate::CommandError::ExecutionError(format!("Failed to spawn server process: {}", e))
+			// Always-on enrichment (#4236): include the resolved path,
+			// `raw_os_error`, error kind, and Linux `/proc/self/exe` state in
+			// the error so the first failure log is actionable. Reuse the
+			// pre-spawn snapshot when debug emitted one; otherwise compute it
+			// lazily here so the success path pays no diagnostic cost.
+			let diag = pre_spawn_diag
+				.clone()
+				.unwrap_or_else(|| Self::spawn_diagnostics(&current_exe, false));
+			crate::CommandError::ExecutionError(format!(
+				"Failed to spawn server process: {} (raw_os_error={:?} kind={:?}) [{}]",
+				e,
+				e.raw_os_error(),
+				e.kind(),
+				diag,
+			))
 		})
 	}
 
@@ -2556,12 +2700,21 @@ fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
 			reinhardt_conf::settings::sources::LowPriorityEnvSource::new()
 				.with_prefix("REINHARDT_"),
 		)
-		.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-			settings_dir.join("base.toml"),
-		))
-		.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-			settings_dir.join(format!("{}.toml", profile_str)),
-		))
+		// Explicitly opt in to ${VAR:-default} interpolation so the
+		// validation comparison sees the same expanded host that the ORM
+		// init path uses; otherwise a literal `${...}` host would be
+		// compared against an env-derived URL and produce a false
+		// "DATABASE_URL mismatch" warning (issue #4235).
+		.add_source(
+			reinhardt_conf::settings::sources::TomlFileSource::new(settings_dir.join("base.toml"))
+				.with_interpolation(),
+		)
+		.add_source(
+			reinhardt_conf::settings::sources::TomlFileSource::new(
+				settings_dir.join(format!("{}.toml", profile_str)),
+			)
+			.with_interpolation(),
+		)
 		.build()
 		.map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to load settings: {}", e))
