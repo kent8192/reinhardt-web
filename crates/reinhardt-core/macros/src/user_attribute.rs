@@ -318,6 +318,30 @@ fn generate_permissions_mixin_impl(
 	})
 }
 
+/// Returns `(is_uuid, is_option)` for a Uuid-shaped primary-key field.
+///
+/// Mirrors the detection that `model_derive.rs::is_uuid_type` performs
+/// for `#[model]` PKs, kept local to avoid widening the visibility of a
+/// helper that is otherwise only used by the model derive itself. The
+/// `#[model]` derive injects `Uuid::now_v7()` into its generated `new()`
+/// constructor, but `init_superuser` builds the row via `Self::default()`,
+/// where `Uuid::default()` is `Uuid::nil()` — issue #4237. Detecting the
+/// shape here lets us inject the same fresh-UUID assignment.
+fn pk_uuid_shape(ty: &syn::Type) -> (bool, bool) {
+	fn last_segment_is(ty: &syn::Type, name: &str) -> bool {
+		matches!(ty, syn::Type::Path(p) if p.path.segments.last().is_some_and(|s| s.ident == name))
+	}
+	if let syn::Type::Path(type_path) = ty
+		&& let Some(last_segment) = type_path.path.segments.last()
+		&& last_segment.ident == "Option"
+		&& let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+		&& let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+	{
+		return (last_segment_is(inner, "Uuid"), true);
+	}
+	(last_segment_is(ty, "Uuid"), false)
+}
+
 fn generate_superuser_init_impl(
 	struct_name: &Ident,
 	mapping: &FieldMapping,
@@ -325,6 +349,25 @@ fn generate_superuser_init_impl(
 ) -> TokenStream {
 	let auth_crate = get_reinhardt_auth_crate();
 	let username_field_ident = Ident::new(&args.username_field, proc_macro2::Span::call_site());
+
+	// PK setter: when the primary key is a Uuid (or `Option<Uuid>`), `Self::default()`
+	// would leave it as `Uuid::nil()`, which causes a hard PK collision on the
+	// second `createsuperuser` run (issue #4237). Reseed the field with a fresh
+	// v7 UUID immediately after the `Self::default()` call. Non-Uuid PKs (e.g.
+	// integer auto-increment) are left untouched.
+	let pk_setter = if let (Some(pk_ident), Some(pk_type)) =
+		(mapping.pk_field.as_ref(), mapping.pk_type.as_ref())
+	{
+		match pk_uuid_shape(pk_type) {
+			(true, false) => quote! { user.#pk_ident = ::uuid::Uuid::now_v7(); },
+			(true, true) => {
+				quote! { user.#pk_ident = ::core::option::Option::Some(::uuid::Uuid::now_v7()); }
+			}
+			_ => quote! {},
+		}
+	} else {
+		quote! {}
+	};
 
 	// email field: use mapping if available, fall back to convention name
 	let email_setter = if let Some(email_ident) = mapping.get(FieldRole::Email) {
@@ -362,6 +405,7 @@ fn generate_superuser_init_impl(
 		impl #auth_crate::SuperuserInit for #struct_name {
 			fn init_superuser(username: &str, email: &str) -> Self {
 				let mut user = Self::default();
+				#pk_setter
 				user.#username_field_ident = username.to_string();
 				#email_setter
 				#is_staff_setter
