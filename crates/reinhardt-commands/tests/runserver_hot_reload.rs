@@ -47,8 +47,8 @@ use reinhardt_commands::__hot_reload_test_api::{
 	is_relevant_change, run_watcher,
 };
 use reinhardt_commands::{
-	CommandContext, RunServerCommand, RunserverContext, RunserverHook, RunserverHookRegistration,
-	WasmBuildConfig, WasmBuilder,
+	CommandContext, RunserverContext, RunserverHook, RunserverHookRegistration, WasmBuildConfig,
+	WasmBuilder,
 };
 use serial_test::serial;
 
@@ -623,8 +623,13 @@ inventory::submit! {
 	)
 }
 
+// Group with `runserver_hooks` so concurrent tests in this binary cannot
+// invoke `RunserverHook::on_server_start` while we assert the parent-path
+// counter, which would otherwise race with the global atomic and the
+// `inventory::submit!`-registered `Hr8SentinelHook`.
 #[rstest::rstest]
 #[tokio::test]
+#[serial(runserver_hooks)]
 async fn hr_8_autoreload_parent_skips_on_server_start_4244() {
 	// Arrange
 	HR8_VALIDATE_COUNTER.store(0, Ordering::SeqCst);
@@ -632,7 +637,7 @@ async fn hr_8_autoreload_parent_skips_on_server_start_4244() {
 	let ctx = CommandContext::default();
 
 	// Act: the autoreload-parent path runs only this validation step.
-	RunServerCommand::__validate_hooks_only_for_tests(&ctx)
+	reinhardt_commands::__hot_reload_test_api::validate_hooks_only(&ctx)
 		.await
 		.expect("validate phase must succeed for the no-op sentinel hook");
 

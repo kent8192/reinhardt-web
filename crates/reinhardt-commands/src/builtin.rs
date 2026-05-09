@@ -1613,12 +1613,11 @@ impl RunServerCommand {
 	///
 	/// Mirrors `validate_hooks_only` but returns `()` so it can cross the
 	/// crate boundary without leaking the crate-private
-	/// `CollectedRunserverHook` type. Used by the HR-8 regression test to
-	/// assert that the parent path runs `validate()` while skipping
-	/// `on_server_start` (#4244).
+	/// `CollectedRunserverHook` type. Re-exported via
+	/// `crate::__hot_reload_test_api::validate_hooks_only` for integration
+	/// tests; not part of the public API.
 	#[cfg(feature = "server")]
-	#[doc(hidden)]
-	pub async fn __validate_hooks_only_for_tests(ctx: &CommandContext) -> CommandResult<()> {
+	pub(crate) async fn validate_hooks_only_for_tests(ctx: &CommandContext) -> CommandResult<()> {
 		Self::validate_hooks_only(ctx).await.map(|_| ())
 	}
 
