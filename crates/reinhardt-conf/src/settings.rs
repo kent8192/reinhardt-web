@@ -32,6 +32,7 @@ pub mod session;
 pub mod sources;
 pub mod static_files;
 pub mod template_settings;
+pub mod typed_deserializer;
 pub mod validation;
 
 // Dynamic settings (async feature required)
