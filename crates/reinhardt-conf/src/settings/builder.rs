@@ -245,7 +245,7 @@ impl SettingsBuilder {
 		// Overrides are internal test machinery and intentionally bypass the
 		// flat-key warning logic below.
 		if let Some(overrides) = super::testing::overrides::current_overrides() {
-			super::testing::overrides::deep_merge(&mut merged, overrides);
+			super::merge::deep_merge(&mut merged, overrides);
 		}
 
 		// Warn about flat top-level keys that belong under [core], deciding per

@@ -20,6 +20,8 @@ pub mod i18n;
 pub mod interpolation;
 pub mod logging;
 pub mod media;
+/// Deep-merge primitive shared by the settings builder and test overrides.
+pub mod merge;
 /// OpenAPI documentation endpoint configuration.
 pub mod openapi;
 /// Field-level policy types for settings fragments.
