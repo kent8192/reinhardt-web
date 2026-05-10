@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.26...reinhardt-pages@v0.1.0-rc.27) - 2026-05-09
+
+### Added
+
+- *(pages)* add `pages/nav-diag-dom` opt-in DOM navigation diagnostic
+- *(pages)* add ClientLauncher::router_client for ClientRouter routes
+
+### Changed
+
+- *(pages)* deprecate Router and related types in favor of urls::ClientRouter
+
+### Documentation
+
+- *(pages, urls)* document migration path from pages::Router to ClientRouter
+
+### Fixed
+
+- resolve wasm-target clippy violations in pages and urls
+- *(routing)* deduplicate client_router::history module
+- *(routing)* gate wasm-only history fns to wasm targets
+- *(ci)* rephrase comment in spa_router.rs to dodge semgrep commented-out-code rule
+- *(urls, pages, ci)* address Copilot review feedback on [[#4242](https://github.com/kent8192/reinhardt-web/issues/4242)](https://github.com/kent8192/reinhardt-web/issues/4242)
+- *(pages)* silence wasm dead_code lint for unused SpaRouter trait methods
+
+### Maintenance
+
+- *(pages, urls)* silence deprecation/clippy/fmt fallout from [[#4234](https://github.com/kent8192/reinhardt-web/issues/4234)](https://github.com/kent8192/reinhardt-web/issues/4234)
+
+### Testing
+
+- *(pages)* address Copilot review on nav_diag_dom_test
+- *(pages)* add link-click reproducer to nav_diag_dom suite
+- *(pages)* isolate link-click reproducer from sibling wasm tests
+- *(pages)* add wasm regression test for ClientLauncher::router_client
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.25...reinhardt-pages@v0.1.0-rc.26) - 2026-05-05
 
 ### Added

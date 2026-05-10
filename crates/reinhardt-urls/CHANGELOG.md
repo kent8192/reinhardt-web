@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.26...reinhardt-urls@v0.1.0-rc.27) - 2026-05-09
+
+### Added
+
+- *(urls)* add reactive navigation observation to ClientRouter
+
+### Documentation
+
+- *(pages, urls)* document migration path from pages::Router to ClientRouter
+
+### Fixed
+
+- *(urls)* stub ServerRouter builder methods on ServerRouterStub for wasm
+- resolve wasm-target clippy violations in pages and urls
+- *(routing)* deduplicate client_router::history module
+- *(routing)* gate wasm-only history fns to wasm targets
+- *(urls, pages, ci)* address Copilot review feedback on [[#4242](https://github.com/kent8192/reinhardt-web/issues/4242)](https://github.com/kent8192/reinhardt-web/issues/4242)
+
+### Maintenance
+
+- *(pages, urls)* silence deprecation/clippy/fmt fallout from [[#4234](https://github.com/kent8192/reinhardt-web/issues/4234)](https://github.com/kent8192/reinhardt-web/issues/4234)
+
+### Testing
+
+- *(urls)* add SPA navigation observer regression tests
+
 ### Fixed
 
 - *(urls)* stub `ServerRouter` builder methods on `ServerRouterStub` so `#[url_patterns(mode = unified | server)]` closures compile on wasm (#4185)
