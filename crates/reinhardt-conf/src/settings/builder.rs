@@ -11,12 +11,41 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::sync::Arc;
 
+/// Strategy for merging multiple configuration sources.
+///
+/// Selected via [`SettingsBuilder::with_merge_strategy`]. The default
+/// differs between [`SettingsBuilder::build`] (uses [`Shallow`]) and
+/// [`SettingsBuilder::build_composed`] (uses [`Deep`]) — see those
+/// methods for the rationale.
+///
+/// See [issue #4260](https://github.com/kent8192/reinhardt-web/issues/4260).
+///
+/// [`Shallow`]: MergeStrategy::Shallow
+/// [`Deep`]: MergeStrategy::Deep
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum MergeStrategy {
+	/// Top-level key replacement. Each later source overwrites the entire
+	/// value at any conflicting top-level key. This preserves env-source /
+	/// flat-key composition (e.g., `REINHARDT_REDIS_URL` overwriting a
+	/// scalar `redis_url` without disturbing other top-level keys) and
+	/// matches the historical behaviour of [`SettingsBuilder::build`].
+	Shallow,
+	/// Recursive merge of nested tables. When two sources both define a
+	/// table at the same key, sibling keys from both sides are preserved
+	/// and only conflicting leaves are replaced. Arrays and scalars are
+	/// still replaced wholesale, so flat-key fallback paths continue to
+	/// work the same as under [`Shallow`].
+	Deep,
+}
+
 /// Settings builder for layered configuration
 pub struct SettingsBuilder {
 	sources: Vec<Box<dyn ConfigSource>>,
 	profile: Option<Profile>,
 	strict: bool,
 	typed_coercion: bool,
+	merge_strategy: Option<MergeStrategy>,
 }
 
 impl SettingsBuilder {
@@ -39,6 +68,7 @@ impl SettingsBuilder {
 			profile: None,
 			strict: false,
 			typed_coercion: true,
+			merge_strategy: None,
 		}
 	}
 	/// Set the application profile
@@ -100,6 +130,32 @@ impl SettingsBuilder {
 	/// ```
 	pub fn with_typed_coercion(mut self, enable: bool) -> Self {
 		self.typed_coercion = enable;
+		self
+	}
+	/// Override the merge strategy used when combining configuration sources.
+	///
+	/// When unset, [`SettingsBuilder::build`] defaults to
+	/// [`MergeStrategy::Shallow`] and [`SettingsBuilder::build_composed`]
+	/// defaults to [`MergeStrategy::Deep`]. Calling this method forces both
+	/// build paths to use the supplied strategy regardless of the entry
+	/// point.
+	///
+	/// See [issue #4260](https://github.com/kent8192/reinhardt-web/issues/4260)
+	/// for the design discussion.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::builder::{MergeStrategy, SettingsBuilder};
+	///
+	/// // Force `build()` to deep-merge layered TOML files.
+	/// let builder = SettingsBuilder::new()
+	///     .with_merge_strategy(MergeStrategy::Deep);
+	/// let settings = builder.build().unwrap();
+	/// assert_eq!(settings.keys().count(), 0);
+	/// ```
+	pub fn with_merge_strategy(mut self, strategy: MergeStrategy) -> Self {
+		self.merge_strategy = Some(strategy);
 		self
 	}
 	/// Add a configuration source
@@ -168,7 +224,23 @@ impl SettingsBuilder {
 	///
 	/// Fragment-level validation (`validate_fragments()`) should be called
 	/// separately by the caller with the appropriate profile.
-	pub fn build_composed<T: ComposedSettings>(self) -> Result<T, BuildError> {
+	///
+	/// # Merge strategy
+	///
+	/// Defaults to [`MergeStrategy::Deep`] so that layered TOML files
+	/// (e.g. `base.toml` + `local.toml`) preserve sibling keys inside
+	/// nested tables. Use [`SettingsBuilder::with_merge_strategy`] to
+	/// opt back into [`MergeStrategy::Shallow`] for the legacy
+	/// top-level-replacement behaviour. See
+	/// [issue #4260](https://github.com/kent8192/reinhardt-web/issues/4260).
+	pub fn build_composed<T: ComposedSettings>(mut self) -> Result<T, BuildError> {
+		// `build_composed` exists for layered TOML files where deep merging is
+		// the natural expectation. Apply the deep default only when the caller
+		// has not explicitly chosen a strategy, so explicit `Shallow` opt-outs
+		// still work.
+		if self.merge_strategy.is_none() {
+			self.merge_strategy = Some(MergeStrategy::Deep);
+		}
 		// Capture the flag before `self.build()` consumes self.
 		let typed_coercion = self.typed_coercion;
 		let merged = self.build()?;
@@ -216,6 +288,13 @@ impl SettingsBuilder {
 		// Sort sources by priority (lowest first, so highest priority overwrites)
 		self.sources.sort_by_key(|a| a.priority());
 
+		// Resolve the merge strategy for this build. `build()` keeps `Shallow`
+		// as its default to preserve env-source / flat-key composition; only
+		// callers that explicitly opt in (or `build_composed`, which sets its
+		// own default upstream) will recurse into nested tables.
+		// See issue #4260.
+		let strategy = self.merge_strategy.unwrap_or(MergeStrategy::Shallow);
+
 		let mut merged = IndexMap::new();
 		// Track every loaded source's map alongside its description so that flat-key
 		// diagnostics can be attributed to the originating source rather than to the
@@ -233,9 +312,15 @@ impl SettingsBuilder {
 				error: e,
 			})?;
 
-			// Merge into the main config
-			for (key, value) in &config {
-				merged.insert(key.clone(), value.clone());
+			match strategy {
+				MergeStrategy::Shallow => {
+					for (key, value) in &config {
+						merged.insert(key.clone(), value.clone());
+					}
+				}
+				MergeStrategy::Deep => {
+					super::merge::deep_merge(&mut merged, config.clone());
+				}
 			}
 
 			per_source.push((description, config));

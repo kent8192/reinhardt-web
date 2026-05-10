@@ -480,6 +480,9 @@ pub use policy::{FieldPolicy, FieldRequirement};
 // Re-export ComposedSettings trait
 pub use composed::ComposedSettings;
 
+// Re-export the merge strategy selector for SettingsBuilder. See issue #4260.
+pub use builder::MergeStrategy;
+
 /// Template engine configuration
 #[non_exhaustive]
 #[derive(Clone, Debug, Serialize, Deserialize)]
