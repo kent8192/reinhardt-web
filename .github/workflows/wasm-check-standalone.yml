@@ -22,21 +22,49 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Seed the shared rust-cache for wasm-feature-check so PR matrix entries
-  # restore from a populated cache. Mirrors the pattern in
-  # reinhardt-feature-check.yml's cache-seed. Runs ONE wasm32 cargo check
+  # Seed the shared rust-cache for wasm-feature-check so downstream consumers
+  # restore from a populated cache. Runs ONE wasm32 cargo check per arch
   # against the largest representative feature preset; downstream matrix
   # entries reuse the resulting registry/build/dep artifacts (CARGO_INCREMENTAL=0
   # disables incremental compilation, so this is non-incremental dependency
   # caching only).
+  #
+  # Seeds BOTH amd64 (ubuntu-latest) AND arm64 (self-hosted) because
+  # wasm-feature-check runs on every PR and consumers span both architectures:
+  #   - regular PRs / standalone wasm-check inline:    ubuntu-latest (amd64)
+  #   - release-plz PRs / owner checkbox-opted PRs:    arm64 self-hosted
+  # Swatinem/rust-cache@v2 auto-keys by runner OS+arch, so the single
+  # shared-key "wasm-feature-check" produces two independent cache entries
+  # (linux-x64 and linux-arm64); each consumer restores the matching one
+  # without any change required on the consumer side. (Fixes #4207)
   cache-seed:
-    name: Cache Seed (wasm-feature-check)
-    runs-on: [self-hosted, linux, arm64, reinhardt-ci]
+    name: Cache Seed (wasm-feature-check, ${{ matrix.arch.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - name: amd64
+            labels: '"ubuntu-latest"'
+          - name: arm64
+            labels: '["self-hosted","linux","arm64","reinhardt-ci"]'
+    runs-on: ${{ fromJSON(matrix.arch.labels) }}
     timeout-minutes: 360
     env:
       CARGO_TARGET_DIR: /tmp/cargo_target
       CARGO_INCREMENTAL: 0
     steps:
+      - name: Free Disk Space (Ubuntu)
+        if: ${{ matrix.arch.name == 'amd64' }}
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
