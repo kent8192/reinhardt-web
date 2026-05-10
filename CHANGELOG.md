@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.28](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.27...reinhardt-web@v0.1.0-rc.28) - 2026-05-10
+
+### Fixed
+
+- *(urls)* cfg-gate ClientRouter reactive observation state for native Send+Sync
+- *(urls)* keep on_navigate / __diag_* callable on native after [[#4258](https://github.com/kent8192/reinhardt-web/issues/4258)](https://github.com/kent8192/reinhardt-web/issues/4258) cfg-gate
+- *(urls)* address Copilot review feedback on ClientRouter
+
 ## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.26...reinhardt-web@v0.1.0-rc.27) - 2026-05-09
 
 ### Added

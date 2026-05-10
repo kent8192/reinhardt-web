@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.28](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.27...reinhardt-conf@v0.1.0-rc.28) - 2026-05-10
+
+### Added
+
+- *(conf)* add MergeStrategy with Deep default for build_composed
+
+### Changed
+
+- *(conf)* extract deep_merge into shared settings::merge module
+
+### Documentation
+
+- *(conf)* fix unresolved intra-doc links on MergeStrategy
+
+### Fixed
+
+- *(conf)* address Copilot review feedback on merge strategy
+
 ## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.26...reinhardt-conf@v0.1.0-rc.27) - 2026-05-09
 
 ### Added
