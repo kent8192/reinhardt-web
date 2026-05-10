@@ -144,12 +144,23 @@ impl SettingsBuilder {
 	///
 	/// ```
 	/// use reinhardt_conf::settings::builder::{MergeStrategy, SettingsBuilder};
+	/// use reinhardt_conf::settings::sources::DefaultSource;
+	/// use serde_json::json;
 	///
 	/// // Force `build()` to deep-merge layered TOML files.
 	/// let builder = SettingsBuilder::new()
+	///     .add_source(DefaultSource::new().with_value("core", json!({
+	///         "secret_key": "from-base",
+	///         "security": {"secure_ssl_redirect": true},
+	///     })))
+	///     .add_source(DefaultSource::new().with_value("core", json!({"debug": true})))
 	///     .with_merge_strategy(MergeStrategy::Deep);
 	/// let settings = builder.build().unwrap();
-	/// assert_eq!(settings.keys().count(), 0);
+	///
+	/// let core = settings.get_raw("core").unwrap().as_object().unwrap();
+	/// assert_eq!(core.get("debug").unwrap(), &json!(true));
+	/// assert_eq!(core.get("secret_key").unwrap(), &json!("from-base"));
+	/// assert!(core.get("security").is_some());
 	/// ```
 	pub fn with_merge_strategy(mut self, strategy: MergeStrategy) -> Self {
 		self.merge_strategy = Some(strategy);

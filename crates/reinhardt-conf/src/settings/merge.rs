@@ -34,47 +34,25 @@ use serde_json::Value;
 /// replaces the target array. This keeps the rule predictable for users:
 /// "objects deep-merge, everything else replaces".
 ///
-/// Insertion order of `target` is preserved for keys that already exist;
-/// new keys from `source` are appended in their original order.
+/// Insertion order of top-level `target` keys is preserved for keys that
+/// already exist; new top-level keys from `source` are appended in their
+/// original order. Nested object ordering follows `serde_json::Map`.
 ///
-/// # Examples
-///
-/// ```
-/// use indexmap::IndexMap;
-/// use reinhardt_conf::settings::merge::deep_merge;
-/// use serde_json::json;
-///
-/// let mut target: IndexMap<String, serde_json::Value> = IndexMap::new();
-/// target.insert("core".to_string(), json!({
-///     "secret_key": "from-base",
-///     "security": {"secure_ssl_redirect": true},
-/// }));
-///
-/// let mut source: IndexMap<String, serde_json::Value> = IndexMap::new();
-/// source.insert("core".to_string(), json!({"debug": true}));
-///
-/// deep_merge(&mut target, source);
-///
-/// // `secret_key` and `security` survive even though `local.toml` only
-/// // mentioned `[core].debug = true`.
-/// let core = target.get("core").unwrap().as_object().unwrap();
-/// assert_eq!(core.get("debug").unwrap(), &serde_json::Value::Bool(true));
-/// assert_eq!(core.get("secret_key").unwrap(), &serde_json::Value::String("from-base".into()));
-/// assert!(core.get("security").is_some());
-/// ```
-pub fn deep_merge(target: &mut IndexMap<String, Value>, source: IndexMap<String, Value>) {
+pub(crate) fn deep_merge(target: &mut IndexMap<String, Value>, source: IndexMap<String, Value>) {
 	for (key, source_val) in source {
-		match target.get_mut(&key) {
-			Some(Value::Object(target_obj)) if source_val.is_object() => {
-				// Both are objects — merge recursively.
-				let source_obj = source_val
-					.as_object()
-					.expect("source_val.is_object() guaranteed by match guard");
-				for (k, v) in source_obj {
-					deep_merge_json(target_obj, k.clone(), v.clone());
+		match source_val {
+			Value::Object(source_obj) => match target.get_mut(&key) {
+				Some(Value::Object(target_obj)) => {
+					// Both are objects — merge recursively.
+					for (k, v) in source_obj {
+						deep_merge_json(target_obj, k, v);
+					}
 				}
-			}
-			_ => {
+				_ => {
+					target.insert(key, Value::Object(source_obj));
+				}
+			},
+			source_val => {
 				target.insert(key, source_val);
 			}
 		}
@@ -86,16 +64,18 @@ pub fn deep_merge(target: &mut IndexMap<String, Value>, source: IndexMap<String,
 /// Mirrors [`deep_merge`] but operates on `serde_json::Map` to support
 /// the nested-table case after the first level.
 fn deep_merge_json(target: &mut serde_json::Map<String, Value>, key: String, value: Value) {
-	match target.get_mut(&key) {
-		Some(Value::Object(target_obj)) if value.is_object() => {
-			let source_obj = value
-				.as_object()
-				.expect("value.is_object() guaranteed by match guard");
-			for (k, v) in source_obj {
-				deep_merge_json(target_obj, k.clone(), v.clone());
+	match value {
+		Value::Object(source_obj) => match target.get_mut(&key) {
+			Some(Value::Object(target_obj)) => {
+				for (k, v) in source_obj {
+					deep_merge_json(target_obj, k, v);
+				}
 			}
-		}
-		_ => {
+			_ => {
+				target.insert(key, Value::Object(source_obj));
+			}
+		},
+		value => {
 			target.insert(key, value);
 		}
 	}
