@@ -130,9 +130,12 @@ variable "orphan_detector_enabled" {
 }
 
 variable "orphan_detector_staleness_min" {
-  description = "Jobs in queued state longer than this threshold (minutes) are considered orphaned. Default 60."
+  # Spot-AMI runners normally transition queued -> in_progress in well under 3 min,
+  # so a 5-min threshold catches webhook-event misses (Issue #4253) without
+  # false positives during legitimate slow provisioning.
+  description = "Jobs in queued state longer than this threshold (minutes) are considered orphaned. Default 5."
   type        = number
-  default     = 60
+  default     = 5
   validation {
     condition     = var.orphan_detector_staleness_min > 0
     error_message = "orphan_detector_staleness_min must be a positive integer."
@@ -150,9 +153,11 @@ variable "orphan_detector_circuit_breaker_margin" {
 }
 
 variable "orphan_detector_schedule_expression" {
-  description = "EventBridge schedule expression for the orphan detector scan interval. Default every 10 minutes."
+  # Combined with staleness_min=5, this yields a worst-case stuck time of
+  # staleness + scan_interval = ~10 min before republish (Issue #4253).
+  description = "EventBridge schedule expression for the orphan detector scan interval. Default every 5 minutes."
   type        = string
-  default     = "rate(10 minutes)"
+  default     = "rate(5 minutes)"
 }
 
 variable "orphan_detector_alert_email" {
