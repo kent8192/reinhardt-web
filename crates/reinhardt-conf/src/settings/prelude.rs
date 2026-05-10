@@ -7,7 +7,7 @@ pub use super::advanced::{
 	AdvancedSettings, CacheSettings, CorsSettings, DatabaseSettings as AdvancedDatabaseSettings,
 	EmailSettings, LoggingSettings, MediaSettings, SessionSettings, SettingsError, StaticSettings,
 };
-pub use super::builder::{BuildError, GetError, MergedSettings, SettingsBuilder};
+pub use super::builder::{BuildError, GetError, MergeStrategy, MergedSettings, SettingsBuilder};
 pub use super::env::{Env, EnvError};
 pub use super::env_loader::{EnvLoader, load_env, load_env_auto, load_env_optional};
 pub use super::env_parser::{

@@ -38,6 +38,7 @@
 //! // Guard dropped here — overrides cleared automatically
 //! ```
 
+use crate::settings::merge::deep_merge;
 use indexmap::IndexMap;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -183,42 +184,6 @@ fn build_nested(key: &str, value: Value) -> IndexMap<String, Value> {
 
 	result.insert(parts[0].to_string(), current);
 	result
-}
-
-/// Deep-merge `source` into `target`.
-///
-/// When both sides have a `Value::Object` at the same key, merge
-/// recursively. Otherwise the source value replaces the target.
-pub(crate) fn deep_merge(target: &mut IndexMap<String, Value>, source: IndexMap<String, Value>) {
-	for (key, source_val) in source {
-		match target.get_mut(&key) {
-			Some(Value::Object(target_obj)) if source_val.is_object() => {
-				// Both are objects — merge recursively
-				let source_obj = source_val.as_object().unwrap();
-				for (k, v) in source_obj {
-					deep_merge_json(target_obj, k.clone(), v.clone());
-				}
-			}
-			_ => {
-				target.insert(key, source_val);
-			}
-		}
-	}
-}
-
-/// Recursive helper for merging into a `serde_json::Map`.
-fn deep_merge_json(target: &mut serde_json::Map<String, Value>, key: String, value: Value) {
-	match target.get_mut(&key) {
-		Some(Value::Object(target_obj)) if value.is_object() => {
-			let source_obj = value.as_object().unwrap();
-			for (k, v) in source_obj {
-				deep_merge_json(target_obj, k.clone(), v.clone());
-			}
-		}
-		_ => {
-			target.insert(key, value);
-		}
-	}
 }
 
 #[cfg(test)]

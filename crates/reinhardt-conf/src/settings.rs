@@ -20,6 +20,7 @@ pub mod i18n;
 pub mod interpolation;
 pub mod logging;
 pub mod media;
+pub(crate) mod merge;
 /// OpenAPI documentation endpoint configuration.
 pub mod openapi;
 /// Field-level policy types for settings fragments.
@@ -477,6 +478,9 @@ pub use policy::{FieldPolicy, FieldRequirement};
 
 // Re-export ComposedSettings trait
 pub use composed::ComposedSettings;
+
+// Re-export the merge strategy selector for SettingsBuilder. See issue #4260.
+pub use builder::MergeStrategy;
 
 /// Template engine configuration
 #[non_exhaustive]

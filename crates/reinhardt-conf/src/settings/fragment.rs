@@ -36,12 +36,31 @@
 //! session_cookie_secure = true
 //! ```
 //!
-//! # Shallow merge semantics
+//! # Merge semantics
 //!
-//! When multiple TOML files are merged (e.g., `base.toml` + `local.toml`), each
-//! top-level section is replaced as a whole. If `local.toml` defines `[core]`, it
-//! replaces the entire `[core]` section from `base.toml`. Therefore, environment-specific
-//! files must be self-contained for any section they define.
+//! When multiple TOML files are merged (e.g., `base.toml` + `local.toml`),
+//! the resulting layout depends on the
+//! [`MergeStrategy`](super::builder::MergeStrategy) chosen on the
+//! [`SettingsBuilder`](super::builder::SettingsBuilder):
+//!
+//! - With [`MergeStrategy::Shallow`](super::builder::MergeStrategy::Shallow)
+//!   — the legacy default for
+//!   [`build`](super::builder::SettingsBuilder::build) — each top-level
+//!   section is replaced as a whole. If `local.toml` defines `[core]`, it
+//!   replaces the entire `[core]` section from `base.toml`, so
+//!   environment-specific files must be self-contained for any section
+//!   they touch.
+//! - With [`MergeStrategy::Deep`](super::builder::MergeStrategy::Deep)
+//!   — the default for
+//!   [`build_composed`](super::builder::SettingsBuilder::build_composed)
+//!   — nested tables are merged recursively. Defining `[core].debug =
+//!   true` in `local.toml` no longer erases sibling fields like
+//!   `[core].secret_key` or sub-sections like `[core.security]` that were
+//!   set in `base.toml`. Arrays and scalars are still replaced
+//!   wholesale.
+//!
+//! See [issue #4260](https://github.com/kent8192/reinhardt-web/issues/4260)
+//! for the design discussion.
 
 use super::policy::FieldPolicy;
 use super::profile::Profile;
