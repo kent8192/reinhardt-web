@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.26...reinhardt-utils@v0.1.0-rc.27) - 2026-05-09
+
+### Added
+
+- *(utils)* add AppVendorAsset type with inventory wiring and path validation
+- *(utils)* add SHA-256 integrity verification for vendor assets
+- *(utils)* add async downloader for vendor assets with lazy first-request guard
+- *(utils)* add inventory query helpers for vendor assets
+
+### Maintenance
+
+- *(utils)* add deps for vendor asset subsystem
+
+### Styling
+
+- apply rustfmt to vendor subsystem files
+
+### Testing
+
+- *(utils)* add wiremock integration test for vendor download pipeline
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.20...reinhardt-utils@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation
