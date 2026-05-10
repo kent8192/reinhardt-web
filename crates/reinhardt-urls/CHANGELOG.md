@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.28](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.27...reinhardt-urls@v0.1.0-rc.28) - 2026-05-10
+
+### Added
+
+- *(urls)* add server_fn stub to ServerRouterStub for cross-target builder
+
 ## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.26...reinhardt-urls@v0.1.0-rc.27) - 2026-05-09
 
 ### Added
