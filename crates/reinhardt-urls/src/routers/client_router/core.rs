@@ -35,6 +35,7 @@ type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<Navi
 /// Boxed closure stored behind a `Weak<...>` so a dropped
 /// [`NavigationSubscription`] drops its strong `Rc`, after which
 /// [`ClientRouter::notify_observers`] filters out the dead `Weak`.
+#[cfg(wasm)]
 type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
 
 /// RAII handle returned by [`ClientRouter::on_navigate`].
@@ -47,8 +48,32 @@ type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
 ///
 /// Mirrors `reinhardt_pages::router::NavigationSubscription`. (Refs #4234)
 pub struct NavigationSubscription {
+	#[cfg(wasm)]
 	#[allow(dead_code)] // Dropped automatically; presence keeps the Weak alive.
 	listener: std::rc::Rc<NavigationListener>,
+}
+
+impl NavigationSubscription {
+	#[cfg(wasm)]
+	fn new<F>(router: &ClientRouter, listener: F) -> Self
+	where
+		F: Fn(&str, &HashMap<String, String>) + 'static,
+	{
+		let listener: std::rc::Rc<NavigationListener> = std::rc::Rc::new(listener);
+		router
+			.navigation_observers
+			.borrow_mut()
+			.push(std::rc::Rc::downgrade(&listener));
+		Self { listener }
+	}
+
+	#[cfg(native)]
+	fn new<F>(_router: &ClientRouter, _listener: F) -> Self
+	where
+		F: Fn(&str, &HashMap<String, String>) + 'static,
+	{
+		Self {}
+	}
 }
 
 /// A matched route with extracted parameters.
@@ -199,6 +224,11 @@ pub struct ClientRouter {
 	// `Rc<Cell<u64>>` is `!Send + !Sync` on native.
 	#[cfg(wasm)]
 	dispatch_count: std::rc::Rc<std::cell::Cell<u64>>,
+	// Move-stable diagnostic identity for native targets where wasm observer
+	// storage does not exist. The `Arc` allocation address remains stable
+	// across moves of the `ClientRouter` value itself.
+	#[cfg(native)]
+	diag_router_identity: Arc<()>,
 }
 
 impl std::fmt::Debug for ClientRouter {
@@ -237,6 +267,8 @@ impl ClientRouter {
 			navigation_observers: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
 			#[cfg(wasm)]
 			dispatch_count: std::rc::Rc::new(std::cell::Cell::new(0)),
+			#[cfg(native)]
+			diag_router_identity: Arc::new(()),
 		}
 	}
 
@@ -645,14 +677,7 @@ impl ClientRouter {
 	where
 		F: Fn(&str, &HashMap<String, String>) + 'static,
 	{
-		let listener: std::rc::Rc<NavigationListener> = std::rc::Rc::new(listener);
-		#[cfg(wasm)]
-		{
-			self.navigation_observers
-				.borrow_mut()
-				.push(std::rc::Rc::downgrade(&listener));
-		}
-		NavigationSubscription { listener }
+		NavigationSubscription::new(self, listener)
 	}
 
 	/// Dispatch the registered `on_navigate` listeners with the given path
@@ -712,18 +737,7 @@ impl ClientRouter {
 	/// ["wasm-diag-test"]` in `Cargo.toml`).
 	#[doc(hidden)]
 	pub fn __diag_observer_count(&self) -> usize {
-		#[cfg(wasm)]
-		{
-			self.navigation_observers
-				.borrow()
-				.iter()
-				.filter(|w| w.strong_count() > 0)
-				.count()
-		}
-		#[cfg(native)]
-		{
-			0
-		}
+		self.diag_observer_count()
 	}
 
 	/// Diagnostic counter: cumulative `notify_observers` invocation count.
@@ -736,14 +750,7 @@ impl ClientRouter {
 	/// On native (Fixes #4258) this returns `0` — see `__diag_observer_count`.
 	#[doc(hidden)]
 	pub fn __diag_dispatch_count(&self) -> u64 {
-		#[cfg(wasm)]
-		{
-			self.dispatch_count.get()
-		}
-		#[cfg(native)]
-		{
-			0
-		}
+		self.diag_dispatch_count()
 	}
 
 	/// Stable per-instance router id for diagnostic correlation.
@@ -756,19 +763,46 @@ impl ClientRouter {
 	///
 	/// Hidden API for testing only. (Refs #4234)
 	///
-	/// On native (Fixes #4258) this returns the address of `self` because the
-	/// observer `Rc` storage is wasm-only. The id stays per-instance-stable
-	/// (never reseated) which preserves the diagnostic invariant.
+	/// On native (Fixes #4258) this returns the address of a heap-backed
+	/// identity marker because the observer `Rc` storage is wasm-only. The id
+	/// stays per-instance-stable across moves of the `ClientRouter` value.
 	#[doc(hidden)]
 	pub fn __diag_router_id(&self) -> usize {
-		#[cfg(wasm)]
-		{
-			std::rc::Rc::as_ptr(&self.navigation_observers) as usize
-		}
-		#[cfg(native)]
-		{
-			std::ptr::from_ref(self) as usize
-		}
+		self.diag_router_id()
+	}
+
+	#[cfg(wasm)]
+	fn diag_observer_count(&self) -> usize {
+		self.navigation_observers
+			.borrow()
+			.iter()
+			.filter(|w| w.strong_count() > 0)
+			.count()
+	}
+
+	#[cfg(native)]
+	fn diag_observer_count(&self) -> usize {
+		0
+	}
+
+	#[cfg(wasm)]
+	fn diag_dispatch_count(&self) -> u64 {
+		self.dispatch_count.get()
+	}
+
+	#[cfg(native)]
+	fn diag_dispatch_count(&self) -> u64 {
+		0
+	}
+
+	#[cfg(wasm)]
+	fn diag_router_id(&self) -> usize {
+		std::rc::Rc::as_ptr(&self.navigation_observers) as usize
+	}
+
+	#[cfg(native)]
+	fn diag_router_id(&self) -> usize {
+		Arc::as_ptr(&self.diag_router_identity) as usize
 	}
 
 	/// Generates a URL by route name with parameters.
