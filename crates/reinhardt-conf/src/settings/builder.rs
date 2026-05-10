@@ -14,14 +14,11 @@ use std::sync::Arc;
 /// Strategy for merging multiple configuration sources.
 ///
 /// Selected via [`SettingsBuilder::with_merge_strategy`]. The default
-/// differs between [`SettingsBuilder::build`] (uses [`Shallow`]) and
-/// [`SettingsBuilder::build_composed`] (uses [`Deep`]) — see those
-/// methods for the rationale.
+/// differs between [`SettingsBuilder::build`] (uses
+/// [`MergeStrategy::Shallow`]) and [`SettingsBuilder::build_composed`]
+/// (uses [`MergeStrategy::Deep`]) — see those methods for the rationale.
 ///
 /// See [issue #4260](https://github.com/kent8192/reinhardt-web/issues/4260).
-///
-/// [`Shallow`]: MergeStrategy::Shallow
-/// [`Deep`]: MergeStrategy::Deep
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum MergeStrategy {
@@ -35,7 +32,7 @@ pub enum MergeStrategy {
 	/// table at the same key, sibling keys from both sides are preserved
 	/// and only conflicting leaves are replaced. Arrays and scalars are
 	/// still replaced wholesale, so flat-key fallback paths continue to
-	/// work the same as under [`Shallow`].
+	/// work the same as under [`MergeStrategy::Shallow`].
 	Deep,
 }
 

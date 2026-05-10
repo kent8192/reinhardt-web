@@ -10,11 +10,11 @@
 //!   still replaced wholesale. The default for
 //!   [`SettingsBuilder::build_composed`](crate::settings::builder::SettingsBuilder::build_composed).
 //!
-//! [`deep_merge`] implements the deep variant. It is intentionally
-//! conservative: only `Value::Object` versus `Value::Object` collisions
-//! recurse; every other shape (scalar, array, mixed) defers to the source
-//! value, matching the behaviour described in
-//! [issue #4260](https://github.com/kent8192/reinhardt-web/issues/4260).
+//! The `deep_merge` function in this module implements the deep variant.
+//! It is intentionally conservative: only `Value::Object` versus
+//! `Value::Object` collisions recurse; every other shape (scalar, array,
+//! mixed) defers to the source value, matching the behaviour described
+//! in [issue #4260](https://github.com/kent8192/reinhardt-web/issues/4260).
 
 use indexmap::IndexMap;
 use serde_json::Value;
