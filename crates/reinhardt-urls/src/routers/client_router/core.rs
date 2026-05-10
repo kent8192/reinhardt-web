@@ -21,10 +21,15 @@ use std::sync::Arc;
 /// Type alias for route guard functions.
 pub(super) type RouteGuard = Arc<dyn Fn(&ClientRouteMatch) -> bool + Send + Sync>;
 
-// (Refs #4234) Mirrors `pages::Router NavigationObservers / NavigationListener`.
+// (Refs #4234, Fixes #4258) Mirrors `pages::Router NavigationObservers /
+// NavigationListener`. Gated `#[cfg(wasm)]` so `ClientRouter` stays
+// `Send + Sync` on native targets — `Rc<RefCell<_>>` is `!Send + !Sync`
+// and would otherwise propagate up through `UnifiedRouter` and break
+// multi-threaded DI registration on native.
 //
 // `Rc<RefCell<...>>` because Routers are not `Send` on wasm32 anyway,
 // and the borrow is released before listeners run (see `notify_observers`).
+#[cfg(wasm)]
 type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<NavigationListener>>>>;
 
 /// Boxed closure stored behind a `Weak<...>` so a dropped
@@ -173,15 +178,26 @@ pub struct ClientRouter {
 	current_route_name: Signal<Option<String>>,
 	/// Not found handler.
 	not_found: Option<Arc<dyn Fn() -> Page + Send + Sync>>,
-	// (Refs #4234) Mirrors `pages::Router::navigation_observers`.
+	// (Refs #4234, Fixes #4258) Mirrors `pages::Router::navigation_observers`.
 	// Navigation observers registered via `on_navigate`. Held as `Weak`
 	// so dropping the returned `NavigationSubscription` deregisters the
 	// listener.
+	//
+	// Gated `#[cfg(wasm)]` because `Rc<RefCell<_>>` is `!Send + !Sync`
+	// and the reactive observation pattern only fires on WASM (the popstate
+	// listener is wasm-only and `notify_observers` is a no-op on native).
+	// Without this gate `ClientRouter` becomes `!Send + !Sync` on native,
+	// breaking `UnifiedRouter` registration in multi-threaded DI containers.
+	#[cfg(wasm)]
 	navigation_observers: NavigationObservers,
-	// (Refs #4234) Mirrors `pages::Router::dispatch_count`.
+	// (Refs #4234, Fixes #4258) Mirrors `pages::Router::dispatch_count`.
 	// Cumulative count of `notify_observers` invocations since this
 	// Router was constructed. Used by tests to assert invariants that
 	// DOM-only assertions cannot reach.
+	//
+	// Gated `#[cfg(wasm)]` for the same reason as `navigation_observers`:
+	// `Rc<Cell<u64>>` is `!Send + !Sync` on native.
+	#[cfg(wasm)]
 	dispatch_count: std::rc::Rc<std::cell::Cell<u64>>,
 }
 
@@ -215,7 +231,11 @@ impl ClientRouter {
 			current_params: Signal::new(HashMap::new()),
 			current_route_name: Signal::new(None),
 			not_found: None,
+			// (Fixes #4258) Reactive observation state is wasm-only; see field
+			// definitions on `ClientRouter`.
+			#[cfg(wasm)]
 			navigation_observers: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+			#[cfg(wasm)]
 			dispatch_count: std::rc::Rc::new(std::cell::Cell::new(0)),
 		}
 	}
@@ -614,6 +634,11 @@ impl ClientRouter {
 	/// `Effect` / `Signal` auto-tracking system.
 	///
 	/// Mirrors `pages::Router::on_navigate`. (Refs #4234)
+	///
+	/// Gated `#[cfg(wasm)]` (Fixes #4258) because the underlying
+	/// `navigation_observers` field is wasm-only — registering a listener
+	/// only makes sense when the popstate listener can fire it.
+	#[cfg(wasm)]
 	pub fn on_navigate<F>(&self, listener: F) -> NavigationSubscription
 	where
 		F: Fn(&str, &HashMap<String, String>) + 'static,
@@ -635,6 +660,11 @@ impl ClientRouter {
 	/// from inside their closure.
 	///
 	/// (Refs #4234, Inv-4)
+	///
+	/// Wasm-only (Fixes #4258): the reactive observer state lives only on
+	/// wasm. The native no-op stub immediately below preserves the
+	/// cross-target call site in `ClientRouter::navigate`.
+	#[cfg(wasm)]
 	fn notify_observers(&self, path: &str, params: &HashMap<String, String>) {
 		// (Refs #4234) `nav_diag_dom!` invocation from
 		// `pages::Router::notify_observers` is intentionally not mirrored
@@ -649,6 +679,16 @@ impl ClientRouter {
 		);
 	}
 
+	/// Native no-op stub for `notify_observers` (Fixes #4258).
+	///
+	/// On native targets there is no popstate listener and no reactive
+	/// observation state, so navigation cannot dispatch listeners. This
+	/// stub keeps the call site in `ClientRouter::navigate` cross-target
+	/// without leaking `Rc<...>` reactive state into the native
+	/// `ClientRouter` (which would break `Send + Sync`).
+	#[cfg(native)]
+	fn notify_observers(&self, _path: &str, _params: &HashMap<String, String>) {}
+
 	/// Diagnostic counter: number of currently-alive navigation observers.
 	///
 	/// Returns the count of `Weak<NavigationListener>` entries in
@@ -659,6 +699,11 @@ impl ClientRouter {
 	/// rendered documentation, but it remains technically part of the
 	/// public API surface. Treat it as unstable: callers outside this
 	/// crate's own tests should not depend on it. (Refs #4234)
+	///
+	/// Wasm-only (Fixes #4258): backed by `navigation_observers` which
+	/// is itself wasm-only. Consumed solely by `tests/wasm/*` (see
+	/// `required-features = ["wasm-diag-test"]` in `Cargo.toml`).
+	#[cfg(wasm)]
 	#[doc(hidden)]
 	pub fn __diag_observer_count(&self) -> usize {
 		self.navigation_observers
@@ -674,6 +719,9 @@ impl ClientRouter {
 	/// `ClientRouter::replace`, and the popstate listener.
 	///
 	/// Hidden API for testing only. (Refs #4234)
+	///
+	/// Wasm-only (Fixes #4258): see `__diag_observer_count`.
+	#[cfg(wasm)]
 	#[doc(hidden)]
 	pub fn __diag_dispatch_count(&self) -> u64 {
 		self.dispatch_count.get()
@@ -688,6 +736,9 @@ impl ClientRouter {
 	/// reseated.
 	///
 	/// Hidden API for testing only. (Refs #4234)
+	///
+	/// Wasm-only (Fixes #4258): see `__diag_observer_count`.
+	#[cfg(wasm)]
 	#[doc(hidden)]
 	pub fn __diag_router_id(&self) -> usize {
 		std::rc::Rc::as_ptr(&self.navigation_observers) as usize
@@ -842,6 +893,10 @@ impl ClientRouter {
 /// Used by both `ClientRouter::notify_observers` (programmatic
 /// push/replace) and the popstate listener (browser back/forward) so
 /// the two code paths stay observably identical. (Refs #4234, Inv-4)
+///
+/// Wasm-only (Fixes #4258): touches `NavigationObservers` /
+/// `dispatch_count` which are themselves wasm-only.
+#[cfg(wasm)]
 fn dispatch_navigation_observers(
 	navigation_observers: &NavigationObservers,
 	dispatch_count: &std::rc::Rc<std::cell::Cell<u64>>,
@@ -858,6 +913,17 @@ fn dispatch_navigation_observers(
 		listener(path, params);
 	}
 }
+
+// (Fixes #4258) Compile-time guard: `ClientRouter` MUST be `Send + Sync`
+// on native targets so `UnifiedRouter` (which always contains it) can
+// be registered with multi-threaded DI containers. Regression of #4258
+// — for example, re-introducing an unguarded `Rc<...>` or `RefCell<...>`
+// field — would fail this assertion at native build time.
+#[cfg(all(test, native))]
+const _: fn() = || {
+	fn assert_send_sync<T: Send + Sync>() {}
+	assert_send_sync::<ClientRouter>();
+};
 
 #[cfg(test)]
 mod tests {
