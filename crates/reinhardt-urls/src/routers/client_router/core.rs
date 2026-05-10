@@ -635,18 +635,23 @@ impl ClientRouter {
 	///
 	/// Mirrors `pages::Router::on_navigate`. (Refs #4234)
 	///
-	/// Gated `#[cfg(wasm)]` (Fixes #4258) because the underlying
-	/// `navigation_observers` field is wasm-only — registering a listener
-	/// only makes sense when the popstate listener can fire it.
-	#[cfg(wasm)]
+	/// On native targets (Fixes #4258) this is effectively a no-op: the
+	/// returned `NavigationSubscription` is unbound to any observer storage
+	/// because reactive observation only fires from the wasm popstate
+	/// listener. The method is still callable on native so that the
+	/// `SpaRouter` trait impl in `reinhardt-pages` (which dispatches into
+	/// `on_navigate` from cross-target launcher code) keeps compiling.
 	pub fn on_navigate<F>(&self, listener: F) -> NavigationSubscription
 	where
 		F: Fn(&str, &HashMap<String, String>) + 'static,
 	{
 		let listener: std::rc::Rc<NavigationListener> = std::rc::Rc::new(listener);
-		self.navigation_observers
-			.borrow_mut()
-			.push(std::rc::Rc::downgrade(&listener));
+		#[cfg(wasm)]
+		{
+			self.navigation_observers
+				.borrow_mut()
+				.push(std::rc::Rc::downgrade(&listener));
+		}
 		NavigationSubscription { listener }
 	}
 
@@ -700,17 +705,25 @@ impl ClientRouter {
 	/// public API surface. Treat it as unstable: callers outside this
 	/// crate's own tests should not depend on it. (Refs #4234)
 	///
-	/// Wasm-only (Fixes #4258): backed by `navigation_observers` which
-	/// is itself wasm-only. Consumed solely by `tests/wasm/*` (see
-	/// `required-features = ["wasm-diag-test"]` in `Cargo.toml`).
-	#[cfg(wasm)]
+	/// On native (Fixes #4258) this returns `0` because the observer storage
+	/// itself is wasm-only. Stays callable on both targets so the
+	/// `SpaRouter` trait impl in `reinhardt-pages` keeps compiling.
+	/// Consumed by `tests/wasm/*` (see `required-features =
+	/// ["wasm-diag-test"]` in `Cargo.toml`).
 	#[doc(hidden)]
 	pub fn __diag_observer_count(&self) -> usize {
-		self.navigation_observers
-			.borrow()
-			.iter()
-			.filter(|w| w.strong_count() > 0)
-			.count()
+		#[cfg(wasm)]
+		{
+			self.navigation_observers
+				.borrow()
+				.iter()
+				.filter(|w| w.strong_count() > 0)
+				.count()
+		}
+		#[cfg(native)]
+		{
+			0
+		}
 	}
 
 	/// Diagnostic counter: cumulative `notify_observers` invocation count.
@@ -720,11 +733,17 @@ impl ClientRouter {
 	///
 	/// Hidden API for testing only. (Refs #4234)
 	///
-	/// Wasm-only (Fixes #4258): see `__diag_observer_count`.
-	#[cfg(wasm)]
+	/// On native (Fixes #4258) this returns `0` — see `__diag_observer_count`.
 	#[doc(hidden)]
 	pub fn __diag_dispatch_count(&self) -> u64 {
-		self.dispatch_count.get()
+		#[cfg(wasm)]
+		{
+			self.dispatch_count.get()
+		}
+		#[cfg(native)]
+		{
+			0
+		}
 	}
 
 	/// Stable per-instance router id for diagnostic correlation.
@@ -737,11 +756,19 @@ impl ClientRouter {
 	///
 	/// Hidden API for testing only. (Refs #4234)
 	///
-	/// Wasm-only (Fixes #4258): see `__diag_observer_count`.
-	#[cfg(wasm)]
+	/// On native (Fixes #4258) this returns the address of `self` because the
+	/// observer `Rc` storage is wasm-only. The id stays per-instance-stable
+	/// (never reseated) which preserves the diagnostic invariant.
 	#[doc(hidden)]
 	pub fn __diag_router_id(&self) -> usize {
-		std::rc::Rc::as_ptr(&self.navigation_observers) as usize
+		#[cfg(wasm)]
+		{
+			std::rc::Rc::as_ptr(&self.navigation_observers) as usize
+		}
+		#[cfg(native)]
+		{
+			std::ptr::from_ref(self) as usize
+		}
 	}
 
 	/// Generates a URL by route name with parameters.
