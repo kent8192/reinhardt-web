@@ -787,6 +787,20 @@ impl ServerRouterStub {
 	pub fn endpoint<F>(self, _f: F) -> Self {
 		self
 	}
+
+	/// No-op stub for `ServerFnRouterExt::server_fn` on the WASM side.
+	///
+	/// `server_fn` is provided to native `ServerRouter` by the
+	/// `ServerFnRouterExt` extension trait in `reinhardt-pages`. That trait
+	/// (and its `ServerFnRegistration` bound) is a native-only concern, so
+	/// the stub absorbs the call as a free-standing inherent method without
+	/// any trait bound. This lets cross-target builder chains such as
+	/// `UnifiedRouter::new().server(|s| s.server_fn(marker))` compile on
+	/// `wasm32-unknown-unknown` without `#[cfg(native)]` gates at the call
+	/// site.
+	pub fn server_fn<S>(self, _marker: S) -> Self {
+		self
+	}
 }
 
 #[cfg(wasm)]
@@ -831,6 +845,7 @@ const _: fn() = || {
 				.view_named("/v", "v", ())
 				.viewset("/vs/", ())
 				.endpoint(|| ())
+				.server_fn(())
 		})
 		.client(|c| c);
 };
