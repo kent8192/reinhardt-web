@@ -1,19 +1,20 @@
-//! Client-side routing
+//! Client-side routing for the polls application.
 //!
-//! This module defines the client-side router for the polling application.
+//! Defines the WASM-side `ClientRouter` and the thread-local helpers used
+//! by the WASM entry point in `src/client/lib.rs`.
 
 use crate::client::pages::{index_page, polls_detail_page, polls_results_page};
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
-use reinhardt::urls::ClientRouter;
+use reinhardt::ClientRouter;
 use std::cell::RefCell;
 
-// Global Router instance
+// Global ClientRouter instance
 thread_local! {
 	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
 }
 
-/// Initialize the global router instance
+/// Initialize the global router instance.
 ///
 /// This must be called once at application startup before any routing operations.
 pub fn init_global_router() {
@@ -22,7 +23,7 @@ pub fn init_global_router() {
 	});
 }
 
-/// Provides access to the global router instance
+/// Provides access to the global router instance.
 ///
 /// # Panics
 ///
@@ -38,7 +39,7 @@ where
 	})
 }
 
-/// Initialize the router with all application routes
+/// Initialize the router with all application routes.
 fn init_router() -> ClientRouter {
 	ClientRouter::new()
 		// Home/Index route - List all polls
@@ -79,7 +80,7 @@ fn init_router() -> ClientRouter {
 		.not_found(|| error_page("Page not found"))
 }
 
-/// Error page
+/// Error page.
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
 	page!(|message: String| {

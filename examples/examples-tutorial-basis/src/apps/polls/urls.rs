@@ -1,14 +1,19 @@
-use reinhardt::ServerRouter;
+//! URL configuration for the polls application.
+//!
+//! Aggregates server-side and client-side route definitions from sibling
+//! submodules. Submodules are cfg-gated by target:
+//!
+//! - `server_urls` — `ServerRouter` mounted by `config/urls.rs` (native target)
+//! - `client_router` — `ClientRouter` driven by the WASM entry point (wasm target)
 
-use super::views;
+#[cfg(native)]
+pub mod server_urls;
 
-// Note: This function is called by config/urls.rs via .mount("/polls/", ...).
-// Do NOT add #[routes] here - that would create a duplicate registration
-// without the mount prefix.
-pub fn routes() -> ServerRouter {
-	ServerRouter::new()
-		.endpoint(views::index)
-		.endpoint(views::detail)
-		.endpoint(views::results)
-		.endpoint(views::vote)
-}
+#[cfg(wasm)]
+pub mod client_router;
+
+#[cfg(native)]
+pub use server_urls::routes;
+
+#[cfg(wasm)]
+pub use client_router::{init_global_router, with_router};

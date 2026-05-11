@@ -21,8 +21,7 @@ mod server_only {
 #[cfg(native)]
 pub use server_only::*;
 
-// Applications (server-only, polls uses ServerRouter)
-#[cfg(native)]
+// Applications (declared on both targets; submodules cfg-gate themselves)
 pub mod apps;
 
 // Configuration (urls unconditional, rest server-only)

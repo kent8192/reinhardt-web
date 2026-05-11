@@ -6,8 +6,8 @@ use reinhardt::pages::PageExt;
 use reinhardt::pages::dom::Element;
 use wasm_bindgen::prelude::*;
 
-// Use modules from parent `client` module via super::
-use super::router;
+// Client routing lives under the polls app (see apps/polls/urls/client_router.rs).
+use crate::apps::polls::urls::client_router as router;
 
 pub use router::{init_global_router, with_router};
 
