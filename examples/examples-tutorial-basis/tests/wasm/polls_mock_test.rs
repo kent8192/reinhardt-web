@@ -23,10 +23,7 @@ use examples_tutorial_basis::client::components::polls::{
 };
 use examples_tutorial_basis::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
 use reinhardt::pages::component::Page;
-use reinhardt::pages::testing::{
-	assert_server_fn_call_count, assert_server_fn_not_called, clear_mocks, mock_server_fn,
-	mock_server_fn_error,
-};
+use reinhardt::test::msw::{MockResponse, MockServiceWorker, rest};
 
 // ============================================================================
 // Test Fixtures
@@ -192,84 +189,97 @@ fn test_polls_results_different_ids() {
 
 /// Test mock infrastructure for get_questions endpoint
 #[wasm_bindgen_test]
-fn test_mock_get_questions_endpoint() {
-	clear_mocks();
-
+async fn test_mock_get_questions_endpoint() {
+	let worker = MockServiceWorker::new();
 	let questions = mock_questions_list();
-	mock_server_fn("/api/server_fn/get_questions", &questions);
+	worker.handle(
+		rest::post("/api/server_fn/get_questions").respond(MockResponse::json(&questions)),
+	);
+	worker.start().await;
 
 	// Verify mock was registered (no calls yet)
-	assert_server_fn_not_called("/api/server_fn/get_questions");
-	assert_server_fn_call_count("/api/server_fn/get_questions", 0);
-
-	clear_mocks();
+	worker
+		.calls_to("/api/server_fn/get_questions")
+		.assert_not_called();
+	worker
+		.calls_to("/api/server_fn/get_questions")
+		.assert_count(0);
 }
 
 /// Test mock infrastructure for get_question_detail endpoint
 #[wasm_bindgen_test]
-fn test_mock_get_question_detail_endpoint() {
-	clear_mocks();
-
+async fn test_mock_get_question_detail_endpoint() {
+	let worker = MockServiceWorker::new();
 	let question = mock_question();
 	let choices = mock_choices();
-	mock_server_fn("/api/server_fn/get_question_detail", &(question, choices));
+	worker.handle(
+		rest::post("/api/server_fn/get_question_detail")
+			.respond(MockResponse::json(&(question, choices))),
+	);
+	worker.start().await;
 
-	assert_server_fn_not_called("/api/server_fn/get_question_detail");
-
-	clear_mocks();
+	worker
+		.calls_to("/api/server_fn/get_question_detail")
+		.assert_not_called();
 }
 
 /// Test mock infrastructure for get_question_results endpoint
 #[wasm_bindgen_test]
-fn test_mock_get_question_results_endpoint() {
-	clear_mocks();
-
+async fn test_mock_get_question_results_endpoint() {
+	let worker = MockServiceWorker::new();
 	let question = mock_question();
 	let choices = mock_choices();
 	let total_votes = 97; // Sum of votes in mock_choices
-	mock_server_fn(
-		"/api/server_fn/get_question_results",
-		&(question, choices, total_votes),
+	worker.handle(
+		rest::post("/api/server_fn/get_question_results")
+			.respond(MockResponse::json(&(question, choices, total_votes))),
 	);
+	worker.start().await;
 
-	assert_server_fn_not_called("/api/server_fn/get_question_results");
-
-	clear_mocks();
+	worker
+		.calls_to("/api/server_fn/get_question_results")
+		.assert_not_called();
 }
 
 /// Test mock infrastructure for vote endpoint
 #[wasm_bindgen_test]
-fn test_mock_vote_endpoint() {
-	clear_mocks();
-
+async fn test_mock_vote_endpoint() {
+	let worker = MockServiceWorker::new();
 	// Vote returns unit type on success
-	mock_server_fn("/api/server_fn/vote", &());
+	worker.handle(rest::post("/api/server_fn/vote").respond(MockResponse::json(&())));
+	worker.start().await;
 
-	assert_server_fn_not_called("/api/server_fn/vote");
-
-	clear_mocks();
+	worker.calls_to("/api/server_fn/vote").assert_not_called();
 }
 
 /// Test mock error for polls endpoints
 #[wasm_bindgen_test]
-fn test_mock_polls_error_endpoints() {
-	clear_mocks();
+async fn test_mock_polls_error_endpoints() {
+	let worker = MockServiceWorker::new();
 
 	// Mock various error scenarios
-	mock_server_fn_error("/api/server_fn/get_questions", 500, "Internal server error");
-	mock_server_fn_error(
-		"/api/server_fn/get_question_detail",
-		404,
-		"Question not found",
+	worker.handle(
+		rest::post("/api/server_fn/get_questions")
+			.respond(MockResponse::text("Internal server error").with_status(500)),
 	);
-	mock_server_fn_error("/api/server_fn/vote", 400, "Invalid choice");
+	worker.handle(
+		rest::post("/api/server_fn/get_question_detail")
+			.respond(MockResponse::text("Question not found").with_status(404)),
+	);
+	worker.handle(
+		rest::post("/api/server_fn/vote")
+			.respond(MockResponse::text("Invalid choice").with_status(400)),
+	);
+	worker.start().await;
 
 	// Verify none were called
-	assert_server_fn_not_called("/api/server_fn/get_questions");
-	assert_server_fn_not_called("/api/server_fn/get_question_detail");
-	assert_server_fn_not_called("/api/server_fn/vote");
-
-	clear_mocks();
+	worker
+		.calls_to("/api/server_fn/get_questions")
+		.assert_not_called();
+	worker
+		.calls_to("/api/server_fn/get_question_detail")
+		.assert_not_called();
+	worker.calls_to("/api/server_fn/vote").assert_not_called();
 }
 
 // ============================================================================
