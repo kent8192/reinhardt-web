@@ -19,3 +19,4 @@ proc-macro2 = { workspace = true }
 [dev-dependencies]
 trybuild = { workspace = true }
 rstest = { workspace = true }
+reinhardt-testkit = { workspace = true }

@@ -95,6 +95,7 @@ pub mod static_files;
 // `reinhardt-testkit` alone without also adding `reinhardt-di` as a direct
 // dep.
 pub use reinhardt_di::{DependencyScope, DiError};
+pub use reinhardt_testkit_macros::with_di_overrides;
 
 // Re-exports for impl_test_model! macro
 #[doc(hidden)]
