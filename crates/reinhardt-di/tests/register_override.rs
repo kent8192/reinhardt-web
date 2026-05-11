@@ -43,10 +43,8 @@ async fn register_override_does_not_panic_when_type_already_registered() {
 	registry.register_async::<Greeting, _, _>(DependencyScope::Singleton, prod_greeting);
 
 	// Act
-	let _guard = registry.register_override::<Greeting, _, _>(
-		DependencyScope::Singleton,
-		mock_greeting,
-	);
+	let _guard =
+		registry.register_override::<Greeting, _, _>(DependencyScope::Singleton, mock_greeting);
 
 	// Assert
 	assert!(registry.is_registered::<Greeting>());
@@ -63,10 +61,8 @@ async fn override_guard_restores_previous_factory_on_drop() {
 
 	// Act -- install override, then drop it
 	{
-		let _guard = registry.register_override::<Greeting, _, _>(
-			DependencyScope::Singleton,
-			mock_greeting,
-		);
+		let _guard =
+			registry.register_override::<Greeting, _, _>(DependencyScope::Singleton, mock_greeting);
 		let arc = registry.create::<Greeting>(&ctx).await.unwrap();
 		assert_eq!(*arc, Greeting("mock"));
 	}
@@ -86,10 +82,8 @@ async fn override_guard_removes_entry_when_no_previous_registration() {
 
 	// Act
 	{
-		let _guard = registry.register_override::<Greeting, _, _>(
-			DependencyScope::Singleton,
-			mock_greeting,
-		);
+		let _guard =
+			registry.register_override::<Greeting, _, _>(DependencyScope::Singleton, mock_greeting);
 		assert!(registry.is_registered::<Greeting>());
 	}
 
@@ -105,10 +99,8 @@ use reinhardt_di::global_registry;
 async fn ctx_resolve_returns_override_value_for_transient_scope() {
 	// Arrange
 	let registry = global_registry().clone();
-	let _guard = registry.register_override::<Greeting, _, _>(
-		DependencyScope::Transient,
-		mock_greeting,
-	);
+	let _guard =
+		registry.register_override::<Greeting, _, _>(DependencyScope::Transient, mock_greeting);
 	let ctx = fresh_ctx();
 
 	// Act
@@ -124,10 +116,8 @@ async fn ctx_resolve_returns_override_value_for_transient_scope() {
 async fn override_guard_drop_after_registry_drop_is_a_noop() {
 	// Arrange
 	let registry = fresh_registry();
-	let guard = registry.register_override::<Greeting, _, _>(
-		DependencyScope::Singleton,
-		mock_greeting,
-	);
+	let guard =
+		registry.register_override::<Greeting, _, _>(DependencyScope::Singleton, mock_greeting);
 
 	// Act -- drop the registry, then the guard
 	drop(registry);

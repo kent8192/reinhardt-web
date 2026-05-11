@@ -31,8 +31,8 @@ use std::future::Future;
 use std::sync::Arc;
 
 use reinhardt_di::{
-	DependencyRegistry, DependencyScope, DiResult, InjectionContext, OverrideGuard,
-	SingletonScope, global_registry,
+	DependencyRegistry, DependencyScope, DiResult, InjectionContext, OverrideGuard, SingletonScope,
+	global_registry,
 };
 
 /// Holds all `OverrideGuard`s installed during a test. Drop reverts them.
@@ -171,19 +171,17 @@ mod tests {
 		struct DropProbe(u32);
 
 		if !registry.is_registered::<DropProbe>() {
-			registry.register_async::<DropProbe, _, _>(
-				DependencyScope::Transient,
-				|_ctx| async { Ok(DropProbe(1)) },
-			);
+			registry.register_async::<DropProbe, _, _>(DependencyScope::Transient, |_ctx| async {
+				Ok(DropProbe(1))
+			});
 		}
 
 		// Act -- override, then drop the overrides token
 		{
 			let (ctx, di) = injection_context_with_di_overrides(|_scope, builder| {
-				builder.factory::<DropProbe, _, _>(
-					DependencyScope::Transient,
-					|_ctx| async { Ok::<_, reinhardt_di::DiError>(DropProbe(99)) },
-				);
+				builder.factory::<DropProbe, _, _>(DependencyScope::Transient, |_ctx| async {
+					Ok::<_, reinhardt_di::DiError>(DropProbe(99))
+				});
 			})
 			.await;
 			let v: Arc<DropProbe> = ctx.resolve::<DropProbe>().await.unwrap();

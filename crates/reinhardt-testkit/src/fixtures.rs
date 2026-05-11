@@ -180,9 +180,7 @@ pub use di::{
 };
 
 // From di_overrides module
-pub use di_overrides::{
-	DiOverrideBuilder, DiOverrides, injection_context_with_di_overrides,
-};
+pub use di_overrides::{DiOverrideBuilder, DiOverrides, injection_context_with_di_overrides};
 
 // From schema module (conditional on feature)
 #[cfg(feature = "testcontainers")]

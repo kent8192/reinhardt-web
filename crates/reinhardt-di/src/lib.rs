@@ -314,10 +314,10 @@ pub use registry::{
 	DependencyRegistration, DependencyRegistry, DependencyScope, FactoryTrait, InjectableFactory,
 	InjectableRegistration, global_registry,
 };
-#[cfg(feature = "testing")]
-pub use testing::OverrideGuard;
 pub use resolve_context::{ContextLevel, get_di_context, try_get_di_context};
 pub use scope::{RequestScope, Scope, SingletonScope};
+#[cfg(feature = "testing")]
+pub use testing::OverrideGuard;
 pub use validation::{RegistryValidator, ValidationError, ValidationErrorKind};
 
 // Re-export inventory and async_trait for macro use
