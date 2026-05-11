@@ -21,6 +21,7 @@ use reinhardt_conf::settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use reinhardt_mail;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 /// Configuration for broken link detection
@@ -313,17 +314,16 @@ impl BrokenLinkEmailsMiddleware {
 		// fall back to converting legacy `email_addresses` into anonymous
 		// `Contact` entries so existing direct-construction callers continue
 		// to receive notifications.
-		let fallback_contacts: Vec<settings::Contact>;
-		let managers: &[settings::Contact] = if !self.config.managers.is_empty() {
-			&self.config.managers
+		let managers: Cow<'_, [settings::Contact]> = if !self.config.managers.is_empty() {
+			Cow::Borrowed(&self.config.managers)
 		} else {
-			fallback_contacts = self
-				.config
-				.email_addresses
-				.iter()
-				.map(|email| settings::Contact::new("", email.clone()))
-				.collect();
-			&fallback_contacts
+			Cow::Owned(
+				self.config
+					.email_addresses
+					.iter()
+					.map(|email| settings::Contact::new("", email.clone()))
+					.collect(),
+			)
 		};
 
 		// Send email notifications to managers
@@ -338,7 +338,7 @@ impl BrokenLinkEmailsMiddleware {
 			);
 
 			// Send to all managers asynchronously (non-blocking)
-			for manager in managers {
+			for manager in managers.iter() {
 				let email = manager.email.clone();
 				let subject_clone = subject.clone();
 				let body_clone = body.clone();
