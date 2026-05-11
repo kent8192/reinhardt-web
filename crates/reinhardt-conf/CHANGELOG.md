@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.28...reinhardt-conf@v0.1.0-rc.29) - 2026-05-11
+
+### Added
+
+- *(conf)* add HasCommonSettings marker trait
+
+### Styling
+
+- apply rustfmt to PR-A files
+
 ## [0.1.0-rc.28](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.27...reinhardt-conf@v0.1.0-rc.28) - 2026-05-10
 
 ### Added
