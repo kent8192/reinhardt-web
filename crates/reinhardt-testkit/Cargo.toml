@@ -30,7 +30,8 @@ full = ["testcontainers", "static", "websockets", "graphql", "property-based", "
 
 [dependencies]
 reinhardt-db = { workspace = true, features = ["backends", "migrations", "mysql", "orm", "postgres", "sqlite"] }
-reinhardt-di = { workspace = true }
+reinhardt-di = { workspace = true, features = ["testing"] }
+reinhardt-testkit-macros = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-views = { workspace = true, features = ["viewsets"] }
 reinhardt-server = { workspace = true }
@@ -112,4 +113,5 @@ cfg_aliases = "0.2"
 tokio = { workspace = true, features = ["full"] }
 tokio-test = "0.4"
 scopeguard = "1.2"
-serial_test = "3.0"
+serial_test = { workspace = true }
+rstest = { workspace = true }

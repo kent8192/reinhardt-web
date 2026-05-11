@@ -1,0 +1,25 @@
+[package]
+name = "reinhardt-testkit-macros"
+version = "0.1.0-rc.28"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Procedural macros for reinhardt-testkit (e.g. with_di_overrides!)"
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { workspace = true, features = ["full", "extra-traits"] }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
+
+[dev-dependencies]
+trybuild = { workspace = true }
+rstest = { workspace = true }
+# Path-only dev-dep (no `version` field) so the published manifest does
+# NOT require `reinhardt-testkit` to exist on crates.io before this crate
+# is published. See KI-2 in instructions/RELEASE_PROCESS.md.
+reinhardt-testkit = { path = "../reinhardt-testkit" }

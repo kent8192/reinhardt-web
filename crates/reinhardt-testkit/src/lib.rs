@@ -91,6 +91,12 @@ pub use testcontainers_modules;
 #[cfg(feature = "static")]
 pub mod static_files;
 
+// Re-exports for the `with_di_overrides!` macro so users can depend on
+// `reinhardt-testkit` alone without also adding `reinhardt-di` as a direct
+// dep.
+pub use reinhardt_di::{DependencyScope, DiError};
+pub use reinhardt_testkit_macros::with_di_overrides;
+
 // Re-exports for impl_test_model! macro
 #[doc(hidden)]
 pub use paste;

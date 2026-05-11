@@ -91,6 +91,9 @@ pub mod schema;
 // Dependency Injection test fixtures
 pub mod di;
 
+// DI override fixtures (depends on reinhardt-di/testing feature)
+pub mod di_overrides;
+
 // Server function test fixtures (no functional crate dependency)
 pub mod server_fn;
 
@@ -175,6 +178,9 @@ pub use di::{
 	injection_context, injection_context_with_database, injection_context_with_overrides,
 	injection_context_with_sqlite, singleton_scope, with_test_di_context,
 };
+
+// From di_overrides module
+pub use di_overrides::{DiOverrideBuilder, DiOverrides, injection_context_with_di_overrides};
 
 // From schema module (conditional on feature)
 #[cfg(feature = "testcontainers")]

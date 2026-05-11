@@ -926,6 +926,48 @@ See: #3826 (convention), #3525 (HTTP-routed exception rationale),
 `tests/integration/tests/admin/` for representative direct call test
 examples.
 
+### TI-8 (MUST): Override macro-managed dependencies via `with_di_overrides!`
+
+Tests that need to mock a dependency registered by `#[injectable]` or
+`#[injectable_factory]` MUST use `reinhardt_testkit::with_di_overrides!`
+(or its underlying API,
+`reinhardt_testkit::fixtures::di_overrides::injection_context_with_di_overrides`)
+rather than re-registering on the global registry directly.
+
+Rules:
+
+- Apply `#[serial(di_registry)]` to any test that uses the factory form
+  (`=> |ctx| async { ... }`) under `with_di_overrides!`, regardless of
+  scope kind (`singleton`, `request`, or `transient`). The value form
+  (`singleton <Type> <expr>`, `request <Type> <expr>`) does not mutate the
+  global registry and does not require serialization in isolation.
+- Keep the `DiOverrides` token alive for the entire test scope (`let (_, _di) =
+  ...`). Dropping it reverts the overrides.
+- Do **not** call `reinhardt_di::DependencyRegistry::register_override`
+  directly outside of the testkit unless writing internal `reinhardt-di`
+  tests; the testkit wrapper handles cleanup and registry acquisition.
+
+Example:
+
+```rust
+use reinhardt_testkit::with_di_overrides;
+use rstest::*;
+use serial_test::serial;
+
+#[rstest]
+#[serial(di_registry)]
+#[tokio::test]
+async fn test_login() {
+    let (ctx, _di) = with_di_overrides! {
+        singleton Config { api_key: "test_key".into() },
+        transient HttpClient => |_ctx| async {
+            Ok(HttpClient::mock())
+        },
+    };
+    // ... assertions ...
+}
+```
+
 ---
 
 ## Infrastructure Testing

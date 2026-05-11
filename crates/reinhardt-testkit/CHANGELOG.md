@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(testkit)* add `DiOverrideBuilder`, `DiOverrides`, `injection_context_with_di_overrides`, and re-export the `with_di_overrides!` macro from `reinhardt-testkit-macros` for ergonomic DI mocking in tests
+
 ## [0.1.0-rc.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.23...reinhardt-testkit@v0.1.0-rc.24) - 2026-04-30
 
 ### Changed

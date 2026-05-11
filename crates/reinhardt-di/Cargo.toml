@@ -57,6 +57,7 @@ multi-value-arrays = []
 multipart = ["multer", "futures-util"]
 uuid = ["dep:uuid"]
 full = ["validation", "multi-value-arrays", "multipart", "uuid"]
+testing = []
 
 [dev-dependencies]
 insta = { workspace = true }
