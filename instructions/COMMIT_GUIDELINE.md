@@ -25,6 +25,7 @@ Key principles from the specification:
 - **NEVER** push commits without explicit user instruction
 - Always wait for user confirmation before committing changes
 - Prepare changes and inform the user, but let them decide when to commit
+- **EXCEPTION (Reinhardt family)**: When operating inside `reinhardt-web` / `reinhardt-cloud` / `awesome-delions` / `reinhardt-cc`, the **Autonomous Operation Policy** in `CLAUDE.md` / `AGENTS.md` (see the "Autonomous Operation Policy (Reinhardt Family)" subsection of `### Git Workflow`) authorizes commit and push on any non-protected branch without further confirmation. Protected branches (`main`, `master`, `develop/*`, `release/*`) and history-rewriting pushes (force-push, rebase-push) still require explicit user instruction.
 
 The following diagram summarizes the commit authorization decision flow:
 
