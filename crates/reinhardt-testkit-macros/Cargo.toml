@@ -19,4 +19,7 @@ proc-macro2 = { workspace = true }
 [dev-dependencies]
 trybuild = { workspace = true }
 rstest = { workspace = true }
-reinhardt-testkit = { workspace = true }
+# Path-only dev-dep (no `version` field) so the published manifest does
+# NOT require `reinhardt-testkit` to exist on crates.io before this crate
+# is published. See KI-2 in instructions/RELEASE_PROCESS.md.
+reinhardt-testkit = { path = "../reinhardt-testkit" }
