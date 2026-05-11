@@ -22,11 +22,12 @@ use examples_tutorial_basis::client::components::polls::{
 	polls_detail, polls_index, polls_results,
 };
 use examples_tutorial_basis::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
-use reinhardt::pages::component::Page;
-use reinhardt::pages::testing::{
-	assert_server_fn_call_count, assert_server_fn_not_called, clear_mocks, mock_server_fn,
-	mock_server_fn_error,
+use examples_tutorial_basis::server_fn::polls::{
+	get_question_detail, get_question_results, get_questions, vote,
 };
+use reinhardt::pages::component::Page;
+use reinhardt::pages::server_fn::ServerFnError;
+use reinhardt::test::msw::MockServiceWorker;
 
 // ============================================================================
 // Test Fixtures
@@ -190,86 +191,224 @@ fn test_polls_results_different_ids() {
 // Mock Infrastructure Tests
 // ============================================================================
 
-/// Test mock infrastructure for get_questions endpoint
+// ============================================================================
+// Real server_fn round-trip tests via MSW
+//
+// These tests don't just verify that the mock can be registered — they
+// actually invoke the application's `#[server_fn]` functions, let MSW
+// intercept the underlying `window.fetch()` call, deserialize the typed
+// response, and assert on the payload that the client code would see.
+// ============================================================================
+
+/// `get_questions()` returns the list mocked by MSW (success path).
 #[wasm_bindgen_test]
-fn test_mock_get_questions_endpoint() {
-	clear_mocks();
+async fn test_get_questions_returns_mocked_list() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_questions::marker>(|_args| Ok(mock_questions_list()));
+	worker.start().await;
 
-	let questions = mock_questions_list();
-	mock_server_fn("/api/server_fn/get_questions", &questions);
+	let questions = get_questions().await.expect("server_fn should succeed");
 
-	// Verify mock was registered (no calls yet)
-	assert_server_fn_not_called("/api/server_fn/get_questions");
-	assert_server_fn_call_count("/api/server_fn/get_questions", 0);
-
-	clear_mocks();
-}
-
-/// Test mock infrastructure for get_question_detail endpoint
-#[wasm_bindgen_test]
-fn test_mock_get_question_detail_endpoint() {
-	clear_mocks();
-
-	let question = mock_question();
-	let choices = mock_choices();
-	mock_server_fn("/api/server_fn/get_question_detail", &(question, choices));
-
-	assert_server_fn_not_called("/api/server_fn/get_question_detail");
-
-	clear_mocks();
-}
-
-/// Test mock infrastructure for get_question_results endpoint
-#[wasm_bindgen_test]
-fn test_mock_get_question_results_endpoint() {
-	clear_mocks();
-
-	let question = mock_question();
-	let choices = mock_choices();
-	let total_votes = 97; // Sum of votes in mock_choices
-	mock_server_fn(
-		"/api/server_fn/get_question_results",
-		&(question, choices, total_votes),
+	assert_eq!(questions.len(), 3);
+	assert_eq!(
+		questions[0].question_text,
+		"What is your favorite programming language?"
 	);
+	assert_eq!(questions[1].id, 2);
 
-	assert_server_fn_not_called("/api/server_fn/get_question_results");
-
-	clear_mocks();
+	worker
+		.calls_to_server_fn::<get_questions::marker>()
+		.assert_called();
 }
 
-/// Test mock infrastructure for vote endpoint
+/// `get_questions()` surfaces a server-side error from MSW (error path).
 #[wasm_bindgen_test]
-fn test_mock_vote_endpoint() {
-	clear_mocks();
+async fn test_get_questions_surfaces_server_error() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_questions::marker>(|_args| {
+		Err(ServerFnError::server(500, "Internal server error"))
+	});
+	worker.start().await;
 
-	// Vote returns unit type on success
-	mock_server_fn("/api/server_fn/vote", &());
-
-	assert_server_fn_not_called("/api/server_fn/vote");
-
-	clear_mocks();
+	let err = get_questions().await.expect_err("expected server error");
+	match err {
+		ServerFnError::Server { status, message } => {
+			assert_eq!(status, 500, "expected HTTP 500 status");
+			assert_eq!(
+				message, "Internal server error",
+				"expected mocked server message to propagate verbatim"
+			);
+		}
+		other => panic!("expected ServerFnError::Server, got: {other:?}"),
+	}
 }
 
-/// Test mock error for polls endpoints
+/// `get_question_detail(qid)` round-trips the `(QuestionInfo, Vec<ChoiceInfo>)` tuple
+/// through MSW.
 #[wasm_bindgen_test]
-fn test_mock_polls_error_endpoints() {
-	clear_mocks();
+async fn test_get_question_detail_round_trip() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_question_detail::marker>(|_args| {
+		Ok((mock_question(), mock_choices()))
+	});
+	worker.start().await;
 
-	// Mock various error scenarios
-	mock_server_fn_error("/api/server_fn/get_questions", 500, "Internal server error");
-	mock_server_fn_error(
-		"/api/server_fn/get_question_detail",
-		404,
-		"Question not found",
+	let (question, choices) = get_question_detail(1)
+		.await
+		.expect("server_fn should succeed");
+
+	assert_eq!(question.id, 1);
+	assert_eq!(
+		question.question_text,
+		"What is your favorite programming language?"
 	);
-	mock_server_fn_error("/api/server_fn/vote", 400, "Invalid choice");
+	assert_eq!(choices.len(), 3);
+	assert_eq!(choices[0].choice_text, "Rust");
+	assert_eq!(choices[0].votes, 42);
+}
 
-	// Verify none were called
-	assert_server_fn_not_called("/api/server_fn/get_questions");
-	assert_server_fn_not_called("/api/server_fn/get_question_detail");
-	assert_server_fn_not_called("/api/server_fn/vote");
+/// `get_question_detail(qid)` surfaces a 404 NotFound from MSW.
+#[wasm_bindgen_test]
+async fn test_get_question_detail_surfaces_not_found() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_question_detail::marker>(|_args| {
+		Err(ServerFnError::server(404, "Question not found"))
+	});
+	worker.start().await;
 
-	clear_mocks();
+	let err = get_question_detail(99)
+		.await
+		.expect_err("expected not-found error");
+	match err {
+		ServerFnError::Server { status, message } => {
+			assert_eq!(status, 404, "expected HTTP 404 status");
+			assert_eq!(
+				message, "Question not found",
+				"expected mocked not-found message to propagate verbatim"
+			);
+		}
+		other => panic!("expected ServerFnError::Server, got: {other:?}"),
+	}
+}
+
+/// `get_question_results(qid)` round-trips the `(QuestionInfo, Vec<ChoiceInfo>, i32)`
+/// tuple — used by `polls_results` for the bar-chart rendering.
+#[wasm_bindgen_test]
+async fn test_get_question_results_round_trip() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_question_results::marker>(|_args| {
+		Ok((mock_question(), mock_choices(), 97_i32))
+	});
+	worker.start().await;
+
+	let (question, choices, total) = get_question_results(1)
+		.await
+		.expect("server_fn should succeed");
+
+	assert_eq!(question.id, 1);
+	assert_eq!(choices.len(), 3);
+	assert_eq!(total, 97);
+	assert_eq!(total, choices.iter().map(|c| c.votes).sum::<i32>());
+}
+
+/// `vote(VoteRequest)` returns the chosen `ChoiceInfo` when MSW supplies one.
+#[wasm_bindgen_test]
+async fn test_vote_succeeds() {
+	let worker = MockServiceWorker::new();
+	let mocked_choice = mock_choices()[0].clone(); // "Rust", 42 votes
+	worker.handle_server_fn::<vote::marker>({
+		let c = mocked_choice.clone();
+		move |_args| Ok(c.clone())
+	});
+	worker.start().await;
+
+	let choice = vote(VoteRequest {
+		question_id: 1,
+		choice_id: 1,
+	})
+	.await
+	.expect("vote should succeed");
+
+	assert_eq!(choice.id, mocked_choice.id);
+	assert_eq!(choice.choice_text, "Rust");
+	worker.calls_to_server_fn::<vote::marker>().assert_called();
+}
+
+/// `vote(...)` surfaces an application error from MSW (e.g., invalid choice).
+#[wasm_bindgen_test]
+async fn test_vote_surfaces_invalid_choice() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<vote::marker>(|_args| {
+		Err(ServerFnError::server(400, "Invalid choice"))
+	});
+	worker.start().await;
+
+	let err = vote(VoteRequest {
+		question_id: 1,
+		choice_id: 999,
+	})
+	.await
+	.expect_err("expected invalid-choice error");
+	match err {
+		ServerFnError::Server { status, message } => {
+			assert_eq!(status, 400, "expected HTTP 400 status");
+			assert_eq!(
+				message, "Invalid choice",
+				"expected mocked invalid-choice message to propagate verbatim"
+			);
+		}
+		other => panic!("expected ServerFnError::Server, got: {other:?}"),
+	}
+}
+
+// ============================================================================
+// Component-with-MSW smoke tests
+//
+// These exercise the real polls component renders while MSW is active, so
+// they cover the path from `use_action` dispatch through MSW interception
+// to typed response deserialization. They don't await reactive re-renders
+// (mounting + scheduler flush is outside this file's scope), but they
+// prove that the component constructs without panicking when MSW is in
+// place — exactly the regression class chased through cloud's SPA work.
+// ============================================================================
+
+/// `polls_index()` constructs cleanly with MSW intercepting `get_questions`.
+#[wasm_bindgen_test]
+async fn test_polls_index_with_msw_active() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_questions::marker>(|_args| Ok(mock_questions_list()));
+	worker.start().await;
+
+	let view = polls_index();
+	assert!(matches!(view, Page::Element(_)));
+}
+
+/// `polls_detail(qid)` constructs cleanly with MSW intercepting
+/// `get_question_detail`.
+#[wasm_bindgen_test]
+async fn test_polls_detail_with_msw_active() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_question_detail::marker>(|_args| {
+		Ok((mock_question(), mock_choices()))
+	});
+	worker.start().await;
+
+	let view = polls_detail(1);
+	assert!(matches!(view, Page::Element(_)));
+}
+
+/// `polls_results(qid)` constructs cleanly with MSW intercepting
+/// `get_question_results`.
+#[wasm_bindgen_test]
+async fn test_polls_results_with_msw_active() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_question_results::marker>(|_args| {
+		Ok((mock_question(), mock_choices(), 97_i32))
+	});
+	worker.start().await;
+
+	let view = polls_results(1);
+	assert!(matches!(view, Page::Element(_)));
 }
 
 // ============================================================================

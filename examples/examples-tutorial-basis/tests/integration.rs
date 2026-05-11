@@ -14,6 +14,11 @@
 //!
 //! For new tests, **prefer the reinhardt-test fixtures approach** (see reinhardt_test_examples module).
 
+// Native-only: this file uses tokio/sqlx/tempfile which don't build for wasm32.
+// `wasm-pack test` builds all `--tests` targets; without this gate the test
+// binary tries (and fails) to link sqlx for wasm32.
+#![cfg(native)]
+
 #[cfg(with_reinhardt)]
 mod database_tests {
 	use rstest::*;
