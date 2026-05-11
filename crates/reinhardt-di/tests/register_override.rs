@@ -11,7 +11,8 @@ use rstest::*;
 use serial_test::serial;
 
 use reinhardt_di::{
-	DependencyRegistry, DependencyScope, DiResult, InjectionContext, SingletonScope, global_registry,
+	DependencyRegistry, DependencyScope, DiResult, InjectionContext, SingletonScope,
+	global_registry,
 };
 
 #[derive(Clone, Debug, PartialEq)]
