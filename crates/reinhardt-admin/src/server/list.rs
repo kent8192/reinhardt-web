@@ -5,8 +5,8 @@
 #[cfg(server)]
 use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{
-	AdminDatabase, AdminRecord, AdminSite, ColumnInfo, FilterInfo, FilterType, ListQueryParams,
-	ListResponse, ModelAdmin,
+	AdminDatabase, AdminRecord, AdminSite, ColumnInfo, FilterInfo, FilterType, ListResponse,
+	ModelAdmin,
 };
 #[cfg(server)]
 use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
@@ -99,11 +99,11 @@ fn build_columns(model_admin: &Arc<dyn ModelAdmin>) -> Vec<ColumnInfo> {
 #[server_fn]
 pub async fn get_list(
 	model_name: String,
-	params: ListQueryParams,
+	params: crate::adapters::ListQueryParams,
 	#[inject] site: Depends<AdminSite>,
 	#[inject] db: Depends<AdminDatabase>,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
-) -> Result<ListResponse, ServerFnError> {
+) -> Result<crate::adapters::ListResponse, ServerFnError> {
 	// Get model admin and check permission
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	if !model_admin.has_view_permission(user.as_ref()).await {

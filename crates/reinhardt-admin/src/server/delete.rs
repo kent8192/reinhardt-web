@@ -4,9 +4,7 @@
 
 #[cfg(server)]
 use super::admin_auth::AdminAuthenticatedUser;
-use crate::adapters::{
-	AdminDatabase, AdminRecord, AdminSite, BulkDeleteRequest, BulkDeleteResponse,
-};
+use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, BulkDeleteResponse};
 use crate::types::MutationResponse;
 use reinhardt_di::Depends;
 #[cfg(server)]
@@ -54,7 +52,7 @@ pub async fn delete_record(
 	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
-) -> Result<MutationResponse, ServerFnError> {
+) -> Result<crate::types::MutationResponse, ServerFnError> {
 	// CSRF token validation (double-submit cookie pattern)
 	require_csrf_token(&csrf_token, &http_request.inner().headers)?;
 
@@ -134,12 +132,12 @@ pub async fn delete_record(
 #[server_fn]
 pub async fn bulk_delete_records(
 	model_name: String,
-	request: BulkDeleteRequest,
+	request: crate::adapters::BulkDeleteRequest,
 	#[inject] site: Depends<AdminSite>,
 	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
-) -> Result<BulkDeleteResponse, ServerFnError> {
+) -> Result<crate::adapters::BulkDeleteResponse, ServerFnError> {
 	// CSRF token validation (double-submit cookie pattern)
 	require_csrf_token(&request.csrf_token, &http_request.inner().headers)?;
 

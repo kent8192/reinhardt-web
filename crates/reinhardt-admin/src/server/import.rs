@@ -49,13 +49,13 @@ use super::limits::{MAX_IMPORT_FILE_SIZE, MAX_IMPORT_RECORDS};
 #[server_fn]
 pub async fn import_data(
 	model_name: String,
-	format: ImportFormat,
+	format: crate::adapters::ImportFormat,
 	data: Vec<u8>,
 	#[inject] site: Depends<AdminSite>,
 	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
-) -> Result<ImportResponse, ServerFnError> {
+) -> Result<crate::adapters::ImportResponse, ServerFnError> {
 	// Authentication and authorization check
 	let auth = AdminAuth::from_request(&http_request);
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
