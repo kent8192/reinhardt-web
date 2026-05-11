@@ -46,6 +46,10 @@ pub struct DiOverrideBuilder<'a> {
 	registry: Arc<DependencyRegistry>,
 	scope: &'a SingletonScope,
 	guards: Vec<OverrideGuard>,
+	// Request-scoped seed closures applied to the constructed `InjectionContext`
+	// after build, so the values land in `RequestScope` (not `SingletonScope`)
+	// and surface through `ctx.get_request::<T>()`.
+	request_seeds: Vec<Box<dyn FnOnce(&InjectionContext) + Send + 'static>>,
 }
 
 impl<'a> DiOverrideBuilder<'a> {
@@ -54,6 +58,7 @@ impl<'a> DiOverrideBuilder<'a> {
 			registry,
 			scope,
 			guards: Vec::new(),
+			request_seeds: Vec::new(),
 		}
 	}
 
@@ -67,10 +72,17 @@ impl<'a> DiOverrideBuilder<'a> {
 	}
 
 	/// Override a `Request`-scoped type by pre-seeding the request scope of
-	/// the constructed context. The value will be wired in when the
-	/// surrounding `injection_context_with_di_overrides` builds the context.
+	/// the constructed context.
+	///
+	/// The value is queued here and applied via
+	/// [`InjectionContext::set_request`] after the surrounding
+	/// [`injection_context_with_di_overrides`] builds the context, so it
+	/// surfaces through `ctx.get_request::<T>()` and the
+	/// `DependencyScope::Request` cache lookup in `ctx.resolve::<T>()`.
 	pub fn request_value<T: Any + Send + Sync + 'static>(&mut self, value: T) {
-		self.scope.set(value);
+		self.request_seeds.push(Box::new(move |ctx| {
+			ctx.set_request::<T>(value);
+		}));
 	}
 
 	/// Override an arbitrary factory.
@@ -106,8 +118,13 @@ where
 	let registry = global_registry().clone();
 	let mut builder = DiOverrideBuilder::new(registry, &scope);
 	setup(&scope, &mut builder);
+	// Extract the request-scope seed closures before consuming the builder.
+	let request_seeds = std::mem::take(&mut builder.request_seeds);
 	let overrides = builder.into_overrides();
 	let ctx = InjectionContext::builder(scope).build();
+	for seed in request_seeds {
+		seed(&ctx);
+	}
 	(ctx, overrides)
 }
 
@@ -159,6 +176,32 @@ mod tests {
 
 		// Assert
 		assert_eq!(*value, Counter(7));
+	}
+
+	#[derive(Clone, Debug, PartialEq)]
+	struct RequestCfg {
+		token: &'static str,
+	}
+
+	#[rstest]
+	#[serial(di_registry)]
+	#[tokio::test]
+	async fn request_value_lands_in_request_scope_not_singleton() {
+		// Arrange
+		let (ctx, _di) = injection_context_with_di_overrides(|_scope, builder| {
+			builder.request_value(RequestCfg { token: "req-only" });
+		})
+		.await;
+
+		// Act
+		let from_request: Option<Arc<RequestCfg>> = ctx.get_request();
+		let from_singleton: Option<Arc<RequestCfg>> = ctx.get_singleton();
+
+		// Assert -- value is visible from the request scope, NOT from the
+		// singleton scope. This is the round-trip the macro consumer expects
+		// when writing `request <Type> <value>`.
+		assert_eq!(from_request.unwrap().token, "req-only");
+		assert!(from_singleton.is_none());
 	}
 
 	#[rstest]
