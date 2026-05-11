@@ -1,6 +1,8 @@
 //! Run with `cargo test -p reinhardt-testkit-macros --test trybuild`.
 
-#[test]
+use rstest::*;
+
+#[rstest]
 fn macro_ui_tests() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/pass_singleton.rs");

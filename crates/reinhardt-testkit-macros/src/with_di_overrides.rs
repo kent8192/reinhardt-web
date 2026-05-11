@@ -54,6 +54,10 @@ impl Parse for OverrideItem {
 			}
 		}
 
+		// Note: generic types with `<T>` and tuple-struct types like `MyTuple(arg)`
+		// are not currently supported as seed values; consumers should use the
+		// factory form (`=> |ctx| async { ... }`) for those cases. The grammar may
+		// be extended in the future to handle turbofish and tuple paren tails.
 		let ty: Type = input.parse()?;
 
 		// Three grammars:
@@ -166,35 +170,46 @@ fn parse_struct_literal_after_path(input: ParseStream, path: Path) -> Result<Exp
 pub(crate) fn expand(input: TokenStream) -> Result<TokenStream> {
 	let invocation = syn::parse2::<Invocation>(input)?;
 
-	let body = invocation.items.iter().map(|item| match item {
-		OverrideItem::Singleton { ty, value } => quote! {
-			__builder.singleton::<#ty>(#value);
-		},
-		OverrideItem::Request { ty, value } => quote! {
-			__builder.request_value::<#ty>(#value);
-		},
-		OverrideItem::Factory {
-			scope_ident,
-			ty,
-			closure,
-		} => {
-			let scope_path = match scope_ident.to_string().as_str() {
-				"transient" => quote! { ::reinhardt_di::DependencyScope::Transient },
-				"singleton" => quote! { ::reinhardt_di::DependencyScope::Singleton },
-				"request" => quote! { ::reinhardt_di::DependencyScope::Request },
-				_ => unreachable!(),
-			};
-			quote! {
-				__builder.factory::<#ty, _, _>(#scope_path, #closure);
+	// Use `Span::mixed_site()` for the macro-injected idents so they cannot
+	// unify with user-defined `__scope` / `__builder` bindings at the call
+	// site. The outer ident is renamed to `scope_arg` to avoid shadowing the
+	// inner `scope_ident` field on `OverrideItem::Factory`.
+	let scope_arg = ::syn::Ident::new("__scope", ::proc_macro2::Span::mixed_site());
+	let builder_ident = ::syn::Ident::new("__builder", ::proc_macro2::Span::mixed_site());
+
+	let body: Vec<_> = invocation
+		.items
+		.iter()
+		.map(|item| match item {
+			OverrideItem::Singleton { ty, value } => quote! {
+				#builder_ident.singleton::<#ty>(#value);
+			},
+			OverrideItem::Request { ty, value } => quote! {
+				#builder_ident.request_value::<#ty>(#value);
+			},
+			OverrideItem::Factory {
+				scope_ident,
+				ty,
+				closure,
+			} => {
+				let scope_path = match scope_ident.to_string().as_str() {
+					"transient" => quote! { ::reinhardt_testkit::DependencyScope::Transient },
+					"singleton" => quote! { ::reinhardt_testkit::DependencyScope::Singleton },
+					"request" => quote! { ::reinhardt_testkit::DependencyScope::Request },
+					_ => unreachable!(),
+				};
+				quote! {
+					#builder_ident.factory::<#ty, _, _>(#scope_path, #closure);
+				}
 			}
-		}
-	});
+		})
+		.collect();
 
 	let expanded = quote! {
 		{
 			::reinhardt_testkit::fixtures::di_overrides
-				::injection_context_with_di_overrides(|__scope, __builder| {
-					let _ = __scope;
+				::injection_context_with_di_overrides(|#scope_arg, #builder_ident| {
+					let _ = #scope_arg;
 					#(#body)*
 				}).await
 		}

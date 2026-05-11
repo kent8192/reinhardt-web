@@ -6,9 +6,9 @@ Procedural macros for [`reinhardt-testkit`](../reinhardt-testkit). The macros he
 
 ## `with_di_overrides!`
 
-Sets up a test `InjectionContext` with one or more dependencies overridden, and returns the context plus a guard token that reverts every override on drop.
+Expands into a call to `reinhardt-testkit`'s `injection_context_with_di_overrides`, which returns the context plus a guard token that reverts every override on drop.
 
-```rust,no_run
+```rust,ignore
 use reinhardt_testkit::with_di_overrides;
 use rstest::*;
 use serial_test::serial;
