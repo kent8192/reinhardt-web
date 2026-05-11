@@ -461,20 +461,32 @@ impl DatabaseConnection {
 	///
 	/// The optional `env_override` argument is honored first: if it is
 	/// `Some(url)`, that URL is returned verbatim. Pass `None` to skip the
-	/// override entirely, or `std::env::var("DATABASE_URL").ok().as_deref()`
-	/// at the call site to opt into the env-var short circuit.
+	/// override entirely. To opt into the env-var short circuit, bind the
+	/// result of `std::env::var` first so the temporary `String` outlives
+	/// the borrow:
+	///
+	/// ```ignore
+	/// let database_url_env = std::env::var("DATABASE_URL").ok();
+	/// let url = DatabaseConnection::database_url_from(
+	///     settings,
+	///     database_url_env.as_deref(),
+	/// )?;
+	/// ```
 	///
 	/// # Errors
 	///
-	/// Returns a `ConnectionError` if `core.databases.default` is missing
-	/// or if `to_url` fails for the resolved config.
+	/// Returns a `ConnectionError` if the `core.databases.default` entry is
+	/// missing from the composed settings. `DatabaseConfig::to_url` itself
+	/// is infallible, so a successfully resolved `default` entry always
+	/// yields `Ok(_)`.
 	///
 	/// # Example
 	///
 	/// ```ignore
-	/// use reinhardt_db::backends::connection::database_url_from;
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	/// # fn doc<S: reinhardt_conf::HasCoreSettings>(settings: &S) {
-	/// let url = database_url_from(settings, None).expect("database url");
+	/// let url = DatabaseConnection::database_url_from(settings, None)
+	///     .expect("database url");
 	/// # let _ = url;
 	/// # }
 	/// ```
