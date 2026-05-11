@@ -54,16 +54,17 @@ impl Parse for OverrideItem {
 			}
 		}
 
-		// Note: generic types with `<T>` and tuple-struct types like `MyTuple(arg)`
-		// are not currently supported as seed values; consumers should use the
-		// factory form (`=> |ctx| async { ... }`) for those cases. The grammar may
-		// be extended in the future to handle turbofish and tuple paren tails.
+		// The parser only handles a plain `Type` here (via `syn::Type::parse`).
+		// Generic types with `<T>`, tuple-struct constructors `MyTuple(args)`,
+		// function calls `Foo::new(...)`, and other expression forms are NOT
+		// accepted as seed values — use the factory form (`=> |ctx| async { ... }`)
+		// for those cases.
 		let ty: Type = input.parse()?;
 
-		// Three grammars:
+		// Three grammars supported by the value/factory parser:
 		//   `<kind> <Type> => <closure-expr>`        → install factory
 		//   `<kind> <Type> { fields... }`            → seed scope with struct literal
-		//   `<kind> <Type>` (Unit or Tuple type)     → seed scope with `<Type>` or `<Type>(...)`
+		//   `<kind> <Type>`                          → seed scope with a unit-struct value
 		//
 		// For value form, only `singleton` and `request` are valid.
 		if input.peek(Token![=>]) {
@@ -79,17 +80,18 @@ impl Parse for OverrideItem {
 		// Value form — parse the expression that constructs the value.
 		//
 		// `syn::Type::parse` consumes just the path (e.g. `Cfg`) and stops
-		// before `{`, so we need to re-assemble the struct literal manually
-		// when the next token is `{`. Otherwise (for unit / tuple struct
-		// constructors, function calls, paths), the type itself is a valid
-		// expression seed.
+		// before `{`, so we re-assemble the struct literal manually when the
+		// next token is `{`. Otherwise the type itself is taken as a unit-
+		// struct path expression — that is the only non-brace form we accept
+		// in the value position.
 		let value: Expr = if input.peek(syn::token::Brace) {
 			let path = type_to_path(&ty)?;
 			parse_struct_literal_after_path(input, path)?
 		} else {
-			// Re-use the type as a path expression. This covers `Foo`,
-			// `Foo::new()`, etc. — anything that the user could have written
-			// purely as an expression starting with the type's path.
+			// Re-use the type as a path expression. This only covers unit-
+			// struct paths like `Foo` (or qualified `module::Foo`) — call
+			// tails are not parsed because `syn::Type::parse` already stopped
+			// before any `(` or `;`.
 			type_to_value_expr(&ty)?
 		};
 

@@ -936,10 +936,11 @@ rather than re-registering on the global registry directly.
 
 Rules:
 
-- Apply `#[serial(di_registry)]` to any test that calls the `factory` form
-  (or invokes `with_di_overrides!` with a `transient`/`request` factory
-  block). Singleton/Request scope overrides (the value form) do not require
-  serialization when used in isolation.
+- Apply `#[serial(di_registry)]` to any test that uses the factory form
+  (`=> |ctx| async { ... }`) under `with_di_overrides!`, regardless of
+  scope kind (`singleton`, `request`, or `transient`). The value form
+  (`singleton <Type> <expr>`, `request <Type> <expr>`) does not mutate the
+  global registry and does not require serialization in isolation.
 - Keep the `DiOverrides` token alive for the entire test scope (`let (_, _di) =
   ...`). Dropping it reverts the overrides.
 - Do **not** call `reinhardt_di::DependencyRegistry::register_override`
