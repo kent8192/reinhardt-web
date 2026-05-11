@@ -23,7 +23,7 @@ CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGE
 [tasks.runserver]
 description = "Start the development server (auto-reloads on changes)"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "--", "runserver", "--with-pages"]
+args = ["run", "--bin", "manage", "--", "runserver", "--with-pages"]
 
 # ============================================================================
 # Database Migrations
@@ -32,17 +32,17 @@ args = ["run", "--bin", "examples-tutorial-basis", "--", "runserver", "--with-pa
 [tasks.makemigrations]
 description = "Create new migrations based on model changes"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "makemigrations"]
+args = ["run", "--bin", "manage", "makemigrations"]
 
 [tasks.makemigrations-app]
 description = "Create new migrations for a specific app (usage: cargo make makemigrations-app -- <app_label>)"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "makemigrations", "${@}"]
+args = ["run", "--bin", "manage", "makemigrations", "${@}"]
 
 [tasks.migrate]
 description = "Apply database migrations"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "migrate"]
+args = ["run", "--bin", "manage", "migrate"]
 
 # ============================================================================
 # Static Files
@@ -51,7 +51,7 @@ args = ["run", "--bin", "examples-tutorial-basis", "migrate"]
 [tasks.collectstatic]
 description = "Collect static files into STATIC_ROOT"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "collectstatic"]
+args = ["run", "--bin", "manage", "collectstatic"]
 
 # ============================================================================
 # Project Management
@@ -60,17 +60,17 @@ args = ["run", "--bin", "examples-tutorial-basis", "collectstatic"]
 [tasks.check]
 description = "Check the project for common issues"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "check"]
+args = ["run", "--bin", "manage", "check"]
 
 [tasks.showurls]
 description = "Display all registered URL patterns"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "showurls"]
+args = ["run", "--bin", "manage", "showurls"]
 
 [tasks.shell]
 description = "Run an interactive Rust shell (REPL)"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "shell"]
+args = ["run", "--bin", "manage", "shell"]
 
 # ============================================================================
 # Testing
@@ -183,7 +183,7 @@ description = "Build WASM in debug mode and collect static files"
 dependencies = ["wasm-bindgen-dev"]
 script = '''
 echo "Running collectstatic..."
-cargo run --bin examples-tutorial-basis collectstatic --no-input
+cargo run --bin manage collectstatic --no-input
 echo "✓ WASM build and collectstatic completed"
 '''
 
@@ -224,7 +224,7 @@ description = "Build WASM in release mode with optimization and collect static f
 dependencies = ["wasm-finalize-release"]
 script = '''
 echo "Running collectstatic..."
-cargo run --bin examples-tutorial-basis collectstatic --no-input
+cargo run --bin manage collectstatic --no-input
 echo "✓ WASM release build and collectstatic completed"
 '''
 
@@ -288,7 +288,7 @@ fi
 
 echo "🚀 Starting development server with WASM frontend..."
 # wasm-build-dev already produced fresh artifacts; skip runserver's own rebuild.
-cargo run --bin examples-tutorial-basis -- runserver --with-pages --noreload --no-override-wasm
+cargo run --bin manage -- runserver --with-pages --noreload --no-override-wasm
 '''
 
 [tasks.dev-release]
@@ -300,7 +300,7 @@ script = '''
 #!/bin/bash
 echo "🚀 Starting server with optimized WASM frontend..."
 # wasm-build-release already produced optimized artifacts; skip runserver's own rebuild.
-cargo run --release --bin examples-tutorial-basis -- runserver --with-pages --noreload --no-override-wasm
+cargo run --release --bin manage -- runserver --with-pages --noreload --no-override-wasm
 '''
 
 # ============================================================================
@@ -318,14 +318,14 @@ dependencies = ["fmt-check", "clippy-check", "build", "test"]
 [tasks.runserver-v]
 description = "Start the development server with verbose output"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "runserver", "-v"]
+args = ["run", "--bin", "manage", "runserver", "-v"]
 
 [tasks.runserver-vv]
 description = "Start the development server with very verbose output"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "runserver", "-vv"]
+args = ["run", "--bin", "manage", "runserver", "-vv"]
 
 [tasks.runserver-vvv]
 description = "Start the development server with maximum verbosity"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "runserver", "-vvv"]
+args = ["run", "--bin", "manage", "runserver", "-vvv"]

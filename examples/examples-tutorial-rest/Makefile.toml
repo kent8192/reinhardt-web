@@ -23,7 +23,7 @@ CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGE
 [tasks.runserver]
 description = "Start the development server"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "--", "runserver"]
+args = ["run", "--bin", "manage", "--", "runserver"]
 
 # ============================================================================
 # Database Migrations
@@ -32,12 +32,12 @@ args = ["run", "--bin", "examples-tutorial-rest", "--", "runserver"]
 [tasks.makemigrations]
 description = "Create new migrations based on model changes"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "makemigrations"]
+args = ["run", "--bin", "manage", "makemigrations"]
 
 [tasks.migrate]
 description = "Apply database migrations"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "migrate"]
+args = ["run", "--bin", "manage", "migrate"]
 
 # ============================================================================
 # Testing
@@ -112,42 +112,42 @@ args = ["clean"]
 [tasks.makemigrations-app]
 description = "Create new migrations for a specific app (usage: cargo make makemigrations-app -- <app_label>)"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "makemigrations", "${@}"]
+args = ["run", "--bin", "manage", "makemigrations", "${@}"]
 
 [tasks.collectstatic]
 description = "Collect static files into STATIC_ROOT"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "collectstatic"]
+args = ["run", "--bin", "manage", "collectstatic"]
 
 [tasks.check]
 description = "Check the project for common issues"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "check"]
+args = ["run", "--bin", "manage", "check"]
 
 [tasks.showurls]
 description = "Display all registered URL patterns"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "showurls"]
+args = ["run", "--bin", "manage", "showurls"]
 
 [tasks.shell]
 description = "Run an interactive Rust shell (REPL)"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "shell"]
+args = ["run", "--bin", "manage", "shell"]
 
 [tasks.runserver-v]
 description = "Start the development server with verbose output"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "runserver", "-v"]
+args = ["run", "--bin", "manage", "runserver", "-v"]
 
 [tasks.runserver-vv]
 description = "Start the development server with very verbose output"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "runserver", "-vv"]
+args = ["run", "--bin", "manage", "runserver", "-vv"]
 
 [tasks.runserver-vvv]
 description = "Start the development server with maximum verbosity"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "runserver", "-vvv"]
+args = ["run", "--bin", "manage", "runserver", "-vvv"]
 
 # ============================================================================
 # CI/CD Workflow
