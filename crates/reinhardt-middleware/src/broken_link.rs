@@ -31,6 +31,13 @@ pub struct BrokenLinkConfig {
 	pub ignored_paths: Vec<String>,
 	/// User-Agent patterns to ignore (e.g., bots)
 	pub ignored_user_agents: Vec<String>,
+	/// Managers to notify when a broken link is detected
+	///
+	/// Resolved from `Settings::managers` at middleware construction time via
+	/// [`BrokenLinkConfig::from_settings`]. When empty, the middleware falls
+	/// back to converting [`BrokenLinkConfig::email_addresses`] into anonymous
+	/// `Contact` entries.
+	pub managers: Vec<settings::Contact>,
 }
 
 impl BrokenLinkConfig {
@@ -61,7 +68,32 @@ impl BrokenLinkConfig {
 				"spider".to_string(),
 				"slurp".to_string(),
 			],
+			managers: Vec::new(),
 		}
+	}
+
+	/// Create a `BrokenLinkConfig` from application `Settings`
+	///
+	/// Resolves `Settings::managers` once at construction time, so the
+	/// middleware does not need to re-parse settings on every request.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::Settings;
+	/// use reinhardt_middleware::BrokenLinkConfig;
+	///
+	/// #[allow(deprecated)]
+	/// let settings = Settings::default();
+	/// #[allow(deprecated)]
+	/// let config = BrokenLinkConfig::from_settings(&settings);
+	/// assert!(config.enabled);
+	/// ```
+	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
+	pub fn from_settings(settings: &settings::Settings) -> Self {
+		let mut config = Self::new();
+		config.managers = settings.managers.clone();
+		config
 	}
 
 	/// Disable broken link detection
@@ -210,6 +242,28 @@ impl BrokenLinkEmailsMiddleware {
 			ignored_path_regexes,
 			ignored_ua_regexes,
 		}
+	}
+
+	/// Create a `BrokenLinkEmailsMiddleware` from application `Settings`
+	///
+	/// This is the canonical entry point. Manager contacts from
+	/// `Settings::managers` are resolved exactly once and stored on the
+	/// middleware, eliminating per-request environment lookups.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::Settings;
+	/// use reinhardt_middleware::BrokenLinkEmailsMiddleware;
+	///
+	/// #[allow(deprecated)]
+	/// let settings = Settings::default();
+	/// #[allow(deprecated)]
+	/// let middleware = BrokenLinkEmailsMiddleware::from_settings(&settings);
+	/// ```
+	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
+	pub fn from_settings(settings: &settings::Settings) -> Self {
+		Self::new(BrokenLinkConfig::from_settings(settings))
 	}
 
 	/// Check if the path should be ignored
