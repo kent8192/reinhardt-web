@@ -23,7 +23,7 @@ CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGE
 [tasks.runserver]
 description = "Start the development server (auto-reloads on changes)"
 command = "cargo"
-args = ["run", "runserver"]
+args = ["run", "--bin", "examples-tutorial-basis", "--", "runserver", "--with-pages"]
 
 # ============================================================================
 # Database Migrations
