@@ -22,3 +22,22 @@
 // ) -> ViewResult<Response> {
 //     Ok(Response::new(StatusCode::OK).with_body(user.email().to_string()))
 // }
+//
+// Generic DI for app services uses `Depends<T>` (rc.16+) — the replacement
+// for the deprecated `Arc<T>` / `Injected<T>` parameter form:
+//
+// use reinhardt::extract::Depends;
+//
+// #[get("/health/", name = "{{ app_name }}_health")]
+// pub async fn health(
+//     #[inject] svc: Depends<MyService>,
+// ) -> ViewResult<Response> {
+//     Ok(Response::new(StatusCode::OK).with_body(svc.status()))
+// }
+//
+// For declarative endpoint-level authorization, use `guard!()` (rc.16+):
+//
+// use reinhardt::guard;
+//
+// #[get("/admin/", name = "{{ app_name }}_admin", guards = guard!(IsStaff))]
+// pub async fn admin_only() -> ViewResult<Response> { /* ... */ }
