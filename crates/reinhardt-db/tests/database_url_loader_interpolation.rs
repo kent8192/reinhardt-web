@@ -242,7 +242,7 @@ mod database_url_from_api {
 		assert!(
 			result.is_err(),
 			"missing default database entry must surface as an error, got: {:?}",
-			result.ok(),
+			result,
 		);
 	}
 }
