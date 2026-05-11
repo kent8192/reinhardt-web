@@ -376,11 +376,18 @@ impl DependencyRegistry {
 		let previous_factory = self.factories.insert(type_id, boxed);
 		let previous_scope = self.scopes.insert(type_id, scope);
 
+		// `factories` and `scopes` are always inserted/removed in lockstep, so
+		// observing one without the other indicates the `#[serial(di_registry)]`
+		// contract was violated by another writer. Assert in debug builds and
+		// fall back to "no previous" in release so the guard at least removes
+		// the entry instead of restoring a partial state.
+		debug_assert!(
+			previous_factory.is_some() == previous_scope.is_some(),
+			"torn override state: factories/scopes diverged for `{}`",
+			std::any::type_name::<T>()
+		);
 		let previous = match (previous_factory, previous_scope) {
 			(Some(f), Some(s)) => Some((f, s)),
-			// Should not happen: factories and scopes are inserted together.
-			// Fall back to "no previous" semantics so the guard removes the
-			// entry rather than restoring a partial state.
 			_ => None,
 		};
 
@@ -393,6 +400,11 @@ impl DependencyRegistry {
 
 	/// Restores a previously-installed factory and scope. Used by
 	/// [`OverrideGuard::drop`](crate::testing::OverrideGuard).
+	///
+	/// Like `register_override`, this performs a non-atomic two-`DashMap`
+	/// mutation, so callers MUST hold the `#[serial(di_registry)]` lock — in
+	/// practice this is enforced by only invoking it from a guard's `Drop`,
+	/// which runs inside the same serialized test scope.
 	pub(crate) fn restore_override(
 		&self,
 		type_id: std::any::TypeId,
@@ -404,7 +416,8 @@ impl DependencyRegistry {
 	}
 
 	/// Removes an override entry that had no prior registration. Used by
-	/// [`OverrideGuard::drop`](crate::testing::OverrideGuard).
+	/// [`OverrideGuard::drop`](crate::testing::OverrideGuard). Same
+	/// `#[serial(di_registry)]` requirement as `restore_override`.
 	pub(crate) fn remove_override(&self, type_id: std::any::TypeId) {
 		self.factories.remove(&type_id);
 		self.scopes.remove(&type_id);

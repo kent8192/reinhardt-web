@@ -11,7 +11,7 @@ use rstest::*;
 use serial_test::serial;
 
 use reinhardt_di::{
-	DependencyRegistry, DependencyScope, DiResult, InjectionContext, SingletonScope,
+	DependencyRegistry, DependencyScope, DiResult, InjectionContext, SingletonScope, global_registry,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -90,8 +90,6 @@ async fn override_guard_removes_entry_when_no_previous_registration() {
 	// Assert -- entry removed after drop
 	assert!(!registry.is_registered::<Greeting>());
 }
-
-use reinhardt_di::global_registry;
 
 #[rstest]
 #[serial(di_registry)]

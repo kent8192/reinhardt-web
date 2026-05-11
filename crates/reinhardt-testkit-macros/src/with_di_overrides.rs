@@ -5,6 +5,41 @@ use quote::{ToTokens, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::{Error, Expr, Ident, Path, Result, Token, Type};
 
+/// Scope kind written before the type in the macro invocation. Parsed once
+/// from the leading keyword; eliminates re-stringifying the kind during
+/// expansion.
+#[derive(Copy, Clone)]
+enum ScopeKind {
+	Singleton,
+	Request,
+	Transient,
+}
+
+impl ScopeKind {
+	fn parse_ident(kind: &Ident) -> Result<Self> {
+		match kind.to_string().as_str() {
+			"singleton" => Ok(Self::Singleton),
+			"request" => Ok(Self::Request),
+			"transient" => Ok(Self::Transient),
+			other => Err(Error::new_spanned(
+				kind,
+				format!(
+					"unknown override kind `{other}`; expected one of \
+					 `singleton`, `request`, `transient`"
+				),
+			)),
+		}
+	}
+
+	fn dependency_scope_path(self) -> TokenStream {
+		match self {
+			Self::Singleton => quote! { ::reinhardt_testkit::DependencyScope::Singleton },
+			Self::Request => quote! { ::reinhardt_testkit::DependencyScope::Request },
+			Self::Transient => quote! { ::reinhardt_testkit::DependencyScope::Transient },
+		}
+	}
+}
+
 /// Parsed top-level invocation: a comma-separated list of override items.
 struct Invocation {
 	items: Vec<OverrideItem>,
@@ -17,7 +52,7 @@ enum OverrideItem {
 	Request { ty: Type, value: Expr },
 	/// `<kind> <Type> => <closure>` — install a factory override.
 	Factory {
-		scope_ident: Ident,
+		scope_kind: ScopeKind,
 		ty: Type,
 		closure: Expr,
 	},
@@ -40,19 +75,7 @@ impl Parse for Invocation {
 impl Parse for OverrideItem {
 	fn parse(input: ParseStream) -> Result<Self> {
 		let kind: Ident = input.parse()?;
-		let kind_str = kind.to_string();
-		match kind_str.as_str() {
-			"singleton" | "request" | "transient" => {}
-			_ => {
-				return Err(Error::new_spanned(
-					&kind,
-					format!(
-						"unknown override kind `{kind_str}`; expected one of \
-						 `singleton`, `request`, `transient`"
-					),
-				));
-			}
-		}
+		let scope_kind = ScopeKind::parse_ident(&kind)?;
 
 		// The parser only handles a plain `Type` here (via `syn::Type::parse`).
 		// Generic types with `<T>`, tuple-struct constructors `MyTuple(args)`,
@@ -71,7 +94,7 @@ impl Parse for OverrideItem {
 			input.parse::<Token![=>]>()?;
 			let closure: Expr = input.parse()?;
 			return Ok(OverrideItem::Factory {
-				scope_ident: kind,
+				scope_kind,
 				ty,
 				closure,
 			});
@@ -95,15 +118,14 @@ impl Parse for OverrideItem {
 			type_to_value_expr(&ty)?
 		};
 
-		match kind_str.as_str() {
-			"singleton" => Ok(OverrideItem::Singleton { ty, value }),
-			"request" => Ok(OverrideItem::Request { ty, value }),
-			"transient" => Err(Error::new_spanned(
+		match scope_kind {
+			ScopeKind::Singleton => Ok(OverrideItem::Singleton { ty, value }),
+			ScopeKind::Request => Ok(OverrideItem::Request { ty, value }),
+			ScopeKind::Transient => Err(Error::new_spanned(
 				&kind,
 				"`transient` overrides must use the factory form: \
 				 `transient <Type> => |ctx| async { ... }`",
 			)),
-			_ => unreachable!("kind already validated"),
 		}
 	}
 }
@@ -190,16 +212,11 @@ pub(crate) fn expand(input: TokenStream) -> Result<TokenStream> {
 				#builder_ident.request_value::<#ty>(#value);
 			},
 			OverrideItem::Factory {
-				scope_ident,
+				scope_kind,
 				ty,
 				closure,
 			} => {
-				let scope_path = match scope_ident.to_string().as_str() {
-					"transient" => quote! { ::reinhardt_testkit::DependencyScope::Transient },
-					"singleton" => quote! { ::reinhardt_testkit::DependencyScope::Singleton },
-					"request" => quote! { ::reinhardt_testkit::DependencyScope::Request },
-					_ => unreachable!(),
-				};
+				let scope_path = scope_kind.dependency_scope_path();
 				quote! {
 					#builder_ident.factory::<#ty, _, _>(#scope_path, #closure);
 				}

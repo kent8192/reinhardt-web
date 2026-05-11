@@ -48,7 +48,10 @@ pub struct DiOverrideBuilder<'a> {
 	guards: Vec<OverrideGuard>,
 	// Request-scoped seed closures applied to the constructed `InjectionContext`
 	// after build, so the values land in `RequestScope` (not `SingletonScope`)
-	// and surface through `ctx.get_request::<T>()`.
+	// and surface through `ctx.get_request::<T>()`. Held separately from
+	// `guards` because seeds run once at context-build time and are then
+	// dropped, while guards must live for the entire test scope to keep their
+	// `register_override` mutations in effect.
 	request_seeds: Vec<Box<dyn FnOnce(&InjectionContext) + Send + 'static>>,
 }
 
