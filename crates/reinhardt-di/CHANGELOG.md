@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(di)* add testing-only `register_override` API and `OverrideGuard` for mock factory injection (feature `testing`)
+
 ## [0.1.0-rc.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.23...reinhardt-di@v0.1.0-rc.24) - 2026-04-30
 
 ### Changed

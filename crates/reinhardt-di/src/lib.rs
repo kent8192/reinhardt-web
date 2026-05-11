@@ -11,6 +11,13 @@
 //! - **Cache**: Automatic caching within request scope
 //! - **Circular Dependency Detection**: Automatic runtime detection with optimized performance
 //!
+//! ## Cargo features
+//!
+//! - `testing` — exposes [`DependencyRegistry::register_override`] and
+//!   [`testing::OverrideGuard`] for use by `reinhardt-testkit` and other
+//!   test harnesses. Tests using these APIs must run inside
+//!   `#[serial(di_registry)]`.
+//!
 //! ## Development Tools (dev-tools feature)
 //!
 //! When the `dev-tools` feature is enabled, additional debugging and profiling tools are available:
@@ -280,6 +287,8 @@ pub mod registration;
 pub mod registry;
 pub mod resolve_context;
 pub mod scope;
+#[cfg(feature = "testing")]
+pub mod testing;
 pub mod validation;
 
 use thiserror::Error;
@@ -305,6 +314,8 @@ pub use registry::{
 	DependencyRegistration, DependencyRegistry, DependencyScope, FactoryTrait, InjectableFactory,
 	InjectableRegistration, global_registry,
 };
+#[cfg(feature = "testing")]
+pub use testing::OverrideGuard;
 pub use resolve_context::{ContextLevel, get_di_context, try_get_di_context};
 pub use scope::{RequestScope, Scope, SingletonScope};
 pub use validation::{RegistryValidator, ValidationError, ValidationErrorKind};

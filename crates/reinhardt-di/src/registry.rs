@@ -324,6 +324,87 @@ Use a distinct newtype (e.g., `struct Primary{short}({short})`) for each."
 	}
 }
 
+#[cfg(feature = "testing")]
+impl DependencyRegistry {
+	/// Registers or overrides a factory for type `T` without panicking on
+	/// duplicate registration.
+	///
+	/// Returns an [`OverrideGuard`](crate::testing::OverrideGuard) that
+	/// restores the previous factory (or removes the entry entirely if there
+	/// was none) when dropped.
+	///
+	/// Tests using this method **must** run inside the
+	/// `#[serial(di_registry)]` group because the global registry is mutated.
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// # use std::sync::Arc;
+	/// # use reinhardt_di::{DependencyRegistry, DependencyScope, DiResult, InjectionContext};
+	/// # fn _example(registry: Arc<DependencyRegistry>) {
+	/// let _guard = registry.register_override::<String, _, _>(
+	///     DependencyScope::Singleton,
+	///     |_ctx| async { Ok("mock".to_string()) },
+	/// );
+	/// // ... run test body ...
+	/// // `_guard` dropped here → previous factory restored.
+	/// # }
+	/// ```
+	pub fn register_override<T, F, Fut>(
+		self: &std::sync::Arc<Self>,
+		scope: crate::registry::DependencyScope,
+		factory: F,
+	) -> crate::testing::OverrideGuard
+	where
+		T: std::any::Any + Send + Sync + 'static,
+		F: Fn(std::sync::Arc<crate::InjectionContext>) -> Fut + Send + Sync + 'static,
+		Fut: std::future::Future<Output = crate::DiResult<T>> + Send + 'static,
+	{
+		let type_id = std::any::TypeId::of::<T>();
+		let async_factory = crate::registry::AsyncFactory::new(factory);
+		let boxed: Box<dyn crate::registry::FactoryTrait> = Box::new(async_factory);
+
+		// Capture previous (if any) and install the override.
+		let previous_factory = self.factories.insert(type_id, boxed);
+		let previous_scope = self.scopes.insert(type_id, scope);
+
+		let previous = match (previous_factory, previous_scope) {
+			(Some(f), Some(s)) => Some((f, s)),
+			// Should not happen: factories and scopes are inserted together.
+			// Fall back to "no previous" semantics so the guard removes the
+			// entry rather than restoring a partial state.
+			_ => None,
+		};
+
+		crate::testing::OverrideGuard {
+			type_id,
+			previous,
+			registry: std::sync::Arc::downgrade(self),
+		}
+	}
+
+	/// Restores a previously-installed factory and scope. Used by
+	/// [`OverrideGuard::drop`](crate::testing::OverrideGuard).
+	#[doc(hidden)]
+	pub(crate) fn restore_override(
+		&self,
+		type_id: std::any::TypeId,
+		factory: Box<dyn crate::registry::FactoryTrait>,
+		scope: crate::registry::DependencyScope,
+	) {
+		self.factories.insert(type_id, factory);
+		self.scopes.insert(type_id, scope);
+	}
+
+	/// Removes an override entry that had no prior registration. Used by
+	/// [`OverrideGuard::drop`](crate::testing::OverrideGuard).
+	#[doc(hidden)]
+	pub(crate) fn remove_override(&self, type_id: std::any::TypeId) {
+		self.factories.remove(&type_id);
+		self.scopes.remove(&type_id);
+	}
+}
+
 impl Default for DependencyRegistry {
 	fn default() -> Self {
 		Self::new()
