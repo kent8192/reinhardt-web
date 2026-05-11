@@ -270,6 +270,7 @@ impl Default for VersioningManager {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::versioning::settings::VersioningSettings;
 	use std::collections::HashMap;
 
 	#[test]
@@ -346,5 +347,207 @@ mod tests {
 				.await
 				.is_ok()
 		);
+	}
+
+	// --------------------------------------------------------------------
+	// Settings-based construction tests (replaces the prior `from_env`
+	// tests, which exercised env-var parsing that no longer exists).
+	// --------------------------------------------------------------------
+
+	#[test]
+	fn test_from_settings_default_values() {
+		// Arrange
+		let settings = VersioningSettings::default();
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert_eq!(config.default_version, "1.0");
+		assert!(config.allowed_versions.is_empty());
+		assert!(matches!(config.strategy, VersioningStrategy::AcceptHeader));
+		assert!(config.strict_mode);
+		assert!(config.version_param.is_none());
+		assert!(config.hostname_patterns.is_none());
+	}
+
+	#[test]
+	fn test_from_settings_custom_default_version() {
+		// Arrange
+		let settings = VersioningSettings {
+			default_version: "2.0".to_string(),
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert_eq!(config.default_version, "2.0");
+	}
+
+	#[test]
+	fn test_from_settings_allowed_versions() {
+		// Arrange
+		let settings = VersioningSettings {
+			allowed_versions: vec!["1.0".to_string(), "2.0".to_string(), "3.0".to_string()],
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert_eq!(config.allowed_versions.len(), 3);
+		assert!(config.allowed_versions.contains(&"1.0".to_string()));
+		assert!(config.allowed_versions.contains(&"2.0".to_string()));
+		assert!(config.allowed_versions.contains(&"3.0".to_string()));
+	}
+
+	#[test]
+	fn test_from_settings_strategy_url_path() {
+		// Arrange
+		let settings = VersioningSettings {
+			strategy: VersioningStrategy::URLPath { pattern: None },
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::URLPath { .. }
+		));
+	}
+
+	#[test]
+	fn test_from_settings_strategy_query_parameter() {
+		// Arrange
+		let settings = VersioningSettings {
+			strategy: VersioningStrategy::QueryParameter { param_name: None },
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::QueryParameter { .. }
+		));
+	}
+
+	#[test]
+	fn test_from_settings_strategy_hostname() {
+		// Arrange
+		let settings = VersioningSettings {
+			strategy: VersioningStrategy::HostName { patterns: None },
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::HostName { .. }
+		));
+	}
+
+	#[test]
+	fn test_from_settings_strategy_namespace() {
+		// Arrange
+		let settings = VersioningSettings {
+			strategy: VersioningStrategy::Namespace { pattern: None },
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::Namespace { .. }
+		));
+	}
+
+	#[test]
+	fn test_from_settings_strict_mode_false() {
+		// Arrange
+		let settings = VersioningSettings {
+			strict_mode: false,
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert!(!config.strict_mode);
+	}
+
+	#[test]
+	fn test_from_settings_strict_mode_true_explicit() {
+		// Arrange
+		let settings = VersioningSettings {
+			strict_mode: true,
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert!(config.strict_mode);
+	}
+
+	#[test]
+	fn test_from_settings_combined() {
+		// Arrange
+		let settings = VersioningSettings {
+			default_version: "3.0".to_string(),
+			allowed_versions: vec!["2.0".to_string(), "3.0".to_string(), "4.0".to_string()],
+			strategy: VersioningStrategy::URLPath { pattern: None },
+			strict_mode: false,
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert_eq!(config.default_version, "3.0");
+		assert_eq!(config.allowed_versions.len(), 3);
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::URLPath { .. }
+		));
+		assert!(!config.strict_mode);
+	}
+
+	#[test]
+	fn test_from_settings_preserves_optional_fields() {
+		// Arrange — exercise the path that previously was not covered by
+		// the env-based tests (which always left these as None).
+		let mut hostname_patterns = HashMap::new();
+		hostname_patterns.insert("v1".to_string(), "v1.example.com".to_string());
+
+		let settings = VersioningSettings {
+			version_param: Some("v".to_string()),
+			hostname_patterns: Some(hostname_patterns.clone()),
+			..VersioningSettings::default()
+		};
+
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert_eq!(config.version_param.as_deref(), Some("v"));
+		assert_eq!(config.hostname_patterns.as_ref().map(|p| p.len()), Some(1));
 	}
 }
