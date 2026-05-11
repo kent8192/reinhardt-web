@@ -53,7 +53,8 @@ geo-limiting = ["reinhardt-throttling/geo-limiting"]
 
 [dependencies]
 # Core dependencies
-reinhardt-core = { workspace = true, features = ["exception", "negotiation", "pagination", "parsers", "serializers", "types"] }
+reinhardt-core = { workspace = true, features = ["exception", "macros", "negotiation", "pagination", "parsers", "serializers", "types"] }
+reinhardt-conf = { workspace = true, features = ["settings"] }
 reinhardt-db = { workspace = true, optional = true, features = ["backends", "orm", "pool"] }
 
 # Authentication (required for auth types re-export)
@@ -143,4 +144,3 @@ reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-core = { workspace = true, features = ["exception"] }
 reinhardt-auth = { workspace = true, features = ["argon2-hasher"] }
 reqwest = { workspace = true }
-serial_test = { workspace = true }

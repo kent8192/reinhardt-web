@@ -33,6 +33,8 @@ Claude Code MUST follow this authorization model before posting any comment:
 | Plan Mode approval | Post directly |
 | Self-initiated (no instruction) | MUST preview and get user confirmation |
 
+**Scope clarification (Reinhardt family Autonomous Operation Policy):** The Autonomous Operation Policy defined in `CLAUDE.md` / `AGENTS.md` authorizes *creation* of Draft PRs and Issues without further confirmation in the four Reinhardt-family repos, but the comment authorization model above is **unchanged**. Posting comments, replies, or reviews on PRs/Issues still requires explicit user instruction or Plan Mode approval, even in the four repos covered by the autonomous policy.
+
 **Self-Initiated Comment Flow:**
 
 1. Draft the comment content

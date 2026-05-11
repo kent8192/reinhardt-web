@@ -127,6 +127,16 @@ See instructions/TESTING_STANDARDS.md for comprehensive testing standards includ
 
 See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 
+**CLAUDE.md ↔ AGENTS.md Sync Policy:**
+- `CLAUDE.md` (Claude Code) and `AGENTS.md` (Codex) are deliberate mirror copies kept in sync
+- The two files MUST differ only on a small set of mechanical substitutions:
+  - `CLAUDE.md` ↔ `AGENTS.md` (title, references)
+  - `CLAUDE.local.md` ↔ `AGENTS.local.md`
+  - `Claude Code attribution` ↔ `Codex attribution`
+- **MUST**: Any edit to one file MUST be mirrored into the other in the same commit
+- **MUST**: After editing, run `diff CLAUDE.md AGENTS.md` and confirm only the documented substitutions remain
+- **NEVER**: Commit a change that touches only one of the two files
+
 ### Git Workflow
 
 **Commit Policy:**
@@ -136,17 +146,60 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
   - When user approves a plan via Exit Plan Mode, implementation and commits are both authorized
   - Upon successful implementation, all planned commits are created automatically without additional confirmation
   - If implementation fails or tests fail, NO commits are created (report to user instead)
+- **EXCEPTION (Reinhardt family)**: When operating inside `reinhardt-web` / `reinhardt-cloud` / `awesome-delions` / `reinhardt-cc`, the **Autonomous Operation Policy** below authorizes commit and push on any non-protected branch (plus Draft PR / Issue creation) without further confirmation — see the next subsection
 - Split commits by specific intent (NOT feature-level goals)
 - Each commit MUST be small enough to explain in one line
 - Use `git apply <patchfile name>.patch` for partial file commits
 - **NEVER** execute batch commits without user confirmation
 
+**Autonomous Operation Policy (Reinhardt Family):**
+
+This is an explicit, named exception to "NEVER commit/push without explicit user instruction" in the Commit Policy above. Comment-posting authorization (`instructions/GITHUB_INTERACTION.md` PP-1) is unchanged — see "Still Requires Explicit User Authorization" below.
+
+Scope (applies only when the working directory is inside one of these four repositories):
+
+- `kent8192/reinhardt-web`
+- `kent8192/reinhardt-cloud`
+- `kent8192/awesome-delions`
+- `kent8192/reinhardt-cc`
+
+Autonomously Allowed (no per-action confirmation required):
+
+| Operation | Constraint |
+|-----------|------------|
+| `git commit` | On any non-protected branch |
+| `git push` | On any non-protected branch (`feature/...`, `fix/...`, `refactor/...`, `docs/...`, `chore/...`, `test/...`, `perf/...`, `debug/...`, etc.); **never** on `main`, `master`, `develop/*`, or `release/*` |
+| Create a **Draft** Pull Request | `gh pr create --draft` / MCP `create_pull_request` with `draft=true`; body MUST follow `.github/PULL_REQUEST_TEMPLATE.md` |
+| Convert Draft PR to **Ready for Review** | **CI completion is not required** — this overrides any "CI green / tests pass" criterion in `instructions/`. All other PC-4a readiness criteria (implementation complete, PR description follows template, fmt/clippy clean, docs updated) still apply — see `instructions/PR_GUIDELINE.md` § PC-4a |
+| Create an Issue | `gh issue create` / MCP `issue_write`; MUST follow the appropriate issue template and apply at least one type label |
+
+**Protected Branches** (commit/push always require explicit user authorization):
+- `main`, `master`
+- `develop/*` (any branch starting with `develop/`)
+- `release/*` (any branch starting with `release/`)
+
+Still Requires Explicit User Authorization (no autonomy):
+
+- Direct push to any protected branch listed above
+- `git push --force`, `--force-with-lease`, or any other history-rewriting push
+- `git rebase`, `git reset --hard`, `git branch -D`, deleting tags, or any other history-destructive operation
+- Closing, merging, or deleting PRs
+- Closing or deleting Issues, comments, or review threads
+- Creating release tags or any PR carrying the `release` label
+- Posting comments / replies / reviews on PRs/Issues — the comment-posting authorization model in `instructions/GITHUB_INTERACTION.md` PP-1 is unchanged; the autonomous policy covers only the **creation** of commits, pushes, Draft PRs, and Issues, not commenting
+
+Unchanged Quality Guardrails (apply equally to autonomous operations):
+
+- PR title and body MUST follow Conventional Commits and `.github/PULL_REQUEST_TEMPLATE.md`
+- Issue body MUST follow `.github/ISSUE_TEMPLATE/*.yml`
+- Branch naming, commit message format, Claude Code attribution footer, English-only policy, and all other rules in this document remain in force
+
 **Draft PR Policy:**
-- The agent MAY convert a Draft PR to Ready for Review autonomously once the PR meets readiness criteria (worth requesting Copilot Review): implementation complete, CI green, tests pass, fmt/clippy clean, description follows template
+- The agent MAY convert a Draft PR to Ready for Review autonomously once the PC-4a readiness criteria are met. CI completion is **not** required (the Autonomous Operation Policy overrides the previous "CI green / tests pass" prerequisite); fmt/clippy cleanliness and the other PC-4a criteria are still required
 - Explicit user instruction also authorizes conversion at any time (overrides readiness check)
-- The agent MUST NOT convert when readiness criteria are unmet, unless the user explicitly overrides
+- The agent MUST NOT convert when any PC-4a readiness criterion (other than CI completion) is unmet, unless the user explicitly overrides
 - Use `gh pr ready <number>` (or GitHub MCP equivalent) for conversion
-- See instructions/PR_GUIDELINE.md § PC-4a for the full readiness checklist
+- See instructions/PR_GUIDELINE.md § PC-4a for full details
 
 **Branch Operations:**
 - When merging branches and resolving conflicts, execute immediately without entering Plan Mode
@@ -186,6 +239,7 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - ALL comments MUST be in English and include Claude Code attribution footer
 - Comments MUST reference specific code locations with repository-relative paths
 - Comments MUST NOT contain user requests, AI interactions, or absolute local paths
+- **Reinhardt family scope note**: The Autonomous Operation Policy authorizes *creation* of Draft PRs and Issues without further confirmation in the four Reinhardt-family repos, but *commenting* on PRs/Issues remains fully subject to the rules above
 
 See instructions/GITHUB_INTERACTION.md for comprehensive GitHub interaction guidelines including:
 - Posting authorization policy (PP-1 ~ PP-3)
@@ -516,9 +570,11 @@ Before submitting code:
 - Update docs with code changes (same workflow)
 - Clean up ALL test artifacts
 - Delete temp files from `/tmp` immediately
-- Wait for explicit user instruction before commits
+- Wait for explicit user instruction before commits (except where the Autonomous Operation Policy applies)
 - Understand that Plan Mode approval authorizes both implementation and commits
-- Convert Draft PRs to Ready for Review autonomously once readiness criteria are met (implementation complete, CI green, fmt/clippy clean) OR upon explicit user instruction (see instructions/PR_GUIDELINE.md § PC-4a)
+- Treat the Autonomous Operation Policy (Reinhardt family) as a standing exception that allows commit and push on any non-protected branch (anything other than `main`/`master`/`develop/*`/`release/*`), Draft PR creation, Draft→Ready conversion (implementation-complete only — no CI requirement), and Issue creation without further confirmation
+- When editing `CLAUDE.md` or `AGENTS.md`, mirror the change into the other file in the same commit (CLAUDE.md ↔ AGENTS.md sync policy)
+- Convert Draft PRs to Ready for Review autonomously once the implementation is complete (CI completion is NOT required under the Autonomous Operation Policy) OR upon explicit user instruction (see instructions/PR_GUIDELINE.md § PC-4a)
 - Mark placeholders with `todo!()` or `// TODO:`
 - Use `#[serial(group_name)]` for global state tests
 - Split commits by specific intent, not features
@@ -590,8 +646,13 @@ Before submitting code:
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
-- Commit without user instruction (except Plan Mode approval)
-- Convert Draft PRs to Ready for Review while readiness criteria are unmet (incomplete impl, failing CI/tests, dirty fmt/clippy) without explicit user override
+- Commit without user instruction (except Plan Mode approval or the Autonomous Operation Policy for Reinhardt-family repos)
+- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — even under the Autonomous Operation Policy these require explicit user authorization
+- Force-push, rebase-and-push, or otherwise rewrite history without explicit user authorization (the Autonomous Operation Policy does NOT cover history-rewriting pushes)
+- Close, merge, or delete PRs / Issues / comments without explicit user authorization (autonomy covers creation only, not destruction)
+- Create release tags or any PR with the `release` label without explicit user authorization
+- Commit a change that touches only `CLAUDE.md` without mirroring it into `AGENTS.md` (and vice versa)
+- Convert Draft PRs to Ready for Review when implementation is incomplete, without explicit user override
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
 - Save files to project directory (use `/tmp`)
