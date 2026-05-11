@@ -1277,15 +1277,34 @@ fn generate_server_handler(
 		quote! {}
 	};
 
-	// MSW: Generate WASM-side marker module only when msw feature is enabled
+	// MSW: Generate WASM-side marker module only when msw feature is enabled.
+	//
+	// (Copilot review on PR #4293) The generated `#[cfg(feature = "msw")]`
+	// also gates the module at the *consumer* compile site so that consumers
+	// who never activate `reinhardt-pages/msw` (e.g. mixed-feature workspace
+	// builds where another package activates `reinhardt-pages-macros/msw` and
+	// Cargo reuses that proc-macro artifact) never see the
+	// `MockableServerFn` impl whose trait wouldn't be in scope for them. The
+	// `#[allow(unexpected_cfgs)]` keeps the generated `cfg` quiet in consumer
+	// crates that don't themselves declare an `msw` feature, restoring the
+	// original Issue #3673 / #3700 intent without re-introducing the
+	// always-false env-var guard that caused #4290.
 	let msw_wasm_tokens = if msw_enabled {
 		quote! {
 			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+			#[cfg(feature = "msw")]
+			#[allow(unexpected_cfgs)]
 			#vis mod #marker_module_name {
 				// (Fixes #4290) Bring in the parent scope's imports so the
 				// `Args` struct field types and the `#response_type` (which
 				// can be a tuple of user types like `(QuestionInfo, Vec<ChoiceInfo>)`)
 				// resolve. Mirrors the native marker module further below.
+				//
+				// `#[allow(unused_imports)]` silences the warning when the
+				// server_fn signature uses only primitive / fully-qualified
+				// types and `use super::*;` ends up importing nothing the
+				// generated body references. (Copilot review on PR #4293.)
+				#[allow(unused_imports)]
 				use super::*;
 				use ::serde::{Serialize, Deserialize};
 
