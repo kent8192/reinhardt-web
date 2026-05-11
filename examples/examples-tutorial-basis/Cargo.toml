@@ -64,13 +64,13 @@ linkme = "0.3"
 
 [dev-dependencies]
 reinhardt = { workspace = true, features = ["test"] }
-# NOTE: Direct `reinhardt-test` dep is normally forbidden by examples/CLAUDE.md DM-1,
-# but the `msw` feature (required for typed MockableServerFn-based mocking) is not
-# yet re-exported through the `reinhardt-web` facade. Track follow-up:
-# https://github.com/kent8192/reinhardt-web/issues -- "add facade `msw` feature".
-# Once the facade exposes msw, replace this with `reinhardt = { ..., features = ["test", "msw"] }`.
-reinhardt-test = { workspace = true, features = ["msw"] }
 rstest = { version = "0.26", default-features = false }
+
+# Native-only dev-dependencies (consumed by `tests/integration.rs`). Kept out
+# of the shared `[dev-dependencies]` block because tokio/sqlx/tempfile and
+# their transitive deps (mio etc.) do not build for `wasm32-unknown-unknown`,
+# which would otherwise break `wasm-pack test`.
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 serial_test = "3.2"
 tokio = { version = "1.48.0", features = ["rt", "macros"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
@@ -88,10 +88,25 @@ default = ["with-reinhardt", "client-router"]
 # client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
 client-router = []
 with-reinhardt = []
+# `msw` is forwarded to the facade so `#[server_fn]` generates the
+# `MockableServerFn` markers consumed by `tests/wasm/polls_mock_test.rs`.
+# This feature only resolves once the framework `msw` facade flag ships
+# (tracked in #4287 / PR #4288); until then, leaving it absent makes the
+# typed MSW test target skip cleanly via its `required-features = ["msw"]`.
+msw = []
 
 [[test]]
 name = "integration"
 required-features = ["with-reinhardt"]
+
+# WASM-only test target. The file is `#![cfg(wasm)]`-gated, so it compiles
+# to a no-op on native and only fires under `wasm-pack test`. Declaring it
+# explicitly is necessary because Cargo does not auto-discover test files
+# under `tests/<subdir>/`.
+[[test]]
+name = "polls_mock_test"
+path = "tests/wasm/polls_mock_test.rs"
+required-features = ["msw"]
 
 [lints]
 workspace = true
