@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-rc.28...reinhardt-rest@v0.1.0-rc.29) - 2026-05-11
+
+### Added
+
+- *(rest)* add VersioningSettings fragment for [rest_versioning] section
+
+### Changed
+
+- *(rest)* remove VersioningConfig::from_env in favor of settings fragment
+- *(rest)* address copilot review on versioning settings
+
+### Testing
+
+- *(rest)* rewrite versioning env tests as settings-based unit tests
+
 ## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-rc.22...reinhardt-rest@v0.1.0-rc.23) - 2026-04-29
 
 ### Fixed

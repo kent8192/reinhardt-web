@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.28...reinhardt-testkit@v0.1.0-rc.29) - 2026-05-11
+
+### Added
+
+- *(testkit)* add DiOverrideBuilder + with_di_overrides! re-export
+
+### Changed
+
+- *(testkit-macros)* route generated paths through reinhardt-testkit
+- post-simplify-review cleanups for DI mock fixtures
+
+### Documentation
+
+- *(testing)* document DI mock fixtures and override patterns
+
+### Fixed
+
+- *(testkit)* make request_value seed the request scope and document the round-trip
+
+### Maintenance
+
+- cargo fmt after di-mock-fixtures
+
 ### Added
 
 - *(testkit)* add `DiOverrideBuilder`, `DiOverrides`, `injection_context_with_di_overrides`, and re-export the `with_di_overrides!` macro from `reinhardt-testkit-macros` for ergonomic DI mocking in tests
