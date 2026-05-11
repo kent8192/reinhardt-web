@@ -19,6 +19,11 @@ members = [
 # Reinhardt framework (crates.io published versions)
 # reinhardt-version-sync
 reinhardt = { version = "0.1.0-rc.28", package = "reinhardt-web" }
+# `reinhardt-test` is normally accessed via `reinhardt = { features = ["test"] }`,
+# but the `msw` feature is not yet re-exported through the `reinhardt-web` facade
+# (tracked as follow-up). Examples that need typed MSW mocking declare it here
+# explicitly via dev-dependencies.
+reinhardt-test = { version = "0.1.0-rc.28" }
 
 # Testing
 testcontainers = { version = "0.27.2", features = ["blocking"] }
