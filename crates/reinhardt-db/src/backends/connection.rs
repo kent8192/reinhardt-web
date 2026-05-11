@@ -451,6 +451,65 @@ impl DatabaseConnection {
 		DeleteBuilder::new(self.backend.clone(), table)
 	}
 
+	/// Resolve a database URL from an already-built composed settings value.
+	///
+	/// This is the preferred entry point for callers that already hold a
+	/// `ProjectSettings` (or any type that implements
+	/// [`reinhardt_conf::HasCoreSettings`]). It reads the `default` entry of
+	/// `CoreSettings::databases` and converts it to a URL via
+	/// [`DatabaseConfig::to_url`](reinhardt_conf::DatabaseConfig::to_url).
+	///
+	/// The optional `env_override` argument is honored first: if it is
+	/// `Some(url)`, that URL is returned verbatim. Pass `None` to skip the
+	/// override entirely. To opt into the env-var short circuit, bind the
+	/// result of `std::env::var` first so the temporary `String` outlives
+	/// the borrow:
+	///
+	/// ```ignore
+	/// let database_url_env = std::env::var("DATABASE_URL").ok();
+	/// let url = DatabaseConnection::database_url_from(
+	///     settings,
+	///     database_url_env.as_deref(),
+	/// )?;
+	/// ```
+	///
+	/// # Errors
+	///
+	/// Returns a `ConnectionError` if the `core.databases.default` entry is
+	/// missing from the composed settings. `DatabaseConfig::to_url` itself
+	/// is infallible, so a successfully resolved `default` entry always
+	/// yields `Ok(_)`.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
+	/// # fn doc<S: reinhardt_conf::HasCoreSettings>(settings: &S) {
+	/// let url = DatabaseConnection::database_url_from(settings, None)
+	///     .expect("database url");
+	/// # let _ = url;
+	/// # }
+	/// ```
+	#[cfg(feature = "settings")]
+	pub fn database_url_from<S>(settings: &S, env_override: Option<&str>) -> Result<String>
+	where
+		S: reinhardt_conf::HasCoreSettings + ?Sized,
+	{
+		if let Some(url) = env_override {
+			return Ok(url.to_string());
+		}
+
+		let core = settings.core();
+		let db_config = core.databases.get("default").ok_or_else(|| {
+			super::error::DatabaseError::ConnectionError(
+				"Database configuration `core.databases.default` not found in settings."
+					.to_string(),
+			)
+		})?;
+
+		Ok(db_config.to_url())
+	}
+
 	/// Get database URL from environment variable or settings files
 	///
 	/// This function first checks the `DATABASE_URL` environment variable.
@@ -466,18 +525,31 @@ impl DatabaseConnection {
 	/// Returns the database URL string, or an error if neither environment variable
 	/// nor settings configuration is found.
 	///
+	/// # Deprecated
+	///
+	/// This function reloads `settings/<profile>.toml` from disk every time it
+	/// is invoked, which is wasteful and duplicates settings-loading logic. Use
+	/// [`Self::database_url_from`] with an already-built `ProjectSettings`
+	/// instead.
+	///
 	/// # Example
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// # #[allow(deprecated)]
 	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	///
+	/// # #[allow(deprecated)]
 	/// let url = DatabaseConnection::get_database_url_from_env_or_settings(None)?;
 	/// let conn = DatabaseConnection::connect_sqlite(&url).await?;
 	/// # Ok(())
 	/// # }
 	/// ```
 	#[cfg(feature = "settings")]
+	#[deprecated(
+		since = "0.1.0-rc.29",
+		note = "use `DatabaseConnection::database_url_from` with a pre-built ProjectSettings instead"
+	)]
 	pub fn get_database_url_from_env_or_settings(
 		base_dir: Option<std::path::PathBuf>,
 	) -> Result<String> {

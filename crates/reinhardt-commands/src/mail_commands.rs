@@ -37,7 +37,7 @@ impl BaseCommand for SendTestEmailCommand {
 		let use_managers = ctx.has_option("managers");
 		if use_managers {
 			if let Some(settings) = &ctx.settings {
-				for manager in &settings.managers {
+				for manager in &settings.contacts().managers {
 					recipients.push(manager.email.clone());
 				}
 			} else {
@@ -51,7 +51,7 @@ impl BaseCommand for SendTestEmailCommand {
 		let use_admins = ctx.has_option("admins");
 		if use_admins {
 			if let Some(settings) = &ctx.settings {
-				for admin in &settings.admins {
+				for admin in &settings.contacts().admins {
 					recipients.push(admin.email.clone());
 				}
 			} else {

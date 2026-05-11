@@ -933,13 +933,15 @@ println!("Average: {}ms", stats.avg_serialization_ms);
     - `config()` - Get current configuration
     - `versioning()` - Get versioning instance
     - `update_config()` - Update configuration at runtime
-    - Environment variable support with `from_env()`
 
-19. **Environment Configuration** - Env var support
-    - `REINHARDT_VERSIONING_DEFAULT_VERSION` - Default version
-    - `REINHARDT_VERSIONING_ALLOWED_VERSIONS` - Comma-separated allowed versions
-    - `REINHARDT_VERSIONING_STRATEGY` - Strategy type
-    - `REINHARDT_VERSIONING_STRICT_MODE` - Enable/disable strict mode
+19. **Settings-based Configuration** - TOML fragment
+    - Configure under the `[rest_versioning]` TOML section via
+      `VersioningSettings` (a `reinhardt-conf` settings fragment)
+    - Convert into `VersioningConfig` with
+      `VersioningConfig::from(settings)`
+    - Recognized keys: `default_version`, `allowed_versions`,
+      `strategy`, `strict_mode`, `version_param`,
+      `hostname_patterns`
 
 #### URL Reverse System
 
