@@ -2106,13 +2106,27 @@ impl Operation {
 	/// is empty so the migration aborts at execution time instead of silently
 	/// succeeding.
 	///
-	/// NOTE: The infallible `String` return type is shared with every other
-	/// `to_sql` arm; converting the entire pipeline to `Result` would cascade
-	/// through dozens of call sites. Emitting syntactically invalid SQL
-	/// (containing a `RAISE` via `SELECT 1/0`) guarantees the database rejects
-	/// the statement, which surfaces the error through the existing execution
-	/// error path. Ideal implementation would change the signature to
-	/// `Result<String, MigrationError>`.
+	/// Workaround for the shared infallible `String` return type used by every
+	/// `to_sql` arm. Converting the entire pipeline to `Result` would cascade
+	/// through dozens of call sites, so this arm instead emits guaranteed-fail
+	/// SQL (`SELECT 1/0`) on empty input. Every supported backend evaluates
+	/// `1/0` as a division-by-zero runtime error, surfacing the failure through
+	/// the existing execution error path. Remove this workaround once the
+	/// `to_sql` family is migrated to a fallible signature.
+	///
+	/// Ideal implementation (without workaround):
+	///   fn create_composite_pk_to_sql(
+	///       table: &str,
+	///       columns: &[String],
+	///       constraint_name: Option<&str>,
+	///   ) -> Result<String, MigrationError> {
+	///       if columns.is_empty() {
+	///           return Err(MigrationError::EmptyCompositePrimaryKey {
+	///               table: table.to_owned(),
+	///           });
+	///       }
+	///       // ... build the ALTER TABLE statement ...
+	///   }
 	fn create_composite_pk_to_sql(
 		table: &str,
 		columns: &[String],
