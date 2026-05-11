@@ -31,6 +31,7 @@ This file defines the pull request (PR) policy for the Reinhardt project. These 
 - **Fallback**: Use GitHub CLI (`gh pr create`) when GitHub MCP is not available
 - **NEVER** use web browser UI for PR creation when MCP or CLI is available
 - MCP and CLI both ensure consistency and can be automated
+- **Autonomy (Reinhardt family)**: Creating a **Draft** PR is authorized without further user confirmation in `reinhardt-web` / `reinhardt-cloud` / `awesome-delions` / `reinhardt-cc` (see Autonomous Operation Policy in `CLAUDE.md` / `AGENTS.md`); the Draft PR body MUST still follow `.github/PULL_REQUEST_TEMPLATE.md` and `--draft` MUST be passed. Marking a PR as Ready for Review is also authorized autonomously once the implementation is complete (CI completion is **not** required).
 
 The following diagram summarizes the PR creation flow:
 
@@ -153,12 +154,15 @@ gitGraph
 ### PC-4 (SHOULD): Draft PRs for Work in Progress
 
 - Use draft PRs for incomplete work
-- Convert to ready for review when all tests pass
+- Convert to Ready for Review **once the implementation is complete** — CI completion is **not** a prerequisite (the Reinhardt-family Autonomous Operation Policy in `CLAUDE.md` / `AGENTS.md` overrides any "wait for all tests to pass" criterion for the Draft→Ready transition)
 - Draft PRs allow early feedback without formal review requests
 
 **Example:**
 ```bash
 gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
+
+# Convert to Ready once implementation is complete (no need to wait for CI):
+gh pr ready <number>
 ```
 
 ### PC-4a (MUST): Draft PR Conversion Readiness
@@ -173,12 +177,12 @@ Converting a Draft PR to Ready for Review is a **review-readiness decision**. Th
 
 **Readiness Criteria (ALL must be true for autonomous conversion):**
 - [ ] Implementation is complete (no remaining `todo!()` or `// TODO:` introduced by this PR)
-- [ ] All CI checks pass on the latest commit
-- [ ] All relevant local tests pass (`cargo nextest run` for affected scope)
 - [ ] PR description follows the template and accurately reflects the diff
 - [ ] Code follows project style (`cargo make fmt-check` + `cargo make clippy-check` clean)
 - [ ] Documentation updated where applicable
 - [ ] PR is at a quality level worth submitting for Copilot Review
+
+**Note:** Under the Reinhardt-family Autonomous Operation Policy (`CLAUDE.md` / `AGENTS.md`), **CI completion is the single waived prerequisite** — the previous "wait for CI green / tests to pass" gate no longer applies in the four Reinhardt-family repos (`reinhardt-web`, `reinhardt-cloud`, `awesome-delions`, `reinhardt-cc`). All other readiness criteria above remain mandatory for autonomous conversion.
 
 **Example:**
 ```bash
