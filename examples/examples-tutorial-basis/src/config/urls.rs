@@ -33,7 +33,11 @@ pub fn routes() -> UnifiedRouter {
 			.server_fn(submit_vote::marker)
 	});
 
-	// Client: empty router (polls routes are server-only)
+	// Client: empty top-level router. The polls client router is registered
+	// via `#[url_patterns(InstalledApp::polls, mode = client)]` in
+	// `apps/polls/urls/client_router.rs` and bootstrapped directly by
+	// `ClientLauncher::router_client(...)` in `client/lib.rs`, so it is
+	// not mounted here.
 	#[cfg(wasm)]
 	let router = UnifiedRouter::new();
 
