@@ -187,11 +187,9 @@ mod wasm_impl {
 							let primary = Headers::new_with_str_sequence_sequence(&h);
 							let normalized = match primary {
 								Ok(h) => Some(h),
-								Err(_) => h
-									.dyn_ref::<js_sys::Object>()
-									.and_then(|obj| {
-										Headers::new_with_record_from_str_to_str(obj).ok()
-									}),
+								Err(_) => h.dyn_ref::<js_sys::Object>().and_then(|obj| {
+									Headers::new_with_record_from_str_to_str(obj).ok()
+								}),
 							};
 							normalized.map(|n| extract_headers(&n))
 						}
