@@ -12,6 +12,13 @@
 // `EnvGuard` ensures cleanup even on panic.
 
 #![cfg(feature = "settings")]
+// This file pins disk-reading behavior of
+// `DatabaseConnection::get_database_url_from_env_or_settings`. That entry
+// point is now `#[deprecated]` in favor of
+// `DatabaseConnection::database_url_from`, but its on-disk interpolation
+// guarantees still need a regression test, so deprecation noise is
+// suppressed at the module level here.
+#![allow(deprecated)]
 
 // `reinhardt_db::DatabaseConnection` resolves to the ORM-level wrapper;
 // the loader entry point lives on the lower-level backends type.
@@ -152,4 +159,91 @@ port = 5432
 		!url.contains("${"),
 		"URL still contains literal interpolation pattern: {url}"
 	);
+}
+
+// Coverage for the new `database_url_from` entry point: callers pass an
+// already-built composed settings value (anything that implements
+// `HasCoreSettings`) and `database_url_from` must return
+// `core.databases.default.to_url()` without touching disk or the
+// environment.
+mod database_url_from_api {
+	use rstest::rstest;
+	use std::collections::HashMap;
+	use std::path::PathBuf;
+
+	use reinhardt_conf::settings::core_settings::CoreSettings;
+	use reinhardt_conf::settings::database_config::DatabaseConfig;
+	use reinhardt_conf::settings::fragment::HasSettings;
+	use reinhardt_db::backends::connection::DatabaseConnection;
+
+	// Minimal composed-settings test double that satisfies `HasCoreSettings`
+	// via the generic `HasSettings<CoreSettings>` blanket impl. This keeps
+	// the unit test independent of the `#[settings(...)]` macro.
+	struct StubProjectSettings {
+		core: CoreSettings,
+	}
+
+	impl HasSettings<CoreSettings> for StubProjectSettings {
+		fn get_settings(&self) -> &CoreSettings {
+			&self.core
+		}
+	}
+
+	fn stub_settings(databases: HashMap<String, DatabaseConfig>) -> StubProjectSettings {
+		StubProjectSettings {
+			core: CoreSettings {
+				base_dir: PathBuf::from("."),
+				secret_key: "stub-secret-key-for-tests".to_string(),
+				databases,
+				..Default::default()
+			},
+		}
+	}
+
+	#[rstest]
+	fn database_url_from_returns_default_databases_to_url() {
+		// Arrange
+		let mut dbs = HashMap::new();
+		dbs.insert("default".to_string(), DatabaseConfig::sqlite("app.db"));
+		let settings = stub_settings(dbs);
+
+		// Act
+		let url = DatabaseConnection::database_url_from(&settings, None)
+			.expect("default databases entry should resolve to a URL");
+
+		// Assert
+		assert_eq!(url, "sqlite:app.db");
+	}
+
+	#[rstest]
+	fn database_url_from_honors_env_override_first() {
+		// Arrange
+		let mut dbs = HashMap::new();
+		dbs.insert("default".to_string(), DatabaseConfig::sqlite("ignored.db"));
+		let settings = stub_settings(dbs);
+
+		// Act
+		let url =
+			DatabaseConnection::database_url_from(&settings, Some("postgres://override/db"))
+				.expect("override should short-circuit");
+
+		// Assert — override returned verbatim, default entry is not consulted
+		assert_eq!(url, "postgres://override/db");
+	}
+
+	#[rstest]
+	fn database_url_from_errors_when_default_missing() {
+		// Arrange — empty databases map (no "default" entry)
+		let settings = stub_settings(HashMap::new());
+
+		// Act
+		let result = DatabaseConnection::database_url_from(&settings, None);
+
+		// Assert
+		assert!(
+			result.is_err(),
+			"missing default database entry must surface as an error, got: {:?}",
+			result.ok(),
+		);
+	}
 }
