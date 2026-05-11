@@ -481,7 +481,7 @@ impl DatabaseConnection {
 	#[cfg(feature = "settings")]
 	pub fn database_url_from<S>(settings: &S, env_override: Option<&str>) -> Result<String>
 	where
-		S: reinhardt_conf::HasCoreSettings,
+		S: reinhardt_conf::HasCoreSettings + ?Sized,
 	{
 		if let Some(url) = env_override {
 			return Ok(url.to_string());
