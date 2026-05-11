@@ -1,86 +1,37 @@
-//! Client-side routing for the polls application.
+//! Client-side routing for the polls SPA.
 //!
-//! Defines the WASM-side `ClientRouter` and the thread-local helpers used
-//! by the WASM entry point in `src/client/lib.rs`.
+//! Routes are declared with `#[url_patterns(InstalledApp::polls, mode = client)]`,
+//! which auto-registers the router via inventory. The WASM entry point
+//! consumes this builder through `ClientLauncher::router_client(...)`.
+//!
+//! Path parameters use the typed `ClientPath<T>` extractor — there is no
+//! thread-local router and no `with_router` helper.
 
-use crate::client::pages::{index_page, polls_detail_page, polls_results_page};
+use reinhardt::ClientPath;
+use reinhardt::ClientRouter;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
-use reinhardt::ClientRouter;
-use std::cell::RefCell;
+use reinhardt::url_patterns;
 
-// Global ClientRouter instance
-thread_local! {
-	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
-}
+use crate::client::pages::{index_page, polls_detail_page, polls_results_page};
+use crate::config::apps::InstalledApp;
 
-/// Initialize the global router instance.
-///
-/// This must be called once at application startup before any routing operations.
-pub fn init_global_router() {
-	ROUTER.with(|r| {
-		*r.borrow_mut() = Some(init_router());
-	});
-}
-
-/// Provides access to the global router instance.
-///
-/// # Panics
-///
-/// Panics if the router has not been initialized via `init_global_router()`.
-pub fn with_router<F, R>(f: F) -> R
-where
-	F: FnOnce(&ClientRouter) -> R,
-{
-	ROUTER.with(|r| {
-		f(r.borrow()
-			.as_ref()
-			.expect("Router not initialized. Call init_global_router() first."))
-	})
-}
-
-/// Initialize the router with all application routes.
-fn init_router() -> ClientRouter {
+#[url_patterns(InstalledApp::polls, mode = client)]
+pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
-		// Home/Index route - List all polls
-		.route("/", || index_page())
-		// Poll detail route with dynamic parameter
-		.route("/polls/{question_id}/", || {
-			with_router(|r| {
-				let params = r.current_params().get();
-				let question_id_str = params
-					.get("question_id")
-					.cloned()
-					.unwrap_or_else(|| "0".to_string());
-
-				// Parse question_id
-				match question_id_str.parse::<i64>() {
-					Ok(question_id) => polls_detail_page(question_id),
-					Err(_) => error_page("Invalid question ID"),
-				}
-			})
-		})
-		// Poll results route
-		.route("/polls/{question_id}/results/", || {
-			with_router(|r| {
-				let params = r.current_params().get();
-				let question_id_str = params
-					.get("question_id")
-					.cloned()
-					.unwrap_or_else(|| "0".to_string());
-
-				// Parse question_id
-				match question_id_str.parse::<i64>() {
-					Ok(question_id) => polls_results_page(question_id),
-					Err(_) => error_page("Invalid question ID"),
-				}
-			})
-		})
-		// 404 not found
+		.route("/", index_page)
+		.route_path(
+			"/polls/{question_id}/",
+			|ClientPath(question_id): ClientPath<i64>| polls_detail_page(question_id),
+		)
+		.route_path(
+			"/polls/{question_id}/results/",
+			|ClientPath(question_id): ClientPath<i64>| polls_results_page(question_id),
+		)
 		.not_found(|| error_page("Page not found"))
 }
 
-/// Error page.
+/// Error page used as the `not_found` fallback.
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
 	page!(|message: String| {

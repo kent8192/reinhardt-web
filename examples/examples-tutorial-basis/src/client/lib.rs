@@ -1,40 +1,18 @@
-//! WASM entry point
+//! WASM entry point.
 //!
-//! This is the main entry point for the WASM application.
+//! Bootstraps the SPA via `ClientLauncher::router_client`, which installs
+//! the panic hook, history listener, and DOM mount on `#root`, and looks
+//! up the polls app's client router (registered via
+//! `#[url_patterns(InstalledApp::polls, mode = client)]`).
 
-use reinhardt::pages::PageExt;
-use reinhardt::pages::dom::Element;
+use reinhardt::pages::ClientLauncher;
 use wasm_bindgen::prelude::*;
 
-// Client routing lives under the polls app (see apps/polls/urls/client_router.rs).
-use crate::apps::polls::urls::client_router as router;
-
-pub use router::{init_global_router, with_router};
+use crate::apps::polls::urls::client_router::client_url_patterns;
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
-	// Set panic hook for better error messages in browser console
-	console_error_panic_hook::set_once();
-
-	// Initialize router
-	router::init_global_router();
-
-	// Get the root element
-	let window = web_sys::window().expect("no global `window` exists");
-	let document = window.document().expect("should have a document on window");
-	let root = document
-		.get_element_by_id("root")
-		.expect("should have #root element");
-
-	// Clear loading spinner
-	root.set_inner_html("");
-
-	// Mount the router's current view
-	router::with_router(|router| {
-		let view = router.render_current();
-		let root_element = Element::new(root.clone());
-		let _ = view.mount(&root_element);
-	});
-
-	Ok(())
+	ClientLauncher::new("#root")
+		.router_client(client_url_patterns)
+		.launch()
 }
