@@ -1218,17 +1218,24 @@ fn generate_server_handler(
 	// and a `use` item with the same name in the same module.
 	let marker_module_name = name.clone();
 
-	// MSW: Generate MockableServerFn impl only when BOTH conditions are met:
-	// 1. The macro crate was compiled with `msw` feature (compile-time guard)
-	// 2. The consuming crate has `msw` feature enabled (proc-macro expansion-time env var check)
+	// MSW: Generate MockableServerFn impl when the macro crate was compiled
+	// with `msw` feature.
 	//
-	// The compile-time guard (`cfg!`) avoids the MSW branch during proc-macro expansion
-	// when the macro crate is built without `msw`, preventing any possibility of
-	// env var leakage from the dependency graph. The env var check handles the
-	// case where the macro crate has `msw` but the consuming crate does not.
-	// This avoids emitting `#[cfg(feature = "msw")]` in generated code, which
-	// would trigger unexpected_cfgs warnings in consuming crates. (Issue #3673, #3700)
-	let msw_enabled = cfg!(feature = "msw") && std::env::var("CARGO_FEATURE_MSW").is_ok();
+	// (Fixes #4290) Previously this also checked
+	// `std::env::var("CARGO_FEATURE_MSW").is_ok()` as a "consuming-crate has msw"
+	// guard, but per Cargo's documented behavior `CARGO_FEATURE_*` env vars are
+	// only set for build.rs invocations — NOT for proc-macro expansion. The env
+	// var check was therefore guaranteed to evaluate to `false` for every
+	// consumer in every configuration, so the WASM `marker` module emitted by
+	// the conditional block below was never actually produced. Removing the
+	// always-false clause restores the intended behavior.
+	//
+	// Cargo's transitive feature unification already guarantees that when any
+	// node in the dependency graph activates `reinhardt-pages-macros/msw`, this
+	// proc-macro is compiled with the feature on; the consuming crate must
+	// independently enable the matching feature on `reinhardt-pages` (via
+	// `reinhardt-web/msw`) so that `MockableServerFn` is in scope.
+	let msw_enabled = cfg!(feature = "msw");
 
 	// MSW: Extract the Ok type from Result<T, ServerFnError> for MockableServerFn::Response
 	let response_type = extract_result_ok_type(return_type);
@@ -1270,11 +1277,35 @@ fn generate_server_handler(
 		quote! {}
 	};
 
-	// MSW: Generate WASM-side marker module only when msw feature is enabled
+	// MSW: Generate WASM-side marker module only when msw feature is enabled.
+	//
+	// (Copilot review on PR #4293) The generated `#[cfg(feature = "msw")]`
+	// also gates the module at the *consumer* compile site so that consumers
+	// who never activate `reinhardt-pages/msw` (e.g. mixed-feature workspace
+	// builds where another package activates `reinhardt-pages-macros/msw` and
+	// Cargo reuses that proc-macro artifact) never see the
+	// `MockableServerFn` impl whose trait wouldn't be in scope for them. The
+	// `#[allow(unexpected_cfgs)]` keeps the generated `cfg` quiet in consumer
+	// crates that don't themselves declare an `msw` feature, restoring the
+	// original Issue #3673 / #3700 intent without re-introducing the
+	// always-false env-var guard that caused #4290.
 	let msw_wasm_tokens = if msw_enabled {
 		quote! {
 			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+			#[cfg(feature = "msw")]
+			#[allow(unexpected_cfgs)]
 			#vis mod #marker_module_name {
+				// (Fixes #4290) Bring in the parent scope's imports so the
+				// `Args` struct field types and the `#response_type` (which
+				// can be a tuple of user types like `(QuestionInfo, Vec<ChoiceInfo>)`)
+				// resolve. Mirrors the native marker module further below.
+				//
+				// `#[allow(unused_imports)]` silences the warning when the
+				// server_fn signature uses only primitive / fully-qualified
+				// types and `use super::*;` ends up importing nothing the
+				// generated body references. (Copilot review on PR #4293.)
+				#[allow(unused_imports)]
+				use super::*;
 				use ::serde::{Serialize, Deserialize};
 
 				#[doc = concat!("Marker struct for server function `", #name_str, "` (WASM MSW mock target)")]

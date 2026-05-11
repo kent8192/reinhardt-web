@@ -35,6 +35,7 @@ pub mod config;
 pub mod handler;
 pub mod middleware;
 pub mod reverse;
+pub mod settings;
 
 use async_trait::async_trait;
 pub use config::{VersioningConfig, VersioningManager, VersioningStrategy};
@@ -50,6 +51,7 @@ pub use reverse::{
 	ApiDocFormat, ApiDocUrlBuilder, UrlReverseManager, VersionedUrlBuilder,
 	VersioningStrategy as ReverseVersioningStrategy,
 };
+pub use settings::VersioningSettings;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use thiserror::Error as ThisError;

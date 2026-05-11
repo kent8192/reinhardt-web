@@ -1,14 +1,16 @@
-use reinhardt::ServerRouter;
+//! URL configuration for the polls application.
+//!
+//! Both submodules use `#[url_patterns(InstalledApp::polls, mode = ...)]`,
+//! so the framework auto-registers them via inventory. The WASM entry
+//! point looks up the client router through
+//! `ClientLauncher::router_client(client_url_patterns)`, and the native
+//! aggregator does not need to mount the server router explicitly.
+//!
+//! - `server_urls` — `#[url_patterns(..., mode = server)]` → `ServerRouter`
+//! - `client_router` — `#[url_patterns(..., mode = client)]` → `ClientRouter`
 
-use super::views;
+#[cfg(native)]
+pub mod server_urls;
 
-// Note: This function is called by config/urls.rs via .mount("/polls/", ...).
-// Do NOT add #[routes] here - that would create a duplicate registration
-// without the mount prefix.
-pub fn routes() -> ServerRouter {
-	ServerRouter::new()
-		.endpoint(views::index)
-		.endpoint(views::detail)
-		.endpoint(views::results)
-		.endpoint(views::vote)
-}
+#[cfg(wasm)]
+pub mod client_router;

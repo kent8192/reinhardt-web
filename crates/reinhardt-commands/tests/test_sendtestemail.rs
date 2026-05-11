@@ -2,8 +2,47 @@
 //! Based on Django's django/tests/mail/test_sendtestemail.py
 
 use reinhardt_commands::{BaseCommand, CommandContext, SendTestEmailCommand};
-use reinhardt_conf::settings::{Contact, Settings};
+use reinhardt_conf::HasCommonSettings;
+use reinhardt_conf::settings::Contact;
+use reinhardt_conf::settings::contacts::ContactSettings;
+use reinhardt_conf::settings::core_settings::CoreSettings;
+use reinhardt_conf::settings::fragment::HasSettings;
 use std::sync::Arc;
+
+/// Minimal stub satisfying [`HasCommonSettings`] without going through
+/// the `#[settings(...)]` proc-macro. Exists solely so the legacy mail
+/// tests can hand `with_settings()` an `Arc<dyn HasCommonSettings>`
+/// after the `CommandContext.settings` field was lifted off the
+/// deprecated `Settings` type (PR-A of issues #4277 / #4282).
+struct StubMailSettings {
+	core: CoreSettings,
+	contacts: ContactSettings,
+}
+
+impl HasSettings<CoreSettings> for StubMailSettings {
+	fn get_settings(&self) -> &CoreSettings {
+		&self.core
+	}
+}
+
+impl HasSettings<ContactSettings> for StubMailSettings {
+	fn get_settings(&self) -> &ContactSettings {
+		&self.contacts
+	}
+}
+
+fn settings_with_contacts(
+	admins: Vec<Contact>,
+	managers: Vec<Contact>,
+) -> Arc<dyn HasCommonSettings> {
+	Arc::new(StubMailSettings {
+		core: CoreSettings {
+			secret_key: "stub-secret".to_string(),
+			..Default::default()
+		},
+		contacts: ContactSettings { admins, managers },
+	})
+}
 
 #[tokio::test]
 async fn test_single_receiver() {
@@ -49,10 +88,10 @@ async fn test_manager_receivers() {
 	let command = SendTestEmailCommand::new();
 
 	// Create mock settings with manager contacts
-	let mut settings = Settings::default();
-	settings.managers = vec![Contact::new("Manager", "manager@example.com")];
+	let settings =
+		settings_with_contacts(vec![], vec![Contact::new("Manager", "manager@example.com")]);
 
-	let mut ctx = CommandContext::new(vec![]).with_settings(Arc::new(settings));
+	let mut ctx = CommandContext::new(vec![]).with_settings(settings);
 	ctx.set_option("managers".to_string(), "true".to_string());
 
 	let result = command.execute(&ctx).await;
@@ -65,10 +104,9 @@ async fn test_admin_receivers() {
 	let command = SendTestEmailCommand::new();
 
 	// Create mock settings with admin contacts
-	let mut settings = Settings::default();
-	settings.admins = vec![Contact::new("Admin", "admin@example.com")];
+	let settings = settings_with_contacts(vec![Contact::new("Admin", "admin@example.com")], vec![]);
 
-	let mut ctx = CommandContext::new(vec![]).with_settings(Arc::new(settings));
+	let mut ctx = CommandContext::new(vec![]).with_settings(settings);
 	ctx.set_option("admins".to_string(), "true".to_string());
 
 	let result = command.execute(&ctx).await;
@@ -81,11 +119,12 @@ async fn test_manager_and_admin_receivers() {
 	let command = SendTestEmailCommand::new();
 
 	// Create mock settings with both manager and admin contacts
-	let mut settings = Settings::default();
-	settings.managers = vec![Contact::new("Manager", "manager@example.com")];
-	settings.admins = vec![Contact::new("Admin", "admin@example.com")];
+	let settings = settings_with_contacts(
+		vec![Contact::new("Admin", "admin@example.com")],
+		vec![Contact::new("Manager", "manager@example.com")],
+	);
 
-	let mut ctx = CommandContext::new(vec![]).with_settings(Arc::new(settings));
+	let mut ctx = CommandContext::new(vec![]).with_settings(settings);
 	ctx.set_option("managers".to_string(), "true".to_string());
 	ctx.set_option("admins".to_string(), "true".to_string());
 
