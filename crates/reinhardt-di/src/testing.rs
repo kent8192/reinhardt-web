@@ -50,3 +50,12 @@ impl Drop for OverrideGuard {
 		}
 	}
 }
+
+// Compile-time check that `OverrideGuard` stays `Send + Sync`.
+// `tokio::test` requires guards held across `.await` points to be `Send`,
+// and parallel-test infrastructure expects `Sync`. Adding a non-`Send`
+// field in the future will break this assertion and prompt a re-evaluation.
+const _: fn() = || {
+	fn _assert<T: Send + Sync>() {}
+	_assert::<OverrideGuard>();
+};

@@ -336,6 +336,14 @@ impl DependencyRegistry {
 	/// Tests using this method **must** run inside the
 	/// `#[serial(di_registry)]` group because the global registry is mutated.
 	///
+	/// # Safety contract
+	///
+	/// This method inserts into two separate `DashMap`s (`factories` and
+	/// `scopes`) non-atomically. Without serialization, another thread can
+	/// observe a torn state where the new factory is paired with the old
+	/// scope (or vice versa). The `#[serial(di_registry)]` requirement is
+	/// what eliminates that window; do not relax it.
+	///
 	/// # Examples
 	///
 	/// ```rust,no_run
@@ -385,7 +393,6 @@ impl DependencyRegistry {
 
 	/// Restores a previously-installed factory and scope. Used by
 	/// [`OverrideGuard::drop`](crate::testing::OverrideGuard).
-	#[doc(hidden)]
 	pub(crate) fn restore_override(
 		&self,
 		type_id: std::any::TypeId,
@@ -398,7 +405,6 @@ impl DependencyRegistry {
 
 	/// Removes an override entry that had no prior registration. Used by
 	/// [`OverrideGuard::drop`](crate::testing::OverrideGuard).
-	#[doc(hidden)]
 	pub(crate) fn remove_override(&self, type_id: std::any::TypeId) {
 		self.factories.remove(&type_id);
 		self.scopes.remove(&type_id);
