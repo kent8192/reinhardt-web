@@ -937,8 +937,21 @@ impl NamespaceVersioning {
 	/// let version = versioning.extract_version_from_router(&router, "/v1/users/");
 	/// assert_eq!(version, Some("1".to_string()));
 	/// ```
-	// Router integration disabled due to circular dependency (reinhardt-urls ↔ reinhardt-rest)
-	// Use extract_version_from_path() directly instead
+	// Workaround for reinhardt-urls ↔ reinhardt-rest circular dependency
+	// (tracked in reinhardt-web#4321). Until the circular dependency is broken,
+	// the router parameter cannot be typed as `&impl reinhardt_urls::routers::Router`,
+	// so callers must use `extract_version_from_path()` directly.
+	// Remove this stub when reinhardt-web#4321 is resolved.
+	//
+	// Ideal implementation (without workaround):
+	//   fn extract_version_from_router<R: reinhardt_urls::routers::Router>(
+	//       &self,
+	//       router: &R,
+	//       path: &str,
+	//   ) -> Option<String> {
+	//       let namespace = router.resolve_namespace(path)?;
+	//       self.extract_version_from_path(&format!("/{namespace}/"))
+	//   }
 	#[allow(dead_code)]
 	fn extract_version_from_router_stub(&self, _router: &(), path: &str) -> Option<String> {
 		self.extract_version_from_path(path)
@@ -978,7 +991,22 @@ impl NamespaceVersioning {
 	/// assert!(versions.contains(&"1".to_string()));
 	/// assert!(versions.contains(&"2".to_string()));
 	/// ```
-	// Router integration disabled due to circular dependency (reinhardt-urls ↔ reinhardt-rest)
+	// Workaround for reinhardt-urls ↔ reinhardt-rest circular dependency
+	// (tracked in reinhardt-web#4321). Without a router trait visible from this
+	// crate, we cannot enumerate registered namespaces, so the stub returns an
+	// empty list and callers fall back to static configuration.
+	// Remove this stub when reinhardt-web#4321 is resolved.
+	//
+	// Ideal implementation (without workaround):
+	//   fn get_available_versions_from_router<R: reinhardt_urls::routers::Router>(
+	//       &self,
+	//       router: &R,
+	//   ) -> Vec<String> {
+	//       router
+	//           .iter_namespaces()
+	//           .filter_map(|ns| self.extract_version_from_path(&format!("/{ns}/")))
+	//           .collect()
+	//   }
 	#[allow(dead_code)]
 	fn get_available_versions_from_router_stub(&self, _router: &()) -> Vec<String> {
 		Vec::new()
