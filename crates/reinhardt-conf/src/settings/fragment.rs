@@ -151,6 +151,36 @@ pub trait HasSettings<F: SettingsFragment> {
 	fn get_settings(&self) -> &F;
 }
 
+/// Marker trait bundling the commonly required fragment accessors used by
+/// management commands and the database layer.
+///
+/// A composed settings type that derives `HasCoreSettings` and
+/// `HasContactSettings` (i.e. it includes both `CoreSettings` and
+/// `ContactSettings` fragments) automatically satisfies this trait via
+/// the blanket implementation below.
+///
+/// Consumers that need an erased handle to settings (for example
+/// `CommandContext`) hold an `Arc<dyn HasCommonSettings>` instead of a
+/// concrete type, enabling cross-crate trait-object plumbing without
+/// leaking the legacy `Settings` type.
+pub trait HasCommonSettings:
+	super::core_settings::HasCoreSettings
+	+ super::contacts::HasContactSettings
+	+ Send
+	+ Sync
+	+ 'static
+{
+}
+
+impl<T> HasCommonSettings for T where
+	T: super::core_settings::HasCoreSettings
+		+ super::contacts::HasContactSettings
+		+ Send
+		+ Sync
+		+ 'static
+{
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
