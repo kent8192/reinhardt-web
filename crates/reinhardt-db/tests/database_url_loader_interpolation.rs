@@ -223,9 +223,8 @@ mod database_url_from_api {
 		let settings = stub_settings(dbs);
 
 		// Act
-		let url =
-			DatabaseConnection::database_url_from(&settings, Some("postgres://override/db"))
-				.expect("override should short-circuit");
+		let url = DatabaseConnection::database_url_from(&settings, Some("postgres://override/db"))
+			.expect("override should short-circuit");
 
 		// Assert — override returned verbatim, default entry is not consulted
 		assert_eq!(url, "postgres://override/db");

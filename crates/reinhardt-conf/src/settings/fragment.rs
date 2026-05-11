@@ -164,11 +164,7 @@ pub trait HasSettings<F: SettingsFragment> {
 /// concrete type, enabling cross-crate trait-object plumbing without
 /// leaking the legacy `Settings` type.
 pub trait HasCommonSettings:
-	super::core_settings::HasCoreSettings
-	+ super::contacts::HasContactSettings
-	+ Send
-	+ Sync
-	+ 'static
+	super::core_settings::HasCoreSettings + super::contacts::HasContactSettings + Send + Sync + 'static
 {
 }
 

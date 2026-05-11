@@ -88,10 +88,8 @@ async fn test_manager_receivers() {
 	let command = SendTestEmailCommand::new();
 
 	// Create mock settings with manager contacts
-	let settings = settings_with_contacts(
-		vec![],
-		vec![Contact::new("Manager", "manager@example.com")],
-	);
+	let settings =
+		settings_with_contacts(vec![], vec![Contact::new("Manager", "manager@example.com")]);
 
 	let mut ctx = CommandContext::new(vec![]).with_settings(settings);
 	ctx.set_option("managers".to_string(), "true".to_string());
@@ -106,8 +104,7 @@ async fn test_admin_receivers() {
 	let command = SendTestEmailCommand::new();
 
 	// Create mock settings with admin contacts
-	let settings =
-		settings_with_contacts(vec![Contact::new("Admin", "admin@example.com")], vec![]);
+	let settings = settings_with_contacts(vec![Contact::new("Admin", "admin@example.com")], vec![]);
 
 	let mut ctx = CommandContext::new(vec![]).with_settings(settings);
 	ctx.set_option("admins".to_string(), "true".to_string());
