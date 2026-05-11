@@ -2457,10 +2457,14 @@ impl BaseCommand for CheckCommand {
 		let mut checks_passed = 0;
 		let mut checks_failed = 0;
 
-		// 1. Database connectivity check (if DATABASE_URL is set)
-		if let Ok(database_url) = std::env::var("DATABASE_URL") {
+		// 1. Database connectivity check. Prefer the URL exposed by the
+		// composed `ProjectSettings` attached to `ctx.settings`; fall back
+		// to the `DATABASE_URL` env var so users running the CLI without
+		// settings plumbing keep getting the legacy behavior.
+		let database_url = Self::resolve_database_url(ctx);
+		if let Some(database_url) = database_url.as_deref() {
 			ctx.info("Checking database connectivity...");
-			match Self::check_database(&database_url).await {
+			match Self::check_database(database_url).await {
 				Ok(_) => {
 					ctx.success("  ✓ Database connection successful");
 					checks_passed += 1;
@@ -2471,15 +2475,17 @@ impl BaseCommand for CheckCommand {
 				}
 			}
 		} else {
-			ctx.info("Skipping database check (DATABASE_URL not set)");
+			ctx.info(
+				"Skipping database check (no DATABASE_URL env var and no [core.databases.default])",
+			);
 		}
 
 		// 2. Settings validation
 		ctx.info("Checking settings...");
 		checks_passed += Self::check_settings(ctx, is_deploy);
 
-		// 3. Migration status check (if DATABASE_URL is set)
-		if std::env::var("DATABASE_URL").is_ok() {
+		// 3. Migration status check (only when we have a database URL).
+		if database_url.is_some() {
 			ctx.info("Checking migrations...");
 			match Self::check_migrations().await {
 				Ok(count) => {
@@ -2497,16 +2503,18 @@ impl BaseCommand for CheckCommand {
 			}
 		}
 
-		// 4. Static files verification
+		// 4. Static files verification. Use the composed settings'
+		// `static_files.root` when available, else fall back to the
+		// `STATIC_ROOT` env var.
 		ctx.info("Checking static files...");
-		if std::env::var("STATIC_ROOT").is_ok() {
-			ctx.success("  ✓ STATIC_ROOT configured");
+		if Self::resolve_static_root_configured(ctx) {
+			ctx.success("  ✓ static files root configured");
 			checks_passed += 1;
 		} else if is_deploy {
-			ctx.warning("  ✗ STATIC_ROOT not set (required for deployment)");
+			ctx.warning("  ✗ static files root not set (required for deployment)");
 			checks_failed += 1;
 		} else {
-			ctx.info("  ⚠ STATIC_ROOT not set (optional for development)");
+			ctx.info("  ⚠ static files root not set (optional for development)");
 		}
 
 		// 5. Security settings check (if --deploy)
@@ -2533,6 +2541,32 @@ impl BaseCommand for CheckCommand {
 }
 
 impl CheckCommand {
+	/// Resolve the database URL from the composed settings on `ctx`,
+	/// falling back to the `DATABASE_URL` environment variable.
+	///
+	/// Returns `None` when neither source produces a URL.
+	fn resolve_database_url(ctx: &CommandContext) -> Option<String> {
+		if let Some(settings) = ctx.settings.as_ref()
+			&& let Some(db) = settings.core().databases.get("default")
+		{
+			return Some(db.to_url());
+		}
+		std::env::var("DATABASE_URL").ok()
+	}
+
+	/// Returns true when a static-files root is configured, either via
+	/// composed settings or via the `STATIC_ROOT` env var.
+	fn resolve_static_root_configured(_ctx: &CommandContext) -> bool {
+		// CoreSettings does not own the static-files root; downstream
+		// projects compose `StaticSettings` separately. Without
+		// `HasStaticSettings` in `HasCommonSettings` we cannot peek at
+		// it generically here, so we currently only consult the env
+		// var. This preserves existing behavior while issue #4282's
+		// follow-up wires the static-files fragment through the
+		// CommandContext.
+		std::env::var("STATIC_ROOT").is_ok()
+	}
+
 	/// Check database connectivity
 	async fn check_database(database_url: &str) -> Result<(), String> {
 		if database_url.is_empty() {
@@ -2704,8 +2738,15 @@ fn sync_database_url_to_env(
 		}
 		ctx.verbose("Synced DATABASE_URL from settings configuration");
 	} else if let Some(env_url) = env_database_url {
-		// Both env var and settings exist - warn if they differ
-		if let Ok(settings_url) = get_database_url_from_settings()
+		// Both env var and settings exist - warn if they differ.
+		// Prefer the composed `ProjectSettings` on `ctx` when present
+		// (no disk I/O); otherwise fall back to re-loading TOML.
+		let settings_url_result = match ctx.settings.as_ref() {
+			Some(settings) => DatabaseConnection::database_url_from(settings.as_ref(), None)
+				.map_err(|e| crate::CommandError::ExecutionError(e.to_string())),
+			None => get_database_url_from_settings(),
+		};
+		if let Ok(settings_url) = settings_url_result
 			&& env_url != settings_url
 		{
 			ctx.warning(&format!(
@@ -2771,12 +2812,18 @@ pub(crate) async fn initialize_orm_database(
 	Ok(())
 }
 
-/// Helper function to get DATABASE_URL from environment or settings
+/// Helper function to get `DATABASE_URL` from environment or settings files.
+///
+/// This is the disk-reading fallback used when no `ProjectSettings` handle
+/// is available on the `CommandContext`. Once the CLI wires the composed
+/// settings through, callers should prefer
+/// `DatabaseConnection::database_url_from(ctx.settings.unwrap().as_ref(), ...)`.
 #[cfg(feature = "reinhardt-db")]
 fn get_database_url() -> Result<String, crate::CommandError> {
 	use std::env;
 
 	let base_dir = env::current_dir().ok();
+	#[allow(deprecated)] // disk-reading fallback; superseded by `database_url_from`
 	DatabaseConnection::get_database_url_from_env_or_settings(base_dir).map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
 	})
