@@ -179,10 +179,21 @@ mod wasm_impl {
 							// Normalize plain objects and arrays by constructing a Headers
 							// instance, which accepts both `Record<string, string>` and
 							// `[string, string][]` forms per the Fetch spec.
-							Headers::new_with_str_sequence_sequence(&h)
-								.or_else(|_| Headers::new_with_str_mapping(&h))
-								.ok()
-								.map(|normalized| extract_headers(&normalized))
+							//
+							// (Fixes #4287) web-sys 0.3.98 removed
+							// `Headers::new_with_str_mapping`. Fall back through
+							// `new_with_record_from_str_to_str` when the input is a plain
+							// object (`js_sys::Object`); skip the fallback otherwise.
+							let primary = Headers::new_with_str_sequence_sequence(&h);
+							let normalized = match primary {
+								Ok(h) => Some(h),
+								Err(_) => h
+									.dyn_ref::<js_sys::Object>()
+									.and_then(|obj| {
+										Headers::new_with_record_from_str_to_str(obj).ok()
+									}),
+							};
+							normalized.map(|n| extract_headers(&n))
 						}
 					})
 					.unwrap_or_default()
@@ -253,9 +264,12 @@ mod wasm_impl {
 		let func: &js_sys::Function = original.unchecked_ref();
 		// Use the window (or globalThis) as the receiver to avoid "Illegal invocation"
 		// errors that occur when calling `window.fetch` with `this = null`.
+		// (Fixes #4287) `js_sys::global()` in newer js-sys returns `Object` rather
+		// than `JsValue`, so adapt it through `JsValue::from` before the
+		// `Option::unwrap_or_else` chain that expects a uniform `JsValue` output.
 		let receiver = web_sys::window()
 			.map(JsValue::from)
-			.unwrap_or_else(js_sys::global);
+			.unwrap_or_else(|| JsValue::from(js_sys::global()));
 		let result = if !init.is_undefined() && !init.is_null() {
 			func.call2(&receiver, input, init)?
 		} else {
