@@ -99,12 +99,12 @@ fn serialize_delimited(
 #[server_fn]
 pub async fn export_data(
 	model_name: String,
-	format: ExportFormat,
+	format: crate::adapters::ExportFormat,
 	#[inject] site: Depends<AdminSite>,
 	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
-) -> Result<ExportResponse, ServerFnError> {
+) -> Result<crate::adapters::ExportResponse, ServerFnError> {
 	// Authentication and authorization check
 	let auth = AdminAuth::from_request(&http_request);
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
