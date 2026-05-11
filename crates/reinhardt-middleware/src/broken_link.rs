@@ -11,7 +11,7 @@
 //! `Settings::managers` into [`BrokenLinkConfig::managers`] once at middleware
 //! construction time. When no `Settings` instance is available, callers may
 //! configure recipients directly via [`BrokenLinkConfig::with_emails`]; the
-//! middleware then synthesises anonymous `Contact` entries from those addresses.
+//! middleware then synthesizes anonymous `Contact` entries from those addresses.
 
 use async_trait::async_trait;
 use hyper::StatusCode;
