@@ -1,0 +1,5 @@
+error: unknown override kind `bogus`; expected one of `singleton`, `request`, `transient`
+ --> tests/ui/fail_unknown_kind.rs:7:3
+  |
+7 |         bogus Cfg => |_ctx| async { Ok(Cfg) },
+  |         ^^^^^
