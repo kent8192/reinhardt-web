@@ -154,7 +154,7 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 
 **Autonomous Operation Policy (Reinhardt Family):**
 
-This is an explicit, named exception to "NEVER commit/push without explicit user instruction" (Commit Policy above) and to the "Authorization = explicit user instruction OR Plan Mode approval" requirement in the GitHub Comments policy.
+This is an explicit, named exception to "NEVER commit/push without explicit user instruction" in the Commit Policy above. Comment-posting authorization (`instructions/GITHUB_INTERACTION.md` PP-1) is unchanged — see "Still Requires Explicit User Authorization" below.
 
 Scope (applies only when the working directory is inside one of these four repositories):
 
@@ -170,7 +170,7 @@ Autonomously Allowed (no per-action confirmation required):
 | `git commit` | On any non-protected branch |
 | `git push` | On any non-protected branch (`feature/...`, `fix/...`, `refactor/...`, `docs/...`, `chore/...`, `test/...`, `perf/...`, `debug/...`, etc.); **never** on `main`, `master`, `develop/*`, or `release/*` |
 | Create a **Draft** Pull Request | `gh pr create --draft` / MCP `create_pull_request` with `draft=true`; body MUST follow `.github/PULL_REQUEST_TEMPLATE.md` |
-| Convert Draft PR to **Ready for Review** | **Implementation-complete is the only readiness criterion** — CI completion is **not** required (overrides any "CI green" criterion elsewhere in this document or in `instructions/`) |
+| Convert Draft PR to **Ready for Review** | **CI completion is not required** — this overrides any "CI green / tests pass" criterion in `instructions/`. All other PC-4a readiness criteria (implementation complete, PR description follows template, fmt/clippy clean, docs updated) still apply — see `instructions/PR_GUIDELINE.md` § PC-4a |
 | Create an Issue | `gh issue create` / MCP `issue_write`; MUST follow the appropriate issue template and apply at least one type label |
 
 **Protected Branches** (commit/push always require explicit user authorization):
@@ -195,9 +195,9 @@ Unchanged Quality Guardrails (apply equally to autonomous operations):
 - Branch naming, commit message format, Codex attribution footer, English-only policy, and all other rules in this document remain in force
 
 **Draft PR Policy:**
-- The agent MAY convert a Draft PR to Ready for Review autonomously once the implementation is complete — CI completion is **not** required (the Autonomous Operation Policy overrides the previous "CI green, tests pass, fmt/clippy clean" criterion for the Draft→Ready transition)
+- The agent MAY convert a Draft PR to Ready for Review autonomously once the PC-4a readiness criteria are met. CI completion is **not** required (the Autonomous Operation Policy overrides the previous "CI green / tests pass" prerequisite); fmt/clippy cleanliness and the other PC-4a criteria are still required
 - Explicit user instruction also authorizes conversion at any time (overrides readiness check)
-- The agent MUST NOT convert when implementation is incomplete, unless the user explicitly overrides
+- The agent MUST NOT convert when any PC-4a readiness criterion (other than CI completion) is unmet, unless the user explicitly overrides
 - Use `gh pr ready <number>` (or GitHub MCP equivalent) for conversion
 - See instructions/PR_GUIDELINE.md § PC-4a for full details
 

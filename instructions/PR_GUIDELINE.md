@@ -179,10 +179,10 @@ Converting a Draft PR to Ready for Review is a **review-readiness decision**. Th
 - [ ] Implementation is complete (no remaining `todo!()` or `// TODO:` introduced by this PR)
 - [ ] PR description follows the template and accurately reflects the diff
 - [ ] Code follows project style (`cargo make fmt-check` + `cargo make clippy-check` clean)
-
-**Note:** CI completion is **not** required for autonomous conversion under the Autonomous Operation Policy — implementation complete is the only mandatory criterion for autonomous conversion in the four Reinhardt-family repos (`reinhardt-web`, `reinhardt-cloud`, `awesome-delions`, `reinhardt-cc`). The remaining criteria above (description and style) are still required to ensure the PR is in a reviewable state.
 - [ ] Documentation updated where applicable
 - [ ] PR is at a quality level worth submitting for Copilot Review
+
+**Note:** Under the Reinhardt-family Autonomous Operation Policy (`CLAUDE.md` / `AGENTS.md`), **CI completion is the single waived prerequisite** — the previous "wait for CI green / tests to pass" gate no longer applies in the four Reinhardt-family repos (`reinhardt-web`, `reinhardt-cloud`, `awesome-delions`, `reinhardt-cc`). All other readiness criteria above remain mandatory for autonomous conversion.
 
 **Example:**
 ```bash
