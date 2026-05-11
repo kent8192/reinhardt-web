@@ -5,8 +5,8 @@
 //!
 //! This fragment is read from the `[rest_versioning]` section of the project's
 //! TOML settings. Convert it into a [`VersioningConfig`](super::VersioningConfig)
-//! via the [`From<VersioningSettings> for VersioningConfig`](super::VersioningConfig)
-//! impl to obtain the runtime configuration consumed by
+//! via [`VersioningConfig::from`](super::VersioningConfig::from) to obtain the
+//! runtime configuration consumed by
 //! [`VersioningManager`](super::VersioningManager).
 //!
 //! # Section naming
@@ -85,10 +85,10 @@ pub struct VersioningSettings {
 impl Default for VersioningSettings {
 	fn default() -> Self {
 		Self {
-			default_version: "1.0".to_string(),
+			default_version: default_default_version(),
 			allowed_versions: vec![],
-			strategy: VersioningStrategy::AcceptHeader,
-			strict_mode: true,
+			strategy: default_strategy(),
+			strict_mode: default_strict_mode(),
 			version_param: None,
 			hostname_patterns: None,
 		}
@@ -129,7 +129,7 @@ mod tests {
 
 	#[rstest]
 	fn test_versioning_deserialize_from_json() {
-		// Arrange — emulate a `[rest.versioning]` TOML section after table
+		// Arrange — emulate a `[rest_versioning]` TOML section after table
 		// flattening (matches what reinhardt-conf produces from TOML).
 		let json = r#"{
 			"default_version": "2.0",
