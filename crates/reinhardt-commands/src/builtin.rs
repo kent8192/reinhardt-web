@@ -2556,7 +2556,7 @@ impl CheckCommand {
 
 	/// Returns true when a static-files root is configured, either via
 	/// composed settings or via the `STATIC_ROOT` env var.
-	fn resolve_static_root_configured(ctx: &CommandContext) -> bool {
+	fn resolve_static_root_configured(_ctx: &CommandContext) -> bool {
 		// CoreSettings does not own the static-files root; downstream
 		// projects compose `StaticSettings` separately. Without
 		// `HasStaticSettings` in `HasCommonSettings` we cannot peek at
@@ -2564,7 +2564,6 @@ impl CheckCommand {
 		// var. This preserves existing behavior while issue #4282's
 		// follow-up wires the static-files fragment through the
 		// CommandContext.
-		let _ = ctx;
 		std::env::var("STATIC_ROOT").is_ok()
 	}
 
