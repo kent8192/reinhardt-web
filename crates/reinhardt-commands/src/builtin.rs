@@ -2546,10 +2546,10 @@ impl CheckCommand {
 	///
 	/// Returns `None` when neither source produces a URL.
 	fn resolve_database_url(ctx: &CommandContext) -> Option<String> {
-		if let Some(settings) = ctx.settings.as_ref() {
-			if let Some(db) = settings.core().databases.get("default") {
-				return Some(db.to_url());
-			}
+		if let Some(settings) = ctx.settings.as_ref()
+			&& let Some(db) = settings.core().databases.get("default")
+		{
+			return Some(db.to_url());
 		}
 		std::env::var("DATABASE_URL").ok()
 	}
