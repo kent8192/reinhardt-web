@@ -24,7 +24,7 @@ CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGE
 description = "Start the development server"
 dependencies = ["docker-up"]
 command = "cargo"
-args = ["run", "runserver"]
+args = ["run", "--bin", "examples-twitter", "--", "runserver", "--with-pages"]
 
 # ============================================================================
 # Docker Services
