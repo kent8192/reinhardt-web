@@ -2,21 +2,15 @@
 //!
 //! This module defines the client-side router for the polling application.
 
-// (Refs #4234) Migration to reinhardt_urls::routers::ClientRouter pending separate follow-up issue.
-// `reinhardt::pages::router::Router` is `#[deprecated]` since 0.1.0-rc.27; this module
-// uses it pervasively (struct, `Router::new()`, closure params, `thread_local!`),
-// so file-scope suppression is preferred over per-usage `#[allow(deprecated)]` attribute spam.
-#![allow(deprecated)]
-
 use crate::client::pages::{index_page, polls_detail_page, polls_results_page};
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
-use reinhardt::pages::router::Router;
+use reinhardt::urls::ClientRouter;
 use std::cell::RefCell;
 
 // Global Router instance
 thread_local! {
-	static ROUTER: RefCell<Option<Router>> = const { RefCell::new(None) };
+	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
 }
 
 /// Initialize the global router instance
@@ -35,7 +29,7 @@ pub fn init_global_router() {
 /// Panics if the router has not been initialized via `init_global_router()`.
 pub fn with_router<F, R>(f: F) -> R
 where
-	F: FnOnce(&Router) -> R,
+	F: FnOnce(&ClientRouter) -> R,
 {
 	ROUTER.with(|r| {
 		f(r.borrow()
@@ -45,8 +39,8 @@ where
 }
 
 /// Initialize the router with all application routes
-fn init_router() -> Router {
-	Router::new()
+fn init_router() -> ClientRouter {
+	ClientRouter::new()
 		// Home/Index route - List all polls
 		.route("/", || index_page())
 		// Poll detail route with dynamic parameter
