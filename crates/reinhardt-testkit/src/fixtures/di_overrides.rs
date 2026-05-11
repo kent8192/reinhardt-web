@@ -40,6 +40,11 @@ pub struct DiOverrides {
 	_guards: Vec<OverrideGuard>,
 }
 
+/// Seed closure that pre-populates a value into a freshly built
+/// `InjectionContext`'s request scope. Boxed so heterogeneous closures (one per
+/// `request` call) can be collected in a `Vec`.
+type RequestSeedFn = Box<dyn FnOnce(&InjectionContext) + Send + 'static>;
+
 /// Builder passed to the setup closure of
 /// [`injection_context_with_di_overrides`].
 pub struct DiOverrideBuilder<'a> {
@@ -52,7 +57,7 @@ pub struct DiOverrideBuilder<'a> {
 	// `guards` because seeds run once at context-build time and are then
 	// dropped, while guards must live for the entire test scope to keep their
 	// `register_override` mutations in effect.
-	request_seeds: Vec<Box<dyn FnOnce(&InjectionContext) + Send + 'static>>,
+	request_seeds: Vec<RequestSeedFn>,
 }
 
 impl<'a> DiOverrideBuilder<'a> {
