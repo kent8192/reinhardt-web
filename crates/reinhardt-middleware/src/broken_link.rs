@@ -300,28 +300,26 @@ impl BrokenLinkEmailsMiddleware {
 	}
 
 	/// Log a broken link and send email notifications
-	#[allow(deprecated)]
 	async fn log_broken_link(&self, path: &str, referer: &str) {
 		// Log to standard logging system
 		log::warn!("Broken link detected: {} (from: {})", path, referer);
 
-		// Load Settings to get managers list
-		// Try to read from default settings location
-		// In production, this should be configured via environment or config file
-		let managers = if let Ok(settings_json) = std::env::var("REINHARDT_SETTINGS") {
-			// Attempt to parse settings from environment variable
-			if let Ok(settings) = serde_json::from_str::<settings::Settings>(&settings_json) {
-				settings.managers
-			} else {
-				Vec::new()
-			}
+		// Managers are resolved once at construction time via
+		// `BrokenLinkConfig::from_settings`. When no settings were provided,
+		// fall back to converting legacy `email_addresses` into anonymous
+		// `Contact` entries so existing direct-construction callers continue
+		// to receive notifications.
+		let fallback_contacts: Vec<settings::Contact>;
+		let managers: &[settings::Contact] = if !self.config.managers.is_empty() {
+			&self.config.managers
 		} else {
-			// Fallback to config email_addresses if settings not available
-			self.config
+			fallback_contacts = self
+				.config
 				.email_addresses
 				.iter()
 				.map(|email| settings::Contact::new("", email.clone()))
-				.collect()
+				.collect();
+			&fallback_contacts
 		};
 
 		// Send email notifications to managers
@@ -336,7 +334,7 @@ impl BrokenLinkEmailsMiddleware {
 			);
 
 			// Send to all managers asynchronously (non-blocking)
-			for manager in &managers {
+			for manager in managers {
 				let email = manager.email.clone();
 				let subject_clone = subject.clone();
 				let body_clone = body.clone();
