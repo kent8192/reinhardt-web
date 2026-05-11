@@ -5,9 +5,13 @@
 //!
 //! ## Email Notifications
 //!
-//! This middleware can send email notifications to managers when broken links are detected.
-//! Managers are loaded from `Settings::managers` (via `REINHARDT_SETTINGS` environment variable),
-//! or from the `BrokenLinkConfig::email_addresses` if settings are not available.
+//! This middleware can send email notifications to managers when broken links are
+//! detected. The canonical entry point is
+//! [`BrokenLinkEmailsMiddleware::from_settings`], which copies
+//! `Settings::managers` into [`BrokenLinkConfig::managers`] once at middleware
+//! construction time. When no `Settings` instance is available, callers may
+//! configure recipients directly via [`BrokenLinkConfig::with_emails`]; the
+//! middleware then synthesizes anonymous `Contact` entries from those addresses.
 
 use async_trait::async_trait;
 use hyper::StatusCode;
@@ -17,6 +21,7 @@ use reinhardt_conf::settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use reinhardt_mail;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 /// Configuration for broken link detection
@@ -31,6 +36,13 @@ pub struct BrokenLinkConfig {
 	pub ignored_paths: Vec<String>,
 	/// User-Agent patterns to ignore (e.g., bots)
 	pub ignored_user_agents: Vec<String>,
+	/// Managers to notify when a broken link is detected
+	///
+	/// Resolved from `Settings::managers` at middleware construction time via
+	/// [`BrokenLinkConfig::from_settings`]. When empty, the middleware falls
+	/// back to converting [`BrokenLinkConfig::email_addresses`] into anonymous
+	/// `Contact` entries.
+	pub managers: Vec<settings::Contact>,
 }
 
 impl BrokenLinkConfig {
@@ -61,7 +73,32 @@ impl BrokenLinkConfig {
 				"spider".to_string(),
 				"slurp".to_string(),
 			],
+			managers: Vec::new(),
 		}
+	}
+
+	/// Create a `BrokenLinkConfig` from application `Settings`
+	///
+	/// Resolves `Settings::managers` once at construction time, so the
+	/// middleware does not need to re-parse settings on every request.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::Settings;
+	/// use reinhardt_middleware::BrokenLinkConfig;
+	///
+	/// #[allow(deprecated)]
+	/// let settings = Settings::default();
+	/// #[allow(deprecated)]
+	/// let config = BrokenLinkConfig::from_settings(&settings);
+	/// assert!(config.enabled);
+	/// ```
+	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
+	pub fn from_settings(settings: &settings::Settings) -> Self {
+		let mut config = Self::new();
+		config.managers = settings.managers.clone();
+		config
 	}
 
 	/// Disable broken link detection
@@ -212,6 +249,28 @@ impl BrokenLinkEmailsMiddleware {
 		}
 	}
 
+	/// Create a `BrokenLinkEmailsMiddleware` from application `Settings`
+	///
+	/// This is the canonical entry point. Manager contacts from
+	/// `Settings::managers` are resolved exactly once and stored on the
+	/// middleware, eliminating per-request environment lookups.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::Settings;
+	/// use reinhardt_middleware::BrokenLinkEmailsMiddleware;
+	///
+	/// #[allow(deprecated)]
+	/// let settings = Settings::default();
+	/// #[allow(deprecated)]
+	/// let middleware = BrokenLinkEmailsMiddleware::from_settings(&settings);
+	/// ```
+	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
+	pub fn from_settings(settings: &settings::Settings) -> Self {
+		Self::new(BrokenLinkConfig::from_settings(settings))
+	}
+
 	/// Check if the path should be ignored
 	fn is_ignored_path(&self, path: &str) -> bool {
 		self.ignored_path_regexes.iter().any(|re| re.is_match(path))
@@ -246,28 +305,25 @@ impl BrokenLinkEmailsMiddleware {
 	}
 
 	/// Log a broken link and send email notifications
-	#[allow(deprecated)]
 	async fn log_broken_link(&self, path: &str, referer: &str) {
 		// Log to standard logging system
 		log::warn!("Broken link detected: {} (from: {})", path, referer);
 
-		// Load Settings to get managers list
-		// Try to read from default settings location
-		// In production, this should be configured via environment or config file
-		let managers = if let Ok(settings_json) = std::env::var("REINHARDT_SETTINGS") {
-			// Attempt to parse settings from environment variable
-			if let Ok(settings) = serde_json::from_str::<settings::Settings>(&settings_json) {
-				settings.managers
-			} else {
-				Vec::new()
-			}
+		// Managers are resolved once at construction time via
+		// `BrokenLinkConfig::from_settings`. When no settings were provided,
+		// fall back to converting legacy `email_addresses` into anonymous
+		// `Contact` entries so existing direct-construction callers continue
+		// to receive notifications.
+		let managers: Cow<'_, [settings::Contact]> = if !self.config.managers.is_empty() {
+			Cow::Borrowed(&self.config.managers)
 		} else {
-			// Fallback to config email_addresses if settings not available
-			self.config
-				.email_addresses
-				.iter()
-				.map(|email| settings::Contact::new("", email.clone()))
-				.collect()
+			Cow::Owned(
+				self.config
+					.email_addresses
+					.iter()
+					.map(|email| settings::Contact::new("", email.clone()))
+					.collect(),
+			)
 		};
 
 		// Send email notifications to managers
@@ -282,7 +338,7 @@ impl BrokenLinkEmailsMiddleware {
 			);
 
 			// Send to all managers asynchronously (non-blocking)
-			for manager in &managers {
+			for manager in managers.iter() {
 				let email = manager.email.clone();
 				let subject_clone = subject.clone();
 				let body_clone = body.clone();
