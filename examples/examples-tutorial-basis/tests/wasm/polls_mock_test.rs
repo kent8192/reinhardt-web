@@ -21,10 +21,10 @@ wasm_bindgen_test_configure!(run_in_browser);
 use examples_tutorial_basis::client::components::polls::{
 	polls_detail, polls_index, polls_results,
 };
-use examples_tutorial_basis::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
 use examples_tutorial_basis::server_fn::polls::{
 	get_question_detail, get_question_results, get_questions, vote,
 };
+use examples_tutorial_basis::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
 use reinhardt::pages::component::Page;
 use reinhardt::pages::server_fn::ServerFnError;
 use reinhardt::test::msw::MockServiceWorker;
