@@ -232,8 +232,9 @@ impl BaseVersioning for AcceptHeaderVersioning {
 		}
 
 		// Return default version if no version in header.
-		// Use as_deref().to_owned() to avoid the Option<String>::clone() intermediate
-		// allocation that the previous .clone().unwrap_or_else(...) chain incurred.
+		// Use as_deref().to_owned() instead of clone().unwrap_or_else(...) to skip
+		// cloning the Option<String> wrapper. The final String allocation to satisfy
+		// the Result<String> return type is unavoidable.
 		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
@@ -396,7 +397,7 @@ impl BaseVersioning for URLPathVersioning {
 		}
 
 		// Return default version if no version in path.
-		// Avoid Option<String>::clone() on the hot path.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
 		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
@@ -585,7 +586,7 @@ impl BaseVersioning for HostNameVersioning {
 		}
 
 		// Return default version if no version in hostname.
-		// Avoid Option<String>::clone() on the hot path.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
 		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
@@ -705,7 +706,7 @@ impl BaseVersioning for QueryParameterVersioning {
 		}
 
 		// Return default version if no version in query.
-		// Avoid Option<String>::clone() on the hot path.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
 		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
@@ -866,7 +867,7 @@ impl BaseVersioning for NamespaceVersioning {
 		}
 
 		// Fallback to default version.
-		// Avoid Option<String>::clone() on the hot path.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
 		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
