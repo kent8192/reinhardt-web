@@ -25,6 +25,7 @@ use reinhardt_middleware::Middleware;
 use reinhardt_urls::prelude::Router;
 use reinhardt_urls::routers::{DefaultRouter, Route};
 use rstest::rstest;
+use serial_test::serial;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -126,7 +127,7 @@ impl Middleware for ForceAcceptedMiddleware {
 	}
 }
 
-/// Middleware that transforms an `Internal` error into a 503 response.
+/// Middleware that transforms any downstream handler error into a 503 response.
 struct ErrorToServiceUnavailableMiddleware;
 
 #[async_trait]
@@ -298,6 +299,7 @@ async fn middleware_transforms_view_error_into_response() {
 
 #[rstest]
 #[tokio::test]
+#[serial(dispatch_signals)]
 async fn signals_emit_when_handler_returns_internal_error() {
 	// Arrange
 	let started = Arc::new(AtomicUsize::new(0));
@@ -348,6 +350,7 @@ async fn signals_emit_when_handler_returns_internal_error() {
 
 #[rstest]
 #[tokio::test]
+#[serial(dispatch_signals)]
 async fn signals_emit_when_handler_is_wrapped_by_middleware_chain() {
 	// Arrange
 	let started = Arc::new(AtomicUsize::new(0));
