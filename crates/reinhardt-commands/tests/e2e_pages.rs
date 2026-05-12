@@ -14,6 +14,32 @@ use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 
+/// RAII guard that restores the process-wide current working directory when
+/// dropped, including on panic-driven unwind. Tests under `#[serial(cwd)]`
+/// mutate global state via `std::env::set_current_dir`, so without this guard
+/// a panic inside `execute(...)` would leave the CWD pointing at a `TempDir`
+/// that gets deleted at end-of-scope, corrupting subsequent tests.
+struct CwdGuard {
+	prev: std::path::PathBuf,
+}
+
+impl CwdGuard {
+	fn enter(new_cwd: &Path) -> Self {
+		let prev = std::env::current_dir().unwrap();
+		std::env::set_current_dir(new_cwd).unwrap();
+		Self { prev }
+	}
+}
+
+impl Drop for CwdGuard {
+	fn drop(&mut self) {
+		// Best-effort restore — swallow errors during unwind so we never
+		// double-panic. The original directory may itself have been removed
+		// in pathological cases, which is acceptable for test cleanup.
+		let _ = std::env::set_current_dir(&self.prev);
+	}
+}
+
 /// Helper: build a `CommandContext` whose only option is `--with-pages`.
 fn pages_context(args: Vec<String>) -> CommandContext {
 	let mut ctx = CommandContext::new(args);
@@ -29,8 +55,7 @@ fn pages_context(args: Vec<String>) -> CommandContext {
 async fn project_pages_layout_matches_tutorial() {
 	// Arrange
 	let tmp = TempDir::new().unwrap();
-	let prev = std::env::current_dir().unwrap();
-	std::env::set_current_dir(tmp.path()).unwrap();
+	let _cwd_guard = CwdGuard::enter(tmp.path());
 
 	// Act
 	let res = StartProjectCommand
@@ -38,7 +63,6 @@ async fn project_pages_layout_matches_tutorial() {
 		.await;
 
 	// Assert
-	std::env::set_current_dir(prev).unwrap();
 	res.expect("startproject --with-pages must succeed");
 
 	let project = tmp.path().join("polls_project");
@@ -125,12 +149,10 @@ async fn project_pages_layout_matches_tutorial() {
 
 /// Set up a project so that `startapp --with-pages` can run inside it.
 async fn scaffold_pages_project(tmp: &Path, name: &str) {
-	let prev = std::env::current_dir().unwrap();
-	std::env::set_current_dir(tmp).unwrap();
+	let _cwd_guard = CwdGuard::enter(tmp);
 	let cmd = StartProjectCommand;
 	let ctx = pages_context(vec![name.to_string()]);
 	let result = cmd.execute(&ctx).await;
-	std::env::set_current_dir(prev).unwrap();
 	result.expect("startproject --with-pages must succeed");
 }
 
@@ -144,8 +166,7 @@ async fn app_pages_layout_matches_tutorial() {
 	scaffold_pages_project(tmp.path(), project_name).await;
 
 	let project_dir = tmp.path().join(project_name);
-	let prev = std::env::current_dir().unwrap();
-	std::env::set_current_dir(&project_dir).unwrap();
+	let _cwd_guard = CwdGuard::enter(&project_dir);
 
 	// Act
 	let res = StartAppCommand
@@ -153,7 +174,6 @@ async fn app_pages_layout_matches_tutorial() {
 		.await;
 
 	// Assert
-	std::env::set_current_dir(prev).unwrap();
 	res.expect("startapp --with-pages must succeed");
 
 	let apps = project_dir.join("src").join("apps");
@@ -231,8 +251,7 @@ async fn startapp_pages_layout_has_urls_submodule() {
 	scaffold_pages_project(tmp.path(), project_name).await;
 
 	let project_dir = tmp.path().join(project_name);
-	let prev = std::env::current_dir().unwrap();
-	std::env::set_current_dir(&project_dir).unwrap();
+	let _cwd_guard = CwdGuard::enter(&project_dir);
 
 	// Act
 	let res = StartAppCommand
@@ -240,7 +259,6 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		.await;
 
 	// Assert
-	std::env::set_current_dir(prev).unwrap();
 	res.expect("startapp --with-pages must succeed");
 
 	let foo_dir = project_dir.join("src").join("apps").join("foo");
