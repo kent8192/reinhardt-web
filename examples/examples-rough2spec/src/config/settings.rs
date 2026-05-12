@@ -16,8 +16,11 @@ pub fn get_settings() -> Settings {
     });
     let profile = Profile::parse(&profile_str);
 
-    let base_dir = env::current_dir().expect("Failed to get current directory");
-    let settings_dir = base_dir.join("settings");
+    // Anchor settings resolution at the crate manifest dir so it works
+    // regardless of the process's current working directory (e.g.
+    // `cargo run -p examples-rough2spec` from the workspace root, or
+    // `cargo run` from inside the example dir).
+    let settings_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("settings");
 
     let merged = SettingsBuilder::new()
         .profile(profile)

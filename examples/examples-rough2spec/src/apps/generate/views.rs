@@ -8,6 +8,7 @@ use reinhardt::http::ViewResult;
 use reinhardt::{Json, Response, StatusCode};
 use reinhardt::{get, post};
 use serde::{Deserialize, Serialize};
+use std::env;
 
 // ─── Request / Response types ──────────────────────────────────────────
 
@@ -77,8 +78,13 @@ pub async fn generate(Json(req): Json<GenerateRequest>) -> ViewResult<Response> 
                 .with_body(json::to_vec(&resp)?))
         }
         Err(e) => {
+            // Log the detailed upstream error server-side, but return a
+            // stable generic message to the client. This avoids leaking
+            // LM Studio response bodies or echoed user input through
+            // the error string.
+            eprintln!("generate: upstream LM Studio call failed: {e:#}");
             let body = ErrorResponse {
-                error: e.to_string(),
+                error: "spec generation failed; see server logs".to_string(),
             };
             Ok(Response::new(StatusCode::INTERNAL_SERVER_ERROR)
                 .with_header("Content-Type", "application/json")
@@ -90,8 +96,27 @@ pub async fn generate(Json(req): Json<GenerateRequest>) -> ViewResult<Response> 
 
 // ─── LM Studio API call (OpenAI-compatible) ────────────────────────────
 
-const LM_STUDIO_URL: &str = "http://localhost:1234/v1/chat/completions";
-const LM_STUDIO_MODEL: &str = "glm-edge-v-5b";
+const DEFAULT_LM_STUDIO_URL: &str = "http://localhost:1234/v1/chat/completions";
+const DEFAULT_LM_STUDIO_MODEL: &str = "glm-edge-v-5b";
+const DEFAULT_LM_STUDIO_MAX_TOKENS: u32 = 1800;
+
+/// LM Studio endpoint URL. Overridable via `LM_STUDIO_URL` env var.
+fn lm_studio_url() -> String {
+    env::var("LM_STUDIO_URL").unwrap_or_else(|_| DEFAULT_LM_STUDIO_URL.to_string())
+}
+
+/// LM Studio model id. Overridable via `LM_STUDIO_MODEL` env var.
+fn lm_studio_model() -> String {
+    env::var("LM_STUDIO_MODEL").unwrap_or_else(|_| DEFAULT_LM_STUDIO_MODEL.to_string())
+}
+
+/// LM Studio max tokens. Overridable via `LM_STUDIO_MAX_TOKENS` env var.
+fn lm_studio_max_tokens() -> u32 {
+    env::var("LM_STUDIO_MAX_TOKENS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_LM_STUDIO_MAX_TOKENS)
+}
 
 async fn call_lm_studio(idea: &str, template: &str) -> anyhow::Result<Spec> {
     let prompt = build_prompt(idea, template);
@@ -126,8 +151,8 @@ async fn call_lm_studio(idea: &str, template: &str) -> anyhow::Result<Spec> {
 
     let client = reqwest::Client::new();
     let request = ChatRequest {
-        model: LM_STUDIO_MODEL.to_string(),
-        max_tokens: 1800,
+        model: lm_studio_model(),
+        max_tokens: lm_studio_max_tokens(),
         messages: vec![Message {
             role: "user".to_string(),
             content: prompt,
@@ -135,7 +160,7 @@ async fn call_lm_studio(idea: &str, template: &str) -> anyhow::Result<Spec> {
     };
 
     let resp = client
-        .post(LM_STUDIO_URL)
+        .post(lm_studio_url())
         .header("content-type", "application/json")
         .json(&request)
         .send()
@@ -164,10 +189,23 @@ async fn call_lm_studio(idea: &str, template: &str) -> anyhow::Result<Spec> {
         text
     };
 
-    // Extract JSON from response
+    // Extract JSON from response.
+    //
+    // Search for the closing `}` only *after* `start` and use an
+    // exclusive end index so this slicing never panics:
+    //   - if `}` occurs before `start`, `rfind` on `text[start..]`
+    //     returns `None` and we fall back to `text[start..]`;
+    //   - if `}` is missing entirely, same fallback applies;
+    //   - the computed `end_exclusive = start + rel_end + 1` is always
+    //     within `text.len()` because `rel_end` is a valid byte index
+    //     into `text[start..]`.
     let json_text = if let Some(start) = text.find('{') {
-        let end = text.rfind('}').unwrap_or(text.len());
-        text[start..=end].to_string()
+        if let Some(rel_end) = text[start..].rfind('}') {
+            let end_exclusive = start + rel_end + 1;
+            text[start..end_exclusive].to_string()
+        } else {
+            text[start..].to_string()
+        }
     } else {
         text
     };

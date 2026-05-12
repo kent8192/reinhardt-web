@@ -3,7 +3,7 @@ secret_key = "rough2spec-dev-secret-key-change-in-production"
 allowed_hosts = ["*"]
 
 [installed_apps]
-apps = ["rough2spec.apps.generate"]
+apps = ["examples_rough2spec.apps.generate"]
 
 [middleware]
 classes = [
