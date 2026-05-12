@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.28...reinhardt-di@v0.1.0-rc.29) - 2026-05-12
+
+### Added
+
+- *(di)* add testing-only register_override API with OverrideGuard
+
+### Changed
+
+- *(di)* tighten register_override docs and Send/Sync invariants
+- post-simplify-review cleanups for DI mock fixtures
+
+### Maintenance
+
+- cargo fmt after di-mock-fixtures
+
+### Styling
+
+- *(di)* apply rustfmt to register_override.rs
+
 ### Added
 
 - *(di)* add testing-only `register_override` API and `OverrideGuard` for mock factory injection (feature `testing`)
