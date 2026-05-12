@@ -408,9 +408,16 @@ impl<T: FormModel> ModelForm<T> {
 		}
 
 		// Step 2: optional cross-field validation hook on the model.
+		// Capture the messages returned by `FormModel::validate` into the
+		// underlying `Form`'s non-field error bucket (keyed by `ALL_FIELDS_KEY`)
+		// so callers can retrieve them through `form().errors()` instead of
+		// only learning that validation failed.
 		if let Some(ref instance) = self.instance
-			&& instance.validate().is_err()
+			&& let Err(messages) = instance.validate()
 		{
+			for message in messages {
+				self.form.add_error(crate::form::ALL_FIELDS_KEY, message);
+			}
 			return false;
 		}
 
@@ -441,11 +448,10 @@ impl<T: FormModel> ModelForm<T> {
 			return Err(FormError::Validation("Form is not valid".to_string()));
 		}
 
-		// Safe to unwrap: presence checked above.
-		let mut instance = self
-			.instance
-			.take()
-			.expect("instance presence checked above");
+		// Keep this path non-panicking even though presence was checked above:
+		// if a future refactor breaks the invariant, surface a typed error
+		// rather than aborting the process.
+		let mut instance = self.instance.take().ok_or(FormError::NoInstance)?;
 
 		// Set field values from form's cleaned_data
 		let cleaned_data = self.form.cleaned_data();
@@ -784,6 +790,16 @@ mod tests {
 		assert!(
 			!actual,
 			"ModelForm::is_valid must propagate FormModel::validate errors"
+		);
+		let non_field_errors = form
+			.form()
+			.errors()
+			.get(crate::form::ALL_FIELDS_KEY)
+			.expect("model validate errors must be captured under ALL_FIELDS_KEY");
+		assert_eq!(
+			non_field_errors,
+			&vec!["cross-field invariant violated".to_string()],
+			"FormModel::validate messages must be attached to the form's non-field error bucket"
 		);
 	}
 
