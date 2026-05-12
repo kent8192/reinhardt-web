@@ -39,9 +39,9 @@ mod tests {
 	use async_trait::async_trait;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
-	use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 	#[allow(deprecated)]
 	use reinhardt_conf::Settings;
+	use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 	use std::sync::{Arc, RwLock};
 	use std::thread;
 	use std::time::{Duration, SystemTime};
