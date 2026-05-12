@@ -34,9 +34,37 @@ impl KafkaProducer {
 
 	/// Publish raw bytes to `topic` (partition 0).
 	pub async fn send_raw(&self, topic: &str, payload: Vec<u8>) -> Result<(), StreamingError> {
+		self.send_to_partition(topic, 0, payload).await
+	}
+
+	/// Publish raw bytes to a specific `partition` of `topic`.
+	///
+	/// Use this when tests or callers need deterministic partition pinning —
+	/// for example, to assert per-partition ordering or to drive a consumer
+	/// that is subscribed to a fixed partition. Unknown topics are created
+	/// via `UnknownTopicHandling::Retry`, matching [`Self::send_raw`].
+	///
+	/// # Errors
+	///
+	/// Returns [`StreamingError::Fatal`] if `partition` is negative. The
+	/// `i32` type matches the underlying `rskafka` API surface; negative
+	/// values are rejected eagerly because Kafka partitions are always
+	/// non-negative indices.
+	pub async fn send_to_partition(
+		&self,
+		topic: &str,
+		partition: i32,
+		payload: Vec<u8>,
+	) -> Result<(), StreamingError> {
+		if partition < 0 {
+			return Err(StreamingError::Fatal(format!(
+				"partition must be non-negative, got {partition}"
+			)));
+		}
+
 		let partition_client = self
 			.client
-			.partition_client(topic, 0, UnknownTopicHandling::Retry)
+			.partition_client(topic, partition, UnknownTopicHandling::Retry)
 			.await
 			.map_err(|e| StreamingError::Backend(e.to_string()))?;
 
