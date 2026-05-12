@@ -219,22 +219,23 @@ impl BaseVersioning for AcceptHeaderVersioning {
 					{
 						let version = value.trim().trim_matches('"');
 						if self.is_allowed_version(version) {
-							return Ok(version.to_string());
+							return Ok(version.to_owned());
 						} else {
-							return Err(Error::Validation(
-								VersioningError::VersionNotAllowed(version.to_string()).to_string(),
-							));
+							// Avoid intermediate String allocation from VersionNotAllowed(String).to_string()
+							return Err(Error::Validation(format!(
+								"Version not allowed: {version}"
+							)));
 						}
 					}
 				}
 			}
 		}
 
-		// Return default version if no version in header
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Return default version if no version in header.
+		// Use as_deref().to_owned() instead of clone().unwrap_or_else(...) to skip
+		// cloning the Option<String> wrapper. The final String allocation to satisfy
+		// the Result<String> return type is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
@@ -388,19 +389,16 @@ impl BaseVersioning for URLPathVersioning {
 		{
 			let version = version_match.as_str();
 			if self.is_allowed_version(version) {
-				return Ok(version.to_string());
+				return Ok(version.to_owned());
 			} else {
-				return Err(Error::Validation(
-					VersioningError::VersionNotAllowed(version.to_string()).to_string(),
-				));
+				// Avoid intermediate String allocation from VersionNotAllowed(String).to_string()
+				return Err(Error::Validation(format!("Version not allowed: {version}")));
 			}
 		}
 
-		// Return default version if no version in path
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Return default version if no version in path.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
@@ -587,11 +585,9 @@ impl BaseVersioning for HostNameVersioning {
 			}
 		}
 
-		// Return default version if no version in hostname
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Return default version if no version in hostname.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
@@ -700,21 +696,18 @@ impl BaseVersioning for QueryParameterVersioning {
 					&& key == self.version_param
 				{
 					if self.is_allowed_version(value) {
-						return Ok(value.to_string());
+						return Ok(value.to_owned());
 					} else {
-						return Err(Error::Validation(
-							VersioningError::VersionNotAllowed(value.to_string()).to_string(),
-						));
+						// Avoid intermediate String allocation from VersionNotAllowed(String).to_string()
+						return Err(Error::Validation(format!("Version not allowed: {value}")));
 					}
 				}
 			}
 		}
 
-		// Return default version if no version in query
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Return default version if no version in query.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
@@ -873,11 +866,9 @@ impl BaseVersioning for NamespaceVersioning {
 			return Ok(version);
 		}
 
-		// Fallback to default version
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Fallback to default version.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
