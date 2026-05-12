@@ -100,6 +100,37 @@ args = [
   "-D", "clippy::dbg_macro",
 ]
 
+[tasks.semver-check]
+description = "Run cargo-semver-checks locally (mirrors CI semver-check.yml for normal PRs). Override baseline via BASELINE_REV env var."
+script_runner = "sh"
+script = '''
+set -e
+# Resolve baseline revision in this order of preference so the task works
+# both on the canonical repo (where origin/main exists) and on forks or
+# differently-named remotes:
+#   1. $BASELINE_REV  - explicit user override
+#   2. origin/main    - default, matches CI normal-PR path
+#   3. main           - local fallback when no `origin` remote is configured
+#   4. HEAD~1         - last-resort so the command never fails on a fresh clone
+if [ -n "${BASELINE_REV:-}" ]; then
+  BASELINE="$BASELINE_REV"
+elif git rev-parse --verify --quiet origin/main >/dev/null; then
+  BASELINE="origin/main"
+elif git rev-parse --verify --quiet main >/dev/null; then
+  BASELINE="main"
+else
+  BASELINE="HEAD~1"
+fi
+echo "semver-check: using baseline-rev=${BASELINE}"
+cargo semver-checks check-release \
+  --workspace \
+  --exclude reinhardt-web \
+  --exclude reinhardt-pages \
+  --all-features \
+  --release-type minor \
+  --baseline-rev "$BASELINE"
+'''
+
 [tasks.placeholder-check]
 description = "Check for formatter placeholder macros left in source files"
 script_runner = "sh"
