@@ -905,9 +905,9 @@ fn install_link_interceptor(document: &web_sys::Document) -> Result<(), wasm_bin
 		}
 
 		// Surface `Router::push` failures instead of silently swallowing
-		// them with `let _ = r.push(href);`. Debug builds emit a
-		// `nav_diag!` console line (cheap, no rebuild required); release
-		// builds additionally surface a `console.warn` so SPA navigation
+		// them with `let _ = r.push(href);`. The `nav_diag!` console
+		// line is debug-gated (cheap, no rebuild required), while the
+		// `console.warn` below fires in all builds so SPA navigation
 		// regressions are visible in production WASM bundles without
 		// requiring a tracing subscriber. The `tracing` crate is not
 		// pulled in on the wasm32 target (see Cargo.toml), so we use

@@ -193,11 +193,12 @@ async fn link_interceptor_resolves_anchor_from_text_node_target() {
 	init.set_cancelable(true);
 	let event = web_sys::MouseEvent::new_with_mouse_event_init_dict("click", &init)
 		.expect("new MouseEvent");
-	let dispatched = text.dispatch_event(&event).expect("dispatch_event text");
-	assert!(
-		dispatched,
-		"#4330 setup: text node did not accept dispatch_event",
-	);
+	// dispatch_event returns false if any listener called prevent_default().
+	// The interceptor under test is expected to call prevent_default() once it
+	// walks up from the Text node to the enclosing <a>, so the return value is
+	// not a reliable setup check. Behavior is verified by the dataset assertions
+	// below.
+	let _ = text.dispatch_event(&event).expect("dispatch_event text");
 
 	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
 	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
