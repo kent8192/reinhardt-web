@@ -492,22 +492,24 @@ Before converting a Draft PR to Ready for Review on any PR that touches public A
 
 **Rationale:**
 
-- CI semver-check takes 1.5〜2 hours wall clock (see April 2026 measurement: 104 min avg, up to 284 min). Running it locally in parallel with CI shortens the feedback loop
+- CI semver-check typically takes 1.5〜2 hours wall clock (April 2026 measurement: 104 min avg ≈ 1.7 h), with tail-end outliers up to ~4.7 hours (max 284 min). Running it locally in parallel with CI shortens the feedback loop
 - Provides a permanent, reviewer-visible audit trail of SemVer impact directly on the PR, independent of CI logs that may expire
 - Replaces the previous CI-generated `cargo-public-api` PR comment that was removed from `semver-check.yml`
 
 **Comment template:**
 
-````markdown
+`````markdown
 <!-- local-semver-check -->
 ## Local SemVer Check Result
 
-```
+````text
 <output of `cargo make semver-check`>
-```
+````
 
 *Generated locally via `cargo make semver-check` (mirrors CI `semver-check.yml`).*
-````
+`````
+
+The inner fence uses a 4-backtick `text` block so that any backticks in the captured output do not prematurely terminate the fence. The outer 5-backtick fence wraps the whole template safely when rendered in this document.
 
 If local output diverges from CI, investigate the cause before requesting review.
 
