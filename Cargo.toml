@@ -360,6 +360,7 @@ members = [
   "crates/reinhardt-views",
   "crates/reinhardt-urls",
   "crates/reinhardt-urls/routers-macros",
+  "crates/reinhardt-router",                            # Shared router trait (issue #4321)
   "crates/reinhardt-middleware",
   "crates/reinhardt-pages",                             # WASM frontend framework
   "crates/reinhardt-pages/macros",              # WASM frontend macros
@@ -449,6 +450,7 @@ reinhardt-http = { path = "crates/reinhardt-http", version = "0.1.0-rc.28" }
 reinhardt-server = { path = "crates/reinhardt-server", version = "0.1.0-rc.28" }
 reinhardt-views = { path = "crates/reinhardt-views", version = "0.1.0-rc.28" }
 reinhardt-urls = { path = "crates/reinhardt-urls", version = "0.1.0-rc.28" }
+reinhardt-router = { path = "crates/reinhardt-router", version = "0.1.0-rc.28" }
 reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.1.0-rc.28" }
 reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.1.0-rc.28" }
 reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.1.0-rc.28" }

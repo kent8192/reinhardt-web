@@ -292,6 +292,16 @@ impl Form {
 	pub fn errors(&self) -> &HashMap<String, Vec<String>> {
 		&self.errors
 	}
+	/// Append an error message to the given field's error list.
+	///
+	/// Use [`ALL_FIELDS_KEY`] for non-field (form-wide / cross-field) errors so
+	/// they are exposed through the same inspection API as per-field errors.
+	pub fn add_error(&mut self, field_name: impl Into<String>, message: impl Into<String>) {
+		self.errors
+			.entry(field_name.into())
+			.or_default()
+			.push(message.into());
+	}
 	/// Returns whether the form has been bound with submitted data.
 	pub fn is_bound(&self) -> bool {
 		self.is_bound

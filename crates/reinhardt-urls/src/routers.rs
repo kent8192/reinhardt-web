@@ -161,6 +161,10 @@ pub mod simple;
 /// Unified router combining server and client routing.
 #[cfg(any(native, feature = "client-router"))]
 pub mod unified_router;
+/// `VersionedRouter` trait impls bridging concrete routers to the
+/// `reinhardt-router` crate (issue #4321).
+#[cfg(native)]
+pub mod versioned;
 /// Route map visualization in multiple formats (tree, DOT, Markdown).
 #[cfg(native)]
 pub mod visualization;
