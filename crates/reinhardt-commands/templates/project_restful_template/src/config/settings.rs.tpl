@@ -29,12 +29,13 @@
 //!
 //! ## Environment Variable Interpolation
 //!
-//! `TomlFileSource` interpolates `${VAR}` syntax inside TOML values by
-//! default (since reinhardt-web v0.1.0-rc.27). Supported forms:
+//! `TomlFileSource` interpolates `${VAR}` syntax inside TOML string values
+//! by default (since reinhardt-web v0.1.0-rc.27). The `${...}` syntax is
+//! not valid in non-string TOML literals. Supported forms:
 //!
-//! - `${VAR}` — required; build fails if `VAR` is unset
+//! - `${VAR}` — required; settings load fails if `VAR` is unset
 //! - `${VAR:-default}` — falls back to `default` when `VAR` is unset
-//! - `${VAR:?message}` — fails with `message` when `VAR` is unset
+//! - `${VAR:?message}` — settings load fails with `message` when `VAR` is unset
 //!
 //! Interpolated strings are typed-coerced at deserialization time, so
 //! `pool_size = "${DB_POOL_SIZE:-10}"` resolves directly to the field's
