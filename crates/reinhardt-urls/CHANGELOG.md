@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(urls)* `DefaultRouter` and `SimpleRouter` now implement
+  `reinhardt_router::VersionedRouter`, which lets `reinhardt-rest`
+  versioning strategies introspect their routes without depending on
+  `reinhardt-urls` directly (issue
+  [#4321](https://github.com/kent8192/reinhardt-web/issues/4321)).
+
 ## [0.1.0-rc.28](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.27...reinhardt-urls@v0.1.0-rc.28) - 2026-05-10
 
 ### Fixed

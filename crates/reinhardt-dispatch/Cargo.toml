@@ -40,3 +40,5 @@ hyper = { workspace = true }
 bytes = { workspace = true }
 tokio-test = "0.4"
 serde_json = { workspace = true }
+rstest = { workspace = true }
+serial_test = { workspace = true }

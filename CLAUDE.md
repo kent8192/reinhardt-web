@@ -401,6 +401,32 @@ docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/
 cargo make audit  # Check for known vulnerabilities in dependencies
 ```
 
+**SemVer Check (Local, mirrors CI):**
+```bash
+# Run the same cargo-semver-checks command as CI semver-check.yml (normal PR path).
+# Capture output ONCE — semver-check is slow (typically 1.5–2 h) and running it twice
+# can also yield inconsistent results if `main` advances between invocations.
+OUT=$(cargo make semver-check 2>&1) || true
+
+# Post the result to the PR (required by PR_GUIDELINE.md RP-1a).
+# Use the <!-- local-semver-check --> marker. On re-runs, UPDATE the existing marked
+# comment via `gh api ... -X PATCH` instead of creating a new one.
+PR=<PR number>
+OWNER=<owner>
+REPO=<repo>
+BODY=$(printf '<!-- local-semver-check -->\n## Local SemVer Check Result\n\n````text\n%s\n````\n\n*Generated locally via `cargo make semver-check` (mirrors CI semver-check.yml).*' "$OUT")
+
+# Look up an existing marked comment, then PATCH it; otherwise create a new one.
+EXISTING=$(gh api "repos/$OWNER/$REPO/issues/$PR/comments" --paginate \
+  --jq '.[] | select(.body | startswith("<!-- local-semver-check -->")) | .id' \
+  | head -n1)
+if [ -n "$EXISTING" ]; then
+  gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$EXISTING" -f body="$BODY" >/dev/null
+else
+  gh api -X POST "repos/$OWNER/$REPO/issues/$PR/comments" -f body="$BODY" >/dev/null
+fi
+```
+
 **Placeholder Check (formatter artifact detection):**
 ```bash
 # Check for __reinhardt_placeholder__! left in source files after page! macro formatting
@@ -622,6 +648,7 @@ Before submitting code:
 - Use `issue-XXXX-to-YYYY` for consecutive issue ranges and `and` for multiple ranges in branch names
 - Check known CI failure patterns before deep investigation
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
+- Run `cargo make semver-check` locally and post the output as a PR comment with the `<!-- local-semver-check -->` marker before converting Draft → Ready on any PR touching public API (see instructions/PR_GUIDELINE.md § RP-1a)
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
@@ -707,6 +734,8 @@ Before submitting code:
 - Create branches without checking for name conflicts
 - Use hyphens between issue numbers for ranges in branch names (use `to` and `and` instead)
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
+- Convert a Draft PR to Ready for Review on a PR touching public API without first running `cargo make semver-check` locally and posting the result to the PR with the `<!-- local-semver-check -->` marker
+- Create duplicate `<!-- local-semver-check -->` comments on re-runs (update the existing marked comment instead)
 - Merge develop/* branches into main without `migration-approved` label and CI version validation
 - Remove `agent-suspect` label without independent verification (separate agent or human)
 - Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
