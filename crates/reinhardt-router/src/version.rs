@@ -11,11 +11,15 @@ pub struct RouteVersionInfo {
 	/// The namespace label attached to the route, if any
 	/// (e.g. `"v1"` from `Route::with_namespace("v1")`).
 	pub namespace: Option<String>,
-	/// The path prefix carried by the route (e.g. `"/v1/users/"`).
+	/// The registered route path/prefix as stored by the router
+	/// (e.g. `"/v1/users/"`).
 	///
-	/// Callers typically feed this to a version-extracting regex; the
-	/// full path is provided rather than a pre-trimmed prefix so that
-	/// pattern strategies remain free to anchor wherever they need.
+	/// "Prefix" here means the full leading path segment that the
+	/// router associates with this route — it is **not** trimmed of
+	/// the version segment. Callers typically feed this whole string
+	/// to a version-extracting regex so pattern strategies remain free
+	/// to anchor wherever they need (e.g. `"/v{version}/"` matches at
+	/// the start of the path).
 	pub path_prefix: String,
 }
 

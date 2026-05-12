@@ -923,11 +923,13 @@ impl NamespaceVersioning {
 	/// Extract a version from a router-aware path, applying the
 	/// configured pattern.
 	///
-	/// `router` is accepted (rather than just `path`) so that callers
-	/// can pass the same router used for dispatch — keeping the API
-	/// symmetric with [`Self::get_available_versions_from_router`] and
-	/// leaving room for future router-driven heuristics without
-	/// another signature break.
+	/// Unlike [`Self::extract_version_from_path`], this method is
+	/// router-aware: it returns `Some(version)` only if `path` matches
+	/// (starts with) at least one `path_prefix` registered on the
+	/// router AND the configured pattern successfully extracts a
+	/// version from that prefix. Otherwise it returns `None`. This
+	/// prevents reporting a version for paths that no route on
+	/// `router` actually serves.
 	///
 	/// The trait bound on [`reinhardt_router::VersionedRouter`] is what
 	/// finally lets this method live in `reinhardt-rest` without
@@ -951,15 +953,28 @@ impl NamespaceVersioning {
 	///     .with_allowed_versions(vec!["1", "2"]);
 	///
 	/// let router = FakeRouter;
+	/// // "/v1/users/" matches the "/v1/" prefix registered on the router.
 	/// let version = versioning.extract_version_from_router(&router, "/v1/users/");
 	/// assert_eq!(version, Some("1".to_string()));
+	///
+	/// // "/v9/users/" does NOT match any registered prefix → None.
+	/// let unknown = versioning.extract_version_from_router(&router, "/v9/users/");
+	/// assert_eq!(unknown, None);
 	/// ```
 	pub fn extract_version_from_router<R: reinhardt_router::VersionedRouter + ?Sized>(
 		&self,
-		_router: &R,
+		router: &R,
 		path: &str,
 	) -> Option<String> {
-		self.extract_version_from_path(path)
+		// Find the first registered route whose `path_prefix` matches
+		// the incoming `path`, then extract the version from that
+		// prefix. If no route matches, the path is not served by this
+		// router and we return None.
+		router
+			.route_version_infos()
+			.into_iter()
+			.find(|info| path.starts_with(&info.path_prefix))
+			.and_then(|info| self.extract_version_from_path(&info.path_prefix))
 	}
 
 	/// Enumerate the versions currently registered on `router`.
@@ -968,6 +983,15 @@ impl NamespaceVersioning {
 	/// [`reinhardt_router::VersionedRouter`]; this method then applies
 	/// the configured pattern to each route's `path_prefix` and filters
 	/// by `allowed_versions` (when configured).
+	///
+	/// # Ordering
+	///
+	/// The returned `Vec<String>` is sorted **ascending in
+	/// lexicographic (string) order** and deduplicated. Lexicographic
+	/// order coincides with numeric order for single-digit versions
+	/// (e.g. `"1" < "2"`) but diverges for multi-digit versions
+	/// (e.g. `"10"` sorts before `"2"`). Callers that need a different
+	/// ordering must re-sort the result themselves.
 	///
 	/// # Examples
 	///
