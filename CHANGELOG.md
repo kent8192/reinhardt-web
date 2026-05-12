@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.28...reinhardt-web@v0.1.0-rc.29) - 2026-05-12
+
+### Added
+
+- *(di)* add testing-only register_override API with OverrideGuard
+- *(testkit-macros)* new crate providing with_di_overrides! macro
+- *(testkit)* add DiOverrideBuilder + with_di_overrides! re-export
+
+### Changed
+
+- *(di)* tighten register_override docs and Send/Sync invariants
+- *(testkit-macros)* route generated paths through reinhardt-testkit
+- post-simplify-review cleanups for DI mock fixtures
+- *(testkit)* extract RequestSeedFn alias to satisfy clippy::type_complexity
+
+### Documentation
+
+- *(policy)* add Reinhardt-family Autonomous Operation Policy and CLAUDE.md↔AGENTS.md sync rule
+- *(policy)* align Autonomous Operation Policy wording with PC-4a (Copilot review)
+- *(testing)* document DI mock fixtures and override patterns
+- tighten with_di_overrides! grammar comment and TI-8 serialization rule
+
+### Fixed
+
+- *(test/msw)* repair wasm32 build + expose facade msw feature
+- *(testkit-macros)* use path-only dev-dep on reinhardt-testkit (KI-2)
+- *(testkit)* make request_value seed the request scope and document the round-trip
+- *(admin)* use fully-qualified type paths in server_fn signatures
+- *(examples-tutorial-basis)* rustfmt drift on polls components and mock tests
+- *(commands/templates)* switch settings scaffold to build_composed (Deep merge)
+- *(commands/templates)* clarify settings panic message for build/compose failure modes
+
+### Maintenance
+
+- cargo fmt after di-mock-fixtures
+
+### Styling
+
+- *(di)* apply rustfmt to register_override.rs
+
 ## [0.1.0-rc.28](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.27...reinhardt-web@v0.1.0-rc.28) - 2026-05-10
 
 ### Fixed

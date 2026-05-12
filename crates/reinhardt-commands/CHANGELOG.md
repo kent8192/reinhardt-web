@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.28...reinhardt-commands@v0.1.0-rc.29) - 2026-05-12
+
+### Changed
+
+- *(commands)* promote CommandContext.settings to Arc<dyn HasCommonSettings>
+- *(commands)* consume ProjectSettings in CheckCommand instead of env::var
+- *(commands)* rename unused ctx param to _ctx in resolve_static_root_configured
+
+### Fixed
+
+- *(commands/templates)* switch settings scaffold to build_composed (Deep merge)
+- *(commands/templates)* clarify settings panic message for build/compose failure modes
+
+### Styling
+
+- apply rustfmt to PR-A files
+- *(commands)* collapse nested if in CheckCommand::resolve_database_url
+
+### Testing
+
+- *(commands)* migrate sendtestemail tests to HasCommonSettings stub
+
 ## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.26...reinhardt-commands@v0.1.0-rc.27) - 2026-05-09
 
 ### Added
