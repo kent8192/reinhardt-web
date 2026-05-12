@@ -81,7 +81,9 @@ pub fn get_settings() -> ProjectSettings {
 			settings_dir.join(format!("{}.toml", profile_str)),
 		))
 		.build_composed::<ProjectSettings>()
-		.expect("Failed to build settings")
+		.unwrap_or_else(|err| {
+			panic!("Failed to build/compose settings for profile `{profile_str}`: {err}")
+		})
 }
 
 #[cfg(test)]
