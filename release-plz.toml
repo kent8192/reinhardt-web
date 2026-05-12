@@ -184,6 +184,10 @@ name = "reinhardt-rest"
 version_group = "reinhardt"
 
 [[package]]
+name = "reinhardt-router"
+version_group = "reinhardt"
+
+[[package]]
 name = "reinhardt-routers-macros"
 version_group = "reinhardt"
 

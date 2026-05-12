@@ -40,6 +40,7 @@ reinhardt-views = { workspace = true, features = ["viewsets"] }
 reinhardt-middleware = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-di = { workspace = true }
+reinhardt-router = { workspace = true }
 nom = { workspace = true }
 hyper = { workspace = true }
 chrono = { workspace = true }
