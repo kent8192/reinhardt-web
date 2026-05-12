@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(rest)* replace the dead-code `_stub` versioning hooks
+  (`extract_version_from_router_stub` /
+  `get_available_versions_from_router_stub`) with real generic
+  implementations over `reinhardt_router::VersionedRouter`, and flip
+  the two `ignore`d doc examples in `versioning.rs` to runnable.
+  Resolves the `reinhardt-urls` ↔ `reinhardt-rest` circular
+  dependency tracked in
+  [#4321](https://github.com/kent8192/reinhardt-web/issues/4321).
+
 ## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-rc.22...reinhardt-rest@v0.1.0-rc.23) - 2026-04-29
 
 ### Fixed
