@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.28...reinhardt-forms@v0.1.0-rc.29) - 2026-05-12
+
+### Fixed
+
+- *(forms)* replace skeleton validators with real implementations or unimplemented!()
+- *(forms)* address Copilot review feedback on PR [[#4336](https://github.com/kent8192/reinhardt-web/issues/4336)](https://github.com/kent8192/reinhardt-web/issues/4336)
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.20...reinhardt-forms@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

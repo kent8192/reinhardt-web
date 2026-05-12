@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.28...reinhardt-web@v0.1.0-rc.29) - 2026-05-12
+
+### Added
+
+- *(di)* add testing-only register_override API with OverrideGuard
+- *(testkit-macros)* new crate providing with_di_overrides! macro
+- *(testkit)* add DiOverrideBuilder + with_di_overrides! re-export
+
+### Changed
+
+- *(di)* tighten register_override docs and Send/Sync invariants
+- *(testkit-macros)* route generated paths through reinhardt-testkit
+- post-simplify-review cleanups for DI mock fixtures
+- *(testkit)* extract RequestSeedFn alias to satisfy clippy::type_complexity
+- *(pages)* split app.rs (1441 lines) into submodules
+
+### Documentation
+
+- *(policy)* add Reinhardt-family Autonomous Operation Policy and CLAUDE.md↔AGENTS.md sync rule
+- *(policy)* align Autonomous Operation Policy wording with PC-4a (Copilot review)
+- *(testing)* document DI mock fixtures and override patterns
+- tighten with_di_overrides! grammar comment and TI-8 serialization rule
+- *(commands)* expand client_router scaffold with canonical registration hints
+
+### Fixed
+
+- *(test/msw)* repair wasm32 build + expose facade msw feature
+- *(testkit-macros)* use path-only dev-dep on reinhardt-testkit (KI-2)
+- *(testkit)* make request_value seed the request scope and document the round-trip
+- *(admin)* use fully-qualified type paths in server_fn signatures
+- *(examples-tutorial-basis)* rustfmt drift on polls components and mock tests
+- *(pages)* resolve rustdoc intra-doc link for with_router
+- *(pages)* match target="_blank" case-insensitively in link interceptor
+- *(commands)* scaffold urls/ submodule layout for app_pages templates
+- *(commands)* address Copilot review on PR [[#4357](https://github.com/kent8192/reinhardt-web/issues/4357)](https://github.com/kent8192/reinhardt-web/issues/4357)
+
+### Maintenance
+
+- cargo fmt after di-mock-fixtures
+- *(examples)* apply cargo make quality-fix to examples
+
+### Styling
+
+- *(di)* apply rustfmt to register_override.rs
+- *(urls)* fix clippy lints in route_pattern_matching and url_converters tests
+
 ## [0.1.0-rc.28](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.27...reinhardt-web@v0.1.0-rc.28) - 2026-05-10
 
 ### Fixed

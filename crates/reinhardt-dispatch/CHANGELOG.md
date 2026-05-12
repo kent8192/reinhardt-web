@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.28...reinhardt-dispatch@v0.1.0-rc.29) - 2026-05-12
+
+### Fixed
+
+- *(dispatch-tests)* serialize signal tests and correct middleware doc
+
+### Testing
+
+- *(dispatch)* add integration tests for routing × middleware main paths
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.20...reinhardt-dispatch@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation
