@@ -1,3 +1,5 @@
+use std::num::NonZeroU16;
+
 /// Configuration for connecting to a Kafka cluster.
 #[derive(Debug, Clone)]
 pub struct KafkaConfig {
@@ -9,7 +11,10 @@ pub struct KafkaConfig {
 	/// (e.g. to assert ordering or to address a specific partition via
 	/// `KafkaProducer::send_to_partition`) can override this with
 	/// [`KafkaConfig::with_partitions`].
-	pub partitions: u16,
+	///
+	/// Encoded as `NonZeroU16` to make zero — which would be a meaningless
+	/// topic configuration — unrepresentable at the type level.
+	pub partitions: NonZeroU16,
 }
 
 impl KafkaConfig {
@@ -17,7 +22,8 @@ impl KafkaConfig {
 		Self {
 			brokers: brokers.into_iter().map(Into::into).collect(),
 			client_id: "reinhardt".to_owned(),
-			partitions: 1,
+			// SAFETY: 1 is non-zero.
+			partitions: NonZeroU16::new(1).expect("1 is non-zero"),
 		}
 	}
 
@@ -27,7 +33,7 @@ impl KafkaConfig {
 	}
 
 	/// Set the partition count to use when this config drives topic creation.
-	pub fn with_partitions(mut self, n: u16) -> Self {
+	pub fn with_partitions(mut self, n: NonZeroU16) -> Self {
 		self.partitions = n;
 		self
 	}
@@ -59,12 +65,13 @@ mod tests {
 	#[rstest]
 	fn default_partitions_is_one() {
 		let config = KafkaConfig::new(["localhost:9092"]);
-		assert_eq!(config.partitions, 1);
+		assert_eq!(config.partitions.get(), 1);
 	}
 
 	#[rstest]
 	fn builder_overrides_partitions() {
-		let config = KafkaConfig::new(["localhost:9092"]).with_partitions(4);
-		assert_eq!(config.partitions, 4);
+		let config = KafkaConfig::new(["localhost:9092"])
+			.with_partitions(NonZeroU16::new(4).expect("4 is non-zero"));
+		assert_eq!(config.partitions.get(), 4);
 	}
 }
