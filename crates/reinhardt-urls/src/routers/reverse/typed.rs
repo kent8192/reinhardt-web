@@ -54,8 +54,11 @@ pub trait UrlPatternWithParams: UrlPattern {
 
 /// Type-safe reverse for simple URL patterns (no parameters)
 ///
-/// This function takes a type parameter implementing `UrlPattern`
-/// and returns the URL string. Invalid patterns will fail at compile time.
+/// This function takes a type parameter implementing `UrlPattern` and returns
+/// the URL string verbatim from `U::PATTERN`. Note that pattern *syntax*
+/// validation is performed only when `PATTERN` is produced by a checked
+/// constructor such as the `path!` macro; manual `impl UrlPattern` blocks that
+/// supply a free-form `PATTERN` string are not validated by this function.
 ///
 /// # Example
 ///

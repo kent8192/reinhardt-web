@@ -2,8 +2,8 @@
 //! [`reverse`] convenience function.
 
 use super::super::Route;
-use super::super::pattern::{PathPattern, validate_reverse_param};
-use super::runtime::{ReverseResult, reverse_single_pass};
+use super::super::pattern::PathPattern;
+use super::runtime::ReverseResult;
 use reinhardt_core::exception::Error;
 use std::collections::HashMap;
 
@@ -172,29 +172,16 @@ impl UrlReverser {
 				.ok_or_else(|| Error::NotFound(name.to_string()))?
 		};
 
-		// Parse the path pattern to find parameters
+		// Parse the path pattern and delegate substitution to PathPattern::reverse.
+		// PathPattern normalizes typed placeholders (e.g., "{<path:filepath>}" -> "{filepath}")
+		// and substitutes against the normalized form, so reversal works correctly even when
+		// the raw route.path contains typed placeholder syntax.
 		let pattern = PathPattern::new(&route.path)
 			.map_err(|e| Error::Validation(format!("pattern: {}", e)))?;
 
-		// Validate all required parameters are present before substitution
-		for param_name in pattern.param_names() {
-			if !params.contains_key(param_name) {
-				return Err(Error::Validation(format!("missing param: {}", param_name)));
-			}
-		}
-
-		// Validate parameter values against injection attacks
-		for (name, value) in params {
-			if !validate_reverse_param(value) {
-				return Err(Error::Validation(format!(
-					"invalid param '{}': contains dangerous characters",
-					name
-				)));
-			}
-		}
-
-		// Use single-pass substitution algorithm: O(n+m) instead of O(n×m×p)
-		Ok(reverse_single_pass(&route.path, params))
+		pattern
+			.reverse(params)
+			.map_err(Error::Validation)
 	}
 
 	/// Reverse a URL name to a path with positional parameters
