@@ -64,8 +64,11 @@ pub fn get_settings() -> ProjectSettings {
 	let base_dir = env::current_dir().expect("Failed to get current directory");
 	let settings_dir = base_dir.join("settings");
 
-	// Build settings by merging sources in priority order
-	let merged = SettingsBuilder::new()
+	// Build settings by merging sources in priority order.
+	// `build_composed::<T>()` uses `MergeStrategy::Deep` by default, so a
+	// single key in `production.toml` overrides only that key — sibling
+	// entries inside the same nested table inherit from `base.toml`.
+	SettingsBuilder::new()
 		.profile(profile)
 		// Lowest priority: Default values
 		.add_source(DefaultSource::new())
@@ -77,13 +80,10 @@ pub fn get_settings() -> ProjectSettings {
 		.add_source(TomlFileSource::new(
 			settings_dir.join(format!("{}.toml", profile_str)),
 		))
-		.build()
-		.expect("Failed to build settings");
-
-	// Convert MergedSettings to ProjectSettings
-	merged
-		.into_typed()
-		.expect("Failed to convert settings to ProjectSettings struct")
+		.build_composed::<ProjectSettings>()
+		.unwrap_or_else(|err| {
+			panic!("Failed to build/compose settings for profile `{profile_str}`: {err}")
+		})
 }
 
 #[cfg(test)]
