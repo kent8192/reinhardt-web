@@ -186,7 +186,6 @@ pub use helpers::{IncludedRouter, include_routes, path, re_path};
 pub use pattern::{MatchingMode, PathMatcher, PathPattern, RadixRouter, RadixRouterError};
 #[cfg(native)]
 pub use registration::{RouterFactory, UrlPatternsRegistration};
-#[cfg(native)]
 pub use reverse::{
 	ReverseError,
 	ReverseResult,
@@ -197,11 +196,17 @@ pub use reverse::{
 	UrlReverser,
 	extract_param_names,
 	reverse,
-	reverse_single_pass,
 	reverse_typed,
 	reverse_typed_with_params,
-	reverse_with_aho_corasick,
+	try_reverse_single_pass,
+	try_reverse_with_aho_corasick,
 };
+#[cfg(native)]
+#[allow(
+	deprecated,
+	reason = "re-export deprecated panicking helpers during the deprecation cycle"
+)]
+pub use reverse::{reverse_single_pass, reverse_with_aho_corasick};
 #[cfg(native)]
 pub use route::Route;
 #[cfg(native)]

@@ -36,14 +36,18 @@ fn test_pattern_multiple_parameters() {
 #[test]
 fn test_path_matcher() {
 	let mut matcher = PathMatcher::new();
-	matcher.add_pattern(
-		PathPattern::new(reinhardt_routers_macros::path!("/users/")).unwrap(),
-		"users_list".to_string(),
-	);
-	matcher.add_pattern(
-		PathPattern::new(reinhardt_routers_macros::path!("/users/{id}/")).unwrap(),
-		"users_detail".to_string(),
-	);
+	matcher
+		.add_pattern(
+			PathPattern::new(reinhardt_routers_macros::path!("/users/")).unwrap(),
+			"users_list".to_string(),
+		)
+		.unwrap();
+	matcher
+		.add_pattern(
+			PathPattern::new(reinhardt_routers_macros::path!("/users/{id}/")).unwrap(),
+			"users_detail".to_string(),
+		)
+		.unwrap();
 
 	let result = matcher.match_path("/users/123/");
 	assert!(result.is_some());
@@ -320,14 +324,18 @@ fn test_radix_router_no_match() {
 #[test]
 fn test_path_matcher_radix_tree_mode() {
 	let mut matcher = PathMatcher::with_mode(MatchingMode::RadixTree);
-	matcher.add_pattern(
-		PathPattern::new(reinhardt_routers_macros::path!("/users/")).unwrap(),
-		"users_list".to_string(),
-	);
-	matcher.add_pattern(
-		PathPattern::new(reinhardt_routers_macros::path!("/users/{id}/")).unwrap(),
-		"users_detail".to_string(),
-	);
+	matcher
+		.add_pattern(
+			PathPattern::new(reinhardt_routers_macros::path!("/users/")).unwrap(),
+			"users_list".to_string(),
+		)
+		.unwrap();
+	matcher
+		.add_pattern(
+			PathPattern::new(reinhardt_routers_macros::path!("/users/{id}/")).unwrap(),
+			"users_detail".to_string(),
+		)
+		.unwrap();
 
 	assert_eq!(matcher.mode(), MatchingMode::RadixTree);
 
@@ -341,16 +349,18 @@ fn test_path_matcher_radix_tree_mode() {
 #[test]
 fn test_path_matcher_enable_radix_tree() {
 	let mut matcher = PathMatcher::new();
-	matcher.add_pattern(
-		PathPattern::new(reinhardt_routers_macros::path!("/users/")).unwrap(),
-		"users_list".to_string(),
-	);
+	matcher
+		.add_pattern(
+			PathPattern::new(reinhardt_routers_macros::path!("/users/")).unwrap(),
+			"users_list".to_string(),
+		)
+		.unwrap();
 
 	// Initially in linear mode
 	assert_eq!(matcher.mode(), MatchingMode::Linear);
 
 	// Enable radix tree mode
-	matcher.enable_radix_tree();
+	matcher.enable_radix_tree().unwrap();
 	assert_eq!(matcher.mode(), MatchingMode::RadixTree);
 
 	// Should still work after mode switch
@@ -366,8 +376,12 @@ fn test_path_matcher_linear_vs_radix() {
 
 	for i in 1..=10 {
 		let pattern = PathPattern::new(format!("/route{}/{{id}}/", i)).unwrap();
-		linear_matcher.add_pattern(pattern.clone(), format!("handler_{}", i));
-		radix_matcher.add_pattern(pattern, format!("handler_{}", i));
+		linear_matcher
+			.add_pattern(pattern.clone(), format!("handler_{}", i))
+			.unwrap();
+		radix_matcher
+			.add_pattern(pattern, format!("handler_{}", i))
+			.unwrap();
 	}
 
 	// Both should produce the same results
@@ -437,10 +451,12 @@ fn test_path_type_allows_dotfiles() {
 fn test_path_type_matcher_rejects_traversal() {
 	// Arrange
 	let mut matcher = PathMatcher::new();
-	matcher.add_pattern(
-		PathPattern::new("/files/{<path:filepath>}").unwrap(),
-		"serve_file".to_string(),
-	);
+	matcher
+		.add_pattern(
+			PathPattern::new("/files/{<path:filepath>}").unwrap(),
+			"serve_file".to_string(),
+		)
+		.unwrap();
 
 	// Act & Assert
 	assert!(
@@ -544,10 +560,12 @@ fn test_path_type_rejects_absolute_path_param() {
 fn test_radix_tree_mode_rejects_traversal() {
 	// Arrange
 	let mut matcher = PathMatcher::with_mode(MatchingMode::RadixTree);
-	matcher.add_pattern(
-		PathPattern::new("/files/{<path:filepath>}").unwrap(),
-		"serve_file".to_string(),
-	);
+	matcher
+		.add_pattern(
+			PathPattern::new("/files/{<path:filepath>}").unwrap(),
+			"serve_file".to_string(),
+		)
+		.unwrap();
 
 	// Act & Assert - should reject traversal in RadixTree mode
 	assert!(
@@ -571,10 +589,12 @@ fn test_radix_tree_mode_rejects_traversal() {
 fn test_radix_tree_mode_rejects_encoded_traversal() {
 	// Arrange
 	let mut matcher = PathMatcher::with_mode(MatchingMode::RadixTree);
-	matcher.add_pattern(
-		PathPattern::new("/files/{<path:filepath>}").unwrap(),
-		"serve_file".to_string(),
-	);
+	matcher
+		.add_pattern(
+			PathPattern::new("/files/{<path:filepath>}").unwrap(),
+			"serve_file".to_string(),
+		)
+		.unwrap();
 
 	// Act & Assert - percent-encoded traversal
 	assert!(
@@ -821,4 +841,63 @@ fn test_pattern_accepts_at_segment_boundary() {
 
 	// Assert
 	assert!(result.is_ok());
+}
+
+// ===================================================================
+// PathMatcher fallible radix insertion (Issue #4345)
+// ===================================================================
+
+#[test]
+fn test_add_pattern_returns_err_on_radix_conflict() {
+	// Arrange — RadixTree mode so the second insert hits matchit's conflict
+	// detection (matchit rejects two identical parameterized routes).
+	let mut matcher = PathMatcher::with_mode(MatchingMode::RadixTree);
+	matcher
+		.add_pattern(
+			PathPattern::new(reinhardt_routers_macros::path!("/items/{id}/")).unwrap(),
+			"items_first".to_string(),
+		)
+		.expect("first insert must succeed");
+
+	// Act — register a different name on the same matchit pattern. matchit
+	// treats the two as a conflict and rejects the insertion.
+	let result = matcher.add_pattern(
+		PathPattern::new(reinhardt_routers_macros::path!("/items/{id}/")).unwrap(),
+		"items_second".to_string(),
+	);
+
+	// Assert — error is surfaced instead of being silently dropped.
+	assert!(result.is_err(), "expected radix insertion conflict, got Ok");
+}
+
+#[test]
+fn test_enable_radix_tree_returns_err_on_conflict() {
+	// Arrange — register two conflicting patterns in Linear mode (linear
+	// mode does not enforce uniqueness, so this succeeds).
+	let mut matcher = PathMatcher::new();
+	matcher
+		.add_pattern(
+			PathPattern::new(reinhardt_routers_macros::path!("/items/{id}/")).unwrap(),
+			"first".to_string(),
+		)
+		.unwrap();
+	matcher
+		.add_pattern(
+			PathPattern::new(reinhardt_routers_macros::path!("/items/{id}/")).unwrap(),
+			"second".to_string(),
+		)
+		.unwrap();
+
+	// Act — switching to RadixTree mode must rebuild the radix router from
+	// the existing patterns; the duplicate triggers a conflict.
+	let result = matcher.enable_radix_tree();
+
+	// Assert — error is propagated and the matcher stays in Linear mode so
+	// Linear / RadixTree views can never silently diverge.
+	assert!(result.is_err(), "expected radix rebuild conflict, got Ok");
+	assert_eq!(
+		matcher.mode(),
+		MatchingMode::Linear,
+		"matcher must remain in Linear mode after a failed upgrade"
+	);
 }

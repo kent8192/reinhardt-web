@@ -1,5 +1,5 @@
 use super::path_pattern::PathPattern;
-use super::radix::RadixRouter;
+use super::radix::{RadixRouter, RadixRouterError};
 use super::validation::validate_path_param;
 use reinhardt_http::PathParams;
 
@@ -75,28 +75,37 @@ impl PathMatcher {
 	///
 	/// let mut matcher = PathMatcher::new();
 	/// let pattern = PathPattern::new(path!("/users/")).unwrap();
-	/// matcher.add_pattern(pattern, "users_list".to_string());
+	/// matcher.add_pattern(pattern, "users_list".to_string()).unwrap();
 	///
 	/// // Enable radix tree mode
-	/// matcher.enable_radix_tree();
+	/// matcher.enable_radix_tree().unwrap();
 	///
 	/// let result = matcher.match_path("/users/");
 	/// assert!(result.is_some());
 	/// ```
-	pub fn enable_radix_tree(&mut self) {
+	///
+	/// # Errors
+	///
+	/// Returns `RadixRouterError` if any of the existing patterns conflicts with
+	/// or is rejected by the underlying radix router. When this happens the
+	/// matcher is left in `Linear` mode (the original state) so callers can
+	/// recover or surface the error.
+	pub fn enable_radix_tree(&mut self) -> Result<(), RadixRouterError> {
 		if self.mode == MatchingMode::RadixTree {
-			return; // Already enabled
+			return Ok(()); // Already enabled
+		}
+
+		let mut radix_router = RadixRouter::new();
+
+		// Rebuild radix router from existing patterns. Propagate failures so
+		// Linear and RadixTree modes cannot silently diverge.
+		for (pattern, handler_id) in &self.patterns {
+			radix_router.add_route(&pattern.to_matchit_pattern(), handler_id.clone())?;
 		}
 
 		self.mode = MatchingMode::RadixTree;
-		let mut radix_router = RadixRouter::new();
-
-		// Rebuild radix router from existing patterns
-		for (pattern, handler_id) in &self.patterns {
-			let _ = radix_router.add_route(&pattern.to_matchit_pattern(), handler_id.clone());
-		}
-
 		self.radix_router = Some(radix_router);
+		Ok(())
 	}
 
 	/// Get current matching mode
@@ -114,19 +123,35 @@ impl PathMatcher {
 	///
 	/// let mut matcher = PathMatcher::new();
 	/// let pattern = PathPattern::new(path!("/users/")).unwrap();
-	/// matcher.add_pattern(pattern, "users_list".to_string());
+	/// matcher.add_pattern(pattern, "users_list".to_string()).unwrap();
 	///
 	/// let result = matcher.match_path("/users/");
 	/// assert!(result.is_some());
 	/// ```
-	pub fn add_pattern(&mut self, pattern: PathPattern, handler_id: String) {
+	///
+	/// # Errors
+	///
+	/// Returns `RadixRouterError` when radix tree mode is active and the
+	/// underlying `RadixRouter::add_route` rejects the pattern (e.g., conflict
+	/// or invalid syntax). When this happens the pattern is **not** appended
+	/// to the linear list either, so `Linear` and `RadixTree` modes remain in
+	/// sync.
+	pub fn add_pattern(
+		&mut self,
+		pattern: PathPattern,
+		handler_id: String,
+	) -> Result<(), RadixRouterError> {
 		let matchit_pattern = pattern.to_matchit_pattern();
-		self.patterns.push((pattern, handler_id.clone()));
 
-		// If radix tree mode is enabled, also add to radix router
+		// If radix tree mode is enabled, insert into the radix router first
+		// so a failure does not leave the linear list and the radix tree out
+		// of sync.
 		if let Some(ref mut radix_router) = self.radix_router {
-			let _ = radix_router.add_route(&matchit_pattern, handler_id);
+			radix_router.add_route(&matchit_pattern, handler_id.clone())?;
 		}
+
+		self.patterns.push((pattern, handler_id));
+		Ok(())
 	}
 	/// Match a path and extract parameters
 	///

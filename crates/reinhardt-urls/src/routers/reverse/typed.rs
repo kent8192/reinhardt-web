@@ -1,7 +1,7 @@
 //! Type-safe URL reversal (compile-time checked).
 
 use super::super::pattern::validate_reverse_param;
-use super::runtime::{ReverseError, ReverseResult, reverse_single_pass};
+use super::runtime::{ReverseError, ReverseResult, try_reverse_single_pass};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
@@ -130,7 +130,7 @@ pub fn reverse_typed_with_params<U: UrlPatternWithParams>(
 		.map(|(k, v)| (k.to_string(), v.to_string()))
 		.collect();
 
-	Ok(reverse_single_pass(U::PATTERN, &string_params))
+	try_reverse_single_pass(U::PATTERN, &string_params)
 }
 
 /// Type-safe URL parameter builder

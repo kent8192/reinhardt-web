@@ -1,9 +1,16 @@
 //! Tests for the `reverse` submodules.
 
+// The panicking `reverse_single_pass` / `reverse_with_aho_corasick` helpers are
+// deprecated in favor of the `try_*` variants but are kept for one minor cycle.
+// The existing test suite still exercises the deprecated entry points to
+// preserve regression coverage during the deprecation cycle.
+#![allow(deprecated)]
+
 use super::super::Route;
 use super::reverser::UrlReverser;
 use super::runtime::{
 	ReverseError, extract_param_names, reverse_single_pass, reverse_with_aho_corasick,
+	try_reverse_single_pass, try_reverse_with_aho_corasick,
 };
 use super::typed::{
 	UrlParams, UrlPattern, UrlPatternWithParams, reverse_typed, reverse_typed_with_params,
@@ -935,4 +942,71 @@ fn test_alias_with_params() {
 		matches!(result, Error::Validation(_)),
 		"expected Validation error for dangerous param"
 	);
+}
+
+// ===================================================================
+// Fallible reverse helpers (Issue #4345)
+// ===================================================================
+
+#[test]
+fn test_try_reverse_with_aho_corasick_returns_err_on_invalid_param() {
+	// Arrange — a dangerous parameter value containing a path separator
+	let mut params = HashMap::new();
+	params.insert("id".to_string(), "foo/bar".to_string());
+
+	// Act
+	let result = try_reverse_with_aho_corasick("/users/{id}/", &params);
+
+	// Assert — returns Err instead of panicking
+	let err = result.expect_err("dangerous param must return Err");
+	assert!(
+		matches!(err, Error::Validation(_)),
+		"expected Validation error, got: {:?}",
+		err
+	);
+}
+
+#[test]
+fn test_try_reverse_single_pass_returns_err_on_invalid_param() {
+	// Arrange — a dangerous parameter value containing a query delimiter
+	let mut params = HashMap::new();
+	params.insert("id".to_string(), "abc?evil=1".to_string());
+
+	// Act
+	let result = try_reverse_single_pass("/users/{id}/", &params);
+
+	// Assert — returns Err instead of panicking
+	let err = result.expect_err("dangerous param must return Err");
+	assert!(
+		matches!(err, Error::Validation(_)),
+		"expected Validation error, got: {:?}",
+		err
+	);
+}
+
+#[test]
+fn test_try_reverse_with_aho_corasick_ok_on_valid_params() {
+	// Arrange
+	let mut params = HashMap::new();
+	params.insert("id".to_string(), "123".to_string());
+	params.insert("post_id".to_string(), "456".to_string());
+
+	// Act
+	let result = try_reverse_with_aho_corasick("/users/{id}/posts/{post_id}/", &params).unwrap();
+
+	// Assert
+	assert_eq!(result, "/users/123/posts/456/");
+}
+
+#[test]
+fn test_try_reverse_single_pass_ok_on_valid_params() {
+	// Arrange
+	let mut params = HashMap::new();
+	params.insert("id".to_string(), "123".to_string());
+
+	// Act
+	let result = try_reverse_single_pass("/users/{id}/", &params).unwrap();
+
+	// Assert
+	assert_eq!(result, "/users/123/");
 }

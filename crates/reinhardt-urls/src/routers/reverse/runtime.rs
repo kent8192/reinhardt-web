@@ -51,6 +51,10 @@ pub type ReverseResult<T> = Result<T>;
 /// let url = reverse_with_aho_corasick("/users/{id}/posts/{post_id}/", &params);
 /// assert_eq!(url, "/users/123/posts/456/");
 /// ```
+#[deprecated(
+	since = "0.1.0-rc.29",
+	note = "use `try_reverse_with_aho_corasick`; this variant panics on invalid params and will be removed in a future release"
+)]
 pub fn reverse_with_aho_corasick(pattern: &str, params: &HashMap<String, String>) -> String {
 	// Extract all placeholder names
 	let param_names = extract_param_names(pattern);
@@ -80,6 +84,7 @@ pub fn reverse_with_aho_corasick(pattern: &str, params: &HashMap<String, String>
 		Ok(ac) => ac,
 		Err(_) => {
 			// Fallback to original implementation if AC construction fails
+			#[allow(deprecated, reason = "internal fallback during deprecation cycle")]
 			return reverse_single_pass(pattern, params);
 		}
 	};
@@ -167,6 +172,10 @@ pub fn extract_param_names(pattern: &str) -> Vec<String> {
 /// let url = reverse_single_pass("/users/{id}/posts/{post_id}/", &params);
 /// assert_eq!(url, "/users/123/posts/456/");
 /// ```
+#[deprecated(
+	since = "0.1.0-rc.29",
+	note = "use `try_reverse_single_pass`; this variant panics on invalid params and will be removed in a future release"
+)]
 pub fn reverse_single_pass(pattern: &str, params: &HashMap<String, String>) -> String {
 	// Validate parameter values against injection attacks
 	for (name, value) in params {
@@ -202,4 +211,129 @@ pub fn reverse_single_pass(pattern: &str, params: &HashMap<String, String>) -> S
 	}
 
 	result
+}
+
+/// Fallible variant of [`reverse_with_aho_corasick`].
+///
+/// Returns `Err(ReverseError::Validation(..))` instead of panicking when any
+/// parameter value is rejected by [`validate_reverse_param`] (path separators,
+/// query delimiters, or encoded sequences). Behavior is otherwise identical to
+/// the panicking variant.
+///
+/// # Examples
+///
+/// ```
+/// use std::collections::HashMap;
+/// use reinhardt_urls::routers::reverse::try_reverse_with_aho_corasick;
+///
+/// let mut params = HashMap::new();
+/// params.insert("id".to_string(), "123".to_string());
+///
+/// let url = try_reverse_with_aho_corasick("/users/{id}/", &params).unwrap();
+/// assert_eq!(url, "/users/123/");
+/// ```
+pub fn try_reverse_with_aho_corasick(
+	pattern: &str,
+	params: &HashMap<String, String>,
+) -> ReverseResult<String> {
+	let param_names = extract_param_names(pattern);
+
+	if param_names.is_empty() {
+		return Ok(pattern.to_string());
+	}
+
+	// Validate parameter values against injection attacks.
+	for (name, value) in params {
+		if !validate_reverse_param(value) {
+			return Err(Error::Validation(format!(
+				"Invalid parameter value for '{}': contains dangerous characters (path separators, query delimiters, or encoded sequences)",
+				name
+			)));
+		}
+	}
+
+	let placeholders: Vec<String> = param_names
+		.iter()
+		.map(|name| format!("{{{}}}", name))
+		.collect();
+
+	let ac = match AhoCorasick::new(&placeholders) {
+		Ok(ac) => ac,
+		Err(_) => {
+			// Fallback to the single-pass implementation if AC construction fails.
+			return try_reverse_single_pass(pattern, params);
+		}
+	};
+
+	let mut replacements = Vec::new();
+	for mat in ac.find_iter(pattern) {
+		let param_name = &param_names[mat.pattern()];
+		if let Some(value) = params.get(param_name) {
+			replacements.push((mat.start(), mat.end(), value.clone()));
+		} else {
+			replacements.push((mat.start(), mat.end(), format!("{{{}}}", param_name)));
+		}
+	}
+
+	let mut result = pattern.to_string();
+	for (start, end, value) in replacements.into_iter().rev() {
+		result.replace_range(start..end, &value);
+	}
+
+	Ok(result)
+}
+
+/// Fallible variant of [`reverse_single_pass`].
+///
+/// Returns `Err(ReverseError::Validation(..))` instead of panicking when any
+/// parameter value is rejected by [`validate_reverse_param`]. Behavior is
+/// otherwise identical to the panicking variant.
+///
+/// # Examples
+///
+/// ```
+/// use std::collections::HashMap;
+/// use reinhardt_urls::routers::reverse::try_reverse_single_pass;
+///
+/// let mut params = HashMap::new();
+/// params.insert("id".to_string(), "123".to_string());
+///
+/// let url = try_reverse_single_pass("/users/{id}/", &params).unwrap();
+/// assert_eq!(url, "/users/123/");
+/// ```
+pub fn try_reverse_single_pass(
+	pattern: &str,
+	params: &HashMap<String, String>,
+) -> ReverseResult<String> {
+	// Validate parameter values against injection attacks.
+	for (name, value) in params {
+		if !validate_reverse_param(value) {
+			return Err(Error::Validation(format!(
+				"Invalid parameter value for '{}': contains dangerous characters (path separators, query delimiters, or encoded sequences)",
+				name
+			)));
+		}
+	}
+
+	let mut result = String::with_capacity(pattern.len());
+	let mut chars = pattern.chars().peekable();
+
+	while let Some(ch) = chars.next() {
+		if ch == '{' {
+			let param_name: String = chars.by_ref().take_while(|&c| c != '}').collect();
+
+			if let Some(value) = params.get(&param_name) {
+				result.push_str(value);
+			} else {
+				// Parameter not found - preserve placeholder.
+				result.push('{');
+				result.push_str(&param_name);
+				result.push('}');
+			}
+		} else {
+			result.push(ch);
+		}
+	}
+
+	Ok(result)
 }

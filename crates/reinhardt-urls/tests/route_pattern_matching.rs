@@ -650,7 +650,9 @@ fn path_matcher_linear_static_match() {
 	// Arrange
 	let mut matcher = PathMatcher::new();
 	let pattern = PathPattern::new("/users/").unwrap();
-	matcher.add_pattern(pattern, "users_list".to_string());
+	matcher
+		.add_pattern(pattern, "users_list".to_string())
+		.unwrap();
 
 	// Act
 	let result = matcher.match_path("/users/");
@@ -667,7 +669,9 @@ fn path_matcher_linear_param_match() {
 	// Arrange
 	let mut matcher = PathMatcher::new();
 	let pattern = PathPattern::new("/users/{id}/").unwrap();
-	matcher.add_pattern(pattern, "users_detail".to_string());
+	matcher
+		.add_pattern(pattern, "users_detail".to_string())
+		.unwrap();
 
 	// Act
 	let result = matcher.match_path("/users/42/");
@@ -685,8 +689,8 @@ fn path_matcher_linear_first_match_wins() {
 	let mut matcher = PathMatcher::new();
 	let pattern1 = PathPattern::new("/items/{id}/").unwrap();
 	let pattern2 = PathPattern::new("/items/{<int:id>}/").unwrap();
-	matcher.add_pattern(pattern1, "first".to_string());
-	matcher.add_pattern(pattern2, "second".to_string());
+	matcher.add_pattern(pattern1, "first".to_string()).unwrap();
+	matcher.add_pattern(pattern2, "second".to_string()).unwrap();
 
 	// Act
 	let result = matcher.match_path("/items/123/");
@@ -706,7 +710,9 @@ fn path_matcher_radix_mode() {
 	// Arrange
 	let mut matcher = PathMatcher::with_mode(MatchingMode::RadixTree);
 	let pattern = PathPattern::new("/users/{id}/").unwrap();
-	matcher.add_pattern(pattern, "users_detail".to_string());
+	matcher
+		.add_pattern(pattern, "users_detail".to_string())
+		.unwrap();
 
 	// Act
 	let result = matcher.match_path("/users/42/");
@@ -725,8 +731,10 @@ fn path_matcher_enable_radix_tree() {
 	assert_eq!(matcher.mode(), MatchingMode::Linear);
 
 	let pattern = PathPattern::new("/users/").unwrap();
-	matcher.add_pattern(pattern, "users_list".to_string());
-	matcher.enable_radix_tree();
+	matcher
+		.add_pattern(pattern, "users_list".to_string())
+		.unwrap();
+	matcher.enable_radix_tree().unwrap();
 
 	// Act
 	let result = matcher.match_path("/users/");
