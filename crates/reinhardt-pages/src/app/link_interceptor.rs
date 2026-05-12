@@ -32,7 +32,12 @@ pub(super) fn should_intercept<'a>(attrs: &AnchorAttrs<'a>) -> Option<&'a str> {
 	if !href.starts_with('/') || href.starts_with("//") {
 		return None;
 	}
-	if attrs.target == Some("_blank") {
+	// HTML keyword targets (`_blank`, `_self`, ...) are matched
+	// case-insensitively by browsers, so `_BLANK` must also bypass
+	// SPA interception.
+	if let Some(target) = attrs.target
+		&& target.eq_ignore_ascii_case("_blank")
+	{
 		return None;
 	}
 	if attrs.has_download {
@@ -197,6 +202,24 @@ mod tests {
 		// Arrange
 		let mut a = attrs(Some("/users/"));
 		a.target = Some("_blank");
+		// Act / Assert
+		assert_eq!(should_intercept(&a), None);
+	}
+
+	#[rstest]
+	fn test_should_intercept_skips_target_blank_uppercase() {
+		// Arrange
+		let mut a = attrs(Some("/users/"));
+		a.target = Some("_BLANK");
+		// Act / Assert
+		assert_eq!(should_intercept(&a), None);
+	}
+
+	#[rstest]
+	fn test_should_intercept_skips_target_blank_mixed_case() {
+		// Arrange
+		let mut a = attrs(Some("/users/"));
+		a.target = Some("_Blank");
 		// Act / Assert
 		assert_eq!(should_intercept(&a), None);
 	}
