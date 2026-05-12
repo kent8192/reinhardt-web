@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-rc.28...reinhardt-rest@v0.1.0-rc.29) - 2026-05-12
+
+### Added
+
+- *(rest)* add VersioningSettings fragment for [rest_versioning] section
+
+### Changed
+
+- *(rest)* remove VersioningConfig::from_env in favor of settings fragment
+- *(rest)* address copilot review on versioning settings
+
+### Documentation
+
+- *(rest)* add Ideal implementation block to versioning router stubs
+- *(rest)* address Copilot review on versioning router stubs
+- *(rest)* clarify default-version fallback comments per Copilot review
+
+### Performance
+
+- *(rest)* reduce per-request allocations in dispatch hot path
+
+### Testing
+
+- *(rest)* rewrite versioning env tests as settings-based unit tests
+
 ### Fixed
 
 - *(rest)* replace the dead-code `_stub` versioning hooks

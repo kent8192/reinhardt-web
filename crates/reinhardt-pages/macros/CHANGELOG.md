@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.28...reinhardt-pages-macros@v0.1.0-rc.29) - 2026-05-12
+
+### Fixed
+
+- *(pages-macros)* emit WASM marker module + drop unreachable env-var guard
+- *(pages-macros)* address Copilot review feedback on PR [[#4293](https://github.com/kent8192/reinhardt-web/issues/4293)](https://github.com/kent8192/reinhardt-web/issues/4293)
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.25...reinhardt-pages-macros@v0.1.0-rc.26) - 2026-05-05
 
 ### Fixed
