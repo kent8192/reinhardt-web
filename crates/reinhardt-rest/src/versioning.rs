@@ -925,7 +925,14 @@ impl NamespaceVersioning {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// The example below illustrates the **future API** described in the
+	/// `Ideal implementation` block on the stub below. It is intentionally
+	/// not executable today (router integration is blocked by the
+	/// reinhardt-urls ↔ reinhardt-rest circular dependency, tracked in
+	/// reinhardt-web#4321). Use [`Self::extract_version_from_path`] in the
+	/// meantime.
+	///
+	/// ```rust,ignore
 	/// use reinhardt_rest::versioning::NamespaceVersioning;
 	/// use reinhardt_urls::routers::DefaultRouter;
 	///
@@ -934,11 +941,26 @@ impl NamespaceVersioning {
 	///     .with_allowed_versions(vec!["1", "2"]);
 	///
 	/// let router = DefaultRouter::new();
-	/// let version = versioning.extract_version_from_router(&router, "/v1/users/");
+	/// // `extract_version_from_router` does not exist yet — see the
+	/// // `Ideal implementation` block below for the planned signature.
+	/// let version = versioning.extract_version_from_path("/v1/users/");
 	/// assert_eq!(version, Some("1".to_string()));
 	/// ```
-	// Router integration disabled due to circular dependency (reinhardt-urls ↔ reinhardt-rest)
-	// Use extract_version_from_path() directly instead
+	// Workaround for reinhardt-urls ↔ reinhardt-rest circular dependency
+	// (tracked in reinhardt-web#4321). Until the circular dependency is broken,
+	// the router parameter cannot be typed as `&impl reinhardt_urls::routers::Router`,
+	// so callers must use `extract_version_from_path()` directly.
+	// Remove this stub when reinhardt-web#4321 is resolved.
+	//
+	// Ideal implementation (without workaround):
+	//   fn extract_version_from_router<R: reinhardt_urls::routers::Router>(
+	//       &self,
+	//       router: &R,
+	//       path: &str,
+	//   ) -> Option<String> {
+	//       let namespace = router.resolve_namespace(path)?;
+	//       self.extract_version_from_path(&format!("/{namespace}/"))
+	//   }
 	#[allow(dead_code)]
 	fn extract_version_from_router_stub(&self, _router: &(), path: &str) -> Option<String> {
 		self.extract_version_from_path(path)
@@ -949,9 +971,16 @@ impl NamespaceVersioning {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// // This example is disabled because router integration is disabled
-	/// // due to circular dependency (reinhardt-urls ↔ reinhardt-rest)
+	/// The example below illustrates the **future API** described in the
+	/// `Ideal implementation` block on the stub below. It is intentionally
+	/// not executable today (router integration is blocked by the
+	/// reinhardt-urls ↔ reinhardt-rest circular dependency, tracked in
+	/// reinhardt-web#4321). Until that lands, callers must enumerate
+	/// versions from static configuration.
+	///
+	/// ```rust,ignore
+	/// // `get_available_versions_from_router` does not exist yet — see the
+	/// // `Ideal implementation` block below for the planned signature.
 	/// use reinhardt_rest::versioning::NamespaceVersioning;
 	/// use reinhardt_urls::routers::{DefaultRouter, Router, path};
 	/// use reinhardt_http::Handler;
@@ -967,18 +996,29 @@ impl NamespaceVersioning {
 	/// #     }
 	/// # }
 	/// let versioning = NamespaceVersioning::new()
-	///     .with_pattern("/v{version}/");
+	///     .with_pattern("/v{version}/")
+	///     .with_allowed_versions(vec!["1", "2"]);
 	///
-	/// let mut router = DefaultRouter::new();
-	/// let handler = Arc::new(DummyHandler);
-	/// router.add_route(path("/v1/users/", handler.clone()).with_namespace("v1"));
-	/// router.add_route(path("/v2/users/", handler).with_namespace("v2"));
-	///
-	/// let versions = versioning.get_available_versions_from_router(&router);
-	/// assert!(versions.contains(&"1".to_string()));
-	/// assert!(versions.contains(&"2".to_string()));
+	/// // Use the configured allow-list as the source of truth until the
+	/// // router-integrated discovery method is available.
+	/// assert!(versioning.allowed_versions.contains("1"));
 	/// ```
-	// Router integration disabled due to circular dependency (reinhardt-urls ↔ reinhardt-rest)
+	// Workaround for reinhardt-urls ↔ reinhardt-rest circular dependency
+	// (tracked in reinhardt-web#4321). Without a router trait visible from this
+	// crate, we cannot enumerate registered namespaces, so the stub returns an
+	// empty list and callers fall back to static configuration.
+	// Remove this stub when reinhardt-web#4321 is resolved.
+	//
+	// Ideal implementation (without workaround):
+	//   fn get_available_versions_from_router<R: reinhardt_urls::routers::Router>(
+	//       &self,
+	//       router: &R,
+	//   ) -> Vec<String> {
+	//       router
+	//           .iter_namespaces()
+	//           .filter_map(|ns| self.extract_version_from_path(&format!("/{ns}/")))
+	//           .collect()
+	//   }
 	#[allow(dead_code)]
 	fn get_available_versions_from_router_stub(&self, _router: &()) -> Vec<String> {
 		Vec::new()
