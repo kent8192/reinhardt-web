@@ -1,5 +1,8 @@
 use crate::{Message, StreamingError, kafka::KafkaConfig};
-use rskafka::client::{Client, ClientBuilder, partition::UnknownTopicHandling};
+use rskafka::{
+	BackoffConfig,
+	client::{Client, ClientBuilder, partition::UnknownTopicHandling},
+};
 use serde::de::DeserializeOwned;
 use std::{
 	collections::HashMap,
@@ -24,8 +27,15 @@ pub struct KafkaConsumer {
 impl KafkaConsumer {
 	/// Connect to the Kafka brokers specified in `config`.
 	pub async fn connect(config: &KafkaConfig) -> Result<Self, StreamingError> {
-		let client = ClientBuilder::new(config.brokers.clone())
-			.client_id(config.client_id.clone())
+		let mut builder =
+			ClientBuilder::new(config.brokers.clone()).client_id(config.client_id.clone());
+		if let Some(deadline) = config.backoff_deadline {
+			builder = builder.backoff_config(BackoffConfig {
+				deadline: Some(deadline),
+				..BackoffConfig::default()
+			});
+		}
+		let client = builder
 			.build()
 			.await
 			.map_err(|e| StreamingError::Connection(e.to_string()))?;

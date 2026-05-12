@@ -2232,7 +2232,7 @@ static SHARED_KAFKA: tokio::sync::OnceCell<Arc<crate::containers::KafkaContainer
 /// — and its mapped host port — is reused across all callers in the same test
 /// binary.
 ///
-/// See [`SHARED_KAFKA`] for the topic-collision caveat.
+/// See the `SHARED_KAFKA` static for the topic-collision caveat.
 ///
 /// # Examples
 ///

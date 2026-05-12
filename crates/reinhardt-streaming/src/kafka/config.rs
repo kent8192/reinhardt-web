@@ -1,4 +1,4 @@
-use std::num::NonZeroU16;
+use std::{num::NonZeroU16, time::Duration};
 
 /// Configuration for connecting to a Kafka cluster.
 #[derive(Debug, Clone)]
@@ -15,6 +15,14 @@ pub struct KafkaConfig {
 	/// Encoded as `NonZeroU16` to make zero — which would be a meaningless
 	/// topic configuration — unrepresentable at the type level.
 	pub partitions: NonZeroU16,
+	/// Optional upper bound on the cumulative retry budget that the underlying
+	/// `rskafka` client applies during connect and metadata refresh.
+	///
+	/// `None` (the default) keeps `rskafka`'s built-in behavior of retrying
+	/// indefinitely. Setting `Some(_)` is most useful in tests that must
+	/// surface a transport failure (e.g. unreachable brokers) within a known
+	/// budget instead of waiting for the test harness timeout.
+	pub backoff_deadline: Option<Duration>,
 }
 
 impl KafkaConfig {
@@ -24,6 +32,7 @@ impl KafkaConfig {
 			client_id: "reinhardt".to_owned(),
 			// SAFETY: 1 is non-zero.
 			partitions: NonZeroU16::new(1).expect("1 is non-zero"),
+			backoff_deadline: None,
 		}
 	}
 
@@ -35,6 +44,17 @@ impl KafkaConfig {
 	/// Set the partition count to use when this config drives topic creation.
 	pub fn with_partitions(mut self, n: NonZeroU16) -> Self {
 		self.partitions = n;
+		self
+	}
+
+	/// Cap the cumulative retry budget for connect and metadata refresh.
+	///
+	/// Maps to `rskafka::client::BackoffConfig::deadline`. Useful to make
+	/// `KafkaProducer::connect` / `KafkaConsumer::connect` surface a
+	/// `StreamingError::Connection` against an unreachable broker within a
+	/// bounded window instead of retrying indefinitely.
+	pub fn with_backoff_deadline(mut self, deadline: Duration) -> Self {
+		self.backoff_deadline = Some(deadline);
 		self
 	}
 }

@@ -4,9 +4,9 @@
 //! (compile-time) URL reversal mechanisms, organized into the following
 //! submodules:
 //!
-//! - [`runtime`]: free-function reversers used by both paths
-//! - [`reverser`]: the [`UrlReverser`] registry and top-level [`reverse`] fn
-//! - [`typed`]: [`UrlPattern`] / [`UrlPatternWithParams`] traits and helpers
+//! - `runtime`: free-function reversers used by both paths
+//! - `reverser`: the [`UrlReverser`] registry and top-level [`reverse()`] fn
+//! - `typed`: [`UrlPattern`] / [`UrlPatternWithParams`] traits and helpers
 //!
 //! The top-level re-exports below preserve the public API surface that was
 //! available when this module was a single file.
