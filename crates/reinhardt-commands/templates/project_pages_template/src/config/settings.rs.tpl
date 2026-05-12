@@ -26,6 +26,20 @@
 //! - `production` → loads `production.toml`
 //!
 //! If `REINHARDT_ENV` is not set, it defaults to `local`.
+//!
+//! ## Environment Variable Interpolation
+//!
+//! `TomlFileSource` interpolates `${VAR}` syntax inside TOML string values
+//! by default (since reinhardt-web v0.1.0-rc.27). The `${...}` syntax is
+//! not valid in non-string TOML literals. Supported forms:
+//!
+//! - `${VAR}` — required; settings load fails if `VAR` is unset
+//! - `${VAR:-default}` — falls back to `default` when `VAR` is unset
+//! - `${VAR:?message}` — settings load fails with `message` when `VAR` is unset
+//!
+//! Interpolated strings are typed-coerced at deserialization time, so
+//! `pool_size = "${DB_POOL_SIZE:-10}"` resolves directly to the field's
+//! declared Rust type (e.g. `u16`) without manual parsing.
 
 use reinhardt::conf::settings::builder::SettingsBuilder;
 use reinhardt::conf::settings::profile::Profile;
