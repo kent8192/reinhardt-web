@@ -123,14 +123,14 @@ args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "."]
 # Refs #4302.
 
 [tasks.fmt-check-examples]
-description = "Check formatting of the examples/ sub-workspace (rustfmt only)"
+description = "Check formatting of the examples/ sub-workspace (Rust + page! DSL via reinhardt-admin-cli)"
 command = "cargo"
-args = ["fmt", "--manifest-path", "examples/Cargo.toml", "--all", "--check"]
+args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "examples", "--check"]
 
 [tasks.fmt-fix-examples]
-description = "Auto-fix formatting of the examples/ sub-workspace (rustfmt only)"
+description = "Auto-fix formatting of the examples/ sub-workspace (Rust + page! DSL via reinhardt-admin-cli)"
 command = "cargo"
-args = ["fmt", "--manifest-path", "examples/Cargo.toml", "--all"]
+args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "examples"]
 
 [tasks.clippy-check-examples]
 description = "Run clippy on the examples/ sub-workspace"
