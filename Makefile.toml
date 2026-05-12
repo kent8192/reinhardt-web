@@ -80,6 +80,7 @@ args = [
   "--all",
   "--all-features",
   "--allow-dirty",
+  "--allow-staged",
   "--",
   "-D",
   "warnings",
@@ -114,9 +115,53 @@ description = "Format page! macro DSL only (without rustfmt)"
 command = "cargo"
 args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "."]
 
+# The `examples/` directory is an independent cargo workspace (excluded from
+# the root workspace), so the root `fmt-*` / `clippy-*` tasks above do not
+# walk into it. The tasks below run the same checks/fixes inside that
+# sub-workspace so local `cargo make` matches what the
+# `Examples Tests / examples-*` CI jobs enforce per release.
+# Refs #4302.
+
+[tasks.fmt-check-examples]
+description = "Check formatting of the examples/ sub-workspace (Rust + page! DSL via reinhardt-admin-cli)"
+command = "cargo"
+args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "examples", "--check"]
+
+[tasks.fmt-fix-examples]
+description = "Auto-fix formatting of the examples/ sub-workspace (Rust + page! DSL via reinhardt-admin-cli)"
+command = "cargo"
+args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "examples"]
+
+[tasks.clippy-check-examples]
+description = "Run clippy on the examples/ sub-workspace"
+command = "cargo"
+args = [
+  "clippy",
+  "--manifest-path", "examples/Cargo.toml",
+  "--workspace",
+  "--all-features",
+  "--",
+  "-D", "warnings",
+]
+
+[tasks.clippy-fix-examples]
+description = "Run clippy --fix on the examples/ sub-workspace"
+command = "cargo"
+args = [
+  "clippy",
+  "--fix",
+  "--manifest-path", "examples/Cargo.toml",
+  "--workspace",
+  "--all-features",
+  "--allow-dirty",
+  "--allow-staged",
+  "--",
+  "-D", "warnings",
+]
+
 [tasks.auto-fix]
-description = "Run all auto-fixes"
-dependencies = ["clippy-fix", "fmt-fix"]
+description = "Run all auto-fixes (root workspace + examples/ sub-workspace)"
+dependencies = ["clippy-fix", "fmt-fix", "clippy-fix-examples", "fmt-fix-examples"]
 
 # ============================================================================
 # Testing Tasks

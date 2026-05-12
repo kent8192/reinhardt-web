@@ -16,6 +16,14 @@ pub fn routes() -> UnifiedRouter {
     //
     // Or register ViewSets:
     // router.register_viewset("users", user_viewset);
+    //
+    // For server-function endpoints in `mode = unified` builder chains, use
+    // `s.server_fn(marker)`. Since reinhardt-web v0.1.0-rc.28,
+    // `ServerRouterStub` carries a no-op `server_fn` stub, so the same
+    // builder chain compiles unchanged on `wasm32-unknown-unknown` — no
+    // `#[cfg(native)]` workaround is required at call sites:
+    //
+    // router.server(|s| s.server_fn(my_server_fn_marker));
 
     router
 }
