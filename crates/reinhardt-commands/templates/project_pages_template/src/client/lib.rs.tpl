@@ -13,5 +13,11 @@ use super::router;
 pub fn main() -> Result<(), JsValue> {
 	ClientLauncher::new("#root")
 		.router(router::init_router)
+		// Optional builder hooks (since reinhardt-web v0.1.0-rc.23):
+		//   .intercept_links()                     // built-in SPA link interception
+		//   .before_launch(|| { /* setup */ })     // pre-mount lifecycle hook
+		//   .after_launch(|| { /* boot done */ })  // post-mount lifecycle hook
+		//   .on_path("/login", || { /* run on exact path */ })
+		//   .on_path_pattern("/users/{id}", |params| { /* path-driven side effect */ })
 		.launch()
 }
