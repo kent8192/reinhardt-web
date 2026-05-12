@@ -461,16 +461,13 @@ fn path_param_with_null_byte_rejected() {
 	let params = pattern.extract_params(path);
 
 	// Assert
-	match params {
-		Some(params) => {
-			let filepath = params.get("filepath").unwrap();
-			assert!(
-				!filepath.contains("%00"),
-				"null byte encoded path should be rejected"
-			);
-		}
-		// Path rejection at routing level is acceptable
-		None => {}
+	// Path rejection at routing level is acceptable, so only verify when Some.
+	if let Some(params) = params {
+		let filepath = params.get("filepath").unwrap();
+		assert!(
+			!filepath.contains("%00"),
+			"null byte encoded path should be rejected"
+		);
 	}
 }
 
