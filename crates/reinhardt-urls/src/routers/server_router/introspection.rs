@@ -134,22 +134,19 @@ impl ServerRouter {
 			}
 		}
 
-		// Recursively collect from child routers
+		// Recursively collect from child routers.
+		//
+		// `child.get_all_routes()` already prepends `child.prefix` to each route
+		// it owns, but it has no knowledge of *this* router's prefix. We must
+		// therefore prepend `self.prefix` here so nested routers report fully
+		// qualified paths (e.g., parent `/api` + child `/users/` + route `/foo`
+		// yields `/api/users/foo`, not `/users/foo`).
 		for child in &self.children {
-			let child_prefix = if self.prefix.is_empty() {
-				child.prefix.clone()
-			} else if child.prefix.is_empty() {
-				self.prefix.clone()
-			} else {
-				join_path(&self.prefix, &child.prefix)
-			};
-
 			for (path, name, namespace, methods) in child.get_all_routes() {
-				// Adjust path if child has no prefix (already included)
-				let full_path = if path.starts_with(&child.prefix) || child.prefix.is_empty() {
+				let full_path = if self.prefix.is_empty() {
 					path
 				} else {
-					join_path(&child_prefix, &path)
+					join_path(&self.prefix, &path)
 				};
 
 				// Combine namespaces (parent:child)

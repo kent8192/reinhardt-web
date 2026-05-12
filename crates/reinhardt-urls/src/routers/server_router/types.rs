@@ -44,8 +44,19 @@ pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<Method>)>;
 
 /// Join two path segments, normalizing any double slashes.
 ///
-/// Concatenates `prefix` and `suffix`, then collapses consecutive `/` characters
-/// into a single `/`. The leading slash is always preserved.
+/// Concatenates `prefix` and `suffix` and collapses consecutive `/` characters
+/// into a single `/`. This helper does **not** insert a separator between
+/// `prefix` and `suffix`; the caller is responsible for ensuring that either
+/// `prefix` ends with `/` or `suffix` starts with `/` when a separator is
+/// desired. The leading slash is always preserved.
+///
+/// # Contract
+///
+/// - If `prefix` ends with `/` or `suffix` starts with `/`, the result is a
+///   well-formed joined path with a single `/` between segments.
+/// - If neither holds, the segments are concatenated verbatim. This is
+///   intentional: internal call sites always satisfy the contract above, and
+///   collapsing only deduplicates existing slashes rather than inventing one.
 ///
 /// # Examples
 ///
@@ -53,6 +64,7 @@ pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<Method>)>;
 /// // crate-internal usage only
 /// assert_eq!(join_path("/api/", "/users"), "/api/users");
 /// assert_eq!(join_path("/api", "/users"), "/api/users");
+/// // Caller-provided invariant violated: no separator is inserted.
 /// assert_eq!(join_path("/api", "users"), "/apiusers");
 /// assert_eq!(join_path("", "/users"), "/users");
 /// ```

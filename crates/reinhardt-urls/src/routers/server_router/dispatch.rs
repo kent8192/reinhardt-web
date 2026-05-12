@@ -18,12 +18,24 @@ impl ServerRouter {
 	/// the trailing slash, leaving the remainder without a leading `/`. This breaks
 	/// child router matching because child prefixes expect paths starting with `/`.
 	///
-	/// Returns `None` if `path` does not start with `prefix`.
+	/// To avoid false-positive matches, when `prefix` does not end with `/` the
+	/// match also requires a segment boundary: `path` must either equal `prefix`
+	/// exactly or continue with `/`. This prevents `/api` from being treated as
+	/// a prefix of `/api2/...`.
+	///
+	/// Returns `None` if `path` does not start with `prefix` (subject to the
+	/// boundary rule above).
 	pub(crate) fn strip_prefix_normalized<'a>(prefix: &str, path: &'a str) -> Option<Cow<'a, str>> {
 		if prefix.is_empty() {
 			return Some(Cow::Borrowed(path));
 		}
 		let stripped = path.strip_prefix(prefix)?;
+		// Enforce segment boundary when the prefix does not already end with `/`.
+		// Without this, `prefix = "/api"` would match `path = "/api2/foo"` and
+		// strip into `2/foo`, mis-routing requests.
+		if !prefix.ends_with('/') && !stripped.is_empty() && !stripped.starts_with('/') {
+			return None;
+		}
 		Some(if stripped.is_empty() {
 			Cow::Borrowed("/")
 		} else if stripped.starts_with('/') {

@@ -309,7 +309,7 @@ impl ServerRouter {
 	/// let mut router = ServerRouter::new();
 	/// let users_router = ServerRouter::new();
 	///
-	/// router.mount_mut("/users", users_router);
+	/// router.mount_mut("/users/", users_router);
 	/// ```
 	pub fn mount_mut(&mut self, prefix: &str, mut child: ServerRouter) {
 		// Validate prefix follows Django URL conventions

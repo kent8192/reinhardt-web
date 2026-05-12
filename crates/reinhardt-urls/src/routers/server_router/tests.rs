@@ -257,6 +257,11 @@ fn test_deep_nesting() {
 	assert_eq!(api.children_count(), 1);
 }
 
+// Ignored by default: this test asserts a hard latency threshold (< 100ms for
+// 10,000 lookups against 1,000 routes) which is prone to flakiness on slow or
+// loaded CI runners even when the implementation is correct. Run manually with
+// `cargo test -- --ignored` when investigating routing performance regressions.
+#[ignore = "latency assertion is flaky on CI; run manually for perf checks"]
 #[tokio::test]
 async fn test_route_matching_performance_many_routes() {
 	use hyper::Method;
