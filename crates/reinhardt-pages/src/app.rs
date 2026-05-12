@@ -822,10 +822,32 @@ fn install_link_interceptor(document: &web_sys::Document) -> Result<(), wasm_bin
 
 	let closure = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
 		// Walk up the DOM looking for the closest <a> ancestor.
+		//
+		// `event.target()` may be a `Node` that is not itself an `Element`
+		// — most commonly a `Text` node when the user clicks on the link
+		// label, but also `Comment`, `DocumentFragment`, etc. Casting
+		// straight to `Element` (as the previous implementation did)
+		// silently no-op'd in that case and broke SPA navigation for the
+		// common case of `<a href="/x">label</a>` (Refs #4330). Promote a
+		// non-Element `Node` target to its nearest `Element` ancestor via
+		// `parent_node()` first, then continue the existing tag-name walk
+		// to find the enclosing `<a>`.
 		let Some(target) = event.target() else {
 			return;
 		};
 		let mut el: Option<web_sys::Element> = target.dyn_ref::<web_sys::Element>().cloned();
+		if el.is_none() {
+			if let Some(node) = target.dyn_ref::<web_sys::Node>() {
+				let mut current: Option<web_sys::Node> = node.parent_node();
+				while let Some(ref n) = current {
+					if let Some(e) = n.dyn_ref::<web_sys::Element>() {
+						el = Some(e.clone());
+						break;
+					}
+					current = n.parent_node();
+				}
+			}
+		}
 		while let Some(ref e) = el {
 			if e.tag_name().eq_ignore_ascii_case("A") {
 				break;
@@ -882,8 +904,30 @@ fn install_link_interceptor(document: &web_sys::Document) -> Result<(), wasm_bin
 			);
 		}
 
-		with_spa_router(|r| {
-			let _ = r.push(href);
+		// Surface `Router::push` failures instead of silently swallowing
+		// them with `let _ = r.push(href);`. Debug builds emit a
+		// `nav_diag!` console line (cheap, no rebuild required); release
+		// builds additionally surface a `console.warn` so SPA navigation
+		// regressions are visible in production WASM bundles without
+		// requiring a tracing subscriber. The `tracing` crate is not
+		// pulled in on the wasm32 target (see Cargo.toml), so we use
+		// `web_sys::console::warn_1` directly here (Refs #4331).
+		with_spa_router(|r| match r.push(href) {
+			Ok(()) => {}
+			Err(err) => {
+				crate::nav_diag!(
+					"site=link_interceptor push_failed href={} error={}",
+					href,
+					err,
+				);
+				::web_sys::console::warn_1(
+					&format!(
+						"reinhardt-pages: SPA link interceptor: Router::push failed: href={} error={}",
+						href, err
+					)
+					.into(),
+				);
+			}
 		});
 	}) as Box<dyn FnMut(_)>);
 
