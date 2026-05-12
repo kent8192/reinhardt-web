@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-rc.28...reinhardt-middleware@v0.1.0-rc.29) - 2026-05-12
+
+### Added
+
+- *(middleware)* add BrokenLinkConfig::managers field and from_settings constructor
+
+### Changed
+
+- *(middleware)* drop REINHARDT_SETTINGS env::var hot-path read from broken_link
+- *(middleware)* simplify broken_link manager fallback with Cow
+
+### Documentation
+
+- *(middleware)* document from_settings as canonical broken_link entry point
+- *(middleware)* fix synthesises spelling in broken_link
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-rc.20...reinhardt-middleware@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

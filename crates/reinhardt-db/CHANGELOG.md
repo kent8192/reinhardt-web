@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.28...reinhardt-db@v0.1.0-rc.29) - 2026-05-12
+
+### Added
+
+- *(db)* add database_url_from accepting HasCoreSettings
+
+### Changed
+
+- *(db)* allow unsized settings in database_url_from
+
+### Documentation
+
+- *(db)* fix database_url_from doc examples and error description
+- *(db)* align migration workaround comment with WP-3 template
+- *(db)* address Copilot review on composite-PK workaround comment
+
+### Fixed
+
+- *(db)* replace SELECT 1/0 with syntax-error SQL on empty composite PK
+
+### Styling
+
+- apply rustfmt to PR-A files
+
+### Testing
+
+- *(db)* cover database_url_from API and silence deprecated loader warnings
+- *(db)* improve database_url_loader failure message diagnostic
+
 ## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.26...reinhardt-db@v0.1.0-rc.27) - 2026-05-09
 
 ### Documentation
