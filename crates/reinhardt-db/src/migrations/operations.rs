@@ -2106,25 +2106,50 @@ impl Operation {
 	/// is empty so the migration aborts at execution time instead of silently
 	/// succeeding.
 	///
-	/// NOTE: The infallible `String` return type is shared with every other
-	/// `to_sql` arm; converting the entire pipeline to `Result` would cascade
-	/// through dozens of call sites. Emitting syntactically invalid SQL
-	/// (containing a `RAISE` via `SELECT 1/0`) guarantees the database rejects
-	/// the statement, which surfaces the error through the existing execution
-	/// error path. Ideal implementation would change the signature to
-	/// `Result<String, MigrationError>`.
+	/// Workaround for the shared infallible `String` return type used by every
+	/// `to_sql` arm. Converting the entire pipeline to `Result` would cascade
+	/// through dozens of call sites, so this arm instead emits a deliberately
+	/// invalid SQL statement (a bare identifier) that every supported backend's
+	/// parser rejects before execution. This replaces the earlier `SELECT 1/0`
+	/// fallback, which silently returned `NULL` on SQLite and lax-mode MySQL
+	/// (reinhardt-web#4325). The identifier text encodes the diagnostic so it
+	/// surfaces in the parser error message.
+	///
+	/// The long-term fix — migrating the `to_sql` family to `Result` and
+	/// returning a structured `MigrationError::EmptyCompositePrimaryKey` — is
+	/// shown in the ideal implementation below.
+	///
+	/// Remove this workaround once the `to_sql` family is migrated to a
+	/// fallible signature.
+	///
+	/// Ideal implementation (without workaround):
+	///   fn create_composite_pk_to_sql(
+	///       table: &str,
+	///       columns: &[String],
+	///       constraint_name: Option<&str>,
+	///   ) -> Result<String, MigrationError> {
+	///       if columns.is_empty() {
+	///           return Err(MigrationError::EmptyCompositePrimaryKey {
+	///               table: table.to_owned(),
+	///           });
+	///       }
+	///       // ... build the ALTER TABLE statement ...
+	///   }
 	fn create_composite_pk_to_sql(
 		table: &str,
 		columns: &[String],
 		constraint_name: Option<&str>,
 	) -> String {
 		if columns.is_empty() {
-			// Guaranteed-fail SQL: every supported backend evaluates `1/0` as a
-			// division-by-zero runtime error, halting the migration with a
-			// visible message rather than silently succeeding on a comment.
+			// Deliberately invalid SQL: a bare identifier is not a valid
+			// statement in PostgreSQL, MySQL, or SQLite grammar, so every
+			// backend's parser rejects it before execution. This avoids the
+			// lax-mode MySQL / SQLite silent-pass that the previous
+			// `SELECT 1/0` fallback was prone to (reinhardt-web#4325). The
+			// identifier text preserves the diagnostic in the parser error.
 			return format!(
-				"SELECT 1/0 AS \"CreateCompositePrimaryKey on {} requires at least one column\";",
-				table.replace('"', "\"\"")
+				"SYNTAX_ERROR_create_composite_pk_on_{}_requires_at_least_one_column;",
+				table.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
 			);
 		}
 
@@ -6046,24 +6071,36 @@ mod tests {
 
 	#[test]
 	fn test_composite_pk_empty_columns_produces_failing_sql() {
-		// Arrange: empty column list is invalid SQL; we emit guaranteed-fail
-		// SQL (`SELECT 1/0`) rather than a silent comment so the migration
-		// aborts at execution time with a visible error.
+		// Arrange: empty column list is invalid; we emit a deliberately
+		// invalid SQL statement (a bare identifier) so every backend's
+		// parser rejects it before execution, replacing the earlier
+		// `SELECT 1/0` fallback that silently passed on SQLite and
+		// lax-mode MySQL (reinhardt-web#4325).
 		let op = Operation::CreateCompositePrimaryKey {
 			table: "tbl".to_string(),
 			columns: vec![],
 			constraint_name: None,
 		};
 
-		// Act
-		let sql = op.to_sql(&SqlDialect::Postgres);
+		// Act: verify behavior on every supported dialect.
+		for dialect in [SqlDialect::Postgres, SqlDialect::Mysql, SqlDialect::Sqlite] {
+			let sql = op.to_sql(&dialect);
 
-		// Assert
-		assert!(
-			sql.contains("1/0") && sql.contains("requires at least one column"),
-			"Empty column list must emit guaranteed-fail SQL with diagnostic: {}",
-			sql
-		);
+			// Assert: the emitted statement encodes the diagnostic and is
+			// not a syntactically valid SELECT/DDL on any backend.
+			assert!(
+				sql.starts_with("SYNTAX_ERROR_create_composite_pk_on_")
+					&& sql.contains("requires_at_least_one_column"),
+				"Empty column list must emit a syntax-error statement with diagnostic ({:?}): {}",
+				dialect,
+				sql
+			);
+			assert!(
+				!sql.contains("SELECT 1/0"),
+				"Must not fall back to SELECT 1/0 (silently passes on SQLite / lax MySQL): {}",
+				sql
+			);
+		}
 	}
 
 	// ========================================================================
