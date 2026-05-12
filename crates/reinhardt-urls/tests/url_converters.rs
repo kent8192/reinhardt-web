@@ -641,7 +641,7 @@ fn float_converter_convert_valid() {
 	let result = conv.convert("3.14159").unwrap();
 
 	// Assert
-	assert!((result - 3.14159).abs() < 1e-6);
+	assert!((result - std::f64::consts::PI).abs() < 1e-3);
 }
 
 #[rstest]

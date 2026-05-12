@@ -146,20 +146,25 @@ args = ["clean"]
 # WASM Testing Tasks
 # ============================================================================
 
+# `--no-default-features` is forwarded to the underlying `cargo build --tests
+# --target wasm32-unknown-unknown` so the `with-reinhardt`-gated `manage` bin
+# (native-only, uses tokio / reinhardt::commands / async fn main) is skipped
+# via its `required-features`. Without this flag the wasm test build pulls
+# the bin in and fails to compile.
 [tasks.wasm-test]
 description = "Run WASM tests in headless Chrome"
 command = "wasm-pack"
-args = ["test", "--headless", "--chrome"]
+args = ["test", "--headless", "--chrome", "--", "--no-default-features"]
 
 [tasks.wasm-test-firefox]
 description = "Run WASM tests in headless Firefox"
 command = "wasm-pack"
-args = ["test", "--headless", "--firefox"]
+args = ["test", "--headless", "--firefox", "--", "--no-default-features"]
 
 [tasks.wasm-test-debug]
 description = "Run WASM tests with browser (for debugging)"
 command = "wasm-pack"
-args = ["test", "--chrome"]
+args = ["test", "--chrome", "--", "--no-default-features"]
 
 [tasks.wasm-compile-dev]
 description = "Compile WASM binary (debug mode)"
