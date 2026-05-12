@@ -14,6 +14,32 @@ use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 
+/// RAII guard that restores the process-wide current working directory when
+/// dropped, including on panic-driven unwind. Tests under `#[serial(cwd)]`
+/// mutate global state via `std::env::set_current_dir`, so without this guard
+/// a panic inside `execute(...)` would leave the CWD pointing at a `TempDir`
+/// that gets deleted at end-of-scope, corrupting subsequent tests.
+struct CwdGuard {
+	prev: std::path::PathBuf,
+}
+
+impl CwdGuard {
+	fn enter(new_cwd: &Path) -> Self {
+		let prev = std::env::current_dir().unwrap();
+		std::env::set_current_dir(new_cwd).unwrap();
+		Self { prev }
+	}
+}
+
+impl Drop for CwdGuard {
+	fn drop(&mut self) {
+		// Best-effort restore — swallow errors during unwind so we never
+		// double-panic. The original directory may itself have been removed
+		// in pathological cases, which is acceptable for test cleanup.
+		let _ = std::env::set_current_dir(&self.prev);
+	}
+}
+
 /// Helper: build a `CommandContext` whose only option is `--with-pages`.
 fn pages_context(args: Vec<String>) -> CommandContext {
 	let mut ctx = CommandContext::new(args);
@@ -29,8 +55,7 @@ fn pages_context(args: Vec<String>) -> CommandContext {
 async fn project_pages_layout_matches_tutorial() {
 	// Arrange
 	let tmp = TempDir::new().unwrap();
-	let prev = std::env::current_dir().unwrap();
-	std::env::set_current_dir(tmp.path()).unwrap();
+	let _cwd_guard = CwdGuard::enter(tmp.path());
 
 	// Act
 	let res = StartProjectCommand
@@ -38,7 +63,6 @@ async fn project_pages_layout_matches_tutorial() {
 		.await;
 
 	// Assert
-	std::env::set_current_dir(prev).unwrap();
 	res.expect("startproject --with-pages must succeed");
 
 	let project = tmp.path().join("polls_project");
@@ -125,12 +149,10 @@ async fn project_pages_layout_matches_tutorial() {
 
 /// Set up a project so that `startapp --with-pages` can run inside it.
 async fn scaffold_pages_project(tmp: &Path, name: &str) {
-	let prev = std::env::current_dir().unwrap();
-	std::env::set_current_dir(tmp).unwrap();
+	let _cwd_guard = CwdGuard::enter(tmp);
 	let cmd = StartProjectCommand;
 	let ctx = pages_context(vec![name.to_string()]);
 	let result = cmd.execute(&ctx).await;
-	std::env::set_current_dir(prev).unwrap();
 	result.expect("startproject --with-pages must succeed");
 }
 
@@ -144,8 +166,7 @@ async fn app_pages_layout_matches_tutorial() {
 	scaffold_pages_project(tmp.path(), project_name).await;
 
 	let project_dir = tmp.path().join(project_name);
-	let prev = std::env::current_dir().unwrap();
-	std::env::set_current_dir(&project_dir).unwrap();
+	let _cwd_guard = CwdGuard::enter(&project_dir);
 
 	// Act
 	let res = StartAppCommand
@@ -153,7 +174,6 @@ async fn app_pages_layout_matches_tutorial() {
 		.await;
 
 	// Assert
-	std::env::set_current_dir(prev).unwrap();
 	res.expect("startapp --with-pages must succeed");
 
 	let apps = project_dir.join("src").join("apps");
@@ -189,14 +209,12 @@ async fn app_pages_layout_matches_tutorial() {
 	);
 
 	// 3. None of the previous over-generated subdirectories are produced.
-	for unwanted in [
-		"client",
-		"server",
-		"shared",
-		"urls/client_urls.rs",
-		"urls/server_urls.rs",
-		"urls/ws_urls.rs",
-	] {
+	//    `urls/ws_urls.rs` remains forbidden (websocket scaffold is opt-in
+	//    and explicitly out of scope for #4308). `urls/server_urls.rs` and
+	//    `urls/client_router.rs` are now REQUIRED by the canonical layout
+	//    introduced in rc.19 (see `startapp_pages_layout_has_urls_submodule`
+	//    below for the positive assertions).
+	for unwanted in ["client", "server", "shared", "urls/ws_urls.rs"] {
 		let path = polls_dir.join(unwanted);
 		assert!(
 			!path.exists(),
@@ -205,15 +223,98 @@ async fn app_pages_layout_matches_tutorial() {
 		);
 	}
 
-	// 4. urls.rs is a plain `routes()` mounted from config/urls.rs — not a
-	//    `unified_url_patterns` with #[url_patterns(... mode = unified)].
+	// 4. urls.rs is the aggregator that declares the `server_urls` and
+	//    `client_router` submodules with the appropriate cfg gates. The
+	//    legacy `unified_url_patterns` scaffold is still forbidden.
 	let urls_rs = fs::read_to_string(polls_dir.join("urls.rs")).expect("read apps/polls/urls.rs");
 	assert!(
-		urls_rs.contains("pub fn routes() -> ServerRouter"),
-		"apps/polls/urls.rs must define `pub fn routes() -> ServerRouter`:\n{urls_rs}"
+		urls_rs.contains("pub mod server_urls"),
+		"apps/polls/urls.rs must declare `pub mod server_urls`:\n{urls_rs}"
+	);
+	assert!(
+		urls_rs.contains("pub mod client_router"),
+		"apps/polls/urls.rs must declare `pub mod client_router`:\n{urls_rs}"
 	);
 	assert!(
 		!urls_rs.contains("unified_url_patterns"),
 		"apps/polls/urls.rs must not use the unified_url_patterns scaffold:\n{urls_rs}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(cwd)]
+async fn startapp_pages_layout_has_urls_submodule() {
+	// Arrange — scaffold a project, then scaffold a pages app inside it.
+	let tmp = TempDir::new().unwrap();
+	let project_name = "polls_project";
+	scaffold_pages_project(tmp.path(), project_name).await;
+
+	let project_dir = tmp.path().join(project_name);
+	let _cwd_guard = CwdGuard::enter(&project_dir);
+
+	// Act
+	let res = StartAppCommand
+		.execute(&pages_context(vec!["foo".to_string()]))
+		.await;
+
+	// Assert
+	res.expect("startapp --with-pages must succeed");
+
+	let foo_dir = project_dir.join("src").join("apps").join("foo");
+
+	// 1. The aggregator and both submodules exist.
+	let urls_rs = foo_dir.join("urls.rs");
+	let server_urls = foo_dir.join("urls").join("server_urls.rs");
+	let client_router = foo_dir.join("urls").join("client_router.rs");
+	assert!(urls_rs.exists(), "apps/foo/urls.rs must exist");
+	assert!(
+		server_urls.exists(),
+		"apps/foo/urls/server_urls.rs must exist"
+	);
+	assert!(
+		client_router.exists(),
+		"apps/foo/urls/client_router.rs must exist"
+	);
+
+	// 2. ws_urls.rs is explicitly out of scope (see #4308 scope boundaries).
+	assert!(
+		!foo_dir.join("urls").join("ws_urls.rs").exists(),
+		"apps/foo/urls/ws_urls.rs must NOT be generated"
+	);
+
+	// 3. The aggregator declares both submodules with the appropriate cfg
+	//    gates that match the project-level `build.rs` cfg_aliases
+	//    (`client` for wasm32, `server` for native).
+	let urls_contents = fs::read_to_string(&urls_rs).expect("read apps/foo/urls.rs");
+	assert!(
+		urls_contents.contains("#[cfg(server)]"),
+		"apps/foo/urls.rs must gate server_urls with #[cfg(server)]:\n{urls_contents}"
+	);
+	assert!(
+		urls_contents.contains("pub mod server_urls"),
+		"apps/foo/urls.rs must declare `pub mod server_urls`:\n{urls_contents}"
+	);
+	assert!(
+		urls_contents.contains("#[cfg(client)]"),
+		"apps/foo/urls.rs must gate client_router with #[cfg(client)]:\n{urls_contents}"
+	);
+	assert!(
+		urls_contents.contains("pub mod client_router"),
+		"apps/foo/urls.rs must declare `pub mod client_router`:\n{urls_contents}"
+	);
+
+	// 4. The submodules carry the canonical #[url_patterns] attribute with
+	//    `mode = server` / `mode = client`, matching the polls tutorial.
+	let server_contents = fs::read_to_string(&server_urls).expect("read server_urls.rs");
+	assert!(
+		server_contents.contains("#[url_patterns(InstalledApp::foo, mode = server)]"),
+		"server_urls.rs must carry the server-mode #[url_patterns] attribute:\n{server_contents}"
+	);
+
+	let client_contents = fs::read_to_string(&client_router).expect("read client_router.rs");
+	assert!(
+		client_contents.contains("#[url_patterns(InstalledApp::foo, mode = client)]"),
+		"client_router.rs must carry the client-mode #[url_patterns] attribute:\n{client_contents}"
 	);
 }

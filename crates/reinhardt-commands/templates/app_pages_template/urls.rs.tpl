@@ -1,17 +1,16 @@
-//! URL routing for the {{ app_name }} app.
+//! URL configuration for the {{ app_name }} application.
 //!
-//! The `routes` function is mounted from the project-level `config/urls.rs`
-//! via `.mount("/{{ app_name }}/", crate::apps::{{ app_name }}::urls::routes())`.
-//! Do not annotate this function with `#[routes]` directly — that would
-//! register it without the mount prefix.
+//! Both submodules use `#[url_patterns(InstalledApp::{{ app_name }}, mode = ...)]`,
+//! so the framework auto-registers them via inventory. The WASM entry point
+//! looks up the client router through
+//! `ClientLauncher::router_client(client_router::client_url_patterns)`, and the native
+//! aggregator does not need to mount the server router explicitly.
+//!
+//! - `server_urls` — `#[url_patterns(..., mode = server)]` → `ServerRouter`
+//! - `client_router` — `#[url_patterns(..., mode = client)]` → `ClientRouter`
 
-use reinhardt::ServerRouter;
+#[cfg(server)]
+pub mod server_urls;
 
-#[allow(unused_imports)] // `views` will be used once endpoints are added.
-use super::views;
-
-pub fn routes() -> ServerRouter {
-	ServerRouter::new()
-	// Register endpoints here, e.g.:
-	//     .endpoint(views::index)
-}
+#[cfg(client)]
+pub mod client_router;
