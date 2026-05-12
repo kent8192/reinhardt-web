@@ -26,6 +26,20 @@
 //! - `production` → loads `production.toml`
 //!
 //! If `REINHARDT_ENV` is not set, it defaults to `local`.
+//!
+//! ## Environment Variable Interpolation
+//!
+//! `TomlFileSource` interpolates `${VAR}` syntax inside TOML string values
+//! by default (since reinhardt-web v0.1.0-rc.27). The `${...}` syntax is
+//! not valid in non-string TOML literals. Supported forms:
+//!
+//! - `${VAR}` — required; settings load fails if `VAR` is unset
+//! - `${VAR:-default}` — falls back to `default` when `VAR` is unset
+//! - `${VAR:?message}` — settings load fails with `message` when `VAR` is unset
+//!
+//! Interpolated strings are typed-coerced at deserialization time, so
+//! `pool_size = "${DB_POOL_SIZE:-10}"` resolves directly to the field's
+//! declared Rust type (e.g. `u16`) without manual parsing.
 
 use reinhardt::conf::settings::builder::SettingsBuilder;
 use reinhardt::conf::settings::profile::Profile;
@@ -64,8 +78,11 @@ pub fn get_settings() -> ProjectSettings {
 	let base_dir = env::current_dir().expect("Failed to get current directory");
 	let settings_dir = base_dir.join("settings");
 
-	// Build settings by merging sources in priority order
-	let merged = SettingsBuilder::new()
+	// Build settings by merging sources in priority order.
+	// `build_composed::<T>()` uses `MergeStrategy::Deep` by default, so a
+	// single key in `production.toml` overrides only that key — sibling
+	// entries inside the same nested table inherit from `base.toml`.
+	SettingsBuilder::new()
 		.profile(profile)
 		// Lowest priority: Default values
 		.add_source(DefaultSource::new())
@@ -77,13 +94,10 @@ pub fn get_settings() -> ProjectSettings {
 		.add_source(TomlFileSource::new(
 			settings_dir.join(format!("{}.toml", profile_str)),
 		))
-		.build()
-		.expect("Failed to build settings");
-
-	// Convert MergedSettings to ProjectSettings
-	merged
-		.into_typed()
-		.expect("Failed to convert settings to ProjectSettings struct")
+		.build_composed::<ProjectSettings>()
+		.unwrap_or_else(|err| {
+			panic!("Failed to build/compose settings for profile `{profile_str}`: {err}")
+		})
 }
 
 #[cfg(test)]
