@@ -2204,6 +2204,86 @@ async fn try_start_rabbitmq_container()
 	Ok((rabbitmq, port, url))
 }
 
+// ---------------------------------------------------------------------------
+// Shared Kafka container (module-/process-scoped, amortized startup)
+// ---------------------------------------------------------------------------
+
+/// Process-wide shared `KafkaContainer`, lazily started on first use.
+///
+/// `KafkaContainer::new()` takes several seconds (image pull + KRaft startup
+/// barrier). For test suites that exercise many small Kafka scenarios — e.g.
+/// `kafka_error_paths` — paying that cost once per test binary is significantly
+/// faster than starting a fresh container per `#[rstest]`.
+///
+/// The container handle is kept alive for the lifetime of the process via the
+/// static `OnceCell`; testcontainers' `Drop` will tear it down when the test
+/// binary exits.
+///
+/// **Caller responsibility:** Topic-name collisions across tests sharing the
+/// same broker are NOT prevented by this fixture. Tests MUST generate unique
+/// topic names per test (e.g. via `uuid::Uuid::new_v4()` or a counter).
+#[cfg(feature = "testcontainers")]
+static SHARED_KAFKA: tokio::sync::OnceCell<Arc<crate::containers::KafkaContainer>> =
+	tokio::sync::OnceCell::const_new();
+
+/// Return a process-wide shared `KafkaContainer`, starting it on first call.
+///
+/// Subsequent calls return clones of the same `Arc`, so the underlying broker
+/// — and its mapped host port — is reused across all callers in the same test
+/// binary.
+///
+/// See [`SHARED_KAFKA`] for the topic-collision caveat.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::shared_kafka_container;
+///
+/// # async fn doc() {
+/// let kafka = shared_kafka_container().await;
+/// let brokers = kafka.brokers();
+/// # }
+/// ```
+#[cfg(feature = "testcontainers")]
+pub async fn shared_kafka_container() -> Arc<crate::containers::KafkaContainer> {
+	SHARED_KAFKA
+		.get_or_init(|| async { Arc::new(crate::containers::KafkaContainer::new().await) })
+		.await
+		.clone()
+}
+
+/// rstest fixture that yields the process-wide shared `KafkaContainer`.
+///
+/// This is the rstest-idiomatic wrapper around [`shared_kafka_container`].
+/// Use this when writing `#[rstest] #[tokio::test]` tests that need a Kafka
+/// broker but want to amortize container startup across the whole test binary.
+///
+/// **Caller responsibility:** generate unique topic names per test — the
+/// underlying broker is shared, so two tests using the same topic will see
+/// each other's records.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::kafka_container;
+/// use reinhardt_testkit::containers::KafkaContainer;
+/// use rstest::*;
+/// use std::sync::Arc;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_kafka(#[future] kafka_container: Arc<KafkaContainer>) {
+///     let kafka = kafka_container.await;
+///     let brokers = kafka.brokers();
+///     // ... unique topic per test ...
+/// }
+/// ```
+#[cfg(feature = "testcontainers")]
+#[fixture]
+pub async fn kafka_container() -> Arc<crate::containers::KafkaContainer> {
+	shared_kafka_container().await
+}
+
 #[cfg(all(test, feature = "testcontainers"))]
 mod tests {
 	use super::*;
