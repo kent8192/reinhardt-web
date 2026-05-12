@@ -186,6 +186,7 @@ pub use helpers::{IncludedRouter, include_routes, path, re_path};
 pub use pattern::{MatchingMode, PathMatcher, PathPattern, RadixRouter, RadixRouterError};
 #[cfg(native)]
 pub use registration::{RouterFactory, UrlPatternsRegistration};
+#[cfg(native)]
 pub use reverse::{
 	ReverseError,
 	ReverseResult,
