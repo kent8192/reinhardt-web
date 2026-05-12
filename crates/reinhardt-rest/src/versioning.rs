@@ -920,108 +920,115 @@ impl NamespaceVersioning {
 		self.allowed_versions.is_empty() || self.allowed_versions.contains(version)
 	}
 
-	/// Extract version from a router's namespace pattern
-	/// This method integrates with reinhardt-routers for namespace-based versioning
+	/// Extract a version from a router-aware path, applying the
+	/// configured pattern.
+	///
+	/// Unlike [`Self::extract_version_from_path`], this method is
+	/// router-aware: it returns `Some(version)` only if `path` matches
+	/// (starts with) at least one `path_prefix` registered on the
+	/// router AND the configured pattern successfully extracts a
+	/// version from that prefix. Otherwise it returns `None`. This
+	/// prevents reporting a version for paths that no route on
+	/// `router` actually serves.
+	///
+	/// The trait bound on [`reinhardt_router::VersionedRouter`] is what
+	/// finally lets this method live in `reinhardt-rest` without
+	/// pulling in `reinhardt-urls` (issue #4321).
 	///
 	/// # Examples
 	///
-	/// The example below illustrates the **future API** described in the
-	/// `Ideal implementation` block on the stub below. It is intentionally
-	/// not executable today (router integration is blocked by the
-	/// reinhardt-urls ↔ reinhardt-rest circular dependency, tracked in
-	/// reinhardt-web#4321). Use [`Self::extract_version_from_path`] in the
-	/// meantime.
-	///
-	/// ```rust,ignore
+	/// ```
 	/// use reinhardt_rest::versioning::NamespaceVersioning;
-	/// use reinhardt_urls::routers::DefaultRouter;
+	/// use reinhardt_router::{RouteVersionInfo, VersionedRouter};
+	///
+	/// struct FakeRouter;
+	/// impl VersionedRouter for FakeRouter {
+	///     fn route_version_infos(&self) -> Vec<RouteVersionInfo> {
+	///         vec![RouteVersionInfo::new(Some("v1".into()), "/v1/")]
+	///     }
+	/// }
 	///
 	/// let versioning = NamespaceVersioning::new()
 	///     .with_pattern("/v{version}/")
 	///     .with_allowed_versions(vec!["1", "2"]);
 	///
-	/// let router = DefaultRouter::new();
-	/// // `extract_version_from_router` does not exist yet — see the
-	/// // `Ideal implementation` block below for the planned signature.
-	/// let version = versioning.extract_version_from_path("/v1/users/");
+	/// let router = FakeRouter;
+	/// // "/v1/users/" matches the "/v1/" prefix registered on the router.
+	/// let version = versioning.extract_version_from_router(&router, "/v1/users/");
 	/// assert_eq!(version, Some("1".to_string()));
+	///
+	/// // "/v9/users/" does NOT match any registered prefix → None.
+	/// let unknown = versioning.extract_version_from_router(&router, "/v9/users/");
+	/// assert_eq!(unknown, None);
 	/// ```
-	// Workaround for reinhardt-urls ↔ reinhardt-rest circular dependency
-	// (tracked in reinhardt-web#4321). Until the circular dependency is broken,
-	// the router parameter cannot be typed as `&impl reinhardt_urls::routers::Router`,
-	// so callers must use `extract_version_from_path()` directly.
-	// Remove this stub when reinhardt-web#4321 is resolved.
-	//
-	// Ideal implementation (without workaround):
-	//   fn extract_version_from_router<R: reinhardt_urls::routers::Router>(
-	//       &self,
-	//       router: &R,
-	//       path: &str,
-	//   ) -> Option<String> {
-	//       let namespace = router.resolve_namespace(path)?;
-	//       self.extract_version_from_path(&format!("/{namespace}/"))
-	//   }
-	#[allow(dead_code)]
-	fn extract_version_from_router_stub(&self, _router: &(), path: &str) -> Option<String> {
-		self.extract_version_from_path(path)
+	pub fn extract_version_from_router<R: reinhardt_router::VersionedRouter + ?Sized>(
+		&self,
+		router: &R,
+		path: &str,
+	) -> Option<String> {
+		// Find the first registered route whose `path_prefix` matches
+		// the incoming `path`, then extract the version from that
+		// prefix. If no route matches, the path is not served by this
+		// router and we return None.
+		router
+			.route_version_infos()
+			.into_iter()
+			.find(|info| path.starts_with(&info.path_prefix))
+			.and_then(|info| self.extract_version_from_path(&info.path_prefix))
 	}
 
-	/// Get available versions from a router's registered routes
-	/// This discovers all versions that are currently registered in the router
+	/// Enumerate the versions currently registered on `router`.
+	///
+	/// The router exposes its routes through
+	/// [`reinhardt_router::VersionedRouter`]; this method then applies
+	/// the configured pattern to each route's `path_prefix` and filters
+	/// by `allowed_versions` (when configured).
+	///
+	/// # Ordering
+	///
+	/// The returned `Vec<String>` is sorted **ascending in
+	/// lexicographic (string) order** and deduplicated. Lexicographic
+	/// order coincides with numeric order for single-digit versions
+	/// (e.g. `"1" < "2"`) but diverges for multi-digit versions
+	/// (e.g. `"10"` sorts before `"2"`). Callers that need a different
+	/// ordering must re-sort the result themselves.
 	///
 	/// # Examples
 	///
-	/// The example below illustrates the **future API** described in the
-	/// `Ideal implementation` block on the stub below. It is intentionally
-	/// not executable today (router integration is blocked by the
-	/// reinhardt-urls ↔ reinhardt-rest circular dependency, tracked in
-	/// reinhardt-web#4321). Until that lands, callers must enumerate
-	/// versions from static configuration.
-	///
-	/// ```rust,ignore
-	/// // `get_available_versions_from_router` does not exist yet — see the
-	/// // `Ideal implementation` block below for the planned signature.
-	/// use reinhardt_rest::versioning::NamespaceVersioning;
-	/// use reinhardt_urls::routers::{DefaultRouter, Router, path};
-	/// use reinhardt_http::Handler;
-	/// use std::sync::Arc;
-	///
-	/// # use async_trait::async_trait;
-	/// # use reinhardt_http::{Request, Response, Result};
-	/// # struct DummyHandler;
-	/// # #[async_trait]
-	/// # impl Handler for DummyHandler {
-	/// #     async fn handle(&self, _req: Request) -> Result<Response> {
-	/// #         Ok(Response::ok())
-	/// #     }
-	/// # }
-	/// let versioning = NamespaceVersioning::new()
-	///     .with_pattern("/v{version}/")
-	///     .with_allowed_versions(vec!["1", "2"]);
-	///
-	/// // Use the configured allow-list as the source of truth until the
-	/// // router-integrated discovery method is available.
-	/// assert!(versioning.allowed_versions.contains("1"));
 	/// ```
-	// Workaround for reinhardt-urls ↔ reinhardt-rest circular dependency
-	// (tracked in reinhardt-web#4321). Without a router trait visible from this
-	// crate, we cannot enumerate registered namespaces, so the stub returns an
-	// empty list and callers fall back to static configuration.
-	// Remove this stub when reinhardt-web#4321 is resolved.
-	//
-	// Ideal implementation (without workaround):
-	//   fn get_available_versions_from_router<R: reinhardt_urls::routers::Router>(
-	//       &self,
-	//       router: &R,
-	//   ) -> Vec<String> {
-	//       router
-	//           .iter_namespaces()
-	//           .filter_map(|ns| self.extract_version_from_path(&format!("/{ns}/")))
-	//           .collect()
-	//   }
-	#[allow(dead_code)]
-	fn get_available_versions_from_router_stub(&self, _router: &()) -> Vec<String> {
-		Vec::new()
+	/// use reinhardt_rest::versioning::NamespaceVersioning;
+	/// use reinhardt_router::{RouteVersionInfo, VersionedRouter};
+	///
+	/// struct FakeRouter;
+	/// impl VersionedRouter for FakeRouter {
+	///     fn route_version_infos(&self) -> Vec<RouteVersionInfo> {
+	///         vec![
+	///             RouteVersionInfo::new(Some("v1".into()), "/v1/users/"),
+	///             RouteVersionInfo::new(Some("v2".into()), "/v2/users/"),
+	///         ]
+	///     }
+	/// }
+	///
+	/// let versioning = NamespaceVersioning::new().with_pattern("/v{version}/");
+	/// let router = FakeRouter;
+	///
+	/// let versions = versioning.get_available_versions_from_router(&router);
+	/// assert!(versions.contains(&"1".to_string()));
+	/// assert!(versions.contains(&"2".to_string()));
+	/// ```
+	pub fn get_available_versions_from_router<R: reinhardt_router::VersionedRouter + ?Sized>(
+		&self,
+		router: &R,
+	) -> Vec<String> {
+		let mut versions: Vec<String> = router
+			.route_version_infos()
+			.into_iter()
+			.filter_map(|info| self.extract_version_from_path(&info.path_prefix))
+			.filter(|version| self.is_allowed_version(version))
+			.collect();
+		versions.sort();
+		versions.dedup();
+		versions
 	}
 }
 
