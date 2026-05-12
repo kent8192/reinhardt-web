@@ -22,13 +22,15 @@ chrono = { workspace = true }
 sha2 = "0.10"
 futures = "0.3.31"
 pin-project = "1.1"
-linkme = "0.3"
-inventory = "0.3"
 
 # Native-only dependencies. These pull in tokio's `net` feature (mio) or other
 # runtime/server machinery that does not compile on `wasm32-unknown-unknown`.
-# Source modules that use these crates are gated behind `#[cfg(native)]`.
+# `linkme` and `inventory` rely on link-section constructors that are not
+# portable to `wasm32-unknown-unknown`, so they are gated here as well; source
+# sites that use them are guarded by `#[cfg(native)]`.
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+linkme = "0.3"
+inventory = "0.3"
 reinhardt-server = { workspace = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }
 reinhardt-utils = { workspace = true }

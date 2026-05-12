@@ -1115,6 +1115,11 @@ inventory::collect!(AppMediaConfig);
 
 // ============================================================================
 // Registration Macros
+//
+// These macros expand to `$crate::inventory::submit!` blocks that reference
+// native-only types (`AppStaticFilesConfig`, `AppLocaleConfig`, etc.) and the
+// native-only `inventory` re-export. They are therefore `#[cfg(native)]`-gated
+// individually and not exported on `wasm32-unknown-unknown`.
 // ============================================================================
 
 /// Register static files for an application
@@ -1131,6 +1136,7 @@ inventory::collect!(AppMediaConfig);
 ///     "/static/myapp/"
 /// );
 /// ```
+#[cfg(native)]
 #[macro_export]
 macro_rules! register_app_static_files {
 	($app_label:expr, $static_dir:expr, $url_prefix:expr) => {
@@ -1157,6 +1163,7 @@ macro_rules! register_app_static_files {
 ///     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("locale")
 /// );
 /// ```
+#[cfg(native)]
 #[macro_export]
 macro_rules! register_app_locale {
 	($app_label:expr, $locale_dir:expr) => {
@@ -1191,6 +1198,7 @@ macro_rules! register_app_locale {
 ///     || Box::new(MyCommand)
 /// );
 /// ```
+#[cfg(native)]
 #[macro_export]
 macro_rules! register_app_command {
 	($app_label:expr, $command_name:expr, $command_fn:expr) => {
@@ -1218,6 +1226,7 @@ macro_rules! register_app_command {
 ///     "/media/myapp/"
 /// );
 /// ```
+#[cfg(native)]
 #[macro_export]
 macro_rules! register_app_media {
 	($app_label:expr, $media_dir:expr, $url_prefix:expr) => {

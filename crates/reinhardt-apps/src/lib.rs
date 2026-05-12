@@ -125,7 +125,9 @@ pub use reinhardt_server::{HttpServer, serve};
 // Re-export from reinhardt-http (cross-target).
 pub use reinhardt_http::{Handler, Middleware, MiddlewareChain};
 
-// Re-export inventory for macro usage.
+// Re-export inventory for macro usage (native-only; inventory relies on
+// link-section constructors not portable to `wasm32-unknown-unknown`).
+#[cfg(native)]
 pub use inventory;
 
 // Re-export from apps module. Cross-target items (`AppLabel`, `AppConfig`, and
