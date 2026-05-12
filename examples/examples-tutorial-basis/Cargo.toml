@@ -9,8 +9,15 @@ default-run = "manage"
 [lib]
 crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 
-# The `manage` binary is auto-discovered from src/bin/manage.rs, matching the
-# canonical `cargo run --bin manage -- runserver` form documented in README.
+# The `manage` binary uses tokio / reinhardt::commands / async fn main(), none
+# of which compile for `wasm32-unknown-unknown`. Gate it behind the
+# `with-reinhardt` feature (native-only via the default-features chain) so
+# `wasm-pack test`, which invokes `cargo build --tests --target wasm32-...`,
+# skips this bin instead of failing to compile it.
+[[bin]]
+name = "manage"
+path = "src/bin/manage.rs"
+required-features = ["with-reinhardt"]
 
 [dependencies]
 # Common dependencies (both WASM and server)
