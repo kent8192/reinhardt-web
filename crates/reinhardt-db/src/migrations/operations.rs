@@ -2108,11 +2108,25 @@ impl Operation {
 	///
 	/// Workaround for the shared infallible `String` return type used by every
 	/// `to_sql` arm. Converting the entire pipeline to `Result` would cascade
-	/// through dozens of call sites, so this arm instead emits guaranteed-fail
-	/// SQL (`SELECT 1/0`) on empty input. Every supported backend evaluates
-	/// `1/0` as a division-by-zero runtime error, surfacing the failure through
-	/// the existing execution error path. Remove this workaround once the
-	/// `to_sql` family is migrated to a fallible signature.
+	/// through dozens of call sites, so this arm instead emits `SELECT 1/0` on
+	/// empty input to trigger a runtime error on the migration backend.
+	///
+	/// Backend behavior of `1/0` differs:
+	/// - PostgreSQL raises `division_by_zero` (SQLSTATE 22012) — reliably fails.
+	/// - MySQL with `ERROR_FOR_DIVISION_BY_ZERO` strict mode raises an error;
+	///   without strict mode it returns `NULL` with a warning.
+	/// - SQLite returns `NULL` rather than erroring.
+	///
+	/// Where `1/0` is not itself an error, the embedded column alias
+	/// (`"CreateCompositePrimaryKey on <table> requires at least one column"`)
+	/// is still surfaced by the migration runner's row inspection, but
+	/// callers operating outside strict modes should treat this fallback as
+	/// best-effort. The behavioral fix (and the fallible signature in the
+	/// ideal implementation below) is tracked in reinhardt-web#4325 so the
+	/// `to_sql` family migration can land without expanding this PR.
+	///
+	/// Remove this workaround once the `to_sql` family is migrated to a
+	/// fallible signature.
 	///
 	/// Ideal implementation (without workaround):
 	///   fn create_composite_pk_to_sql(
@@ -2133,9 +2147,11 @@ impl Operation {
 		constraint_name: Option<&str>,
 	) -> String {
 		if columns.is_empty() {
-			// Guaranteed-fail SQL: every supported backend evaluates `1/0` as a
-			// division-by-zero runtime error, halting the migration with a
-			// visible message rather than silently succeeding on a comment.
+			// Best-effort fail SQL: `1/0` raises division-by-zero on PostgreSQL
+			// and MySQL in strict mode; SQLite and lax-mode MySQL return NULL,
+			// in which case the column alias preserves the diagnostic for
+			// runner-side inspection. See the function-level doc comment for
+			// the planned fallible-signature fix.
 			return format!(
 				"SELECT 1/0 AS \"CreateCompositePrimaryKey on {} requires at least one column\";",
 				table.replace('"', "\"\"")
