@@ -10,13 +10,27 @@
 //! - Consumer offset tracking advances monotonically across consecutive receives
 //!   (retry-safe sequencing for at-least-once delivery).
 
+use std::time::Duration;
+
 use reinhardt_streaming::{
-	StreamingError,
+	Message, StreamingError,
 	kafka::{KafkaConfig, KafkaConsumer, KafkaProducer},
 };
 use reinhardt_testkit::containers::KafkaContainer;
 use rstest::*;
 use serde::{Deserialize, Serialize};
+
+/// Bounded upper-limit for `connect` against an unreachable broker. Loopback
+/// kernels respond with TCP RST instantly, but firewalled CI environments may
+/// silently drop the SYN; cap the wait so the test fails fast and predictably.
+const UNREACHABLE_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Bounded upper-limit for the initial `receive` after a `send`. Kafka metadata
+/// refresh and fetch round-trips can leave the first poll empty even when the
+/// record is durable; retry with a small budget instead of asserting on the
+/// very first call.
+const FIRST_RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
+const FIRST_RECEIVE_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Event {
@@ -44,7 +58,9 @@ async fn producer_connect_returns_connection_error_when_broker_unreachable() {
 	let config = unreachable_config();
 
 	// Act
-	let result = KafkaProducer::connect(&config).await;
+	let result = tokio::time::timeout(UNREACHABLE_CONNECT_TIMEOUT, KafkaProducer::connect(&config))
+		.await
+		.expect("connect must fail fast against an unreachable broker, not hang");
 
 	// Assert
 	match result {
@@ -61,13 +77,41 @@ async fn consumer_connect_returns_connection_error_when_broker_unreachable() {
 	let config = unreachable_config();
 
 	// Act
-	let result = KafkaConsumer::connect(&config).await;
+	let result = tokio::time::timeout(UNREACHABLE_CONNECT_TIMEOUT, KafkaConsumer::connect(&config))
+		.await
+		.expect("connect must fail fast against an unreachable broker, not hang");
 
 	// Assert
 	match result {
 		Ok(_) => panic!("connect must fail when brokers refuse TCP"),
 		Err(StreamingError::Connection(_)) => {}
 		Err(other) => panic!("expected StreamingError::Connection, got {other:?}"),
+	}
+}
+
+/// Poll `receive` until a record materializes or the budget is exhausted.
+/// Tolerates the legitimate `Ok(None)` window caused by metadata refresh / fetch
+/// timing on a freshly-published topic.
+async fn receive_first_with_retry<T>(consumer: &KafkaConsumer, topic: &str) -> Message<T>
+where
+	T: serde::de::DeserializeOwned,
+{
+	let deadline = tokio::time::Instant::now() + FIRST_RECEIVE_TIMEOUT;
+	loop {
+		match consumer
+			.receive::<T>(topic)
+			.await
+			.expect("first receive must not return a transport error")
+		{
+			Some(msg) => return msg,
+			None => {
+				assert!(
+					tokio::time::Instant::now() < deadline,
+					"no record arrived within {FIRST_RECEIVE_TIMEOUT:?}",
+				);
+				tokio::time::sleep(FIRST_RECEIVE_POLL_INTERVAL).await;
+			}
+		}
 	}
 }
 
@@ -92,8 +136,9 @@ async fn receive_on_empty_topic_returns_none(#[future] kafka: KafkaContainer) {
 		)
 		.await
 		.unwrap();
-	let first = consumer.receive::<Event>(topic).await.unwrap();
-	assert!(first.is_some(), "seed record must be consumed");
+	// Wait through any metadata-refresh / fetch-timing window so the seed
+	// record is observable before we assert on the post-drain receive.
+	let _first = receive_first_with_retry::<Event>(&consumer, topic).await;
 
 	// Act
 	let second = consumer.receive::<Event>(topic).await.unwrap();
@@ -149,10 +194,11 @@ async fn producer_send_creates_unknown_topic_via_retry_path(#[future] kafka: Kaf
 	// `UnknownTopicHandling::Retry` inside `partition_client`; the call must
 	// resolve into a successful publish once the broker auto-creates the topic.
 	producer.send(topic, &event).await.unwrap();
-	let received = consumer.receive::<Event>(topic).await.unwrap();
+	// Retry the first poll: a brand-new topic typically requires one or two
+	// metadata refresh cycles before the consumer can fetch from offset 0.
+	let message = receive_first_with_retry::<Event>(&consumer, topic).await;
 
 	// Assert
-	let message = received.expect("record must be readable after retry-create succeeds");
 	assert_eq!(message.payload, event);
 }
 
