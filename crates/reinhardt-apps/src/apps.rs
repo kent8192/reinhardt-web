@@ -78,6 +78,10 @@ pub struct AppConfig {
 /// `#[app_config]` attribute macro can refer to it via
 /// `reinhardt_apps::AppVendorAsset` without forcing user crates to depend on
 /// `reinhardt-utils` directly.
+///
+/// Native-only: `reinhardt-utils` currently pulls in tokio's `net` feature
+/// (mio) and does not compile on `wasm32-unknown-unknown`.
+#[cfg(native)]
 pub use reinhardt_utils::staticfiles::vendor::AppVendorAsset;
 
 impl AppConfig {
@@ -545,7 +549,12 @@ impl Apps {
 		// The models are already registered via #[derive(Model)] macro
 		// which automatically registers them at construction time
 
-		// 4. Build reverse relations between models
+		// 4. Build reverse relations between models.
+		//    The discovery + registry layers depend on `linkme` distributed
+		//    slices and on server-only crates, so this step only runs on
+		//    native targets. On `wasm32-unknown-unknown`, model registration
+		//    is a no-op (the client never owns the model graph).
+		#[cfg(native)]
 		if !*self
 			.models_ready
 			.lock()
@@ -1010,12 +1019,19 @@ mod typed_tests {
 
 // ============================================================================
 // Global Registry (inventory-based)
+//
+// The items below use `inventory::collect!`, which relies on link-section
+// constructors that are not portable to `wasm32-unknown-unknown`. They model
+// server-side discovery of static files / locales / commands / media files,
+// none of which are meaningful on the wasm client target, so they are
+// `#[cfg(native)]`-gated individually.
 // ============================================================================
 
 /// Base trait for custom management commands
 ///
 /// Applications can implement this trait to provide custom commands
 /// that will be automatically discovered by the manage.py CLI.
+#[cfg(native)]
 pub trait BaseCommand: Send + Sync {
 	/// Command name (e.g., "createsuperuser")
 	fn name(&self) -> &str;
@@ -1032,6 +1048,7 @@ pub trait BaseCommand: Send + Sync {
 /// Applications can register their static files directories using this struct.
 /// Registered configurations will be automatically discovered by collectstatic.
 /// Uses static string references for compile-time registration.
+#[cfg(native)]
 pub struct AppStaticFilesConfig {
 	/// Application label that owns these static files.
 	pub app_label: &'static str,
@@ -1041,6 +1058,7 @@ pub struct AppStaticFilesConfig {
 	pub url_prefix: &'static str,
 }
 
+#[cfg(native)]
 inventory::collect!(AppStaticFilesConfig);
 
 /// Locale configuration from an app
@@ -1048,6 +1066,7 @@ inventory::collect!(AppStaticFilesConfig);
 /// Applications can register their locale directories using this struct.
 /// Registered configurations will be automatically discovered by makemessages.
 /// Uses static string references for compile-time registration.
+#[cfg(native)]
 pub struct AppLocaleConfig {
 	/// Application label that owns these locale files.
 	pub app_label: &'static str,
@@ -1055,6 +1074,7 @@ pub struct AppLocaleConfig {
 	pub locale_dir: &'static str,
 }
 
+#[cfg(native)]
 inventory::collect!(AppLocaleConfig);
 
 /// Command configuration from an app
@@ -1062,6 +1082,7 @@ inventory::collect!(AppLocaleConfig);
 /// Applications can register their custom management commands using this struct.
 /// Registered commands will be automatically discovered by the manage.py CLI.
 /// Uses static string references for compile-time registration.
+#[cfg(native)]
 pub struct AppCommandConfig {
 	/// Application label that owns this command.
 	pub app_label: &'static str,
@@ -1071,6 +1092,7 @@ pub struct AppCommandConfig {
 	pub command_fn: fn() -> Box<dyn BaseCommand>,
 }
 
+#[cfg(native)]
 inventory::collect!(AppCommandConfig);
 
 /// Media files configuration from an app
@@ -1078,6 +1100,7 @@ inventory::collect!(AppCommandConfig);
 /// Applications can register their media files directories using this struct.
 /// Registered configurations will be automatically discovered by collectmedia.
 /// Uses static string references for compile-time registration.
+#[cfg(native)]
 pub struct AppMediaConfig {
 	/// Application label that owns these media files.
 	pub app_label: &'static str,
@@ -1087,6 +1110,7 @@ pub struct AppMediaConfig {
 	pub url_prefix: &'static str,
 }
 
+#[cfg(native)]
 inventory::collect!(AppMediaConfig);
 
 // ============================================================================
@@ -1226,6 +1250,7 @@ macro_rules! register_app_media {
 ///     println!("App: {}, Dir: {}", config.app_label, config.static_dir);
 /// }
 /// ```
+#[cfg(native)]
 pub fn get_app_static_files() -> Vec<&'static AppStaticFilesConfig> {
 	inventory::iter::<AppStaticFilesConfig>().collect()
 }
@@ -1245,6 +1270,7 @@ pub fn get_app_static_files() -> Vec<&'static AppStaticFilesConfig> {
 ///     println!("App: {}, Dir: {}", config.app_label, config.locale_dir);
 /// }
 /// ```
+#[cfg(native)]
 pub fn get_app_locales() -> Vec<&'static AppLocaleConfig> {
 	inventory::iter::<AppLocaleConfig>().collect()
 }
@@ -1264,6 +1290,7 @@ pub fn get_app_locales() -> Vec<&'static AppLocaleConfig> {
 ///     println!("App: {}, Command: {}", config.app_label, config.command_name);
 /// }
 /// ```
+#[cfg(native)]
 pub fn get_app_commands() -> Vec<&'static AppCommandConfig> {
 	inventory::iter::<AppCommandConfig>().collect()
 }
@@ -1283,6 +1310,7 @@ pub fn get_app_commands() -> Vec<&'static AppCommandConfig> {
 ///     println!("App: {}, Dir: {}", config.app_label, config.media_dir);
 /// }
 /// ```
+#[cfg(native)]
 pub fn get_app_media() -> Vec<&'static AppMediaConfig> {
 	inventory::iter::<AppMediaConfig>().collect()
 }
