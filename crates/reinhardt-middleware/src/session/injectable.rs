@@ -5,6 +5,7 @@ use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
 use reinhardt_http::Request;
 use std::sync::Arc;
 
+use super::cookie::find_cookie_value;
 use super::data::SessionData;
 use super::id::{ActiveSessionId, SessionCookieName, SessionId};
 use super::store::SessionStore;
@@ -26,26 +27,12 @@ const DEFAULT_SESSION_COOKIE_NAME: &str = "sessionid";
 /// * `Ok(String)` - The session ID if found and valid
 /// * `Err(DiError)` - If the cookie header is missing, invalid, or the session cookie is not found
 fn extract_session_id_from_request(request: &Request, cookie_name: &str) -> DiResult<String> {
-	let cookie_header = request
-		.headers
-		.get(hyper::header::COOKIE)
-		.ok_or_else(|| DiError::NotFound("Cookie header not found".to_string()))?;
-
-	let cookie_str = cookie_header
-		.to_str()
-		.map_err(|e| DiError::ProviderError(format!("Invalid cookie header: {}", e)))?;
-
-	for cookie in cookie_str.split(';') {
-		let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
-		if parts.len() == 2 && parts[0] == cookie_name {
-			return Ok(parts[1].to_string());
-		}
-	}
-
-	Err(DiError::NotFound(format!(
-		"Session cookie '{}' not found",
-		cookie_name
-	)))
+	find_cookie_value(request, cookie_name).ok_or_else(|| {
+		DiError::NotFound(format!(
+			"Session cookie '{}' not found in Cookie header",
+			cookie_name
+		))
+	})
 }
 
 #[async_trait]
@@ -54,9 +41,11 @@ impl Injectable for SessionData {
 		// Get SessionStore from SingletonScope
 		let store = ctx.get_singleton::<Arc<SessionStore>>().ok_or_else(|| {
 			DiError::NotFound(
-				"SessionStore not found in SingletonScope. \
-                     Ensure SessionMiddleware is configured and its store is registered."
-					.to_string(),
+				concat!(
+					"SessionStore not found in SingletonScope. ",
+					"Ensure SessionMiddleware is configured and its store is registered."
+				)
+				.to_string(),
 			)
 		})?;
 

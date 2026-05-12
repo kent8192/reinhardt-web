@@ -7,6 +7,7 @@ use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 use super::config::SessionConfig;
+use super::cookie::find_cookie_value;
 use super::data::SessionData;
 use super::id::{ActiveSessionId, SessionCookieName, SessionId};
 use super::store::SessionStore;
@@ -132,19 +133,12 @@ impl SessionMiddleware {
 		Arc::clone(&self.store)
 	}
 
-	/// Get session ID from request
+	/// Get session ID from request.
+	///
+	/// Delegates to the shared `find_cookie_value` helper so this stays in
+	/// lock-step with the `Injectable` DI path that also parses session cookies.
 	fn get_session_id(&self, request: &Request) -> Option<String> {
-		if let Some(cookie_header) = request.headers.get(hyper::header::COOKIE)
-			&& let Ok(cookie_str) = cookie_header.to_str()
-		{
-			for cookie in cookie_str.split(';') {
-				let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
-				if parts.len() == 2 && parts[0] == self.config.cookie_name {
-					return Some(parts[1].to_string());
-				}
-			}
-		}
-		None
+		find_cookie_value(request, &self.config.cookie_name)
 	}
 
 	/// Build Set-Cookie header

@@ -18,6 +18,7 @@
 
 mod backend;
 mod config;
+mod cookie;
 mod data;
 mod id;
 mod injectable;
