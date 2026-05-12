@@ -482,6 +482,35 @@ cargo make fmt-check
 cargo make clippy-check
 ```
 
+### RP-1a (MUST): Local SemVer Check + PR Comment
+
+Before converting a Draft PR to Ready for Review on any PR that touches public API, the agent / developer MUST:
+
+1. Run `cargo make semver-check` locally (mirrors `.github/workflows/semver-check.yml` for the normal-PR path)
+2. Post the full stdout/stderr as a PR comment with the `<!-- local-semver-check -->` marker
+3. On re-runs, **update** the existing marked comment instead of creating a new one (use GraphQL `updateIssueComment` or `gh api`)
+
+**Rationale:**
+
+- CI semver-check takes 1.5〜2 hours wall clock (see April 2026 measurement: 104 min avg, up to 284 min). Running it locally in parallel with CI shortens the feedback loop
+- Provides a permanent, reviewer-visible audit trail of SemVer impact directly on the PR, independent of CI logs that may expire
+- Replaces the previous CI-generated `cargo-public-api` PR comment that was removed from `semver-check.yml`
+
+**Comment template:**
+
+````markdown
+<!-- local-semver-check -->
+## Local SemVer Check Result
+
+```
+<output of `cargo make semver-check`>
+```
+
+*Generated locally via `cargo make semver-check` (mirrors CI `semver-check.yml`).*
+````
+
+If local output diverges from CI, investigate the cause before requesting review.
+
 ### RP-2 (SHOULD): Self-Review
 
 - Review your own PR before requesting review from others

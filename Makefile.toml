@@ -100,6 +100,20 @@ args = [
   "-D", "clippy::dbg_macro",
 ]
 
+[tasks.semver-check]
+description = "Run cargo-semver-checks locally (mirrors CI semver-check.yml for normal PRs)"
+script_runner = "sh"
+script = '''
+set -e
+cargo semver-checks check-release \
+  --workspace \
+  --exclude reinhardt-web \
+  --exclude reinhardt-pages \
+  --all-features \
+  --release-type minor \
+  --baseline-rev origin/main
+'''
+
 [tasks.placeholder-check]
 description = "Check for formatter placeholder macros left in source files"
 script_runner = "sh"
