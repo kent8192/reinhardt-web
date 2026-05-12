@@ -5,9 +5,13 @@
 //!
 //! - Mapping incoming HTTP methods to named viewset actions via `action_map`
 //! - Extracting path parameters (DRF-style `kwargs`)
-//! - Running middleware before and after the viewset
+//! - Running viewset middleware via `process_request` before dispatch
 //! - Producing a `405 Method Not Allowed` response with a populated `Allow`
 //!   header when the request method is not in the mapping
+//!
+//! Note: only the pre-dispatch hook (`process_request`) is invoked here.
+//! A post-response hook is not yet wired in; if/when middleware grows a
+//! `process_response` method, it should be invoked after `dispatch` below.
 
 use crate::{Action, ViewSet};
 use async_trait::async_trait;
@@ -16,7 +20,6 @@ use parking_lot::RwLock;
 use reinhardt_http::{Handler, Request, Response, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing;
 
 /// Handler implementation that wraps a `ViewSet`.
 pub struct ViewSetHandler<V: ViewSet> {
@@ -36,9 +39,11 @@ pub struct ViewSetHandler<V: ViewSet> {
 	has_handled_request: RwLock<bool>,
 }
 
-// parking_lot::RwLock does not use poisoning, so ViewSetHandler
-// remains safe to use across unwind boundaries.
-impl<V: ViewSet> std::panic::RefUnwindSafe for ViewSetHandler<V> {}
+// parking_lot::RwLock does not use poisoning, so the locks in
+// ViewSetHandler do not introduce unwind-safety hazards. The unwind
+// safety of the handler still depends on the underlying ViewSet,
+// so we only assert RefUnwindSafe when V is itself RefUnwindSafe.
+impl<V: ViewSet + std::panic::RefUnwindSafe> std::panic::RefUnwindSafe for ViewSetHandler<V> {}
 
 impl<V: ViewSet> ViewSetHandler<V> {
 	/// Create a new `ViewSetHandler` with the given viewset and action mapping.
@@ -125,7 +130,8 @@ impl<V: ViewSet + 'static> Handler for ViewSetHandler<V> {
 		// Dispatch to ViewSet
 		let response = self.viewset.dispatch(request, action).await?;
 
-		// Process middleware after ViewSet
+		// Post-response middleware hook is not yet implemented; when the
+		// middleware trait gains a `process_response` method, invoke it here.
 		Ok(response)
 	}
 }

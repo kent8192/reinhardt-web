@@ -905,7 +905,9 @@ where
 				.await
 				.map_err(|e| ViewError::DatabaseError(format!("Failed to list objects: {}", e)))?;
 
-			let pk_str = pk.to_string().replace('"', "");
+			// Normalize pk: strip surrounding quotes only (consistent with retrieve()).
+			let pk_str_owned = pk.to_string();
+			let pk_str = pk_str_owned.trim_matches('"');
 			items
 				.into_iter()
 				.find(|item| {
@@ -920,7 +922,9 @@ where
 				})?
 		} else {
 			// Fall back to queryset for non-database mode
-			let pk_str = pk.to_string().replace('"', "");
+			// Normalize pk: strip surrounding quotes only (consistent with retrieve()).
+			let pk_str_owned = pk.to_string();
+			let pk_str = pk_str_owned.trim_matches('"');
 			self.get_queryset()
 				.iter()
 				.find(|item| {
