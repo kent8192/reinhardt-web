@@ -90,7 +90,7 @@ pub fn use_transition() -> TransitionState {
 
 			#[cfg(wasm)]
 			{
-				use crate::spawn::spawn_task;
+				use crate::platform::spawn_task;
 				let is_pending = is_pending.clone();
 				spawn_task(async move {
 					f();
@@ -164,7 +164,7 @@ pub fn use_deferred_value<T: Clone + 'static>(value: Signal<T>) -> Signal<T> {
 
 			#[cfg(wasm)]
 			{
-				use crate::spawn::spawn_task;
+				use crate::platform::spawn_task;
 				let deferred_clone = deferred_clone.clone();
 				spawn_task(async move {
 					deferred_clone.set(new_value);

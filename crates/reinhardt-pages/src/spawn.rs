@@ -1,65 +1,33 @@
-//! Task spawning utilities for WASM and non-WASM environments.
+//! Deprecated task-spawning module (Issue #4365).
+//!
+//! The implementation now lives in [`crate::platform`]. This module is kept
+//! as a thin deprecation shim so external code importing
+//! `reinhardt_pages::spawn::{spawn_task, defer_yield}` continues to compile
+//! with a deprecation warning.
+//!
+//! Migration: replace `reinhardt_pages::spawn::*` with
+//! `reinhardt_pages::platform::*` (or use `reinhardt_pages::prelude::*`,
+//! which re-exports both under their canonical names).
 
 use std::future::Future;
 
-/// Spawns a task on the current runtime.
-///
-/// On WASM, this uses `wasm_bindgen_futures::spawn_local` to schedule
-/// the task on the browser's event loop. On non-WASM targets, this is
-/// a no-op stub.
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_pages::spawn::spawn_task;
-///
-/// spawn_task(async move {
-///     let data = fetch_data().await;
-///     process(data);
-/// });
-/// ```
-#[cfg(wasm)]
+/// Deprecated alias for [`crate::platform::spawn_task`].
+#[deprecated(
+	since = "0.1.0-rc.29",
+	note = "use `reinhardt_pages::platform::spawn_task` (or the prelude) instead"
+)]
 pub fn spawn_task<F>(fut: F)
 where
 	F: Future<Output = ()> + 'static,
 {
-	wasm_bindgen_futures::spawn_local(fut);
+	crate::platform::spawn_task(fut)
 }
 
-/// No-op stub for non-WASM targets.
-#[cfg(native)]
-pub fn spawn_task<F>(_fut: F)
-where
-	F: Future<Output = ()> + 'static,
-{
-	// Non-WASM: just drop the future
-}
-
-/// Yields to the event loop by queuing a microtask.
-///
-/// On WASM, this resolves a `JsFuture` wrapping a `Promise.resolve()`,
-/// giving the browser event loop a chance to tick. This is necessary when
-/// spawning async work during initialization (e.g. inside `main()`),
-/// where `JsFuture`s from fetch would otherwise hang.
-#[cfg(wasm)]
+/// Deprecated alias for [`crate::platform::defer_yield`].
+#[deprecated(
+	since = "0.1.0-rc.29",
+	note = "use `reinhardt_pages::platform::defer_yield` (or the prelude) instead"
+)]
 pub async fn defer_yield() {
-	use wasm_bindgen::JsValue;
-	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
-	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-}
-
-/// No-op stub for non-WASM targets.
-#[cfg(native)]
-pub async fn defer_yield() {}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_spawn_task_compiles() {
-		spawn_task(async {
-			// テスト処理
-		});
-	}
+	crate::platform::defer_yield().await
 }

@@ -260,7 +260,7 @@ where
 
 			#[cfg(wasm)]
 			{
-				use crate::spawn::spawn_task;
+				use crate::platform::spawn_task;
 				let state = state.clone();
 				let fut = action_fn(*payload);
 				spawn_task(async move {

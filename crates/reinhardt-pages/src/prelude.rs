@@ -177,11 +177,24 @@ pub use crate::head;
 pub use crate::page;
 
 // ============================================================================
-// WASM-specific utilities
+// Task spawning (cross-target)
+// ============================================================================
+
+// Cross-target task spawner: WASM uses `wasm_bindgen_futures::spawn_local`,
+// native is a no-op. See [`crate::platform`] for details (Issue #4365).
+pub use crate::platform::{defer_yield, spawn_task};
+
+// ============================================================================
+// WASM-specific utilities (deprecated)
 // ============================================================================
 
 /// Spawn a local async task (WASM only).
 ///
-/// This is a convenience re-export from `wasm_bindgen_futures`.
+/// **Deprecated**: this is a thin re-export from `wasm_bindgen_futures`. Use
+/// [`spawn_task`] instead, which works on both WASM and native targets.
 #[cfg(wasm)]
+#[deprecated(
+	since = "0.1.0-rc.29",
+	note = "use `spawn_task` from `reinhardt_pages::prelude` (cross-target) instead"
+)]
 pub use wasm_bindgen_futures::spawn_local;
