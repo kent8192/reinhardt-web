@@ -66,6 +66,9 @@ reinhardt-throttling = { workspace = true }
 # HTTP framework
 reinhardt-http = { workspace = true }
 
+# Shared router trait surface (issue #4321 — breaks the urls↔rest cycle)
+reinhardt-router = { workspace = true }
+
 # Internal crates (now part of reinhardt-rest)
 
 # Serialization

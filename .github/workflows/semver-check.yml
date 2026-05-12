@@ -100,10 +100,18 @@ jobs:
           # github.event.pull_request.base.sha is a git commit SHA (hex string), safe to use.
           BASELINE_REV: ${{ github.event.pull_request.base.sha }}
         run: |
+          # Workaround for cargo-semver-checks new-crate handling (tracked in reinhardt-web#4346).
+          # `reinhardt-router` is new in PR #4332 and absent from baseline; cargo-semver-checks
+          # v0.47.0 does not auto-skip new-in-PR workspace members and trips over the
+          # `examples/` virtual workspace while walking baseline manifests. Remove this
+          # exclude after #4332 merges (see #4346).
+          #
+          # Ideal implementation (without workaround): drop the `--exclude reinhardt-router` flag.
           cargo semver-checks check-release \
             --workspace \
             --exclude reinhardt-web \
             --exclude reinhardt-pages \
+            --exclude reinhardt-router \
             --all-features \
             --baseline-rev "${BASELINE_REV:-HEAD~1}"
 
@@ -144,10 +152,13 @@ jobs:
           else
             RELEASE_TYPE="minor"
           fi
+          # Workaround: see reinhardt-web#4346 — `reinhardt-router` is new in PR #4332 and
+          # has no baseline. Remove `--exclude reinhardt-router` after #4332 merges.
           cargo semver-checks check-release \
             --workspace \
             --exclude reinhardt-web \
             --exclude reinhardt-pages \
+            --exclude reinhardt-router \
             --all-features \
             --release-type "$RELEASE_TYPE" \
             --baseline-rev "${BASELINE_REV:-HEAD~1}"
@@ -159,10 +170,13 @@ jobs:
         env:
           BASELINE_REV: ${{ github.event.pull_request.base.sha }}
         run: |
+          # Workaround: see reinhardt-web#4346 — `reinhardt-router` is new in PR #4332 and
+          # has no baseline. Remove `--exclude reinhardt-router` after #4332 merges.
           cargo semver-checks check-release \
             --workspace \
             --exclude reinhardt-web \
             --exclude reinhardt-pages \
+            --exclude reinhardt-router \
             --all-features \
             --release-type minor \
             --baseline-rev "${BASELINE_REV:-HEAD~1}"
