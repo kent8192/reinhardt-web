@@ -80,6 +80,7 @@ args = [
   "--all",
   "--all-features",
   "--allow-dirty",
+  "--allow-staged",
   "--",
   "-D",
   "warnings",
@@ -153,6 +154,7 @@ args = [
   "--workspace",
   "--all-features",
   "--allow-dirty",
+  "--allow-staged",
   "--",
   "-D", "warnings",
 ]
