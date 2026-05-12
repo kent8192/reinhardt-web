@@ -179,9 +179,7 @@ impl UrlReverser {
 		let pattern = PathPattern::new(&route.path)
 			.map_err(|e| Error::Validation(format!("pattern: {}", e)))?;
 
-		pattern
-			.reverse(params)
-			.map_err(Error::Validation)
+		pattern.reverse(params).map_err(Error::Validation)
 	}
 
 	/// Reverse a URL name to a path with positional parameters

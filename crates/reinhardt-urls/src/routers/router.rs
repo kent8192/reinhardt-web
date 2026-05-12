@@ -443,7 +443,18 @@ impl Router for DefaultRouter {
 			.or_else(|| route.name.clone())
 			.unwrap_or_else(|| format!("route_{}", self.routes.len()));
 
-		self.matcher.add_pattern(pattern, handler_id.clone());
+		// The `Router::add_route` trait signature is infallible, so surface
+		// pattern-insertion failures via tracing rather than panicking. If
+		// insertion fails we skip recording the route to keep the matcher's
+		// linear/radix views consistent with the registered route list.
+		if let Err(e) = self.matcher.add_pattern(pattern, handler_id.clone()) {
+			tracing::warn!(
+				"DefaultRouter: failed to register pattern for path '{}': {}",
+				route.path,
+				e
+			);
+			return;
+		}
 
 		// Register route for reverse lookup if it has a name
 		if (route.full_name().is_some() || route.name.is_some())

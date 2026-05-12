@@ -20,9 +20,14 @@ mod tests;
 
 pub use reverser::{UrlReverser, reverse};
 pub use runtime::{
-	ReverseError, ReverseResult, extract_param_names, reverse_single_pass,
-	reverse_with_aho_corasick,
+	ReverseError, ReverseResult, extract_param_names, try_reverse_single_pass,
+	try_reverse_with_aho_corasick,
 };
+#[allow(
+	deprecated,
+	reason = "re-export deprecated panicking helpers during the deprecation cycle"
+)]
+pub use runtime::{reverse_single_pass, reverse_with_aho_corasick};
 pub use typed::{
 	UrlParams, UrlPattern, UrlPatternWithParams, reverse_typed, reverse_typed_with_params,
 };
