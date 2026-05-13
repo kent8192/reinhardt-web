@@ -10,7 +10,8 @@ use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
 
 use crate::server_fn::polls::{
-	get_question_detail, get_question_results, get_questions, submit_vote,
+	create_question, delete_question, get_question_detail, get_question_results, get_questions,
+	submit_vote, update_question,
 };
 
 /// Polls index page - List all polls
@@ -359,37 +360,37 @@ pub fn polls_results(question_id: i64) -> Page {
 									class: "divide-y divide-gray-200",
 									{
 										Page::Fragment(
-										        load_results_signal
-										            .result()
-										            .map(|(_, choices, total)| {
-										                choices
-										                    .iter()
-										                    .map(|choice| {
-										                        let percentage = if total > 0 {
-										                            (choice.votes as f64 / total as f64 * 100.0) as i32
-										                        } else {
-										                            0
-										                        };
-										                        let choice_text = choice.choice_text.clone();
-										                        let votes = choice.votes;
-										                        page!(
-										                            | choice_text : String, votes : i32, percentage : i32 | { div
-										                            { class : "py-4", div { class :
-										                            "flex justify-between items-center mb-2", strong { {
-										                            choice_text } } span { class :
-										                            "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-										                            { format!("{} votes", votes) } } } div { class :
-										                            "w-full bg-gray-200 rounded-full h-2.5", div { class :
-										                            "bg-brand h-2.5 rounded-full", role : "progressbar", style :
-										                            format!("width: {}%", percentage), aria_valuenow : percentage
-										                            .to_string(), aria_valuemin : "0", aria_valuemax : "100", {
-										                            format!("{}%", percentage) } } } } }
-										                        )(choice_text, votes, percentage)
-										                    })
-										                    .collect::<Vec<_>>()
-										            })
-										            .unwrap_or_default(),
-										    )
+												load_results_signal
+													.result()
+													.map(|(_, choices, total)| {
+														choices
+															.iter()
+															.map(|choice| {
+																let percentage = if total > 0 {
+																	(choice.votes as f64 / total as f64 * 100.0) as i32
+																} else {
+																	0
+																};
+																let choice_text = choice.choice_text.clone();
+																let votes = choice.votes;
+																page!(
+																	| choice_text : String, votes : i32, percentage : i32 | { div
+																	{ class : "py-4", div { class :
+																	"flex justify-between items-center mb-2", strong { {
+																	choice_text } } span { class :
+																	"inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
+																	{ format!("{} votes", votes) } } } div { class :
+																	"w-full bg-gray-200 rounded-full h-2.5", div { class :
+																	"bg-brand h-2.5 rounded-full", role : "progressbar", style :
+																	format!("width: {}%", percentage), aria_valuenow : percentage
+																	.to_string(), aria_valuemin : "0", aria_valuemax : "100", {
+																	format!("{}%", percentage) } } } } }
+																)(choice_text, votes, percentage)
+															})
+															.collect::<Vec<_>>()
+													})
+													.unwrap_or_default(),
+											)
 									}
 								}
 								div {
@@ -527,4 +528,338 @@ pub fn polls_index_with_logo() -> Page {
 			}
 		}
 	})(load_questions_error, load_questions_signal)
+}
+
+// =========================================================================
+// Question CUD pages (Phase 2)
+// =========================================================================
+//
+// All three pages share the same shape: a `form!` declaration backed by one
+// of the CUD server functions in `crate::server_fn::polls`. The server
+// re-checks authentication and ownership, so these pages render
+// unconditionally — unauthenticated visitors land on the form, submit it,
+// and receive the 401 surfaced through the form's `error` signal.
+
+/// New question page (`/polls/new/`).
+pub fn question_new() -> Page {
+	let new_form = form! {
+		name: NewQuestionForm,
+		server_fn: create_question,
+		method: Post,
+		state: { loading, error },
+		redirect_on_success: "/",
+
+		fields: {
+			question_text: CharField {
+				label: "Question",
+				placeholder: "What do you want to ask?",
+				max_length: 200,
+				class: "form-control",
+			},
+		},
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
+
+	let loading_signal = new_form.loading().clone();
+	let error_signal = new_form.error().clone();
+	let form_view = new_form.into_page();
+
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"New Question"
+			}
+			watch {
+				if error_signal.get().is_some() {
+					div {
+						class: "alert-danger mb-3",
+						{ error_signal.get().unwrap_or_default() }
+					}
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				watch {
+					if loading_signal.get() {
+						button {
+							type: "submit",
+							class: "btn-primary opacity-50 cursor-not-allowed",
+							disabled: true,
+							form: "new-question-form",
+							"Creating..."
+						}
+					} else {
+						button {
+							type: "submit",
+							class: "btn-primary",
+							form: "new-question-form",
+							"Create"
+						}
+					}
+				}
+				a {
+					href: "/",
+					class: "btn-secondary ml-2",
+					"Cancel"
+				}
+			}
+		}
+	})(loading_signal, error_signal, form_view)
+}
+
+/// Edit question page (`/polls/{question_id}/edit/`).
+///
+/// Loads the existing question via `get_question_detail`, then renders an
+/// edit form pre-populated with the current text. The server enforces that
+/// only the author can submit successfully.
+pub fn question_edit(question_id: i64) -> Page {
+	let qid = question_id;
+
+	let load_detail =
+		use_action(
+			|qid: i64| async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
+		);
+	load_detail.dispatch(qid);
+
+	let edit_form = form! {
+		name: EditQuestionForm,
+		server_fn: update_question,
+		method: Post,
+		state: { loading, error },
+		redirect_on_success: "/",
+
+		fields: {
+			question_id: HiddenField {
+				initial: qid.to_string(),
+			},
+			question_text: CharField {
+				label: "Question",
+				placeholder: "Updated question text",
+				max_length: 200,
+				class: "form-control",
+			},
+		},
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
+
+	// Prefill the question_text input once the load_detail action resolves.
+	{
+		let load_detail_for_effect = load_detail.clone();
+		let edit_form_for_effect = edit_form.clone();
+		use_effect(move || {
+			if let Some((ref question, _)) = load_detail_for_effect.result() {
+				edit_form_for_effect
+					.question_text()
+					.set(question.question_text.clone());
+			}
+		});
+	}
+
+	let loading_signal = edit_form.loading().clone();
+	let error_signal = edit_form.error().clone();
+	let form_view = edit_form.into_page();
+	let load_detail_signal = load_detail.clone();
+
+	if load_detail_signal.is_pending() {
+		return page!(|| {
+			div {
+				class: "max-w-4xl mx-auto px-4 mt-12 text-center",
+				div {
+					class: "spinner w-8 h-8",
+					role: "status",
+					span {
+						class: "sr-only",
+						"Loading..."
+					}
+				}
+			}
+		})();
+	}
+
+	if let Some(err) = load_detail_signal.error() {
+		return page!(|err: String| {
+			div {
+				class: "max-w-4xl mx-auto px-4 mt-12",
+				div {
+					class: "alert-danger",
+					{ err }
+				}
+				a {
+					href: "/",
+					class: "btn-primary",
+					"Back to Polls"
+				}
+			}
+		})(err);
+	}
+
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, question_id: i64| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Edit Question"
+			}
+			watch {
+				if error_signal.get().is_some() {
+					div {
+						class: "alert-danger mb-3",
+						{ error_signal.get().unwrap_or_default() }
+					}
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				watch {
+					if loading_signal.get() {
+						button {
+							type: "submit",
+							class: "btn-primary opacity-50 cursor-not-allowed",
+							disabled: true,
+							form: "edit-question-form",
+							"Saving..."
+						}
+					} else {
+						button {
+							type: "submit",
+							class: "btn-primary",
+							form: "edit-question-form",
+							"Save"
+						}
+					}
+				}
+				a {
+					href: format!("/polls/{}/", question_id),
+					class: "btn-secondary ml-2",
+					"Cancel"
+				}
+			}
+		}
+	})(loading_signal, error_signal, form_view, question_id)
+}
+
+/// Delete confirmation page (`/polls/{question_id}/delete/`).
+pub fn question_delete_confirm(question_id: i64) -> Page {
+	let qid = question_id;
+
+	let load_detail =
+		use_action(
+			|qid: i64| async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
+		);
+	load_detail.dispatch(qid);
+
+	let delete_form = form! {
+		name: DeleteQuestionForm,
+		server_fn: delete_question,
+		method: Post,
+		state: { loading, error },
+		redirect_on_success: "/",
+
+		fields: {
+			question_id: HiddenField {
+				initial: qid.to_string(),
+			},
+		},
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
+
+	let loading_signal = delete_form.loading().clone();
+	let error_signal = delete_form.error().clone();
+	let form_view = delete_form.into_page();
+	let load_detail_signal = load_detail.clone();
+
+	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, question_id: i64| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Delete Question?"
+			}
+			watch {
+				if load_detail_signal.is_pending() {
+					div {
+						class: "text-center",
+						"Loading..."
+					}
+				} else if let Some((ref q, _)) = load_detail_signal.result() {
+					div {
+						class: "card",
+						div {
+							class: "card-body",
+							p {
+								class: "card-text",
+								"You are about to delete the following question. This action cannot be undone."
+							}
+							blockquote {
+								class: "border-l-4 border-gray-300 pl-4 italic my-3",
+								{ q.question_text.clone() }
+							}
+						}
+					}
+				} else if load_detail_signal.error().is_some() {
+					div {
+						class: "alert-danger",
+						{ load_detail_signal.error().unwrap_or_default() }
+					}
+				}
+			}
+			watch {
+				if error_signal.get().is_some() {
+					div {
+						class: "alert-danger mt-3",
+						{ error_signal.get().unwrap_or_default() }
+					}
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				watch {
+					if loading_signal.get() {
+						button {
+							type: "submit",
+							class: "btn-primary opacity-50 cursor-not-allowed",
+							disabled: true,
+							form: "delete-question-form",
+							"Deleting..."
+						}
+					} else {
+						button {
+							type: "submit",
+							class: "btn-primary bg-red-600 hover:bg-red-700",
+							form: "delete-question-form",
+							"Delete"
+						}
+					}
+				}
+				a {
+					href: format!("/polls/{}/", question_id),
+					class: "btn-secondary ml-2",
+					"Cancel"
+				}
+			}
+		}
+	})(
+		load_detail_signal,
+		loading_signal,
+		error_signal,
+		form_view,
+		question_id,
+	)
 }

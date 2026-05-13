@@ -3,6 +3,8 @@ use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::apps::users::models::User;
+
 /// Question model representing a poll question
 #[model(app_label = "polls", table_name = "questions")]
 #[derive(Serialize, Deserialize)]
@@ -15,6 +17,11 @@ pub struct Question {
 
 	#[field(auto_now_add = true)]
 	pub pub_date: DateTime<Utc>,
+
+	// Author of the question. Only the author can edit or delete it
+	// (enforced server-side in `crate::server_fn::polls`).
+	#[rel(foreign_key, related_name = "questions")]
+	pub author: ForeignKeyField<User>,
 }
 
 impl Question {

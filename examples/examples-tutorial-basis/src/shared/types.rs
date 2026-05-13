@@ -35,6 +35,10 @@ pub struct QuestionInfo {
 	pub id: i64,
 	pub question_text: String,
 	pub pub_date: DateTime<Utc>,
+	/// User ID of the question's author. Used by the client to decide
+	/// whether to render the Edit / Delete buttons; the server re-checks
+	/// ownership before performing any mutation.
+	pub author_id: i64,
 }
 
 /// Choice information (DTO)
@@ -68,6 +72,7 @@ impl From<crate::apps::polls::models::Question> for QuestionInfo {
 			id: question.id(),
 			question_text: question.question_text().to_string(),
 			pub_date: question.pub_date(),
+			author_id: *question.author_id(),
 		}
 	}
 }

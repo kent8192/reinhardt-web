@@ -5,9 +5,9 @@
 //! are injected, the session ID is regenerated on successful login
 //! (fixation prevention), and `user_id` is persisted in the session map.
 
-use crate::shared::types::UserInfo;
 #[cfg(native)]
 use crate::shared::types::LoginRequest;
+use crate::shared::types::UserInfo;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 #[cfg(native)]

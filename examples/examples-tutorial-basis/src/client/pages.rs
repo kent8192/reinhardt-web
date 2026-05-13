@@ -20,6 +20,21 @@ pub fn polls_results_page(question_id: i64) -> Page {
 	crate::client::components::polls::polls_results(question_id)
 }
 
+/// New question page - Create a new poll question
+pub fn question_new_page() -> Page {
+	crate::client::components::polls::question_new()
+}
+
+/// Edit question page - Update an existing poll question (author only)
+pub fn question_edit_page(question_id: i64) -> Page {
+	crate::client::components::polls::question_edit(question_id)
+}
+
+/// Delete question confirmation page - Author-only deletion
+pub fn question_delete_page(question_id: i64) -> Page {
+	crate::client::components::polls::question_delete_confirm(question_id)
+}
+
 /// Login page - Username + password form
 pub fn login_page() -> Page {
 	crate::client::components::users::login_form()

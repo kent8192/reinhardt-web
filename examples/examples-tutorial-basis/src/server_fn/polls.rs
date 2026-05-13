@@ -8,9 +8,41 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 // Server-only imports
 #[cfg(native)]
 use {
+	crate::apps::users::models::User,
 	crate::shared::forms::create_vote_form,
+	reinhardt::Model,
+	reinhardt::db::orm::{FilterOperator, FilterValue},
 	reinhardt::forms::wasm_compat::{FormExt, FormMetadata},
+	reinhardt::middleware::session::SessionData,
 };
+
+/// Resolve the currently authenticated user from the session, or return a
+/// 401 ServerFnError. Shared by every authenticated mutation handler below
+/// so that the "load user_id from session, look up the row, 401 if absent"
+/// dance lives in exactly one place.
+#[cfg(native)]
+async fn require_user(session: &SessionData) -> std::result::Result<User, ServerFnError> {
+	let user_id = session
+		.get::<i64>("user_id")
+		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
+
+	let user = User::objects()
+		.filter(
+			User::field_id(),
+			FilterOperator::Eq,
+			FilterValue::Int(user_id),
+		)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
+
+	if !user.is_active() {
+		return Err(ServerFnError::server(403, "User account is inactive"));
+	}
+
+	Ok(user)
+}
 
 // WASM-only imports
 // (None needed - all forms logic is server-side)
@@ -219,4 +251,168 @@ async fn vote_internal(
 	.map_err(|e| ServerFnError::application(e.to_string()))?;
 
 	Ok(ChoiceInfo::from(updated_choice))
+}
+
+// =========================================================================
+// Question CUD (Phase 2)
+// =========================================================================
+//
+// All three mutations below follow the same conventions:
+//
+// * Every form field is received as `String` because `form!` currently
+//   serializes all fields as strings on submit. This is tracked upstream as
+//   reinhardt-web#4397 — once that ships, the `String` + `.parse()` dance
+//   below can be replaced with the typed signatures shown next to each
+//   handler. The trailing `_csrf_token: String` parameter is appended by the
+//   `form!` macro for non-GET forms; the CSRF middleware verifies it before
+//   the handler runs.
+// * The session is required: `require_user` returns a 401 to unauthenticated
+//   clients before any database write happens.
+// * For `update_question` and `delete_question`, ownership is enforced by
+//   comparing `question.author_id()` with the current user's id; mismatched
+//   ownership returns a 403.
+
+/// Create a new question owned by the current user.
+///
+/// Ideal implementation (without the form! String workaround tracked in #4397):
+///   pub async fn create_question(
+///       question_text: String,
+///       _csrf_token: String,
+///       #[inject] _db: reinhardt::DatabaseConnection,
+///       #[inject] session: SessionData,
+///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
+#[server_fn]
+pub async fn create_question(
+	question_text: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<QuestionInfo, ServerFnError> {
+	use crate::apps::polls::models::Question;
+
+	let user = require_user(&session).await?;
+
+	let trimmed = question_text.trim();
+	if trimmed.is_empty() || trimmed.len() > 200 {
+		return Err(ServerFnError::server(
+			400,
+			"Question text must be between 1 and 200 characters",
+		));
+	}
+
+	let manager = Question::objects();
+	// Field ordering follows `#[model]` generation: scalar fields first,
+	// then ForeignKeyField columns at the end (mirrors Choice::new in this
+	// crate's models.rs test).
+	let new_question = Question::new(trimmed.to_string(), user.id());
+	let saved = manager
+		.create(&new_question)
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(QuestionInfo::from(saved))
+}
+
+/// Update a question's text. Only the author may update.
+///
+/// Ideal implementation (without the form! String workaround tracked in #4397):
+///   pub async fn update_question(
+///       question_id: i64,
+///       question_text: String,
+///       _csrf_token: String,
+///       ...
+///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
+#[server_fn]
+pub async fn update_question(
+	question_id: String,
+	question_text: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<QuestionInfo, ServerFnError> {
+	use crate::apps::polls::models::Question;
+
+	let user = require_user(&session).await?;
+
+	let question_id: i64 = question_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
+
+	let trimmed = question_text.trim();
+	if trimmed.is_empty() || trimmed.len() > 200 {
+		return Err(ServerFnError::server(
+			400,
+			"Question text must be between 1 and 200 characters",
+		));
+	}
+
+	let manager = Question::objects();
+	let mut question = manager
+		.get(question_id)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
+
+	if *question.author_id() != user.id() {
+		return Err(ServerFnError::server(
+			403,
+			"Only the question's author can edit it",
+		));
+	}
+
+	question.question_text = trimmed.to_string();
+
+	let updated = manager
+		.update(&question)
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(QuestionInfo::from(updated))
+}
+
+/// Delete a question. Only the author may delete.
+///
+/// Ideal implementation (without the form! String workaround tracked in #4397):
+///   pub async fn delete_question(
+///       question_id: i64,
+///       _csrf_token: String,
+///       ...
+///   ) -> std::result::Result<(), ServerFnError> { ... }
+#[server_fn]
+pub async fn delete_question(
+	question_id: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<(), ServerFnError> {
+	use crate::apps::polls::models::Question;
+
+	let user = require_user(&session).await?;
+
+	let question_id: i64 = question_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
+
+	let manager = Question::objects();
+	let question = manager
+		.get(question_id)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
+
+	if *question.author_id() != user.id() {
+		return Err(ServerFnError::server(
+			403,
+			"Only the question's author can delete it",
+		));
+	}
+
+	manager
+		.delete(question.id())
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(())
 }
