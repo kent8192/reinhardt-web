@@ -29,9 +29,19 @@ pub fn polls_index() -> Page {
 	page!(|load_questions_error: Action<Vec<QuestionInfo>, String>, load_questions_signal: Action<Vec<QuestionInfo>, String>| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
-			h1 {
-				class: "mb-4",
-				"Polls"
+			div {
+				class: "flex justify-between items-center mb-4",
+				h1 {
+					"Polls"
+				}
+				// "New" button is always rendered; the server enforces
+				// authentication when the form is submitted (401 if
+				// anonymous), so this is just an optimistic UI affordance.
+				a {
+					href: "/polls/new/",
+					class: "btn-primary",
+					"New Question"
+				}
 			}
 			watch {
 				if load_questions_error.error().is_some() {
@@ -265,17 +275,37 @@ pub fn polls_detail(question_id: i64) -> Page {
 	if let Some((ref q, _)) = load_detail_signal.result() {
 		let question_text = q.question_text.clone();
 		let form_view = voting_form.into_page();
+		let edit_href = format!("/polls/{}/edit/", question_id);
+		let delete_href = format!("/polls/{}/delete/", question_id);
 
-		page!(|question_text: String, form_view: Page| {
+		page!(|question_text: String, form_view: Page, edit_href: String, delete_href: String| {
 			div {
 				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					{ question_text }
+				div {
+					class: "flex justify-between items-center mb-4",
+					h1 {
+						{ question_text }
+					}
+					// Edit / Delete links are rendered unconditionally;
+					// the server enforces author-only access and returns
+					// 403 for non-authors.
+					div {
+						class: "flex gap-2",
+						a {
+							href: edit_href,
+							class: "btn-secondary",
+							"Edit"
+						}
+						a {
+							href: delete_href,
+							class: "btn-danger",
+							"Delete"
+						}
+					}
 				}
 				{ form_view }
 			}
-		})(question_text, form_view)
+		})(question_text, form_view, edit_href, delete_href)
 	} else {
 		// Question not found
 		page!(|| {
