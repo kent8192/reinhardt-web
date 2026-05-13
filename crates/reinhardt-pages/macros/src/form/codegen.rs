@@ -82,23 +82,34 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 
 	let struct_name = &macro_ast.name;
 
+	let effective_state: Option<TypedFormState> = if macro_ast.success_url.is_some() {
+		let mut s = macro_ast
+			.state
+			.clone()
+			.unwrap_or_else(|| TypedFormState::new(macro_ast.span));
+		s.success = true;
+		Some(s)
+	} else {
+		macro_ast.state.clone()
+	};
+
 	// Generate field declarations
 	let field_decls = generate_field_declarations(&macro_ast.fields, pages_crate);
 
 	// Generate state field declarations
-	let state_decls = generate_state_declarations(&macro_ast.state, pages_crate);
+	let state_decls = generate_state_declarations(&effective_state, pages_crate);
 
 	// Generate field initializers
 	let field_inits = generate_field_initializers(&macro_ast.fields, pages_crate);
 
 	// Generate state field initializers
-	let state_inits = generate_state_initializers(&macro_ast.state, pages_crate);
+	let state_inits = generate_state_initializers(&effective_state, pages_crate);
 
 	// Generate field accessor methods
 	let field_accessors = generate_field_accessors(&macro_ast.fields, pages_crate);
 
 	// Generate state accessor methods
-	let state_accessors = generate_state_accessors(&macro_ast.state, pages_crate);
+	let state_accessors = generate_state_accessors(&effective_state, pages_crate);
 
 	// Generate watch methods
 	let watch_methods = generate_watch_methods(&macro_ast.watch, pages_crate, struct_name);
@@ -206,9 +217,12 @@ fn generate_field_initializers(
 		.iter()
 		.map(|field| {
 			let name = &field.name;
-			let default_value = field_type_default_value(&field.field_type);
+			let init = match &field.initial_expr {
+				Some(expr) => quote! { ::std::convert::Into::into(#expr) },
+				None => field_type_default_value(&field.field_type),
+			};
 			quote! {
-				#name: #pages_crate::reactive::Signal::new(#default_value),
+				#name: #pages_crate::reactive::Signal::new(#init),
 			}
 		})
 		.collect();
@@ -416,12 +430,16 @@ fn generate_state_accessors(
 /// ```text
 /// pub fn error_display(&self) -> impl IntoPage {
 ///     let form = self.clone();
-///     Effect::new(move || {
-///         let result = (|form| { ... })(&form);
-///         result
+///     Page::reactive(move || {
+///         let __watch_handler = |form| { ... };
+///         (&__watch_handler as &dyn Fn(&Self) -> _)(&form)
 ///     })
 /// }
 /// ```
+///
+/// The handler is bound to a local so it remains a closure (capable of
+/// capturing enclosing-scope locals); a previous `fn __call_watch(...)`
+/// indirection forced it into a fn item and broke captures (issue #4384).
 fn generate_watch_methods(
 	watch: &Option<TypedFormWatch>,
 	pages_crate: &TokenStream,
@@ -449,13 +467,12 @@ fn generate_watch_methods(
 				pub fn #method_name(&self) -> impl #pages_crate::component::IntoPage {
 					let form = self.clone();
 					#pages_crate::component::Page::reactive(move || {
-						// Helper function to provide type inference for the closure parameter
-						// Uses Fn instead of FnOnce to allow multiple calls from reactive system
-						#[inline]
-						fn __call_watch<T, R>(form: &T, f: impl Fn(&T) -> R) -> R {
-							f(form)
-						}
-						__call_watch::<#struct_name, _>(&form, #closure)
+						// Bind the user's handler to a local so it remains a closure that
+						// can capture enclosing-scope locals, then invoke it directly.
+						// The previous `fn __call_watch(...)` indirection forced the handler
+						// into a fn item, which broke captures (issue #4384).
+						let __watch_handler = #closure;
+						(&__watch_handler as &dyn ::core::ops::Fn(&#struct_name) -> _)(&form)
 					})
 				}
 			}
@@ -1549,7 +1566,8 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 			let on_submit_code = generate_on_submit_callback(callbacks);
 			let on_loading_start_code = generate_on_loading_callback(callbacks, state, true);
 			let on_loading_end_code = generate_on_loading_callback(callbacks, state, false);
-			let on_success_code = generate_on_success_callback(callbacks, state);
+			let on_success_code =
+				generate_on_success_callback(callbacks, state, &macro_ast.success_url);
 			let on_error_code = generate_on_error_callback(callbacks, state);
 			let redirect_code = generate_redirect_code(redirect);
 
@@ -1890,19 +1908,17 @@ fn generate_on_loading_callback(
 fn generate_on_success_callback(
 	callbacks: &TypedFormCallbacks,
 	state: &Option<TypedFormState>,
+	success_url: &Option<syn::Expr>,
 ) -> TokenStream {
 	let mut code = Vec::new();
 
-	// Update success state if defined
-	if let Some(state) = state
-		&& state.success
-	{
+	let has_success_state = state.as_ref().map(|s| s.success).unwrap_or(false);
+	if has_success_state || success_url.is_some() {
 		code.push(quote! {
 			self.__success.set(true);
 		});
 	}
 
-	// Call on_success callback if defined
 	if let Some(on_success) = &callbacks.on_success {
 		code.push(quote! {
 			{
@@ -1910,6 +1926,31 @@ fn generate_on_success_callback(
 				callback(value);
 			}
 		});
+	}
+
+	if let Some(url_expr) = success_url {
+		if matches!(url_expr, syn::Expr::Closure(_)) {
+			code.push(quote! {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				{
+					let __url_fn = #url_expr;
+					let __url = __url_fn(self, &value);
+					if let Some(__window) = web_sys::window() {
+						let _ = __window.location().set_href(&__url);
+					}
+				}
+			});
+		} else {
+			code.push(quote! {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				{
+					let __url = #url_expr;
+					if let Some(__window) = web_sys::window() {
+						let _ = __window.location().set_href(__url);
+					}
+				}
+			});
+		}
 	}
 
 	quote! { #(#code)* }
@@ -3187,9 +3228,12 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// Check that the form is cloned before use and __call_watch is used
+		// Check that the form is cloned before use and the user's handler is
+		// bound directly (issue #4384: no `fn __call_watch` indirection so the
+		// handler remains a closure that can capture enclosing-scope locals).
 		assert!(output_str.contains("let form = self . clone ()"));
-		assert!(output_str.contains("__call_watch"));
+		assert!(output_str.contains("__watch_handler"));
+		assert!(!output_str.contains("__call_watch"));
 	}
 
 	#[rstest::rstest]

@@ -114,6 +114,11 @@ impl Parse for FormMacro {
 					form.redirect_on_success = Some(input.parse()?);
 					parse_optional_comma(input)?;
 				}
+				"success_url" => {
+					let _colon: Token![:] = input.parse()?;
+					form.success_url = Some(input.parse()?);
+					parse_optional_comma(input)?;
+				}
 				"initial_loader" => {
 					form.initial_loader = Some(input.parse()?);
 					parse_optional_comma(input)?;

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.28...reinhardt-urls@v0.1.0-rc.29) - 2026-05-13
+
+### Changed
+
+- *(urls)* split server_router.rs by responsibility ([[#4310](https://github.com/kent8192/reinhardt-web/issues/4310)](https://github.com/kent8192/reinhardt-web/issues/4310))
+- *(urls)* address Copilot review feedback on PR [[#4337](https://github.com/kent8192/reinhardt-web/issues/4337)](https://github.com/kent8192/reinhardt-web/issues/4337)
+
+### Fixed
+
+- *(urls)* [**breaking**] surface radix insertion errors and add fallible reverse helpers
+- *(urls)* gate reverse re-exports with cfg(native)
+- *(ci)* unblock release-plz rc.29 CI on three pre-existing failures
+
 ### Changed
 
 - *(urls)* `DefaultRouter` and `SimpleRouter` now implement
