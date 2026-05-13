@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.28...reinhardt-views@v0.1.0-rc.29) - 2026-05-13
+
+### Changed
+
+- *(views)* split viewsets/handler.rs by responsibility ([[#4313](https://github.com/kent8192/reinhardt-web/issues/4313)](https://github.com/kent8192/reinhardt-web/issues/4313))
+- *(views)* address Copilot review feedback on PR [[#4340](https://github.com/kent8192/reinhardt-web/issues/4340)](https://github.com/kent8192/reinhardt-web/issues/4340)
+
+### Fixed
+
+- *(ci)* resolve SemVer and docs.rs failures on rc.29 branch
+
 ## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.22...reinhardt-views@v0.1.0-rc.23) - 2026-04-29
 
 ### Changed

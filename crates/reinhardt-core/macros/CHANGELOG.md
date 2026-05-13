@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.28...reinhardt-macros@v0.1.0-rc.29) - 2026-05-13
+
+### Fixed
+
+- *(macros)* omit auto_increment for non-integer primary keys
+
 ## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.26...reinhardt-macros@v0.1.0-rc.27) - 2026-05-09
 
 ### Added
