@@ -1,0 +1,102 @@
+use reinhardt::db::migrations::FieldType;
+use reinhardt::db::migrations::prelude::*;
+pub fn migration() -> Migration {
+	Migration {
+		app_label: "auth".to_string(),
+		name: "0001_initial".to_string(),
+		operations: vec![
+			Operation::CreateTable {
+				name: "auth_permission".to_string(),
+				columns: vec![
+					ColumnDefinition {
+						name: "app_label".to_string(),
+						type_definition: FieldType::VarChar(100u32),
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "codename".to_string(),
+						type_definition: FieldType::VarChar(100u32),
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: true,
+						auto_increment: true,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "name".to_string(),
+						type_definition: FieldType::VarChar(255u32),
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+				],
+				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+			Operation::CreateTable {
+				name: "auth_group".to_string(),
+				columns: vec![
+					ColumnDefinition {
+						name: "description".to_string(),
+						type_definition: FieldType::VarChar(500u32),
+						not_null: false,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: true,
+						auto_increment: true,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "name".to_string(),
+						type_definition: FieldType::VarChar(150u32),
+						not_null: true,
+						unique: true,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+				],
+				constraints: vec![Constraint::Unique {
+					name: "auth_group_name_uniq".to_string(),
+					columns: vec!["name".to_string()],
+				}],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+		],
+		dependencies: vec![],
+		atomic: true,
+		replaces: vec![],
+		initial: Some(true),
+		state_only: false,
+		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
+	}
+}
