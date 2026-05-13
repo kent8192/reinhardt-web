@@ -914,7 +914,7 @@ impl NamespaceVersioning {
 	/// Extract a version from a router-aware path, applying the
 	/// configured pattern.
 	///
-	/// Unlike [`Self::extract_version_from_path`], this method is
+	/// Unlike `extract_version_from_path` (private helper), this method is
 	/// router-aware: it returns `Some(version)` only if `path` matches
 	/// (starts with) at least one `path_prefix` registered on the
 	/// router AND the configured pattern successfully extracts a
