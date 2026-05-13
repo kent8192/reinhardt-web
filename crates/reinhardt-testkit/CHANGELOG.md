@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.28...reinhardt-testkit@v0.1.0-rc.29) - 2026-05-13
+
+### Added
+
+- *(testkit)* add DiOverrideBuilder + with_di_overrides! re-export
+- *(testkit,streaming)* module-scoped Kafka fixture + KafkaConfig.partitions
+
+### Changed
+
+- *(testkit-macros)* route generated paths through reinhardt-testkit
+- post-simplify-review cleanups for DI mock fixtures
+- *(testkit)* extract RequestSeedFn alias to satisfy clippy::type_complexity
+
+### Documentation
+
+- *(testing)* document DI mock fixtures and override patterns
+
+### Fixed
+
+- *(testkit)* make request_value seed the request scope and document the round-trip
+- *(ci)* unblock release-plz rc.29 CI on three pre-existing failures
+
+### Maintenance
+
+- cargo fmt after di-mock-fixtures
+
 ### Added
 
 - *(testkit)* add `DiOverrideBuilder`, `DiOverrides`, `injection_context_with_di_overrides`, and re-export the `with_di_overrides!` macro from `reinhardt-testkit-macros` for ergonomic DI mocking in tests

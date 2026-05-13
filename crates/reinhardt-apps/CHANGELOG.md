@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.0-rc.28...reinhardt-apps@v0.1.0-rc.29) - 2026-05-13
+
+### Changed
+
+- *(apps)* make reinhardt-apps cross-target
+
+### Fixed
+
+- *(reinhardt-apps)* gate inventory + linkme deps behind native target
+
 ## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.0-rc.26...reinhardt-apps@v0.1.0-rc.27) - 2026-05-09
 
 ### Added
