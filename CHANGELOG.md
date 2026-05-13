@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.29...reinhardt-web@v0.1.0-rc.30) - 2026-05-13
+
+### Added
+
+- *(pages/macros)* add success_url for first-class post-submit navigation
+
+### Fixed
+
+- *(pages-macros)* allow form! watch handlers to capture outer locals
+- *(pages/macros)* apply HiddenField initial to signal at first render
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.28...reinhardt-web@v0.1.0-rc.29) - 2026-05-13
 
 ### Added
