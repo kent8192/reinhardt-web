@@ -416,12 +416,16 @@ fn generate_state_accessors(
 /// ```text
 /// pub fn error_display(&self) -> impl IntoPage {
 ///     let form = self.clone();
-///     Effect::new(move || {
-///         let result = (|form| { ... })(&form);
-///         result
+///     Page::reactive(move || {
+///         let __watch_handler = |form| { ... };
+///         (&__watch_handler as &dyn Fn(&Self) -> _)(&form)
 ///     })
 /// }
 /// ```
+///
+/// The handler is bound to a local so it remains a closure (capable of
+/// capturing enclosing-scope locals); a previous `fn __call_watch(...)`
+/// indirection forced it into a fn item and broke captures (issue #4384).
 fn generate_watch_methods(
 	watch: &Option<TypedFormWatch>,
 	pages_crate: &TokenStream,
@@ -449,13 +453,12 @@ fn generate_watch_methods(
 				pub fn #method_name(&self) -> impl #pages_crate::component::IntoPage {
 					let form = self.clone();
 					#pages_crate::component::Page::reactive(move || {
-						// Helper function to provide type inference for the closure parameter
-						// Uses Fn instead of FnOnce to allow multiple calls from reactive system
-						#[inline]
-						fn __call_watch<T, R>(form: &T, f: impl Fn(&T) -> R) -> R {
-							f(form)
-						}
-						__call_watch::<#struct_name, _>(&form, #closure)
+						// Bind the user's handler to a local so it remains a closure that
+						// can capture enclosing-scope locals, then invoke it directly.
+						// The previous `fn __call_watch(...)` indirection forced the handler
+						// into a fn item, which broke captures (issue #4384).
+						let __watch_handler = #closure;
+						(&__watch_handler as &dyn ::core::ops::Fn(&#struct_name) -> _)(&form)
 					})
 				}
 			}
@@ -3187,9 +3190,12 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// Check that the form is cloned before use and __call_watch is used
+		// Check that the form is cloned before use and the user's handler is
+		// bound directly (issue #4384: no `fn __call_watch` indirection so the
+		// handler remains a closure that can capture enclosing-scope locals).
 		assert!(output_str.contains("let form = self . clone ()"));
-		assert!(output_str.contains("__call_watch"));
+		assert!(output_str.contains("__watch_handler"));
+		assert!(!output_str.contains("__call_watch"));
 	}
 
 	#[rstest::rstest]
