@@ -1493,7 +1493,10 @@ impl BaseCommand for RunServerCommand {
 			#[cfg(all(feature = "pages", feature = "routers"))]
 			if with_pages {
 				use reinhardt_urls::routers::registration::iter_registered_url_patterns;
-				let routes: Vec<(String, Option<String>)> = iter_registered_url_patterns()
+				// `client_router()` returns `Arc<ClientRouter>` (owned), and
+				// `route_patterns()` borrows from it, so the inner `collect`
+				// is required to terminate the borrow within the closure.
+				let mut routes: Vec<(String, Option<String>)> = iter_registered_url_patterns()
 					.filter_map(|reg| reg.client_router())
 					.flat_map(|cr| {
 						cr.route_patterns()
@@ -1501,6 +1504,9 @@ impl BaseCommand for RunServerCommand {
 							.collect::<Vec<_>>()
 					})
 					.collect();
+				// inventory::iter order is linker-dependent; sort for a
+				// stable, diff-friendly startup banner across builds.
+				routes.sort();
 				if !routes.is_empty() {
 					ctx.info("🗺  Routes (WASM-bound):");
 					for (pat, name) in &routes {

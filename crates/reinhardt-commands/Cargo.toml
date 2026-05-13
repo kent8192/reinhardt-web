@@ -101,7 +101,7 @@ testcontainers = ["dep:reinhardt-test", "reinhardt-test?/testcontainers"]
 plugins = ["dep:reinhardt-dentdelion"]
 auth = ["dep:reinhardt-auth", "reinhardt-auth?/database", "reinhardt-db"]
 admin = []
-pages = ["reinhardt-urls?/client-router"]
+pages = ["routers", "reinhardt-urls/client-router"]
 full = [
   "migrations",
   "routers",
