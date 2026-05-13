@@ -146,6 +146,8 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 	// Transform redirect configuration
 	let redirect_on_success = transform_redirect(&ast.redirect_on_success)?;
 
+	let success_url = ast.success_url.clone();
+
 	// Transform initial_loader (pass through the Path)
 	let initial_loader = ast.initial_loader.clone();
 
@@ -180,6 +182,7 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 		watch,
 		derived,
 		redirect_on_success,
+		success_url,
 		initial_loader,
 		choices_loader,
 		slots,
@@ -618,6 +621,7 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	let custom_attrs = extract_custom_attrs(&field.properties)?;
 	let bind = extract_bind(&field.properties);
 	let initial_from = extract_initial_from(&field.properties);
+	let initial_expr = extract_initial_expr(&field.properties);
 	let choices_config = extract_choices_config(&field.properties);
 
 	Ok(TypedFormFieldDef {
@@ -632,6 +636,7 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 		custom_attrs,
 		bind,
 		initial_from,
+		initial_expr,
 		choices_config,
 		span: field.span,
 	})
@@ -1196,6 +1201,22 @@ fn extract_initial_from(properties: &[FormFieldProperty]) -> Option<String> {
 	for prop in properties {
 		if let FormFieldProperty::InitialFrom { field_name, .. } = prop {
 			return Some(field_name.value());
+		}
+	}
+	None
+}
+
+/// Extracts the initial signal value expression from field properties.
+///
+/// When `initial: <expr>` is specified on a field, the expression is used as
+/// the initial value for the field's `Signal::new(...)` instead of the type
+/// default (issue #4386).
+fn extract_initial_expr(properties: &[FormFieldProperty]) -> Option<syn::Expr> {
+	for prop in properties {
+		if let FormFieldProperty::Named { name, value, .. } = prop {
+			if name == "initial" {
+				return Some(value.clone());
+			}
 		}
 	}
 	None

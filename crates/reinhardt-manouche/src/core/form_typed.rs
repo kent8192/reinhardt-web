@@ -101,6 +101,7 @@ pub struct TypedFormMacro {
 	/// Validated to start with `/` or be a valid URL pattern.
 	/// Supports parameter expansion with `{param}` syntax.
 	pub redirect_on_success: Option<String>,
+	pub success_url: Option<syn::Expr>,
 	/// Initial value loader server_fn
 	///
 	/// When specified, generates an async method to load initial values.
@@ -529,6 +530,7 @@ pub struct TypedFormFieldDef {
 	///
 	/// Maps this field to a property in the data returned by `initial_loader`.
 	pub initial_from: Option<String>,
+	pub initial_expr: Option<syn::Expr>,
 	/// Dynamic choices configuration for `ChoiceField`
 	///
 	/// When specified, the field will load choices from a `choices_loader`
@@ -1309,6 +1311,7 @@ impl TypedFormMacro {
 			watch: None,
 			derived: None,
 			redirect_on_success: None,
+			success_url: None,
 			initial_loader: None,
 			choices_loader: None,
 			slots: None,
@@ -1362,6 +1365,7 @@ impl TypedFormFieldDef {
 			custom_attrs: Vec::new(),
 			bind: true, // Default to enabled
 			initial_from: None,
+			initial_expr: None,
 			choices_config: None,
 			span,
 		}
