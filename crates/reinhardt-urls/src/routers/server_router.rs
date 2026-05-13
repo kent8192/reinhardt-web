@@ -28,22 +28,22 @@
 //! The implementation is split across focused submodules to keep each file
 //! small and reviewable:
 //!
-//! - [`types`]    — `MiddlewareInfo`, `RouteInfo`, `FunctionRoute`, `ViewRoute`,
+//! - `types`    — `MiddlewareInfo`, `RouteInfo`, `FunctionRoute`, `ViewRoute`,
 //!   `RouteHandler`, `RouteMatch`, and the `join_path` helper
-//! - [`builder`] — constructors and builder-style configuration
+//! - `builder` — constructors and builder-style configuration
 //!   (`new`, `with_prefix`, `with_namespace`, `with_di_context`,
 //!   `with_middleware`, `exclude`, `mount`, `group`)
-//! - [`registration`] — route registration entry points
+//! - `registration` — route registration entry points
 //!   (`function`, `handler`, `route`, `viewset`, `endpoint`, `view`,
 //!   `with_route_middleware`)
-//! - [`compile`] — matchit compilation and `validate_*` helpers
-//! - [`introspection`] — read-only accessors, `get_all_routes`,
+//! - `compile` — matchit compilation and `validate_*` helpers
+//! - `introspection` — read-only accessors, `get_all_routes`,
 //!   `register_all_routes`, `reverse`
-//! - [`dispatch`] — `resolve`, `match_own_routes_*`, `path_exists_for_any_method`
-//! - [`router_impls`] — `Debug`, `Default`, `Handler`, `RegisterViewSet`
-//! - [`handlers`] — `FunctionHandler` and `ViewSetHandler` adapters
-//! - [`matching`] — `path_matches` and `extract_params` utilities
-//! - [`global`]   — global router registry used by `showurls`
+//! - `dispatch` — `resolve`, `match_own_routes_*`, `path_exists_for_any_method`
+//! - `router_impls` — `Debug`, `Default`, `Handler`, `RegisterViewSet`
+//! - `handlers` — `FunctionHandler` and `ViewSetHandler` adapters
+//! - `matching` — `path_matches` and `extract_params` utilities
+//! - `global`   — global router registry used by `showurls`
 
 use crate::routers::UrlReverser;
 use matchit::Router as MatchitRouter;

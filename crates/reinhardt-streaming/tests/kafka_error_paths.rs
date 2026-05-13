@@ -47,8 +47,17 @@ async fn kafka() -> KafkaContainer {
 /// Port 1 is reserved/privileged and not bound by any normal service, so the
 /// initial metadata request raises a transport error and `connect` must
 /// surface `StreamingError::Connection`.
+///
+/// `rskafka` retries metadata refresh indefinitely by default, which on
+/// firewalled CI runners (where the SYN to `127.0.0.1:1` may be dropped
+/// rather than answered with RST) outlasts the outer `tokio` timeout.
+/// Cap the retry budget below that timeout so the failure surfaces as
+/// `StreamingError::Connection` from `connect` itself, not as an `Elapsed`
+/// panic from the test harness.
 fn unreachable_config() -> KafkaConfig {
-	KafkaConfig::new(["127.0.0.1:1"]).with_client_id("reinhardt-error-test")
+	KafkaConfig::new(["127.0.0.1:1"])
+		.with_client_id("reinhardt-error-test")
+		.with_backoff_deadline(Duration::from_secs(3))
 }
 
 #[rstest]

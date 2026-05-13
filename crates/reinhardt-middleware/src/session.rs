@@ -5,13 +5,13 @@
 //!
 //! This module is split into responsibility-focused submodules:
 //!
-//! - [`id`] — session-ID newtypes and the request-scoped active ID holder
-//! - [`data`] — the `SessionData` payload, read/write/rotate helpers
-//! - [`store`] — in-memory `SessionStore` with lazy eviction
-//! - [`backend`] — pluggable `AsyncSessionBackend` trait
-//! - [`config`] — `SessionConfig` cookie/TTL knobs
-//! - [`middleware`] — `SessionMiddleware` that wires it all together
-//! - [`injectable`] — DI integration (`Injectable` impls + `SessionStoreRef`)
+//! - `id` — session-ID newtypes and the request-scoped active ID holder
+//! - `data` — the `SessionData` payload, read/write/rotate helpers
+//! - `store` — in-memory `SessionStore` with lazy eviction
+//! - `backend` — pluggable `AsyncSessionBackend` trait
+//! - `config` — `SessionConfig` cookie/TTL knobs
+//! - `middleware` — `SessionMiddleware` that wires it all together
+//! - `injectable` — DI integration (`Injectable` impls + `SessionStoreRef`)
 //!
 //! All public types are re-exported here so existing call sites that
 //! used `crate::session::*` continue to work unchanged.
