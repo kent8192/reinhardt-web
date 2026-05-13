@@ -75,6 +75,10 @@ pub struct FormMacro {
 	/// Supports static paths (`"/profile"`) or dynamic paths with parameter expansion (`"/profile/{id}"`).
 	/// The redirect is triggered after `on_success` callback (if any) completes.
 	pub redirect_on_success: Option<LitStr>,
+	/// Redirect URL expression on successful form submission
+	///
+	/// Accepts an arbitrary Rust expression (e.g. a function call returning a `String`)
+	/// for dynamic redirect targets that cannot be expressed as a static `LitStr`.
 	pub success_url: Option<Expr>,
 	/// Initial value loader server_fn
 	///
