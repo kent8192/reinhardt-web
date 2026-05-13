@@ -216,7 +216,7 @@ pub fn reverse_single_pass(pattern: &str, params: &HashMap<String, String>) -> S
 /// Fallible variant of [`reverse_with_aho_corasick`].
 ///
 /// Returns `Err(ReverseError::Validation(..))` instead of panicking when any
-/// parameter value is rejected by [`validate_reverse_param`] (path separators,
+/// parameter value is rejected by `validate_reverse_param` (path separators,
 /// query delimiters, or encoded sequences). Behavior is otherwise identical to
 /// the panicking variant.
 ///
@@ -286,7 +286,7 @@ pub fn try_reverse_with_aho_corasick(
 /// Fallible variant of [`reverse_single_pass`].
 ///
 /// Returns `Err(ReverseError::Validation(..))` instead of panicking when any
-/// parameter value is rejected by [`validate_reverse_param`]. Behavior is
+/// parameter value is rejected by `validate_reverse_param`. Behavior is
 /// otherwise identical to the panicking variant.
 ///
 /// # Examples

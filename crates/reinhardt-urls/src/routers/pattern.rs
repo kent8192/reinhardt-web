@@ -2,10 +2,10 @@
 //!
 //! This module is split by responsibility into the following submodules:
 //!
-//! - [`validation`]: shared length/segment limits and parameter validators
-//! - [`path_pattern`]: [`PathPattern`] — the parsed, reversible URL pattern
-//! - [`matcher`]: [`PathMatcher`] / [`MatchingMode`] — pattern dispatch
-//! - [`radix`]: [`RadixRouter`] / [`RadixRouterError`] — radix-tree routing
+//! - `validation`: shared length/segment limits and parameter validators
+//! - `path_pattern`: [`PathPattern`] — the parsed, reversible URL pattern
+//! - `matcher`: [`PathMatcher`] / [`MatchingMode`] — pattern dispatch
+//! - `radix`: [`RadixRouter`] / [`RadixRouterError`] — radix-tree routing
 //!
 //! The top-level re-exports below preserve the public API surface that was
 //! available when this module was a single file.
