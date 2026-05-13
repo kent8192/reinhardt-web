@@ -75,6 +75,7 @@ pub struct FormMacro {
 	/// Supports static paths (`"/profile"`) or dynamic paths with parameter expansion (`"/profile/{id}"`).
 	/// The redirect is triggered after `on_success` callback (if any) completes.
 	pub redirect_on_success: Option<LitStr>,
+	pub success_url: Option<Expr>,
 	/// Initial value loader server_fn
 	///
 	/// When specified, the form will call this server_fn to load initial values
@@ -1098,6 +1099,7 @@ impl FormMacro {
 			watch: None,
 			derived: None,
 			redirect_on_success: None,
+			success_url: None,
 			initial_loader: None,
 			choices_loader: None,
 			slots: None,

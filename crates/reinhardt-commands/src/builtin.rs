@@ -1805,6 +1805,7 @@ impl RunServerCommand {
 		// Add static files middleware for WASM frontend if enabled
 		if with_pages {
 			use reinhardt_utils::staticfiles::PathResolver;
+			use reinhardt_utils::staticfiles::caching::CacheControlConfig;
 			use reinhardt_utils::staticfiles::middleware::{
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
@@ -1823,6 +1824,17 @@ impl RunServerCommand {
 					"/admin/".to_string(),
 					"/static/admin/".to_string(),
 				]);
+
+			// Issue #4383: In debug builds (dev runserver), disable the
+			// long-lived `public, immutable, max-age=31536000` Cache-Control
+			// policy that is applied by default to `.js` / `.wasm` / `.css`
+			// bundle assets. Without this, browsers never re-validate during
+			// development and hot-reload appears broken. Release builds keep
+			// the immutable policy for production-grade caching.
+			#[cfg(debug_assertions)]
+			{
+				static_config = static_config.cache_config(CacheControlConfig::disabled());
+			}
 
 			// Resolve index file for SPA fallback (only when SPA mode is enabled)
 			// Refs #2869: Separate index.html (source) from dist/ (build output)
