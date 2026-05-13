@@ -1802,7 +1802,8 @@ impl RunServerCommand {
 			// bundle assets. Without this, browsers never re-validate during
 			// development and hot-reload appears broken. Release builds keep
 			// the immutable policy for production-grade caching.
-			if cfg!(debug_assertions) {
+			#[cfg(debug_assertions)]
+			{
 				static_config = static_config.cache_config(CacheControlConfig::disabled());
 			}
 

@@ -1022,7 +1022,6 @@ mod tests {
 		assert!(!response.headers.contains_key("Cache-Control"));
 	}
 
-	#[rstest]
 	#[tokio::test]
 	async fn test_try_serve_wasm_with_disabled_cache_omits_cache_control() {
 		// Regression test for issue #4383: in dev (debug) builds the
