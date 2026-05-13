@@ -1023,6 +1023,44 @@ mod tests {
 	}
 
 	#[rstest]
+	#[tokio::test]
+	async fn test_try_serve_wasm_with_disabled_cache_omits_cache_control() {
+		// Regression test for issue #4383: in dev (debug) builds the
+		// runserver disables long-lived caching so that browsers re-validate
+		// freshly-built `.wasm` / `.js` bundles. Verify that when the
+		// resolved cache config is `disabled`, the `try_serve` path (used
+		// for bundle assets) does NOT attach `Cache-Control: ... immutable`.
+
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let wasm_path = dir.path().join("app_bg.wasm");
+		std::fs::write(&wasm_path, b"\0asm\x01\x00\x00\x00").unwrap();
+		let js_path = dir.path().join("app.js");
+		std::fs::write(&js_path, b"export default 0;").unwrap();
+
+		let config =
+			StaticFilesConfig::new(dir.path()).cache_config(CacheControlConfig::disabled());
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let wasm_response = middleware
+			.try_serve("app_bg.wasm")
+			.await
+			.expect("wasm served");
+		let js_response = middleware.try_serve("app.js").await.expect("js served");
+
+		// Assert — neither asset should carry an immutable Cache-Control header.
+		assert!(
+			!wasm_response.headers.contains_key("Cache-Control"),
+			"wasm response should not carry Cache-Control when cache is disabled",
+		);
+		assert!(
+			!js_response.headers.contains_key("Cache-Control"),
+			"js response should not carry Cache-Control when cache is disabled",
+		);
+	}
+
+	#[rstest]
 	fn test_config_auto_inject_wasm_default_true() {
 		// Arrange & Act
 		let config = StaticFilesConfig::default();
