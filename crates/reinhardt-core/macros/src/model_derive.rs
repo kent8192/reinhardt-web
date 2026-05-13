@@ -2621,15 +2621,10 @@ fn generate_registration_code(
 			params.push(quote! { .with_param("primary_key", "true") });
 		}
 
-		// auto_increment: default true for primary_key fields (Django-compatible)
-		if config.primary_key {
-			let auto_inc = config.auto_increment.unwrap_or(true);
-			if auto_inc {
-				params.push(quote! { .with_param("auto_increment", "true") });
-			}
-		} else if let Some(true) = config.auto_increment {
-			params.push(quote! { .with_param("auto_increment", "true") });
-		}
+		// auto_increment emission for PK and non-PK fields is handled below,
+		// gated on `is_integer_primary_key_type` so non-integer PKs (Uuid,
+		// String, custom types) do not accidentally inherit
+		// `auto_increment = "true"`. See reinhardt-web#4378.
 
 		// not_null: infer from Rust Option type
 		let (is_option, _) = extract_option_type(&field_info.ty);
