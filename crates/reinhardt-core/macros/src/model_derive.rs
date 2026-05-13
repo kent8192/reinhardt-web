@@ -4038,11 +4038,13 @@ fn generate_build_function(
 		.collect();
 
 	// Classify each required (user-facing) field into one of three setter shapes.
+	// `Type` is large (~240 bytes via `syn`), so the FK variant boxes it to keep
+	// `SetterKind` compact and satisfy `clippy::large_enum_variant`.
 	enum SetterKind {
 		/// FK `*_id` field. Setter name is the related FK field (e.g. `author`)
 		/// and accepts `impl IntoPrimaryKey<Related>` to mirror new().
 		ForeignKey {
-			related_type: Type,
+			related_type: Box<Type>,
 			setter_name: syn::Ident,
 		},
 		/// `String` field. Setter accepts `impl Into<String>` for ergonomics.
@@ -4078,7 +4080,7 @@ fn generate_build_function(
 				storage_name: f.name.clone(),
 				storage_ty: &f.ty,
 				kind: SetterKind::ForeignKey {
-					related_type,
+					related_type: Box::new(related_type),
 					setter_name,
 				},
 			});
