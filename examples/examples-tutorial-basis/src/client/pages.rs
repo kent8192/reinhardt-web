@@ -35,6 +35,21 @@ pub fn question_delete_page(question_id: i64) -> Page {
 	crate::client::components::polls::question_delete_confirm(question_id)
 }
 
+/// New choice page - Add a choice to an existing question (Phase 3)
+pub fn choice_new_page(question_id: i64) -> Page {
+	crate::client::components::polls::choice_new(question_id)
+}
+
+/// Edit choice page - Update a choice's text (Phase 3)
+pub fn choice_edit_page(choice_id: i64) -> Page {
+	crate::client::components::polls::choice_edit(choice_id)
+}
+
+/// Delete choice confirmation page - Confirm before deletion (Phase 3)
+pub fn choice_delete_page(choice_id: i64) -> Page {
+	crate::client::components::polls::choice_delete_confirm(choice_id)
+}
+
 /// Login page - Username + password form
 pub fn login_page() -> Page {
 	crate::client::components::users::login_form()

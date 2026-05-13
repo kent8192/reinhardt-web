@@ -416,3 +416,150 @@ pub async fn delete_question(
 
 	Ok(())
 }
+
+// =========================================================================
+// Choice CUD (Phase 3)
+// =========================================================================
+//
+// Choice has no own author field — ownership is derived from the parent
+// Question. Each mutation loads the Question first, verifies that the
+// caller authored it, then mutates the Choice. The same form! String ABI
+// constraint (#4397) used by the Question CUD handlers above applies here.
+
+/// Internal helper: load a Question by id and ensure the given user is its
+/// author. Returns 401/403/404 as appropriate.
+#[cfg(native)]
+async fn require_question_author(
+	question_id: i64,
+	user: &User,
+) -> std::result::Result<crate::apps::polls::models::Question, ServerFnError> {
+	use crate::apps::polls::models::Question;
+
+	let question = Question::objects()
+		.get(question_id)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
+
+	if *question.author_id() != user.id() {
+		return Err(ServerFnError::server(
+			403,
+			"Only the question's author can manage its choices",
+		));
+	}
+
+	Ok(question)
+}
+
+/// Create a new Choice on a Question. Only the question's author may add
+/// choices.
+#[server_fn]
+pub async fn create_choice(
+	question_id: String,
+	choice_text: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<ChoiceInfo, ServerFnError> {
+	use crate::apps::polls::models::Choice;
+
+	let user = require_user(&session).await?;
+	let question_id: i64 = question_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
+	let question = require_question_author(question_id, &user).await?;
+
+	let trimmed = choice_text.trim();
+	if trimmed.is_empty() || trimmed.len() > 200 {
+		return Err(ServerFnError::server(
+			400,
+			"Choice text must be between 1 and 200 characters",
+		));
+	}
+
+	let manager = Choice::objects();
+	let new_choice = Choice::new(trimmed.to_string(), 0, question.id());
+	let saved = manager
+		.create(&new_choice)
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(ChoiceInfo::from(saved))
+}
+
+/// Update a Choice's text. Only the parent question's author may update.
+#[server_fn]
+pub async fn update_choice(
+	choice_id: String,
+	choice_text: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<ChoiceInfo, ServerFnError> {
+	use crate::apps::polls::models::Choice;
+
+	let user = require_user(&session).await?;
+	let choice_id: i64 = choice_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
+
+	let trimmed = choice_text.trim();
+	if trimmed.is_empty() || trimmed.len() > 200 {
+		return Err(ServerFnError::server(
+			400,
+			"Choice text must be between 1 and 200 characters",
+		));
+	}
+
+	let manager = Choice::objects();
+	let mut choice = manager
+		.get(choice_id)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(404, "Choice not found"))?;
+
+	let _question = require_question_author(*choice.question_id(), &user).await?;
+
+	choice.choice_text = trimmed.to_string();
+	let updated = manager
+		.update(&choice)
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(ChoiceInfo::from(updated))
+}
+
+/// Delete a Choice. Only the parent question's author may delete.
+#[server_fn]
+pub async fn delete_choice(
+	choice_id: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<(), ServerFnError> {
+	use crate::apps::polls::models::Choice;
+
+	let user = require_user(&session).await?;
+	let choice_id: i64 = choice_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
+
+	let manager = Choice::objects();
+	let choice = manager
+		.get(choice_id)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(404, "Choice not found"))?;
+
+	let _question = require_question_author(*choice.question_id(), &user).await?;
+
+	manager
+		.delete(choice.id())
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(())
+}

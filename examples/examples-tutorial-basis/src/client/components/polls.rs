@@ -10,8 +10,8 @@ use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
 
 use crate::server_fn::polls::{
-	create_question, delete_question, get_question_detail, get_question_results, get_questions,
-	submit_vote, update_question,
+	create_choice, create_question, delete_choice, delete_question, get_question_detail,
+	get_question_results, get_questions, submit_vote, update_choice, update_question,
 };
 
 /// Polls index page - List all polls
@@ -892,4 +892,249 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		form_view,
 		question_id,
 	)
+}
+
+// =========================================================================
+// Choice CUD pages (Phase 3)
+// =========================================================================
+//
+// Same shape as the Question CUD pages above. Ownership is enforced
+// server-side via the parent question's author check; the client pages
+// render unconditionally and surface 401/403 through the form error
+// signal.
+
+/// New choice page (`/polls/{question_id}/choices/new/`).
+pub fn choice_new(question_id: i64) -> Page {
+	let qid = question_id;
+	let qid_str = qid.to_string();
+
+	let new_form = form! {
+		name: NewChoiceForm,
+		server_fn: create_choice,
+		method: Post,
+		state: { loading, error },
+
+		fields: {
+			question_id: HiddenField {
+				initial: qid_str,
+			},
+			choice_text: CharField {
+				label: "Choice text",
+				placeholder: "An answer option",
+				max_length: 200,
+				class: "form-control",
+			},
+		},
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
+
+	let loading_signal = new_form.loading().clone();
+	let error_signal = new_form.error().clone();
+	let form_view = new_form.into_page();
+	let back_href = format!("/polls/{}/", qid);
+
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, back_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Add a Choice"
+			}
+			watch {
+				if error_signal.get().is_some() {
+					div {
+						class: "alert-danger mb-3",
+						{ error_signal.get().unwrap_or_default() }
+					}
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				watch {
+					if loading_signal.get() {
+						button {
+							type: "submit",
+							class: "btn-primary opacity-50 cursor-not-allowed",
+							disabled: true,
+							form: "new-choice-form",
+							"Adding..."
+						}
+					} else {
+						button {
+							type: "submit",
+							class: "btn-primary",
+							form: "new-choice-form",
+							"Add Choice"
+						}
+					}
+				}
+				a {
+					href: back_href,
+					class: "btn-secondary ml-2",
+					"Back to poll"
+				}
+			}
+		}
+	})(loading_signal, error_signal, form_view, back_href)
+}
+
+/// Edit choice page (`/polls/choices/{choice_id}/edit/`).
+pub fn choice_edit(choice_id: i64) -> Page {
+	let cid_str = choice_id.to_string();
+
+	let edit_form = form! {
+		name: EditChoiceForm,
+		server_fn: update_choice,
+		method: Post,
+		state: { loading, error },
+		redirect_on_success: "/",
+
+		fields: {
+			choice_id: HiddenField {
+				initial: cid_str,
+			},
+			choice_text: CharField {
+				label: "Choice text",
+				placeholder: "Updated answer option",
+				max_length: 200,
+				class: "form-control",
+			},
+		},
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
+
+	let loading_signal = edit_form.loading().clone();
+	let error_signal = edit_form.error().clone();
+	let form_view = edit_form.into_page();
+
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Edit Choice"
+			}
+			watch {
+				if error_signal.get().is_some() {
+					div {
+						class: "alert-danger mb-3",
+						{ error_signal.get().unwrap_or_default() }
+					}
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				watch {
+					if loading_signal.get() {
+						button {
+							type: "submit",
+							class: "btn-primary opacity-50 cursor-not-allowed",
+							disabled: true,
+							form: "edit-choice-form",
+							"Saving..."
+						}
+					} else {
+						button {
+							type: "submit",
+							class: "btn-primary",
+							form: "edit-choice-form",
+							"Save"
+						}
+					}
+				}
+				a {
+					href: "/",
+					class: "btn-secondary ml-2",
+					"Cancel"
+				}
+			}
+		}
+	})(loading_signal, error_signal, form_view)
+}
+
+/// Delete-choice confirmation page (`/polls/choices/{choice_id}/delete/`).
+pub fn choice_delete_confirm(choice_id: i64) -> Page {
+	let cid_str = choice_id.to_string();
+
+	let delete_form = form! {
+		name: DeleteChoiceForm,
+		server_fn: delete_choice,
+		method: Post,
+		state: { loading, error },
+		redirect_on_success: "/",
+
+		fields: {
+			choice_id: HiddenField {
+				initial: cid_str,
+			},
+		},
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
+
+	let loading_signal = delete_form.loading().clone();
+	let error_signal = delete_form.error().clone();
+	let form_view = delete_form.into_page();
+
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Delete Choice?"
+			}
+			p {
+				class: "mb-3",
+				"This action cannot be undone."
+			}
+			watch {
+				if error_signal.get().is_some() {
+					div {
+						class: "alert-danger mt-3",
+						{ error_signal.get().unwrap_or_default() }
+					}
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				watch {
+					if loading_signal.get() {
+						button {
+							type: "submit",
+							class: "btn-primary opacity-50 cursor-not-allowed",
+							disabled: true,
+							form: "delete-choice-form",
+							"Deleting..."
+						}
+					} else {
+						button {
+							type: "submit",
+							class: "btn-primary bg-red-600 hover:bg-red-700",
+							form: "delete-choice-form",
+							"Delete"
+						}
+					}
+				}
+				a {
+					href: "/",
+					class: "btn-secondary ml-2",
+					"Cancel"
+				}
+			}
+		}
+	})(loading_signal, error_signal, form_view)
 }
