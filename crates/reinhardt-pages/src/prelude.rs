@@ -193,7 +193,5 @@ pub use crate::platform::{defer_yield, spawn_task};
 /// **Deprecated**: this is a thin re-export from `wasm_bindgen_futures`. Use
 /// [`spawn_task`] instead, which works on both WASM and native targets.
 #[cfg(wasm)]
-#[deprecated(
-	note = "use `spawn_task` from `reinhardt_pages::prelude` (cross-target) instead"
-)]
+#[deprecated(note = "use `spawn_task` from `reinhardt_pages::prelude` (cross-target) instead")]
 pub use wasm_bindgen_futures::spawn_local;

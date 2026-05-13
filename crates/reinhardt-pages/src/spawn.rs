@@ -12,9 +12,7 @@
 use std::future::Future;
 
 /// Deprecated alias for [`crate::platform::spawn_task`].
-#[deprecated(
-	note = "use `reinhardt_pages::platform::spawn_task` (or the prelude) instead"
-)]
+#[deprecated(note = "use `reinhardt_pages::platform::spawn_task` (or the prelude) instead")]
 pub fn spawn_task<F>(fut: F)
 where
 	F: Future<Output = ()> + 'static,
@@ -23,9 +21,7 @@ where
 }
 
 /// Deprecated alias for [`crate::platform::defer_yield`].
-#[deprecated(
-	note = "use `reinhardt_pages::platform::defer_yield` (or the prelude) instead"
-)]
+#[deprecated(note = "use `reinhardt_pages::platform::defer_yield` (or the prelude) instead")]
 pub async fn defer_yield() {
 	crate::platform::defer_yield().await
 }
