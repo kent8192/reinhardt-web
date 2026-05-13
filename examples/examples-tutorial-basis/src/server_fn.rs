@@ -4,3 +4,4 @@
 //! Server functions are compiled for both WASM (client stubs) and server (actual implementation).
 
 pub mod polls;
+pub mod users;

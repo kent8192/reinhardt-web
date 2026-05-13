@@ -19,3 +19,13 @@ pub fn polls_detail_page(question_id: i64) -> Page {
 pub fn polls_results_page(question_id: i64) -> Page {
 	crate::client::components::polls::polls_results(question_id)
 }
+
+/// Login page - Username + password form
+pub fn login_page() -> Page {
+	crate::client::components::users::login_form()
+}
+
+/// Logout page - Single-button session termination
+pub fn logout_page() -> Page {
+	crate::client::components::users::logout_form()
+}

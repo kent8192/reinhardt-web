@@ -6,6 +6,26 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// User information (DTO)
+///
+/// Returned by the authentication server functions. Mirrors the public-facing
+/// subset of `apps::users::models::User`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInfo {
+	pub id: i64,
+	pub username: String,
+	pub is_active: bool,
+}
+
+/// Login request (DTO)
+///
+/// Sent from the WASM client to the server when submitting the login form.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginRequest {
+	pub username: String,
+	pub password: String,
+}
+
 /// Question information (DTO)
 ///
 /// This is a Data Transfer Object that represents a poll question.
@@ -48,6 +68,17 @@ impl From<crate::apps::polls::models::Question> for QuestionInfo {
 			id: question.id(),
 			question_text: question.question_text().to_string(),
 			pub_date: question.pub_date(),
+		}
+	}
+}
+
+#[cfg(native)]
+impl From<crate::apps::users::models::User> for UserInfo {
+	fn from(user: crate::apps::users::models::User) -> Self {
+		UserInfo {
+			id: user.id(),
+			username: user.username().to_string(),
+			is_active: user.is_active(),
 		}
 	}
 }
