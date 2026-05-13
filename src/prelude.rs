@@ -15,13 +15,13 @@
 /// generated `src/config/urls.rs`, which must compile on
 /// `wasm32-unknown-unknown` so wasm SPA consumers can `cargo check --lib`
 /// without modifying the scaffolded sources.
-#[cfg(all(not(native), target_family = "wasm"))]
+#[cfg(wasm)]
 mod wasm {
 	#[cfg(feature = "client-router")]
 	pub use crate::urls::prelude::UnifiedRouter;
 }
 
-#[cfg(all(not(native), target_family = "wasm"))]
+#[cfg(wasm)]
 pub use wasm::*;
 
 /// Convenience re-exports of commonly used types (server-side only).

@@ -61,21 +61,36 @@
 //! The crate is organised into layered facade boundaries to confine `#[cfg]`
 //! boilerplate:
 //!
-//! - [`exports`] — public re-export aggregation (cross-target / native / wasm / macros)
+//! - `exports` (internal) — public re-export aggregation (cross-target /
+//!   native / wasm / macros), surfaced via `pub use exports::*;` at the
+//!   crate root
 //! - [`prelude`] — convenience re-exports for `use reinhardt::prelude::*;`
-//! - [`compat`] — wasm-only shims for native-only crates (`reinhardt-apps`, `urls`, websockets)
+//! - `compat` (internal, wasm-only) — shims that re-route macro-generated
+//!   paths like `::reinhardt::reinhardt_apps`, `::reinhardt::urls`, and
+//!   `::reinhardt::WebSocketRouter` on browser-WASM targets where the
+//!   corresponding native-only crates (or their feature-gated preludes)
+//!   are not available
 //!
 //! The crate root performs `pub use exports::*;` so the historical public API
-//! paths remain unchanged.
+//! paths remain unchanged. Both `exports` and `compat` are intentionally
+//! hidden from rustdoc and should not be referenced as
+//! `reinhardt::exports::*` / `reinhardt::compat::*` from downstream code.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 // --- Layered facade -------------------------------------------------------
+//
+// `exports` and `compat` stay `pub` so that re-exports such as
+// `pub use exports::*;` and `pub use compat::apps as reinhardt_apps;` resolve
+// without visibility downgrades, but they are flagged `#[doc(hidden)]` so the
+// only supported public surface is the crate root (and `prelude`).
 
+#[doc(hidden)]
 pub mod exports;
 pub mod prelude;
 
 #[cfg(not(native))]
+#[doc(hidden)]
 pub mod compat;
 
 pub use exports::*;
