@@ -2,15 +2,15 @@
 //!
 //! This module is split by responsibility:
 //!
-//! - [`view_set_handler`] — `ViewSetHandler`: HTTP-method-to-action mapping
+//! - `view_set_handler` — `ViewSetHandler`: HTTP-method-to-action mapping
 //!   and dispatch to a [`crate::ViewSet`], including DRF-compatible
 //!   `kwargs`/`args` attribute handling and `405 Method Not Allowed`
 //!   response shaping with a populated `Allow` header.
-//! - [`model_view_set_handler`] — `ModelViewSetHandler`: Django REST
+//! - `model_view_set_handler` — `ModelViewSetHandler`: Django REST
 //!   Framework-style CRUD handler (list / retrieve / create / update /
 //!   destroy) with permission checks, optional pagination, and response
 //!   rendering.
-//! - [`error`] — `ViewError` and its conversion into
+//! - `error` — `ViewError` and its conversion into
 //!   `reinhardt_core::exception::Error`.
 //!
 //! The public surface (`ViewSetHandler`, `ModelViewSetHandler`,
