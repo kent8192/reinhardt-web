@@ -13,7 +13,6 @@ use std::future::Future;
 
 /// Deprecated alias for [`crate::platform::spawn_task`].
 #[deprecated(
-	since = "0.1.0-rc.29",
 	note = "use `reinhardt_pages::platform::spawn_task` (or the prelude) instead"
 )]
 pub fn spawn_task<F>(fut: F)
@@ -25,7 +24,6 @@ where
 
 /// Deprecated alias for [`crate::platform::defer_yield`].
 #[deprecated(
-	since = "0.1.0-rc.29",
 	note = "use `reinhardt_pages::platform::defer_yield` (or the prelude) instead"
 )]
 pub async fn defer_yield() {
