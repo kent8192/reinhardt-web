@@ -12,9 +12,14 @@
 
 use reinhardt::UnifiedRouter;
 #[cfg(native)]
+use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
+#[cfg(native)]
 use reinhardt::pages::server_fn::ServerFnRouterExt;
 #[cfg(native)]
 use reinhardt::routes;
+
+#[cfg(native)]
+use crate::config::admin::configure_admin;
 
 // Import server_fn marker modules (snake_case + ::marker)
 #[cfg(native)]
@@ -64,6 +69,20 @@ pub fn routes() -> UnifiedRouter {
 	// directly by `ClientLauncher::router_client(...)` in `client/lib.rs`.
 	#[cfg(wasm)]
 	let router = UnifiedRouter::new();
+
+	// Mount the auto-generated admin panel at /admin/ (server-only).
+	// `admin_routes_with_di` returns both the router and a DI registration
+	// list that lazily provides `AdminDatabase` to admin handlers from the
+	// project's `DatabaseConnection`.
+	#[cfg(native)]
+	let router = {
+		let admin_site = std::sync::Arc::new(configure_admin());
+		let (admin_router, admin_di) = admin_routes_with_di(admin_site);
+		router
+			.mount("/admin/", admin_router)
+			.mount("/static/admin/", admin_static_routes())
+			.with_di_registrations(admin_di)
+	};
 
 	#[cfg(native)]
 	let router = router.with_middleware(create_session_middleware());
