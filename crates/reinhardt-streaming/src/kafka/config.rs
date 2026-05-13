@@ -22,7 +22,7 @@ pub struct KafkaConfig {
 	/// indefinitely. Setting `Some(_)` is most useful in tests that must
 	/// surface a transport failure (e.g. unreachable brokers) within a known
 	/// budget instead of waiting for the test harness timeout.
-	pub backoff_deadline: Option<Duration>,
+	pub(crate) backoff_deadline: Option<Duration>,
 }
 
 impl KafkaConfig {
