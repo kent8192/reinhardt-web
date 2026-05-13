@@ -101,6 +101,10 @@ pub struct TypedFormMacro {
 	/// Validated to start with `/` or be a valid URL pattern.
 	/// Supports parameter expansion with `{param}` syntax.
 	pub redirect_on_success: Option<String>,
+	/// Validated redirect URL expression on successful form submission
+	///
+	/// Holds the expression form (`Option<syn::Expr>`) that is emitted directly into the
+	/// generated code, used when the redirect target is computed at runtime.
 	pub success_url: Option<syn::Expr>,
 	/// Initial value loader server_fn
 	///
@@ -530,6 +534,10 @@ pub struct TypedFormFieldDef {
 	///
 	/// Maps this field to a property in the data returned by `initial_loader`.
 	pub initial_from: Option<String>,
+	/// Initial value expression for the field's `Signal::new(...)`
+	///
+	/// When `initial: <expr>` is specified on a field, this holds the user-provided
+	/// expression that overrides the type's default value (issue #4386).
 	pub initial_expr: Option<syn::Expr>,
 	/// Dynamic choices configuration for `ChoiceField`
 	///
