@@ -569,6 +569,16 @@ impl ClientRouter {
 		&self.current_route_name
 	}
 
+	/// Returns an iterator over registered route patterns and their optional names.
+	///
+	/// Each item is `(pattern_str, name)` where `name` is `Some` for named routes.
+	/// Intended for diagnostic output (e.g., the `runserver` startup banner).
+	pub fn route_patterns(&self) -> impl Iterator<Item = (&str, Option<&str>)> {
+		self.routes
+			.iter()
+			.map(|r| (r.pattern.pattern(), r.name.as_deref()))
+	}
+
 	/// Matches a path against registered routes.
 	pub fn match_path(&self, path: &str) -> Option<ClientRouteMatch> {
 		for route in &self.routes {
