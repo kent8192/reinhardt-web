@@ -1152,10 +1152,10 @@ fn extract_initial_from(properties: &[FormFieldProperty]) -> Option<String> {
 /// default (issue #4386).
 fn extract_initial_expr(properties: &[FormFieldProperty]) -> Option<syn::Expr> {
 	for prop in properties {
-		if let FormFieldProperty::Named { name, value, .. } = prop {
-			if name == "initial" {
-				return Some(value.clone());
-			}
+		if let FormFieldProperty::Named { name, value, .. } = prop
+			&& name == "initial"
+		{
+			return Some(value.clone());
 		}
 	}
 	None
