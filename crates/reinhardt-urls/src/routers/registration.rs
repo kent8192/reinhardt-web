@@ -272,3 +272,21 @@ impl UrlPatternsRegistration {
 
 // Collect registrations for runtime iteration
 inventory::collect!(UrlPatternsRegistration);
+
+/// Returns an iterator over all registered [`UrlPatternsRegistration`] entries.
+///
+/// Each registration corresponds to one `#[routes]`-annotated function in the
+/// application. Useful for diagnostic commands (e.g., `runserver` startup banner)
+/// that enumerate registered routers without executing them.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_urls::routers::registration::iter_registered_url_patterns;
+///
+/// let count = iter_registered_url_patterns().count();
+/// println!("registered routers: {count}");
+/// ```
+pub fn iter_registered_url_patterns() -> impl Iterator<Item = &'static UrlPatternsRegistration> {
+	inventory::iter::<UrlPatternsRegistration>()
+}
