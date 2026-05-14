@@ -102,6 +102,10 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	// Generate field initializers
 	let field_inits = generate_field_initializers(&macro_ast.fields, pages_crate);
 
+	// Generate outer-scope assignments for fields with `initial: <expr>` so the
+	// expression is evaluated where its captured locals are visible (#4420).
+	let initial_outer_setup = generate_initial_outer_setup(&macro_ast.fields, pages_crate);
+
 	// Generate state field initializers
 	let state_inits = generate_state_initializers(&effective_state, pages_crate);
 
@@ -187,8 +191,10 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 
 			// Build the form instance and bind user-supplied watch handlers in
 			// the outer scope, where enclosing-scope locals are visible. This is
-			// what makes `watch:` handlers behave as real closures (issue #4414).
+			// what makes `watch:` handlers behave as real closures (issue #4414)
+			// and what makes `initial: <expr>` capture outer locals (issue #4420).
 			let mut __reinhardt_form = #struct_name::new();
+			#initial_outer_setup
 			#watch_outer_setup
 			__reinhardt_form
 		}
@@ -238,14 +244,18 @@ fn generate_field_initializers(
 	pages_crate: &TokenStream,
 ) -> TokenStream {
 	let fields = collect_all_fields(entries);
+	// `new()` is a `fn` item, so any `initial: <expr>` referencing enclosing-scope
+	// locals fails to compile with `E0434: can't capture dynamic environment in
+	// a fn item` (issue #4420). To preserve closure-like capture semantics for
+	// `initial:` expressions, `new()` always seeds fields with the field type's
+	// default value here; the user-supplied `initial:` expression is evaluated
+	// later in the outer block (where its locals are visible) via
+	// `generate_initial_outer_setup`, which re-assigns the corresponding Signal.
 	let mut inits: Vec<TokenStream> = fields
 		.iter()
 		.map(|field| {
 			let name = &field.name;
-			let init = match &field.initial_expr {
-				Some(expr) => quote! { ::std::convert::Into::into(#expr) },
-				None => field_type_default_value(&field.field_type),
-			};
+			let init = field_type_default_value(&field.field_type);
 			quote! {
 				#name: #pages_crate::reactive::Signal::new(#init),
 			}
@@ -270,6 +280,36 @@ fn generate_field_initializers(
 
 	inits.extend(choices_inits);
 	quote! { #(#inits)* }
+}
+
+/// Generates outer-scope assignments for fields that declared `initial: <expr>`.
+///
+/// The user's `<expr>` is emitted lexically inside the same block as the
+/// `form!` invocation (after `let mut __reinhardt_form = FormName::new();`),
+/// so it can capture enclosing-function locals like any normal closure body.
+/// Each assignment replaces the field's default-seeded Signal with one that
+/// holds the user-supplied value. Because the form was just constructed and
+/// has no subscribers yet, replacing the Signal is observably identical to
+/// constructing it with that value in `new()` — only the scope at which the
+/// expression is evaluated changes (issue #4420).
+fn generate_initial_outer_setup(
+	entries: &[TypedFormFieldEntry],
+	pages_crate: &TokenStream,
+) -> TokenStream {
+	let fields = collect_all_fields(entries);
+	let assigns: Vec<TokenStream> = fields
+		.iter()
+		.filter_map(|field| {
+			let expr = field.initial_expr.as_ref()?;
+			let name = &field.name;
+			Some(quote! {
+				__reinhardt_form.#name = #pages_crate::reactive::Signal::new(
+					::std::convert::Into::into(#expr),
+				);
+			})
+		})
+		.collect();
+	quote! { #(#assigns)* }
 }
 
 /// Generates field accessor methods.
@@ -565,11 +605,26 @@ fn generate_watch_artifacts(
 		// user closure are moved/copied into the outer `move` closure's
 		// environment, and the user closure then borrows from those owned
 		// captures rather than from the surrounding stack frame.
+		//
+		// The user closure is funneled through a local `__coerce` identity
+		// function whose `where`-bound forces its parameter type to
+		// `&#struct_name`. Without this, the user's `|form| { form.method() }`
+		// fails with `E0282: type annotations needed` because Rust type-checks
+		// the closure body before learning the eventual call site's argument
+		// type. The local fn item can name `#struct_name` (types from the
+		// enclosing block are visible to fn items) but does not capture
+		// values, so it does not reintroduce the original `E0434` (#4420).
 		outer_setup.push(quote! {
 			{
 				let __wrapped: #handler_ty = ::std::sync::Arc::new(
 					move |__f: &#struct_name| -> #pages_crate::component::Page {
-						let __user_watch_handler = #closure;
+						fn __coerce<__F, __R>(__f: __F) -> __F
+						where
+							__F: ::core::ops::Fn(&#struct_name) -> __R,
+						{
+							__f
+						}
+						let __user_watch_handler = __coerce(#closure);
 						#pages_crate::component::IntoPage::into_page(
 							__user_watch_handler(__f),
 						)
