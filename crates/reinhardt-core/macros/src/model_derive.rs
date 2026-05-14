@@ -4137,16 +4137,18 @@ fn generate_build_function(
 		// keyword (e.g. `type`, `match`). Strip a leading `r#` defensively in
 		// case the source identifier was a raw ident (`Ident::new_raw`
 		// expects the bare name without the prefix). Reserved identifiers
-		// that even `new_raw` rejects (`self`, `Self`, `super`, `crate`,
-		// `extern`) are surfaced as a clear macro error rather than the
-		// underlying panic from `proc_macro2`.
+		// that even `new_raw` rejects (`self`, `Self`, `super`, `crate`)
+		// are surfaced as a clear macro error rather than the underlying
+		// panic from `proc_macro2`. Note: `extern` is a keyword but IS
+		// permitted as a raw identifier (`r#extern`), so it is excluded
+		// from this set.
 		let setter_name = match fk_field_info {
 			Some(info) => info.name.clone(),
 			None => {
 				let bare = fk_field_name
 					.strip_prefix("r#")
 					.unwrap_or(fk_field_name.as_str());
-				if matches!(bare, "self" | "Self" | "super" | "crate" | "extern") {
+				if matches!(bare, "self" | "Self" | "super" | "crate") {
 					return syn::Error::new(
 						fk_id_name.span(),
 						format!(
