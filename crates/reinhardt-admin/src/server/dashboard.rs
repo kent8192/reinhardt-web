@@ -3,6 +3,7 @@
 //! Provides dashboard data retrieval functionality.
 
 use crate::adapters::{AdminSite, DashboardResponse, ModelInfo};
+#[cfg(server)]
 use reinhardt_di::Depends;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
