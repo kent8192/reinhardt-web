@@ -2064,6 +2064,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	// Generate new() constructor function
 	let new_fn_impl = generate_new_function(struct_name, &field_infos, &fk_id_field_names);
 
+	// Generate typestate build() builder (non-breaking addition alongside new()).
+	// See issue #4400.
+	let build_fn_impl = generate_build_function(struct_name, &field_infos, &fk_id_field_names);
+
 	// Generate getter/setter methods
 	let getters = generate_getter_methods(struct_name, &field_infos);
 	let setters = generate_setter_methods(struct_name, &field_infos);
@@ -2096,6 +2100,9 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 		// Generate new() constructor function
 		#new_fn_impl
+
+		// Generate typestate build() builder (non-breaking addition, see #4400)
+		#build_fn_impl
 
 		// Generate getter methods for all fields
 		#getters
@@ -3956,6 +3963,461 @@ fn generate_new_function(
 			#where_clause
 			{
 				Self {
+					#(#user_field_assignments,)*
+					#(#fk_id_assignments,)*
+					#(#fk_field_assignments,)*
+					#(#auto_field_assignments,)*
+				}
+			}
+		}
+	}
+}
+
+/// Generate the typestate `build()` builder for the model.
+///
+/// This is a non-breaking addition that lives **alongside** the positional
+/// `new()` constructor. Adding a new required field to a model only adds a
+/// new builder setter — every existing `build().setter().finish()` call site
+/// keeps compiling. See issue #4400 for the full motivation.
+///
+/// # Generated API
+///
+/// For a model with required fields `f1: T1`, `f2: T2`, …, `fN: TN` this
+/// function emits:
+///
+/// - A marker pair `<StructName>BuilderSet` / `<StructName>BuilderUnset` to
+///   track per-field set/unset state at the type level.
+/// - A struct `<StructName>Builder<S1, …, SN>` that stores the so-far-supplied
+///   values in `Option<Ti>` slots and carries `PhantomData<(S1, …, SN)>`.
+/// - One `impl` block per required field that provides the setter, transitioning
+///   that field's state from `Unset` to `Set` in the type parameter list.
+/// - A single `impl <StructName>Builder<Set, …, Set>` block with `finish()` that
+///   constructs `Self` exactly like the positional `new()` does.
+/// - A `pub fn build() -> <StructName>Builder<Unset, …, Unset>` entry point on
+///   the model.
+///
+/// FK setters accept any `IntoPrimaryKey<Related>` value — the same flexibility
+/// the positional `new()` already offered — so callers can pass `&user`
+/// (the FK shortcut from #4398) or a raw primary-key value.
+///
+/// Auto-generated fields (`auto_now_add`, integer/UUID primary keys, FK relation
+/// fields, etc.) and fields with `include_in_new = false` are filled in by
+/// `finish()` using the same defaults as `new()` — they require no setter.
+fn generate_build_function(
+	struct_name: &syn::Ident,
+	field_infos: &[FieldInfo],
+	fk_id_field_names: &[syn::Ident],
+) -> TokenStream {
+	let orm_crate = get_reinhardt_orm_crate();
+
+	// Partition fields exactly as generate_new_function does so the builder's
+	// finish() body mirrors new()'s body.
+	let user_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|f| !is_auto_generated_field(f))
+		.collect();
+
+	let auto_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|f| is_auto_generated_field(f))
+		.collect();
+
+	// Map of `*_id` (in field_infos / fk_id_field_names) -> related FK field name
+	// (the model-typed field, e.g. `room_id` -> `room`). Mirrors new()'s logic.
+	let fk_id_to_fk_field: HashMap<String, String> = fk_id_field_names
+		.iter()
+		.filter_map(|id_name| {
+			let id_str = id_name.to_string();
+			if id_str.ends_with("_id") {
+				let fk_name = id_str.trim_end_matches("_id").to_string();
+				Some((id_str, fk_name))
+			} else {
+				None
+			}
+		})
+		.collect();
+
+	// Classify each required (user-facing) field into one of three setter shapes.
+	// `Type` is large (~240 bytes via `syn`), so the FK variant boxes it to keep
+	// `SetterKind` compact and satisfy `clippy::large_enum_variant`.
+	enum SetterKind {
+		/// FK `*_id` field. Setter name is the related FK field (e.g. `author`)
+		/// and accepts `impl IntoPrimaryKey<Related>` to mirror new().
+		ForeignKey {
+			related_type: Box<Type>,
+			setter_name: syn::Ident,
+		},
+		/// `String` field. Setter accepts `impl Into<String>` for ergonomics.
+		String,
+		/// Plain field. Setter accepts the exact declared type.
+		Plain,
+	}
+
+	struct Required<'a> {
+		/// The struct field name as stored in the model itself (e.g. `author_id`
+		/// for FKs, `question_text` otherwise).
+		storage_name: syn::Ident,
+		/// The struct field type as stored in the model itself.
+		storage_ty: &'a Type,
+		/// Setter shape — controls the setter signature and finish() expression.
+		kind: SetterKind,
+	}
+
+	let mut required: Vec<Required> = Vec::with_capacity(user_fields.len());
+	for f in user_fields.iter() {
+		let name_str = f.name.to_string();
+		if let Some(fk_field_name) = fk_id_to_fk_field.get(&name_str) {
+			// FK `*_id` field. Look up the related model type from the FK field.
+			let fk_field_info = field_infos.iter().find(|fi| fi.name == *fk_field_name);
+			let related_type = match fk_field_info {
+				Some(info) => extract_foreign_key_target_type(&info.ty),
+				// Defensive fallback: keep the stored type. This branch is not
+				// expected because new() establishes the same mapping.
+				None => f.ty.clone(),
+			};
+			let setter_name = syn::Ident::new(fk_field_name, f.name.span());
+			required.push(Required {
+				storage_name: f.name.clone(),
+				storage_ty: &f.ty,
+				kind: SetterKind::ForeignKey {
+					related_type: Box::new(related_type),
+					setter_name,
+				},
+			});
+		} else if is_string_type(&f.ty) && !extract_option_type(&f.ty).0 {
+			required.push(Required {
+				storage_name: f.name.clone(),
+				storage_ty: &f.ty,
+				kind: SetterKind::String,
+			});
+		} else {
+			required.push(Required {
+				storage_name: f.name.clone(),
+				storage_ty: &f.ty,
+				kind: SetterKind::Plain,
+			});
+		}
+	}
+
+	// Type names for the per-model builder + markers.
+	let builder_name = syn::Ident::new(&format!("{}Builder", struct_name), struct_name.span());
+	let set_marker = syn::Ident::new(&format!("{}BuilderSet", struct_name), struct_name.span());
+	let unset_marker = syn::Ident::new(&format!("{}BuilderUnset", struct_name), struct_name.span());
+
+	// Per-field type parameter idents `B0, B1, …` used in the builder's signature.
+	let state_params: Vec<syn::Ident> = (0..required.len())
+		.map(|i| syn::Ident::new(&format!("B{}", i), struct_name.span()))
+		.collect();
+
+	// Builder struct fields: one Option<StorageTy> per required field, plus the
+	// PhantomData state marker.
+	let builder_struct_fields: Vec<TokenStream> = required
+		.iter()
+		.map(|r| {
+			let name = &r.storage_name;
+			let ty = r.storage_ty;
+			quote! { #name: ::std::option::Option<#ty> }
+		})
+		.collect();
+
+	// `build()` initializer: every slot starts as `None`, every state slot as `Unset`.
+	let init_struct_field_assignments: Vec<TokenStream> = required
+		.iter()
+		.map(|r| {
+			let name = &r.storage_name;
+			quote! { #name: ::std::option::Option::None }
+		})
+		.collect();
+
+	// Per-field setter impl blocks. Each one transitions exactly one type slot
+	// from `Unset` to `Set` while leaving the others polymorphic.
+	let mut setter_impls: Vec<TokenStream> = Vec::with_capacity(required.len());
+	for (idx, r) in required.iter().enumerate() {
+		// Generic state parameters EXCLUDING the one being transitioned. The
+		// transitioned slot is concretely `Unset` on the input and `Set` on the
+		// output.
+		let other_params: Vec<&syn::Ident> = state_params
+			.iter()
+			.enumerate()
+			.filter_map(|(i, p)| if i == idx { None } else { Some(p) })
+			.collect();
+
+		// Input state list (this slot = Unset, others = generic).
+		let input_states: Vec<TokenStream> = state_params
+			.iter()
+			.enumerate()
+			.map(|(i, p)| {
+				if i == idx {
+					quote! { #unset_marker }
+				} else {
+					quote! { #p }
+				}
+			})
+			.collect();
+
+		// Output state list (this slot = Set, others = generic).
+		let output_states: Vec<TokenStream> = state_params
+			.iter()
+			.enumerate()
+			.map(|(i, p)| {
+				if i == idx {
+					quote! { #set_marker }
+				} else {
+					quote! { #p }
+				}
+			})
+			.collect();
+
+		// Field copy expressions for moving non-transitioned slots into the new
+		// builder. The transitioned slot is replaced by the supplied value.
+		let copy_fields: Vec<TokenStream> = required
+			.iter()
+			.enumerate()
+			.map(|(i, other)| {
+				let n = &other.storage_name;
+				if i == idx {
+					quote! {}
+				} else {
+					quote! { #n: self.#n, }
+				}
+			})
+			.collect();
+
+		let storage_name = &r.storage_name;
+		let storage_ty = r.storage_ty;
+
+		// Setter signature + body depend on the field kind.
+		let (setter_sig, value_expr): (TokenStream, TokenStream) = match &r.kind {
+			SetterKind::ForeignKey {
+				related_type,
+				setter_name,
+			} => {
+				// Setter named after the related FK field, accepting any
+				// IntoPrimaryKey<Related>. This composes with #4398 — callers
+				// can pass `&user` directly without manually extracting the PK.
+				let sig = quote! {
+					/// Set the foreign-key reference for this required field.
+					///
+					/// Accepts any `IntoPrimaryKey<Related>` — pass either the
+					/// related model (e.g. `&user`) or a raw primary-key value.
+					/// Transitions this slot from `Unset` to `Set` in the
+					/// builder's type-state.
+					pub fn #setter_name<__FkArg>(self, value: __FkArg)
+						-> #builder_name<#(#output_states),*>
+					where
+						__FkArg: #orm_crate::IntoPrimaryKey<#related_type>,
+				};
+				let expr = quote! { value.into_primary_key() };
+				(sig, expr)
+			}
+			SetterKind::String => {
+				// Setter for `String` field, accepting `impl Into<String>`.
+				let sig = quote! {
+					/// Set this required `String` field.
+					///
+					/// Accepts any `impl Into<String>` (e.g. `&str`, `String`,
+					/// `Cow<'_, str>`). Transitions this slot from `Unset` to
+					/// `Set` in the builder's type-state.
+					pub fn #storage_name<__StrArg>(self, value: __StrArg)
+						-> #builder_name<#(#output_states),*>
+					where
+						__StrArg: ::std::convert::Into<::std::string::String>,
+				};
+				let expr = quote! { value.into() };
+				(sig, expr)
+			}
+			SetterKind::Plain => {
+				// Plain setter using the declared field type.
+				let sig = quote! {
+					/// Set this required field.
+					///
+					/// Transitions this slot from `Unset` to `Set` in the
+					/// builder's type-state.
+					pub fn #storage_name(self, value: #storage_ty)
+						-> #builder_name<#(#output_states),*>
+				};
+				let expr = quote! { value };
+				(sig, expr)
+			}
+		};
+
+		let other_param_list = if other_params.is_empty() {
+			quote! {}
+		} else {
+			quote! { <#(#other_params),*> }
+		};
+
+		setter_impls.push(quote! {
+			impl #other_param_list #builder_name<#(#input_states),*> {
+				#setter_sig
+				{
+					#builder_name {
+						#(#copy_fields)*
+						#storage_name: ::std::option::Option::Some(#value_expr),
+						__state: ::std::marker::PhantomData,
+					}
+				}
+			}
+		});
+	}
+
+	// finish() body. Mirrors the assignment layout used by generate_new_function:
+	// user fields → FK `*_id` fields → FK relation defaults → auto-generated fields.
+
+	// FK id field names by raw string (matches new()).
+	let fk_id_field_names_set: std::collections::HashSet<String> =
+		fk_id_to_fk_field.keys().cloned().collect();
+	let fk_field_names: std::collections::HashSet<String> =
+		fk_id_to_fk_field.values().cloned().collect();
+
+	// User field assignments (non-FK regular fields). Pull from the builder's
+	// `Option` slot — type-state guarantees `Some`.
+	let user_field_assignments: Vec<TokenStream> = user_fields
+		.iter()
+		.filter(|f| {
+			!fk_field_names.contains(&f.name.to_string())
+				&& !fk_id_field_names_set.contains(&f.name.to_string())
+		})
+		.map(|f| {
+			let name = &f.name;
+			quote! {
+				#name: self
+					.#name
+					.expect(concat!(
+						"build() typestate guarantees ",
+						stringify!(#name),
+						" is set before finish() is callable"
+					))
+			}
+		})
+		.collect();
+
+	// FK `*_id` assignments. The value was stored under the `*_id` name when
+	// the user called the related-field setter.
+	let fk_id_assignments: Vec<TokenStream> = fk_id_field_names
+		.iter()
+		.map(|fk_id_name| {
+			let name = fk_id_name.clone();
+			quote! {
+				#name: self
+					.#name
+					.expect(concat!(
+						"build() typestate guarantees ",
+						stringify!(#name),
+						" is set before finish() is callable"
+					))
+			}
+		})
+		.collect();
+
+	// FK relation fields (the `ForeignKeyField<T>` themselves) — default-init,
+	// same as new().
+	let fk_field_assignments: Vec<TokenStream> = fk_id_to_fk_field
+		.values()
+		.map(|fk_name_str| {
+			let fk_name = syn::Ident::new(fk_name_str, proc_macro2::Span::call_site());
+			quote! { #fk_name: ::std::default::Default::default() }
+		})
+		.collect();
+
+	// Auto-generated fields (timestamps, UUID/integer PKs, identity, generated,
+	// skipped, etc.) — use the exact same default expressions as new().
+	let auto_field_assignments: Vec<TokenStream> = auto_fields
+		.iter()
+		.filter(|f| {
+			!fk_field_names.contains(&f.name.to_string())
+				&& !fk_id_field_names_set.contains(&f.name.to_string())
+		})
+		.map(|f| {
+			let name = &f.name;
+			let default_value = get_auto_field_default_value(f);
+			quote! { #name: #default_value }
+		})
+		.collect();
+
+	// All-Set state list for the finish() impl bound.
+	let all_set_states: Vec<TokenStream> = state_params
+		.iter()
+		.map(|_| quote! { #set_marker })
+		.collect();
+
+	// State parameter list for the builder struct + the initial-Unset list for
+	// build().
+	let state_param_list = if state_params.is_empty() {
+		quote! {}
+	} else {
+		quote! { <#(#state_params),*> }
+	};
+	let initial_unset_states: Vec<TokenStream> = state_params
+		.iter()
+		.map(|_| quote! { #unset_marker })
+		.collect();
+
+	// The PhantomData tuple type and field expression. Unit tuple (`()`) when
+	// there are no required fields, so the model still gets a usable builder.
+	let phantom_tuple_ty = if state_params.is_empty() {
+		quote! { () }
+	} else {
+		quote! { ( #(#state_params,)* ) }
+	};
+
+	// Suppress dead_code warnings for builders generated for models that never
+	// gain a required field — the markers and Option slots exist for type-state
+	// shape consistency.
+	let allow_dead = quote! { #[allow(dead_code)] };
+
+	quote! {
+		/// Type-state marker: the corresponding builder slot has been provided.
+		#allow_dead
+		pub struct #set_marker;
+
+		/// Type-state marker: the corresponding builder slot is still missing.
+		///
+		/// `finish()` is only implemented when every slot is `#set_marker`, so
+		/// calling `finish()` with any remaining `#unset_marker` slot is a
+		/// compile error.
+		#allow_dead
+		pub struct #unset_marker;
+
+		/// Typestate builder for [`#struct_name`] (issue #4400).
+		///
+		/// Construct via [`#struct_name::build`]; each required-field setter
+		/// transitions exactly one `Unset` slot to `Set`. `finish()` is only
+		/// available when every required slot is `Set`, so omitting a required
+		/// field is a compile-time error.
+		#allow_dead
+		pub struct #builder_name #state_param_list {
+			#(#builder_struct_fields,)*
+			__state: ::std::marker::PhantomData<#phantom_tuple_ty>,
+		}
+
+		impl #struct_name {
+			/// Begin constructing a [`#struct_name`] via the typestate builder.
+			///
+			/// Adding a new required field to this model becomes a non-breaking
+			/// change for every caller that uses `build()` — the new field is
+			/// surfaced as a new setter rather than a new positional parameter.
+			///
+			/// The positional [`Self::new`] constructor remains available and
+			/// unchanged for callers that want the compact form.
+			pub fn build() -> #builder_name<#(#initial_unset_states),*> {
+				#builder_name {
+					#(#init_struct_field_assignments,)*
+					__state: ::std::marker::PhantomData,
+				}
+			}
+		}
+
+		#(#setter_impls)*
+
+		impl #builder_name<#(#all_set_states),*> {
+			/// Finalize the builder and construct the model instance.
+			///
+			/// Auto-generated fields (`auto_now_add` timestamps, UUID / integer
+			/// primary keys, identity columns, FK relation fields, etc.) are
+			/// initialized exactly the same way as [`#struct_name::new`].
+			pub fn finish(self) -> #struct_name {
+				#struct_name {
 					#(#user_field_assignments,)*
 					#(#fk_id_assignments,)*
 					#(#fk_field_assignments,)*
