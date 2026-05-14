@@ -489,25 +489,24 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 					.fields
 					.into_iter()
 					.map(|field_info| {
-						let (value, values) = if let Some(ref vals) = response.values {
+						let value = if let Some(ref vals) = response.values {
 							match vals.get(&field_info.name) {
-								// Multi-valued arrays become `values`
-								Some(v) if v.is_array() => {
-									let list: Vec<String> = v
-										.as_array()
-										.map(|arr| {
-											arr.iter()
-												.filter_map(|x| x.as_str().map(|s| s.to_string()))
-												.collect()
-										})
-										.unwrap_or_default();
-									(String::new(), list)
-								}
-								Some(v) => (v.as_str().unwrap_or("").to_string(), Vec::new()),
-								None => (String::new(), Vec::new()),
+								// Multi-valued arrays are flattened to a comma-separated
+								// string until FormField regains first-class multi-value support.
+								Some(v) if v.is_array() => v
+									.as_array()
+									.map(|arr| {
+										arr.iter()
+											.filter_map(|x| x.as_str().map(str::to_string))
+											.collect::<Vec<_>>()
+											.join(", ")
+									})
+									.unwrap_or_default(),
+								Some(v) => v.as_str().unwrap_or("").to_string(),
+								None => String::new(),
 							}
 						} else {
-							(String::new(), Vec::new())
+							String::new()
 						};
 
 						FormField {
@@ -516,7 +515,6 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 							label: field_info.label,
 							required: field_info.required,
 							value,
-							values,
 						}
 					})
 					.collect();

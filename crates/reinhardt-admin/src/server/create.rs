@@ -6,6 +6,7 @@
 use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite};
 use crate::types::MutationResponse;
+#[cfg(server)]
 use reinhardt_di::Depends;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
