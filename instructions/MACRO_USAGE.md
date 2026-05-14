@@ -64,19 +64,91 @@ let person = Person {
 - Centralizing initialization through `new` keeps call sites stable as the macro evolves: when future macro versions add fields or validation, struct-literal call sites break or silently bypass the new guarantees, while `new(...)` call sites adapt automatically.
 - Today the generated `new` does not perform validation; this rule is about future-proofing and field coverage, not about a current invariant guarantee.
 
+### MU-3 (SHOULD): Prefer `Model::build()` for Forward-Compatible Call Sites
+
+Alongside the positional `Model::new(...)` constructor described in MU-2,
+`#[model(...)]` also generates a typestate builder `Model::build()` (issue
+#4400). Both entry points construct the same model; the builder trades a few
+extra characters at the call site for the property that adding a required
+field to the model becomes a **non-breaking** change for every caller that
+used `build()`.
+
+**When to prefer `build()`:**
+
+- Tutorials, examples, and long-lived application code where the model schema
+  is expected to evolve. Adding a new required field surfaces as a new setter
+  rather than a new positional parameter that breaks every caller in
+  lock-step.
+- Call sites with three or more required fields where positional arguments
+  start to obscure intent.
+- Code that benefits from passing related models by reference: FK setters
+  accept any `IntoPrimaryKey<Related>` value (see #4398), so
+  `.author(&user)` is exactly as valid as `.author(user_id)`.
+
+**When `new(...)` is still appropriate:**
+
+- One-shot test fixtures and tight, internal call sites where positional
+  arguments are unambiguous.
+- Performance-sensitive hot paths (the builder is a thin compile-time
+  abstraction, but `new(...)` is the most direct form).
+
+**Examples:**
+
+```rust
+// ✅ Positional constructor — concise but order-sensitive.
+let question = Question::new("What's your favorite color?".to_string());
+
+// ✅ Typestate builder — each required field named, ordering free, and
+// adding a new required field to `Question` keeps this call site compiling.
+let question = Question::build()
+    .question_text("What's your favorite color?")
+    .finish();
+
+// ✅ FK setter accepts `&User` directly (composes with #4398).
+let choice = Choice::build()
+    .choice_text("Red")
+    .votes(0)
+    .question(&question)
+    .finish();
+```
+
+**Type-state guarantees:**
+
+- Each required-field setter transitions exactly one slot from `Unset` to
+  `Set`. Setters can be called in any order.
+- `finish()` is only available when every required slot is `Set`. Calling
+  `finish()` with any remaining required setter unused is a **compile-time
+  error**, not a runtime panic.
+- Optional fields (`Option<T>`, `default = ...`, `auto_now_add`, FK relation
+  fields, identity / auto-increment primary keys) are filled in by
+  `finish()` using the same expressions `new(...)` uses — no setter call is
+  required.
+
+**Rationale:**
+
+- DESIGN_PHILOSOPHY #5 ("API ergonomics is paramount"): named setters scale
+  with model size in a way positional arguments do not.
+- DESIGN_PHILOSOPHY #9 ("Every framework eventually becomes outdated"):
+  model schemas evolve; `build()` absorbs that evolution without breaking
+  callers.
+- DESIGN_PHILOSOPHY #4 ("Fail early"): the per-field type-state lifts
+  "required field missing" from a runtime error into a compile error.
+
 ---
 
 ## Quick Reference
 
 ### ✅ MUST DO
-- Initialize `#[model(...)]` structs via the macro-generated `new(...)` function
+- Initialize `#[model(...)]` structs via the macro-generated `new(...)` or `build()` constructor
 - Add unrelated derives (e.g., `Debug`, `Clone`) via a separate `#[derive(...)]`
 
 ### ✅ SHOULD DO
 - Use `#[model(...)]` alone (do not also write `#[derive(Model)]`) — the attribute applies the derive for you
+- Prefer `Model::build()` over `Model::new(...)` in tutorials, examples, and call sites where the model schema is expected to evolve (MU-3)
+- Pass FK values via `.<related>(&model)` in `build()` setters when the related instance is already in scope (composes with #4398)
 
 ### ❌ NEVER DO
-- Initialize `#[model(...)]` structs via struct-literal syntax in production code (use `new(...)`)
+- Initialize `#[model(...)]` structs via struct-literal syntax in production code (use `new(...)` or `build()`)
 
 ---
 
