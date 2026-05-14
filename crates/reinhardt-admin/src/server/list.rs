@@ -10,6 +10,7 @@ use crate::adapters::{
 };
 #[cfg(server)]
 use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
+#[cfg(server)]
 use reinhardt_di::Depends;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::sync::Arc;
