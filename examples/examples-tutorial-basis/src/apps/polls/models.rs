@@ -65,31 +65,11 @@ mod tests {
 
 	#[rstest]
 	fn test_choice_vote() {
-		// Positional `new()` constructor — concise but field-order-sensitive.
-		// Adding a new required field to `Choice` would force every call site
-		// like this one to be rewritten in the same commit.
-		let mut choice = Choice::new(
-			"Choice 1".to_string(), // choice_text
-			0,                      // votes
-			1,                      // question_id (ForeignKeyField is last)
-		);
-		assert_eq!(choice.votes(), 0);
-
-		choice.vote();
-		assert_eq!(choice.votes(), 1);
-
-		choice.vote();
-		assert_eq!(choice.votes(), 2);
-	}
-
-	#[rstest]
-	fn test_choice_vote_via_typestate_builder() {
-		// Typestate `build()` constructor (added in issue #4400).
-		//
-		// Every required field is set by name through a dedicated setter, so
-		// adding a new required field becomes a non-breaking change for this
-		// call site — the new field shows up as an additional setter rather
-		// than a new positional parameter that breaks every caller in
+		// Typestate `build()` constructor (added in issue #4400, FK setter in
+		// #4413). Every required field is set by name through a dedicated
+		// setter, so adding a new required field becomes a non-breaking change
+		// for this call site — the new field shows up as an additional setter
+		// rather than a positional parameter that breaks every caller in
 		// lock-step. Omitting any required setter is a compile-time error
 		// thanks to the per-field typestate (no `.finish()` until every slot
 		// is `Set`).
@@ -102,15 +82,18 @@ mod tests {
 
 		choice.vote();
 		assert_eq!(choice.votes(), 1);
+
+		choice.vote();
+		assert_eq!(choice.votes(), 2);
 	}
 
 	#[rstest]
 	fn test_question_build_typestate() {
-		// `Question::build()` mirrors `Question::new(question_text)` but
-		// surfaces each required field as a named setter, which keeps tutorial
-		// call sites stable as the `Question` schema grows.
+		// `Question::build()` surfaces each required field as a named setter,
+		// which keeps tutorial call sites stable as the `Question` schema grows.
 		let question = Question::build()
 			.question_text("What's your favorite color?")
+			.author(1_i64)
 			.finish();
 		assert_eq!(question.question_text(), "What's your favorite color?");
 		// `pub_date` is `auto_now_add`, so `finish()` populates it just like

@@ -341,11 +341,15 @@ impl StaticFilesMiddleware {
 		let js_url = Self::resolve_wasm_url(&entry.js_file, url_prefix, manifest);
 		let wasm_url = Self::resolve_wasm_url(&entry.wasm_file, url_prefix, manifest);
 
+		// Pass the wasm URL via the `module_or_path` object form. wasm-bindgen
+		// emits a deprecation warning when the legacy positional URL argument
+		// is used (since wasm-bindgen 0.2.100). See:
+		// https://rustwasm.github.io/wasm-bindgen/reference/deployment.html#initialization
 		let script = format!(
 			"\n<!-- Reinhardt WASM Auto-Loader -->\n\
 			 <script type=\"module\">\n\
 			 const {{ default: init }} = await import('{js_url}');\n\
-			 await init('{wasm_url}');\n\
+			 await init({{ module_or_path: '{wasm_url}' }});\n\
 			 </script>\n"
 		);
 
@@ -1280,7 +1284,7 @@ mod tests {
 		// Assert — generated HTML with dynamic URLs
 		assert!(result.contains("<!-- Reinhardt WASM Auto-Loader -->"));
 		assert!(result.contains("await import('/app.js')"));
-		assert!(result.contains("await init('/app_bg.wasm')"));
+		assert!(result.contains("await init({ module_or_path: '/app_bg.wasm' })"));
 		assert!(result.contains("</body></html>"));
 	}
 
@@ -1335,7 +1339,7 @@ mod tests {
 
 		// Assert — generated HTML with dynamic URLs
 		assert!(result.contains("await import('/app.h4sh.js')"));
-		assert!(result.contains("await init('/app_bg.h4sh.wasm')"));
+		assert!(result.contains("await init({ module_or_path: '/app_bg.h4sh.wasm' })"));
 	}
 
 	#[rstest]
@@ -1352,7 +1356,7 @@ mod tests {
 
 		// Assert — generated HTML with dynamic URLs
 		assert!(result.contains("await import('/static/app.js')"));
-		assert!(result.contains("await init('/static/app_bg.wasm')"));
+		assert!(result.contains("await init({ module_or_path: '/static/app_bg.wasm' })"));
 	}
 
 	#[rstest]
@@ -1425,7 +1429,7 @@ mod tests {
 		let body = std::str::from_utf8(&response.body).unwrap();
 		assert!(body.contains("<!-- Reinhardt WASM Auto-Loader -->"));
 		assert!(body.contains("await import('/my_app.js')"));
-		assert!(body.contains("await init('/my_app_bg.wasm')"));
+		assert!(body.contains("await init({ module_or_path: '/my_app_bg.wasm' })"));
 		assert!(body.contains("</body></html>"));
 	}
 
