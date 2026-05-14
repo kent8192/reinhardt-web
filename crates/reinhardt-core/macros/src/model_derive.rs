@@ -4196,6 +4196,12 @@ fn generate_build_function(
 				// IntoPrimaryKey<Related>. This composes with #4398 — callers
 				// can pass `&user` directly without manually extracting the PK.
 				let sig = quote! {
+					/// Set the foreign-key reference for this required field.
+					///
+					/// Accepts any `IntoPrimaryKey<Related>` — pass either the
+					/// related model (e.g. `&user`) or a raw primary-key value.
+					/// Transitions this slot from `Unset` to `Set` in the
+					/// builder's type-state.
 					pub fn #setter_name<__FkArg>(self, value: __FkArg)
 						-> #builder_name<#(#output_states),*>
 					where
@@ -4207,6 +4213,11 @@ fn generate_build_function(
 			SetterKind::String => {
 				// Setter for `String` field, accepting `impl Into<String>`.
 				let sig = quote! {
+					/// Set this required `String` field.
+					///
+					/// Accepts any `impl Into<String>` (e.g. `&str`, `String`,
+					/// `Cow<'_, str>`). Transitions this slot from `Unset` to
+					/// `Set` in the builder's type-state.
 					pub fn #storage_name<__StrArg>(self, value: __StrArg)
 						-> #builder_name<#(#output_states),*>
 					where
@@ -4218,6 +4229,10 @@ fn generate_build_function(
 			SetterKind::Plain => {
 				// Plain setter using the declared field type.
 				let sig = quote! {
+					/// Set this required field.
+					///
+					/// Transitions this slot from `Unset` to `Set` in the
+					/// builder's type-state.
 					pub fn #storage_name(self, value: #storage_ty)
 						-> #builder_name<#(#output_states),*>
 				};
