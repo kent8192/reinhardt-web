@@ -111,8 +111,25 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	// Generate state accessor methods
 	let state_accessors = generate_state_accessors(&effective_state, pages_crate);
 
-	// Generate watch methods
-	let watch_methods = generate_watch_methods(&macro_ast.watch, pages_crate, struct_name);
+	// Generate watch methods + supporting struct fields, default initializers,
+	// setters, and outer-scope capture code.
+	//
+	// Watch handlers must be able to capture locals from the surrounding scope
+	// (issue #4384 / #4414). Because the watch methods are emitted on the form
+	// struct's impl block, a closure written inline inside the method body is
+	// lexically *outside* the user's enclosing function, so it cannot reference
+	// outer locals — that is what produces `E0434`. To fix this, we capture the
+	// user's closure at the macro call site (where outer locals are visible),
+	// type-erase it into an `Arc<dyn Fn(&FormName) -> Page>`, and store it on
+	// the form struct. The watch method then simply calls through the stored
+	// handler, preserving reactivity via `Page::reactive`.
+	let WatchArtifacts {
+		methods: watch_methods,
+		field_decls: watch_field_decls,
+		field_default_inits: watch_field_default_inits,
+		setter_methods: watch_setter_methods,
+		outer_setup: watch_outer_setup,
+	} = generate_watch_artifacts(&macro_ast.watch, pages_crate, struct_name);
 
 	// Generate derived methods
 	let derived_methods = generate_derived_methods(&macro_ast.derived, pages_crate);
@@ -143,6 +160,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 			struct #struct_name {
 				#field_decls
 				#state_decls
+				#watch_field_decls
 			}
 
 			impl #struct_name {
@@ -150,12 +168,14 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 					Self {
 						#field_inits
 						#state_inits
+						#watch_field_default_inits
 					}
 				}
 
 				#field_accessors
 				#state_accessors
 				#watch_methods
+				#watch_setter_methods
 				#derived_methods
 				#metadata_fn
 				#validate_method
@@ -165,7 +185,12 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#into_view_impl
 			}
 
-			#struct_name::new()
+			// Build the form instance and bind user-supplied watch handlers in
+			// the outer scope, where enclosing-scope locals are visible. This is
+			// what makes `watch:` handlers behave as real closures (issue #4414).
+			let mut __reinhardt_form = #struct_name::new();
+			#watch_outer_setup
+			__reinhardt_form
 		}
 	}
 }
@@ -411,75 +436,157 @@ fn generate_state_accessors(
 	quote! { #(#accessors)* }
 }
 
-/// Generates watch methods that return reactive views.
+/// Bundle of token streams produced for the watch block.
 ///
-/// Each watch item becomes a method on the form struct that returns an `impl IntoPage`.
-/// The method clones the form instance and wraps the user's closure in an `Effect::new`
-/// to create a reactive view that automatically re-renders when Signal dependencies change.
+/// The watch block needs to plug into several positions in the generated
+/// form expansion — struct fields, struct field initializers in `new()`,
+/// impl methods, internal setters, and a piece of code that runs in the
+/// outer (macro call-site) scope. Returning them together keeps the call
+/// site explicit and avoids re-walking the watch list multiple times.
+struct WatchArtifacts {
+	/// Methods to splice into `impl FormName { ... }`.
+	methods: TokenStream,
+	/// Field declarations to splice into `struct FormName { ... }`.
+	field_decls: TokenStream,
+	/// Default initializers used in `FormName::new()` — one per watch field,
+	/// each producing an `Arc` that returns an empty `Page` until the real
+	/// handler is bound from the outer scope.
+	field_default_inits: TokenStream,
+	/// Private setter methods on `FormName` used to bind the real handlers
+	/// after `new()` returns.
+	setter_methods: TokenStream,
+	/// Code emitted in the outer block, after `let mut __reinhardt_form = FormName::new();`.
+	/// This is where the user's closure literals appear lexically, so they can
+	/// capture enclosing-scope locals (`outer_local` in the issue #4414 test).
+	outer_setup: TokenStream,
+}
+
+/// Generates everything needed to wire up watch handlers.
 ///
-/// ## Generated Pattern
+/// Each watch item produces:
 ///
-/// For a watch item like:
-/// ```text
-/// error_display: |form| {
-///     if form.error().get().is_some() { ... }
-/// }
-/// ```
+/// 1. A private struct field `__watch_<name>: Arc<dyn Fn(&FormName) -> Page>`
+///    storing a type-erased handler.
+/// 2. A default initializer in `FormName::new()` returning an empty `Page`,
+///    so `new()` keeps its zero-argument signature.
+/// 3. A public method `#name(&self) -> impl IntoPage` that clones the stored
+///    handler and wraps it in `Page::reactive` for automatic re-rendering.
+/// 4. A private setter `__set_watch_<name>` used internally.
+/// 5. Outer-scope setup code that captures the user's closure literal
+///    (where enclosing-scope locals are visible), wraps it in an Arc, and
+///    calls the setter on the form instance.
 ///
-/// Generates:
-/// ```text
-/// pub fn error_display(&self) -> impl IntoPage {
-///     let form = self.clone();
-///     Page::reactive(move || {
-///         let __watch_handler = |form| { ... };
-///         (&__watch_handler as &dyn Fn(&Self) -> _)(&form)
-///     })
-/// }
-/// ```
-///
-/// The handler is bound to a local so it remains a closure (capable of
-/// capturing enclosing-scope locals); a previous `fn __call_watch(...)`
-/// indirection forced it into a fn item and broke captures (issue #4384).
-fn generate_watch_methods(
+/// The outer-scope step is the key part of the fix for issue #4414: a
+/// previous attempt placed the user closure inline inside the watch method
+/// body, but a method body is lexically outside the enclosing function and
+/// cannot reach its locals, producing `E0434`. By capturing the closure at
+/// the macro call site instead, the handler behaves like any other Rust
+/// closure that captures from its surrounding function.
+fn generate_watch_artifacts(
 	watch: &Option<TypedFormWatch>,
 	pages_crate: &TokenStream,
 	struct_name: &syn::Ident,
-) -> TokenStream {
+) -> WatchArtifacts {
+	let empty = WatchArtifacts {
+		methods: quote! {},
+		field_decls: quote! {},
+		field_default_inits: quote! {},
+		setter_methods: quote! {},
+		outer_setup: quote! {},
+	};
+
 	let Some(watch) = watch else {
-		return quote! {};
+		return empty;
 	};
 
 	if watch.items.is_empty() {
-		return quote! {};
+		return empty;
 	}
 
-	let methods: Vec<TokenStream> = watch
-		.items
-		.iter()
-		.map(|item| {
-			let method_name = &item.name;
-			let closure = &item.closure;
+	let mut methods = Vec::new();
+	let mut field_decls = Vec::new();
+	let mut field_default_inits = Vec::new();
+	let mut setter_methods = Vec::new();
+	let mut outer_setup = Vec::new();
 
-			quote! {
-				/// Returns a reactive view that automatically re-renders when its Signal dependencies change.
-				///
-				/// This method wraps the watch closure in Page::reactive for automatic re-rendering.
-				pub fn #method_name(&self) -> impl #pages_crate::component::IntoPage {
-					let form = self.clone();
-					#pages_crate::component::Page::reactive(move || {
-						// Bind the user's handler to a local so it remains a closure that
-						// can capture enclosing-scope locals, then invoke it directly.
-						// The previous `fn __call_watch(...)` indirection forced the handler
-						// into a fn item, which broke captures (issue #4384).
-						let __watch_handler = #closure;
-						(&__watch_handler as &dyn ::core::ops::Fn(&#struct_name) -> _)(&form)
-					})
-				}
+	for item in &watch.items {
+		let method_name = &item.name;
+		let closure = &item.closure;
+		let field_ident = quote::format_ident!("__watch_{}", method_name);
+		let setter_ident = quote::format_ident!("__set_watch_{}", method_name);
+
+		// Stored handler type — type-erased so the form struct stays nameable.
+		let handler_ty = quote! {
+			::std::sync::Arc<
+				dyn ::core::ops::Fn(&#struct_name) -> #pages_crate::component::Page,
+			>
+		};
+
+		field_decls.push(quote! {
+			#field_ident: #handler_ty,
+		});
+
+		// Default no-op handler used before the real one is bound. Returns an
+		// empty fragment so an un-bound watch is harmless if ever called.
+		field_default_inits.push(quote! {
+			#field_ident: ::std::sync::Arc::new(
+				|_: &#struct_name| -> #pages_crate::component::Page {
+					#pages_crate::component::Page::Fragment(::std::vec::Vec::new())
+				},
+			),
+		});
+
+		setter_methods.push(quote! {
+			#[doc(hidden)]
+			fn #setter_ident(&mut self, __handler: #handler_ty) {
+				self.#field_ident = __handler;
 			}
-		})
-		.collect();
+		});
 
-	quote! { #(#methods)* }
+		methods.push(quote! {
+			/// Returns a reactive view that automatically re-renders when its Signal dependencies change.
+			///
+			/// This method wraps the watch closure (bound from the form! macro
+			/// call site) in `Page::reactive` for automatic re-rendering.
+			pub fn #method_name(&self) -> impl #pages_crate::component::IntoPage {
+				let __form = self.clone();
+				let __handler = self.#field_ident.clone();
+				#pages_crate::component::Page::reactive(move || __handler(&__form))
+			}
+		});
+
+		// Outer-scope capture. The user's `#closure` is expanded *here*, which
+		// is the same lexical scope as the `form!` macro invocation, so it can
+		// capture locals from the enclosing function (issue #4414).
+		//
+		// The user's closure is invoked *inside* an outer `move` closure that
+		// also captures the same enclosing-scope locals. This way the `Arc`'s
+		// `'static` bound is satisfied: any outer locals referenced by the
+		// user closure are moved/copied into the outer `move` closure's
+		// environment, and the user closure then borrows from those owned
+		// captures rather than from the surrounding stack frame.
+		outer_setup.push(quote! {
+			{
+				let __wrapped: #handler_ty = ::std::sync::Arc::new(
+					move |__f: &#struct_name| -> #pages_crate::component::Page {
+						let __user_watch_handler = #closure;
+						#pages_crate::component::IntoPage::into_page(
+							__user_watch_handler(__f),
+						)
+					},
+				);
+				__reinhardt_form.#setter_ident(__wrapped);
+			}
+		});
+	}
+
+	WatchArtifacts {
+		methods: quote! { #(#methods)* },
+		field_decls: quote! { #(#field_decls)* },
+		field_default_inits: quote! { #(#field_default_inits)* },
+		setter_methods: quote! { #(#setter_methods)* },
+		outer_setup: quote! { #(#outer_setup)* },
+	}
 }
 
 /// Generates derived methods that compute derived values.
@@ -3228,11 +3335,15 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// Check that the form is cloned before use and the user's handler is
-		// bound directly (issue #4384: no `fn __call_watch` indirection so the
-		// handler remains a closure that can capture enclosing-scope locals).
-		assert!(output_str.contains("let form = self . clone ()"));
-		assert!(output_str.contains("__watch_handler"));
+		// Check that the form is cloned inside the watch method and that the
+		// user's handler is captured at the macro call site as a stored
+		// `Arc<dyn Fn(&Self) -> Page>` field (issue #4414). The previous
+		// `fn __call_watch` indirection and the inline `__watch_handler` local
+		// have both been removed; the user closure is now bound from the outer
+		// scope so it can capture enclosing-scope locals.
+		assert!(output_str.contains("let __form = self . clone ()"));
+		assert!(output_str.contains("__watch_preview"));
+		assert!(output_str.contains("__user_watch_handler"));
 		assert!(!output_str.contains("__call_watch"));
 	}
 
