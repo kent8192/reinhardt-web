@@ -7,7 +7,3 @@
 
 [patch.crates-io]
 reinhardt-web = { path = ".." }
-# Patch transitive workspace crates here when a fix lives in a sub-crate.
-# `reinhardt-web` re-exports the framework facade, but sub-crates pulled in
-# transitively still resolve from crates.io unless explicitly patched.
-reinhardt-utils = { path = "../crates/reinhardt-utils" }
