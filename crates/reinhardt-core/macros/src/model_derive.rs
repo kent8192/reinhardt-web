@@ -4134,10 +4134,31 @@ fn generate_build_function(
 		// Prefer reusing the existing FK field identifier (preserves raw-ident
 		// spelling, hygiene, and span). Fall back to `Ident::new_raw` so the
 		// proc-macro never panics if `fk_field_name` happens to be a Rust
-		// keyword (e.g. `type`, `match`).
+		// keyword (e.g. `type`, `match`). Strip a leading `r#` defensively in
+		// case the source identifier was a raw ident (`Ident::new_raw`
+		// expects the bare name without the prefix). Reserved identifiers
+		// that even `new_raw` rejects (`self`, `Self`, `super`, `crate`,
+		// `extern`) are surfaced as a clear macro error rather than the
+		// underlying panic from `proc_macro2`.
 		let setter_name = match fk_field_info {
 			Some(info) => info.name.clone(),
-			None => syn::Ident::new_raw(fk_field_name, fk_id_name.span()),
+			None => {
+				let bare = fk_field_name
+					.strip_prefix("r#")
+					.unwrap_or(fk_field_name.as_str());
+				if matches!(bare, "self" | "Self" | "super" | "crate" | "extern") {
+					return syn::Error::new(
+						fk_id_name.span(),
+						format!(
+							"cannot derive builder setter for FK field `{fk_id_str}`: \
+							 the implied setter name `{bare}` is a reserved identifier; \
+							 rename the related model-typed field or the `*_id` field"
+						),
+					)
+					.to_compile_error();
+				}
+				syn::Ident::new_raw(bare, fk_id_name.span())
+			}
 		};
 		required.push(Required {
 			storage_name: id_field_info.name.clone(),
