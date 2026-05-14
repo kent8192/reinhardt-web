@@ -301,10 +301,10 @@ pub async fn create_question(
 	}
 
 	let manager = Question::objects();
-	// Field ordering follows `#[model]` generation: scalar fields first,
-	// then ForeignKeyField columns at the end (mirrors Choice::new in this
-	// crate's models.rs test).
-	let new_question = Question::new(trimmed.to_string(), user.id());
+	let new_question = Question::build()
+		.question_text(trimmed)
+		.author(user.id())
+		.finish();
 	let saved = manager
 		.create(&new_question)
 		.await
@@ -479,7 +479,11 @@ pub async fn create_choice(
 	}
 
 	let manager = Choice::objects();
-	let new_choice = Choice::new(trimmed.to_string(), 0, question.id());
+	let new_choice = Choice::build()
+		.choice_text(trimmed)
+		.votes(0)
+		.question(question.id())
+		.finish();
 	let saved = manager
 		.create(&new_choice)
 		.await
