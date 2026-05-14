@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.29...reinhardt-web@v0.1.0-rc.30) - 2026-05-14
+
+### Added
+
+- *(model)* add typestate Model::build() constructor alongside new()
+
+### Documentation
+
+- *(macros)* document Model::build() typestate constructor in MU-3
+
+### Fixed
+
+- *(staticfiles)* disable immutable cache for bundle assets in debug builds
+- address Copilot review feedback
+- *(manouche)* resolve clippy errors blocking release-plz PR
+- *(model)* box SetterKind::ForeignKey::related_type to satisfy clippy
+- *(model-macros)* add doc comments to generated typestate-builder setters
+- *(model-macros)* include ForeignKeyField<T> in typestate builder
+- *(model-macros)* address Copilot review on typestate builder FK
+- *(model-macros)* harden FK keyword handling in typestate builder
+- *(model-macros)* exclude `extern` from reserved-ident set
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.28...reinhardt-web@v0.1.0-rc.29) - 2026-05-13
 
 ### Added
