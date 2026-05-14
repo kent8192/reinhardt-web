@@ -4107,22 +4107,38 @@ fn generate_build_function(
 	// FK parameter loop in `generate_new_function`.
 	for fk_id_name in fk_id_field_names.iter() {
 		let fk_id_str = fk_id_name.to_string();
-		// Look up the related FK field name (e.g. `user_id` -> `user`).
+		// `fk_id_to_fk_field` only retains `*_id`-suffixed names (see its
+		// construction above); names that don't follow the convention have no
+		// implicit related-field name and are intentionally skipped, mirroring
+		// the filter in `generate_new_function`.
 		let Some(fk_field_name) = fk_id_to_fk_field.get(&fk_id_str) else {
 			continue;
 		};
-		// Look up the FieldInfo for both the `*_id` field (for its storage type)
-		// and the related FK field (for the related model type).
-		let Some(id_field_info) = field_infos.iter().find(|fi| fi.name == *fk_id_name) else {
-			continue;
-		};
+		// `fk_id_field_names` is built from `field_infos`, so the lookup MUST
+		// succeed; failure indicates an internal data-structure desync.
+		let id_field_info = field_infos
+			.iter()
+			.find(|fi| fi.name == *fk_id_name)
+			.unwrap_or_else(|| {
+				panic!(
+					"internal macro invariant: `{}` is in fk_id_field_names but missing from field_infos",
+					fk_id_str
+				)
+			});
 		let fk_field_info = field_infos.iter().find(|fi| fi.name == *fk_field_name);
 		let related_type = match fk_field_info {
 			Some(info) => extract_foreign_key_target_type(&info.ty),
 			// Defensive fallback: use the `*_id` storage type itself.
 			None => id_field_info.ty.clone(),
 		};
-		let setter_name = syn::Ident::new(fk_field_name, fk_id_name.span());
+		// Prefer reusing the existing FK field identifier (preserves raw-ident
+		// spelling, hygiene, and span). Fall back to `Ident::new_raw` so the
+		// proc-macro never panics if `fk_field_name` happens to be a Rust
+		// keyword (e.g. `type`, `match`).
+		let setter_name = match fk_field_info {
+			Some(info) => info.name.clone(),
+			None => syn::Ident::new_raw(fk_field_name, fk_id_name.span()),
+		};
 		required.push(Required {
 			storage_name: id_field_info.name.clone(),
 			storage_ty: &id_field_info.ty,
