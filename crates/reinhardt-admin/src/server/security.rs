@@ -455,6 +455,7 @@ pub fn require_csrf_token(
 /// // Non-string values are unchanged
 /// assert_eq!(data.get("age").unwrap().as_i64().unwrap(), 25);
 /// ```
+#[cfg(server)]
 pub fn sanitize_mutation_values(data: &mut HashMap<String, serde_json::Value>) {
 	for value in data.values_mut() {
 		sanitize_json_value(value);
@@ -462,6 +463,7 @@ pub fn sanitize_mutation_values(data: &mut HashMap<String, serde_json::Value>) {
 }
 
 /// Recursively sanitizes a JSON value, escaping HTML in strings.
+#[cfg(server)]
 fn sanitize_json_value(value: &mut serde_json::Value) {
 	match value {
 		serde_json::Value::String(s) => {
@@ -485,11 +487,13 @@ fn sanitize_json_value(value: &mut serde_json::Value) {
 }
 
 /// Checks if a string contains characters that need HTML escaping.
+#[cfg(server)]
 fn needs_html_escaping(s: &str) -> bool {
 	s.contains('<') || s.contains('>') || s.contains('&') || s.contains('"') || s.contains('\'')
 }
 
 /// Escapes HTML special characters in a string.
+#[cfg(server)]
 fn escape_html(input: &str) -> String {
 	reinhardt_core::security::escape_html(input)
 }
