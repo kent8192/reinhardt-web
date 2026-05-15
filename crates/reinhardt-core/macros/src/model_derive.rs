@@ -2818,6 +2818,7 @@ fn generate_registration_code(
 		let unique = fk_info.is_one_to_one; // OneToOne fields have UNIQUE constraint
 		let db_index = fk_info.rel_attr.db_index.unwrap_or(true); // FK fields are indexed by default
 		let nullable_str = nullable.to_string();
+		let not_null_str = (!nullable).to_string();
 		let unique_str = unique.to_string();
 		let db_index_str = db_index.to_string();
 
@@ -2833,13 +2834,26 @@ fn generate_registration_code(
 			"Unknown".to_string()
 		};
 
+		// The `FieldType::Uuid` value here is a placeholder. The real column
+		// type is resolved at migration-generation time by looking up the
+		// target model's primary key in the global `ModelRegistry`
+		// (see `ColumnDefinition::from_field_state`). The placeholder is
+		// required because the target model's PK type is not knowable at
+		// macro-expansion time (the registry is populated at runtime via
+		// `#[ctor::ctor]`).
+		//
+		// `not_null` and `null` are emitted as parameters so that the
+		// `ColumnDefinition` correctly reflects the non-`Option<_>`
+		// nullability of `ForeignKeyField<T>` (see issue #4431).
 		fk_id_registrations.push(quote! {
 			metadata.add_field(
 				#id_column_name.to_string(),
 				#migrations_crate::model_registry::FieldMetadata::new(
 					#migrations_crate::FieldType::Uuid
 				)
+					.with_nullable(#nullable)
 					.with_param("null", #nullable_str)
+					.with_param("not_null", #not_null_str)
 					.with_param("unique", #unique_str)
 					.with_param("db_index", #db_index_str)
 					.with_param("fk_target", #target_model_name)
