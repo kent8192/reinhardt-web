@@ -175,6 +175,30 @@ impl ServerRouter {
 			.next()
 			.unwrap_or(&full_type_name)
 			.to_string();
+		// Harvest middleware-contributed DI singleton registrations. When this
+		// router already owns an `InjectionContext` (via `with_di_context`),
+		// apply them directly to that context's `SingletonScope`; startup's
+		// `take_di_registrations()` path is skipped when a user-provided
+		// context exists, so deferring to the global list would silently drop
+		// the registrations (and leak them into the next startup that does
+		// consume the global list). When no context is set, fall back to the
+		// global deferred list so server startup can apply them. Mirrors
+		// `UnifiedRouter::with_middleware`. See #4426.
+		let di_entries = mw.di_registrations();
+		if !di_entries.is_empty() {
+			if let Some(ctx) = self.di_context.as_ref() {
+				let scope = ctx.singleton_scope();
+				for (type_id, value) in di_entries {
+					scope.set_arc_any(type_id, value);
+				}
+			} else {
+				let mut list = reinhardt_di::DiRegistrationList::new();
+				for (type_id, value) in di_entries {
+					list.register_arc_any(type_id, value);
+				}
+				crate::routers::register_di_registrations(list);
+			}
+		}
 		self.middleware_names.push(MiddlewareInfo {
 			name: short_name,
 			type_name: full_type_name,

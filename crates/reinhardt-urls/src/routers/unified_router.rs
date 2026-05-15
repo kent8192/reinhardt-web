@@ -318,7 +318,16 @@ impl UnifiedRouter {
 	/// Add middleware to server router.
 	///
 	/// This is a convenience method that delegates to [`ServerRouter::with_middleware`].
+	///
+	/// Any DI singleton registrations contributed by the middleware (via
+	/// [`Middleware::di_registrations`]) are merged into this router's
+	/// deferred DI registration list so that handlers resolved through
+	/// `#[inject]` can see middleware-owned state without a parallel
+	/// `with_di_registrations(...)` call. See #4426.
 	pub fn with_middleware<M: Middleware + 'static>(mut self, middleware: M) -> Self {
+		for (type_id, value) in middleware.di_registrations() {
+			self.di_registrations.register_arc_any(type_id, value);
+		}
 		self.server = self.server.with_middleware(middleware);
 		self
 	}
@@ -561,7 +570,16 @@ impl UnifiedRouter {
 	}
 
 	/// Add middleware to server router.
+	///
+	/// Any DI singleton registrations contributed by the middleware (via
+	/// [`Middleware::di_registrations`]) are merged into this router's
+	/// deferred DI registration list so that handlers resolved through
+	/// `#[inject]` can see middleware-owned state without a parallel
+	/// `with_di_registrations(...)` call. See #4426.
 	pub fn with_middleware<M: Middleware + 'static>(mut self, middleware: M) -> Self {
+		for (type_id, value) in middleware.di_registrations() {
+			self.di_registrations.register_arc_any(type_id, value);
+		}
 		self.server = self.server.with_middleware(middleware);
 		self
 	}
