@@ -150,16 +150,34 @@ impl ServerRouter {
 	/// ```
 	pub fn with_di_context(mut self, ctx: Arc<InjectionContext>) -> Self {
 		// Drain any middleware-contributed DI registrations that were harvested
-		// before `with_di_context` was called. Without this, registrations
-		// staged by an earlier `with_middleware` would never reach this
-		// context's `SingletonScope` (startup's `take_di_registrations()` path
-		// is skipped whenever a user-supplied context exists). See #4426.
-		if !self.pending_middleware_di.is_empty() {
-			let pending = std::mem::take(&mut self.pending_middleware_di);
-			pending.apply_to(ctx.singleton_scope());
-		}
+		// before `with_di_context` was called, walking children that have not
+		// already been bound to their own context (e.g., a child mounted
+		// before `with_di_context` was attached). Without this, registrations
+		// staged by an earlier `with_middleware` on this router or any
+		// not-yet-bound child would never reach this context's
+		// `SingletonScope` (startup's `take_di_registrations()` path is
+		// skipped whenever a user-supplied context exists). See #4426.
+		Self::adopt_di_context_recursive(&mut self, &ctx);
 		self.di_context = Some(ctx);
 		self
+	}
+
+	/// Propagate a newly attached `InjectionContext` into every descendant
+	/// that has no context of its own, draining each router's pending
+	/// middleware DI registrations into the context's `SingletonScope` along
+	/// the way. Descendants that already own a different context are left
+	/// untouched. See #4426.
+	fn adopt_di_context_recursive(router: &mut ServerRouter, ctx: &Arc<InjectionContext>) {
+		if !router.pending_middleware_di.is_empty() {
+			let pending = std::mem::take(&mut router.pending_middleware_di);
+			pending.apply_to(ctx.singleton_scope());
+		}
+		for child in router.children.iter_mut() {
+			if child.di_context.is_none() {
+				Self::adopt_di_context_recursive(child, ctx);
+				child.di_context = Some(Arc::clone(ctx));
+			}
+		}
 	}
 
 	/// Returns a reference to the DI context, if set.
@@ -504,6 +522,31 @@ mod middleware_di_tests {
 			"flushed registration must resolve from the global deferred list after apply_to",
 		);
 		assert_eq!(resolved.0, "no-context");
+	}
+
+	#[rstest]
+	#[serial_test::serial(global_di)]
+	fn child_pending_drains_when_context_attached_after_mount() {
+		// Arrange: child is mounted BEFORE the parent has a DI context, so
+		// `mount` cannot drain. Then `with_di_context` runs on the parent and
+		// must propagate into the already-mounted child.
+		let scope = Arc::new(SingletonScope::new());
+		let ctx = Arc::new(InjectionContext::builder(Arc::clone(&scope)).build());
+		let child = ServerRouter::new().with_middleware(make_mw("late-context-child"));
+
+		// Act: mount first, then attach context.
+		let _parent = ServerRouter::new()
+			.mount("/api/", child)
+			.with_di_context(Arc::clone(&ctx));
+
+		let leaked = crate::routers::take_di_registrations();
+
+		// Assert
+		let resolved = scope.get::<DummyState>().expect(
+			"attaching a context after mounting a child with pending middleware DI must propagate into the child",
+		);
+		assert_eq!(resolved.0, "late-context-child");
+		assert!(leaked.is_none());
 	}
 
 	#[rstest]
