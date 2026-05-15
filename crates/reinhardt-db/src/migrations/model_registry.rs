@@ -143,21 +143,17 @@ impl ModelMetadata {
 
 		// Convert fields
 		for (name, field_meta) in &self.fields {
+			// `field_meta.nullable` is the single source of truth: callers
+			// using `with_nullable(..)` set it directly, and callers using
+			// the legacy `with_param("null", ..)` path also keep it in sync
+			// (see `FieldMetadata::with_param`). See #4430 / #4431.
 			let mut field_state = FieldState::new(
 				name.clone(),
 				field_meta.field_type.clone(),
-				field_meta
-					.params
-					.get("null")
-					.and_then(|v| v.parse::<bool>().ok())
-					.unwrap_or(false),
+				field_meta.nullable,
 			);
 			for (key, value) in &field_meta.params {
 				field_state.params.insert(key.clone(), value.clone());
-			}
-			// Override nullable from params if explicitly set
-			if let Some(null_value) = field_meta.params.get("null") {
-				field_state.nullable = null_value == "true";
 			}
 			// Set ForeignKey information if present
 			if let Some(ref fk_info) = field_meta.foreign_key {
@@ -219,7 +215,13 @@ pub struct FieldMetadata {
 	/// This is distinct from the legacy string parameter `params["null"]`,
 	/// which is preserved for backward compatibility. Code paths that
 	/// need a structured nullability signal should prefer this field.
-	pub nullable: bool,
+	///
+	/// Kept crate-private so that adding it during the RC phase does not
+	/// trip `cargo-semver-checks`'s `constructible_struct_adds_field` lint
+	/// (which fires when every field of a `pub` struct is itself `pub`).
+	/// Outside this crate, use [`FieldMetadata::with_nullable`] to set it
+	/// and [`FieldMetadata::is_nullable`] to read it. See #4430 / #4431.
+	pub(crate) nullable: bool,
 	/// Field parameters (max_length, null, blank, default, etc.)
 	pub params: HashMap<String, String>,
 	/// ForeignKey information if this field is a foreign key
@@ -238,8 +240,20 @@ impl FieldMetadata {
 	}
 
 	/// Sets the param and returns self for chaining.
+	///
+	/// When `key == "null"` the structured [`Self::nullable`] field is also
+	/// synchronized from the parsed value, so legacy callers that set
+	/// nullability via `with_param("null", "true")` stay consistent with
+	/// callers that use [`Self::with_nullable`]. See #4430 / #4431.
 	pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-		self.params.insert(key.into(), value.into());
+		let key = key.into();
+		let value = value.into();
+		if key == "null"
+			&& let Ok(parsed) = value.parse::<bool>()
+		{
+			self.nullable = parsed;
+		}
+		self.params.insert(key, value);
 		self
 	}
 
@@ -247,6 +261,11 @@ impl FieldMetadata {
 	pub fn with_nullable(mut self, nullable: bool) -> Self {
 		self.nullable = nullable;
 		self
+	}
+
+	/// Returns whether the column is nullable (i.e., `NULL` is allowed).
+	pub fn is_nullable(&self) -> bool {
+		self.nullable
 	}
 
 	/// Sets the foreign key and returns self for chaining.
