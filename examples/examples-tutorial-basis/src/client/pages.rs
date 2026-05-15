@@ -50,13 +50,17 @@ pub fn choice_new_page(question_id: i64) -> Page {
 }
 
 /// Edit choice page - Update a choice's text (Phase 3)
-pub fn choice_edit_page(choice_id: i64) -> Page {
-	with_nav(crate::client::components::polls::choice_edit(choice_id))
+pub fn choice_edit_page(question_id: i64, choice_id: i64) -> Page {
+	with_nav(crate::client::components::polls::choice_edit(
+		question_id,
+		choice_id,
+	))
 }
 
 /// Delete choice confirmation page - Confirm before deletion (Phase 3)
-pub fn choice_delete_page(choice_id: i64) -> Page {
+pub fn choice_delete_page(question_id: i64, choice_id: i64) -> Page {
 	with_nav(crate::client::components::polls::choice_delete_confirm(
+		question_id,
 		choice_id,
 	))
 }

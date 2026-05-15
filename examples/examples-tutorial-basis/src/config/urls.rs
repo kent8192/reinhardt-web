@@ -24,9 +24,9 @@ use crate::config::admin::configure_admin;
 // Import server_fn marker modules (snake_case + ::marker)
 #[cfg(native)]
 use crate::server_fn::polls::{
-	create_choice, create_question, delete_choice, delete_question, get_choice_parent,
-	get_question_detail, get_question_results, get_questions, get_vote_form_metadata, submit_vote,
-	update_choice, update_question, vote,
+	create_choice, create_question, delete_choice, delete_question, get_question_detail,
+	get_question_results, get_questions, get_vote_form_metadata, submit_vote, update_choice,
+	update_question, vote,
 };
 #[cfg(native)]
 use crate::server_fn::users::{current_user, login, logout};
@@ -48,12 +48,15 @@ fn create_session_middleware() -> SessionMiddleware {
 	SessionMiddleware::new(config)
 }
 
-// `#[routes(standalone)]` is applied unconditionally so that the generated
-// `__url_resolver_support::ResolvedUrls` (and its re-export) is reachable
-// from the WASM SPA. The macro internally gates the function body and the
-// `inventory::submit!` registration on `#[cfg(not(wasm))]` (fixes #4175),
-// so the WASM-only branch in the body below is effectively dead code on
-// every target — kept only so the file still reads naturally on native.
+// `#[routes(standalone)]` is applied unconditionally so that the
+// generated `__url_resolver_support::ResolvedUrls` (and its re-export)
+// is reachable from the WASM SPA. The macro internally gates the
+// function body and the `inventory::submit!` registration on
+// `#[cfg(not(wasm))]` (fixes #4175), so the function body below — the
+// native server registration path — is compiled out on WASM by the
+// macro and only runs on native. The `#[cfg(wasm)]` `let router`
+// branch is preserved purely so the file reads naturally if the macro
+// gating is ever lifted; it is unreachable on every target today.
 #[routes(standalone)]
 pub fn routes() -> UnifiedRouter {
 	// Server: register server functions. App routers are auto-mounted via
@@ -63,7 +66,6 @@ pub fn routes() -> UnifiedRouter {
 		s.server_fn(get_questions::marker)
 			.server_fn(get_question_detail::marker)
 			.server_fn(get_question_results::marker)
-			.server_fn(get_choice_parent::marker)
 			.server_fn(vote::marker)
 			.server_fn(get_vote_form_metadata::marker)
 			.server_fn(submit_vote::marker)

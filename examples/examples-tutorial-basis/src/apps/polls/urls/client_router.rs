@@ -31,15 +31,19 @@ pub fn client_url_patterns() -> ClientRouter {
 			"/polls/{question_id}/choices/new/",
 			|ClientPath(question_id): ClientPath<i64>| choice_new_page(question_id),
 		)
-		.named_route_path(
+		.named_route_path2(
 			"choice_edit",
-			"/polls/choices/{choice_id}/edit/",
-			|ClientPath(choice_id): ClientPath<i64>| choice_edit_page(choice_id),
+			"/polls/{question_id}/choices/{choice_id}/edit/",
+			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
+				choice_edit_page(question_id, choice_id)
+			},
 		)
-		.named_route_path(
+		.named_route_path2(
 			"choice_delete",
-			"/polls/choices/{choice_id}/delete/",
-			|ClientPath(choice_id): ClientPath<i64>| choice_delete_page(choice_id),
+			"/polls/{question_id}/choices/{choice_id}/delete/",
+			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
+				choice_delete_page(question_id, choice_id)
+			},
 		)
 		.named_route_path(
 			"detail",

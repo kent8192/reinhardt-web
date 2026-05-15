@@ -45,9 +45,21 @@ pub fn nav_bar() -> Page {
 			}
 			watch {
 				if auth_signal.is_pending() {
-					span {
-						class: "text-gray-400 text-sm",
-						""
+					div {
+						class: "flex items-center gap-3",
+						aria_busy: "true",
+						span {
+							class: "sr-only",
+							"Checking sign-in status"
+						}
+						span {
+							class: "h-4 w-32 rounded bg-gray-200 animate-pulse",
+							aria_hidden: "true",
+						}
+						span {
+							class: "h-9 w-20 rounded bg-gray-200 animate-pulse",
+							aria_hidden: "true",
+						}
 					}
 				} else if let Some(Some(user)) = auth_signal.result() {
 					div {

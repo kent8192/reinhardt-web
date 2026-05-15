@@ -11,9 +11,8 @@ use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
 
 use crate::client::links;
 use crate::server_fn::polls::{
-	create_choice, create_question, delete_choice, delete_question, get_choice_parent,
-	get_question_detail, get_question_results, get_questions, submit_vote, update_choice,
-	update_question,
+	create_choice, create_question, delete_choice, delete_question, get_question_detail,
+	get_question_results, get_questions, submit_vote, update_choice, update_question,
 };
 
 /// Polls index page - List all polls
@@ -1025,18 +1024,14 @@ pub fn choice_new(question_id: i64) -> Page {
 	})(loading_signal, error_signal, form_view, back_href)
 }
 
-/// Edit choice page (`/polls/choices/{choice_id}/edit/`).
-pub fn choice_edit(choice_id: i64) -> Page {
+/// Edit choice page (`/polls/{question_id}/choices/{choice_id}/edit/`).
+///
+/// Both ids are carried in the route, so the "Cancel" link to the parent
+/// poll is synchronous — no extra server roundtrip and no
+/// pending-state fallback href.
+pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
-
-	// Look up the parent question id so the "Cancel" link can navigate back
-	// to the originating poll. The page renders unconditionally — while the
-	// lookup is pending we fall back to the polls index as a safe default.
-	let load_parent =
-		use_action(
-			|cid: i64| async move { get_choice_parent(cid).await.map_err(|e| e.to_string()) },
-		);
-	load_parent.dispatch(choice_id);
+	let cancel_href = links::poll_detail(question_id);
 
 	let edit_form = form! {
 		name: EditChoiceForm,
@@ -1066,9 +1061,8 @@ pub fn choice_edit(choice_id: i64) -> Page {
 	let loading_signal = edit_form.loading().clone();
 	let error_signal = edit_form.error().clone();
 	let form_view = edit_form.into_page();
-	let parent_signal = load_parent.clone();
 
-	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, parent_signal: Action<i64, String>| {
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
@@ -1104,37 +1098,24 @@ pub fn choice_edit(choice_id: i64) -> Page {
 						}
 					}
 				}
-				watch {
-					if let Some(qid) = parent_signal.result() {
-						a {
-							href: links::poll_detail(qid),
-							class: "btn-secondary ml-2",
-							"Cancel"
-						}
-					} else {
-						a {
-							href: links::polls_index(),
-							class: "btn-secondary ml-2",
-							"Cancel"
-						}
-					}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view, parent_signal)
+	})(loading_signal, error_signal, form_view, cancel_href)
 }
 
-/// Delete-choice confirmation page (`/polls/choices/{choice_id}/delete/`).
-pub fn choice_delete_confirm(choice_id: i64) -> Page {
+/// Delete-choice confirmation page
+/// (`/polls/{question_id}/choices/{choice_id}/delete/`).
+///
+/// Like [`choice_edit`], both ids are part of the route so "Cancel"
+/// links back to the parent poll synchronously without an extra fetch.
+pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
-
-	// Mirror `choice_edit`: load the parent question id so the "Cancel" link
-	// can fall back to the originating poll instead of the polls index.
-	let load_parent =
-		use_action(
-			|cid: i64| async move { get_choice_parent(cid).await.map_err(|e| e.to_string()) },
-		);
-	load_parent.dispatch(choice_id);
+	let cancel_href = links::poll_detail(question_id);
 
 	let delete_form = form! {
 		name: DeleteChoiceForm,
@@ -1158,9 +1139,8 @@ pub fn choice_delete_confirm(choice_id: i64) -> Page {
 	let loading_signal = delete_form.loading().clone();
 	let error_signal = delete_form.error().clone();
 	let form_view = delete_form.into_page();
-	let parent_signal = load_parent.clone();
 
-	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, parent_signal: Action<i64, String>| {
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
@@ -1200,22 +1180,12 @@ pub fn choice_delete_confirm(choice_id: i64) -> Page {
 						}
 					}
 				}
-				watch {
-					if let Some(qid) = parent_signal.result() {
-						a {
-							href: links::poll_detail(qid),
-							class: "btn-secondary ml-2",
-							"Cancel"
-						}
-					} else {
-						a {
-							href: links::polls_index(),
-							class: "btn-secondary ml-2",
-							"Cancel"
-						}
-					}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view, parent_signal)
+	})(loading_signal, error_signal, form_view, cancel_href)
 }

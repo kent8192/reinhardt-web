@@ -76,19 +76,31 @@ pub fn choice_new(question_id: i64) -> String {
 	)
 }
 
-/// `/polls/choices/{choice_id}/edit/` — edit-choice form.
-pub fn choice_edit(choice_id: i64) -> String {
+/// `/polls/{question_id}/choices/{choice_id}/edit/` — edit-choice form.
+///
+/// The parent `question_id` is part of the route so the page can show a
+/// synchronous "Cancel" link back to the originating poll without an extra
+/// server roundtrip.
+pub fn choice_edit(question_id: i64, choice_id: i64) -> String {
 	resolve(
 		"polls:choice_edit",
-		&[("choice_id", &choice_id.to_string())],
+		&[
+			("question_id", &question_id.to_string()),
+			("choice_id", &choice_id.to_string()),
+		],
 	)
 }
 
-/// `/polls/choices/{choice_id}/delete/` — delete-choice confirmation.
-pub fn choice_delete(choice_id: i64) -> String {
+/// `/polls/{question_id}/choices/{choice_id}/delete/` — delete-choice
+/// confirmation. See [`choice_edit`] for why `question_id` is part of the
+/// route.
+pub fn choice_delete(question_id: i64, choice_id: i64) -> String {
 	resolve(
 		"polls:choice_delete",
-		&[("choice_id", &choice_id.to_string())],
+		&[
+			("question_id", &question_id.to_string()),
+			("choice_id", &choice_id.to_string()),
+		],
 	)
 }
 
