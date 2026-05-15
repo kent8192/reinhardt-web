@@ -2833,6 +2833,35 @@ fn generate_registration_code(
 			"Unknown".to_string()
 		};
 
+		// Best-effort detection of same-app FK targets so the registry can
+		// be looked up by qualified `(app, model_name)` at runtime, avoiding
+		// the silent wrong-target resolution that an unqualified by-name
+		// lookup would produce when two apps register a same-named model.
+		//
+		// We only emit `fk_target_app` when the target type is a bare,
+		// single-segment identifier (e.g., `ForeignKeyField<User>`). A
+		// bare ident must already be in scope at the use site, which in
+		// Reinhardt's `#[model]` convention means it lives in the same
+		// crate (and therefore the same app). Cross-crate / cross-app
+		// references are written as path types (e.g.,
+		// `reinhardt_auth::User`) and are deliberately left unqualified
+		// so the runtime resolver falls back to the by-name path.
+		//
+		// This is a false-negative-only heuristic: it never emits an
+		// incorrect app label, only omits a correct one. See issue #4436.
+		let fk_target_app_chain = if let Type::Path(type_path) = &fk_info.target_type {
+			if type_path.qself.is_none()
+				&& type_path.path.leading_colon.is_none()
+				&& type_path.path.segments.len() == 1
+			{
+				quote! { .with_param("fk_target_app", #app_label) }
+			} else {
+				quote! {}
+			}
+		} else {
+			quote! {}
+		};
+
 		// The `FieldType::Uuid` value here is a placeholder. The real column
 		// type is resolved at migration-generation time by looking up the
 		// target model's primary key in the global `ModelRegistry`
@@ -2860,6 +2889,7 @@ fn generate_registration_code(
 					.with_param("unique", #unique_str)
 					.with_param("db_index", #db_index_str)
 					.with_param("fk_target", #target_model_name)
+					#fk_target_app_chain
 			);
 		});
 	}
