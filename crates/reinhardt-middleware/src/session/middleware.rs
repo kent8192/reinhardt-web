@@ -180,14 +180,15 @@ impl Default for SessionMiddleware {
 impl Middleware for SessionMiddleware {
 	/// Exposes the middleware-owned `Arc<SessionStore>` as a DI singleton.
 	///
-	/// Without this, server functions that take `#[inject] session: SessionData`
-	/// or `#[inject] store: SessionStoreRef` would fail to resolve because the
-	/// store created inside `SessionMiddleware::new(...)` would never reach the
-	/// server's `SingletonScope`. See #4426.
+	/// Registered under `TypeId::of::<Arc<SessionStore>>()` to match the lookup
+	/// performed by `SessionData::inject` (`get_singleton::<Arc<SessionStore>>()`),
+	/// which downcasts to `Arc<Arc<SessionStore>>`. The outer `Arc` is the
+	/// `dyn Any` envelope owned by `SingletonScope`; the inner `Arc<SessionStore>`
+	/// is the value handlers actually receive. See #4426.
 	fn di_registrations(&self) -> Vec<MiddlewareDiRegistration> {
 		vec![(
-			TypeId::of::<SessionStore>(),
-			Arc::clone(&self.store) as Arc<dyn std::any::Any + Send + Sync>,
+			TypeId::of::<Arc<SessionStore>>(),
+			Arc::new(Arc::clone(&self.store)) as Arc<dyn std::any::Any + Send + Sync>,
 		)]
 	}
 
@@ -274,17 +275,19 @@ mod tests {
 		// Act: ask the middleware for its DI registrations.
 		let registrations = middleware.di_registrations();
 
-		// Assert: exactly one entry, keyed by SessionStore's TypeId, pointing at
-		// the same underlying allocation as the middleware's own store handle.
+		// Assert: exactly one entry, keyed by Arc<SessionStore>'s TypeId to
+		// match `SessionData::inject`'s `get_singleton::<Arc<SessionStore>>()`
+		// lookup, pointing at the same underlying allocation as the middleware's
+		// own store handle.
 		assert_eq!(registrations.len(), 1);
 		let (type_id, value) = &registrations[0];
-		assert_eq!(*type_id, TypeId::of::<SessionStore>());
+		assert_eq!(*type_id, TypeId::of::<Arc<SessionStore>>());
 		let downcast = value
 			.clone()
-			.downcast::<SessionStore>()
-			.expect("registered Arc must downcast to SessionStore");
+			.downcast::<Arc<SessionStore>>()
+			.expect("registered Arc must downcast to Arc<SessionStore>");
 		assert!(
-			Arc::ptr_eq(&downcast, &store_arc),
+			Arc::ptr_eq(&*downcast, &store_arc),
 			"middleware DI registration must expose the same Arc<SessionStore> the middleware writes to"
 		);
 	}
@@ -304,14 +307,15 @@ mod tests {
 		}
 		list.apply_to(&scope);
 
-		// Assert: the scope now resolves SessionStore to the same Arc the
-		// middleware uses, so handlers injecting SessionData see the same store.
+		// Assert: the scope now resolves `Arc<SessionStore>` to the same Arc the
+		// middleware uses, mirroring what `SessionData::inject` does via
+		// `get_singleton::<Arc<SessionStore>>()`, so handlers see the same store.
 		let resolved = scope
-			.get::<SessionStore>()
-			.expect("SingletonScope must resolve SessionStore after applying middleware DI");
+			.get::<Arc<SessionStore>>()
+			.expect("SingletonScope must resolve Arc<SessionStore> after applying middleware DI");
 		assert!(
-			Arc::ptr_eq(&resolved, &store_arc),
-			"resolved SessionStore must be the same Arc owned by the middleware"
+			Arc::ptr_eq(&*resolved, &store_arc),
+			"resolved Arc<SessionStore> must point at the same allocation the middleware owns"
 		);
 	}
 }
