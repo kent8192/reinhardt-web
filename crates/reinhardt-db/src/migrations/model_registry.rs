@@ -214,6 +214,12 @@ impl ModelMetadata {
 pub struct FieldMetadata {
 	/// Field type (e.g., CharField, IntegerField, ForeignKey)
 	pub field_type: super::FieldType,
+	/// Whether the column is nullable (i.e., `NULL` is allowed).
+	///
+	/// This is distinct from the legacy string parameter `params["null"]`,
+	/// which is preserved for backward compatibility. Code paths that
+	/// need a structured nullability signal should prefer this field.
+	pub nullable: bool,
 	/// Field parameters (max_length, null, blank, default, etc.)
 	pub params: HashMap<String, String>,
 	/// ForeignKey information if this field is a foreign key
@@ -225,6 +231,7 @@ impl FieldMetadata {
 	pub fn new(field_type: super::FieldType) -> Self {
 		Self {
 			field_type,
+			nullable: false,
 			params: HashMap::new(),
 			foreign_key: None,
 		}
@@ -233,6 +240,12 @@ impl FieldMetadata {
 	/// Sets the param and returns self for chaining.
 	pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
 		self.params.insert(key.into(), value.into());
+		self
+	}
+
+	/// Sets the nullability and returns self for chaining.
+	pub fn with_nullable(mut self, nullable: bool) -> Self {
+		self.nullable = nullable;
 		self
 	}
 
