@@ -24,8 +24,9 @@ use crate::config::admin::configure_admin;
 // Import server_fn marker modules (snake_case + ::marker)
 #[cfg(native)]
 use crate::server_fn::polls::{
-	get_question_detail, get_question_results, get_questions, get_vote_form_metadata, submit_vote,
-	vote,
+	create_choice, create_question, delete_choice, delete_question, get_question_detail,
+	get_question_results, get_questions, get_vote_form_metadata, submit_vote, update_choice,
+	update_question, vote,
 };
 #[cfg(native)]
 use crate::server_fn::users::{current_user, login, logout};
@@ -59,6 +60,12 @@ pub fn routes() -> UnifiedRouter {
 			.server_fn(vote::marker)
 			.server_fn(get_vote_form_metadata::marker)
 			.server_fn(submit_vote::marker)
+			.server_fn(create_question::marker)
+			.server_fn(update_question::marker)
+			.server_fn(delete_question::marker)
+			.server_fn(create_choice::marker)
+			.server_fn(update_choice::marker)
+			.server_fn(delete_choice::marker)
 			.server_fn(login::marker)
 			.server_fn(logout::marker)
 			.server_fn(current_user::marker)
