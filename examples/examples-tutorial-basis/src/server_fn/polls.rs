@@ -155,6 +155,30 @@ pub async fn get_question_results(
 	Ok((question_info, choice_infos, total_votes))
 }
 
+/// Resolve a `Choice`'s parent `Question` id.
+///
+/// The choice CUD pages (`choice_edit`, `choice_delete_confirm`) only know the
+/// `choice_id`, but their "Cancel" link should navigate back to the parent
+/// poll's detail page. This thin lookup exposes the parent FK without forcing
+/// the client to load the full question/choice payload.
+#[server_fn]
+pub async fn get_choice_parent(
+	choice_id: i64,
+	#[inject] _db: reinhardt::DatabaseConnection,
+) -> std::result::Result<i64, ServerFnError> {
+	use crate::apps::polls::models::Choice;
+	use reinhardt::Model;
+
+	let choice = Choice::objects()
+		.get(choice_id)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(e.to_string()))?
+		.ok_or_else(|| ServerFnError::server(404, "Choice not found"))?;
+
+	Ok(*choice.question_id())
+}
+
 /// Vote for a choice
 ///
 /// Increments the vote count for the selected choice.
