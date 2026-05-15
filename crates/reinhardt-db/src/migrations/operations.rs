@@ -2821,28 +2821,28 @@ impl ColumnDefinition {
 /// `ModelRegistry`:
 ///
 /// 1. **Qualified `(fk_target_app, fk_target)` lookup.** The
-///    `#[model]` macro emits `fk_target_app` only when the user wrote
-///    an absolute, multi-segment path for the FK target type (e.g.
-///    `ForeignKeyField<reinhardt_auth::User>`). This is treated as a
-///    user-explicit qualifier: the user committed to a specific crate
-///    path, so we trust it and try the qualified lookup first. Bare
-///    idents and crate-relative paths (`crate::*`, `self::*`,
-///    `super::*`) deliberately do **not** emit `fk_target_app`,
-///    because the macro cannot reliably map them to a runtime app
-///    label (see `model_derive.rs` for details).
-/// 2. **By-name lookup.** Used when no qualifier was emitted, or as a
-///    fallback when the qualified lookup misses (the user's typed
-///    crate name may differ from the registered app label, e.g.
-///    `#[app_label("auth")]` on the `reinhardt_auth` crate). The
-///    by-name lookup returns `Some` only when *exactly one* model is
-///    registered under the name; on ambiguity it returns `None`.
+///    `#[model]` macro emits `fk_target_app` for every
+///    `ForeignKeyField<T>` field by reading the target type's *own*
+///    `<T as Model>::app_label()` at registration time. That value is
+///    authoritative — it respects `#[app_label = "..."]` overrides
+///    and matches whatever key the target was registered under,
+///    regardless of how the user spelled the type (bare ident,
+///    `use`-imported ident, absolute path, or crate-relative path).
+///    The qualified lookup is therefore trusted as the primary
+///    resolution path.
+/// 2. **By-name lookup.** Used as a defensive fallback for cases
+///    where `fk_target_app` is absent (e.g. manually-constructed
+///    `FieldState` outside the macro path) or the qualified lookup
+///    misses (e.g. the target model isn't registered yet during
+///    partial registry population at startup). The by-name lookup
+///    returns `Some` only when *exactly one* model is registered
+///    under the name; on ambiguity it returns `None`.
 ///
 /// When both paths return `None` and the name is ambiguous across two
 /// or more apps (`ModelRegistry::count_models_by_name > 1`), the
 /// resolver emits a `tracing::warn!` so operators see a targeted
-/// diagnostic and can disambiguate via a path-typed FK target. A
-/// genuinely missing name returns `None` silently — that case is
-/// normal during partial registry population at startup.
+/// diagnostic. A genuinely missing name returns `None` silently —
+/// that case is normal during partial registry population at startup.
 ///
 /// See issue #4436 and PR #4440 review threads on `model_derive.rs`
 /// line 2863 and `operations.rs` line 2836.
@@ -2862,11 +2862,11 @@ fn resolve_foreign_key_column_type_with(
 	registry: &super::model_registry::ModelRegistry,
 ) -> Option<FieldType> {
 	let target_model = field_state.params.get("fk_target")?;
-	// `fk_target_app` is only emitted for user-explicit absolute path
-	// types (see `model_derive.rs`), so the qualified lookup is
-	// trusted. Fall back to by-name when the qualified lookup misses
-	// (the user's typed crate name may not match the registered app
-	// label).
+	// `fk_target_app` is sourced from the target type's own
+	// `Model::app_label()` (see `model_derive.rs`), so the qualified
+	// lookup is authoritative. The by-name fallback is defensive: it
+	// covers manually-constructed `FieldState`s and partial-registry
+	// init races where the target isn't registered yet.
 	let target = match field_state.params.get("fk_target_app") {
 		Some(app) => registry
 			.find_model_qualified(app, target_model)
@@ -2886,9 +2886,9 @@ fn resolve_foreign_key_column_type_with(
 					fk_target_app = ?field_state.params.get("fk_target_app"),
 					"FK target name is ambiguous across apps and the qualified \
 					 lookup did not resolve a unique target. Refusing to resolve \
-					 to avoid silent wrong-target resolution. Disambiguate by \
-					 writing an absolute path-typed FK target, e.g. \
-					 ForeignKeyField<reinhardt_auth::User>.",
+					 to avoid silent wrong-target resolution. Ensure the FK \
+					 target type is registered and that its `Model::app_label()` \
+					 matches one of the registered apps.",
 				);
 			}
 			return None;

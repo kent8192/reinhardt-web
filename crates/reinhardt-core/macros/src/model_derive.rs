@@ -2833,63 +2833,41 @@ fn generate_registration_code(
 			"Unknown".to_string()
 		};
 
-		// Emission of `fk_target_app` is gated on the user typing a
-		// multi-segment, non-relative path for the FK target type. The
-		// param is the resolver's qualifier of last resort when the
-		// target model name is ambiguous across apps, so we only emit
-		// it when the user has explicitly committed to a specific
-		// crate path:
+		// `fk_target_app` is sourced from the FK target type itself via
+		// `<TargetType as Model>::app_label()` — the model's
+		// authoritative app label, which respects `#[app_label = "..."]`
+		// overrides and any future remapping. The macro deliberately
+		// does NOT try to guess the app label from the syntactic path
+		// the user wrote: a path like `reinhardt_auth::User` is just a
+		// crate / module name and can diverge from the registered app
+		// label (e.g. crate `reinhardt_auth` registering its app as
+		// `"auth"` via `#[app_label("auth")]`), and a bare ident
+		// `User` can come from a `use`-import out of another crate.
+		// Reading `app_label()` off the type sidesteps both pitfalls.
 		//
-		//   * `ForeignKeyField<reinhardt_auth::User>`
-		//     -> emits `fk_target_app="reinhardt_auth"`
-		//   * `ForeignKeyField<::reinhardt_auth::User>`
-		//     -> emits `fk_target_app="reinhardt_auth"`
+		// The qualified lookup at FK resolution time uses this value,
+		// so the qualifier always matches the registry key regardless
+		// of whether the target is referenced by a bare ident, a
+		// `use`-imported ident, or an absolute path. The user can
+		// disambiguate same-name models across apps by writing a
+		// path-typed FK target (`ForeignKeyField<reinhardt_auth::User>`)
+		// or by relying on Rust's normal scoping — Rust resolves the
+		// type and the macro reads the type's own app label.
 		//
-		// We deliberately drop bare idents (`ForeignKeyField<User>`)
-		// and crate-relative paths (`crate::User`, `self::User`,
-		// `super::User`, `crate::auth::User`). A bare ident can be
-		// brought into scope via a `use`-import from another crate, so
-		// guessing the current crate's app label is unsafe; the runtime
-		// resolver falls back to by-name resolution and refuses on
-		// ambiguity, prompting the user to disambiguate by switching
-		// to an absolute path. Crate-relative paths cannot be reliably
-		// mapped to a runtime app label at macro-expansion time
-		// (`crate::User` could resolve to any module within this
-		// crate).
-		//
-		// The penultimate path segment is taken as the app hint
-		// (`reinhardt_auth::User` -> `reinhardt_auth`). The user is
-		// trusted to type a path whose crate name matches the
-		// registered app label; if it does not, the resolver falls
-		// back to a by-name lookup, which succeeds if and only if the
-		// model name is unique.
+		// We only emit `fk_target_app` for `Type::Path` target types
+		// (the common case for `ForeignKeyField<T>`). Other shapes
+		// (`fn` types, trait objects, etc.) cannot be FK targets and
+		// don't reach this branch in practice.
 		//
 		// See issue #4436 and PR #4440 review threads on
 		// `model_derive.rs` line 2863 and `operations.rs` line 2836.
-		let fk_target_app_chain = if let Type::Path(type_path) = &fk_info.target_type {
-			if type_path.qself.is_none() && type_path.path.segments.len() >= 2 {
-				let has_relative_prefix =
-					type_path.path.segments.iter().any(|s| {
-						matches!(s.ident.to_string().as_str(), "crate" | "self" | "super")
-					});
-				if has_relative_prefix {
-					quote! {}
-				} else {
-					// Penultimate segment is the crate-name hint.
-					let app_seg = type_path
-						.path
-						.segments
-						.iter()
-						.rev()
-						.nth(1)
-						.map(|s| s.ident.to_string());
-					match app_seg {
-						Some(app) => quote! { .with_param("fk_target_app", #app) },
-						None => quote! {},
-					}
-				}
-			} else {
-				quote! {}
+		let fk_target_app_chain = if let Type::Path(_) = &fk_info.target_type {
+			let target_ty = &fk_info.target_type;
+			quote! {
+				.with_param(
+					"fk_target_app",
+					<#target_ty as #orm_crate::Model>::app_label(),
+				)
 			}
 		} else {
 			quote! {}
