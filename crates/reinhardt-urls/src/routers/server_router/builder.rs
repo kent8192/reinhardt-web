@@ -406,7 +406,19 @@ impl ServerRouter {
 	/// assert_eq!(router.prefix(), "");
 	/// ```
 	pub fn group(mut self, routers: Vec<ServerRouter>) -> Self {
-		for router in routers {
+		for mut router in routers {
+			// Mirror `mount`: when this router owns a context, recursively
+			// adopt the grouped subtree into it so any pending middleware DI
+			// staged before grouping is drained. Otherwise the grouped
+			// subtree's pending lists would later be pushed onto the global
+			// deferred list, which startup skips when the parent owns a
+			// context. See #4426.
+			if router.di_context.is_none()
+				&& let Some(parent_ctx) = self.di_context.as_ref()
+			{
+				Self::adopt_di_context_recursive(&mut router, parent_ctx);
+				router.di_context = Some(Arc::clone(parent_ctx));
+			}
 			self.children.push(router);
 		}
 		self
@@ -521,6 +533,43 @@ mod middleware_di_tests {
 			"flushed registration must resolve from the global deferred list after apply_to",
 		);
 		assert_eq!(resolved.0, "no-context");
+	}
+
+	#[rstest]
+	#[serial_test::serial(global_di)]
+	fn group_drains_grouped_router_pending_into_parent_context() {
+		// Arrange: each grouped child stages its own middleware DI; one of
+		// them also has a nested grandchild with pending DI to verify the
+		// recursive walk through `group`.
+		let scope = Arc::new(SingletonScope::new());
+		let ctx = Arc::new(InjectionContext::builder(Arc::clone(&scope)).build());
+		let users = ServerRouter::new()
+			.with_prefix("/users")
+			.with_middleware(make_mw("group-users"));
+		let posts_grandchild =
+			ServerRouter::new().with_middleware(make_mw("group-posts-grandchild"));
+		let posts = ServerRouter::new()
+			.with_prefix("/posts")
+			.mount("/comments/", posts_grandchild);
+
+		// Act: group both routers under a context-owning parent.
+		let _parent = ServerRouter::new()
+			.with_di_context(Arc::clone(&ctx))
+			.group(vec![users, posts]);
+
+		let leaked = crate::routers::take_di_registrations();
+
+		// Assert: both staged values reach the parent's scope; the second
+		// `set_arc_any` overwrites the first under the same `DummyState`
+		// `TypeId`, so we only verify presence and absence of global leak.
+		let resolved = scope.get::<DummyState>().expect(
+			"group must recursively drain grouped routers' pending middleware DI into the parent context",
+		);
+		assert!(matches!(
+			resolved.0,
+			"group-users" | "group-posts-grandchild"
+		));
+		assert!(leaked.is_none());
 	}
 
 	#[rstest]
