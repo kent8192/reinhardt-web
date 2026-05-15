@@ -2827,11 +2827,37 @@ impl ColumnDefinition {
 /// If multiple apps register the same model name, the by-name lookup
 /// conservatively returns `None` to avoid silently resolving to the
 /// wrong target. See issue #4436.
+///
+/// When `fk_target_app` is present but the qualified lookup misses,
+/// we also fall back to the by-name lookup before giving up. This
+/// guards against the `use`-import edge case in the
+/// `#[model]`-macro's single-segment heuristic (e.g.
+/// `use reinhardt_auth::User;` then `ForeignKeyField<User>` — the
+/// macro emits the *current* crate's app label but the model is
+/// actually registered under `reinhardt_auth`). Without the
+/// fallback, this PR would regress the previously-working by-name
+/// resolution path. See issue #4436 / PR #4440 review thread on
+/// `model_derive.rs` line 2863.
 fn resolve_foreign_key_column_type(field_state: &FieldState) -> Option<FieldType> {
+	resolve_foreign_key_column_type_with(field_state, super::model_registry::global_registry())
+}
+
+/// Registry-injected variant of [`resolve_foreign_key_column_type`].
+///
+/// Exists so unit tests can exercise the qualified-hit / by-name
+/// fallback / ambiguous-miss branches against a local
+/// [`super::model_registry::ModelRegistry`] without touching global
+/// state. Production code paths go through
+/// [`resolve_foreign_key_column_type`].
+fn resolve_foreign_key_column_type_with(
+	field_state: &FieldState,
+	registry: &super::model_registry::ModelRegistry,
+) -> Option<FieldType> {
 	let target_model = field_state.params.get("fk_target")?;
-	let registry = super::model_registry::global_registry();
 	let target = match field_state.params.get("fk_target_app") {
-		Some(app) => registry.find_model_qualified(app, target_model)?,
+		Some(app) => registry
+			.find_model_qualified(app, target_model)
+			.or_else(|| registry.find_model_by_name(target_model))?,
 		None => registry.find_model_by_name(target_model)?,
 	};
 	// Find the primary key field of the target model.
@@ -6313,5 +6339,151 @@ mod tests {
 			"SQLite auto_increment must not emit BIGINT in composite PK path: {}",
 			sql
 		);
+	}
+
+	mod resolve_foreign_key_column_type_tests {
+		use super::super::resolve_foreign_key_column_type_with;
+		use super::FieldType;
+		use crate::migrations::autodetector::FieldState;
+		use crate::migrations::model_registry::{FieldMetadata, ModelMetadata, ModelRegistry};
+
+		/// Helper: build a target model registered under `(app, name)`
+		/// whose PK column is of `pk_type`.
+		fn target_model(app: &str, name: &str, table: &str, pk_type: FieldType) -> ModelMetadata {
+			let mut meta = ModelMetadata::new(app, name, table);
+			meta.add_field(
+				"id".to_string(),
+				FieldMetadata::new(pk_type).with_param("primary_key", "true"),
+			);
+			meta
+		}
+
+		/// Helper: build a `ForeignKeyField`-style FieldState whose
+		/// `fk_target` (and optionally `fk_target_app`) drive the
+		/// resolver.
+		fn fk_field_state(target_model: &str, target_app: Option<&str>) -> FieldState {
+			let mut fs = FieldState::new("owner_id", FieldType::Uuid, false);
+			fs.params
+				.insert("fk_target".to_string(), target_model.to_string());
+			if let Some(app) = target_app {
+				fs.params
+					.insert("fk_target_app".to_string(), app.to_string());
+			}
+			fs
+		}
+
+		#[test]
+		fn qualified_hit_resolves_to_target_pk_type() {
+			// Arrange
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"auth",
+				"User",
+				"auth_user",
+				FieldType::BigInteger,
+			));
+			let fs = fk_field_state("User", Some("auth"));
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert: qualified lookup hits and returns the target's PK type.
+			assert_eq!(resolved, Some(FieldType::BigInteger));
+		}
+
+		#[test]
+		fn qualified_miss_falls_back_to_by_name_when_unambiguous() {
+			// Arrange: target registered under a different app than the
+			// macro emitted (simulates the `use`-import edge case).
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"reinhardt_auth",
+				"User",
+				"auth_user",
+				FieldType::Uuid,
+			));
+			// Macro emitted the current crate's app, which is wrong here.
+			let fs = fk_field_state("User", Some("blog"));
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert: by-name fallback resolves to the only registered
+			// `User` model, preserving the pre-#4436 resolution path.
+			assert_eq!(resolved, Some(FieldType::Uuid));
+		}
+
+		#[test]
+		fn ambiguous_by_name_returns_none() {
+			// Arrange: two apps register the same model name.
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"auth",
+				"User",
+				"auth_user",
+				FieldType::BigInteger,
+			));
+			registry.register_model(target_model(
+				"billing",
+				"User",
+				"billing_user",
+				FieldType::Uuid,
+			));
+			// No `fk_target_app` -> straight to by-name lookup.
+			let fs = fk_field_state("User", None);
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert: conservative `None` rather than silently picking
+			// one of the two `User` models.
+			assert_eq!(resolved, None);
+		}
+
+		#[test]
+		fn qualified_miss_with_ambiguous_by_name_returns_none() {
+			// Arrange: qualified lookup misses AND the by-name fallback
+			// is itself ambiguous. The resolver must still refuse to
+			// guess.
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"auth",
+				"User",
+				"auth_user",
+				FieldType::BigInteger,
+			));
+			registry.register_model(target_model(
+				"billing",
+				"User",
+				"billing_user",
+				FieldType::Uuid,
+			));
+			let fs = fk_field_state("User", Some("blog")); // misses; falls back; ambiguous.
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert
+			assert_eq!(resolved, None);
+		}
+
+		#[test]
+		fn no_fk_target_param_returns_none() {
+			// Arrange: a non-FK field has no `fk_target` param.
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"auth",
+				"User",
+				"auth_user",
+				FieldType::BigInteger,
+			));
+			let fs = FieldState::new("name", FieldType::VarChar(64), false);
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert
+			assert_eq!(resolved, None);
+		}
 	}
 }

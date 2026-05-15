@@ -2841,14 +2841,22 @@ fn generate_registration_code(
 		// We only emit `fk_target_app` when the target type is a bare,
 		// single-segment identifier (e.g., `ForeignKeyField<User>`). A
 		// bare ident must already be in scope at the use site, which in
-		// Reinhardt's `#[model]` convention means it lives in the same
-		// crate (and therefore the same app). Cross-crate / cross-app
-		// references are written as path types (e.g.,
-		// `reinhardt_auth::User`) and are deliberately left unqualified
-		// so the runtime resolver falls back to the by-name path.
+		// Reinhardt's `#[model]` convention typically means it lives in
+		// the same crate (and therefore the same app). Cross-crate /
+		// cross-app references written as path types (e.g.,
+		// `reinhardt_auth::User`) are deliberately left unqualified so
+		// the runtime resolver uses the by-name path.
 		//
-		// This is a false-negative-only heuristic: it never emits an
-		// incorrect app label, only omits a correct one. See issue #4436.
+		// Edge case: a bare ident brought in via `use` (e.g.
+		// `use reinhardt_auth::User;` then `ForeignKeyField<User>`)
+		// causes the macro to emit the *current* crate's app label for
+		// a target that lives in another app. That qualified lookup
+		// misses at FK resolution time. The runtime resolver in
+		// `resolve_foreign_key_column_type` compensates by falling back
+		// to a by-name lookup when the qualified lookup misses, so the
+		// previously-working resolution path is preserved.
+		//
+		// See issue #4436.
 		let fk_target_app_chain = if let Type::Path(type_path) = &fk_info.target_type {
 			if type_path.qself.is_none()
 				&& type_path.path.leading_colon.is_none()

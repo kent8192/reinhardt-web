@@ -515,8 +515,9 @@ impl ModelRegistry {
 	/// Find a model by `(app_label, model_name)` without materializing the
 	/// entire registry.
 	///
-	/// This is a direct O(1) lookup backed by the underlying index and is
-	/// the preferred path for hot code (e.g. migration generation, FK
+	/// The cost is an O(1) index lookup plus a single clone of the matched
+	/// [`ModelMetadata`] (whose size depends on its `fields` vector). This
+	/// is the preferred path for hot code (e.g. migration generation, FK
 	/// column type resolution) where [`Self::get_models`] would otherwise
 	/// clone every registered model on every call.
 	///
@@ -535,11 +536,14 @@ impl ModelRegistry {
 	/// # Ambiguity
 	///
 	/// If two or more apps have registered a model with the same
-	/// `model_name`, this function returns `None` and emits a single
-	/// `tracing::warn!`. Callers that need a specific cross-app FK target
-	/// must use [`Self::find_model_qualified`] instead. This conservative
-	/// behavior prevents the silent wrong-target resolution flagged on
-	/// PR #4434 (Copilot review thread HYL).
+	/// `model_name`, this function returns `None` and emits a
+	/// `tracing::warn!` (one log line per call — there is no
+	/// deduplication, so callers on a hot path should switch to
+	/// [`Self::find_model_qualified`]). Callers that need a specific
+	/// cross-app FK target must use [`Self::find_model_qualified`]
+	/// instead. This conservative behavior prevents the silent
+	/// wrong-target resolution flagged on PR #4434 (Copilot review
+	/// thread HYL).
 	///
 	/// See issue #4436.
 	pub fn find_model_by_name(&self, model_name: &str) -> Option<ModelMetadata> {
