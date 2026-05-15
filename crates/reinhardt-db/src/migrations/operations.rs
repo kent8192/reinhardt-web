@@ -2778,9 +2778,24 @@ impl ColumnDefinition {
 
 		let default = params.get("default").cloned();
 
+		// Resolve ForeignKey column type from the referenced model's primary
+		// key in the global `ModelRegistry`. This addresses the macro-level
+		// limitation that the target model's PK type is not knowable at
+		// macro-expansion time (see issue #4430). The macro emits a
+		// placeholder `FieldType::Uuid` for `ForeignKeyField<T>` `_id`
+		// columns and tags the field with the `fk_target` parameter; here
+		// we look up the referenced model and adopt its PK column type.
+		//
+		// If the lookup fails (e.g., the target model has not been
+		// registered yet), we fall back to the placeholder field type so
+		// existing behavior is preserved and the caller can surface a
+		// downstream error rather than crash here.
+		let type_definition = resolve_foreign_key_column_type(field_state)
+			.unwrap_or_else(|| field_state.field_type.clone());
+
 		Self {
 			name: name_str,
-			type_definition: field_state.field_type.clone(),
+			type_definition,
 			not_null,
 			unique,
 			primary_key,
@@ -2788,6 +2803,33 @@ impl ColumnDefinition {
 			default,
 		}
 	}
+}
+
+/// Resolve the column type of a `ForeignKeyField<T>` `_id` column by
+/// looking up the target model's primary key in the global
+/// `ModelRegistry`. Returns `None` if `field_state` is not tagged as a
+/// foreign key column or if the target model / its PK cannot be
+/// resolved.
+///
+/// This indirection exists because the `#[model]` macro cannot resolve
+/// the target model's PK type at macro-expansion time (the registry is
+/// populated at process startup via `#[ctor::ctor]`). See issue #4430.
+fn resolve_foreign_key_column_type(field_state: &FieldState) -> Option<FieldType> {
+	let target_model = field_state.params.get("fk_target")?;
+	let registry = super::model_registry::global_registry();
+	// The macro currently only emits the target model's local Rust type
+	// name. Search the registry across all apps; in practice model names
+	// are globally unique within a Reinhardt project.
+	let target = registry
+		.get_models()
+		.into_iter()
+		.find(|m| &m.model_name == target_model)?;
+	// Find the primary key field of the target model.
+	let pk_field = target
+		.fields
+		.values()
+		.find(|f| f.params.get("primary_key").map(String::as_str) == Some("true"))?;
+	Some(pk_field.field_type.clone())
 }
 
 /// Convert a field type string (e.g., "reinhardt.orm.models.CharField") to FieldType.
