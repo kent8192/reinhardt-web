@@ -2817,35 +2817,35 @@ impl ColumnDefinition {
 ///
 /// # Lookup Strategy
 ///
-/// When the `#[model]` macro is able to determine the target's app
-/// label at expansion time (same-crate FKs), it emits a `fk_target_app`
-/// param alongside `fk_target`. In that case we use the qualified
-/// `(app, model_name)` lookup, which is O(1) and unambiguous.
+/// `ModelRegistry::find_model_by_name` is the authoritative source: it
+/// returns `Some` only when *exactly one* model is registered under the
+/// requested name, and `None` otherwise (missing **or** ambiguous).
 ///
-/// When `fk_target_app` is absent (cross-crate FK targets, or older
-/// macro expansions), we fall back to looking up by model name only.
-/// If multiple apps register the same model name, the by-name lookup
-/// conservatively returns `None` to avoid silently resolving to the
-/// wrong target. See issue #4436.
+/// `fk_target_app` (emitted by the `#[model]` macro for bare-ident FK
+/// target types) is **not** trusted as authoritative. The macro's
+/// single-segment heuristic emits the *current* crate's app label, but
+/// a bare ident can also come from a `use`-import out of another crate
+/// (e.g. `use reinhardt_auth::User;` then `ForeignKeyField<User>` in
+/// crate `blog` emits `fk_target_app=blog` even though the model is
+/// actually registered under `reinhardt_auth`). If the current crate
+/// happens to register a same-named model, trusting the qualified
+/// lookup would silently resolve to the wrong target.
 ///
-/// When `fk_target_app` is present but the qualified lookup misses,
-/// we also fall back to the by-name lookup before giving up. This
-/// guards against the `use`-import edge case in the
-/// `#[model]`-macro's single-segment heuristic (e.g.
-/// `use reinhardt_auth::User;` then `ForeignKeyField<User>` — the
-/// macro emits the *current* crate's app label but the model is
-/// actually registered under `reinhardt_auth`). Without the
-/// fallback, this PR would regress the previously-working by-name
-/// resolution path. See issue #4436 / PR #4440 review thread on
-/// `model_derive.rs` line 2863.
+/// To prevent that, we always go through `find_model_by_name` and
+/// refuse to resolve when the name is ambiguous. `fk_target_app` is
+/// consulted only to disambiguate "model name is genuinely missing"
+/// from "model name is ambiguous across apps", so the latter case can
+/// be surfaced with a targeted `tracing::warn!` rather than a silent
+/// `None`. See issue #4436 and PR #4440 review threads on
+/// `operations.rs` line 2836 and `model_derive.rs` line 2863.
 fn resolve_foreign_key_column_type(field_state: &FieldState) -> Option<FieldType> {
 	resolve_foreign_key_column_type_with(field_state, super::model_registry::global_registry())
 }
 
 /// Registry-injected variant of [`resolve_foreign_key_column_type`].
 ///
-/// Exists so unit tests can exercise the qualified-hit / by-name
-/// fallback / ambiguous-miss branches against a local
+/// Exists so unit tests can exercise the by-name resolution and
+/// ambiguous-name branches against a local
 /// [`super::model_registry::ModelRegistry`] without touching global
 /// state. Production code paths go through
 /// [`resolve_foreign_key_column_type`].
@@ -2854,11 +2854,36 @@ fn resolve_foreign_key_column_type_with(
 	registry: &super::model_registry::ModelRegistry,
 ) -> Option<FieldType> {
 	let target_model = field_state.params.get("fk_target")?;
-	let target = match field_state.params.get("fk_target_app") {
-		Some(app) => registry
-			.find_model_qualified(app, target_model)
-			.or_else(|| registry.find_model_by_name(target_model))?,
-		None => registry.find_model_by_name(target_model)?,
+	// Authoritative resolution is by-name. The qualified lookup is
+	// intentionally NOT trusted because the macro's `fk_target_app`
+	// can point to the wrong app for `use`-imported FK targets (see
+	// strategy doc above).
+	let target = match registry.find_model_by_name(target_model) {
+		Some(target) => target,
+		None => {
+			// `find_model_by_name` returns `None` for both "missing"
+			// and "ambiguous". When `fk_target_app` is present and the
+			// qualified lookup hits, the model name exists in the
+			// registry, so the `None` from `find_model_by_name` must
+			// mean ambiguity. Warn so operators can fix the call site
+			// rather than chasing a silent `None`.
+			if let Some(app) = field_state.params.get("fk_target_app") {
+				if registry.find_model_qualified(app, target_model).is_some() {
+					tracing::warn!(
+						model_name = %target_model,
+						fk_target_app = %app,
+						"FK target name is ambiguous across apps. The #[model] \
+						 macro emitted an app label, but it is not trusted because \
+						 bare-ident FK targets reached via `use`-import produce an \
+						 incorrect label. Refusing to resolve to avoid silent \
+						 wrong-target resolution. Disambiguate by writing a \
+						 path-typed FK target, e.g. \
+						 ForeignKeyField<reinhardt_auth::User>.",
+					);
+				}
+			}
+			return None;
+		}
 	};
 	// Find the primary key field of the target model.
 	let pk_field = target
@@ -6437,6 +6462,38 @@ mod tests {
 
 			// Assert: conservative `None` rather than silently picking
 			// one of the two `User` models.
+			assert_eq!(resolved, None);
+		}
+
+		#[test]
+		fn qualified_hit_on_ambiguous_name_does_not_silently_resolve() {
+			// Arrange: two apps register `User`. The macro-emitted
+			// `fk_target_app` happens to match one of them (Scenario C:
+			// the user wrote `use other_app::User;` then
+			// `ForeignKeyField<User>` in crate `blog`, and `blog` also
+			// registers its own `User`). Trusting the qualified lookup
+			// here would silently return `blog.User` even though the
+			// caller meant `other_app::User`. The resolver must refuse.
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"blog",
+				"User",
+				"blog_user",
+				FieldType::BigInteger,
+			));
+			registry.register_model(target_model(
+				"other_app",
+				"User",
+				"other_app_user",
+				FieldType::Uuid,
+			));
+			let fs = fk_field_state("User", Some("blog"));
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert: refuse to resolve rather than silently pick the
+			// `blog.User` that the macro's app-label hint pointed to.
 			assert_eq!(resolved, None);
 		}
 

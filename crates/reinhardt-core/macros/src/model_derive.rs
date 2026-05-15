@@ -2833,30 +2833,27 @@ fn generate_registration_code(
 			"Unknown".to_string()
 		};
 
-		// Best-effort detection of same-app FK targets so the registry can
-		// be looked up by qualified `(app, model_name)` at runtime, avoiding
-		// the silent wrong-target resolution that an unqualified by-name
-		// lookup would produce when two apps register a same-named model.
+		// Best-effort emission of `fk_target_app` for bare-ident FK target
+		// types. The runtime resolver treats this as a *hint*, not as an
+		// authoritative qualifier: it uses `find_model_by_name` (which
+		// refuses on ambiguity) as the authoritative resolution path,
+		// and consults `fk_target_app` only to surface a targeted
+		// warning when the name is ambiguous. See
+		// `resolve_foreign_key_column_type` in
+		// `crates/reinhardt-db/src/migrations/operations.rs`.
 		//
 		// We only emit `fk_target_app` when the target type is a bare,
-		// single-segment identifier (e.g., `ForeignKeyField<User>`). A
-		// bare ident must already be in scope at the use site, which in
-		// Reinhardt's `#[model]` convention typically means it lives in
-		// the same crate (and therefore the same app). Cross-crate /
-		// cross-app references written as path types (e.g.,
-		// `reinhardt_auth::User`) are deliberately left unqualified so
-		// the runtime resolver uses the by-name path.
+		// single-segment identifier (e.g., `ForeignKeyField<User>`).
+		// A bare ident *typically* lives in the same crate / app, but
+		// can also be a `use`-import from another crate (e.g.
+		// `use reinhardt_auth::User;` then `ForeignKeyField<User>`).
+		// Because the resolver does not trust the emitted app label, an
+		// incorrect emission here is observable only as a warn-and-`None`
+		// in the ambiguous case — never as a silent wrong-target
+		// resolution.
 		//
-		// Edge case: a bare ident brought in via `use` (e.g.
-		// `use reinhardt_auth::User;` then `ForeignKeyField<User>`)
-		// causes the macro to emit the *current* crate's app label for
-		// a target that lives in another app. That qualified lookup
-		// misses at FK resolution time. The runtime resolver in
-		// `resolve_foreign_key_column_type` compensates by falling back
-		// to a by-name lookup when the qualified lookup misses, so the
-		// previously-working resolution path is preserved.
-		//
-		// See issue #4436.
+		// See issue #4436 and PR #4440 review threads on
+		// `model_derive.rs` line 2863 and `operations.rs` line 2836.
 		let fk_target_app_chain = if let Type::Path(type_path) = &fk_info.target_type {
 			if type_path.qself.is_none()
 				&& type_path.path.leading_colon.is_none()
