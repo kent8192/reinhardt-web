@@ -91,21 +91,14 @@ pub fn routes() -> UnifiedRouter {
 			.with_di_registrations(admin_di)
 	};
 
-	// Register the SessionMiddleware's `Arc<SessionStore>` as a DI singleton
-	// so server functions that `#[inject] session: SessionData` (or
-	// `#[inject] store: SessionStoreRef`) can resolve the same store the
-	// middleware writes to. Without this, `SessionData::inject` cannot find
-	// the store in `SingletonScope` and every server_fn returns a generic
-	// 500 — see #4423.
+	// `SessionMiddleware` auto-registers its `Arc<SessionStore>` as a DI
+	// singleton via `Middleware::di_registrations`, so server functions that
+	// `#[inject] session: SessionData` (or `#[inject] store: SessionStoreRef`)
+	// can resolve the same store the middleware writes to without a parallel
+	// `with_di_registrations(...)` call. See #4426 (and the original #4423
+	// regression that motivated the auto-registration hook).
 	#[cfg(native)]
-	let router = {
-		let session_mw = create_session_middleware();
-		let mut session_di = reinhardt::di::DiRegistrationList::new();
-		session_di.register(session_mw.store_arc());
-		router
-			.with_middleware(session_mw)
-			.with_di_registrations(session_di)
-	};
+	let router = router.with_middleware(create_session_middleware());
 
 	router
 }
