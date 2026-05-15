@@ -2833,33 +2833,61 @@ fn generate_registration_code(
 			"Unknown".to_string()
 		};
 
-		// Best-effort emission of `fk_target_app` for bare-ident FK target
-		// types. The runtime resolver treats this as a *hint*, not as an
-		// authoritative qualifier: it uses `find_model_by_name` (which
-		// refuses on ambiguity) as the authoritative resolution path,
-		// and consults `fk_target_app` only to surface a targeted
-		// warning when the name is ambiguous. See
-		// `resolve_foreign_key_column_type` in
-		// `crates/reinhardt-db/src/migrations/operations.rs`.
+		// Emission of `fk_target_app` is gated on the user typing a
+		// multi-segment, non-relative path for the FK target type. The
+		// param is the resolver's qualifier of last resort when the
+		// target model name is ambiguous across apps, so we only emit
+		// it when the user has explicitly committed to a specific
+		// crate path:
 		//
-		// We only emit `fk_target_app` when the target type is a bare,
-		// single-segment identifier (e.g., `ForeignKeyField<User>`).
-		// A bare ident *typically* lives in the same crate / app, but
-		// can also be a `use`-import from another crate (e.g.
-		// `use reinhardt_auth::User;` then `ForeignKeyField<User>`).
-		// Because the resolver does not trust the emitted app label, an
-		// incorrect emission here is observable only as a warn-and-`None`
-		// in the ambiguous case — never as a silent wrong-target
-		// resolution.
+		//   * `ForeignKeyField<reinhardt_auth::User>`
+		//     -> emits `fk_target_app="reinhardt_auth"`
+		//   * `ForeignKeyField<::reinhardt_auth::User>`
+		//     -> emits `fk_target_app="reinhardt_auth"`
+		//
+		// We deliberately drop bare idents (`ForeignKeyField<User>`)
+		// and crate-relative paths (`crate::User`, `self::User`,
+		// `super::User`, `crate::auth::User`). A bare ident can be
+		// brought into scope via a `use`-import from another crate, so
+		// guessing the current crate's app label is unsafe; the runtime
+		// resolver falls back to by-name resolution and refuses on
+		// ambiguity, prompting the user to disambiguate by switching
+		// to an absolute path. Crate-relative paths cannot be reliably
+		// mapped to a runtime app label at macro-expansion time
+		// (`crate::User` could resolve to any module within this
+		// crate).
+		//
+		// The penultimate path segment is taken as the app hint
+		// (`reinhardt_auth::User` -> `reinhardt_auth`). The user is
+		// trusted to type a path whose crate name matches the
+		// registered app label; if it does not, the resolver falls
+		// back to a by-name lookup, which succeeds if and only if the
+		// model name is unique.
 		//
 		// See issue #4436 and PR #4440 review threads on
 		// `model_derive.rs` line 2863 and `operations.rs` line 2836.
 		let fk_target_app_chain = if let Type::Path(type_path) = &fk_info.target_type {
-			if type_path.qself.is_none()
-				&& type_path.path.leading_colon.is_none()
-				&& type_path.path.segments.len() == 1
-			{
-				quote! { .with_param("fk_target_app", #app_label) }
+			if type_path.qself.is_none() && type_path.path.segments.len() >= 2 {
+				let has_relative_prefix =
+					type_path.path.segments.iter().any(|s| {
+						matches!(s.ident.to_string().as_str(), "crate" | "self" | "super")
+					});
+				if has_relative_prefix {
+					quote! {}
+				} else {
+					// Penultimate segment is the crate-name hint.
+					let app_seg = type_path
+						.path
+						.segments
+						.iter()
+						.rev()
+						.nth(1)
+						.map(|s| s.ident.to_string());
+					match app_seg {
+						Some(app) => quote! { .with_param("fk_target_app", #app) },
+						None => quote! {},
+					}
+				}
 			} else {
 				quote! {}
 			}

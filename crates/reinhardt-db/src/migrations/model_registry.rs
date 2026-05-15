@@ -562,6 +562,29 @@ impl ModelRegistry {
 		Some(first)
 	}
 
+	/// Count how many registered models have `model_name`, irrespective
+	/// of app label.
+	///
+	/// Used by [`crate::migrations::operations`] FK column-type
+	/// resolution to distinguish "model name is genuinely missing" from
+	/// "model name is registered under more than one app" when a
+	/// by-name lookup returns `None`. The two cases need different
+	/// diagnostics: ambiguity is a user error worth a `tracing::warn!`,
+	/// while a missing name is normal during partial registry
+	/// population at startup.
+	///
+	/// See issue #4436.
+	pub fn count_models_by_name(&self, model_name: &str) -> usize {
+		if let Ok(models) = self.models.read() {
+			models
+				.values()
+				.filter(|m| m.model_name == model_name)
+				.count()
+		} else {
+			0
+		}
+	}
+
 	/// Get all models for a specific app
 	pub fn get_app_models(&self, app_label: &str) -> Vec<ModelMetadata> {
 		if let Ok(models) = self.models.read() {
