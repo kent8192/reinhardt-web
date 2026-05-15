@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.29...reinhardt-urls@v0.1.0-rc.30) - 2026-05-15
+
+### Added
+
+- *(commands,urls)* log registered client routes in runserver --with-pages banner
+
+### Fixed
+
+- address Copilot review feedback
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.28...reinhardt-urls@v0.1.0-rc.29) - 2026-05-13
 
 ### Changed
