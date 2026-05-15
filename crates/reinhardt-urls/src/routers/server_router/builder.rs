@@ -342,16 +342,17 @@ impl ServerRouter {
 			child.prefix = prefix.to_string();
 		}
 
-		// Inherit DI context if child doesn't have one. When inheriting, drain
-		// any pending middleware DI registrations the child staged before it
-		// had a context, mirroring `with_di_context`. See #4426.
+		// Inherit DI context if child doesn't have one. When inheriting,
+		// recursively drain pending middleware DI from the entire subtree
+		// (the child itself AND any grandchildren that also lack a context),
+		// mirroring `with_di_context`. A non-recursive drain would leave
+		// nested grandchildren's staged registrations stranded; later
+		// `register_all_routes` would push them to the global list, which
+		// startup skips when the top router owns a context. See #4426.
 		if child.di_context.is_none()
 			&& let Some(parent_ctx) = self.di_context.as_ref()
 		{
-			if !child.pending_middleware_di.is_empty() {
-				let pending = std::mem::take(&mut child.pending_middleware_di);
-				pending.apply_to(parent_ctx.singleton_scope());
-			}
+			Self::adopt_di_context_recursive(&mut child, parent_ctx);
 			child.di_context = Some(Arc::clone(parent_ctx));
 		}
 
@@ -378,13 +379,11 @@ impl ServerRouter {
 		if child.prefix.is_empty() {
 			child.prefix = prefix.to_string();
 		}
+		// See `mount` for the rationale on recursive subtree adoption.
 		if child.di_context.is_none()
 			&& let Some(parent_ctx) = self.di_context.as_ref()
 		{
-			if !child.pending_middleware_di.is_empty() {
-				let pending = std::mem::take(&mut child.pending_middleware_di);
-				pending.apply_to(parent_ctx.singleton_scope());
-			}
+			Self::adopt_di_context_recursive(&mut child, parent_ctx);
 			child.di_context = Some(Arc::clone(parent_ctx));
 		}
 		self.children.push(child);
@@ -522,6 +521,33 @@ mod middleware_di_tests {
 			"flushed registration must resolve from the global deferred list after apply_to",
 		);
 		assert_eq!(resolved.0, "no-context");
+	}
+
+	#[rstest]
+	#[serial_test::serial(global_di)]
+	fn nested_grandchild_pending_drains_into_parent_context_on_mount() {
+		// Arrange: build a grandchild with pending middleware DI, nest it
+		// inside a child (neither has a context yet), then mount the whole
+		// subtree under a parent that already owns a context. `mount` must
+		// recursively drain the grandchild — not just the immediate child.
+		let scope = Arc::new(SingletonScope::new());
+		let ctx = Arc::new(InjectionContext::builder(Arc::clone(&scope)).build());
+		let grandchild = ServerRouter::new().with_middleware(make_mw("nested-grandchild"));
+		let child = ServerRouter::new().mount("/users/", grandchild);
+
+		// Act
+		let _parent = ServerRouter::new()
+			.with_di_context(Arc::clone(&ctx))
+			.mount("/api/", child);
+
+		let leaked = crate::routers::take_di_registrations();
+
+		// Assert
+		let resolved = scope.get::<DummyState>().expect(
+			"mount must recursively drain grandchildren's pending middleware DI into the parent's context",
+		);
+		assert_eq!(resolved.0, "nested-grandchild");
+		assert!(leaked.is_none());
 	}
 
 	#[rstest]
