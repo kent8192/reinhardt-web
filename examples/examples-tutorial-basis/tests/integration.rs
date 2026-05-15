@@ -832,10 +832,10 @@ mod server_fn_tests {
 //
 // Session-positive ("author can update", "non-author gets 403") paths
 // require a `users` table + `author_id` column in the fixture — see the
-// TODO at the top of `sqlite_with_test_data`. They are intentionally
-// deferred until that fixture is rebuilt around `reinhardt-test`'s
-// model-driven schema generation rather than the hand-written
-// `CREATE TABLE` here.
+// follow-up note at the top of `sqlite_with_test_data`. They are
+// intentionally deferred until that fixture is rebuilt around
+// `reinhardt-test`'s model-driven schema generation rather than the
+// hand-written `CREATE TABLE` here.
 
 #[cfg(with_reinhardt)]
 mod auth_tests {
