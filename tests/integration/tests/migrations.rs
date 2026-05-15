@@ -4,6 +4,10 @@
 #[path = "migrations/composite_pk_db_execution.rs"]
 mod composite_pk_db_execution;
 
+// Foreign-key column metadata resolution (issues #4430, #4431)
+#[path = "migrations/fk_column_metadata_resolution.rs"]
+mod fk_column_metadata_resolution;
+
 #[path = "migrations/state_loader_integration.rs"]
 mod state_loader_integration;
 

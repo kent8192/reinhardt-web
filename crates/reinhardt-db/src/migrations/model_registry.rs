@@ -143,21 +143,17 @@ impl ModelMetadata {
 
 		// Convert fields
 		for (name, field_meta) in &self.fields {
+			// Nullability is sourced from `params["null"]` via
+			// `FieldMetadata::is_nullable()`. A type-safe field is deferred
+			// to the next major version (tracked under `rc-migration`).
+			// See #4430 / #4431.
 			let mut field_state = FieldState::new(
 				name.clone(),
 				field_meta.field_type.clone(),
-				field_meta
-					.params
-					.get("null")
-					.and_then(|v| v.parse::<bool>().ok())
-					.unwrap_or(false),
+				field_meta.is_nullable(),
 			);
 			for (key, value) in &field_meta.params {
 				field_state.params.insert(key.clone(), value.clone());
-			}
-			// Override nullable from params if explicitly set
-			if let Some(null_value) = field_meta.params.get("null") {
-				field_state.nullable = null_value == "true";
 			}
 			// Set ForeignKey information if present
 			if let Some(ref fk_info) = field_meta.foreign_key {
@@ -215,6 +211,11 @@ pub struct FieldMetadata {
 	/// Field type (e.g., CharField, IntegerField, ForeignKey)
 	pub field_type: super::FieldType,
 	/// Field parameters (max_length, null, blank, default, etc.)
+	///
+	/// Nullability is stored under the `"null"` key as `"true"` / `"false"`.
+	/// Prefer [`Self::with_nullable`] and [`Self::is_nullable`] over raw
+	/// params access. A type-safe replacement is tracked in the next-major
+	/// (post-RC) `rc-migration` issue; see #4430 / #4431.
 	pub params: HashMap<String, String>,
 	/// ForeignKey information if this field is a foreign key
 	pub foreign_key: Option<super::autodetector::ForeignKeyInfo>,
@@ -234,6 +235,26 @@ impl FieldMetadata {
 	pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
 		self.params.insert(key.into(), value.into());
 		self
+	}
+
+	/// Sets the nullability and returns self for chaining.
+	///
+	/// Stored under `params["null"]`; a type-safe field is deferred to the
+	/// next major version (tracked under `rc-migration`).
+	pub fn with_nullable(mut self, nullable: bool) -> Self {
+		self.params.insert("null".to_string(), nullable.to_string());
+		self
+	}
+
+	/// Returns whether the column is nullable (i.e., `NULL` is allowed).
+	///
+	/// Reads `params["null"]`; absent or unparseable values default to
+	/// `false` (NOT NULL).
+	pub fn is_nullable(&self) -> bool {
+		self.params
+			.get("null")
+			.and_then(|v| v.parse::<bool>().ok())
+			.unwrap_or(false)
 	}
 
 	/// Sets the foreign key and returns self for chaining.
