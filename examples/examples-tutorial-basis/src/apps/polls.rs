@@ -10,6 +10,8 @@
 use reinhardt::app_config;
 
 #[cfg(native)]
+pub mod admin;
+#[cfg(native)]
 pub mod models;
 #[cfg(native)]
 pub mod serializers;
