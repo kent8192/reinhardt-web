@@ -144,12 +144,13 @@ pub struct ServerRouter {
 	pub(crate) di_context: Option<Arc<InjectionContext>>,
 
 	/// Middleware-contributed DI singleton registrations that have been
-	/// harvested by [`with_middleware`] but not yet applied. Filled when
-	/// [`with_middleware`] runs before [`with_di_context`]; drained either by
-	/// a later [`with_di_context`] call (into that context's `SingletonScope`)
-	/// or, if no context is ever attached, by [`register_all_routes`] (into
-	/// the global deferred-registration list). This avoids both the silent
-	/// drop and the global-list leak described in #4426.
+	/// harvested by [`Self::with_middleware`] but not yet applied. Filled
+	/// when [`Self::with_middleware`] runs before [`Self::with_di_context`];
+	/// drained either by a later [`Self::with_di_context`] call (into that
+	/// context's `SingletonScope`) or, if no context is ever attached, by
+	/// [`Self::register_all_routes`] (into the global deferred-registration
+	/// list). This avoids both the silent drop and the global-list leak
+	/// described in #4426.
 	pub(crate) pending_middleware_di: reinhardt_di::DiRegistrationList,
 
 	/// Middleware stack

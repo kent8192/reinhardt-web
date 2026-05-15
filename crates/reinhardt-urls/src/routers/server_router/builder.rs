@@ -167,6 +167,20 @@ impl ServerRouter {
 	/// middleware DI registrations into the context's `SingletonScope` along
 	/// the way. Descendants that already own a different context are left
 	/// untouched. See #4426.
+	/// If `parent` owns an `InjectionContext` and `child` does not, recursively
+	/// adopt the parent's context into the child's subtree (draining any
+	/// pending middleware DI registrations along the way) and attach the
+	/// context to the child itself. Used by `mount`, `mount_mut`, and `group`
+	/// to keep the DI propagation behavior in one place. See #4426.
+	fn inherit_context_from_parent_if_any(parent: &ServerRouter, child: &mut ServerRouter) {
+		if child.di_context.is_none()
+			&& let Some(parent_ctx) = parent.di_context.as_ref()
+		{
+			Self::adopt_di_context_recursive(child, parent_ctx);
+			child.di_context = Some(Arc::clone(parent_ctx));
+		}
+	}
+
 	fn adopt_di_context_recursive(router: &mut ServerRouter, ctx: &Arc<InjectionContext>) {
 		if !router.pending_middleware_di.is_empty() {
 			let pending = std::mem::take(&mut router.pending_middleware_di);
@@ -349,12 +363,7 @@ impl ServerRouter {
 		// nested grandchildren's staged registrations stranded; later
 		// `register_all_routes` would push them to the global list, which
 		// startup skips when the top router owns a context. See #4426.
-		if child.di_context.is_none()
-			&& let Some(parent_ctx) = self.di_context.as_ref()
-		{
-			Self::adopt_di_context_recursive(&mut child, parent_ctx);
-			child.di_context = Some(Arc::clone(parent_ctx));
-		}
+		Self::inherit_context_from_parent_if_any(&self, &mut child);
 
 		self.children.push(child);
 		self
@@ -380,12 +389,7 @@ impl ServerRouter {
 			child.prefix = prefix.to_string();
 		}
 		// See `mount` for the rationale on recursive subtree adoption.
-		if child.di_context.is_none()
-			&& let Some(parent_ctx) = self.di_context.as_ref()
-		{
-			Self::adopt_di_context_recursive(&mut child, parent_ctx);
-			child.di_context = Some(Arc::clone(parent_ctx));
-		}
+		Self::inherit_context_from_parent_if_any(self, &mut child);
 		self.children.push(child);
 	}
 
@@ -413,12 +417,7 @@ impl ServerRouter {
 			// subtree's pending lists would later be pushed onto the global
 			// deferred list, which startup skips when the parent owns a
 			// context. See #4426.
-			if router.di_context.is_none()
-				&& let Some(parent_ctx) = self.di_context.as_ref()
-			{
-				Self::adopt_di_context_recursive(&mut router, parent_ctx);
-				router.di_context = Some(Arc::clone(parent_ctx));
-			}
+			Self::inherit_context_from_parent_if_any(&self, &mut router);
 			self.children.push(router);
 		}
 		self
