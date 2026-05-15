@@ -83,6 +83,21 @@ pub async fn logout(
 	#[inject] session: SessionData,
 	#[inject] store: SessionStoreRef,
 ) -> std::result::Result<(), ServerFnError> {
+	let mut session = session;
+
+	// Only honor logout for sessions that actually carry an authenticated
+	// user; unauthenticated callers with a fresh cookie should not be able
+	// to drive session-store deletes.
+	if session.get::<i64>("user_id").is_none() {
+		return Err(ServerFnError::server(401, "Not authenticated"));
+	}
+
+	// Rotate the session id before deleting the old entry so the previous
+	// id cannot be reused by a downstream component that re-saves the
+	// session struct, mirroring the fixation-prevention rotation in
+	// `login`.
+	let old_id = session.regenerate_id();
+	store.inner().delete(&old_id);
 	store.inner().delete(&session.id);
 	Ok(())
 }
