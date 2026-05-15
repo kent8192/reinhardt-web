@@ -207,6 +207,13 @@ impl ServerRouter {
 	/// ```
 	#[must_use]
 	pub fn register_all_routes(&mut self) -> Vec<String> {
+		// Flush any middleware-contributed DI registrations that were staged
+		// when no `InjectionContext` was attached, walking children as well.
+		// If a context was attached later via `with_di_context` (or inherited
+		// via `mount`), the staging list is already empty. If no context is
+		// ever attached on this subtree, push the staged registrations onto
+		// the global deferred list so server startup can apply them. See #4426.
+		Self::flush_pending_middleware_di_recursive(self);
 		let registrations = self.collect_routes_recursive(None, "");
 		let mut errors = Vec::new();
 		for (name, path) in registrations {
@@ -215,6 +222,20 @@ impl ServerRouter {
 			}
 		}
 		errors
+	}
+
+	/// Recursively drain middleware-contributed DI registrations that were
+	/// staged before a context could be attached, pushing them to the global
+	/// deferred list when the owning subtree has no `InjectionContext`. See
+	/// #4426.
+	fn flush_pending_middleware_di_recursive(router: &mut ServerRouter) {
+		if !router.pending_middleware_di.is_empty() && router.di_context.is_none() {
+			let pending = std::mem::take(&mut router.pending_middleware_di);
+			crate::routers::register_di_registrations(pending);
+		}
+		for child in router.children.iter_mut() {
+			Self::flush_pending_middleware_di_recursive(child);
+		}
 	}
 
 	/// Register an alias for a route name in this router's reverser.
