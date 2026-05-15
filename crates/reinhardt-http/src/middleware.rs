@@ -43,9 +43,19 @@
 
 use async_trait::async_trait;
 use reinhardt_core::exception::Result;
+use std::any::{Any, TypeId};
 use std::sync::Arc;
 
 use crate::{Request, Response};
+
+/// Type-erased DI singleton registration entry contributed by a middleware.
+///
+/// Pairs the concrete `TypeId` of `T` with an `Arc<dyn Any + Send + Sync>` that
+/// can be inserted directly into a DI singleton scope keyed by that `TypeId`.
+/// This indirection lets `reinhardt-http` expose a DI hook on the `Middleware`
+/// trait without taking a dependency on `reinhardt-di` (which would create a
+/// circular crate dependency).
+pub type MiddlewareDiRegistration = (TypeId, Arc<dyn Any + Send + Sync>);
 
 /// Handler trait for processing requests.
 ///
@@ -114,6 +124,43 @@ pub trait Middleware: Send + Sync {
 	/// By default, returns `true` (always execute), maintaining backward compatibility.
 	fn should_continue(&self, _request: &Request) -> bool {
 		true
+	}
+
+	/// Returns DI singleton registrations contributed by this middleware.
+	///
+	/// Each entry is a `(TypeId, Arc<dyn Any + Send + Sync>)` pair representing
+	/// a singleton that the middleware owns and wants to expose to handlers
+	/// resolved via `#[inject]`. The default implementation returns an empty
+	/// vector, preserving backward compatibility for middleware that does not
+	/// own any DI-visible state.
+	///
+	/// Routers such as `ServerRouter` / `UnifiedRouter` call this method when
+	/// the middleware is registered via `with_middleware()` and merge the
+	/// resulting list into the server's DI singleton scope. This lets a
+	/// middleware (for example `SessionMiddleware`) automatically register the
+	/// `Arc<T>` it constructs in its constructor, so callers no longer have to
+	/// thread a parallel `with_di_registrations(...)` call alongside every
+	/// `with_middleware(...)`.
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// use std::any::TypeId;
+	/// use std::sync::Arc;
+	/// use reinhardt_http::{Middleware, MiddlewareDiRegistration};
+	///
+	/// struct MyStore;
+	/// struct MyMiddleware { store: Arc<MyStore> }
+	///
+	/// impl Middleware for MyMiddleware {
+	///     // ... process / should_continue ...
+	///     fn di_registrations(&self) -> Vec<MiddlewareDiRegistration> {
+	///         vec![(TypeId::of::<MyStore>(), Arc::clone(&self.store) as _)]
+	///     }
+	/// }
+	/// ```
+	fn di_registrations(&self) -> Vec<MiddlewareDiRegistration> {
+		Vec::new()
 	}
 }
 

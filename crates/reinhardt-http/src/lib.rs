@@ -110,7 +110,9 @@ pub use chunked_upload::{
 pub use extensions::{Extensions, IsActive, IsAdmin, IsAuthenticated};
 #[cfg(feature = "messages")]
 pub use messages_middleware::MessagesMiddleware;
-pub use middleware::{ExcludeMiddleware, Handler, Middleware, MiddlewareChain};
+pub use middleware::{
+	ExcludeMiddleware, Handler, Middleware, MiddlewareChain, MiddlewareDiRegistration,
+};
 pub use path_params::PathParams;
 pub use request::{Request, RequestBuilder, TrustedProxies};
 pub use response::{Response, SafeErrorResponse, StreamBody, StreamingResponse};

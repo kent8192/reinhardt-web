@@ -23,7 +23,7 @@
 //! assert_eq!(*scope.get::<i32>().unwrap(), 42);
 //! ```
 
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::sync::Arc;
 
 use crate::SingletonScope;
@@ -57,6 +57,20 @@ impl DiRegistrationList {
 		self.registrations
 			.push(Box::new(move |scope: &SingletonScope| {
 				scope.set_arc(value);
+			}));
+	}
+
+	/// Captures a type-erased `Arc<dyn Any + Send + Sync>` keyed by an
+	/// explicit `TypeId` for deferred singleton registration.
+	///
+	/// This is the type-erased counterpart of [`register_arc`](Self::register_arc)
+	/// and is used by router code that bridges middleware-contributed DI
+	/// registrations (which are exposed as `(TypeId, Arc<dyn Any + Send + Sync>)`
+	/// pairs by `reinhardt-http` to avoid a circular crate dependency).
+	pub fn register_arc_any(&mut self, type_id: TypeId, value: Arc<dyn Any + Send + Sync>) {
+		self.registrations
+			.push(Box::new(move |scope: &SingletonScope| {
+				scope.set_arc_any(type_id, value);
 			}));
 	}
 
