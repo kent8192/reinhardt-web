@@ -9,6 +9,7 @@ use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
 
+use crate::client::links;
 #[cfg(wasm)]
 use crate::server_fn::users::{login, logout};
 
@@ -41,8 +42,9 @@ pub fn login_form() -> Page {
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
 	let form_view = login_form.into_page();
+	let polls_index_href = links::polls_index();
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page| {
+	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
 			class: "container mt-5",
 			div {
@@ -92,7 +94,7 @@ pub fn login_form() -> Page {
 					div {
 						class: "text-center mt-3",
 						a {
-							href: "/",
+							href: polls_index_href,
 							class: "text-muted",
 							"Back to polls"
 						}
@@ -100,7 +102,7 @@ pub fn login_form() -> Page {
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view)
+	})(loading_signal, error_signal, form_view, polls_index_href)
 }
 
 /// Logout page: presents a single button that invokes the `logout` server fn
@@ -116,8 +118,9 @@ pub fn logout_form() -> Page {
 
 	let error_signal = logout_form.error().clone();
 	let form_view = logout_form.into_page();
+	let polls_index_href = links::polls_index();
 
-	page!(|error_signal: Signal<Option<String>>, form_view: Page| {
+	page!(|error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
 			class: "container mt-5",
 			div {
@@ -153,8 +156,16 @@ pub fn logout_form() -> Page {
 							}
 						}
 					}
+					div {
+						class: "text-center mt-3",
+						a {
+							href: polls_index_href,
+							class: "text-muted",
+							"Back to polls"
+						}
+					}
 				}
 			}
 		}
-	})(error_signal, form_view)
+	})(error_signal, form_view, polls_index_href)
 }

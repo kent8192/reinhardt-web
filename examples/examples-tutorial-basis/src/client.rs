@@ -8,3 +8,5 @@ pub mod lib;
 pub mod pages;
 
 pub mod components;
+
+pub mod links;
