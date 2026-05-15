@@ -468,6 +468,12 @@ impl ModelRegistry {
 
 	/// Get all registered models
 	///
+	/// Returns a freshly-cloned `Vec<ModelMetadata>`. For hot paths that
+	/// only need to look up a single model, prefer
+	/// [`Self::find_model_qualified`] (when the target app is known) or
+	/// [`Self::find_model_by_name`] (when only the model name is known)
+	/// to avoid materializing the entire registry on each call.
+	///
 	/// # Django Reference
 	/// From: django/apps/registry.py:169-186
 	/// ```python
@@ -504,6 +510,52 @@ impl ModelRegistry {
 		} else {
 			None
 		}
+	}
+
+	/// Find a model by `(app_label, model_name)` without materializing the
+	/// entire registry.
+	///
+	/// This is a direct O(1) lookup backed by the underlying index and is
+	/// the preferred path for hot code (e.g. migration generation, FK
+	/// column type resolution) where [`Self::get_models`] would otherwise
+	/// clone every registered model on every call.
+	///
+	/// Semantically equivalent to [`Self::get_model`]; named to make the
+	/// "qualified lookup" intent explicit at call sites. See issue #4436.
+	pub fn find_model_qualified(&self, app_label: &str, model_name: &str) -> Option<ModelMetadata> {
+		self.get_model(app_label, model_name)
+	}
+
+	/// Find a model by `model_name` alone, without an app label.
+	///
+	/// Scans the registry values under the read lock but clones only the
+	/// matched entry (not the entire registry), so it avoids the
+	/// `Vec<ModelMetadata>` materialization in [`Self::get_models`].
+	///
+	/// # Ambiguity
+	///
+	/// If two or more apps have registered a model with the same
+	/// `model_name`, this function returns `None` and emits a single
+	/// `tracing::warn!`. Callers that need a specific cross-app FK target
+	/// must use [`Self::find_model_qualified`] instead. This conservative
+	/// behavior prevents the silent wrong-target resolution flagged on
+	/// PR #4434 (Copilot review thread HYL).
+	///
+	/// See issue #4436.
+	pub fn find_model_by_name(&self, model_name: &str) -> Option<ModelMetadata> {
+		let models = self.models.read().ok()?;
+		let mut matches = models.values().filter(|m| m.model_name == model_name);
+		let first = matches.next()?.clone();
+		if matches.next().is_some() {
+			tracing::warn!(
+				model_name,
+				"ModelRegistry::find_model_by_name: ambiguous model name registered \
+				 under multiple app labels; returning None. Use \
+				 ModelRegistry::find_model_qualified(app, name) to disambiguate.",
+			);
+			return None;
+		}
+		Some(first)
 	}
 
 	/// Get all models for a specific app
@@ -601,6 +653,76 @@ mod tests {
 
 		let models = registry.get_models();
 		assert_eq!(models.len(), 2);
+	}
+
+	#[test]
+	fn test_find_model_qualified_hit() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+		registry.register_model(ModelMetadata::new("blog", "Post", "blog_post"));
+
+		// Act
+		let hit = registry.find_model_qualified("auth", "User");
+
+		// Assert
+		assert!(hit.is_some());
+		let model = hit.unwrap();
+		assert_eq!(model.app_label, "auth");
+		assert_eq!(model.model_name, "User");
+		assert_eq!(model.table_name, "auth_user");
+	}
+
+	#[test]
+	fn test_find_model_qualified_miss_wrong_app() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+
+		// Act / Assert: same model name registered under a different app
+		// must not be returned.
+		assert!(registry.find_model_qualified("billing", "User").is_none());
+	}
+
+	#[test]
+	fn test_find_model_by_name_unique() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+		registry.register_model(ModelMetadata::new("blog", "Post", "blog_post"));
+
+		// Act
+		let hit = registry.find_model_by_name("Post");
+
+		// Assert
+		assert!(hit.is_some());
+		assert_eq!(hit.unwrap().app_label, "blog");
+	}
+
+	#[test]
+	fn test_find_model_by_name_missing() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+
+		// Act / Assert
+		assert!(registry.find_model_by_name("NoSuchModel").is_none());
+	}
+
+	#[test]
+	fn test_find_model_by_name_ambiguous_returns_none() {
+		// Arrange: same model name registered under two different apps.
+		// The conservative behavior is to refuse the unqualified lookup
+		// rather than silently pick one (issue #4436, PR #4434 thread HYL).
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+		registry.register_model(ModelMetadata::new("billing", "User", "billing_user"));
+
+		// Act
+		let hit = registry.find_model_by_name("User");
+
+		// Assert
+		assert!(hit.is_none());
 	}
 
 	#[test]
