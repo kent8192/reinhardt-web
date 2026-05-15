@@ -2814,16 +2814,26 @@ impl ColumnDefinition {
 /// This indirection exists because the `#[model]` macro cannot resolve
 /// the target model's PK type at macro-expansion time (the registry is
 /// populated at process startup via `#[ctor::ctor]`). See issue #4430.
+///
+/// # Lookup Strategy
+///
+/// When the `#[model]` macro is able to determine the target's app
+/// label at expansion time (same-crate FKs), it emits a `fk_target_app`
+/// param alongside `fk_target`. In that case we use the qualified
+/// `(app, model_name)` lookup, which is O(1) and unambiguous.
+///
+/// When `fk_target_app` is absent (cross-crate FK targets, or older
+/// macro expansions), we fall back to looking up by model name only.
+/// If multiple apps register the same model name, the by-name lookup
+/// conservatively returns `None` to avoid silently resolving to the
+/// wrong target. See issue #4436.
 fn resolve_foreign_key_column_type(field_state: &FieldState) -> Option<FieldType> {
 	let target_model = field_state.params.get("fk_target")?;
 	let registry = super::model_registry::global_registry();
-	// The macro currently only emits the target model's local Rust type
-	// name. Search the registry across all apps; in practice model names
-	// are globally unique within a Reinhardt project.
-	let target = registry
-		.get_models()
-		.into_iter()
-		.find(|m| &m.model_name == target_model)?;
+	let target = match field_state.params.get("fk_target_app") {
+		Some(app) => registry.find_model_qualified(app, target_model)?,
+		None => registry.find_model_by_name(target_model)?,
+	};
 	// Find the primary key field of the target model.
 	let pk_field = target
 		.fields
