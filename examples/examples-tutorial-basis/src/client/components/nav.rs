@@ -38,10 +38,10 @@ pub fn nav_bar() -> Page {
 
 	page!(|auth_signal: Action<Option<UserInfo>, String>, polls_index_href: String, login_href: String, logout_href: String, signup_href: String| {
 		nav {
-			class: "max-w-4xl mx-auto px-4 pt-4 mb-4 flex justify-between items-center border-b pb-2",
+			class: "nav-bar",
 			a {
 				href: polls_index_href,
-				class: "font-bold text-lg",
+				class: "font-bold text-lg text-content-primary",
 				"Polls"
 			}
 			watch {
@@ -54,11 +54,11 @@ pub fn nav_bar() -> Page {
 							"Checking sign-in status"
 						}
 						span {
-							class: "h-4 w-32 rounded bg-gray-200 animate-pulse",
+							class: "h-4 w-32 rounded bg-surface-tertiary animate-pulse",
 							aria_hidden: "true",
 						}
 						span {
-							class: "h-9 w-20 rounded bg-gray-200 animate-pulse",
+							class: "h-9 w-20 rounded bg-surface-tertiary animate-pulse",
 							aria_hidden: "true",
 						}
 					}
@@ -66,7 +66,7 @@ pub fn nav_bar() -> Page {
 					div {
 						class: "flex items-center gap-3",
 						span {
-							class: "text-sm text-gray-600",
+							class: "text-sm text-muted",
 							{ format!("Signed in as {}", user.username) }
 						}
 						a {
