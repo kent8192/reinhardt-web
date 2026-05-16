@@ -20,9 +20,13 @@ CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGE
 # Development Server
 # ============================================================================
 
+[tasks.copy-static]
+description = "Mirror project static/ into dist/static/ so runserver --with-pages can serve it via StaticFilesMiddleware (which only watches the --static-dir, defaulting to dist/)."
+script = { file = "scripts/copy-static.sh" }
+
 [tasks.runserver]
 description = "Start the development server (auto-reloads on changes). Forwards extra args, e.g. `cargo make runserver -- -vv` for verbose output."
-dependencies = ["migrate"]
+dependencies = ["copy-static", "migrate"]
 command = "cargo"
 args = ["run", "--bin", "manage", "--", "runserver", "--with-pages", "${@}"]
 
