@@ -249,3 +249,66 @@ fetch("/api/endpoint", {
    - Checks Referer header (if configured)
    - Validates token format and value
 3. **Validation failure**: Returns 403 Forbidden
+
+## Session-Backed Authentication Helpers
+
+The `session` module ships three companion helpers for the
+`#[server_fn]` / `#[inject]` patterns used by authenticated handlers
+(introduced in [#4446](https://github.com/kent8192/reinhardt-web/issues/4446)):
+
+- `USER_ID_SESSION_KEY` — the canonical session-store key (`"user_id"`)
+  every handler should read from / write to instead of hardcoding a literal.
+- `SessionValue<T>` / `OptionalSessionValue<T>` — typed extractors that
+  pull `USER_ID_SESSION_KEY` from the active `SessionData` and
+  deserialise it as `T`. `SessionValue` fails injection with
+  `DiError::Authentication` when the key is absent; the optional flavour
+  yields `None` instead.
+- `SessionAuthExt::{login, logout}` — extension trait on `SessionData`
+  that performs the full session-fixation prevention rotation
+  (`regenerate_id → set(USER_ID_SESSION_KEY, …) → delete old store entry
+  → save rotated session`) in one call.
+
+### Example: typed extractor
+
+```rust,ignore
+use reinhardt::middleware::session::SessionValue;
+
+#[server_fn]
+pub async fn current_profile(
+    #[inject] SessionValue(user_id): SessionValue<i64>,
+) -> Result<UserInfo, ServerFnError> {
+    // user_id is the authenticated user's primary key; the server fn
+    // returns HTTP 401 automatically when the session is anonymous.
+    load_profile(user_id).await
+}
+```
+
+### Example: login / logout helper
+
+```rust,ignore
+use reinhardt::middleware::session::{
+    SessionAuthExt, SessionData, SessionStoreRef,
+};
+
+#[server_fn]
+pub async fn login(
+    username: String,
+    password: String,
+    #[inject] mut session: SessionData,
+    #[inject] store: SessionStoreRef,
+) -> Result<UserInfo, ServerFnError> {
+    let user = authenticate(&username, &password).await?;
+    session.login(&store, user.id())
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
+    Ok(UserInfo::from(user))
+}
+
+#[server_fn]
+pub async fn logout(
+    #[inject] mut session: SessionData,
+    #[inject] store: SessionStoreRef,
+) -> Result<(), ServerFnError> {
+    session.logout(&store);
+    Ok(())
+}
+```
