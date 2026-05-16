@@ -457,12 +457,8 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use super::super::test_support::TenantIdKey;
 	use rstest::rstest;
-
-	struct TenantIdKey;
-	impl SessionKey for TenantIdKey {
-		const KEY: &'static str = "tenant_id";
-	}
 
 	#[rstest]
 	fn user_id_key_resolves_to_canonical_session_key() {
