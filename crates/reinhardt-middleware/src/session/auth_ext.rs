@@ -1,0 +1,101 @@
+//! [`SessionAuthExt`]: ergonomic login/logout helpers on [`SessionData`].
+//!
+//! Collapses the four-step "rotate id → write user id → delete old store
+//! entry → save new store entry" sequence that every server-function login
+//! handler has had to spell out by hand. Symmetrically wraps the logout
+//! sequence so callers cannot forget to rotate the id before clearing the
+//! user reference. See issue #4446.
+
+use reinhardt_http::Result;
+use serde::Serialize;
+
+use super::data::{SessionData, USER_ID_SESSION_KEY};
+use super::injectable::SessionStoreRef;
+
+/// Login/logout helpers for [`SessionData`].
+///
+/// Both methods perform the session-fixation prevention rotation that is a
+/// required step on authentication state transitions: each call regenerates
+/// the session id, removes the old store entry referenced by the previous
+/// id, and persists the updated [`SessionData`] under the new id.
+///
+/// The trait is provided as an extension so existing call sites can opt
+/// in by adding a single `use` and replacing their inline blocks; the
+/// implementation lives in `reinhardt-middleware` because that is the
+/// crate that owns [`SessionData`] and [`SessionStoreRef`]. `BaseUser` is
+/// deliberately *not* a bound on `login` — taking `impl Serialize` keeps
+/// the helper usable with any primary-key shape (`i64`, `Uuid`, a tenant
+/// composite key, …) and avoids the otherwise-circular auth ↔ middleware
+/// coupling.
+///
+/// # Usage
+///
+/// ```rust,ignore
+/// use reinhardt::middleware::session::{
+///     SessionAuthExt, SessionData, SessionStoreRef,
+/// };
+///
+/// #[server_fn]
+/// pub async fn login(
+///     username: String,
+///     password: String,
+///     #[inject] mut session: SessionData,
+///     #[inject] store: SessionStoreRef,
+/// ) -> Result<(), ServerFnError> {
+///     // … authenticate `user` …
+///     session.login(&store, user.id())
+///         .map_err(|e| ServerFnError::application(e.to_string()))?;
+///     Ok(())
+/// }
+/// ```
+pub trait SessionAuthExt {
+	/// Mark the current session as authenticated for `user_id`.
+	///
+	/// Equivalent to the inline sequence:
+	///
+	/// ```text
+	/// let old_id = self.regenerate_id();
+	/// self.set(USER_ID_SESSION_KEY.to_string(), user_id)?;
+	/// store.inner().delete(&old_id);
+	/// store.inner().save(self.clone());
+	/// ```
+	///
+	/// Returns a [`reinhardt_http::Result`] so the serialisation failure
+	/// inside [`SessionData::set`] propagates with the same error type as
+	/// the rest of the session API.
+	fn login<V: Serialize + Send + Sync>(
+		&mut self,
+		store: &SessionStoreRef,
+		user_id: V,
+	) -> Result<()>;
+
+	/// Clear the authenticated-user reference from the current session.
+	///
+	/// Rotates the session id, removes the old store entry, drops the
+	/// user-id key from the session map (without clearing any other
+	/// keys callers may have written), and persists the rotated session.
+	/// Callers who want to drop *all* session state should call
+	/// [`SessionData::clear`] before invoking this helper.
+	fn logout(&mut self, store: &SessionStoreRef);
+}
+
+impl SessionAuthExt for SessionData {
+	fn login<V: Serialize + Send + Sync>(
+		&mut self,
+		store: &SessionStoreRef,
+		user_id: V,
+	) -> Result<()> {
+		let old_id = self.regenerate_id();
+		self.set(USER_ID_SESSION_KEY.to_string(), user_id)?;
+		store.inner().delete(&old_id);
+		store.inner().save(self.clone());
+		Ok(())
+	}
+
+	fn logout(&mut self, store: &SessionStoreRef) {
+		let old_id = self.regenerate_id();
+		self.delete(USER_ID_SESSION_KEY);
+		store.inner().delete(&old_id);
+		store.inner().save(self.clone());
+	}
+}

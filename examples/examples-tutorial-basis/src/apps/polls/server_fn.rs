@@ -13,7 +13,7 @@ use {
 	reinhardt::Model,
 	reinhardt::db::orm::{FilterOperator, FilterValue},
 	reinhardt::forms::wasm_compat::{FormExt, FormMetadata},
-	reinhardt::middleware::session::SessionData,
+	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
 };
 
 /// Resolve the currently authenticated user from the session, or return a
@@ -23,7 +23,7 @@ use {
 #[cfg(native)]
 async fn require_user(session: &SessionData) -> std::result::Result<User, ServerFnError> {
 	let user_id = session
-		.get::<i64>("user_id")
+		.get::<i64>(USER_ID_SESSION_KEY)
 		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
 
 	let user = User::objects()
