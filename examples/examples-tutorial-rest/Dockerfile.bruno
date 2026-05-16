@@ -1,0 +1,14 @@
+# Dockerfile for Bruno API test runner.
+# Pre-installs @usebruno/cli into a minimal Node image so the runtime
+# container can run with a read-only root filesystem.
+FROM node:24-alpine
+
+RUN npm install -g @usebruno/cli@latest \
+	&& npm cache clean --force
+
+WORKDIR /etc/bruno
+
+# Drop privileges; node:alpine ships with a non-root `node` user.
+USER node
+
+ENTRYPOINT ["bru"]
