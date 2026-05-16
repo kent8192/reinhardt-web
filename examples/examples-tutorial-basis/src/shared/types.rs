@@ -80,10 +80,13 @@ impl From<crate::apps::polls::models::Question> for QuestionInfo {
 #[cfg(native)]
 impl From<crate::apps::users::models::User> for UserInfo {
 	fn from(user: crate::apps::users::models::User) -> Self {
+		// `#[user]` injects `skip_getter` on the convention fields
+		// (username, is_active, …), so we read them as struct fields rather
+		// than through accessor methods.
 		UserInfo {
 			id: user.id(),
-			username: user.username().to_string(),
-			is_active: user.is_active(),
+			username: user.username.clone(),
+			is_active: user.is_active,
 		}
 	}
 }
