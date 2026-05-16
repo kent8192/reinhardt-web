@@ -8,128 +8,461 @@ sidebar_weight = 40
 
 # Part 4: Client-Side Forms and Component Patterns
 
-In this tutorial, we'll implement form handling in reinhardt-pages using client-side components and server functions.
+In this chapter we add the interactive layer of the polling app: the voting form, the question CUD pages, and the choice CUD pages. The work splits across three files of the reference implementation:
 
-## Understanding Form Handling in reinhardt-pages
+- [`src/shared/types.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/shared/types.rs) — DTOs that cross the WASM/native boundary, plus the `#[derive(Validate)]` rules that run *only* on the server.
+- [`src/shared/forms.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/shared/forms.rs) — server-only `Form` definitions used to emit `FormMetadata` (including the CSRF token).
+- [`src/client/components/polls.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/client/components/polls.rs) — the `form!` macro pages backed by `#[server_fn]` mutations in [`src/apps/polls/server_fn.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/polls/server_fn.rs).
 
-Unlike traditional server-rendered forms (templating engines like Tera), the reinhardt-pages stack handles forms on the client side with WASM components that call server functions. The tutorial uses **exactly one recommended path**: the `form!` macro.
+If you are coming from Django, this is roughly the chapter where "forms + ModelForm + class-based generic views" would appear. The pages template solves the same problem with a different cast: typed DTO validators, a server-side `Form` purely for metadata, and the **`form!`** macro on the client that renders the UI and dispatches to a `#[server_fn]`.
 
-> **📌 The `form!` macro is the single recommended path for forms in this tutorial.**
->
-> Why:
-> - ✅ **Automatic CSRF protection** — built-in token injection for POST/PUT/PATCH/DELETE
-> - ✅ **Reactive state management** — `watch` blocks update the UI when form state changes
-> - ✅ **Dynamic choices** — runtime population of select/radio options
-> - ✅ **Zero boilerplate** — loading states, error handling, validation out of the box
-> - ✅ **Type-safe** — the compiler checks that every field name matches the form definition
-> - ✅ **Declarative** — you describe what the form does, not how it works
->
-> The **reference implementation** of this section lives in
-> [`examples/examples-tutorial-basis/src/shared/forms.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/shared/forms.rs)
-> (server-side `Form` definition used to emit `FormMetadata` / CSRF tokens)
-> and
-> [`examples/examples-tutorial-basis/src/client/components/polls.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/client/components/polls.rs)
-> (the `form!` macro + dynamic choices + `watch` blocks). Read them alongside the snippets below — they are the authoritative answer key.
->
-> Low-level `use_state()` form handling is covered at the very end of this chapter under "Appendix: When You Need to Drop Below `form!`". Do not reach for it unless the `form!` macro cannot express your requirement — 90%+ of forms do not need it.
+There is no `ListView` or `DetailView` to import. The closest equivalent is the page factory functions you wrote in Part 3 (`polls_index`, `polls_detail`, …) composed with the reactive `page!` / `watch` / `use_action` primitives. We will not introduce any new "generic view" concept — the parts you already have are enough, and we will lean on them harder.
 
-**Key Concepts:**
+## The Two Flavors of Validation in This Tutorial
 
-1. **One form type declared twice**: server-side `Form` in `src/shared/forms.rs` (produces `FormMetadata` and CSRF tokens) + client-side `form!` macro in `src/client/components/polls.rs` (produces the UI + action dispatch).
-2. **`form!` macro as the primary API** — declarative fields, automatic state, reactive `watch` blocks.
-3. **Server functions as form targets** — every submission lands on a `#[server_fn]` for persistence and validation.
-4. **Error handling via `watch`** — validation errors and server errors display reactively.
-5. **Navigation after success** — the `success_navigation` `watch` pattern redirects on successful submission.
+Reinhardt offers two complementary validation paths and the tutorial uses both. Knowing which goes where keeps the WASM bundle small and the server checks honest:
 
-## Example: Declarative Forms with form! Macro (Recommended)
+| Flavor | Where it lives | What it validates | What enforces it |
+|---|---|---|---|
+| **DTO field validation** | `src/shared/types.rs` | The shape of a single request payload (lengths, non-empty, etc.) | The server, by calling `request.validate()` inside a `#[server_fn]` |
+| **Form metadata + CSRF** | `src/shared/forms.rs` (server-only) | The HTML form schema and per-request CSRF token | The CSRF middleware before the handler runs |
 
-The voting form in `src/client/components/polls.rs` demonstrates the recommended approach:
+Notice what *neither* does: client-side mirror validation. We deliberately do not derive `Validate` on the WASM side — the server is the source of truth, and shaving the validator crate off the browser bundle is worth the round trip for a server error message.
+
+### Flavor 1: DTO field validation in `shared/types.rs`
+
+The `LoginRequest` and `RegisterRequest` DTOs both live in `src/shared/types.rs`. They are normal `serde` payloads — except `derive(Validate)` is wrapped in `#[cfg_attr(native, …)]`, and so are the per-field `#[validate(...)]` attributes:
 
 ```rust
-// Example from src/client/components/polls.rs
-let voting_form = form! {
-	name: VotingForm,
-	server_fn: submit_vote,
-	method: Post,
-	state: { loading, error },
+// src/shared/types.rs
 
-	fields: {
-		question_id: HiddenField {
-			initial: qid.to_string(),
-		},
-		choice_id: ChoiceField {
-			widget: RadioSelect,
-			required,
-			label: "Select your choice",
-			class: "form-check",
-			choices_from: "choices",  // Dynamic choices
-			choice_value: "id",
-			choice_label: "choice_text",
-		},
-	},
+use chrono::{DateTime, Utc};
+#[cfg(native)]
+use reinhardt::Validate;
+use serde::{Deserialize, Serialize};
 
-	watch: {
-		submit_button: |form| {
-			let is_loading = form.loading().get();
-			// Reactive UI updates when loading state changes
-			page!(|is_loading: bool| {
-				div {
-					class: "mt-3",
-					button {
-						type: "submit",
-						class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
-						disabled: is_loading,
-						{ if is_loading { "Voting..." } else { "Vote" } }
-					}
-					a {
-						href: "/",
-						class: "btn-secondary ml-2",
-						"Back to Polls"
-					}
-				}
-			})(is_loading)
+/// Login request (DTO)
+///
+/// Sent from the WASM client to the server when submitting the login form.
+///
+/// `Validate` is gated on `cfg(native)` so the WASM client does not pull in
+/// the validator-crate machinery — the server is the only side that needs
+/// `request.validate()` to enforce these rules before hitting the database.
+#[cfg_attr(native, derive(Validate))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginRequest {
+	#[cfg_attr(
+		native,
+		validate(length(
+			min = 1,
+			max = 150,
+			message = "Username must be between 1 and 150 characters"
+		))
+	)]
+	pub username: String,
+
+	#[cfg_attr(
+		native,
+		validate(length(min = 1, message = "Password must not be empty"))
+	)]
+	pub password: String,
+}
+
+/// Register request (DTO)
+#[cfg_attr(native, derive(Validate))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterRequest {
+	#[cfg_attr(
+		native,
+		validate(length(
+			min = 1,
+			max = 150,
+			message = "Username must be between 1 and 150 characters"
+		))
+	)]
+	pub username: String,
+
+	#[cfg_attr(
+		native,
+		validate(length(min = 8, message = "Password must be at least 8 characters"))
+	)]
+	pub password: String,
+
+	#[cfg_attr(
+		native,
+		validate(length(
+			min = 8,
+			message = "Password confirmation must be at least 8 characters"
+		))
+	)]
+	pub password_confirmation: String,
+}
+```
+
+Three details are load-bearing:
+
+1. **`#[cfg_attr(native, derive(Validate))]`** — the `Validate` *derive* is server-only. On WASM the struct still serialises and deserialises, but it has no `validate()` method.
+2. **`#[cfg_attr(native, validate(...))]`** on every rule — the attributes are stripped from the WASM build, so the validator crate is not pulled into the browser bundle at all.
+3. **No `must_match` for password confirmation.** Cross-field equality lives in a hand-written helper rather than the derive macro:
+
+```rust
+// src/shared/types.rs (continued)
+
+#[cfg(native)]
+impl RegisterRequest {
+	/// Confirm that `password` and `password_confirmation` match.
+	///
+	/// Kept out of the derived `Validate` because the validator crate's
+	/// `must_match` argument is positional (string field name), brittle
+	/// across versions, and produces an awkward error message at the
+	/// struct level rather than against the confirmation field. The
+	/// server function calls this immediately after `request.validate()`
+	/// so the two checks surface as the same kind of `ServerFnError`.
+	pub fn validate_passwords_match(&self) -> Result<(), &'static str> {
+		if self.password == self.password_confirmation {
+			Ok(())
+		} else {
+			Err("Passwords do not match")
+		}
+	}
+}
+```
+
+A server function that consumes `RegisterRequest` first runs `request.validate()?` (the derived field-level checks), then `request.validate_passwords_match()?` (the manual cross-field check). Both produce the same `ServerFnError::server(400, …)` shape so the client treats them identically.
+
+### Flavor 2: Form metadata + CSRF in `shared/forms.rs`
+
+The other piece of validation we need is *not* about a DTO payload — it is about HTML forms: which fields exist, what widgets they render with, and what CSRF token to attach. That lives in `src/shared/forms.rs`, which is gated `#[cfg(native)] pub mod forms;` from `src/shared.rs`:
+
+```rust
+// src/shared.rs
+
+//! Shared types and utilities
+//!
+//! This module contains types and utilities shared between client and server.
+
+#[cfg(native)]
+pub mod forms;
+pub mod types;
+```
+
+```rust
+// src/shared/forms.rs
+
+//! Form definitions for examples-tutorial-basis
+//!
+//! These forms are used server-side to generate FormMetadata
+//! that is sent to the WASM client for CSRF token retrieval.
+
+use reinhardt::forms::field::Widget;
+use reinhardt::forms::{CharField, Form};
+
+/// Create vote form definition
+///
+/// This form is primarily used to generate CSRF tokens for the voting form.
+/// The actual choice selection uses dynamic radio buttons.
+///
+/// Fields:
+/// - choice: The selected choice ID (hidden field for form metadata purposes)
+pub fn create_vote_form() -> Form {
+	let mut form = Form::new();
+
+	form.add_field(Box::new(
+		CharField::new("choice".to_string())
+			.with_label("Choice")
+			.with_widget(Widget::HiddenInput)
+			.required(),
+	));
+
+	form
+}
+```
+
+That is the entire file. It does three things and nothing else:
+
+1. Builds a `reinhardt::forms::Form` with one `CharField` named `"choice"`.
+2. Marks the field as `Widget::HiddenInput` and `required()`.
+3. Returns the form so a server function can call `Form::to_metadata()` on it.
+
+The `Form` itself never runs in the browser — it cannot, because the `forms` module is `#[cfg(native)]`. Its job is to be turned into a serialisable `FormMetadata` that the WASM client can request over the wire.
+
+A small unit test in the same file shows the metadata shape:
+
+```rust
+// src/shared/forms.rs (continued)
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use reinhardt::forms::wasm_compat::FormExt;
+	use rstest::rstest;
+
+	#[rstest]
+	fn test_vote_form_metadata() {
+		let form = create_vote_form();
+		let metadata = form.to_metadata();
+
+		assert_eq!(metadata.fields.len(), 1);
+		assert_eq!(metadata.fields[0].name, "choice");
+		assert!(metadata.fields[0].required);
+	}
+}
+```
+
+`FormExt::to_metadata()` is the bridge from a native `Form` to a `FormMetadata` that survives the WASM boundary. We will use exactly that bridge in the next section.
+
+## Exposing the Form to the WASM Client
+
+The WASM client cannot call `create_vote_form()` directly — that function exists only when `#[cfg(native)]` is set. The bridge is a thin `#[server_fn]` whose only job is to call the constructor and serialise the result:
+
+```rust
+// src/apps/polls/server_fn.rs (extract)
+
+#[cfg(native)]
+use {
+	crate::apps::users::models::User,
+	crate::shared::forms::create_vote_form,
+	reinhardt::Model,
+	reinhardt::db::orm::{FilterOperator, FilterValue},
+	reinhardt::forms::wasm_compat::{FormExt, FormMetadata},
+	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
+};
+
+/// Get vote form metadata for WASM client rendering
+///
+/// Returns form metadata with CSRF token for the voting form.
+#[cfg(native)]
+#[server_fn]
+pub async fn get_vote_form_metadata() -> std::result::Result<FormMetadata, ServerFnError> {
+	let form = create_vote_form();
+	Ok(form.to_metadata())
+}
+```
+
+A few things to call out:
+
+- **`FormMetadata`** is `Serialize`/`Deserialize`, so it compiles on both targets and the `#[server_fn]` macro produces a typed WASM client stub for it.
+- The body of the function is `#[cfg(native)]`-gated because `create_vote_form` and `FormExt` are server-only. The macro's client stub does not call this body — it issues an HTTP request whose response carries the same metadata, so the WASM side only sees the typed signature.
+- The trailing argument convention used by other `form!`-backed handlers (`_csrf_token: String`) is *not* present here, because `get_vote_form_metadata` is a `GET` (it has no payload) and `form!` only appends a CSRF token to non-GET handlers.
+
+Like every other server function in the project, this one is registered in `src/config/urls.rs` (see Part 3). Once registered, the WASM client can `get_vote_form_metadata().await` and receive a typed `FormMetadata` value.
+
+## The `form!` Macro on the Client
+
+Now the interesting part: `form!`. This is the single recommended path for forms in this tutorial — and in nearly every production reinhardt-pages component. It is declarative, it integrates with `#[server_fn]`, and it lets you trade a few lines of macro syntax for what would otherwise be dozens of lines of imperative `use_state` plumbing.
+
+We will walk through the voting form from `src/client/components/polls.rs`. The shape is dense; we will quote it first and then break it down.
+
+### The voting form, in full
+
+```rust
+// src/client/components/polls.rs (extract)
+
+use crate::shared::types::{ChoiceInfo, QuestionInfo};
+use reinhardt::pages::component::Page;
+use reinhardt::pages::form;
+use reinhardt::pages::page;
+use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
+
+use crate::apps::polls::server_fn::{
+	create_choice, create_question, delete_choice, delete_question, get_question_detail,
+	get_question_results, get_questions, submit_vote, update_choice, update_question,
+};
+use crate::client::links;
+
+/// Poll detail page - Show question and voting form
+pub fn polls_detail(question_id: i64) -> Page {
+	let qid = question_id;
+
+	// Create action for loading question detail
+	let load_detail =
+		use_action(
+			|qid: i64| async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
+		);
+
+	// Create the voting form using form! macro
+	// - server_fn: submit_vote accepts (question_id, choice_id, csrf_token)
+	// - method: Post enables CSRF hidden input rendering for non-WASM submits
+	// - strip_arguments: explicitly routes the CSRF token to the trailing
+	//   server_fn argument (reinhardt-web#3971), replacing the implicit
+	//   auto-injection that broke when server_fn signatures evolved.
+	// - state: loading/error signals for form submission feedback
+	// - watch blocks for reactive UI updates
+	let voting_form = form! {
+		name: VotingForm,
+		server_fn: submit_vote,
+		method: Post,
+		state: { loading, error },
+
+		fields: {
+			question_id: HiddenField {
+				initial: qid.to_string(),
+			},
+			choice_id: ChoiceField {
+				widget: RadioSelect,
+				required,
+				label: "Select your choice",
+				class: "form-check",
+				choices_from: "choices",
+				choice_value: "id",
+				choice_label: "choice_text",
+			},
 		},
-		error_display: |form| {
-			let err = form.error().get();
-			// Show error messages reactively
-			page!(|err: Option<String>| {
-				watch {
-					if let Some(e) = err.clone() {
-						div {
-							class: "alert-danger mt-3",
-							{ e }
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+
+		watch: {
+			submit_button: |form| {
+				let is_loading = form.loading().get();
+				let back_href = links::polls_index();
+				page!(|is_loading: bool, back_href: String| {
+					div {
+						class: "mt-3",
+						button {
+							type: "submit",
+							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
+							disabled: is_loading,
+							{ if is_loading { "Voting..." } else { "Vote" } }
+						}
+						a {
+							href: back_href,
+							class: "btn-secondary ml-2",
+							"Back to Polls"
 						}
 					}
-				}
-			})(err)
-		},
-		success_navigation: |form| {
-			let is_loading = form.loading().get();
-			let err = form.error().get();
-			page!(|is_loading: bool, err: Option<String>| {
-				watch {
-					if ! is_loading &&err.is_none() {
-						#[cfg(target_arch = "wasm32")]
-								{
-									if let Some(window) = web_sys::window() {
-										let pathname = window.location().pathname().ok();
-										if let Some(path) = pathname {
-											let parts: Vec<&str> = path.split('/').collect();
-											if parts.len() >= 3 && parts[1] == "polls" {
-												if let Ok(question_id) = parts[2].parse::<i64>() {
-													let results_url = format!("/polls/{}/results/", question_id);
-													let _ = window.location().set_href(&results_url);
+				})(is_loading, back_href)
+			},
+			error_display: |form| {
+				let err = form.error().get();
+				page!(|err: Option<String>| {
+					watch {
+						if let Some(e) = err.clone() {
+							div {
+								class: "alert-danger mt-3",
+								{ e }
+							}
+						}
+					}
+				})(err)
+			},
+			success_navigation: |form| {
+				let is_loading = form.loading().get();
+				let err = form.error().get();
+				page!(|is_loading: bool, err: Option<String>| {
+					watch {
+						if ! is_loading &&err.is_none() {
+							#[cfg(wasm)]
+									{
+										if let Some(window) = web_sys::window() {
+											let pathname = window.location().pathname().ok();
+											if let Some(path) = pathname {
+												let parts: Vec<&str> = path.split('/').collect();
+												if parts.len() >= 3 && parts[1] == "polls" {
+													if let Ok(question_id) = parts[2].parse::<i64>() {
+														let results_url = links::poll_results(question_id);
+														let _ = window.location().set_href(&results_url);
+													}
 												}
 											}
 										}
 									}
-								}
+						}
 					}
-				}
-			})(is_loading, err)
+				})(is_loading, err)
+			},
 		},
-	},
-};
+	};
+
+	// Bridge load_detail results to form choices via use_effect
+	{
+		let load_detail_for_effect = load_detail.clone();
+		let voting_form_for_effect = voting_form.clone();
+		use_effect(move || {
+			if let Some((_, ref choices)) = load_detail_for_effect.result() {
+				let choice_options: Vec<(String, String)> = choices
+					.iter()
+					.map(|c| (c.id.to_string(), c.choice_text.clone()))
+					.collect();
+				voting_form_for_effect
+					.choice_id_choices()
+					.set(choice_options);
+			}
+		});
+	}
+
+	// Dispatch the action to load question data
+	load_detail.dispatch(qid);
+```
+
+### Reading the macro top-to-bottom
+
+The block above is doing six things; the cleanest way to internalise `form!` is to map each clause back to what it produces.
+
+| Clause | What it means |
+|---|---|
+| `name: VotingForm` | Names the generated struct (`VotingForm`) and DOM id (`voting-form`). Used by `<button form="…">` references later. |
+| `server_fn: submit_vote` | Picks the `#[server_fn]` this form submits to. The macro generates a client-side call to it on submit. |
+| `method: Post` | Tells the macro this is a mutating form. That decision enables CSRF hidden-input rendering and the `_csrf_token` argument convention discussed below. |
+| `state: { loading, error }` | Requests the standard reactive signals `form.loading()` (`Signal<bool>`) and `form.error()` (`Signal<Option<String>>`). |
+| `fields: { … }` | Declares the form fields. `HiddenField`, `CharField`, `ChoiceField`, etc., correspond to widget builders the macro knows about. |
+| `strip_arguments: { csrf_token: … }` | Explicitly tells `form!` how to supply the trailing `_csrf_token: String` argument of the server function (see below). |
+| `watch: { … }` | Reactive view fragments — small `page!` blocks whose output is re-evaluated whenever the signals they capture change. |
+
+Two behaviours are worth flagging because they are easy to miss:
+
+1. **All fields submit as `String`.** This is tracked upstream as [reinhardt-web#4397](https://github.com/kent8192/reinhardt-web/issues/4397). Once that ships, the matching `#[server_fn]` will be able to accept typed parameters directly. Until then, every server function reachable from `form!` accepts `String` and parses inside the handler — we will see this in the next section.
+2. **`form!` appends a `_csrf_token: String` argument for non-GET handlers.** The CSRF middleware verifies the token before the handler body runs; the parameter exists in the server function signature only so the macro-generated client stub stays positional with the server signature (tracked in [reinhardt-web#3971](https://github.com/kent8192/reinhardt-web/issues/3971)). The `strip_arguments` clause above tells `form!` to pull the token via `reinhardt::reinhardt_pages::csrf::get_csrf_token()` and append it to every call.
+
+### What the generated `voting_form` value gives you
+
+The macro returns a struct value (here, `voting_form: VotingForm`) with three useful surfaces:
+
+- `voting_form.loading()` and `voting_form.error()` — the reactive signals declared in `state:`.
+- `voting_form.choice_id_choices()` — a setter signal generated because the `choice_id` field carries `choices_from: "choices"`. We populate it dynamically below.
+- `voting_form.into_page()` — converts the form into a `Page` you can drop inside an outer `page! { … }`.
+
+This is the entirety of the macro's public surface — there is no hidden registry, no global state, no decorator stack to climb.
+
+## Reactive UI Patterns: `page!`, `watch`, `use_action`
+
+Three primitives appear over and over in the components. They are the entire reactive vocabulary the tutorial uses.
+
+### `page!`
+
+`page!(|deps: Type, …| { html-like body })(deps, …)` builds a `Page` whose body is recomputed whenever the captured dependencies change. The closure-then-arguments shape is what lets the macro track exactly which signals each fragment depends on. You can see it used both at the top level (returning the full page) and inside `watch` clauses (returning fragment trees).
+
+### `watch { … }`
+
+A `watch { … }` block is a *conditional fragment*. The block's body is re-evaluated whenever any signal it references changes value; if the condition is false the fragment disappears from the DOM. In the voting form above, three `watch` blocks live inside the `watch:` clause of `form!`:
+
+- `submit_button` re-renders when `form.loading()` flips, swapping the button label between *Vote* and *Voting…* and toggling the `opacity-50 cursor-not-allowed` classes.
+- `error_display` mounts an `alert-danger` div when `form.error()` becomes `Some(…)`, and unmounts it when it returns to `None`.
+- `success_navigation` watches both `loading` and `error`; when loading completes with no error, it triggers a redirect to the results page via `web_sys::window().location().set_href(...)`. The whole inner block is gated `#[cfg(wasm)]` because `web_sys` only compiles for the browser target.
+
+### `use_action`
+
+`use_action(|arg| async move { … })` wraps an async function into a typed reactive action with `.dispatch(arg)`, `.is_pending()`, `.result()`, and `.error()`. In the detail page we have:
+
+```rust
+let load_detail =
+	use_action(
+		|qid: i64| async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
+	);
+// …
+load_detail.dispatch(qid);
+```
+
+Calling `dispatch` kicks off the async call once; the action then exposes the result reactively to any `watch` block that observes `load_detail.result()` / `load_detail.is_pending()` / `load_detail.error()`. The full `polls_detail` function uses this pattern to render a spinner while the question loads, then an error card if it fails, then the question text and the voting form on success — all from the same component, no manual state machine.
+
+## Connecting Form Metadata + Action: the Voting Lifecycle
+
+The voting form's choices are not known at compile time — they come from the database. The pattern that wires loaded data into a `form!` is to (a) start an action that loads the data, and (b) use a `use_effect` to write the result into the generated choices signal:
+
+```rust
+// src/client/components/polls.rs (continued)
 
 // Bridge load_detail results to form choices via use_effect
 {
@@ -149,918 +482,476 @@ let voting_form = form! {
 }
 ```
 
-**Key Benefits:**
-- **Automatic CSRF Protection**: POST method automatically includes CSRF token
-- **Reactive State Management**: `watch` blocks update UI when form state changes
-- **Dynamic Choices**: `choices_from` populates select/radio options at runtime
-- **Built-in Loading States**: `form.loading()` and `form.error()` Signals
-- **Type-Safe**: Compiler ensures field names match form definition
+`use_effect` re-runs whenever the closure's captured signals change. The first time `load_detail.result()` becomes `Some(…)`, the effect converts the `Vec<ChoiceInfo>` into the `Vec<(String, String)>` shape that `choices_from: "choices"` expects — value first, label second — and pushes it through the generated `choice_id_choices()` setter. The DOM updates automatically.
 
-**Navigation Patterns:**
+When the user picks a choice and presses Vote, the complete round-trip looks like this:
 
-The `form!` macro supports `watch` blocks for handling post-submission navigation. The `success_navigation` watch block pattern monitors loading and error state to detect successful form submissions:
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as form! (VotingForm)
+    participant SF as submit_vote (#[server_fn])
+    participant DB as Database
+    participant W as watch { error_display, success_navigation }
 
-**success_navigation watch block**: Monitors `form.loading()` and `form.error()` Signals to navigate after successful submission:
-- When loading completes (`!is_loading`) and no error exists (`err.is_none()`), the form submission was successful
-- Extract the question ID from the current URL path to construct the results URL
-- Use `web_sys::window()` for client-side navigation
-
-```rust
-success_navigation: |form| {
-	let is_loading = form.loading().get();
-	let err = form.error().get();
-	page!(|is_loading: bool, err: Option<String>| {
-		watch {
-			if ! is_loading &&err.is_none() {
-				#[cfg(target_arch = "wasm32")]
-						{
-							if let Some(window) = web_sys::window() {
-								let pathname = window.location().pathname().ok();
-								if let Some(path) = pathname {
-									let parts: Vec<&str> = path.split('/').collect();
-									if parts.len() >= 3 && parts[1] == "polls" {
-										if let Ok(question_id) = parts[2].parse::<i64>() {
-											let results_url = format!("/polls/{}/results/", question_id);
-											let _ = window.location().set_href(&results_url);
-										}
-									}
-								}
-							}
-						}
-			}
-		}
-	})(is_loading, err)
-},
+    U->>F: select choice + click Vote
+    F->>F: collect fields as String + append _csrf_token
+    F->>SF: submit_vote(question_id, choice_id, _csrf_token)
+    SF->>SF: parse Strings, build VoteRequest
+    SF->>DB: atomic { SELECT choice; UPDATE votes+1 }
+    DB-->>SF: updated Choice
+    SF-->>F: Result<ChoiceInfo, ServerFnError>
+    F->>W: form.loading() = false; form.error() = None / Some(...)
+    W->>U: rerender (success redirect or error alert)
 ```
 
-**Note**: Errors are automatically stored in `form.error()` Signal and can be displayed using `watch` blocks (see `error_display` in the example above).
+The CSRF check happens *before* `submit_vote` runs — it is a middleware concern, not a handler concern.
 
-For complete implementation, see `examples/examples-tutorial-basis/src/client/components/polls.rs`.
-
-### Understanding watch Blocks
-
-The `watch` block in `form!` macro creates reactive UI components that automatically update when form state changes. This is similar to React's `useEffect` or Vue's `watch`.
-
-**Key Concepts:**
-
-1. **Reactive Updates**: UI re-renders automatically when referenced Signals change
-2. **Direct Signal Access**: Access form state via `form.loading()`, `form.error()`, `form.{field_name}()`
-3. **Type Safety**: Compiler ensures correct types in watch block closures
-
-**Common Patterns:**
+Here is the matching server function in full, including the `String`-typed workaround commented at the top of the CUD block:
 
 ```rust
-watch: {
-	// Pattern 1: Submit button with loading state
-	submit_button: |form| {
-		let is_loading = form.loading().get();
-		page!(|is_loading: bool| {
-			div {
-				class: "mt-3",
-				button {
-					type: "submit",
-					class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
-					disabled: is_loading,
-					{ if is_loading { "Submitting..." } else { "Submit" } }
-				}
-			}
-		})(is_loading)
-	},
+// src/apps/polls/server_fn.rs
 
-	// Pattern 2: Field-specific error display
-	username_error: |form| {
-		let err = form.username_error().get();
-		page!(|err: Option<String>| {
-			watch {
-				if let Some(e) = err.clone() {
-					div { class: "text-danger small mt-1", { e } }
-				}
-			}
-		})(err)
-	},
-
-	// Pattern 3: Field validation feedback (real-time)
-	password_strength: |form| {
-		let password = form.password().get();
-		page!(|password: String| {
-			let strength = if password.len() >= 12 { "Strong" }
-				else if password.len() >= 8 { "Medium" }
-				else { "Weak" };
-			let color = if password.len() >= 12 { "text-success" }
-				else if password.len() >= 8 { "text-warning" }
-				else { "text-danger" };
-			div {
-				class: format!("small mt-1 {}", color),
-				{ format!("Password Strength: {}", strength) }
-			}
-		})(password)
-	},
-
-	// Pattern 4: Conditional field visibility
-	billing_address: |form| {
-		let same_as_shipping = form.same_as_shipping().get();
-		page!(|same_as_shipping: bool| {
-			watch {
-				if !same_as_shipping {
-					div { class: "form-group",
-						label { "Billing Address" }
-						input { type: "text", class: "form-control" }
-					}
-				}
-			}
-		})(same_as_shipping)
-	},
-}
-```
-
-**Benefits:**
-- ✅ **No manual DOM manipulation**: Framework handles updates
-- ✅ **Reactive by default**: Changes propagate automatically
-- ✅ **Type-safe**: Compiler catches type mismatches
-- ✅ **Performance**: Only re-renders affected components
-
-### Dynamic Choices Population
-
-The `form!` macro supports runtime population of select/radio options via the `choices_from` field attribute.
-
-**Workflow:**
-
-1. Define field with `choices_from` attribute
-2. Form macro generates a `{field_name}_choices()` Signal
-3. Populate choices at runtime using `set()` method
-
-**Complete Example:**
-
-```rust
-// Step 1: Define form with choices_from
-let voting_form = form! {
-	name: VotingForm,
-	server_fn: submit_vote,
-	method: Post,
-
-	fields: {
-		question_id: HiddenField {
-			initial: qid.to_string(),
-		},
-		choice_id: ChoiceField {
-			widget: RadioSelect,
-			required,
-			label: "Select your choice",
-			choices_from: "choices",  // Indicates dynamic choices
-			choice_value: "id",        // Which field is the value
-			choice_label: "choice_text", // Which field is the label
-		},
-	},
-
-	watch: {
-		// Display loading state while fetching choices
-		choices_loading: |form| {
-			let choices = form.choice_id_choices().get();
-			page!(|choices: Vec<(String, String)>| {
-				watch {
-					if choices.is_empty() {
-						div { class: "spinner", "Loading choices..." }
-					}
-				}
-			})(choices)
-		},
-	},
-};
-
-// Step 2: Create action for loading question detail
-let load_detail =
-	use_action(
-		|qid: i64| async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
-	);
-
-// Step 3: Bridge load_detail results to form choices via use_effect
-{
-	let load_detail_for_effect = load_detail.clone();
-	let voting_form_for_effect = voting_form.clone();
-	use_effect(move || {
-		if let Some((_, ref choices)) = load_detail_for_effect.result() {
-			// Transform server data to (value, label) tuples
-			let choice_options: Vec<(String, String)> = choices
-				.iter()
-				.map(|c| (c.id.to_string(), c.choice_text.clone()))
-				.collect();
-
-			// Populate choices - triggers UI update
-			voting_form_for_effect
-				.choice_id_choices()
-				.set(choice_options);
-		}
-	});
-}
-
-// Dispatch the action to load question data
-load_detail.dispatch(qid);
-```
-
-**Key Points:**
-
-- **Type**: Choices are `Vec<(String, String)>` where first element is value, second is label
-- **Generated Method**: `{field_name}_choices()` returns a Signal
-- **Reactivity**: UI updates automatically when choices are set
-- **Use Cases**: 
-  - Country/state dropdowns based on user selection
-  - Category filters based on search results
-  - Dynamic form fields based on API responses
-
-**Common Mistake:**
-
-```rust
-// ❌ Don't access choices directly
-let choices = get_choices().await?;
-// This won't update the UI
-
-// ✅ Use the generated Signal setter
-voting_form.choice_id_choices().set(choices);
-// This triggers reactive UI update
-```
-
-## Event Handling Patterns
-
-reinhardt-pages provides two main approaches for handling user interactions and events:
-
-### @-Prefix Handlers (For Non-Form Interactions)
-
-Use @-handlers for direct event bindings outside of forms, such as button clicks, modal toggles, and navigation:
-
-#### Basic Button Click
-
-```rust
-use reinhardt::pages::prelude::*;
-
-page!(|| {
-	button {
-		@click: move |_| {
-			console_log!("Button clicked!");
-		},
-		"Click Me"
-	}
-})
-```
-
-#### Modal Toggle with State
-
-```rust
-use reinhardt::pages::prelude::*;
-use reinhardt::pages::reactive::hooks::use_state;
-
-let (show_modal, set_show_modal) = use_state(false);
-
-page!(|show_modal: Signal<bool>| {
-	button {
-		@click: move |_| {
-			set_show_modal(!show_modal.get());
-		},
-		"Toggle Modal"
-	}
-
-	watch {
-		if show_modal.get() {
-			div {
-				class: "modal",
-				@click: move |_| set_show_modal(false),
-				"Click to close"
-			}
-		}
-	}
-})(show_modal)
-```
-
-**Supported Events**:
-- `@click` - Mouse clicks
-- `@change` - Input value changes
-- `@input` - Input events (as user types)
-- `@submit` - Form submission
-- `@focus`, `@blur` - Focus events
-- `@keydown`, `@keyup` - Keyboard events
-
-### form! watch Blocks (For Form Interactions)
-
-For form-related state and validation, use `form!` watch blocks instead of @-handlers:
-
-```rust
-form! {
-	name: LoginForm,
-	server_fn: login,
-	method: Post,
-
-	fields: {
-		username: CharField { required },
-	},
-
-	watch: {
-		username_feedback: |form| {
-			let value = form.username().get();
-			page!(|value: String| {
-				watch {
-					if value.len() < 3 {
-						div {
-							class: "text-danger",
-							"Username must be at least 3 characters"
-						}
-					}
-				}
-			})(value)
-		},
-	},
-}
-```
-
-**When to Use Which**:
-- ✅ **@-handlers**: Buttons, modals, navigation, custom UI interactions (non-form)
-- ✅ **form! watch**: Input validation, field-dependent UI, form state management
-
-## Appendix: When You Need to Drop Below `form!`
-
-Everything above — and the reference `examples-tutorial-basis` voting form — is built with the `form!` macro. That is the path we recommend for the entire tutorial and for nearly all production forms. This appendix documents the lower-level `use_state()` path **only** so that you recognize it when you see it in older code or in the `examples/` directory; it is *not* part of the main tutorial build.
-
-### When `form!` Is Insufficient
-
-Drop below `form!` only when you need:
-- Multi-step wizard logic with complex branching that the macro cannot express
-- Real-time collaborative editing with external CRDT libraries
-- Drag-and-drop form builders where the field set itself is runtime-defined
-- Integration with a third-party state management library the macro cannot plug into
-- Highly unusual validation sequencing beyond `#[validate(...)]` and server-side validation
-
-For a login form, CRUD create/update, search with filters, or the voting form in this tutorial, **use `form!`**.
-
-### Quick Comparison
-
-| Aspect | `form!` Macro | Manual `use_state()` |
-|--------|---------------|-----------------------|
-| **CSRF Protection** | Automatic (POST/PUT/PATCH/DELETE) | You must fetch and attach the token yourself |
-| **State Management** | Built-in `watch` blocks, reactive Signals | One `use_state()` per field |
-| **Boilerplate** | Minimal (declarative) | Extensive (imperative) |
-| **Error Handling** | Built-in `form.error()` Signal | Your own error state |
-| **Loading States** | Built-in `form.loading()` Signal | Your own loading state |
-| **Validation** | Integrated with server_fn validation | Hand-written |
-| **Type Safety** | Compiler-enforced field names | Whatever you write yourself |
-| **Reactivity** | Automatic | Manual Signal updates |
-| **Use it for** | The entire tutorial (100% of forms) | Only escape hatches from the list above |
-
-Manual form code can be found in the Reinhardt repository under `examples/` for advanced scenarios; it is outside the scope of this tutorial.
-
-## Server-Side Validation and Processing
-
-The server function handles data persistence and server-side validation. Update `src/server_fn/polls.rs`:
-
-```rust
-// src/server_fn/polls.rs
-use crate::shared::types::{ChoiceInfo, VoteRequest};
-use reinhardt::pages::server_fn::{server_fn, ServerFnError};
-
-// Server-only imports
-#[cfg(native)]
-use reinhardt::atomic;
-
-/// Vote for a choice
+/// Submit vote via form! macro
 ///
-/// Server-side validation and atomic database update.
+/// Wrapper function that accepts individual field values from form! macro's submit.
+/// Converts String field values to the required types and calls the underlying vote function.
+///
+/// The trailing `_csrf_token: String` argument is supplied by `form!`'s
+/// `strip_arguments` block (reinhardt-web#3971). Actual CSRF verification is
+/// performed by the server-side CSRF middleware before this handler runs;
+/// receiving the value here keeps the WASM client stub's positional argument
+/// list aligned with the server signature.
 #[server_fn]
-pub async fn vote(
-	request: VoteRequest,
+pub async fn submit_vote(
+	question_id: String,
+	choice_id: String,
+	_csrf_token: String,
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	use crate::apps::polls::models::Choice;
-	use reinhardt::Model;
-
-	// Wrap read-modify-write in a transaction to prevent race conditions
-	let updated_choice = atomic(&db, || async {
-		let choice_manager = Choice::objects();
-
-		// Get the choice
-		let mut choice = choice_manager
-			.get(request.choice_id)
-			.first()
-			.await
-			.map_err(|e| anyhow::anyhow!(e.to_string()))?
-			.ok_or_else(|| anyhow::anyhow!("Choice not found"))?;
-
-		// Verify the choice belongs to the question
-		if *choice.question_id() != request.question_id {
-			return Err(anyhow::anyhow!("Choice does not belong to this question"));
-		}
-
-		// Increment vote count
-		choice.vote();
-
-		// Update in database
-		let updated = choice_manager
-			.update(&choice)
-			.await
-			.map_err(|e| anyhow::anyhow!(e.to_string()))?;
-
-		Ok(updated)
-	})
-	.await
-	.map_err(|e| ServerFnError::application(e.to_string()))?;
-
-	Ok(ChoiceInfo::from(updated_choice))
-}
-```
-
-**Server-Side Validation Benefits:**
-
-1. **Security**: Never trust client-side validation alone
-2. **Data Integrity**: Verify business rules at the server
-3. **Consistency**: Centralized validation logic
-4. **Error Messages**: Provide detailed feedback to clients
-
-**Race Condition Prevention:**
-
-For atomic updates, use database-level operations:
-
-```rust
-// Future enhancement: Use F expressions for atomic updates
-use reinhardt::db::orm::F;
-
-Choice::objects()
-	.filter(Choice::field_id().eq(choice_id))
-	.update()
-	.set(Choice::field_votes(), F::new(Choice::field_votes()) + 1)
-	.execute(&db)
-	.await?;
-```
-
-**Why This Prevents Race Conditions:**
-
-1. **Single UPDATE Query**: Database executes the increment atomically
-2. **No SELECT Needed**: Avoids read-modify-write race condition
-3. **Database Guarantees**: ACID properties ensure consistency
-
-## CSRF Protection in reinhardt-pages
-
-In traditional server-rendered applications, CSRF protection uses tokens embedded in templates:
-
-```html
-<!-- Old approach (Tera template) -->
-<form method="post">
-  {% csrf_token %}
-  <!-- form fields -->
-</form>
-```
-
-In reinhardt-pages, CSRF protection is handled differently:
-
-## CSRF Protection in reinhardt-pages
-
-### Automatic CSRF Protection
-
-reinhardt-pages provides **automatic CSRF protection** for both forms and server functions. No manual token handling is required.
-
-#### For Forms
-
-The `form!` macro automatically injects CSRF tokens for POST/PUT/PATCH/DELETE methods:
-
-```rust
-// POST form automatically includes CSRF token
-let contact_form = form! {
-	name: ContactForm,
-	server_fn: submit_contact,
-	method: Post,
-
-	fields: {
-		message: CharField { required },
-	},
-};
-```
-
-The generated HTML includes a hidden CSRF token field:
-
-```html
-<form action="/api/submit_contact" method="post">
-	<input type="hidden" name="csrfmiddlewaretoken" value="[token]">
-	<!-- field elements -->
-</form>
-```
-
-GET forms do NOT include CSRF tokens since they are safe methods that don't need CSRF protection:
-
-```rust
-// GET form does NOT include CSRF token (safe method)
-let search_form = form! {
-	name: SearchForm,
-	server_fn: search,
-	method: Get,
-
-	fields: {
-		query: CharField { required },
-	},
-};
-```
-
-#### For Server Functions
-
-The `#[server_fn]` macro automatically includes CSRF headers in all requests by default:
-
-```rust
-#[server_fn]  // CSRF protection enabled by default
-async fn vote(request: VoteRequest) -> Result<ChoiceInfo, ServerFnError> {
-	// CSRF header automatically included: X-CSRFToken: [token]
-	// No manual CSRF handling needed
-	
-	// ... business logic
-}
-```
-
-**Important**: The `vote` function we created earlier in this tutorial is already CSRF-protected by default. No additional code is needed.
-
-#### Disabling CSRF Protection (Optional)
-
-For public APIs that don't require CSRF protection, you can disable it:
-
-```rust
-#[server_fn(no_csrf = true)]  // Disable CSRF for public APIs
-async fn public_api() -> Result<Data, ServerFnError> {
-	// No CSRF header - useful for public endpoints
-	
-	// ... business logic
-}
-```
-
-### Token Retrieval
-
-CSRF tokens are automatically retrieved from multiple sources in the following order of priority:
-
-1. **Cookie**: `csrftoken`
-2. **Meta tag**: `<meta name="csrf-token">`
-3. **Hidden input**: `<input name="csrfmiddlewaretoken">`
-
-For advanced use cases where you need manual control over CSRF tokens:
-
-```rust
-use reinhardt::pages::csrf::{get_csrf_token, csrf_headers};
-
-// Get token (tries Cookie → Meta → Input in that order)
-if let Some(token) = get_csrf_token() {
-	// Use token for manual AJAX requests
-}
-
-// Get as HTTP header (for fetch API)
-if let Some((header_name, header_value)) = csrf_headers() {
-	// header_name: "X-CSRFToken"
-	// header_value: token from browser
-}
-```
-
-### Django Compatibility
-
-reinhardt-pages uses Django-compatible CSRF conventions:
-
-- **Cookie name**: `csrftoken`
-- **Header name**: `X-CSRFToken`
-- **Form field name**: `csrfmiddlewaretoken`
-
-This ensures compatibility with Django backends and existing Django infrastructure.
-
-## Component Patterns: Reusability Instead of Generic Views
-
-In traditional server-rendered frameworks, "generic views" provide reusable patterns for common tasks (list views, detail views, etc.). In reinhardt-pages, we achieve similar reusability through **component composition**.
-
-### Pattern 1: Reusable Loading Component
-
-Extract common loading patterns:
-
-```rust
-// src/client/components/common.rs
-use reinhardt::pages::prelude::*;
-
-pub fn loading_spinner() -> Page {
-	page!(|| {
-		div {
-			class: "spinner-border text-primary",
-			role: "status",
-			span {
-				class: "visually-hidden",
-				"Loading..."
-			}
-		}
-	})()
-}
-
-pub fn error_alert(message: &str) -> Page {
-	let msg = message.to_string();
-	page!(|msg: String| {
-		div {
-			class: "alert alert-danger",
-			{msg}
-		}
-	})(msg)
-}
-```
-
-Usage:
-
-```rust
-use crate::client::components::common::{loading_spinner, error_alert};
-
-pub fn polls_index() -> Page {
-	// ... state management
-
-	page!(|loading_state: bool, error_state: Option<String>| {
-		div {
-			class: "container mt-5",
-
-			if let Some(ref err) = error_state {
-				{error_alert(err)}
-			} else if loading_state {
-				{loading_spinner()}
-			} else {
-				// ... content
-			}
-		}
-	})(loading_state, error_state)
-}
-```
-
-### Pattern 2: Form Field Components
-
-Create reusable form field components:
-
-```rust
-// src/client/components/forms.rs
-use reinhardt::pages::prelude::*;
-
-pub fn radio_choice(
-	id: &str,
-	name: &str,
-	value: &str,
-	label: &str,
-	checked: bool,
-	on_change: impl Fn(web_sys::Event) + 'static,
-) -> Page {
-	let id = id.to_string();
-	let name = name.to_string();
-	let value = value.to_string();
-	let label = label.to_string();
-
-	page!(|
-		id: String,
-		name: String,
-		value: String,
-		label: String,
-		checked: bool,
-		on_change: impl Fn(web_sys::Event) + 'static
-	| {
-		div {
-			class: "form-check",
-			input {
-				class: "form-check-input",
-				type: "radio",
-				id: id.clone(),
-				name: name,
-				value: value,
-				checked: checked,
-				onchange: on_change
-			}
-			label {
-				class: "form-check-label",
-				for: id,
-				{label}
-			}
-		}
-	})(id, name, value, label, checked, on_change)
-}
-
-pub fn submit_button(
-	label: &str,
-	loading: bool,
-	loading_label: &str,
-) -> Page {
-	let label = label.to_string();
-	let loading_label = loading_label.to_string();
-
-	page!(|label: String, loading: bool, loading_label: String| {
-		button {
-			class: "btn btn-primary",
-			type: "submit",
-			disabled: loading,
-			if loading {
-				{loading_label}
-			} else {
-				{label}
-			}
-		}
-	})(label, loading, loading_label)
-}
-```
-
-Usage in detail page:
-
-```rust
-use crate::client::components::forms::{radio_choice, submit_button};
-
-pub fn polls_detail_page(question_id: i64) -> Page {
-	// ... state and event handlers
-
-	page!(|choices_data: Vec<ChoiceInfo>, ...| {
-		form {
-			onsubmit: handle_submit,
-
-			div {
-				class: "mb-3",
-				for choice in &choices_data {
-					{radio_choice(
-						&format!("choice{}", choice.id),
-						"choice",
-						&choice.id.to_string(),
-						&choice.choice_text,
-						selected == Some(choice.id),
-						handle_choice_change.clone()
-					)}
-				}
-			}
-
-			{submit_button("Vote", voting_state, "Voting...")}
-		}
-	})(choices_data, ...)
-}
-```
-
-### Pattern 3: Custom Hooks for Form State
-
-For complex forms, create custom hooks:
-
-```rust
-// src/client/hooks/form.rs
-use reinhardt::pages::prelude::*;
-
-pub struct FormState<T> {
-	pub value: T,
-	pub error: Option<String>,
-	pub loading: bool,
-}
-
-pub fn use_form_field<T: Clone + 'static>(
-	initial: T
-) -> (FormState<T>, impl Fn(T), impl Fn(Option<String>), impl Fn(bool)) {
-	let (value, set_value) = use_state(initial);
-	let (error, set_error) = use_state(None::<String>);
-	let (loading, set_loading) = use_state(false);
-
-	let state = FormState {
-		value: value.get().clone(),
-		error: error.get().clone(),
-		loading: loading.get(),
+	let question_id: i64 = question_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
+	let choice_id: i64 = choice_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
+
+	let request = VoteRequest {
+		question_id,
+		choice_id,
 	};
 
-	(state, set_value, set_error, set_loading)
+	// Reuse the existing vote logic
+	vote_internal(request, db).await
 }
 ```
 
-Usage:
+`vote_internal` is the reusable native helper (already covered in Part 3); it wraps the read-modify-write in `atomic(&db, …)` so two simultaneous voters cannot race past one another. Notice that the typed `vote` server function still exists alongside `submit_vote` — that one accepts a real `VoteRequest` and is the better entry point for code that calls server functions directly (e.g. tests, native code, future clients). `submit_vote` is the `form!` adapter.
+
+## Question CUD via `form!`
+
+The voting form is the headline use case, but the same pattern composes naturally for create / update / delete. The Question CUD handlers in `src/apps/polls/server_fn.rs` show what an authenticated mutation looks like when stitched together with the `String`-based ABI and `require_user`:
 
 ```rust
-use crate::client::hooks::form::use_form_field;
+// src/apps/polls/server_fn.rs
 
-pub fn polls_detail_page(question_id: i64) -> Page {
-	let (choice_state, set_choice, set_choice_error, _) = use_form_field(None::<i64>);
+// =========================================================================
+// Question CUD (Phase 2)
+// =========================================================================
+//
+// All three mutations below follow the same conventions:
+//
+// * Every form field is received as `String` because `form!` currently
+//   serializes all fields as strings on submit. This is tracked upstream as
+//   reinhardt-web#4397 — once that ships, the `String` + `.parse()` dance
+//   below can be replaced with the typed signatures shown next to each
+//   handler. The trailing `_csrf_token: String` parameter is appended by the
+//   `form!` macro for non-GET forms; the CSRF middleware verifies it before
+//   the handler runs.
+// * The session is required: `require_user` returns a 401 to unauthenticated
+//   clients before any database write happens.
+// * For `update_question` and `delete_question`, ownership is enforced by
+//   comparing `question.author_id()` with the current user's id; mismatched
+//   ownership returns a 403.
 
-	let handle_choice_change = {
-		let set_choice = set_choice.clone();
-		let set_choice_error = set_choice_error.clone();
+/// Create a new question owned by the current user.
+///
+/// Ideal implementation (without the form! String workaround tracked in #4397):
+///   pub async fn create_question(
+///       question_text: String,
+///       _csrf_token: String,
+///       #[inject] _db: reinhardt::DatabaseConnection,
+///       #[inject] session: SessionData,
+///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
+#[server_fn]
+pub async fn create_question(
+	question_text: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<QuestionInfo, ServerFnError> {
+	use crate::apps::polls::models::Question;
 
-		move |e: web_sys::Event| {
-			if let Some(target) = e.target() {
-				if let Some(input) = target.dyn_ref::<web_sys::HtmlInputElement>() {
-					if let Ok(choice_id) = input.value().parse::<i64>() {
-						set_choice(Some(choice_id));
-						set_choice_error(None);
+	let user = require_user(&session).await?;
+
+	let trimmed = question_text.trim();
+	if trimmed.is_empty() || trimmed.len() > 200 {
+		return Err(ServerFnError::server(
+			400,
+			"Question text must be between 1 and 200 characters",
+		));
+	}
+
+	let manager = Question::objects();
+	let new_question = Question::build()
+		.question_text(trimmed)
+		.author(user.id())
+		.finish();
+	let saved = manager
+		.create(&new_question)
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(QuestionInfo::from(saved))
+}
+```
+
+`require_user` is the shared 401/403 gate defined at the top of the file — load the user id from the session, fetch the row, return 401 if absent and 403 if `!is_active`:
+
+```rust
+// src/apps/polls/server_fn.rs (extract)
+
+/// Resolve the currently authenticated user from the session, or return a
+/// 401 ServerFnError. Shared by every authenticated mutation handler below
+/// so that the "load user_id from session, look up the row, 401 if absent"
+/// dance lives in exactly one place.
+#[cfg(native)]
+async fn require_user(session: &SessionData) -> std::result::Result<User, ServerFnError> {
+	let user_id = session
+		.get::<i64>(USER_ID_SESSION_KEY)
+		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
+
+	let user = User::objects()
+		.filter(
+			User::field_id(),
+			FilterOperator::Eq,
+			FilterValue::Int(user_id),
+		)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
+
+	if !user.is_active {
+		return Err(ServerFnError::server(403, "User account is inactive"));
+	}
+
+	Ok(user)
+}
+```
+
+`update_question` and `delete_question` follow the same shape; the only difference is the ownership check after loading the row:
+
+```rust
+// src/apps/polls/server_fn.rs (continued)
+
+/// Update a question's text. Only the author may update.
+///
+/// Ideal implementation (without the form! String workaround tracked in #4397):
+///   pub async fn update_question(
+///       question_id: i64,
+///       question_text: String,
+///       _csrf_token: String,
+///       ...
+///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
+#[server_fn]
+pub async fn update_question(
+	question_id: String,
+	question_text: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<QuestionInfo, ServerFnError> {
+	use crate::apps::polls::models::Question;
+
+	let user = require_user(&session).await?;
+
+	let question_id: i64 = question_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
+
+	let trimmed = question_text.trim();
+	if trimmed.is_empty() || trimmed.len() > 200 {
+		return Err(ServerFnError::server(
+			400,
+			"Question text must be between 1 and 200 characters",
+		));
+	}
+
+	let manager = Question::objects();
+	let mut question = manager
+		.get(question_id)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
+
+	if *question.author_id() != user.id() {
+		return Err(ServerFnError::server(
+			403,
+			"Only the question's author can edit it",
+		));
+	}
+
+	question.question_text = trimmed.to_string();
+
+	let updated = manager
+		.update(&question)
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(QuestionInfo::from(updated))
+}
+
+/// Delete a question. Only the author may delete.
+///
+/// Ideal implementation (without the form! String workaround tracked in #4397):
+///   pub async fn delete_question(
+///       question_id: i64,
+///       _csrf_token: String,
+///       ...
+///   ) -> std::result::Result<(), ServerFnError> { ... }
+#[server_fn]
+pub async fn delete_question(
+	question_id: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<(), ServerFnError> {
+	use crate::apps::polls::models::Question;
+
+	let user = require_user(&session).await?;
+
+	let question_id: i64 = question_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
+
+	let manager = Question::objects();
+	let question = manager
+		.get(question_id)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
+
+	if *question.author_id() != user.id() {
+		return Err(ServerFnError::server(
+			403,
+			"Only the question's author can delete it",
+		));
+	}
+
+	manager
+		.delete(question.id())
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(())
+}
+```
+
+The "ideal implementation" comments in the source are not aspirational decoration — they are the literal signatures the handlers will collapse to once `form!` ships typed-field serialisation (#4397). The intent is that the only thing that needs to change in this file then is the parameter types and the deletion of the `.parse()` lines; the rest of the body, the session check, and the ownership check stay put.
+
+### What the client side of CUD looks like
+
+The matching client pages are short. Here is the "new question" page — it is the entire pattern in one block:
+
+```rust
+// src/client/components/polls.rs (extract)
+
+/// New question page (`/polls/new/`).
+pub fn question_new() -> Page {
+	let new_form = form! {
+		name: NewQuestionForm,
+		server_fn: create_question,
+		method: Post,
+		state: { loading, error },
+		redirect_on_success: "/",
+
+		fields: {
+			question_text: CharField {
+				label: "Question",
+				placeholder: "What do you want to ask?",
+				max_length: 200,
+				class: "form-control",
+			},
+		},
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
+
+	let loading_signal = new_form.loading().clone();
+	let error_signal = new_form.error().clone();
+	let form_view = new_form.into_page();
+	let cancel_href = links::polls_index();
+
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 { class: "mb-4", "New Question" }
+			watch {
+				if error_signal.get().is_some() {
+					div {
+						class: "alert-danger mb-3",
+						{ error_signal.get().unwrap_or_default() }
 					}
 				}
 			}
-		}
-	};
-
-	// ... rest of component
-}
-```
-
-## Best Practices for Form Components
-
-### 1. Controlled Components
-
-Always use controlled components (state-driven):
-
-```rust
-// ✅ GOOD: Controlled component
-input {
-	value: email_state.clone(),
-	oninput: handle_email_change
-}
-
-// ❌ BAD: Uncontrolled component
-input {
-	placeholder: "Email"
-	// No value binding - state and UI can diverge
-}
-```
-
-### 2. Immediate Validation Feedback
-
-Clear errors when user starts typing:
-
-```rust
-let handle_email_change = {
-	let set_email = set_email.clone();
-	let set_email_error = set_email_error.clone();
-
-	move |e: web_sys::Event| {
-		if let Some(target) = e.target() {
-			if let Some(input) = target.dyn_ref::<web_sys::HtmlInputElement>() {
-				set_email(input.value());
-				set_email_error(None);  // Clear error on change
+			{ form_view }
+			div {
+				class: "mt-3",
+				watch {
+					if loading_signal.get() {
+						button {
+							type: "submit",
+							class: "btn-primary opacity-50 cursor-not-allowed",
+							disabled: true,
+							form: "new-question-form",
+							"Creating..."
+						}
+					} else {
+						button {
+							type: "submit",
+							class: "btn-primary",
+							form: "new-question-form",
+							"Create"
+						}
+					}
+				}
+				a { href: cancel_href, class: "btn-secondary ml-2", "Cancel" }
 			}
 		}
+	})(loading_signal, error_signal, form_view, cancel_href)
+}
+```
+
+Two things make this shorter than the voting form:
+
+- **`redirect_on_success: "/"`** — `form!` knows how to navigate on its own; you do not have to write a `success_navigation` watch block by hand.
+- **No `watch:` clause inside `form!`** — the page renders the button and error display *outside* `form!`. Both patterns are valid; the choice is purely aesthetic.
+
+`question_edit` and `question_delete_confirm` follow the same shape, adding a `HiddenField` for `question_id` and (for edit) a `load_detail` action that pre-fills the form. The choice CUD pages (`choice_new`, `choice_edit`, `choice_delete_confirm`) are structurally identical — see `src/client/components/polls.rs` for the full set.
+
+## Choice CUD: Ownership Through the Parent
+
+Choices have no author field of their own; ownership is derived from the parent question. The `create_choice` server function shows the composition pattern with the shared `require_question_author` helper:
+
+```rust
+// src/apps/polls/server_fn.rs
+
+/// Internal helper: load a Question by id and ensure the given user is its
+/// author. Returns 401/403/404 as appropriate.
+#[cfg(native)]
+async fn require_question_author(
+	question_id: i64,
+	user: &User,
+) -> std::result::Result<crate::apps::polls::models::Question, ServerFnError> {
+	use crate::apps::polls::models::Question;
+
+	let question = Question::objects()
+		.get(question_id)
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
+
+	if *question.author_id() != user.id() {
+		return Err(ServerFnError::server(
+			403,
+			"Only the question's author can manage its choices",
+		));
 	}
-};
-```
 
-### 3. Disable Buttons During Submission
+	Ok(question)
+}
 
-Prevent double submissions:
+/// Create a new Choice on a Question. Only the question's author may add
+/// choices.
+#[server_fn]
+pub async fn create_choice(
+	question_id: String,
+	choice_text: String,
+	_csrf_token: String,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: SessionData,
+) -> std::result::Result<ChoiceInfo, ServerFnError> {
+	use crate::apps::polls::models::Choice;
 
-```rust
-button {
-	type: "submit",
-	disabled: submitting_state || !is_valid_state,
-	class: "btn btn-primary",
-	if submitting_state {
-		"Submitting..."
-	} else {
-		"Submit"
+	let user = require_user(&session).await?;
+	let question_id: i64 = question_id
+		.parse()
+		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
+	let question = require_question_author(question_id, &user).await?;
+
+	let trimmed = choice_text.trim();
+	if trimmed.is_empty() || trimmed.len() > 200 {
+		return Err(ServerFnError::server(
+			400,
+			"Choice text must be between 1 and 200 characters",
+		));
 	}
+
+	let manager = Choice::objects();
+	let new_choice = Choice::build()
+		.choice_text(trimmed)
+		.votes(0)
+		.question(question.id())
+		.finish();
+	let saved = manager
+		.create(&new_choice)
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(ChoiceInfo::from(saved))
 }
 ```
 
-### 4. Progressive Enhancement
+Read this top-to-bottom and the layering becomes obvious:
 
-Show loading states and optimistic updates:
+1. `require_user(&session).await?` — authentication.
+2. `question_id.parse()?` — workaround for the `String`-only ABI.
+3. `require_question_author(question_id, &user).await?` — authorization, *through the parent row*.
+4. Local content validation (length).
+5. `Choice::build() … .finish()` — typed model construction (from Part 2).
+6. `Choice::objects().create(...).await?` — the actual mutation.
 
-```rust
-let submit_action = use_action(|data: FormData| async move {
-	submit_form(data).await.map_err(|e| e.to_string())
-});
+The pattern repeats for `update_choice` (load choice → look up parent question → check author) and `delete_choice`. Each tiered check returns its own `ServerFnError::server(status, message)`, which surfaces directly on the client through the form's `error` signal. There is no shared exception class to design or middleware to register — the server function simply returns the error, and the `form!` macro plumbs it to `form.error()`.
 
-// Optimistic update (optional)
-update_ui_optimistically();
-submit_action.dispatch(data);
+## What This Chapter Does NOT Teach
 
-// Bridge results via use_effect
-{
-	let submit_action = submit_action.clone();
-	use_effect(move || {
-		match submit_action.result() {
-			Some(Ok(result)) => {
-				// Success
-				navigate_to_success_page();
-			}
-			Some(Err(e)) => {
-				// Rollback optimistic update
-				rollback_ui();
-				set_error(Some(e.clone()));
-			}
-			None => {} // Still loading
-		}
-	});
-}
-```
+If you are coming from Django or another classic server-rendered framework, you may be wondering where the generic views went. In short: the pages template does not have them, and does not need them.
 
-## Summary
+- **`ListView` / `DetailView`** are replaced by **page factory functions** — `polls_index`, `polls_detail`, `polls_results`, `question_new`, `question_edit`, `choice_new`, … each defined in `src/client/components/polls.rs` and `src/client/pages.rs`. We wrote them in Part 3.
+- **The reusability story** is **component composition with `page!` + `watch` + `use_action`**, not subclassing. The voting page composes a `page!` outer shell, a `form!` block, two `watch`-driven action states, and a `use_effect` bridge — six small pieces, each independently reasonable.
+- **Form rendering** is **the `form!` macro**, not a templating language with form tags. The HTML is in your component.
 
-In this tutorial, you learned:
+There is also no client-side validator block. The tutorial does *not* mirror DTO validation into the WASM bundle: server-side `request.validate()` plus the `form.error()` signal closes the loop with a smaller bundle and one canonical source of truth. (Historically a `client_validators` block existed; it is deprecated and not used in this tutorial — see [reinhardt-web#3769](https://github.com/kent8192/reinhardt-web/issues/3769).)
 
-- **Client-Side Form State**: Using `use_state()` for local form data and `use_action` for async operations
-- **Event Handlers**: Attaching listeners to form elements
-- **Client-Side Validation**: Immediate feedback before server submission
-- **Server-Side Validation**: Security and data integrity at the server
-- **CSRF Protection**: Current manual approach and future automatic integration
-- **Component Patterns**: Reusable components instead of generic views
-- **Custom Hooks**: Encapsulating form logic for reuse
-- **Best Practices**: Controlled components, validation feedback, and progressive enhancement
+If you absolutely need a lower-level form-handling path — multi-step wizards with branching that `form!` cannot express, drag-and-drop form builders with runtime-defined fields, or integration with a third-party state management library — you can drop down to `use_state` and assemble the form imperatively. That escape hatch exists, but it is not part of the basis tutorial, and it should not be reached for unless `form!` truly cannot express what you need.
 
-**Key Differences from Traditional Approaches:**
+## Recap
 
-| Aspect | Traditional (Tera) | reinhardt-pages |
-|--------|-------------------|-----------------|
-| Form Rendering | Server-side template | Client-side component |
-| State Management | Server session | Client state (`use_state`, `use_action`) |
-| Validation | Server-side only | Client + Server |
-| CSRF Protection | Template tags (`{% csrf_token %}`) | Middleware integration (future) |
-| Reusability | Generic views | Component composition |
-| User Experience | Full page reload | Dynamic updates, no reload |
+You now have everything Part 4 set out to deliver:
 
-## What's Next?
+- DTO field-level validation lives in `src/shared/types.rs`, gated `#[cfg_attr(native, derive(Validate))]` so the WASM bundle stays small.
+- The voting form's metadata + CSRF token come from `create_vote_form()` in `src/shared/forms.rs` (server-only) via `Form::to_metadata()` exposed by the `get_vote_form_metadata` `#[server_fn]`.
+- The `form!` macro in `src/client/components/polls.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, appends the CSRF token through `strip_arguments`, and surfaces success/error reactively through `state: { loading, error }` and matching `watch` blocks.
+- Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `require_user` (authentication) and `require_question_author` (authorization) on top of typed model builders.
+- "Generic views" are not a separate concept in the pages template — they are the page factory functions you already have, glued together with the reactive primitives above.
 
-In the next tutorial, we'll write automated tests for our reinhardt-pages application, including:
-
-- Component testing
-- Server function testing
-- Integration testing with browser automation
+In the next chapter we put this layer under test: native integration tests with `rstest` + `reinhardt-test` + `sqlx` + `tempfile`, plus a WASM-only target that mocks the server function HTTP calls with MSW.
 
 Continue to [Part 5: Testing](../5-testing/).
