@@ -24,6 +24,7 @@ mod apply_update_attribute;
 mod apply_update_derive;
 mod collect_migrations;
 mod crate_paths;
+mod dto;
 mod flatten_imports;
 mod hook;
 mod injectable_common;
@@ -48,7 +49,6 @@ mod schema;
 mod settings_compose;
 mod settings_fragment;
 pub(crate) mod settings_parser;
-mod shared_schema;
 mod streaming;
 mod streaming_patterns;
 mod use_inject;
@@ -1022,22 +1022,30 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 ///    `#[cfg_attr(native, derive(Schema))]` on the struct, that derive is not
 ///    duplicated.
 ///
-/// # Naming
+/// # `#[dto]` vs [`macro@model`]
 ///
-/// The macro is named `shared_schema` (not `shared_model`) to keep a clear
-/// separation from the ORM-side [`macro@model`] attribute. `#[model]` defines a
-/// persistent record (with a primary key, table, fields, relationships);
-/// `#[shared_schema]` declares the wire-level shape that crosses the
-/// server/client boundary and adds the validation + OpenAPI-schema impls only
-/// where they make sense (i.e. native builds).
+/// Both are struct attributes, but they describe different things and live in
+/// different files:
+///
+/// | | `#[model]` (ORM) | `#[dto]` (this macro) |
+/// |---|---|---|
+/// | What | A persistent record | A wire-level data shape |
+/// | Where it lives | `apps/<app>/models/*.rs` | `apps/<app>/shared/types.rs` |
+/// | Where it runs | Server only (`native`) | Both server (`native`) and client (`wasm`) |
+/// | What it adds | Table mapping, primary key, FK fields, migrations | Validate + OpenAPI `Schema` derives (native-only), wraps `#[validate(...)]` |
+/// | Boundary it crosses | Rust ↔ database | Server ↔ client (via `#[server_fn]`, REST handlers, WebSocket payloads) |
+///
+/// "DTO" is the industry-standard term for the second row — a data-transfer
+/// object that is serialized on one side, sent over the wire, and
+/// deserialized on the other side.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt::shared_schema;
+/// use reinhardt::dto;
 /// use serde::{Deserialize, Serialize};
 ///
-/// #[shared_schema]
+/// #[dto]
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub struct LoginRequest {
 ///     #[validate(email(message = "Invalid email address"))]
@@ -1070,12 +1078,12 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 /// - Applies only to `struct` items (named, tuple, or unit). Enums and unions
 ///   produce a compile error.
 /// - Does not accept arguments in this version. Passing any tokens (e.g.
-///   `#[shared_schema(no_schema)]`) is a compile error.
+///   `#[dto(no_schema)]`) is a compile error.
 #[proc_macro_attribute]
-pub fn shared_schema(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn dto(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as syn::DeriveInput);
 
-	shared_schema::shared_schema_impl(args.into(), input)
+	dto::dto_impl(args.into(), input)
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }

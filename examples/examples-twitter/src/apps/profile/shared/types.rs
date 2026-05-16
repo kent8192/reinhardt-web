@@ -3,12 +3,12 @@
 //! These types are serializable and can be sent between the WASM client
 //! and the Rust server via server functions.
 
-use reinhardt::shared_schema;
+use reinhardt::dto;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Profile response
-#[shared_schema]
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileResponse {
 	pub user_id: Uuid,
@@ -33,7 +33,7 @@ impl From<crate::apps::profile::models::Profile> for ProfileResponse {
 }
 
 /// Update profile request
-#[shared_schema]
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateProfileRequest {
 	#[validate(length(max = 500, message = "Bio must be less than 500 characters"))]

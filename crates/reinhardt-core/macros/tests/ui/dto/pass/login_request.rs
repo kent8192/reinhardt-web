@@ -1,13 +1,13 @@
-//! Verifies that `#[shared_schema]` accepts a struct with `#[validate(...)]`
+//! Verifies that `#[dto]` accepts a struct with `#[validate(...)]`
 //! field attributes and that the emitted `cfg_attr(native, derive(...))` does
 //! not break compilation under the trybuild environment (where `native` is
 //! unset, so the wasm-side expansion is exercised).
 
 #![allow(unexpected_cfgs)]
 
-use reinhardt_macros::shared_schema;
+use reinhardt_macros::dto;
 
-#[shared_schema]
+#[dto]
 pub struct LoginRequest {
 	#[validate(length(min = 1))]
 	pub email: String,

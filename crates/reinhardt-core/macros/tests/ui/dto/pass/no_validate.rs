@@ -1,12 +1,12 @@
-//! Verifies that `#[shared_schema]` works on a struct with no `#[validate(...)]`
+//! Verifies that `#[dto]` works on a struct with no `#[validate(...)]`
 //! field attributes — the emitted `Validate` derive must compile to a trivial
 //! `Ok(())` impl (handled by the underlying `validate_derive`).
 
 #![allow(unexpected_cfgs)]
 
-use reinhardt_macros::shared_schema;
+use reinhardt_macros::dto;
 
-#[shared_schema]
+#[dto]
 pub struct UserInfo {
 	pub id: u64,
 	pub username: String,

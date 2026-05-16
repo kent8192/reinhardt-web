@@ -4,14 +4,14 @@
 //! All types must be serializable with serde.
 
 use chrono::{DateTime, Utc};
-use reinhardt::shared_schema;
+use reinhardt::dto;
 use serde::{Deserialize, Serialize};
 
 /// User information (DTO)
 ///
 /// Returned by the authentication server functions. Mirrors the public-facing
 /// subset of `apps::users::models::User`.
-#[shared_schema]
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
 	pub id: i64,
@@ -23,11 +23,11 @@ pub struct UserInfo {
 ///
 /// Sent from the WASM client to the server when submitting the login form.
 ///
-/// The `#[shared_schema]` macro emits `Validate` (and an OpenAPI `Schema`)
+/// The `#[dto]` macro emits `Validate` (and an OpenAPI `Schema`)
 /// derive behind `cfg(native)` so the WASM client does not pull in the
 /// validator-crate machinery — the server is the only side that runs
 /// `request.validate()` before hitting the database.
-#[shared_schema]
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
 	#[validate(length(
@@ -48,13 +48,13 @@ pub struct LoginRequest {
 /// fields travel in the clear over HTTPS just like the login form and are
 /// never persisted — only the Argon2 hash of `password` is stored.
 ///
-/// Validation gating is handled by `#[shared_schema]` (same rationale as on
+/// Validation gating is handled by `#[dto]` (same rationale as on
 /// [`LoginRequest`]). Field-level rules (length / non-empty) run through
 /// `request.validate()`; the password-confirmation equality check is
 /// expressed as a dedicated [`RegisterRequest::validate_passwords_match`]
 /// helper because the validator crate's `must_match` is brittle across
 /// versions (mirroring the pattern in `examples-twitter`).
-#[shared_schema]
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRequest {
 	#[validate(length(

@@ -1,8 +1,8 @@
-//! Attribute macro implementation for `#[shared_schema]`
+//! Attribute macro implementation for `#[dto]`
 //!
 //! Absorbs the `cfg_attr(native, ...)` boilerplate required for DTOs shared
 //! between native (server) and wasm (client) builds. See the public-facing
-//! rustdoc on `crate::shared_schema` in `lib.rs` for the user-facing contract.
+//! rustdoc on `crate::dto` in `lib.rs` for the user-facing contract.
 
 use crate::crate_paths::get_reinhardt_crate;
 use proc_macro2::TokenStream;
@@ -12,11 +12,11 @@ use syn::{
 	punctuated::Punctuated,
 };
 
-pub(crate) fn shared_schema_impl(args: TokenStream, mut input: DeriveInput) -> Result<TokenStream> {
+pub(crate) fn dto_impl(args: TokenStream, mut input: DeriveInput) -> Result<TokenStream> {
 	if !args.is_empty() {
 		return Err(syn::Error::new_spanned(
 			args,
-			"#[shared_schema] does not accept arguments in this version",
+			"#[dto] does not accept arguments in this version",
 		));
 	}
 
@@ -31,7 +31,7 @@ pub(crate) fn shared_schema_impl(args: TokenStream, mut input: DeriveInput) -> R
 		Data::Enum(_) | Data::Union(_) => {
 			return Err(syn::Error::new_spanned(
 				&input.ident,
-				"#[shared_schema] can only be applied to structs",
+				"#[dto] can only be applied to structs",
 			));
 		}
 	};
@@ -66,7 +66,7 @@ pub(crate) fn shared_schema_impl(args: TokenStream, mut input: DeriveInput) -> R
 	// `inventory::submit!` block that references the schema method as
 	// `<StructName>::schema`, which requires the `ToSchema` trait to be in
 	// scope at the module level. Bring it in anonymously so we do not
-	// introduce a visible name. `as _` allows multiple `#[shared_schema]`
+	// introduce a visible name. `as _` allows multiple `#[dto]`
 	// uses in the same module without name collisions.
 	let to_schema_import = if needs_schema {
 		quote! {

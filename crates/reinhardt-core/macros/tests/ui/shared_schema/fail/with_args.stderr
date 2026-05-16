@@ -1,5 +1,0 @@
-error: #[shared_schema] does not accept arguments in this version
- --> tests/ui/shared_schema/fail/with_args.rs:5:17
-  |
-5 | #[shared_schema(no_schema)]
-  |                 ^^^^^^^^^
