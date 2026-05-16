@@ -18,8 +18,8 @@ mod tests {
 	use reinhardt_di::{InjectionContext, SingletonScope};
 	use reinhardt_http::Request;
 	use reinhardt_middleware::session::{
-		OptionalSessionValue, SessionData, SessionKey, SessionStore, SessionValue,
-		SessionValueNamed, USER_ID_SESSION_KEY,
+		OptionalSessionValue, OptionalSessionValueNamed, SessionData, SessionKey, SessionStore,
+		SessionValue, SessionValueNamed, USER_ID_SESSION_KEY,
 	};
 
 	/// Build a request whose extensions carry the active `Arc<InjectionContext>`
@@ -202,6 +202,126 @@ mod tests {
 			matches!(err, ParamError::Authentication(_)),
 			"expected ParamError::Authentication, got {err:?}"
 		);
+	}
+
+	#[tokio::test]
+	async fn optional_session_value_named_from_request_returns_some_when_key_present() {
+		// Arrange
+		let store = Arc::new(SessionStore::new());
+		let mut session = SessionData::new(Duration::from_secs(3600));
+		session.set(TenantIdKey::KEY.to_string(), 4242i64).unwrap();
+		let session_id = session.id.clone();
+		store.save(session);
+
+		let request = build_request_with_session(Arc::clone(&store), Some(&session_id));
+		let ctx = ParamContext::new();
+
+		// Act
+		let extracted = <OptionalSessionValueNamed<TenantIdKey, i64> as FromRequest>::from_request(
+			&request, &ctx,
+		)
+		.await
+		.expect("OptionalSessionValueNamed must succeed when the key is present");
+
+		// Assert
+		assert_eq!(*extracted, Some(4242));
+	}
+
+	#[tokio::test]
+	async fn optional_session_value_named_from_request_yields_none_when_key_missing() {
+		// Arrange — session exists but does NOT carry the tenant_id key.
+		// The optional variant must collapse this to `None` rather than 401.
+		let store = Arc::new(SessionStore::new());
+		let session = SessionData::new(Duration::from_secs(3600));
+		let session_id = session.id.clone();
+		store.save(session);
+
+		let request = build_request_with_session(Arc::clone(&store), Some(&session_id));
+		let ctx = ParamContext::new();
+
+		// Act
+		let extracted = <OptionalSessionValueNamed<TenantIdKey, i64> as FromRequest>::from_request(
+			&request, &ctx,
+		)
+		.await
+		.expect("OptionalSessionValueNamed must never fail extraction");
+
+		// Assert
+		assert_eq!(*extracted, None);
+	}
+
+	#[tokio::test]
+	async fn optional_session_value_named_from_request_yields_none_when_session_missing() {
+		// Arrange — no session cookie => `SessionData::inject` fails with
+		// `DiError::NotFound`. The optional variant must swallow that into
+		// `None` rather than propagating an authentication error.
+		let store = Arc::new(SessionStore::new());
+		let request = build_request_with_session(store, None);
+		let ctx = ParamContext::new();
+
+		// Act
+		let extracted = <OptionalSessionValueNamed<TenantIdKey, i64> as FromRequest>::from_request(
+			&request, &ctx,
+		)
+		.await
+		.expect("OptionalSessionValueNamed must tolerate a missing session");
+
+		// Assert
+		assert_eq!(*extracted, None);
+	}
+
+	#[tokio::test]
+	async fn optional_session_value_named_from_request_yields_none_on_deserialisation_mismatch() {
+		// Arrange — store a string value under the tenant_id key, then ask
+		// for an i64. The Option<T> semantics of `SessionData::get` collapse
+		// a deserialisation failure to `None`, which `OptionalSessionValueNamed`
+		// must surface as `None` rather than 401/500.
+		let store = Arc::new(SessionStore::new());
+		let mut session = SessionData::new(Duration::from_secs(3600));
+		session
+			.set(TenantIdKey::KEY.to_string(), "not-an-i64".to_string())
+			.unwrap();
+		let session_id = session.id.clone();
+		store.save(session);
+
+		let request = build_request_with_session(Arc::clone(&store), Some(&session_id));
+		let ctx = ParamContext::new();
+
+		// Act
+		let extracted = <OptionalSessionValueNamed<TenantIdKey, i64> as FromRequest>::from_request(
+			&request, &ctx,
+		)
+		.await
+		.expect("OptionalSessionValueNamed must absorb deserialisation failures");
+
+		// Assert
+		assert_eq!(*extracted, None);
+	}
+
+	#[tokio::test]
+	async fn optional_session_value_named_from_request_yields_none_without_di_context() {
+		// Arrange — no DI context attached to the request. Mirror the
+		// behaviour verified for `OptionalSessionValue` (must collapse to
+		// `None` rather than 500).
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		let ctx = ParamContext::new();
+
+		// Act
+		let extracted = <OptionalSessionValueNamed<TenantIdKey, i64> as FromRequest>::from_request(
+			&request, &ctx,
+		)
+		.await
+		.expect("OptionalSessionValueNamed must tolerate a missing DI context");
+
+		// Assert
+		assert_eq!(*extracted, None);
 	}
 
 	#[tokio::test]
