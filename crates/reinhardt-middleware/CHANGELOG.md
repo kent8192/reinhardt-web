@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-rc.29...reinhardt-middleware@v0.1.0-rc.30) - 2026-05-16
+
+### Added
+
+- *(middleware)* auto-register SessionMiddleware's Arc<SessionStore> via di_registrations
+- *(middleware)* add typed SessionValue<T> extractor + SessionAuthExt
+- *(middleware)* export SessionValue, OptionalSessionValue, SessionAuthExt, USER_ID_SESSION_KEY
+
+### Documentation
+
+- *(middleware)* document SessionValue and SessionAuthExt in README
+
+### Fixed
+
+- *(middleware)* register session store under Arc<SessionStore> TypeId
+
+### Testing
+
+- *(middleware)* cover SessionData::inject end-to-end via InjectionContext
+- *(middleware)* cover SessionValue extractor and SessionAuthExt login/logout
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-rc.28...reinhardt-middleware@v0.1.0-rc.29) - 2026-05-13
 
 ### Added

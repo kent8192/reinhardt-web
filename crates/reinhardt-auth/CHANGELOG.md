@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.29...reinhardt-auth@v0.1.0-rc.30) - 2026-05-16
+
+### Added
+
+- *(core-macros)* emit BaseUserManager impl from #[user(...)]
+
+### Changed
+
+- *(core-macros)* single-lock manager ops, route Value via reinhardt-auth
+
+### Documentation
+
+- *(auth)* document Clone requirement and PK uniqueness caveat for auto-manager
+
+### Fixed
+
+- *(admin,core-macros)* opt admin user out of auto-manager and re-apply rustfmt
+- *(ci)* opt #[user] integration test fixtures out of auto-manager
+
 ## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.22...reinhardt-auth@v0.1.0-rc.23) - 2026-04-29
 
 ### Added
