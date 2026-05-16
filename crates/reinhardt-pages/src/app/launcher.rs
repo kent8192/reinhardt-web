@@ -274,8 +274,12 @@ fn next_path_subscription_match(
 /// The router source `launch()` will use, decided from the three
 /// mutually-exclusive launcher methods.
 ///
+/// Used only by `launch()` (WASM-only) and the native test module that
+/// exercises the pure decision logic. On non-test native builds the
+/// items below are intentionally unreferenced.
+///
 /// Refs #4453.
-#[allow(dead_code)] // wired up in Task 3.3
+#[cfg_attr(not(wasm), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RouterSourceChoice {
 	/// `router(...)` was the only source set.
@@ -297,7 +301,7 @@ enum RouterSourceChoice {
 /// Pure function — testable on the native target without the WASM runtime.
 ///
 /// Refs #4453.
-#[allow(dead_code)] // wired up in Task 3.3
+#[cfg_attr(not(wasm), allow(dead_code))]
 fn select_router_source_counts(legacy: bool, client: bool, inventory: bool) -> RouterSourceChoice {
 	match (legacy as u8) + (client as u8) + (inventory as u8) {
 		0 => RouterSourceChoice::None,
@@ -327,6 +331,13 @@ impl ClientLauncher {
 	/// Register the router initializer function.
 	///
 	/// The function is called once during `launch()` before the first render.
+	///
+	/// # Conflict
+	///
+	/// Mutually exclusive with [`Self::router_client`] and
+	/// [`Self::register_routes_from_inventory`]. Calling more than one of
+	/// the three on the same launcher causes [`Self::launch`] to return
+	/// an error. (Refs #4453)
 	#[deprecated(
 		since = "0.1.0-rc.27",
 		note = "Use `ClientLauncher::router_client` with `urls::ClientRouter` instead. \
@@ -344,11 +355,18 @@ impl ClientLauncher {
 	/// latter is `#[deprecated]` and consumes the deprecated
 	/// `pages::Router`. (Refs #4234, cloud#578 Phase E)
 	///
+	/// For projects already using `#[routes]` on a top-level `routes()`
+	/// function, prefer [`Self::register_routes_from_inventory`] — it
+	/// collapses the WASM entry point to three lines and removes the
+	/// need to hand-aggregate per-app `client_url_patterns()` outputs.
+	/// (Refs #4453)
+	///
 	/// # Conflict
 	///
-	/// `router_client` and [`ClientLauncher::router`] are mutually
-	/// exclusive — calling both on the same launcher causes
-	/// `ClientLauncher::launch` to return an error. Pick one.
+	/// Mutually exclusive with [`Self::router`] (deprecated) and
+	/// [`Self::register_routes_from_inventory`]. Calling more than one
+	/// of the three on the same launcher causes [`Self::launch`] to
+	/// return an error. (Refs #4234, #4453)
 	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
 	pub fn router_client<F>(mut self, f: F) -> Self
 	where
@@ -569,6 +587,21 @@ impl ClientLauncher {
 	/// [`Router::on_navigate`] fires for both programmatic navigation
 	/// (`Router::push` / `Router::replace`) and browser back/forward
 	/// (popstate).
+	///
+	/// # Router Source Selection
+	///
+	/// Exactly one of the three router-source builders must be called
+	/// before `launch()`:
+	///
+	/// - [`Self::router`] (deprecated; consumes the legacy `pages::Router`)
+	/// - [`Self::router_client`] (closure producing a `ClientRouter`)
+	/// - [`Self::register_routes_from_inventory`] (pulls a `ClientRouter`
+	///   from `inventory`-registered `#[routes]` functions)
+	///
+	/// Calling none of them or more than one returns `Err`. The
+	/// `register_routes_from_inventory` path additionally returns `Err`
+	/// when no `#[routes]` registrations are found at runtime.
+	/// (Refs #4234, #4453)
 	pub fn launch(mut self) -> Result<(), wasm_bindgen::JsValue> {
 		#[cfg(feature = "console_error_panic_hook")]
 		console_error_panic_hook::set_once();
@@ -582,32 +615,59 @@ impl ClientLauncher {
 			hook();
 		}
 
-		// (Refs #4234) Pick exactly one router source. The deprecated
-		// `router(...)` builder produces a `Router`; the new
-		// `router_client(...)` builder produces a `ClientRouter`.
-		// Either is valid; both set or neither set is an error.
-		let spa_router: Box<dyn super::SpaRouter> =
-			match (self.router_init.take(), self.client_router_init.take()) {
-				(Some(_), Some(_)) => {
-					return Err(wasm_bindgen::JsValue::from_str(
-						"ClientLauncher: `router(...)` and `router_client(...)` \
-						 are mutually exclusive; configure only one.",
-					));
+		// (Refs #4234, #4453) Pick exactly one router source. The
+		// deprecated `router(...)` builder produces a `Router`; the
+		// `router_client(...)` builder produces a `ClientRouter` from
+		// a user-supplied closure; `register_routes_from_inventory()`
+		// pulls a `ClientRouter` from `inventory`-registered
+		// `#[routes]` functions at module load time.
+		let legacy_init = self.router_init.take();
+		let client_init = self.client_router_init.take();
+		let use_inventory = self.use_inventory;
+
+		let spa_router: Box<dyn super::SpaRouter> = match select_router_source_counts(
+			legacy_init.is_some(),
+			client_init.is_some(),
+			use_inventory,
+		) {
+			RouterSourceChoice::Legacy => {
+				// (Refs #4234) `Router` is deprecated as of rc.27; the parent
+				// `impl ClientLauncher` block carries `#[allow(deprecated)]` so
+				// this arm continues to build.
+				Box::new((legacy_init.expect("Legacy variant guarantees Some"))())
+			}
+			RouterSourceChoice::Client => {
+				Box::new((client_init.expect("Client variant guarantees Some"))())
+			}
+			RouterSourceChoice::Inventory => {
+				match reinhardt_urls::routers::collect_client_router_from_inventory() {
+					Some(router) => Box::new(router),
+					None => {
+						return Err(wasm_bindgen::JsValue::from_str(
+							"ClientLauncher::register_routes_from_inventory: no \
+							 `#[routes]` registrations found. Annotate your project's \
+							 `routes()` function with `#[routes]` and ensure it returns \
+							 a `UnifiedRouter` whose `.client(|c| ...)` aggregates the \
+							 per-app `client_url_patterns()` outputs.",
+						));
+					}
 				}
-				(Some(f), None) => {
-					// (Refs #4234) `Router` is deprecated as of rc.27; the
-					// parent `impl ClientLauncher` block carries
-					// `#[allow(deprecated)]` so this arm continues to build.
-					Box::new(f())
-				}
-				(None, Some(f)) => Box::new(f()),
-				(None, None) => {
-					return Err(wasm_bindgen::JsValue::from_str(
-						"ClientLauncher: `router(...)` or `router_client(...)` \
-						 must be called before `launch()`.",
-					));
-				}
-			};
+			}
+			RouterSourceChoice::None => {
+				return Err(wasm_bindgen::JsValue::from_str(
+					"ClientLauncher: `router(...)`, `router_client(...)`, or \
+					 `register_routes_from_inventory()` must be called before \
+					 `launch()`.",
+				));
+			}
+			RouterSourceChoice::Conflict => {
+				return Err(wasm_bindgen::JsValue::from_str(
+					"ClientLauncher: `router(...)`, `router_client(...)`, and \
+					 `register_routes_from_inventory()` are mutually exclusive; \
+					 configure exactly one.",
+				));
+			}
+		};
 		store_spa_router(spa_router);
 
 		crate::nav_diag!(
