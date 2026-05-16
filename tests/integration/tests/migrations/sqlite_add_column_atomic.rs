@@ -141,27 +141,53 @@ async fn issue_4447_add_column_then_add_constraint_preserves_column() {
 		"is_superuser column was lost across AddConstraint recreation: have {names:?}"
 	);
 
-	// And the unique constraint added by op #2 must exist.
+	// And the unique constraint added by op #2 must exist on `username`.
+	// SQLite reports the underlying auto-index in PRAGMA index_list; the name
+	// it picks for `CONSTRAINT … UNIQUE` is implementation-defined (often
+	// `sqlite_autoindex_<table>_<n>`), so we verify by column instead of by
+	// constraint name.
 	let idxs = conn
 		.fetch_all("PRAGMA index_list(users)", vec![])
 		.await
 		.expect("read index_list");
-	let unique_names: Vec<String> = idxs
-		.iter()
-		.filter_map(|r| {
-			let origin: String = r.get("origin").ok()?;
-			let unique: i64 = r.get("unique").unwrap_or(0);
-			if origin == "u" && unique == 1 {
-				r.get::<String>("name").ok()
-			} else {
-				None
-			}
-		})
-		.collect();
-
+	let mut covers_username = false;
+	for row in &idxs {
+		let origin: String = row.get("origin").unwrap_or_default();
+		let unique: i64 = row.get("unique").unwrap_or(0);
+		if origin != "u" || unique != 1 {
+			continue;
+		}
+		let idx_name: String = row.get("name").unwrap_or_default();
+		let info = conn
+			.fetch_all(&format!("PRAGMA index_info({})", idx_name), vec![])
+			.await
+			.expect("read index_info");
+		let cols: Vec<String> = info
+			.iter()
+			.filter_map(|r| r.get::<String>("name").ok())
+			.collect();
+		if cols == vec!["username".to_string()] {
+			covers_username = true;
+			break;
+		}
+	}
 	assert!(
-		unique_names.iter().any(|n| n == "users_user_username_uniq"),
-		"named uniqueness constraint missing after migration: have {unique_names:?}"
+		covers_username,
+		"AddConstraint UNIQUE(username) was not preserved across recreation: \
+		 PRAGMA index_list returned {idxs:?}"
+	);
+
+	// Verify the constraint is actually enforced (orthogonal to introspection
+	// quirks above): duplicate inserts must fail.
+	conn.execute("INSERT INTO users (username) VALUES ('alice')", vec![])
+		.await
+		.expect("first insert");
+	let dup = conn
+		.execute("INSERT INTO users (username) VALUES ('alice')", vec![])
+		.await;
+	assert!(
+		dup.is_err(),
+		"AddConstraint UNIQUE(username) must be enforced after recreation"
 	);
 }
 
