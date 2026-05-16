@@ -133,7 +133,11 @@ pub(crate) mod path_utils;
 #[cfg(native)]
 pub mod pattern;
 /// Compile-time URL pattern registration via `inventory`.
-#[cfg(native)]
+///
+/// On native targets exposes `UrlPatternsRegistration`; on
+/// `wasm32-unknown-unknown` exposes `ClientRouterRegistration` and
+/// `collect_client_router_from_inventory` (refs #4453).
+#[cfg(any(native, all(target_family = "wasm", target_os = "unknown")))]
 pub mod registration;
 /// URL resolver trait for type-safe URL generation.
 pub mod resolver;
@@ -184,6 +188,14 @@ pub use converters::{
 pub use helpers::{IncludedRouter, include_routes, path, re_path};
 #[cfg(native)]
 pub use pattern::{MatchingMode, PathMatcher, PathPattern, RadixRouter, RadixRouterError};
+#[cfg(all(
+	target_family = "wasm",
+	target_os = "unknown",
+	feature = "client-router"
+))]
+pub use registration::{
+	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
+};
 #[cfg(native)]
 pub use registration::{RouterFactory, UrlPatternsRegistration};
 #[cfg(native)]

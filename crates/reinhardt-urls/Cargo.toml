@@ -29,6 +29,9 @@ js-sys = "0.3"
 # JSON-string-in-JsValue convention that surfaced as the SPA navigation
 # regression class (#4075 / #4088 / #4122 / #4203 / #4217).
 serde-wasm-bindgen = "0.6"
+# inventory: compile-time discovery for WASM-side `ClientRouterRegistration`
+# emitted by the `#[routes]` macro. Refs #4453.
+inventory = "0.3"
 
 # Server-only dependencies (not available on WASM)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
