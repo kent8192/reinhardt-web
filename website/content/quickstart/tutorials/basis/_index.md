@@ -97,8 +97,7 @@ examples-tutorial-basis/
 │       ├── components/        # nav.rs / polls.rs / users.rs — page! + watch + form! components
 │       └── links.rs           # Typed wrappers around ResolvedUrls::resolve_client_url(...) for every named route
 └── tests/
-    ├── integration.rs         # native; required-features = ["with-reinhardt"]; rstest + serial_test + sqlx + tempfile
-    ├── availability.rs        # native; smoke checks for routing / server functions
+    ├── integration.rs          # native; required-features = ["with-reinhardt"]; rstest + serial_test + sqlx + tempfile
     └── wasm/polls_mock_test.rs # WASM-only; required-features = ["msw"]; wasm-bindgen-test
 ```
 
@@ -142,7 +141,7 @@ Three rules keep this structure predictable:
 ### [Part 5: Testing](5-testing/)
 
 - Use `rstest` fixtures + `reinhardt-test` helpers + `sqlx` + `tempfile` (all under `[target.'cfg(not(...))'.dev-dependencies]`) to spin up an isolated SQLite for native integration tests
-- Mark the integration target with `[[test]] name = "integration", required-features = ["with-reinhardt"]`
+- Mark the native integration target with `[[test]] name = "integration", required-features = ["with-reinhardt"]`
 - Add a WASM-only target at `tests/wasm/polls_mock_test.rs` (`#![cfg(wasm)]`, `required-features = ["msw"]`) that mocks server function HTTP calls via MSW
 - Follow the Arrange-Act-Assert pattern with `// Arrange`, `// Act`, `// Assert` labels
 

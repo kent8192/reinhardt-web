@@ -185,7 +185,6 @@ examples-tutorial-basis/
 │                                   # `poll_detail(id)`, `question_edit(id)`, …
 └── tests/
     ├── integration.rs              # Native; `required-features = ["with-reinhardt"]`
-    ├── availability.rs             # Availability checks (native)
     └── wasm/
         └── polls_mock_test.rs      # WASM; `#![cfg(wasm)]`, `required-features = ["msw"]`
 ```
@@ -358,7 +357,7 @@ The `mode = client` macro namespaces every `named_route` under `polls:`, so SPA 
 
 ## Testing
 
-Tests are split between native (`tests/integration.rs`, `tests/availability.rs`) and WASM (`tests/wasm/polls_mock_test.rs`). The native integration target is gated by `required-features = ["with-reinhardt"]` and the WASM mock target by `required-features = ["msw"]` — Cargo cannot auto-discover test files under `tests/<subdir>/`, hence the explicit `[[test]]` declarations in `Cargo.toml`. Run them through `cargo make`:
+Tests are split between native (`tests/integration.rs`) and WASM (`tests/wasm/polls_mock_test.rs`). The native integration target is gated by `required-features = ["with-reinhardt"]` and the WASM mock target by `required-features = ["msw"]` — Cargo cannot auto-discover test files under `tests/<subdir>/`, hence the explicit `[[test]]` declarations in `Cargo.toml`. Run them through `cargo make`:
 
 ```bash
 # All tests (native lib + integration; forwards --all-features)
