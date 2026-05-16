@@ -1,9 +1,13 @@
 //! Client-side routing for the {{ app_name }} SPA.
 //!
-//! Routes are registered via inventory by `#[url_patterns(..., mode = client)]`
-//! and namespaced under `InstalledApp::{{ app_name }}`
-//! (e.g. `{{ app_name }}:index`). `ClientLauncher::router_client(...)`
-//! discovers and mounts the result.
+//! `#[url_patterns(InstalledApp::{{ app_name }}, mode = client)]` wraps the
+//! function below, emits a `client_url_resolvers` submodule, and namespaces
+//! route names under `InstalledApp::{{ app_name }}`
+//! (e.g. `{{ app_name }}:index`). The macro does NOT auto-mount this
+//! router into `ClientLauncher`: pass `client_url_patterns()` explicitly
+//! to `ClientLauncher::router_client(...)` in `src/client/lib.rs` (or
+//! merge it with other apps' routers there) for the routes to become
+//! active.
 //!
 //! # Placeholder note
 //!
