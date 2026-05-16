@@ -8,6 +8,19 @@ use uuid::Uuid;
 
 use super::id::ActiveSessionId;
 
+/// Canonical session-store key used by Reinhardt examples to persist the
+/// authenticated user's primary key after a successful login.
+///
+/// This is the key consumed by the [`crate::session::SessionValue`] and
+/// [`crate::session::OptionalSessionValue`] extractors and written by the
+/// [`crate::session::SessionAuthExt`] helper trait. Application code should
+/// reference this constant instead of hardcoding `"user_id"` so that any
+/// future migration to a different key (for example, the Django-compatible
+/// `_auth_user_id` used by `reinhardt-auth::session`) is mechanical.
+///
+/// See issue #4446.
+pub const USER_ID_SESSION_KEY: &str = "user_id";
+
 /// Session data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]

@@ -1035,6 +1035,53 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 	}
 }
 
+/// Serialize a `#[field(default = ...)]` expression into the dialect-neutral
+/// SQL fragment stored in `FieldState.params["default"]`.
+///
+/// The autodetector reads this string verbatim into the generated migration's
+/// `ColumnDefinition.default`, and the runner interpolates it as
+/// `DEFAULT <fragment>` inside the generated DDL. The serialization therefore
+/// has to:
+///
+/// * Produce SQL the three supported dialects (Postgres, MySQL, SQLite) all
+///   accept. For booleans we emit lowercase `true` / `false`; Postgres and
+///   MySQL accept these as literals and SQLite (≥ 3.23) treats them as
+///   integer 1 / 0.
+/// * Quote string literals so that `default = "active"` lands as `'active'`.
+///   We use SQL single-quote escaping (double the inner quote) rather than
+///   Rust escaping.
+/// * Stay opt-in for anything we cannot prove is safe — unrecognised forms
+///   (function calls, paths, complex expressions) return `None` so that the
+///   macro keeps today's behaviour of silently omitting the default rather
+///   than emitting something that would break parsing downstream. The runner
+///   surfaces a clearer "missing default" failure when this matters; see
+///   reinhardt-web#4447.
+fn serialize_field_default(expr: &syn::Expr) -> Option<String> {
+	// Allow a leading unary `-` so `default = -1` works.
+	if let syn::Expr::Unary(unary) = expr
+		&& matches!(unary.op, syn::UnOp::Neg(_))
+		&& let Some(inner) = serialize_field_default(&unary.expr)
+	{
+		return Some(format!("-{}", inner));
+	}
+
+	let lit = match expr {
+		syn::Expr::Lit(l) => &l.lit,
+		_ => return None,
+	};
+	match lit {
+		syn::Lit::Bool(b) => Some(if b.value {
+			"true".into()
+		} else {
+			"false".into()
+		}),
+		syn::Lit::Int(i) => Some(i.base10_digits().to_string()),
+		syn::Lit::Float(f) => Some(f.base10_digits().to_string()),
+		syn::Lit::Str(s) => Some(format!("'{}'", s.value().replace('\'', "''"))),
+		_ => None,
+	}
+}
+
 /// Map Rust type to ORM field type
 fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream> {
 	let migrations_crate = get_reinhardt_migrations_crate();
@@ -2694,6 +2741,18 @@ fn generate_registration_code(
 			params.push(quote! { .with_param("auto_now_add", "true") });
 		}
 
+		// Propagate `#[field(default = ...)]` into FieldState.params so the
+		// autodetector emits `ColumnDefinition.default = Some(<sql>)`. Without
+		// this, makemigrations dropped the default on the floor and the
+		// runner produced `ADD COLUMN ... NOT NULL` with no DEFAULT — see
+		// reinhardt-web#4447. Unrecognised expression forms are intentionally
+		// skipped (today's behaviour) rather than emitted as garbage.
+		if let Some(ref default_expr) = config.default
+			&& let Some(serialized) = serialize_field_default(default_expr)
+		{
+			params.push(quote! { .with_param("default", #serialized) });
+		}
+
 		// Generate ForeignKey information if present
 		let fk_registration = if let Some(fk_spec) = &config.foreign_key {
 			match fk_spec {
@@ -2833,6 +2892,46 @@ fn generate_registration_code(
 			"Unknown".to_string()
 		};
 
+		// `fk_target_app` is sourced from the FK target type itself via
+		// `<TargetType as Model>::app_label()` — the model's
+		// authoritative app label, which respects `#[app_label = "..."]`
+		// overrides and any future remapping. The macro deliberately
+		// does NOT try to guess the app label from the syntactic path
+		// the user wrote: a path like `reinhardt_auth::User` is just a
+		// crate / module name and can diverge from the registered app
+		// label (e.g. crate `reinhardt_auth` registering its app as
+		// `"auth"` via `#[app_label("auth")]`), and a bare ident
+		// `User` can come from a `use`-import out of another crate.
+		// Reading `app_label()` off the type sidesteps both pitfalls.
+		//
+		// The qualified lookup at FK resolution time uses this value,
+		// so the qualifier always matches the registry key regardless
+		// of whether the target is referenced by a bare ident, a
+		// `use`-imported ident, or an absolute path. The user can
+		// disambiguate same-name models across apps by writing a
+		// path-typed FK target (`ForeignKeyField<reinhardt_auth::User>`)
+		// or by relying on Rust's normal scoping — Rust resolves the
+		// type and the macro reads the type's own app label.
+		//
+		// We only emit `fk_target_app` for `Type::Path` target types
+		// (the common case for `ForeignKeyField<T>`). Other shapes
+		// (`fn` types, trait objects, etc.) cannot be FK targets and
+		// don't reach this branch in practice.
+		//
+		// See issue #4436 and PR #4440 review threads on
+		// `model_derive.rs` line 2863 and `operations.rs` line 2836.
+		let fk_target_app_chain = if let Type::Path(_) = &fk_info.target_type {
+			let target_ty = &fk_info.target_type;
+			quote! {
+				.with_param(
+					"fk_target_app",
+					<#target_ty as #orm_crate::Model>::app_label(),
+				)
+			}
+		} else {
+			quote! {}
+		};
+
 		// The `FieldType::Uuid` value here is a placeholder. The real column
 		// type is resolved at migration-generation time by looking up the
 		// target model's primary key in the global `ModelRegistry`
@@ -2860,6 +2959,7 @@ fn generate_registration_code(
 					.with_param("unique", #unique_str)
 					.with_param("db_index", #db_index_str)
 					.with_param("fk_target", #target_model_name)
+					#fk_target_app_chain
 			);
 		});
 	}

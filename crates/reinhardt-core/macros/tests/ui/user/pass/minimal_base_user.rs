@@ -4,7 +4,7 @@ use reinhardt_macros::user;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[user(hasher = Argon2Hasher, username_field = "email")]
+#[user(hasher = Argon2Hasher, username_field = "email", manager = false)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MinimalUser {
 	pub id: Uuid,

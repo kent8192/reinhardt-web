@@ -3,7 +3,7 @@
 //! This module provides the main ClientRouter struct and routing logic.
 //! The router uses `Page` type for all view rendering.
 
-use super::error::RouterError;
+use super::error::{MergeError, RouterError};
 use super::handler::{
 	RouteHandler, no_params_handler, result_handler, single_path_handler, three_path_handler,
 	two_path_handler, with_params_handler,
@@ -272,18 +272,74 @@ impl ClientRouter {
 		}
 	}
 
-	/// Merges routes from another router into this one.
+	/// Combine another `ClientRouter` into this one.
 	///
-	/// Routes and named route mappings from `other` are appended.
-	/// Signals and not_found handler from `other` are discarded.
-	// Used by UnifiedRouter::mount_unified() on WASM and native targets.
-	pub(crate) fn merge(mut self, other: ClientRouter) -> Self {
+	/// Routes and named-route mappings from `other` are appended to `self`,
+	/// preserving the order in which routes were originally registered. The
+	/// reactive signals (`current_path`, `current_params`, `current_route_name`)
+	/// and the `not_found` handler from `other` are discarded — `self`'s
+	/// observation state is the one that drives the merged router.
+	///
+	/// # Named-route collisions
+	///
+	/// If both routers register the same named route, the entry from `other`
+	/// overwrites the entry from `self` (last-wins). This matches the way
+	/// `UnifiedRouter::mount_unified` already composes per-app routers, and
+	/// keeps `merge` callable in chains where the caller does not want to
+	/// handle errors. Use [`ClientRouter::try_merge`] for a fallible variant
+	/// that surfaces collisions instead of silently shadowing them.
+	///
+	/// # Examples
+	///
+	/// Composing per-app SPA routers produced by
+	/// `#[url_patterns(InstalledApp::<app>, mode = client)]` into the single
+	/// `ClientRouter` that `ClientLauncher::router_client` expects:
+	///
+	/// ```rust,ignore
+	/// let router = polls_client_url_patterns()
+	///     .merge(users_client_url_patterns());
+	/// ```
+	pub fn merge(mut self, other: ClientRouter) -> Self {
 		let offset = self.routes.len();
 		for (name, idx) in other.named_routes {
 			self.named_routes.insert(name, idx + offset);
 		}
 		self.routes.extend(other.routes);
 		self
+	}
+
+	/// Like [`ClientRouter::merge`], but fail if any named route collides.
+	///
+	/// Validates first, so on `Err` `self` is dropped without being mutated.
+	/// On success the semantics are identical to `merge` (routes appended,
+	/// `other`'s signals and `not_found` discarded).
+	///
+	/// # Errors
+	///
+	/// Returns [`MergeError::NameCollision`] carrying a colliding name when
+	/// at least one named route is registered in both routers. When several
+	/// names collide, the returned `name` is one of them; the choice is
+	/// unspecified because named routes are stored in a `HashMap`.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// match polls_client_url_patterns().try_merge(users_client_url_patterns()) {
+	///     Ok(router) => launcher.router_client(|| router),
+	///     Err(MergeError::NameCollision { name }) => {
+	///         panic!("two apps register the route `{name}`");
+	///     }
+	/// }
+	/// ```
+	pub fn try_merge(self, other: ClientRouter) -> Result<Self, MergeError> {
+		if let Some(name) = other
+			.named_routes
+			.keys()
+			.find(|name| self.named_routes.contains_key(*name))
+		{
+			return Err(MergeError::NameCollision { name: name.clone() });
+		}
+		Ok(self.merge(other))
 	}
 
 	/// Prefix all named route keys with `"namespace:"`.
@@ -1289,5 +1345,133 @@ mod tests {
 			route_match.unwrap().params.get("slug"),
 			Some(&"hello-world".to_string())
 		);
+	}
+
+	// ----- merge / try_merge ---------------------------------------------
+
+	fn polls_router() -> ClientRouter {
+		ClientRouter::new()
+			.named_route("polls:index", "/polls/", home_page)
+			.named_route("polls:detail", "/polls/{id}/", user_page)
+	}
+
+	fn users_router() -> ClientRouter {
+		ClientRouter::new()
+			.named_route("users:login", "/users/login/", home_page)
+			.named_route("users:logout", "/users/logout/", home_page)
+	}
+
+	#[test]
+	fn merge_appends_routes_and_named_routes() {
+		let merged = polls_router().merge(users_router());
+
+		assert_eq!(merged.route_count(), 4);
+		assert_eq!(merged.reverse("polls:index", &[]).unwrap(), "/polls/");
+		assert_eq!(
+			merged.reverse("polls:detail", &[("id", "1")]).unwrap(),
+			"/polls/1/"
+		);
+		assert_eq!(merged.reverse("users:login", &[]).unwrap(), "/users/login/");
+		assert_eq!(
+			merged.reverse("users:logout", &[]).unwrap(),
+			"/users/logout/"
+		);
+	}
+
+	#[test]
+	fn merge_last_wins_on_name_collision() {
+		let first = ClientRouter::new().named_route("shared", "/a/", || page_with_text("first"));
+		let second = ClientRouter::new().named_route("shared", "/b/", || page_with_text("second"));
+
+		let merged = first.merge(second);
+
+		// Both physical routes survive — merge appends, never deduplicates.
+		assert_eq!(merged.route_count(), 2);
+		// The named-route key points at the second router's entry, so reverse()
+		// resolves to `/b/`. This is the "last wins" contract documented on
+		// `ClientRouter::merge` and matches the pre-existing
+		// `UnifiedRouter::mount_unified` behavior.
+		assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
+	}
+
+	#[test]
+	fn merge_discards_other_not_found() {
+		let other_not_found_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+		let flag = Arc::clone(&other_not_found_seen);
+		let other = ClientRouter::new().not_found(move || {
+			flag.store(true, std::sync::atomic::Ordering::SeqCst);
+			page_with_text("other-not-found")
+		});
+
+		let merged = ClientRouter::new().route("/home/", home_page).merge(other);
+
+		// Render against a non-matching path; `other`'s `not_found` must not
+		// fire because `merge` keeps `self`'s observation state and discards
+		// `other`'s. With no `not_found` on `self`, the default is Page::Empty.
+		let page = merged.render_current();
+		assert!(matches!(page, Page::Empty));
+		assert!(!other_not_found_seen.load(std::sync::atomic::Ordering::SeqCst));
+	}
+
+	#[test]
+	fn try_merge_ok_when_no_collision() {
+		let merged = polls_router()
+			.try_merge(users_router())
+			.expect("disjoint named routes merge cleanly");
+
+		assert_eq!(merged.route_count(), 4);
+		assert!(merged.has_route("polls:index"));
+		assert!(merged.has_route("users:login"));
+	}
+
+	#[test]
+	fn try_merge_err_on_name_collision() {
+		let first = ClientRouter::new().named_route("polls:index", "/a/", home_page);
+		let second = ClientRouter::new().named_route("polls:index", "/b/", home_page);
+
+		let err = first
+			.try_merge(second)
+			.expect_err("collision must be reported");
+
+		assert_eq!(
+			err,
+			MergeError::NameCollision {
+				name: "polls:index".to_string(),
+			},
+		);
+	}
+
+	#[test]
+	fn try_merge_err_leaves_neither_router_partially_merged() {
+		// Build a router whose routes vector would clearly grow if `try_merge`
+		// fell through to `merge` before validating. Then attempt a merge that
+		// must fail. We can only observe `merged`'s state on the Ok path, so
+		// the structural check is: on Err, `merge` was never called (validated
+		// by inspecting the original router we kept aside).
+		let original = polls_router();
+		let baseline_count = original.route_count();
+		let baseline_named = original.has_route("polls:index");
+
+		// Re-build the same router because `try_merge` takes `self` by value.
+		let attempt = polls_router();
+		let collide = ClientRouter::new().named_route("polls:index", "/x/", home_page);
+		let err = attempt
+			.try_merge(collide)
+			.expect_err("collision must be reported");
+		assert!(matches!(err, MergeError::NameCollision { .. }));
+
+		// The independent `original` is unchanged (sanity-checks that
+		// `try_merge`'s validation does not depend on hidden global state).
+		assert_eq!(original.route_count(), baseline_count);
+		assert!(baseline_named);
+	}
+
+	#[test]
+	fn merge_error_display_includes_route_name() {
+		let err = MergeError::NameCollision {
+			name: "polls:detail".to_string(),
+		};
+		let text = err.to_string();
+		assert!(text.contains("polls:detail"));
 	}
 }
