@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.29...reinhardt-macros@v0.1.0-rc.30) - 2026-05-16
+
+### Added
+
+- *(model)* add typestate Model::build() constructor alongside new()
+- *(macros)* emit fk_target_app for same-app FK targets
+
+### Fixed
+
+- *(model)* box SetterKind::ForeignKey::related_type to satisfy clippy
+- *(model-macros)* add doc comments to generated typestate-builder setters
+- *(model-macros)* include ForeignKeyField<T> in typestate builder
+- *(model-macros)* address Copilot review on typestate builder FK
+- *(model-macros)* harden FK keyword handling in typestate builder
+- *(model-macros)* exclude `extern` from reserved-ident set
+- *(core-macros)* emit not_null and nullable for ForeignKeyField _id columns
+- *(db)* make FieldMetadata.nullable the single source of truth and harden FK metadata tests
+- *(db)* fall back to by-name FK lookup on qualified miss
+- *(db)* refuse FK resolution when target name is ambiguous
+- *(db,macros)* path-typed FK targets disambiguate ambiguous model names
+- *(macros)* source FK app label from target type's Model::app_label()
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.28...reinhardt-macros@v0.1.0-rc.29) - 2026-05-13
 
 ### Fixed
