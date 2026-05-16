@@ -158,11 +158,11 @@ description = "Run CI pipeline (format, lint, build, test)"
 dependencies = ["fmt-check", "clippy-check", "build", "test"]
 
 # ============================================================================
-# API Tests (Newman/Postman)
+# API Tests (Bruno)
 # ============================================================================
 
 [tasks.api-test]
-description = "Run Newman API tests"
+description = "Run Bruno API tests"
 script = '''
 #!/bin/bash
 docker-compose -f docker-compose.api-tests.yml up --build --abort-on-container-exit
@@ -173,12 +173,12 @@ docker-compose -f docker-compose.api-tests.yml down
 description = "Open API test report in browser"
 script = '''
 #!/bin/bash
-open postman/reports/report.html
+open bruno/reports/report.html
 '''
 
 [tasks.api-test-clean]
 description = "Clean API test reports"
 script = '''
 #!/bin/bash
-rm -f postman/reports/*.xml postman/reports/*.html
+rm -f bruno/reports/*.xml bruno/reports/*.html
 '''

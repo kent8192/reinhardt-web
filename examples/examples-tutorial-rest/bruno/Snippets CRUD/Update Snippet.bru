@@ -1,0 +1,33 @@
+meta {
+  name: Update Snippet
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/snippets/{{snippetId}}/
+  body: json
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "title": "Updated Hello World",
+    "code": "fn main() {\n    println!(\"Hello, Updated World!\");\n}",
+    "language": "rust"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("Snippet updated correctly", function() {
+    const snippet = res.body && res.body.snippet ? res.body.snippet : res.body;
+    expect(snippet.title).to.equal("Updated Hello World");
+  });
+}

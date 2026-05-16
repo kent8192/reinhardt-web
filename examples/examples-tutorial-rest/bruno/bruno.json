@@ -1,0 +1,10 @@
+{
+	"version": "1",
+	"name": "Reinhardt examples-tutorial-rest",
+	"type": "collection",
+	"ignore": [
+		"node_modules",
+		".git",
+		"reports"
+	]
+}
