@@ -1,0 +1,479 @@
+/* Reinhardt Tutorial (Polls) - Modern UnoCSS Styles
+ *
+ * Hand-written base styles + fallback component CSS that pair with the
+ * UnoCSS runtime shortcuts defined in `index.html`. The fallback layer
+ * exists because UnoCSS runtime is loaded asynchronously from a CDN and
+ * needs a MutationObserver tick to process WASM-mounted nodes. Without
+ * these fallbacks the very first paint shows unstyled buttons/cards
+ * (the symptom users describe as "buttons only visible on hover").
+ */
+
+/* ===== CSS Custom Properties ===== */
+:root {
+	/* Light mode (default) */
+	--bg-primary: #FFFFFF;
+	--bg-secondary: #F8F9FA;
+	--bg-tertiary: #EBEDEF;
+	--text-primary: #111827;
+	--text-secondary: #4B5563;
+	--text-tertiary: #9CA3AF;
+	--border-color: #E5E7EB;
+	--border-secondary: #D1D5DB;
+
+	/* Brand colors (tutorial palette - blue) */
+	--brand-primary: #4A90E2;
+	--brand-hover: #357ABD;
+	--brand-light: #E8F1FB;
+
+	/* Semantic colors */
+	--success: #10B981;
+	--danger: #EF4444;
+	--warning: #F59E0B;
+
+	/* Shadows */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+	--shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+	--shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+	/* Transitions */
+	--transition-fast: 150ms ease;
+	--transition-normal: 200ms ease;
+}
+
+/* Dark mode */
+[data-theme="dark"],
+.dark {
+	--bg-primary: #0F172A;
+	--bg-secondary: #020617;
+	--bg-tertiary: #1E293B;
+	--text-primary: #F1F5F9;
+	--text-secondary: #CBD5E1;
+	--text-tertiary: #94A3B8;
+	--border-color: #1E293B;
+	--border-secondary: #334155;
+
+	--brand-primary: #60A5FA;
+	--brand-hover: #93C5FD;
+	--brand-light: rgba(96, 165, 250, 0.15);
+
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+	--shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+	--shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+}
+
+/* ===== Base Styles ===== */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	scroll-behavior: smooth;
+}
+
+body {
+	font-family:
+		-apple-system,
+		BlinkMacSystemFont,
+		"Segoe UI",
+		Roboto,
+		"Helvetica Neue",
+		"Hiragino Sans",
+		"Hiragino Kaku Gothic ProN",
+		"Yu Gothic UI",
+		"Meiryo",
+		sans-serif;
+	margin: 0;
+	padding: 0;
+	background-color: var(--bg-secondary);
+	color: var(--text-primary);
+	line-height: 1.5;
+	transition:
+		background-color var(--transition-normal),
+		color var(--transition-normal);
+}
+
+/* ===== Typography ===== */
+h1, h2, h3, h4, h5, h6 {
+	margin: 0;
+	font-weight: 700;
+	line-height: 1.25;
+	color: var(--text-primary);
+}
+
+h1 { font-size: 1.875rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.125rem; }
+h5 { font-size: 1rem; }
+
+a {
+	color: var(--brand-primary);
+	text-decoration: none;
+	transition: color var(--transition-fast);
+}
+
+a:hover {
+	color: var(--brand-hover);
+}
+
+/* ===== Focus States ===== */
+:focus-visible {
+	outline: 2px solid var(--brand-primary);
+	outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+	outline: 2px solid var(--brand-primary);
+	outline-offset: 2px;
+}
+
+/* ===== Selection ===== */
+::selection {
+	background-color: var(--brand-light);
+	color: var(--brand-primary);
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--border-secondary);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--text-tertiary);
+}
+
+/* ===== Animations ===== */
+@keyframes spin {
+	from { transform: rotate(0deg); }
+	to   { transform: rotate(360deg); }
+}
+
+.animate-spin {
+	animation: spin 1s linear infinite;
+}
+
+@keyframes pulse {
+	0%, 100% { opacity: 1; }
+	50%      { opacity: 0.5; }
+}
+
+.animate-pulse {
+	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ===== Theme Toggle Button ===== */
+.theme-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 9999px;
+	background: transparent;
+	border: 1px solid var(--border-color);
+	cursor: pointer;
+	transition: background-color var(--transition-fast), border-color var(--transition-fast);
+	color: var(--text-primary);
+}
+
+.theme-toggle:hover {
+	background-color: var(--bg-tertiary);
+	border-color: var(--border-secondary);
+}
+
+.theme-toggle svg {
+	width: 18px;
+	height: 18px;
+}
+
+.dark .theme-toggle .icon-sun            { display: block; }
+.dark .theme-toggle .icon-moon           { display: none;  }
+html:not(.dark) .theme-toggle .icon-sun  { display: none;  }
+html:not(.dark) .theme-toggle .icon-moon { display: block; }
+
+/* ===== Fallback Component CSS =====
+ * These mirror the UnoCSS shortcuts in `index.html` but ship as
+ * static CSS so the very first paint after WASM mount is already
+ * styled. UnoCSS runtime later overrides nothing visible because
+ * the generated class output is essentially identical, except where
+ * we use !important below to lock in the brand colors.
+ */
+
+/* Buttons ---------------------------------------------------------- */
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-success,
+.btn-outline {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.5rem 1rem;
+	border-radius: 9999px;
+	font-weight: 600;
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition:
+		background-color var(--transition-fast),
+		color var(--transition-fast),
+		border-color var(--transition-fast),
+		transform var(--transition-fast);
+	text-decoration: none;
+}
+
+.btn-primary {
+	background-color: var(--brand-primary) !important;
+	color: #FFFFFF !important;
+}
+.btn-primary:hover {
+	background-color: var(--brand-hover) !important;
+}
+.btn-primary:active {
+	transform: scale(0.97);
+}
+
+.btn-secondary {
+	background-color: var(--bg-tertiary) !important;
+	color: var(--text-primary) !important;
+}
+.btn-secondary:hover {
+	background-color: var(--border-secondary) !important;
+}
+
+.btn-outline {
+	background-color: transparent !important;
+	color: var(--text-primary) !important;
+	border-color: var(--border-secondary) !important;
+}
+.btn-outline:hover {
+	background-color: var(--bg-tertiary) !important;
+}
+
+.btn-danger {
+	background-color: var(--danger) !important;
+	color: #FFFFFF !important;
+}
+.btn-danger:hover {
+	opacity: 0.9;
+}
+
+.btn-success {
+	background-color: var(--success) !important;
+	color: #FFFFFF !important;
+}
+.btn-success:hover {
+	opacity: 0.9;
+}
+
+/* Disabled state */
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-danger:disabled,
+.btn-success:disabled,
+.btn-outline:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Cards ------------------------------------------------------------ */
+.card {
+	background-color: var(--bg-primary);
+	border: 1px solid var(--border-color);
+	border-radius: 0.75rem;
+	box-shadow: var(--shadow-sm);
+	overflow: hidden;
+}
+
+.card-body {
+	padding: 1.5rem;
+}
+
+/* Forms ------------------------------------------------------------ */
+.form-control {
+	display: block;
+	width: 100%;
+	padding: 0.625rem 0.875rem;
+	font-size: 0.95rem;
+	line-height: 1.5;
+	color: var(--text-primary);
+	background-color: var(--bg-primary);
+	border: 1px solid var(--border-color);
+	border-radius: 0.5rem;
+	transition:
+		border-color var(--transition-fast),
+		box-shadow var(--transition-fast);
+}
+
+.form-control:focus {
+	outline: none;
+	border-color: var(--brand-primary);
+	box-shadow: 0 0 0 3px var(--brand-light);
+}
+
+.form-control::placeholder {
+	color: var(--text-tertiary);
+}
+
+label {
+	display: inline-block;
+	margin-bottom: 0.375rem;
+	font-weight: 500;
+	font-size: 0.875rem;
+	color: var(--text-primary);
+}
+
+.form-check {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.75rem 1rem;
+	margin-bottom: 0.5rem;
+	border: 1px solid var(--border-color);
+	border-radius: 0.5rem;
+	background-color: var(--bg-primary);
+	cursor: pointer;
+	transition:
+		background-color var(--transition-fast),
+		border-color var(--transition-fast);
+}
+
+.form-check:hover {
+	background-color: var(--bg-secondary);
+	border-color: var(--border-secondary);
+}
+
+.form-check input[type="radio"],
+.form-check input[type="checkbox"] {
+	accent-color: var(--brand-primary);
+	width: 1.05rem;
+	height: 1.05rem;
+}
+
+/* Alerts ----------------------------------------------------------- */
+.alert-danger,
+.alert-warning,
+.alert-success {
+	padding: 0.75rem 1rem;
+	border: 1px solid;
+	border-radius: 0.5rem;
+	font-size: 0.9rem;
+}
+
+.alert-danger {
+	background-color: rgba(239, 68, 68, 0.08);
+	border-color: rgba(239, 68, 68, 0.3);
+	color: var(--danger);
+}
+
+.alert-warning {
+	background-color: rgba(245, 158, 11, 0.08);
+	border-color: rgba(245, 158, 11, 0.3);
+	color: var(--warning);
+}
+
+.alert-success {
+	background-color: rgba(16, 185, 129, 0.08);
+	border-color: rgba(16, 185, 129, 0.3);
+	color: var(--success);
+}
+
+/* Spinner ---------------------------------------------------------- */
+.spinner {
+	display: inline-block;
+	/* Sensible default size so the spinner is visible on first paint
+	 * even before UnoCSS utilities (`w-12 h-12` etc.) are applied. */
+	width: 1.5rem;
+	height: 1.5rem;
+	border: 2px solid var(--bg-tertiary);
+	border-top-color: var(--brand-primary);
+	border-radius: 9999px;
+	animation: spin 1s linear infinite;
+}
+
+/* ===== Misc Helpers ===== */
+.text-muted {
+	color: var(--text-secondary);
+}
+
+.text-brand {
+	color: var(--brand-primary);
+}
+
+/* Screen-reader only (accessibility) */
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* ===== Images ===== */
+img {
+	max-width: 100%;
+	height: auto;
+	vertical-align: middle;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 640px) {
+	html {
+		font-size: 15px;
+	}
+}
+
+/* ===== Reduced Motion =====
+ * Honour the user's OS-level preference for reduced motion by disabling
+ * smooth scrolling, looping animations, and theme/colour transitions.
+ */
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+
+	body {
+		transition: none;
+	}
+
+	.animate-spin,
+	.animate-pulse,
+	.spinner {
+		animation: none;
+	}
+
+	a,
+	.theme-toggle,
+	.btn-primary,
+	.btn-secondary,
+	.btn-danger,
+	.btn-success,
+	.btn-outline,
+	.form-control,
+	.form-check {
+		transition: none;
+	}
+}

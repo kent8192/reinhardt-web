@@ -1150,7 +1150,17 @@ impl SQLiteIntrospector {
 			.map(|sql| Self::parse_fk_constraint_names(sql))
 			.unwrap_or_default();
 
-		let query = format!("PRAGMA foreign_key_list({})", table_name);
+		// SQLite PRAGMA arguments cannot be passed via parameter binding, so
+		// the identifier is interpolated through `quote_pragma_identifier`
+		// (single-quoted, embedded quotes doubled). The `table_name` here
+		// always originates from an internal `Operation` enum payload — never
+		// from user-supplied input — so this is not a SQL-injection sink.
+		// See issue #4454 for context.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let query = format!(
+			"PRAGMA foreign_key_list({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
 		let rows: Vec<ForeignKeyRow> = sqlx::query_as(&query)
 			.fetch_all(pool)
 			.await
@@ -1238,15 +1248,25 @@ impl SQLiteIntrospector {
 		let mut indexes = HashMap::new();
 
 		// Get list of indexes for the table
-		let query = format!("PRAGMA index_list({})", table_name);
+		// SQLite PRAGMA: identifier interpolation via shared helper. Inputs
+		// originate from internal migration operations; see issue #4454.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let query = format!(
+			"PRAGMA index_list({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
 		let index_list: Vec<IndexListRow> = sqlx::query_as(&query)
 			.fetch_all(pool)
 			.await
 			.map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
 
 		for index_row in index_list {
-			// Get columns for this index
-			let info_query = format!("PRAGMA index_info({})", index_row.name);
+			// Get columns for this index.
+			// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+			let info_query = format!(
+				"PRAGMA index_info({})",
+				super::sqlite_pragma::quote_pragma_identifier(&index_row.name)
+			);
 			let index_info: Vec<IndexInfoRow> =
 				sqlx::query_as(&info_query)
 					.fetch_all(pool)
@@ -1479,7 +1499,13 @@ impl SQLiteIntrospector {
 			name: Option<String>,
 		}
 
-		let query = format!("PRAGMA index_list({})", table_name);
+		// SQLite PRAGMA: identifier interpolation via shared helper. Inputs
+		// originate from internal migration operations; see issue #4454.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let query = format!(
+			"PRAGMA index_list({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
 		let index_list: Vec<IndexListRow> = sqlx::query_as(&query)
 			.fetch_all(&self.pool)
 			.await
@@ -1488,7 +1514,11 @@ impl SQLiteIntrospector {
 		let mut constraints = Vec::new();
 		for index_row in index_list {
 			if index_row.origin == "u" {
-				let info_query = format!("PRAGMA index_info({})", index_row.name);
+				// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+				let info_query = format!(
+					"PRAGMA index_info({})",
+					super::sqlite_pragma::quote_pragma_identifier(&index_row.name)
+				);
 				let index_info: Vec<IndexInfoRow> = sqlx::query_as(&info_query)
 					.fetch_all(&self.pool)
 					.await
@@ -1524,7 +1554,13 @@ impl SQLiteIntrospector {
 			pk: i64,
 		}
 
-		let query = format!("PRAGMA table_info({})", table_name);
+		// SQLite PRAGMA: identifier interpolation via shared helper. Inputs
+		// originate from internal migration operations; see issue #4454.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let query = format!(
+			"PRAGMA table_info({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
 		let rows: Vec<TableInfoRow> = sqlx::query_as(&query)
 			.fetch_all(&self.pool)
 			.await
@@ -1557,17 +1593,20 @@ impl SQLiteIntrospector {
 			// Primary key columns are implicitly NOT NULL in SQLite
 			let nullable = if is_pk { false } else { row.notnull == 0 };
 
-			// Parse default value - trim surrounding quotes for string defaults
-			let default = row.dflt_value.as_ref().map(|v| {
-				let trimmed = v.trim();
-				if (trimmed.starts_with('\'') && trimmed.ends_with('\''))
-					|| (trimmed.starts_with('"') && trimmed.ends_with('"'))
-				{
-					trimmed[1..trimmed.len() - 1].to_string()
-				} else {
-					trimmed.to_string()
-				}
-			});
+			// Preserve `dflt_value` verbatim as the raw SQL fragment (e.g.
+			// `'pending'` including the surrounding quotes). Downstream DDL
+			// emission paths in `operations.rs` round-trip this form
+			// correctly:
+			// - `format!("DEFAULT {}", default)` emits valid DDL
+			//   (`DEFAULT 'pending'`, not the previously broken
+			//   `DEFAULT pending`).
+			// - `convert_default_value` already handles both quoted and
+			//   plain forms.
+			// See issue #4454 for context.
+			let default = row
+				.dflt_value
+				.as_ref()
+				.map(|v| super::sqlite_pragma::normalize_default_value(v));
 
 			columns.insert(
 				row.name.clone(),

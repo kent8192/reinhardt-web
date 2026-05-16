@@ -22,8 +22,11 @@ use serde::{Deserialize, Serialize};
 
 // `manager = false` opts out of the auto-generated `UserManager` that
 // `#[user(...)]` emits by default since reinhardt-web#4451 — the tutorial
-// keeps its own project-local manager below (custom validation +
-// `injectable_factory` registration) so the auto-manager would shadow it.
+// keeps its own DB-backed `UserManager` below (registered via
+// `#[injectable_factory]`) which would otherwise be shadowed. The
+// auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
+// (issue #4455), and this model uses `i64` to demonstrate auto-increment
+// integer PKs in the tutorial.
 #[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
