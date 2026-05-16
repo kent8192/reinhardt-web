@@ -1,0 +1,5 @@
+error: #[user(...)] auto-manager only supports Uuid (or Option<Uuid>) primary keys. Set `manager = false` to provide a custom BaseUserManager implementation, or change the primary key field to Uuid.
+  --> tests/ui/user/fail/non_uuid_pk_with_default_manager.rs:15:10
+   |
+15 |     pub id: i64,
+   |             ^^^

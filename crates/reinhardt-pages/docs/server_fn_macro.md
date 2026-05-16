@@ -272,7 +272,7 @@ pub struct PostInfo {
     pub title: String,
 }
 
-// src/server_fn/posts.rs
+// src/apps/posts/server_fn.rs
 use crate::shared::types::{CreatePostRequest, PostInfo};
 
 #[server_fn]

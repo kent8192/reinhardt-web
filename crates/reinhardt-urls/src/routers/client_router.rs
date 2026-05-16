@@ -86,7 +86,7 @@ mod reverser;
 
 // Public re-exports
 pub use core::{ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription};
-pub use error::{PathError, RouterError};
+pub use error::{MergeError, PathError, RouterError};
 pub use global::{clear_client_reverser, get_client_reverser, register_client_reverser};
 pub use handler::RouteHandler;
 // Issue #4217: drop helper-function re-exports from this module's

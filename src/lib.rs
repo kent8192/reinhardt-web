@@ -847,7 +847,7 @@ pub use reinhardt_urls::inventory;
 #[cfg(feature = "client-router")]
 pub use reinhardt_urls::routers::{
 	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, ClientUrlReverser, FromPath,
-	HistoryState, NavigationType, ParamContext, SingleFromPath, UnifiedRouter,
+	HistoryState, MergeError, NavigationType, ParamContext, SingleFromPath, UnifiedRouter,
 	clear_client_reverser, get_client_reverser, register_client_reverser,
 };
 // Path extractor for client-side routing (separate from server-side Path from reinhardt-di)
@@ -944,6 +944,13 @@ pub use reinhardt_middleware::JwtAuthMiddleware;
 // Cookie-based session authentication middleware (requires sessions + middleware)
 #[cfg(all(feature = "sessions", feature = "middleware", native))]
 pub use reinhardt_middleware::{CookieSessionAuthMiddleware, CookieSessionConfig};
+
+// Typed session-value extractors and session-auth ergonomics (see #4446).
+#[cfg(all(feature = "sessions", feature = "middleware", native))]
+pub use reinhardt_middleware::session::{
+	OptionalSessionValue, SessionAuthExt, SessionKey, SessionValue, SessionValueNamed,
+	USER_ID_SESSION_KEY, UserIdKey,
+};
 
 // Redis session backend (requires session-redis + middleware)
 #[cfg(all(feature = "session-redis", feature = "middleware", native))]

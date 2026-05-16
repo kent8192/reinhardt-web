@@ -1,0 +1,28 @@
+meta {
+  name: Create Snippet - Empty Code (400)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/snippets/
+  body: json
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "title": "Test",
+    "code": "",
+    "language": "rust"
+  }
+}
+
+tests {
+  test("Status code is 400 or 422", function() {
+    expect([400, 422]).to.include(res.status);
+  });
+}

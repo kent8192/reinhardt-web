@@ -65,7 +65,7 @@ pub fn polls_index() -> Page {
 					}
 				} else if load_questions_signal.result().unwrap_or_default().is_empty() {
 					p {
-						class: "text-gray-500",
+						class: "text-muted",
 						"No polls are available."
 					}
 				} else {
@@ -73,24 +73,24 @@ pub fn polls_index() -> Page {
 						class: "space-y-2",
 						{
 							Page::Fragment(
-									load_questions_signal
-										.result()
-										.unwrap_or_default()
-										.iter()
-										.map(|question| {
-											let href = links::poll_detail(question.id);
-											let question_text = question.question_text.clone();
-											let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string();
-											page!(
-												| href : String, question_text : String, pub_date : String | { a {
-												href : href, class :
-												"block p-4 border rounded hover:bg-gray-50 transition-colors", div {
-												class : "flex w-full justify-between", h5 { class : "mb-1", {
-												question_text } } small { { pub_date } } } } }
-											)(href, question_text, pub_date)
-										})
-										.collect::<Vec<_>>(),
-								)
+							        load_questions_signal
+							            .result()
+							            .unwrap_or_default()
+							            .iter()
+							            .map(|question| {
+							                let href = links::poll_detail(question.id);
+							                let question_text = question.question_text.clone();
+							                let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string();
+							                page!(
+							                    | href : String, question_text : String, pub_date : String | { a {
+							                    href : href, class :
+							                    "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
+							                    div { class : "flex w-full justify-between", h5 { class : "mb-1", {
+							                    question_text } } small { { pub_date } } } } }
+							                )(href, question_text, pub_date)
+							            })
+							            .collect::<Vec<_>>(),
+							    )
 						}
 					}
 				}
@@ -413,7 +413,7 @@ pub fn polls_results(question_id: i64) -> Page {
 									"Results"
 								}
 								div {
-									class: "divide-y divide-gray-200",
+									class: "divide-y divide-border",
 									{
 										Page::Fragment(
 										        load_results_signal
@@ -436,11 +436,11 @@ pub fn polls_results(question_id: i64) -> Page {
 										                            choice_text } } span { class :
 										                            "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
 										                            { format!("{} votes", votes) } } } div { class :
-										                            "w-full bg-gray-200 rounded-full h-2.5", div { class :
-										                            "bg-brand h-2.5 rounded-full", role : "progressbar", style :
-										                            format!("width: {}%", percentage), aria_valuenow : percentage
-										                            .to_string(), aria_valuemin : "0", aria_valuemax : "100", {
-										                            format!("{}%", percentage) } } } } }
+										                            "w-full bg-surface-tertiary rounded-full h-2.5", div { class
+										                            : "bg-brand h-2.5 rounded-full", role : "progressbar", style
+										                            : format!("width: {}%", percentage), aria_valuenow :
+										                            percentage.to_string(), aria_valuemin : "0", aria_valuemax :
+										                            "100", { format!("{}%", percentage) } } } } }
 										                        )(choice_text, votes, percentage)
 										                    })
 										                    .collect::<Vec<_>>()
@@ -452,7 +452,7 @@ pub fn polls_results(question_id: i64) -> Page {
 								div {
 									class: "mt-3",
 									p {
-										class: "text-gray-500",
+										class: "text-muted",
 										{
 											format!(
 													"Total votes: {}",
@@ -560,7 +560,7 @@ pub fn polls_index_with_logo() -> Page {
 					}
 				} else if load_questions_signal.result().unwrap_or_default().is_empty() {
 					p {
-						class: "text-gray-500",
+						class: "text-muted",
 						"No polls are available."
 					}
 				} else {
@@ -568,26 +568,26 @@ pub fn polls_index_with_logo() -> Page {
 						class: "space-y-2",
 						{
 							Page::Fragment(
-									load_questions_signal
-										.result()
-										.unwrap_or_default()
-										.iter()
-										.map(|question| {
-											let href = format!("/polls/{}/", question.id);
-											let question_text = question.question_text.clone();
-											let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string();
-											page!(
-												| href : String, question_text : String, pub_date : String | { a {
-												href : href, class :
-												"block p-4 border rounded hover:bg-gray-50 transition-colors", div {
-												class : "flex w-full justify-between items-center", img { src :
-												"/static/images/poll-icon.svg", alt : "Poll", class : "w-8 h-8 mr-3",
-												} div { class : "flex-1", h5 { class : "mb-1", { question_text } } }
-												small { { pub_date } } } } }
-											)(href, question_text, pub_date)
-										})
-										.collect::<Vec<_>>(),
-								)
+							        load_questions_signal
+							            .result()
+							            .unwrap_or_default()
+							            .iter()
+							            .map(|question| {
+							                let href = format!("/polls/{}/", question.id);
+							                let question_text = question.question_text.clone();
+							                let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string();
+							                page!(
+							                    | href : String, question_text : String, pub_date : String | { a {
+							                    href : href, class :
+							                    "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
+							                    div { class : "flex w-full justify-between items-center", img { src :
+							                    "/static/images/poll-icon.svg", alt : "Poll", class : "w-8 h-8 mr-3",
+							                    } div { class : "flex-1", h5 { class : "mb-1", { question_text } } }
+							                    small { { pub_date } } } } }
+							                )(href, question_text, pub_date)
+							            })
+							            .collect::<Vec<_>>(),
+							    )
 						}
 					}
 				}
@@ -874,11 +874,11 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 						div {
 							class: "card-body",
 							p {
-								class: "card-text",
+								class: "text-muted",
 								"You are about to delete the following question. This action cannot be undone."
 							}
 							blockquote {
-								class: "border-l-4 border-gray-300 pl-4 italic my-3",
+								class: "border-l-4 border-border-secondary pl-4 italic my-3",
 								{ q.question_text.clone() }
 							}
 						}
@@ -913,7 +913,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 					} else {
 						button {
 							type: "submit",
-							class: "btn-primary bg-red-600 hover:bg-red-700",
+							class: "btn-danger",
 							form: "delete-question-form",
 							"Delete"
 						}
@@ -1174,7 +1174,7 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 					} else {
 						button {
 							type: "submit",
-							class: "btn-primary bg-red-600 hover:bg-red-700",
+							class: "btn-danger",
 							form: "delete-choice-form",
 							"Delete"
 						}

@@ -27,6 +27,14 @@ mod middleware;
 mod store;
 mod value;
 
+// Test-only fixtures shared between in-crate unit tests and external
+// integration tests. Hidden from the public API surface and only compiled
+// when `cfg(test)` is active (for unit tests) or the `test-support`
+// feature is enabled (for integration tests). See Issue #4462.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod test_support;
+
 pub use auth_ext::SessionAuthExt;
 pub use backend::AsyncSessionBackend;
 pub use config::SessionConfig;
@@ -35,7 +43,10 @@ pub use id::{ActiveSessionId, SessionCookieName, SessionId};
 pub use injectable::SessionStoreRef;
 pub use middleware::SessionMiddleware;
 pub use store::SessionStore;
-pub use value::{OptionalSessionValue, SessionValue};
+pub use value::{
+	OptionalSessionValue, OptionalSessionValueNamed, SessionKey, SessionValue, SessionValueNamed,
+	UserIdKey,
+};
 
 #[cfg(test)]
 mod tests {
