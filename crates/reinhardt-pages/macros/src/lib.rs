@@ -2051,7 +2051,12 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// ### Real-World Example
 ///
-/// See `examples/examples-tutorial-basis` for a complete voting form implementation:
+/// See `examples/examples-tutorial-basis` for a complete voting form
+/// implementation. The paths below reflect the new per-app layout
+/// scaffolded by `reinhardt-admin startapp --with-pages`. The example
+/// itself will be migrated to this layout in a follow-up PR; until then,
+/// the corresponding files in `examples-tutorial-basis` live one level up
+/// (under `src/apps/polls/views.rs` and `src/apps/polls/urls/`).
 /// - Client: `src/apps/polls/client/components.rs` - `polls_detail` function
 /// - Server: `src/apps/polls/server_fn.rs` - `submit_vote` wrapper function
 ///
