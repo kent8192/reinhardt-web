@@ -269,28 +269,47 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		));
 	}
 
-	// Wasm-not gate applied to every item emitted in `#expanded` below
-	// (the user's `routes()` function, the inventory registration block, and
-	// the linker-marker static). These items reference native-only types
-	// (`ServerRouter`, `inventory`, DI scopes) and the user-written body is
-	// allowed to reference any native-only items the consumer crate uses
-	// (admin / middleware / Redis / `#[inject]` / etc.). Gating them out on
-	// `wasm32-unknown-unknown` lets the surrounding module compile cleanly
-	// on wasm so that `__url_resolver_support::ResolvedUrls` (defined in
-	// `#url_resolver_code` below, which is internally cfg-aware) is reachable
-	// from wasm SPA consumers. Fixes #4175.
+	// Wasm-not gate applied to native-only emitted items: the
+	// `inventory::submit!` block that registers a `ServerRouter`, the
+	// matching async submit block, and the DI-aware async server factory.
+	// These reference native-only types (`ServerRouter`, DI scopes) that
+	// do not exist on `wasm32-unknown-unknown`.
+	//
+	// The user's `routes()` function and the linker marker static are
+	// emitted on BOTH targets so that `cargo check --target
+	// wasm32-unknown-unknown` succeeds for crates that consume `#[routes]`
+	// and so that the "only one `#[routes]` per project" invariant is
+	// enforced on WASM SPA builds too. A correctly written `routes()` body
+	// uses `UnifiedRouter::new().server(|s| ...).client(|c| ...)`, whose
+	// wasm variant (`crates/reinhardt-urls/src/routers/unified_router.rs`
+	// line 877+) treats `.server(...)` as a closure-discarding stub. Refs
+	// #4175.
 	let native_only = quote! {
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+	};
+
+	// WASM-only emission gate for the `ClientRouterRegistration`
+	// `inventory::submit!` block. The block calls back into the user's
+	// `routes()` function, which is itself cross-target after the
+	// `#native_only` gate is dropped from it. Refs #4453.
+	let wasm_only = quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 	};
 
 	let expanded = if !is_async {
 		// Case 1: Sync, no #[inject] — existing behavior unchanged
 		let fn_sig = &input.sig;
 		quote! {
+			// User's `routes()` function is cross-target. On native it is
+			// consumed by the server `inventory::submit!` below; on WASM it
+			// is consumed by the parallel `ClientRouterRegistration` submit
+			// further down. The body is expected to use the closure-style
+			// `UnifiedRouter::new().server(|s| ...).client(|c| ...)` API,
+			// whose WASM variant discards the server closure cleanly.
+			//
 			// private_interfaces: The macro forces `pub` visibility, but users
 			// legitimately use `pub(crate)` newtype wrappers for DI parameters
 			// (see #3498, #3468 DI pseudo orphan rule).
-			#native_only
 			#[allow(private_interfaces)]
 			#(#fn_attrs)*
 			#fn_vis #fn_sig #fn_block
@@ -312,8 +331,31 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				}
 			};
 
+			// WASM-only parallel registration: submit a ClientRouter factory
+			// derived from the same `routes()` function. The factory calls
+			// `routes()` and converts the returned `UnifiedRouter` into a
+			// `ClientRouter` via `into_client()`. Refs #4453.
+			//
+			// The `standalone` argument is orthogonal to this block — it only
+			// controls per-app URL resolver generation in `#url_prelude_code`
+			// below. Both `#[routes]` and `#[routes(standalone)]` participate
+			// in client inventory registration.
+			#wasm_only
+			#[allow(unsafe_attr_outside_unsafe)]
+			const _: () = {
+				fn __get_client_router() -> ::std::sync::Arc<#reinhardt::ClientRouter> {
+					::std::sync::Arc::new(#fn_name().into_client())
+				}
+				#reinhardt::inventory::submit! {
+					#reinhardt::ClientRouterRegistration::__macro_new(__get_client_router)
+				}
+			};
+
 			// Linker marker to enforce single #[routes] usage.
-			#native_only
+			//
+			// Cross-target so the duplicate-symbol guard applies on WASM SPA
+			// builds too (only one `#[routes]` function per project, both
+			// targets).
 			#[doc(hidden)]
 			#[unsafe(no_mangle)]
 			#[allow(non_upper_case_globals, dead_code)]
@@ -323,9 +365,20 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		}
 	} else if !has_inject {
 		// Case 2: Async, no #[inject]
+		//
+		// No WASM client `inventory::submit!` is emitted for async
+		// `#[routes]` because `inventory::submit!` requires a `const`-
+		// constructible registration and the inventory entry is a
+		// `fn() -> Arc<ClientRouter>` (sync). Driving an async `routes()`
+		// from a sync factory would require a per-target executor stub on
+		// `wasm32-unknown-unknown`, which is out of scope for #4453.
+		// Async `#[routes]` is server-oriented today; client-side WASM SPAs
+		// use the sync arm.
 		let fn_sig = &input.sig;
 		quote! {
-			#native_only
+			// User function is cross-target so that wasm SPA crates can
+			// still declare the `#[routes]` entry point even when its body
+			// only matters on the server (see comment in the sync arm).
 			#[allow(private_interfaces)]
 			#(#fn_attrs)*
 			#fn_vis #fn_sig #fn_block
@@ -354,7 +407,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				}
 			};
 
-			#native_only
+			// Linker marker is cross-target (see sync arm rationale).
 			#[doc(hidden)]
 			#[unsafe(no_mangle)]
 			#[allow(non_upper_case_globals, dead_code)]
@@ -429,8 +482,30 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			})
 			.collect();
 
+		// Case 3: Async, with #[inject]
+		//
+		// The async server factory references DI types (`SingletonScope`,
+		// `InjectionContext`) that are native-only, so the factory and its
+		// `inventory::submit!` block remain gated on `#native_only`.
+		//
+		// The user's function definition itself is cross-target so that
+		// wasm SPA crates can still declare the `#[routes]` entry point
+		// (see the sync arm rationale). No WASM client `inventory::submit!`
+		// is emitted for the same reason as Case 2: the inventory factory
+		// would have to drive an async function synchronously, which is
+		// out of scope for #4453. Async `#[routes]` is server-oriented;
+		// client-side WASM SPAs use the sync arm.
+		//
+		// NOTE: The user body may reference `#[inject]` types that are
+		// themselves native-only. If a downstream consumer puts an async
+		// `#[routes]` with `#[inject]` parameters into a crate compiled
+		// for `wasm32-unknown-unknown`, the body will fail to compile.
+		// That is the expected behavior — server-side DI is not a client-
+		// side concern. The macro emits the cross-target stub so that the
+		// linker-marker invariant still holds; the user must keep async-
+		// inject `routes()` definitions behind their own `#[cfg(...)]` if
+		// they ship a unified WASM/native crate. Refs #4175, #4453.
 		quote! {
-			#native_only
 			#[allow(private_interfaces)]
 			#(#fn_attrs)*
 			#fn_vis async fn #fn_name #fn_generics(#(#stripped_params),*) #fn_return #fn_block
@@ -470,7 +545,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				}
 			};
 
-			#native_only
+			// Linker marker is cross-target (see sync arm rationale).
 			#[doc(hidden)]
 			#[unsafe(no_mangle)]
 			#[allow(non_upper_case_globals, dead_code)]

@@ -822,6 +822,19 @@ pub use reinhardt_urls::routers::{
 	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
 };
 
+// Re-export the `inventory` crate on the WASM target.
+//
+// The native build re-exports `inventory` above (gated to `core` feature),
+// and the `#[routes]` macro emits `reinhardt::inventory::submit!` to register
+// a server router. The macro's WASM emission also uses `inventory::submit!`
+// to register a `ClientRouterRegistration`, so the facade must expose
+// `reinhardt::inventory` on `wasm32-unknown-unknown` as well. `reinhardt-urls`
+// already depends on `inventory` unconditionally on WASM and re-exports it
+// for this purpose. Refs #4453.
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[doc(hidden)]
+pub use reinhardt_urls::inventory;
+
 // Re-export client-router types (requires client-router feature)
 // These types enable UnifiedRouter<V> with both .server() and .client() methods
 #[cfg(feature = "client-router")]
