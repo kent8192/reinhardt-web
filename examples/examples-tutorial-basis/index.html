@@ -12,10 +12,22 @@
 		integrity="sha384-LGhsJsqCgUoTJMa7Fmn8Q0Q5/3WY9D96e4lfXpNTzs54EqijDEpPD13nfjueItEK"
 		crossorigin="anonymous">
 
+	<!-- Hand-written base styles + fallback component CSS.
+	     Listed before the blocking UnoCSS runtime script below so the
+	     browser preloader can discover it as early as possible, giving
+	     the first paint a fully-styled view even before UnoCSS runs. -->
+	<link rel="stylesheet" href="/static/css/style.css">
+
 	<!-- Theme detection (runs before render to avoid FOUC) -->
 	<script>
 	(function() {
-		var stored = localStorage.getItem('theme');
+		var stored = null;
+		try {
+			stored = localStorage.getItem('theme');
+		} catch (e) {
+			// localStorage may be unavailable (private mode, sandboxed iframe,
+			// storage disabled by user). Fall back to OS preference below.
+		}
 		var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 		var theme = stored || (prefersDark ? 'dark' : 'light');
 		document.documentElement.setAttribute('data-theme', theme);
@@ -101,9 +113,6 @@
 		integrity="sha384-LYmmhezFyzRAT4ivJD/xzz7PEZ3b+pHHgxsOuSVPG8wKScOK2Bx+itfNE+ziDDEv"
 		crossorigin="anonymous"></script>
 
-	<!-- Hand-written base styles + fallback component CSS -->
-	<link rel="stylesheet" href="/static/css/style.css">
-
 	<!-- Theme toggle handler -->
 	<script>
 	function toggleTheme() {
@@ -112,16 +121,36 @@
 		var next = current === 'dark' ? 'light' : 'dark';
 		html.setAttribute('data-theme', next);
 		html.classList.toggle('dark', next === 'dark');
-		localStorage.setItem('theme', next);
+		try {
+			localStorage.setItem('theme', next);
+		} catch (e) {
+			// Persisting the preference is best-effort; ignore storage
+			// failures (private mode, sandboxed iframe, disabled storage).
+		}
 	}
 
-	// Attach to any #theme-toggle-btn rendered by WASM via MutationObserver
+	// Attach to any #theme-toggle-btn rendered by WASM via MutationObserver.
+	// The observer disconnects itself as soon as the button is found and
+	// wired up, so it does not keep reacting to unrelated DOM changes.
 	window.addEventListener('load', function() {
-		var observer = new MutationObserver(function() {
+		function tryAttach() {
 			var btn = document.getElementById('theme-toggle-btn');
 			if (btn && !btn.hasAttribute('data-theme-attached')) {
 				btn.setAttribute('data-theme-attached', 'true');
 				btn.addEventListener('click', toggleTheme);
+				return true;
+			}
+			return false;
+		}
+
+		// Button may already be present (SSR / fast WASM mount).
+		if (tryAttach()) {
+			return;
+		}
+
+		var observer = new MutationObserver(function() {
+			if (tryAttach()) {
+				observer.disconnect();
 			}
 		});
 		if (document.body) {
@@ -130,7 +159,7 @@
 	});
 	</script>
 </head>
-<body un-cloak>
+<body>
 	<div id="root">
 		<div class="flex items-center justify-center min-h-screen">
 			<div class="text-center">
