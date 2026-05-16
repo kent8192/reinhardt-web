@@ -190,6 +190,25 @@ impl ClientRoute {
 /// The main client-side router.
 ///
 /// `ClientRouter` renders views using the [`Page`] type.
+///
+/// # `Clone` semantics
+///
+/// The `Clone` impl is **shallow** by design. `Signal` fields share their
+/// underlying reactive state across clones, and on WASM the navigation
+/// observer state (held behind `Rc`) is shared as well; only the route
+/// table (`Vec<ClientRoute>` / `HashMap<String, usize>`) is copied
+/// independently. As a result two clones see the same navigation state
+/// but can diverge if either is mutated to register new routes — this
+/// is **not** a deep clone of the router.
+///
+/// In practice `Clone` is only invoked by
+/// `collect_client_router_from_inventory` (Refs #4453) as the fallback
+/// path for `Arc::try_unwrap` when the underlying factory `Arc` is
+/// shared, and `ClientLauncher::register_routes_from_inventory()` is the
+/// only caller. Application code should NOT call `.clone()` directly to
+/// "branch" routers; treat the router as a single owned value moved
+/// into the launcher. Refs Copilot review on PR #4477.
+#[derive(Clone)]
 pub struct ClientRouter {
 	/// Registered routes.
 	routes: Vec<ClientRoute>,
