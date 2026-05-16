@@ -47,64 +47,58 @@ pub fn login_form() -> Page {
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, signup_href: String| {
 		div {
-			class: "container mt-5",
+			class: "max-w-md mx-auto px-4 mt-12",
 			div {
-				class: "row justify-content-center",
+				class: "card",
 				div {
-					class: "col-md-6",
-					div {
-						class: "card",
-						div {
-							class: "card-body",
-							h1 {
-								class: "card-title mb-4",
-								"Sign in"
-							}
-							watch {
-								if error_signal.get().is_some() {
-									div {
-										class: "alert alert-danger",
-										{ error_signal.get().unwrap_or_default() }
-									}
-								}
-							}
-							{ form_view }
+					class: "card-body",
+					h1 {
+						class: "card-title",
+						"Sign in"
+					}
+					watch {
+						if error_signal.get().is_some() {
 							div {
-								class: "mt-3",
-								watch {
-									if loading_signal.get() {
-										button {
-											type: "submit",
-											class: "btn btn-primary w-100",
-											disabled: loading_signal.get(),
-											form: "login-form",
-											"Signing in..."
-										}
-									} else {
-										button {
-											type: "submit",
-											class: "btn btn-primary w-100",
-											form: "login-form",
-											"Sign in"
-										}
-									}
+								class: "alert-danger mb-3",
+								{ error_signal.get().unwrap_or_default() }
+							}
+						}
+					}
+					{ form_view }
+					div {
+						class: "mt-4",
+						watch {
+							if loading_signal.get() {
+								button {
+									type: "submit",
+									class: "btn-primary w-full",
+									disabled: loading_signal.get(),
+									form: "login-form",
+									"Signing in..."
+								}
+							} else {
+								button {
+									type: "submit",
+									class: "btn-primary w-full",
+									form: "login-form",
+									"Sign in"
 								}
 							}
 						}
 					}
-					div {
-						class: "text-center mt-3 flex flex-col gap-1",
-						a {
-							href: signup_href,
-							class: "text-brand",
-							"Create an account"
-						}
-						a {
-							href: polls_index_href,
-							class: "text-muted",
-							"Back to polls"
-						}
-					}
+				}
+			}
+			div {
+				class: "text-center mt-4 flex flex-col gap-1",
+				a {
+					href: signup_href,
+					class: "text-brand",
+					"Create an account"
+				}
+				a {
+					href: polls_index_href,
+					class: "text-muted",
+					"Back to polls"
 				}
 			}
 		}
@@ -134,48 +128,42 @@ pub fn logout_form() -> Page {
 
 	page!(|error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
-			class: "container mt-5",
+			class: "max-w-md mx-auto px-4 mt-12",
 			div {
-				class: "row justify-content-center",
+				class: "card",
 				div {
-					class: "col-md-6",
-					div {
-						class: "card",
-						div {
-							class: "card-body",
-							h1 {
-								class: "card-title mb-4",
-								"Sign out"
-							}
-							p {
-								class: "card-text",
-								"Click the button below to end your session."
-							}
-							watch {
-								if error_signal.get().is_some() {
-									div {
-										class: "alert alert-danger",
-										{ error_signal.get().unwrap_or_default() }
-									}
-								}
-							}
-							{ form_view }
-							button {
-								type: "submit",
-								class: "btn btn-secondary",
-								form: "logout-form",
-								"Sign out"
+					class: "card-body",
+					h1 {
+						class: "card-title",
+						"Sign out"
+					}
+					p {
+						class: "text-muted mb-4",
+						"Click the button below to end your session."
+					}
+					watch {
+						if error_signal.get().is_some() {
+							div {
+								class: "alert-danger mb-3",
+								{ error_signal.get().unwrap_or_default() }
 							}
 						}
 					}
-					div {
-						class: "text-center mt-3",
-						a {
-							href: polls_index_href,
-							class: "text-muted",
-							"Back to polls"
-						}
+					{ form_view }
+					button {
+						type: "submit",
+						class: "btn-secondary w-full",
+						form: "logout-form",
+						"Sign out"
 					}
+				}
+			}
+			div {
+				class: "text-center mt-4",
+				a {
+					href: polls_index_href,
+					class: "text-muted",
+					"Back to polls"
 				}
 			}
 		}
@@ -224,64 +212,58 @@ pub fn signup_form() -> Page {
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, login_href: String| {
 		div {
-			class: "container mt-5",
+			class: "max-w-md mx-auto px-4 mt-12",
 			div {
-				class: "row justify-content-center",
+				class: "card",
 				div {
-					class: "col-md-6",
-					div {
-						class: "card",
-						div {
-							class: "card-body",
-							h1 {
-								class: "card-title mb-4",
-								"Create account"
-							}
-							watch {
-								if error_signal.get().is_some() {
-									div {
-										class: "alert alert-danger",
-										{ error_signal.get().unwrap_or_default() }
-									}
-								}
-							}
-							{ form_view }
+					class: "card-body",
+					h1 {
+						class: "card-title",
+						"Create account"
+					}
+					watch {
+						if error_signal.get().is_some() {
 							div {
-								class: "mt-3",
-								watch {
-									if loading_signal.get() {
-										button {
-											type: "submit",
-											class: "btn btn-primary w-100",
-											disabled: loading_signal.get(),
-											form: "signup-form",
-											"Creating account..."
-										}
-									} else {
-										button {
-											type: "submit",
-											class: "btn btn-primary w-100",
-											form: "signup-form",
-											"Create account"
-										}
-									}
+								class: "alert-danger mb-3",
+								{ error_signal.get().unwrap_or_default() }
+							}
+						}
+					}
+					{ form_view }
+					div {
+						class: "mt-4",
+						watch {
+							if loading_signal.get() {
+								button {
+									type: "submit",
+									class: "btn-primary w-full",
+									disabled: loading_signal.get(),
+									form: "signup-form",
+									"Creating account..."
+								}
+							} else {
+								button {
+									type: "submit",
+									class: "btn-primary w-full",
+									form: "signup-form",
+									"Create account"
 								}
 							}
 						}
 					}
-					div {
-						class: "text-center mt-3 flex flex-col gap-1",
-						a {
-							href: login_href,
-							class: "text-brand",
-							"Already have an account? Sign in"
-						}
-						a {
-							href: polls_index_href,
-							class: "text-muted",
-							"Back to polls"
-						}
-					}
+				}
+			}
+			div {
+				class: "text-center mt-4 flex flex-col gap-1",
+				a {
+					href: login_href,
+					class: "text-brand",
+					"Already have an account? Sign in"
+				}
+				a {
+					href: polls_index_href,
+					class: "text-muted",
+					"Back to polls"
 				}
 			}
 		}
