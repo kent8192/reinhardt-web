@@ -290,3 +290,77 @@ inventory::collect!(UrlPatternsRegistration);
 pub fn iter_registered_url_patterns() -> impl Iterator<Item = &'static UrlPatternsRegistration> {
 	inventory::iter::<UrlPatternsRegistration>()
 }
+
+/// Client-router inventory registration (WASM target).
+///
+/// This module is the WASM-side counterpart of `UrlPatternsRegistration`.
+/// The `#[routes]` macro submits one [`ClientRouterRegistration`] per
+/// annotated function on `wasm32-unknown-unknown`, and the launcher
+/// consumes them via [`collect_client_router_from_inventory`].
+///
+/// Refs #4453.
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+mod client_registration {
+	use crate::routers::client_router::ClientRouter;
+	use std::sync::Arc;
+
+	/// WASM-side counterpart of [`UrlPatternsRegistration`].
+	///
+	/// Submitted by the `#[routes]` macro on `wasm32-unknown-unknown`.
+	///
+	/// [`UrlPatternsRegistration`]: super::UrlPatternsRegistration
+	#[derive(Clone)]
+	pub struct ClientRouterRegistration {
+		get_client_router: fn() -> Arc<ClientRouter>,
+	}
+
+	impl ClientRouterRegistration {
+		/// Internal constructor used by the `#[routes]` macro.
+		///
+		/// Not part of the public API; do not call directly.
+		#[doc(hidden)]
+		pub const fn __macro_new(get_client_router: fn() -> Arc<ClientRouter>) -> Self {
+			Self { get_client_router }
+		}
+
+		/// Materialize the `ClientRouter` from this registration.
+		pub fn client_router(&self) -> Arc<ClientRouter> {
+			(self.get_client_router)()
+		}
+	}
+
+	inventory::collect!(ClientRouterRegistration);
+
+	/// Iterate over all `#[routes]`-registered client routers.
+	pub fn iter_registered_client_routers()
+	-> impl Iterator<Item = &'static ClientRouterRegistration> {
+		inventory::iter::<ClientRouterRegistration>()
+	}
+
+	/// Iterate inventory, merge every registered `ClientRouter`, register
+	/// the resulting `ClientUrlReverser` globally, and return the merged
+	/// router (or `None` if no entries are registered).
+	///
+	/// `ClientRouter::merge` is `pub(crate)`; this helper lives in the
+	/// same crate so the visibility holds. Refs #4442, #4453.
+	pub fn collect_client_router_from_inventory() -> Option<ClientRouter> {
+		let mut merged: Option<ClientRouter> = None;
+		for reg in iter_registered_client_routers() {
+			let arc = reg.client_router();
+			let r = Arc::try_unwrap(arc).unwrap_or_else(|a| (*a).clone());
+			merged = Some(match merged.take() {
+				None => r,
+				Some(acc) => acc.merge(r),
+			});
+		}
+		if let Some(ref router) = merged {
+			crate::routers::client_router::register_client_reverser(router.to_reverser());
+		}
+		merged
+	}
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub use client_registration::{
+	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
+};
