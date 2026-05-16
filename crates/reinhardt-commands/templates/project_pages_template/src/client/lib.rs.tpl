@@ -1,25 +1,31 @@
 //! WASM entry point for {{ project_name }}.
 //!
-//! Delegates startup to [`ClientLauncher`], which handles the panic hook,
-//! reactive scheduler, DOM mounting on `#root`, history listener, and the
-//! reactive re-render on route changes.
+//! Bootstraps the SPA via `ClientLauncher::router_client`. Each app exposes
+//! its own client router (`apps/<app>/urls/client_router.rs`); combine
+//! them here when the project has more than one Pages app.
 //!
-//! Client routers for each app are registered via inventory by
-//! `#[url_patterns(..., mode = client)]` and automatically discovered
-//! by `ClientLauncher::router_client(...)`.
+//! `ClientRouter::merge` is currently `pub(crate)` (reinhardt-web#4442),
+//! so today you either:
+//!  - use a single app's `client_url_patterns()` as the root router, or
+//!  - append additional routes inline to that root router (see
+//!    examples-tutorial-basis for an example).
+//!
+//! Ideal implementation (after #4442 ships):
+//!   .router_client(|| app_a::client_url_patterns().merge(app_b::client_url_patterns()))
 
 use reinhardt::pages::ClientLauncher;
+#[allow(unused_imports)] // Used once a per-app router is wired below.
+use reinhardt::register_client_reverser;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
 	ClientLauncher::new("#root")
-		.router_client()
-		// Optional builder hooks (since reinhardt-web v0.1.0-rc.23):
-		//   .intercept_links()                     // built-in SPA link interception
-		//   .before_launch(|| { /* setup */ })     // pre-mount lifecycle hook
-		//   .after_launch(|| { /* boot done */ })  // post-mount lifecycle hook
-		//   .on_path("/login", || { /* run on exact path */ })
-		//   .on_path_pattern("/users/{id}", |params| { /* path-driven side effect */ })
+		// Uncomment and adjust once you have a Pages app:
+		// .router_client(|| {
+		//     let router = crate::apps::<your_app>::urls::client_router::client_url_patterns();
+		//     register_client_reverser(router.to_reverser());
+		//     router
+		// })
 		.launch()
 }

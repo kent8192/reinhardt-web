@@ -2,17 +2,27 @@
 //!
 //! The `routes` function defines all URL patterns for this project.
 //!
-//! # Registering server functions
+//! ## Registering server functions
 //!
-//! Server functions for each app are now located in `src/apps/<app>/server_fn.rs`
-//! and registered via `#[server_fn(..., route = "/api/...")]` directly on the
-//! function definition. You do not need to manually wire them into this router.
+//! Server functions are NOT auto-registered. After running
+//! `reinhardt-admin startapp <name> --with-pages`, append the new app's
+//! markers manually:
 //!
-//! # Registering client routers
+//! ```rust,ignore
+//! use crate::apps::<name>::server_fn::{some_fn, other_fn};
+//!
+//! let router = UnifiedRouter::new().server(|s| s
+//!     .server_fn(some_fn::marker)
+//!     .server_fn(other_fn::marker)
+//! );
+//! ```
+//!
+//! ## Registering client routers
 //!
 //! Client routers for each app are registered via `#[url_patterns(..., mode = client)]`
 //! in `src/apps/<app>/urls/client_router.rs` and discovered automatically by
-//! `ClientLauncher::router_client()`. They do not appear in this (server-side) router.
+//! `ClientLauncher::router_client(...)`. They do not appear in this
+//! (server-side) router.
 
 use reinhardt::prelude::*;
 use reinhardt::routes;

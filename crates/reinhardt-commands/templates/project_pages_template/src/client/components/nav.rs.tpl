@@ -1,21 +1,17 @@
-//! Shared navigation component for {{ project_name }}.
+//! Site-wide navigation shell.
+//!
+//! `with_nav(body)` wraps a per-app `Component` with the shared header so
+//! every routed page in the project gets the same nav bar.
 
-use reinhardt::pages::HtmlElement;
+use reinhardt::pages::component::{Component, Page};
+use reinhardt::pages::page;
 
-/// Navigation bar shared across all app pages.
-///
-/// Renders a simple navigation structure. Extend with real navigation links
-/// once your app pages are defined.
-pub fn with_nav(inner: impl Into<HtmlElement>) -> HtmlElement {
-	html! {
-		<>
-			<nav class="navbar">
-				<div class="container">
-					<h1>{{ "{{ project_name }}" }}</h1>
-					{/* Add navigation links here */}
-				</div>
-			</nav>
-			{inner.into()}
-		</>
-	}
+/// Wrap an app body with the shared nav bar.
+pub fn with_nav(body: Component) -> Page {
+	page!(|body: Component| {
+		div {
+			nav { class: "navbar", "{{ project_name }}" }
+			{ body }
+		}
+	})(body)
 }
