@@ -10,7 +10,11 @@ mod tests {
 	use serde::{Deserialize, Serialize};
 	use uuid::Uuid;
 
-	#[user(hasher = Argon2Hasher, username_field = "username", full = true)]
+	// `manager = false`: this test exercises the trait impls emitted by `#[user]`,
+	// not the auto-generated `BaseUserManager`. Skipping the manager avoids the
+	// `Default` bound that the generator would otherwise force on `TestUser`,
+	// which is not derivable here because `DateTime<Utc>` lacks a `Default` impl.
+	#[user(hasher = Argon2Hasher, username_field = "username", full = true, manager = false)]
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	pub(crate) struct TestUser {
 		pub id: Uuid,
@@ -46,7 +50,7 @@ mod tests {
 		}
 	}
 
-	#[user(hasher = Argon2Hasher, username_field = "email", full = true)]
+	#[user(hasher = Argon2Hasher, username_field = "email", full = true, manager = false)]
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	pub(crate) struct CustomFieldUser {
 		pub id: Uuid,
