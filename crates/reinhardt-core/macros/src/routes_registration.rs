@@ -287,6 +287,28 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 
 	let is_async = input.sig.asyncness.is_some();
 
+	// `client_inventory` is only meaningful for sync `#[routes]` because
+	// `inventory::submit!` requires a `const`-constructible registration
+	// whose factory is `fn() -> Arc<ClientRouter>` (sync). Driving an async
+	// `routes()` body from a sync factory would require a per-target
+	// executor stub on `wasm32-unknown-unknown`, which is out of scope for
+	// #4453. Async client inventory may be added in a follow-up.
+	//
+	// Reject the combination at compile time (fail early per DP-4) instead
+	// of silently dropping the flag and surprising the user with an empty
+	// inventory at `launch()` time. Refs Codex review finding #2 on PR
+	// #4477.
+	if is_async && client_inventory {
+		return Err(syn::Error::new_spanned(
+			&input.sig,
+			"`#[routes(client_inventory)]` is not supported on async `routes()` \
+			 functions. The WASM `ClientRouterRegistration::submit!` factory must \
+			 be a sync `fn() -> Arc<ClientRouter>`, but the annotated function is \
+			 async. Either make `routes()` sync, or drop `client_inventory` and \
+			 keep the async server-only behavior. Refs #4453.",
+		));
+	}
+
 	// Analyze function parameters for #[inject]
 	let mut inject_params = Vec::new();
 	let mut has_inject = false;
