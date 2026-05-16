@@ -70,17 +70,22 @@
 //! [`UnifiedRouter`]: crate::routers::UnifiedRouter
 //! [`ServerRouter`]: crate::routers::ServerRouter
 
-#[cfg(feature = "client-router")]
+#[cfg(all(native, feature = "client-router"))]
 use crate::routers::client_router::ClientRouter;
+#[cfg(native)]
 use crate::routers::server_router::ServerRouter;
+#[cfg(native)]
 use std::future::Future;
+#[cfg(native)]
 use std::pin::Pin;
+#[cfg(native)]
 use std::sync::Arc;
 
 /// Function pointer type for async router factories.
 ///
 /// Returns a pinned, boxed future that produces a server router or an error.
 /// Used by `RouterFactory::Async` and `UrlPatternsRegistration::__macro_new_async`.
+#[cfg(native)]
 pub type AsyncRouterFactoryFn = fn() -> Pin<
 	Box<
 		dyn Future<Output = Result<Arc<ServerRouter>, Box<dyn std::error::Error + Send + Sync>>>
@@ -93,6 +98,7 @@ pub type AsyncRouterFactoryFn = fn() -> Pin<
 /// The sync variant is used by existing `#[routes]` functions that return
 /// `UnifiedRouter` synchronously. The async variant is used when `#[routes]`
 /// is applied to an `async fn`, enabling DI resolution via `#[inject]` parameters.
+#[cfg(native)]
 #[derive(Clone)]
 pub enum RouterFactory {
 	/// Synchronous factory (existing behavior for `fn routes() -> UnifiedRouter`)
@@ -125,6 +131,7 @@ pub enum RouterFactory {
 ///
 /// You typically don't create this struct directly. Instead, use the `#[routes]`
 /// attribute macro which generates the registration code automatically.
+#[cfg(native)]
 #[derive(Clone)]
 pub struct UrlPatternsRegistration {
 	/// Router factory (sync or async)
@@ -149,6 +156,7 @@ pub struct UrlPatternsRegistration {
 	pub get_client_router: Option<fn() -> Arc<ClientRouter>>,
 }
 
+#[cfg(native)]
 impl UrlPatternsRegistration {
 	/// Create a new registration with the router factory functions
 	///
@@ -271,6 +279,7 @@ impl UrlPatternsRegistration {
 }
 
 // Collect registrations for runtime iteration
+#[cfg(native)]
 inventory::collect!(UrlPatternsRegistration);
 
 /// Returns an iterator over all registered [`UrlPatternsRegistration`] entries.
@@ -287,6 +296,7 @@ inventory::collect!(UrlPatternsRegistration);
 /// let count = iter_registered_url_patterns().count();
 /// println!("registered routers: {count}");
 /// ```
+#[cfg(native)]
 pub fn iter_registered_url_patterns() -> impl Iterator<Item = &'static UrlPatternsRegistration> {
 	inventory::iter::<UrlPatternsRegistration>()
 }
