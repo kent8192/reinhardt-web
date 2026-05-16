@@ -1,0 +1,5 @@
+error[E0433]: failed to resolve: use of undeclared type `OptOutUserManager`
+  --> tests/ui/user/fail/manager_disabled_no_manager.rs:22:10
+   |
+22 |     let _ = OptOutUserManager::new();
+   |             ^^^^^^^^^^^^^^^^^ use of undeclared type `OptOutUserManager`
