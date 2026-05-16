@@ -360,7 +360,7 @@ impl BaseCommand for StartAppCommand {
 			}
 
 			// Update or create apps.rs to export the new app
-			update_apps_export(&app_name)?;
+			update_apps_export(&app_name, with_pages)?;
 
 			// Append to installed_apps! { ... } block (Issue #3670).
 			// Idempotent and silently skipped if src/config/apps.rs is
@@ -556,7 +556,16 @@ fn update_workspace_members(app_name: &str) -> CommandResult<()> {
 ///
 /// Uses AST parsing to robustly detect existing module declarations
 /// and add new ones, avoiding issues with comments and formatting.
-fn update_apps_export(app_name: &str) -> CommandResult<()> {
+///
+/// `with_pages` controls whether the emitted `pub use <app>::<App>Config;`
+/// re-export is gated by `#[cfg(server)]`. Pages projects compile `apps.rs`
+/// on the WASM target where the `#[app_config]`-generated `Config` struct
+/// is itself `#[cfg(server)]`, so the re-export must match. REST projects
+/// do not define a `server` cfg alias and the `Config` struct is not
+/// cfg-gated, so adding `#[cfg(server)]` there would silently drop the
+/// re-export (and would emit an `unexpected_cfgs` warning) — keep it
+/// un-gated for REST.
+fn update_apps_export(app_name: &str, with_pages: bool) -> CommandResult<()> {
 	use std::fs;
 	use syn::{File, Item, ItemMod, ItemUse, parse_file};
 
@@ -609,18 +618,28 @@ fn update_apps_export(app_name: &str) -> CommandResult<()> {
 		};
 		ast.items.push(Item::Mod(mod_item));
 
-		// Add use declaration: #[cfg(server)] pub use app_name::AppNameConfig;
+		// Add use declaration: `pub use app_name::AppNameConfig;`, gated
+		// by `#[cfg(server)]` only for Pages projects.
 		//
-		// The `Config` struct is created by `#[app_config(...)]` and is
-		// itself server-only (`#[cfg(server)]`), so the re-export must
-		// match. Pages projects compile this same `apps.rs` on the WASM
-		// (`#[cfg(client)]`) target, where leaving the re-export ungated
-		// would produce E0432 "unresolved import" at the `apps.rs` line.
+		// The `Config` struct is created by `#[app_config(...)]`. In Pages
+		// projects, that struct is itself server-only (`#[cfg(server)]`)
+		// and `apps.rs` compiles on the WASM target as well, so the
+		// re-export must match — leaving it ungated would produce E0432
+		// "unresolved import" at the `apps.rs` line on the WASM build.
+		// REST projects do not define a `server` cfg alias and do not
+		// gate the `Config` struct, so adding `#[cfg(server)]` there
+		// would silently drop the re-export (and emit `unexpected_cfgs`).
 		let config_name = format!("{}Config", camel_case_name);
 		let config_ident = syn::Ident::new(&config_name, proc_macro2::Span::call_site());
-		let use_item: ItemUse = syn::parse_quote! {
-			#[cfg(server)]
-			pub use #app_ident::#config_ident;
+		let use_item: ItemUse = if with_pages {
+			syn::parse_quote! {
+				#[cfg(server)]
+				pub use #app_ident::#config_ident;
+			}
+		} else {
+			syn::parse_quote! {
+				pub use #app_ident::#config_ident;
+			}
 		};
 		ast.items.push(Item::Use(use_item));
 	}
