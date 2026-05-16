@@ -29,7 +29,7 @@ use crate::server_fn::polls::{
 	update_question, vote,
 };
 #[cfg(native)]
-use crate::server_fn::users::{current_user, login, logout};
+use crate::server_fn::users::{current_user, login, logout, register};
 
 #[cfg(native)]
 use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
@@ -77,6 +77,7 @@ pub fn routes() -> UnifiedRouter {
 			.server_fn(delete_choice::marker)
 			.server_fn(login::marker)
 			.server_fn(logout::marker)
+			.server_fn(register::marker)
 			.server_fn(current_user::marker)
 	});
 

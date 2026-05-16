@@ -27,7 +27,7 @@ use reinhardt::register_client_reverser;
 use wasm_bindgen::prelude::*;
 
 use crate::apps::polls::urls::client_router::client_url_patterns as polls_client_url_patterns;
-use crate::client::pages::{login_page, logout_page};
+use crate::client::pages::{login_page, logout_page, signup_page};
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
@@ -35,7 +35,8 @@ pub fn main() -> Result<(), JsValue> {
 		.router_client(|| {
 			let router = polls_client_url_patterns()
 				.named_route("users:login", "/users/login/", login_page)
-				.named_route("users:logout", "/users/logout/", logout_page);
+				.named_route("users:logout", "/users/logout/", logout_page)
+				.named_route("users:signup", "/users/signup/", signup_page);
 			register_client_reverser(router.to_reverser());
 			router
 		})

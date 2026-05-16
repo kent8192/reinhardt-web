@@ -6,17 +6,21 @@
 //! (fixation prevention), and `user_id` is persisted in the session map.
 
 #[cfg(native)]
-use crate::shared::types::LoginRequest;
+use crate::shared::types::{LoginRequest, RegisterRequest};
 use crate::shared::types::UserInfo;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 #[cfg(native)]
 use {
-	crate::apps::users::models::User,
+	crate::apps::users::models::{User, UserManager},
 	reinhardt::BaseUser,
 	reinhardt::DatabaseConnection,
+	reinhardt::Validate,
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
+	reinhardt::di::Depends,
 	reinhardt::middleware::session::{SessionData, SessionStoreRef},
+	reinhardt::reinhardt_auth::BaseUserManager,
+	std::collections::HashMap,
 };
 
 /// Authenticate a user by username/password and persist the session.
@@ -35,6 +39,14 @@ pub async fn login(
 	let mut session = session;
 
 	let request = LoginRequest { username, password };
+
+	// Run the field-level validators declared on `LoginRequest` before
+	// touching the database — empty/oversized credentials should reject
+	// at the request boundary rather than slip through to the password
+	// comparison below.
+	request
+		.validate()
+		.map_err(|e| ServerFnError::application(format!("Validation failed: {}", e)))?;
 
 	let manager = User::objects();
 	let user = manager
@@ -72,6 +84,90 @@ pub async fn login(
 	store.inner().save(session);
 
 	Ok(UserInfo::from(user))
+}
+
+/// Register a new account and start an authenticated session.
+///
+/// Mirrors `login`'s session-handling: on success the session id is rotated
+/// (fixation prevention) and `user_id` is persisted so the caller is logged
+/// in immediately — typical "sign-up then continue" UX for tutorials. The
+/// trailing `_csrf_token: String` is supplied by `form!`'s `strip_arguments`
+/// (reinhardt-web#3971); CSRF is verified by middleware before this runs.
+///
+/// We invoke `request.validate()` manually rather than using
+/// `#[server_fn(pre_validate = true)]` because that flag only triggers when
+/// each parameter is an extractor type whose inner DTO derives `Validate`
+/// (e.g. `body: Json<RegisterRequest>` — see
+/// `tests/integration/src/pre_validate.rs`). The `form!` macro sends the
+/// HTML form's fields as individual `String` params to keep its
+/// `strip_arguments` flow working, so the macro-generated synthetic
+/// `Args` struct only derives `Deserialize` — there is nothing on the
+/// auto-path that knows the field-level `#[validate(...)]` attributes on
+/// `RegisterRequest`. Building the DTO by hand and validating it
+/// recovers the same guarantees without giving up the `form!` ergonomics.
+#[server_fn]
+pub async fn register(
+	username: String,
+	password: String,
+	password_confirmation: String,
+	_csrf_token: String,
+	#[inject] user_manager: Depends<UserManager>,
+	#[inject] session: SessionData,
+	#[inject] store: SessionStoreRef,
+) -> std::result::Result<UserInfo, ServerFnError> {
+	let mut session = session;
+
+	let request = RegisterRequest {
+		username,
+		password,
+		password_confirmation,
+	};
+
+	// Field-level validators declared on `RegisterRequest` (length on
+	// username + password, non-empty password_confirmation). Run them
+	// before the password-equality check so a too-short password does
+	// not silently match a too-short confirmation.
+	request
+		.validate()
+		.map_err(|e| ServerFnError::application(format!("Validation failed: {}", e)))?;
+
+	// Password confirmation lives outside the derived `Validate` —
+	// see the `validate_passwords_match` rationale on `RegisterRequest`.
+	request
+		.validate_passwords_match()
+		.map_err(ServerFnError::application)?;
+
+	// Delegate to `UserManager` — it owns the "validate + hash + persist"
+	// pipeline so this server function stays focused on session handling.
+	// Username length, uniqueness, and password strength are all enforced
+	// inside `create_user`; any failure surfaces as a `reinhardt::Error`
+	// that maps to a 400 via `ServerFnError::application`.
+	//
+	// `BaseUserManager::create_user` takes `&mut self`, but DI hands us a
+	// shared `Depends<UserManager>` (an `Arc` under the hood). Clone the
+	// inner manager — its only field is another `Depends<DatabaseConnection>`,
+	// which is itself an `Arc` clone — so this is cheap and gives us the
+	// `&mut` access the trait method needs.
+	let mut user_manager: UserManager = (*user_manager).clone();
+	let saved = user_manager
+		.create_user(
+			request.username.trim(),
+			Some(&request.password),
+			HashMap::new(),
+		)
+		.await
+		.map_err(|e| ServerFnError::application(e.to_string()))?;
+
+	// Match `login`: rotate the session id and persist `user_id` so the
+	// account is signed in immediately on successful registration.
+	let old_id = session.regenerate_id();
+	session
+		.set("user_id".to_string(), saved.id())
+		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
+	store.inner().delete(&old_id);
+	store.inner().save(session);
+
+	Ok(UserInfo::from(saved))
 }
 
 /// Clear the active session.

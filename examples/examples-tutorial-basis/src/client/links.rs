@@ -115,3 +115,8 @@ pub fn login() -> String {
 pub fn logout() -> String {
 	resolve("users:logout", &[])
 }
+
+/// `/users/signup/` — account-creation form.
+pub fn signup() -> String {
+	resolve("users:signup", &[])
+}

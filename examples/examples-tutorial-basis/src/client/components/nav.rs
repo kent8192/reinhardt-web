@@ -34,8 +34,9 @@ pub fn nav_bar() -> Page {
 	let polls_index_href = links::polls_index();
 	let login_href = links::login();
 	let logout_href = links::logout();
+	let signup_href = links::signup();
 
-	page!(|auth_signal: Action<Option<UserInfo>, String>, polls_index_href: String, login_href: String, logout_href: String| {
+	page!(|auth_signal: Action<Option<UserInfo>, String>, polls_index_href: String, login_href: String, logout_href: String, signup_href: String| {
 		nav {
 			class: "max-w-4xl mx-auto px-4 pt-4 mb-4 flex justify-between items-center border-b pb-2",
 			a {
@@ -75,15 +76,29 @@ pub fn nav_bar() -> Page {
 						}
 					}
 				} else {
-					a {
-						href: login_href.clone(),
-						class: "btn-primary",
-						"Login"
+					div {
+						class: "flex items-center gap-2",
+						a {
+							href: signup_href.clone(),
+							class: "btn-secondary",
+							"Sign up"
+						}
+						a {
+							href: login_href.clone(),
+							class: "btn-primary",
+							"Login"
+						}
 					}
 				}
 			}
 		}
-	})(auth_signal, polls_index_href, login_href, logout_href)
+	})(
+		auth_signal,
+		polls_index_href,
+		login_href,
+		logout_href,
+		signup_href,
+	)
 }
 
 /// Compose the shared navigation bar above a page body.

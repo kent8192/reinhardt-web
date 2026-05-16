@@ -74,3 +74,8 @@ pub fn login_page() -> Page {
 pub fn logout_page() -> Page {
 	with_nav(crate::client::components::users::logout_form())
 }
+
+/// Sign-up page - Create a new account
+pub fn signup_page() -> Page {
+	with_nav(crate::client::components::users::signup_form())
+}
