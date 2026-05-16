@@ -609,10 +609,17 @@ fn update_apps_export(app_name: &str) -> CommandResult<()> {
 		};
 		ast.items.push(Item::Mod(mod_item));
 
-		// Add use declaration: pub use app_name::AppNameConfig;
+		// Add use declaration: #[cfg(server)] pub use app_name::AppNameConfig;
+		//
+		// The `Config` struct is created by `#[app_config(...)]` and is
+		// itself server-only (`#[cfg(server)]`), so the re-export must
+		// match. Pages projects compile this same `apps.rs` on the WASM
+		// (`#[cfg(client)]`) target, where leaving the re-export ungated
+		// would produce E0432 "unresolved import" at the `apps.rs` line.
 		let config_name = format!("{}Config", camel_case_name);
 		let config_ident = syn::Ident::new(&config_name, proc_macro2::Span::call_site());
 		let use_item: ItemUse = syn::parse_quote! {
+			#[cfg(server)]
 			pub use #app_ident::#config_ident;
 		};
 		ast.items.push(Item::Use(use_item));
