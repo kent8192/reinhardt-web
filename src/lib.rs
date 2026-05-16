@@ -24,8 +24,8 @@
 //! ### Presets
 //!
 //! - `minimal` - Core functionality only (routing, DI, params)
-//! - `full` (default) - All features enabled
-//! - `standard` - Balanced for most projects
+//! - `full` - All features enabled (opt-in for the broadest surface area)
+//! - `standard` (default) - Balanced for most projects
 //! - `api-only` - REST API without templates/forms
 //! - `graphql-server` - GraphQL-focused setup
 //! - `websocket-server` - WebSocket-centric setup
