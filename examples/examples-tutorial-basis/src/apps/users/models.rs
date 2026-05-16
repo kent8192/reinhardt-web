@@ -20,9 +20,13 @@ use reinhardt::macros::user;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[user(hasher = Argon2Hasher, username_field = "username")]
+// `manager = false` opts out of the auto-generated `UserManager` that
+// `#[user(...)]` emits by default since reinhardt-web#4451 — the tutorial
+// keeps its own project-local manager below (custom validation +
+// `injectable_factory` registration) so the auto-manager would shadow it.
+#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
 #[model(app_label = "users", table_name = "users")]
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct User {
 	#[field(primary_key = true)]
 	pub id: i64,
