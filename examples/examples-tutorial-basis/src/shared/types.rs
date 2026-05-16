@@ -4,14 +4,14 @@
 //! All types must be serializable with serde.
 
 use chrono::{DateTime, Utc};
-#[cfg(native)]
-use reinhardt::Validate;
+use reinhardt::shared_model;
 use serde::{Deserialize, Serialize};
 
 /// User information (DTO)
 ///
 /// Returned by the authentication server functions. Mirrors the public-facing
 /// subset of `apps::users::models::User`.
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
 	pub id: i64,
@@ -23,26 +23,21 @@ pub struct UserInfo {
 ///
 /// Sent from the WASM client to the server when submitting the login form.
 ///
-/// `Validate` is gated on `cfg(native)` so the WASM client does not pull in
-/// the validator-crate machinery — the server is the only side that needs
-/// `request.validate()` to enforce these rules before hitting the database.
-#[cfg_attr(native, derive(Validate))]
+/// The `#[shared_model]` macro emits `Validate` (and an OpenAPI `Schema`)
+/// derive behind `cfg(native)` so the WASM client does not pull in the
+/// validator-crate machinery — the server is the only side that runs
+/// `request.validate()` before hitting the database.
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
-	#[cfg_attr(
-		native,
-		validate(length(
-			min = 1,
-			max = 150,
-			message = "Username must be between 1 and 150 characters"
-		))
-	)]
+	#[validate(length(
+		min = 1,
+		max = 150,
+		message = "Username must be between 1 and 150 characters"
+	))]
 	pub username: String,
 
-	#[cfg_attr(
-		native,
-		validate(length(min = 1, message = "Password must not be empty"))
-	)]
+	#[validate(length(min = 1, message = "Password must not be empty"))]
 	pub password: String,
 }
 
@@ -53,38 +48,29 @@ pub struct LoginRequest {
 /// fields travel in the clear over HTTPS just like the login form and are
 /// never persisted — only the Argon2 hash of `password` is stored.
 ///
-/// `Validate` is gated on `cfg(native)` for the same reason as
-/// [`LoginRequest`]. Field-level rules (length / non-empty) run through
+/// Validation gating is handled by `#[shared_model]` (same rationale as on
+/// [`LoginRequest`]). Field-level rules (length / non-empty) run through
 /// `request.validate()`; the password-confirmation equality check is
 /// expressed as a dedicated [`RegisterRequest::validate_passwords_match`]
 /// helper because the validator crate's `must_match` is brittle across
 /// versions (mirroring the pattern in `examples-twitter`).
-#[cfg_attr(native, derive(Validate))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRequest {
-	#[cfg_attr(
-		native,
-		validate(length(
-			min = 1,
-			max = 150,
-			message = "Username must be between 1 and 150 characters"
-		))
-	)]
+	#[validate(length(
+		min = 1,
+		max = 150,
+		message = "Username must be between 1 and 150 characters"
+	))]
 	pub username: String,
 
-	#[cfg_attr(
-		native,
-		validate(length(min = 8, message = "Password must be at least 8 characters"))
-	)]
+	#[validate(length(min = 8, message = "Password must be at least 8 characters"))]
 	pub password: String,
 
-	#[cfg_attr(
-		native,
-		validate(length(
-			min = 8,
-			message = "Password confirmation must be at least 8 characters"
-		))
-	)]
+	#[validate(length(
+		min = 8,
+		message = "Password confirmation must be at least 8 characters"
+	))]
 	pub password_confirmation: String,
 }
 
