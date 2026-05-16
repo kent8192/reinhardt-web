@@ -2052,8 +2052,8 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// ### Real-World Example
 ///
 /// See `examples/examples-tutorial-basis` for a complete voting form implementation:
-/// - Client: `src/client/components/polls.rs` - `polls_detail` function
-/// - Server: `src/server_fn/polls.rs` - `submit_vote` wrapper function
+/// - Client: `src/apps/polls/client/components.rs` - `polls_detail` function
+/// - Server: `src/apps/polls/server_fn.rs` - `submit_vote` wrapper function
 ///
 /// ## CSRF Protection
 ///
