@@ -404,11 +404,13 @@ pub use reinhardt_macros::settings;
 #[cfg(all(feature = "database", native))]
 pub use reinhardt_macros::{Model, model};
 
-// Issue #4478: `#[shared_model]` absorbs the `cfg_attr(native, ...)` boilerplate
-// for DTOs shared between server (`native`) and client (`wasm`) builds. The
-// macro itself is wasm-safe — its expansion uses `cfg_attr(native, ...)` for
-// any native-only items — so the re-export is ungated.
-pub use reinhardt_macros::shared_model;
+// Issue #4478: `#[shared_schema]` absorbs the `cfg_attr(native, ...)`
+// boilerplate for DTOs shared between server (`native`) and client (`wasm`)
+// builds. The macro itself is wasm-safe — its expansion uses
+// `cfg_attr(native, ...)` for any native-only items — so the re-export is
+// ungated. Named `shared_schema` (not `shared_model`) to keep a clear
+// separation from the ORM `#[model]` attribute.
+pub use reinhardt_macros::shared_schema;
 
 // Re-export collect_migrations macro (requires database feature)
 #[cfg(all(feature = "database", native))]

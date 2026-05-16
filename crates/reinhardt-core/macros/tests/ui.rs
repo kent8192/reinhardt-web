@@ -167,16 +167,16 @@ fn test_user_macro_fail() {
 	t.compile_fail("tests/ui/user/fail/*.rs");
 }
 
-// ===== SharedModel (Issue #4478) =====
+// ===== SharedSchema (Issue #4478) =====
 
 #[test]
-fn test_shared_model_macro_pass() {
+fn test_shared_schema_macro_pass() {
 	let t = trybuild::TestCases::new();
-	t.pass("tests/ui/shared_model/pass/*.rs");
+	t.pass("tests/ui/shared_schema/pass/*.rs");
 }
 
 #[test]
-fn test_shared_model_macro_fail() {
+fn test_shared_schema_macro_fail() {
 	let t = trybuild::TestCases::new();
-	t.compile_fail("tests/ui/shared_model/fail/*.rs");
+	t.compile_fail("tests/ui/shared_schema/fail/*.rs");
 }

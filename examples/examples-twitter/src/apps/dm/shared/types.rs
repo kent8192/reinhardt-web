@@ -2,12 +2,12 @@
 //!
 //! Types shared between client and server for direct messaging.
 
-use reinhardt::shared_model;
+use reinhardt::shared_schema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Information about a DM room
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomInfo {
 	/// Unique identifier for the room
@@ -27,7 +27,7 @@ pub struct RoomInfo {
 }
 
 /// A direct message
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageInfo {
 	/// Unique identifier for the message
@@ -47,7 +47,7 @@ pub struct MessageInfo {
 }
 
 /// Request to send a new message
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageRequest {
 	/// Room to send the message to
@@ -57,7 +57,7 @@ pub struct SendMessageRequest {
 }
 
 /// Request to create a new DM room
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateRoomRequest {
 	/// User IDs to include in the room
@@ -67,7 +67,7 @@ pub struct CreateRoomRequest {
 }
 
 /// WebSocket notification for new messages (sent to room list subscribers)
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewMessageNotification {
 	/// Room that received the new message

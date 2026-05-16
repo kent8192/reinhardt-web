@@ -48,7 +48,7 @@ mod schema;
 mod settings_compose;
 mod settings_fragment;
 pub(crate) mod settings_parser;
-mod shared_model;
+mod shared_schema;
 mod streaming;
 mod streaming_patterns;
 mod use_inject;
@@ -1022,13 +1022,22 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 ///    `#[cfg_attr(native, derive(Schema))]` on the struct, that derive is not
 ///    duplicated.
 ///
+/// # Naming
+///
+/// The macro is named `shared_schema` (not `shared_model`) to keep a clear
+/// separation from the ORM-side [`macro@model`] attribute. `#[model]` defines a
+/// persistent record (with a primary key, table, fields, relationships);
+/// `#[shared_schema]` declares the wire-level shape that crosses the
+/// server/client boundary and adds the validation + OpenAPI-schema impls only
+/// where they make sense (i.e. native builds).
+///
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt::shared_model;
+/// use reinhardt::shared_schema;
 /// use serde::{Deserialize, Serialize};
 ///
-/// #[shared_model]
+/// #[shared_schema]
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub struct LoginRequest {
 ///     #[validate(email(message = "Invalid email address"))]
@@ -1061,12 +1070,12 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 /// - Applies only to `struct` items (named, tuple, or unit). Enums and unions
 ///   produce a compile error.
 /// - Does not accept arguments in this version. Passing any tokens (e.g.
-///   `#[shared_model(no_schema)]`) is a compile error.
+///   `#[shared_schema(no_schema)]`) is a compile error.
 #[proc_macro_attribute]
-pub fn shared_model(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn shared_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as syn::DeriveInput);
 
-	shared_model::shared_model_impl(args.into(), input)
+	shared_schema::shared_schema_impl(args.into(), input)
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }

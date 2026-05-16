@@ -3,12 +3,12 @@
 //! These types are serializable and can be sent between the WASM client
 //! and the Rust server via server functions.
 
-use reinhardt::shared_model;
+use reinhardt::shared_schema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Tweet information
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweetInfo {
 	pub id: Uuid,
@@ -60,7 +60,7 @@ impl From<crate::apps::tweet::models::Tweet> for TweetInfo {
 }
 
 /// Create tweet request
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTweetRequest {
 	#[validate(length(

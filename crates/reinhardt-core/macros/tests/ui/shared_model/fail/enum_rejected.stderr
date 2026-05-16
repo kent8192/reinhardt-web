@@ -1,5 +1,0 @@
-error: #[shared_model] can only be applied to structs
- --> tests/ui/shared_model/fail/enum_rejected.rs:6:10
-  |
-6 | pub enum Status {
-  |          ^^^^^^

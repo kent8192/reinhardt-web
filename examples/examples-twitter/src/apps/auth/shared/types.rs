@@ -4,12 +4,12 @@
 //! These types are serializable and can be sent between the WASM client
 //! and the Rust server via server functions.
 
-use reinhardt::shared_model;
+use reinhardt::shared_schema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// User information (shared between client and server)
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
 	pub id: Uuid,
@@ -32,7 +32,7 @@ impl From<crate::apps::auth::models::User> for UserInfo {
 }
 
 /// Login request
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
 	#[validate(email(message = "Invalid email address"))]
@@ -43,7 +43,7 @@ pub struct LoginRequest {
 }
 
 /// Register request
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRequest {
 	#[validate(length(
@@ -80,7 +80,7 @@ impl RegisterRequest {
 ///
 /// Used for both client-side authentication state and server-side
 /// session validation in tests.
-#[shared_model]
+#[shared_schema]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionData {
 	/// The authenticated user's ID
