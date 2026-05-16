@@ -1,6 +1,6 @@
 //! Typed session-value extractors usable directly in handler signatures.
 //!
-//! Three flavours mirror the rest of the Reinhardt extractor surface:
+//! Four flavours mirror the rest of the Reinhardt extractor surface:
 //!
 //! - [`SessionValue<T>`] reads `session["user_id"]` and deserialises it as
 //!   `T`; 401 when the session or key is missing.
@@ -8,6 +8,9 @@
 //!   collapses to `OptionalSessionValue(None)` rather than propagating.
 //! - [`SessionValueNamed<K, T>`] reads a custom session key chosen at
 //!   compile time via a marker type implementing [`SessionKey`].
+//! - [`OptionalSessionValueNamed<K, T>`] is the optional variant of
+//!   [`SessionValueNamed<K, T>`]: a missing/unreadable value collapses to
+//!   `None` instead of failing extraction.
 //!
 //! Each extractor is wired through both `Injectable` (for `#[inject]`
 //! parameters) **and** `FromRequest` (for `Path(...)`-style auto-extraction
@@ -181,6 +184,80 @@ impl<K: SessionKey, T: Clone> Clone for SessionValueNamed<K, T> {
 	}
 }
 
+/// Optional typed session-value extractor parameterised by a [`SessionKey`].
+///
+/// Generalises [`OptionalSessionValue<T>`] to keys other than
+/// [`USER_ID_SESSION_KEY`], mirroring the relationship between
+/// [`SessionValue<T>`] and [`SessionValueNamed<K, T>`]. Extraction never
+/// fails: when the session is missing, expired, or carries no value at
+/// `K::KEY`, the extractor yields `None` rather than propagating the
+/// underlying error. Use this on handlers that accept a custom session key
+/// and may serve both anonymous and authenticated callers.
+///
+/// ```rust,ignore
+/// use reinhardt::middleware::session::{OptionalSessionValueNamed, SessionKey};
+///
+/// pub struct TenantIdKey;
+/// impl SessionKey for TenantIdKey {
+///     const KEY: &'static str = "tenant_id";
+/// }
+///
+/// #[server_fn]
+/// pub async fn current_tenant_opt(
+///     extractor: OptionalSessionValueNamed<TenantIdKey, i64>,
+/// ) -> Result<Option<TenantInfo>, ServerFnError> {
+///     let tenant_id: Option<i64> = extractor.into_inner();
+///     /* ... */
+/// }
+/// ```
+pub struct OptionalSessionValueNamed<K: SessionKey, T> {
+	value: Option<T>,
+	_phantom: PhantomData<fn() -> K>,
+}
+
+impl<K: SessionKey, T> OptionalSessionValueNamed<K, T> {
+	/// Construct an `OptionalSessionValueNamed` directly from an
+	/// `Option<T>`. Primarily useful in tests where extraction is
+	/// bypassed.
+	pub fn new(value: Option<T>) -> Self {
+		Self {
+			value,
+			_phantom: PhantomData,
+		}
+	}
+
+	/// Unwrap the extractor and return the inner `Option<T>`.
+	pub fn into_inner(self) -> Option<T> {
+		self.value
+	}
+}
+
+impl<K: SessionKey, T> Deref for OptionalSessionValueNamed<K, T> {
+	type Target = Option<T>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.value
+	}
+}
+
+impl<K: SessionKey, T: Debug> Debug for OptionalSessionValueNamed<K, T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("OptionalSessionValueNamed")
+			.field("key", &K::KEY)
+			.field("value", &self.value)
+			.finish()
+	}
+}
+
+impl<K: SessionKey, T: Clone> Clone for OptionalSessionValueNamed<K, T> {
+	fn clone(&self) -> Self {
+		Self {
+			value: self.value.clone(),
+			_phantom: PhantomData,
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers shared between `Injectable` and `FromRequest` impls.
 // ---------------------------------------------------------------------------
@@ -287,6 +364,24 @@ where
 	}
 }
 
+#[async_trait]
+impl<K, T> Injectable for OptionalSessionValueNamed<K, T>
+where
+	K: SessionKey,
+	T: DeserializeOwned + Send + Sync + 'static,
+{
+	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+		// Mirror `OptionalSessionValue`, but parameterise the key over
+		// `K::KEY`. Collapse "no session"/"no value" into `None`; any
+		// other error (e.g. corrupted singleton scope) still bubbles up.
+		match SessionData::inject(ctx).await {
+			Ok(session) => Ok(Self::new(session.get::<T>(K::KEY))),
+			Err(DiError::NotFound(_)) => Ok(Self::new(None)),
+			Err(e) => Err(e),
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // FromRequest impls (auto-extraction without `#[inject]`).
 // ---------------------------------------------------------------------------
@@ -337,6 +432,28 @@ where
 	}
 }
 
+#[async_trait]
+impl<K, T> FromRequest for OptionalSessionValueNamed<K, T>
+where
+	K: SessionKey,
+	T: DeserializeOwned + Send + Sync + 'static,
+{
+	async fn from_request(req: &Request, _ctx: &ParamContext) -> ParamResult<Self> {
+		// Mirror `OptionalSessionValue::from_request`, parameterised on
+		// `K::KEY`: any failure to reach a live session collapses to
+		// `None` rather than 401/500, so this extractor never blocks the
+		// handler from running.
+		let di_ctx = match req.get_di_context::<InjectionContext>() {
+			Some(c) => c,
+			None => return Ok(Self::new(None)),
+		};
+		match SessionData::inject(&di_ctx).await {
+			Ok(session) => Ok(Self::new(session.get::<T>(K::KEY))),
+			Err(_) => Ok(Self::new(None)),
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -368,6 +485,69 @@ mod tests {
 		// Assert
 		assert_eq!(via_deref, 42);
 		assert_eq!(via_into_inner, 42);
+	}
+
+	#[rstest]
+	fn optional_session_value_named_constructor_and_deref_roundtrip_some() {
+		// Arrange
+		let extractor = OptionalSessionValueNamed::<TenantIdKey, i64>::new(Some(7));
+
+		// Act
+		let via_deref: Option<i64> = *extractor;
+		let via_into_inner = extractor.into_inner();
+
+		// Assert
+		assert_eq!(via_deref, Some(7));
+		assert_eq!(via_into_inner, Some(7));
+	}
+
+	#[rstest]
+	fn optional_session_value_named_constructor_and_deref_roundtrip_none() {
+		// Arrange
+		let extractor = OptionalSessionValueNamed::<TenantIdKey, i64>::new(None);
+
+		// Act
+		let via_deref: Option<i64> = *extractor;
+		let via_into_inner = extractor.into_inner();
+
+		// Assert
+		assert_eq!(via_deref, None);
+		assert_eq!(via_into_inner, None);
+	}
+
+	#[rstest]
+	fn optional_session_value_named_debug_includes_key_name() {
+		// Arrange
+		let extractor = OptionalSessionValueNamed::<TenantIdKey, i64>::new(Some(99));
+
+		// Act
+		let rendered = format!("{extractor:?}");
+
+		// Assert: the Debug impl should surface the `K::KEY` constant so
+		// failure diagnostics in handler logs identify which session key the
+		// extractor targeted. Mirror the contract verified for
+		// `SessionValueNamed` Debug output.
+		assert!(
+			rendered.contains("OptionalSessionValueNamed"),
+			"Debug output should name the struct, got {rendered:?}"
+		);
+		assert!(
+			rendered.contains("tenant_id"),
+			"Debug output should include the session key name, got {rendered:?}"
+		);
+	}
+
+	#[rstest]
+	fn optional_session_value_named_clone_preserves_inner_some() {
+		// Arrange
+		let original = OptionalSessionValueNamed::<TenantIdKey, i64>::new(Some(123));
+
+		// Act
+		let cloned = original.clone();
+
+		// Assert
+		assert_eq!(*cloned, Some(123));
+		assert_eq!(*original, Some(123));
 	}
 
 	#[rstest]
