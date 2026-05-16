@@ -4,7 +4,7 @@ use reinhardt_macros::user;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[user(hasher = Argon2Hasher, username_field = "email", full = false)]
+#[user(hasher = Argon2Hasher, username_field = "email", full = false, manager = false)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExplicitNonFullUser {
 	pub id: Uuid,

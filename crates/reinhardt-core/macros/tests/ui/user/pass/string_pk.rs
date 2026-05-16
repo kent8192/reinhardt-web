@@ -3,7 +3,7 @@ use reinhardt_auth::Argon2Hasher;
 use reinhardt_macros::user;
 use serde::{Deserialize, Serialize};
 
-#[user(hasher = Argon2Hasher, username_field = "username")]
+#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StringPkUser {
 	pub id: String,

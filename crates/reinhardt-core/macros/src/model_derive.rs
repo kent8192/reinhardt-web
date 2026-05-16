@@ -1035,6 +1035,53 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 	}
 }
 
+/// Serialize a `#[field(default = ...)]` expression into the dialect-neutral
+/// SQL fragment stored in `FieldState.params["default"]`.
+///
+/// The autodetector reads this string verbatim into the generated migration's
+/// `ColumnDefinition.default`, and the runner interpolates it as
+/// `DEFAULT <fragment>` inside the generated DDL. The serialization therefore
+/// has to:
+///
+/// * Produce SQL the three supported dialects (Postgres, MySQL, SQLite) all
+///   accept. For booleans we emit lowercase `true` / `false`; Postgres and
+///   MySQL accept these as literals and SQLite (≥ 3.23) treats them as
+///   integer 1 / 0.
+/// * Quote string literals so that `default = "active"` lands as `'active'`.
+///   We use SQL single-quote escaping (double the inner quote) rather than
+///   Rust escaping.
+/// * Stay opt-in for anything we cannot prove is safe — unrecognised forms
+///   (function calls, paths, complex expressions) return `None` so that the
+///   macro keeps today's behaviour of silently omitting the default rather
+///   than emitting something that would break parsing downstream. The runner
+///   surfaces a clearer "missing default" failure when this matters; see
+///   reinhardt-web#4447.
+fn serialize_field_default(expr: &syn::Expr) -> Option<String> {
+	// Allow a leading unary `-` so `default = -1` works.
+	if let syn::Expr::Unary(unary) = expr
+		&& matches!(unary.op, syn::UnOp::Neg(_))
+		&& let Some(inner) = serialize_field_default(&unary.expr)
+	{
+		return Some(format!("-{}", inner));
+	}
+
+	let lit = match expr {
+		syn::Expr::Lit(l) => &l.lit,
+		_ => return None,
+	};
+	match lit {
+		syn::Lit::Bool(b) => Some(if b.value {
+			"true".into()
+		} else {
+			"false".into()
+		}),
+		syn::Lit::Int(i) => Some(i.base10_digits().to_string()),
+		syn::Lit::Float(f) => Some(f.base10_digits().to_string()),
+		syn::Lit::Str(s) => Some(format!("'{}'", s.value().replace('\'', "''"))),
+		_ => None,
+	}
+}
+
 /// Map Rust type to ORM field type
 fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream> {
 	let migrations_crate = get_reinhardt_migrations_crate();
@@ -2692,6 +2739,18 @@ fn generate_registration_code(
 		}
 		if config.auto_now_add == Some(true) {
 			params.push(quote! { .with_param("auto_now_add", "true") });
+		}
+
+		// Propagate `#[field(default = ...)]` into FieldState.params so the
+		// autodetector emits `ColumnDefinition.default = Some(<sql>)`. Without
+		// this, makemigrations dropped the default on the floor and the
+		// runner produced `ADD COLUMN ... NOT NULL` with no DEFAULT — see
+		// reinhardt-web#4447. Unrecognised expression forms are intentionally
+		// skipped (today's behaviour) rather than emitted as garbage.
+		if let Some(ref default_expr) = config.default
+			&& let Some(serialized) = serialize_field_default(default_expr)
+		{
+			params.push(quote! { .with_param("default", #serialized) });
 		}
 
 		// Generate ForeignKey information if present
