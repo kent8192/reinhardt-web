@@ -1,9 +1,13 @@
 //! Server-side URL configuration for the {{ app_name }} application.
 //!
-//! `#[url_patterns]` auto-registers this router via inventory and derives
-//! the path prefix from `InstalledApp::{{ app_name }}`, so the aggregating
-//! `config/urls.rs` does not need an explicit `.mount("/{{ app_name }}/", ...)`
-//! call.
+//! `#[url_patterns(InstalledApp::{{ app_name }}, mode = server)]` wraps the
+//! function below and emits a `url_resolvers` submodule namespaced under
+//! `InstalledApp::{{ app_name }}`; it does not by itself mount the router
+//! into the project. Because `config/urls.rs` uses `#[routes(standalone)]`,
+//! per-app routers are NOT aggregated automatically — endpoints added here
+//! become reachable only after `config/urls.rs` wires this function in
+//! (e.g. via `router.mount("/{{ app_name }}/", server_url_patterns())` or
+//! `router.server(|s| s.server_fn(...))` for individual server functions).
 //!
 //! # Placeholder note
 //!
