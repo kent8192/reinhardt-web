@@ -35,7 +35,10 @@ pub use id::{ActiveSessionId, SessionCookieName, SessionId};
 pub use injectable::SessionStoreRef;
 pub use middleware::SessionMiddleware;
 pub use store::SessionStore;
-pub use value::{OptionalSessionValue, SessionValue};
+pub use value::{
+	OptionalSessionValue, OptionalSessionValueNamed, SessionKey, SessionValue, SessionValueNamed,
+	UserIdKey,
+};
 
 #[cfg(test)]
 mod tests {

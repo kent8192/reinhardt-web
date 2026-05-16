@@ -2,10 +2,9 @@
 //!
 //! Top-level crate for {{ project_name }}. The module layout follows the
 //! Reinhardt basics tutorial:
-//! - `apps`         — server-side application code (uses ServerRouter)
+//! - `apps`         — application code (each app has server-side routes and client-side pages)
 //! - `client`       — WASM-only frontend (mounted by `bin/manage.rs`)
 //! - `config`       — project configuration (settings, urls, apps, wasm)
-//! - `server_fn`    — server functions callable from the WASM client
 //! - `shared`       — types shared between WASM and server
 
 // Server-only re-exports for macro-generated code.
@@ -25,8 +24,7 @@ mod server_only {
 #[cfg(server)]
 pub use server_only::*;
 
-// Server-side modules
-#[cfg(server)]
+// Application modules
 pub mod apps;
 pub mod config;
 
@@ -35,7 +33,6 @@ pub mod config;
 pub mod client;
 
 // Modules shared between WASM and server
-pub mod server_fn;
 pub mod shared;
 
 // Re-export commonly used items
