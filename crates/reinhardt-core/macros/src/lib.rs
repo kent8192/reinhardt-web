@@ -1084,6 +1084,19 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 ///   an unconditional derive cannot resolve on wasm and would duplicate the
 ///   macro's emission on native. Either delete the derive (and let `#[dto]`
 ///   emit it) or wrap it in `#[cfg_attr(native, derive(...))]` yourself.
+/// - Any pre-existing `#[cfg_attr(native, derive(Validate))]` or
+///   `#[cfg_attr(native, derive(Schema))]` MUST be written *below* `#[dto]`,
+///   not above it. Attribute proc macros only observe attributes that appear
+///   under them in source order, so a `cfg_attr` placed above `#[dto]` is
+///   invisible to the macro and would cause `#[dto]` to emit a duplicate
+///   `cfg_attr(native, derive(...))` on native. Example of the supported
+///   ordering:
+///
+/// ```rust,ignore
+/// #[dto]
+/// #[cfg_attr(native, derive(Schema))]
+/// pub struct LoginRequest { /* ... */ }
+/// ```
 #[proc_macro_attribute]
 pub fn dto(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as syn::DeriveInput);
