@@ -1,0 +1,15 @@
+meta {
+  name: Delete Snippet
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/snippets/{{snippetId}}/
+}
+
+tests {
+  test("Status code is 204", function() {
+    expect(res.status).to.equal(204);
+  });
+}

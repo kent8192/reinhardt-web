@@ -48,7 +48,8 @@ staticfiles/
 static/admin/
 dist/
 
-# Postman/Newman reports
-postman/reports/*.xml
-postman/reports/*.html
-!postman/reports/.gitkeep
+# Bruno reports
+bruno/reports/*.xml
+bruno/reports/*.html
+bruno/reports/*.json
+!bruno/reports/.gitkeep

@@ -74,14 +74,14 @@ fn error_page(message: &str) -> Page {
 	let home_href = links::polls_index();
 	page!(|message: String, home_href: String| {
 		div {
-			class: "container mt-5",
+			class: "layout-page",
 			div {
-				class: "alert alert-danger",
+				class: "alert-danger mb-4",
 				{ message }
 			}
 			a {
 				href: home_href,
-				class: "btn btn-primary",
+				class: "btn-primary",
 				"Back to Home"
 			}
 		}

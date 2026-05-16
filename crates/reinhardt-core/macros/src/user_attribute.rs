@@ -678,6 +678,30 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 	let permissions_impl =
 		generate_permissions_mixin_impl(struct_name, &mapping).unwrap_or_else(|| quote! {});
 	let auth_identity_impl = generate_auth_identity_impl(struct_name, &mapping);
+	// The auto-generated `<Name>Manager` keys its in-memory `HashMap` by the
+	// user's PK. For `Uuid` / `Option<Uuid>` we re-seed the PK with
+	// `Uuid::now_v7()` on every `create_user`, so collisions are impossible.
+	// For any other PK type the value remains at `<User as Default>::default()`,
+	// which produces a fixed sentinel (`0_i64`, empty `String`, etc.) and lets
+	// repeated `create_user` calls silently overwrite each other in the map.
+	// Reject that combination at compile time so users either switch to
+	// `Uuid` (or `Option<Uuid>`) or opt out via `manager = false` and hand-write
+	// a `BaseUserManager` impl with their own uniqueness story. See issue #4455.
+	if parsed_args.manager {
+		let pk_type = mapping
+			.pk_type
+			.as_ref()
+			.expect("PK validated by validate_required_fields");
+		let (is_uuid, _is_option) = crate::pk_shape::pk_uuid_shape(pk_type);
+		if !is_uuid {
+			return Err(syn::Error::new_spanned(
+				pk_type,
+				"#[user(...)] auto-manager only supports Uuid (or Option<Uuid>) primary keys. \
+				 Set `manager = false` to provide a custom BaseUserManager implementation, \
+				 or change the primary key field to Uuid.",
+			));
+		}
+	}
 	let user_manager_impl = if parsed_args.manager {
 		generate_user_manager_impl(struct_name, &mapping, &parsed_args)
 	} else {
