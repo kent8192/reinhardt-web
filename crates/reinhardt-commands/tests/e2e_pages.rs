@@ -377,15 +377,21 @@ async fn startapp_pages_layout_has_urls_submodule() {
 	);
 
 	// 4. Sub-routers carry the canonical #[url_patterns] attribute, and their
-	//    bodies are empty (no example route comments inside the function).
+	//    function bodies are empty. The bodies are isolated from the module
+	//    doc-comment (which may legitimately quote an example) by slicing the
+	//    file at the `pub fn` definition before searching for example calls.
 	let server_contents = fs::read_to_string(&server_urls).expect("read server_urls.rs");
 	assert!(
 		server_contents.contains("#[url_patterns(InstalledApp::foo, mode = server)]"),
 		"server_urls.rs must carry the server-mode #[url_patterns] attribute:\n{server_contents}"
 	);
+	let server_body_start = server_contents
+		.find("pub fn server_url_patterns")
+		.expect("server_urls.rs must define `pub fn server_url_patterns`");
+	let server_body = &server_contents[server_body_start..];
 	assert!(
-		!server_contents.contains(".endpoint(views::"),
-		"server_urls.rs must not embed example route calls in the function body:\n{server_contents}"
+		!server_body.contains(".endpoint(views::"),
+		"server_urls.rs function body must not embed example route calls:\n{server_body}"
 	);
 
 	let client_contents = fs::read_to_string(&client_router).expect("read client_router.rs");
@@ -393,9 +399,13 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		client_contents.contains("#[url_patterns(InstalledApp::foo, mode = client)]"),
 		"client_router.rs must carry the client-mode #[url_patterns] attribute:\n{client_contents}"
 	);
+	let client_body_start = client_contents
+		.find("pub fn client_url_patterns")
+		.expect("client_router.rs must define `pub fn client_url_patterns`");
+	let client_body = &client_contents[client_body_start..];
 	assert!(
-		!client_contents.contains(".named_route(\"index\","),
-		"client_router.rs must not embed example route calls in the function body:\n{client_contents}"
+		!client_body.contains(".named_route(\"index\","),
+		"client_router.rs function body must not embed example route calls:\n{client_body}"
 	);
 
 	// 5. Per-app aggregator `apps/foo.rs` declares `#[cfg(client)] pub mod client;`
