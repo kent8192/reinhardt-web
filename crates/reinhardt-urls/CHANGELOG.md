@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.29...reinhardt-urls@v0.1.0-rc.30) - 2026-05-16
+
+### Added
+
+- *(commands,urls)* log registered client routes in runserver --with-pages banner
+- *(urls)* harvest middleware-contributed DI registrations in with_middleware
+- *(urls)* expose ClientRouter::merge for multi-app SPA composition
+
+### Changed
+
+- *(urls)* address Copilot review on PR [[#4438](https://github.com/kent8192/reinhardt-web/issues/4438)](https://github.com/kent8192/reinhardt-web/issues/4438)
+
+### Fixed
+
+- address Copilot review feedback
+- *(urls)* apply middleware DI to local InjectionContext when present
+- *(urls)* stage middleware DI on router to survive any builder order
+- *(urls)* propagate with_di_context into already-mounted children
+- *(urls)* drain nested children pending DI on mount
+- *(urls)* drain grouped routers' pending DI in group()
+- *(urls)* address Copilot review feedback on MergeError public API
+
+### Testing
+
+- *(urls)* cover ClientRouter::merge happy path and name-collision
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.28...reinhardt-urls@v0.1.0-rc.29) - 2026-05-13
 
 ### Changed

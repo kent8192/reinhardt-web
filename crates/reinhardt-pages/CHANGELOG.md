@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.29...reinhardt-pages@v0.1.0-rc.30) - 2026-05-16
+
+### Documentation
+
+- *(reinhardt-pages)* update server_fn doc example paths to per-app form
+- *(reinhardt-pages)* update server_fn_macro.md example path
+- *(pages/macros)* note example migration is a follow-up for form! paths
+
+### Fixed
+
+- *(pages-macros)* allow form! watch handlers to capture outer locals
+- *(pages/macros)* apply HiddenField initial to signal at first render
+- *(pages-macros)* collapse nested if-let into let-chain in extract_initial_expr
+- *(pages-macros)* make form! watch handler a real closure ([[#4414](https://github.com/kent8192/reinhardt-web/issues/4414)](https://github.com/kent8192/reinhardt-web/issues/4414))
+- *(pages-macros)* let form! initial and inner watch capture outer scope
+
+### Testing
+
+- *(pages-macros)* trybuild compile_pass for [[#4420](https://github.com/kent8192/reinhardt-web/issues/4420)](https://github.com/kent8192/reinhardt-web/issues/4420) env capture
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.28...reinhardt-pages@v0.1.0-rc.29) - 2026-05-13
 
 ### Fixed

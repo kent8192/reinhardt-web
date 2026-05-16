@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.29...reinhardt-web@v0.1.0-rc.30) - 2026-05-16
+
+### Added
+
+- *(model)* add typestate Model::build() constructor alongside new()
+- *(http,di)* add Middleware::di_registrations hook and type-erased DI APIs
+- *(middleware)* auto-register SessionMiddleware's Arc<SessionStore> via di_registrations
+- *(urls)* harvest middleware-contributed DI registrations in with_middleware
+- *(macros)* emit fk_target_app for same-app FK targets
+- *(core-macros)* emit BaseUserManager impl from #[user(...)]
+
+### Changed
+
+- *(examples-tutorial-basis)* drop manual session DI wiring now that SessionMiddleware auto-registers
+- *(urls)* address Copilot review on PR [[#4438](https://github.com/kent8192/reinhardt-web/issues/4438)](https://github.com/kent8192/reinhardt-web/issues/4438)
+- *(core-macros)* single-lock manager ops, route Value via reinhardt-auth
+
+### Documentation
+
+- *(macros)* document Model::build() typestate constructor in MU-3
+- *(auth)* document Clone requirement and PK uniqueness caveat for auto-manager
+- *(basis)* rewrite _index.md to match current example layout
+- *(basis)* sync part 1 (project setup) with example structure
+- *(basis)* sync part 2 (models) and introduce users app
+- *(examples-tutorial-basis)* refresh README project structure
+- *(basis)* sync part 7 (admin) with split admin layout
+- *(basis)* sync part 4 (forms) snippets with shared/forms.rs
+- *(basis)* rewrite part 3 (views and server_fn) for per-app layout
+- *(basis)* sync part 6 (static files) with dist-wasm pipeline
+- *(basis)* sync part 5 (testing) with integration + msw tests
+- *(basis)* drop stale references to nonexistent tests/availability.rs
+- *(basis)* fix mermaid syntax errors in tutorial diagrams
+
+### Fixed
+
+- *(staticfiles)* disable immutable cache for bundle assets in debug builds
+- address Copilot review feedback
+- *(manouche)* resolve clippy errors blocking release-plz PR
+- *(model)* box SetterKind::ForeignKey::related_type to satisfy clippy
+- *(model-macros)* add doc comments to generated typestate-builder setters
+- *(model-macros)* include ForeignKeyField<T> in typestate builder
+- *(model-macros)* address Copilot review on typestate builder FK
+- *(model-macros)* harden FK keyword handling in typestate builder
+- *(model-macros)* exclude `extern` from reserved-ident set
+- *(pages-macros)* let form! initial and inner watch capture outer scope
+- *(examples-tutorial-basis)* register polls CUD server_fns in routes
+- *(examples-tutorial-basis)* rephrase prose to avoid `// TODO` false positive
+- *(middleware)* register session store under Arc<SessionStore> TypeId
+- *(urls)* apply middleware DI to local InjectionContext when present
+- *(urls)* stage middleware DI on router to survive any builder order
+- *(urls)* propagate with_di_context into already-mounted children
+- *(urls)* drain nested children pending DI on mount
+- *(urls)* drain grouped routers' pending DI in group()
+- *(db)* fall back to by-name FK lookup on qualified miss
+- *(db)* refuse FK resolution when target name is ambiguous
+- *(db,macros)* path-typed FK targets disambiguate ambiguous model names
+- *(macros)* source FK app label from target type's Model::app_label()
+- *(admin,core-macros)* opt admin user out of auto-manager and re-apply rustfmt
+- *(ci)* opt #[user] integration test fixtures out of auto-manager
+
+### Maintenance
+
+- *(examples-tutorial-basis)* regenerate polls/0003 after [[#4430](https://github.com/kent8192/reinhardt-web/issues/4430)](https://github.com/kent8192/reinhardt-web/issues/4430) / [[#4431](https://github.com/kent8192/reinhardt-web/issues/4431)](https://github.com/kent8192/reinhardt-web/issues/4431) fix
+- *(examples-tutorial-basis)* regenerate users/0002 after [[#4447](https://github.com/kent8192/reinhardt-web/issues/4447)](https://github.com/kent8192/reinhardt-web/issues/4447) fix
+- *(examples-tutorial-basis)* adopt #[user] auto-manager opt-out
+
+### Performance
+
+- *(db)* add direct lookup APIs to ModelRegistry
+- *(db)* migrate resolve_foreign_key_column_type to direct lookup
+
+### Styling
+
+- *(examples-tutorial-basis)* apply reinhardt-admin fmt-all to client polls
+
+### Testing
+
+- *(pages-macros)* trybuild compile_pass for [[#4420](https://github.com/kent8192/reinhardt-web/issues/4420)](https://github.com/kent8192/reinhardt-web/issues/4420) env capture
+- *(middleware)* cover SessionData::inject end-to-end via InjectionContext
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.28...reinhardt-web@v0.1.0-rc.29) - 2026-05-13
 
 ### Added
