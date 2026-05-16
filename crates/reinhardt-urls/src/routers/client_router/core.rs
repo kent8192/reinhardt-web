@@ -190,6 +190,7 @@ impl ClientRoute {
 /// The main client-side router.
 ///
 /// `ClientRouter` renders views using the [`Page`] type.
+#[derive(Clone)]
 pub struct ClientRouter {
 	/// Registered routes.
 	routes: Vec<ClientRoute>,
