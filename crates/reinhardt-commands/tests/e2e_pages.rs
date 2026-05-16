@@ -295,7 +295,7 @@ async fn app_pages_layout_matches_tutorial() {
 		"apps/polls/client/pages.rs must declare `pub fn placeholder_page` and call `with_nav`:\n{pages_body}"
 	);
 
-	// urls.rs is the aggregator that declares the `server_urls` and
+	// 5. urls.rs is the aggregator that declares the `server_urls` and
 	//    `client_router` submodules with the appropriate cfg gates. The
 	//    legacy `unified_url_patterns` scaffold is still forbidden.
 	let urls_rs = fs::read_to_string(polls_dir.join("urls.rs")).expect("read apps/polls/urls.rs");
