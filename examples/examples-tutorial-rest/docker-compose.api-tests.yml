@@ -28,6 +28,12 @@ services:
     tmpfs:
       - /tmp
     working_dir: /etc/bruno
+    # Run as host UID/GID so the `./bruno/reports` bind mount stays writable
+    # on Linux CI runners whose checkout is not owned by UID 1000 (the `node`
+    # user from the upstream Bruno image). Defaults to 1000:1000 for local
+    # macOS development where the host UID is typically 501 but Docker Desktop
+    # transparently maps file ownership.
+    user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ./bruno:/etc/bruno:ro
       - ./bruno/reports:/etc/bruno/reports

@@ -3,7 +3,9 @@
 # container can run with a read-only root filesystem.
 FROM node:24-alpine
 
-RUN npm install -g @usebruno/cli@latest \
+# Pinned for reproducibility — bump deliberately when upgrading.
+# Using @latest makes CI failures impossible to bisect against upstream changes.
+RUN npm install -g @usebruno/cli@3.3.0 \
 	&& npm cache clean --force
 
 WORKDIR /etc/bruno
