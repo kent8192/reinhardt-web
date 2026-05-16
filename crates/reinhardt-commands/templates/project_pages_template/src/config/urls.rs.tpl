@@ -19,10 +19,13 @@
 //!
 //! ## Registering client routers
 //!
-//! Client routers for each app are registered via `#[url_patterns(..., mode = client)]`
-//! in `src/apps/<app>/urls/client_router.rs` and discovered automatically by
-//! `ClientLauncher::router_client(...)`. They do not appear in this
-//! (server-side) router.
+//! Client routers for each app are declared via `#[url_patterns(..., mode = client)]`
+//! in `src/apps/<app>/urls/client_router.rs`. They do not appear in this
+//! (server-side) router. `#[url_patterns]` only wraps the per-app function
+//! and emits client URL resolver modules; it does not register the router
+//! itself with the launcher. Pass the desired `client_url_patterns()` (or
+//! a combined router) explicitly to `ClientLauncher::router_client(...)` in
+//! `src/client/lib.rs`.
 
 use reinhardt::prelude::*;
 use reinhardt::routes;
@@ -32,9 +35,13 @@ use reinhardt::routes;
 // `url_resolvers` / `ws_urls` items emitted by `#[url_patterns]` therefore
 // live at `crate::apps::<app>::urls::server_urls::url_resolvers`, one level
 // deeper than the non-standalone `#[routes]` lookup expects. `standalone`
-// disables that auto-aggregation; per-app routers still register themselves
-// via inventory at startup. This matches the pattern used by
-// `examples-tutorial-basis/src/config/urls.rs`.
+// disables that auto-aggregation, so per-app `server_url_patterns()`
+// functions are NOT mounted into this router automatically: only `#[routes]`
+// performs inventory registration; `#[url_patterns]` just wraps each
+// per-app function and emits resolver modules. Any server endpoint added
+// under `src/apps/<app>/urls/server_urls.rs` must be wired in below — for
+// example via `router.mount(...)` or `router.server(|s| s.server_fn(...))`.
+// This matches the pattern used by `examples-tutorial-basis/src/config/urls.rs`.
 #[routes(standalone)]
 pub fn routes() -> UnifiedRouter {
     let router = UnifiedRouter::new();
