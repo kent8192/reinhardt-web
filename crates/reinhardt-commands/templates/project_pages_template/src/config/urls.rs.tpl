@@ -1,6 +1,18 @@
 //! URL configuration for {{ project_name }} project (Pages)
 //!
 //! The `routes` function defines all URL patterns for this project.
+//!
+//! # Registering server functions
+//!
+//! Server functions for each app are now located in `src/apps/<app>/server_fn.rs`
+//! and registered via `#[server_fn(..., route = "/api/...")]` directly on the
+//! function definition. You do not need to manually wire them into this router.
+//!
+//! # Registering client routers
+//!
+//! Client routers for each app are registered via `#[url_patterns(..., mode = client)]`
+//! in `src/apps/<app>/urls/client_router.rs` and discovered automatically by
+//! `ClientLauncher::router_client()`. They do not appear in this (server-side) router.
 
 use reinhardt::prelude::*;
 use reinhardt::routes;
