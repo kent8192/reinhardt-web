@@ -84,6 +84,10 @@ pub struct ClientLauncher {
 	pub(super) after_launch_hooks: Vec<AfterLaunchHook>,
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pub(super) path_subscriptions: Vec<PathSubscription>,
+	/// (Refs #4453) `true` when `register_routes_from_inventory()` has been
+	/// called. Mutually exclusive with `router_init` and `client_router_init`.
+	#[cfg_attr(not(wasm), allow(dead_code))]
+	pub(super) use_inventory: bool,
 }
 
 /// Context passed to [`ClientLauncher::after_launch`] callbacks.
@@ -316,6 +320,7 @@ impl ClientLauncher {
 			before_launch_hooks: Vec::new(),
 			after_launch_hooks: Vec::new(),
 			path_subscriptions: Vec::new(),
+			use_inventory: false,
 		}
 	}
 
@@ -350,6 +355,38 @@ impl ClientLauncher {
 		F: FnOnce() -> reinhardt_urls::routers::ClientRouter + 'static,
 	{
 		self.client_router_init = Some(Box::new(f));
+		self
+	}
+
+	/// Pull the SPA route table from all `#[routes]`-annotated functions
+	/// registered via `inventory` at compile time.
+	///
+	/// This is the canonical Reinhardt SPA bootstrap pattern. Combined
+	/// with the `#[routes]` macro's WASM inventory-submission block, it
+	/// lets the entire WASM entry point collapse to:
+	///
+	/// ```rust,ignore
+	/// #[wasm_bindgen(start)]
+	/// pub fn main() -> Result<(), JsValue> {
+	///     ClientLauncher::new("#root")
+	///         .register_routes_from_inventory()
+	///         .launch()
+	/// }
+	/// ```
+	///
+	/// # Conflict
+	///
+	/// Mutually exclusive with [`Self::router`] (deprecated) and
+	/// [`Self::router_client`]. Calling more than one of the three on
+	/// the same launcher causes [`Self::launch`] to return an error.
+	/// Calling none of them also returns an error.
+	///
+	/// `launch()` returns an error if no `#[routes]` registration is
+	/// found at runtime (i.e. the `inventory` iterator is empty).
+	///
+	/// Refs #4453.
+	pub fn register_routes_from_inventory(mut self) -> Self {
+		self.use_inventory = true;
 		self
 	}
 
