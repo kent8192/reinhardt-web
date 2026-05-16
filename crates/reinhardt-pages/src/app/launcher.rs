@@ -267,6 +267,43 @@ fn next_path_subscription_match(
 	if should_fire { new_match } else { None }
 }
 
+/// The router source `launch()` will use, decided from the three
+/// mutually-exclusive launcher methods.
+///
+/// Refs #4453.
+#[allow(dead_code)] // wired up in Task 3.3
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RouterSourceChoice {
+	/// `router(...)` was the only source set.
+	Legacy,
+	/// `router_client(...)` was the only source set.
+	Client,
+	/// `register_routes_from_inventory()` was the only source set.
+	Inventory,
+	/// No source was set.
+	None,
+	/// More than one source was set.
+	Conflict,
+}
+
+/// Decide which router source `launch()` will use, based on which of the
+/// three launcher methods were called. Returns `Conflict` if more than one
+/// was called; `None` if none were called.
+///
+/// Pure function — testable on the native target without the WASM runtime.
+///
+/// Refs #4453.
+#[allow(dead_code)] // wired up in Task 3.3
+fn select_router_source_counts(legacy: bool, client: bool, inventory: bool) -> RouterSourceChoice {
+	match (legacy as u8) + (client as u8) + (inventory as u8) {
+		0 => RouterSourceChoice::None,
+		1 if legacy => RouterSourceChoice::Legacy,
+		1 if client => RouterSourceChoice::Client,
+		1 if inventory => RouterSourceChoice::Inventory,
+		_ => RouterSourceChoice::Conflict,
+	}
+}
+
 #[allow(deprecated)] // (Refs #4234) Builder consumes the deprecated `Router` via `router(...)`.
 impl ClientLauncher {
 	/// Create a new launcher targeting the given CSS selector (e.g. `"#root"`).
@@ -1094,5 +1131,62 @@ mod tests {
 
 		// Assert
 		assert_eq!(*trace.borrow(), vec![1, 2]);
+	}
+}
+
+#[cfg(test)]
+mod select_router_source_tests {
+	use super::*;
+
+	#[rstest::rstest]
+	fn returns_none_when_no_source_set() {
+		// Arrange
+		let legacy = false;
+		let client = false;
+		let inventory = false;
+		// Act
+		let result = select_router_source_counts(legacy, client, inventory);
+		// Assert
+		assert_eq!(result, RouterSourceChoice::None);
+	}
+
+	#[rstest::rstest]
+	fn returns_legacy_when_only_legacy_set() {
+		// Arrange + Act
+		let result = select_router_source_counts(true, false, false);
+		// Assert
+		assert_eq!(result, RouterSourceChoice::Legacy);
+	}
+
+	#[rstest::rstest]
+	fn returns_client_when_only_client_set() {
+		// Arrange + Act
+		let result = select_router_source_counts(false, true, false);
+		// Assert
+		assert_eq!(result, RouterSourceChoice::Client);
+	}
+
+	#[rstest::rstest]
+	fn returns_inventory_when_only_inventory_set() {
+		// Arrange + Act
+		let result = select_router_source_counts(false, false, true);
+		// Assert
+		assert_eq!(result, RouterSourceChoice::Inventory);
+	}
+
+	#[rstest::rstest]
+	#[case(true, true, false)]
+	#[case(true, false, true)]
+	#[case(false, true, true)]
+	#[case(true, true, true)]
+	fn returns_conflict_when_multiple_sources_set(
+		#[case] legacy: bool,
+		#[case] client: bool,
+		#[case] inventory: bool,
+	) {
+		// Arrange + Act
+		let result = select_router_source_counts(legacy, client, inventory);
+		// Assert
+		assert_eq!(result, RouterSourceChoice::Conflict);
 	}
 }
