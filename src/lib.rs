@@ -916,6 +916,13 @@ pub use reinhardt_middleware::JwtAuthMiddleware;
 #[cfg(all(feature = "sessions", feature = "middleware", native))]
 pub use reinhardt_middleware::{CookieSessionAuthMiddleware, CookieSessionConfig};
 
+// Typed session-value extractors and session-auth ergonomics (see #4446).
+#[cfg(all(feature = "sessions", feature = "middleware", native))]
+pub use reinhardt_middleware::session::{
+	OptionalSessionValue, SessionAuthExt, SessionKey, SessionValue, SessionValueNamed,
+	USER_ID_SESSION_KEY, UserIdKey,
+};
+
 // Redis session backend (requires session-redis + middleware)
 #[cfg(all(feature = "session-redis", feature = "middleware", native))]
 pub use reinhardt_middleware::RedisSessionBackend;
