@@ -20,7 +20,12 @@ use reinhardt::macros::user;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[user(hasher = Argon2Hasher, username_field = "username")]
+// `manager = false` opts out of the auto-generated in-memory `<Name>Manager`:
+// the tutorial provides its own DB-backed [`UserManager`] below (registered
+// via `#[injectable_factory]`), and the auto-manager is anyway gated to
+// `Uuid` / `Option<Uuid>` primary keys (issue #4455) — this model uses `i64`
+// to demonstrate auto-increment integer PKs in the tutorial.
+#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Serialize, Deserialize)]
 pub struct User {
