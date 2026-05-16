@@ -1,9 +1,18 @@
-//! Compile-fail tests for the `#[injectable]` macro
+//! Trybuild tests for the `#[injectable]` macro.
 //!
-//! Uses trybuild to verify that invalid usages produce clear compiler errors.
+//! - `compile_fail/*.rs` — invalid usages must produce clear compiler errors.
+//! - `compile_pass/*.rs` — valid usages must compile without the consumer
+//!   pulling in extra crates (notably `async-trait`, regression test for
+//!   issue #4445).
 
 #[test]
 fn injectable_compile_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/compile_fail/*.rs");
+}
+
+#[test]
+fn injectable_compile_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/compile_pass/*.rs");
 }
