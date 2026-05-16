@@ -260,26 +260,55 @@ The `session` module ships three companion helpers for the
   every handler should read from / write to instead of hardcoding a literal.
 - `SessionValue<T>` / `OptionalSessionValue<T>` — typed extractors that
   pull `USER_ID_SESSION_KEY` from the active `SessionData` and
-  deserialise it as `T`. `SessionValue` fails injection with
-  `DiError::Authentication` when the key is absent; the optional flavour
-  yields `None` instead.
+  deserialise it as `T`. Both work either as auto-extracted parameters
+  (just like `Path(...)` / `Json(...)`) **or** with the `#[inject]`
+  attribute, whichever you prefer. `SessionValue` returns HTTP 401 when
+  the session or key is absent; the optional flavour yields `None`
+  instead.
+- `SessionValueNamed<K, T>` — generalises `SessionValue<T>` to arbitrary
+  session keys via a compile-time marker (`K: SessionKey`). Define one
+  marker per logical key (`UserIdKey` ships out of the box and points at
+  `USER_ID_SESSION_KEY`).
 - `SessionAuthExt::{login, logout}` — extension trait on `SessionData`
   that performs the full session-fixation prevention rotation
   (`regenerate_id → set(USER_ID_SESSION_KEY, …) → delete old store entry
   → save rotated session`) in one call.
 
-### Example: typed extractor
+### Example: typed extractor (no `#[inject]`)
 
 ```rust,ignore
 use reinhardt::middleware::session::SessionValue;
 
 #[server_fn]
 pub async fn current_profile(
-    #[inject] SessionValue(user_id): SessionValue<i64>,
+    SessionValue(user_id): SessionValue<i64>,
 ) -> Result<UserInfo, ServerFnError> {
     // user_id is the authenticated user's primary key; the server fn
     // returns HTTP 401 automatically when the session is anonymous.
     load_profile(user_id).await
+}
+```
+
+Adding `#[inject]` (as in the legacy form `#[inject] SessionValue(user_id):
+SessionValue<i64>`) continues to work for code that prefers explicit
+dependency markers.
+
+### Example: custom session key
+
+```rust,ignore
+use reinhardt::middleware::session::{SessionKey, SessionValueNamed};
+
+pub struct TenantIdKey;
+impl SessionKey for TenantIdKey {
+    const KEY: &'static str = "tenant_id";
+}
+
+#[server_fn]
+pub async fn current_tenant(
+    SessionValueNamed::<TenantIdKey, i64>(tenant_id):
+        SessionValueNamed<TenantIdKey, i64>,
+) -> Result<TenantInfo, ServerFnError> {
+    load_tenant(tenant_id).await
 }
 ```
 
