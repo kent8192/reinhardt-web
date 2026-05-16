@@ -6,39 +6,60 @@
 //! and (after our explicit `register_client_reverser` call below) for
 //! `ResolvedUrls::from_global()` lookups in components and the nav bar.
 //!
-//! ## Why we merge `users` routes inline instead of calling
-//! `users::client_url_patterns()` + `.merge(...)`:
-//! `ClientRouter::merge` is `pub(crate)` in `reinhardt-urls`
-//! (tracked upstream in #4442), so user code cannot combine two SPA
-//! routers built by separate `#[url_patterns(..., mode = client)]`
-//! registrations. Until that issue is resolved, appending the users
-//! routes inline here keeps a single `ClientRouter` (and therefore a
-//! single `ClientUrlReverser`) that covers every page reachable in
-//! the SPA. The names use the fully-qualified `users:<name>` form
-//! because the polls router's `with_namespace("polls")` has already
-//! been applied by the `#[url_patterns(InstalledApp::polls, ...)]`
-//! macro, so further routes added at this layer are stored verbatim.
-//! When #4442 ships, this block collapses to
+//! ## Composing the polls + users client routers
+//!
+//! `ClientRouter::merge` is `pub(crate)` in `reinhardt-urls` (tracked
+//! upstream in #4442), so user code cannot call it directly to combine
+//! two SPA routers built by separate `#[url_patterns(..., mode = client)]`
+//! registrations. We work around that by wrapping each app's
+//! `ClientRouter` in a single-purpose `UnifiedRouter` and stitching
+//! them together with `UnifiedRouter::mount_unified`, which uses the
+//! same internal `merge` call but is `pub`. The merged `ClientRouter`
+//! is then extracted with `UnifiedRouter::into_client`.
+//!
+//! When #4442 ships, this whole helper collapses to
 //! `polls_client_url_patterns().merge(users_client_url_patterns())`
-//! and the inline route patterns / pages can be removed.
+//! and the `UnifiedRouter` indirection can be removed.
+//!
+//! Once the broader ergonomics issue (#4453) lands, this entire file
+//! collapses further to `ClientLauncher::new("#root").launch()` because
+//! `#[url_patterns(..., mode = client)]` will register the routers via
+//! inventory and the launcher will discover + merge + register the
+//! reverser automatically.
 
 use reinhardt::pages::ClientLauncher;
-use reinhardt::register_client_reverser;
+use reinhardt::{ClientRouter, UnifiedRouter, register_client_reverser};
 use wasm_bindgen::prelude::*;
 
 use crate::apps::polls::urls::client_router::client_url_patterns as polls_client_url_patterns;
-use crate::client::pages::{login_page, logout_page, signup_page};
+use crate::apps::users::urls::client_router::client_url_patterns as users_client_url_patterns;
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
 	ClientLauncher::new("#root")
 		.router_client(|| {
-			let router = polls_client_url_patterns()
-				.named_route("users:login", "/users/login/", login_page)
-				.named_route("users:logout", "/users/logout/", logout_page)
-				.named_route("users:signup", "/users/signup/", signup_page);
+			let router = build_spa_router();
 			register_client_reverser(router.to_reverser());
 			router
 		})
 		.launch()
+}
+
+/// Compose every app's `#[url_patterns(InstalledApp::<app>, mode = client)]`
+/// router into the single `ClientRouter` that `ClientLauncher::router_client`
+/// expects.
+///
+/// Each app's `client_url_patterns()` returns a `ClientRouter` with the
+/// app's namespace (`polls:` / `users:`) already applied. Wrapping each
+/// one in a `UnifiedRouter` and stitching with `mount_unified` reuses
+/// the framework's existing client-router merge logic without depending
+/// on the still-`pub(crate)` `ClientRouter::merge` (see #4442).
+fn build_spa_router() -> ClientRouter {
+	let polls = UnifiedRouter::new().client(|_| polls_client_url_patterns());
+	let users = UnifiedRouter::new().client(|_| users_client_url_patterns());
+
+	UnifiedRouter::new()
+		.mount_unified("/", polls)
+		.mount_unified("/", users)
+		.into_client()
 }
