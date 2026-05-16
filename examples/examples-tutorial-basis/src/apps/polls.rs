@@ -15,6 +15,7 @@ pub mod admin;
 pub mod models;
 #[cfg(native)]
 pub mod serializers;
+pub mod server_fn;
 pub mod urls;
 #[cfg(native)]
 pub mod views;
