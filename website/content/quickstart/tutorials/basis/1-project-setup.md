@@ -152,7 +152,7 @@ flowchart LR
     DB --> Model
     Model --> ServerFn
     ServerFn -->|"Result&lt;DTO, ServerFnError&gt;"| Component
-    Component -->|watch { … } re-renders| Browser
+    Component -->|"watch { … } re-renders"| Browser
 ```
 
 **Key characteristics:**

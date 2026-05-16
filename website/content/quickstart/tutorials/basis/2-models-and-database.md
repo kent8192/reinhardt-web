@@ -20,8 +20,8 @@ The model layer is the bridge between the SQLite file on disk and the typed hand
 flowchart LR
     Settings["settings/base.toml<br/>[database]"] -->|loaded by| ConfigSettings["src/config/settings.rs<br/>ProjectSettings"]
     ConfigSettings -->|opens| DB[(SQLite<br/>db.sqlite3)]
-    PollsApp["src/apps/polls/models.rs<br/>Question, Choice"] -->|#[model] schema| Migrations["migrations/<br/>(generated)"]
-    UsersApp["src/apps/users/models.rs<br/>User + UserManager"] -->|#[model] schema| Migrations
+    PollsApp["src/apps/polls/models.rs<br/>Question, Choice"] -->|"#[model] schema"| Migrations["migrations/<br/>(generated)"]
+    UsersApp["src/apps/users/models.rs<br/>User + UserManager"] -->|"#[model] schema"| Migrations
     Migrations -->|cargo make migrate| DB
     AppsConfig["src/config/apps.rs<br/>installed_apps!"] -->|InstalledApp enum| PollsApp
     AppsConfig --> UsersApp

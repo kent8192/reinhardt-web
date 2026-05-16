@@ -489,19 +489,19 @@ When the user picks a choice and presses Vote, the complete round-trip looks lik
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant F as form! (VotingForm)
+    participant F as VotingForm (form!)
     participant SF as submit_vote (#[server_fn])
     participant DB as Database
-    participant W as watch { error_display, success_navigation }
+    participant W as watch (error_display, success_navigation)
 
-    U->>F: select choice + click Vote
-    F->>F: collect fields as String + append _csrf_token
+    U->>F: select choice, click Vote
+    F->>F: collect fields as String, append _csrf_token
     F->>SF: submit_vote(question_id, choice_id, _csrf_token)
     SF->>SF: parse Strings, build VoteRequest
-    SF->>DB: atomic { SELECT choice; UPDATE votes+1 }
+    SF->>DB: atomic SELECT choice, UPDATE votes by 1
     DB-->>SF: updated Choice
-    SF-->>F: Result<ChoiceInfo, ServerFnError>
-    F->>W: form.loading() = false; form.error() = None / Some(...)
+    SF-->>F: Result of ChoiceInfo or ServerFnError
+    F->>W: form.loading() to false, form.error() to None or Some(...)
     W->>U: rerender (success redirect or error alert)
 ```
 
