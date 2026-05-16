@@ -717,46 +717,100 @@ impl DatabaseMigrationExecutor {
 		Ok(plan)
 	}
 
-	/// Get table information for SQLite table recreation
+	/// Read columns + constraints for a SQLite table using the SchemaEditor's
+	/// currently-open transaction (if any), falling back to the live pool when
+	/// the editor is non-atomic.
 	///
-	/// Uses introspection to read current table schema and convert to
-	/// ColumnDefinition and Constraint types needed for SqliteTableRecreation.
+	/// This exists because `SQLiteIntrospector` issues every query through the
+	/// underlying `sqlx::SqlitePool`, which transparently picks a *different*
+	/// physical connection than the one holding the editor's open transaction.
+	/// That second connection cannot see uncommitted DDL — so a recreation
+	/// triggered later in the same migration would rebuild the table from a
+	/// stale column list and silently discard the just-`ALTER`'d column.
+	/// See reinhardt-web#4447.
 	#[cfg(feature = "sqlite")]
-	async fn get_sqlite_table_metadata(
-		&self,
+	async fn read_sqlite_table_via_editor(
+		editor: &mut SchemaEditor,
 		table_name: &str,
 	) -> Result<(Vec<super::ColumnDefinition>, Vec<super::Constraint>)> {
-		use super::introspection::DatabaseIntrospector;
+		// 1. PRAGMA table_info(<table>) → columns
+		let table_info_sql = format!("PRAGMA table_info({})", table_name);
+		let info_rows = editor.fetch_all(&table_info_sql, vec![]).await?;
 
-		// Get SQLite pool from connection
-		let pool = self.connection.into_sqlite().ok_or_else(|| {
-			MigrationError::IntrospectionError(
-				"Failed to get SQLite pool from connection".to_string(),
+		// Collect rows into typed records first so we can detect AUTOINCREMENT.
+		struct ColRow {
+			name: String,
+			type_str: String,
+			notnull: i64,
+			default: Option<String>,
+			pk: i64,
+		}
+		let mut col_rows: Vec<ColRow> = Vec::with_capacity(info_rows.len());
+		for row in &info_rows {
+			let name: String = row
+				.get("name")
+				.map_err(|e| MigrationError::IntrospectionError(format!("table_info name: {e}")))?;
+			let type_str: String = row.get("type").unwrap_or_default();
+			let notnull: i64 = row.get("notnull").unwrap_or(0);
+			let default: Option<String> = row.get("dflt_value").ok();
+			let pk: i64 = row.get("pk").unwrap_or(0);
+			col_rows.push(ColRow {
+				name,
+				type_str,
+				notnull,
+				default,
+				pk,
+			});
+		}
+
+		// 2. CREATE TABLE SQL → detect AUTOINCREMENT and parse named
+		//    constraint metadata (FK names + CHECK constraints).
+		let create_sql_row = editor
+			.fetch_optional(
+				"SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+				vec![table_name.into()],
 			)
-		})?;
+			.await?;
+		let create_sql: Option<String> = create_sql_row.and_then(|r| r.get("sql").ok());
+		let has_autoincrement = create_sql
+			.as_ref()
+			.map(|sql| sql.to_uppercase().contains("AUTOINCREMENT"))
+			.unwrap_or(false);
 
-		// Create introspector and read table
-		let introspector = SQLiteIntrospector::new(pool);
-		let table_info = introspector.read_table(table_name).await?.ok_or_else(|| {
-			MigrationError::IntrospectionError(format!("Table '{}' not found", table_name))
-		})?;
-
-		// Convert ColumnInfo to ColumnDefinition
-		let mut columns: Vec<super::ColumnDefinition> = table_info
-			.columns
-			.values()
-			.map(|col_info| {
-				let mut col_def =
-					super::ColumnDefinition::new(&col_info.name, col_info.column_type.clone());
-				col_def.not_null = !col_info.nullable;
-				col_def.auto_increment = col_info.auto_increment;
-				col_def.primary_key = table_info.primary_key.contains(&col_info.name);
-				col_def.default = col_info.default.clone();
-				col_def
+		// 3. Build ColumnDefinition list, mirroring the introspector's
+		//    semantics (PK columns are implicitly NOT NULL; AUTOINCREMENT is
+		//    only meaningful on PK columns).
+		let mut columns: Vec<super::ColumnDefinition> = col_rows
+			.iter()
+			.map(|c| {
+				let is_pk = c.pk > 0;
+				let is_auto = is_pk && has_autoincrement;
+				let nullable = if is_pk { false } else { c.notnull == 0 };
+				let default = c.default.as_ref().map(|v| {
+					let trimmed = v.trim();
+					if (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+						|| (trimmed.starts_with('"') && trimmed.ends_with('"'))
+					{
+						trimmed[1..trimmed.len() - 1].to_string()
+					} else {
+						trimmed.to_string()
+					}
+				});
+				super::ColumnDefinition {
+					name: c.name.clone(),
+					type_definition: SQLiteIntrospector::parse_sqlite_type(&c.type_str),
+					not_null: !nullable,
+					unique: false,
+					primary_key: is_pk,
+					auto_increment: is_auto,
+					default,
+				}
 			})
 			.collect();
 
-		// Sort columns to maintain consistent order (primary key columns first, then by name)
+		// Preserve the introspector's ordering: PK first, then by name. This
+		// matters because `SqliteTableRecreation` uses column order to emit
+		// the new CREATE TABLE and the INSERT SELECT.
 		columns.sort_by(|a, b| {
 			if a.primary_key && !b.primary_key {
 				std::cmp::Ordering::Less
@@ -767,49 +821,111 @@ impl DatabaseMigrationExecutor {
 			}
 		});
 
-		// Helper function to convert Option<String> to ForeignKeyAction
-		fn parse_fk_action(action: &Option<String>) -> ForeignKeyAction {
-			match action.as_deref() {
-				Some("CASCADE") => ForeignKeyAction::Cascade,
-				Some("SET NULL") => ForeignKeyAction::SetNull,
-				Some("SET DEFAULT") => ForeignKeyAction::SetDefault,
-				Some("NO ACTION") => ForeignKeyAction::NoAction,
-				_ => ForeignKeyAction::Restrict,
-			}
-		}
+		// 4. Foreign keys via PRAGMA foreign_key_list(<table>), grouped by id.
+		let fk_sql = format!("PRAGMA foreign_key_list({})", table_name);
+		let fk_rows = editor.fetch_all(&fk_sql, vec![]).await?;
 
-		// Convert ForeignKeyInfo to Constraint
-		let mut constraints: Vec<super::Constraint> = table_info
-			.foreign_keys
+		struct FkRow {
+			id: i64,
+			seq: i64,
+			table: String,
+			from: String,
+			to: String,
+			on_update: String,
+			on_delete: String,
+		}
+		let parsed_fks: Vec<FkRow> = fk_rows
 			.iter()
-			.map(|fk| super::Constraint::ForeignKey {
-				name: fk.name.clone(),
-				columns: fk.columns.clone(),
-				referenced_table: fk.referenced_table.clone(),
-				referenced_columns: fk.referenced_columns.clone(),
-				on_delete: parse_fk_action(&fk.on_delete),
-				on_update: parse_fk_action(&fk.on_update),
-				deferrable: None,
+			.map(|row| FkRow {
+				id: row.get("id").unwrap_or(0),
+				seq: row.get("seq").unwrap_or(0),
+				table: row.get("table").unwrap_or_default(),
+				from: row.get("from").unwrap_or_default(),
+				to: row.get("to").unwrap_or_default(),
+				on_update: row.get("on_update").unwrap_or_default(),
+				on_delete: row.get("on_delete").unwrap_or_default(),
 			})
 			.collect();
 
-		// Add unique constraints
-		for unique in &table_info.unique_constraints {
-			constraints.push(super::Constraint::Unique {
-				name: unique.name.clone(),
-				columns: unique.columns.clone(),
+		let named_fks = create_sql
+			.as_ref()
+			.map(|sql| SQLiteIntrospector::parse_fk_constraint_names(sql))
+			.unwrap_or_default();
+
+		let mut fk_groups: std::collections::HashMap<i64, Vec<FkRow>> =
+			std::collections::HashMap::new();
+		for r in parsed_fks {
+			fk_groups.entry(r.id).or_default().push(r);
+		}
+
+		fn fk_action(s: &str) -> super::ForeignKeyAction {
+			match s {
+				"CASCADE" => super::ForeignKeyAction::Cascade,
+				"SET NULL" => super::ForeignKeyAction::SetNull,
+				"SET DEFAULT" => super::ForeignKeyAction::SetDefault,
+				"NO ACTION" => super::ForeignKeyAction::NoAction,
+				_ => super::ForeignKeyAction::Restrict,
+			}
+		}
+
+		let mut constraints: Vec<super::Constraint> = Vec::new();
+		for (fk_id, mut group) in fk_groups {
+			group.sort_by_key(|r| r.seq);
+			let referenced_table = group[0].table.clone();
+			let columns_from: Vec<String> = group.iter().map(|r| r.from.clone()).collect();
+			let columns_to: Vec<String> = group.iter().map(|r| r.to.clone()).collect();
+			let signature = (columns_from.clone(), referenced_table.clone());
+			let name = named_fks
+				.get(&signature)
+				.cloned()
+				.unwrap_or_else(|| format!("fk_{}_{}", table_name, fk_id));
+			constraints.push(super::Constraint::ForeignKey {
+				name,
+				columns: columns_from,
+				referenced_table,
+				referenced_columns: columns_to,
+				on_delete: fk_action(&group[0].on_delete),
+				on_update: fk_action(&group[0].on_update),
+				deferrable: None,
 			});
 		}
 
-		// Add CHECK constraints
-		for (idx, check) in table_info.check_constraints.iter().enumerate() {
-			constraints.push(super::Constraint::Check {
-				name: check
-					.name
-					.clone()
-					.unwrap_or_else(|| format!("check_{}", idx)),
-				expression: check.expression.clone(),
+		// 5. Unique constraints via PRAGMA index_list / index_info where
+		//    origin = 'u' (i.e. declared with the UNIQUE keyword or as a
+		//    named CONSTRAINT … UNIQUE).
+		let idx_list_sql = format!("PRAGMA index_list({})", table_name);
+		let idx_rows = editor.fetch_all(&idx_list_sql, vec![]).await?;
+		for row in &idx_rows {
+			let origin: String = row.get("origin").unwrap_or_default();
+			let unique: i64 = row.get("unique").unwrap_or(0);
+			if origin != "u" || unique != 1 {
+				continue;
+			}
+			let idx_name: String = row.get("name").unwrap_or_default();
+			let info_sql = format!("PRAGMA index_info({})", idx_name);
+			let info_rows = editor.fetch_all(&info_sql, vec![]).await?;
+			let cols: Vec<String> = info_rows
+				.iter()
+				.filter_map(|r| r.get::<String>("name").ok())
+				.collect();
+			constraints.push(super::Constraint::Unique {
+				name: idx_name,
+				columns: cols,
 			});
+		}
+
+		// 6. CHECK constraints parsed from CREATE TABLE SQL (SQLite has no
+		//    PRAGMA for these).
+		if let Some(ref sql) = create_sql {
+			for (idx, check) in SQLiteIntrospector::parse_check_constraints(sql)?
+				.into_iter()
+				.enumerate()
+			{
+				constraints.push(super::Constraint::Check {
+					name: check.name.unwrap_or_else(|| format!("check_{}", idx)),
+					expression: check.expression,
+				});
+			}
 		}
 
 		Ok((columns, constraints))
@@ -837,7 +953,14 @@ impl DatabaseMigrationExecutor {
 		// This prevents FK violations during the temporary DROP TABLE phase
 		editor.disable_foreign_keys().await?;
 
-		// Build the recreation plan based on operation type
+		// Build the recreation plan based on operation type.
+		//
+		// Critical: introspection must run via the editor's open transaction so
+		// that DDL applied earlier in the same migration (e.g. a preceding
+		// `AddColumn`) is visible. Reading via the pool would land on a
+		// different connection that cannot see the uncommitted schema and
+		// would silently rebuild the table from a stale column set — the
+		// root cause of reinhardt-web#4447.
 		let recreation = match operation {
 			Operation::DropColumn { table, column } => {
 				tracing::debug!(
@@ -845,7 +968,8 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints) = self.get_sqlite_table_metadata(table).await?;
+				let (columns, constraints) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
 			}
 			Operation::AlterColumn {
@@ -859,7 +983,8 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints) = self.get_sqlite_table_metadata(table).await?;
+				let (columns, constraints) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_alter_column(
 					table,
 					columns,
@@ -876,7 +1001,8 @@ impl DatabaseMigrationExecutor {
 					"Handling SQLite table recreation for AddConstraint: table={}",
 					table
 				);
-				let (columns, constraints) = self.get_sqlite_table_metadata(table).await?;
+				let (columns, constraints) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint(
 					table,
 					columns,
@@ -893,7 +1019,8 @@ impl DatabaseMigrationExecutor {
 					table,
 					constraint_name
 				);
-				let (columns, constraints) = self.get_sqlite_table_metadata(table).await?;
+				let (columns, constraints) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
 					columns,

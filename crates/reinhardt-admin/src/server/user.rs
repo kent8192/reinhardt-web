@@ -17,7 +17,10 @@ use uuid::Uuid;
 /// implementations (`BaseUser`, `FullUser`, `PermissionsMixin`, etc.).
 /// `Model` is implemented manually since admin operates on the same
 /// `auth_user` table as the original `DefaultUser`.
-#[user(hasher = reinhardt_auth::Argon2Hasher, username_field = "username", full = true)]
+// `manager = false`: admin user CRUD is delegated to `reinhardt-admin`'s own
+// query layer; the auto-generated in-memory manager would be unused and would
+// require `Default` on `AdminDefaultUser`, which is not currently derivable.
+#[user(hasher = reinhardt_auth::Argon2Hasher, username_field = "username", full = true, manager = false)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminDefaultUser {
 	/// Unique identifier.

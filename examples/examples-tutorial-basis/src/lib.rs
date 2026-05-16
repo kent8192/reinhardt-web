@@ -32,7 +32,11 @@ pub mod config;
 pub mod client;
 
 // Shared modules (both WASM and server)
-pub mod server_fn;
+//
+// Server functions are now scoped under each app — they live alongside
+// the app's models / views / urls in `apps::<app>::server_fn`, which
+// keeps related code together and removes the top-level `server_fn`
+// module that previously had to mirror the app list.
 pub mod shared;
 
 // Re-exports

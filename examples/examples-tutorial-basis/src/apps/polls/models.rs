@@ -19,7 +19,7 @@ pub struct Question {
 	pub pub_date: DateTime<Utc>,
 
 	// Author of the question. Only the author can edit or delete it
-	// (enforced server-side in `crate::server_fn::polls`).
+	// (enforced server-side in `crate::apps::polls::server_fn`).
 	#[rel(foreign_key, related_name = "questions")]
 	pub author: ForeignKeyField<User>,
 }

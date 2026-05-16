@@ -21,10 +21,10 @@ CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGE
 # ============================================================================
 
 [tasks.runserver]
-description = "Start the development server (auto-reloads on changes)"
+description = "Start the development server (auto-reloads on changes). Forwards extra args, e.g. `cargo make runserver -- -vv` for verbose output."
 dependencies = ["migrate"]
 command = "cargo"
-args = ["run", "--bin", "manage", "--", "runserver", "--with-pages"]
+args = ["run", "--bin", "manage", "--", "runserver", "--with-pages", "${@}"]
 
 # ============================================================================
 # Database Migrations
@@ -34,11 +34,6 @@ args = ["run", "--bin", "manage", "--", "runserver", "--with-pages"]
 description = "Create new migrations based on model changes"
 command = "cargo"
 args = ["run", "--bin", "manage", "makemigrations"]
-
-[tasks.makemigrations-app]
-description = "Create new migrations for a specific app (usage: cargo make makemigrations-app -- <app_label>)"
-command = "cargo"
-args = ["run", "--bin", "manage", "makemigrations", "${@}"]
 
 [tasks.migrate]
 description = "Apply database migrations"
@@ -157,16 +152,6 @@ description = "Run WASM tests in headless Chrome"
 command = "wasm-pack"
 args = ["test", "--headless", "--chrome", "--", "--no-default-features"]
 
-[tasks.wasm-test-firefox]
-description = "Run WASM tests in headless Firefox"
-command = "wasm-pack"
-args = ["test", "--headless", "--firefox", "--", "--no-default-features"]
-
-[tasks.wasm-test-debug]
-description = "Run WASM tests with browser (for debugging)"
-command = "wasm-pack"
-args = ["test", "--chrome", "--", "--no-default-features"]
-
 [tasks.wasm-compile-dev]
 description = "Compile WASM binary (debug mode)"
 command = "cargo"
@@ -187,11 +172,7 @@ args = [
 [tasks.wasm-build-dev]
 description = "Build WASM in debug mode and collect static files"
 dependencies = ["wasm-bindgen-dev"]
-script = '''
-echo "Running collectstatic..."
-cargo run --bin manage collectstatic --no-input
-echo "✓ WASM build and collectstatic completed"
-'''
+script = { file = "scripts/wasm-build-dev.sh" }
 
 [tasks.wasm-compile-release]
 description = "Compile WASM binary (release mode)"
@@ -211,66 +192,22 @@ args = [
 
 [tasks.wasm-finalize-release]
 description = "Optimize WASM with wasm-opt and collect static files"
-script = '''
-# Optimize with wasm-opt if available
-if command -v wasm-opt &> /dev/null; then
-	echo "Running wasm-opt..."
-	WASM_FILE="dist-wasm/examples_tutorial_basis_bg.wasm"
-	wasm-opt -O3 -o "$WASM_FILE.opt" "$WASM_FILE"
-	mv "$WASM_FILE.opt" "$WASM_FILE"
-	echo "✓ WASM optimized"
-else
-	echo "⚠️  wasm-opt not found, skipping optimization"
-fi
-'''
 dependencies = ["wasm-bindgen-release"]
+script = { file = "scripts/wasm-finalize-release.sh" }
 
 [tasks.wasm-build-release]
 description = "Build WASM in release mode with optimization and collect static files"
 dependencies = ["wasm-finalize-release"]
-script = '''
-echo "Running collectstatic..."
-cargo run --bin manage collectstatic --no-input
-echo "✓ WASM release build and collectstatic completed"
-'''
+script = { file = "scripts/wasm-build-release.sh" }
 
-[tasks.wasm-clean]
-description = "Clean WASM build artifacts"
-script = '''
-rm -rf dist dist-wasm
-echo "✓ Cleaned WASM artifacts"
-'''
+# `wasm-clean` was removed — `clean-cache` (below) already removes the
+# same `dist/` + `dist-wasm/` directories and additionally drops the Rust
+# incremental cache that drives the next `cargo build`, so the WASM-only
+# variant became redundant.
 
 [tasks.clean-cache]
 description = "Clean WASM artifacts and Rust incremental build cache"
-script = '''
-echo "🧹 Cleaning build cache..."
-
-# WASM artifacts
-if [ -d "dist-wasm" ]; then
-	rm -rf dist-wasm
-	echo "  ✓ Removed dist-wasm/"
-fi
-
-if [ -d "dist" ]; then
-	rm -rf dist
-	echo "  ✓ Removed dist/"
-fi
-
-# Rust incremental build cache
-if [ -d "target/debug/incremental" ]; then
-	rm -rf target/debug/incremental
-	echo "  ✓ Removed target/debug/incremental/"
-fi
-
-# WASM target build cache
-if [ -d "target/wasm32-unknown-unknown" ]; then
-	rm -rf target/wasm32-unknown-unknown
-	echo "  ✓ Removed target/wasm32-unknown-unknown/"
-fi
-
-echo "✨ Build cache cleaned"
-'''
+script = { file = "scripts/clean-cache.sh" }
 
 # ============================================================================
 # Development Workflow
@@ -282,32 +219,15 @@ dependencies = ["clean-cache", "wasm-build-dev", "run-dev-server"]
 
 [tasks.run-dev-server]
 description = "Start development server with frontend (MUST run from project directory)"
-script = '''
-#!/bin/bash
-CURRENT_DIR=$(basename "$PWD")
-if [ "$CURRENT_DIR" != "examples-tutorial-basis" ]; then
-	echo "Error: This command must be run from examples/examples-tutorial-basis directory"
-	echo "Current directory: $PWD"
-	echo "Please run: cd examples/examples-tutorial-basis && cargo make dev"
-	exit 1
-fi
-
-echo "🚀 Starting development server with WASM frontend..."
-# wasm-build-dev already produced fresh artifacts; skip runserver's own rebuild.
-cargo run --bin manage -- runserver --with-pages --noreload --no-override-wasm
-'''
+script = { file = "scripts/run-dev-server.sh" }
 
 [tasks.dev-release]
 description = "Build optimized WASM and start server"
 dependencies = ["clean-cache", "wasm-build-release", "collectstatic", "run-dev-release-server"]
 
 [tasks.run-dev-release-server]
-script = '''
-#!/bin/bash
-echo "🚀 Starting server with optimized WASM frontend..."
-# wasm-build-release already produced optimized artifacts; skip runserver's own rebuild.
-cargo run --release --bin manage -- runserver --with-pages --noreload --no-override-wasm
-'''
+description = "Start release-mode dev server against the optimised WASM bundle produced by `wasm-build-release`"
+script = { file = "scripts/run-dev-release-server.sh" }
 
 # ============================================================================
 # CI/CD Workflow
@@ -316,22 +236,3 @@ cargo run --release --bin manage -- runserver --with-pages --noreload --no-overr
 [tasks.ci]
 description = "Run CI pipeline (format, lint, build, test)"
 dependencies = ["fmt-check", "clippy-check", "build", "test"]
-
-# ============================================================================
-# Verbosity Control
-# ============================================================================
-
-[tasks.runserver-v]
-description = "Start the development server with verbose output"
-command = "cargo"
-args = ["run", "--bin", "manage", "runserver", "-v"]
-
-[tasks.runserver-vv]
-description = "Start the development server with very verbose output"
-command = "cargo"
-args = ["run", "--bin", "manage", "runserver", "-vv"]
-
-[tasks.runserver-vvv]
-description = "Start the development server with maximum verbosity"
-command = "cargo"
-args = ["run", "--bin", "manage", "runserver", "-vvv"]

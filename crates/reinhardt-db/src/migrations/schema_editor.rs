@@ -37,7 +37,7 @@
 use super::Result;
 use crate::backends::{
 	connection::DatabaseConnection,
-	types::{DatabaseType, TransactionExecutor},
+	types::{DatabaseType, QueryValue, Row, TransactionExecutor},
 };
 
 /// Schema editor for executing DDL statements with optional transaction support
@@ -132,6 +132,36 @@ impl SchemaEditor {
 		}
 
 		Ok(())
+	}
+
+	/// Fetch all rows for a read query, routed through the same connection as
+	/// in-flight DDL so that in-transaction schema changes are visible.
+	///
+	/// When the editor is in atomic mode, the query is dispatched on the open
+	/// transaction. Without this, a read issued through the pool would
+	/// transparently land on a *different* physical connection and would not
+	/// observe uncommitted DDL — the failure mode behind reinhardt-web#4447.
+	pub async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
+		if let Some(ref mut tx) = self.executor {
+			Ok(tx.fetch_all(sql, params).await?)
+		} else {
+			Ok(self.connection.fetch_all(sql, params).await?)
+		}
+	}
+
+	/// Fetch a single optional row through the in-flight transaction (if any).
+	///
+	/// Mirrors [`Self::fetch_all`] for callers that expect zero or one row.
+	pub async fn fetch_optional(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> Result<Option<Row>> {
+		if let Some(ref mut tx) = self.executor {
+			Ok(tx.fetch_optional(sql, params).await?)
+		} else {
+			Ok(self.connection.fetch_optional(sql, params).await?)
+		}
 	}
 
 	/// Defer SQL execution until finish()
