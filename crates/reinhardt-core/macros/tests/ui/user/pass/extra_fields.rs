@@ -4,7 +4,7 @@ use reinhardt_macros::user;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[user(hasher = Argon2Hasher, username_field = "username", full = true)]
+#[user(hasher = Argon2Hasher, username_field = "username", full = true, manager = false)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendedUser {
 	pub id: Uuid,
