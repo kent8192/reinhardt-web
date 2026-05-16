@@ -1023,7 +1023,7 @@ impl SQLiteIntrospector {
 		Self { pool }
 	}
 
-	fn parse_sqlite_type(type_str: &str) -> super::FieldType {
+	pub(crate) fn parse_sqlite_type(type_str: &str) -> super::FieldType {
 		use super::FieldType;
 		let upper = type_str.to_uppercase();
 		let upper = upper.trim();
@@ -1313,7 +1313,7 @@ impl SQLiteIntrospector {
 	}
 
 	/// Parses CHECK constraints from a CREATE TABLE SQL statement.
-	fn parse_check_constraints(create_sql: &str) -> Result<Vec<CheckConstraintInfo>> {
+	pub(crate) fn parse_check_constraints(create_sql: &str) -> Result<Vec<CheckConstraintInfo>> {
 		let mut constraints = Vec::new();
 
 		// Named CHECK constraint pattern: CONSTRAINT name CHECK(...)
@@ -1412,7 +1412,9 @@ impl SQLiteIntrospector {
 	/// - Value: constraint name
 	///
 	/// This is used to match PRAGMA foreign_key_list results with actual constraint names.
-	fn parse_fk_constraint_names(create_sql: &str) -> HashMap<(Vec<String>, String), String> {
+	pub(crate) fn parse_fk_constraint_names(
+		create_sql: &str,
+	) -> HashMap<(Vec<String>, String), String> {
 		let mut result = HashMap::new();
 
 		// Pattern: CONSTRAINT name FOREIGN KEY (cols) REFERENCES table(cols)

@@ -19,7 +19,12 @@ mod tests {
 	// A full user struct with all convention fields including permissions.
 	// Tests that #[user] correctly generates all trait impls and that
 	// Vec<String> fields work with PermissionsMixin.
-	#[user(hasher = Argon2Hasher, username_field = "username", full = true)]
+	//
+	// `manager = false`: this test exercises the trait impls emitted by `#[user]`,
+	// not the auto-generated `BaseUserManager`. Skipping the manager avoids the
+	// `Default` bound that the generator would otherwise force on `FullTestUser`,
+	// which is not derivable here because `DateTime<Utc>` lacks a `Default` impl.
+	#[user(hasher = Argon2Hasher, username_field = "username", full = true, manager = false)]
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	pub struct FullTestUser {
 		pub id: Uuid,

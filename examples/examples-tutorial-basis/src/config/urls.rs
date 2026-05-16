@@ -10,12 +10,12 @@
 //! 1. `SessionMiddleware` — cookie-based session management used by the
 //!    `users` app's login/logout server functions
 
+#[cfg(native)]
 use reinhardt::UnifiedRouter;
 #[cfg(native)]
 use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
 #[cfg(native)]
 use reinhardt::pages::server_fn::ServerFnRouterExt;
-#[cfg(native)]
 use reinhardt::routes;
 
 #[cfg(native)]
@@ -23,13 +23,13 @@ use crate::config::admin::configure_admin;
 
 // Import server_fn marker modules (snake_case + ::marker)
 #[cfg(native)]
-use crate::server_fn::polls::{
+use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, get_vote_form_metadata, submit_vote, update_choice,
 	update_question, vote,
 };
 #[cfg(native)]
-use crate::server_fn::users::{current_user, login, logout};
+use crate::apps::users::server_fn::{current_user, login, logout, register};
 
 #[cfg(native)]
 use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
@@ -48,7 +48,16 @@ fn create_session_middleware() -> SessionMiddleware {
 	SessionMiddleware::new(config)
 }
 
-#[cfg_attr(native, routes(standalone))]
+// `#[routes(standalone)]` is applied unconditionally so that the
+// generated `__url_resolver_support::ResolvedUrls` (and its re-export)
+// is reachable from the WASM SPA. The macro internally gates the
+// function body and the `inventory::submit!` registration on
+// `#[cfg(not(wasm))]` (fixes #4175), so the function body below — the
+// native server registration path — is compiled out on WASM by the
+// macro and only runs on native. The `#[cfg(wasm)]` `let router`
+// branch is preserved purely so the file reads naturally if the macro
+// gating is ever lifted; it is unreachable on every target today.
+#[routes(standalone)]
 pub fn routes() -> UnifiedRouter {
 	// Server: register server functions. App routers are auto-mounted via
 	// `#[url_patterns(InstalledApp::<app>, mode = server)]`.
@@ -68,6 +77,7 @@ pub fn routes() -> UnifiedRouter {
 			.server_fn(delete_choice::marker)
 			.server_fn(login::marker)
 			.server_fn(logout::marker)
+			.server_fn(register::marker)
 			.server_fn(current_user::marker)
 	});
 

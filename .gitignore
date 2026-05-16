@@ -165,3 +165,5 @@ infra/github-runners/lambda-src/*/coverage/
 
 # Design spec documents (internal planning, not for release)
 docs/specs/
+
+**/reviews/

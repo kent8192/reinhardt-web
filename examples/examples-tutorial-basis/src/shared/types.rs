@@ -4,6 +4,8 @@
 //! All types must be serializable with serde.
 
 use chrono::{DateTime, Utc};
+#[cfg(native)]
+use reinhardt::Validate;
 use serde::{Deserialize, Serialize};
 
 /// User information (DTO)
@@ -20,10 +22,89 @@ pub struct UserInfo {
 /// Login request (DTO)
 ///
 /// Sent from the WASM client to the server when submitting the login form.
+///
+/// `Validate` is gated on `cfg(native)` so the WASM client does not pull in
+/// the validator-crate machinery — the server is the only side that needs
+/// `request.validate()` to enforce these rules before hitting the database.
+#[cfg_attr(native, derive(Validate))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
+	#[cfg_attr(
+		native,
+		validate(length(
+			min = 1,
+			max = 150,
+			message = "Username must be between 1 and 150 characters"
+		))
+	)]
 	pub username: String,
+
+	#[cfg_attr(
+		native,
+		validate(length(min = 1, message = "Password must not be empty"))
+	)]
 	pub password: String,
+}
+
+/// Register request (DTO)
+///
+/// Sent from the WASM client to the server when submitting the sign-up form.
+/// `password_confirmation` is matched against `password` server-side; both
+/// fields travel in the clear over HTTPS just like the login form and are
+/// never persisted — only the Argon2 hash of `password` is stored.
+///
+/// `Validate` is gated on `cfg(native)` for the same reason as
+/// [`LoginRequest`]. Field-level rules (length / non-empty) run through
+/// `request.validate()`; the password-confirmation equality check is
+/// expressed as a dedicated [`RegisterRequest::validate_passwords_match`]
+/// helper because the validator crate's `must_match` is brittle across
+/// versions (mirroring the pattern in `examples-twitter`).
+#[cfg_attr(native, derive(Validate))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterRequest {
+	#[cfg_attr(
+		native,
+		validate(length(
+			min = 1,
+			max = 150,
+			message = "Username must be between 1 and 150 characters"
+		))
+	)]
+	pub username: String,
+
+	#[cfg_attr(
+		native,
+		validate(length(min = 8, message = "Password must be at least 8 characters"))
+	)]
+	pub password: String,
+
+	#[cfg_attr(
+		native,
+		validate(length(
+			min = 8,
+			message = "Password confirmation must be at least 8 characters"
+		))
+	)]
+	pub password_confirmation: String,
+}
+
+#[cfg(native)]
+impl RegisterRequest {
+	/// Confirm that `password` and `password_confirmation` match.
+	///
+	/// Kept out of the derived `Validate` because the validator crate's
+	/// `must_match` argument is positional (string field name), brittle
+	/// across versions, and produces an awkward error message at the
+	/// struct level rather than against the confirmation field. The
+	/// server function calls this immediately after `request.validate()`
+	/// so the two checks surface as the same kind of `ServerFnError`.
+	pub fn validate_passwords_match(&self) -> Result<(), &'static str> {
+		if self.password == self.password_confirmation {
+			Ok(())
+		} else {
+			Err("Passwords do not match")
+		}
+	}
 }
 
 /// Question information (DTO)
@@ -80,10 +161,13 @@ impl From<crate::apps::polls::models::Question> for QuestionInfo {
 #[cfg(native)]
 impl From<crate::apps::users::models::User> for UserInfo {
 	fn from(user: crate::apps::users::models::User) -> Self {
+		// `#[user]` injects `skip_getter` on the convention fields
+		// (username, is_active, …), so we read them as struct fields rather
+		// than through accessor methods.
 		UserInfo {
 			id: user.id(),
-			username: user.username().to_string(),
-			is_active: user.is_active(),
+			username: user.username.clone(),
+			is_active: user.is_active,
 		}
 	}
 }

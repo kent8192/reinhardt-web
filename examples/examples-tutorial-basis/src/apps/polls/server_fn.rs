@@ -37,7 +37,7 @@ async fn require_user(session: &SessionData) -> std::result::Result<User, Server
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
 
-	if !user.is_active() {
+	if !user.is_active {
 		return Err(ServerFnError::server(403, "User account is inactive"));
 	}
 

@@ -1,7 +1,7 @@
 //! Authentication UI components for the tutorial-basis example.
 //!
-//! Provides minimal login and logout pages backed by the `users` server
-//! functions. The login form uses the `form!` macro to bind fields and
+//! Provides minimal login / logout / sign-up pages backed by the `users`
+//! server functions. Every form uses the `form!` macro to bind fields and
 //! attach the CSRF token automatically.
 
 use reinhardt::pages::component::Page;
@@ -10,7 +10,8 @@ use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
 
 #[cfg(wasm)]
-use crate::server_fn::users::{login, logout};
+use crate::apps::users::server_fn::{login, logout, register};
+use crate::client::links;
 
 /// Login page: username + password form posting to the `login` server function.
 ///
@@ -41,8 +42,10 @@ pub fn login_form() -> Page {
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
 	let form_view = login_form.into_page();
+	let polls_index_href = links::polls_index();
+	let signup_href = links::signup();
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page| {
+	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, signup_href: String| {
 		div {
 			class: "container mt-5",
 			div {
@@ -90,9 +93,14 @@ pub fn login_form() -> Page {
 						}
 					}
 					div {
-						class: "text-center mt-3",
+						class: "text-center mt-3 flex flex-col gap-1",
 						a {
-							href: "/",
+							href: signup_href,
+							class: "text-brand",
+							"Create an account"
+						}
+						a {
+							href: polls_index_href,
 							class: "text-muted",
 							"Back to polls"
 						}
@@ -100,7 +108,13 @@ pub fn login_form() -> Page {
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view)
+	})(
+		loading_signal,
+		error_signal,
+		form_view,
+		polls_index_href,
+		signup_href,
+	)
 }
 
 /// Logout page: presents a single button that invokes the `logout` server fn
@@ -116,8 +130,9 @@ pub fn logout_form() -> Page {
 
 	let error_signal = logout_form.error().clone();
 	let form_view = logout_form.into_page();
+	let polls_index_href = links::polls_index();
 
-	page!(|error_signal: Signal<Option<String>>, form_view: Page| {
+	page!(|error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
 			class: "container mt-5",
 			div {
@@ -153,8 +168,128 @@ pub fn logout_form() -> Page {
 							}
 						}
 					}
+					div {
+						class: "text-center mt-3",
+						a {
+							href: polls_index_href,
+							class: "text-muted",
+							"Back to polls"
+						}
+					}
 				}
 			}
 		}
-	})(error_signal, form_view)
+	})(error_signal, form_view, polls_index_href)
+}
+
+/// Sign-up page: username + password (confirmed) form posting to the
+/// `register` server function.
+///
+/// On success, the server rotates the session and persists `user_id`, so the
+/// new account is logged in immediately; `redirect_on_success: "/"` then
+/// hands the user to the polls index. Field bindings, loading state, and
+/// CSRF token plumbing are handled by the `form!` macro.
+pub fn signup_form() -> Page {
+	let signup_form = form! {
+		name: SignupForm,
+		server_fn: register,
+		state: { loading, error },
+		redirect_on_success: "/",
+
+		fields: {
+			username: CharField {
+				label: "Username",
+				placeholder: "choose-a-username",
+				max_length: 150,
+				class: "form-control",
+			},
+			password: PasswordField {
+				label: "Password",
+				placeholder: "At least 8 characters",
+				class: "form-control",
+			},
+			password_confirmation: PasswordField {
+				label: "Confirm password",
+				placeholder: "Re-enter the password",
+				class: "form-control",
+			},
+		},
+	};
+
+	let loading_signal = signup_form.loading().clone();
+	let error_signal = signup_form.error().clone();
+	let form_view = signup_form.into_page();
+	let polls_index_href = links::polls_index();
+	let login_href = links::login();
+
+	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, login_href: String| {
+		div {
+			class: "container mt-5",
+			div {
+				class: "row justify-content-center",
+				div {
+					class: "col-md-6",
+					div {
+						class: "card",
+						div {
+							class: "card-body",
+							h1 {
+								class: "card-title mb-4",
+								"Create account"
+							}
+							watch {
+								if error_signal.get().is_some() {
+									div {
+										class: "alert alert-danger",
+										{ error_signal.get().unwrap_or_default() }
+									}
+								}
+							}
+							{ form_view }
+							div {
+								class: "mt-3",
+								watch {
+									if loading_signal.get() {
+										button {
+											type: "submit",
+											class: "btn btn-primary w-100",
+											disabled: loading_signal.get(),
+											form: "signup-form",
+											"Creating account..."
+										}
+									} else {
+										button {
+											type: "submit",
+											class: "btn btn-primary w-100",
+											form: "signup-form",
+											"Create account"
+										}
+									}
+								}
+							}
+						}
+					}
+					div {
+						class: "text-center mt-3 flex flex-col gap-1",
+						a {
+							href: login_href,
+							class: "text-brand",
+							"Already have an account? Sign in"
+						}
+						a {
+							href: polls_index_href,
+							class: "text-muted",
+							"Back to polls"
+						}
+					}
+				}
+			}
+		}
+	})(
+		loading_signal,
+		error_signal,
+		form_view,
+		polls_index_href,
+		login_href,
+	)
 }
