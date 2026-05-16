@@ -92,10 +92,17 @@ impl std::fmt::Display for RouterError {
 impl std::error::Error for RouterError {}
 
 /// Error returned by [`ClientRouter::try_merge`] when two routers cannot be
-/// combined without changing observable behavior.
+/// combined without silently shadowing a named route.
+///
+/// Only named-route collisions are validated; `try_merge` does not detect
+/// other kinds of observable change a merge could introduce (e.g.
+/// overlapping path patterns that become unreachable due to insertion
+/// order). Marked `#[non_exhaustive]` so additional variants can be added
+/// as further validation lands without a breaking change.
 ///
 /// [`ClientRouter::try_merge`]: super::core::ClientRouter::try_merge
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MergeError {
 	/// A named route with this name is registered in both routers.
 	///
