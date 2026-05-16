@@ -27,7 +27,15 @@
 use reinhardt::prelude::*;
 use reinhardt::routes;
 
-#[routes]
+// `standalone` mode is required because per-app `urls.rs` aggregators only
+// declare `pub mod server_urls;` and `pub mod client_router;` — the
+// `url_resolvers` / `ws_urls` items emitted by `#[url_patterns]` therefore
+// live at `crate::apps::<app>::urls::server_urls::url_resolvers`, one level
+// deeper than the non-standalone `#[routes]` lookup expects. `standalone`
+// disables that auto-aggregation; per-app routers still register themselves
+// via inventory at startup. This matches the pattern used by
+// `examples-tutorial-basis/src/config/urls.rs`.
+#[routes(standalone)]
 pub fn routes() -> UnifiedRouter {
     let router = UnifiedRouter::new();
 
