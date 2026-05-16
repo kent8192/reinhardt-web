@@ -334,46 +334,53 @@ users/
 
 **Pages app** (`--with-pages`, WASM + SSR):
 
+Each app owns its server-side and client-side code under `src/apps/<app>/`.
+Per Rust 2024 edition module conventions, the entry point for an app is a
+sibling `<app>.rs` file next to the `<app>/` directory — there is no inner
+`lib.rs`. The same pattern applies to nested aggregators (`client.rs` is
+the sibling of `client/`, `urls.rs` is the sibling of `urls/`).
+
 ```
 src/
+├── apps.rs                       # aggregator: pub mod polls; #[cfg(server)] pub use polls::PollsConfig;
 ├── apps/
-│   ├── polls/
-│   │   ├── lib.rs
-│   │   ├── models.rs
-│   │   ├── views.rs
-│   │   ├── server_fn.rs
-│   │   ├── client/
-│   │   │   ├── lib.rs
-│   │   │   ├── pages.rs
-│   │   │   └── components.rs
-│   │   └── urls/
-│   │       ├── server_urls.rs
-│   │       └── client_router.rs
-│   └── users/
-│       ├── lib.rs
-│       ├── models.rs
-│       ├── views.rs
-│       ├── server_fn.rs
+│   ├── polls.rs                  # per-app entry (sibling of polls/)
+│   └── polls/
+│       ├── admin.rs              # #[cfg(server)] admin registration
+│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components; pub mod pages;
 │       ├── client/
-│       │   ├── lib.rs
-│       │   ├── pages.rs
-│       │   └── components.rs
-│       └── urls/
-│           ├── server_urls.rs
-│           └── client_router.rs
+│       │   ├── components.rs     # per-app UI (placeholder() returning Page)
+│       │   └── pages.rs          # per-app pages (placeholder_page wraps with_nav)
+│       ├── models.rs             # #[cfg(server)] models
+│       ├── models/               # (.gitkeep — user adds submodules here)
+│       ├── serializers.rs        # #[cfg(server)] serializers
+│       ├── serializers/          # (.gitkeep)
+│       ├── server_fn.rs          # bi-target #[server_fn] handlers (placeholder)
+│       ├── tests/                # (.gitkeep)
+│       ├── urls.rs               # urls aggregator (cfg-gated submodules)
+│       ├── urls/
+│       │   ├── server_urls.rs    # #[url_patterns(InstalledApp::polls, mode = server)]
+│       │   └── client_router.rs  # #[url_patterns(InstalledApp::polls, mode = client)]
+│       └── views.rs              # #[cfg(server)] views
+├── bin/
+│   └── manage.rs                 # native-only management CLI entry
+├── client.rs                     # #[cfg(client)] aggregator: pub mod lib; pub mod components;
 ├── client/
-│   ├── lib.rs
-│   └── components/
-│       └── nav.rs
+│   ├── components.rs             # cross-app shell: pub mod nav;
+│   ├── components/
+│   │   └── nav.rs                # with_nav(body: Page) -> Page helper
+│   └── lib.rs                    # #[wasm_bindgen(start)] -> ClientLauncher::router_client(...)
+├── config.rs                     # cfg-gated config aggregator
 ├── config/
-│   ├── apps.rs
-│   ├── settings.rs
-│   ├── urls.rs
-│   └── wasm.rs
-├── shared/
-│   ├── errors.rs
-│   └── types.rs
-└── lib.rs
+│   ├── apps.rs                   # installed_apps! { polls: "polls" }
+│   ├── settings.rs               # #[cfg(server)] settings
+│   ├── urls.rs                   # #[routes(standalone)] entry
+│   └── wasm.rs                   # #[cfg(server)] wasm tooling config
+├── lib.rs                        # crate root (`pub mod apps;` is un-gated)
+├── shared.rs                     # bi-target shared module
+└── shared/
+    ├── forms.rs                  # shared form definitions
+    └── types.rs                  # DTOs exchanged between WASM and server
 ```
 
 ### 5. Register Routes
