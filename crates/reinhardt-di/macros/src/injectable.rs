@@ -1,6 +1,6 @@
 //! Implementation of the `#[injectable]` macro
 
-use crate::crate_paths::get_reinhardt_di_crate;
+use crate::crate_paths::{get_reinhardt_core_crate, get_reinhardt_di_crate};
 use crate::utils::MacroArgs;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -332,14 +332,18 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 		}
 	}
 
-	// Get dynamic crate path
+	// Get dynamic crate paths. `core_crate` resolves to wherever
+	// `async_trait` is re-exported (reinhardt_core::async_trait) so that
+	// downstream crates do not need to depend on `async-trait` directly.
+	// See issue #4445.
 	let di_crate = get_reinhardt_di_crate();
+	let core_crate = get_reinhardt_core_crate();
 
 	// Generate the Injectable implementation
 	let injectable_impl = if has_inject_fields {
 		// With field injection
 		quote! {
-			#[async_trait::async_trait]
+			#[#core_crate::async_trait]
 			impl #impl_generics #di_crate::Injectable for #struct_name #ty_generics #where_clause {
 				async fn inject(__di_ctx: &#di_crate::InjectionContext) -> #di_crate::DiResult<Self> {
 					#(#inject_stmts)*
@@ -353,7 +357,7 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 	} else {
 		// Without field injection - use Default::default()
 		quote! {
-			#[async_trait::async_trait]
+			#[#core_crate::async_trait]
 			impl #impl_generics #di_crate::Injectable for #struct_name #ty_generics #where_clause {
 				async fn inject(_ctx: &#di_crate::InjectionContext) -> #di_crate::DiResult<Self> {
 					// Use Default::default() for types without field injection
