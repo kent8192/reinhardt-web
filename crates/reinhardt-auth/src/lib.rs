@@ -203,6 +203,18 @@ pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPe
 #[cfg(feature = "database")]
 pub use permission::AuthPermission;
 pub use permission_operators::{AndPermission, NotPermission, OrPermission};
+// Re-export the error type used by `BaseUserManager` so downstream code (and the
+// `#[user]` macro's auto-generated manager impl) can reference it without
+// taking a direct dependency on `reinhardt-core`.
+pub use reinhardt_core::exception::Error as BaseUserManagerError;
+
+/// Re-export of [`serde_json::Value`] for use in `BaseUserManager` method
+/// signatures emitted by the `#[user(...)]` auto-manager generator.
+///
+/// Consumers of the auto-generated manager get this re-export "for free" via
+/// `reinhardt_auth::JsonValue`, so they do not need to add a direct
+/// `serde_json` dependency just to satisfy the trait signature.
+pub use serde_json::Value as JsonValue;
 #[cfg(feature = "social")]
 pub use social::{
 	AppleProvider, GenericOidcConfig, GenericOidcProvider, GitHubProvider, GoogleProvider, IdToken,
