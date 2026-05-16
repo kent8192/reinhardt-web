@@ -2833,6 +2833,46 @@ fn generate_registration_code(
 			"Unknown".to_string()
 		};
 
+		// `fk_target_app` is sourced from the FK target type itself via
+		// `<TargetType as Model>::app_label()` — the model's
+		// authoritative app label, which respects `#[app_label = "..."]`
+		// overrides and any future remapping. The macro deliberately
+		// does NOT try to guess the app label from the syntactic path
+		// the user wrote: a path like `reinhardt_auth::User` is just a
+		// crate / module name and can diverge from the registered app
+		// label (e.g. crate `reinhardt_auth` registering its app as
+		// `"auth"` via `#[app_label("auth")]`), and a bare ident
+		// `User` can come from a `use`-import out of another crate.
+		// Reading `app_label()` off the type sidesteps both pitfalls.
+		//
+		// The qualified lookup at FK resolution time uses this value,
+		// so the qualifier always matches the registry key regardless
+		// of whether the target is referenced by a bare ident, a
+		// `use`-imported ident, or an absolute path. The user can
+		// disambiguate same-name models across apps by writing a
+		// path-typed FK target (`ForeignKeyField<reinhardt_auth::User>`)
+		// or by relying on Rust's normal scoping — Rust resolves the
+		// type and the macro reads the type's own app label.
+		//
+		// We only emit `fk_target_app` for `Type::Path` target types
+		// (the common case for `ForeignKeyField<T>`). Other shapes
+		// (`fn` types, trait objects, etc.) cannot be FK targets and
+		// don't reach this branch in practice.
+		//
+		// See issue #4436 and PR #4440 review threads on
+		// `model_derive.rs` line 2863 and `operations.rs` line 2836.
+		let fk_target_app_chain = if let Type::Path(_) = &fk_info.target_type {
+			let target_ty = &fk_info.target_type;
+			quote! {
+				.with_param(
+					"fk_target_app",
+					<#target_ty as #orm_crate::Model>::app_label(),
+				)
+			}
+		} else {
+			quote! {}
+		};
+
 		// The `FieldType::Uuid` value here is a placeholder. The real column
 		// type is resolved at migration-generation time by looking up the
 		// target model's primary key in the global `ModelRegistry`
@@ -2860,6 +2900,7 @@ fn generate_registration_code(
 					.with_param("unique", #unique_str)
 					.with_param("db_index", #db_index_str)
 					.with_param("fk_target", #target_model_name)
+					#fk_target_app_chain
 			);
 		});
 	}
