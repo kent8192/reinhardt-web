@@ -48,6 +48,7 @@ mod schema;
 mod settings_compose;
 mod settings_fragment;
 pub(crate) mod settings_parser;
+mod shared_model;
 mod streaming;
 mod streaming_patterns;
 mod use_inject;
@@ -1002,6 +1003,70 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as syn::DeriveInput);
 
 	validate_derive::validate_derive_impl(input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Attribute macro that absorbs the `cfg_attr(native, ...)` boilerplate for
+/// DTOs shared between the server (`native` cfg) and client (`wasm`) builds.
+///
+/// The macro:
+///
+/// 1. Emits `#[cfg_attr(native, derive(::reinhardt::Validate, ::reinhardt::rest::openapi::Schema))]`
+///    on the struct so the server build gets validation and OpenAPI schema
+///    generation, while the wasm build sees a plain serializable type.
+/// 2. Wraps every `#[validate(...)]` field attribute in `#[cfg_attr(native, ...)]`
+///    so the same source compiles unchanged for `wasm32-unknown-unknown`.
+/// 3. Is idempotent: if the user already wrote
+///    `#[cfg_attr(native, derive(Validate))]` or
+///    `#[cfg_attr(native, derive(Schema))]` on the struct, that derive is not
+///    duplicated.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reinhardt::shared_model;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[shared_model]
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// pub struct LoginRequest {
+///     #[validate(email(message = "Invalid email address"))]
+///     pub email: String,
+///
+///     #[validate(length(min = 1, message = "Password is required"))]
+///     pub password: String,
+/// }
+/// ```
+///
+/// Expands (conceptually) to:
+///
+/// ```rust,ignore
+/// #[cfg_attr(native, derive(::reinhardt::Validate, ::reinhardt::rest::openapi::Schema))]
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// pub struct LoginRequest {
+///     #[cfg_attr(native, validate(email(message = "Invalid email address")))]
+///     pub email: String,
+///
+///     #[cfg_attr(native, validate(length(min = 1, message = "Password is required")))]
+///     pub password: String,
+/// }
+/// ```
+///
+/// # Requirements
+///
+/// - The consumer crate's **native** build of `reinhardt` MUST enable the
+///   `rest` feature — the macro expansion references
+///   `::reinhardt::rest::openapi::Schema`.
+/// - Applies only to `struct` items (named, tuple, or unit). Enums and unions
+///   produce a compile error.
+/// - Does not accept arguments in this version. Passing any tokens (e.g.
+///   `#[shared_model(no_schema)]`) is a compile error.
+#[proc_macro_attribute]
+pub fn shared_model(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as syn::DeriveInput);
+
+	shared_model::shared_model_impl(args.into(), input)
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }

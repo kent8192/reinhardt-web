@@ -1,0 +1,5 @@
+error: #[shared_model] does not accept arguments in this version
+ --> tests/ui/shared_model/fail/with_args.rs:5:16
+  |
+5 | #[shared_model(no_schema)]
+  |                ^^^^^^^^^
