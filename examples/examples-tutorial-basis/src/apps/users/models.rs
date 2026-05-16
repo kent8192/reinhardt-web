@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 // `manager = false` opts out of the auto-generated `UserManager` that
 // `#[user(...)]` emits by default since reinhardt-web#4451 — the tutorial
-// keeps its own DB-backed [`UserManager`] below (registered via
+// keeps its own DB-backed `UserManager` below (registered via
 // `#[injectable_factory]`) which would otherwise be shadowed. The
 // auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
 // (issue #4455), and this model uses `i64` to demonstrate auto-increment
