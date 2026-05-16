@@ -209,7 +209,11 @@ where
 	T: DeserializeOwned + Send + Sync + 'static,
 {
 	let di_ctx = req.get_di_context::<InjectionContext>().ok_or_else(|| {
-		ParamError::Authentication(
+		// Missing DI context is a server-side misconfiguration (the router
+		// was not wired with `.with_di_context()` or `SessionMiddleware`),
+		// not an unauthenticated request. Surface it as `Internal` so the
+		// handler returns HTTP 500 rather than masking it as a 401.
+		ParamError::Internal(
 			"SessionValue: DI context not available on the request. \
 			 Ensure the router is configured with `.with_di_context()` and \
 			 `SessionMiddleware` is installed in the middleware chain."
@@ -221,14 +225,18 @@ where
 		.map_err(di_error_to_param_error)
 }
 
-/// Project `DiError` into the matching `ParamError` variant. Authentication
-/// and not-found cases collapse into `ParamError::Authentication` so they
-/// reach the response as HTTP 401 (see #4446 + `ParamError::Authentication`
-/// in `reinhardt-di`).
+/// Project `DiError` into the matching `ParamError` variant. Only the
+/// variants that genuinely represent a missing or unauthenticated identity
+/// (`Authentication`, `NotFound`) collapse into `ParamError::Authentication`
+/// so they reach the response as HTTP 401 (see #4446 + `ParamError::Authentication`
+/// in `reinhardt-di`). Other variants describe infrastructure-level failures
+/// (DI scope corruption, provider errors, type mismatches, etc.) and are
+/// surfaced as `ParamError::Internal` so the handler returns HTTP 500 rather
+/// than masking a misconfiguration as a 401.
 fn di_error_to_param_error(err: DiError) -> ParamError {
 	match err {
 		DiError::Authentication(msg) | DiError::NotFound(msg) => ParamError::Authentication(msg),
-		other => ParamError::Authentication(other.to_string()),
+		other => ParamError::Internal(other.to_string()),
 	}
 }
 

@@ -229,10 +229,11 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn session_value_from_request_fails_authentication_without_di_context() {
+	async fn session_value_from_request_fails_internal_without_di_context() {
 		// Arrange — required SessionValue with no DI context must surface
-		// the configuration mistake as ParamError::Authentication so that
-		// the handler returns 401 (rather than a vague 400 Validation).
+		// the configuration mistake as ParamError::Internal so that the
+		// handler returns 500 (rather than masking the misconfiguration as
+		// a 401 Authentication or a vague 400 Validation).
 		let request = Request::builder()
 			.method(Method::GET)
 			.uri("/test")
@@ -250,8 +251,8 @@ mod tests {
 
 		// Assert
 		assert!(
-			matches!(err, ParamError::Authentication(_)),
-			"expected ParamError::Authentication, got {err:?}"
+			matches!(err, ParamError::Internal(_)),
+			"expected ParamError::Internal, got {err:?}"
 		);
 	}
 }
