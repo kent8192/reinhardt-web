@@ -80,7 +80,10 @@ pub struct RegisterRequest {
 
 	#[cfg_attr(
 		native,
-		validate(length(min = 8, message = "Password confirmation must be at least 8 characters"))
+		validate(length(
+			min = 8,
+			message = "Password confirmation must be at least 8 characters"
+		))
 	)]
 	pub password_confirmation: String,
 }

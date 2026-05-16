@@ -9,9 +9,9 @@ use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
 
-use crate::client::links;
 #[cfg(wasm)]
 use crate::apps::users::server_fn::{login, logout, register};
+use crate::client::links;
 
 /// Login page: username + password form posting to the `login` server function.
 ///
@@ -108,7 +108,13 @@ pub fn login_form() -> Page {
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view, polls_index_href, signup_href)
+	})(
+		loading_signal,
+		error_signal,
+		form_view,
+		polls_index_href,
+		signup_href,
+	)
 }
 
 /// Logout page: presents a single button that invokes the `logout` server fn
@@ -279,5 +285,11 @@ pub fn signup_form() -> Page {
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view, polls_index_href, login_href)
+	})(
+		loading_signal,
+		error_signal,
+		form_view,
+		polls_index_href,
+		login_href,
+	)
 }
