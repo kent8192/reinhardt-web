@@ -6,47 +6,136 @@
 	<title>Polls App - Reinhardt Tutorial</title>
 	<link rel="icon" type="image/png" href="/favicon.png">
 
-	<!-- UnoCSS Reset -->
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css">
+	<!-- UnoCSS Reset (pinned + SRI) -->
+	<link rel="stylesheet"
+		href="https://cdn.jsdelivr.net/npm/@unocss/reset@66.0.0/tailwind.min.css"
+		integrity="sha384-LGhsJsqCgUoTJMa7Fmn8Q0Q5/3WY9D96e4lfXpNTzs54EqijDEpPD13nfjueItEK"
+		crossorigin="anonymous">
+
+	<!-- Theme detection (runs before render to avoid FOUC) -->
+	<script>
+	(function() {
+		var stored = localStorage.getItem('theme');
+		var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		var theme = stored || (prefersDark ? 'dark' : 'light');
+		document.documentElement.setAttribute('data-theme', theme);
+		if (theme === 'dark') {
+			document.documentElement.classList.add('dark');
+		}
+	})();
+	</script>
 
 	<!-- UnoCSS Configuration -->
 	<script>
-		window.__unocss = {
-			theme: {
-				colors: {
-					brand: '#4a90e2',
-					'brand-hover': '#357abd',
+	window.__unocss = {
+		theme: {
+			colors: {
+				brand: {
+					DEFAULT: '#4A90E2',
+					hover: '#357ABD',
+					light: '#E8F1FB',
+				},
+				surface: {
+					primary: 'var(--bg-primary)',
+					secondary: 'var(--bg-secondary)',
+					tertiary: 'var(--bg-tertiary)',
+				},
+				content: {
+					primary: 'var(--text-primary)',
+					secondary: 'var(--text-secondary)',
+					tertiary: 'var(--text-tertiary)',
+				},
+				success: '#10B981',
+				danger: '#EF4444',
+				warning: '#F59E0B',
+				border: {
+					DEFAULT: 'var(--border-color)',
+					secondary: 'var(--border-secondary)',
 				},
 			},
-			shortcuts: [
-				['btn', 'inline-flex items-center px-4 py-2 rounded-full font-semibold'],
-				['btn-primary', 'btn bg-brand text-white hover:bg-brand-hover'],
-				['btn-secondary', 'btn bg-gray-600 text-white hover:bg-gray-700'],
-				['spinner', 'animate-spin rounded-full border-2 border-gray-200 border-t-brand'],
-				['card', 'bg-white rounded-lg shadow-md'],
-				['card-body', 'p-6'],
-				['form-check', 'flex items-center p-3 mb-2 border rounded cursor-pointer hover:bg-gray-50'],
-				['alert-danger', 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded'],
-				['alert-warning', 'bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded'],
-			],
-		};
+		},
+		shortcuts: [
+			// Layout
+			['layout-container', 'max-w-4xl mx-auto px-4'],
+			['layout-page', 'layout-container mt-12'],
+
+			// Button base
+			['btn', 'inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full font-semibold text-sm leading-5 border border-transparent cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed no-underline'],
+			['btn-primary',   'btn bg-brand text-white hover:bg-brand-hover active:scale-97'],
+			['btn-secondary', 'btn bg-surface-tertiary text-content-primary hover:bg-border-secondary'],
+			['btn-outline',   'btn bg-transparent text-content-primary border-border-secondary hover:bg-surface-tertiary'],
+			['btn-danger',    'btn bg-danger text-white hover:opacity-90 active:scale-97'],
+			['btn-success',   'btn bg-success text-white hover:opacity-90 active:scale-97'],
+
+			// Card
+			['card',       'bg-surface-primary border border-border rounded-xl shadow-sm overflow-hidden'],
+			['card-body',  'p-6'],
+			['card-title', 'text-xl font-bold mb-4'],
+
+			// Form
+			['form-control', 'block w-full px-3.5 py-2.5 bg-surface-primary text-content-primary border border-border rounded-lg placeholder-content-tertiary focus:outline-none focus:border-brand focus:ring-3 focus:ring-brand-light transition-colors'],
+			['form-check',   'flex items-center gap-3 p-3 mb-2 bg-surface-primary border border-border rounded-lg cursor-pointer hover:bg-surface-secondary hover:border-border-secondary transition-colors'],
+			['form-label',   'block text-sm font-medium text-content-primary mb-1.5'],
+
+			// Alerts
+			['alert',         'px-4 py-3 rounded-lg border text-sm'],
+			['alert-danger',  'alert bg-red-50 border-red-200 text-danger dark:bg-red-950/30 dark:border-red-900/50'],
+			['alert-warning', 'alert bg-yellow-50 border-yellow-200 text-yellow-700 dark:bg-yellow-950/30 dark:border-yellow-900/50'],
+			['alert-success', 'alert bg-green-50 border-green-200 text-success dark:bg-green-950/30 dark:border-green-900/50'],
+
+			// Nav
+			['nav-bar', 'layout-container pt-4 mb-6 flex justify-between items-center border-b border-border pb-3'],
+
+			// Spinner
+			['spinner', 'inline-block animate-spin rounded-full border-2 border-surface-tertiary border-t-brand'],
+
+			// Misc text helpers
+			['text-muted', 'text-content-secondary'],
+		],
+	};
 	</script>
 
-	<!-- UnoCSS Runtime -->
-	<script src="https://cdn.jsdelivr.net/npm/@unocss/runtime"></script>
+	<!-- UnoCSS Runtime (pinned + SRI) -->
+	<script
+		src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.0.0"
+		integrity="sha384-LYmmhezFyzRAT4ivJD/xzz7PEZ3b+pHHgxsOuSVPG8wKScOK2Bx+itfNE+ziDDEv"
+		crossorigin="anonymous"></script>
 
-	<style>
-		body {
-			background-color: #f8f9fa;
+	<!-- Hand-written base styles + fallback component CSS -->
+	<link rel="stylesheet" href="/static/css/style.css">
+
+	<!-- Theme toggle handler -->
+	<script>
+	function toggleTheme() {
+		var html = document.documentElement;
+		var current = html.getAttribute('data-theme');
+		var next = current === 'dark' ? 'light' : 'dark';
+		html.setAttribute('data-theme', next);
+		html.classList.toggle('dark', next === 'dark');
+		localStorage.setItem('theme', next);
+	}
+
+	// Attach to any #theme-toggle-btn rendered by WASM via MutationObserver
+	window.addEventListener('load', function() {
+		var observer = new MutationObserver(function() {
+			var btn = document.getElementById('theme-toggle-btn');
+			if (btn && !btn.hasAttribute('data-theme-attached')) {
+				btn.setAttribute('data-theme-attached', 'true');
+				btn.addEventListener('click', toggleTheme);
+			}
+		});
+		if (document.body) {
+			observer.observe(document.body, { childList: true, subtree: true });
 		}
-	</style>
+	});
+	</script>
 </head>
-<body class="bg-gray-50 text-gray-900 antialiased">
+<body un-cloak>
 	<div id="root">
 		<div class="flex items-center justify-center min-h-screen">
 			<div class="text-center">
 				<div class="spinner w-12 h-12 mx-auto mb-4"></div>
-				<p class="text-gray-600">Loading...</p>
+				<p class="text-muted">Loading...</p>
 			</div>
 		</div>
 	</div>
