@@ -308,8 +308,16 @@ pub fn iter_registered_url_patterns() -> impl Iterator<Item = &'static UrlPatter
 /// annotated function on `wasm32-unknown-unknown`, and the launcher
 /// consumes them via [`collect_client_router_from_inventory`].
 ///
-/// Refs #4453.
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+/// Also gated on the `client-router` feature because the module references
+/// `crate::routers::client_router::ClientRouter`, which is itself behind
+/// `#[cfg(feature = "client-router")]`. Without this guard, a WASM build
+/// of `reinhardt-urls` without `client-router` enabled would fail to
+/// resolve the import. Refs #4453, Codex review feedback.
+#[cfg(all(
+	target_family = "wasm",
+	target_os = "unknown",
+	feature = "client-router"
+))]
 mod client_registration {
 	use crate::routers::client_router::ClientRouter;
 	use std::sync::Arc;
@@ -370,7 +378,11 @@ mod client_registration {
 	}
 }
 
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[cfg(all(
+	target_family = "wasm",
+	target_os = "unknown",
+	feature = "client-router"
+))]
 pub use client_registration::{
 	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
 };

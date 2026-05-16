@@ -380,10 +380,23 @@ impl ClientLauncher {
 	/// registered via `inventory` at compile time.
 	///
 	/// This is the canonical Reinhardt SPA bootstrap pattern. Combined
-	/// with the `#[routes]` macro's WASM inventory-submission block, it
-	/// lets the entire WASM entry point collapse to:
+	/// with `#[routes(client_inventory)]` (or `#[routes(standalone,
+	/// client_inventory)]` for projects that don't use `installed_apps!`'s
+	/// per-app URL resolvers), the WASM SPA entry point collapses to:
 	///
 	/// ```rust,ignore
+	/// // src/config/urls.rs
+	/// use reinhardt::routes;
+	/// use reinhardt::UnifiedRouter;
+	///
+	/// #[routes(client_inventory)]
+	/// pub fn routes() -> UnifiedRouter {
+	///     UnifiedRouter::new()
+	///         .server(|s| s /* ... */)
+	///         .client(|c| c /* ... */)
+	/// }
+	///
+	/// // src/client/lib.rs
 	/// #[wasm_bindgen(start)]
 	/// pub fn main() -> Result<(), JsValue> {
 	///     ClientLauncher::new("#root")
@@ -392,6 +405,13 @@ impl ClientLauncher {
 	/// }
 	/// ```
 	///
+	/// **The `client_inventory` flag is required** on the `#[routes]`
+	/// attribute; without it, the macro emits no WASM-side
+	/// `ClientRouterRegistration` and this method finds an empty inventory.
+	/// Plain `#[routes]` (no arguments) preserves the pre-#4453 native-only
+	/// behavior so legacy bodies (e.g. `UnifiedRouter::new().mount(..)`)
+	/// keep compiling unchanged.
+	///
 	/// # Conflict
 	///
 	/// Mutually exclusive with [`Self::router`] (deprecated) and
@@ -399,8 +419,9 @@ impl ClientLauncher {
 	/// the same launcher causes [`Self::launch`] to return an error.
 	/// Calling none of them also returns an error.
 	///
-	/// `launch()` returns an error if no `#[routes]` registration is
-	/// found at runtime (i.e. the `inventory` iterator is empty).
+	/// `launch()` returns an error if no `#[routes(..., client_inventory)]`
+	/// registration is found at runtime (i.e. the `inventory` iterator is
+	/// empty).
 	///
 	/// Refs #4453.
 	pub fn register_routes_from_inventory(mut self) -> Self {
@@ -645,10 +666,12 @@ impl ClientLauncher {
 					None => {
 						return Err(wasm_bindgen::JsValue::from_str(
 							"ClientLauncher::register_routes_from_inventory: no \
-							 `#[routes]` registrations found. Annotate your project's \
-							 `routes()` function with `#[routes]` and ensure it returns \
-							 a `UnifiedRouter` whose `.client(|c| ...)` aggregates the \
-							 per-app `client_url_patterns()` outputs.",
+							 `#[routes(..., client_inventory)]` registrations found. \
+							 The `client_inventory` flag is required on the project's \
+							 `#[routes]` attribute to emit the WASM-side inventory \
+							 entry; ensure `routes()` returns a `UnifiedRouter` whose \
+							 `.client(|c| ...)` aggregates the per-app \
+							 `client_url_patterns()` outputs.",
 						));
 					}
 				}

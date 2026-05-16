@@ -813,11 +813,18 @@ pub use reinhardt_urls::routers::{
 	register_router_arc,
 };
 
-// Re-export client-router inventory registration types (WASM target).
-// Mirrors the native `UrlPatternsRegistration` re-export above so the
-// `#[routes]` macro and downstream code can resolve `reinhardt::ClientRouterRegistration`
-// on `wasm32-unknown-unknown`. Refs #4453.
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+// Re-export client-router inventory registration types (WASM target +
+// client-router feature). Mirrors the native `UrlPatternsRegistration`
+// re-export above so the `#[routes]` macro and downstream code can resolve
+// `reinhardt::ClientRouterRegistration` on `wasm32-unknown-unknown` when
+// the `client-router` feature is enabled. The `client-router` gate matches
+// the registration source module's gate in `reinhardt-urls`. Refs #4453,
+// Codex review feedback.
+#[cfg(all(
+	target_family = "wasm",
+	target_os = "unknown",
+	feature = "client-router"
+))]
 pub use reinhardt_urls::routers::{
 	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
 };

@@ -188,7 +188,11 @@ pub use converters::{
 pub use helpers::{IncludedRouter, include_routes, path, re_path};
 #[cfg(native)]
 pub use pattern::{MatchingMode, PathMatcher, PathPattern, RadixRouter, RadixRouterError};
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[cfg(all(
+	target_family = "wasm",
+	target_os = "unknown",
+	feature = "client-router"
+))]
 pub use registration::{
 	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
 };
