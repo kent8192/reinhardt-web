@@ -344,9 +344,26 @@ provides:
 - `BaseUserManager<Name>::create_superuser(...)` — same as `create_user` plus
   `is_superuser = true` (and `is_staff = true` under `full = true`).
 
-The user struct MUST implement `Default` (e.g., via `#[derive(Default)]`) for
-the generator to work; this matches the requirement for `SuperuserInit` under
-`full = true`.
+The user struct MUST implement the following traits for the generator to work:
+
+- `Default` (e.g., via `#[derive(Default)]`) — the generator constructs the user
+  from `<User as Default>::default()` before applying field values. This also
+  matches the requirement for `SuperuserInit` under `full = true`.
+- `Clone` (e.g., via `#[derive(Clone)]`) — the generated `HashMap`-backed store
+  clones both the user (`user.clone()`) and the primary-key value
+  (`user.<pk_field>.clone()`) on insertion. Non-`Clone` user types must opt out
+  via `manager = false`.
+
+**Primary-key uniqueness caveat (in-memory store).** The auto-manager keys its
+`HashMap` by the user's primary-key field. With a `Uuid` (or `Option<Uuid>`)
+primary key the generator re-seeds the value with `Uuid::now_v7()` on every
+`create_user`, so collisions are not possible in practice. For other primary-key
+types (e.g., `i64`, `String`) the value remains at `<User as Default>::default()`
+unless your struct's `Default` impl produces a unique value — repeated
+`create_user` calls will otherwise overwrite each other in the in-memory map.
+Opt out (`manager = false`) and provide a DB-backed manager when uniqueness
+matters; tracking work for tighter generator gating lives in
+[reinhardt-web#4455](https://github.com/kent8192/reinhardt-web/issues/4455).
 
 **When to opt out (`manager = false`)**
 
