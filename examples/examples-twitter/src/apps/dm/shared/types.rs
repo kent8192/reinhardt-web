@@ -2,16 +2,12 @@
 //!
 //! Types shared between client and server for direct messaging.
 
+use reinhardt::shared_model;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[cfg(native)]
-use reinhardt::rest::ToSchema;
-#[cfg(native)]
-use reinhardt::rest::openapi::Schema;
-
 /// Information about a DM room
-#[cfg_attr(native, derive(Schema))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomInfo {
 	/// Unique identifier for the room
@@ -31,7 +27,7 @@ pub struct RoomInfo {
 }
 
 /// A direct message
-#[cfg_attr(native, derive(Schema))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageInfo {
 	/// Unique identifier for the message
@@ -51,7 +47,7 @@ pub struct MessageInfo {
 }
 
 /// Request to send a new message
-#[cfg_attr(native, derive(Schema))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageRequest {
 	/// Room to send the message to
@@ -61,7 +57,7 @@ pub struct SendMessageRequest {
 }
 
 /// Request to create a new DM room
-#[cfg_attr(native, derive(Schema))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateRoomRequest {
 	/// User IDs to include in the room
@@ -71,7 +67,7 @@ pub struct CreateRoomRequest {
 }
 
 /// WebSocket notification for new messages (sent to room list subscribers)
-#[cfg_attr(native, derive(Schema))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewMessageNotification {
 	/// Room that received the new message

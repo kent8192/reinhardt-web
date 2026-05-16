@@ -4,17 +4,12 @@
 //! These types are serializable and can be sent between the WASM client
 //! and the Rust server via server functions.
 
-#[cfg(native)]
-use reinhardt::Validate;
+use reinhardt::shared_model;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// OpenAPI schema generation (server-side only)
-#[cfg(native)]
-use reinhardt::rest::openapi::{Schema, ToSchema};
-
 /// User information (shared between client and server)
-#[cfg_attr(native, derive(Schema))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
 	pub id: Uuid,
@@ -37,48 +32,37 @@ impl From<crate::apps::auth::models::User> for UserInfo {
 }
 
 /// Login request
-#[cfg_attr(native, derive(Schema))]
-#[cfg_attr(native, derive(Validate))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
-	#[cfg_attr(native, validate(email(message = "Invalid email address")))]
+	#[validate(email(message = "Invalid email address"))]
 	pub email: String,
 
-	#[cfg_attr(native, validate(length(min = 1, message = "Password is required")))]
+	#[validate(length(min = 1, message = "Password is required"))]
 	pub password: String,
 }
 
 /// Register request
-#[cfg_attr(native, derive(Schema))]
-#[cfg_attr(native, derive(Validate))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRequest {
-	#[cfg_attr(
-		native,
-		validate(length(
-			min = 3,
-			max = 150,
-			message = "Username must be between 3 and 150 characters"
-		))
-	)]
+	#[validate(length(
+		min = 3,
+		max = 150,
+		message = "Username must be between 3 and 150 characters"
+	))]
 	pub username: String,
 
-	#[cfg_attr(native, validate(email(message = "Invalid email address")))]
+	#[validate(email(message = "Invalid email address"))]
 	pub email: String,
 
-	#[cfg_attr(
-		native,
-		validate(length(min = 8, message = "Password must be at least 8 characters"))
-	)]
+	#[validate(length(min = 8, message = "Password must be at least 8 characters"))]
 	pub password: String,
 
-	#[cfg_attr(
-		native,
-		validate(length(
-			min = 8,
-			message = "Password confirmation must be at least 8 characters"
-		))
-	)]
+	#[validate(length(
+		min = 8,
+		message = "Password confirmation must be at least 8 characters"
+	))]
 	pub password_confirmation: String,
 }
 
@@ -96,7 +80,7 @@ impl RegisterRequest {
 ///
 /// Used for both client-side authentication state and server-side
 /// session validation in tests.
-#[cfg_attr(native, derive(Schema))]
+#[shared_model]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionData {
 	/// The authenticated user's ID
