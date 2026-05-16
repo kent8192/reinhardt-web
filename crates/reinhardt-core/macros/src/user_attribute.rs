@@ -529,9 +529,12 @@ fn generate_user_manager_impl(
 	quote! {
 		/// Auto-generated in-memory user manager for this user type.
 		///
-		/// Backed by `Mutex<HashMap<PrimaryKey, User>>`. For DB-backed persistence
-		/// or custom uniqueness rules, opt out via `#[user(..., manager = false)]`
-		/// and hand-write a `BaseUserManager` implementation.
+		/// Backed by `Mutex<HashMap<PrimaryKey, User>>`. The mutex is
+		/// `std::sync::Mutex` because the locked critical section
+		/// (`HashMap::insert`) contains no `.await`, so the executor cannot
+		/// park while the lock is held. For DB-backed persistence or custom
+		/// uniqueness rules, opt out via `#[user(..., manager = false)]` and
+		/// hand-write a `BaseUserManager` implementation.
 		pub struct #manager_name {
 			users: ::std::sync::Arc<::std::sync::Mutex<::std::collections::HashMap<#pk_type, #struct_name>>>,
 		}
@@ -544,6 +547,34 @@ fn generate_user_manager_impl(
 						::std::collections::HashMap::new(),
 					)),
 				}
+			}
+
+			/// Build a fresh user from the macro-known field roles without
+			/// inserting it into the store. Shared between `create_user` and
+			/// `create_superuser` to keep each operation to a single
+			/// `HashMap::insert` (one lock acquisition).
+			fn build_user_template(
+				username: &str,
+				password: ::core::option::Option<&str>,
+				extra: ::std::collections::HashMap<
+					::std::string::String,
+					#auth_crate::JsonValue,
+				>,
+			) -> ::core::result::Result<#struct_name, #auth_crate::BaseUserManagerError> {
+				use #auth_crate::BaseUser as _;
+				let mut user = <#struct_name as ::core::default::Default>::default();
+				#pk_setter
+				user.#username_field_ident = username.to_string();
+				#is_active_default
+				#date_joined_default
+				#email_apply
+				#first_name_apply
+				#last_name_apply
+				#is_active_apply
+				if let ::core::option::Option::Some(pwd) = password {
+					user.set_password(pwd)?;
+				}
+				::core::result::Result::Ok(user)
 			}
 		}
 
@@ -561,22 +592,10 @@ fn generate_user_manager_impl(
 				password: ::core::option::Option<&str>,
 				extra: ::std::collections::HashMap<
 					::std::string::String,
-					::serde_json::Value,
+					#auth_crate::JsonValue,
 				>,
 			) -> ::core::result::Result<#struct_name, #auth_crate::BaseUserManagerError> {
-				use #auth_crate::BaseUser as _;
-				let mut user = <#struct_name as ::core::default::Default>::default();
-				#pk_setter
-				user.#username_field_ident = username.to_string();
-				#is_active_default
-				#date_joined_default
-				#email_apply
-				#first_name_apply
-				#last_name_apply
-				#is_active_apply
-				if let ::core::option::Option::Some(pwd) = password {
-					user.set_password(pwd)?;
-				}
+				let user = Self::build_user_template(username, password, extra)?;
 				let mut guard = self
 					.users
 					.lock()
@@ -591,10 +610,10 @@ fn generate_user_manager_impl(
 				password: ::core::option::Option<&str>,
 				extra: ::std::collections::HashMap<
 					::std::string::String,
-					::serde_json::Value,
+					#auth_crate::JsonValue,
 				>,
 			) -> ::core::result::Result<#struct_name, #auth_crate::BaseUserManagerError> {
-				let mut user = self.create_user(username, password, extra).await?;
+				let mut user = Self::build_user_template(username, password, extra)?;
 				#is_superuser_setter
 				#is_staff_setter
 				let mut guard = self
