@@ -4,6 +4,8 @@
 //! `Uuid::now_v7()` re-seed; any other PK type (e.g. `i64`) would silently
 //! overwrite previous users in the map. See issue #4455.
 
+#![allow(unused_imports)]
+
 use chrono::{DateTime, Utc};
 use reinhardt_auth::Argon2Hasher;
 use reinhardt_macros::user;
