@@ -1267,6 +1267,8 @@ pub struct MockParticipant {
 
 #[cfg(test)]
 impl MockParticipant {
+	/// Create a new `MockParticipant` with the given identifier and an
+	/// `Active` initial status (no failure modes set).
 	pub fn new(id: impl Into<String>) -> Self {
 		Self {
 			id: id.into(),
@@ -1277,16 +1279,19 @@ impl MockParticipant {
 		}
 	}
 
+	/// Configure this mock to return an error from its `prepare` call.
 	pub fn with_prepare_failure(mut self) -> Self {
 		self.should_fail_prepare = true;
 		self
 	}
 
+	/// Configure this mock to return an error from its `commit` call.
 	pub fn with_commit_failure(mut self) -> Self {
 		self.should_fail_commit = true;
 		self
 	}
 
+	/// Configure this mock to return an error from its `rollback` call.
 	pub fn with_rollback_failure(mut self) -> Self {
 		self.should_fail_rollback = true;
 		self
