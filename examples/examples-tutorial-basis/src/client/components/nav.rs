@@ -16,7 +16,7 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action};
 
-use crate::server_fn::users::current_user;
+use crate::apps::users::server_fn::current_user;
 
 /// Top navigation bar used by every page in the polls SPA.
 ///

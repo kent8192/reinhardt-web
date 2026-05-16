@@ -11,7 +11,7 @@ use reinhardt::pages::reactive::Signal;
 
 use crate::client::links;
 #[cfg(wasm)]
-use crate::server_fn::users::{login, logout, register};
+use crate::apps::users::server_fn::{login, logout, register};
 
 /// Login page: username + password form posting to the `login` server function.
 ///

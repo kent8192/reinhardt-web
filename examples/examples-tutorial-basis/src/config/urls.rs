@@ -23,13 +23,13 @@ use crate::config::admin::configure_admin;
 
 // Import server_fn marker modules (snake_case + ::marker)
 #[cfg(native)]
-use crate::server_fn::polls::{
+use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, get_vote_form_metadata, submit_vote, update_choice,
 	update_question, vote,
 };
 #[cfg(native)]
-use crate::server_fn::users::{current_user, login, logout, register};
+use crate::apps::users::server_fn::{current_user, login, logout, register};
 
 #[cfg(native)]
 use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};

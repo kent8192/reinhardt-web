@@ -10,7 +10,7 @@ use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
 
 use crate::client::links;
-use crate::server_fn::polls::{
+use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, submit_vote, update_choice, update_question,
 };
@@ -601,7 +601,7 @@ pub fn polls_index_with_logo() -> Page {
 // =========================================================================
 //
 // All three pages share the same shape: a `form!` declaration backed by one
-// of the CUD server functions in `crate::server_fn::polls`. The server
+// of the CUD server functions in `crate::apps::polls::server_fn`. The server
 // re-checks authentication and ownership, so these pages render
 // unconditionally — unauthenticated visitors land on the form, submit it,
 // and receive the 401 surfaced through the form's `error` signal.

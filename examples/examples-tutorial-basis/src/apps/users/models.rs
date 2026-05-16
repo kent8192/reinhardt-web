@@ -12,7 +12,7 @@
 //! [`UserManager`] (a project-local implementation of
 //! `BaseUserManager<User>`) rather than constructing `User` instances
 //! by hand — see the `register` server function in
-//! `crate::server_fn::users`.
+//! `crate::apps::users::server_fn`.
 
 use chrono::{DateTime, Utc};
 use reinhardt::Argon2Hasher;
