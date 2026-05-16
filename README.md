@@ -335,31 +335,45 @@ users/
 **Pages app** (`--with-pages`, WASM + SSR):
 
 ```
-dashboard/
-├── lib.rs
-├── models.rs
-├── models/
-├── views.rs
-├── serializers.rs
-├── serializers/
-├── admin.rs
-├── server.rs
-├── server/
-│   └── server_fn.rs
-├── client.rs
+src/
+├── apps/
+│   ├── polls/
+│   │   ├── lib.rs
+│   │   ├── models.rs
+│   │   ├── views.rs
+│   │   ├── server_fn.rs
+│   │   ├── client/
+│   │   │   ├── lib.rs
+│   │   │   ├── pages.rs
+│   │   │   └── components.rs
+│   │   └── urls/
+│   │       ├── server_urls.rs
+│   │       └── client_router.rs
+│   └── users/
+│       ├── lib.rs
+│       ├── models.rs
+│       ├── views.rs
+│       ├── server_fn.rs
+│       ├── client/
+│       │   ├── lib.rs
+│       │   ├── pages.rs
+│       │   └── components.rs
+│       └── urls/
+│           ├── server_urls.rs
+│           └── client_router.rs
 ├── client/
-│   └── components.rs
-├── shared.rs
+│   ├── lib.rs
+│   └── components/
+│       └── nav.rs
+├── config/
+│   ├── apps.rs
+│   ├── settings.rs
+│   ├── urls.rs
+│   └── wasm.rs
 ├── shared/
 │   ├── errors.rs
 │   └── types.rs
-├── urls.rs
-├── urls/
-│   ├── server_urls.rs
-│   ├── client_urls.rs
-│   └── ws_urls.rs
-├── tests.rs
-└── tests/
+└── lib.rs
 ```
 
 ### 5. Register Routes
