@@ -8,409 +8,291 @@ sidebar_weight = 60
 
 # Part 6: Static Files and Styling
 
-In this tutorial, we'll add CSS stylesheets and images to make our polls application look better using reinhardt-pages' approach to static file management.
+The previous chapters wired up models, server functions, forms, and tests against the [`examples/examples-tutorial-basis/`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis) reference project. This chapter explains how that project actually ships its frontend: how the Rust WASM bundle gets out of `cargo build` and into the browser, what `cargo make collectstatic` is for, and what `index.html` does with it once it arrives.
 
-## Understanding Static Files in reinhardt-pages
+You will not find the classic Django `STATICFILES_DIRS` plumbing here. Reinhardt's pages template has its own WASM-aware static pipeline built around the `AppStaticFilesConfig` inventory registration and the `cargo make` task graph defined in `Makefile.toml`. The rest of this chapter walks through both.
 
-Static files are CSS, JavaScript, WASM, images, and fonts that don't change during runtime. The reinhardt-pages template stores them in **two distinct tiers** that merge into one served directory at deploy time:
+## The Two Static-Asset Tiers
+
+The example project has two on-disk locations for static assets, and they have very different purposes:
 
 | Tier | Directory | Populated by | Purpose |
 |------|-----------|--------------|---------|
-| WASM build output | `dist-wasm/` | `wasm-bindgen` / `wasm-pack` during `cargo make wasm-build-*` | Compiled client bundle: `<project>.js` glue + `<project>_bg.wasm` |
-| Final served tree | `staticfiles/` | `cargo make collectstatic` | Flat tree served at `/static/` — contains `dist-wasm/` output **plus** any app `static/` directories and workspace `staticfiles_dirs` |
+| WASM build output | `dist-wasm/` | `wasm-pack build --target web --out-dir dist-wasm` (via `cargo make wasm-bindgen-dev` / `wasm-bindgen-release`) | The compiled SPA bundle: `examples_tutorial_basis.js` + `examples_tutorial_basis_bg.wasm` |
+| Aggregated static root | `staticfiles/` | `cargo make collectstatic` | The Django-style `STATIC_ROOT` — a flat tree that mirrors every registered `AppStaticFilesConfig` and is what gets served at `/static/` when the production server runs |
 
-This matches the layout of
-[`examples/examples-tutorial-basis/`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis):
-`dist-wasm/` and `staticfiles/` both live at the project root and are both git-ignored build artifacts.
+Both directories live at the project root and are both git-ignored build artifacts. They are intentionally separate: `dist-wasm/` is a *build product* that `wasm-pack` overwrites every time you compile, while `staticfiles/` is the *deployable artifact* that the `collectstatic` manage command assembles by copying every registered static directory into one place.
 
-`src/config/wasm.rs` is what connects the two tiers — it registers `dist-wasm/` with the `collectstatic` inventory so that running `cargo make collectstatic` copies the WASM output into `staticfiles/` alongside everything else.
+The bridge between the two is `src/config/wasm.rs`. It is a one-time inventory registration that tells `collectstatic` "there is a static directory called `dist-wasm/`, please collect it under url prefix `""` when you run":
+
+```rust
+//! WASM artifacts registration for collectstatic
+//!
+//! This module registers the dist-wasm directory containing WASM build artifacts
+//! so that collectstatic can automatically discover and collect them to the final
+//! distribution directory.
+
+use reinhardt::reinhardt_apps::AppStaticFilesConfig;
+
+inventory::submit! {
+	AppStaticFilesConfig {
+		app_label: "examples-tutorial-basis-wasm",
+		static_dir: "dist-wasm",
+		url_prefix: "",
+	}
+}
+```
+
+This file is included from `src/config.rs` under `#[cfg(native)]` (the WASM target neither runs `collectstatic` nor needs to register inventory entries). `app_label` is the namespace `collectstatic` uses to disambiguate file collisions; `static_dir` is a path relative to the crate root; `url_prefix = ""` means "collect under the root of `STATIC_ROOT`" rather than nesting under a subdirectory.
+
+### Why two tiers instead of one?
+
+Three reasons, all enforced by the example project's structure:
+
+1. **`dist-wasm/` is owned by `wasm-pack`.** Anything you put there manually will be deleted on the next build. So you cannot use it as the source of truth for hand-authored CSS, fonts, or images — those need to live somewhere stable.
+2. **`staticfiles/` is the production artifact.** When you deploy, you copy `staticfiles/` to a CDN or behind nginx. You never deploy `dist-wasm/` directly because it is incomplete: it has the WASM bundle but none of the other apps' static directories.
+3. **`collectstatic` resolves naming conflicts.** If two apps each register a file called `logo.png`, the `app_label` field of `AppStaticFilesConfig` lets `collectstatic` either namespace them or fail loudly. Skipping the `collectstatic` step would put that conflict resolution back on the developer.
+
+## The Build Pipeline
+
+The `cargo make dev` and `cargo make dev-release` task graphs encapsulate the full pipeline. The diagram below traces what happens when you change a Rust file and want to see the result in the browser:
 
 ```mermaid
-flowchart LR
-    A["wasm-bindgen build<br/>(cargo make wasm-build-release)"] --> B["dist-wasm/<br/>- project.js<br/>- project_bg.wasm"]
-    C["app static/ dirs<br/>(per-app assets)"] --> D
-    B --> D["cargo make collectstatic"]
-    D --> E["staticfiles/<br/>served at /static/"]
+flowchart TD
+    A["Edit src/**.rs"] --> B["cargo make clean-cache<br/>removes dist/, dist-wasm/,<br/>target/debug/incremental,<br/>target/wasm32-unknown-unknown"]
+    B --> C["cargo make wasm-compile-dev<br/>cargo build --target wasm32-unknown-unknown"]
+    C --> D["cargo make wasm-bindgen-dev<br/>wasm-pack build --target web<br/>--out-dir dist-wasm --dev --no-typescript"]
+    D --> E["cargo make wasm-build-dev<br/>scripts/wasm-build-dev.sh"]
+    E --> F["cargo run --bin manage collectstatic --no-input"]
+    F --> G["staticfiles/"]
+    G --> H["cargo make run-dev-server<br/>runserver --with-pages<br/>--noreload --no-override-wasm"]
 ```
 
-**Traditional Approach (Server-Side Rendering):**
-```html
-<!-- Server-rendered template -->
-<link rel="stylesheet" href="{{ static('polls/css/style.css') }}">
+The right-hand column is what each step actually shells out to, copied verbatim from `Makefile.toml`. Each task is small enough to run in isolation, but in practice you always invoke them through one of the two umbrella tasks `dev` or `dev-release`. The next sections cover the individual pieces.
+
+### `cargo make clean-cache`
+
+The script `scripts/clean-cache.sh` is short enough to quote in full:
+
+```bash
+#!/usr/bin/env bash
+# `cargo make clean-cache` body: drop the WASM bundles and Rust
+# incremental cache so the next `cargo make dev` / `dev-release` rebuilds
+# everything from scratch. Used as the first dependency of those
+# pipelines to avoid serving stale wasm.
+set -euo pipefail
+
+echo "🧹 Cleaning build cache..."
+
+# WASM artifacts
+if [ -d "dist-wasm" ]; then
+	rm -rf dist-wasm
+	echo "  ✓ Removed dist-wasm/"
+fi
+
+if [ -d "dist" ]; then
+	rm -rf dist
+	echo "  ✓ Removed dist/"
+fi
+
+# Rust incremental build cache
+if [ -d "target/debug/incremental" ]; then
+	rm -rf target/debug/incremental
+	echo "  ✓ Removed target/debug/incremental/"
+fi
+
+# WASM target build cache
+if [ -d "target/wasm32-unknown-unknown" ]; then
+	rm -rf target/wasm32-unknown-unknown
+	echo "  ✓ Removed target/wasm32-unknown-unknown/"
+fi
+
+echo "✨ Build cache cleaned"
 ```
 
-**reinhardt-pages Approach (WASM):**
-1. **WASM build output** — `dist-wasm/` (produced by the WASM build), registered for collection in `src/config/wasm.rs`.
-2. **Per-app `static/` directories** — optional; app-local assets collected by `collectstatic`.
-3. **Final `staticfiles/` directory** — what is actually served at `/static/` in production.
-4. **Direct references** from client code — use one of three methods (see below).
+It exists because `wasm-pack` plus Rust incremental compilation can get into states where a new build silently emits the previous build's `*_bg.wasm`. The combination of removing `dist-wasm/`, `dist/`, the incremental cache, and the WASM-target build cache is a tested set that always forces a clean rebuild. You usually do not run it by hand — both `dev` and `dev-release` depend on it as their first step.
 
-## Static File Reference Methods
+### `cargo make wasm-compile-dev` and `cargo make wasm-bindgen-dev`
 
-Reinhardt provides three ways to reference static files, each optimized for different use cases:
+These are the two underlying calls that `wasm-pack` orchestrates:
 
-### 1. Compile-Time: `static_url!` Macro (Planned)
+```toml
+[tasks.wasm-compile-dev]
+description = "Compile WASM binary (debug mode)"
+command = "cargo"
+args = ["build", "--target", "wasm32-unknown-unknown"]
 
-> **Note**: The `static_url!` macro is planned for a future release. Currently, use the runtime `resolve_static()` function instead.
-
-```rust
-// Future API (not yet available)
-use reinhardt::static_url;
-
-page!(|| {
-	link {
-		rel: "stylesheet",
-		href: static_url!("css/polls.css")
-		// Will be resolved at compile time to "/static/css/polls.css"
-	}
-})
+[tasks.wasm-bindgen-dev]
+description = "Generate WASM bindings using wasm-pack (debug mode)"
+dependencies = ["wasm-compile-dev"]
+command = "wasm-pack"
+args = [
+	"build",
+	"--target", "web",
+	"--out-dir", "dist-wasm",
+	"--dev",
+	"--no-typescript"
+]
 ```
 
-**When available**: Fixed asset paths that don't change at runtime
+`wasm-compile-dev` runs the raw `cargo build` against the `wasm32-unknown-unknown` target, which produces the `.wasm` binary under `target/wasm32-unknown-unknown/debug/`. `wasm-bindgen-dev` then invokes `wasm-pack` to:
 
-**Planned benefits**:
-- Zero runtime overhead
-- Compile-time path validation
-- Optimal for CDN integration
+1. Re-run the underlying `cargo build` if needed (no-op when `wasm-compile-dev` already ran).
+2. Run `wasm-bindgen` against the resulting `.wasm` to generate the JavaScript glue (`examples_tutorial_basis.js`) and the bindgen-rewritten `_bg.wasm`.
+3. Place both files in `dist-wasm/`.
 
-### 2. Runtime: `resolve_static()` Function
+The `--target web` flag is what makes the generated JS module loadable directly by the browser via `import init from "/static/examples_tutorial_basis.js"` (no bundler required). `--dev` skips release-mode optimisation passes for a faster iteration cycle, and `--no-typescript` avoids emitting `.d.ts` files since this project does not have a TypeScript consumer.
 
-For dynamic paths determined at runtime:
+### `cargo make wasm-build-dev`
 
-```rust
-use reinhardt::pages::static_resolver::resolve_static;
+This is the orchestrating task: it depends on `wasm-bindgen-dev`, then runs `scripts/wasm-build-dev.sh`:
 
-// Example: User-selectable theme
-let theme = user.get_theme(); // "dark" or "light"
-let css_path = format!("css/{}.css", theme);
+```bash
+#!/usr/bin/env bash
+# Post-step for `cargo make wasm-build-dev`: after `wasm-pack` writes the
+# debug bundle into `dist-wasm/`, copy it (plus other static assets) into
+# the runserver's `--static-dir`. `--no-input` skips the interactive
+# overwrite prompt so this runs cleanly in cargo-make.
+set -euo pipefail
 
-page!(|css_path: String| {
-	link {
-		rel: "stylesheet",
-		href: resolve_static(&css_path)
-		// Returns: "/static/css/dark.css"
-	}
-})(css_path)
+echo "Running collectstatic..."
+cargo run --bin manage collectstatic --no-input
+echo "✓ WASM build and collectstatic completed"
 ```
 
-**When to use**: Dynamic asset paths based on user input, state, or configuration
+So `wasm-build-dev` is `wasm-bindgen-dev` plus a `collectstatic` call. The `--no-input` flag suppresses the "overwrite existing files? [y/N]" prompt that the manage command would otherwise emit, which would deadlock cargo-make's non-interactive shell.
 
-**Benefits**:
-- Flexible runtime resolution
-- Integrates with settings configuration
-- Works with reactive state management
+### `cargo make collectstatic`
 
-### 3. Server Template: `{{ static_url() }}`
+The task itself is a thin wrapper:
 
-For `index.html` and server-rendered templates:
-
-```html
-<!-- Template (pre-deployment) -->
-<script src="{{ static_url('app.js') }}"></script>
-<link rel="stylesheet" href="{{ static_url('css/main.css') }}">
-
-<!-- Rendered (post-collectstatic with content hashing) -->
-<script src="/static/app.abc123.js"></script>
-<link rel="stylesheet" href="/static/css/main.def456.css">
+```toml
+[tasks.collectstatic]
+description = "Collect static files into STATIC_ROOT"
+command = "cargo"
+args = ["run", "--bin", "manage", "collectstatic"]
 ```
 
-**When to use**: HTML templates processed on the server before deployment
+What it does at runtime is walk every `AppStaticFilesConfig` registered via `inventory::submit!` (including the one in `src/config/wasm.rs`) and copy each `static_dir` into the configured `STATIC_ROOT` (which defaults to `./staticfiles/` for the example). Files are placed under their declared `url_prefix`; in the WASM registration `url_prefix = ""`, so the WASM bundle lands directly at the root of `staticfiles/`.
 
-**Benefits**:
-- Cache busting with content hashing
-- Server-side path resolution
-- Works with `collectstatic` workflow
+After it runs you will see:
 
-### Choosing the Right Method
-
-Use this decision tree:
-
-| Question | Method |
-|----------|--------|
-| Path known at compile time? | `static_url!` macro |
-| Path depends on runtime state/user input? | `resolve_static()` function |
-| Reference in server-rendered HTML template? | `{{ static_url() }}` template function |
-
-**Example Scenarios:**
-
-```rust
-// ✅ GOOD: Compile-time static reference
-link {
-	rel: "icon",
-	href: static_url!("favicon.ico")
-}
-
-// ✅ GOOD: Runtime dynamic reference
-let avatar_url = format!("avatars/{}.png", user.id);
-img {
-	src: resolve_static(&avatar_url)
-}
-
-// ❌ BAD: Hard-coded path (breaks with CDN or STATIC_URL changes)
-link {
-	rel: "stylesheet",
-	href: "/static/css/polls.css"  // Don't do this!
-}
+```
+staticfiles/
+├── examples_tutorial_basis.js
+├── examples_tutorial_basis_bg.wasm
+└── …other registered static directories, namespaced by app_label
 ```
 
-**Note**: For `index.html`, use the template function approach:
-```html
-<!-- index.html -->
-<script type="module">
-	const jsUrl = '{{ static_url("examples_tutorial_basis.js") }}';
-	const wasmUrl = '{{ static_url("examples_tutorial_basis_bg.wasm") }}';
-	const { default: init } = await import(jsUrl);
-	await init(wasmUrl);
-</script>
+### `cargo make dev`
+
+This is the everyday task. Its definition in `Makefile.toml` is just a dependency chain:
+
+```toml
+[tasks.dev]
+description = "Build WASM and start development server with frontend"
+dependencies = ["clean-cache", "wasm-build-dev", "run-dev-server"]
 ```
 
----
+So `cargo make dev` runs `clean-cache` → `wasm-build-dev` (which itself chains `wasm-compile-dev` → `wasm-bindgen-dev` → `collectstatic`) → `run-dev-server`. The last step is `scripts/run-dev-server.sh`:
 
-## Using Static URLs in page! Macro
+```bash
+#!/usr/bin/env bash
+# Final step of `cargo make dev`: start the development server against the
+# wasm bundle that `wasm-build-dev` already produced. The directory check
+# guards against running `cargo make dev` from a parent directory — that
+# happens to find this Makefile.toml via cargo-make's upward search but
+# would still build the wrong project, so fail loudly instead.
+#
+# Flags:
+#   --with-pages         hosts the SPA frontend alongside the API.
+#   --noreload           we explicitly skip the runserver's own file
+#                        watcher because `dev` already rebuilds the bundle.
+#   --no-override-wasm   suppress runserver's internal wasm rebuild so it
+#                        does not stomp on the artifacts wasm-build-dev
+#                        just placed under `dist/`.
+set -euo pipefail
 
-Now that you understand the three methods for static URL resolution, let's see how to use them in practice within `page!` macros.
+CURRENT_DIR=$(basename "$PWD")
+if [ "$CURRENT_DIR" != "examples-tutorial-basis" ]; then
+	echo "Error: This command must be run from examples/examples-tutorial-basis directory"
+	echo "Current directory: $PWD"
+	echo "Please run: cd examples/examples-tutorial-basis && cargo make dev"
+	exit 1
+fi
 
-### Basic Usage with resolve_static()
-
-The `resolve_static()` function is the recommended way to reference static files in `page!` macros. It works at runtime and integrates with the static files configuration:
-
-```rust
-use reinhardt::pages::static_resolver::resolve_static;
-
-page!(|| {
-	div { class: "container",
-		img {
-			src: resolve_static("images/logo.png"),
-			alt: "Polls App Logo",
-			class: "logo"
-		}
-	}
-})()
+echo "🚀 Starting development server with WASM frontend..."
+cargo run --bin manage -- runserver --with-pages --noreload --no-override-wasm
 ```
 
-**Key Points:**
-- Import `resolve_static` from `reinhardt::pages::static_resolver`
-- Pass the relative path (without `/static/` prefix)
-- The function returns the full URL: `/static/images/logo.png`
-- With manifest, it returns cache-busted URLs: `/static/images/logo.abc123.png`
+Two flags are worth calling out:
 
-### Practical Examples
+- `--with-pages` hosts the SPA frontend alongside the JSON API. Without it `runserver` would still serve `/admin/` and the server-rendered REST endpoints in `views.rs` but would not mount the SPA shell.
+- `--no-override-wasm` is what tells `runserver` *not* to re-invoke its own internal WASM rebuild — since `wasm-build-dev` has just produced the bundle, letting `runserver` do it again would either be wasted work or, worse, overwrite the just-built artifacts.
 
-#### Displaying Images
+`runserver` itself depends on `migrate`, so by the time the dev server is listening, the SQLite database file `db.sqlite3` has its schema applied. You never have to run `cargo make migrate` by hand when starting a fresh worktree — the `runserver` task pulls it in automatically.
 
-**Static Image Path:**
+### `cargo make dev-release`
 
-For fixed images (like logos or icons), use a simple string:
+The release-mode equivalent chains a different set of tasks:
 
-```rust
-page!(|| {
-	div { class: "poll-header",
-		img {
-			src: resolve_static("images/poll-icon.svg"),
-			alt: "Poll",
-			class: "poll-icon w-16 h-16"
-		}
-		h1 { "Latest Polls" }
-	}
-})()
+```toml
+[tasks.dev-release]
+description = "Build optimized WASM and start server"
+dependencies = ["clean-cache", "wasm-build-release", "collectstatic", "run-dev-release-server"]
 ```
 
-**Dynamic Image Path:**
+Three differences from `dev`:
 
-For user-specific or data-driven images, construct the path at runtime:
+1. `wasm-build-release` instead of `wasm-build-dev`. Internally this depends on `wasm-finalize-release`, which calls `scripts/wasm-finalize-release.sh` to run `wasm-opt -O3` against the bundle if Binaryen is on `PATH`:
 
-```rust
-page!(|user_id: i64| {
-	// Construct path based on user ID
-	let avatar_path = format!("images/avatars/user_{}.png", user_id);
+   ```bash
+   #!/usr/bin/env bash
+   # Optional post-step for `cargo make wasm-build-release`: shrink the
+   # release wasm bundle with `wasm-opt -O3` when the Binaryen toolchain is
+   # available. Falls back to a no-op (with a warning) if wasm-opt is not on
+   # PATH so the release build still completes on machines without
+   # Binaryen installed.
+   set -euo pipefail
 
-	div { class: "user-profile",
-		img {
-			src: resolve_static(&avatar_path),
-			alt: "User Avatar",
-			class: "avatar rounded-full w-12 h-12"
-		}
-	}
-})(user_id)
-```
+   if command -v wasm-opt &> /dev/null; then
+   	echo "Running wasm-opt..."
+   	WASM_FILE="dist-wasm/examples_tutorial_basis_bg.wasm"
+   	wasm-opt -O3 -o "$WASM_FILE.opt" "$WASM_FILE"
+   	mv "$WASM_FILE.opt" "$WASM_FILE"
+   	echo "✓ WASM optimized"
+   else
+   	echo "⚠️  wasm-opt not found, skipping optimization"
+   fi
+   ```
 
-**Real-World Example - Poll Card:**
+2. An explicit `collectstatic` dependency. `wasm-build-release` already calls `collectstatic` internally (via `scripts/wasm-build-release.sh`), but listing it as a separate dependency makes the intent explicit and ensures a re-run picks up any external app static directories added between the wasm build and the server start.
+3. `run-dev-release-server` instead of `run-dev-server` — same flags (`--with-pages --noreload --no-override-wasm`) but with `cargo run --release` so the *server* binary is also release-mode.
 
-```rust
-page!(|question: QuestionInfo| {
-	div { class: "poll-card p-4 border rounded",
-		// Poll icon
-		img {
-			src: resolve_static("images/poll-icon.svg"),
-			alt: "Poll",
-			class: "w-8 h-8 mb-2"
-		}
+The takeaway is that `dev` is for iteration and `dev-release` is for verifying the optimised bundle. Neither is the same as production deployment, but `dev-release` is the closest thing to it that still uses the dev-server harness.
 
-		// Question text
-		h2 { class: "text-xl font-bold",
-			{ question.question_text }
-		}
+### Where each task touches what
 
-		// Vote button
-		a {
-			href: format!("/polls/{}/", question.id),
-			class: "btn-primary mt-3",
-			"Vote Now"
-		}
-	}
-})(question)
-```
+The matrix below summarises which directories each task reads or writes:
 
-#### Loading Stylesheets and Scripts
+| Task | Reads | Writes |
+|------|-------|--------|
+| `clean-cache` | (none) | Removes `dist/`, `dist-wasm/`, `target/debug/incremental/`, `target/wasm32-unknown-unknown/` |
+| `wasm-compile-dev` | `src/`, `Cargo.toml` | `target/wasm32-unknown-unknown/debug/` |
+| `wasm-bindgen-dev` | `target/wasm32-unknown-unknown/debug/` | `dist-wasm/` |
+| `wasm-build-dev` | `dist-wasm/`, every registered `AppStaticFilesConfig` | `staticfiles/` (via `collectstatic`) |
+| `collectstatic` | every registered `AppStaticFilesConfig` (incl. `dist-wasm/`) | `staticfiles/` |
+| `wasm-finalize-release` | `dist-wasm/examples_tutorial_basis_bg.wasm` | overwrites the same file in place |
+| `wasm-build-release` | same as `wasm-bindgen-release` + finalize | `dist-wasm/`, `staticfiles/` |
+| `run-dev-server` | `dist-wasm/` (during dev), `staticfiles/` | (none — serves) |
+| `dev` | (delegates) | (delegates) |
+| `dev-release` | (delegates) | (delegates) |
 
-While stylesheets and scripts are typically loaded in `index.html`, you can also load them conditionally in `page!` macros:
+A subtle point: under `cargo make dev`, the server is *not* serving from `staticfiles/`. It is serving from `dist-wasm/` because that directory is registered via `AppStaticFilesConfig` and `runserver --with-pages` honours the inventory list directly during development. The `collectstatic` step that `wasm-build-dev` runs is mostly there to keep `staticfiles/` in sync for ad-hoc inspection; the SPA bundle that the browser actually loads comes from the inventory registration. Under `cargo make dev-release`, the explicit `collectstatic` dependency does become functionally important because the production-shaped server expects the aggregated tree.
 
-```rust
-page!(|enable_dark_mode: bool| {
-	div {
-		// Conditionally load dark mode stylesheet
-		if enable_dark_mode {
-			link {
-				rel: "stylesheet",
-				href: resolve_static("css/dark-theme.css")
-			}
-		}
+## `index.html`: The SPA Shell
 
-		// Page content
-		div { class: "content",
-			"Page content here"
-		}
-	}
-})(enable_dark_mode)
-```
-
-**Note:** For global stylesheets, prefer loading in `index.html` or using the `head!` macro (see below).
-
-#### Dynamic Asset Selection
-
-Select assets based on user state or application logic:
-
-```rust
-page!(|theme: String| {
-	// Select theme-specific CSS
-	let css_path = format!("css/{}.css", theme);
-
-	div {
-		link {
-			rel: "stylesheet",
-			href: resolve_static(&css_path)
-			// Returns: "/static/css/dark.css" or "/static/css/light.css"
-		}
-
-		div { class: "themed-content",
-			"Content styled by selected theme"
-		}
-	}
-})(theme)
-```
-
-### Integration with head! Macro
-
-For server-side rendering (SSR) and global assets, use `head!` macro with `resolve_static()`:
-
-```rust
-use reinhardt::pages::{head, page};
-use reinhardt::pages::static_resolver::resolve_static;
-
-let my_head = head!(|| {
-	// Stylesheet
-	link {
-		rel: "stylesheet",
-		href: resolve_static("css/polls.css")
-	}
-
-	// JavaScript
-	script {
-		src: resolve_static("js/analytics.js"),
-		defer
-	}
-
-	// Favicon
-	link {
-		rel: "icon",
-		href: resolve_static("images/favicon.ico")
-	}
-});
-
-// Use with view
-let view = page!(|| {
-	div { class: "app",
-		"App content"
-	}
-})();
-
-// Render with SSR
-let mut renderer = SsrRenderer::new();
-let html = renderer.render_page_with_view_head(view, my_head);
-```
-
-**Benefits of head! macro:**
-- SEO-friendly (assets loaded before page render)
-- Optimal performance (stylesheets load before content)
-- Clean separation of concerns
-
-### Choosing the Right Approach
-
-Use this decision guide to select the appropriate method:
-
-| Scenario | Method | Example | Reason |
-|----------|--------|---------|--------|
-| Fixed asset path in `page!` | `resolve_static("path")` | `img { src: resolve_static("logo.png") }` | Simple, runtime resolution |
-| Dynamic path based on state | `resolve_static(&format!(...))` | `resolve_static(&format!("user_{}.png", id))` | Flexible, data-driven |
-| Global assets (CSS/JS) | `head!` with `resolve_static()` | `head!(|| { link { href: resolve_static("app.css") } })` | SEO, performance |
-| Server template (index.html) | `{{ static_url("path") }}` | `<script src="{{ static_url('app.js') }}">` | Server-side processing |
-
-**Best Practices:**
-1. **Always use `resolve_static()`** - Never hardcode `/static/` URLs
-2. **Initialize early** - Call `init_static_resolver()` at app startup
-3. **Use manifest in production** - Enables cache busting with hashed filenames
-4. **Prefer static paths** - Use string literals when possible for future optimizations
-
-**Common Mistakes:**
-```rust
-// ❌ BAD: Hardcoded URL
-img { src: "/static/images/logo.png" }
-
-// ❌ BAD: Including /static/ prefix
-img { src: resolve_static("/static/images/logo.png") }	// Results in /static//static/...
-
-// ✅ GOOD: Relative path without prefix
-img { src: resolve_static("images/logo.png") }
-```
-
----
-
-
-## Styling Options
-
-reinhardt-pages applications support multiple styling approaches. This tutorial covers two main options:
-
-### Option A: UnoCSS (Recommended)
-
-**UnoCSS** is a modern utility-first CSS engine with instant, on-demand styling. It's recommended for new projects due to:
-- **Zero build step**: Runtime-based CSS generation
-- **Atomic CSS**: Minimal CSS output
-- **Theme support**: Dark mode and custom themes out of the box
-- **Type-safe**: IntelliSense support with IDE plugins
-
-See [Setting Up UnoCSS](#setting-up-unocss-recommended) section below for implementation.
-
-
-
----
-
-## Setting Up UnoCSS (Recommended)
-
-UnoCSS provides instant, on-demand styling with zero build configuration. This is the recommended approach for production reinhardt-pages applications.
-
-### Step 1: Update index.html
-
-Replace Bootstrap CDN with UnoCSS runtime:
+`index.html` lives at the project root and is copied (verbatim) into the directory that the dev server serves at `/`. It is what the browser fetches when a user visits `http://127.0.0.1:8000/` for the first time. The entire file is short enough to read top to bottom:
 
 ```html
 <!DOCTYPE html>
@@ -419,44 +301,42 @@ Replace Bootstrap CDN with UnoCSS runtime:
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Polls App - Reinhardt Tutorial</title>
+	<link rel="icon" type="image/png" href="/favicon.png">
 
 	<!-- UnoCSS Reset -->
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css">
 
-	<!-- UnoCSS Runtime -->
+	<!-- UnoCSS Configuration -->
 	<script>
-	window.__unocss = {
-		theme: {
-			colors: {
-				brand: {
-					DEFAULT: '#4a90e2',
-					hover: '#357abd',
+		window.__unocss = {
+			theme: {
+				colors: {
+					brand: '#4a90e2',
+					'brand-hover': '#357abd',
 				},
-				success: '#28a745',
-				danger: '#dc3545',
-				warning: '#ffc107',
 			},
-		},
-		shortcuts: [
-			// Buttons
-			['btn', 'inline-flex items-center px-4 py-2 rounded-full font-semibold transition-all'],
-			['btn-primary', 'btn bg-brand text-white hover:bg-brand-hover'],
-			['btn-secondary', 'btn bg-gray-200 text-gray-800 hover:bg-gray-300'],
-
-			// Cards
-			['card', 'bg-white rounded-2xl border border-gray-200 shadow-sm'],
-			['card-body', 'p-6'],
-
-			// Form
-			['form-input', 'w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand'],
-			['form-check', 'p-4 border-2 border-gray-200 rounded-xl hover:border-brand hover:bg-blue-50 transition-all cursor-pointer'],
-
-			// Spinner
-			['spinner', 'animate-spin rounded-full border-2 border-gray-200 border-t-brand'],
-		],
-	};
+			shortcuts: [
+				['btn', 'inline-flex items-center px-4 py-2 rounded-full font-semibold'],
+				['btn-primary', 'btn bg-brand text-white hover:bg-brand-hover'],
+				['btn-secondary', 'btn bg-gray-600 text-white hover:bg-gray-700'],
+				['spinner', 'animate-spin rounded-full border-2 border-gray-200 border-t-brand'],
+				['card', 'bg-white rounded-lg shadow-md'],
+				['card-body', 'p-6'],
+				['form-check', 'flex items-center p-3 mb-2 border rounded cursor-pointer hover:bg-gray-50'],
+				['alert-danger', 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded'],
+				['alert-warning', 'bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded'],
+			],
+		};
 	</script>
+
+	<!-- UnoCSS Runtime -->
 	<script src="https://cdn.jsdelivr.net/npm/@unocss/runtime"></script>
+
+	<style>
+		body {
+			background-color: #f8f9fa;
+		}
+	</style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased">
 	<div id="root">
@@ -471,983 +351,100 @@ Replace Bootstrap CDN with UnoCSS runtime:
 </html>
 ```
 
-### Step 2: Update Component Styles
+Three things deserve attention.
 
-Replace Bootstrap classes with UnoCSS utilities:
+First, the `#root` `<div>` is where the SPA mounts. Recall from Part 3 that `src/client/lib.rs` calls `ClientLauncher::new("#root").router_client(...).launch()` — that selector matches this element. The placeholder content inside `#root` (the spinner plus "Loading…") is what the user sees during the brief window between the HTML being parsed and the WASM bundle being instantiated. Once the launcher takes over, it replaces the entire subtree with the router's first page.
 
-```rust
-// UnoCSS styling example
-page!(|| {
-	div { class: "max-w-4xl mx-auto px-4 mt-12",
-		h1 { class: "text-3xl font-bold mb-6", "Polls" }
-		button { class: "btn-primary", "Vote" }
-	}
-})()
-```
+Second, there is no explicit `<script type="module">` here that imports the WASM bundle. The pages template's `ClientLauncher` is responsible for locating and instantiating `examples_tutorial_basis.js` and `examples_tutorial_basis_bg.wasm` from the same origin — the SPA shell does not need to hand-wire `init(wasmUrl)`. This is deliberate: the shell stays static while the framework controls how the bundle is loaded.
 
-### Step 3: Common UnoCSS Patterns
+Third, UnoCSS is delivered straight from a CDN with a small inline configuration. The `window.__unocss` object pre-declares the theme colour `brand` (used as `text-brand`, `bg-brand`, `border-brand` on the framework's atomic utilities) and a handful of shortcuts (`btn`, `btn-primary`, `card`, `card-body`, `form-check`, `spinner`, `alert-danger`, `alert-warning`). Those shortcuts are exactly the class names the `page!` macros in `src/client/components/` reach for, so adding a new shortcut here is the quickest way to keep the markup terse without writing custom CSS files. The CDN URL is left unpinned in the example because the runtime script is small and the project does not need bit-for-bit reproducibility for it; if you want offline builds, mirror it into a registered static directory and reference that local copy instead.
 
-Use shortcuts for consistent styling:
+## The `msw` Feature
 
-```rust
-// Question card
-div {
-	class: "card card-body",
-	h1 { class: "text-2xl font-bold mb-4", "Question text" }
-}
-
-// Form with radio buttons
-div { class: "space-y-3",
-	for choice in &choices {
-		label {
-			class: "form-check",
-			input { type: "radio", class: "mr-3" }
-			span { "Choice text" }
-		}
-	}
-}
-
-// Submit button
-button {
-	class: "btn-primary mt-6 w-full",
-	type: "submit",
-	"Vote"
-}
-
-// Loading spinner
-div { class: "flex justify-center py-12",
-	div { class: "spinner w-8 h-8" }
-}
-```
-
-**Benefits:**
-- **Smaller CSS**: Only generates used utilities
-- **Consistency**: Shortcuts ensure uniform styling
-- **Dark mode**: Built-in support with `dark:` prefix
-- **Responsive**: Easy breakpoints (`md:`, `lg:`, etc.)
-
-For complete UnoCSS configuration examples, see [examples/examples-twitter/index.html](../../../examples/examples-twitter/index.html).
-
----
-
-## Adding Custom CSS
-
-To customize the appearance beyond Bootstrap's defaults, create a custom stylesheet.
-
-### Step 1: Create Static Directory
-
-```bash
-mkdir -p static/css
-mkdir -p static/images
-```
-
-### Step 2: Create Custom Stylesheet
-
-Create `static/css/polls.css`:
-
-```css
-/* Custom polls styling (extends Bootstrap) */
-
-/* Override Bootstrap defaults */
-:root {
-	--polls-primary: #4a90e2;
-	--polls-primary-dark: #357abd;
-	--polls-secondary: #6c757d;
-	--polls-success: #28a745;
-	--polls-danger: #dc3545;
-}
-
-/* Custom question card styling */
-.question-card {
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-	color: white;
-	border-radius: 15px;
-	padding: 2rem;
-	margin-bottom: 2rem;
-	box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-}
-
-.question-card h1 {
-	font-weight: 700;
-	margin-bottom: 1.5rem;
-}
-
-/* Custom form check styling */
-.form-check-custom {
-	background-color: #f8f9fa;
-	border: 2px solid #e9ecef;
-	border-radius: 10px;
-	padding: 1rem;
-	margin-bottom: 1rem;
-	transition: all 0.3s ease;
-}
-
-.form-check-custom:hover {
-	border-color: var(--polls-primary);
-	background-color: #e7f3ff;
-	transform: translateY(-2px);
-	box-shadow: 0 4px 8px rgba(74, 144, 226, 0.2);
-}
-
-.form-check-custom input[type="radio"]:checked + label {
-	color: var(--polls-primary);
-	font-weight: 600;
-}
-
-/* Results visualization */
-.result-bar-container {
-	background-color: #e9ecef;
-	border-radius: 10px;
-	overflow: hidden;
-	margin-bottom: 1rem;
-}
-
-.result-bar {
-	background: linear-gradient(90deg, var(--polls-primary), var(--polls-primary-dark));
-	color: white;
-	padding: 0.75rem 1rem;
-	font-weight: 600;
-	transition: width 0.5s ease;
-}
-
-.result-percentage {
-	float: right;
-	font-size: 0.9rem;
-}
-
-/* Loading spinner customization */
-.spinner-custom {
-	width: 3rem;
-	height: 3rem;
-	border-width: 0.3rem;
-}
-
-/* Alert customization */
-.alert-custom {
-	border-radius: 10px;
-	border: none;
-	box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-/* Button enhancements */
-.btn-custom-primary {
-	background: linear-gradient(135deg, var(--polls-primary), var(--polls-primary-dark));
-	border: none;
-	padding: 0.75rem 2rem;
-	font-weight: 600;
-	transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.btn-custom-primary:hover {
-	transform: translateY(-2px);
-	box-shadow: 0 6px 12px rgba(74, 144, 226, 0.3);
-}
-
-.btn-custom-primary:active {
-	transform: translateY(0);
-}
-
-/* Responsive design */
-@media (max-width: 768px) {
-	.question-card {
-		padding: 1.5rem;
-	}
-
-	.form-check-custom {
-		padding: 0.75rem;
-	}
-}
-```
-
-### Step 3: Reference in index.html
-
-Update `index.html` to include the custom stylesheet:
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Polls App - Reinhardt Tutorial</title>
-
-	<!-- Custom CSS (if needed) -->
-	<link rel="stylesheet" href="/static/css/polls.css">
-</head>
-<body>
-	<div id="root">
-		<div class="flex items-center justify-center min-h-screen">
-			<div class="text-center">
-				<div class="spinner w-12 h-12 mx-auto mb-4"></div>
-				<p class="text-gray-600">Loading...</p>
-			</div>
-		</div>
-	</div>
-</body>
-</html>
-```
-
-### Step 4: Configure Static File Serving
-
-The development server automatically serves static files from the `dist/static/` directory when running with `--with-pages`. Create a simple script to copy static files during build:
-
-Add to `Makefile.toml` or your build script:
-
-```bash
-# Copy static files to dist directory
-mkdir -p dist/static
-cp -r static/* dist/static/
-```
-
-When you run `cargo make dev`, the static files will be available at `/static/` paths.
-
-**Development workflow:**
-
-```bash
-# Build WASM and start development server
-cargo make dev
-
-# Or build only
-cargo make wasm-build-dev
-```
-
-The static files middleware serves files from `dist/` directory, with SPA mode enabled by default for client-side routing support.
-
-## Using Custom Styles in Components
-
-Apply the custom classes in your components:
-
-### Updated Index Page
-
-```rust
-// src/client/components/polls.rs
-pub fn polls_index() -> Page {
-	// ... state management
-
-	page!(|questions_list: Vec<QuestionInfo>, loading_state: bool, error_state: Option<String>| {
-		div {
-			class: "container mt-5",
-
-			if let Some(ref err) = error_state {
-				div {
-					class: "alert alert-danger alert-custom",
-					{err}
-				}
-			} else if loading_state {
-				div {
-					class: "text-center",
-					div {
-						class: "spinner-border text-primary spinner-custom",
-						role: "status",
-						span {
-							class: "visually-hidden",
-							"Loading..."
-						}
-					}
-				}
-			} else {
-				div {
-					h1 { class: "mb-4 text-center", "Latest Polls" }
-
-					if questions_list.is_empty() {
-						div {
-							class: "alert alert-info alert-custom text-center",
-							"No polls are available."
-						}
-					} else {
-						div {
-							class: "list-group",
-							for question in &questions_list {
-								a {
-									href: format!("/polls/{}/", question.id),
-									class: "list-group-item list-group-item-action",
-									{&question.question_text}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	})(questions_list, loading_state, error_state)
-}
-```
-
-### Updated Detail Page with Custom Form Styling
-
-```rust
-pub fn polls_detail_page(question_id: i64) -> Page {
-	// ... state management and event handlers
-
-	page!(|
-		question_data: Option<QuestionInfo>,
-		choices_data: Vec<ChoiceInfo>,
-		form_error_state: Option<String>,
-		voting_state: bool,
-		selected: Option<i64>,
-		handle_submit: impl Fn(web_sys::Event) + 'static,
-		handle_choice_change: impl Fn(web_sys::Event) + 'static
-	| {
-		div {
-			class: "container mt-5",
-
-			if let Some(ref q) = question_data {
-				// Question card with custom styling
-				div {
-					class: "question-card",
-					h1 { {&q.question_text} }
-				}
-
-				if let Some(ref form_err) = form_error_state {
-					div {
-						class: "alert alert-warning alert-custom",
-						{form_err}
-					}
-				}
-
-				form {
-					onsubmit: handle_submit,
-
-					div {
-						class: "mb-4",
-						for choice in &choices_data {
-							div {
-								class: "form-check form-check-custom",
-								input {
-									class: "form-check-input",
-									type: "radio",
-									name: "choice",
-									id: format!("choice{}", choice.id),
-									value: choice.id.to_string(),
-									onchange: handle_choice_change.clone(),
-									checked: selected == Some(choice.id)
-								}
-								label {
-									class: "form-check-label",
-									for: format!("choice{}", choice.id),
-									{&choice.choice_text}
-								}
-							}
-						}
-					}
-
-					button {
-						class: "btn btn-custom-primary",
-						type: "submit",
-						disabled: voting_state,
-						if voting_state {
-							"Voting..."
-						} else {
-							"Vote"
-						}
-					}
-
-					" "
-					a {
-						href: format!("/polls/{}/results/", q.id),
-						class: "btn btn-secondary",
-						"View Results"
-					}
-				}
-			}
-		}
-	})(
-		question_data,
-		choices_data,
-		form_error_state,
-		voting_state,
-		selected,
-		handle_submit,
-		handle_choice_change
-	)
-}
-```
-
-### Updated Results Page with Progress Bars
-
-```rust
-pub fn polls_results_page(question_id: i64) -> Page {
-	// ... state management
-
-	page!(|
-		question_data: Option<QuestionInfo>,
-		choices_data: Vec<ChoiceInfo>,
-		total_votes: i32,
-		loading_state: bool,
-		error_state: Option<String>
-	| {
-		div {
-			class: "container mt-5",
-
-			if let Some(ref q) = question_data {
-				// Question card
-				div {
-					class: "question-card",
-					h1 { {&q.question_text} }
-					p {
-						class: "mb-0",
-						"Total votes: " {total_votes.to_string()}
-					}
-				}
-
-				// Results visualization
-				div {
-					class: "mt-4",
-					for choice in &choices_data {
-						let percentage = if total_votes > 0 {
-							(choice.votes as f64 / total_votes as f64 * 100.0) as i32
-						} else {
-							0
-						};
-
-						div {
-							class: "result-bar-container",
-							div {
-								class: "result-bar",
-								style: format!("width: {}%", percentage),
-								span { {&choice.choice_text} }
-								span {
-									class: "result-percentage",
-									{format!("{}% ({} votes)", percentage, choice.votes)}
-								}
-							}
-						}
-					}
-				}
-
-				// Actions
-				div {
-					class: "mt-4",
-					a {
-						href: format!("/polls/{}/", q.id),
-						class: "btn btn-primary",
-						"Vote Again"
-					}
-					" "
-					a {
-						href: "/",
-						class: "btn btn-secondary",
-						"← Back to Polls"
-					}
-				}
-			}
-		}
-	})(question_data, choices_data, total_votes, loading_state, error_state)
-}
-```
-
-## Adding Images
-
-To add images to your application:
-
-### Step 1: Add Image Files
-
-```bash
-# Add a logo
-cp /path/to/logo.png static/images/logo.png
-
-# Add a background pattern
-cp /path/to/pattern.svg static/images/pattern.svg
-```
-
-### Step 2: Reference in CSS
-
-Update `static/css/polls.css`:
-
-```css
-/* Add background pattern */
-body {
-	background-image: url('/static/images/pattern.svg');
-	background-repeat: repeat;
-	background-size: 50px 50px;
-}
-
-/* Add logo to question card */
-.question-card::before {
-	content: '';
-	display: block;
-	width: 60px;
-	height: 60px;
-	background-image: url('/static/images/logo.png');
-	background-size: contain;
-	background-repeat: no-repeat;
-	margin-bottom: 1rem;
-}
-```
-
-### Step 3: Reference in Components (Alternative)
-
-You can also reference images directly in components:
-
-```rust
-// From polls_index_with_logo() in src/client/components/polls.rs
-page!(|load_questions_error: Action<Vec<QuestionInfo>, String>, load_questions_signal: Action<Vec<QuestionInfo>, String>| {
-	div {
-		class: "max-w-4xl mx-auto px-4 mt-12",
-		div {
-			class: "text-center mb-6",
-			img {
-				src: "/static/images/poll-icon.svg",
-				alt: "Polls App",
-				class: "mx-auto w-16 h-16",
-			}
-		}
-		h1 {
-			class: "mb-4 text-center",
-			"Polls"
-		}
-		// ... error and loading watch blocks ...
-		watch {
-			if load_questions_signal.result().unwrap_or_default().is_empty() {
-				p {
-					class: "text-gray-500",
-					"No polls are available."
-				}
-			} else {
-				div {
-					class: "space-y-2",
-					{
-						Page::Fragment(
-							load_questions_signal
-								.result()
-								.unwrap_or_default()
-								.iter()
-								.map(|question| {
-									let href = format!("/polls/{}/", question.id);
-									let question_text = question.question_text.clone();
-									let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string();
-									page!(
-										| href : String, question_text : String, pub_date : String | { a {
-										href : href, class :
-										"block p-4 border rounded hover:bg-gray-50 transition-colors", div {
-										class : "flex w-full justify-between items-center", img { src :
-										"/static/images/poll-icon.svg", alt : "Poll", class : "w-8 h-8 mr-3",
-										} div { class : "flex-1", h5 { class : "mb-1", { question_text } } }
-										small { { pub_date } } } } }
-									)(href, question_text, pub_date)
-								})
-								.collect::<Vec<_>>(),
-						)
-					}
-				}
-			}
-		}
-	}
-})(load_questions_error, load_questions_signal)
-```
-
-## Building for Production
-
-When building for production, use the release build task with wasm-opt optimization.
-
-### Step 1: Build for Production
-
-```bash
-# Build with optimizations
-cargo make wasm-build-release
-
-# Output will be in dist/
-# - index.html (copied from project root)
-# - *.wasm (optimized WASM bundle via wasm-opt -O3)
-# - *.js (JS glue code generated by wasm-bindgen)
-# - static/ (copied static assets)
-```
-
-### Step 2: Copy Static Assets
-
-Ensure your static files are copied to dist:
-
-```bash
-# Copy static files to dist
-mkdir -p dist/static
-cp -r static/* dist/static/
-```
-
-For convenience, add this to your `Makefile.toml`:
+The example's `Cargo.toml` defines a third feature flag that is directly relevant to how the static pipeline interacts with testing:
 
 ```toml
-[tasks.copy-static]
-description = "Copy static files to dist"
-script = '''
-mkdir -p dist/static
-if [ -d "static" ]; then
-    cp -r static/* dist/static/
-fi
-'''
+[features]
+default = ["with-reinhardt", "client-router"]
+# client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
+client-router = []
+with-reinhardt = []
+# `msw` is forwarded to the facade so `#[server_fn]` generates the
+# `MockableServerFn` markers consumed by `tests/wasm/polls_mock_test.rs`.
+# This feature only resolves once the framework `msw` facade flag ships
+# (tracked in #4287 / PR #4288); until then, leaving it absent makes the
+# typed MSW test target skip cleanly via its `required-features = ["msw"]`.
+msw = []
 ```
 
-### Step 3: Deploy
-
-The `dist/` directory contains all files needed for deployment:
-
-```bash
-# Deploy to static hosting (e.g., Netlify, Vercel, GitHub Pages)
-cd dist
-# Upload to your hosting service
-
-# Or serve with a simple HTTP server
-python -m http.server 8080
-```
-
-## Static File Organization Best Practices
-
-### Recommended Directory Structure
-
-```
-project/
-├── static/
-│   ├── css/
-│   │   ├── polls.css
-│   │   └── admin.css
-│   ├── images/
-│   │   ├── logo.png
-│   │   ├── favicon.ico
-│   │   └── backgrounds/
-│   │       └── pattern.svg
-│   ├── fonts/
-│   │   └── custom-font.woff2
-│   └── icons/
-│       └── sprite.svg
-├── index.html
-├── Makefile.toml
-└── src/
-    └── ...
-```
-
-### Namespacing by Feature
-
-For larger applications, organize by feature:
-
-```
-static/
-├── common/
-│   ├── css/
-│   │   └── base.css
-│   └── images/
-│       └── logo.png
-├── polls/
-│   ├── css/
-│   │   └── polls.css
-│   └── images/
-│       └── poll-icon.svg
-└── admin/
-    ├── css/
-    │   └── admin.css
-    └── images/
-        └── admin-icon.svg
-```
-
-Reference in `index.html`:
-
-```html
-<link rel="stylesheet" href="/static/common/css/base.css">
-<link rel="stylesheet" href="/static/polls/css/polls.css">
-```
-
-## CDN Integration for Production
-
-For better performance in production, serve static files from a CDN:
-
-### Option 1: Use Existing CDNs
-
-```html
-<!-- Use popular CDN services -->
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-```
-
-### Option 2: Deploy to Your Own CDN
-
-Build your WASM and static files:
-
-```bash
-# Build optimized WASM
-cargo make wasm-build-release
-
-# Copy static assets
-cp -r static/* dist/static/
-```
-
-After building, upload `dist/` to your CDN:
-
-```bash
-# Example using AWS S3
-aws s3 sync dist/ s3://your-bucket/polls-app/ --delete
-
-# Or Cloudflare R2
-wrangler r2 object put polls-app --file dist/ --recursive
-```
-
-Update your `index.html` to use CDN URLs for assets if needed.
-
-## Optimization Techniques
-
-### 1. Image Optimization
-
-Before adding images, optimize them:
-
-```bash
-# Install image optimization tools
-brew install imageoptim-cli  # macOS
-# or
-sudo apt-get install imagemagick  # Linux
-
-# Optimize PNG
-imageoptim static/images/*.png
-
-# Convert to WebP for better compression
-convert static/images/logo.png static/images/logo.webp
-```
-
-Use WebP with fallback:
-
-```html
-<picture>
-	<source srcset="/static/images/logo.webp" type="image/webp">
-	<img src="/static/images/logo.png" alt="Logo">
-</picture>
-```
-
-### 2. CSS Optimization
-
-Use CSS purging to remove unused styles:
-
-```bash
-# Install PurgeCSS
-npm install -g purgecss
-
-# Purge unused CSS
-purgecss --css static/css/polls.css --content src/**/*.rs dist/index.html --output static/css/
-```
-
-### 3. Font Loading Optimization
-
-Use `font-display: swap` for custom fonts:
-
-```css
-@font-face {
-	font-family: 'CustomFont';
-	src: url('/static/fonts/custom-font.woff2') format('woff2');
-	font-display: swap;  /* Show fallback font immediately */
-}
-```
-
-### 4. Lazy Loading Images
-
-For images below the fold:
-
-```rust
-img {
-	src: "/static/images/large-image.jpg",
-	loading: "lazy",  // Browser-native lazy loading
-	alt: "Description"
-}
-```
-
-## Registering WASM Build Artifacts for collectstatic
-
-For reinhardt-pages applications, the WASM build artifacts (`.js` and `.wasm` files) need to be registered so that `collectstatic` can discover them. Create `src/config/wasm.rs`:
-
-```rust
-use reinhardt::reinhardt_apps::AppStaticFilesConfig;
-
-inventory::submit! {
-	AppStaticFilesConfig {
-		app_label: "examples-tutorial-basis-wasm",
-		static_dir: "dist-wasm",
-		url_prefix: "",
-	}
-}
-```
-
-This uses the `inventory` crate to register the `dist-wasm` directory (where `wasm-pack` outputs build artifacts) as a static file source. Without this registration, `collectstatic` won't discover WASM build artifacts and they won't be included in the production `staticfiles/` directory.
-
-Make sure to include this module in your `config.rs`:
-
-```rust
-pub mod wasm;
-```
-
-## Collecting Static Files for Production
-
-For production deployments, the `collectstatic` command gathers all static files from your apps and copies them to a single directory for efficient serving.
-
-### What is collectstatic?
-
-The `collectstatic` command:
-- Scans all configured static file directories
-- Copies files to a central `STATIC_ROOT` directory
-- Resolves naming conflicts
-- Prepares files for production web servers or CDNs
-
-### Basic Usage
-
-```bash
-# Collect all static files to STATIC_ROOT
-cargo make collectstatic
-
-# Options:
-# --clear: Clear existing files before collecting
-# --no-input: Skip confirmation prompts
-# --dry-run: Preview what would be collected without actually copying
-
-# Production workflow (non-interactive)
-cargo run --bin manage collectstatic --clear --no-input
-```
-
-### Configuration
-
-Configure static file settings in your `settings/production.toml`:
+The `msw` feature here is a thin pass-through: enabling it on the example crate forwards to the `reinhardt` facade so that `#[server_fn]` generates the `MockableServerFn` markers that the WASM-only test target `tests/wasm/polls_mock_test.rs` consumes for Mock Service Worker–style interception. The opt-in shape is deliberate because the facade flag is still in flight (tracked in upstream `#4287` and its PR `#4288`); until that lands, leaving the feature out of `default` keeps `cargo nextest run` and `wasm-pack test` both green via the `required-features = ["msw"]` clause on the test declaration:
 
 ```toml
-[static]
-# URL prefix for static files
-static_url = "/static/"
-
-# Directory where collectstatic outputs files
-static_root = "./staticfiles"
-
-# Directories to collect from
-staticfiles_dirs = [
-	"static",                        # Your custom static files
-	"node_modules/@unocss/reset",    # UnoCSS reset CSS
-]
+[[test]]
+name = "polls_mock_test"
+path = "tests/wasm/polls_mock_test.rs"
+required-features = ["msw"]
 ```
 
-**Configuration Options**:
-- `static_url`: URL prefix for accessing static files (default: `/static/`)
-- `static_root`: Absolute path to output directory (required for production)
-- `staticfiles_dirs`: List of directories to collect from (optional)
+That is, the test target is *declared* but is not compiled unless `--features msw` is passed. Once the upstream facade ships, flipping the example to `default = ["with-reinhardt", "client-router", "msw"]` makes the typed mock tests light up without any other code change.
 
-### Production Workflow
+This matters in the static-files chapter for one reason: the MSW-style mocks intercept the HTTP requests that the SPA makes from inside the browser, so they are exercising the *served* WASM bundle, not the source `.wasm` on disk. If `wasm-build-dev` has not run, there is nothing for the test harness to load, and the failure mode looks like "the test page is blank". The `wasm-test` task documents the related quirk:
 
-A typical production deployment workflow:
-
-**1. Development**: Serve static files directly
-
-```bash
-# WASM projects
-cargo make dev
-
-# Traditional projects
-cargo make runserver
-```
-
-**2. Build for Production**:
-
-```bash
-# Build optimized WASM (for reinhardt-pages projects)
-cargo make dev-release
-
-# Collect static files
-cargo run --bin manage collectstatic --no-input
-
-# Output: All static files copied to ./staticfiles/
-```
-
-**3. Deploy**: Configure your web server to serve `staticfiles/` directory
-
-**Nginx Configuration Example**:
-```nginx
-server {
-	listen 80;
-	server_name example.com;
-
-	# Serve static files
-	location /static/ {
-		alias /path/to/your/app/staticfiles/;
-		expires 1y;
-		add_header Cache-Control "public, immutable";
-	}
-
-	# Proxy API requests to Reinhardt
-	location / {
-		proxy_pass http://127.0.0.1:8000;
-	}
-}
-```
-
-### Best Practices
-
-**For CDN Deployment**:
-- ✅ Use CDN for UnoCSS runtime in production (faster delivery, better caching)
-- ✅ Upload `staticfiles/` to your CDN after running collectstatic
-- ✅ Update `STATIC_URL` to point to CDN URL
-
-**For Performance**:
-- ✅ Version your static files (cache busting) - add version parameter to URLs
-- ✅ Compress static files (gzip/brotli) - reduce bandwidth
-- ✅ Set far-future cache headers for immutable files - reduce server requests
-- ✅ Use WebP images with fallback - better compression than PNG/JPEG
-
-**For Automation**:
-- ✅ Run collectstatic in CI/CD pipeline before deployment
-- ✅ Use `--no-input` flag in automated scripts
-- ✅ Verify file count after collection
-
-**Security**:
-- ❌ Never commit `staticfiles/` to version control (add to `.gitignore`)
-- ❌ Never serve `staticfiles/` from development server (use cargo make dev)
-
-### Troubleshooting
-
-**Issue**: "STATIC_ROOT setting is not configured"
 ```toml
-# Solution: Add to settings/production.toml
-[static]
-static_root = "./staticfiles"
+# `--no-default-features` is forwarded to the underlying `cargo build --tests
+# --target wasm32-unknown-unknown` so the `with-reinhardt`-gated `manage` bin
+# (native-only, uses tokio / reinhardt::commands / async fn main) is skipped
+# via its `required-features`. Without this flag the wasm test build pulls
+# the bin in and fails to compile.
+[tasks.wasm-test]
+description = "Run WASM tests in headless Chrome"
+command = "wasm-pack"
+args = ["test", "--headless", "--chrome", "--", "--no-default-features"]
 ```
 
-**Issue**: Files not found after collectstatic
+The cross-reference between Part 5's testing chapter and this one is that the `msw` feature is what makes the test target compile, the `wasm-test` task is what *runs* it, and the static pipeline described above is what produces the bundle that the test target instantiates inside headless Chrome.
+
+## What This Chapter Does Not Cover
+
+It is worth being explicit about what *isn't* part of Reinhardt's pages static pipeline, since the analogy with classic Django sometimes leads to wrong expectations:
+
+- **There is no `STATICFILES_DIRS` array configured in `settings/base.toml`.** Look at the file from Part 1 — it has `[core]`, `[core.security]`, and `[database]`, but no `[static]` section. The pages template registers static directories programmatically via `AppStaticFilesConfig` + `inventory::submit!`, not declaratively via a settings list. If you want to register an additional static directory (say, a `static/` folder for hand-authored CSS), you add another `inventory::submit!` block alongside `src/config/wasm.rs` rather than appending to a TOML array.
+- **There is no `STATICFILES_STORAGE` to swap in for hashed filenames or S3 uploads.** The example uses the framework's default storage, which is a plain filesystem copy into `STATIC_ROOT`. CDN integration and content-hashed asset names are out of scope for this tutorial's example project; they are framework-level concerns that the pages template intentionally leaves to deployment configuration.
+- **There is no per-app `static/` directory convention enforced by the framework.** Django auto-collects from any app's `static/` folder; Reinhardt does not. Each static source is registered explicitly via `AppStaticFilesConfig`, which means there are no surprises at collect time — you can `grep` the codebase for `AppStaticFilesConfig` to see every static-asset source the project ships with.
+- **There is no `{% static %}` template tag in `index.html`.** The shell HTML is served as-is, without template rendering. Substitution happens (if at all) inside the WASM bundle once it runs, not before.
+
+These omissions are intentional. The pages template's static story is "build the WASM bundle, register the build output for collection, copy everything into a known root, and serve from there" — concrete, scriptable, and free of the implicit per-app discovery that Django uses.
+
+## Troubleshooting
+
+The two failure modes you will hit during a tutorial session are both easy to diagnose:
+
+### The SPA stays on the "Loading…" spinner
+
+The shell rendered (so the server is up) but the WASM bundle never instantiated. Almost always this is a stale `dist-wasm/` left over from a previous build that no longer matches the source:
+
 ```bash
-# Check what was collected
-cargo run --bin manage collectstatic --dry-run
-
-# Verify STATIC_ROOT exists
-ls -la ./staticfiles/
+cargo make clean-cache && cargo make wasm-build-dev
 ```
 
-**Issue**: Naming conflicts between files
-```bash
-# collectstatic will warn about duplicate file names
-# Resolution: Rename files or use namespaced directories
-static/
-├── app1/
-│   └── style.css
-└── app2/
-	└── style.css  # Different namespace, no conflict
+`clean-cache` removes `dist/`, `dist-wasm/`, and the Rust incremental cache; `wasm-build-dev` rebuilds the bundle and runs `collectstatic`. After that, reload the browser. If the spinner is still there, open the browser devtools console — an outdated `*_bg.wasm` will surface as a bindgen mismatch error there, while a missing file will surface as a `404` in the network panel.
+
+### `cargo make dev` builds but the database has no tables
+
+This should not happen with the example as shipped — the `runserver` task explicitly depends on `migrate`, so a fresh `db.sqlite3` gets its schema applied before the server starts listening. If you somehow get a `no such table: polls_question` error after `cargo make dev`, run `cargo make migrate` once by hand to confirm the migration target works, then re-run `cargo make dev`. The dependency chain in `Makefile.toml` does not skip steps unless you have edited it, so this is mostly a "did you wipe `db.sqlite3` while the server was running" check.
+
+### `cargo make wasm-test` fails to compile
+
+This is the failure mode the `wasm-test` task description warns about:
+
+```text
+error[E0432]: unresolved import `tokio::main`
 ```
 
----
-
-## Summary
-
-In this tutorial, you learned:
-
-- **Static File Management in reinhardt-pages**: Different from traditional server-rendered approaches
-- **Bootstrap Integration**: Using CDN for common libraries
-- **Custom CSS**: Creating and referencing custom stylesheets
-- **Build Configuration**: Using `cargo make` for WASM builds and static file handling
-- **Component Styling**: Applying custom styles in reinhardt-pages components
-- **Image Assets**: Adding and optimizing images
-- **Production Build**: Optimizing for production with wasm-opt
-- **CDN Integration**: Serving static files from CDNs for better performance
-- **Optimization Techniques**: Image optimization, CSS purging, font loading, lazy loading
-
-**Key Differences from Traditional Approaches:**
-
-| Aspect | Traditional (Server-Rendered) | reinhardt-pages |
-|--------|-------------------|-----------------|
-| Asset Reference | `{{ 'file.css'\|static }}` tag | Direct URL in `index.html` |
-| Build Tool | `collectstatic` command | `cargo make wasm-build-*` tasks |
-| Processing | Server-side collection | WASM bundling + wasm-pack |
-| Deployment | Separate static file server | Single `dist/` directory |
-| Optimization | Manual configuration | wasm-opt for WASM optimization |
-
-Your polls app now has a clean, professional appearance with custom styling!
+It means `cargo build --tests --target wasm32-unknown-unknown` pulled the native-only `manage` binary in. The fix is already baked into the task definition: `wasm-pack test … -- --no-default-features` passes `--no-default-features` down, which drops the `with-reinhardt` feature, which gates the `manage` bin via its `required-features = ["with-reinhardt"]` clause. So always invoke the WASM tests through `cargo make wasm-test` rather than calling `wasm-pack test` directly.
 
 ## What's Next?
 
-In the final tutorial, we'll explore the Reinhardt admin interface and learn how to customize it for managing poll data. Note that the admin panel uses a different rendering approach, so concepts from this tutorial will be adapted accordingly.
+In the final chapter, you will look at the project's admin layout: how `src/apps/polls/admin.rs` registers `QuestionAdmin` and `ChoiceAdmin` via `#[admin(model, for = …)]`, and how `src/config/admin.rs` composes them into a project-wide `AdminSite` that `src/config/urls.rs` mounts at `/admin/`.
 
 Continue to [Part 7: Admin Customization](../7-admin-customization/).
