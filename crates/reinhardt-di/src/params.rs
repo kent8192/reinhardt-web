@@ -119,6 +119,22 @@ pub enum ParamError {
 	#[error("Payload too large: {0}")]
 	PayloadTooLarge(String),
 
+	/// The request lacks valid authentication for an extractor that
+	/// requires it. Maps to `CoreError::Authentication` and therefore to
+	/// HTTP 401 once propagated through the handler macro. Use this when
+	/// an authenticated session, token, or identity is missing rather
+	/// than when a request parameter is malformed (see #4446).
+	#[error("Authentication required: {0}")]
+	Authentication(String),
+
+	/// The extractor failed for a reason that is neither a malformed
+	/// request nor a missing identity (e.g. a misconfigured DI scope, a
+	/// broken provider, or another infrastructure-level failure). Maps
+	/// to `CoreError::Internal` so the handler returns HTTP 500 rather
+	/// than masking the failure as a 4xx response.
+	#[error("Internal extractor error: {0}")]
+	Internal(String),
+
 	/// The parameter failed validation constraints.
 	#[cfg(feature = "validation")]
 	#[error("{}", .0.format_error())]
@@ -218,6 +234,17 @@ impl ParamError {
 
 impl From<ParamError> for CoreError {
 	fn from(err: ParamError) -> Self {
+		// Preserve authentication semantics: `Authentication` MUST surface
+		// as `CoreError::Authentication` so the handler returns HTTP 401
+		// rather than the 400 implied by `Validation`/`ParamValidation`.
+		// `Internal` similarly MUST surface as `CoreError::Internal` so a
+		// genuine misconfiguration (e.g. a corrupted DI scope) is not
+		// masked as a 4xx response. See #4446.
+		let err = match err {
+			ParamError::Authentication(msg) => return CoreError::Authentication(msg),
+			ParamError::Internal(msg) => return CoreError::Internal(msg),
+			other => other,
+		};
 		// Use structured context if available, otherwise fall back to generic validation error
 		match err.context() {
 			Some(ctx) => CoreError::ParamValidation(Box::new(ctx.clone())),
