@@ -3,7 +3,7 @@
 //! The `routes` function defines the top-level project router. Per-app server
 //! routes are auto-mounted via `#[url_patterns(InstalledApp::<app>, mode = server)]`,
 //! and per-app client routes are aggregated through the `.client(|c| ...)`
-//! closure below so that the `#[routes(standalone)]` macro's WASM-side
+//! closure below so that the `#[routes]` macro's WASM-side
 //! `inventory::submit!(ClientRouterRegistration)` emission carries every
 //! SPA route. `ClientLauncher::register_routes_from_inventory()` in
 //! `client/lib.rs` then merges those entries and installs them as the SPA
@@ -52,24 +52,35 @@ fn create_session_middleware() -> SessionMiddleware {
 
 /// Build the top-level project router.
 ///
-/// `#[routes(standalone)]` is applied unconditionally so that the macro
-/// emits the right artifacts on both targets:
+/// `#[routes(standalone, client_inventory)]` opts into the new cross-target
+/// convention introduced in #4453 without enabling per-app URL-resolver
+/// generation (this project does not consume `installed_apps!`-generated
+/// `client_url_resolvers` modules from a top-level `urls` directory; the
+/// per-app `#[url_patterns(..., mode = client)]` declarations live in
+/// `apps/<app>/urls/client_router.rs` instead). The flags compose:
 ///
-/// - On native, the body below runs and the macro emits
-///   `inventory::submit!(UrlPatternsRegistration)` so that the server-side
-///   pipeline discovers the `ServerRouter` carried by this `UnifiedRouter`.
-/// - On wasm32-unknown-unknown, the macro emits
-///   `inventory::submit!(ClientRouterRegistration)` for the `ClientRouter`
-///   carried by the same `UnifiedRouter`. The `.client(|c| ...)` closure
-///   below is where every app's `client_url_patterns()` must be aggregated
-///   so that registration is non-empty and the SPA mounts a useful route
-///   table via `ClientLauncher::register_routes_from_inventory()`.
+/// - `client_inventory` (#4453): drops the macro's `native_only` cfg gate
+///   from the user function body and emits
+///   `inventory::submit!(ClientRouterRegistration)` on
+///   `wasm32-unknown-unknown`. The body below MUST therefore compile on
+///   both targets — `.server(|s| ...)` and the `#[cfg(wasm)]` aggregation
+///   block ensure that.
+/// - `standalone`: suppresses generation of `crate::urls::url_prelude` and
+///   the `ResolvedUrls::<app>()` accessor methods. The project still
+///   resolves SPA URLs via `register_client_reverser` (called inside
+///   `collect_client_router_from_inventory`).
+///
+/// On native, the macro emits `inventory::submit!(UrlPatternsRegistration)`
+/// for the `ServerRouter` carried by the returned `UnifiedRouter`. On wasm
+/// it emits the parallel `ClientRouterRegistration`, and
+/// `ClientLauncher::register_routes_from_inventory()` in
+/// `client/lib.rs` consumes those entries to install the SPA route table.
 ///
 /// Per-app server routers are still discovered through their own
 /// `#[url_patterns(InstalledApp::<app>, mode = server)]` registrations; this
 /// function only registers the project-level server functions, the admin
 /// panel, and the session middleware on top of them.
-#[routes(standalone)]
+#[routes(standalone, client_inventory)]
 pub fn routes() -> UnifiedRouter {
 	let router = UnifiedRouter::new().server(|s| {
 		// On wasm the `s` parameter is a `ServerRouterStub` and every
@@ -117,7 +128,7 @@ pub fn routes() -> UnifiedRouter {
 	// The aggregation is `#[cfg(wasm)]` because:
 	// - The per-app `client_router` submodules are themselves wasm-only
 	//   (they import `crate::client::pages::*`, which is wasm-only).
-	// - On native, `#[routes(standalone)]` emits `UrlPatternsRegistration`
+	// - On native, plain `#[routes]` emits `UrlPatternsRegistration`
 	//   for the server router only; the `ClientRouter` field of
 	//   `UnifiedRouter` is unused on the native side.
 	#[cfg(wasm)]

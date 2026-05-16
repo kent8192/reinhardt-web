@@ -1,6 +1,6 @@
 //! WASM SPA entry point.
 //!
-//! The `#[routes(standalone)]`-annotated function in
+//! The `#[routes]`-annotated function in
 //! [`crate::config::urls::routes`] aggregates every app's
 //! `client_url_patterns()` through `UnifiedRouter::mount_unified` and the
 //! macro submits the resulting `ClientRouter` into `inventory` at compile
