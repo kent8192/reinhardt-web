@@ -412,6 +412,17 @@ impl ClientLauncher {
 	/// behavior so legacy bodies (e.g. `UnifiedRouter::new().mount(..)`)
 	/// keep compiling unchanged.
 	///
+	/// # Required facade features
+	///
+	/// The macro emission references `reinhardt::ClientRouterRegistration`
+	/// and `reinhardt::ClientRouter`, both of which are facade re-exports
+	/// gated on the `client-router` feature of the `reinhardt` crate. The
+	/// facade's `pages` feature implies `client-router`, so consumers that
+	/// already opt into `pages` get this for free. Crates that consume
+	/// `reinhardt-pages` directly (without going through the `reinhardt`
+	/// facade) must enable `reinhardt-urls/client-router` themselves.
+	/// Refs Copilot review on PR #4477.
+	///
 	/// # Conflict
 	///
 	/// Mutually exclusive with [`Self::router`] (deprecated) and

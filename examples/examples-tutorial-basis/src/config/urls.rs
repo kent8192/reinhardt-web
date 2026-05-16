@@ -128,9 +128,10 @@ pub fn routes() -> UnifiedRouter {
 	// The aggregation is `#[cfg(wasm)]` because:
 	// - The per-app `client_router` submodules are themselves wasm-only
 	//   (they import `crate::client::pages::*`, which is wasm-only).
-	// - On native, plain `#[routes]` emits `UrlPatternsRegistration`
-	//   for the server router only; the `ClientRouter` field of
-	//   `UnifiedRouter` is unused on the native side.
+	// - On native, `#[routes(standalone, client_inventory)]` consumes the
+	//   server portion of the returned `UnifiedRouter` via
+	//   `UrlPatternsRegistration`; the `ClientRouter` field is unused on
+	//   the native side.
 	#[cfg(wasm)]
 	let router = router
 		.mount_unified(
