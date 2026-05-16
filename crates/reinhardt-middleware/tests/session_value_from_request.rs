@@ -7,7 +7,11 @@
 //! whitelist — i.e. they work without the `#[inject]` attribute, just
 //! like `Path(...)` / `Json(...)`. See issue #4446.
 
-#[cfg(feature = "sessions")]
+// The `test-support` feature gate matches `Cargo.toml` `[[test]] required-features`
+// for this binary: the shared `TenantIdKey` fixture lives behind that feature in
+// `reinhardt_middleware::session::test_support` (see Issue #4462), so the binary
+// itself is only built when both `sessions` and `test-support` are enabled.
+#[cfg(all(feature = "sessions", feature = "test-support"))]
 mod tests {
 	use std::sync::Arc;
 	use std::time::Duration;
@@ -20,6 +24,7 @@ mod tests {
 	use reinhardt_middleware::session::{
 		OptionalSessionValue, OptionalSessionValueNamed, SessionData, SessionKey, SessionStore,
 		SessionValue, SessionValueNamed, USER_ID_SESSION_KEY,
+		test_support::TenantIdKey,
 	};
 
 	/// Build a request whose extensions carry the active `Arc<InjectionContext>`
@@ -71,11 +76,6 @@ mod tests {
 		// `Request::set_di_context`.
 		request.extensions.insert(Arc::new(ctx));
 		request
-	}
-
-	struct TenantIdKey;
-	impl SessionKey for TenantIdKey {
-		const KEY: &'static str = "tenant_id";
 	}
 
 	#[tokio::test]

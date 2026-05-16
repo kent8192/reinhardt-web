@@ -32,6 +32,12 @@ session-redis = ["sessions", "dep:redis"]
 # Aggregate all middleware features
 full = ["cors", "compression", "security", "rate-limit", "sessions", "auth-jwt", "sqlx", "session-redis"]
 
+# Test-only fixtures shared between the in-crate unit tests and external
+# integration tests (Issue #4462). Enabled implicitly when `cargo make test`
+# runs the workspace with `--all-features`; integration tests that depend on
+# these fixtures declare it via `[[test]] required-features` below.
+test-support = []
+
 [dependencies]
 reinhardt-core = { workspace = true, features = [
     "types",
@@ -82,3 +88,12 @@ rstest = { workspace = true }
 proptest = { workspace = true }
 trybuild = "1.0"
 http = { workspace = true }
+
+# Integration tests for the typed session-value `FromRequest` path import
+# the shared `TenantIdKey` fixture from `session::test_support`, so this
+# binary is only built when the `test-support` feature is enabled (which
+# `cargo make test`'s `--all-features` already does in CI).
+[[test]]
+name = "session_value_from_request"
+path = "tests/session_value_from_request.rs"
+required-features = ["sessions", "test-support"]
