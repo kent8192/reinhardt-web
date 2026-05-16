@@ -3,7 +3,7 @@
 //! This module provides the main ClientRouter struct and routing logic.
 //! The router uses `Page` type for all view rendering.
 
-use super::error::RouterError;
+use super::error::{MergeError, RouterError};
 use super::handler::{
 	RouteHandler, no_params_handler, result_handler, single_path_handler, three_path_handler,
 	two_path_handler, with_params_handler,
@@ -272,18 +272,74 @@ impl ClientRouter {
 		}
 	}
 
-	/// Merges routes from another router into this one.
+	/// Combine another `ClientRouter` into this one.
 	///
-	/// Routes and named route mappings from `other` are appended.
-	/// Signals and not_found handler from `other` are discarded.
-	// Used by UnifiedRouter::mount_unified() on WASM and native targets.
-	pub(crate) fn merge(mut self, other: ClientRouter) -> Self {
+	/// Routes and named-route mappings from `other` are appended to `self`,
+	/// preserving the order in which routes were originally registered. The
+	/// reactive signals (`current_path`, `current_params`, `current_route_name`)
+	/// and the `not_found` handler from `other` are discarded — `self`'s
+	/// observation state is the one that drives the merged router.
+	///
+	/// # Named-route collisions
+	///
+	/// If both routers register the same named route, the entry from `other`
+	/// overwrites the entry from `self` (last-wins). This matches the way
+	/// `UnifiedRouter::mount_unified` already composes per-app routers, and
+	/// keeps `merge` callable in chains where the caller does not want to
+	/// handle errors. Use [`ClientRouter::try_merge`] for a fallible variant
+	/// that surfaces collisions instead of silently shadowing them.
+	///
+	/// # Examples
+	///
+	/// Composing per-app SPA routers produced by
+	/// `#[url_patterns(InstalledApp::<app>, mode = client)]` into the single
+	/// `ClientRouter` that `ClientLauncher::router_client` expects:
+	///
+	/// ```rust,ignore
+	/// let router = polls_client_url_patterns()
+	///     .merge(users_client_url_patterns());
+	/// ```
+	pub fn merge(mut self, other: ClientRouter) -> Self {
 		let offset = self.routes.len();
 		for (name, idx) in other.named_routes {
 			self.named_routes.insert(name, idx + offset);
 		}
 		self.routes.extend(other.routes);
 		self
+	}
+
+	/// Like [`ClientRouter::merge`], but fail if any named route collides.
+	///
+	/// Validates first, so on `Err` `self` is dropped without being mutated.
+	/// On success the semantics are identical to `merge` (routes appended,
+	/// `other`'s signals and `not_found` discarded).
+	///
+	/// # Errors
+	///
+	/// Returns [`MergeError::NameCollision`] carrying a colliding name when
+	/// at least one named route is registered in both routers. When several
+	/// names collide, the returned `name` is one of them; the choice is
+	/// unspecified because named routes are stored in a `HashMap`.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// match polls_client_url_patterns().try_merge(users_client_url_patterns()) {
+	///     Ok(router) => launcher.router_client(|| router),
+	///     Err(MergeError::NameCollision { name }) => {
+	///         panic!("two apps register the route `{name}`");
+	///     }
+	/// }
+	/// ```
+	pub fn try_merge(self, other: ClientRouter) -> Result<Self, MergeError> {
+		if let Some(name) = other
+			.named_routes
+			.keys()
+			.find(|name| self.named_routes.contains_key(*name))
+		{
+			return Err(MergeError::NameCollision { name: name.clone() });
+		}
+		Ok(self.merge(other))
 	}
 
 	/// Prefix all named route keys with `"namespace:"`.

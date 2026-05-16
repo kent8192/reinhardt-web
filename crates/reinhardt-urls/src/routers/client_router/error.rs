@@ -91,6 +91,35 @@ impl std::fmt::Display for RouterError {
 
 impl std::error::Error for RouterError {}
 
+/// Error returned by [`ClientRouter::try_merge`] when two routers cannot be
+/// combined without changing observable behavior.
+///
+/// [`ClientRouter::try_merge`]: super::core::ClientRouter::try_merge
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MergeError {
+	/// A named route with this name is registered in both routers.
+	///
+	/// The colliding name is reported as-is, after each router's namespace
+	/// prefix (`app:route`) has already been applied by
+	/// `#[url_patterns(InstalledApp::<app>, mode = client)]`.
+	NameCollision {
+		/// The fully-qualified named-route key that exists in both routers.
+		name: String,
+	},
+}
+
+impl std::fmt::Display for MergeError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::NameCollision { name } => {
+				write!(f, "Named route `{}` is registered in both routers", name)
+			}
+		}
+	}
+}
+
+impl std::error::Error for MergeError {}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
