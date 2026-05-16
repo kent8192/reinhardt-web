@@ -284,6 +284,38 @@ pub struct ForeignKeyConstraintInfo {
 	pub on_update: ForeignKeyAction,
 }
 
+/// Returns true when `c` is a single-column UNIQUE constraint.
+///
+/// "Single-column" means exactly one entry in `fields`; `constraint_type` is
+/// compared case-insensitively against `"unique"` because the codebase has
+/// historically mixed `"unique"` (model registry / autodetector) and
+/// `"UNIQUE"` (`schema_diff::ConstraintSchema`) spellings for the same
+/// concept. The two diff codepaths converge here, so accept either.
+fn is_single_field_unique(c: &ConstraintDefinition) -> bool {
+	c.constraint_type.eq_ignore_ascii_case("unique") && c.fields.len() == 1
+}
+
+/// Extracts the single column name from a constraint SQL of the form
+/// `CONSTRAINT <name> UNIQUE (<column>)` and returns it when the body has no
+/// comma (i.e. it really is a single-column UNIQUE).
+///
+/// Used by `MigrationAutodetector::dedup_redundant_unique_add_constraints`
+/// to identify which `Operation::AddConstraint` operations are eligible for
+/// the redundant-emission check (multi-column UNIQUE / non-UNIQUE
+/// constraints are deliberately ignored).
+fn parse_single_column_unique(constraint_sql: &str) -> Option<&str> {
+	// Uppercase-only match: every emitter in this crate writes `UNIQUE` in
+	// upper case (see `operations::Constraint`'s `Display` impl and
+	// `schema_diff::constraint_schema_to_sql`).
+	let after_unique = constraint_sql.split(" UNIQUE (").nth(1)?;
+	let close = after_unique.find(')')?;
+	let body = after_unique[..close].trim();
+	if body.contains(',') || body.is_empty() {
+		return None;
+	}
+	Some(body)
+}
+
 impl ConstraintDefinition {
 	/// Convert ConstraintDefinition to operations::Constraint
 	pub fn to_constraint(&self) -> super::operations::Constraint {
@@ -4419,6 +4451,26 @@ impl MigrationAutodetector {
 
 	/// Detect added constraints
 	///
+	/// A single-field UNIQUE constraint on the to-side is treated as
+	/// already-present on the from-side when any of the following is true:
+	///
+	/// 1. From-state has a constraint with the same name (legacy behaviour).
+	/// 2. From-state has any single-field UNIQUE constraint covering the same
+	///    column — same semantics, different name. This handles the
+	///    DB-introspection case where SQLite auto-generates names like
+	///    `sqlite_autoindex_users_1`, which never match the to-state's
+	///    `{app}_{model}_{field}_uniq`.
+	/// 3. From-state has a `FieldState` for that column with
+	///    `params["unique"] == "true"`. This handles the file-based
+	///    reconstruction path: `apply_migration_operations` translates
+	///    `ColumnDefinition.unique = true` into an inline field param but
+	///    never synthesises a peer `ConstraintDefinition`, while
+	///    `ModelMetadata::to_model_state()` on the to-side does synthesise
+	///    one. Without this branch the autodetector keeps emitting a
+	///    redundant `AddConstraint` every time `makemigrations` runs against
+	///    a model whose `#[field(unique = true)]` column already shipped in
+	///    `0001_initial.rs` (see reinhardt-web#4448).
+	///
 	/// # Django Reference
 	/// From: django/db/migrations/autodetector.py:1700-1800
 	fn detect_added_constraints(&self, changes: &mut DetectedChanges) {
@@ -4428,24 +4480,38 @@ impl MigrationAutodetector {
 				.get_model_by_table_name(app_label, &to_model.table_name)
 			{
 				for to_constraint in &to_model.constraints {
-					// Check if this constraint exists in from_model
-					if !from_model
+					if from_model
 						.constraints
 						.iter()
 						.any(|c| c.name == to_constraint.name)
 					{
-						changes.added_constraints.push((
-							app_label.clone(),
-							model_name.clone(),
-							to_constraint.clone(),
-						));
+						continue;
 					}
+					if Self::single_field_unique_already_present(to_constraint, from_model) {
+						continue;
+					}
+					changes.added_constraints.push((
+						app_label.clone(),
+						model_name.clone(),
+						to_constraint.clone(),
+					));
 				}
 			}
 		}
 	}
 
 	/// Detect removed constraints
+	///
+	/// Symmetric to [`Self::detect_added_constraints`]: a from-side
+	/// single-field UNIQUE constraint is NOT reported as removed when the
+	/// to-side carries an equivalent shape — either another single-field
+	/// UNIQUE constraint over the same column, or a `FieldState` for that
+	/// column with `params["unique"] == "true"`. Without this guard the
+	/// asymmetric shape-match in `detect_added_constraints` would simply move
+	/// the redundancy from `AddConstraint` into a spurious `DropConstraint`
+	/// when the column was originally introduced as a separately-named
+	/// UNIQUE constraint but is now declared via inline `#[field(unique =
+	/// true)]` (or vice versa). See reinhardt-web#4448.
 	///
 	/// # Django Reference
 	/// From: django/db/migrations/autodetector.py:1800-1900
@@ -4456,20 +4522,141 @@ impl MigrationAutodetector {
 				.get_model_by_table_name(app_label, &from_model.table_name)
 			{
 				for from_constraint in &from_model.constraints {
-					// Check if this constraint still exists in to_model
-					if !to_model
+					if to_model
 						.constraints
 						.iter()
 						.any(|c| c.name == from_constraint.name)
 					{
-						changes.removed_constraints.push((
-							app_label.clone(),
-							model_name.clone(),
-							from_constraint.name.clone(),
-						));
+						continue;
 					}
+					if Self::single_field_unique_already_present(from_constraint, to_model) {
+						continue;
+					}
+					changes.removed_constraints.push((
+						app_label.clone(),
+						model_name.clone(),
+						from_constraint.name.clone(),
+					));
 				}
 			}
+		}
+	}
+
+	/// Returns true when `candidate` is a single-field UNIQUE constraint and
+	/// the same column on `other_side` is already covered by either:
+	/// - any single-field UNIQUE constraint over the same column, or
+	/// - a field whose `params["unique"] == "true"`.
+	///
+	/// Used by both `detect_added_constraints` and
+	/// `detect_removed_constraints` to recognise inline `column.unique = true`
+	/// and a separately-named single-field `UNIQUE` constraint as
+	/// semantically identical, so a name mismatch alone does not trigger a
+	/// redundant `AddConstraint` / `DropConstraint` (reinhardt-web#4448).
+	fn single_field_unique_already_present(
+		candidate: &ConstraintDefinition,
+		other_side: &ModelState,
+	) -> bool {
+		if !is_single_field_unique(candidate) {
+			return false;
+		}
+		let column = &candidate.fields[0];
+		let covered_by_constraint = other_side
+			.constraints
+			.iter()
+			.any(|c| is_single_field_unique(c) && &c.fields[0] == column);
+		if covered_by_constraint {
+			return true;
+		}
+		other_side
+			.fields
+			.get(column)
+			.and_then(|f| f.params.get("unique"))
+			.map(String::as_str)
+			== Some("true")
+	}
+
+	/// Final-pass dedup: drop redundant single-column `AddConstraint UNIQUE`
+	/// operations whose column is already declared unique elsewhere in the
+	/// same migration.
+	///
+	/// This is the second of two layers that protect against the bug in
+	/// reinhardt-web#4448. The primary fix is `detect_added_constraints`'s
+	/// shape-match, which compares from-state and to-state. This pass
+	/// inspects the *generated* operation list and is the safety net for
+	/// any future codepath that produces both an `AddColumn { column.unique
+	/// = true }` and a peer `AddConstraint` for the same single column —
+	/// for example, a column being added in the same migration as the
+	/// model registry synthesises its `{app}_{model}_{field}_uniq`
+	/// constraint.
+	///
+	/// Coverage rules (per `(table, column)`):
+	/// - `Operation::CreateTable { name, columns, constraints }` —
+	///   any column with `unique = true` or any `Constraint::Unique` over a
+	///   single column counts the column as already unique.
+	/// - `Operation::AddColumn { table, column }` — `column.unique = true`
+	///   counts.
+	/// - A previously-emitted `Operation::AddConstraint` whose SQL is a
+	///   single-column UNIQUE on the same column also counts, so duplicate
+	///   `AddConstraint`s for the same column in the same op list collapse
+	///   to one.
+	///
+	/// Multi-column UNIQUE (`unique_together`) is intentionally not touched
+	/// — its semantics differ from a single-column UNIQUE.
+	fn dedup_redundant_unique_add_constraints(
+		by_app: &mut std::collections::BTreeMap<String, Vec<super::Operation>>,
+	) {
+		use std::collections::HashSet;
+
+		for operations in by_app.values_mut() {
+			// (table, column) pairs already known to be UNIQUE in this migration.
+			let mut covered: HashSet<(String, String)> = HashSet::new();
+			let mut keep = Vec::with_capacity(operations.len());
+			for op in operations.drain(..) {
+				match &op {
+					super::Operation::CreateTable {
+						name,
+						columns,
+						constraints,
+						..
+					} => {
+						for col in columns {
+							if col.unique {
+								covered.insert((name.clone(), col.name.clone()));
+							}
+						}
+						for c in constraints {
+							if let super::operations::Constraint::Unique { columns, .. } = c
+								&& columns.len() == 1
+							{
+								covered.insert((name.clone(), columns[0].clone()));
+							}
+						}
+						keep.push(op);
+					}
+					super::Operation::AddColumn { table, column, .. } => {
+						if column.unique {
+							covered.insert((table.clone(), column.name.clone()));
+						}
+						keep.push(op);
+					}
+					super::Operation::AddConstraint {
+						table,
+						constraint_sql,
+					} => {
+						if let Some(col) = parse_single_column_unique(constraint_sql) {
+							let key = (table.clone(), col.to_string());
+							if covered.contains(&key) {
+								// Redundant — drop it.
+								continue;
+							}
+							covered.insert(key);
+						}
+						keep.push(op);
+					}
+					_ => keep.push(op),
+				}
+			}
+			*operations = keep;
 		}
 	}
 
@@ -4830,6 +5017,14 @@ impl MigrationAutodetector {
 		// emitted by `generate_migrations()` (not here). Direct callers of
 		// `generate_operations()` historically did not see them; preserve
 		// that contract to avoid behavioral surprises.
+
+		// Second-line defence against redundant single-column `AddConstraint
+		// UNIQUE` operations. The primary fix lives in
+		// `detect_added_constraints` (shape-match), but this pass also catches
+		// cases where the column is being added in the same migration with
+		// `column.unique = true` *and* a peer `AddConstraint` is emitted for
+		// it. See reinhardt-web#4448.
+		Self::dedup_redundant_unique_add_constraints(&mut by_app);
 
 		// Flatten and sort by dependency to ensure correct execution order.
 		let operations: Vec<super::Operation> = by_app.into_values().flatten().collect();
@@ -5309,6 +5504,14 @@ impl MigrationAutodetector {
 				},
 			);
 		}
+
+		// Second-line defence against redundant single-column `AddConstraint
+		// UNIQUE` operations. The primary fix lives in
+		// `detect_added_constraints` (shape-match); this pass also catches
+		// cases where the column is being added in the same migration with
+		// `column.unique = true` *and* a peer `AddConstraint` is emitted for
+		// it. See reinhardt-web#4448.
+		Self::dedup_redundant_unique_add_constraints(&mut migrations_by_app);
 
 		// Create Migration objects for each app
 		let mut migrations = Vec::new();
@@ -7419,6 +7622,261 @@ mod tests {
 			),
 			"expected only CreateCompositePrimaryKey, got: {:?}",
 			operations
+		);
+	}
+
+	/// Reproduces reinhardt-web#4448: when the file-based `from_state`
+	/// reconstruction stores a column's uniqueness as `params["unique"] =
+	/// "true"` (the path through `ProjectState::apply_migration_operations`
+	/// → `column_def_to_field_state`), and the live model registry's
+	/// `to_state` materialises the same column as a synthesised
+	/// single-field `ConstraintDefinition`, the autodetector must NOT emit
+	/// an `Operation::AddConstraint` for the redundant UNIQUE.
+	#[rstest]
+	fn inline_unique_param_on_from_side_does_not_emit_redundant_add_constraint() {
+		// Arrange — `from_state` mimics what `apply_migration_operations`
+		// produces for `0001_initial.rs`: the `username` column carries
+		// `params["unique"] = "true"` and the model has NO peer constraint.
+		let mut username_field =
+			FieldState::new("username", super::super::FieldType::VarChar(150), false);
+		username_field
+			.params
+			.insert("unique".to_string(), "true".to_string());
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let from_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field.clone(), username_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+
+		// `to_state` mimics what `ModelMetadata::to_model_state()` produces:
+		// the same inline-unique param PLUS a synthesised single-field
+		// UNIQUE `ConstraintDefinition` named per the
+		// `{app}_{model.to_lowercase()}_{field}_uniq` convention.
+		let synthesised = ConstraintDefinition {
+			name: "users_user_username_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["username".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field, username_field],
+			Vec::new(),
+			vec![synthesised],
+		);
+
+		let from_state = build_project_state(vec![(
+			("users".to_string(), "User".to_string()),
+			from_model,
+		)]);
+		let to_state =
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — no AddConstraint is emitted, because the column is
+		// already covered by inline `params["unique"]` in `from_state`.
+		assert!(
+			operations
+				.iter()
+				.all(|op| !matches!(op, super::super::Operation::AddConstraint { .. })),
+			"expected NO Operation::AddConstraint, got: {:?}",
+			operations
+		);
+	}
+
+	/// Reproduces the DB-introspection variant of reinhardt-web#4448:
+	/// `from_state` carries a single-field UNIQUE constraint with a
+	/// dialect-specific auto-name (e.g. SQLite's
+	/// `sqlite_autoindex_users_1`), and `to_state` declares the same
+	/// column's UNIQUE with the model-derived name
+	/// (`users_user_username_uniq`). The names differ but the semantics
+	/// are identical — no `AddConstraint` must be emitted.
+	#[rstest]
+	fn single_field_unique_constraint_renames_do_not_emit_redundant_add_constraint() {
+		// Arrange
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let username_field =
+			FieldState::new("username", super::super::FieldType::VarChar(150), false);
+		let auto_named = ConstraintDefinition {
+			name: "sqlite_autoindex_users_1".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["username".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let model_named = ConstraintDefinition {
+			name: "users_user_username_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["username".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field.clone(), username_field.clone()],
+			Vec::new(),
+			vec![auto_named],
+		);
+		let to_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field, username_field],
+			Vec::new(),
+			vec![model_named],
+		);
+		let from_state = build_project_state(vec![(
+			("users".to_string(), "User".to_string()),
+			from_model,
+		)]);
+		let to_state =
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — neither AddConstraint nor DropConstraint is emitted.
+		// A pure rename of an internal constraint name on a single-column
+		// UNIQUE is treated as a no-op; emitting either would be invalid on
+		// SQLite (no ALTER TABLE ADD CONSTRAINT) and would leave duplicate
+		// constraints on dialects that recreate the table.
+		let constraint_ops: Vec<_> = operations
+			.iter()
+			.filter(|op| {
+				matches!(
+					op,
+					super::super::Operation::AddConstraint { .. }
+						| super::super::Operation::DropConstraint { .. }
+				)
+			})
+			.collect();
+		assert!(
+			constraint_ops.is_empty(),
+			"expected no Add/DropConstraint ops, got: {:?}",
+			constraint_ops
+		);
+	}
+
+	/// Symmetric guard for reinhardt-web#4448: when `from_state` has a
+	/// single-field UNIQUE constraint and `to_state` represents the same
+	/// uniqueness inline via `params["unique"] = "true"` only, no
+	/// `DropConstraint` must be emitted. Without the symmetric check in
+	/// `detect_removed_constraints` the fix would shift the redundancy
+	/// from `AddConstraint` into `DropConstraint`.
+	#[rstest]
+	fn from_side_unique_constraint_matched_by_inline_unique_on_to_side_emits_no_drop() {
+		// Arrange
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let mut username_field =
+			FieldState::new("username", super::super::FieldType::VarChar(150), false);
+		username_field
+			.params
+			.insert("unique".to_string(), "true".to_string());
+		let unique_constraint = ConstraintDefinition {
+			name: "users_user_username_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["username".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		// from_state: constraint present, field has NO inline unique param.
+		let bare_username =
+			FieldState::new("username", super::super::FieldType::VarChar(150), false);
+		let from_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field.clone(), bare_username],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		// to_state: no peer constraint, inline param only.
+		let to_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field, username_field],
+			Vec::new(),
+			Vec::new(),
+		);
+		let from_state = build_project_state(vec![(
+			("users".to_string(), "User".to_string()),
+			from_model,
+		)]);
+		let to_state =
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — no DropConstraint emitted; the inline `params["unique"]`
+		// on the to-side already covers the column.
+		assert!(
+			operations
+				.iter()
+				.all(|op| !matches!(op, super::super::Operation::DropConstraint { .. })),
+			"expected NO Operation::DropConstraint, got: {:?}",
+			operations
+		);
+	}
+
+	/// Direct unit test for the dedup pass
+	/// `MigrationAutodetector::dedup_redundant_unique_add_constraints`.
+	/// Manually constructs a per-app operation list where an
+	/// `Operation::AddColumn { column.unique = true }` is followed by a
+	/// peer `Operation::AddConstraint` that ascribes a UNIQUE to the same
+	/// column. The dedup pass must drop the redundant `AddConstraint`,
+	/// regardless of how it got there. Second safety net for
+	/// reinhardt-web#4448.
+	#[rstest]
+	fn dedup_pass_drops_add_constraint_redundant_with_unique_add_column() {
+		// Arrange
+		let ops = vec![
+			super::super::Operation::AddColumn {
+				table: "users".to_string(),
+				column: super::super::ColumnDefinition {
+					name: "username".to_string(),
+					type_definition: super::super::FieldType::VarChar(150),
+					not_null: true,
+					unique: true,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+				mysql_options: None,
+			},
+			super::super::Operation::AddConstraint {
+				table: "users".to_string(),
+				constraint_sql: "CONSTRAINT users_user_username_uniq UNIQUE (username)".to_string(),
+			},
+		];
+		let mut by_app: std::collections::BTreeMap<String, Vec<super::super::Operation>> =
+			std::collections::BTreeMap::new();
+		by_app.insert("users".to_string(), ops);
+
+		// Act
+		MigrationAutodetector::dedup_redundant_unique_add_constraints(&mut by_app);
+
+		// Assert — only AddColumn survives; the AddConstraint is dropped.
+		let remaining = &by_app["users"];
+		assert_eq!(
+			remaining.len(),
+			1,
+			"expected one operation after dedup, got: {:?}",
+			remaining
+		);
+		assert!(
+			matches!(remaining[0], super::super::Operation::AddColumn { .. }),
+			"expected the surviving op to be AddColumn, got: {:?}",
+			remaining[0]
 		);
 	}
 }
