@@ -1079,6 +1079,11 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 ///   produce a compile error.
 /// - Does not accept arguments in this version. Passing any tokens (e.g.
 ///   `#[dto(no_schema)]`) is a compile error.
+/// - Unconditional `#[derive(Validate)]` or `#[derive(Schema)]` on the same
+///   struct is a compile error. Both traits live behind the `native` cfg, so
+///   an unconditional derive cannot resolve on wasm and would duplicate the
+///   macro's emission on native. Either delete the derive (and let `#[dto]`
+///   emit it) or wrap it in `#[cfg_attr(native, derive(...))]` yourself.
 #[proc_macro_attribute]
 pub fn dto(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as syn::DeriveInput);
