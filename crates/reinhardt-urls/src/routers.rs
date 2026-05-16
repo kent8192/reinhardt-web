@@ -186,6 +186,10 @@ pub use helpers::{IncludedRouter, include_routes, path, re_path};
 pub use pattern::{MatchingMode, PathMatcher, PathPattern, RadixRouter, RadixRouterError};
 #[cfg(native)]
 pub use registration::{RouterFactory, UrlPatternsRegistration};
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub use registration::{
+	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
+};
 #[cfg(native)]
 pub use reverse::{
 	ReverseError,
