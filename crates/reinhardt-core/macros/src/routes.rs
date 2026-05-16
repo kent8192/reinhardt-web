@@ -90,7 +90,9 @@ fn detect_extractors(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<ExtractorInfo
 						| "Json" | "Query" | "Header"
 						| "Cookie" | "Form"
 						| "Body" | "HeaderNamed"
-						| "CookieNamed"
+						| "CookieNamed" | "SessionValue"
+						| "OptionalSessionValue"
+						| "SessionValueNamed"
 				) {
 					extractors.push(ExtractorInfo {
 						pat: pat_type.pat.clone(),
@@ -475,12 +477,14 @@ fn generate_wrapper_with_both(
 			.zip(temp_names.iter())
 			.map(|(ext, temp)| {
 				let ty = &ext.ty;
+				// Route `ParamError` through `From<ParamError> for Error` so
+				// variant-specific status mappings (e.g. `Authentication` -> 401)
+				// reach the response, instead of being flattened into 400 via
+				// `Error::Validation`. See #4446.
 				quote! {
 					let #temp = <#ty as #params_crate::FromRequest>::from_request(&req, &ctx)
 						.await
-						.map_err(|e| #core_crate::exception::Error::Validation(
-							format!("Parameter extraction failed: {:?}", e)
-						))?;
+						.map_err(#core_crate::exception::Error::from)?;
 				}
 			})
 			.collect();
@@ -517,7 +521,9 @@ fn generate_wrapper_with_both(
 			args,
 		)
 	} else {
-		// Without pre_validate: extract directly into the original pattern
+		// Without pre_validate: extract directly into the original pattern.
+		// Route ParamError through `From<ParamError> for Error` so variant-specific
+		// status mappings (e.g. `Authentication` -> 401) reach the response. #4446
 		let calls: Vec<_> = extractors
 			.iter()
 			.map(|ext| {
@@ -526,9 +532,7 @@ fn generate_wrapper_with_both(
 				quote! {
 					let #pat = <#ty as #params_crate::FromRequest>::from_request(&req, &ctx)
 						.await
-						.map_err(|e| #core_crate::exception::Error::Validation(
-							format!("Parameter extraction failed: {:?}", e)
-						))?;
+						.map_err(#core_crate::exception::Error::from)?;
 				}
 			})
 			.collect();

@@ -1,10 +1,13 @@
 //! Client-side routing for the {{ app_name }} SPA (workspace crate).
 //!
 //! Routes are declared with `#[url_patterns(InstalledApp::{{ app_name }}, mode = client)]`,
-//! which auto-registers the router via inventory and namespaces named routes
-//! under the `InstalledApp::{{ app_name }}` label (e.g. `{{ app_name }}:index`).
-//! The WASM entry point consumes this builder through
-//! `ClientLauncher::router_client(...)`.
+//! which wraps the function below, emits a `client_url_resolvers`
+//! submodule, and namespaces named routes under the
+//! `InstalledApp::{{ app_name }}` label (e.g. `{{ app_name }}:index`). The
+//! macro does NOT auto-register the router with `ClientLauncher`: the
+//! WASM entry point must pass `client_url_patterns()` explicitly to
+//! `ClientLauncher::router_client(...)` (or merge it with other apps'
+//! routers there) for the routes to become active.
 //!
 //! Path parameters use the typed `ClientPath<T>` extractor.
 
