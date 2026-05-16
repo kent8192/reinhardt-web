@@ -336,8 +336,9 @@ impl ClientLauncher {
 	///
 	/// Mutually exclusive with [`Self::router_client`] and
 	/// [`Self::register_routes_from_inventory`]. Calling more than one of
-	/// the three on the same launcher causes [`Self::launch`] to return
+	/// the three on the same launcher causes `launch()` to return
 	/// an error. (Refs #4453)
+	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
 	#[deprecated(
 		since = "0.1.0-rc.27",
 		note = "Use `ClientLauncher::router_client` with `urls::ClientRouter` instead. \
@@ -365,7 +366,7 @@ impl ClientLauncher {
 	///
 	/// Mutually exclusive with [`Self::router`] (deprecated) and
 	/// [`Self::register_routes_from_inventory`]. Calling more than one
-	/// of the three on the same launcher causes [`Self::launch`] to
+	/// of the three on the same launcher causes `launch()` to
 	/// return an error. (Refs #4234, #4453)
 	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
 	pub fn router_client<F>(mut self, f: F) -> Self
@@ -427,8 +428,9 @@ impl ClientLauncher {
 	///
 	/// Mutually exclusive with [`Self::router`] (deprecated) and
 	/// [`Self::router_client`]. Calling more than one of the three on
-	/// the same launcher causes [`Self::launch`] to return an error.
+	/// the same launcher causes `launch()` to return an error.
 	/// Calling none of them also returns an error.
+	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
 	///
 	/// `launch()` returns an error if no `#[routes(..., client_inventory)]`
 	/// registration is found at runtime (i.e. the `inventory` iterator is
