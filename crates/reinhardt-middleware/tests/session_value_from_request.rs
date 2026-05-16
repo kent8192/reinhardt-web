@@ -23,8 +23,7 @@ mod tests {
 	use reinhardt_http::Request;
 	use reinhardt_middleware::session::{
 		OptionalSessionValue, OptionalSessionValueNamed, SessionData, SessionKey, SessionStore,
-		SessionValue, SessionValueNamed, USER_ID_SESSION_KEY,
-		test_support::TenantIdKey,
+		SessionValue, SessionValueNamed, USER_ID_SESSION_KEY, test_support::TenantIdKey,
 	};
 
 	/// Build a request whose extensions carry the active `Arc<InjectionContext>`

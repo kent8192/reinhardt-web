@@ -456,8 +456,8 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use super::super::test_support::TenantIdKey;
+	use super::*;
 	use rstest::rstest;
 
 	#[rstest]
