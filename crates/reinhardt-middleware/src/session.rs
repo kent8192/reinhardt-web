@@ -16,6 +16,7 @@
 //! All public types are re-exported here so existing call sites that
 //! used `crate::session::*` continue to work unchanged.
 
+mod auth_ext;
 mod backend;
 mod config;
 mod cookie;
@@ -24,14 +25,20 @@ mod id;
 mod injectable;
 mod middleware;
 mod store;
+mod value;
 
+pub use auth_ext::SessionAuthExt;
 pub use backend::AsyncSessionBackend;
 pub use config::SessionConfig;
-pub use data::SessionData;
+pub use data::{SessionData, USER_ID_SESSION_KEY};
 pub use id::{ActiveSessionId, SessionCookieName, SessionId};
 pub use injectable::SessionStoreRef;
 pub use middleware::SessionMiddleware;
 pub use store::SessionStore;
+pub use value::{
+	OptionalSessionValue, OptionalSessionValueNamed, SessionKey, SessionValue, SessionValueNamed,
+	UserIdKey,
+};
 
 #[cfg(test)]
 mod tests {
