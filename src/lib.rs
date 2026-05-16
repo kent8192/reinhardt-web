@@ -813,6 +813,15 @@ pub use reinhardt_urls::routers::{
 	register_router_arc,
 };
 
+// Re-export client-router inventory registration types (WASM target).
+// Mirrors the native `UrlPatternsRegistration` re-export above so the
+// `#[routes]` macro and downstream code can resolve `reinhardt::ClientRouterRegistration`
+// on `wasm32-unknown-unknown`. Refs #4453.
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub use reinhardt_urls::routers::{
+	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
+};
+
 // Re-export client-router types (requires client-router feature)
 // These types enable UnifiedRouter<V> with both .server() and .client() methods
 #[cfg(feature = "client-router")]
