@@ -18,7 +18,9 @@ use {
 	reinhardt::Validate,
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
 	reinhardt::di::Depends,
-	reinhardt::middleware::session::{SessionData, SessionStoreRef},
+	reinhardt::middleware::session::{
+		SessionAuthExt, SessionData, SessionStoreRef, USER_ID_SESSION_KEY,
+	},
 	reinhardt::reinhardt_auth::BaseUserManager,
 	std::collections::HashMap,
 };
@@ -72,16 +74,13 @@ pub async fn login(
 		return Err(ServerFnError::server(403, "User account is inactive"));
 	}
 
-	// Session fixation prevention: rotate the session ID before we associate
-	// it with the authenticated user. See examples-twitter login for context.
-	let old_id = session.regenerate_id();
-
+	// Session fixation prevention: `SessionAuthExt::login` rotates the session
+	// ID, writes the authenticated user's primary key under
+	// `USER_ID_SESSION_KEY`, deletes the old store entry, and persists the
+	// rotated session in one step. See issue #4446.
 	session
-		.set("user_id".to_string(), user.id())
+		.login(&store, user.id())
 		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
-
-	store.inner().delete(&old_id);
-	store.inner().save(session);
 
 	Ok(UserInfo::from(user))
 }
@@ -158,14 +157,12 @@ pub async fn register(
 		.await
 		.map_err(|e| ServerFnError::application(e.to_string()))?;
 
-	// Match `login`: rotate the session id and persist `user_id` so the
-	// account is signed in immediately on successful registration.
-	let old_id = session.regenerate_id();
+	// Match `login`: rotate via `SessionAuthExt::login` so the account is
+	// signed in immediately on successful registration and the `"user_id"`
+	// key stays centralised behind `USER_ID_SESSION_KEY`.
 	session
-		.set("user_id".to_string(), saved.id())
+		.login(&store, saved.id())
 		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
-	store.inner().delete(&old_id);
-	store.inner().save(session);
 
 	Ok(UserInfo::from(saved))
 }
@@ -184,17 +181,14 @@ pub async fn logout(
 	// Only honor logout for sessions that actually carry an authenticated
 	// user; unauthenticated callers with a fresh cookie should not be able
 	// to drive session-store deletes.
-	if session.get::<i64>("user_id").is_none() {
+	if session.get::<i64>(USER_ID_SESSION_KEY).is_none() {
 		return Err(ServerFnError::server(401, "Not authenticated"));
 	}
 
-	// Rotate the session id before deleting the old entry so the previous
-	// id cannot be reused by a downstream component that re-saves the
-	// session struct, mirroring the fixation-prevention rotation in
-	// `login`.
-	let old_id = session.regenerate_id();
-	store.inner().delete(&old_id);
-	store.inner().delete(&session.id);
+	// `SessionAuthExt::logout` rotates the session id, drops the user-id
+	// key, and persists the rotated session — see the docstring on
+	// `SessionAuthExt` for the rationale on rotation-before-clear.
+	session.logout(&store);
 	Ok(())
 }
 
@@ -204,7 +198,7 @@ pub async fn current_user(
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
 ) -> std::result::Result<Option<UserInfo>, ServerFnError> {
-	let user_id = match session.get::<i64>("user_id") {
+	let user_id = match session.get::<i64>(USER_ID_SESSION_KEY) {
 		Some(id) => id,
 		None => return Ok(None),
 	};

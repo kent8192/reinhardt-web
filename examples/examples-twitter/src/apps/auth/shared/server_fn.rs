@@ -12,7 +12,9 @@ use {
 	crate::apps::auth::shared::types::{LoginRequest, RegisterRequest},
 	reinhardt::Validate,
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
-	reinhardt::middleware::session::{SessionData, SessionStoreRef},
+	reinhardt::middleware::session::{
+		SessionAuthExt, SessionData, SessionStoreRef, USER_ID_SESSION_KEY,
+	},
 	reinhardt::{BaseUser, DatabaseConnection},
 	uuid::Uuid,
 };
@@ -68,21 +70,14 @@ pub async fn login(
 		return Err(ServerFnError::server(403, "User account is inactive"));
 	}
 
-	// Session fixation prevention: regenerate session ID. Using
-	// `SessionData::regenerate_id` keeps the middleware's `Set-Cookie` header
-	// in sync with the new ID via the request-scoped `ActiveSessionId` holder
-	// (#3827); raw `session.id = ...` would leave the cookie pointing at a
-	// stale store entry.
-	let old_id = session.regenerate_id();
-
-	// Persist user ID in session
+	// Session fixation prevention: `SessionAuthExt::login` rotates the
+	// session ID (keeping the middleware's `Set-Cookie` header in sync via
+	// the request-scoped `ActiveSessionId` holder, see #3827), writes the
+	// user's primary key under `USER_ID_SESSION_KEY`, deletes the old store
+	// entry, and persists the rotated session in one step. See #4446.
 	session
-		.set("user_id".to_string(), user.id())
+		.login(&store, user.id())
 		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
-
-	// Delete old session and save new one
-	store.inner().delete(&old_id);
-	store.inner().save(session);
 
 	Ok(UserInfo::from(user))
 }
@@ -163,8 +158,10 @@ pub async fn logout(
 	#[inject] session: SessionData,
 	#[inject] store: SessionStoreRef,
 ) -> std::result::Result<(), ServerFnError> {
-	// Delete session from store
-	store.inner().delete(&session.id);
+	let mut session = session;
+	// Rotate the session id, drop the user-id key, and persist the rotated
+	// session in one step — see `SessionAuthExt` for the design rationale.
+	session.logout(&store);
 	Ok(())
 }
 
@@ -175,7 +172,7 @@ pub async fn current_user(
 	#[inject] session: SessionData,
 ) -> std::result::Result<Option<UserInfo>, ServerFnError> {
 	// Get user ID from session
-	let user_id = match session.get::<Uuid>("user_id") {
+	let user_id = match session.get::<Uuid>(USER_ID_SESSION_KEY) {
 		Some(id) => id,
 		None => return Ok(None),
 	};

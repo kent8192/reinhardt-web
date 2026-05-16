@@ -86,3 +86,11 @@ mod migration_overwrite_prevention_test;
 // Macro `unique_together` propagation regression tests (reinhardt-web#4022)
 #[path = "migrations/macro_unique_together_integration.rs"]
 mod macro_unique_together_integration;
+
+// SQLite AddColumn atomic-history regression tests (reinhardt-web#4447)
+#[path = "migrations/sqlite_add_column_atomic.rs"]
+mod sqlite_add_column_atomic;
+
+// #[field(default = ...)] propagation regression tests (reinhardt-web#4447)
+#[path = "migrations/field_default_propagation.rs"]
+mod field_default_propagation;

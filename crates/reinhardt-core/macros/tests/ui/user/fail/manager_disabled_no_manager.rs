@@ -1,12 +1,16 @@
+//! When `manager = false`, the `<Name>Manager` struct must NOT be emitted.
+//! Referencing it should fail to compile.
+
 use chrono::{DateTime, Utc};
 use reinhardt_auth::Argon2Hasher;
 use reinhardt_macros::user;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[user(hasher = Argon2Hasher, username_field = "email", manager = false)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct I32PkUser {
-	pub id: i32,
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct OptOutUser {
+	pub id: Uuid,
 	pub email: String,
 	pub password_hash: Option<String>,
 	pub last_login: Option<DateTime<Utc>>,
@@ -15,16 +19,5 @@ pub struct I32PkUser {
 }
 
 fn main() {
-	use reinhardt_auth::AuthIdentity;
-
-	let user = I32PkUser {
-		id: 999,
-		email: "test@example.com".to_string(),
-		password_hash: None,
-		last_login: None,
-		is_active: true,
-		is_superuser: false,
-	};
-
-	assert_eq!(user.id(), "999");
+	let _ = OptOutUserManager::new();
 }
