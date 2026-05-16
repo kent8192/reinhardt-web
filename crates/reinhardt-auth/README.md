@@ -323,11 +323,60 @@ user models in reinhardt-web applications.
   `"username"`, `"email"`)
 - `full`: When `true`, generates the complete user interface including
   `FullUser` and `PermissionsMixin` implementations
+- `manager` (default `true`): When `true`, also emits a `<Name>Manager` struct
+  that implements `BaseUserManager<Name>`. Pass `manager = false` to opt out.
+- `manager_name` (optional): Override the generated manager type name. Defaults
+  to `<Name>Manager` (e.g., `UserManager`).
+
+**Auto-generated user manager**
+
+By default `#[user]` also generates an in-memory user manager so that the
+common case "I just need a `BaseUserManager` for my user type" requires zero
+boilerplate. The generated manager is backed by `Mutex<HashMap<PK, User>>` and
+provides:
+
+- `pub fn new() -> Self` (also `Default`)
+- `BaseUserManager<Name>::create_user(username, password, extra)` — builds the
+  user from `<Name>::default()`, re-seeds Uuid primary keys with `Uuid::now_v7`,
+  applies known `extra` keys (`email`, `first_name`, `last_name`, `is_active`)
+  when the corresponding `#[user_field]` is present, and calls
+  `set_password` when a password is provided.
+- `BaseUserManager<Name>::create_superuser(...)` — same as `create_user` plus
+  `is_superuser = true` (and `is_staff = true` under `full = true`).
+
+The user struct MUST implement `Default` (e.g., via `#[derive(Default)]`) for
+the generator to work; this matches the requirement for `SuperuserInit` under
+`full = true`.
+
+**When to opt out (`manager = false`)**
+
+Opt out and hand-write the implementation when you need any of:
+
+- Database-backed persistence with custom queries
+- Custom uniqueness checks (e.g., case-insensitive email collision detection
+  with a precise error type)
+- Multi-step user creation (welcome email, audit log, MFA enrollment, etc.)
+- Integration with `reinhardt-di` `#[injectable]` for DI-driven lifetime
+
+```rust
+// Opt out and provide a DB-backed manager yourself.
+#[user(hasher = Argon2Hasher, username_field = "email", manager = false)]
+#[derive(Default, Serialize, Deserialize)]
+pub struct User { /* ... */ }
+
+pub struct UserManager { /* DI-injected db handle */ }
+
+#[async_trait::async_trait]
+impl reinhardt_auth::BaseUserManager<User> for UserManager {
+    // your DB-backed create_user / create_superuser
+}
+```
 
 **Notes:**
 
-- `#[user]` does NOT auto-derive `Serialize`, `Deserialize`, or `Default`;
-  add `#[derive(...)]` explicitly for those traits
+- `#[user]` does NOT auto-derive `Serialize` or `Deserialize`; add
+  `#[derive(...)]` explicitly for those traits. `Default` is now required
+  whenever the auto-manager is enabled (the default).
 - `#[model]` is still required for database integration; `app_label` and
   `table_name` are configured there
 - Each field uses `#[field(...)]` attributes to declare constraints such as
@@ -344,6 +393,9 @@ use uuid::Uuid;
 #[derive(Default, Serialize, Deserialize)]
 #[model(app_label = "auth", table_name = "users")]
 pub struct User {
+	// `#[user]` also auto-generates `UserManager` with an in-memory
+	// `BaseUserManager<User>` impl. Construct it via `UserManager::new()`.
+	// Opt out with `manager = false` or rename via `manager_name = MyMgr`.
 	#[field(primary_key = true, include_in_new = false)]
 	pub id: Uuid,
 

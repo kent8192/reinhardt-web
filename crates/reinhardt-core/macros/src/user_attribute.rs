@@ -4,25 +4,32 @@
 //! `PermissionsMixin`, and `AuthIdentity` based on struct fields.
 
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::parse::Parser;
 use syn::{Ident, ItemStruct, LitBool, LitStr, Result, Token};
 
-use crate::crate_paths::get_reinhardt_auth_crate;
+use crate::crate_paths::{get_async_trait_crate, get_reinhardt_auth_crate};
 use crate::user_field_mapping::{
 	FieldMapping, FieldRole, resolve_field_mapping, validate_required_fields,
 };
 
-struct UserMacroArgs {
-	hasher: syn::Path,
-	username_field: String,
-	full: bool,
+pub(crate) struct UserMacroArgs {
+	pub(crate) hasher: syn::Path,
+	pub(crate) username_field: String,
+	pub(crate) full: bool,
+	/// Whether to emit `<Name>Manager` + `BaseUserManager<Name>` impl.
+	/// Defaults to `true` (opt-out).
+	pub(crate) manager: bool,
+	/// Optional rename for the generated manager struct.
+	pub(crate) manager_name: Option<Ident>,
 }
 
 fn parse_user_args(args: TokenStream) -> Result<UserMacroArgs> {
 	let mut hasher: Option<syn::Path> = None;
 	let mut username_field: Option<String> = None;
 	let mut full = false;
+	let mut manager = true;
+	let mut manager_name: Option<Ident> = None;
 
 	let parser = syn::meta::parser(|meta| {
 		if meta.path.is_ident("hasher") {
@@ -37,8 +44,18 @@ fn parse_user_args(args: TokenStream) -> Result<UserMacroArgs> {
 			let value: LitBool = meta.value()?.parse()?;
 			full = value.value();
 			Ok(())
+		} else if meta.path.is_ident("manager") {
+			let value: LitBool = meta.value()?.parse()?;
+			manager = value.value();
+			Ok(())
+		} else if meta.path.is_ident("manager_name") {
+			meta.input.parse::<Token![=]>()?;
+			manager_name = Some(meta.input.parse::<Ident>()?);
+			Ok(())
 		} else {
-			Err(meta.error("expected `hasher`, `username_field`, or `full`"))
+			Err(meta.error(
+				"expected `hasher`, `username_field`, `full`, `manager`, or `manager_name`",
+			))
 		}
 	});
 
@@ -62,6 +79,8 @@ fn parse_user_args(args: TokenStream) -> Result<UserMacroArgs> {
 		hasher,
 		username_field,
 		full,
+		manager,
+		manager_name,
 	})
 }
 
@@ -394,6 +413,202 @@ fn generate_superuser_init_impl(
 	}
 }
 
+/// Generate an in-memory `<Name>Manager` struct and its `BaseUserManager<Name>`
+/// impl from the resolved field mapping.
+///
+/// The generated manager is backed by a `Mutex<HashMap<PrimaryKey, User>>` so it
+/// satisfies the trait's `Send + Sync` bound and works in async contexts. It is
+/// intentionally lightweight (mirrors `DefaultUserManager`): production users
+/// that need DB persistence, custom uniqueness rules, or multi-step creation
+/// should opt out via `manager = false` and write their own implementation.
+///
+/// Construction relies on `<User as Default>::default()`. Consumers MUST derive
+/// (or hand-implement) `Default` for the user struct.
+fn generate_user_manager_impl(
+	struct_name: &Ident,
+	mapping: &FieldMapping,
+	args: &UserMacroArgs,
+) -> TokenStream {
+	let auth_crate = get_reinhardt_auth_crate();
+	let async_trait_crate = get_async_trait_crate();
+	let manager_name = args
+		.manager_name
+		.clone()
+		.unwrap_or_else(|| format_ident!("{}Manager", struct_name));
+
+	let pk_field = mapping
+		.pk_field
+		.as_ref()
+		.expect("PK validated by validate_required_fields");
+	let pk_type = mapping
+		.pk_type
+		.as_ref()
+		.expect("PK validated by validate_required_fields");
+	let username_field_ident = Ident::new(&args.username_field, proc_macro2::Span::call_site());
+
+	// Re-seed Uuid PKs to avoid the nil-collision footgun documented for
+	// SuperuserInit (issue #4237). Non-Uuid PKs are left untouched (typically
+	// auto-increment integers, which the DB layer assigns).
+	let pk_setter = match crate::pk_shape::pk_uuid_shape(pk_type) {
+		(true, false) => quote! { user.#pk_field = ::uuid::Uuid::now_v7(); },
+		(true, true) => {
+			quote! { user.#pk_field = ::core::option::Option::Some(::uuid::Uuid::now_v7()); }
+		}
+		_ => quote! {},
+	};
+
+	// Per-field setters keyed off the resolved FieldMapping. Each block is only
+	// emitted when the corresponding role is actually present on the struct;
+	// this keeps the generator agnostic about which #[user_field]s exist.
+	let email_apply = if let Some(ident) = mapping.get(FieldRole::Email) {
+		quote! {
+			if let ::core::option::Option::Some(v) = extra.get("email").and_then(|v| v.as_str()) {
+				user.#ident = <Self as #auth_crate::BaseUserManager<#struct_name>>::normalize_email(v);
+			}
+		}
+	} else {
+		quote! {}
+	};
+
+	let first_name_apply = if let Some(ident) = mapping.get(FieldRole::FirstName) {
+		quote! {
+			if let ::core::option::Option::Some(v) = extra.get("first_name").and_then(|v| v.as_str()) {
+				user.#ident = v.to_string();
+			}
+		}
+	} else {
+		quote! {}
+	};
+
+	let last_name_apply = if let Some(ident) = mapping.get(FieldRole::LastName) {
+		quote! {
+			if let ::core::option::Option::Some(v) = extra.get("last_name").and_then(|v| v.as_str()) {
+				user.#ident = v.to_string();
+			}
+		}
+	} else {
+		quote! {}
+	};
+
+	let is_active_default = if let Some(ident) = mapping.get(FieldRole::IsActive) {
+		quote! { user.#ident = true; }
+	} else {
+		quote! {}
+	};
+
+	let is_active_apply = if let Some(ident) = mapping.get(FieldRole::IsActive) {
+		quote! {
+			if let ::core::option::Option::Some(v) = extra.get("is_active").and_then(|v| v.as_bool()) {
+				user.#ident = v;
+			}
+		}
+	} else {
+		quote! {}
+	};
+
+	let date_joined_default = if let Some(ident) = mapping.get(FieldRole::DateJoined) {
+		quote! { user.#ident = ::chrono::Utc::now(); }
+	} else {
+		quote! {}
+	};
+
+	// Superuser promotion setters: only emitted when the corresponding flag
+	// field exists on the user struct. `is_superuser` is required (validated
+	// up-front), so it always emits; `is_staff` only fires when `full = true`.
+	let is_superuser_setter = if let Some(ident) = mapping.get(FieldRole::IsSuperuser) {
+		quote! { user.#ident = true; }
+	} else {
+		quote! {}
+	};
+
+	let is_staff_setter = if let Some(ident) = mapping.get(FieldRole::IsStaff) {
+		quote! { user.#ident = true; }
+	} else {
+		quote! {}
+	};
+
+	quote! {
+		/// Auto-generated in-memory user manager for this user type.
+		///
+		/// Backed by `Mutex<HashMap<PrimaryKey, User>>`. For DB-backed persistence
+		/// or custom uniqueness rules, opt out via `#[user(..., manager = false)]`
+		/// and hand-write a `BaseUserManager` implementation.
+		pub struct #manager_name {
+			users: ::std::sync::Arc<::std::sync::Mutex<::std::collections::HashMap<#pk_type, #struct_name>>>,
+		}
+
+		impl #manager_name {
+			/// Creates a new manager with an empty in-memory user store.
+			pub fn new() -> Self {
+				Self {
+					users: ::std::sync::Arc::new(::std::sync::Mutex::new(
+						::std::collections::HashMap::new(),
+					)),
+				}
+			}
+		}
+
+		impl ::core::default::Default for #manager_name {
+			fn default() -> Self {
+				Self::new()
+			}
+		}
+
+		#[#async_trait_crate::async_trait]
+		impl #auth_crate::BaseUserManager<#struct_name> for #manager_name {
+			async fn create_user(
+				&mut self,
+				username: &str,
+				password: ::core::option::Option<&str>,
+				extra: ::std::collections::HashMap<
+					::std::string::String,
+					::serde_json::Value,
+				>,
+			) -> ::core::result::Result<#struct_name, #auth_crate::BaseUserManagerError> {
+				use #auth_crate::BaseUser as _;
+				let mut user = <#struct_name as ::core::default::Default>::default();
+				#pk_setter
+				user.#username_field_ident = username.to_string();
+				#is_active_default
+				#date_joined_default
+				#email_apply
+				#first_name_apply
+				#last_name_apply
+				#is_active_apply
+				if let ::core::option::Option::Some(pwd) = password {
+					user.set_password(pwd)?;
+				}
+				let mut guard = self
+					.users
+					.lock()
+					.unwrap_or_else(|e| e.into_inner());
+				guard.insert(user.#pk_field.clone(), user.clone());
+				::core::result::Result::Ok(user)
+			}
+
+			async fn create_superuser(
+				&mut self,
+				username: &str,
+				password: ::core::option::Option<&str>,
+				extra: ::std::collections::HashMap<
+					::std::string::String,
+					::serde_json::Value,
+				>,
+			) -> ::core::result::Result<#struct_name, #auth_crate::BaseUserManagerError> {
+				let mut user = self.create_user(username, password, extra).await?;
+				#is_superuser_setter
+				#is_staff_setter
+				let mut guard = self
+					.users
+					.lock()
+					.unwrap_or_else(|e| e.into_inner());
+				guard.insert(user.#pk_field.clone(), user.clone());
+				::core::result::Result::Ok(user)
+			}
+		}
+	}
+}
+
 fn generate_auth_identity_impl(struct_name: &Ident, mapping: &FieldMapping) -> TokenStream {
 	let auth_crate = get_reinhardt_auth_crate();
 	let pk_field = mapping.pk_field.as_ref().expect("PK validated");
@@ -445,6 +660,11 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 	let permissions_impl =
 		generate_permissions_mixin_impl(struct_name, &mapping).unwrap_or_else(|| quote! {});
 	let auth_identity_impl = generate_auth_identity_impl(struct_name, &mapping);
+	let user_manager_impl = if parsed_args.manager {
+		generate_user_manager_impl(struct_name, &mapping, &parsed_args)
+	} else {
+		quote! {}
+	};
 	// SuperuserInit is only generated for full user types with #[model].
 	// The user type must also implement Default (typically via #[derive(Default)]
 	// or a manual impl).
@@ -478,5 +698,6 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 		#permissions_impl
 		#auth_identity_impl
 		#superuser_init_impl
+		#user_manager_impl
 	})
 }

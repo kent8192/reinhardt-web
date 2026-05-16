@@ -176,6 +176,10 @@ pub mod user_management;
 
 pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
 pub use base_user_manager::BaseUserManager;
+// Re-export the error type used by `BaseUserManager` so downstream code (and the
+// `#[user]` macro's auto-generated manager impl) can reference it without
+// taking a direct dependency on `reinhardt-core`.
+pub use reinhardt_core::exception::Error as BaseUserManagerError;
 pub use basic::BasicAuthentication as HttpBasicAuth;
 #[cfg(feature = "argon2-hasher")]
 pub use default_user::DefaultUser;
