@@ -1331,6 +1331,11 @@ impl BaseCommand for RunServerCommand {
 			)
 			.with_default("dist"),
 			CommandOption::flag(None, "no-spa", "Disable SPA mode (no index.html fallback)"),
+			CommandOption::flag(
+				None,
+				"no-project-static",
+				"Disable auto-serving of <project-root>/static/ at /static/ (--with-pages only)",
+			),
 			CommandOption::flag(None, "no-wasm", "Skip WASM build at startup"),
 			CommandOption::flag(
 				None,
@@ -1362,6 +1367,7 @@ impl BaseCommand for RunServerCommand {
 			.map(|s| s.to_string())
 			.unwrap_or_else(|| "dist".to_string());
 		let no_spa = ctx.has_option("no-spa");
+		let no_project_static = ctx.has_option("no-project-static");
 		// Build WASM frontend if --with-pages and not --no-wasm
 		#[cfg(feature = "pages")]
 		{
@@ -1564,6 +1570,7 @@ impl BaseCommand for RunServerCommand {
 					with_pages,
 					&static_dir_raw,
 					no_spa,
+					no_project_static,
 					index_raw.as_deref(),
 					no_wasm_rebuild,
 				)
@@ -1582,6 +1589,7 @@ impl BaseCommand for RunServerCommand {
 				with_pages,
 				&static_dir_raw,
 				no_spa,
+				no_project_static,
 			)
 			.await
 		}
@@ -1666,6 +1674,7 @@ impl RunServerCommand {
 		with_pages: bool,
 		static_dir: &str,
 		no_spa: bool,
+		no_project_static: bool,
 	) -> CommandResult<()> {
 		use reinhardt_server::{HttpServer, ShutdownCoordinator};
 
@@ -1810,6 +1819,36 @@ impl RunServerCommand {
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
 
+			// Auto-mount <project-root>/static/ at /static/ unless opted out.
+			// This is registered BEFORE the dist/ middleware so the
+			// MiddlewareChain (which reverses registration order) evaluates
+			// the project-static middleware first; misses fall through to the
+			// dist/ middleware and then to the application router (Issue #4484).
+			if !no_project_static && let Some(project_root) = PathResolver::find_project_root() {
+				let project_static_dir = project_root.join("static");
+				if project_static_dir.is_dir() {
+					let mut project_static_config =
+						StaticFilesConfig::new(project_static_dir.clone())
+							.url_prefix("/static/")
+							.spa_mode(false)
+							.auto_inject_wasm(false)
+							.passthrough_prefixes(vec!["/static/admin/".to_string()]);
+					// Disable long-lived caching in dev (mirrors #4383 for the
+					// dist/ bundle so hot-reload picks up CSS/JS edits).
+					#[cfg(debug_assertions)]
+					{
+						project_static_config =
+							project_static_config.cache_config(CacheControlConfig::disabled());
+					}
+					server =
+						server.with_middleware(StaticFilesMiddleware::new(project_static_config));
+					ctx.verbose(&format!(
+						"Project static files middleware enabled: {} (mounted at /static/)",
+						project_static_dir.display()
+					));
+				}
+			}
+
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);
 
@@ -1889,6 +1928,7 @@ impl RunServerCommand {
 					with_pages,
 					static_dir,
 					no_spa,
+					no_project_static,
 					index_raw.as_deref(),
 					no_wasm_rebuild,
 				)
@@ -1925,6 +1965,7 @@ impl RunServerCommand {
 		with_pages: bool,
 		static_dir: &str,
 		no_spa: bool,
+		no_project_static: bool,
 		index: Option<&str>,
 		no_wasm_rebuild: bool,
 	) -> CommandResult<()> {
@@ -2016,6 +2057,7 @@ impl RunServerCommand {
 				with_pages,
 				&static_dir_owned,
 				no_spa,
+				no_project_static,
 				index_owned.as_deref(),
 			)
 			.map_err(|e| std::io::Error::other(e.to_string()))
@@ -2202,6 +2244,9 @@ impl RunServerCommand {
 
 	/// Spawn server in child process
 	#[cfg(all(feature = "server", feature = "autoreload"))]
+	// Allow many arguments: mirrors run_server's CLI surface and forwards each
+	// flag the autoreload parent received to its `--noreload` child.
+	#[allow(clippy::too_many_arguments)]
 	fn spawn_server_process(
 		address: &str,
 		insecure: bool,
@@ -2209,6 +2254,7 @@ impl RunServerCommand {
 		with_pages: bool,
 		static_dir: &str,
 		no_spa: bool,
+		no_project_static: bool,
 		index: Option<&str>,
 	) -> CommandResult<tokio::process::Child> {
 		let current_exe = std::env::current_exe().map_err(|e| {
@@ -2249,6 +2295,9 @@ impl RunServerCommand {
 		}
 		if no_spa {
 			cmd.arg("--no-spa");
+		}
+		if no_project_static {
+			cmd.arg("--no-project-static");
 		}
 		if let Some(index_path) = index {
 			cmd.arg("--index").arg(index_path);
