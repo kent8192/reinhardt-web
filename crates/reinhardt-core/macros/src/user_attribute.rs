@@ -53,9 +53,8 @@ fn parse_user_args(args: TokenStream) -> Result<UserMacroArgs> {
 			manager_name = Some(meta.input.parse::<Ident>()?);
 			Ok(())
 		} else {
-			Err(meta.error(
-				"expected `hasher`, `username_field`, `full`, `manager`, or `manager_name`",
-			))
+			Err(meta
+				.error("expected `hasher`, `username_field`, `full`, `manager`, or `manager_name`"))
 		}
 	});
 
