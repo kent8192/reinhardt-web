@@ -1,0 +1,21 @@
+meta {
+  name: Get Snippet
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/snippets/{{snippetId}}/
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("Returned snippet matches created snippet", function() {
+    const snippet = res.body && res.body.snippet ? res.body.snippet : res.body;
+    expect(snippet.title).to.equal("Hello World");
+    expect(snippet.language).to.equal("rust");
+  });
+}

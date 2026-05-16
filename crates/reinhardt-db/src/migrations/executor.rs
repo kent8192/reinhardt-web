@@ -733,8 +733,13 @@ impl DatabaseMigrationExecutor {
 		editor: &mut SchemaEditor,
 		table_name: &str,
 	) -> Result<(Vec<super::ColumnDefinition>, Vec<super::Constraint>)> {
-		// 1. PRAGMA table_info(<table>) → columns
-		let table_info_sql = format!("PRAGMA table_info({})", table_name);
+		// 1. PRAGMA table_info(<table>) → columns. Identifier interpolation
+		//    via the shared `sqlite_pragma` helper. See issue #4454.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let table_info_sql = format!(
+			"PRAGMA table_info({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
 		let info_rows = editor.fetch_all(&table_info_sql, vec![]).await?;
 
 		// Collect rows into typed records first so we can detect AUTOINCREMENT.
@@ -786,16 +791,16 @@ impl DatabaseMigrationExecutor {
 				let is_pk = c.pk > 0;
 				let is_auto = is_pk && has_autoincrement;
 				let nullable = if is_pk { false } else { c.notnull == 0 };
-				let default = c.default.as_ref().map(|v| {
-					let trimmed = v.trim();
-					if (trimmed.starts_with('\'') && trimmed.ends_with('\''))
-						|| (trimmed.starts_with('"') && trimmed.ends_with('"'))
-					{
-						trimmed[1..trimmed.len() - 1].to_string()
-					} else {
-						trimmed.to_string()
-					}
-				});
+				// Preserve `dflt_value` verbatim as the raw SQL fragment
+				// (e.g. `'pending'` including surrounding quotes). The
+				// downstream `format!("DEFAULT {}", default)` paths in
+				// `operations.rs` then emit valid DDL (`DEFAULT 'pending'`,
+				// not the previously broken `DEFAULT pending`). See
+				// `super::sqlite_pragma` and issue #4454.
+				let default = c
+					.default
+					.as_ref()
+					.map(|v| super::sqlite_pragma::normalize_default_value(v));
 				super::ColumnDefinition {
 					name: c.name.clone(),
 					type_definition: SQLiteIntrospector::parse_sqlite_type(&c.type_str),
@@ -821,8 +826,14 @@ impl DatabaseMigrationExecutor {
 			}
 		});
 
-		// 4. Foreign keys via PRAGMA foreign_key_list(<table>), grouped by id.
-		let fk_sql = format!("PRAGMA foreign_key_list({})", table_name);
+		// 4. Foreign keys via PRAGMA foreign_key_list(<table>), grouped by
+		//    id. Identifier interpolation via the shared `sqlite_pragma`
+		//    helper. See issue #4454.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let fk_sql = format!(
+			"PRAGMA foreign_key_list({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
 		let fk_rows = editor.fetch_all(&fk_sql, vec![]).await?;
 
 		struct FkRow {
@@ -892,8 +903,13 @@ impl DatabaseMigrationExecutor {
 
 		// 5. Unique constraints via PRAGMA index_list / index_info where
 		//    origin = 'u' (i.e. declared with the UNIQUE keyword or as a
-		//    named CONSTRAINT … UNIQUE).
-		let idx_list_sql = format!("PRAGMA index_list({})", table_name);
+		//    named CONSTRAINT … UNIQUE). Identifier interpolation via the
+		//    shared `sqlite_pragma` helper. See issue #4454.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let idx_list_sql = format!(
+			"PRAGMA index_list({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
 		let idx_rows = editor.fetch_all(&idx_list_sql, vec![]).await?;
 		for row in &idx_rows {
 			let origin: String = row.get("origin").unwrap_or_default();
@@ -902,7 +918,11 @@ impl DatabaseMigrationExecutor {
 				continue;
 			}
 			let idx_name: String = row.get("name").unwrap_or_default();
-			let info_sql = format!("PRAGMA index_info({})", idx_name);
+			// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+			let info_sql = format!(
+				"PRAGMA index_info({})",
+				super::sqlite_pragma::quote_pragma_identifier(&idx_name)
+			);
 			let info_rows = editor.fetch_all(&info_sql, vec![]).await?;
 			let cols: Vec<String> = info_rows
 				.iter()

@@ -59,6 +59,8 @@ pub mod schema_diff;
 pub mod schema_editor;
 pub mod service;
 pub mod source;
+#[cfg(feature = "sqlite")]
+pub(crate) mod sqlite_pragma;
 pub mod squash;
 pub mod state_loader;
 pub mod visualization;

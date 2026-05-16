@@ -68,14 +68,19 @@ async fn project_pages_layout_matches_tutorial() {
 	let project = tmp.path().join("polls_project");
 	let src = project.join("src");
 
-	// 1. server_fn lives at the crate root, NOT under server/.
+	// 1. Per-app reorg: top-level `src/server_fn.rs` no longer exists; each
+	//    app owns its own under `apps/<app>/server_fn.rs`.
 	assert!(
-		src.join("server_fn.rs").exists(),
-		"src/server_fn.rs must exist at the crate root"
+		!src.join("server_fn.rs").exists(),
+		"src/server_fn.rs must NOT exist (per-app under apps/<app>/server_fn.rs)"
+	);
+	assert!(
+		!src.join("server_fn").exists(),
+		"src/server_fn/ directory must NOT exist"
 	);
 	assert!(
 		!src.join("server").exists(),
-		"src/server/ must not be generated (server_fn moved to crate root)"
+		"src/server/ must not be generated"
 	);
 
 	// 2. config/wasm.rs is required for collectstatic to find dist-wasm.
@@ -84,23 +89,30 @@ async fn project_pages_layout_matches_tutorial() {
 		"src/config/wasm.rs must exist (collectstatic registration)"
 	);
 
-	// 3. client/lib.rs (WASM entry) and client/pages.rs replace
-	//    bootstrap/state from the previous scaffold.
+	// 3. Client shell: lib.rs (WASM entry) + components.rs (`pub mod nav;`
+	//    only). Per-app pages and components live under `apps/<app>/client/`.
 	assert!(
 		src.join("client").join("lib.rs").exists(),
 		"src/client/lib.rs must exist (WASM entry point)"
 	);
 	assert!(
-		src.join("client").join("pages.rs").exists(),
-		"src/client/pages.rs must exist (page components)"
-	);
-	assert!(
-		src.join("client").join("router.rs").exists(),
-		"src/client/router.rs must exist"
-	);
-	assert!(
 		src.join("client").join("components.rs").exists(),
-		"src/client/components.rs must exist"
+		"src/client/components.rs must exist (shared shell aggregator)"
+	);
+	assert!(
+		src.join("client")
+			.join("components")
+			.join("nav.rs")
+			.exists(),
+		"src/client/components/nav.rs must exist (shared with_nav helper)"
+	);
+	assert!(
+		!src.join("client").join("pages.rs").exists(),
+		"src/client/pages.rs must NOT exist (per-app under apps/<app>/client/pages.rs)"
+	);
+	assert!(
+		!src.join("client").join("router.rs").exists(),
+		"src/client/router.rs must NOT exist (replaced by per-app client_router.rs)"
 	);
 	assert!(
 		!src.join("client").join("bootstrap.rs").exists(),
@@ -111,16 +123,44 @@ async fn project_pages_layout_matches_tutorial() {
 		"src/client/state.rs must not be generated"
 	);
 
-	// 4. lib.rs declares the server-only re-export shim.
+	// 4. lib.rs declares the server-only re-export shim and un-gates apps.
 	let lib_rs = fs::read_to_string(src.join("lib.rs")).expect("read lib.rs");
 	assert!(
 		lib_rs.contains("mod server_only"),
 		"src/lib.rs must declare the `mod server_only` re-export shim:\n{lib_rs}"
 	);
 	assert!(
-		lib_rs.contains("pub mod server_fn;"),
-		"src/lib.rs must declare `pub mod server_fn;` (top-level)"
+		!lib_rs.contains("pub mod server_fn;"),
+		"src/lib.rs must NOT declare `pub mod server_fn;` (moved per-app):\n{lib_rs}"
 	);
+	// `pub mod apps;` must be un-gated (no `#[cfg(server)]` directly above it).
+	for cfg_line in [
+		"#[cfg(server)]\npub mod apps;",
+		"#[cfg(not(client))]\npub mod apps;",
+	] {
+		assert!(
+			!lib_rs.contains(cfg_line),
+			"src/lib.rs must declare `pub mod apps;` without a cfg gate (found {cfg_line:?}):\n{lib_rs}"
+		);
+	}
+	assert!(
+		lib_rs.contains("pub mod apps;"),
+		"src/lib.rs must still declare `pub mod apps;`:\n{lib_rs}"
+	);
+
+	// 4b. The shared components shell aggregator declares only `pub mod nav;`.
+	let components_rs = fs::read_to_string(src.join("client").join("components.rs"))
+		.expect("read client/components.rs");
+	assert!(
+		components_rs.contains("pub mod nav;"),
+		"src/client/components.rs must declare `pub mod nav;`:\n{components_rs}"
+	);
+	for unwanted in ["pub mod polls", "pub mod users"] {
+		assert!(
+			!components_rs.contains(unwanted),
+			"src/client/components.rs must not preserve per-app submodules ({unwanted}):\n{components_rs}"
+		);
+	}
 
 	// 5. shared/ now exposes types and forms (no more shared/errors.rs).
 	assert!(
@@ -208,13 +248,12 @@ async fn app_pages_layout_matches_tutorial() {
 		"apps/polls/views.rs must exist"
 	);
 
-	// 3. None of the previous over-generated subdirectories are produced.
-	//    `urls/ws_urls.rs` remains forbidden (websocket scaffold is opt-in
-	//    and explicitly out of scope for #4308). `urls/server_urls.rs` and
-	//    `urls/client_router.rs` are now REQUIRED by the canonical layout
-	//    introduced in rc.19 (see `startapp_pages_layout_has_urls_submodule`
-	//    below for the positive assertions).
-	for unwanted in ["client", "server", "shared", "urls/ws_urls.rs"] {
+	// 3. `server/`, `shared/`, and `urls/ws_urls.rs` remain forbidden.
+	//    `client/` is now REQUIRED at the per-app level (per-app UI lives
+	//    here). `urls/server_urls.rs` and `urls/client_router.rs` are also
+	//    REQUIRED (see `startapp_pages_layout_has_urls_submodule` and
+	//    `startapp_pages_layout_per_app_modules` for positive assertions).
+	for unwanted in ["server", "shared", "urls/ws_urls.rs"] {
 		let path = polls_dir.join(unwanted);
 		assert!(
 			!path.exists(),
@@ -223,7 +262,52 @@ async fn app_pages_layout_matches_tutorial() {
 		);
 	}
 
-	// 4. urls.rs is the aggregator that declares the `server_urls` and
+	// 4. Per-app server_fn / client.rs / client/{components,pages}.rs and
+	//    server_fn placeholder are generated.
+	assert!(
+		polls_dir.join("server_fn.rs").exists(),
+		"apps/polls/server_fn.rs must exist"
+	);
+	let server_fn_rs =
+		fs::read_to_string(polls_dir.join("server_fn.rs")).expect("read apps/polls/server_fn.rs");
+	assert!(
+		server_fn_rs.contains("#[server_fn]") && server_fn_rs.contains("pub async fn placeholder"),
+		"apps/polls/server_fn.rs must contain a #[server_fn]-annotated placeholder:\n{server_fn_rs}"
+	);
+
+	assert!(
+		polls_dir.join("client.rs").exists(),
+		"apps/polls/client.rs must exist"
+	);
+	let client_rs =
+		fs::read_to_string(polls_dir.join("client.rs")).expect("read apps/polls/client.rs");
+	assert!(
+		client_rs.contains("pub mod components;") && client_rs.contains("pub mod pages;"),
+		"apps/polls/client.rs must declare `pub mod components;` and `pub mod pages;`:\n{client_rs}"
+	);
+
+	let polls_components = polls_dir.join("client").join("components.rs");
+	let polls_pages = polls_dir.join("client").join("pages.rs");
+	assert!(
+		polls_components.exists(),
+		"apps/polls/client/components.rs must exist"
+	);
+	assert!(
+		polls_pages.exists(),
+		"apps/polls/client/pages.rs must exist"
+	);
+	let components_body = fs::read_to_string(&polls_components).expect("read components.rs");
+	assert!(
+		components_body.contains("pub fn placeholder"),
+		"apps/polls/client/components.rs must declare `pub fn placeholder`:\n{components_body}"
+	);
+	let pages_body = fs::read_to_string(&polls_pages).expect("read pages.rs");
+	assert!(
+		pages_body.contains("pub fn placeholder_page") && pages_body.contains("with_nav"),
+		"apps/polls/client/pages.rs must declare `pub fn placeholder_page` and call `with_nav`:\n{pages_body}"
+	);
+
+	// 5. urls.rs is the aggregator that declares the `server_urls` and
 	//    `client_router` submodules with the appropriate cfg gates. The
 	//    legacy `unified_url_patterns` scaffold is still forbidden.
 	let urls_rs = fs::read_to_string(polls_dir.join("urls.rs")).expect("read apps/polls/urls.rs");
@@ -304,12 +388,22 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		"apps/foo/urls.rs must declare `pub mod client_router`:\n{urls_contents}"
 	);
 
-	// 4. The submodules carry the canonical #[url_patterns] attribute with
-	//    `mode = server` / `mode = client`, matching the polls tutorial.
+	// 4. Sub-routers carry the canonical #[url_patterns] attribute, and their
+	//    function bodies are empty. The bodies are isolated from the module
+	//    doc-comment (which may legitimately quote an example) by slicing the
+	//    file at the `pub fn` definition before searching for example calls.
 	let server_contents = fs::read_to_string(&server_urls).expect("read server_urls.rs");
 	assert!(
 		server_contents.contains("#[url_patterns(InstalledApp::foo, mode = server)]"),
 		"server_urls.rs must carry the server-mode #[url_patterns] attribute:\n{server_contents}"
+	);
+	let server_body_start = server_contents
+		.find("pub fn server_url_patterns")
+		.expect("server_urls.rs must define `pub fn server_url_patterns`");
+	let server_body = &server_contents[server_body_start..];
+	assert!(
+		!server_body.contains(".endpoint(views::"),
+		"server_urls.rs function body must not embed example route calls:\n{server_body}"
 	);
 
 	let client_contents = fs::read_to_string(&client_router).expect("read client_router.rs");
@@ -317,4 +411,33 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		client_contents.contains("#[url_patterns(InstalledApp::foo, mode = client)]"),
 		"client_router.rs must carry the client-mode #[url_patterns] attribute:\n{client_contents}"
 	);
+	let client_body_start = client_contents
+		.find("pub fn client_url_patterns")
+		.expect("client_router.rs must define `pub fn client_url_patterns`");
+	let client_body = &client_contents[client_body_start..];
+	assert!(
+		!client_body.contains(".named_route(\"index\","),
+		"client_router.rs function body must not embed example route calls:\n{client_body}"
+	);
+
+	// 5. Per-app aggregator `apps/foo.rs` declares `#[cfg(client)] pub mod client;`
+	//    and bi-target `pub mod server_fn;` / `pub mod urls;` without cfg gates.
+	let foo_rs = fs::read_to_string(foo_dir.parent().expect("apps/").join("foo.rs"))
+		.expect("read apps/foo.rs");
+	assert!(
+		foo_rs.contains("#[cfg(client)]\npub mod client;"),
+		"apps/foo.rs must declare `#[cfg(client)] pub mod client;`:\n{foo_rs}"
+	);
+	// Bi-target lines: ensure they have no cfg attr immediately preceding.
+	for bi_target in ["pub mod server_fn;", "pub mod urls;"] {
+		let pos = foo_rs
+			.find(bi_target)
+			.unwrap_or_else(|| panic!("`{bi_target}` not found in apps/foo.rs:\n{foo_rs}"));
+		let prefix = &foo_rs[..pos];
+		let prior_line = prefix.lines().last().unwrap_or("").trim();
+		assert!(
+			!prior_line.starts_with("#[cfg("),
+			"`{bi_target}` must not be cfg-gated in apps/foo.rs (preceding line was: {prior_line:?}):\n{foo_rs}"
+		);
+	}
 }

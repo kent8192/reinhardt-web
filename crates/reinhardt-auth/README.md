@@ -354,16 +354,17 @@ The user struct MUST implement the following traits for the generator to work:
   (`user.<pk_field>.clone()`) on insertion. Non-`Clone` user types must opt out
   via `manager = false`.
 
-**Primary-key uniqueness caveat (in-memory store).** The auto-manager keys its
-`HashMap` by the user's primary-key field. With a `Uuid` (or `Option<Uuid>`)
-primary key the generator re-seeds the value with `Uuid::now_v7()` on every
-`create_user`, so collisions are not possible in practice. For other primary-key
-types (e.g., `i64`, `String`) the value remains at `<User as Default>::default()`
-unless your struct's `Default` impl produces a unique value — repeated
-`create_user` calls will otherwise overwrite each other in the in-memory map.
-Opt out (`manager = false`) and provide a DB-backed manager when uniqueness
-matters; tracking work for tighter generator gating lives in
-[reinhardt-web#4455](https://github.com/kent8192/reinhardt-web/issues/4455).
+**Primary-key restriction (Uuid-only).** Auto-manager (`manager = true`, the
+default) only supports `Uuid` (or `Option<Uuid>`) primary keys. The generator
+re-seeds the PK with `Uuid::now_v7()` on every `create_user`, so collisions are
+not possible in practice. For any other PK type (e.g. `i64`, `String`) the
+generator emits a compile-time error pointing at the PK field: either change
+the primary key to `Uuid` / `Option<Uuid>`, or set `manager = false` and
+provide your own `BaseUserManager` implementation. This restriction prevents
+silent map-overwrite bugs in the in-memory store, where repeated `create_user`
+calls would otherwise collide on the `<User as Default>::default()` PK value.
+See [reinhardt-web#4455](https://github.com/kent8192/reinhardt-web/issues/4455)
+for the rationale.
 
 **When to opt out (`manager = false`)**
 

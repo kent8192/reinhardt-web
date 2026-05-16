@@ -10,10 +10,6 @@
 //! Name convention: route names are namespaced `<app>:<name>` (see
 //! `#[url_patterns(InstalledApp::<app>, mode = client)]`); the bare names
 //! used by `named_route` are auto-prefixed for the polls and users apps.
-//! Users-side names (`users:login`, `users:logout`) are registered inline
-//! in `client::lib::main` because the launcher accepts a single
-//! `ClientRouter` and `ClientRouter::merge` is `pub(crate)` — see the
-//! comment there for the full reason.
 
 use reinhardt::ClientUrlResolver;
 
