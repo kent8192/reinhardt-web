@@ -100,7 +100,10 @@ async fn project_pages_layout_matches_tutorial() {
 		"src/client/components.rs must exist (shared shell aggregator)"
 	);
 	assert!(
-		src.join("client").join("components").join("nav.rs").exists(),
+		src.join("client")
+			.join("components")
+			.join("nav.rs")
+			.exists(),
 		"src/client/components/nav.rs must exist (shared with_nav helper)"
 	);
 	assert!(
@@ -131,7 +134,10 @@ async fn project_pages_layout_matches_tutorial() {
 		"src/lib.rs must NOT declare `pub mod server_fn;` (moved per-app):\n{lib_rs}"
 	);
 	// `pub mod apps;` must be un-gated (no `#[cfg(server)]` directly above it).
-	for cfg_line in ["#[cfg(server)]\npub mod apps;", "#[cfg(not(client))]\npub mod apps;"] {
+	for cfg_line in [
+		"#[cfg(server)]\npub mod apps;",
+		"#[cfg(not(client))]\npub mod apps;",
+	] {
 		assert!(
 			!lib_rs.contains(cfg_line),
 			"src/lib.rs must declare `pub mod apps;` without a cfg gate (found {cfg_line:?}):\n{lib_rs}"
@@ -262,8 +268,8 @@ async fn app_pages_layout_matches_tutorial() {
 		polls_dir.join("server_fn.rs").exists(),
 		"apps/polls/server_fn.rs must exist"
 	);
-	let server_fn_rs = fs::read_to_string(polls_dir.join("server_fn.rs"))
-		.expect("read apps/polls/server_fn.rs");
+	let server_fn_rs =
+		fs::read_to_string(polls_dir.join("server_fn.rs")).expect("read apps/polls/server_fn.rs");
 	assert!(
 		server_fn_rs.contains("#[server_fn]") && server_fn_rs.contains("pub async fn placeholder"),
 		"apps/polls/server_fn.rs must contain a #[server_fn]-annotated placeholder:\n{server_fn_rs}"
@@ -273,8 +279,8 @@ async fn app_pages_layout_matches_tutorial() {
 		polls_dir.join("client.rs").exists(),
 		"apps/polls/client.rs must exist"
 	);
-	let client_rs = fs::read_to_string(polls_dir.join("client.rs"))
-		.expect("read apps/polls/client.rs");
+	let client_rs =
+		fs::read_to_string(polls_dir.join("client.rs")).expect("read apps/polls/client.rs");
 	assert!(
 		client_rs.contains("pub mod components;") && client_rs.contains("pub mod pages;"),
 		"apps/polls/client.rs must declare `pub mod components;` and `pub mod pages;`:\n{client_rs}"
@@ -282,8 +288,14 @@ async fn app_pages_layout_matches_tutorial() {
 
 	let polls_components = polls_dir.join("client").join("components.rs");
 	let polls_pages = polls_dir.join("client").join("pages.rs");
-	assert!(polls_components.exists(), "apps/polls/client/components.rs must exist");
-	assert!(polls_pages.exists(), "apps/polls/client/pages.rs must exist");
+	assert!(
+		polls_components.exists(),
+		"apps/polls/client/components.rs must exist"
+	);
+	assert!(
+		polls_pages.exists(),
+		"apps/polls/client/pages.rs must exist"
+	);
 	let components_body = fs::read_to_string(&polls_components).expect("read components.rs");
 	assert!(
 		components_body.contains("pub fn placeholder"),
