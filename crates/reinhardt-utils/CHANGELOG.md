@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.29...reinhardt-utils@v0.1.0-rc.30) - 2026-05-17
+
+### Fixed
+
+- *(staticfiles)* disable immutable cache for bundle assets in debug builds
+- address Copilot review feedback
+- *(utils)* use object form for wasm-bindgen init() to silence deprecation
+
 ## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.26...reinhardt-utils@v0.1.0-rc.27) - 2026-05-09
 
 ### Added
