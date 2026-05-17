@@ -419,5 +419,5 @@ Each mistake is paired with its correct alternative:
 
 ## Related Documentation
 
-- **Main Project Standards**: @../CLAUDE.md
+- **Main Project Standards**: @../AGENTS.md
 - **Project README**: @../README.md
