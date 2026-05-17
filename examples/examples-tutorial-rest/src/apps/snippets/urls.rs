@@ -15,9 +15,10 @@
 //!
 //! This app is REST-only — it has no client (WASM SPA) or WebSocket
 //! surface, so the routes macro is invoked in
-//! `src/config/urls.rs` with `#[routes(server_only)]` (Issue #4509)
-//! and the per-app `client_url_resolvers` / `ws_url_resolvers` module
-//! lookups are skipped. No stub modules are required.
+//! `examples/examples-tutorial-rest/src/config/urls.rs` with
+//! `#[routes(server_only)]` (Issue #4509) and the per-app
+//! `client_url_resolvers` / `ws_url_resolvers` module lookups are
+//! skipped. No stub modules are required.
 //!
 //! ### Why the routes are inlined here instead of being aggregated from
 //! ### per-style submodules

@@ -433,10 +433,12 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 ///
 /// ```rust,ignore
 /// // REST-only project with #[url_patterns(InstalledApp::api, mode = server)]
-/// // — no stub client_router.rs / ws_urls.rs needed.
+/// // — no stub client_router.rs / ws_urls.rs needed. `server_only` only
+/// // gates per-app client/ws emission, so the return type stays
+/// // `UnifiedRouter` for consistency with every other `#[routes]` example.
 /// #[routes(server_only)]
-/// pub fn routes() -> ServerRouter {
-///     ServerRouter::new().mount("/api/", api::urls::url_patterns())
+/// pub fn routes() -> UnifiedRouter {
+///     UnifiedRouter::new().mount("/api/", api::urls::url_patterns())
 /// }
 ///
 /// // HTTP + WebSocket but no WASM admin: skip client resolvers only.

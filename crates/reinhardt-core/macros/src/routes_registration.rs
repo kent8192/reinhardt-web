@@ -269,9 +269,16 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 	// behavior verbatim, so existing consumers see no regression.
 	let mut standalone = false;
 	let mut client_inventory = false;
+	// Track the `Ident` token positions of the flags we accept so downstream
+	// diagnostics (e.g. the mutual-exclusion check below) can point at the
+	// exact offending argument instead of the function signature.
+	let mut client_inventory_ident: Option<syn::Ident> = None;
 	let mut server_only_seen = false;
+	let mut server_only_ident: Option<syn::Ident> = None;
 	let mut no_client_resolvers_seen = false;
+	let mut no_client_resolvers_ident: Option<syn::Ident> = None;
 	let mut no_ws_resolvers_seen = false;
+	let mut no_ws_resolvers_ident: Option<syn::Ident> = None;
 	if !args.is_empty() {
 		let parser = syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated;
 		let parsed = syn::parse::Parser::parse2(parser, args).map_err(|e| {
@@ -299,6 +306,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					));
 				}
 				client_inventory = true;
+				client_inventory_ident = Some(ident);
 			} else if ident == "server_only" {
 				if server_only_seen {
 					return Err(syn::Error::new_spanned(
@@ -307,6 +315,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					));
 				}
 				server_only_seen = true;
+				server_only_ident = Some(ident);
 			} else if ident == "no_client_resolvers" {
 				if no_client_resolvers_seen {
 					return Err(syn::Error::new_spanned(
@@ -315,6 +324,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					));
 				}
 				no_client_resolvers_seen = true;
+				no_client_resolvers_ident = Some(ident);
 			} else if ident == "no_ws_resolvers" {
 				if no_ws_resolvers_seen {
 					return Err(syn::Error::new_spanned(
@@ -323,6 +333,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					));
 				}
 				no_ws_resolvers_seen = true;
+				no_ws_resolvers_ident = Some(ident);
 			} else {
 				return Err(syn::Error::new_spanned(
 					ident,
@@ -343,13 +354,28 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 	// `no_*` flags suppress. Combining them is contradictory — fail at parse
 	// time with an actionable message rather than emitting unreachable code.
 	if client_inventory && (no_client_resolvers || no_ws_resolvers) {
-		return Err(syn::Error::new_spanned(
-			&input.sig,
-			"`#[routes(client_inventory)]` cannot be combined with `server_only`, \
+		// Span the diagnostic on the offending `client_inventory` argument
+		// (preferred) or the first conflicting suppression flag, so the
+		// user is taken straight to one of the contradictory tokens. Fall
+		// back to `&input.sig` only when the tokens have been moved out of
+		// scope (which the bookkeeping above prevents in practice).
+		let err_msg = "`#[routes(client_inventory)]` cannot be combined with `server_only`, \
 			 `no_client_resolvers`, or `no_ws_resolvers` — `client_inventory` \
 			 registers the WASM `ClientRouter` surface that the suppression flags \
-			 disable. Drop one of the flags.",
-		));
+			 disable. Drop one of the flags.";
+		if let Some(ident) = client_inventory_ident {
+			return Err(syn::Error::new_spanned(ident, err_msg));
+		}
+		if let Some(ident) = server_only_ident {
+			return Err(syn::Error::new_spanned(ident, err_msg));
+		}
+		if let Some(ident) = no_client_resolvers_ident {
+			return Err(syn::Error::new_spanned(ident, err_msg));
+		}
+		if let Some(ident) = no_ws_resolvers_ident {
+			return Err(syn::Error::new_spanned(ident, err_msg));
+		}
+		return Err(syn::Error::new_spanned(&input.sig, err_msg));
 	}
 
 	let reinhardt = get_reinhardt_crate();
@@ -1174,6 +1200,12 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 					#[doc(hidden)]
 					mod __namespaced_ws_resolvers {
+						// `unexpected_cfgs`: macro-generated `#[cfg(feature = "...")]` arms
+						// may reference features that the downstream crate has not declared
+						// when running under `-D unexpected_cfgs`.
+						// `dead_code`: when an app exposes no `#[url_patterns(..., mode = ws)]`
+						// surface, the per-app `ws_url_resolvers` re-exports and helpers
+						// emitted here are intentionally unused.
 						#![allow(unexpected_cfgs, dead_code)]
 						pub use super::ResolvedUrls;
 
@@ -1222,6 +1254,13 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					// Client-side per-app resolvers are cross-platform (native + WASM).
 					#[doc(hidden)]
 					mod __client_router_gate {
+						// `unexpected_cfgs`: the generated `#[cfg(feature = "client-router")]`
+						// gate references a feature only declared on the consumer side, so
+						// downstream builds with `-D unexpected_cfgs` would otherwise reject
+						// the emitted module wrapper.
+						// `deprecated`: emitted helper trait impls may forward through
+						// items that carry `#[deprecated]` during RC transitions; the
+						// generated forwards intentionally outlive the deprecation window.
 						#![allow(unexpected_cfgs, deprecated)]
 
 						#[cfg(feature = "client-router")]
