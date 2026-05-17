@@ -1,0 +1,5 @@
+error: #[dto] does not accept arguments in this version
+ --> tests/ui/dto/fail/with_args.rs:5:7
+  |
+5 | #[dto(no_schema)]
+  |       ^^^^^^^^^
