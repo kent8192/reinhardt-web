@@ -49,7 +49,6 @@ mod gated {
 				use super::views;
 				use reinhardt::url_patterns;
 				use reinhardt_urls::routers::ServerRouter;
-				use std::marker::PhantomData;
 
 				#[url_patterns(crate::InstalledApp::snippets, mode = server)]
 				pub fn url_patterns() -> ServerRouter {
@@ -76,8 +75,13 @@ mod gated {
 	#[rstest]
 	#[serial(routes_global)]
 	fn viewset_list_typed_accessor_returns_namespaced_url() {
+		// Arrange
 		let urls = reinhardt::ResolvedUrls::from_global();
+
+		// Act
 		let url = urls.server().snippets().snippet_list();
+
+		// Assert
 		assert_eq!(url, "/snippets-viewset/");
 	}
 
@@ -85,8 +89,13 @@ mod gated {
 	#[rstest]
 	#[serial(routes_global)]
 	fn viewset_detail_typed_accessor_substitutes_id() {
+		// Arrange
 		let urls = reinhardt::ResolvedUrls::from_global();
+
+		// Act
 		let url = urls.server().snippets().snippet_detail("42");
+
+		// Assert
 		assert_eq!(url, "/snippets-viewset/42/");
 	}
 
@@ -94,8 +103,13 @@ mod gated {
 	#[rstest]
 	#[serial(routes_global)]
 	fn action_typed_accessor_appears_under_app() {
+		// Arrange
 		let urls = reinhardt::ResolvedUrls::from_global();
+
+		// Act
 		let url = urls.server().snippets().highlight("42");
+
+		// Assert
 		// Regression: defect #3 from spec section 1
 		assert_eq!(url, "/snippets-viewset/42/highlight/");
 	}
@@ -104,10 +118,15 @@ mod gated {
 	#[rstest]
 	#[serial(routes_global)]
 	fn flat_blanket_trait_is_deprecated_but_works() {
-		use reinhardt::url_prelude::*;
+		// Arrange
 		let urls = reinhardt::ResolvedUrls::from_global();
+		use reinhardt::url_prelude::*;
+
+		// Act
 		#[allow(deprecated)]
 		let url = urls.snippet_list();
+
+		// Assert
 		// Regression: defect #2 from spec section 1
 		assert_eq!(url, "/snippets-viewset/");
 	}
