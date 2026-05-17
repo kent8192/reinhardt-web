@@ -10,7 +10,7 @@ This file defines coding standards and dependency management rules specific to t
 
 The `examples/` directory contains example projects and shared utilities in a flat structure:
 
-```
+```text
 examples/
 ├── examples-tutorial-basis/       # Polls tutorial (MTV/Pages-style)
 ├── examples-tutorial-rest/        # Snippets tutorial (REST API)
