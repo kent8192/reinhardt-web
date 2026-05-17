@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+  --> tests/ui/viewset/fail/with_actions_wrong_arg_type.rs:34:62
+   |
+34 |     let _ = MiniRouter.viewset_with_actions("/x", DummyViewSet, 42);
+   |                        --------------------                     ^^ expected `PhantomData<_>`, found integer
+   |                        |
+   |                        arguments to this method are incorrect
+   |
+   = note: expected struct `PhantomData<_>`
+                found type `{integer}`
+note: method defined here
+  --> tests/ui/viewset/fail/with_actions_wrong_arg_type.rs:25:5
+   |
+25 |     fn viewset_with_actions<V, M>(self, _prefix: &str, _viewset: V, _marker: PhantomData<M>) -> Self {
+   |        ^^^^^^^^^^^^^^^^^^^^                                         -----------------------
