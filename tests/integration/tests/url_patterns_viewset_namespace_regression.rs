@@ -120,26 +120,9 @@ pub fn routes() -> UnifiedRouter {
 }
 
 fn install_routes_and_resolve() -> crate::ResolvedUrls {
-	use reinhardt_views::viewsets::metadata::{ActionMetadata, FunctionActionHandler};
-	use reinhardt_views::viewsets::registry;
-
-	// Mirror the companion file's manual action seeding. See
-	// `url_patterns_viewset_typed_integration.rs::install_routes_and_resolve`
-	// for the rationale.
-	let viewset_type = std::any::type_name::<
-		reinhardt_views::viewsets::ModelViewSet<Snippet, SnippetSerializer>,
-	>();
-	let action = ActionMetadata::new("highlight")
-		.with_detail(true)
-		.with_url_name("highlight")
-		.with_methods(vec![hyper::Method::POST])
-		.with_handler(FunctionActionHandler::new(|_req| {
-			Box::pin(
-				async move { Ok(reinhardt_http::Response::ok().with_body(b"highlight".to_vec())) },
-			)
-		}));
-	registry::register_action(viewset_type, action);
-
+	// Action registration is emitted by the #[viewset(basename = ...)] impl-form
+	// expansion (via a `#[ctor]` startup function). No manual seeding needed.
+	// Refs Issue #4507 / Phase 5.1.
 	let server = routes().into_server();
 	reinhardt_urls::routers::register_router(server);
 	crate::ResolvedUrls::from_global()
