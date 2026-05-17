@@ -28,6 +28,18 @@ services:
     tmpfs:
       - /tmp
     working_dir: /etc/bruno
+    # Run as host UID/GID so the `./bruno/reports` bind mount stays writable
+    # on Linux CI runners whose checkout is not owned by UID 1000 (the default
+    # UID of the `node` user in the node:24-alpine base image used by
+    # Dockerfile.bruno). Defaults to 1000:1000 for local macOS development
+    # where the host UID is typically 501 but Docker Desktop transparently
+    # maps file ownership.
+    #
+    # Use `BRUNO_UID`/`BRUNO_GID` rather than bash's `$UID`/`$GID`: the bash
+    # built-ins are not exported by default, so Compose interpolation would
+    # otherwise silently fall back to 1000 even on Linux CI. The `api-test`
+    # task in `Makefile.toml` exports these via `id -u`/`id -g`.
+    user: "${BRUNO_UID:-1000}:${BRUNO_GID:-1000}"
     volumes:
       - ./bruno:/etc/bruno:ro
       - ./bruno/reports:/etc/bruno/reports
