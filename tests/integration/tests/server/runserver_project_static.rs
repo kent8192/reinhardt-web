@@ -65,8 +65,11 @@ fn build_runserver_cascade(
 				"/static/admin/".to_string(),
 			]),
 	));
-	// First .with_middleware becomes the outermost layer after the
-	// MiddlewareChain reverses registration order during build-up.
+	// MiddlewareChain::handle iterates `.iter().rev()` at request time, so
+	// the first `.with_middleware` becomes the outermost layer and executes
+	// first (project_static), then falls through to dist_static, then to the
+	// base handler. The reversal happens during request handling, not chain
+	// construction.
 	let chain = MiddlewareChain::new(Arc::new(AdminAssetRouter))
 		.with_middleware(project_static)
 		.with_middleware(dist_static);

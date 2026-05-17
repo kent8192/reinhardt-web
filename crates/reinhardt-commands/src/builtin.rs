@@ -1820,10 +1820,11 @@ impl RunServerCommand {
 			};
 
 			// Auto-mount <project-root>/static/ at /static/ unless opted out.
-			// This is registered BEFORE the dist/ middleware so the
-			// MiddlewareChain (which reverses registration order) evaluates
-			// the project-static middleware first; misses fall through to the
-			// dist/ middleware and then to the application router (Issue #4484).
+			// This is registered BEFORE the dist/ middleware so that, when
+			// MiddlewareChain::handle reverses registration order at request
+			// time, the project-static middleware sits outermost and runs
+			// first; misses fall through to the dist/ middleware and then to
+			// the application router (Issue #4484).
 			if !no_project_static && let Some(project_root) = PathResolver::find_project_root() {
 				let project_static_dir = project_root.join("static");
 				if project_static_dir.is_dir() {
