@@ -1,6 +1,6 @@
 # Reinhardt REST Tutorial Example - Code Snippet Management API
 
-This example demonstrates the concepts covered in the [Reinhardt REST Tutorial](../../../docs/tutorials/en/rest/). It implements a complete RESTful API for managing code snippets.
+This example demonstrates the concepts covered in the [Reinhardt REST Tutorial](../../website/content/quickstart/tutorials/rest/). It implements a complete RESTful API for managing code snippets.
 
 ## What This Example Covers
 
@@ -130,7 +130,7 @@ examples-tutorial-rest/
 
 This example is designed to be studied alongside the REST tutorial:
 
-1. **Start with the tutorial**: Read [Quickstart](../../../docs/tutorials/en/rest/quickstart.md)
+1. **Start with the tutorial**: Read [Quickstart](../../website/content/quickstart/tutorials/rest/quickstart.md)
 2. **Examine the code**: Look at how concepts are implemented in this example
 3. **Run the tests**: `cargo test` to see the functionality in action
 4. **Experiment**: Modify the code and see what happens
@@ -291,7 +291,7 @@ After understanding this example:
 
 ## Related Documentation
 
-- [REST Tutorial](../../../docs/tutorials/en/rest/) - Step-by-step guide
+- [REST Tutorial](../../website/content/quickstart/tutorials/rest/) - Step-by-step guide
 - [API Documentation](https://docs.rs/reinhardt-web) - Complete API reference
 
 ## License
