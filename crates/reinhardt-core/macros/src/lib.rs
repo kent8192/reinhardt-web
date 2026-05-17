@@ -405,6 +405,44 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// - `#[routes(standalone)]` — Standalone mode. Generates `ResolvedUrls` only,
 ///   without `url_prelude` module. Use this for projects that don't use
 ///   `installed_apps!`.
+/// - `#[routes(client_inventory)]` — Opt into the WASM cross-target
+///   `ClientRouter` `inventory::submit!` registration (see Issue #4453).
+///
+/// ## Per-mode resolver suppression (Issue #4509)
+///
+/// Plain `#[routes]` unconditionally emits per-app resolver lookups for
+/// three modes (server, client, ws). REST-only apps that do not use
+/// `#[url_patterns(InstalledApp::<app>, mode = client)]` or
+/// `#[url_patterns(InstalledApp::<app>, mode = ws)]` would need to stub
+/// the missing modules. These flags let the macro skip the unused lookups:
+///
+/// - `#[routes(server_only)]` — Shorthand for
+///   `no_client_resolvers, no_ws_resolvers`. The `urls.client()` /
+///   `urls.ws()` gateways are not emitted; only `urls.server().<app>()`
+///   remains. The `ResolvedUrls::<app>()` server-side accessor is
+///   preserved (unlike `standalone`, which suppresses it).
+/// - `#[routes(no_client_resolvers)]` — Skip per-app client resolver
+///   lookups and the `ClientUrls` / `<app>ClientUrls` types.
+/// - `#[routes(no_ws_resolvers)]` — Skip per-app WebSocket resolver
+///   lookups, the `WsUrls` / `<app>WsUrls` types, and the stub
+///   `WebSocketUrlResolver` impl on `ResolvedUrls`.
+///
+/// `client_inventory` is mutually exclusive with the `no_*` flags
+/// (and therefore with `server_only`) — `client_inventory` registers
+/// the very WASM client surface those flags suppress.
+///
+/// ```rust,ignore
+/// // REST-only project with #[url_patterns(InstalledApp::api, mode = server)]
+/// // — no stub client_router.rs / ws_urls.rs needed.
+/// #[routes(server_only)]
+/// pub fn routes() -> ServerRouter {
+///     ServerRouter::new().mount("/api/", api::urls::url_patterns())
+/// }
+///
+/// // HTTP + WebSocket but no WASM admin: skip client resolvers only.
+/// #[routes(no_client_resolvers)]
+/// pub fn routes() -> UnifiedRouter { ... }
+/// ```
 ///
 /// # Notes
 ///
