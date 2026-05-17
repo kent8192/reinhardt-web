@@ -1,5 +1,5 @@
 error: `#[routes(client_inventory)]` cannot be combined with `server_only`, `no_client_resolvers`, or `no_ws_resolvers` — `client_inventory` registers the WASM `ClientRouter` surface that the suppression flags disable. Drop one of the flags.
-  --> tests/ui/routes_registration/fail/server_only_with_client_inventory.rs:11:5
+  --> tests/ui/routes_registration/fail/server_only_with_client_inventory.rs:10:23
    |
-11 | pub fn routes() -> UnifiedRouter {
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 | #[routes(server_only, client_inventory)]
+   |                       ^^^^^^^^^^^^^^^^
