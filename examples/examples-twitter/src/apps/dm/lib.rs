@@ -21,6 +21,11 @@ pub mod server;
 #[cfg(test)]
 pub mod tests;
 
+// DM WebSocket routes are intentionally NOT registered via a `urls/ws_urls.rs`
+// submodule (kent8192/reinhardt-web#3918). The DM app uses `DMHandler`, a
+// `WebSocketConsumer` wired through middleware in `src/config/middleware.rs`.
+// This shows an alternative WS integration path that bypasses the URL system.
+
 #[cfg(native)]
 #[app_config(name = "dm", label = "dm", verbose_name = "Direct Messages")]
 pub struct DmConfig;
