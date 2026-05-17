@@ -435,6 +435,14 @@ fn parse_named_route_args(tokens: &[proc_macro2::TokenTree]) -> Option<ClientNam
 	}
 }
 
+/// Public-within-crate wrapper around `extract_url_params` for use by
+/// `viewset_macro.rs::parse_action_meta_for_viewset` (Phase 5).
+///
+/// Refs Issue #4507.
+pub(crate) fn extract_url_params_pub(pattern: &str) -> Vec<String> {
+	extract_url_params(pattern)
+}
+
 /// Extract URL parameter names from a pattern string.
 ///
 /// Given `/users/{id}/posts/{post_id}/`, returns `["id", "post_id"]`.

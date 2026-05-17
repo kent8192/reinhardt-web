@@ -319,7 +319,7 @@ fn parse_impl_basename_arg(args: TokenStream) -> syn::Result<String> {
 /// Impl-form expansion of `#[viewset]`.
 ///
 /// Walks the `impl` block for `#[action]`-decorated methods, emits a
-/// `__url_resolver_meta_action_<basename>_<fn>` macro_rules per action,
+/// `__url_resolver_meta_action_<basename>_<url_name>` macro_rules per action,
 /// and a `__for_each_viewset_action_meta_<TypeNameSnake>` manifest that
 /// fans them out. Phase 6 will splice the manifest into the existing
 /// `__for_each_url_resolver` so typed methods land on `<App>Urls`.
@@ -327,9 +327,9 @@ fn parse_impl_basename_arg(args: TokenStream) -> syn::Result<String> {
 /// Refs Issue #4507.
 fn viewset_impl_impl(args: TokenStream, item_impl: syn::ItemImpl) -> syn::Result<TokenStream> {
 	let basename = parse_impl_basename_arg(args)?;
-	let (action_metas, fn_idents) = collect_actions(&item_impl, &basename)?;
+	let (action_metas, url_names) = collect_actions(&item_impl, &basename)?;
 	let type_snake = type_name_to_snake(&item_impl.self_ty)?;
-	let manifest = emit_impl_action_manifest(&type_snake, &basename, &fn_idents);
+	let manifest = emit_impl_action_manifest(&type_snake, &basename, &url_names);
 
 	Ok(quote! {
 		#item_impl
@@ -378,17 +378,18 @@ fn camel_to_snake(s: &str) -> String {
 /// Collect all `#[action]`-decorated methods from an `impl` block.
 ///
 /// Returns a pair of vectors: the per-action meta macro token streams,
-/// and the bare method identifiers in declaration order. Non-`#[action]`
-/// items in the impl block (helpers, associated consts, type aliases)
-/// are skipped silently.
+/// and the corresponding `url_name` values (defaulting to the method's
+/// identifier when the `#[action]` attribute omits `url_name`).
+/// Non-`#[action]` items in the impl block (helpers, associated consts,
+/// type aliases) are skipped silently.
 ///
 /// Refs Issue #4507.
 fn collect_actions(
 	item_impl: &syn::ItemImpl,
 	basename: &str,
-) -> syn::Result<(Vec<proc_macro2::TokenStream>, Vec<syn::Ident>)> {
+) -> syn::Result<(Vec<proc_macro2::TokenStream>, Vec<String>)> {
 	let mut metas = Vec::new();
-	let mut fn_idents = Vec::new();
+	let mut url_names = Vec::new();
 	for item in &item_impl.items {
 		let syn::ImplItem::Fn(method) = item else {
 			continue;
@@ -396,37 +397,78 @@ fn collect_actions(
 		let Some(action_attr) = method.attrs.iter().find(|a| a.path().is_ident("action")) else {
 			continue;
 		};
+		// Re-parse the attribute to recover the (defaulted) url_name. Phase 5
+		// keeps the parser inside `action.rs` and reuses it here so the
+		// manifest body and the per-action meta macro names stay in lock-step.
+		let attr_tokens = match &action_attr.meta {
+			syn::Meta::List(ml) => ml.tokens.clone(),
+			syn::Meta::Path(_) => proc_macro2::TokenStream::new(),
+			_ => {
+				return Err(syn::Error::new_spanned(
+					action_attr,
+					"unexpected #[action] form",
+				));
+			}
+		};
+		let parsed =
+			crate::action::parse_action_args_with_defaults(attr_tokens, &method.sig.ident)?;
 		let meta = parse_action_meta_for_viewset(action_attr, &method.sig.ident, basename)?;
 		metas.push(meta);
-		fn_idents.push(method.sig.ident.clone());
+		url_names.push(parsed.url_name);
 	}
-	Ok((metas, fn_idents))
+	Ok((metas, url_names))
 }
 
-/// TEMPORARY (Phase 4): real implementation lands in Phase 5 / Task 5.2.
-/// This stub assumes `detail = true` for every action (always emits an "id" param)
-/// and ignores the action's `url_path` placeholders. Phase 5 will parse the
-/// full `#[action(...)]` attribute and replace this body. The macro_rules name
-/// here uses `fn_ident`; Phase 5 will switch it to `url_name`.
+/// Parse a single `#[action(...)]` attribute and emit its
+/// `__url_resolver_meta_action_<basename>_<url_name>` macro.
+///
+/// The emitted macro fans `$callback` out with the route name
+/// (`"<basename>-<url_name>"`) and the parameter list:
+/// `"id"` first when `detail = true`, then every placeholder extracted
+/// from `url_path` (e.g. `"/children/{child_id}"` contributes `"child_id"`).
+///
+/// Replaces the Phase 4 stub which always emitted `"id"` and ignored
+/// `url_path` / `url_name`.
 ///
 /// Refs Issue #4507.
 fn parse_action_meta_for_viewset(
-	_attr: &syn::Attribute,
+	attr: &syn::Attribute,
 	fn_ident: &syn::Ident,
 	basename: &str,
 ) -> syn::Result<proc_macro2::TokenStream> {
+	let attr_tokens = match &attr.meta {
+		syn::Meta::List(ml) => ml.tokens.clone(),
+		syn::Meta::Path(_) => proc_macro2::TokenStream::new(),
+		_ => return Err(syn::Error::new_spanned(attr, "unexpected #[action] form")),
+	};
+	let meta = crate::action::parse_action_args_with_defaults(attr_tokens, fn_ident)?;
+
 	let macro_name = syn::Ident::new(
-		&format!("__url_resolver_meta_action_{basename}_{fn_ident}"),
+		&format!("__url_resolver_meta_action_{basename}_{}", meta.url_name),
 		Span::call_site(),
 	);
-	let method_ident = fn_ident.clone();
-	let route = format!("{basename}-{fn_ident}");
+	let method_ident = syn::Ident::new(&meta.url_name, Span::call_site());
+	let route_literal = format!("{basename}-{}", meta.url_name);
+
+	let mut param_literals: Vec<proc_macro2::TokenStream> = Vec::new();
+	if meta.detail {
+		param_literals.push(quote! { "id" });
+	}
+	for p in crate::url_patterns::extract_url_params_pub(&meta.url_path) {
+		let lit = syn::LitStr::new(&p, Span::call_site());
+		param_literals.push(quote! { #lit });
+	}
+
+	let body = if param_literals.is_empty() {
+		quote! { $callback!($app, #method_ident, #route_literal, ); }
+	} else {
+		quote! { $callback!($app, #method_ident, #route_literal, #(#param_literals),*); }
+	};
+
 	Ok(quote! {
 		#[doc(hidden)]
 		macro_rules! #macro_name {
-			($callback:ident, $app:ident) => {
-				$callback!($app, #method_ident, #route, "id");
-			};
+			($callback:ident, $app:ident) => { #body };
 		}
 		pub(crate) use #macro_name;
 	})
@@ -438,21 +480,24 @@ fn parse_action_meta_for_viewset(
 /// so Phase 6 can call it from `__for_each_url_resolver`'s arm without
 /// needing to see the ViewSet's basename at the `#[url_patterns]` site.
 ///
+/// Each entry references the per-action meta macro by its `url_name`-derived
+/// name (post-Phase-5), not the bare method identifier.
+///
 /// Refs Issue #4507.
 fn emit_impl_action_manifest(
 	type_snake: &str,
 	basename: &str,
-	fn_idents: &[syn::Ident],
+	url_names: &[String],
 ) -> proc_macro2::TokenStream {
 	let manifest_name = syn::Ident::new(
 		&format!("__for_each_viewset_action_meta_{type_snake}"),
 		Span::call_site(),
 	);
-	let meta_calls: Vec<proc_macro2::TokenStream> = fn_idents
+	let meta_calls: Vec<proc_macro2::TokenStream> = url_names
 		.iter()
-		.map(|fn_ident| {
+		.map(|n| {
 			let meta_name = syn::Ident::new(
-				&format!("__url_resolver_meta_action_{basename}_{fn_ident}"),
+				&format!("__url_resolver_meta_action_{basename}_{n}"),
 				Span::call_site(),
 			);
 			quote! { #meta_name!($callback, $app); }
@@ -649,11 +694,14 @@ mod tests {
 		};
 
 		// Act
-		let (metas, fn_idents) = collect_actions(&item_impl, "snippet").unwrap();
+		let (metas, url_names) = collect_actions(&item_impl, "snippet").unwrap();
 
 		// Assert
 		assert_eq!(metas.len(), 2);
-		assert_eq!(fn_idents.len(), 2);
+		assert_eq!(
+			url_names,
+			vec!["highlight".to_string(), "export".to_string()]
+		);
 		let combined = metas.iter().map(|t| t.to_string()).collect::<String>();
 		assert!(combined.contains("__url_resolver_meta_action_snippet_highlight"));
 		assert!(combined.contains("__url_resolver_meta_action_snippet_export"));
@@ -671,11 +719,11 @@ mod tests {
 		};
 
 		// Act
-		let (metas, fn_idents) = collect_actions(&item_impl, "snippet").unwrap();
+		let (metas, url_names) = collect_actions(&item_impl, "snippet").unwrap();
 
 		// Assert
 		assert_eq!(metas.len(), 1);
-		assert_eq!(fn_idents.len(), 1);
+		assert_eq!(url_names.len(), 1);
 	}
 
 	#[test]
@@ -698,5 +746,83 @@ mod tests {
 		assert!(out_s.contains("__for_each_viewset_action_meta_snippet_view_set"));
 		assert!(out_s.contains("__url_resolver_meta_action_snippet_highlight"));
 		assert!(out_s.contains("__url_resolver_meta_action_snippet_export"));
+	}
+
+	#[test]
+	fn impl_action_meta_without_id_when_detail_false() {
+		// Arrange
+		let args = quote! { basename = "snippet" };
+		let input = quote! {
+			impl SnippetViewSet {
+				#[action(methods = "GET", detail = false, url_name = "export")]
+				async fn export(&self) -> () {}
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(args, input).unwrap().to_string();
+
+		// Assert
+		let pos = out_s
+			.find("__url_resolver_meta_action_snippet_export")
+			.expect("export meta must be present");
+		// Look at a window of the expansion around the export meta definition.
+		let snippet = &out_s[pos..(pos + 600).min(out_s.len())];
+		assert!(
+			!snippet.contains("\"id\""),
+			"detail=false meta must omit \"id\" param; got: {snippet}"
+		);
+	}
+
+	#[test]
+	fn impl_action_meta_with_url_path_params() {
+		// Arrange
+		let args = quote! { basename = "snippet" };
+		let input = quote! {
+			impl SnippetViewSet {
+				#[action(
+					methods = "GET",
+					detail = true,
+					url_name = "child",
+					url_path = "/children/{child_id}"
+				)]
+				async fn child(&self) -> () {}
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(args, input).unwrap().to_string();
+
+		// Assert
+		let pos = out_s
+			.find("__url_resolver_meta_action_snippet_child")
+			.unwrap();
+		let snippet = &out_s[pos..(pos + 800).min(out_s.len())];
+		assert!(snippet.contains("\"id\""), "detail=true must include id");
+		assert!(
+			snippet.contains("\"child_id\""),
+			"url_path placeholders must be added"
+		);
+	}
+
+	#[test]
+	fn impl_form_manifest_uses_url_name_in_meta_calls() {
+		// Arrange
+		let args = quote! { basename = "snippet" };
+		let input = quote! {
+			impl SnippetViewSet {
+				#[action(methods = "POST", detail = true, url_name = "highlight_code")]
+				async fn highlight(&self) -> () {}
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(args, input).unwrap().to_string();
+
+		// Assert
+		assert!(
+			out_s.contains("__url_resolver_meta_action_snippet_highlight_code"),
+			"manifest body must reference the url_name-derived meta name; got: {out_s}"
+		);
 	}
 }

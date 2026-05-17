@@ -11,6 +11,128 @@ use syn::{
 	Expr, ExprLit, FnArg, ItemFn, Lit, Meta, Result, Token, parse::Parser, punctuated::Punctuated,
 };
 
+/// Parsed `#[action(...)]` attribute metadata reused by `#[viewset]`'s
+/// impl-form expansion.
+///
+/// Phase 5 of Issue #4507 extracts this struct so `viewset_macro.rs` can
+/// reuse the exact same parsing logic the `#[action]` macro uses when
+/// emitting `__url_resolver_meta_action_*` macros.
+///
+/// Refs Issue #4507.
+pub(crate) struct ActionMeta {
+	// `methods` is parsed for parity with `action_impl` but is not consumed
+	// by the impl-form `#[viewset]` expansion (which only needs the URL
+	// metadata). Kept on the struct so future callers do not need to
+	// re-parse the attribute. Refs Issue #4507.
+	#[allow(dead_code)]
+	pub methods: Vec<String>,
+	pub detail: bool,
+	/// Empty string when `url_path` is absent from the attribute.
+	pub url_path: String,
+	/// Defaults to the annotated function's identifier when `url_name` is
+	/// absent. Always non-empty.
+	pub url_name: String,
+}
+
+/// Parse the `#[action(...)]` attribute argument list into an `ActionMeta`.
+///
+/// Defaults `url_name` to `fn_ident` when absent, leaves `url_path` empty
+/// when absent, and reuses the same validation as `action_impl` for
+/// `methods` / `detail` / `url_path`.
+///
+/// This extractor is reused by `viewset_macro.rs::parse_action_meta_for_viewset`
+/// (Phase 5 of Issue #4507) so the impl-form of `#[viewset]` emits the same
+/// names and parameters that `#[action]` would compute.
+///
+/// Refs Issue #4507.
+pub(crate) fn parse_action_args_with_defaults(
+	args: TokenStream,
+	fn_ident: &syn::Ident,
+) -> Result<ActionMeta> {
+	let mut methods = Vec::<String>::new();
+	let mut detail = false;
+	let mut url_path: Option<String> = None;
+	let mut url_name: Option<String> = None;
+	let mut has_methods = false;
+	let mut has_detail = false;
+
+	let meta_list = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(args)?;
+	for meta in meta_list {
+		if let Meta::NameValue(nv) = meta {
+			if nv.path.is_ident("methods") {
+				has_methods = true;
+				if let Expr::Lit(ExprLit {
+					lit: Lit::Str(lit), ..
+				}) = &nv.value
+				{
+					let s = lit.value();
+					let s = s.trim_matches(|c| c == '[' || c == ']');
+					for m in s.split(',') {
+						let m = m.trim().trim_matches('"');
+						if !m.is_empty() {
+							methods.push(m.to_string());
+						}
+					}
+				}
+			} else if nv.path.is_ident("detail") {
+				has_detail = true;
+				if let Expr::Lit(ExprLit {
+					lit: Lit::Bool(lit),
+					..
+				}) = &nv.value
+				{
+					detail = lit.value;
+				}
+			} else if nv.path.is_ident("url_path")
+				&& let Expr::Lit(ExprLit {
+					lit: Lit::Str(lit), ..
+				}) = &nv.value
+			{
+				let p = lit.value();
+				if p.contains(' ') {
+					return Err(syn::Error::new_spanned(
+						lit,
+						"url_path cannot contain spaces",
+					));
+				}
+				if !p.starts_with('/') {
+					return Err(syn::Error::new_spanned(lit, "url_path must start with '/'"));
+				}
+				url_path = Some(p);
+			} else if nv.path.is_ident("url_name")
+				&& let Expr::Lit(ExprLit {
+					lit: Lit::Str(lit), ..
+				}) = &nv.value
+			{
+				url_name = Some(lit.value());
+			}
+		}
+	}
+
+	if !has_methods {
+		return Err(syn::Error::new(
+			proc_macro2::Span::call_site(),
+			"action macro requires 'methods' parameter",
+		));
+	}
+	if !has_detail {
+		return Err(syn::Error::new(
+			proc_macro2::Span::call_site(),
+			"action macro requires 'detail' parameter",
+		));
+	}
+	if methods.is_empty() {
+		methods.push("GET".to_string());
+	}
+
+	Ok(ActionMeta {
+		methods,
+		detail,
+		url_path: url_path.unwrap_or_default(),
+		url_name: url_name.unwrap_or_else(|| fn_ident.to_string()),
+	})
+}
+
 /// Implementation of the `action` procedural macro
 ///
 /// This function is used internally by the `#[action]` attribute macro.
@@ -264,5 +386,67 @@ pub(crate) fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				#fn_block
 			}
 		})
+	}
+}
+
+#[cfg(test)]
+mod meta_extractor_tests {
+	use super::*;
+	use quote::quote;
+
+	#[test]
+	fn url_name_defaults_to_fn_name_when_absent() {
+		// Arrange
+		let args = quote! { methods = "POST", detail = true };
+		let fn_ident: syn::Ident = syn::parse_quote! { highlight };
+
+		// Act
+		let meta = parse_action_args_with_defaults(args, &fn_ident).unwrap();
+
+		// Assert
+		assert_eq!(meta.url_name, "highlight");
+		assert!(meta.detail);
+		assert!(meta.url_path.is_empty());
+	}
+
+	#[test]
+	fn explicit_url_name_wins_over_fn_name() {
+		// Arrange
+		let args = quote! { methods = "POST", detail = true, url_name = "highlight_code" };
+		let fn_ident: syn::Ident = syn::parse_quote! { highlight };
+
+		// Act
+		let meta = parse_action_args_with_defaults(args, &fn_ident).unwrap();
+
+		// Assert
+		assert_eq!(meta.url_name, "highlight_code");
+	}
+
+	#[test]
+	fn url_path_with_placeholders_is_preserved() {
+		// Arrange
+		let args = quote! {
+			methods = "GET",
+			detail = true,
+			url_name = "child",
+			url_path = "/children/{child_id}"
+		};
+		let fn_ident: syn::Ident = syn::parse_quote! { child };
+
+		// Act
+		let meta = parse_action_args_with_defaults(args, &fn_ident).unwrap();
+
+		// Assert
+		assert_eq!(meta.url_path, "/children/{child_id}");
+	}
+
+	#[test]
+	fn missing_methods_errors() {
+		// Arrange
+		let args = quote! { detail = true };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act + Assert
+		assert!(parse_action_args_with_defaults(args, &fn_ident).is_err());
 	}
 }
