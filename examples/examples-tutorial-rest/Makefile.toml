@@ -165,6 +165,13 @@ dependencies = ["fmt-check", "clippy-check", "build", "test"]
 description = "Run Bruno API tests"
 script = '''
 #!/bin/bash
+# Export the host UID/GID so the Bruno container can write the bind-mounted
+# reports directory on Linux CI runners. Bash's `$UID`/`$GID` are shell
+# built-ins that are not exported by default, which would let Compose
+# silently fall back to the 1000:1000 default declared in
+# docker-compose.api-tests.yml even when the checkout is owned by another UID.
+export BRUNO_UID="$(id -u)"
+export BRUNO_GID="$(id -g)"
 docker-compose -f docker-compose.api-tests.yml up --build --abort-on-container-exit
 docker-compose -f docker-compose.api-tests.yml down
 '''
