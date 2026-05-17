@@ -1,38 +1,24 @@
-//! WASM entry point.
+//! WASM SPA entry point.
 //!
-//! Bootstraps the SPA via `ClientLauncher::router_client`. The launcher
-//! installs the panic hook, history listener, and DOM mount on `#root`,
-//! then takes a single `ClientRouter` to use both for in-SPA navigation
-//! and (after our explicit `register_client_reverser` call below) for
-//! `ResolvedUrls::from_global()` lookups in components and the nav bar.
+//! The `#[routes]`-annotated function in
+//! [`crate::config::urls::routes`] aggregates every app's
+//! `client_url_patterns()` through `UnifiedRouter::mount_unified` and the
+//! macro submits the resulting `ClientRouter` into `inventory` at compile
+//! time as a `ClientRouterRegistration`.
 //!
-//! ## Composing the polls + users client routers
-//!
-//! Each app's `#[url_patterns(InstalledApp::<app>, mode = client)]`
-//! macro produces a per-app `ClientRouter` already namespaced
-//! (`polls:` / `users:`). They are stitched into the single router the
-//! launcher expects with `ClientRouter::merge`.
-//!
-//! Once the broader ergonomics issue (#4453) lands, this entire file
-//! collapses further to `ClientLauncher::new("#root").launch()` because
-//! `#[url_patterns(..., mode = client)]` will register the routers via
-//! inventory and the launcher will discover + merge + register the
-//! reverser automatically.
+//! [`ClientLauncher::register_routes_from_inventory`] consumes those
+//! registrations at launch time, merges them into a single SPA route
+//! table, registers the project-level client reverser so
+//! `ResolvedUrls::from_global()` lookups resolve in components and the
+//! nav bar, and installs the router as the SPA mount on `#root`. Refs
+//! #4453.
 
 use reinhardt::pages::ClientLauncher;
-use reinhardt::register_client_reverser;
 use wasm_bindgen::prelude::*;
-
-use crate::apps::polls::urls::client_router::client_url_patterns as polls_client_url_patterns;
-use crate::apps::users::urls::client_router::client_url_patterns as users_client_url_patterns;
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
 	ClientLauncher::new("#root")
-		.router_client(|| {
-			let router = polls_client_url_patterns().merge(users_client_url_patterns());
-			register_client_reverser(router.to_reverser());
-			router
-		})
+		.register_routes_from_inventory()
 		.launch()
 }

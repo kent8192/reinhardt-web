@@ -87,7 +87,13 @@ admin = [
 ]
 forms = ["reinhardt-forms"]
 graphql = ["reinhardt-graphql"]
-pages = ["reinhardt-pages", "reinhardt-commands/pages"]
+# `pages` implies `client-router` because `ClientLauncher::register_routes_from_inventory()`
+# (added in #4453) drives the macro to emit `reinhardt::ClientRouterRegistration` /
+# `reinhardt::ClientRouter` paths, both of which are facade re-exports gated on
+# `client-router`. Without this implication a pages-only WASM consumer using
+# `#[routes(client_inventory)]` would hit unresolved-path errors. Refs Copilot
+# review on PR #4477.
+pages = ["reinhardt-pages", "reinhardt-commands/pages", "client-router"]
 templates = ["reinhardt-pages"]
 # pages + web-sys full features for WASM applications
 pages-web-sys-full = ["pages", "reinhardt-pages/web-sys-full"]

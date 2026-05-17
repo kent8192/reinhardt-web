@@ -1,0 +1,5 @@
+error: #[dto] cannot be combined with unconditional `#[derive(Validate)]`. Remove the derive so #[dto] can emit it as `cfg_attr(native, ...)` for you, or replace it with `#[cfg_attr(native, derive(Validate))]`.
+  --> tests/ui/dto/fail/unconditional_validate.rs:11:1
+   |
+11 | #[derive(reinhardt_macros::Validate)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

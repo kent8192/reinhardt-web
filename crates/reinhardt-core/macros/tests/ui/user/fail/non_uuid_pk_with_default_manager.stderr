@@ -1,5 +1,19 @@
 error: #[user(...)] auto-manager only supports Uuid (or Option<Uuid>) primary keys. Set `manager = false` to provide a custom BaseUserManager implementation, or change the primary key field to Uuid.
-  --> tests/ui/user/fail/non_uuid_pk_with_default_manager.rs:15:10
+  --> tests/ui/user/fail/non_uuid_pk_with_default_manager.rs:17:10
    |
-15 |     pub id: i64,
+17 |     pub id: i64,
    |             ^^^
+
+warning: unused imports: `DateTime` and `Utc`
+ --> tests/ui/user/fail/non_uuid_pk_with_default_manager.rs:7:14
+  |
+7 | use chrono::{DateTime, Utc};
+  |              ^^^^^^^^  ^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `reinhardt_auth::Argon2Hasher`
+ --> tests/ui/user/fail/non_uuid_pk_with_default_manager.rs:8:5
+  |
+8 | use reinhardt_auth::Argon2Hasher;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

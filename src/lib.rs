@@ -24,8 +24,8 @@
 //! ### Presets
 //!
 //! - `minimal` - Core functionality only (routing, DI, params)
-//! - `full` (default) - All features enabled
-//! - `standard` - Balanced for most projects
+//! - `full` - All features enabled (opt-in for the broadest surface area)
+//! - `standard` (default) - Balanced for most projects
 //! - `api-only` - REST API without templates/forms
 //! - `graphql-server` - GraphQL-focused setup
 //! - `websocket-server` - WebSocket-centric setup
@@ -403,6 +403,16 @@ pub use reinhardt_macros::settings;
 // Re-export Model derive macro and model attribute macro (requires database feature)
 #[cfg(all(feature = "database", native))]
 pub use reinhardt_macros::{Model, model};
+
+// Issue #4478: `#[dto]` absorbs the `cfg_attr(native, ...)` boilerplate for
+// data-transfer objects that cross the server (`native`) / client (`wasm`)
+// boundary — typically via `#[server_fn]` calls, REST handlers, or WebSocket
+// payloads. The macro itself is wasm-safe — its expansion uses
+// `cfg_attr(native, ...)` for any native-only items — so the re-export is
+// ungated. Sits clearly apart from `#[model]` (the ORM struct attribute):
+// `#[model]` describes a persistent record, `#[dto]` describes the wire
+// shape.
+pub use reinhardt_macros::dto;
 
 // Re-export collect_migrations macro (requires database feature)
 #[cfg(all(feature = "database", native))]
@@ -812,6 +822,35 @@ pub use reinhardt_urls::routers::{
 	UrlPatternsRegistration, clear_router, get_router, is_router_registered, register_router,
 	register_router_arc,
 };
+
+// Re-export client-router inventory registration types (WASM target +
+// client-router feature). Mirrors the native `UrlPatternsRegistration`
+// re-export above so the `#[routes]` macro and downstream code can resolve
+// `reinhardt::ClientRouterRegistration` on `wasm32-unknown-unknown` when
+// the `client-router` feature is enabled. The `client-router` gate matches
+// the registration source module's gate in `reinhardt-urls`. Refs #4453,
+// Codex review feedback.
+#[cfg(all(
+	target_family = "wasm",
+	target_os = "unknown",
+	feature = "client-router"
+))]
+pub use reinhardt_urls::routers::{
+	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
+};
+
+// Re-export the `inventory` crate on the WASM target.
+//
+// The native build re-exports `inventory` above (gated to `core` feature),
+// and the `#[routes]` macro emits `reinhardt::inventory::submit!` to register
+// a server router. The macro's WASM emission also uses `inventory::submit!`
+// to register a `ClientRouterRegistration`, so the facade must expose
+// `reinhardt::inventory` on `wasm32-unknown-unknown` as well. `reinhardt-urls`
+// already depends on `inventory` unconditionally on WASM and re-exports it
+// for this purpose. Refs #4453.
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[doc(hidden)]
+pub use reinhardt_urls::inventory;
 
 // Re-export client-router types (requires client-router feature)
 // These types enable UnifiedRouter<V> with both .server() and .client() methods
