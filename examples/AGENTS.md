@@ -115,14 +115,13 @@ use reinhardt::endpoint;
 use reinhardt::db::orm::Manager;
 use reinhardt::db::DatabaseConnection;
 
-// Pattern 4: External dependencies - prefer direct import when in [dependencies]
-use serde::{Serialize, Deserialize};  // Preferred (serde is in [dependencies])
-use reinhardt::core::serde::json::json;  // Also valid via re-export
-use reinhardt::core::async_trait;  // Use re-export (async_trait not in [dependencies])
-
-// Pattern 5: External crate direct imports (when in [dependencies])
-use serde::{Serialize, Deserialize};
-use serde_json::json;
+// Pattern 4: External dependencies - prefer direct import when the crate
+// is listed in your `[dependencies]`; fall back to the reinhardt re-export
+// otherwise so you don't introduce an unlisted transitive dependency.
+use serde::{Serialize, Deserialize};        // Direct (serde in [dependencies], preferred)
+use serde_json::json;                       // Direct (serde_json in [dependencies], preferred)
+use reinhardt::core::serde::json::json;     // Re-export alternative (also valid)
+use reinhardt::core::async_trait;           // Re-export required (async_trait NOT in [dependencies])
 ```
 
 #### ❌ INCORRECT Import Patterns
@@ -363,7 +362,8 @@ time, so server functions are normal Rust functions on the server side.
 Reserve HTTP routing for tests whose stated purpose is to verify the
 HTTP/DI/middleware pipeline itself (document the rationale in the module
 header). See `instructions/TESTING_STANDARDS.md` § TI-7 for the full
-convention and #3826 for context.
+convention and [#3826](https://github.com/kent8192/reinhardt-web/issues/3826)
+for context.
 
 ---
 
