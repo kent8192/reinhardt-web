@@ -1,42 +1,92 @@
-//! URL configuration for snippets app
+//! URL configuration for the snippets app.
 //!
-//! This module demonstrates two approaches for defining URL patterns:
-//! 1. Function-based views (Tutorial 1-5) - Explicit endpoint registration
-//! 2. ViewSet-based (Tutorial 6) - Automatic CRUD endpoint generation
+//! This file is the canonical aggregator for the `snippets` app — it
+//! declares the per-mode submodules that the routes macro looks for and
+//! exposes a single `url_patterns()` entry point that `src/config/urls.rs`
+//! mounts under `/api/`. The `#[url_patterns(InstalledApp::snippets, mode = server)]`
+//! attribute lives here so the routes macro can find the generated
+//! `url_resolvers` module at the canonical path
+//! `crate::apps::snippets::urls::url_resolvers`.
 //!
-//! Switch between approaches using the USE_VIEWSET environment variable:
-//! - Default: Function-based views
-//! - USE_VIEWSET=1: ViewSet-based views
+//! `url_patterns()` registers the function-based endpoints (Tutorial 1-5)
+//! and the ViewSet endpoints (Tutorial 6) on the same router — there is
+//! no `USE_VIEWSET`-style toggle. Bruno (and `curl`, `httpie`, the
+//! integration tests, …) can therefore drive either path against the
+//! same running server.
+//!
+//! ### Why the routes are inlined here instead of being aggregated from
+//! ### per-style submodules
+//!
+//! An earlier draft split the function-based endpoints into
+//! `urls/function_urls.rs` and the ViewSet into `urls/viewset_urls.rs`,
+//! and tried to combine them via
+//! `ServerRouter::new().mount("/", function_urls::function_url_patterns())
+//!  .mount("/", viewset_urls::viewset_url_patterns())`. That requires each
+//! helper to have its own `#[url_patterns(InstalledApp::snippets, mode = server)]`
+//! attribute (otherwise the macro's `build_mount_reexport` cannot find a
+//! sibling `url_resolvers` module on the mount target). Adding the
+//! attribute to multiple sibling functions makes both modules emit a
+//! `__for_each_url_resolver` macro of the same name, and the
+//! aggregator's macro then fails with `error[E0659]: __for_each_url_resolver`
+//! is ambiguous`. The framework currently supports at most one
+//! `#[url_patterns(..., mode = server)]` per app, so we keep the macro
+//! here and inline the endpoint/viewset registrations.
+//!
+//! Submodules:
+//! - `client_router` — empty `ClientRouter` stub, only present to satisfy
+//!   the non-`standalone` `#[routes]` macro's per-app lookup of
+//!   `crate::apps::<app>::urls::client_url_resolvers` (tracked upstream
+//!   as reinhardt-web#4509)
+//! - `ws_urls` — empty `WebSocketRouter` stub, only present to satisfy
+//!   the same macro's per-app lookup of
+//!   `crate::apps::<app>::urls::ws_urls::ws_url_resolvers` (also #4509)
 
 use reinhardt::ServerRouter;
+use reinhardt::url_patterns;
 
 use super::views;
+use crate::config::apps::InstalledApp;
 
+pub mod client_router;
+pub mod ws_urls;
+
+// Re-export the client-mode resolver module at the `urls` level so the
+// top-level `#[routes]` macro can find it at the flat path
+// `crate::apps::snippets::urls::client_url_resolvers`. The server resolver
+// is generated directly here by the `#[url_patterns]` attribute below
+// (at `urls::url_resolvers`), and the ws resolver is referenced through
+// the nested `ws_urls::ws_url_resolvers` path the routes macro expects,
+// so neither needs a flat re-export.
+pub use client_router::client_url_resolvers;
+
+/// Register every snippets-app URL on a single `ServerRouter`.
+///
+/// Function-based endpoints (Tutorial 1-5) and the `ModelViewSet`
+/// (Tutorial 6) are mounted side by side, so a single running server
+/// exposes both `GET /api/snippets/` and `GET /api/snippets-viewset/`
+/// (and the rest of each CRUD set). Bruno's `Snippets CRUD` and
+/// `Snippets ViewSet` folders drive these in turn against the same
+/// process.
+#[url_patterns(InstalledApp::snippets, mode = server)]
 pub fn url_patterns() -> ServerRouter {
-	// Check which approach to use
-	if std::env::var("USE_VIEWSET").is_ok() {
-		// Option 2: ViewSet-based approach (Tutorial 6)
-		// Automatically generates all CRUD endpoints with pagination, filtering, and ordering
-		// - GET    /api/snippets-viewset/         - List all snippets (with pagination)
-		// - POST   /api/snippets-viewset/         - Create a new snippet
-		// - GET    /api/snippets-viewset/{id}/    - Retrieve a specific snippet
-		// - PUT    /api/snippets-viewset/{id}/    - Update a snippet
-		// - PATCH  /api/snippets-viewset/{id}/    - Partially update a snippet
-		// - DELETE /api/snippets-viewset/{id}/    - Delete a snippet
-		//
-		// Additional query parameters:
-		// - ?page=1&page_size=10                  - Pagination
-		// - ?language=rust&title=hello            - Filtering
-		// - ?ordering=created_at,-title           - Ordering (- for descending)
-		ServerRouter::new().viewset("/snippets-viewset", views::viewset())
-	} else {
-		// Option 1: Function-based approach (Tutorial 1-5)
-		// Explicitly register each endpoint
-		ServerRouter::new()
-			.endpoint(views::list)
-			.endpoint(views::create)
-			.endpoint(views::retrieve)
-			.endpoint(views::update)
-			.endpoint(views::delete)
-	}
+	ServerRouter::new()
+		// Function-based endpoints (Tutorial 1-5)
+		// - GET    /snippets/        — views::list
+		// - POST   /snippets/        — views::create
+		// - GET    /snippets/{id}/   — views::retrieve
+		// - PUT    /snippets/{id}/   — views::update
+		// - DELETE /snippets/{id}/   — views::delete
+		.endpoint(views::list)
+		.endpoint(views::create)
+		.endpoint(views::retrieve)
+		.endpoint(views::update)
+		.endpoint(views::delete)
+		// ViewSet endpoints (Tutorial 6, rc.23+ real CRUD)
+		// - GET    /snippets-viewset/         — list (pagination/filter/order)
+		// - POST   /snippets-viewset/         — create
+		// - GET    /snippets-viewset/{id}/    — retrieve
+		// - PUT    /snippets-viewset/{id}/    — update
+		// - PATCH  /snippets-viewset/{id}/    — partial update
+		// - DELETE /snippets-viewset/{id}/    — delete
+		.viewset("/snippets-viewset", views::viewset())
 }
