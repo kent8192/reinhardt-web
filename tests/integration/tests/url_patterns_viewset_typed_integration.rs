@@ -25,12 +25,15 @@ mod gated {
 		pub mod snippets {
 			pub mod views {
 				use reinhardt::ModelViewSet;
-				use reinhardt_macros::{action, viewset};
-				use reinhardt_core::views::ViewResult;
 				use reinhardt_core::Response;
+				use reinhardt_core::views::ViewResult;
+				use reinhardt_macros::{action, viewset};
 
 				#[viewset]
-				pub fn viewset() -> ModelViewSet<super::super::super::Snippet, super::super::super::SnippetSerializer> {
+				pub fn viewset() -> ModelViewSet<
+					super::super::super::Snippet,
+					super::super::super::SnippetSerializer,
+				> {
 					ModelViewSet::new("snippet")
 				}
 
