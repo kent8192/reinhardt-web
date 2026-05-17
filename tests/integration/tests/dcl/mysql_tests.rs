@@ -59,12 +59,10 @@ async fn test_grant_select_appears_in_information_schema(
 	.expect("CREATE TABLE");
 
 	// Act
-	sqlx::query(&format!(
-		"GRANT SELECT ON test_db.{table} TO '{user}'@'%'"
-	))
-	.execute(pool.as_ref())
-	.await
-	.expect("GRANT SELECT");
+	sqlx::query(&format!("GRANT SELECT ON test_db.{table} TO '{user}'@'%'"))
+		.execute(pool.as_ref())
+		.await
+		.expect("GRANT SELECT");
 
 	// Assert: SELECT privilege is present in information_schema.
 	let count: i64 = sqlx::query(
@@ -112,12 +110,10 @@ async fn test_revoke_select_removes_privilege(
 	.execute(pool.as_ref())
 	.await
 	.expect("CREATE TABLE");
-	sqlx::query(&format!(
-		"GRANT SELECT ON test_db.{table} TO '{user}'@'%'"
-	))
-	.execute(pool.as_ref())
-	.await
-	.expect("GRANT SELECT");
+	sqlx::query(&format!("GRANT SELECT ON test_db.{table} TO '{user}'@'%'"))
+		.execute(pool.as_ref())
+		.await
+		.expect("GRANT SELECT");
 
 	// Act
 	sqlx::query(&format!(
@@ -285,7 +281,7 @@ async fn test_drop_user_verify() {
 
 #[rstest]
 #[tokio::test]
-ignore = "Requires testcontainers setup"]
+#[ignore = "Requires testcontainers setup"]
 async fn test_user_at_host_variations() {
 	// CREATE USER 'user'@'localhost'
 	// CREATE USER 'user'@'%'
@@ -325,7 +321,7 @@ async fn test_grant_all_privileges() {
 }
 
 #[rstest]
-tokio::test]
+#[tokio::test]
 #[ignore = "Requires testcontainers setup"]
 async fn test_revoke_privilege() {
 	// 1. GRANT SELECT ON table TO user
@@ -358,7 +354,7 @@ async fn test_database_level_privileges() {
 }
 
 #[rstest]
-[io::test]
+#[tokio::test]
 #[ignore = "Requires testcontainers setup"]
 async fn test_revoke_grant_option() {
 	// 1. GRANT ... WITH GRANT OPTION
@@ -491,7 +487,7 @@ async fn test_set_role_all_except() {
 #[ignore = "Requires testcontainers setup"]
 async fn test_set_default_role() {
 	// 1. GRANT role TO user
-// 2. SET DEFAULT ROLE role TO user
+	// 2. SET DEFAULT ROLE role TO user
 	// 3. Connect as user
 	// 4. Verify default role is active
 }
@@ -563,7 +559,7 @@ async fn test_account_lock_enforcement() {
 }
 
 #[rstest]
-tokio::test]
+#[tokio::test]
 #[ignore = "Requires testcontainers setup"]
 async fn test_password_expiration() {
 	// CREATE USER WITH PASSWORD EXPIRE INTERVAL 90 DAY
@@ -606,7 +602,7 @@ async fn test_admin_user_setup() {
 }
 
 #[rstest]
-#[okio::test]
+#[tokio::test]
 #[ignore = "Requires testcontainers setup"]
 async fn test_multi_host_user_setup() {
 	// 1. CREATE USER 'app@'host1', 'app@'host2', 'app@'host3'

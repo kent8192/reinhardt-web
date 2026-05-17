@@ -257,7 +257,7 @@ async fn test_cascade_revoke() {
 // ============================================================================
 
 #[rstest]
-#[io::test]
+#[tokio::test]
 #[ignore = "Requires testcontainers setup"]
 async fn test_grant_role_verify_membership() {
 	// 1. GRANT role1 TO user
@@ -300,7 +300,7 @@ async fn test_multiple_role_grants() {
 	// Verify all memberships
 }
 
-#[stest]
+#[rstest]
 #[tokio::test]
 #[ignore = "Requires testcontainers setup"]
 async fn test_role_hierarchy() {
