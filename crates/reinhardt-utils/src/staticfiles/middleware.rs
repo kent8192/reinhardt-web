@@ -45,6 +45,33 @@ pub struct StaticFilesConfig {
 	pub allowed_extensions: Vec<String>,
 	/// Path prefixes to exclude from SPA fallback (e.g., ["/api/", "/docs"])
 	pub excluded_prefixes: Vec<String>,
+	/// Path prefixes that bypass this middleware entirely.
+	///
+	/// Requests whose path starts with any of these prefixes are passed
+	/// straight to the next handler — no file lookup in `root_dir`, no SPA
+	/// fallback. This differs from `excluded_prefixes`, which only suppresses
+	/// the SPA fallback but still attempts to serve files from `root_dir`.
+	///
+	/// Useful when stacking a project-static middleware in front of an
+	/// application router that owns a nested mount such as `/static/admin/`:
+	/// listing the nested mount here guarantees the inner route wins even if
+	/// the outer `root_dir` accidentally contains a colliding file.
+	///
+	/// # Prefix format
+	///
+	/// Matching is `path.starts_with(prefix)` against the request URI path,
+	/// so prefix shape is significant:
+	///
+	/// - **Always start with `/`** so the prefix is matched against an
+	///   absolute path (the request URI path always begins with `/`).
+	/// - **Usually end with `/`** to anchor on a path-segment boundary; for
+	///   example, `/static/admin/` matches `/static/admin/foo.css` but not
+	///   `/static/administrators`. Omit the trailing `/` only when you
+	///   deliberately want segment-prefix matching.
+	/// - **Never include an empty string** — it would silently bypass the
+	///   middleware for every path. The [`StaticFilesConfig::passthrough_prefixes`]
+	///   builder panics if asked to install an empty prefix.
+	pub passthrough_prefixes: Vec<String>,
 	/// Cache control configuration for static file responses
 	pub cache_config: CacheControlConfig,
 	/// Enable automatic WASM script injection into SPA HTML responses
@@ -65,6 +92,7 @@ impl Default for StaticFilesConfig {
 			index_file: None,
 			allowed_extensions: vec![],
 			excluded_prefixes: vec!["/api/".to_string()],
+			passthrough_prefixes: vec![],
 			cache_config: CacheControlConfig::new(),
 			auto_inject_wasm: true,
 			wasm_entry: None,
@@ -118,6 +146,35 @@ impl StaticFilesConfig {
 	/// Set path prefixes to exclude from SPA fallback.
 	pub fn excluded_prefixes(mut self, prefixes: Vec<String>) -> Self {
 		self.excluded_prefixes = prefixes;
+		self
+	}
+
+	/// Set path prefixes that bypass this middleware entirely.
+	///
+	/// Requests whose path starts with any of these prefixes are forwarded
+	/// to the next handler without attempting to serve from `root_dir` or
+	/// fall back to the SPA index file. See the field-level documentation
+	/// on [`StaticFilesConfig::passthrough_prefixes`] for the difference
+	/// versus [`StaticFilesConfig::excluded_prefixes`] and the expected
+	/// prefix format.
+	///
+	/// # Panics
+	///
+	/// Panics if any prefix is the empty string. An empty prefix would
+	/// match every request path via `starts_with("")` and silently disable
+	/// static serving — this is treated as a configuration bug and rejected
+	/// at construction time rather than allowed to surface as a confusing
+	/// runtime symptom.
+	pub fn passthrough_prefixes(mut self, prefixes: Vec<String>) -> Self {
+		for prefix in &prefixes {
+			assert!(
+				!prefix.is_empty(),
+				"passthrough_prefixes must not contain an empty string \
+				 (would bypass the middleware for every path and silently \
+				 disable static serving)"
+			);
+		}
+		self.passthrough_prefixes = prefixes;
 		self
 	}
 
@@ -575,6 +632,18 @@ impl StaticFilesMiddleware {
 impl Middleware for StaticFilesMiddleware {
 	async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
 		let path = request.uri.path();
+
+		// Passthrough prefixes bypass this middleware entirely so that nested
+		// mounts owned by the application router (e.g. `/static/admin/`) win
+		// over a colliding file under `root_dir`.
+		if self
+			.config
+			.passthrough_prefixes
+			.iter()
+			.any(|p| path.starts_with(p))
+		{
+			return next.handle(request).await;
+		}
 
 		// Check if this request matches our prefix
 		if !self.matches_prefix(path) {
@@ -1544,5 +1613,117 @@ mod tests {
 		assert_eq!(response.headers.get("Content-Type").unwrap(), "text/html");
 		assert!(response.headers.contains_key("ETag"));
 		assert!(response.headers.contains_key("Cache-Control"));
+	}
+
+	// Mock handler used by passthrough tests to detect fall-through. Returns
+	// a fixed body so the test can distinguish a served-by-middleware response
+	// from a forwarded-to-next response.
+	struct PassthroughProbeHandler;
+
+	#[async_trait]
+	impl Handler for PassthroughProbeHandler {
+		async fn handle(&self, _request: Request) -> Result<Response> {
+			Ok(Response::ok().with_body("from-next-handler"))
+		}
+	}
+
+	fn build_request(path: &str) -> Request {
+		use bytes::Bytes;
+		use hyper::{HeaderMap, Method, Version};
+		Request::builder()
+			.method(Method::GET)
+			.uri(path)
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap()
+	}
+
+	#[tokio::test]
+	async fn test_passthrough_prefix_falls_through_to_next_handler() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		// Place a colliding file under the middleware's root_dir to prove the
+		// passthrough rule wins over an existing on-disk match.
+		std::fs::create_dir_all(dir.path().join("admin")).unwrap();
+		std::fs::write(dir.path().join("admin/foo.css"), "body { color: red }").unwrap();
+
+		let config = StaticFilesConfig::new(dir.path())
+			.url_prefix("/static/")
+			.spa_mode(false)
+			.passthrough_prefixes(vec!["/static/admin/".to_string()]);
+		let middleware = StaticFilesMiddleware::new(config);
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request("/static/admin/foo.css"), next)
+			.await
+			.unwrap();
+
+		// Assert
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(
+			body, "from-next-handler",
+			"passthrough prefix must bypass the middleware even when a colliding file exists"
+		);
+	}
+
+	#[tokio::test]
+	async fn test_passthrough_prefix_does_not_affect_non_matching_path() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::create_dir_all(dir.path().join("css")).unwrap();
+		std::fs::write(dir.path().join("css/style.css"), "body { color: blue }").unwrap();
+
+		let config = StaticFilesConfig::new(dir.path())
+			.url_prefix("/static/")
+			.spa_mode(false)
+			.passthrough_prefixes(vec!["/static/admin/".to_string()]);
+		let middleware = StaticFilesMiddleware::new(config);
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request("/static/css/style.css"), next)
+			.await
+			.unwrap();
+
+		// Assert
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(
+			body, "body { color: blue }",
+			"non-passthrough paths must still be served from root_dir"
+		);
+		assert_eq!(response.headers.get("Content-Type").unwrap(), "text/css");
+	}
+
+	#[tokio::test]
+	async fn test_passthrough_prefix_empty_means_no_bypass() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::create_dir_all(dir.path().join("admin")).unwrap();
+		std::fs::write(dir.path().join("admin/foo.css"), "/* served */").unwrap();
+
+		let config = StaticFilesConfig::new(dir.path())
+			.url_prefix("/static/")
+			.spa_mode(false);
+		// passthrough_prefixes defaults to vec![]
+		let middleware = StaticFilesMiddleware::new(config);
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request("/static/admin/foo.css"), next)
+			.await
+			.unwrap();
+
+		// Assert
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(
+			body, "/* served */",
+			"with empty passthrough_prefixes the file under root_dir wins"
+		);
 	}
 }
