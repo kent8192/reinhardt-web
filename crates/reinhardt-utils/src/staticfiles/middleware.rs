@@ -155,8 +155,25 @@ impl StaticFilesConfig {
 	/// to the next handler without attempting to serve from `root_dir` or
 	/// fall back to the SPA index file. See the field-level documentation
 	/// on [`StaticFilesConfig::passthrough_prefixes`] for the difference
-	/// versus [`StaticFilesConfig::excluded_prefixes`].
+	/// versus [`StaticFilesConfig::excluded_prefixes`] and the expected
+	/// prefix format.
+	///
+	/// # Panics
+	///
+	/// Panics if any prefix is the empty string. An empty prefix would
+	/// match every request path via `starts_with("")` and silently disable
+	/// static serving — this is treated as a configuration bug and rejected
+	/// at construction time rather than allowed to surface as a confusing
+	/// runtime symptom.
 	pub fn passthrough_prefixes(mut self, prefixes: Vec<String>) -> Self {
+		for prefix in &prefixes {
+			assert!(
+				!prefix.is_empty(),
+				"passthrough_prefixes must not contain an empty string \
+				 (would bypass the middleware for every path and silently \
+				 disable static serving)"
+			);
+		}
 		self.passthrough_prefixes = prefixes;
 		self
 	}
