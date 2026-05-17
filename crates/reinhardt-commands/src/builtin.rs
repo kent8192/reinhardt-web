@@ -3814,9 +3814,7 @@ mod tests {
 		reinhardt_urls::routers::register_router(ServerRouter::new());
 
 		// Act: explicit call to the inventory consumer must error.
-		let result = RunServerCommand
-			.register_http_routes_from_inventory()
-			.await;
+		let result = RunServerCommand.register_http_routes_from_inventory().await;
 
 		// Cleanup: drop the manually registered router so subsequent
 		// tests in the `runserver` serial group start clean.
@@ -3824,9 +3822,8 @@ mod tests {
 
 		// Assert: error mentions the mutual-exclusion contract so the
 		// caller can fix the bootstrap rather than silently overriding.
-		let err = result.expect_err(
-			"expected DP-7 confusable-API rejection when a router is pre-registered",
-		);
+		let err = result
+			.expect_err("expected DP-7 confusable-API rejection when a router is pre-registered");
 		let msg = err.to_string();
 		assert!(
 			msg.contains("already registered"),
