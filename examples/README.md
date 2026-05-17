@@ -7,7 +7,7 @@ Example applications demonstrating [Reinhardt](https://github.com/kent8192/reinh
 ### One Command Run
 
 ```bash
-git clone https://github.com/kent8192/reinhardt-web.git && cd reinhardt-web/examples/examples-hello-world && cargo run
+git clone https://github.com/kent8192/reinhardt-web.git && cd reinhardt-web/examples/examples-tutorial-basis && cargo run
 ```
 
 ### Step by Step
@@ -18,7 +18,7 @@ git clone https://github.com/kent8192/reinhardt-web.git
 cd reinhardt-web/examples
 
 # 2. Choose an example
-cd examples-hello-world
+cd examples-tutorial-basis
 
 # 3. Run it
 cargo run
@@ -26,10 +26,10 @@ cargo run
 
 ### Examples with PostgreSQL
 
-For examples that require PostgreSQL (database-integration, github-issues, twitter):
+For examples that require PostgreSQL (`examples-twitter`):
 
 ```bash
-cd reinhardt-web/examples/examples-database-integration
+cd reinhardt-web/examples/examples-twitter
 
 # Start PostgreSQL
 docker compose up -d
@@ -45,12 +45,8 @@ cargo run
 
 | Example | Description | Features |
 |---------|-------------|----------|
-| `examples-hello-world` | Basic Hello World application | Core HTTP, Routing |
-| `examples-rest-api` | REST API with CRUD operations | REST, Validation, Settings |
-| `examples-database-integration` | Database integration with migrations | Database, ORM, SQLite, PostgreSQL |
 | `examples-tutorial-basis` | Polling app tutorial (basis) | Pages, Forms, Database, WASM |
 | `examples-tutorial-rest` | REST API tutorial (snippets) | REST, Viewsets, Database |
-| `examples-github-issues` | GitHub Issues clone | GraphQL, JWT Auth |
 | `examples-twitter` | Full Twitter-like application | Full-stack, WebSockets, Auth, WASM |
 
 ## Dependency Management
@@ -90,7 +86,7 @@ cargo make local-examples-test
 
 ```bash
 # Test a specific example
-cd examples-hello-world && cargo nextest run --all-features
+cd examples-tutorial-basis && cargo nextest run --all-features
 ```
 
 ## License
