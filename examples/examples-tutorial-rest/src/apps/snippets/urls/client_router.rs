@@ -12,6 +12,11 @@
 //! do not use `installed_apps!` (the macro's documented purpose for
 //! `standalone`). This example does use `installed_apps!`, so we keep
 //! plain `#[routes]` and stub the client side instead.
+//!
+//! Upstream tracking: reinhardt-web#4509 — the framework should make
+//! the per-app `client_url_resolvers` / `ws_urls` lookups conditional on
+//! the modes the app actually declares, so REST-only projects do not
+//! need this stub. Once that is fixed, this file can be deleted.
 
 use reinhardt::ClientRouter;
 use reinhardt::url_patterns;

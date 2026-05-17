@@ -119,11 +119,13 @@ examples-tutorial-rest/
 │       └── snippets/
 │           ├── models.rs           # Snippet model (#[model])
 │           ├── serializers.rs      # SnippetSerializer + SnippetResponse
-│           ├── urls.rs             # urls aggregator + flat resolver re-exports
+│           ├── urls.rs             # aggregator: #[url_patterns(InstalledApp::snippets, mode = server)]
+│           │                       # registers both function-based and ViewSet endpoints
 │           ├── urls/
-│           │   ├── client_router.rs  # mode = client (empty stub, REST-only)
-│           │   ├── server_urls.rs    # mode = server (the real router)
-│           │   └── ws_urls.rs        # mode = ws (empty stub, REST-only)
+│           │   ├── client_router.rs  # mode = client (empty stub — only present
+│           │   │                     # to satisfy non-standalone #[routes];
+│           │   │                     # upstream tracking: #4509)
+│           │   └── ws_urls.rs        # mode = ws (empty stub — same reason; #4509)
 │           └── views.rs            # HTTP method handlers + #[viewset]
 └── tests/
     └── integration.rs              # Integration tests
@@ -185,52 +187,57 @@ pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Res
 }
 ```
 
-### 4. URL Routing (urls/server_urls.rs)
+### 4. URL Routing (urls.rs)
+
+The snippets app exposes a single `url_patterns()` entry point in
+`src/apps/snippets/urls.rs`. It carries the typed
+`#[url_patterns(InstalledApp::snippets, mode = server)]` macro (rc.18+,
+discussion #3770), which binds the router to its owning app at compile
+time via the `AppLabel` trait and applies `.with_namespace("snippets")`
+for URL reversal (e.g. `"snippets:snippets_list"`) without changing the
+request path. Both the function-based endpoints (Tutorial 1-5) and the
+ViewSet endpoints (Tutorial 6) are registered on the same router:
 
 ```rust
-// `#[url_patterns(InstalledApp::snippets, mode = server)]` (rc.18+) binds
-// this router to the `snippets` app at compile time via the `AppLabel` trait.
-// The macro also applies `.with_namespace("snippets")` for URL reversal
-// (e.g. `"snippets:snippets_list"`) without changing the request path.
+// src/apps/snippets/urls.rs
+pub mod client_router;  // empty stub — see #4509
+pub mod ws_urls;        // empty stub — see #4509
+pub use client_router::client_url_resolvers;
+
 #[url_patterns(InstalledApp::snippets, mode = server)]
-pub fn server_url_patterns() -> ServerRouter {
+pub fn url_patterns() -> ServerRouter {
     ServerRouter::new()
+        // Function-based endpoints (Tutorial 1-5)
         .endpoint(views::list)
         .endpoint(views::create)
         .endpoint(views::retrieve)
         .endpoint(views::update)
         .endpoint(views::delete)
+        // ViewSet endpoints (Tutorial 6)
+        .viewset("/snippets-viewset", views::viewset())
 }
 ```
 
-The per-app `urls.rs` aggregates the `server_urls` / `client_router` /
-`ws_urls` submodules and re-exports the flat `url_resolvers` /
-`client_url_resolvers` modules at the `urls` level so the top-level
-`#[routes]` macro can find them:
-
-```rust
-// src/apps/snippets/urls.rs
-pub mod client_router;
-pub mod server_urls;
-pub mod ws_urls;
-
-pub use client_router::client_url_resolvers;
-pub use server_urls::url_resolvers;
-```
+> **Why the routes are inlined here**: the framework currently supports at
+> most one `#[url_patterns(InstalledApp::<app>, mode = server)]` per app
+> (sibling occurrences emit duplicate `__for_each_url_resolver` macros and
+> fail with `E0659: ambiguous name`), and `.mount("/", helper())` calls
+> additionally require each mount target to have its own `url_resolvers`
+> module. Splitting the function-based and ViewSet registrations into
+> separate helper files is therefore not possible today. See `urls.rs`'s
+> module-level comment for the full rationale and the framework path that
+> would lift the constraint.
 
 Mounted at the project root with an explicit literal prefix. Plain
 `#[routes]` (not `#[routes(standalone)]`) is used because this project
-consumes `installed_apps!`, so the macro should generate the
+consumes `installed_apps!`, so the macro generates the
 `ResolvedUrls::snippets()` accessor that `standalone` would suppress:
 
 ```rust
 // src/config/urls.rs
 #[routes]
 pub fn routes() -> UnifiedRouter {
-    UnifiedRouter::new().mount(
-        "/api/",
-        crate::apps::snippets::urls::server_urls::server_url_patterns(),
-    )
+    UnifiedRouter::new().mount("/api/", crate::apps::snippets::urls::url_patterns())
 }
 ```
 
@@ -274,35 +281,35 @@ cargo test -- --nocapture
 
 ## ViewSets (Tutorial 6)
 
-This example demonstrates both function-based views (Tutorial 1-5) and ViewSet-based views (Tutorial 6).
-
-### Switching Between Approaches
-
-You can switch between the two approaches using the `USE_VIEWSET` environment variable:
+This example demonstrates both function-based views (Tutorial 1-5) and ViewSet-based views (Tutorial 6). **Both are mounted simultaneously** on the same running server — there is no toggle between them. The two endpoint sets coexist under separate URL prefixes:
 
 ```bash
-# Function-based views (default) - Tutorial 1-5 approach
 cargo run --bin manage runserver
-# Visit http://127.0.0.1:8000/api/snippets/
 
-# ViewSet-based views - Tutorial 6 approach
-USE_VIEWSET=1 cargo run --bin manage runserver
-# Visit http://127.0.0.1:8000/api/snippets-viewset/
+# Function-based endpoints (Tutorial 1-5)
+curl http://127.0.0.1:8000/api/snippets/
+
+# ViewSet endpoints (Tutorial 6)
+curl http://127.0.0.1:8000/api/snippets-viewset/
 ```
+
+The Bruno collection under `bruno/` contains a `Snippets CRUD` folder for the function-based path and a `Snippets ViewSet` folder for the ViewSet path; both can be exercised back-to-back without restarting the server.
 
 > **rc.23+ runtime behaviour**: Starting with reinhardt-web rc.23,
 > `ModelViewSet` (and `ReadOnlyModelViewSet`) issue **real database
 > queries** instead of returning skeleton `[]` / `{}` responses. To exercise
-> the ViewSet branch you must therefore migrate the `snippets` table first:
+> the ViewSet endpoints you must therefore migrate the `snippets` table
+> first:
 >
 > ```bash
 > cargo run --bin manage -- migrate
-> USE_VIEWSET=1 cargo run --bin manage runserver
+> cargo run --bin manage runserver
 > ```
 >
-> Until rows are inserted, the ViewSet endpoints will return an empty list.
-> The function-based branch (default) is unaffected — it falls back to
-> in-memory sample snippets defined in `views.rs::get_sample_snippets`.
+> Until rows are inserted, the `/api/snippets-viewset/` endpoints will
+> return an empty list. The function-based path (`/api/snippets/`) is
+> unaffected — it falls back to in-memory sample snippets defined in
+> `views.rs::get_sample_snippets`.
 
 ### Comparison
 

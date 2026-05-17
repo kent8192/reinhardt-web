@@ -20,8 +20,5 @@ use reinhardt::routes;
 
 #[routes]
 pub fn routes() -> UnifiedRouter {
-	UnifiedRouter::new().mount(
-		"/api/",
-		crate::apps::snippets::urls::server_urls::server_url_patterns(),
-	)
+	UnifiedRouter::new().mount("/api/", crate::apps::snippets::urls::url_patterns())
 }

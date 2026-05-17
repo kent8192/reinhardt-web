@@ -265,16 +265,21 @@ pub async fn delete(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 /// `ModelViewSet` and `ReadOnlyModelViewSet` no longer return skeleton
 /// `[]` / `{}` responses. The generated handlers issue real database queries
 /// through the `Snippet` model's manager (and honour `with_filters`,
-/// `with_ordering`, and `with_pagination` end-to-end), so this endpoint set
-/// requires a working database backend with the `snippets` schema migrated:
+/// `with_ordering`, and `with_pagination` end-to-end), so the ViewSet
+/// endpoints registered under `/api/snippets-viewset/` require a working
+/// database backend with the `snippets` schema migrated:
 ///
 /// ```text
 /// cargo run --bin manage -- migrate
-/// USE_VIEWSET=1 cargo run --bin manage -- runserver
+/// cargo run --bin manage -- runserver
 /// ```
 ///
+/// Both the function-based endpoints (under `/api/snippets/`) and the
+/// ViewSet endpoints (under `/api/snippets-viewset/`) are served by the
+/// same process — `crate::apps::snippets::urls::url_patterns` registers
+/// them on a single `ServerRouter` with no `USE_VIEWSET`-style toggle.
 /// Unlike the function-based views above (which fall back to in-memory
-/// `get_sample_snippets()` data for demonstration), the ViewSet branch will
+/// `get_sample_snippets()` data for demonstration), the ViewSet path will
 /// observe an empty list until rows are inserted into the `snippets` table.
 #[reinhardt::viewset]
 pub fn viewset() -> reinhardt::ModelViewSet<Snippet, SnippetSerializer> {

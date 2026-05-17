@@ -13,6 +13,10 @@
 //! `WebSocketRouter` is only exported from `reinhardt` when the
 //! `websockets` feature is enabled, which is why this example's
 //! `Cargo.toml` opts into that feature.
+//!
+//! Upstream tracking: reinhardt-web#4509 — once the routes macro makes
+//! this lookup conditional on the modes the app actually declares, this
+//! stub (and the `websockets` Cargo feature it forces) can be dropped.
 
 use reinhardt::WebSocketRouter;
 use reinhardt::url_patterns;
