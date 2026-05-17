@@ -191,11 +191,20 @@ impl DefaultRouter {
 		// Register custom actions from ViewSet
 		let extra_actions = viewset.get_extra_actions();
 		for action in extra_actions {
-			let action_url_path = if let Some(ref url_path) = action.url_path {
-				url_path.clone()
-			} else {
-				action.name.clone()
-			};
+			// `#[action]` enforces that `url_path` starts with `/`
+			// (see `crates/reinhardt-core/macros/src/action.rs`). When this
+			// value flows into the `format!("/{}/.../{}/")` template below,
+			// a stored `/children` would yield `.../{id}//children/` (double
+			// slash). Strip the leading `/` so the segment join is uniform
+			// regardless of whether the value came from
+			// `#[action(url_path = "/...")]` or the `action.name` fallback
+			// (which has no slash).
+			let action_url_path = action
+				.url_path
+				.as_deref()
+				.unwrap_or(action.name.as_str())
+				.trim_start_matches('/')
+				.to_string();
 
 			let action_path = if action.detail {
 				// Detail action: /prefix/{lookup_field}/action_name/
