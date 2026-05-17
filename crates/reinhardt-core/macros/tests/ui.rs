@@ -166,3 +166,17 @@ fn test_user_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/user/fail/*.rs");
 }
+
+// ===== DTO (Issue #4478) =====
+
+#[test]
+fn test_dto_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/dto/pass/*.rs");
+}
+
+#[test]
+fn test_dto_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/dto/fail/*.rs");
+}

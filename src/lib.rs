@@ -404,6 +404,16 @@ pub use reinhardt_macros::settings;
 #[cfg(all(feature = "database", native))]
 pub use reinhardt_macros::{Model, model};
 
+// Issue #4478: `#[dto]` absorbs the `cfg_attr(native, ...)` boilerplate for
+// data-transfer objects that cross the server (`native`) / client (`wasm`)
+// boundary — typically via `#[server_fn]` calls, REST handlers, or WebSocket
+// payloads. The macro itself is wasm-safe — its expansion uses
+// `cfg_attr(native, ...)` for any native-only items — so the re-export is
+// ungated. Sits clearly apart from `#[model]` (the ORM struct attribute):
+// `#[model]` describes a persistent record, `#[dto]` describes the wire
+// shape.
+pub use reinhardt_macros::dto;
+
 // Re-export collect_migrations macro (requires database feature)
 #[cfg(all(feature = "database", native))]
 pub use reinhardt_macros::collect_migrations;
