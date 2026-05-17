@@ -276,6 +276,26 @@ impl ServerRouter {
 		self
 	}
 
+	/// Same as [`Self::viewset`] at runtime, but carries a `PhantomData<M>`
+	/// marker that `#[url_patterns]` recovers at expansion time to discover
+	/// `#[action]`-decorated methods on the impl block `M`.
+	///
+	/// `M` is unconstrained at the type level — it is purely a name-bearing
+	/// token. Users write `PhantomData::<MyViewSetImpl>` as the third argument.
+	///
+	/// Refs Issue #4507.
+	pub fn viewset_with_actions<V, M>(
+		self,
+		prefix: &str,
+		viewset: V,
+		_marker: std::marker::PhantomData<M>,
+	) -> Self
+	where
+		V: reinhardt_views::viewsets::ViewSet + 'static,
+	{
+		self.viewset(prefix, viewset)
+	}
+
 	/// Register an endpoint using EndpointInfo trait
 	///
 	/// This method accepts a factory function that returns a View type implementing
@@ -491,5 +511,65 @@ impl ServerRouter {
 			route.middleware.push(middleware);
 		}
 		self
+	}
+}
+
+#[cfg(test)]
+mod viewset_with_actions_tests {
+	use super::*;
+	use async_trait::async_trait;
+	use reinhardt_http::{Request, Response, Result};
+	use reinhardt_views::viewsets::{Action, ViewSet};
+	use rstest::rstest;
+	use std::marker::PhantomData;
+
+	/// Minimal `ViewSet` fixture for parity tests between `viewset` and
+	/// `viewset_with_actions`. The dispatch body is irrelevant — these tests
+	/// only inspect what routes get registered.
+	#[derive(Debug, Clone)]
+	struct DummyViewSet {
+		basename: String,
+	}
+
+	#[async_trait]
+	impl ViewSet for DummyViewSet {
+		fn get_basename(&self) -> &str {
+			&self.basename
+		}
+
+		async fn dispatch(&self, _request: Request, _action: Action) -> Result<Response> {
+			Ok(Response::ok())
+		}
+	}
+
+	/// Marker type the future `#[url_patterns]` macro will recover at
+	/// expansion time. It carries no runtime state.
+	struct DummyImpl;
+
+	#[rstest]
+	fn viewset_with_actions_is_equivalent_to_viewset() {
+		// Arrange
+		let mut router_a = ServerRouter::new().viewset(
+			"/users",
+			DummyViewSet {
+				basename: "users".to_string(),
+			},
+		);
+		let mut router_b = ServerRouter::new().viewset_with_actions(
+			"/users",
+			DummyViewSet {
+				basename: "users".to_string(),
+			},
+			PhantomData::<DummyImpl>,
+		);
+
+		// Act
+		let _ = router_a.register_all_routes();
+		let _ = router_b.register_all_routes();
+		let routes_a = router_a.get_all_routes();
+		let routes_b = router_b.get_all_routes();
+
+		// Assert
+		assert_eq!(routes_a, routes_b);
 	}
 }
