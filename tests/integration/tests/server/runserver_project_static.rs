@@ -236,6 +236,14 @@ async fn test_project_static_missing_file_does_not_swallow_with_spa_html() {
 		content_type.contains("text/html"),
 		"expected SPA fallback HTML, got Content-Type {content_type}"
 	);
+	// Confirm the body is actually dist/index.html (not e.g. an empty 200
+	// from project-static or a wrong fallback). Exact match guards against
+	// future regressions that silently substitute the SPA shell.
+	let body = response.text().await.unwrap();
+	assert_eq!(
+		body, "<html><body>spa</body></html>",
+		"SPA fallback should serve dist/index.html verbatim"
+	);
 
 	shutdown_test_server(server_handle).await;
 }
