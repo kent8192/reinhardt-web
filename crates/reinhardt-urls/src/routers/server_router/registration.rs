@@ -286,10 +286,21 @@ impl ServerRouter {
 	/// the marker→runtime bridge below.
 	///
 	/// Phase 5.1 of Issue #4507: in addition to delegating to [`Self::viewset`],
-	/// this method copies every action submitted under `type_name::<M>()`
-	/// (via `inventory::submit!` from `#[viewset(basename = ...)] impl M`)
-	/// into the runtime-keyed `register_action(type_name::<V>(), ...)` slot
-	/// so the dispatcher's `ViewSet::get_extra_actions` lookup finds them.
+	/// this method calls [`reinhardt_views::viewsets::bridge_marker_actions_to_viewset`]
+	/// to copy every action submitted under `type_name::<M>()` into the
+	/// runtime-keyed `register_action(type_name::<V>(), ...)` slot, so the
+	/// dispatcher's [`ViewSet::get_extra_actions`] lookup finds them under
+	/// the concrete ViewSet's type name (not the marker's).
+	///
+	/// The marker-keyed submissions themselves are produced by a
+	/// `#[ctor::ctor]` startup function emitted by `#[viewset(basename =
+	/// "...")] impl M { #[action(...)] fn ... }` (the `ctor` path is the
+	/// production registration mechanism today; the helper additionally
+	/// drains an `inventory` collection for forward-compatibility once
+	/// `const_type_name` stabilizes and `inventory::submit!` becomes usable
+	/// for marker-keyed registrations). Because `#[ctor]` runs at process
+	/// startup on non-wasm targets, the marker bridge is a no-op on wasm
+	/// (gated by `#[cfg(not(target_family = "wasm"))]` at the emitter site).
 	///
 	/// Refs Issue #4507.
 	pub fn viewset_with_actions<V, M>(
