@@ -187,6 +187,14 @@ fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
 /// an additional "id" param literal so the generated accessor's signature
 /// gains an `id: &str` argument.
 ///
+/// Phase 6.2 (Issue #4507): the macro carries `#[macro_export]` so it lands
+/// at the user crate's root. This sidesteps E0364 ("cannot re-export
+/// `pub(crate)` macro_rules! as `pub`") which blocked the previous attempt
+/// to thread the manifest through a `pub use` chain into `url_resolvers`.
+/// Names are pre-collision-resistant: every macro carries `<fn>` /
+/// `<basename>` / `<kind>` in its identifier, so multiple `#[viewset]`
+/// invocations in the same crate produce distinct crate-root names.
+///
 /// Refs Issue #4507.
 fn emit_meta_macro(
 	fn_name: &syn::Ident,
@@ -207,12 +215,15 @@ fn emit_meta_macro(
 		quote! { $callback!($app, #method_ident, #route_literal, ); }
 	};
 
+	// `#[macro_export]` already publishes the macro at the user crate root;
+	// no additional `pub use` is required (and adding one triggers E0255
+	// "defined multiple times").
 	quote! {
 		#[doc(hidden)]
+		#[macro_export]
 		macro_rules! #macro_name {
 			($callback:ident, $app:ident) => { #body };
 		}
-		pub(crate) use #macro_name;
 	}
 }
 
@@ -221,6 +232,12 @@ fn emit_meta_macro(
 /// `#[url_patterns]` in Phase 6 calls this manifest from inside its
 /// `__for_each_url_resolver` arm so the corresponding `<App>Urls` struct
 /// gets the typed methods.
+///
+/// Phase 6.2 (Issue #4507): the manifest carries `#[macro_export]` so it
+/// is reachable as `$crate::__for_each_viewset_meta_<fn>!` from the
+/// `#[url_patterns]`-generated `__for_each_url_resolver` arm. The body
+/// invokes the per-fn meta macros via the same `$crate::` channel because
+/// they too are `#[macro_export]`'d (see `emit_meta_macro`).
 ///
 /// Refs Issue #4507.
 fn emit_per_fn_manifest(fn_name: &syn::Ident, basename: &str) -> TokenStream {
@@ -236,15 +253,18 @@ fn emit_per_fn_manifest(fn_name: &syn::Ident, basename: &str) -> TokenStream {
 		&format!("__url_resolver_meta_{fn_name}_{basename}_detail"),
 		Span::call_site(),
 	);
+	// `#[macro_export]` already publishes the macro at the user crate root;
+	// no additional `pub use` is required (and adding one triggers E0255
+	// "defined multiple times").
 	quote! {
 		#[doc(hidden)]
+		#[macro_export]
 		macro_rules! #manifest_name {
 			($callback:ident, $app:ident) => {
-				#list_meta!($callback, $app);
-				#detail_meta!($callback, $app);
+				$crate::#list_meta!($callback, $app);
+				$crate::#detail_meta!($callback, $app);
 			};
 		}
-		pub(crate) use #manifest_name;
 	}
 }
 
@@ -508,12 +528,18 @@ fn parse_action_meta_for_viewset(
 		quote! { $callback!($app, #method_ident, #route_literal, #(#param_literals),*); }
 	};
 
+	// Phase 6.2 (Issue #4507): `#[macro_export]` puts the per-action meta
+	// at the user crate root so the per-impl manifest can call it via
+	// `$crate::__url_resolver_meta_action_<basename>_<url_name>!`. Names
+	// are pre-collision-resistant via `<basename>` + `<url_name>`. No
+	// additional `pub use` is needed (it would conflict with the
+	// `#[macro_export]` re-export and trigger E0255).
 	Ok(quote! {
 		#[doc(hidden)]
+		#[macro_export]
 		macro_rules! #macro_name {
 			($callback:ident, $app:ident) => { #body };
 		}
-		pub(crate) use #macro_name;
 	})
 }
 
@@ -543,17 +569,24 @@ fn emit_impl_action_manifest(
 				&format!("__url_resolver_meta_action_{basename}_{n}"),
 				Span::call_site(),
 			);
-			quote! { #meta_name!($callback, $app); }
+			// Phase 6.2 (Issue #4507): per-action meta macros live at the
+			// user crate root via `#[macro_export]`, so the manifest body
+			// reaches them via `$crate::`.
+			quote! { $crate::#meta_name!($callback, $app); }
 		})
 		.collect();
+	// Phase 6.2 (Issue #4507): `#[macro_export]` puts the manifest at the
+	// user crate root so the `#[url_patterns]`-generated forwarder can
+	// reach it via `$crate::__for_each_viewset_action_meta_<TypeSnake>!`.
+	// No additional `pub use` is required.
 	quote! {
 		#[doc(hidden)]
+		#[macro_export]
 		macro_rules! #manifest_name {
 			($callback:ident, $app:ident) => {
 				#(#meta_calls)*
 			};
 		}
-		pub(crate) use #manifest_name;
 	}
 }
 

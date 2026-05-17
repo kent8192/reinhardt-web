@@ -676,12 +676,13 @@ fn split_enum_type_and_variant(app_path: &syn::ExprPath) -> syn::Result<(syn::Pa
 
 /// Build a forwarder call to a viewset's per-fn meta manifest macro.
 ///
-/// Emits `$($base)+ :: __for_each_viewset_meta_<fn>!($callback, $app);` so
-/// the manifest is reached via the same `$base` channel used by endpoint
-/// forwarders. `#[routes]` (`routes_registration.rs:799`) passes
-/// `crate::apps::<app>::urls::url_resolvers` as `$base`, which is the
-/// generated module from which `build_viewset_meta_reexport` re-exports
-/// the per-fn manifest macro.
+/// Phase 6.2 (Issue #4507): the manifest macro is emitted by
+/// `viewset_macro::emit_per_fn_manifest` with `#[macro_export]`, which
+/// lands it at the user crate's root. The forwarder therefore calls
+/// `$crate::__for_each_viewset_meta_<fn>!($callback, $app);` directly,
+/// bypassing the `$base` channel entirely. This sidesteps E0364
+/// ("cannot re-export `pub(crate)` macro_rules! as `pub`") that blocked
+/// the earlier attempt to re-export the manifest into `url_resolvers`.
 ///
 /// Refs Issue #4507.
 fn build_viewset_meta_forwarder(factory: &TokenStream) -> TokenStream {
@@ -697,16 +698,17 @@ fn build_viewset_meta_forwarder(factory: &TokenStream) -> TokenStream {
 		&format!("__for_each_viewset_meta_{fn_name}"),
 		fn_name.span(),
 	);
-	quote! { $($base)+ :: #manifest!($callback, $app); }
+	quote! { $crate::#manifest!($callback, $app); }
 }
 
 /// Build a forwarder call to a viewset impl block's action manifest macro.
 ///
-/// Emits `$($base)+ :: __for_each_viewset_action_meta_<TypeSnake>!($callback, $app);`
+/// Phase 6.2 (Issue #4507): same crate-root forwarding strategy as
+/// `build_viewset_meta_forwarder`. The manifest macro is emitted by
+/// `viewset_macro::emit_impl_action_manifest` with `#[macro_export]` so
+/// it lives at `$crate::__for_each_viewset_action_meta_<TypeSnake>`,
 /// where `<TypeSnake>` is the marker type's last path segment converted
-/// CamelCase → snake_case. Uses the same `$base` channel as the meta
-/// forwarder, so the manifest must be re-exported into the generated
-/// `url_resolvers` module by `build_viewset_action_reexport`.
+/// CamelCase → snake_case.
 ///
 /// Refs Issue #4507.
 fn build_viewset_action_forwarder(marker: &TokenStream) -> TokenStream {
@@ -725,109 +727,7 @@ fn build_viewset_action_forwarder(marker: &TokenStream) -> TokenStream {
 		&format!("__for_each_viewset_action_meta_{snake}"),
 		last.ident.span(),
 	);
-	quote! { $($base)+ :: #manifest!($callback, $app); }
-}
-
-/// Build a `pub use` re-export item bringing a viewset's per-fn manifest
-/// macro into the generated `url_resolvers` module.
-///
-/// Required because `__for_each_url_resolver` reaches the manifest via the
-/// `$base` channel (= `crate::apps::<app>::urls::url_resolvers`), so the
-/// manifest must be reachable from inside that module. The manifest is
-/// defined as a `pub(crate) use`d `macro_rules!` sibling of the user's
-/// `pub fn <fn>() -> ModelViewSet<...>` annotated with `#[viewset]`
-/// (see `viewset_macro::emit_per_fn_manifest`).
-///
-/// Refs Issue #4507.
-fn build_viewset_meta_reexport(factory: &TokenStream) -> TokenStream {
-	let parsed: syn::Path = match syn::parse2(factory.clone()) {
-		Ok(p) => p,
-		Err(_) => return quote! {},
-	};
-	if parsed.segments.is_empty() {
-		return quote! {};
-	}
-	let fn_name = &parsed.segments.last().unwrap().ident;
-	let manifest = syn::Ident::new(
-		&format!("__for_each_viewset_meta_{fn_name}"),
-		fn_name.span(),
-	);
-
-	let module_segments: Vec<&syn::Ident> = parsed
-		.segments
-		.iter()
-		.take(parsed.segments.len() - 1)
-		.map(|s| &s.ident)
-		.collect();
-	let first = parsed.segments.first().unwrap().ident.to_string();
-	let absolute = first == "crate" || first == "super";
-
-	if absolute {
-		if module_segments.is_empty() {
-			quote! { pub use #manifest; }
-		} else {
-			quote! { pub use #(#module_segments ::)* #manifest; }
-		}
-	} else if module_segments.is_empty() {
-		quote! { pub use super::#manifest; }
-	} else {
-		quote! { pub use super:: #(#module_segments ::)* #manifest; }
-	}
-}
-
-/// Build a `pub use` re-export item bringing a viewset impl's action
-/// manifest macro into the generated `url_resolvers` module.
-///
-/// Mirrors `build_viewset_meta_reexport` but for the per-impl manifest
-/// emitted by `viewset_macro::emit_impl_action_manifest`. The macro name
-/// is derived from the marker type's last path segment via
-/// `camel_to_snake_str` so the call lands on
-/// `__for_each_viewset_action_meta_<type_snake>`.
-///
-/// Refs Issue #4507.
-fn build_viewset_action_reexport(marker: &TokenStream) -> TokenStream {
-	let parsed: syn::Type = match syn::parse2(marker.clone()) {
-		Ok(t) => t,
-		Err(_) => return quote! {},
-	};
-	let syn::Type::Path(tp) = &parsed else {
-		return quote! {};
-	};
-	let Some(last) = tp.path.segments.last() else {
-		return quote! {};
-	};
-	let snake = camel_to_snake_str(&last.ident.to_string());
-	let manifest = syn::Ident::new(
-		&format!("__for_each_viewset_action_meta_{snake}"),
-		last.ident.span(),
-	);
-
-	let module_segments: Vec<&syn::Ident> = tp
-		.path
-		.segments
-		.iter()
-		.take(tp.path.segments.len() - 1)
-		.map(|s| &s.ident)
-		.collect();
-	let first = tp
-		.path
-		.segments
-		.first()
-		.map(|s| s.ident.to_string())
-		.unwrap_or_default();
-	let absolute = first == "crate" || first == "super";
-
-	if absolute {
-		if module_segments.is_empty() {
-			quote! { pub use #manifest; }
-		} else {
-			quote! { pub use #(#module_segments ::)* #manifest; }
-		}
-	} else if module_segments.is_empty() {
-		quote! { pub use super::#manifest; }
-	} else {
-		quote! { pub use super:: #(#module_segments ::)* #manifest; }
-	}
+	quote! { $crate::#manifest!($callback, $app); }
 }
 
 /// CamelCase → snake_case for type names.
@@ -904,28 +804,11 @@ fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream
 	let endpoint_meta_idents: Vec<syn::Ident> =
 		endpoint_paths.iter().filter_map(build_meta_ident).collect();
 
-	// Re-export per-fn viewset meta manifests into `url_resolvers` so the
-	// forwarders below (which use the `$base` channel) can reach them.
-	// Refs Issue #4507.
-	let viewset_meta_reexports: Vec<TokenStream> = viewset_calls
-		.iter()
-		.map(|c| build_viewset_meta_reexport(&c.expr_path))
-		.chain(
-			vw_actions_calls
-				.iter()
-				.map(|c| build_viewset_meta_reexport(&c.factory)),
-		)
-		.collect();
-
-	// Re-export per-impl viewset action manifests into `url_resolvers` for
-	// the same reason as `viewset_meta_reexports`.
-	// Refs Issue #4507.
-	let viewset_action_reexports: Vec<TokenStream> = vw_actions_calls
-		.iter()
-		.map(|c| build_viewset_action_reexport(&c.marker))
-		.collect();
-
 	// Forwarders: meta manifests come from BOTH .viewset() and .viewset_with_actions().
+	// Phase 6.2 (Issue #4507): the per-fn manifest macros are now reached
+	// via `$crate::__for_each_viewset_meta_<fn>!` (they carry
+	// `#[macro_export]` so they live at the user crate root), so no
+	// `pub use` re-export into `url_resolvers` is needed.
 	let viewset_meta_forwarders: Vec<TokenStream> = viewset_calls
 		.iter()
 		.map(|c| build_viewset_meta_forwarder(&c.expr_path))
@@ -937,6 +820,8 @@ fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream
 		.collect();
 
 	// Action forwarders: ONLY from .viewset_with_actions().
+	// Phase 6.2 (Issue #4507): same crate-root forwarding strategy as the
+	// meta forwarders above.
 	let viewset_action_forwarders: Vec<TokenStream> = vw_actions_calls
 		.iter()
 		.map(|c| build_viewset_action_forwarder(&c.marker))
@@ -965,18 +850,10 @@ fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				#vw_actions_re_exports
 			)*
-			// Manifest macro re-exports. The actual items being re-exported
-			// are `macro_rules!` macros made reachable via `pub(crate) use`
-			// at their definition site (see `viewset_macro.rs`).
-			// Refs Issue #4507.
-			#(
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				#viewset_meta_reexports
-			)*
-			#(
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				#viewset_action_reexports
-			)*
+			// Phase 6.2 (Issue #4507): viewset manifest macros are no
+			// longer re-exported here. They live at the user crate root
+			// via `#[macro_export]` and are reached from the generated
+			// `__for_each_url_resolver` arm via `$crate::<manifest>!`.
 			#(
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				#mount_re_exports
