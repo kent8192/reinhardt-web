@@ -115,25 +115,31 @@ fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_list)]
 			#[doc = #list_doc]
-			pub trait #list_trait_ident: #reinhardt_crate::UrlResolver {
+			pub trait #list_trait_ident: #reinhardt_crate::UrlResolverUnprefixed {
 				#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_list)]
 				#[doc = #list_doc]
 				fn #list_method_ident(&self) -> String {
-					// Use the namespace-aware lookup so the legacy flat
-					// accessor resolves `"<app>:<route>"` correctly. The
-					// trait is intentionally deprecated; suppress the
-					// warning for this macro-emitted call site only.
+					// Supertrait `UrlResolverUnprefixed` brings the
+					// namespace-aware lookup into scope; no extra `use`
+					// statement needed. The trait is intentionally
+					// deprecated; suppress the warning for this
+					// macro-emitted call site only.
 					#[allow(deprecated)]
-					{
-						use #reinhardt_crate::UrlResolverUnprefixed as _;
-						self.resolve_url_unprefixed(#list_route_name, &[])
-					}
+					self.resolve_url_unprefixed(#list_route_name, &[])
 				}
 			}
+			// The trait is intentionally deprecated; this is the legacy
+			// compatibility surface and must opt out of the warning. The
+			// supertrait bound is `UrlResolverUnprefixed` (not `UrlResolver`)
+			// so the blanket impl does NOT collide with the
+			// `#[routes]`-emitted `impl UrlResolverUnprefixed for ResolvedUrls`
+			// (E0119 prevention). Refs Issue #4507.
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#[allow(deprecated)]
-			impl<T: #reinhardt_crate::UrlResolver> #list_trait_ident for T {}
+			impl<T: #reinhardt_crate::UrlResolverUnprefixed> #list_trait_ident for T {}
 		}
+		// Legacy deprecated re-export; the inner trait carries `#[deprecated]`
+		// so the glob must opt out of the warning. Refs Issue #4507.
 		#[doc(hidden)]
 		#[allow(deprecated)]
 		pub use #list_mod_ident::*;
@@ -143,25 +149,31 @@ fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_detail)]
 			#[doc = #detail_doc]
-			pub trait #detail_trait_ident: #reinhardt_crate::UrlResolver {
+			pub trait #detail_trait_ident: #reinhardt_crate::UrlResolverUnprefixed {
 				#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_detail)]
 				#[doc = #detail_doc]
 				fn #detail_method_ident(&self, id: &str) -> String {
-					// Use the namespace-aware lookup so the legacy flat
-					// accessor resolves `"<app>:<route>"` correctly. The
-					// trait is intentionally deprecated; suppress the
-					// warning for this macro-emitted call site only.
+					// Supertrait `UrlResolverUnprefixed` brings the
+					// namespace-aware lookup into scope; no extra `use`
+					// statement needed. The trait is intentionally
+					// deprecated; suppress the warning for this
+					// macro-emitted call site only.
 					#[allow(deprecated)]
-					{
-						use #reinhardt_crate::UrlResolverUnprefixed as _;
-						self.resolve_url_unprefixed(#detail_route_name, &[("id", id)])
-					}
+					self.resolve_url_unprefixed(#detail_route_name, &[("id", id)])
 				}
 			}
+			// The trait is intentionally deprecated; this is the legacy
+			// compatibility surface and must opt out of the warning. The
+			// supertrait bound is `UrlResolverUnprefixed` (not `UrlResolver`)
+			// so the blanket impl does NOT collide with the
+			// `#[routes]`-emitted `impl UrlResolverUnprefixed for ResolvedUrls`
+			// (E0119 prevention). Refs Issue #4507.
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#[allow(deprecated)]
-			impl<T: #reinhardt_crate::UrlResolver> #detail_trait_ident for T {}
+			impl<T: #reinhardt_crate::UrlResolverUnprefixed> #detail_trait_ident for T {}
 		}
+		// Legacy deprecated re-export; the inner trait carries `#[deprecated]`
+		// so the glob must opt out of the warning. Refs Issue #4507.
 		#[doc(hidden)]
 		#[allow(deprecated)]
 		pub use #detail_mod_ident::*;
@@ -855,6 +867,27 @@ mod tests {
 		assert!(
 			occurrences >= 4,
 			"expected >= 4 #[deprecated] markers (trait+method for list+detail), got {occurrences}; out={out_s}"
+		);
+	}
+
+	#[test]
+	fn fn_form_legacy_trait_uses_url_resolver_unprefixed_supertrait() {
+		// Arrange
+		let input = quote! {
+			pub fn viewset() -> ModelViewSet<Snippet, S> {
+				ModelViewSet::new("snippet")
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(quote! {}, input).unwrap().to_string();
+
+		// Assert: supertrait is UrlResolverUnprefixed (not UrlResolver) so the
+		// emitted blanket impl does not collide with the macro-emitted
+		// impl UrlResolverUnprefixed for ResolvedUrls (E0119 prevention).
+		assert!(
+			out_s.contains("UrlResolverUnprefixed"),
+			"trait must reference UrlResolverUnprefixed as supertrait; got: {out_s}"
 		);
 	}
 

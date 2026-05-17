@@ -92,11 +92,17 @@ pub trait UrlResolverUnprefixed: UrlResolver {
 	}
 }
 
-#[allow(
-	deprecated,
-	reason = "blanket impl is the legacy passthrough path emitted by #[viewset]; intentionally deprecated"
-)]
-impl<T: UrlResolver> UrlResolverUnprefixed for T {}
+// NOTE: No blanket `impl<T: UrlResolver> UrlResolverUnprefixed for T {}` is
+// provided here because `#[routes]` emits a specific
+// `impl UrlResolverUnprefixed for ResolvedUrls` with namespace-iterating
+// behavior. A blanket impl would collide with that specific impl and
+// trigger E0119 ("conflicting implementations") in any project that
+// expands `#[routes]`. Consumers that need `UrlResolverUnprefixed`
+// semantics on custom `UrlResolver` types must opt in explicitly with
+// `impl UrlResolverUnprefixed for MyType {}` (uses the default passthrough
+// body) or provide their own override.
+//
+// Refs Issue #4507.
 
 /// Trait for resolving client-side (frontend) URLs by route name.
 ///
@@ -178,6 +184,18 @@ mod url_resolver_unprefixed_tests {
 			format!("RESOLVED:{name}")
 		}
 	}
+
+	// Opt-in to the deprecated unprefixed trait using its default passthrough
+	// body. The blanket impl was removed (see module-level NOTE above) to
+	// avoid E0119 with the `#[routes]`-emitted specific impl for
+	// `ResolvedUrls`, so consumers must opt in explicitly.
+	//
+	// Refs Issue #4507.
+	#[allow(
+		deprecated,
+		reason = "trait is intentionally deprecated; tested as an internal-only path"
+	)]
+	impl UrlResolverUnprefixed for PassthroughResolver {}
 
 	#[rstest]
 	fn unprefixed_default_body_passes_through_to_resolve_url() {
