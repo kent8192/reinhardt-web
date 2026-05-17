@@ -1,0 +1,21 @@
+meta {
+  name: Order by Created At Desc
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/snippets-viewset/?ordering=-created_at
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}
+
+docs {
+  Exercises the `OrderingConfig::with_ordering_fields(["created_at", "title"])`
+  configuration in `views::viewset()`. The `-` prefix on `created_at`
+  selects descending order.
+}
