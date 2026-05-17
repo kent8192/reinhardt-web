@@ -214,6 +214,107 @@ fn extract_chain_calls(
 	calls
 }
 
+/// A `.viewset_with_actions("/prefix", factory_fn(), PhantomData::<ImplType>)`
+/// call extracted from the body of a `#[url_patterns]`-annotated function.
+///
+/// `factory` is the function-path expression (with trailing `()` stripped, like
+/// `extract_chain_calls` does for `.viewset()`).
+/// `marker` is the inner type `T` from the `PhantomData::<T>` literal.
+///
+/// Refs Issue #4507.
+pub(crate) struct ViewsetWithActionsCall {
+	pub factory: TokenStream,
+	pub marker: TokenStream,
+}
+
+/// Extract `.viewset_with_actions("/prefix", factory_fn(), PhantomData::<T>)`
+/// calls from a flattened function body.
+///
+/// Refs Issue #4507.
+fn extract_viewset_with_actions_calls(
+	body_tokens: &[proc_macro2::TokenTree],
+) -> Vec<ViewsetWithActionsCall> {
+	let mut calls = Vec::new();
+	let mut i = 0;
+	while i < body_tokens.len() {
+		if i + 2 < body_tokens.len()
+			&& let proc_macro2::TokenTree::Punct(p) = &body_tokens[i]
+			&& p.as_char() == '.'
+			&& let proc_macro2::TokenTree::Ident(ident) = &body_tokens[i + 1]
+			&& ident == "viewset_with_actions"
+			&& let proc_macro2::TokenTree::Group(group) = &body_tokens[i + 2]
+			&& group.delimiter() == proc_macro2::Delimiter::Parenthesis
+		{
+			if let Some(call) = parse_viewset_with_actions_args(group.stream()) {
+				calls.push(call);
+			}
+			i += 3;
+			continue;
+		}
+		i += 1;
+	}
+	calls
+}
+
+/// Parse the three comma-separated arguments of `.viewset_with_actions(...)`.
+///
+/// Argument shape: `STR_LITERAL, EXPR(...) [trailing () stripped], PhantomData::<T>`
+///
+/// Refs Issue #4507.
+fn parse_viewset_with_actions_args(args: TokenStream) -> Option<ViewsetWithActionsCall> {
+	// Split tokens into three regions by top-level commas.
+	let mut regions: Vec<Vec<proc_macro2::TokenTree>> = vec![Vec::new()];
+	for tt in args {
+		if let proc_macro2::TokenTree::Punct(ref p) = tt
+			&& p.as_char() == ','
+			&& regions.len() < 3
+		{
+			regions.push(Vec::new());
+			continue;
+		}
+		regions.last_mut().unwrap().push(tt);
+	}
+	if regions.len() < 3 {
+		return None;
+	}
+	// Region 1 (= [0] prefix literal) is unused here.
+	// Region 2 (= [1]) is the factory expression; strip trailing `()` group.
+	let mut factory_tokens = Vec::new();
+	for tt in &regions[1] {
+		if let proc_macro2::TokenTree::Group(g) = tt
+			&& g.delimiter() == proc_macro2::Delimiter::Parenthesis
+		{
+			continue; // skip trailing `()`
+		}
+		factory_tokens.push(tt.clone());
+	}
+	// Region 3 (= [2]) is the `PhantomData::<T>` literal. Extract T between < and >.
+	let marker_tokens: Vec<proc_macro2::TokenTree> = extract_phantom_inner(&regions[2])?;
+
+	Some(ViewsetWithActionsCall {
+		factory: factory_tokens.into_iter().collect(),
+		marker: marker_tokens.into_iter().collect(),
+	})
+}
+
+/// Extract the inner type `T` from `PhantomData::<T>` tokens.
+///
+/// Refs Issue #4507.
+fn extract_phantom_inner(tokens: &[proc_macro2::TokenTree]) -> Option<Vec<proc_macro2::TokenTree>> {
+	let lt_idx = tokens.iter().position(|t| {
+		matches!(t,
+			proc_macro2::TokenTree::Punct(p) if p.as_char() == '<')
+	})?;
+	let gt_idx = tokens.iter().rposition(|t| {
+		matches!(t,
+			proc_macro2::TokenTree::Punct(p) if p.as_char() == '>')
+	})?;
+	if gt_idx <= lt_idx + 1 {
+		return None;
+	}
+	Some(tokens[lt_idx + 1..gt_idx].to_vec())
+}
+
 /// Build a re-export statement for a URL resolver module from an endpoint path.
 ///
 /// Given an endpoint path like `views::login`, generates:
@@ -573,19 +674,197 @@ fn split_enum_type_and_variant(app_path: &syn::ExprPath) -> syn::Result<(syn::Pa
 	Ok((type_path, app_path.path.clone()))
 }
 
+/// Build a forwarder call to a viewset's per-fn meta manifest macro.
+///
+/// Given a factory expression `views::viewset` (already stripped of trailing
+/// `()`), emits `super::views::__for_each_viewset_meta_viewset!($callback, $app);`
+/// (or the `crate::`-rooted equivalent if absolute).
+///
+/// Refs Issue #4507.
+fn build_viewset_meta_forwarder(factory: &TokenStream) -> TokenStream {
+	let parsed: syn::Path = match syn::parse2(factory.clone()) {
+		Ok(p) => p,
+		Err(_) => return quote! {},
+	};
+	if parsed.segments.is_empty() {
+		return quote! {};
+	}
+	let fn_name = &parsed.segments.last().unwrap().ident;
+	let manifest = syn::Ident::new(
+		&format!("__for_each_viewset_meta_{fn_name}"),
+		fn_name.span(),
+	);
+
+	let module_segments: Vec<&syn::Ident> = parsed
+		.segments
+		.iter()
+		.take(parsed.segments.len() - 1)
+		.map(|s| &s.ident)
+		.collect();
+	let first = parsed.segments.first().unwrap().ident.to_string();
+	let absolute = first == "crate" || first == "super";
+
+	if absolute {
+		if module_segments.is_empty() {
+			quote! { #manifest!($callback, $app); }
+		} else {
+			quote! { #(#module_segments ::)* #manifest!($callback, $app); }
+		}
+	} else if module_segments.is_empty() {
+		quote! { super::#manifest!($callback, $app); }
+	} else {
+		quote! { super:: #(#module_segments ::)* #manifest!($callback, $app); }
+	}
+}
+
+/// Build a forwarder call to a viewset impl block's action manifest macro.
+///
+/// Given a `PhantomData::<T>` marker (the inner `T`), emits
+/// `super::views::__for_each_viewset_action_meta_snippet_view_set!($callback, $app);`
+/// where `snippet_view_set` is `T`'s last path segment converted CamelCase → snake_case.
+///
+/// Refs Issue #4507.
+fn build_viewset_action_forwarder(marker: &TokenStream) -> TokenStream {
+	let parsed: syn::Type = match syn::parse2(marker.clone()) {
+		Ok(t) => t,
+		Err(_) => return quote! {},
+	};
+	let syn::Type::Path(tp) = &parsed else {
+		return quote! {};
+	};
+	let Some(last) = tp.path.segments.last() else {
+		return quote! {};
+	};
+	let snake = camel_to_snake_str(&last.ident.to_string());
+	let manifest = syn::Ident::new(
+		&format!("__for_each_viewset_action_meta_{snake}"),
+		last.ident.span(),
+	);
+
+	let module_segments: Vec<&syn::Ident> = tp
+		.path
+		.segments
+		.iter()
+		.take(tp.path.segments.len() - 1)
+		.map(|s| &s.ident)
+		.collect();
+	let first = tp
+		.path
+		.segments
+		.first()
+		.map(|s| s.ident.to_string())
+		.unwrap_or_default();
+	let absolute = first == "crate" || first == "super";
+
+	if absolute {
+		if module_segments.is_empty() {
+			quote! { #manifest!($callback, $app); }
+		} else {
+			quote! { #(#module_segments ::)* #manifest!($callback, $app); }
+		}
+	} else if module_segments.is_empty() {
+		quote! { super::#manifest!($callback, $app); }
+	} else {
+		quote! { super:: #(#module_segments ::)* #manifest!($callback, $app); }
+	}
+}
+
+/// CamelCase → snake_case for type names.
+///
+/// Mirrors the same conversion used by `viewset_macro::camel_to_snake` so
+/// that forwarder calls reach the manifest names emitted by `#[viewset]`
+/// `impl` blocks.
+///
+/// Refs Issue #4507.
+fn camel_to_snake_str(s: &str) -> String {
+	let mut out = String::with_capacity(s.len() + 4);
+	for (i, c) in s.chars().enumerate() {
+		if c.is_ascii_uppercase() && i != 0 {
+			out.push('_');
+		}
+		out.push(c.to_ascii_lowercase());
+	}
+	out
+}
+
+/// Like `gen_for_each_macro` but additionally splices in viewset meta + action
+/// forwarder calls. Used by `__for_each_url_resolver` (server mode).
+///
+/// Refs Issue #4507.
+fn gen_for_each_macro_with_forwarders(
+	macro_name: &proc_macro2::Ident,
+	meta_idents: &[syn::Ident],
+	viewset_meta_forwarders: &[TokenStream],
+	viewset_action_forwarders: &[TokenStream],
+	native_only: bool,
+) -> TokenStream {
+	let gate = if native_only {
+		quote! { #[cfg(not(all(target_family = "wasm", target_os = "unknown")))] }
+	} else {
+		quote! {}
+	};
+	quote! {
+		#gate
+		macro_rules! #macro_name {
+			($callback:ident, $app:ident, $($base:tt)+) => {
+				#(
+					$($base)+ :: #meta_idents ! ($callback, $app);
+				)*
+				#(#viewset_meta_forwarders)*
+				#(#viewset_action_forwarders)*
+			};
+		}
+		#gate
+		pub(crate) use #macro_name;
+	}
+}
+
 /// Build `url_resolvers` module body for server-side scanning of a function body.
 fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream {
 	let endpoint_paths = extract_endpoint_paths(body_tokens);
 	let viewset_calls = extract_chain_calls(body_tokens, "viewset");
+	let vw_actions_calls = extract_viewset_with_actions_calls(body_tokens);
 	let mount_calls = extract_chain_calls(body_tokens, "mount");
 
 	let endpoint_re_exports: Vec<_> = endpoint_paths.iter().map(build_resolver_reexport).collect();
 	let viewset_re_exports: Vec<_> = viewset_calls.iter().map(build_viewset_reexport).collect();
+	// Also re-export bundle modules for the viewset_with_actions factories so
+	// that `urls.server().<app>().<basename>_list()` accessors resolve.
+	let vw_actions_re_exports: Vec<_> = vw_actions_calls
+		.iter()
+		.map(|c| {
+			build_viewset_reexport(&ChainCall {
+				expr_path: c.factory.clone(),
+			})
+		})
+		.collect();
 	let mount_re_exports: Vec<_> = mount_calls.iter().map(build_mount_reexport).collect();
-	let meta_idents: Vec<syn::Ident> = endpoint_paths.iter().filter_map(build_meta_ident).collect();
-	let for_each_resolver_macro = gen_for_each_macro(
+
+	let endpoint_meta_idents: Vec<syn::Ident> =
+		endpoint_paths.iter().filter_map(build_meta_ident).collect();
+
+	// Forwarders: meta manifests come from BOTH .viewset() and .viewset_with_actions().
+	let viewset_meta_forwarders: Vec<TokenStream> = viewset_calls
+		.iter()
+		.map(|c| build_viewset_meta_forwarder(&c.expr_path))
+		.chain(
+			vw_actions_calls
+				.iter()
+				.map(|c| build_viewset_meta_forwarder(&c.factory)),
+		)
+		.collect();
+
+	// Action forwarders: ONLY from .viewset_with_actions().
+	let viewset_action_forwarders: Vec<TokenStream> = vw_actions_calls
+		.iter()
+		.map(|c| build_viewset_action_forwarder(&c.marker))
+		.collect();
+
+	let for_each_resolver_macro = gen_for_each_macro_with_forwarders(
 		&syn::Ident::new("__for_each_url_resolver", proc_macro2::Span::call_site()),
-		&meta_idents,
+		&endpoint_meta_idents,
+		&viewset_meta_forwarders,
+		&viewset_action_forwarders,
 		true,
 	);
 
@@ -599,6 +878,10 @@ fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream
 			#(
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				#viewset_re_exports
+			)*
+			#(
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				#vw_actions_re_exports
 			)*
 			#(
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -1537,6 +1820,101 @@ mod tests {
 			.expect("should return an Err")
 			.to_string();
 		assert!(err.contains("ws"), "error message should mention ws mode");
+	}
+
+	// === viewset_with_actions extraction (Issue #4507) ===
+
+	#[test]
+	fn extract_viewset_with_actions_basic() {
+		// Arrange
+		let func: ItemFn = parse2(quote! {
+			pub fn url_patterns() -> ServerRouter {
+				ServerRouter::new()
+					.viewset_with_actions(
+						"/snippets",
+						views::viewset(),
+						PhantomData::<views::SnippetViewSet>,
+					)
+			}
+		})
+		.unwrap();
+
+		// Act
+		let body_tokens = flatten_body(&func);
+		let calls = extract_viewset_with_actions_calls(&body_tokens);
+
+		// Assert
+		assert_eq!(calls.len(), 1);
+		assert!(calls[0].factory.to_string().contains("views"));
+		assert!(calls[0].factory.to_string().contains("viewset"));
+		assert!(calls[0].marker.to_string().contains("SnippetViewSet"));
+	}
+
+	#[test]
+	fn extract_viewset_with_actions_none() {
+		// Arrange
+		let func: ItemFn = parse2(quote! {
+			pub fn url_patterns() -> ServerRouter {
+				ServerRouter::new().viewset("/snippets", views::viewset())
+			}
+		})
+		.unwrap();
+
+		// Act
+		let body_tokens = flatten_body(&func);
+		let calls = extract_viewset_with_actions_calls(&body_tokens);
+
+		// Assert
+		assert_eq!(calls.len(), 0);
+	}
+
+	#[test]
+	fn server_mode_forwards_viewset_meta_and_action_manifest() {
+		// Arrange
+		let args = quote! { InstalledApp::snippets, mode = server };
+		let input = quote! {
+			pub fn url_patterns() -> ServerRouter {
+				ServerRouter::new().viewset_with_actions(
+					"/snippets",
+					views::viewset(),
+					PhantomData::<views::SnippetViewSet>,
+				)
+			}
+		};
+
+		// Act
+		let out_s = url_patterns_impl(args, input).unwrap().to_string();
+
+		// Assert: both manifest forwarders appear in expansion
+		assert!(
+			out_s.contains("__for_each_viewset_meta_viewset"),
+			"fn-form manifest must be forwarded; got: {out_s}"
+		);
+		assert!(
+			out_s.contains("__for_each_viewset_action_meta_snippet_view_set"),
+			"action manifest must be forwarded with snake_case type; got: {out_s}"
+		);
+	}
+
+	#[test]
+	fn plain_viewset_call_does_not_forward_action_manifest() {
+		// Arrange
+		let args = quote! { InstalledApp::snippets, mode = server };
+		let input = quote! {
+			pub fn url_patterns() -> ServerRouter {
+				ServerRouter::new().viewset("/snippets", views::viewset())
+			}
+		};
+
+		// Act
+		let out_s = url_patterns_impl(args, input).unwrap().to_string();
+
+		// Assert: fn-form manifest yes, action manifest no
+		assert!(out_s.contains("__for_each_viewset_meta_viewset"));
+		assert!(
+			!out_s.contains("__for_each_viewset_action_meta_"),
+			"plain .viewset() must NOT forward action manifest; got: {out_s}"
+		);
 	}
 
 	#[test]
