@@ -1,6 +1,6 @@
 # Reinhardt Basis Tutorial Example - Polling Application
 
-This example demonstrates the concepts covered in the [Reinhardt Basis Tutorial](../../../docs/tutorials/en/basis/). It implements a complete polling application with two cooperating apps (`polls` and `users`) — server-rendered REST endpoints, typed RPC server functions, an admin panel, and a WASM single-page-application client all in a single crate.
+This example demonstrates the concepts covered in the [Reinhardt Basis Tutorial](../../../website/content/quickstart/tutorials/basis/). It implements a complete polling application with two cooperating apps (`polls` and `users`) — server-rendered REST endpoints, typed RPC server functions, an admin panel, and a WASM single-page-application client all in a single crate.
 
 ## What This Example Covers
 
@@ -48,7 +48,7 @@ App routers are auto-mounted by `#[url_patterns(InstalledApp::<app>, mode = serv
 
 ### Prerequisites
 
-- Rust 1.75 or later (2024 edition)
+- Rust 1.94 or later (2024 edition, matches the workspace MSRV)
 - `cargo-make` (`cargo install cargo-make`)
 - `wasm-pack` for the WASM client build
 - Docker (optional, for TestContainers in integration tests)
@@ -193,7 +193,7 @@ examples-tutorial-basis/
 
 This example is designed to be studied alongside the basis tutorial:
 
-1. **Start with the tutorial**: Read [Part 1](../../../docs/tutorials/en/basis/1-project-setup.md)
+1. **Start with the tutorial**: Read [Part 1](../../../website/content/quickstart/tutorials/basis/1-project-setup.md)
 2. **Examine the code**: Look at how concepts are implemented in this example
 3. **Run the tests**: `cargo make test` to see the functionality in action
 4. **Experiment**: Modify the code and see what happens
@@ -387,7 +387,7 @@ After understanding this example:
 
 ## Related Documentation
 
-- [Basis Tutorial](../../../docs/tutorials/en/basis/) - Step-by-step guide
+- [Basis Tutorial](../../../website/content/quickstart/tutorials/basis/) - Step-by-step guide
 - [API Documentation](https://docs.rs/reinhardt-web) - Complete API reference
 
 ## License
