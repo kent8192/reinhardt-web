@@ -2,7 +2,7 @@
 
 <!-- reinhardt-version-sync: reinhardt-testkit-macros -->
 
-Procedural macros for [`reinhardt-testkit`](../reinhardt-testkit). The macros here are re-exported from `reinhardt-testkit` — depend on `reinhardt-testkit` rather than this crate directly.
+Procedural macros for [`reinhardt-testkit`](https://docs.rs/reinhardt-testkit/). The macros here are re-exported from `reinhardt-testkit` — depend on `reinhardt-testkit` rather than this crate directly.
 
 ## `with_di_overrides!`
 
@@ -30,3 +30,17 @@ async fn test_login_flow() {
 ```
 
 See `reinhardt-testkit::fixtures::di_overrides` for the underlying API and the design rationale.
+
+## Versioning
+
+This crate's version is managed by release-plz independently of its sibling
+crates: a new patch is published only when a conventional-commit change
+(`feat`, `fix`, `refactor`, etc.) actually touches files inside this crate
+directory. As a result, the patch number may lag behind the rest of the
+Reinhardt workspace whenever no behavior-affecting changes have landed
+here since the last tag. This is by design and not a release accident.
+
+For users, the practical guidance is to depend on
+[`reinhardt-testkit`](https://docs.rs/reinhardt-testkit/) (which re-exports
+these macros) rather than pinning this crate directly — Cargo then picks a
+compatible `reinhardt-testkit-macros` automatically.
