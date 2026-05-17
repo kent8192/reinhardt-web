@@ -1,55 +1,34 @@
-//! URL configuration for snippets app
+//! URL configuration for the snippets app.
 //!
-//! This module demonstrates two approaches for defining URL patterns:
-//! 1. Function-based views (Tutorial 1-5) - Explicit endpoint registration
-//! 2. ViewSet-based (Tutorial 6) - Automatic CRUD endpoint generation
+//! Each submodule carries `#[url_patterns(InstalledApp::snippets, mode = ...)]`,
+//! which the framework discovers through the `url_resolvers` /
+//! `client_url_resolvers` / `ws_url_resolvers` modules emitted by the macro.
+//! The top-level `#[routes]` in `src/config/urls.rs` walks those modules
+//! across every installed app to build the `ResolvedUrls` accessor surface.
 //!
-//! Switch between approaches using the USE_VIEWSET environment variable:
-//! - Default: Function-based views
-//! - USE_VIEWSET=1: ViewSet-based views
+//! - `server_urls` — `#[url_patterns(..., mode = server)]` → `ServerRouter`
+//! - `client_router` — `#[url_patterns(..., mode = client)]` → empty
+//!   `ClientRouter` stub (REST-only example, no SPA)
+//! - `ws_urls` — `#[url_patterns(..., mode = ws)]` → empty
+//!   `WebSocketRouter` stub (REST-only example, no WS)
 //!
-//! The `#[url_patterns(InstalledApp::snippets, mode = server)]` attribute
-//! (the typed URL-patterns macro introduced in rc.18, see reinhardt-web
-//! discussion #3770) pairs this router with its owning app at compile time
-//! via the `AppLabel` trait — if `InstalledApp::snippets` is removed from
-//! `installed_apps! { ... }`, this file stops compiling. The macro also
-//! applies `.with_namespace("snippets")` to the returned `ServerRouter`,
-//! scoping the named-URL reversal table (e.g. `"snippets:snippets_list"`)
-//! without changing the actual request paths — the literal `/api/` prefix
-//! is still attached explicitly in `src/config/urls.rs`.
+//! The `client_router` and `ws_urls` stubs exist only because plain
+//! `#[routes]` (without the `standalone` flag) requires every installed
+//! app to expose all three resolver modules. They could be removed by
+//! switching `src/config/urls.rs` back to `#[routes(standalone)]`, but
+//! that flag is meant for projects that do not use `installed_apps!` —
+//! and this example does use it.
 
-use reinhardt::ServerRouter;
-use reinhardt::url_patterns;
+pub mod client_router;
+pub mod server_urls;
+pub mod ws_urls;
 
-use super::views;
-use crate::config::apps::InstalledApp;
-
-#[url_patterns(InstalledApp::snippets, mode = server)]
-pub fn server_url_patterns() -> ServerRouter {
-	// Check which approach to use
-	if std::env::var("USE_VIEWSET").is_ok() {
-		// Option 2: ViewSet-based approach (Tutorial 6)
-		// Automatically generates all CRUD endpoints with pagination, filtering, and ordering
-		// - GET    /api/snippets-viewset/         - List all snippets (with pagination)
-		// - POST   /api/snippets-viewset/         - Create a new snippet
-		// - GET    /api/snippets-viewset/{id}/    - Retrieve a specific snippet
-		// - PUT    /api/snippets-viewset/{id}/    - Update a snippet
-		// - PATCH  /api/snippets-viewset/{id}/    - Partially update a snippet
-		// - DELETE /api/snippets-viewset/{id}/    - Delete a snippet
-		//
-		// Additional query parameters:
-		// - ?page=1&page_size=10                  - Pagination
-		// - ?language=rust&title=hello            - Filtering
-		// - ?ordering=created_at,-title           - Ordering (- for descending)
-		ServerRouter::new().viewset("/snippets-viewset", views::viewset())
-	} else {
-		// Option 1: Function-based approach (Tutorial 1-5)
-		// Explicitly register each endpoint
-		ServerRouter::new()
-			.endpoint(views::list)
-			.endpoint(views::create)
-			.endpoint(views::retrieve)
-			.endpoint(views::update)
-			.endpoint(views::delete)
-	}
-}
+// Re-export the macro-emitted resolver modules at the `urls` level so the
+// top-level `#[routes]` macro in `src/config/urls.rs` can find them at the
+// canonical flat paths `crate::apps::snippets::urls::url_resolvers` (server)
+// and `crate::apps::snippets::urls::client_url_resolvers` (client). The
+// `ws_url_resolvers` counterpart is referenced through the nested
+// `ws_urls::ws_url_resolvers` path the routes macro already expects, so it
+// does not need a flat re-export.
+pub use client_router::client_url_resolvers;
+pub use server_urls::url_resolvers;

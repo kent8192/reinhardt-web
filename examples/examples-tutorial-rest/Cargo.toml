@@ -21,6 +21,12 @@ reinhardt = { workspace = true, features = [
     "server",
     "api",  # Includes rest + viewsets
     "client-router",
+    # `websockets` is enabled because plain `#[routes]` (without `standalone`)
+    # walks every installed app's `urls::ws_urls::ws_url_resolvers` module to
+    # populate `ResolvedUrls`. The `snippets` app provides an empty
+    # `WebSocketRouter` stub in `src/apps/snippets/urls/ws_urls.rs` to satisfy
+    # this lookup; `WebSocketRouter` is only exported when this feature is on.
+    "websockets",
 ] }
 tokio = { version = "1.48.0", features = ["full"] }
 serde = { version = "1.0.228", features = ["derive"] }
