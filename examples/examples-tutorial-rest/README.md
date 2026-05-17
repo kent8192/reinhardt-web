@@ -101,29 +101,32 @@ curl -X DELETE http://127.0.0.1:8000/api/snippets/1/
 
 ```
 examples-tutorial-rest/
-├── Cargo.toml                 # Project configuration
-├── build.rs                   # Build script
-├── README.md                  # This file
+├── Cargo.toml                      # Project configuration
+├── build.rs                        # Build script
+├── README.md                       # This file
 ├── src/
-│   ├── lib.rs                # Library entry point
-│   ├── config.rs             # Config module
-│   ├── apps.rs               # Apps module
+│   ├── lib.rs                      # Library entry point
+│   ├── config.rs                   # Config aggregator
+│   ├── apps.rs                     # Apps aggregator
 │   ├── bin/
-│   │   └── manage.rs         # Management command
+│   │   └── manage.rs               # Management command
 │   ├── config/
-│   │   ├── settings.rs       # Settings configuration
-│   │   ├── urls.rs           # URL routing
-│   │   └── apps.rs           # Installed apps
+│   │   ├── apps.rs                 # installed_apps! { snippets: "snippets" }
+│   │   ├── settings.rs             # Settings composition
+│   │   └── urls.rs                 # #[routes] entry point, mounts /api/
 │   └── apps/
+│       ├── snippets.rs             # snippets app entry (sibling of snippets/)
 │       └── snippets/
-│           ├── lib.rs        # App module
-│           ├── models.rs     # Snippet model
-│           ├── serializers.rs  # Serializers
-│           ├── views.rs      # View handlers
-│           └── urls.rs       # URL patterns
+│           ├── models.rs           # Snippet model (#[model])
+│           ├── serializers.rs      # SnippetSerializer + SnippetResponse
+│           ├── urls.rs             # urls aggregator + flat resolver re-exports
+│           ├── urls/
+│           │   ├── client_router.rs  # mode = client (empty stub, REST-only)
+│           │   ├── server_urls.rs    # mode = server (the real router)
+│           │   └── ws_urls.rs        # mode = ws (empty stub, REST-only)
+│           └── views.rs            # HTTP method handlers + #[viewset]
 └── tests/
-    ├── integration.rs        # Integration tests
-    └── availability.rs       # Availability tests
+    └── integration.rs              # Integration tests
 ```
 
 ## Learning Path
@@ -182,7 +185,7 @@ pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Res
 }
 ```
 
-### 4. URL Routing (urls.rs)
+### 4. URL Routing (urls/server_urls.rs)
 
 ```rust
 // `#[url_patterns(InstalledApp::snippets, mode = server)]` (rc.18+) binds
@@ -200,15 +203,33 @@ pub fn server_url_patterns() -> ServerRouter {
 }
 ```
 
-Mounted at the project root with an explicit literal prefix:
+The per-app `urls.rs` aggregates the `server_urls` / `client_router` /
+`ws_urls` submodules and re-exports the flat `url_resolvers` /
+`client_url_resolvers` modules at the `urls` level so the top-level
+`#[routes]` macro can find them:
+
+```rust
+// src/apps/snippets/urls.rs
+pub mod client_router;
+pub mod server_urls;
+pub mod ws_urls;
+
+pub use client_router::client_url_resolvers;
+pub use server_urls::url_resolvers;
+```
+
+Mounted at the project root with an explicit literal prefix. Plain
+`#[routes]` (not `#[routes(standalone)]`) is used because this project
+consumes `installed_apps!`, so the macro should generate the
+`ResolvedUrls::snippets()` accessor that `standalone` would suppress:
 
 ```rust
 // src/config/urls.rs
-#[routes(standalone)]
+#[routes]
 pub fn routes() -> UnifiedRouter {
     UnifiedRouter::new().mount(
         "/api/",
-        crate::apps::snippets::urls::server_url_patterns(),
+        crate::apps::snippets::urls::server_urls::server_url_patterns(),
     )
 }
 ```
