@@ -159,35 +159,15 @@ pub fn routes() -> UnifiedRouter {
 /// `register_router_arc` overwrites the same global slot with an equivalent
 /// `Arc`.
 ///
-/// Also seeds the `#[action]`-discovered impl-form actions into the
-/// `ModelViewSet<Snippet, SnippetSerializer>`-keyed registry so that
-/// `ServerRouter`'s introspection picks them up at `register_all_routes()`
-/// time. Phase 5 of the Issue #4507 plan emits the typed `<basename>-<action>`
-/// accessor at macro time, but the runtime ViewSet has no direct knowledge
-/// of those actions — the bridge from `M` (the marker type in
-/// `viewset_with_actions::<_, M>`) to `V`'s `get_extra_actions()` is still
-/// open work. Seed the registry by hand until that bridge lands.
+/// Phase 5.1 of Issue #4507 closes the marker→runtime action-registry
+/// bridge: the impl-form `#[viewset(basename = ...)] impl SnippetViewSet`
+/// macro now `inventory::submit!`s each `#[action]` keyed by
+/// `type_name::<SnippetViewSet>()`, and `viewset_with_actions::<V, M>`
+/// copies those entries into the `type_name::<V>()` slot at registration
+/// time. No manual `register_action` seeding is required anymore — the
+/// `routes()` call below transitively triggers the bridge through
+/// `apps::snippets::urls::url_patterns()`.
 fn install_routes_and_resolve() -> crate::ResolvedUrls {
-	use reinhardt_views::viewsets::metadata::{ActionMetadata, FunctionActionHandler};
-	use reinhardt_views::viewsets::registry;
-
-	// Re-register on every call is safe: the registry's underlying map
-	// keys by viewset type + action name, so duplicate registrations
-	// overwrite the same slot.
-	let viewset_type = std::any::type_name::<
-		reinhardt_views::viewsets::ModelViewSet<Snippet, SnippetSerializer>,
-	>();
-	let action = ActionMetadata::new("highlight")
-		.with_detail(true)
-		.with_url_name("highlight")
-		.with_methods(vec![hyper::Method::POST])
-		.with_handler(FunctionActionHandler::new(|_req| {
-			Box::pin(
-				async move { Ok(reinhardt_http::Response::ok().with_body(b"highlight".to_vec())) },
-			)
-		}));
-	registry::register_action(viewset_type, action);
-
 	let server = routes().into_server();
 	reinhardt_urls::routers::register_router(server);
 	crate::ResolvedUrls::from_global()

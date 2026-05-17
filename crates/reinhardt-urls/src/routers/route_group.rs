@@ -299,8 +299,15 @@ impl RouteGroup {
 	/// marker that `#[url_patterns]` recovers at expansion time to discover
 	/// `#[action]`-decorated methods on the impl block `M`.
 	///
-	/// `M` is unconstrained at the type level — it is purely a name-bearing
-	/// token. Users write `PhantomData::<MyViewSetImpl>` as the third argument.
+	/// `M` is purely a name-bearing token. Users write
+	/// `PhantomData::<MyViewSetImpl>` as the third argument. The bound is
+	/// `M: 'static` so the marker's `std::any::type_name` is reachable for
+	/// the marker→runtime bridge below.
+	///
+	/// Phase 5.1 of Issue #4507: copies every action submitted under
+	/// `type_name::<M>()` (via the impl-form `#[viewset]` macro's runtime
+	/// registration) into the runtime-keyed `register_action(type_name::<V>(), ...)`
+	/// slot so `ViewSet::get_extra_actions` finds them at dispatch time.
 	///
 	/// Refs Issue #4507.
 	pub fn viewset_with_actions<V, M>(
@@ -311,7 +318,12 @@ impl RouteGroup {
 	) -> Self
 	where
 		V: reinhardt_views::viewsets::ViewSet + 'static,
+		M: 'static,
 	{
+		reinhardt_views::viewsets::bridge_marker_actions_to_viewset(
+			std::any::type_name::<M>(),
+			std::any::type_name::<V>(),
+		);
 		self.viewset(prefix, viewset)
 	}
 

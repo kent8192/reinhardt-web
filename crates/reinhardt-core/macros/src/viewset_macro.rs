@@ -384,8 +384,17 @@ fn parse_impl_basename_arg(args: TokenStream) -> syn::Result<String> {
 /// Walks the `impl` block for `#[action]`-decorated methods, emits a
 /// `__url_resolver_meta_action_<basename>_<url_name>` macro_rules per action,
 /// and a `__for_each_viewset_action_meta_<TypeNameSnake>` manifest that
-/// fans them out. Phase 6 will splice the manifest into the existing
+/// fans them out. Phase 6 splices the manifest into the existing
 /// `__for_each_url_resolver` so typed methods land on `<App>Urls`.
+///
+/// Phase 5.1 (Issue #4507): also emits `inventory::submit!` blocks that
+/// register each action's runtime metadata under the marker type's
+/// `std::any::type_name`. `viewset_with_actions::<V, M>(...)` then bridges
+/// these marker-keyed entries into the concrete `type_name::<V>()` slot so
+/// `ViewSet::get_extra_actions` (and the dispatcher's route registration
+/// in `DefaultRouter::register_viewset`) finds them. This eliminates the
+/// previous requirement for users to manually call `register_action(...)`
+/// at startup to make `#[action]`-decorated methods discoverable.
 ///
 /// Refs Issue #4507.
 fn viewset_impl_impl(args: TokenStream, item_impl: syn::ItemImpl) -> syn::Result<TokenStream> {
@@ -393,11 +402,128 @@ fn viewset_impl_impl(args: TokenStream, item_impl: syn::ItemImpl) -> syn::Result
 	let (action_metas, url_names) = collect_actions(&item_impl, &basename)?;
 	let type_snake = type_name_to_snake(&item_impl.self_ty)?;
 	let manifest = emit_impl_action_manifest(&type_snake, &basename, &url_names);
+	let runtime_registrations = emit_runtime_action_registrations(&item_impl)?;
 
 	Ok(quote! {
 		#item_impl
 		#(#action_metas)*
 		#manifest
+		#runtime_registrations
+	})
+}
+
+/// Emit a `#[ctor]`-driven startup function that registers each
+/// `#[action]`-decorated method's runtime metadata under the marker type's
+/// `std::any::type_name`.
+///
+/// `#[ctor]` runs at process startup (before `main` for binaries, before the
+/// first test for `cargo test`), which sidesteps the unstable
+/// `const_type_name` feature: `type_name::<T>()` is callable in regular
+/// (non-const) function context, but `inventory::submit!`'s `static`
+/// initializer cannot use it yet (rust-lang/rust#63084 — `const_type_name`
+/// is still unstable as of Rust 1.94).
+///
+/// The handler is intentionally left as the `ActionMetadata::new`-default
+/// no-op: the user's method has a free-form signature (e.g.
+/// `async fn highlight(_id: String) -> ViewResult<Response>`) that does not
+/// match `FunctionActionHandler`'s required
+/// `fn(Request) -> Pin<Box<dyn Future<Output = Result<Response>>>>` shape,
+/// so we can't automatically wire it. URL reversal — the primary consumer
+/// of these entries via `urls.server().<app>().<action>(...)` — only needs
+/// the route name and path metadata, which `ActionMetadata::new` carries
+/// faithfully. Future work on Issue #4507 may extend `#[action]` to emit a
+/// signature-adapted wrapper that the macro can plug in here.
+///
+/// Registration is keyed on the marker type (e.g. `SnippetViewSet`). The
+/// `viewset_with_actions::<V, M>` runtime helper bridges these
+/// marker-keyed entries into the concrete `type_name::<V>()` slot.
+///
+/// Refs Issue #4507.
+fn emit_runtime_action_registrations(
+	item_impl: &syn::ItemImpl,
+) -> syn::Result<proc_macro2::TokenStream> {
+	let marker_ty = &item_impl.self_ty;
+	let views_crate = crate::crate_paths::get_reinhardt_views_crate();
+	let hyper_crate = crate::crate_paths::get_hyper_crate();
+	let type_snake = type_name_to_snake(marker_ty)?;
+	let ctor_fn_ident = syn::Ident::new(
+		&format!("__reinhardt_register_viewset_actions_{type_snake}"),
+		Span::call_site(),
+	);
+	let mut registrations: Vec<proc_macro2::TokenStream> = Vec::new();
+
+	for item in &item_impl.items {
+		let syn::ImplItem::Fn(method) = item else {
+			continue;
+		};
+		let Some(action_attr) = method.attrs.iter().find(|a| a.path().is_ident("action")) else {
+			continue;
+		};
+		let attr_tokens = match &action_attr.meta {
+			syn::Meta::List(ml) => ml.tokens.clone(),
+			syn::Meta::Path(_) => proc_macro2::TokenStream::new(),
+			_ => {
+				return Err(syn::Error::new_spanned(
+					action_attr,
+					"unexpected #[action] form",
+				));
+			}
+		};
+		let parsed =
+			crate::action::parse_action_args_with_defaults(attr_tokens, &method.sig.ident)?;
+
+		// Build the `ActionMetadata::new(...).with_...` chain as runtime tokens.
+		// `with_url_path` is only emitted when the attribute supplied a non-empty
+		// `url_path`; `ActionMetadata::get_url_path` already defaults to
+		// `name.replace('_', "-")` when absent. The handler is left as the
+		// constructor default (see fn-doc above).
+		let url_name_lit = syn::LitStr::new(&parsed.url_name, Span::call_site());
+		let detail = parsed.detail;
+		let with_url_path = if parsed.url_path.is_empty() {
+			quote! {}
+		} else {
+			let lit = syn::LitStr::new(&parsed.url_path, Span::call_site());
+			quote! { .with_url_path(#lit) }
+		};
+
+		// Method-list literal. `Method::from_bytes` accepts ASCII method names
+		// and returns a `Result`; the macro vetted them at parse time so the
+		// `expect()` here cannot fire in practice.
+		let method_lits: Vec<proc_macro2::TokenStream> = parsed
+			.methods
+			.iter()
+			.map(|m| {
+				let lit = syn::LitStr::new(m, Span::call_site());
+				quote! {
+					#hyper_crate::Method::from_bytes(#lit.as_bytes())
+						.expect("#[action] methods validated at macro expansion")
+				}
+			})
+			.collect();
+
+		registrations.push(quote! {
+			#views_crate::viewsets::register_action(
+				::std::any::type_name::<#marker_ty>(),
+				#views_crate::viewsets::ActionMetadata::new(#url_name_lit)
+					.with_detail(#detail)
+					.with_url_name(#url_name_lit)
+					.with_methods(vec![#(#method_lits),*])
+					#with_url_path,
+			);
+		});
+	}
+
+	if registrations.is_empty() {
+		return Ok(proc_macro2::TokenStream::new());
+	}
+
+	Ok(quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+		#[doc(hidden)]
+		#[::ctor::ctor]
+		fn #ctor_fn_ident() {
+			#(#registrations)*
+		}
 	})
 }
 
