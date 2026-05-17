@@ -120,6 +120,15 @@ pub(super) fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
+						name: "is_superuser".to_string(),
+						type_definition: FieldType::Boolean,
+						not_null: false,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
 						name: "last_login".to_string(),
 						type_definition: FieldType::TimestampTz,
 						not_null: false,
