@@ -122,9 +122,9 @@ async fn test_create_multiple_users_for_following(#[future] twitter_db_pool: (Pg
 	assert_ne!(user1.id(), user3.id());
 
 	// Verify all users are active
-	assert!(user1.is_active());
-	assert!(user2.is_active());
-	assert!(user3.is_active());
+	assert!(user1.is_active);
+	assert!(user2.is_active);
+	assert!(user3.is_active);
 }
 
 // ============================================================================
@@ -223,7 +223,7 @@ async fn test_inactive_user_in_relationship(#[future] twitter_db_pool: (PgPool, 
 		.await
 		.expect("User creation should succeed");
 
-	assert!(!user.is_active(), "User should be inactive");
+	assert!(!user.is_active, "User should be inactive");
 
 	// In business logic, inactive users might be excluded from follow operations
 	let user_info = UserInfo::from(user);

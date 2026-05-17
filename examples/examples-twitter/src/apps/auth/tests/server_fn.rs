@@ -606,7 +606,7 @@ async fn test_login_success(#[future] twitter_db_pool: (PgPool, String)) {
 		.expect("User creation should succeed");
 
 	// Act & Assert
-	assert_eq!(user.email(), &test_user.email);
+	assert_eq!(&user.email, &test_user.email);
 	assert!(user.is_active());
 
 	let password_valid = user
@@ -680,7 +680,7 @@ async fn test_register_success(#[future] twitter_db_pool: (PgPool, String)) {
 
 	// Assert
 	assert_eq!(user.username(), "newuser");
-	assert_eq!(user.email(), "newuser@example.com");
+	assert_eq!(user.email, "newuser@example.com");
 	assert!(user.is_active());
 
 	let password_valid = user
@@ -851,6 +851,6 @@ async fn test_user_info_conversion(#[future] twitter_db_pool: (PgPool, String)) 
 	// Assert
 	assert_eq!(user_info.id, user.id());
 	assert_eq!(&user_info.username, user.username());
-	assert_eq!(&user_info.email, user.email());
+	assert_eq!(&user_info.email, &user.email);
 	assert_eq!(user_info.is_active, user.is_active());
 }
