@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.29...reinhardt-pages@v0.1.0-rc.30) - 2026-05-17
+
+### Added
+
+- *(pages)* add select_router_source_counts helper and tests
+- *(pages)* add ClientLauncher::register_routes_from_inventory
+- *(pages)* extend launch() to 3-way mutual exclusion for inventory
+- *(macros)* make WASM client inventory submission opt-in via client_inventory flag
+
+### Documentation
+
+- *(pages)* use backticks for cfg(wasm)-gated launch in builder docs
+
+### Fixed
+
+- *(pages-macros)* allow form! watch handlers to capture outer locals
+- *(pages/macros)* apply HiddenField initial to signal at first render
+- *(pages-macros)* collapse nested if-let into let-chain in extract_initial_expr
+- *(pages-macros)* make form! watch handler a real closure ([[#4414](https://github.com/kent8192/reinhardt-web/issues/4414)](https://github.com/kent8192/reinhardt-web/issues/4414))
+- *(pages-macros)* let form! initial and inner watch capture outer scope
+- address Copilot review threads on PR [[#4477](https://github.com/kent8192/reinhardt-web/issues/4477)](https://github.com/kent8192/reinhardt-web/issues/4477)
+
+### Testing
+
+- *(pages-macros)* trybuild compile_pass for [[#4420](https://github.com/kent8192/reinhardt-web/issues/4420)](https://github.com/kent8192/reinhardt-web/issues/4420) env capture
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.28...reinhardt-pages@v0.1.0-rc.29) - 2026-05-13
 
 ### Fixed

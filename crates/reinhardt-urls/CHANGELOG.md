@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.29...reinhardt-urls@v0.1.0-rc.30) - 2026-05-17
+
+### Added
+
+- *(commands,urls)* log registered client routes in runserver --with-pages banner
+- *(urls)* harvest middleware-contributed DI registrations in with_middleware
+- *(urls)* derive Clone for ClientRouter
+- *(urls)* add ClientRouterRegistration and collect helper
+- *(urls)* re-export ClientRouterRegistration on wasm
+- *(macros)* emit ClientRouterRegistration submit on wasm target
+- *(macros)* make WASM client inventory submission opt-in via client_inventory flag
+
+### Changed
+
+- *(urls)* address Copilot review on PR [[#4438](https://github.com/kent8192/reinhardt-web/issues/4438)](https://github.com/kent8192/reinhardt-web/issues/4438)
+
+### Fixed
+
+- address Copilot review feedback
+- *(urls)* apply middleware DI to local InjectionContext when present
+- *(urls)* stage middleware DI on router to survive any builder order
+- *(urls)* propagate with_di_context into already-mounted children
+- *(urls)* drain nested children pending DI on mount
+- *(urls)* drain grouped routers' pending DI in group()
+- *(urls)* gate registration.rs native items for wasm build
+- address Copilot review threads on PR [[#4477](https://github.com/kent8192/reinhardt-web/issues/4477)](https://github.com/kent8192/reinhardt-web/issues/4477)
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.28...reinhardt-urls@v0.1.0-rc.29) - 2026-05-13
 
 ### Changed
