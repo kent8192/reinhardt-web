@@ -115,13 +115,19 @@ use reinhardt::endpoint;
 use reinhardt::db::orm::Manager;
 use reinhardt::db::DatabaseConnection;
 
-// Pattern 4: External dependencies - prefer direct import when the crate
-// is listed in your `[dependencies]`; fall back to the reinhardt re-export
-// otherwise so you don't introduce an unlisted transitive dependency.
-use serde::{Serialize, Deserialize};        // Direct (serde in [dependencies], preferred)
-use serde_json::json;                       // Direct (serde_json in [dependencies], preferred)
-use reinhardt::core::serde::json::json;     // Re-export alternative (also valid)
-use reinhardt::core::async_trait;           // Re-export required (async_trait NOT in [dependencies])
+// Pattern 4: External dependencies — prefer the direct import when the
+// crate is listed in your `[dependencies]`; fall back to the reinhardt
+// re-export otherwise so you don't introduce an unlisted transitive
+// dependency.
+use serde::{Serialize, Deserialize};    // Direct (serde in [dependencies], preferred)
+use serde_json::json;                   // Direct (serde_json in [dependencies], preferred)
+use reinhardt::core::async_trait;       // Re-export (async_trait NOT in [dependencies] — required)
+//
+// If `serde` / `serde_json` were NOT in [dependencies], substitute the
+// corresponding direct lines above with the reinhardt re-exports — one
+// direction at a time, to avoid same-name imports for `json`:
+//   use reinhardt::core::serde::{Serialize, Deserialize};
+//   use reinhardt::core::serde::json::json;
 ```
 
 #### ❌ INCORRECT Import Patterns
