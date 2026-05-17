@@ -135,6 +135,74 @@ fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
 	}
 }
 
+/// Emit a meta macro that dispatches the standard fan-out callback used by
+/// `__for_each_url_resolver` (see routes_registration.rs::gen_resolver_callback_arms).
+///
+/// `kind` is either "list" or "detail"; for "detail" the callback receives
+/// an additional "id" param literal so the generated accessor's signature
+/// gains an `id: &str` argument.
+///
+/// Refs Issue #4507.
+fn emit_meta_macro(
+	fn_name: &syn::Ident,
+	basename: &str,
+	kind: &str,
+	include_id: bool,
+) -> TokenStream {
+	let macro_name = syn::Ident::new(
+		&format!("__url_resolver_meta_{fn_name}_{basename}_{kind}"),
+		Span::call_site(),
+	);
+	let method_ident = syn::Ident::new(&format!("{basename}_{kind}"), Span::call_site());
+	let route_literal = format!("{basename}-{kind}");
+
+	let body = if include_id {
+		quote! { $callback!($app, #method_ident, #route_literal, "id"); }
+	} else {
+		quote! { $callback!($app, #method_ident, #route_literal, ); }
+	};
+
+	quote! {
+		#[doc(hidden)]
+		macro_rules! #macro_name {
+			($callback:ident, $app:ident) => { #body };
+		}
+		pub(crate) use #macro_name;
+	}
+}
+
+/// Emit a per-fn manifest macro that fans out the list/detail metas.
+///
+/// `#[url_patterns]` in Phase 6 calls this manifest from inside its
+/// `__for_each_url_resolver` arm so the corresponding `<App>Urls` struct
+/// gets the typed methods.
+///
+/// Refs Issue #4507.
+fn emit_per_fn_manifest(fn_name: &syn::Ident, basename: &str) -> TokenStream {
+	let manifest_name = syn::Ident::new(
+		&format!("__for_each_viewset_meta_{fn_name}"),
+		Span::call_site(),
+	);
+	let list_meta = syn::Ident::new(
+		&format!("__url_resolver_meta_{fn_name}_{basename}_list"),
+		Span::call_site(),
+	);
+	let detail_meta = syn::Ident::new(
+		&format!("__url_resolver_meta_{fn_name}_{basename}_detail"),
+		Span::call_site(),
+	);
+	quote! {
+		#[doc(hidden)]
+		macro_rules! #manifest_name {
+			($callback:ident, $app:ident) => {
+				#list_meta!($callback, $app);
+				#detail_meta!($callback, $app);
+			};
+		}
+		pub(crate) use #manifest_name;
+	}
+}
+
 /// Implementation of the `#[viewset]` attribute macro.
 pub(crate) fn viewset_macro_impl(
 	_args: TokenStream,
@@ -154,6 +222,10 @@ pub(crate) fn viewset_macro_impl(
 
 	let resolver_tokens = generate_viewset_resolver_tokens(&basename);
 
+	let list_meta = emit_meta_macro(fn_name, &basename, "list", false);
+	let detail_meta = emit_meta_macro(fn_name, &basename, "detail", true);
+	let manifest = emit_per_fn_manifest(fn_name, &basename);
+
 	// Generate a well-known bundle module that #[url_patterns] can reference
 	// by function name (which it CAN see from tokens).
 	let bundle_mod_ident =
@@ -170,6 +242,9 @@ pub(crate) fn viewset_macro_impl(
 	Ok(quote! {
 		#func
 		#resolver_tokens
+		#list_meta
+		#detail_meta
+		#manifest
 
 		#[doc(hidden)]
 		pub mod #bundle_mod_ident {
@@ -242,5 +317,53 @@ mod tests {
 		assert!(output.contains("ResolveSnippetDetail"));
 		assert!(output.contains("snippet_list"));
 		assert!(output.contains("snippet_detail"));
+	}
+
+	#[test]
+	fn fn_version_emits_list_and_detail_meta_macros() {
+		// Arrange
+		let input = quote! {
+			pub fn viewset() -> ModelViewSet<Snippet, SnippetSerializer> {
+				ModelViewSet::new("snippet")
+			}
+		};
+
+		// Act
+		let out = viewset_macro_impl(quote! {}, input).expect("should expand");
+		let out_s = out.to_string();
+
+		// Assert: list meta macro exists with the expected callback shape.
+		assert!(
+			out_s.contains("__url_resolver_meta_viewset_snippet_list"),
+			"list meta macro must be emitted; got: {out_s}"
+		);
+		assert!(
+			out_s.contains("\"snippet-list\""),
+			"list route-name literal must be emitted"
+		);
+
+		// Detail meta + "id" param literal
+		assert!(out_s.contains("__url_resolver_meta_viewset_snippet_detail"));
+		assert!(out_s.contains("\"snippet-detail\""));
+		assert!(out_s.contains("\"id\""));
+	}
+
+	#[test]
+	fn fn_version_emits_for_each_viewset_meta_manifest() {
+		// Arrange
+		let input = quote! {
+			pub fn viewset() -> ModelViewSet<Snippet, SnippetSerializer> {
+				ModelViewSet::new("snippet")
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(quote! {}, input).unwrap().to_string();
+
+		// Assert: manifest macro that fans out to both meta macros exists.
+		assert!(
+			out_s.contains("__for_each_viewset_meta_viewset"),
+			"fn-form must emit per-fn manifest macro; got: {out_s}"
+		);
 	}
 }
