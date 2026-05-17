@@ -314,11 +314,18 @@ impl ServerRouter {
 
 			let basename = viewset.get_basename();
 			let lookup_field = viewset.get_lookup_field();
+			// Use Reinhardt's `{name}` placeholder syntax (the format
+			// `PathPattern::new` parses) rather than Django's legacy `<name>`
+			// notation. Without this, `router.reverse("snippet-detail",
+			// &[("id", "42")])` returned the literal pattern
+			// `/snippet/<id>/` instead of substituting the parameter — the
+			// pattern parser only recognises `{id}` / `{<int:id>}` forms.
+			// Refs Issue #4507.
 			let viewset_routes = [
 				(format!("{}-list", basename), format!("{}/", base_path)),
 				(
 					format!("{}-detail", basename),
-					format!("{}/<{}>/", base_path, lookup_field),
+					format!("{}/{{{}}}/", base_path, lookup_field),
 				),
 			];
 
@@ -330,6 +337,40 @@ impl ServerRouter {
 				};
 
 				registrations.push((qualified_name, path));
+			}
+
+			// Also collect routes for `#[action]`-decorated extra actions so
+			// `router.reverse("<namespace>:<basename>-<action>", ...)` resolves
+			// against the same routing table as the typed accessors emitted
+			// by `#[viewset]` + `#[action]`. Without this, the typed accessor
+			// `urls.server().<app>().<action>(id)` would panic with
+			// `Route '<ns>:<basename>-<action>' not found in router`.
+			// Refs Issue #4507.
+			for action in viewset.get_extra_actions() {
+				let action_url_path = action
+					.url_path
+					.as_deref()
+					.unwrap_or(action.name.as_str());
+				let action_url_name = action
+					.url_name
+					.as_deref()
+					.unwrap_or(action.name.as_str());
+
+				let action_path = if action.detail {
+					format!(
+						"{}/{{{}}}/{}/",
+						base_path, lookup_field, action_url_path
+					)
+				} else {
+					format!("{}/{}/", base_path, action_url_path)
+				};
+				let action_name = format!("{}-{}", basename, action_url_name);
+				let qualified_name = if let Some(ref ns) = full_namespace {
+					format!("{}:{}", ns, action_name)
+				} else {
+					action_name
+				};
+				registrations.push((qualified_name, action_path));
 			}
 		}
 
