@@ -235,98 +235,103 @@ pub fn polls_detail(question_id: i64) -> Page {
 
 	let load_detail_signal = load_detail.clone();
 
-	// Render reactively in the same shape that `polls_results` uses: only the
-	// reactive Signal and the route id flow into `page!` as typed parameters.
-	// The voting form (whose type lives inside the `form!` macro's block
-	// expression and is therefore not nameable as a `page!` parameter type)
-	// and the static hrefs are captured from the surrounding scope by the
-	// implicit `move` of the watch closure. Returning a static Page early
+	// Render reactively in the same shape that `polls_results` uses: an outer
+	// `div` wraps a single `watch{}` so that `polls_detail(...)` returns a
+	// top-level `Page::Element` (matching `polls_results` and the existing
+	// `matches!(view, Page::Element(_))` assertions in `polls_mock_test.rs`).
+	// Only the reactive Signal and the route id flow into `page!` as typed
+	// parameters. The voting form (whose type lives inside the `form!` macro's
+	// block expression and is therefore not nameable as a `page!` parameter
+	// type) and the static hrefs are captured from the surrounding scope by
+	// the implicit `move` of the watch closure. Returning a static Page early
 	// from this function would have stranded the SPA on the spinner forever.
 	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
-		watch {
-			if load_detail_signal.is_pending() {
-				div {
-					class: "max-w-4xl mx-auto px-4 mt-12 text-center",
+		div {
+			watch {
+				if load_detail_signal.is_pending() {
 					div {
-						class: "spinner w-8 h-8",
-						role: "status",
-						span {
-							class: "sr-only",
-							"Loading..."
-						}
-					}
-				}
-			} else if load_detail_signal.error().is_some() {
-				div {
-					class: "max-w-4xl mx-auto px-4 mt-12",
-					div {
-						class: "alert-danger",
-						{ load_detail_signal.error().unwrap_or_default() }
-					}
-					a {
-						href: links::poll_detail(question_id),
-						class: "btn-secondary",
-						"Try Again"
-					}
-					a {
-						href: links::polls_index(),
-						class: "btn-primary ml-2",
-						"Back to Polls"
-					}
-				}
-			} else if load_detail_signal.result().is_some() {
-				div {
-					class: "max-w-4xl mx-auto px-4 mt-12",
-					div {
-						class: "flex justify-between items-center mb-4",
-						h1 {
-							{
-								load_detail_signal
-										.result()
-										.map(|(q, _)| q.question_text.clone())
-										.unwrap_or_default()
-							}
-						}
+						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
 						div {
-							class: "flex gap-2",
-							a {
-								href: links::poll_results(question_id),
-								class: "btn-secondary",
-								"View results"
-							}
-							a {
-								href: links::question_edit(question_id),
-								class: "btn-secondary",
-								"Edit"
-							}
-							a {
-								href: links::question_delete(question_id),
-								class: "btn-danger",
-								"Delete"
+							class: "spinner w-8 h-8",
+							role: "status",
+							span {
+								class: "sr-only",
+								"Loading..."
 							}
 						}
 					}
-					{ voting_form.clone().into_page() }
+				} else if load_detail_signal.error().is_some() {
 					div {
-						class: "mt-4",
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "alert-danger",
+							{ load_detail_signal.error().unwrap_or_default() }
+						}
 						a {
-							href: links::choice_new(question_id),
+							href: links::poll_detail(question_id),
 							class: "btn-secondary",
-							"Add choice"
+							"Try Again"
+						}
+						a {
+							href: links::polls_index(),
+							class: "btn-primary ml-2",
+							"Back to Polls"
 						}
 					}
-				}
-			} else {
-				div {
-					class: "max-w-4xl mx-auto px-4 mt-12",
+				} else if load_detail_signal.result().is_some() {
 					div {
-						class: "alert-warning",
-						"Question not found"
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "flex justify-between items-center mb-4",
+							h1 {
+								{
+									load_detail_signal
+											.result()
+											.map(|(q, _)| q.question_text.clone())
+											.unwrap_or_default()
+								}
+							}
+							div {
+								class: "flex gap-2",
+								a {
+									href: links::poll_results(question_id),
+									class: "btn-secondary",
+									"View results"
+								}
+								a {
+									href: links::question_edit(question_id),
+									class: "btn-secondary",
+									"Edit"
+								}
+								a {
+									href: links::question_delete(question_id),
+									class: "btn-danger",
+									"Delete"
+								}
+							}
+						}
+						{ voting_form.clone().into_page() }
+						div {
+							class: "mt-4",
+							a {
+								href: links::choice_new(question_id),
+								class: "btn-secondary",
+								"Add choice"
+							}
+						}
 					}
-					a {
-						href: links::polls_index(),
-						class: "btn-primary",
-						"Back to Polls"
+				} else {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "alert-warning",
+							"Question not found"
+						}
+						a {
+							href: links::polls_index(),
+							class: "btn-primary",
+							"Back to Polls"
+						}
 					}
 				}
 			}
@@ -718,7 +723,10 @@ pub fn question_edit(question_id: i64) -> Page {
 
 	let load_detail_signal = load_detail.clone();
 
-	// Render reactively in the `polls_results` shape: only the reactive
+	// Render reactively in the `polls_results` shape: an outer `div` wraps a
+	// single `watch{}` so that `question_edit(...)` returns a top-level
+	// `Page::Element`, matching `polls_results` / `polls_detail` and keeping
+	// the page tree shape consistent across the tutorial. Only the reactive
 	// Signal and the route id flow into `page!` as typed parameters. The
 	// `edit_form` (whose type lives inside the `form!` macro's block
 	// expression and is therefore not nameable as a `page!` parameter type)
@@ -729,68 +737,70 @@ pub fn question_edit(question_id: i64) -> Page {
 	// instead of a second nested `watch` to avoid the E0507 footgun
 	// (Fn → Fn re-capture of `!Copy` Signals).
 	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
-		watch {
-			if load_detail_signal.is_pending() {
-				div {
-					class: "max-w-4xl mx-auto px-4 mt-12 text-center",
+		div {
+			watch {
+				if load_detail_signal.is_pending() {
 					div {
-						class: "spinner w-8 h-8",
-						role: "status",
-						span {
-							class: "sr-only",
-							"Loading..."
-						}
-					}
-				}
-			} else if load_detail_signal.error().is_some() {
-				div {
-					class: "max-w-4xl mx-auto px-4 mt-12",
-					div {
-						class: "alert-danger",
-						{ load_detail_signal.error().unwrap_or_default() }
-					}
-					a {
-						href: links::polls_index(),
-						class: "btn-primary",
-						"Back to Polls"
-					}
-				}
-			} else {
-				div {
-					class: "max-w-4xl mx-auto px-4 mt-12",
-					h1 {
-						class: "mb-4",
-						"Edit Question"
-					}
-					if edit_form.error().get().is_some() {
+						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
 						div {
-							class: "alert-danger mb-3",
-							{ edit_form.error().get().unwrap_or_default() }
+							class: "spinner w-8 h-8",
+							role: "status",
+							span {
+								class: "sr-only",
+								"Loading..."
+							}
 						}
 					}
-					{ edit_form.clone().into_page() }
+				} else if load_detail_signal.error().is_some() {
 					div {
-						class: "mt-3",
-						if edit_form.loading().get() {
-							button {
-								type: "submit",
-								class: "btn-primary opacity-50 cursor-not-allowed",
-								disabled: true,
-								form: "edit-question-form",
-								"Saving..."
-							}
-						} else {
-							button {
-								type: "submit",
-								class: "btn-primary",
-								form: "edit-question-form",
-								"Save"
-							}
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "alert-danger",
+							{ load_detail_signal.error().unwrap_or_default() }
 						}
 						a {
-							href: links::poll_detail(question_id),
-							class: "btn-secondary ml-2",
-							"Cancel"
+							href: links::polls_index(),
+							class: "btn-primary",
+							"Back to Polls"
+						}
+					}
+				} else {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						h1 {
+							class: "mb-4",
+							"Edit Question"
+						}
+						if edit_form.error().get().is_some() {
+							div {
+								class: "alert-danger mb-3",
+								{ edit_form.error().get().unwrap_or_default() }
+							}
+						}
+						{ edit_form.clone().into_page() }
+						div {
+							class: "mt-3",
+							if edit_form.loading().get() {
+								button {
+									type: "submit",
+									class: "btn-primary opacity-50 cursor-not-allowed",
+									disabled: true,
+									form: "edit-question-form",
+									"Saving..."
+								}
+							} else {
+								button {
+									type: "submit",
+									class: "btn-primary",
+									form: "edit-question-form",
+									"Save"
+								}
+							}
+							a {
+								href: links::poll_detail(question_id),
+								class: "btn-secondary ml-2",
+								"Cancel"
+							}
 						}
 					}
 				}
