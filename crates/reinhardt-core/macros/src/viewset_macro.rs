@@ -1,6 +1,8 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{ItemFn, parse2};
+use syn::ItemFn;
+#[cfg(test)]
+use syn::parse2;
 
 /// Extract basename string literal from a function body.
 ///
@@ -203,12 +205,38 @@ fn emit_per_fn_manifest(fn_name: &syn::Ident, basename: &str) -> TokenStream {
 	}
 }
 
-/// Implementation of the `#[viewset]` attribute macro.
+/// Dispatcher for the `#[viewset]` attribute macro.
+///
+/// Branches on whether `input` parses as a free function (`ItemFn` — the
+/// classic fn-form that builds a `ModelViewSet`/`GenericViewSet`) or as an
+/// `impl` block (`ItemImpl` — the new impl-form that hosts `#[action]`
+/// methods).
+///
+/// Refs Issue #4507.
 pub(crate) fn viewset_macro_impl(
-	_args: TokenStream,
+	args: TokenStream,
 	input: TokenStream,
 ) -> syn::Result<TokenStream> {
-	let func: ItemFn = parse2(input)?;
+	if let Ok(item_fn) = syn::parse2::<ItemFn>(input.clone()) {
+		return viewset_fn_impl(args, item_fn);
+	}
+	if let Ok(item_impl) = syn::parse2::<syn::ItemImpl>(input.clone()) {
+		return viewset_impl_impl(args, item_impl);
+	}
+	Err(syn::Error::new(
+		Span::call_site(),
+		"#[viewset] must be applied to a `pub fn ... -> ModelViewSet<...>` \
+		 or to an `impl YourViewSet` block",
+	))
+}
+
+/// Fn-form expansion of `#[viewset]`.
+///
+/// Pre-existing behaviour: extracts the basename from the function body
+/// (`ModelViewSet::new("...")` / `GenericViewSet::new("...", ...)`),
+/// generates the typed list/detail resolver traits, and emits the
+/// per-fn meta + manifest macros consumed by `__for_each_url_resolver`.
+fn viewset_fn_impl(_args: TokenStream, func: ItemFn) -> syn::Result<TokenStream> {
 	let fn_name = &func.sig.ident;
 
 	let basename = extract_basename(&func).ok_or_else(|| {
@@ -254,6 +282,191 @@ pub(crate) fn viewset_macro_impl(
 			pub use super::#detail_mod_ident::*;
 		}
 	})
+}
+
+/// Parse the `basename = "..."` argument required by the impl-form
+/// of `#[viewset]`.
+///
+/// Returns the basename string on success, or a compile error pointing
+/// to the call site when the argument list is empty or shaped incorrectly.
+///
+/// Refs Issue #4507.
+fn parse_impl_basename_arg(args: TokenStream) -> syn::Result<String> {
+	let parser = |input: syn::parse::ParseStream<'_>| -> syn::Result<String> {
+		let key: syn::Ident = input.parse()?;
+		if key != "basename" {
+			return Err(syn::Error::new(
+				key.span(),
+				"#[viewset] on impl block requires basename = \"...\". \
+				 Example: #[viewset(basename = \"snippet\")]",
+			));
+		}
+		input.parse::<syn::Token![=]>()?;
+		let lit: syn::LitStr = input.parse()?;
+		Ok(lit.value())
+	};
+
+	if args.is_empty() {
+		return Err(syn::Error::new(
+			Span::call_site(),
+			"#[viewset] on impl block requires basename = \"...\". \
+			 Example: #[viewset(basename = \"snippet\")]",
+		));
+	}
+	syn::parse::Parser::parse2(parser, args)
+}
+
+/// Impl-form expansion of `#[viewset]`.
+///
+/// Walks the `impl` block for `#[action]`-decorated methods, emits a
+/// `__url_resolver_meta_action_<basename>_<fn>` macro_rules per action,
+/// and a `__for_each_viewset_action_meta_<TypeNameSnake>` manifest that
+/// fans them out. Phase 6 will splice the manifest into the existing
+/// `__for_each_url_resolver` so typed methods land on `<App>Urls`.
+///
+/// Refs Issue #4507.
+fn viewset_impl_impl(args: TokenStream, item_impl: syn::ItemImpl) -> syn::Result<TokenStream> {
+	let basename = parse_impl_basename_arg(args)?;
+	let (action_metas, fn_idents) = collect_actions(&item_impl, &basename)?;
+	let type_snake = type_name_to_snake(&item_impl.self_ty)?;
+	let manifest = emit_impl_action_manifest(&type_snake, &basename, &fn_idents);
+
+	Ok(quote! {
+		#item_impl
+		#(#action_metas)*
+		#manifest
+	})
+}
+
+/// Convert the last segment of a type path to snake_case.
+///
+/// `SnippetViewSet` becomes `snippet_view_set`; `views::SnippetViewSet`
+/// also becomes `snippet_view_set` (path qualifiers are stripped).
+///
+/// Refs Issue #4507.
+fn type_name_to_snake(ty: &syn::Type) -> syn::Result<String> {
+	let path = match ty {
+		syn::Type::Path(tp) => &tp.path,
+		_ => return Err(syn::Error::new_spanned(ty, "expected a type path")),
+	};
+	let ident = &path
+		.segments
+		.last()
+		.ok_or_else(|| syn::Error::new_spanned(ty, "empty type path"))?
+		.ident;
+	Ok(camel_to_snake(&ident.to_string()))
+}
+
+/// Convert a `CamelCase` identifier to `snake_case`.
+///
+/// Inserts an underscore before every ASCII uppercase character after
+/// position 0, then lowercases the entire string. Non-ASCII characters
+/// pass through unchanged on the boundary check.
+///
+/// Refs Issue #4507.
+fn camel_to_snake(s: &str) -> String {
+	let mut out = String::with_capacity(s.len() + 4);
+	for (i, c) in s.chars().enumerate() {
+		if c.is_ascii_uppercase() && i != 0 {
+			out.push('_');
+		}
+		out.push(c.to_ascii_lowercase());
+	}
+	out
+}
+
+/// Collect all `#[action]`-decorated methods from an `impl` block.
+///
+/// Returns a pair of vectors: the per-action meta macro token streams,
+/// and the bare method identifiers in declaration order. Non-`#[action]`
+/// items in the impl block (helpers, associated consts, type aliases)
+/// are skipped silently.
+///
+/// Refs Issue #4507.
+fn collect_actions(
+	item_impl: &syn::ItemImpl,
+	basename: &str,
+) -> syn::Result<(Vec<proc_macro2::TokenStream>, Vec<syn::Ident>)> {
+	let mut metas = Vec::new();
+	let mut fn_idents = Vec::new();
+	for item in &item_impl.items {
+		let syn::ImplItem::Fn(method) = item else {
+			continue;
+		};
+		let Some(action_attr) = method.attrs.iter().find(|a| a.path().is_ident("action")) else {
+			continue;
+		};
+		let meta = parse_action_meta_for_viewset(action_attr, &method.sig.ident, basename)?;
+		metas.push(meta);
+		fn_idents.push(method.sig.ident.clone());
+	}
+	Ok((metas, fn_idents))
+}
+
+/// TEMPORARY (Phase 4): real implementation lands in Phase 5 / Task 5.2.
+/// This stub assumes `detail = true` for every action (always emits an "id" param)
+/// and ignores the action's `url_path` placeholders. Phase 5 will parse the
+/// full `#[action(...)]` attribute and replace this body. The macro_rules name
+/// here uses `fn_ident`; Phase 5 will switch it to `url_name`.
+///
+/// Refs Issue #4507.
+fn parse_action_meta_for_viewset(
+	_attr: &syn::Attribute,
+	fn_ident: &syn::Ident,
+	basename: &str,
+) -> syn::Result<proc_macro2::TokenStream> {
+	let macro_name = syn::Ident::new(
+		&format!("__url_resolver_meta_action_{basename}_{fn_ident}"),
+		Span::call_site(),
+	);
+	let method_ident = fn_ident.clone();
+	let route = format!("{basename}-{fn_ident}");
+	Ok(quote! {
+		#[doc(hidden)]
+		macro_rules! #macro_name {
+			($callback:ident, $app:ident) => {
+				$callback!($app, #method_ident, #route, "id");
+			};
+		}
+		pub(crate) use #macro_name;
+	})
+}
+
+/// Emit the per-impl manifest macro that fans out every per-action meta.
+///
+/// The manifest is named `__for_each_viewset_action_meta_<TypeNameSnake>`
+/// so Phase 6 can call it from `__for_each_url_resolver`'s arm without
+/// needing to see the ViewSet's basename at the `#[url_patterns]` site.
+///
+/// Refs Issue #4507.
+fn emit_impl_action_manifest(
+	type_snake: &str,
+	basename: &str,
+	fn_idents: &[syn::Ident],
+) -> proc_macro2::TokenStream {
+	let manifest_name = syn::Ident::new(
+		&format!("__for_each_viewset_action_meta_{type_snake}"),
+		Span::call_site(),
+	);
+	let meta_calls: Vec<proc_macro2::TokenStream> = fn_idents
+		.iter()
+		.map(|fn_ident| {
+			let meta_name = syn::Ident::new(
+				&format!("__url_resolver_meta_action_{basename}_{fn_ident}"),
+				Span::call_site(),
+			);
+			quote! { #meta_name!($callback, $app); }
+		})
+		.collect();
+	quote! {
+		#[doc(hidden)]
+		macro_rules! #manifest_name {
+			($callback:ident, $app:ident) => {
+				#(#meta_calls)*
+			};
+		}
+		pub(crate) use #manifest_name;
+	}
 }
 
 #[cfg(test)]
@@ -365,5 +578,125 @@ mod tests {
 			out_s.contains("__for_each_viewset_meta_viewset"),
 			"fn-form must emit per-fn manifest macro; got: {out_s}"
 		);
+	}
+
+	#[test]
+	fn impl_version_requires_basename_arg() {
+		// Arrange
+		let args = quote! {};
+		let input = quote! {
+			impl SnippetViewSet {
+				#[action(methods = "POST", detail = true, url_name = "highlight")]
+				async fn highlight(&self) -> () {}
+			}
+		};
+
+		// Act
+		let err = viewset_macro_impl(args, input).unwrap_err().to_string();
+
+		// Assert
+		assert!(err.contains("requires basename"), "got: {err}");
+	}
+
+	#[test]
+	fn impl_version_accepts_basename_arg() {
+		// Arrange
+		let args = quote! { basename = "snippet" };
+		let input = quote! {
+			impl SnippetViewSet {
+				#[action(methods = "POST", detail = true, url_name = "highlight")]
+				async fn highlight(&self) -> () {}
+			}
+		};
+
+		// Act
+		let out = viewset_macro_impl(args, input).expect("impl form should expand");
+		let out_s = out.to_string();
+
+		// Assert
+		assert!(
+			out_s.contains("SnippetViewSet"),
+			"impl block should be preserved; got: {out_s}"
+		);
+	}
+
+	#[test]
+	fn type_name_to_snake_camel_case() {
+		// Arrange
+		let ty: syn::Type = syn::parse_quote! { SnippetViewSet };
+		// Act + Assert
+		assert_eq!(type_name_to_snake(&ty).unwrap(), "snippet_view_set");
+	}
+
+	#[test]
+	fn type_name_to_snake_path() {
+		// Arrange
+		let ty: syn::Type = syn::parse_quote! { views::SnippetViewSet };
+		// Act + Assert
+		assert_eq!(type_name_to_snake(&ty).unwrap(), "snippet_view_set");
+	}
+
+	#[test]
+	fn collect_actions_two_actions() {
+		// Arrange
+		let item_impl: syn::ItemImpl = syn::parse_quote! {
+			impl SnippetViewSet {
+				#[action(methods = "POST", detail = true, url_name = "highlight")]
+				async fn highlight(&self) -> () {}
+				#[action(methods = "GET", detail = false, url_name = "export")]
+				async fn export(&self) -> () {}
+			}
+		};
+
+		// Act
+		let (metas, fn_idents) = collect_actions(&item_impl, "snippet").unwrap();
+
+		// Assert
+		assert_eq!(metas.len(), 2);
+		assert_eq!(fn_idents.len(), 2);
+		let combined = metas.iter().map(|t| t.to_string()).collect::<String>();
+		assert!(combined.contains("__url_resolver_meta_action_snippet_highlight"));
+		assert!(combined.contains("__url_resolver_meta_action_snippet_export"));
+	}
+
+	#[test]
+	fn collect_actions_skips_non_action_methods() {
+		// Arrange
+		let item_impl: syn::ItemImpl = syn::parse_quote! {
+			impl SnippetViewSet {
+				#[action(methods = "POST", detail = true, url_name = "highlight")]
+				async fn highlight(&self) -> () {}
+				async fn helper(&self) -> () {}
+			}
+		};
+
+		// Act
+		let (metas, fn_idents) = collect_actions(&item_impl, "snippet").unwrap();
+
+		// Assert
+		assert_eq!(metas.len(), 1);
+		assert_eq!(fn_idents.len(), 1);
+	}
+
+	#[test]
+	fn impl_form_manifest_references_each_action_meta() {
+		// Arrange
+		let args = quote! { basename = "snippet" };
+		let input = quote! {
+			impl SnippetViewSet {
+				#[action(methods = "POST", detail = true, url_name = "highlight")]
+				async fn highlight(&self) -> () {}
+				#[action(methods = "GET", detail = false, url_name = "export")]
+				async fn export(&self) -> () {}
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(args, input).unwrap().to_string();
+
+		// Assert
+		assert!(out_s.contains("__for_each_viewset_action_meta_snippet_view_set"));
+		assert!(out_s.contains("__url_resolver_meta_action_snippet_highlight"));
+		assert!(out_s.contains("__url_resolver_meta_action_snippet_export"));
 	}
 }
