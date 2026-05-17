@@ -167,36 +167,73 @@ pub struct SnippetSerializer {
 ### 3. Views (views.rs)
 
 ```rust
-pub async fn list(_req: Request) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-    // List all snippets
+// HTTP method decorator + `pre_validate = true` (declarative validation,
+// available since rc.5). The macro extracts `Json<SnippetSerializer>`, calls
+// `Validate::validate` on the dereferenced value, and returns HTTP 400 with
+// JSON error details on failure — all before this function body runs.
+#[get("/snippets/", name = "snippets_list")]
+pub async fn list() -> ViewResult<Response> {
+    // List all snippets — return JSON via `Response::new(StatusCode::OK).with_body(...)`.
 }
 
-pub async fn create(mut req: Request) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-    // Create a new snippet with validation
-    let serializer: SnippetSerializer = serde_json::from_slice(&req.body)?;
-    serializer.validate()?;
-    // ...
+#[post("/snippets/", name = "snippets_create", pre_validate = true)]
+pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
+    // `serializer` is already validated. Just persist and return 201.
 }
 ```
 
 ### 4. URL Routing (urls.rs)
 
 ```rust
-UnifiedRouter::new()
-    .function("/", Method::GET, super::views::list)
-    .function("/", Method::POST, super::views::create)
-    .function("/{id}/", Method::PUT, super::views::update)
-    .function("/{id}/", Method::GET, super::views::retrieve)
-    .function("/{id}/", Method::DELETE, super::views::delete)
+// `#[url_patterns(InstalledApp::snippets, mode = server)]` (rc.18+) binds
+// this router to the `snippets` app at compile time via the `AppLabel` trait.
+// The macro also applies `.with_namespace("snippets")` for URL reversal
+// (e.g. `"snippets:snippets_list"`) without changing the request path.
+#[url_patterns(InstalledApp::snippets, mode = server)]
+pub fn server_url_patterns() -> ServerRouter {
+    ServerRouter::new()
+        .endpoint(views::list)
+        .endpoint(views::create)
+        .endpoint(views::retrieve)
+        .endpoint(views::update)
+        .endpoint(views::delete)
+}
 ```
+
+Mounted at the project root with an explicit literal prefix:
+
+```rust
+// src/config/urls.rs
+#[routes(standalone)]
+pub fn routes() -> UnifiedRouter {
+    UnifiedRouter::new().mount(
+        "/api/",
+        crate::apps::snippets::urls::server_url_patterns(),
+    )
+}
+```
+
+The `/api/` prefix is a literal path (no `{...}` segments), satisfying the
+rc.24 guard that panics when `ServerRouter::mount()` receives a parameterised
+prefix.
 
 ### 5. Validation
 
 ```rust
+// Serializer side: declare validation rules with `#[validate(...)]`.
 use reinhardt::Validate;
 
-// In view handler
-serializer.validate()?;  // Returns validation errors if invalid
+#[derive(serde::Deserialize, Validate)]
+pub struct SnippetSerializer { /* ... */ }
+
+// Handler side: enable `pre_validate = true` on the route macro.
+// Manual `serializer.validate()?` is no longer needed inside the handler
+// body — the macro generates the call for you and converts failures into
+// a HTTP 400 JSON response.
+#[post("/snippets/", name = "snippets_create", pre_validate = true)]
+pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
+    /* serializer is already validated here */
+}
 ```
 
 ## Testing
@@ -231,6 +268,20 @@ cargo run --bin manage runserver
 USE_VIEWSET=1 cargo run --bin manage runserver
 # Visit http://127.0.0.1:8000/api/snippets-viewset/
 ```
+
+> **rc.23+ runtime behaviour**: Starting with reinhardt-web rc.23,
+> `ModelViewSet` (and `ReadOnlyModelViewSet`) issue **real database
+> queries** instead of returning skeleton `[]` / `{}` responses. To exercise
+> the ViewSet branch you must therefore migrate the `snippets` table first:
+>
+> ```bash
+> cargo run --bin manage -- migrate
+> USE_VIEWSET=1 cargo run --bin manage runserver
+> ```
+>
+> Until rows are inserted, the ViewSet endpoints will return an empty list.
+> The function-based branch (default) is unaffected — it falls back to
+> in-memory sample snippets defined in `views.rs::get_sample_snippets`.
 
 ### Comparison
 

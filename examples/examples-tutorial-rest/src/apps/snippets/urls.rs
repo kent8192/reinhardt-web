@@ -7,12 +7,25 @@
 //! Switch between approaches using the USE_VIEWSET environment variable:
 //! - Default: Function-based views
 //! - USE_VIEWSET=1: ViewSet-based views
+//!
+//! The `#[url_patterns(InstalledApp::snippets, mode = server)]` attribute
+//! (the typed URL-patterns macro introduced in rc.18, see reinhardt-web
+//! discussion #3770) pairs this router with its owning app at compile time
+//! via the `AppLabel` trait — if `InstalledApp::snippets` is removed from
+//! `installed_apps! { ... }`, this file stops compiling. The macro also
+//! applies `.with_namespace("snippets")` to the returned `ServerRouter`,
+//! scoping the named-URL reversal table (e.g. `"snippets:snippets_list"`)
+//! without changing the actual request paths — the literal `/api/` prefix
+//! is still attached explicitly in `src/config/urls.rs`.
 
 use reinhardt::ServerRouter;
+use reinhardt::url_patterns;
 
 use super::views;
+use crate::config::apps::InstalledApp;
 
-pub fn url_patterns() -> ServerRouter {
+#[url_patterns(InstalledApp::snippets, mode = server)]
+pub fn server_url_patterns() -> ServerRouter {
 	// Check which approach to use
 	if std::env::var("USE_VIEWSET").is_ok() {
 		// Option 2: ViewSet-based approach (Tutorial 6)

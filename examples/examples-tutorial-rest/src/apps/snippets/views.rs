@@ -6,6 +6,22 @@ use reinhardt::http::ViewResult;
 use reinhardt::{Json, Path, Response, StatusCode};
 use reinhardt::{delete, get, post, put};
 
+// `pre_validate = true` is the preferred declarative validation form (rc.5+).
+// It is applied below on `create` — which has a single `Json<SnippetSerializer>`
+// extractor — and skipped on `update`, which mixes `Path<i64>` and
+// `Json<SnippetSerializer>`.
+//
+// The current route macro validates *every* extractor on the handler when
+// `pre_validate = true`, calling `Validate::validate(&*tmp)` on each
+// dereferenced extractor (see `reinhardt-core/macros/src/routes.rs` around
+// line 493). `Path<i64>` derefs to `i64`, and `i64` does not implement
+// `Validate`, so enabling `pre_validate` on `update` would fail to compile
+// (`the trait Validate is not implemented for i64`). Until the macro grows
+// per-parameter opt-in (e.g. `#[validate]` on individual extractor params
+// or a Validate blanket impl for primitives), `update` keeps the manual
+// `serializer.validate()?` call below — hence the `use reinhardt::Validate`
+// import above is intentional.
+
 use super::models::Snippet;
 use super::serializers::{SnippetResponse, SnippetSerializer};
 
@@ -66,11 +82,16 @@ pub async fn list() -> ViewResult<Response> {
 /// Request body: JSON with title, code, language fields
 /// Success response: 201 Created with created snippet
 /// Error responses:
-/// - 422 Unprocessable Entity: Validation errors
-#[post("/snippets/", name = "snippets_create")]
+/// - 400 Bad Request: Validation errors (emitted by the `pre_validate = true`
+///   macro option below — the macro returns HTTP 400 with a JSON error body
+///   before this function body runs)
+#[post("/snippets/", name = "snippets_create", pre_validate = true)]
 pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
-	// Validate
-	serializer.validate()?;
+	// `pre_validate = true` on the route macro extracts `Json<SnippetSerializer>`
+	// into a temporary, calls `Validate::validate(&__tmp)`, then re-destructures
+	// into the original `Json(serializer)` binding. No manual `serializer.validate()?`
+	// is needed (the previous explicit call was redundant once `pre_validate`
+	// was introduced in rc.5).
 
 	// Production ORM usage:
 	// let snippet = Manager::<Snippet>::new().create(Snippet {
@@ -139,13 +160,17 @@ pub async fn retrieve(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 /// Success response: 200 OK with updated snippet
 /// Error responses:
 /// - 404 Not Found: Snippet not found
-/// - 422 Unprocessable Entity: Validation errors
+/// - 422 Unprocessable Entity: Validation errors (manual `serializer.validate()?`
+///   below — `pre_validate = true` would force `Path<i64>` through `Validate`
+///   as well, which `i64` does not implement; see the module-level comment
+///   on the `Validate` import for details)
 #[put("/snippets/{id}/", name = "snippets_update")]
 pub async fn update(
 	Path(snippet_id): Path<i64>,
 	Json(serializer): Json<SnippetSerializer>,
 ) -> ViewResult<Response> {
-	// Validate
+	// Manual validation — see module-level comment on why `pre_validate = true`
+	// is not used here.
 	serializer.validate()?;
 
 	// Production ORM usage:
@@ -232,6 +257,25 @@ pub async fn delete(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 /// - Pagination: 10 items per page (max 100)
 /// - Filtering: by language and title fields
 /// - Ordering: by created_at and title fields
+///
+/// # Runtime behavior (rc.23+)
+///
+/// Starting with reinhardt-web rc.23 (discussion-tracked under the
+/// `Breaking Changes` category as the "ModelViewSet performs real CRUD" fix),
+/// `ModelViewSet` and `ReadOnlyModelViewSet` no longer return skeleton
+/// `[]` / `{}` responses. The generated handlers issue real database queries
+/// through the `Snippet` model's manager (and honour `with_filters`,
+/// `with_ordering`, and `with_pagination` end-to-end), so this endpoint set
+/// requires a working database backend with the `snippets` schema migrated:
+///
+/// ```text
+/// cargo run --bin manage -- migrate
+/// USE_VIEWSET=1 cargo run --bin manage -- runserver
+/// ```
+///
+/// Unlike the function-based views above (which fall back to in-memory
+/// `get_sample_snippets()` data for demonstration), the ViewSet branch will
+/// observe an empty list until rows are inserted into the `snippets` table.
 #[reinhardt::viewset]
 pub fn viewset() -> reinhardt::ModelViewSet<Snippet, SnippetSerializer> {
 	use reinhardt::ModelViewSet;
