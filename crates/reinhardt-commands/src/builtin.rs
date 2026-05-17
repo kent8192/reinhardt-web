@@ -3797,6 +3797,47 @@ mod tests {
 		}
 	}
 
+	// Confusable-API guard: explicit invocation of
+	// `register_http_routes_from_inventory` after a manual
+	// `register_router(..)` must be rejected with a clear message
+	// (Refs #4453 DP-7).
+	#[cfg(all(feature = "routers", feature = "server"))]
+	#[tokio::test]
+	#[serial_test::serial(runserver)]
+	async fn test_register_http_routes_from_inventory_rejects_pre_registered_router() {
+		use reinhardt_urls::routers::ServerRouter;
+
+		// Arrange: a router is already registered via the manual setter
+		// (simulating an opt-out user who hand-built a ServerRouter and
+		// called `register_router(..)` themselves before invoking
+		// `RunServerCommand`).
+		reinhardt_urls::routers::register_router(ServerRouter::new());
+
+		// Act: explicit call to the inventory consumer must error.
+		let result = RunServerCommand
+			.register_http_routes_from_inventory()
+			.await;
+
+		// Cleanup: drop the manually registered router so subsequent
+		// tests in the `runserver` serial group start clean.
+		reinhardt_urls::routers::clear_router();
+
+		// Assert: error mentions the mutual-exclusion contract so the
+		// caller can fix the bootstrap rather than silently overriding.
+		let err = result.expect_err(
+			"expected DP-7 confusable-API rejection when a router is pre-registered",
+		);
+		let msg = err.to_string();
+		assert!(
+			msg.contains("already registered"),
+			"error must call out the pre-registered router; got: {msg}"
+		);
+		assert!(
+			msg.contains("mutually exclusive"),
+			"error must state the two paths are mutually exclusive; got: {msg}"
+		);
+	}
+
 	// ==================== Command Metadata Tests ====================
 
 	#[test]
