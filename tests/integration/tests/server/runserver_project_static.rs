@@ -195,7 +195,7 @@ async fn test_dist_assets_still_served_alongside_project_static() {
 }
 
 #[tokio::test]
-async fn test_project_static_missing_file_does_not_swallow_with_spa_html() {
+async fn test_project_static_missing_falls_through_to_dist_spa_fallback() {
 	// Arrange — request for a file that exists in neither project-static
 	// nor dist. SPA mode is OFF on project-static, so it must fall through;
 	// dist's SPA fallback returns index.html for non-excluded paths.
@@ -214,16 +214,11 @@ async fn test_project_static_missing_file_does_not_swallow_with_spa_html() {
 		.await
 		.expect("request failed");
 
-	// Assert — Issue #4484 fix is specifically about ensuring missing
-	// `/static/...` files are NOT silently masked by index.html when the
-	// project-static directory is present. Dist's SPA fallback (the
-	// existing pre-#4484 behaviour) still applies for paths not under
-	// `/static/admin/`, but the body still carries the SPA index — which
-	// is the intentional pre-existing behaviour for SPA-mode dist serving.
-	// What we assert here is that the response is at least produced via
-	// the SPA fallback path of the dist middleware (HTML), not silently
-	// dropped, and that the file from the project-static middleware does
-	// NOT shadow non-existent files with empty 200 responses.
+	// Assert — Issue #4484: project-static must NOT silently serve missing
+	// `/static/...` files with an empty 200; it must fall through so dist's
+	// SPA fallback (the pre-#4484 behaviour for paths outside
+	// `/static/admin/`) can serve `index.html` as before. The expected
+	// observable response here is therefore the SPA HTML coming from dist.
 	assert_eq!(response.status(), 200);
 	let content_type = response
 		.headers()
