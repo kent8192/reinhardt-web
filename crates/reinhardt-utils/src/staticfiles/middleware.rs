@@ -56,6 +56,21 @@ pub struct StaticFilesConfig {
 	/// application router that owns a nested mount such as `/static/admin/`:
 	/// listing the nested mount here guarantees the inner route wins even if
 	/// the outer `root_dir` accidentally contains a colliding file.
+	///
+	/// # Prefix format
+	///
+	/// Matching is `path.starts_with(prefix)` against the request URI path,
+	/// so prefix shape is significant:
+	///
+	/// - **Always start with `/`** so the prefix is matched against an
+	///   absolute path (the request URI path always begins with `/`).
+	/// - **Usually end with `/`** to anchor on a path-segment boundary; for
+	///   example, `/static/admin/` matches `/static/admin/foo.css` but not
+	///   `/static/administrators`. Omit the trailing `/` only when you
+	///   deliberately want segment-prefix matching.
+	/// - **Never include an empty string** — it would silently bypass the
+	///   middleware for every path. The [`StaticFilesConfig::passthrough_prefixes`]
+	///   builder panics if asked to install an empty prefix.
 	pub passthrough_prefixes: Vec<String>,
 	/// Cache control configuration for static file responses
 	pub cache_config: CacheControlConfig,
