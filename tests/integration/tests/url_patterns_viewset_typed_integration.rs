@@ -3,8 +3,8 @@
 //! When this entire file is unignored (Phase 9), the test suite must prove that
 //! `ViewSet` routes registered via `#[url_patterns(..., mode = server)]` produce
 //! typed `ResolvedUrls` accessors equivalent to function-handler accessors.
-
-#![cfg(feature = "server")]
+//!
+//! Refs Issue #4507.
 
 // PHASE 9 CHECKLIST: remove this `#[cfg(any())]` and the four #[ignore]
 // markers below once viewset_with_actions and #[viewset] impl-form are
