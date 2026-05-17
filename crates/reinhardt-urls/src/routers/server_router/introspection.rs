@@ -347,20 +347,11 @@ impl ServerRouter {
 			// `Route '<ns>:<basename>-<action>' not found in router`.
 			// Refs Issue #4507.
 			for action in viewset.get_extra_actions() {
-				let action_url_path = action
-					.url_path
-					.as_deref()
-					.unwrap_or(action.name.as_str());
-				let action_url_name = action
-					.url_name
-					.as_deref()
-					.unwrap_or(action.name.as_str());
+				let action_url_path = action.url_path.as_deref().unwrap_or(action.name.as_str());
+				let action_url_name = action.url_name.as_deref().unwrap_or(action.name.as_str());
 
 				let action_path = if action.detail {
-					format!(
-						"{}/{{{}}}/{}/",
-						base_path, lookup_field, action_url_path
-					)
+					format!("{}/{{{}}}/{}/", base_path, lookup_field, action_url_path)
 				} else {
 					format!("{}/{}/", base_path, action_url_path)
 				};
