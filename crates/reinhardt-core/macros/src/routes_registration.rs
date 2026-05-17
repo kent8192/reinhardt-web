@@ -215,32 +215,46 @@ pub(crate) fn extract_depends_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
 /// Returns an error if the function signature is invalid (e.g., missing return type,
 /// sync function with `#[inject]` parameters)
 pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
-	// Parse comma-separated arguments: `standalone`, `client_inventory`.
+	// Parse comma-separated arguments: `standalone`, `no_client_inventory`,
+	// `no_ws_inventory`. (Refs #4453)
 	//
 	// - `standalone` (existing): skip per-app URL-resolver generation and the
 	//   `url_prelude` module for projects that do not use `installed_apps!`.
-	// - `client_inventory` (new, #4453): opt into the cross-target macro
-	//   expansion. Drops the `native_only` gate from the user function and
-	//   linker marker, and emits a WASM-only `ClientRouterRegistration`
-	//   `inventory::submit!` block consumed by
-	//   `ClientLauncher::register_routes_from_inventory()`. The user body
-	//   MUST compile on `wasm32-unknown-unknown` (closure-style
-	//   `.server(|s| ...).client(|c| ...)` is the recommended shape;
-	//   `UnifiedRouter::new().mount(server_router())` does NOT compile on
-	//   wasm and should stay with plain `#[routes]` or
-	//   `#[routes(standalone)]` without `client_inventory`).
+	// - `no_client_inventory` (new, #4453): opt **out** of the WASM-side
+	//   `ClientRouterRegistration` `inventory::submit!` block. Default is
+	//   to emit it (Reinhardt's `#[routes]` is now cross-target by
+	//   default — the entire framework's `UnifiedRouter` body is expected
+	//   to compile on both native and WASM). Opt out when retaining a
+	//   legacy `UnifiedRouter::new().mount(server_router())`-style body
+	//   that references native-only `ServerRouter` and would not compile
+	//   on `wasm32-unknown-unknown`. Sets the user-function gate back to
+	//   `#[cfg(not(wasm))]` to mirror the pre-#4453 behavior.
+	// - `no_ws_inventory` (new, #4453): opt **out** of the native
+	//   `WsRouterRegistration` `inventory::submit!` block. Default is to
+	//   emit it (also gated on `feature = "websockets"` at the
+	//   `#[cfg]` level, so without the feature the block compiles to
+	//   nothing anyway). Opt out when you want `runserver` to skip
+	//   WebSocket router registration entirely (e.g. for a tightly
+	//   sandboxed deployment that explicitly disables WS).
 	//
-	// Plain `#[routes]` (no arguments) keeps the pre-#4453 native-only
-	// behavior verbatim, so existing consumers see no regression.
+	// **Breaking change vs. PR #4477** (Refs #4453 user directive):
+	// the pre-#4477 `client_inventory` *opt-in* flag is removed. Existing
+	// users of `#[routes(client_inventory)]` (only `examples-tutorial-basis`
+	// in the workspace at the time of this commit) should drop the flag.
+	// Legacy `mount(..)`-style bodies that previously worked under bare
+	// `#[routes]` MUST now add `no_client_inventory` to keep their
+	// native-only behavior; otherwise they will fail to compile on WASM
+	// with a clear error pointing at the legacy `mount(..)` call.
 	let mut standalone = false;
-	let mut client_inventory = false;
+	let mut no_client_inventory = false;
+	let mut no_ws_inventory = false;
 	if !args.is_empty() {
 		let parser = syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated;
 		let parsed = syn::parse::Parser::parse2(parser, args).map_err(|e| {
 			syn::Error::new(
 				e.span(),
 				"invalid arguments for #[routes]; expected comma-separated flags from \
-				 `standalone`, `client_inventory`",
+				 `standalone`, `no_client_inventory`, `no_ws_inventory`",
 			)
 		})?;
 		for ident in parsed {
@@ -252,19 +266,42 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					));
 				}
 				standalone = true;
-			} else if ident == "client_inventory" {
-				if client_inventory {
+			} else if ident == "no_client_inventory" {
+				if no_client_inventory {
 					return Err(syn::Error::new_spanned(
 						ident,
-						"`client_inventory` specified twice",
+						"`no_client_inventory` specified twice",
 					));
 				}
-				client_inventory = true;
+				no_client_inventory = true;
+			} else if ident == "no_ws_inventory" {
+				if no_ws_inventory {
+					return Err(syn::Error::new_spanned(
+						ident,
+						"`no_ws_inventory` specified twice",
+					));
+				}
+				no_ws_inventory = true;
+			} else if ident == "client_inventory" {
+				// Legacy opt-in flag removed in the #4453 opt-out switchover.
+				// Provide a clear migration error rather than silently
+				// accepting (DP-4 fail early).
+				return Err(syn::Error::new_spanned(
+					ident,
+					"`#[routes(client_inventory)]` is no longer accepted: \
+					 cross-target client inventory is now the default. \
+					 Drop the `client_inventory` flag (a bare `#[routes]` \
+					 emits the WASM-side `ClientRouterRegistration` block \
+					 automatically). If your body uses legacy native-only \
+					 calls like `UnifiedRouter::new().mount(..)` and you \
+					 need it gated back to `#[cfg(not(wasm))]`, replace \
+					 the flag with `no_client_inventory` instead. Refs #4453.",
+				));
 			} else {
 				return Err(syn::Error::new_spanned(
 					ident,
 					"unknown argument for #[routes]; expected `standalone`, \
-					 `client_inventory`, or no arguments",
+					 `no_client_inventory`, `no_ws_inventory`, or no arguments",
 				));
 			}
 		}
@@ -287,27 +324,21 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 
 	let is_async = input.sig.asyncness.is_some();
 
-	// `client_inventory` is only meaningful for sync `#[routes]` because
-	// `inventory::submit!` requires a `const`-constructible registration
-	// whose factory is `fn() -> Arc<ClientRouter>` (sync). Driving an async
-	// `routes()` body from a sync factory would require a per-target
-	// executor stub on `wasm32-unknown-unknown`, which is out of scope for
-	// #4453. Async client inventory may be added in a follow-up.
+	// Async `#[routes]` is implicitly server-only: `inventory::submit!`
+	// requires a `const`-constructible registration whose factory is a
+	// sync `fn() -> Arc<ClientRouter>` / `fn() -> Arc<WebSocketRouter>`.
+	// Driving an async `routes()` body from a sync factory would require
+	// a per-target executor stub on `wasm32-unknown-unknown` (and a
+	// blocking adapter on native), which is out of scope for #4453.
 	//
-	// Reject the combination at compile time (fail early per DP-4) instead
-	// of silently dropping the flag and surprising the user with an empty
-	// inventory at `launch()` time. Refs Codex review finding #2 on PR
-	// #4477.
-	if is_async && client_inventory {
-		return Err(syn::Error::new_spanned(
-			&input.sig,
-			"`#[routes(client_inventory)]` is not supported on async `routes()` \
-			 functions. The WASM `ClientRouterRegistration::submit!` factory must \
-			 be a sync `fn() -> Arc<ClientRouter>`, but the annotated function is \
-			 async. Either make `routes()` sync, or drop `client_inventory` and \
-			 keep the async server-only behavior. Refs #4453.",
-		));
-	}
+	// Concretely: async `#[routes]` never emits a client or WS submit
+	// block, regardless of the opt-out flags. The user fn itself stays
+	// native-only because async bodies typically reference DI types
+	// (`Depends<T>`, `SingletonScope`) that are native-only. The
+	// `no_client_inventory` / `no_ws_inventory` flags are silently
+	// accepted on async (they would otherwise be the wrong knob to
+	// tell users about — async users want a sync `routes()`, not a
+	// client-inventory toggle).
 
 	// Analyze function parameters for #[inject]
 	let mut inject_params = Vec::new();
@@ -336,59 +367,57 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 	// matching async submit block, and the DI-aware async server factory.
 	// These reference native-only types (`ServerRouter`, DI scopes) that
 	// do not exist on `wasm32-unknown-unknown`.
-	//
-	// Native-only cfg gate. Used unconditionally for the server-side
-	// `inventory::submit!` block (which references `ServerRouter` and DI
-	// types), and conditionally for the user's `routes()` function body
-	// and the linker marker via `user_fn_and_marker_gate` below.
-	//
-	// The user-function gating is controlled by the `client_inventory`
-	// flag, NOT by which target the macro is expanding on. With
-	// `client_inventory`, the gate is dropped so the body compiles on
-	// both targets; without it, the body remains native-only, preserving
-	// the pre-#4453 behavior for legacy `mount(..)`-style bodies. Refs
-	// #4175, #4453.
 	let native_only = quote! {
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 	};
 
 	// WASM-only emission gate for the `ClientRouterRegistration`
-	// `inventory::submit!` block. The block is emitted only when
-	// `client_inventory` is set (controlled by `wasm_client_submit_block`
-	// below); when emitted, its factory calls back into the user's
-	// `routes()` function, which by virtue of the same `client_inventory`
-	// flag has had its `native_only` gate dropped. Refs #4453.
+	// `inventory::submit!` block.
 	let wasm_only = quote! {
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 	};
 
-	// Gate applied to the user's `routes()` function body and the linker
-	// marker. Behavior controlled by the explicit `client_inventory` flag,
-	// NOT by `standalone`:
-	//
-	// - Without `client_inventory` (default): gate to native-only. This
-	//   preserves the pre-#4453 behavior verbatim and prevents legacy
-	//   `mount(..)`-style bodies — which reference native-only types — from
-	//   needing to compile on `wasm32-unknown-unknown` (#4175 protection,
-	//   Codex adversarial review feedback).
-	// - With `client_inventory`: drop the gate. The user opts into a
-	//   cross-target body and must write it accordingly (closure-style
-	//   `.server(|s| ...).client(|c| ...)` is the recommended shape).
-	let user_fn_and_marker_gate = if client_inventory {
-		quote! {}
-	} else {
-		quote! { #native_only }
+	// Native-only emission gate for the WS-side `WsRouterRegistration`
+	// `inventory::submit!` block. Additionally gated on `feature =
+	// "websockets"` because `reinhardt::WsRouterRegistration` is itself
+	// re-exported only when the facade's `websockets` feature is on.
+	// (Refs #4453)
+	let native_ws_only = quote! {
+		#[cfg(all(
+			not(all(target_family = "wasm", target_os = "unknown")),
+			feature = "websockets"
+		))]
 	};
 
-	// WASM client `inventory::submit!` block. Emitted only when the user
-	// opts in via `#[routes(client_inventory)]`. The default `#[routes]`
-	// (and `#[routes(standalone)]` without `client_inventory`) emit no
-	// WASM-side inventory submission, preserving pre-#4453 behavior for
-	// every existing consumer.
+	// Gate applied to the user's `routes()` function body and the linker
+	// marker. Controlled by the `no_client_inventory` opt-out (Refs #4453):
 	//
-	// `standalone` is orthogonal: it controls URL-resolver generation in
-	// `#url_prelude_code` below and has no effect on this block.
-	let wasm_client_submit_block = if client_inventory {
+	// - Default (no opt-out flag): gate is empty. The user's body must
+	//   compile on `wasm32-unknown-unknown` because the WASM-side
+	//   `ClientRouterRegistration` factory below will reference it.
+	//   Closure-style `UnifiedRouter::new().server(|s| ...).client(|c|
+	//   ...).websocket(|ws| ...)` is the recommended cross-target shape;
+	//   the WASM `UnifiedRouter` variant treats `.server(..)` and
+	//   `.websocket(..)` as closure-discarding stubs.
+	// - With `no_client_inventory`: gate falls back to `#[cfg(not(wasm))]`
+	//   so legacy `UnifiedRouter::new().mount(..)` bodies that reference
+	//   native-only `ServerRouter` continue to compile.
+	// - For async `#[routes]`: always native-only regardless of the flag,
+	//   because async bodies typically reference native-only DI types.
+	let user_fn_and_marker_gate = if no_client_inventory || is_async {
+		quote! { #native_only }
+	} else {
+		quote! {}
+	};
+
+	// WASM client `inventory::submit!` block. Emitted by default on
+	// sync `#[routes]`; suppressed by `no_client_inventory` (which also
+	// gates the user fn back to native-only above) and on async
+	// `#[routes]` (where a const-constructible sync factory would have
+	// to drive an async body — out of scope for #4453).
+	let wasm_client_submit_block = if no_client_inventory || is_async {
+		quote! {}
+	} else {
 		quote! {
 			#wasm_only
 			#[allow(unsafe_attr_outside_unsafe)]
@@ -401,8 +430,30 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				}
 			};
 		}
-	} else {
+	};
+
+	// Native WS `inventory::submit!` block. Emitted by default on
+	// sync `#[routes]`; suppressed by `no_ws_inventory` and on async
+	// `#[routes]` (same const-factory restriction as the client block).
+	// The `#[cfg(feature = "websockets")]` gate above ensures the block
+	// compiles to nothing when the consumer's facade doesn't enable
+	// `websockets`, so users without WS deployments pay no cost. Refs
+	// #4453.
+	let native_ws_submit_block = if no_ws_inventory || is_async {
 		quote! {}
+	} else {
+		quote! {
+			#native_ws_only
+			#[allow(unsafe_attr_outside_unsafe)]
+			const _: () = {
+				fn __get_websocket_router() -> ::std::sync::Arc<#reinhardt::WebSocketRouter> {
+					::std::sync::Arc::new(#fn_name().into_websocket())
+				}
+				#reinhardt::inventory::submit! {
+					#reinhardt::WsRouterRegistration::__macro_new(__get_websocket_router)
+				}
+			};
+		}
 	};
 
 	let expanded = if !is_async {
@@ -411,25 +462,24 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		quote! {
 			// User's `routes()` function.
 			//
-			// Cross-target emission is gated on the `client_inventory` flag
+			// Cross-target emission is gated on `no_client_inventory`
 			// (carried by `user_fn_and_marker_gate`), NOT on `standalone`:
 			//
-			// - With `client_inventory`: gate is empty, so the function is
-			//   emitted on both targets. On native it is consumed by the
-			//   server `inventory::submit!` below; on WASM by the parallel
+			// - Default (no opt-out): gate is empty, so the function is
+			//   emitted on both targets. On native it feeds the server
+			//   `inventory::submit!` below; on WASM the parallel
 			//   `ClientRouterRegistration` submit. The body MUST compile
 			//   cross-target — closure-style
-			//   `UnifiedRouter::new().server(|s| ...).client(|c| ...)` is
-			//   the recommended shape; the WASM `UnifiedRouter` variant
-			//   treats `.server(...)` as a closure-discarding stub.
-			// - Without `client_inventory` (default, including bare
-			//   `#[routes]` and `#[routes(standalone)]`): gate is
-			//   `#[cfg(not(wasm))]`, so the function and the linker marker
-			//   are native-only. Legacy `UnifiedRouter::new().mount(..)`
-			//   bodies that reference native-only `ServerRouter` continue
-			//   to compile unchanged on WASM consumers. Refs #4175, #4453,
-			//   and Codex adversarial review feedback (regression
-			//   protection for existing consumers).
+			//   `UnifiedRouter::new().server(|s| ...).client(|c| ...).websocket(|ws| ...)`
+			//   is the recommended shape; the WASM `UnifiedRouter`
+			//   variant treats `.server(..)` and `.websocket(..)` as
+			//   closure-discarding stubs.
+			// - With `#[routes(no_client_inventory)]`: gate is
+			//   `#[cfg(not(wasm))]`, so the function and linker marker
+			//   are native-only. Legacy
+			//   `UnifiedRouter::new().mount(..)` bodies that reference
+			//   native-only `ServerRouter` continue to compile under
+			//   this opt-out. Refs #4175, #4453.
 			//
 			// private_interfaces: The macro forces `pub` visibility, but users
 			// legitimately use `pub(crate)` newtype wrappers for DI parameters
@@ -461,11 +511,24 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			// `routes()` and converts the returned `UnifiedRouter` into a
 			// `ClientRouter` via `into_client()`. Refs #4453.
 			//
-			// Suppressed for `#[routes(standalone)]` so legacy standalone
-			// bodies using native-only `mount(..)` continue to compile on
-			// WASM (the user's function itself remains `native_only`-gated
-			// in the standalone path).
+			// Default behavior under the #4453 opt-out switchover: emitted
+			// for sync `#[routes]`. Suppressed by `#[routes(no_client_inventory)]`
+			// (legacy `mount(..)` bodies that reference native-only
+			// `ServerRouter` keep their pre-#4453 native-only gating).
 			#wasm_client_submit_block
+
+			// Native + websockets-feature parallel registration: submit a
+			// WebSocketRouter factory derived from the same `routes()`
+			// function via `into_websocket()`. Consumed by
+			// `RunServerCommand::register_websocket_routes_from_inventory`
+			// at server startup. Refs #4453.
+			//
+			// Default behavior: emitted for sync `#[routes]` whenever the
+			// consumer's facade enables `feature = "websockets"`.
+			// Suppressed by `#[routes(no_ws_inventory)]` and on async
+			// `#[routes]` (same const-factory restriction as the client
+			// block).
+			#native_ws_submit_block
 
 			// Linker marker to enforce single #[routes] usage.
 			//
@@ -493,12 +556,15 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		// use the sync arm.
 		let fn_sig = &input.sig;
 		quote! {
-			// User function gating mirrors the sync arm: controlled by the
-			// `client_inventory` flag, not by `standalone`. Since
-			// `client_inventory` is rejected on async `#[routes]` at parse
-			// time, this arm always sees `client_inventory == false`, so
-			// `user_fn_and_marker_gate` resolves to `#[cfg(not(wasm))]`
-			// and the user function + linker marker remain native-only.
+			// User function gating mirrors the sync arm but is forced
+			// to native-only for async `#[routes]`: async bodies
+			// typically reference native-only DI types (`Depends<T>`,
+			// `SingletonScope`), and no client/WS inventory block is
+			// emitted on async anyway (sync `const` factory
+			// restriction). The shared `user_fn_and_marker_gate` already
+			// folds `is_async` into the gate decision, so this arm
+			// resolves to `#[cfg(not(wasm))]` regardless of
+			// `no_client_inventory` / `no_ws_inventory`.
 			#user_fn_and_marker_gate
 			#[allow(private_interfaces)]
 			#(#fn_attrs)*
@@ -611,14 +677,15 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		// `inventory::submit!` block remain gated on `#native_only`.
 		//
 		// The user's function definition is gated by
-		// `user_fn_and_marker_gate`, mirroring the sync arm. Because
-		// `client_inventory` is rejected on async `#[routes]` at parse
-		// time, this arm always falls into the legacy native-only branch
-		// (gate = `#[cfg(not(wasm))]`). No WASM client `inventory::submit!`
-		// is emitted either: the inventory factory would have to drive an
-		// async function synchronously, which is out of scope for #4453.
-		// Async `#[routes]` is server-oriented; client-side WASM SPAs use
-		// the sync arm with `#[routes(client_inventory)]`.
+		// `user_fn_and_marker_gate`, which folds `is_async` into its
+		// decision and so always resolves to `#[cfg(not(wasm))]` for
+		// async `#[routes]` — regardless of the user's
+		// `no_client_inventory` / `no_ws_inventory` flags. No WASM
+		// client or WS `inventory::submit!` is emitted either: the
+		// inventory factory would have to drive an async function
+		// synchronously, which is out of scope for #4453. Async
+		// `#[routes]` is server-oriented; client-side WASM SPAs use the
+		// sync arm with a bare `#[routes]` (or `#[routes(standalone)]`).
 		//
 		// Because async `#[routes]` bodies may freely reference native-
 		// only `#[inject]` types, the native-only gating here is what

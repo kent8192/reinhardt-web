@@ -252,6 +252,32 @@ impl WebSocketRouter {
 		self.routes.write().await.clear();
 		self.names.write().await.clear();
 	}
+
+	/// Combine `other`'s build-time consumer registrations into `self`.
+	///
+	/// Used by inventory consumers (e.g.
+	/// `RunServerCommand::register_websocket_routes_from_inventory`,
+	/// Refs #4453) to fold multiple per-`#[routes]` factories into a
+	/// single process-wide router.
+	///
+	/// Only `pending_consumers` is merged. The runtime `routes` /
+	/// `names` maps are intentionally left alone: at the inventory
+	/// consumption point they are empty (each factory constructs a
+	/// fresh `WebSocketRouter` via `into_websocket(..)`), so cross-
+	/// factory merging would have nothing to combine and would risk
+	/// dropping each other's locked maps. Runtime route registration
+	/// continues to flow through [`Self::register_route`] after merge.
+	///
+	/// Namespace policy: if `self` already has a namespace, it wins
+	/// (consistent with the consumer iteration order). Otherwise
+	/// `other`'s namespace is adopted.
+	pub fn merge(mut self, mut other: Self) -> Self {
+		self.pending_consumers.append(&mut other.pending_consumers);
+		if self.namespace.is_none() {
+			self.namespace = other.namespace;
+		}
+		self
+	}
 }
 
 impl Default for WebSocketRouter {

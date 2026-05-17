@@ -1411,6 +1411,21 @@ pub use reinhardt_websockets::{
 	get_websocket_router, register_websocket_router, reverse_websocket_url,
 };
 
+// Re-export WebSocket inventory registration glue (Refs #4453).
+//
+// `#[routes]` emits `reinhardt::WsRouterRegistration::__macro_new(..)` on
+// native targets with `feature = "websockets"`. The consumer side
+// (`RunServerCommand::register_websocket_routes_from_inventory`) uses
+// `collect_websocket_router_from_inventory` to fold all registrations
+// into a single `WebSocketRouter` before calling
+// `register_websocket_router(..)`. Anchored in `reinhardt-websockets`
+// (not `reinhardt-urls`) so adding it does not introduce a new
+// `reinhardt-urls -> reinhardt-websockets` dependency edge.
+#[cfg(all(feature = "websockets", native))]
+pub use reinhardt_websockets::routing::{
+	WsRouterRegistration, collect_websocket_router_from_inventory,
+};
+
 /// WASM shim for `WebSocketRouter` (Issue #4161).
 ///
 /// `#[url_patterns(.., mode = ws)]` expansions call `.with_namespace(...)`

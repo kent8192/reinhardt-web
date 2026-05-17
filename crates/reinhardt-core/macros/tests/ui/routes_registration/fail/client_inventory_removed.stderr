@@ -1,0 +1,5 @@
+error: `#[routes(client_inventory)]` is no longer accepted: cross-target client inventory is now the default. Drop the `client_inventory` flag (a bare `#[routes]` emits the WASM-side `ClientRouterRegistration` block automatically). If your body uses legacy native-only calls like `UnifiedRouter::new().mount(..)` and you need it gated back to `#[cfg(not(wasm))]`, replace the flag with `no_client_inventory` instead. Refs #4453.
+  --> tests/ui/routes_registration/fail/client_inventory_removed.rs:11:10
+   |
+11 | #[routes(client_inventory)]
+   |          ^^^^^^^^^^^^^^^^

@@ -1286,6 +1286,78 @@ impl ShellCommand {
 /// Development server command
 pub struct RunServerCommand;
 
+impl RunServerCommand {
+	/// Consume `WsRouterRegistration` `inventory` entries and install the
+	/// merged [`WebSocketRouter`] as the process-wide WS router (Refs
+	/// #4453).
+	///
+	/// This is the canonical, named consumer of the `#[routes]`-emitted
+	/// WebSocket-side `inventory::submit!` block (which the macro emits
+	/// by default; suppress with `#[routes(no_ws_inventory)]` if you
+	/// want this method to be a no-op even when the `websockets`
+	/// feature is enabled). [`RunServerCommand::execute`] invokes it
+	/// explicitly so the registration step is visible at the command's
+	/// call site rather than hidden in the dispatch loop.
+	///
+	/// Unlike the HTTP variant ([`RunServerCommand::register_http_routes_from_inventory`]
+	/// — see #4453 PR #1), an **empty inventory is not an error here**:
+	/// WebSocket routes are optional, so a project that emits no
+	/// `WsRouterRegistration` (e.g. all `#[routes]` use
+	/// `no_ws_inventory`, or no `#[url_patterns(.., mode = ws)]` blocks
+	/// exist) should still let `runserver` start normally. The
+	/// `verbose` log line records the count so misconfiguration is
+	/// debuggable.
+	///
+	/// # Conflict
+	///
+	/// Returns an error if a process-wide `WebSocketRouter` is already
+	/// registered (via [`reinhardt_websockets::register_websocket_router`])
+	/// at the time this method is called — the DP-7 confusable-API guard
+	/// mirrors the HTTP variant.
+	///
+	/// [`WebSocketRouter`]: reinhardt_websockets::WebSocketRouter
+	/// [`RunServerCommand::register_http_routes_from_inventory`]: crate::RunServerCommand
+	#[cfg(feature = "websockets")]
+	pub async fn register_websocket_routes_from_inventory(
+		&self,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		use reinhardt_websockets::routing::collect_websocket_router_from_inventory;
+		use reinhardt_websockets::{get_websocket_router, register_websocket_router};
+
+		// DP-7 confusable-API guard: reject if a router is already installed.
+		if get_websocket_router().await.is_some() {
+			return Err("WebSocketRouter is already registered.\n\
+				`RunServerCommand::register_websocket_routes_from_inventory()` and \
+				`reinhardt_websockets::register_websocket_router(..)` are mutually \
+				exclusive: choose exactly one. If you want the inventory path, \
+				do not pre-register a router; if you want manual registration, \
+				skip this method and let `RunServerCommand::execute(..)` reuse \
+				the pre-registered router."
+				.into());
+		}
+
+		// Empty inventory is acceptable: WS routes are optional.
+		let Some(router) = collect_websocket_router_from_inventory() else {
+			return Ok(());
+		};
+		register_websocket_router(router).await;
+		Ok(())
+	}
+
+	/// No-op when the `websockets` feature is disabled.
+	///
+	/// Kept public to preserve API stability across feature-flag toggles
+	/// so opt-out users targeting minimal builds compile the same code
+	/// path regardless of whether `reinhardt-commands` links
+	/// `reinhardt-websockets`.
+	#[cfg(not(feature = "websockets"))]
+	pub async fn register_websocket_routes_from_inventory(
+		&self,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		Ok(())
+	}
+}
+
 #[async_trait]
 impl BaseCommand for RunServerCommand {
 	fn name(&self) -> &str {
@@ -1356,6 +1428,29 @@ impl BaseCommand for RunServerCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		// Explicit WebSocket route registration (Refs #4453 DP-1).
+		// The inventory consumption used to live nowhere visible — there
+		// was no symmetric `register_websocket_router` call site at all.
+		// We now make it explicit here so readers of `execute(..)` see
+		// exactly how the `#[routes]`-emitted WS inventory becomes the
+		// global router.
+		//
+		// Opt-out path: users who hand-build a `WebSocketRouter` and
+		// install it via `register_websocket_router(..)` before this
+		// body runs are detected by the `get_websocket_router().await`
+		// guard inside the method itself, which rejects via the DP-7
+		// confusable-API contract. Users who want a no-op here should
+		// add `#[routes(no_ws_inventory)]` to keep the inventory empty.
+		//
+		// Empty inventory is **not** an error (unlike the HTTP path):
+		// WebSocket routes are optional.
+		#[cfg(feature = "websockets")]
+		{
+			self.register_websocket_routes_from_inventory()
+				.await
+				.map_err(|e| crate::CommandError::ExecutionError(e.to_string()))?;
+		}
+
 		let address = ctx.arg(0).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000");
 		let noreload = ctx.has_option("noreload");
 		let no_wasm_rebuild = ctx.has_option("no-wasm-rebuild");

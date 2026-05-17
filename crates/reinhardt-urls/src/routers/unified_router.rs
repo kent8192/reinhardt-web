@@ -233,6 +233,18 @@ impl UnifiedRouter {
 		self.client
 	}
 
+	/// Consumes the router and returns the WebSocket router.
+	///
+	/// Parallel to [`into_server`](Self::into_server) and
+	/// [`into_client`](Self::into_client); used by the `#[routes]`-emitted
+	/// `WsRouterRegistration` inventory factory and by
+	/// `RunServerCommand::register_websocket_routes_from_inventory` (Refs
+	/// #4453). Returns the router by value so the consumer takes
+	/// ownership of all pending consumer registrations and the namespace.
+	pub fn into_websocket(self) -> reinhardt_core::ws::WebSocketRouter {
+		self.websocket
+	}
+
 	/// Consumes the router and returns both parts.
 	pub fn into_parts(mut self) -> (ServerRouter, ClientRouter) {
 		self.flush_di_registrations();

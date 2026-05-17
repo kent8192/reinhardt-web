@@ -65,6 +65,7 @@ rcgen = "0.14.5"
 reinhardt-utils = {workspace = true, features = ["utils-core", "staticfiles"]}
 reinhardt-rest = {workspace = true, features = ["openapi"], optional = true}
 reinhardt-openapi = { workspace = true, optional = true }
+reinhardt-websockets = { workspace = true, optional = true }
 cargo_metadata = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
 
@@ -102,6 +103,10 @@ plugins = ["dep:reinhardt-dentdelion"]
 auth = ["dep:reinhardt-auth", "reinhardt-auth?/database", "reinhardt-db"]
 admin = []
 pages = ["routers", "reinhardt-urls/client-router"]
+# WebSocket inventory consumption support for `runserver`
+# (`RunServerCommand::register_websocket_routes_from_inventory`).
+# Refs #4453.
+websockets = ["dep:reinhardt-websockets"]
 full = [
   "migrations",
   "routers",
@@ -122,4 +127,5 @@ full = [
   "auth",
   "admin",
   "pages",
+  "websockets",
 ]
