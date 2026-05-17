@@ -416,14 +416,19 @@ pub async fn execute_from_command_line_with_registry(
 	run_command_with_registry(command, verbosity, registry).await
 }
 
-/// Returns `true` for commands that require HTTP route registration.
+/// Returns `true` for commands that need URL patterns registered **before**
+/// the command body runs.
 ///
-/// Only HTTP-serving commands (`runserver`, `showurls`, `generateopenapi`)
-/// need URL patterns registered. DB-only and utility commands work without
-/// a `#[routes]` function being present.
+/// `Runserver` is intentionally **not** in this list (Refs #4453): the
+/// HTTP-route inventory pull is now performed explicitly inside
+/// [`RunServerCommand::execute`](crate::RunServerCommand) so that the
+/// registration step is visible at the command's call site rather than
+/// hidden in this dispatch loop. `Showurls` / `Introspect` /
+/// `Generateopenapi` still receive the pre-dispatch
+/// [`auto_register_router`] call until they grow their own explicit
+/// `register_*_from_inventory()` methods (tracked separately).
 fn requires_router(command: &Commands) -> bool {
 	match command {
-		Commands::Runserver { .. } => true,
 		#[cfg(feature = "routers")]
 		Commands::Showurls { .. } => true,
 		#[cfg(feature = "introspect")]
@@ -1253,62 +1258,19 @@ async fn execute_generateopenapi(
 /// ```
 #[cfg(feature = "routers")]
 pub async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
-	use reinhardt_urls::routers::{UrlPatternsRegistration, register_router_arc};
-
-	// Collect all registrations for validation
-	let registrations: Vec<_> = inventory::iter::<UrlPatternsRegistration>().collect();
-
-	// Validate single registration
-	match registrations.len() {
-		0 => {
-			return Err("No URL patterns registered.\n\
-				 Add the `#[routes]` attribute to your routes function in src/config/urls.rs:\n\n\
-				 #[routes]\n\
-				 pub fn routes() -> UnifiedRouter {\n\
-				     UnifiedRouter::new()\n\
-				 }\n\n\
-				 If your project uses a library/binary split (src/lib.rs + src/bin/manage.rs),\n\
-				 the linker may silently discard route registrations from the library crate.\n\
-				 Fix: add `use your_crate_name as _;` to src/bin/manage.rs to force-link\n\
-				 the library and preserve its side-effectful route registrations."
-				.to_string()
-				.into());
-		}
-		1 => {
-			// Expected case: exactly one registration
-		}
-		n => {
-			// Multiple registrations detected.
-			// This should normally be caught at link time by the linker marker,
-			// but we provide a clear error message as a fallback.
-			return Err(format!(
-				"Multiple #[routes] functions detected ({n} found).\n\
-				 Only one function in the entire project should be annotated with #[routes].\n\n\
-				 Please ensure that:\n\
-				 1. Only one #[routes] attribute exists in your codebase\n\
-				 2. Check src/config/urls.rs and any other files that might have #[routes]\n\
-				 3. If you have multiple router configurations, combine them into a single function\n\n\
-				 Example:\n\
-				 #[routes]\n\
-				 pub fn routes() -> UnifiedRouter {{\n\
-				     UnifiedRouter::new()\n\
-				         .mount(\"/api/\", api::routes())  // NOT annotated with #[routes]\n\
-				         .mount(\"/admin/\", admin::routes())\n\
-				 }}"
-			)
-			.into());
-		}
-	}
-
-	// Get and register the router (supports both sync and async factories)
-	let registration = &registrations[0];
-	let router = registration
-		.server_router_async()
+	// Thin delegation to the named consumer on `RunServerCommand`
+	// (Refs #4453). The actual inventory iteration, multi/empty
+	// validation, and global registration live in
+	// `RunServerCommand::register_http_routes_from_inventory(..)` so the
+	// `runserver` command body can call them at a visible call site.
+	//
+	// This function is preserved as a `pub` API for backward
+	// compatibility with non-`runserver` HTTP-serving commands
+	// (`showurls`, `generateopenapi`, `introspect`) whose own explicit
+	// `register_*_from_inventory()` plumbing is tracked separately.
+	crate::RunServerCommand
+		.register_http_routes_from_inventory()
 		.await
-		.map_err(|e| format!("Failed to create router from #[routes] function: {e}"))?;
-	register_router_arc(router);
-
-	Ok(())
 }
 
 /// No-op implementation when the `routers` feature is disabled.
