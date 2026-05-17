@@ -384,7 +384,7 @@ async fn test_set_role() {
 #[ignore = "Requires testcontainers setup"]
 async fn test_reset_role() {
 	// 1. SET ROLE admin
-// 2. RESET ROLE
+	// 2. RESET ROLE
 	// 3. Verify show role() returns current_user
 }
 

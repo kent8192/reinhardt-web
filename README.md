@@ -104,7 +104,15 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current status:** All crates are at `0.1.0-rc.29` (Release Candidate).
+**Current status:** Reinhardt is at `0.1.0-rc.29` (Release Candidate). Most
+crates track this version; a small number lag by one or more patch numbers
+when no conventional-commit changes have touched them since their previous
+release-plz tag (release-plz correctly skips a bump in that case). At
+`rc.29` this applies to:
+
+- `reinhardt-testkit-macros` — remains at `0.1.0-rc.28` (no changes since
+  its rc.28 tag; re-exported through `reinhardt-testkit`, so depending on
+  `reinhardt-testkit` alone gives you a compatible pair).
 
 > **0.x.y Series Caveat:** The RC policy below — API freeze during `rc.*` and a
 > 2-week stability window before the first stable release — is followed strictly
