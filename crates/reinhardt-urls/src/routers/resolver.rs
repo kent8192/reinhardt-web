@@ -77,7 +77,7 @@ pub trait UrlResolver {
 ///
 /// Refs Issue #4507 (defect #2).
 #[deprecated(
-	since = "0.1.0-rc.20",
+	since = "0.1.0-rc.29",
 	note = "Used only by deprecated flat ViewSet trait accessors; prefer urls.server().<app>().<route>()."
 )]
 pub trait UrlResolverUnprefixed: UrlResolver {

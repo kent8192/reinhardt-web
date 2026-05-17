@@ -113,10 +113,10 @@ fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
 		#[doc(hidden)]
 		pub mod #list_mod_ident {
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_list)]
+			#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_list)]
 			#[doc = #list_doc]
 			pub trait #list_trait_ident: #reinhardt_crate::UrlResolverUnprefixed {
-				#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_list)]
+				#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_list)]
 				#[doc = #list_doc]
 				fn #list_method_ident(&self) -> String {
 					// Supertrait `UrlResolverUnprefixed` brings the
@@ -147,10 +147,10 @@ fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
 		#[doc(hidden)]
 		pub mod #detail_mod_ident {
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_detail)]
+			#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_detail)]
 			#[doc = #detail_doc]
 			pub trait #detail_trait_ident: #reinhardt_crate::UrlResolverUnprefixed {
-				#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_detail)]
+				#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_detail)]
 				#[doc = #detail_doc]
 				fn #detail_method_ident(&self, id: &str) -> String {
 					// Supertrait `UrlResolverUnprefixed` brings the
