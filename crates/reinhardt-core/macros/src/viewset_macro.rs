@@ -100,39 +100,70 @@ fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
 	let list_doc = format!("Resolve URL for route `{list_route_name}`.");
 	let detail_doc = format!("Resolve URL for route `{detail_route_name}`.");
 
+	// Deprecation notes steering callers from the flat blanket-trait surface
+	// (`urls.snippet_list()`) to the namespaced gateway accessors
+	// (`urls.server().<app>().<basename>_list()`). Refs Issue #4507 (defect #2).
+	let deprecated_note_list = format!("use `urls.server().<app>().{basename}_list()` instead");
+	let deprecated_note_detail =
+		format!("use `urls.server().<app>().{basename}_detail(id)` instead");
+
 	let reinhardt_crate = crate::crate_paths::get_reinhardt_crate();
 
 	quote! {
 		#[doc(hidden)]
 		pub mod #list_mod_ident {
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_list)]
 			#[doc = #list_doc]
 			pub trait #list_trait_ident: #reinhardt_crate::UrlResolver {
+				#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_list)]
 				#[doc = #list_doc]
 				fn #list_method_ident(&self) -> String {
-					self.resolve_url(#list_route_name, &[])
+					// Use the namespace-aware lookup so the legacy flat
+					// accessor resolves `"<app>:<route>"` correctly. The
+					// trait is intentionally deprecated; suppress the
+					// warning for this macro-emitted call site only.
+					#[allow(deprecated)]
+					{
+						use #reinhardt_crate::UrlResolverUnprefixed as _;
+						self.resolve_url_unprefixed(#list_route_name, &[])
+					}
 				}
 			}
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			#[allow(deprecated)]
 			impl<T: #reinhardt_crate::UrlResolver> #list_trait_ident for T {}
 		}
 		#[doc(hidden)]
+		#[allow(deprecated)]
 		pub use #list_mod_ident::*;
 
 		#[doc(hidden)]
 		pub mod #detail_mod_ident {
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_detail)]
 			#[doc = #detail_doc]
 			pub trait #detail_trait_ident: #reinhardt_crate::UrlResolver {
+				#[deprecated(since = "0.1.0-rc.20", note = #deprecated_note_detail)]
 				#[doc = #detail_doc]
 				fn #detail_method_ident(&self, id: &str) -> String {
-					self.resolve_url(#detail_route_name, &[("id", id)])
+					// Use the namespace-aware lookup so the legacy flat
+					// accessor resolves `"<app>:<route>"` correctly. The
+					// trait is intentionally deprecated; suppress the
+					// warning for this macro-emitted call site only.
+					#[allow(deprecated)]
+					{
+						use #reinhardt_crate::UrlResolverUnprefixed as _;
+						self.resolve_url_unprefixed(#detail_route_name, &[("id", id)])
+					}
 				}
 			}
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			#[allow(deprecated)]
 			impl<T: #reinhardt_crate::UrlResolver> #detail_trait_ident for T {}
 		}
 		#[doc(hidden)]
+		#[allow(deprecated)]
 		pub use #detail_mod_ident::*;
 	}
 }
@@ -802,6 +833,28 @@ mod tests {
 		assert!(
 			snippet.contains("\"child_id\""),
 			"url_path placeholders must be added"
+		);
+	}
+
+	#[test]
+	fn fn_form_marks_legacy_blanket_trait_as_deprecated() {
+		// Arrange
+		let input = quote! {
+			pub fn viewset() -> ModelViewSet<Snippet, S> {
+				ModelViewSet::new("snippet")
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(quote! {}, input).unwrap().to_string();
+
+		// Assert: #[deprecated] appears on both list and detail traits AND
+		// their methods (trait + method for list and detail => >= 4).
+		let occurrences =
+			out_s.matches("# [deprecated").count() + out_s.matches("#[deprecated").count();
+		assert!(
+			occurrences >= 4,
+			"expected >= 4 #[deprecated] markers (trait+method for list+detail), got {occurrences}; out={out_s}"
 		);
 	}
 
