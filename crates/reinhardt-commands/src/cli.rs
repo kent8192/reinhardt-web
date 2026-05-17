@@ -1268,6 +1268,18 @@ pub async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 	// compatibility with non-`runserver` HTTP-serving commands
 	// (`showurls`, `generateopenapi`, `introspect`) whose own explicit
 	// `register_*_from_inventory()` plumbing is tracked separately.
+	//
+	// Short-circuit if a router was already registered manually via
+	// `reinhardt_urls::routers::register_router(..)`. Without this guard,
+	// `register_http_routes_from_inventory()`'s DP-7 mutual-exclusion
+	// check would turn the pre-registered router (a reusable manual
+	// escape hatch) into a hard error on `showurls`/`introspect`/
+	// `generateopenapi` and `start_server()`. The explicit
+	// `RunServerCommand::register_http_routes_from_inventory()` entry
+	// keeps the strict guard for its single direct call site.
+	if reinhardt_urls::routers::is_router_registered() {
+		return Ok(());
+	}
 	crate::RunServerCommand
 		.register_http_routes_from_inventory()
 		.await
@@ -1351,8 +1363,14 @@ mod tests {
 	use super::*;
 	use rstest::rstest;
 
+	/// `Runserver` is intentionally **not** in the pre-dispatch
+	/// `requires_router` list (Refs #4453): the HTTP-route inventory
+	/// pull now happens inside
+	/// [`RunServerCommand::register_http_routes_from_inventory`] at a
+	/// visible call site, so the dispatcher must **not** auto-register
+	/// a router for `runserver` ahead of time.
 	#[rstest]
-	fn test_requires_router_for_runserver() {
+	fn test_runserver_does_not_require_pre_dispatch_router_registration() {
 		// Arrange
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
@@ -1374,7 +1392,7 @@ mod tests {
 		let result = requires_router(&command);
 
 		// Assert
-		assert!(result);
+		assert!(!result);
 	}
 
 	#[cfg(feature = "routers")]
