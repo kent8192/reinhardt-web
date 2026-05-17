@@ -380,17 +380,18 @@ impl ClientLauncher {
 	/// Pull the SPA route table from all `#[routes]`-annotated functions
 	/// registered via `inventory` at compile time.
 	///
-	/// This is the canonical Reinhardt SPA bootstrap pattern. Combined
-	/// with `#[routes(client_inventory)]` (or `#[routes(standalone,
-	/// client_inventory)]` for projects that don't use `installed_apps!`'s
-	/// per-app URL resolvers), the WASM SPA entry point collapses to:
+	/// This is the canonical Reinhardt SPA bootstrap pattern. Under the
+	/// #4453 opt-out switchover, bare `#[routes]` (with or without
+	/// `standalone`) **already emits the WASM-side
+	/// `ClientRouterRegistration`** that this method consumes — no
+	/// opt-in flag is required, so the WASM SPA entry point collapses to:
 	///
 	/// ```rust,ignore
 	/// // src/config/urls.rs
 	/// use reinhardt::routes;
 	/// use reinhardt::UnifiedRouter;
 	///
-	/// #[routes(client_inventory)]
+	/// #[routes]
 	/// pub fn routes() -> UnifiedRouter {
 	///     UnifiedRouter::new()
 	///         .server(|s| s /* ... */)
@@ -406,12 +407,12 @@ impl ClientLauncher {
 	/// }
 	/// ```
 	///
-	/// **The `client_inventory` flag is required** on the `#[routes]`
-	/// attribute; without it, the macro emits no WASM-side
-	/// `ClientRouterRegistration` and this method finds an empty inventory.
-	/// Plain `#[routes]` (no arguments) preserves the pre-#4453 native-only
-	/// behavior so legacy bodies (e.g. `UnifiedRouter::new().mount(..)`)
-	/// keep compiling unchanged.
+	/// To opt the project back into the pre-#4453 native-only `mount(..)`
+	/// behavior (so legacy bodies referencing native-only `ServerRouter`
+	/// continue to compile), add `no_client_inventory` to the
+	/// `#[routes(..)]` attribute. In that case the macro emits no
+	/// WASM-side block and `launch()` returns the empty-inventory error
+	/// from this method — exactly the user's intent.
 	///
 	/// # Required facade features
 	///
@@ -432,9 +433,11 @@ impl ClientLauncher {
 	/// Calling none of them also returns an error.
 	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
 	///
-	/// `launch()` returns an error if no `#[routes(..., client_inventory)]`
-	/// registration is found at runtime (i.e. the `inventory` iterator is
-	/// empty).
+	/// `launch()` returns an error if no `#[routes]`-emitted
+	/// `ClientRouterRegistration` is found at runtime (i.e. the
+	/// `inventory` iterator is empty — typically because the project
+	/// used `#[routes(no_client_inventory)]` or no `#[routes]` reaches
+	/// the linker on the WASM target).
 	///
 	/// Refs #4453.
 	pub fn register_routes_from_inventory(mut self) -> Self {
@@ -679,12 +682,14 @@ impl ClientLauncher {
 					None => {
 						return Err(wasm_bindgen::JsValue::from_str(
 							"ClientLauncher::register_routes_from_inventory: no \
-							 `#[routes(..., client_inventory)]` registrations found. \
-							 The `client_inventory` flag is required on the project's \
-							 `#[routes]` attribute to emit the WASM-side inventory \
-							 entry; ensure `routes()` returns a `UnifiedRouter` whose \
-							 `.client(|c| ...)` aggregates the per-app \
-							 `client_url_patterns()` outputs.",
+							 `#[routes]`-emitted `ClientRouterRegistration` found. \
+							 Under the #4453 opt-out switchover, a bare `#[routes]` \
+							 (with or without `standalone`) already emits the WASM-side \
+							 inventory entry. Ensure (1) at least one `#[routes]` \
+							 function is reachable on the WASM target, (2) it does NOT \
+							 carry `no_client_inventory`, and (3) it returns a \
+							 `UnifiedRouter` whose `.client(|c| ...)` aggregates the \
+							 per-app `client_url_patterns()` outputs.",
 						));
 					}
 				}
