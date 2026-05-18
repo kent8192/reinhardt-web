@@ -38,7 +38,12 @@ mod snippets {
 
 #[routes(no_client_resolvers)]
 pub fn routes() -> UnifiedRouter {
-	UnifiedRouter::new().mount("/api/", crate::snippets::urls::url_patterns())
+	// Do NOT re-mount `snippets::urls::url_patterns()` here — it is
+	// already registered via the `#[url_patterns]` attribute above and
+	// discovered by the `#[routes]` expansion through the
+	// `installed_apps!` registry. Manually mounting it would cause a
+	// double-mount of the per-app server routes.
+	UnifiedRouter::new()
 }
 
 #[test]
