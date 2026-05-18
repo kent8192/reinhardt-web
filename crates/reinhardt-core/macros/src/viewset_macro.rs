@@ -1048,9 +1048,13 @@ mod tests {
 		// Act
 		let out_s = viewset_macro_impl(quote! {}, input).unwrap().to_string();
 
-		// Assert: supertrait is UrlResolverUnprefixed (not UrlResolver) so the
-		// emitted blanket impl does not collide with the macro-emitted
-		// impl UrlResolverUnprefixed for ResolvedUrls (E0119 prevention).
+		// Assert: the emitted trait's supertrait must be the unprefixed
+		// resolver variant (rather than the base UrlResolver) so that the
+		// blanket impl this macro emits is keyed against the same supertrait
+		// as the corresponding implementation the routes macro emits for
+		// ResolvedUrls. Mismatched supertraits would produce two overlapping
+		// blanket impls on the same target and trigger E0119 at the consumer
+		// crate root.
 		assert!(
 			out_s.contains("UrlResolverUnprefixed"),
 			"trait must reference UrlResolverUnprefixed as supertrait; got: {out_s}"
