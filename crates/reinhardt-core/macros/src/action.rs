@@ -19,6 +19,10 @@ use syn::{
 /// emitting `__url_resolver_meta_action_*` macros.
 ///
 /// Refs Issue #4507.
+// `Debug` is needed for `.expect_err(...)` calls inside the parser tests
+// (see `tests` module). Gated to `cfg(test)` so the derive does not affect
+// release builds of the proc-macro.
+#[cfg_attr(test, derive(Debug))]
 pub(crate) struct ActionMeta {
 	// `methods` is parsed for parity with `action_impl` but is not consumed
 	// by the impl-form `#[viewset]` expansion (which only needs the URL
