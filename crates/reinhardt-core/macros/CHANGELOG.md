@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.29...reinhardt-macros@v0.1.0-rc.30) - 2026-05-18
+
+### Added
+
+- *(model)* add typestate Model::build() constructor alongside new()
+- *(macros)* emit fk_target_app for same-app FK targets
+- *(core-macros)* emit BaseUserManager impl from #[user(...)]
+- *(macros)* add #[shared_model] for cfg_attr(native) DTO boilerplate
+- *(macros)* add server_only / no_client_resolvers / no_ws_resolvers flags to #[routes]
+
+### Changed
+
+- *(core-macros)* single-lock manager ops, route Value via reinhardt-auth
+- *(macros)* rename #[shared_model] to #[shared_schema]
+- *(macros)* rename #[shared_schema] to #[dto]
+
+### Documentation
+
+- *(macros)* require cfg_attr derive to sit below #[dto]
+- *(macros)* address CodeRabbit + Copilot review feedback on #[routes]
+
+### Fixed
+
+- *(model)* box SetterKind::ForeignKey::related_type to satisfy clippy
+- *(model-macros)* add doc comments to generated typestate-builder setters
+- *(model-macros)* include ForeignKeyField<T> in typestate builder
+- *(model-macros)* address Copilot review on typestate builder FK
+- *(model-macros)* harden FK keyword handling in typestate builder
+- *(model-macros)* exclude `extern` from reserved-ident set
+- *(core-macros)* emit not_null and nullable for ForeignKeyField _id columns
+- *(db)* make FieldMetadata.nullable the single source of truth and harden FK metadata tests
+- *(db)* fall back to by-name FK lookup on qualified miss
+- *(db)* refuse FK resolution when target name is ambiguous
+- *(db,macros)* path-typed FK targets disambiguate ambiguous model names
+- *(macros)* source FK app label from target type's Model::app_label()
+- *(admin,core-macros)* opt admin user out of auto-manager and re-apply rustfmt
+- *(macros)* close two #[dto] derive interaction edge cases
+- *(macros)* embed basename in viewset manifest macro name (Fixes [[#4523](https://github.com/kent8192/reinhardt-web/issues/4523)](https://github.com/kent8192/reinhardt-web/issues/4523))
+- *(macros)* reject malformed #[action] value types in shared parser
+- *(macros)* derive Debug on ActionMeta for parser test expect_err calls
+
+### Styling
+
+- *(macros)* apply rustfmt to routes_registration after gate refactor
+
+### Testing
+
+- *(core-macros)* add missing manager_disabled_no_manager.stderr
+- *(macros)* silence unused_imports in non_uuid_pk_with_default_manager
+- *(macros)* fix trybuild stderr column spans for mutual-exclusion fixtures
+- *(macros)* refresh trybuild stderr for routes mutual-exclusion span
+- *(macros)* drop trailing unused-import warnings from non_uuid_pk_with_default_manager golden
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.28...reinhardt-macros@v0.1.0-rc.29) - 2026-05-13
 
 ### Fixed
