@@ -1,35 +1,86 @@
 //! Migration Rollback Integration Tests
 //!
-//! Tests that verify the correctness of migration rollback (reverse) functionality.
-//! Covers forward/backward consistency, atomic transactions, and error scenarios.
+//! Tests that verify the correctness of migration rollback (reverse) functionality
+//! across all three supported database backends:
+//!
+//! - **PostgreSQL** — Full transactional DDL; rollback is atomic.
+//! - **MySQL** — Non-transactional DDL; DDL statements implicitly commit, so
+//!   multi-operation rollback semantics differ from Postgres.
+//! - **SQLite** — Transactional DDL but with limited ALTER COLUMN support
+//!   (table recreation is required for some column changes).
 //!
 //! **Test Coverage:**
-//! - Basic rollback operations (CREATE TABLE → DROP TABLE, ADD COLUMN → DROP COLUMN)
-//! - ALTER COLUMN rollbacks (type changes reversed)
+//! - Basic rollback operations (CREATE TABLE / ADD COLUMN / ALTER COLUMN)
 //! - RunSQL with reverse_sql
-//! - Atomic transaction rollbacks
+//! - Atomic transaction rollbacks (Postgres / SQLite atomic, MySQL non-atomic)
 //! - Dependency-ordered rollbacks
 //! - Error handling (FK violations, missing reverse_sql)
 //!
-//! **Fixtures Used:**
-//! - postgres_container: PostgreSQL database container (supports transactional DDL)
-//! - mysql_container: MySQL database container
-//!
-//! **Test Strategy:**
-//! 1. Apply migration forward
-//! 2. Verify state change
-//! 3. Apply rollback
-//! 4. Verify original state restored
+//! **Strategy:**
+//! Each test is parameterized via `#[rstest]` + `#[case]` to run against all
+//! three backends. Container fixtures (`postgres_container`, `mysql_container`)
+//! are spawned on demand from `reinhardt-test`; SQLite uses `sqlite::memory:`.
+//! Backend-divergent behavior is asserted explicitly (no silent skips).
 
 use reinhardt_db::backends::DatabaseConnection;
+use reinhardt_db::backends::types::DatabaseType;
 use reinhardt_db::migrations::{
 	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 };
-use reinhardt_test::fixtures::postgres_container;
+use reinhardt_test::fixtures::{mysql_container, postgres_container};
 use rstest::*;
-use sqlx::PgPool;
-use std::sync::Arc;
-use testcontainers::{ContainerAsync, GenericImage};
+
+// ============================================================================
+// Backend Setup
+// ============================================================================
+
+/// Owns any container handles that must outlive the test so the test
+/// container is not torn down while migrations are running.
+///
+/// SQLite does not need a container, so this variant has no payload.
+///
+/// The boxed `Any` fields exist purely for their `Drop` side-effect:
+/// dropping the `ContainerAsync` stops the underlying Docker container.
+/// The fields are never read, hence the `dead_code` allow below.
+#[allow(dead_code)]
+enum BackendHandle {
+	/// Holds the Postgres TestContainer alive for the duration of the test.
+	Postgres(Box<dyn std::any::Any + Send + Sync>),
+	/// Holds the MySQL TestContainer alive for the duration of the test.
+	Mysql(Box<dyn std::any::Any + Send + Sync>),
+	/// SQLite in-memory; no container handle required.
+	Sqlite,
+}
+
+/// Acquire a connection for the requested backend.
+///
+/// For Postgres and MySQL the returned [`BackendHandle`] keeps the
+/// underlying TestContainer alive — drop it and the container is torn
+/// down. For SQLite the handle is a unit value.
+async fn setup_backend(backend: DatabaseType) -> (BackendHandle, DatabaseConnection) {
+	match backend {
+		DatabaseType::Postgres => {
+			let (container, _pool, _port, url) = postgres_container().await;
+			let connection = DatabaseConnection::connect_postgres(&url)
+				.await
+				.expect("Failed to connect to PostgreSQL");
+			(BackendHandle::Postgres(Box::new(container)), connection)
+		}
+		DatabaseType::Mysql => {
+			let (container, _pool, _port, url) = mysql_container().await;
+			let connection = DatabaseConnection::connect_mysql(&url)
+				.await
+				.expect("Failed to connect to MySQL");
+			(BackendHandle::Mysql(Box::new(container)), connection)
+		}
+		DatabaseType::Sqlite => {
+			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+				.await
+				.expect("Failed to connect to in-memory SQLite");
+			(BackendHandle::Sqlite, connection)
+		}
+	}
+}
 
 // ============================================================================
 // Test Helper Functions
@@ -39,7 +90,7 @@ fn leak_str(s: impl Into<String>) -> &'static str {
 	Box::leak(s.into().into_boxed_str())
 }
 
-/// Create a simple migration for testing
+/// Create a simple migration for testing.
 fn create_test_migration(
 	app: &'static str,
 	name: &'static str,
@@ -60,7 +111,7 @@ fn create_test_migration(
 	}
 }
 
-/// Create a basic column definition
+/// Create a basic column definition.
 fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
 		name: name.to_string(),
@@ -73,7 +124,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	}
 }
 
-/// Create a NOT NULL column definition
+/// Create a NOT NULL column definition.
 fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
 		name: name.to_string(),
@@ -86,7 +137,7 @@ fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	}
 }
 
-/// Create an auto-increment primary key column
+/// Create an auto-increment primary key column.
 fn create_auto_pk_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
 		name: name.to_string(),
@@ -99,66 +150,225 @@ fn create_auto_pk_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	}
 }
 
-/// Check if a table exists in PostgreSQL
-async fn table_exists(pool: &PgPool, table_name: &str) -> bool {
-	sqlx::query_scalar::<_, bool>(
-		"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = $1)",
-	)
-	.bind(table_name)
-	.fetch_one(pool)
-	.await
-	.unwrap_or(false)
+// ============================================================================
+// Backend-aware schema introspection
+// ============================================================================
+
+/// Check whether `table_name` exists in the connected database.
+///
+/// Each backend has a different system catalog query:
+/// - Postgres / MySQL: `information_schema.tables`
+/// - SQLite: `sqlite_master`
+async fn table_exists(connection: &DatabaseConnection, table_name: &str) -> bool {
+	match connection.database_type() {
+		DatabaseType::Postgres => {
+			let pool = connection
+				.into_postgres()
+				.expect("postgres pool unavailable");
+			sqlx::query_scalar::<_, bool>(
+				"SELECT EXISTS(SELECT 1 FROM information_schema.tables \
+				 WHERE table_schema = 'public' AND table_name = $1)",
+			)
+			.bind(table_name)
+			.fetch_one(&pool)
+			.await
+			.unwrap_or(false)
+		}
+		DatabaseType::Mysql => {
+			let pool = connection.into_mysql().expect("mysql pool unavailable");
+			let count: i64 = sqlx::query_scalar(
+				"SELECT COUNT(*) FROM information_schema.tables \
+				 WHERE table_schema = DATABASE() AND table_name = ?",
+			)
+			.bind(table_name)
+			.fetch_one(&pool)
+			.await
+			.unwrap_or(0);
+			count > 0
+		}
+		DatabaseType::Sqlite => {
+			let pool = connection.into_sqlite().expect("sqlite pool unavailable");
+			let count: i64 = sqlx::query_scalar(
+				"SELECT COUNT(*) FROM sqlite_master \
+				 WHERE type = 'table' AND name = ?",
+			)
+			.bind(table_name)
+			.fetch_one(&pool)
+			.await
+			.unwrap_or(0);
+			count > 0
+		}
+	}
 }
 
-/// Check if a column exists in a table
-async fn column_exists(pool: &PgPool, table_name: &str, column_name: &str) -> bool {
-	sqlx::query_scalar::<_, bool>(
-		"SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2)"
-	)
-	.bind(table_name)
-	.bind(column_name)
-	.fetch_one(pool)
-	.await
-	.unwrap_or(false)
+/// Check whether `column_name` exists on `table_name`.
+async fn column_exists(
+	connection: &DatabaseConnection,
+	table_name: &str,
+	column_name: &str,
+) -> bool {
+	match connection.database_type() {
+		DatabaseType::Postgres => {
+			let pool = connection
+				.into_postgres()
+				.expect("postgres pool unavailable");
+			sqlx::query_scalar::<_, bool>(
+				"SELECT EXISTS(SELECT 1 FROM information_schema.columns \
+				 WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2)",
+			)
+			.bind(table_name)
+			.bind(column_name)
+			.fetch_one(&pool)
+			.await
+			.unwrap_or(false)
+		}
+		DatabaseType::Mysql => {
+			let pool = connection.into_mysql().expect("mysql pool unavailable");
+			let count: i64 = sqlx::query_scalar(
+				"SELECT COUNT(*) FROM information_schema.columns \
+				 WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+			)
+			.bind(table_name)
+			.bind(column_name)
+			.fetch_one(&pool)
+			.await
+			.unwrap_or(0);
+			count > 0
+		}
+		DatabaseType::Sqlite => {
+			let pool = connection.into_sqlite().expect("sqlite pool unavailable");
+			// `PRAGMA table_info(...)` cannot be parameterised, so we identifier-quote
+			// the table name. Test code only ever passes literals controlled by the
+			// test author, so SQL-injection risk is not a concern here.
+			let pragma = format!("PRAGMA table_info(\"{}\")", table_name.replace('"', "\"\""));
+			let rows: Vec<(i64, String, String, i64, Option<String>, i64)> =
+				sqlx::query_as(&pragma)
+					.fetch_all(&pool)
+					.await
+					.unwrap_or_default();
+			rows.iter().any(|(_, name, _, _, _, _)| name == column_name)
+		}
+	}
 }
 
-/// Check if an index exists
-async fn index_exists(pool: &PgPool, index_name: &str) -> bool {
-	sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE indexname = $1)")
-		.bind(index_name)
-		.fetch_one(pool)
-		.await
-		.unwrap_or(false)
+/// Check whether an index exists on the given table.
+///
+/// `table_name` is required because MySQL's `information_schema.statistics`
+/// keys indexes by `(table_schema, table_name, index_name)` — filtering by
+/// `index_name` alone can produce false positives if another table happens to
+/// use the same index name. Postgres and SQLite are also constrained by table
+/// name for consistency.
+async fn index_exists(connection: &DatabaseConnection, table_name: &str, index_name: &str) -> bool {
+	match connection.database_type() {
+		DatabaseType::Postgres => {
+			let pool = connection
+				.into_postgres()
+				.expect("postgres pool unavailable");
+			sqlx::query_scalar::<_, bool>(
+				"SELECT EXISTS(SELECT 1 FROM pg_indexes \
+				 WHERE tablename = $1 AND indexname = $2)",
+			)
+			.bind(table_name)
+			.bind(index_name)
+			.fetch_one(&pool)
+			.await
+			.unwrap_or(false)
+		}
+		DatabaseType::Mysql => {
+			let pool = connection.into_mysql().expect("mysql pool unavailable");
+			let count: i64 = sqlx::query_scalar(
+				"SELECT COUNT(*) FROM information_schema.statistics \
+				 WHERE table_schema = DATABASE() \
+				 AND table_name = ? AND index_name = ?",
+			)
+			.bind(table_name)
+			.bind(index_name)
+			.fetch_one(&pool)
+			.await
+			.unwrap_or(0);
+			count > 0
+		}
+		DatabaseType::Sqlite => {
+			let pool = connection.into_sqlite().expect("sqlite pool unavailable");
+			let count: i64 = sqlx::query_scalar(
+				"SELECT COUNT(*) FROM sqlite_master \
+				 WHERE type = 'index' AND tbl_name = ? AND name = ?",
+			)
+			.bind(table_name)
+			.bind(index_name)
+			.fetch_one(&pool)
+			.await
+			.unwrap_or(0);
+			count > 0
+		}
+	}
+}
+
+/// Fetch the data type of a column from `information_schema.columns`.
+///
+/// Returns `None` if the column does not exist or for SQLite (which stores
+/// declared types as opaque strings in `sqlite_master` and does not expose
+/// `information_schema.columns`). Postgres returns canonical names like
+/// `character varying`, `text`, `integer`. MySQL returns names like
+/// `varchar`, `text`, `int`.
+async fn column_data_type(
+	connection: &DatabaseConnection,
+	table_name: &str,
+	column_name: &str,
+) -> Option<String> {
+	match connection.database_type() {
+		DatabaseType::Postgres => {
+			let pool = connection
+				.into_postgres()
+				.expect("postgres pool unavailable");
+			sqlx::query_scalar::<_, String>(
+				"SELECT data_type FROM information_schema.columns \
+				 WHERE table_name = $1 AND column_name = $2",
+			)
+			.bind(table_name)
+			.bind(column_name)
+			.fetch_optional(&pool)
+			.await
+			.ok()
+			.flatten()
+		}
+		DatabaseType::Mysql => {
+			let pool = connection.into_mysql().expect("mysql pool unavailable");
+			sqlx::query_scalar::<_, String>(
+				"SELECT data_type FROM information_schema.columns \
+				 WHERE table_schema = DATABASE() \
+				 AND table_name = ? AND column_name = ?",
+			)
+			.bind(table_name)
+			.bind(column_name)
+			.fetch_optional(&pool)
+			.await
+			.ok()
+			.flatten()
+		}
+		DatabaseType::Sqlite => None,
+	}
 }
 
 // ============================================================================
 // Basic Rollback Tests (Normal Cases)
 // ============================================================================
 
-/// Test CREATE TABLE rollback (should DROP TABLE)
+/// Test CREATE TABLE rollback (should DROP TABLE).
 ///
 /// **Test Intent**: Verify that CREATE TABLE can be rolled back with DROP TABLE
-///
-/// **Test Steps**:
-/// 1. Forward: CREATE TABLE users
-/// 2. Verify table exists
-/// 3. Rollback: DROP TABLE users
-/// 4. Verify table does not exist
+/// on every supported backend. CREATE TABLE / DROP TABLE is the most basic
+/// rollback path and must work identically across Postgres, MySQL, and SQLite.
 #[rstest]
+#[case::postgres(DatabaseType::Postgres)]
+#[case::mysql(DatabaseType::Mysql)]
+#[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
-async fn test_create_table_rollback(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	// Connect to database
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+async fn test_create_table_rollback(#[case] backend: DatabaseType) {
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Create migration
 	let migration = create_test_migration(
 		"testapp",
 		"0001_create_users",
@@ -175,48 +385,45 @@ async fn test_create_table_rollback(
 		}],
 	);
 
-	// Apply migration (forward)
+	// Act: forward
 	executor
-		.apply_migrations(&[migration.clone()])
+		.apply_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Failed to apply migration");
 
-	// Verify table exists
+	// Assert: table exists
 	assert!(
-		table_exists(pool.as_ref(), "users").await,
-		"Table should exist after migration"
+		table_exists(&connection, "users").await,
+		"[{backend:?}] table should exist after migration"
 	);
 
-	// Rollback migration
+	// Act: rollback
 	executor
-		.rollback_migrations(&[migration])
+		.rollback_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Failed to rollback migration");
 
-	// Verify table does not exist
+	// Assert: table dropped
 	assert!(
-		!table_exists(pool.as_ref(), "users").await,
-		"Table should not exist after rollback"
+		!table_exists(&connection, "users").await,
+		"[{backend:?}] table should not exist after rollback"
 	);
 }
 
-/// Test ADD COLUMN rollback (should DROP COLUMN)
+/// Test ADD COLUMN rollback (should DROP COLUMN).
 ///
 /// **Test Intent**: Verify that ADD COLUMN can be rolled back with DROP COLUMN
+/// on every supported backend.
 #[rstest]
+#[case::postgres(DatabaseType::Postgres)]
+#[case::mysql(DatabaseType::Mysql)]
+#[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
-async fn test_add_column_rollback(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+async fn test_add_column_rollback(#[case] backend: DatabaseType) {
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// First, create the table
 	let create_table_migration = create_test_migration(
 		"testapp",
 		"0001_create_users",
@@ -232,13 +439,11 @@ async fn test_add_column_rollback(
 			partition: None,
 		}],
 	);
-
 	executor
 		.apply_migrations(&[create_table_migration])
 		.await
 		.expect("Failed to create table");
 
-	// Migration to add column
 	let add_column_migration = create_test_migration(
 		"testapp",
 		"0002_add_email",
@@ -249,48 +454,47 @@ async fn test_add_column_rollback(
 		}],
 	);
 
-	// Apply migration (forward)
+	// Act: forward
 	executor
-		.apply_migrations(&[add_column_migration.clone()])
+		.apply_migrations(std::slice::from_ref(&add_column_migration))
 		.await
 		.expect("Failed to add column");
 
-	// Verify column exists
+	// Assert: column added
 	assert!(
-		column_exists(pool.as_ref(), "users", "email").await,
-		"Column should exist after migration"
+		column_exists(&connection, "users", "email").await,
+		"[{backend:?}] column should exist after migration"
 	);
 
-	// Rollback migration
+	// Act: rollback
 	executor
-		.rollback_migrations(&[add_column_migration])
+		.rollback_migrations(std::slice::from_ref(&add_column_migration))
 		.await
 		.expect("Failed to rollback migration");
 
-	// Verify column does not exist
+	// Assert: column dropped
 	assert!(
-		!column_exists(pool.as_ref(), "users", "email").await,
-		"Column should not exist after rollback"
+		!column_exists(&connection, "users", "email").await,
+		"[{backend:?}] column should not exist after rollback"
 	);
 }
 
-/// Test ALTER COLUMN rollback (should revert to original type)
+/// Test ALTER COLUMN rollback (should revert to original type).
 ///
-/// **Test Intent**: Verify that ALTER COLUMN TYPE can be rolled back
+/// **Test Intent**: Verify that ALTER COLUMN TYPE can be rolled back. SQLite
+/// implements ALTER COLUMN via table recreation under the hood — the same
+/// rollback path should still leave the column with the original type from
+/// the user's point of view.
 #[rstest]
+#[case::postgres(DatabaseType::Postgres)]
+#[case::mysql(DatabaseType::Mysql)]
+#[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
-async fn test_alter_column_type_rollback(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+async fn test_alter_column_type_rollback(#[case] backend: DatabaseType) {
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Create table with VARCHAR(50) column
 	let create_table_migration = create_test_migration(
 		"testapp",
 		"0001_create_products",
@@ -306,159 +510,166 @@ async fn test_alter_column_type_rollback(
 			partition: None,
 		}],
 	);
-
 	executor
 		.apply_migrations(&[create_table_migration])
 		.await
 		.expect("Failed to create table");
 
-	// Verify original type
-	let original_type: String = sqlx::query_scalar(
-		"SELECT data_type FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'name'"
-	)
-	.fetch_one(pool.as_ref())
-	.await
-	.expect("Failed to get column type");
-
-	assert_eq!(
-		original_type, "character varying",
-		"Original type should be VARCHAR"
-	);
-
-	// Migration to change column type
 	let alter_column_migration = create_test_migration(
 		"testapp",
 		"0002_alter_name_type",
 		vec![Operation::AlterColumn {
 			table: leak_str("products").to_string(),
 			column: leak_str("name").to_string(),
-			old_definition: Some(ColumnDefinition {
-				name: "name".to_string(),
-				type_definition: FieldType::VarChar(50),
-				not_null: false,
-				unique: false,
-				primary_key: false,
-				auto_increment: false,
-				default: None,
-			}),
-			new_definition: ColumnDefinition {
-				name: "name".to_string(),
-				type_definition: FieldType::Text,
-				not_null: false,
-				unique: false,
-				primary_key: false,
-				auto_increment: false,
-				default: None,
-			},
+			old_definition: Some(create_basic_column("name", FieldType::VarChar(50))),
+			new_definition: create_basic_column("name", FieldType::Text),
 			mysql_options: None,
 		}],
 	);
 
-	// Apply migration (forward)
+	// Act: forward
 	executor
-		.apply_migrations(&[alter_column_migration.clone()])
+		.apply_migrations(std::slice::from_ref(&alter_column_migration))
 		.await
 		.expect("Failed to alter column");
 
-	// Verify new type
-	let new_type: String = sqlx::query_scalar(
-		"SELECT data_type FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'name'"
-	)
-	.fetch_one(pool.as_ref())
-	.await
-	.expect("Failed to get column type");
+	// Sanity: column still exists after forward.
+	assert!(
+		column_exists(&connection, "products", "name").await,
+		"[{backend:?}] column should still exist after ALTER"
+	);
 
-	assert_eq!(new_type, "text", "Type should be changed to TEXT");
+	// Backend-conditional: on Postgres and MySQL, `information_schema` reports
+	// the post-ALTER type as `text`. Skip the check on SQLite, which records
+	// declared types as opaque strings in `sqlite_master` and does not expose
+	// `information_schema.columns`.
+	if matches!(backend, DatabaseType::Postgres | DatabaseType::Mysql) {
+		let after_alter = column_data_type(&connection, "products", "name")
+			.await
+			.expect("data_type should be available for Postgres/MySQL");
+		assert_eq!(
+			after_alter.to_lowercase(),
+			"text",
+			"[{backend:?}] column type should be TEXT after ALTER",
+		);
+	}
 
-	// Rollback migration
+	// Act: rollback
 	executor
-		.rollback_migrations(&[alter_column_migration])
+		.rollback_migrations(std::slice::from_ref(&alter_column_migration))
 		.await
 		.expect("Failed to rollback migration");
 
-	// Verify type reverted
-	let reverted_type: String = sqlx::query_scalar(
-		"SELECT data_type FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'name'"
-	)
-	.fetch_one(pool.as_ref())
-	.await
-		.expect("Failed to get column type");
-
-	assert_eq!(
-		reverted_type, "character varying",
-		"Type should be reverted to VARCHAR"
+	// Assert: column still exists with same name on every backend.
+	assert!(
+		column_exists(&connection, "products", "name").await,
+		"[{backend:?}] column should still exist after rollback"
 	);
+
+	// Backend-conditional: on Postgres and MySQL, the column type should
+	// revert to the original VARCHAR(50) — Postgres reports it as
+	// `character varying`, MySQL as `varchar`. SQLite is skipped (see above).
+	if matches!(backend, DatabaseType::Postgres | DatabaseType::Mysql) {
+		let after_rollback = column_data_type(&connection, "products", "name")
+			.await
+			.expect("data_type should be available for Postgres/MySQL");
+		let lower = after_rollback.to_lowercase();
+		assert!(
+			lower == "character varying" || lower == "varchar",
+			"[{backend:?}] column type should revert to VARCHAR after rollback, \
+			 got {after_rollback:?}",
+		);
+	}
 }
 
-/// Test RunSQL with reverse_sql rollback
+/// Test RunSQL with reverse_sql rollback.
 ///
-/// **Test Intent**: Verify that RunSQL operations can be rolled back with reverse_sql
+/// **Test Intent**: Verify that RunSQL operations can be rolled back via the
+/// supplied `reverse_sql`. Each backend gets a hand-tailored CREATE/DROP pair
+/// because the table-definition syntax differs (e.g. `SERIAL` is Postgres-only).
 #[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"CREATE TABLE custom_table (id SERIAL PRIMARY KEY, data TEXT)",
+	"DROP TABLE custom_table"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"CREATE TABLE custom_table (id INT AUTO_INCREMENT PRIMARY KEY, data TEXT)",
+	"DROP TABLE custom_table"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"CREATE TABLE custom_table (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT)",
+	"DROP TABLE custom_table"
+)]
 #[tokio::test]
 async fn test_run_sql_with_reverse_rollback(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[case] backend: DatabaseType,
+	#[case] forward_sql: &'static str,
+	#[case] reverse_sql: &'static str,
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Migration with RunSQL
 	let migration = create_test_migration(
 		"testapp",
 		"0001_create_custom_table",
 		vec![Operation::RunSQL {
-			sql: leak_str("CREATE TABLE custom_table (id SERIAL PRIMARY KEY, data TEXT)")
-				.to_string(),
-			reverse_sql: Some(leak_str("DROP TABLE custom_table").to_string()),
+			sql: forward_sql.to_string(),
+			reverse_sql: Some(reverse_sql.to_string()),
 		}],
 	);
 
-	// Apply migration (forward)
+	// Act: forward
 	executor
-		.apply_migrations(&[migration.clone()])
+		.apply_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Failed to apply RunSQL migration");
 
-	// Verify table exists
+	// Assert: table exists
 	assert!(
-		table_exists(pool.as_ref(), "custom_table").await,
-		"Custom table should exist after RunSQL"
+		table_exists(&connection, "custom_table").await,
+		"[{backend:?}] custom_table should exist after RunSQL"
 	);
 
-	// Rollback migration
+	// Act: rollback
 	executor
-		.rollback_migrations(&[migration])
+		.rollback_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Failed to rollback RunSQL migration");
 
-	// Verify table does not exist
+	// Assert: table dropped
 	assert!(
-		!table_exists(pool.as_ref(), "custom_table").await,
-		"Custom table should not exist after rollback"
+		!table_exists(&connection, "custom_table").await,
+		"[{backend:?}] custom_table should not exist after rollback"
 	);
 }
 
-/// Test atomic rollback of multiple operations
+/// Test atomic rollback of multiple operations.
 ///
-/// **Test Intent**: Verify that atomic=true causes all operations to rollback on failure
+/// **Test Intent**: Verify that `atomic = true` rolls back every operation in
+/// the migration as a unit. This is the canonical place where Postgres /
+/// SQLite (transactional DDL) and MySQL (non-transactional DDL) diverge.
+///
+/// **Backend-divergent behavior**: On Postgres and SQLite the rollback runs
+/// inside a single transaction and all three tables are dropped. On MySQL
+/// each DDL statement auto-commits, so the rollback still drops each table
+/// individually via the per-operation reverse, but it is not transactional.
+/// This test asserts the **post-condition** (all tables removed) which is
+/// the same for every backend; the path differs but the observable result
+/// does not.
 #[rstest]
+#[case::postgres(DatabaseType::Postgres)]
+#[case::mysql(DatabaseType::Mysql)]
+#[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
-async fn test_atomic_multi_operation_rollback(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+async fn test_atomic_multi_operation_rollback(#[case] backend: DatabaseType) {
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Migration with multiple operations
 	let migration = Migration {
 		app_label: "testapp".to_string(),
 		name: "0001_multi_ops".to_string(),
@@ -490,7 +701,7 @@ async fn test_atomic_multi_operation_rollback(
 		],
 		dependencies: vec![],
 		replaces: vec![],
-		atomic: true, // All operations should be in one transaction
+		atomic: true,
 		initial: None,
 		state_only: false,
 		database_only: false,
@@ -498,64 +709,59 @@ async fn test_atomic_multi_operation_rollback(
 		optional_dependencies: vec![],
 	};
 
-	// Apply migration
+	// Act: forward
 	executor
-		.apply_migrations(&[migration.clone()])
+		.apply_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Failed to apply multi-operation migration");
 
-	// Verify all tables exist
-	assert!(
-		table_exists(pool.as_ref(), "table1").await,
-		"Table1 should exist"
-	);
-	assert!(
-		table_exists(pool.as_ref(), "table2").await,
-		"Table2 should exist"
-	);
-	assert!(
-		table_exists(pool.as_ref(), "table3").await,
-		"Table3 should exist"
-	);
+	// Assert: all tables created
+	for t in ["table1", "table2", "table3"] {
+		assert!(
+			table_exists(&connection, t).await,
+			"[{backend:?}] {t} should exist after forward",
+		);
+	}
 
-	// Rollback migration
+	// Act: rollback
 	executor
-		.rollback_migrations(&[migration])
+		.rollback_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Failed to rollback migration");
 
-	// Verify all tables are removed
-	assert!(
-		!table_exists(pool.as_ref(), "table1").await,
-		"Table1 should not exist after rollback"
-	);
-	assert!(
-		!table_exists(pool.as_ref(), "table2").await,
-		"Table2 should not exist after rollback"
-	);
-	assert!(
-		!table_exists(pool.as_ref(), "table3").await,
-		"Table3 should not exist after rollback"
+	// Assert: all tables removed (observable post-condition is identical
+	// across backends, even though MySQL gets there via auto-committed DDL).
+	for t in ["table1", "table2", "table3"] {
+		assert!(
+			!table_exists(&connection, t).await,
+			"[{backend:?}] {t} should not exist after rollback",
+		);
+	}
+
+	// Sanity: the backend really does report the expected DDL semantics —
+	// this is the property that drives the implementation difference above.
+	let expected = matches!(backend, DatabaseType::Postgres | DatabaseType::Sqlite);
+	assert_eq!(
+		backend.supports_transactional_ddl(),
+		expected,
+		"[{backend:?}] supports_transactional_ddl mismatch",
 	);
 }
 
-/// Test rollback with data in table
+/// Test rollback with data in table.
 ///
-/// **Test Intent**: Verify that rollback works even with data in tables
+/// **Test Intent**: Verify that rollback works even when the table contains
+/// rows. The data is destroyed along with the table on every backend.
 #[rstest]
+#[case::postgres(DatabaseType::Postgres)]
+#[case::mysql(DatabaseType::Mysql)]
+#[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
-async fn test_rollback_with_data(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+async fn test_rollback_with_data(#[case] backend: DatabaseType) {
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Create table
 	let migration = create_test_migration(
 		"testapp",
 		"0001_create_users",
@@ -571,56 +777,89 @@ async fn test_rollback_with_data(
 			partition: None,
 		}],
 	);
-
 	executor
-		.apply_migrations(&[migration.clone()])
+		.apply_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Failed to create table");
 
-	// Insert data
-	sqlx::query("INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie')")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to insert data");
+	// Act: insert data using a backend-agnostic INSERT path.
+	let inserts = ["Alice", "Bob", "Charlie"];
+	let count: i64 = match connection.database_type() {
+		DatabaseType::Postgres => {
+			let pool = connection
+				.into_postgres()
+				.expect("postgres pool unavailable");
+			for name in inserts {
+				sqlx::query("INSERT INTO users (name) VALUES ($1)")
+					.bind(name)
+					.execute(&pool)
+					.await
+					.expect("Failed to insert data");
+			}
+			sqlx::query_scalar("SELECT COUNT(*)::BIGINT FROM users")
+				.fetch_one(&pool)
+				.await
+				.expect("Failed to count rows")
+		}
+		DatabaseType::Mysql => {
+			let pool = connection.into_mysql().expect("mysql pool unavailable");
+			for name in inserts {
+				sqlx::query("INSERT INTO users (name) VALUES (?)")
+					.bind(name)
+					.execute(&pool)
+					.await
+					.expect("Failed to insert data");
+			}
+			sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
+				.fetch_one(&pool)
+				.await
+				.expect("Failed to count rows")
+		}
+		DatabaseType::Sqlite => {
+			let pool = connection.into_sqlite().expect("sqlite pool unavailable");
+			for name in inserts {
+				sqlx::query("INSERT INTO users (name) VALUES (?)")
+					.bind(name)
+					.execute(&pool)
+					.await
+					.expect("Failed to insert data");
+			}
+			sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
+				.fetch_one(&pool)
+				.await
+				.expect("Failed to count rows")
+		}
+	};
 
-	// Verify data exists
-	let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count rows");
+	// Sanity
+	assert_eq!(count, 3, "[{backend:?}] should have 3 users");
 
-	assert_eq!(count, 3, "Should have 3 users");
-
-	// Rollback migration (should drop table with data)
+	// Act: rollback
 	executor
-		.rollback_migrations(&[migration])
+		.rollback_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Failed to rollback migration");
 
-	// Verify table does not exist
+	// Assert: table (and its data) gone
 	assert!(
-		!table_exists(pool.as_ref(), "users").await,
-		"Table should not exist after rollback (data should be deleted)"
+		!table_exists(&connection, "users").await,
+		"[{backend:?}] table should not exist after rollback",
 	);
 }
 
-/// Test index creation/deletion rollback
+/// Test index creation/deletion rollback.
 ///
-/// **Test Intent**: Verify that CREATE INDEX can be rolled back
+/// **Test Intent**: Verify that CREATE INDEX can be rolled back on every backend.
 #[rstest]
+#[case::postgres(DatabaseType::Postgres)]
+#[case::mysql(DatabaseType::Mysql)]
+#[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
-async fn test_index_rollback(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+async fn test_index_rollback(#[case] backend: DatabaseType) {
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Create table first
 	let create_table = create_test_migration(
 		"testapp",
 		"0001_create_users",
@@ -636,13 +875,11 @@ async fn test_index_rollback(
 			partition: None,
 		}],
 	);
-
 	executor
 		.apply_migrations(&[create_table])
 		.await
 		.expect("Failed to create table");
 
-	// Create index
 	let create_index = create_test_migration(
 		"testapp",
 		"0002_create_email_index",
@@ -659,27 +896,28 @@ async fn test_index_rollback(
 		}],
 	);
 
+	// Act: forward
 	executor
-		.apply_migrations(&[create_index.clone()])
+		.apply_migrations(std::slice::from_ref(&create_index))
 		.await
 		.expect("Failed to create index");
 
-	// Verify index exists
+	// Assert: index exists
 	assert!(
-		index_exists(pool.as_ref(), "idx_users_email").await,
-		"Index should exist after creation"
+		index_exists(&connection, "users", "idx_users_email").await,
+		"[{backend:?}] index should exist after creation",
 	);
 
-	// Rollback index creation
+	// Act: rollback
 	executor
-		.rollback_migrations(&[create_index])
+		.rollback_migrations(std::slice::from_ref(&create_index))
 		.await
 		.expect("Failed to rollback index creation");
 
-	// Verify index does not exist
+	// Assert: index dropped
 	assert!(
-		!index_exists(pool.as_ref(), "idx_users_email").await,
-		"Index should not exist after rollback"
+		!index_exists(&connection, "users", "idx_users_email").await,
+		"[{backend:?}] index should not exist after rollback",
 	);
 }
 
@@ -687,69 +925,100 @@ async fn test_index_rollback(
 // Error Handling Tests (Abnormal Cases)
 // ============================================================================
 
-/// Test rollback failure when reverse_sql is not provided
+/// Test rollback failure when reverse_sql is not provided.
 ///
-/// **Test Intent**: Verify that RunSQL without reverse_sql cannot be rolled back
+/// **Test Intent**: Verify that RunSQL without reverse_sql cannot be rolled
+/// back. The exact policy (`Err` vs. silently skipped) is implementation-
+/// defined and may vary by backend, but the system must NOT panic.
 #[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"CREATE TABLE irreversible (id SERIAL PRIMARY KEY)"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"CREATE TABLE irreversible (id INT AUTO_INCREMENT PRIMARY KEY)"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"CREATE TABLE irreversible (id INTEGER PRIMARY KEY AUTOINCREMENT)"
+)]
 #[tokio::test]
 async fn test_rollback_fail_without_reverse_sql(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[case] backend: DatabaseType,
+	#[case] forward_sql: &'static str,
 ) {
-	let (_container, _pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Migration with RunSQL but no reverse_sql
 	let migration = create_test_migration(
 		"testapp",
 		"0001_irreversible",
 		vec![Operation::RunSQL {
-			sql: leak_str("CREATE TABLE irreversible (id SERIAL PRIMARY KEY)").to_string(),
-			reverse_sql: None, // No reverse SQL
+			sql: forward_sql.to_string(),
+			reverse_sql: None,
 		}],
 	);
-
 	executor
-		.apply_migrations(&[migration.clone()])
+		.apply_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Forward migration should succeed");
 
-	// Attempt rollback (should fail or be marked as irreversible)
-	let rollback_result = executor.rollback_migrations(&[migration]).await;
-
+	// Sanity: forward DDL succeeded; the table exists.
 	assert!(
-		rollback_result.is_err() || rollback_result.is_ok(),
-		"Rollback should either fail or skip irreversible operations"
+		table_exists(&connection, "irreversible").await,
+		"[{backend:?}] table should exist after forward",
 	);
-	// Note: Actual behavior depends on implementation policy
+
+	// Act: rollback (must not panic)
+	let rollback_result = executor
+		.rollback_migrations(std::slice::from_ref(&migration))
+		.await;
+
+	// Assert observable state: both policies are acceptable but must be
+	// self-consistent.
+	// - Policy A (`Err`): the migration is rejected as irreversible; the
+	//   table MUST remain because no destructive action was taken.
+	// - Policy B (`Ok`): the migration is treated as a no-op skip; the table
+	//   MUST also remain — a successful rollback without a reverse must not
+	//   silently drop user data.
+	// In other words, regardless of return-value policy, the table must
+	// still exist after the call.
+	let _ = rollback_result;
+	assert!(
+		table_exists(&connection, "irreversible").await,
+		"[{backend:?}] irreversible table must remain after rollback regardless of policy",
+	);
 }
 
-/// Test partial rollback with atomic=false
+/// Test non-atomic single-operation rollback (`atomic = false`).
 ///
-/// **Test Intent**: Verify that atomic=false allows partial rollback
+/// **Test Intent**: Verify that a migration declared with `atomic = false`
+/// can be applied and rolled back successfully on every backend, even though
+/// no transactional wrapper is used. This is the canonical setting for
+/// MySQL (non-transactional DDL), but Postgres and SQLite must accept the
+/// flag too and produce the same end state.
+///
+/// **Scope**: Single-operation migration only. Multi-operation partial-
+/// failure scenarios under `atomic = false` (which exercise the "some
+/// operations applied, some not" path) are covered by separate tests in
+/// the error-handling integration suite.
 #[rstest]
+#[case::postgres(DatabaseType::Postgres)]
+#[case::mysql(DatabaseType::Mysql)]
+#[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
-async fn test_partial_rollback_non_atomic(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+async fn test_partial_rollback_non_atomic(#[case] backend: DatabaseType) {
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Migration with atomic=false
 	let migration = Migration {
 		app_label: "testapp".to_string(),
 		name: "0001_non_atomic".to_string(),
 		operations: vec![Operation::CreateTable {
-			name: leak_str("table1").to_string(),
+			name: leak_str("non_atomic_table").to_string(),
 			columns: vec![create_auto_pk_column("id", FieldType::Integer)],
 			constraints: vec![],
 			without_rowid: None,
@@ -758,7 +1027,7 @@ async fn test_partial_rollback_non_atomic(
 		}],
 		dependencies: vec![],
 		replaces: vec![],
-		atomic: false, // Non-atomic
+		atomic: false,
 		initial: None,
 		state_only: false,
 		database_only: false,
@@ -766,43 +1035,73 @@ async fn test_partial_rollback_non_atomic(
 		optional_dependencies: vec![],
 	};
 
+	// Act: forward
 	executor
-		.apply_migrations(&[migration.clone()])
+		.apply_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Migration should succeed");
 
+	// Sanity
 	assert!(
-		table_exists(pool.as_ref(), "table1").await,
-		"Table should exist"
+		table_exists(&connection, "non_atomic_table").await,
+		"[{backend:?}] table should exist after forward",
 	);
 
-	// Rollback
+	// Act: rollback
 	executor
-		.rollback_migrations(&[migration])
+		.rollback_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Rollback should succeed");
 
-	// Note: With atomic=false, behavior may vary by database
-	// PostgreSQL still supports DDL transactions, but MySQL does not
+	// Assert
+	assert!(
+		!table_exists(&connection, "non_atomic_table").await,
+		"[{backend:?}] table should not exist after rollback",
+	);
 }
 
-/// Test rollback failure due to foreign key constraint
+/// Test rollback failure due to foreign key constraint.
 ///
-/// **Test Intent**: Verify that FK constraints prevent table deletion
+/// **Test Intent**: Verify that an outstanding FK reference prevents the
+/// parent table from being dropped during rollback.
+///
+/// **Backend-divergent behavior**: SQLite enforces foreign keys only when
+/// `PRAGMA foreign_keys = ON` is set. The default is OFF — so on SQLite the
+/// rollback succeeds and the parent table is dropped (the orphaned child
+/// is left dangling). Postgres and MySQL with InnoDB always enforce FKs,
+/// so the rollback fails. This test asserts the divergent outcome rather
+/// than hiding it behind `#[ignore]`.
 #[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"CREATE TABLE orders (\
+		id SERIAL PRIMARY KEY, \
+		user_id INTEGER NOT NULL, \
+		FOREIGN KEY (user_id) REFERENCES users(id))"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"CREATE TABLE orders (\
+		id INT AUTO_INCREMENT PRIMARY KEY, \
+		user_id INT NOT NULL, \
+		FOREIGN KEY (user_id) REFERENCES users(id)) ENGINE=InnoDB"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"CREATE TABLE orders (\
+		id INTEGER PRIMARY KEY AUTOINCREMENT, \
+		user_id INTEGER NOT NULL, \
+		FOREIGN KEY (user_id) REFERENCES users(id))"
+)]
 #[tokio::test]
 async fn test_rollback_fail_with_foreign_key_reference(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[case] backend: DatabaseType,
+	#[case] child_ddl: &'static str,
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Create parent table
 	let parent_migration = create_test_migration(
 		"testapp",
 		"0001_create_users",
@@ -815,74 +1114,116 @@ async fn test_rollback_fail_with_foreign_key_reference(
 			partition: None,
 		}],
 	);
-
 	executor
-		.apply_migrations(&[parent_migration.clone()])
+		.apply_migrations(std::slice::from_ref(&parent_migration))
 		.await
 		.expect("Failed to create parent table");
 
-	// Create child table with FK manually (not through migration)
-	sqlx::query(
-		"CREATE TABLE orders (
-			id SERIAL PRIMARY KEY,
-			user_id INTEGER NOT NULL,
-			FOREIGN KEY (user_id) REFERENCES users(id)
-		)",
-	)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to create child table");
+	// Create child table out-of-band so the migration system does not know
+	// about it. The child references the parent via FK.
+	match connection.database_type() {
+		DatabaseType::Postgres => {
+			let pool = connection
+				.into_postgres()
+				.expect("postgres pool unavailable");
+			sqlx::query(child_ddl)
+				.execute(&pool)
+				.await
+				.expect("Failed to create child table");
+		}
+		DatabaseType::Mysql => {
+			let pool = connection.into_mysql().expect("mysql pool unavailable");
+			sqlx::query(child_ddl)
+				.execute(&pool)
+				.await
+				.expect("Failed to create child table");
+		}
+		DatabaseType::Sqlite => {
+			let pool = connection.into_sqlite().expect("sqlite pool unavailable");
+			// SQLite only enforces FKs when the pragma is enabled; turn it on
+			// so we can observe the divergence consciously.
+			sqlx::query("PRAGMA foreign_keys = ON")
+				.execute(&pool)
+				.await
+				.expect("Failed to enable SQLite foreign_keys pragma");
+			sqlx::query(child_ddl)
+				.execute(&pool)
+				.await
+				.expect("Failed to create child table");
+		}
+	}
 
-	// Attempt to rollback parent table (should fail due to FK)
-	let rollback_result = executor.rollback_migrations(&[parent_migration]).await;
+	// Act: attempt rollback
+	let rollback_result = executor
+		.rollback_migrations(std::slice::from_ref(&parent_migration))
+		.await;
 
-	assert!(
-		rollback_result.is_err(),
-		"Rollback should fail when child table references parent"
-	);
+	// Assert: outcome depends on backend FK enforcement.
+	match backend {
+		DatabaseType::Postgres | DatabaseType::Mysql => {
+			assert!(
+				rollback_result.is_err(),
+				"[{backend:?}] rollback should fail when child table references parent",
+			);
+		}
+		DatabaseType::Sqlite => {
+			// SQLite enforces FK on writes (when the pragma is on), but
+			// DROP TABLE is not blocked the way Postgres / MySQL block it.
+			// The test asserts the observable divergence rather than ignoring
+			// it: either we see an error (matching Postgres/MySQL) OR the
+			// rollback completes and the parent table is gone. Both are
+			// "correct" for SQLite; only a panic is unacceptable.
+			let parent_gone = !table_exists(&connection, "users").await;
+			assert!(
+				rollback_result.is_err() || parent_gone,
+				"[{backend:?}] rollback must either error out or drop the parent",
+			);
+		}
+	}
 }
 
 // ============================================================================
 // Edge Case Tests
 // ============================================================================
 
-/// Test rollback of empty migration
+/// Test rollback of empty migration.
 ///
-/// **Test Intent**: Verify that migrations with no operations can be rolled back
+/// **Test Intent**: Verify that migrations with no operations can be rolled
+/// back on every backend.
 #[rstest]
+#[case::postgres(DatabaseType::Postgres)]
+#[case::mysql(DatabaseType::Mysql)]
+#[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
-async fn test_rollback_empty_migration(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, _pool, _port, url) = postgres_container.await;
+async fn test_rollback_empty_migration(#[case] backend: DatabaseType) {
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
-
-	// Empty migration
 	let migration = create_test_migration("testapp", "0001_empty", vec![]);
 
-	// Apply empty migration
+	// Act: forward (no-op)
 	executor
-		.apply_migrations(&[migration.clone()])
+		.apply_migrations(std::slice::from_ref(&migration))
 		.await
 		.expect("Empty migration should succeed");
 
-	// Rollback empty migration
-	let rollback_result = executor.rollback_migrations(&[migration]).await;
+	// Act: rollback
+	let rollback_result = executor
+		.rollback_migrations(std::slice::from_ref(&migration))
+		.await;
 
+	// Assert
 	assert!(
 		rollback_result.is_ok(),
-		"Empty migration rollback should succeed"
+		"[{backend:?}] empty migration rollback should succeed",
 	);
 }
 
-/// Test rollback with dependent migrations (reverse dependency order)
+/// Test rollback with dependent migrations (reverse dependency order).
 ///
-/// **Test Intent**: Verify that dependent migrations are rolled back in reverse order
+/// **Test Intent**: Verify that dependent migrations are rolled back in
+/// reverse order on every backend.
 ///
 /// **Test Steps**:
 /// 1. Migration A: CREATE TABLE users
@@ -890,23 +1231,34 @@ async fn test_rollback_empty_migration(
 /// 3. Rollback B first: DROP TABLE orders
 /// 4. Rollback A second: DROP TABLE users
 #[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"CONSTRAINT fk_orders_user_id FOREIGN KEY (user_id) REFERENCES users(id) \
+	 ON DELETE CASCADE ON UPDATE NO ACTION"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"CONSTRAINT fk_orders_user_id FOREIGN KEY (user_id) REFERENCES users(id) \
+	 ON DELETE CASCADE ON UPDATE NO ACTION"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"CONSTRAINT fk_orders_user_id FOREIGN KEY (user_id) REFERENCES users(id) \
+	 ON DELETE CASCADE ON UPDATE NO ACTION"
+)]
 #[tokio::test]
 async fn test_rollback_with_dependencies(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[case] backend: DatabaseType,
+	#[case] fk_constraint_sql: &'static str,
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
-
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
-	// Migration A: Create users table
-	let migration_a = Migration {
-		app_label: "testapp".to_string(),
-		name: "0001_create_users".to_string(),
-		operations: vec![Operation::CreateTable {
+	let migration_a = create_test_migration(
+		"testapp",
+		"0001_create_users",
+		vec![Operation::CreateTable {
 			name: leak_str("users").to_string(),
 			columns: vec![create_auto_pk_column("id", FieldType::Integer)],
 			constraints: vec![],
@@ -914,17 +1266,8 @@ async fn test_rollback_with_dependencies(
 			interleave_in_parent: None,
 			partition: None,
 		}],
-		dependencies: vec![],
-		replaces: vec![],
-		atomic: true,
-		initial: None,
-		state_only: false,
-		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
-	};
+	);
 
-	// Migration B: Create orders table with FK to users (depends on A)
 	let migration_b = Migration {
 		app_label: "testapp".to_string(),
 		name: "0002_create_orders".to_string(),
@@ -942,9 +1285,7 @@ async fn test_rollback_with_dependencies(
 			},
 			Operation::AddConstraint {
 				table: leak_str("orders").to_string(),
-				constraint_sql: leak_str(
-					"CONSTRAINT fk_orders_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE NO ACTION"
-				).to_string(),
+				constraint_sql: fk_constraint_sql.to_string(),
 			},
 		],
 		dependencies: vec![("testapp".to_string(), "0001_create_users".to_string())],
@@ -957,75 +1298,74 @@ async fn test_rollback_with_dependencies(
 		optional_dependencies: vec![],
 	};
 
-	// Apply migrations in order
+	// Act: forward both
 	executor
-		.apply_migrations(&[migration_a.clone()])
+		.apply_migrations(std::slice::from_ref(&migration_a))
 		.await
 		.expect("Migration A should succeed");
 	executor
-		.apply_migrations(&[migration_b.clone()])
+		.apply_migrations(std::slice::from_ref(&migration_b))
 		.await
 		.expect("Migration B should succeed");
 
-	// Verify both tables exist
+	// Assert: both tables exist
 	assert!(
-		table_exists(pool.as_ref(), "users").await,
-		"Users table should exist"
+		table_exists(&connection, "users").await,
+		"[{backend:?}] users table should exist",
 	);
 	assert!(
-		table_exists(pool.as_ref(), "orders").await,
-		"Orders table should exist"
+		table_exists(&connection, "orders").await,
+		"[{backend:?}] orders table should exist",
 	);
 
-	// Rollback migrations in REVERSE dependency order (B first, then A)
+	// Act: rollback B first
 	executor
-		.rollback_migrations(&[migration_b])
+		.rollback_migrations(std::slice::from_ref(&migration_b))
 		.await
 		.expect("Rollback of migration B should succeed");
 
-	// Verify orders table is gone, but users table still exists
+	// Assert: B's table gone, A's still present
 	assert!(
-		!table_exists(pool.as_ref(), "orders").await,
-		"Orders table should not exist"
+		!table_exists(&connection, "orders").await,
+		"[{backend:?}] orders table should not exist after B rollback",
 	);
 	assert!(
-		table_exists(pool.as_ref(), "users").await,
-		"Users table should still exist"
+		table_exists(&connection, "users").await,
+		"[{backend:?}] users table should still exist after B rollback",
 	);
 
-	// Now rollback migration A
+	// Act: rollback A
 	executor
-		.rollback_migrations(&[migration_a])
+		.rollback_migrations(std::slice::from_ref(&migration_a))
 		.await
 		.expect("Rollback of migration A should succeed");
 
-	// Verify users table is now gone
+	// Assert
 	assert!(
-		!table_exists(pool.as_ref(), "users").await,
-		"Users table should not exist"
+		!table_exists(&connection, "users").await,
+		"[{backend:?}] users table should not exist after A rollback",
 	);
 }
 
-/// Test circular dependency detection in rollback
+/// Test circular dependency detection in rollback.
 ///
-/// **Test Intent**: Verify that circular dependencies are detected and cause error
-///
-/// **Note**: This test verifies theoretical behavior. In practice, circular dependencies
-/// should be prevented at migration creation time, not at rollback time.
+/// **Test Intent**: Verify that a true cycle in `dependencies` (A → B and
+/// B → A) is either detected at the dependency-resolution stage (preferred
+/// outcome — `apply_migrations` returns `Err`) or, if the resolver is
+/// lenient, that the resulting `rollback_migrations` call still completes
+/// without panicking. Either policy is acceptable as long as the system
+/// remains consistent and does not crash.
 #[rstest]
+#[case::postgres(DatabaseType::Postgres)]
+#[case::mysql(DatabaseType::Mysql)]
+#[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
-async fn test_circular_dependency_rollback(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, _pool, _port, url) = postgres_container.await;
+async fn test_circular_dependency_rollback(#[case] backend: DatabaseType) {
+	// Arrange
+	let (_handle, connection) = setup_backend(backend).await;
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
-	let connection = DatabaseConnection::connect_postgres(&url)
-		.await
-		.expect("Failed to connect to PostgreSQL");
-
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
-
-	// Migration A (depends on B - circular)
+	// Build an actual cycle: A depends on B, and B depends on A.
 	let migration_a = Migration {
 		app_label: "testapp".to_string(),
 		name: "0001_migration_a".to_string(),
@@ -1037,7 +1377,7 @@ async fn test_circular_dependency_rollback(
 			interleave_in_parent: None,
 			partition: None,
 		}],
-		dependencies: vec![("testapp".to_string(), "0002_migration_b".to_string())], // Circular dependency
+		dependencies: vec![("testapp".to_string(), "0002_migration_b".to_string())],
 		replaces: vec![],
 		atomic: true,
 		initial: None,
@@ -1047,8 +1387,7 @@ async fn test_circular_dependency_rollback(
 		optional_dependencies: vec![],
 	};
 
-	// Migration B (depends on A - circular)
-	let _migration_b = Migration {
+	let migration_b = Migration {
 		app_label: "testapp".to_string(),
 		name: "0002_migration_b".to_string(),
 		operations: vec![Operation::CreateTable {
@@ -1059,7 +1398,7 @@ async fn test_circular_dependency_rollback(
 			interleave_in_parent: None,
 			partition: None,
 		}],
-		dependencies: vec![("testapp".to_string(), "0001_migration_a".to_string())], // Circular dependency
+		dependencies: vec![("testapp".to_string(), "0001_migration_a".to_string())],
 		replaces: vec![],
 		atomic: true,
 		initial: None,
@@ -1069,32 +1408,26 @@ async fn test_circular_dependency_rollback(
 		optional_dependencies: vec![],
 	};
 
-	// Note: In a real migration system, applying migrations with circular dependencies
-	// should fail at the dependency resolution stage. This test verifies that
-	// the system handles this scenario gracefully.
+	// Act: apply both migrations together so the resolver sees the cycle.
+	let apply_result = executor
+		.apply_migrations(&[migration_a.clone(), migration_b.clone()])
+		.await;
 
-	// Attempt to apply migration A (should fail due to unresolved dependency)
-	let apply_result = executor.apply_migrations(&[migration_a.clone()]).await;
-
-	// The system should either:
-	// 1. Fail with a circular dependency error
-	// 2. Skip the migration due to missing dependency
-	// 3. Handle it gracefully in some other way
-
-	// Depending on implementation, this might succeed or fail
-	// If it succeeds, try rollback
+	// Assert: the system handles the cycle without panicking. The preferred
+	// policy is to reject it (`Err`); a lenient resolver that breaks the
+	// cycle deterministically and applies the migrations is also acceptable
+	// as long as the subsequent rollback also completes.
 	if apply_result.is_ok() {
-		let rollback_result = executor.rollback_migrations(&[migration_a]).await;
-		// Rollback should either succeed or handle circular dependencies gracefully
-		assert!(
-			rollback_result.is_ok() || rollback_result.is_err(),
-			"System should handle circular dependencies without panicking"
-		);
+		let rollback_result = executor
+			.rollback_migrations(&[migration_a, migration_b])
+			.await;
+		// Either Ok or Err is acceptable here — we only require that the
+		// call returns rather than panicking.
+		let _ = rollback_result;
 	} else {
-		// Apply failed due to circular dependency - this is expected behavior
 		assert!(
 			apply_result.is_err(),
-			"Circular dependency should be detected"
+			"[{backend:?}] circular dependency should be detected",
 		);
 	}
 }
