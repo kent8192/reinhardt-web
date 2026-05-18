@@ -139,14 +139,21 @@ pub fn polls_detail(question_id: i64) -> Page {
 			|qid: i64| async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
 		);
 
-	// Create the voting form using form! macro
+	// Create the voting form using form! macro.
+	//
 	// - server_fn: submit_vote accepts (question_id, choice_id, csrf_token)
 	// - method: Post enables CSRF hidden input rendering for non-WASM submits
 	// - strip_arguments: explicitly routes the CSRF token to the trailing
 	//   server_fn argument (reinhardt-web#3971), replacing the implicit
 	//   auto-injection that broke when server_fn signatures evolved.
 	// - state: loading/error signals for form submission feedback
-	// - watch blocks for reactive UI updates
+	// - watch blocks for reactive UI updates (submit button + error display)
+	// - success_url: WASM-only declarative redirect that fires once per
+	//   successful submit (reinhardt-web#4519). The closure receives
+	//   `(&self, &value)` and is invoked from the form macro's
+	//   `on_success` codepath — NOT from a `watch` block — so it cannot
+	//   fire on initial mount when `loading == false && error == None`,
+	//   which was the root cause of the previous redirect-on-mount bug.
 	let voting_form = form! {
 		name: VotingForm,
 		server_fn: submit_vote,
@@ -172,6 +179,8 @@ pub fn polls_detail(question_id: i64) -> Page {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
 				.unwrap_or_default(),
 		},
+
+		success_url: |_form, _value| links::poll_results(qid),
 
 		watch: {
 			submit_button: |form| {
@@ -206,31 +215,6 @@ pub fn polls_detail(question_id: i64) -> Page {
 						}
 					}
 				})(err)
-			},
-			success_navigation: |form| {
-				let is_loading = form.loading().get();
-				let err = form.error().get();
-				page!(|is_loading: bool, err: Option<String>| {
-					watch {
-						if ! is_loading &&err.is_none() {
-							#[cfg(wasm)]
-									{
-										if let Some(window) = web_sys::window() {
-											let pathname = window.location().pathname().ok();
-											if let Some(path) = pathname {
-												let parts: Vec<&str> = path.split('/').collect();
-												if parts.len() >= 3 && parts[1] == "polls" {
-													if let Ok(question_id) = parts[2].parse::<i64>() {
-														let results_url = links::poll_results(question_id);
-														let _ = window.location().set_href(&results_url);
-													}
-												}
-											}
-										}
-									}
-						}
-					}
-				})(is_loading, err)
 			},
 		},
 	};
