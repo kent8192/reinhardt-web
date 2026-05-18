@@ -226,8 +226,10 @@ pub(crate) async fn execute_createsuperuser(
 
 	let creator = reinhardt_auth::get_superuser_creator().ok_or(
 		"No SuperuserCreator registered. Ensure your user model has \
-		 #[user(hasher = ..., username_field = \"...\", full = true)] and \
-		 #[model(...)]. Auto-registration happens automatically.\n\
+		 both #[user(hasher = ..., username_field = \"...\")] and \
+		 #[model(...)]. Auto-registration happens automatically for any \
+		 user struct that combines these two attributes — `full = true` \
+		 is not required.\n\
 		 \n\
 		 If implementing BaseUser manually, also implement SuperuserInit \
 		 and call register_superuser_creator(superuser_creator_for::<YourUser>()) \

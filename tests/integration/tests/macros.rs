@@ -21,3 +21,6 @@ mod receiver_macro_integration;
 
 #[path = "macros/repro_issue_3651.rs"]
 mod repro_issue_3651;
+
+#[path = "macros/repro_issue_4522.rs"]
+mod repro_issue_4522;
