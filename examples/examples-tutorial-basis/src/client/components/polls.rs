@@ -2,6 +2,28 @@
 //!
 //! Provides UI components for the polling application including
 //! the index page, detail page with voting form, and results page.
+//!
+//! ## Reactive page shape (canonical template)
+//!
+//! Every async-loading view in this module (`polls_detail`,
+//! `polls_results`, `question_edit`, `question_delete_confirm`) follows
+//! the same reactive shape as `polls_results`:
+//!
+//! - An outer `div` wraps a single `watch{}` block so the function
+//!   returns a top-level `Page::Element` (matching the
+//!   `matches!(view, Page::Element(_))` assertion in
+//!   `tests/wasm/polls_mock_test.rs`).
+//! - Only the reactive `Signal` (`Action<..>`) and the route id flow
+//!   into `page!` as typed parameters. Forms (whose types live inside
+//!   the `form!` macro's block expression and are therefore not
+//!   nameable as `page!` parameter types) and static hrefs are
+//!   captured from the surrounding scope by the implicit `move` of
+//!   the `watch` closure.
+//!
+//! **Anti-pattern that root-caused Issue #4514:** returning a static
+//! `Page` (e.g. `return page!(|| spinner)();`) from outside the
+//! `watch{}` block strands the SPA on the spinner forever because the
+//! reactive subscription is never established.
 
 use crate::shared::types::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::component::Page;
@@ -235,16 +257,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 
 	let load_detail_signal = load_detail.clone();
 
-	// Render reactively in the same shape that `polls_results` uses: an outer
-	// `div` wraps a single `watch{}` so that `polls_detail(...)` returns a
-	// top-level `Page::Element` (matching `polls_results` and the existing
-	// `matches!(view, Page::Element(_))` assertions in `polls_mock_test.rs`).
-	// Only the reactive Signal and the route id flow into `page!` as typed
-	// parameters. The voting form (whose type lives inside the `form!` macro's
-	// block expression and is therefore not nameable as a `page!` parameter
-	// type) and the static hrefs are captured from the surrounding scope by
-	// the implicit `move` of the watch closure. Returning a static Page early
-	// from this function would have stranded the SPA on the spinner forever.
+	// Render reactively in the canonical shape (see module-level docs):
+	// outer `div` + single `watch{}` + `Action<..>` and route id flowing
+	// into `page!` as typed parameters. The voting form is captured by
+	// the watch closure's implicit `move`.
 	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
 		div {
 			watch {
@@ -723,19 +739,42 @@ pub fn question_edit(question_id: i64) -> Page {
 
 	let load_detail_signal = load_detail.clone();
 
-	// Render reactively in the `polls_results` shape: an outer `div` wraps a
-	// single `watch{}` so that `question_edit(...)` returns a top-level
-	// `Page::Element`, matching `polls_results` / `polls_detail` and keeping
-	// the page tree shape consistent across the tutorial. Only the reactive
-	// Signal and the route id flow into `page!` as typed parameters. The
-	// `edit_form` (whose type lives inside the `form!` macro's block
-	// expression and is therefore not nameable as a `page!` parameter type)
-	// and its loading/error Signals are captured from the surrounding scope
-	// by the implicit `move` of the watch closure. Returning a static Page
-	// early from this function would have stranded the SPA on the spinner
-	// forever. Form's own loading/error UI is inlined in the outer `watch`
-	// instead of a second nested `watch` to avoid the E0507 footgun
-	// (Fn → Fn re-capture of `!Copy` Signals).
+	// Render reactively in the canonical shape (see module-level docs).
+	// The `edit_form` is captured by the watch closure's implicit `move`.
+	//
+	// Workaround for #4515 (framework usability: nested `watch{}` cannot
+	// share `!Copy` Signal captures). The `edit_form`'s own loading/error UI
+	// is inlined inside this single outer `watch{}` instead of a second
+	// nested `watch{}` block. The root cause is that `Page::reactive` requires
+	// `F: Fn() -> Page + 'static`; when an inner `watch` is added inside an
+	// outer one, both closures try to capture the same `!Copy` `Signal<T>`
+	// from the surrounding scope, which rustc rejects with
+	// E0507 "cannot move out of … a captured variable in an `Fn` closure"
+	// (the inner closure's capture conflicts with the outer closure's
+	// re-execution semantics). Until #4515 lands a framework-level fix,
+	// flattening the inner reactive switch into the outer `watch{}` is the
+	// least-invasive way to preserve reactivity — a single `watch` already
+	// subscribes to every Signal accessed inside its body, so the reactive
+	// contract is unchanged.
+	//
+	// Ideal implementation (without workaround, blocked on #4515):
+	//   watch {
+	//       if edit_form.error().get().is_some() {
+	//           div { class: "alert-danger mb-3",
+	//               { edit_form.error().get().unwrap_or_default() } }
+	//       }
+	//   }
+	//   { edit_form.clone().into_page() }
+	//   div {
+	//       class: "mt-3",
+	//       watch {
+	//           if edit_form.loading().get() {
+	//               button { /* "Saving..." */ }
+	//           } else {
+	//               button { /* "Save" */ }
+	//           }
+	//       }
+	//   }
 	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
 		div {
 			watch {
