@@ -707,12 +707,15 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 	} else {
 		quote! {}
 	};
-	// SuperuserInit is only generated for full user types with #[model].
-	// The user type must also implement Default (typically via #[derive(Default)]
-	// or a manual impl).
-	// When both conditions are met, also auto-register a SuperuserCreator via
+	// SuperuserInit is generated for any user type that also has #[model].
+	// `full = true` is no longer required: generate_superuser_init_impl emits
+	// empty token streams for missing optional fields (email, is_staff,
+	// date_joined, etc.), so minimal user structs are supported too. The user
+	// type must also implement Default (typically via #[derive(Default)] or
+	// a manual impl).
+	// When #[model] is present, also auto-register a SuperuserCreator via
 	// inventory so that manual register_superuser_creator() calls are not needed.
-	let superuser_init_impl = if parsed_args.full && has_model {
+	let superuser_init_impl = if has_model {
 		let auth_crate = get_reinhardt_auth_crate();
 		let reinhardt_crate = crate::crate_paths::get_reinhardt_crate();
 		let superuser_init = generate_superuser_init_impl(struct_name, &mapping, &parsed_args);
