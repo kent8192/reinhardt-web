@@ -97,7 +97,7 @@ fn tutorial_user_is_registered_in_superuser_creator_inventory() {
 	let target_type_name = std::any::type_name::<User>();
 	let found = registrations
 		.iter()
-		.any(|r| target_type_name.ends_with(r.type_name) || r.type_name == "User");
+		.any(|r| r.type_name == target_type_name);
 
 	// Assert -- if this fails, the macro auto-registration regressed for
 	// minimal-user models; re-check the guard in
