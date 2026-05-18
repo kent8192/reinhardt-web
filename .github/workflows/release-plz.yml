@@ -201,7 +201,28 @@ jobs:
 
   release-plz-release:
     name: Release
-    if: github.event_name == 'push'
+    # On main, always run on push — the existing two-stage workflow with
+    # release_always=true (KI-5 phantom-version-bump fix) means release-plz
+    # itself decides whether to publish based on Cargo.toml vs crates.io.
+    #
+    # On develop/**, gate the job on Release-PR-merge commits to avoid
+    # spinning up a self-hosted runner + cargo registry sync for every
+    # routine feat/fix push (where Cargo.toml is unchanged and publish would
+    # always skip). Two commit-message shapes are accepted to cover both
+    # GitHub merge strategies:
+    #
+    #   - squash-merge → `chore: release ...` (release-plz's `pr_name`)
+    #   - regular merge → `Merge pull request #N from .../release-plz-...`
+    #     (release-plz's `pr_branch_prefix = "release-plz-"`)
+    #
+    # release-plz-pr (above) still runs on every develop/** push, so the
+    # next Release PR is always kept up to date.
+    if: |
+      github.event_name == 'push' && (
+        github.ref == 'refs/heads/main' ||
+        contains(github.event.head_commit.message, 'chore: release') ||
+        contains(github.event.head_commit.message, 'release-plz-')
+      )
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
     outputs:
