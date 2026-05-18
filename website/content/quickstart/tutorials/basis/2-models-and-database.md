@@ -140,8 +140,7 @@ pub struct Choice {
     #[field(primary_key = true)]
     pub id: i64,
 
-    // related_name is REQUIRED for #[rel(foreign_key)] — it generates
-    // the reverse accessor on the target model.
+    // ⚠️ IMPORTANT: related_name is REQUIRED for #[rel(foreign_key)]
     #[rel(foreign_key, related_name = "choices")]
     pub question: ForeignKeyField<Question>,
 
@@ -153,11 +152,7 @@ pub struct Choice {
 }
 
 impl Choice {
-    /// Increment the vote count.
-    ///
-    /// Reused by the `vote` server function (Part 3): the handler loads
-    /// the `Choice`, calls `vote(&mut self)`, then persists the row in
-    /// an `atomic(&db, …)` block.
+    /// Increment the vote count
     pub fn vote(&mut self) {
         self.votes += 1;
     }
@@ -293,18 +288,36 @@ Create `src/apps/users/models.rs`:
 //! `first_name` / `last_name` / `date_joined` / `is_staff`), which keeps
 //! both the schema and the SignupForm small.
 //!
-//! All registration / authentication-state changes go through
-//! [`UserManager`] (a project-local implementation of
+//! All registration / authentication-state changes from application code
+//! go through [`UserManager`] (a project-local implementation of
 //! `BaseUserManager<User>`) rather than constructing `User` instances
 //! by hand — see the `register` server function in
 //! `crate::apps::users::server_fn`.
+//!
+//! The `createsuperuser` management command takes a **different** path:
+//! it drives `TypedSuperuserCreator<User>` (via the manual `SuperuserInit`
+//! impl + `register_superuser_creator` call wired up in
+//! `src/bin/manage.rs`), which calls `User::objects().create(&user)`
+//! directly. That path therefore **bypasses** the password-length / username
+//! trim / uniqueness checks that [`UserManager::build_user`] performs for
+//! the application signup flow. Acceptable for the tutorial CLI; tracked
+//! upstream as reinhardt-web#4522 (relax the macro auto-registration guard
+//! so this manual wiring is no longer necessary).
 
 use chrono::{DateTime, Utc};
 use reinhardt::Argon2Hasher;
 use reinhardt::macros::user;
 use reinhardt::prelude::*;
+use reinhardt::reinhardt_auth::SuperuserInit;
 use serde::{Deserialize, Serialize};
 
+// `manager = false` opts out of the auto-generated `UserManager` that
+// `#[user(...)]` emits by default since reinhardt-web#4451 — the tutorial
+// keeps its own DB-backed `UserManager` below (registered via
+// `#[injectable_factory]`) which would otherwise be shadowed. The
+// auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
+// (issue #4455), and this model uses `i64` to demonstrate auto-increment
+// integer PKs in the tutorial.
 #[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -330,9 +343,26 @@ pub struct User {
     #[field(auto_now_add = true)]
     pub created_at: DateTime<Utc>,
 }
+
+// Minimal `SuperuserInit` impl wired up so the `createsuperuser`
+// management command can construct a `User` instance for the framework's
+// `TypedSuperuserCreator<User>`. The `email` parameter is intentionally
+// dropped because the tutorial's minimal user has no email column; the PK
+// (`i64` auto-increment) is left as `0` so the DB assigns the real value
+// on insert (`Default::default()` for `i64`).
+impl SuperuserInit for User {
+    fn init_superuser(username: &str, _email: &str) -> Self {
+        User {
+            username: username.to_string(),
+            is_active: true,
+            is_superuser: true,
+            ..User::default()
+        }
+    }
+}
 ```
 
-There is one new attribute macro and a handful of new field options. Let's unpack them.
+There is one new attribute macro, a handful of new field options, and a small `SuperuserInit` impl for the `createsuperuser` CLI. Let's unpack them.
 
 ### The `#[user]` Attribute
 
@@ -363,6 +393,17 @@ Notice that we did **not** pass `full = true`. The `full` flag would also implem
 | `#[field(include_in_new = false)]` | Excludes `last_login` from the `User::build()` typestate. `last_login` is only ever set by the login server function in Part 3 (it stamps the timestamp on a successful login), so it should not be required at construction time. Without this attribute, every test fixture would have to supply a meaningless value. |
 
 `is_active` defaults to `true`, `is_superuser` defaults to `false`, and `created_at` is `auto_now_add`. These four defaults plus `include_in_new = false` on `last_login` mean the typestate builder for `User` only requires the two fields the manager actually needs to fill in: `username` and `password_hash`. That keeps the manager small.
+
+### The `SuperuserInit` Impl
+
+The small `impl SuperuserInit for User` block at the bottom of the file is what makes `cargo run --bin manage createsuperuser` work. The `createsuperuser` management command drives `TypedSuperuserCreator<User>`, which needs a way to construct a `User` from `(username, email)` without running the application-side `UserManager` validation. `SuperuserInit::init_superuser(...)` is that constructor.
+
+Two details worth knowing:
+
+- The `email` parameter is intentionally dropped — the tutorial's minimal `User` has no `email` column, so we just ignore the value the CLI prompts for. `full = true` would add the column; we opted out of that on purpose.
+- The primary key is left as `Default::default()` (`0` for `i64`). The database fills it in on insert thanks to `auto_increment`. We do not have to write `id: 0` explicitly because `..User::default()` covers it.
+
+The `createsuperuser` path **bypasses** the password-length / username-trim / uniqueness checks that `UserManager::build_user` (below) performs for the application signup flow. That is acceptable for the tutorial CLI, where the operator is trusted; the upstream tracking note in the file header (`reinhardt-web#4522`) documents this trade-off.
 
 ### The Project-Local `UserManager`
 
@@ -565,6 +606,7 @@ In this chapter you learned:
 - How `#[model(app_label = ..., table_name = ...)]` plus `#[field(...)]` plus `#[rel(foreign_key, related_name = ...)]` define `Question` and `Choice`, including the rule that `related_name` is required
 - How the `#[model]`-generated typestate `build()` constructor (`Question::build()...finish()`, `Choice::build()...finish()`) keeps call sites stable as the schema grows
 - How `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` layers auth traits on top of `#[model]`, and why `manager = false` is the right pick when you have a project-local manager
+- How `impl SuperuserInit for User` is what makes `cargo run --bin manage createsuperuser` work, and why it intentionally bypasses the application-side `UserManager` validation
 - How a project-local `UserManager` is registered with the DI container through `#[injectable_factory(scope = "transient")]`, and why the factory form sidesteps the `async-trait` dependency that `#[injectable]` would otherwise force
 - How `installed_apps! { polls: "polls", users: "users" }` generates the typed `InstalledApp::polls` and `InstalledApp::users` identifiers that Part 3 will hand to `#[url_patterns(InstalledApp::<app>, mode = ...)]`
 - How `cargo make makemigrations` + `cargo make migrate` (with `cargo make showurls` as the inspection tool) compile and apply the schema to `db.sqlite3`
