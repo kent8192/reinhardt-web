@@ -1296,20 +1296,25 @@ pub async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 	Ok(())
 }
 
-/// Start the HTTP server bound to `addr`, performing automatic route
-/// registration via [`auto_register_router`] beforehand.
+/// Start the HTTP server bound to `addr`.
 ///
-/// This is a one-call convenience wrapper around the
-/// [`auto_register_router`] + [`RunServerCommand`]
-/// composition. It is intended for **non-CLI server entrypoints** — for
-/// example, a container entrypoint binary that should expose only an HTTP
-/// server without the full `manage` clap surface.
+/// This is a one-call convenience wrapper around [`RunServerCommand`] for
+/// **non-CLI server entrypoints** — for example, a container entrypoint
+/// binary that should expose only an HTTP server without the full `manage`
+/// clap surface.
 ///
-/// All [`RunServerCommand`] options other than the
-/// bind address use their built-in defaults (autoreload enabled, no WASM
-/// frontend, `dist` static directory, etc.). Callers needing finer control
-/// should compose with [`auto_register_router`] and
-/// [`RunServerCommand`] directly.
+/// HTTP-route inventory registration happens inside
+/// [`RunServerCommand::execute`] itself (Refs #4453 DP-1), guarded by
+/// `reinhardt_urls::routers::is_router_registered()`. This wrapper therefore
+/// delegates straight to `execute` without a separate
+/// [`auto_register_router`] call — wiring both would double-register on
+/// callers that do not pre-mount a router and would no-op redundantly on
+/// callers that do.
+///
+/// All [`RunServerCommand`] options other than the bind address use their
+/// built-in defaults (autoreload enabled, no WASM frontend, `dist` static
+/// directory, etc.). Callers needing finer control should construct a
+/// [`CommandContext`] and call [`RunServerCommand::execute`] directly.
 ///
 /// Use [`execute_from_command_line`] instead when you want full clap argument
 /// parsing for the `manage` subcommand surface.
@@ -1335,7 +1340,6 @@ pub async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 /// ```
 #[cfg(feature = "server")]
 pub async fn start_server(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
-	auto_register_router().await?;
 	let ctx = CommandContext::new(vec![addr.to_string()]);
 	RunServerCommand.execute(&ctx).await.map_err(Into::into)
 }
