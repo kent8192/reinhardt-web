@@ -72,6 +72,9 @@
 - Apply RC bug fixes to `main` first, then forward-merge to develop (DB-3)
 - Forward-merge `main` into develop branch regularly (DB-4)
 - Merge develop branch into `main` after stable release using merge commit, not squash (DB-5)
+- Initialize a freshly-created develop branch with `scripts/init-develop-branch.sh m.n.l` so release-plz on `develop/**` produces alpha Release PRs (DBR-1)
+- Run `scripts/freeze-develop-to-rc.sh` at API freeze to transition the develop branch from `alpha.N` to `rc.1` (DBR-2)
+- Trigger `release-plz-promote.yml` (`gh workflow run release-plz-promote.yml -f develop_branch=develop/m.n.l`) after merging the develop branch into `main` to graduate the prerelease suffix to stable (DBR-3)
 - Use independent context (separate agent session) for agent re-evaluation of `agent-suspect` Issues
 - Obtain SP-6 approval before adding non-breaking APIs during RC phase (`enhancement` + `rc-addition` labels + maintainer approval)
 - Use three-dot diff (`main...branch`) for PR diff verification to exclude merge history noise
@@ -154,7 +157,8 @@
 - Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
 - Merge next-version features or breaking changes directly into `main` during RC (use `develop/0.x+1.0`)
 - Apply bug fixes only to the develop branch without fixing on `main` first (DB-3)
-- Configure release-plz to monitor the develop branch (DB-6)
+- Push to `develop/m.n.l` before running `scripts/init-develop-branch.sh m.n.l` — release-plz would otherwise publish a stable `m.n.l` immediately, bypassing the alpha phase (DBR-1)
+- Hand-edit Cargo.toml to graduate prerelease identifiers instead of running `scripts/freeze-develop-to-rc.sh` or `release-plz-promote.yml` — the scripts are the single source of truth (DBR-2, DBR-3)
 - Delete the develop branch before merging into `main` (DB-5)
 - Squash-merge the develop branch into `main` (DB-5)
 - Use the same agent context for both detection and verification of a bug
@@ -179,7 +183,7 @@ For comprehensive guidelines, see:
 - **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines and excluded artifacts)
 - **Research Escalation**: instructions/RESEARCH_ESCALATION.md (when to use Perplexity/Tavily/Brave)
 - **Release Process**: instructions/RELEASE_PROCESS.md
-- **Stability Policy**: instructions/STABILITY_POLICY.md (includes DB-1 ~ DB-7 develop branch strategy)
+- **Stability Policy**: instructions/STABILITY_POLICY.md (includes DB-1 ~ DB-7 develop branch strategy and DBR-1 ~ DBR-3 release workflow gates)
 - **Agent Bug Discovery**: instructions/STABILITY_POLICY.md (SC-2a)
 - **Issues**: instructions/ISSUE_GUIDELINES.md
 - **Good First Issue Policy**: instructions/ISSUE_GUIDELINES.md (GFI-1 ~ GFI-5)
