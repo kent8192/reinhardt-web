@@ -24,10 +24,11 @@ inputs:
     required: false
     default: ''
   rust-save-if:
-    description: |
-      Save Rust cache condition (forwarded to setup-rust). Pass
-      "${{ github.ref == 'refs/heads/main' }}" on PR-triggered jobs to avoid
-      PR cache pollution (Issue #2879).
+    description: >
+      Save Rust cache condition (forwarded to setup-rust). Pass a github.ref
+      comparison that evaluates to true only on the main branch (so PR-triggered
+      jobs restore the main cache but do not save their own) to avoid PR cache
+      pollution (Issue #2879). Defaults to 'true' (always save).
     required: false
     default: 'true'
   protoc-version:
@@ -35,10 +36,10 @@ inputs:
     required: false
     default: '28.x'
   protoc-token:
-    description: |
-      GitHub token for arduino/setup-protoc (avoids unauthenticated rate
-      limiting on the protoc download). Pass "${{ secrets.GITHUB_TOKEN }}"
-      from the caller.
+    description: >
+      GitHub token forwarded to arduino/setup-protoc as repo-token, used to
+      avoid unauthenticated rate limiting on the protoc download. Callers
+      should pass the workflow's secrets.GITHUB_TOKEN.
     required: true
 
 runs:
