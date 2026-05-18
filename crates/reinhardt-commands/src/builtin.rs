@@ -1288,7 +1288,7 @@ pub struct RunServerCommand;
 
 impl RunServerCommand {
 	/// Consume `UrlPatternsRegistration` `inventory` entries and install the
-	/// merged [`ServerRouter`] as the process-wide HTTP router.
+	/// merged `ServerRouter` as the process-wide HTTP router.
 	///
 	/// This is the canonical, named consumer of the `#[routes]`-emitted
 	/// server-side `inventory::submit!` block. It is invoked explicitly
