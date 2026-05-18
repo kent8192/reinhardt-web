@@ -81,23 +81,20 @@ jobs:
           version: "28.x"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache Cargo Registry
-        uses: actions/cache@v5
+      # Scope the cargo registry, cargo git, and target directories per-example
+      # via Swatinem/rust-cache@v2's `workspaces` parameter (Issue #4537). This
+      # replaces three separate actions/cache@v5 entries whose registry/git keys
+      # were global (causing multi-example runs to thrash a shared cache as
+      # different examples pulled different transitive deps) while the target
+      # key was per-example. The unified per-example cache aligns with
+      # reinhardt-feature-check.yml / coverage.yml and reuses rust-cache's
+      # battle-tested key derivation and cache-hit logic.
+      - name: Cache Rust dependencies (per-example)
+        uses: Swatinem/rust-cache@v2
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache Cargo Git
-        uses: actions/cache@v5
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache Target
-        uses: actions/cache@v5
-        with:
-          path: examples/${{ matrix.example }}/target
-          key: ${{ runner.os }}-target-${{ matrix.example }}-${{ hashFiles('**/Cargo.lock') }}
+          workspaces: examples/${{ matrix.example }}
+          shared-key: "examples-${{ matrix.example }}"
+          cache-on-failure: "true"
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2

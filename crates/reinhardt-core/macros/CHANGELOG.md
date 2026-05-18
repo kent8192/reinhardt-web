@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(macros)* accept optional `basename = "..."` argument on fn-form `#[viewset]`. Issue #4549.
+
+### Deprecated
+
+- *(macros)* the bare `#[viewset]` body-token basename fallback is deprecated. Pass `basename = "..."` explicitly on fn-form `#[viewset]` (matching the impl-form contract). The `extract_basename` token-walker fallback will become a hard error in v0.2.0. Issue #4549.
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.28...reinhardt-macros@v0.1.0-rc.29) - 2026-05-13
 
 ### Fixed

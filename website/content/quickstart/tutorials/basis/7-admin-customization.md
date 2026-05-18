@@ -205,7 +205,7 @@ Three things happen here:
 
 ## Mounting the Admin: `src/config/urls.rs`
 
-The site is mounted in `src/config/urls.rs`, the same `#[routes(standalone)]` function you saw in [Part 3](../3-views-and-urls/) that registers every server function and applies the session middleware. The admin mount is a `#[cfg(native)]` block, because the admin is server-only and the SPA never needs to know about it:
+The site is mounted in `src/config/urls.rs`, the same `#[routes(standalone, client_inventory)]` function you saw in [Part 3](../3-views-and-urls/) that registers every server function and applies the session middleware. The admin mount is a `#[cfg(native)]` block, because the admin is server-only and the SPA never needs to know about it:
 
 ```rust
 #[cfg(native)]
@@ -214,7 +214,7 @@ use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
 #[cfg(native)]
 use crate::config::admin::configure_admin;
 
-#[routes(standalone)]
+#[routes(standalone, client_inventory)]
 pub fn routes() -> UnifiedRouter {
     // … server-function registration omitted for clarity …
 
@@ -238,7 +238,7 @@ pub fn routes() -> UnifiedRouter {
 }
 ```
 
-Four moving parts, each doing one job:
+Five moving parts, each doing one job:
 
 1. **`Arc::new(configure_admin())`** — wraps the `AdminSite` in an `Arc` so the admin router can clone a cheap handle to it. The admin runs handlers concurrently, so shared ownership is required.
 2. **`admin_routes_with_di(admin_site)`** — destructures into `(admin_router, admin_di)`. The router is a `ServerRouter` containing every admin endpoint (the change-list, change-form, add-form, and delete-form views for each registered model, plus the index page). The `admin_di` value is a **DI registration list** that lazily provides `AdminDatabase` to admin handlers, sourcing it from the project's existing `DatabaseConnection`. This is the bridge between the admin's `AdminDatabase` abstraction and your real database — you do not configure it twice; the admin reuses the same connection your `#[server_fn]` handlers use.
