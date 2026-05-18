@@ -3813,18 +3813,25 @@ mod tests {
 	async fn test_register_http_routes_from_inventory_rejects_pre_registered_router() {
 		use reinhardt_urls::routers::ServerRouter;
 
+		// RAII guard so the manually registered router is cleared even if
+		// an assertion below panics. Keeps the `runserver` serial group
+		// hygienic without ordering the cleanup against `expect_err`.
+		struct RouterCleanupGuard;
+		impl Drop for RouterCleanupGuard {
+			fn drop(&mut self) {
+				reinhardt_urls::routers::clear_router();
+			}
+		}
+
 		// Arrange: a router is already registered via the manual setter
 		// (simulating an opt-out user who hand-built a ServerRouter and
 		// called `register_router(..)` themselves before invoking
 		// `RunServerCommand`).
 		reinhardt_urls::routers::register_router(ServerRouter::new());
+		let _cleanup_guard = RouterCleanupGuard;
 
 		// Act: explicit call to the inventory consumer must error.
 		let result = RunServerCommand.register_http_routes_from_inventory().await;
-
-		// Cleanup: drop the manually registered router so subsequent
-		// tests in the `runserver` serial group start clean.
-		reinhardt_urls::routers::clear_router();
 
 		// Assert: error mentions the mutual-exclusion contract so the
 		// caller can fix the bootstrap rather than silently overriding.
