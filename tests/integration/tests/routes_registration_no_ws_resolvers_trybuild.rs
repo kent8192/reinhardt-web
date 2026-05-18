@@ -39,12 +39,12 @@ mod snippets {
 
 #[routes(no_ws_resolvers)]
 pub fn routes() -> UnifiedRouter {
-	// Do NOT re-mount `snippets::urls::url_patterns()` here — it is
-	// already registered via the `#[url_patterns]` attribute above and
-	// discovered by the `#[routes]` expansion through the
-	// `installed_apps!` registry. Manually mounting it would cause a
-	// double-mount of the per-app server routes.
-	UnifiedRouter::new()
+	// `#[routes(...)]` preserves this function body verbatim (see
+	// `routes_impl` in `crates/reinhardt-core/macros/src/routes_registration.rs`).
+	// The `installed_apps!` registry is consulted only for URL *resolver*
+	// lookups (`__for_each_url_resolver!`), not for route mounting — the
+	// user is responsible for the `.mount()` call.
+	UnifiedRouter::new().mount("/api/", crate::snippets::urls::url_patterns())
 }
 
 #[test]
