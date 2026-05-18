@@ -203,8 +203,20 @@ jobs:
     # Deferred to Phase 2b (Issue #4534): release self-hosted runner slots
     # ~10 min earlier for jobs blocked on Spot vCPU quota. wasm-check only
     # starts once unit-test and intra-crate-integration-test have completed.
+    #
+    # The if-condition uses !cancelled() + explicit success/skipped checks
+    # because unit-test / intra-crate-integration-test are gated on
+    # detect-affected (selectively skipped when no Rust packages are affected).
+    # Without these guards, the default success() semantics on `needs:` would
+    # cascade the skip to wasm-check, and ci-success (which lists wasm-check in
+    # always_required) would then fail on wasm-check.result == "skipped".
+    # CodeRabbit review feedback on PR #4574.
     needs: [determine-runner, check-branch-status, unit-test, intra-crate-integration-test]
-    if: needs.check-branch-status.outputs.has-conflicts != 'true'
+    if: >-
+      ${{ !cancelled()
+        && needs.check-branch-status.outputs.has-conflicts != 'true'
+        && (needs.unit-test.result == 'success' || needs.unit-test.result == 'skipped')
+        && (needs.intra-crate-integration-test.result == 'success' || needs.intra-crate-integration-test.result == 'skipped') }}
     uses: ./.github/workflows/wasm-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
