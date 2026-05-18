@@ -266,13 +266,25 @@ inventory::collect!(SuperuserCreatorRegistration);
 ///
 /// Called by the framework before command dispatch. If a creator was already
 /// registered manually via [`register_superuser_creator`], this is a no-op
-/// (preserving backwards compatibility).
+/// (preserving backwards compatibility) regardless of how many `#[user]` +
+/// `#[model]` types exist in the inventory.
 ///
 /// # Panics
 ///
 /// Panics if multiple `#[user]` + `#[model]` types are found in the
-/// inventory. Only one user model can serve as superuser creator.
+/// inventory and no manual registration has been made. Only one user model
+/// can serve as the auto-registered superuser creator; if you legitimately
+/// have multiple user models, opt out by calling
+/// [`register_superuser_creator`] manually before command dispatch.
 pub fn auto_register_superuser_creator() {
+	// Honor an existing manual registration first, regardless of how many
+	// inventory entries exist. This makes manual registration a reliable
+	// escape hatch for projects that intentionally define multiple
+	// `#[user]` + `#[model]` types.
+	if SUPERUSER_CREATOR.get().is_some() {
+		return;
+	}
+
 	let registrations: Vec<_> = inventory::iter::<SuperuserCreatorRegistration>().collect();
 
 	match registrations.len() {
@@ -281,10 +293,6 @@ pub fn auto_register_superuser_creator() {
 			// a later error in get_superuser_creator() will handle this.
 		}
 		1 => {
-			if SUPERUSER_CREATOR.get().is_some() {
-				// Manual registration already happened; respect it.
-				return;
-			}
 			let reg = &registrations[0];
 			let creator = (reg.create)();
 			// Ignore set failure: another thread may have registered
@@ -296,7 +304,8 @@ pub fn auto_register_superuser_creator() {
 			panic!(
 				"Multiple SuperuserCreator registrations found: {:?}. \
 				 Only one user model may have #[user] together with #[model]. \
-				 Remove the #[user] or #[model] attribute from all but one user model.",
+				 Remove the #[user] or #[model] attribute from all but one user model, \
+				 or call register_superuser_creator() manually before command dispatch.",
 				names
 			);
 		}
