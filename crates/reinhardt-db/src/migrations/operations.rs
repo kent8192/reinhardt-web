@@ -2498,13 +2498,30 @@ impl Operation {
 				// comment below is a defensive fallback: emitting executable
 				// ALTER COLUMN syntax on SQLite would always error (#4582).
 				let sql = match dialect {
-					SqlDialect::Postgres | SqlDialect::Cockroachdb => format!(
-						"ALTER TABLE {} ALTER COLUMN {} TYPE {}{};",
-						quote_identifier(table),
-						quote_identifier(column),
-						type_sql,
-						null_clause
-					),
+					SqlDialect::Postgres | SqlDialect::Cockroachdb => {
+						let mut statements = format!(
+							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
+							quote_identifier(table),
+							quote_identifier(column),
+							type_sql
+						);
+						// PostgreSQL requires a separate statement for nullability changes
+						let nullability_stmt = if old_def.not_null {
+							format!(
+								"\nALTER TABLE {} ALTER COLUMN {} SET NOT NULL;",
+								quote_identifier(table),
+								quote_identifier(column)
+							)
+						} else {
+							format!(
+								"\nALTER TABLE {} ALTER COLUMN {} DROP NOT NULL;",
+								quote_identifier(table),
+								quote_identifier(column)
+							)
+						};
+						statements.push_str(&nullability_stmt);
+						statements
+					}
 					SqlDialect::Mysql => format!(
 						"ALTER TABLE {} MODIFY COLUMN {} {}{};",
 						quote_identifier(table),
