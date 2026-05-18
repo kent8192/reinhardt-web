@@ -59,17 +59,31 @@ jobs:
           # Enumerate workspace crates that publish to a registry (default
           # behaviour) and exclude the facade crates reinhardt-web and
           # reinhardt-pages, mirroring the --exclude flags of the previous
-          # workspace-wide invocation.
-          CRATES=$(cargo metadata --format-version 1 --no-deps \
+          # workspace-wide invocation. Capture cargo metadata once and reuse it
+          # to derive both the crate list and the set of unique resolved
+          # versions; resolving via cargo metadata handles both literal
+          # `version = "..."` declarations and `version.workspace = true`
+          # inheritance uniformly, so phase detection downstream does not need
+          # to special-case workspace inheritance.
+          METADATA=$(cargo metadata --format-version 1 --no-deps)
+          CRATES=$(echo "$METADATA" \
             | jq -c '[.packages[]
                       | select(.publish == null or (.publish | length > 0))
                       | .name]
                      - ["reinhardt-web", "reinhardt-pages"]
                      | sort')
+          VERSIONS=$(echo "$METADATA" \
+            | jq -rc '[.packages[]
+                       | select(.publish == null or (.publish | length > 0))
+                       | .version]
+                      | unique
+                      | join(",")')
           COUNT=$(echo "$CRATES" | jq 'length')
           echo "crates=$CRATES" >> "$GITHUB_OUTPUT"
           echo "crate-count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "versions=$VERSIONS" >> "$GITHUB_OUTPUT"
           echo "::notice::Publishable crates ($COUNT): $CRATES"
+          echo "::notice::Publishable crate versions (unique): $VERSIONS"
 
       - name: Resolve release context
         id: context
@@ -77,6 +91,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref || github.ref_name }}
           HAS_BREAKING_CHANGE: ${{ inputs.has-breaking-change-label }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CRATE_VERSIONS: ${{ steps.list-crates.outputs.versions }}
         run: |
           # is-release-pr: release-plz Release PRs are detected by branch prefix.
           # On those, release-plz bumps versions in Cargo.toml so cargo-semver-checks
@@ -90,15 +105,25 @@ jobs:
           # phase: alpha disables semver-check (no API stability guarantee).
           # RC and stable both enforce semver-check, with different release-type
           # defaults handled below.
-          if grep -rqP '^version\s*=\s*"[^"]*-alpha' crates/*/Cargo.toml; then
+          #
+          # CRATE_VERSIONS is a comma-separated, deduplicated list of resolved
+          # publishable-crate versions emitted by the list-crates step. Driving
+          # phase detection from cargo metadata (instead of grepping crate
+          # Cargo.toml files for literal `version = "..."` lines) handles
+          # `version.workspace = true` inheritance correctly: a crate that
+          # inherits from `[workspace.package].version = "0.1.0-rc.19"` will
+          # have its resolved version `0.1.0-rc.19` show up in CRATE_VERSIONS,
+          # whereas the previous grep approach silently defaulted such crates
+          # to `stable`.
+          if echo "$CRATE_VERSIONS" | grep -q -- '-alpha'; then
             PHASE="alpha"
-            echo "::notice::Alpha version detected. Skipping semver-check (no API stability guarantee during alpha)."
-          elif grep -rqP '^version\s*=\s*"[^"]*-rc' crates/*/Cargo.toml; then
+            echo "::notice::Alpha version detected ($CRATE_VERSIONS). Skipping semver-check (no API stability guarantee during alpha)."
+          elif echo "$CRATE_VERSIONS" | grep -q -- '-rc'; then
             PHASE="rc"
-            echo "::notice::RC version detected. Enforcing semver-check (no breaking changes permitted during RC phase)."
+            echo "::notice::RC version detected ($CRATE_VERSIONS). Enforcing semver-check (no breaking changes permitted during RC phase)."
           else
             PHASE="stable"
-            echo "::notice::Stable version detected. Enforcing semver-check (full SemVer guarantees)."
+            echo "::notice::Stable version detected ($CRATE_VERSIONS). Enforcing semver-check (full SemVer guarantees)."
           fi
           echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
 
