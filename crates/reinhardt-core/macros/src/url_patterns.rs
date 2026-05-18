@@ -678,27 +678,46 @@ fn split_enum_type_and_variant(app_path: &syn::ExprPath) -> syn::Result<(syn::Pa
 ///
 /// Phase 6.2 (Issue #4507): the manifest macro is emitted by
 /// `viewset_macro::emit_per_fn_manifest` with `#[macro_export]`, which
-/// lands it at the user crate's root. The forwarder therefore calls
-/// `$crate::__for_each_viewset_meta_<fn>!($callback, $app);` directly,
-/// bypassing the `$base` channel entirely. This sidesteps E0364
-/// ("cannot re-export `pub(crate)` macro_rules! as `pub`") that blocked
-/// the earlier attempt to re-export the manifest into `url_resolvers`.
+/// lands it at the user crate's root. Earlier this forwarder called the
+/// manifest as `$crate::__for_each_viewset_meta_<fn>!` directly, but that
+/// keyed only on `<fn>` and collided across two `pub fn viewset()` in
+/// different modules (E0428, Issue #4523).
 ///
-/// Refs Issue #4507.
+/// Issue #4523 fix: the manifest macro name now also embeds `<basename>`,
+/// which is not visible from the call site here (we only have the factory
+/// path). To reach it we route through the **scope-respecting** bundle
+/// module `__viewset_resolvers_<fn>` that `#[viewset]` already emits next
+/// to the function; the bundle module exposes the manifest under the
+/// fixed local alias `__for_each_meta` via `pub use crate::… as …`. The
+/// reconstructed path is therefore
+/// `<factory_path_minus_last>::__viewset_resolvers_<fn>::__for_each_meta!`,
+/// e.g. for `crate::snippets::viewset` the forwarder emits
+/// `crate::snippets::__viewset_resolvers_viewset::__for_each_meta!(...)`.
+///
+/// Refs Issue #4507, Fixes Issue #4523.
 fn build_viewset_meta_forwarder(factory: &TokenStream) -> TokenStream {
-	let parsed: syn::Path = match syn::parse2(factory.clone()) {
-		Ok(p) => p,
-		Err(_) => return quote! {},
+	let Ok(parsed) = syn::parse2::<syn::Path>(factory.clone()) else {
+		return quote! {};
 	};
 	if parsed.segments.is_empty() {
 		return quote! {};
 	}
 	let fn_name = &parsed.segments.last().unwrap().ident;
-	let manifest = syn::Ident::new(
-		&format!("__for_each_viewset_meta_{fn_name}"),
+	let bundle_mod = syn::Ident::new(
+		&format!("__viewset_resolvers_{fn_name}"),
 		fn_name.span(),
 	);
-	quote! { $crate::#manifest!($callback, $app); }
+	// Rewrite the last segment from <fn> to __viewset_resolvers_<fn>.
+	// Strip any generic arguments from intermediate segments defensively;
+	// in practice `.viewset(path::to::fn)` is a plain path, but if the
+	// caller ever passes a typed path we don't want stray angle brackets
+	// to leak into the rewritten bundle path.
+	let mut bundle_path = parsed.clone();
+	for segment in &mut bundle_path.segments {
+		segment.arguments = syn::PathArguments::None;
+	}
+	bundle_path.segments.last_mut().unwrap().ident = bundle_mod;
+	quote! { #bundle_path::__for_each_meta!($callback, $app); }
 }
 
 /// Build a forwarder call to a viewset impl block's action manifest macro.
@@ -805,10 +824,13 @@ fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream
 		endpoint_paths.iter().filter_map(build_meta_ident).collect();
 
 	// Forwarders: meta manifests come from BOTH .viewset() and .viewset_with_actions().
-	// Phase 6.2 (Issue #4507): the per-fn manifest macros are now reached
-	// via `$crate::__for_each_viewset_meta_<fn>!` (they carry
-	// `#[macro_export]` so they live at the user crate root), so no
-	// `pub use` re-export into `url_resolvers` is needed.
+	// Phase 6.2 (Issue #4507): the per-fn manifest macros carry `#[macro_export]`
+	// so they live at the user crate root.
+	// Issue #4523 fix: to avoid collisions when two `pub fn viewset()` in
+	// different modules share the same fn identifier, the manifest macro
+	// name now embeds `<basename>` too, and the consumer reaches it
+	// through the scope-respecting bundle module `__viewset_resolvers_<fn>`
+	// under the fixed alias `__for_each_meta` (see `build_viewset_meta_forwarder`).
 	let viewset_meta_forwarders: Vec<TokenStream> = viewset_calls
 		.iter()
 		.map(|c| build_viewset_meta_forwarder(&c.expr_path))
@@ -1856,10 +1878,13 @@ mod tests {
 		// Act
 		let out_s = url_patterns_impl(args, input).unwrap().to_string();
 
-		// Assert: both manifest forwarders appear in expansion
+		// Assert: both manifest forwarders appear in expansion.
+		// Issue #4523 fix: the fn-form manifest is now reached via the
+		// scope-respecting bundle module under the fixed alias
+		// `__for_each_meta`, not via a crate-root macro call.
 		assert!(
-			out_s.contains("__for_each_viewset_meta_viewset"),
-			"fn-form manifest must be forwarded; got: {out_s}"
+			out_s.contains("__viewset_resolvers_viewset :: __for_each_meta"),
+			"fn-form manifest must be forwarded via bundle module alias; got: {out_s}"
 		);
 		assert!(
 			out_s.contains("__for_each_viewset_action_meta_snippet_view_set"),
@@ -1880,8 +1905,12 @@ mod tests {
 		// Act
 		let out_s = url_patterns_impl(args, input).unwrap().to_string();
 
-		// Assert: fn-form manifest yes, action manifest no
-		assert!(out_s.contains("__for_each_viewset_meta_viewset"));
+		// Assert: fn-form manifest yes (via bundle module alias, Issue #4523),
+		// action manifest no.
+		assert!(
+			out_s.contains("__viewset_resolvers_viewset :: __for_each_meta"),
+			"fn-form manifest must be forwarded via bundle module alias; got: {out_s}"
+		);
 		assert!(
 			!out_s.contains("__for_each_viewset_action_meta_"),
 			"plain .viewset() must NOT forward action manifest; got: {out_s}"

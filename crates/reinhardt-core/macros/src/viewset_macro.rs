@@ -234,15 +234,24 @@ fn emit_meta_macro(
 /// gets the typed methods.
 ///
 /// Phase 6.2 (Issue #4507): the manifest carries `#[macro_export]` so it
-/// is reachable as `$crate::__for_each_viewset_meta_<fn>!` from the
-/// `#[url_patterns]`-generated `__for_each_url_resolver` arm. The body
-/// invokes the per-fn meta macros via the same `$crate::` channel because
-/// they too are `#[macro_export]`'d (see `emit_meta_macro`).
+/// lands at the user crate's root. The body invokes the per-fn meta macros
+/// via the same `$crate::` channel because they too are `#[macro_export]`'d
+/// (see `emit_meta_macro`).
 ///
-/// Refs Issue #4507.
+/// Issue #4523 fix: the manifest macro name embeds **both** `<fn>` and
+/// `<basename>` so that two `#[viewset]` functions in different modules
+/// sharing the same function identifier (e.g. the conventional
+/// `pub fn viewset()` in two sibling modules) do not collide on a single
+/// crate-root name. The consumer side (`url_patterns::build_viewset_meta_forwarder`)
+/// does not know the basename from the call site, so it reaches the
+/// manifest through the scope-respecting bundle module
+/// `__viewset_resolvers_<fn>`, which re-exports the manifest under the
+/// fixed local alias `__for_each_meta` (see `viewset_fn_impl`).
+///
+/// Refs Issue #4507, Fixes Issue #4523.
 fn emit_per_fn_manifest(fn_name: &syn::Ident, basename: &str) -> TokenStream {
 	let manifest_name = syn::Ident::new(
-		&format!("__for_each_viewset_meta_{fn_name}"),
+		&format!("__for_each_viewset_meta_{fn_name}_{basename}"),
 		Span::call_site(),
 	);
 	let list_meta = syn::Ident::new(
@@ -254,8 +263,10 @@ fn emit_per_fn_manifest(fn_name: &syn::Ident, basename: &str) -> TokenStream {
 		Span::call_site(),
 	);
 	// `#[macro_export]` already publishes the macro at the user crate root;
-	// no additional `pub use` is required (and adding one triggers E0255
-	// "defined multiple times").
+	// no additional sibling `pub use` is required (and adding one in the
+	// same module triggers E0255 "defined multiple times"). A `pub use` from
+	// a *child* module (the bundle module) is fine and is used in
+	// `viewset_fn_impl` to expose the manifest under a fixed alias.
 	quote! {
 		#[doc(hidden)]
 		#[macro_export]
@@ -329,6 +340,14 @@ fn viewset_fn_impl(_args: TokenStream, func: ItemFn) -> syn::Result<TokenStream>
 		&format!("__url_resolver_{basename}_detail"),
 		Span::call_site(),
 	);
+	// Issue #4523 fix: the manifest macro name embeds `<basename>` to avoid
+	// crate-root collisions between two `#[viewset] pub fn viewset()` in
+	// different modules. The consumer reaches it via the scope-respecting
+	// bundle module below under the fixed alias `__for_each_meta`.
+	let manifest_name = syn::Ident::new(
+		&format!("__for_each_viewset_meta_{fn_name}_{basename}"),
+		Span::call_site(),
+	);
 
 	Ok(quote! {
 		#func
@@ -343,6 +362,11 @@ fn viewset_fn_impl(_args: TokenStream, func: ItemFn) -> syn::Result<TokenStream>
 			pub use super::#list_mod_ident::*;
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			pub use super::#detail_mod_ident::*;
+			// Scope-respecting alias for the manifest macro (Issue #4523).
+			// `pub use` of a `#[macro_export]`'d macro from a child module
+			// is supported in Rust 2018+ and does not trigger E0255.
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			pub use crate::#manifest_name as __for_each_meta;
 		}
 	})
 }
@@ -827,11 +851,50 @@ mod tests {
 		// Act
 		let out_s = viewset_macro_impl(quote! {}, input).unwrap().to_string();
 
-		// Assert: manifest macro that fans out to both meta macros exists.
+		// Assert: manifest macro that fans out to both meta macros exists,
+		// keyed on both fn_name AND basename (Issue #4523).
 		assert!(
-			out_s.contains("__for_each_viewset_meta_viewset"),
-			"fn-form must emit per-fn manifest macro; got: {out_s}"
+			out_s.contains("__for_each_viewset_meta_viewset_snippet"),
+			"fn-form must emit per-fn manifest macro keyed on <fn>_<basename>; got: {out_s}"
 		);
+		// And the bundle module must re-export it under the fixed alias
+		// `__for_each_meta` so the consumer can reach it through the
+		// scope-respecting module path (Issue #4523).
+		assert!(
+			out_s.contains(
+				"pub use crate :: __for_each_viewset_meta_viewset_snippet as __for_each_meta"
+			),
+			"bundle module must re-export the manifest under fixed alias `__for_each_meta`; got: {out_s}"
+		);
+	}
+
+	#[test]
+	fn fn_version_manifest_does_not_collide_across_basenames() {
+		// Arrange: two #[viewset] fns sharing the conventional `viewset`
+		// fn name but with different basenames must yield distinct
+		// crate-root manifest macro names (Issue #4523).
+		let snippet_input = quote! {
+			pub fn viewset() -> ModelViewSet<Snippet, SnippetSerializer> {
+				ModelViewSet::new("snippet")
+			}
+		};
+		let post_input = quote! {
+			pub fn viewset() -> ModelViewSet<Post, PostSerializer> {
+				ModelViewSet::new("post")
+			}
+		};
+
+		// Act
+		let snippet_out = viewset_macro_impl(quote! {}, snippet_input)
+			.unwrap()
+			.to_string();
+		let post_out = viewset_macro_impl(quote! {}, post_input).unwrap().to_string();
+
+		// Assert: the two manifests have non-overlapping crate-root names.
+		assert!(snippet_out.contains("__for_each_viewset_meta_viewset_snippet"));
+		assert!(post_out.contains("__for_each_viewset_meta_viewset_post"));
+		assert!(!snippet_out.contains("__for_each_viewset_meta_viewset_post"));
+		assert!(!post_out.contains("__for_each_viewset_meta_viewset_snippet"));
 	}
 
 	#[test]
