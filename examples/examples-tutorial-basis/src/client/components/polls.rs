@@ -150,10 +150,11 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// - watch blocks for reactive UI updates (submit button + error display)
 	// - success_url: WASM-only declarative redirect that fires once per
 	//   successful submit (reinhardt-web#4519). The closure receives
-	//   `(&self, &value)` and is invoked from the form macro's
-	//   `on_success` codepath — NOT from a `watch` block — so it cannot
-	//   fire on initial mount when `loading == false && error == None`,
-	//   which was the root cause of the previous redirect-on-mount bug.
+	//   `(&form, &value)` (the generated form struct and the submitted
+	//   payload) and is invoked from the form macro's `on_success`
+	//   codepath — NOT from a `watch` block — so it cannot fire on
+	//   initial mount when `loading == false && error == None`, which
+	//   was the root cause of the previous redirect-on-mount bug.
 	let voting_form = form! {
 		name: VotingForm,
 		server_fn: submit_vote,
