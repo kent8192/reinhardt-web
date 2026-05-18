@@ -91,7 +91,7 @@ examples-tutorial-basis/
 │   │       ├── server_fn.rs   # #[server_fn] login / register / logout / current_user (session cookie based)
 │   │       └── urls/          # server_urls.rs (empty router) + client_router.rs (login / logout / signup pages)
 │   └── client/                # WASM-only UI layer (declared in crate root via `pub mod client;` under cfg)
-│       ├── lib.rs             # #[wasm_bindgen(start)] main(); ClientLauncher::new("#root").router_client(...).launch()
+│       ├── lib.rs             # #[wasm_bindgen(start)] main(); ClientLauncher::new("#root").register_routes_from_inventory().launch()
 │       ├── pages.rs           # Page factory functions; wraps body components in with_nav(...)
 │       ├── components.rs      # pub mod nav; polls; users;
 │       ├── components/        # nav.rs / polls.rs / users.rs — page! + watch + form! components
@@ -129,7 +129,7 @@ Three rules keep this structure predictable:
 - Write **server-rendered HTTP endpoints** under `src/apps/polls/views.rs` for clients that want a plain JSON API
 - Split routing into `src/apps/<app>/urls/server_urls.rs` (`ServerRouter`) and `src/apps/<app>/urls/client_router.rs` (`ClientRouter`), both registered via `#[url_patterns(InstalledApp::<app>, mode = ...)]`
 - Register server functions in `src/config/urls.rs` with `UnifiedRouter::new().server(|s| s.server_fn(name::marker)...)` — app routers are mounted automatically
-- Bootstrap the SPA in `src/client/lib.rs` by composing each app's client router with `UnifiedRouter::mount_unified` and handing the result to `ClientLauncher::new("#root").router_client(...).launch()`
+- Bootstrap the SPA in `src/client/lib.rs` with `ClientLauncher::new("#root").register_routes_from_inventory().launch()`; the `#[routes(standalone, client_inventory)]` aggregator in `src/config/urls.rs` composes each app's client router via `UnifiedRouter::mount_unified` and submits the result into `inventory`, which the launcher then collects (PR #4453)
 
 ### [Part 4: Forms and Generic Views](4-forms-and-generic-views/)
 

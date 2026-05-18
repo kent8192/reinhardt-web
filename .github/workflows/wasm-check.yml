@@ -145,6 +145,9 @@ jobs:
         with:
           components: clippy
           cache-key: "wasm-clippy-${{ matrix.target.name }}"
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install wasm32-unknown-unknown target
         run: rustup target add wasm32-unknown-unknown
@@ -173,6 +176,13 @@ jobs:
   #   - Pushes to main via wasm-check-standalone.yml (workflow_call)
   #   - Manual workflow_dispatch
   # Per-feature-branch pushes do not pay the headless Chrome cost.
+  #
+  # Deferred to Phase 2b (Issue #4534): release self-hosted runner slots ~10 min
+  # earlier for jobs blocked on Spot vCPU quota. The defer is implemented in the
+  # orchestrator workflow (.github/workflows/ci.yml) by extending the
+  # `wasm-check` caller job's `needs:` list with `unit-test` and
+  # `intra-crate-integration-test`; reusable workflows cannot declare cross-
+  # workflow needs themselves.
   wasm-test:
     name: WASM Test (headless Chrome)
     # Always use GitHub-hosted x86_64 runner: browser-actions/setup-chrome
@@ -200,6 +210,9 @@ jobs:
         uses: ./.github/actions/setup-rust
         with:
           cache-key: "wasm-test"
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install wasm32-unknown-unknown target
         run: rustup target add wasm32-unknown-unknown
@@ -274,6 +287,9 @@ jobs:
         uses: ./.github/actions/setup-rust
         with:
           cache-key: "e2e-cdp-test"
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install wasm32-unknown-unknown target
         run: rustup target add wasm32-unknown-unknown
@@ -320,6 +336,9 @@ jobs:
         uses: ./.github/actions/setup-rust
         with:
           cache-key: "wasm-consumer-fixture"
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install wasm32-unknown-unknown target
         run: rustup target add wasm32-unknown-unknown
