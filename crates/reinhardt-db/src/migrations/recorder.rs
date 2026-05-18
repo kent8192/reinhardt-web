@@ -223,7 +223,7 @@ impl DatabaseMigrationRecorder {
 			.await
 			.map_err(|e| {
 				super::MigrationError::DatabaseError(crate::backends::DatabaseError::QueryError(
-					format!("Failed to call GET_LOCK on MySQL: {e}",),
+					format!("Failed to call GET_LOCK on MySQL: {e}"),
 				))
 			})?;
 
@@ -243,15 +243,33 @@ impl DatabaseMigrationRecorder {
 
 		// Always release the lock on the same session that acquired it,
 		// regardless of whether the DDL succeeded.
-		let release_result = sqlx::query("SELECT RELEASE_LOCK('reinhardt_migrations')")
-			.execute(&mut *conn)
-			.await;
-		if let Err(e) = release_result {
-			tracing::warn!(
-				error = %e,
-				"Failed to release MySQL migration advisory lock; \
-				 the session will release it on connection close",
-			);
+		//
+		// `RELEASE_LOCK` returns a column rather than signalling failure via
+		// `Err`: `Some(1)` = released, `Some(0)` = not held by this session,
+		// `None` = lock did not exist. Anything other than `Some(1)` indicates
+		// the release silently no-op'd on the wrong session and would
+		// reintroduce a lock leak — surface that as a warning. Mirrors the
+		// `GET_LOCK` handling above.
+		let release_result: Result<Option<i64>, _> =
+			sqlx::query_scalar("SELECT RELEASE_LOCK('reinhardt_migrations')")
+				.fetch_one(&mut *conn)
+				.await;
+		match release_result {
+			Ok(Some(1)) => {}
+			Ok(other) => {
+				tracing::warn!(
+					result = ?other,
+					"RELEASE_LOCK did not release the MySQL migration advisory lock; \
+					 the session will release it on connection close"
+				);
+			}
+			Err(e) => {
+				tracing::warn!(
+					error = %e,
+					"Failed to call RELEASE_LOCK for the MySQL migration advisory lock; \
+					 the session will release it on connection close"
+				);
+			}
 		}
 
 		result
