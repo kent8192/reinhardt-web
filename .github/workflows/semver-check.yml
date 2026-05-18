@@ -212,6 +212,11 @@ jobs:
     if: needs.discover.outputs.should-run == 'true'
     runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
     timeout-minutes: 90
+    env:
+      # Single source of truth for the cargo-semver-checks version.
+      # Referenced by both the cache key and the installer script below so
+      # future version bumps stay in sync (Copilot review feedback, PR #4574).
+      CARGO_SEMVER_CHECKS_VERSION: v0.47.0
     strategy:
       fail-fast: false
       matrix:
@@ -253,21 +258,21 @@ jobs:
           protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Cache the cargo-semver-checks binary across matrix shards and runs.
-      # The cache key embeds the version literal so bumping VERSION below
-      # automatically invalidates the cache and forces a fresh download with
-      # SHA-256 verification. Cache footprint is ~10 MB per OS+arch entry.
-      # Issue #4535.
+      # The cache key embeds env.CARGO_SEMVER_CHECKS_VERSION so bumping the
+      # job-level env value automatically invalidates the cache and forces a
+      # fresh download with SHA-256 verification. Cache footprint is ~10 MB
+      # per OS+arch entry. Issue #4535.
       - name: Restore cargo-semver-checks binary cache
         id: cache-csc
         uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/cargo-semver-checks
-          key: cargo-semver-checks-v0.47.0-${{ runner.os }}-${{ runner.arch }}
+          key: cargo-semver-checks-${{ env.CARGO_SEMVER_CHECKS_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Install cargo-semver-checks
         if: steps.cache-csc.outputs.cache-hit != 'true'
         run: |
-          VERSION="v0.47.0"
+          VERSION="${CARGO_SEMVER_CHECKS_VERSION}"
           ARCH=$(uname -m)
           if [ "$ARCH" = "aarch64" ]; then
             TARGET="aarch64-unknown-linux-musl"
