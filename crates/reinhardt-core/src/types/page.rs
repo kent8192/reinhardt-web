@@ -537,6 +537,32 @@ impl Page {
 	/// * `render` - A closure that returns a `Page`. This closure will be
 	///   re-evaluated whenever its Signal dependencies change.
 	///
+	/// # Nested `watch { }` footgun (issue #4515)
+	///
+	/// The `F: Fn() -> Page + 'static` bound matters: the runtime invokes the
+	/// body once per signal change, so the body MUST NOT consume its captures.
+	/// This becomes a footgun when two `watch { }` blocks (which lower to
+	/// `Page::reactive`) are nested and share the same `Signal<T>` capture.
+	/// `Signal<T>` is intentionally `!Copy` (it is `Rc`/`Arc`-backed and
+	/// cheap to `Clone`), so the outer `move` closure cannot transfer the
+	/// same signal into the inner `move` closure twice. The compiler reports
+	/// this as `E0507: cannot move out of value, a captured variable in an
+	/// Fn closure` at the inner `watch { }` site, and rustc itself suggests
+	/// cloning the value before the inner move.
+	///
+	/// In addition to rustc's `clone` suggestion, the framework offers a
+	/// second fix that is often preferable:
+	///
+	/// 1. **Flatten**: a single `watch { }` already subscribes to every
+	///    signal it reads, so nested `watch { }` blocks are almost never
+	///    required for reactivity reasons. Collapse them into one.
+	/// 2. **Clone inside the outer body** before constructing the inner
+	///    `watch { }`: `let s = s.clone();` (Signal clone is cheap). This is
+	///    the path rustc's own diagnostic also suggests.
+	///
+	/// See `crates/reinhardt-pages/docs/watch_semantics.md` for worked
+	/// examples and the rationale behind each fix.
+	///
 	/// # Example
 	///
 	/// ```rust,ignore
