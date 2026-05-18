@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.29...reinhardt-db@v0.1.0-rc.30) - 2026-05-18
+
+### Changed
+
+- *(db-migrations)* add nullable field to FieldMetadata
+
+### Fixed
+
+- *(db-migrations)* resolve foreign-key column type from target model PK
+- *(db)* make FieldMetadata.nullable the single source of truth and harden FK metadata tests
+- *(db-migrations)* store FieldMetadata nullability in params to keep SemVer clean
+- *(db)* fall back to by-name FK lookup on qualified miss
+- *(db)* refuse FK resolution when target name is ambiguous
+- *(db,macros)* path-typed FK targets disambiguate ambiguous model names
+- *(macros)* source FK app label from target type's Model::app_label()
+- *(reinhardt-db)* skip redundant AddConstraint for already-unique columns
+- *(migrations)* dispatch ALTER COLUMN TYPE per backend (MySQL MODIFY, SQLite recreate)
+- apply CodeRabbit auto-fixes
+
+### Performance
+
+- *(db)* add direct lookup APIs to ModelRegistry
+- *(db)* migrate resolve_foreign_key_column_type to direct lookup
+
+### Testing
+
+- *(reinhardt-db)* cover rollback orchestration with in-crate sqlite tests
+- *(reinhardt-db)* reword rollback-test comments per Copilot review
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.28...reinhardt-db@v0.1.0-rc.29) - 2026-05-13
 
 ### Added
