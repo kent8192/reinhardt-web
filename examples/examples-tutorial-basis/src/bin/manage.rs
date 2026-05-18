@@ -9,9 +9,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
-	use examples_tutorial_basis::apps::users::models::User;
 	use reinhardt::commands::execute_from_command_line;
-	use reinhardt::reinhardt_auth::{register_superuser_creator, superuser_creator_for};
 	use std::process;
 
 	#[tokio::main]
@@ -24,13 +22,12 @@ mod native {
 			);
 		}
 
-		// Wire up the `createsuperuser` management command for the tutorial's
-		// minimal user model. The `#[user(... manager = false)]` macro path
-		// does not (currently) auto-register a `SuperuserCreator` for models
-		// without `full = true` — tracked upstream as reinhardt-web#4522.
-		// Must run before `execute_from_command_line()` because the framework
-		// resolves the registered creator at command-dispatch time.
-		register_superuser_creator(superuser_creator_for::<User>());
+		// The `createsuperuser` management command resolves the registered
+		// `SuperuserCreator` from the framework's inventory at dispatch
+		// time. Since reinhardt-web#4522, any `#[user] + #[model]` struct
+		// (including the tutorial's minimal `User`) auto-registers via
+		// `inventory::submit!`, so no manual `register_superuser_creator`
+		// call is required here.
 
 		if let Err(e) = execute_from_command_line().await {
 			eprintln!("Error: {e}");
