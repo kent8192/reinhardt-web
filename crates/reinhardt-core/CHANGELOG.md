@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.29...reinhardt-core@v0.1.0-rc.30) - 2026-05-18
+
+### Changed
+
+- *(macros)* dedupe upstream-workaround rustdoc via include_str!
+
 ## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.25...reinhardt-core@v0.1.0-rc.26) - 2026-05-05
 
 ### Added
