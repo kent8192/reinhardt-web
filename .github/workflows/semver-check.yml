@@ -26,7 +26,8 @@ jobs:
   # (pre-release phase, baseline-rev, release-type) once, then fan out to a
   # per-crate matrix below. Centralising the context resolution prevents the
   # per-crate shards from each re-detecting alpha/rc/stable and recomputing
-  # baseline-rev.
+  # baseline-rev (which on workflow_dispatch must also be pinned to a SHA so
+  # that shards on different runners do not race main).
   discover:
     name: Discover crates and context
     runs-on: ubuntu-latest
@@ -34,7 +35,7 @@ jobs:
     outputs:
       crates: ${{ steps.list-crates.outputs.crates }}
       crate-count: ${{ steps.list-crates.outputs.crate-count }}
-      phase: ${{ steps.context.outputs.phase }}
+      phase: ${{ steps.list-crates.outputs.phase }}
       release-type: ${{ steps.context.outputs.release-type }}
       is-release-pr: ${{ steps.context.outputs.is-release-pr }}
       baseline-rev: ${{ steps.context.outputs.baseline-rev }}
@@ -46,44 +47,78 @@ jobs:
           # fetch-depth: 0 is required so that the per-crate matrix shards can
           # later access the full git history when cargo-semver-checks needs to
           # checkout and build the baseline commit. We checkout here too so the
-          # discover job can read Cargo.toml versions and run cargo metadata
-          # against the same tree.
+          # discover job can resolve HEAD~1 to a concrete SHA (see context step)
+          # and run cargo metadata against the same tree.
           fetch-depth: 0
 
       - name: Install Rust toolchain (for cargo metadata)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: List publishable crates
+      - name: List publishable crates and detect phase
         id: list-crates
+        env:
+          WORKSPACE_PATH: ${{ github.workspace }}
         run: |
-          # Enumerate workspace crates that publish to a registry (default
-          # behaviour) and exclude the facade crates reinhardt-web and
-          # reinhardt-pages, mirroring the --exclude flags of the previous
-          # workspace-wide invocation. Capture cargo metadata once and reuse it
-          # to derive both the crate list and the set of unique resolved
-          # versions; resolving via cargo metadata handles both literal
-          # `version = "..."` declarations and `version.workspace = true`
-          # inheritance uniformly, so phase detection downstream does not need
-          # to special-case workspace inheritance.
+          # Run cargo metadata once and reuse for both crate enumeration and
+          # phase detection.
           METADATA=$(cargo metadata --format-version 1 --no-deps)
-          CRATES=$(echo "$METADATA" \
-            | jq -c '[.packages[]
-                      | select(.publish == null or (.publish | length > 0))
-                      | .name]
-                     - ["reinhardt-web", "reinhardt-pages"]
-                     | sort')
-          VERSIONS=$(echo "$METADATA" \
-            | jq -rc '[.packages[]
-                       | select(.publish == null or (.publish | length > 0))
-                       | .version]
-                      | unique
-                      | join(",")')
+
+          # Crates: intersect with .workspace_members so that future
+          # path-dependencies outside the workspace cannot leak into the matrix
+          # (Copilot review feedback). Emit each entry as {name, manifest_path}
+          # — the manifest path is forwarded to the matrix shards so they can
+          # detect newly-introduced crates whose Cargo.toml does not exist at
+          # the baseline rev (also Copilot review feedback) without re-running
+          # cargo metadata per shard.
+          CRATES=$(echo "$METADATA" | jq -c --arg ws "$WORKSPACE_PATH" '
+            (.workspace_members) as $wm |
+            [.packages[]
+             | select(.id as $id | $wm | index($id))
+             | select(.publish == null or (.publish | length > 0))
+             | {name: .name,
+                manifest_path: (.manifest_path | sub("^" + $ws + "/"; ""))}]
+            | map(select(.name == "reinhardt-web" or .name == "reinhardt-pages" | not))
+            | sort_by(.name)')
           COUNT=$(echo "$CRATES" | jq 'length')
-          echo "crates=$CRATES" >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No publishable workspace crates detected. Discover step cannot fan out to an empty matrix."
+            exit 1
+          fi
+
+          # Use heredoc form for the JSON crates output so that future edits
+          # which inadvertently drop -c (and reintroduce newlines) do not
+          # silently truncate the value at the first newline (Copilot review
+          # feedback). crate-count and phase are single-token primitives, so
+          # the key=value form remains safe for them.
+          {
+            echo "crates<<EOF_CRATES"
+            echo "$CRATES"
+            echo "EOF_CRATES"
+          } >> "$GITHUB_OUTPUT"
           echo "crate-count=$COUNT" >> "$GITHUB_OUTPUT"
-          echo "versions=$VERSIONS" >> "$GITHUB_OUTPUT"
-          echo "::notice::Publishable crates ($COUNT): $CRATES"
-          echo "::notice::Publishable crate versions (unique): $VERSIONS"
+          echo "::notice::Publishable crates ($COUNT): $(echo "$CRATES" | jq -c 'map(.name)')"
+
+          # Phase: derive from workspace package versions in cargo metadata
+          # rather than a regex over Cargo.toml (Copilot review feedback —
+          # the previous grep could false-positive on a `version` key inside a
+          # [dependencies] table, only working because of the leading ^).
+          # Alpha pre-releases disable semver-check; rc and stable both enforce
+          # it with different release-type defaults handled by the context step.
+          PHASE=$(echo "$METADATA" | jq -r '
+            (.workspace_members) as $wm |
+            [.packages[]
+             | select(.id as $id | $wm | index($id))
+             | .version] as $vs |
+            if   ($vs | any(test("-alpha"))) then "alpha"
+            elif ($vs | any(test("-rc")))    then "rc"
+            else "stable"
+            end')
+          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
+          case "$PHASE" in
+            alpha)  echo "::notice::Alpha version detected. Skipping semver-check (no API stability guarantee during alpha)." ;;
+            rc)     echo "::notice::RC version detected. Enforcing semver-check (no breaking changes permitted during RC phase)." ;;
+            stable) echo "::notice::Stable version detected. Enforcing semver-check (full SemVer guarantees)." ;;
+          esac
 
       - name: Resolve release context
         id: context
@@ -91,7 +126,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref || github.ref_name }}
           HAS_BREAKING_CHANGE: ${{ inputs.has-breaking-change-label }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          CRATE_VERSIONS: ${{ steps.list-crates.outputs.versions }}
+          PHASE: ${{ steps.list-crates.outputs.phase }}
         run: |
           # is-release-pr: release-plz Release PRs are detected by branch prefix.
           # On those, release-plz bumps versions in Cargo.toml so cargo-semver-checks
@@ -101,31 +136,6 @@ jobs:
             IS_RELEASE_PR="true"
           fi
           echo "is-release-pr=$IS_RELEASE_PR" >> "$GITHUB_OUTPUT"
-
-          # phase: alpha disables semver-check (no API stability guarantee).
-          # RC and stable both enforce semver-check, with different release-type
-          # defaults handled below.
-          #
-          # CRATE_VERSIONS is a comma-separated, deduplicated list of resolved
-          # publishable-crate versions emitted by the list-crates step. Driving
-          # phase detection from cargo metadata (instead of grepping crate
-          # Cargo.toml files for literal `version = "..."` lines) handles
-          # `version.workspace = true` inheritance correctly: a crate that
-          # inherits from `[workspace.package].version = "0.1.0-rc.19"` will
-          # have its resolved version `0.1.0-rc.19` show up in CRATE_VERSIONS,
-          # whereas the previous grep approach silently defaulted such crates
-          # to `stable`.
-          if echo "$CRATE_VERSIONS" | grep -q -- '-alpha'; then
-            PHASE="alpha"
-            echo "::notice::Alpha version detected ($CRATE_VERSIONS). Skipping semver-check (no API stability guarantee during alpha)."
-          elif echo "$CRATE_VERSIONS" | grep -q -- '-rc'; then
-            PHASE="rc"
-            echo "::notice::RC version detected ($CRATE_VERSIONS). Enforcing semver-check (no breaking changes permitted during RC phase)."
-          else
-            PHASE="stable"
-            echo "::notice::Stable version detected ($CRATE_VERSIONS). Enforcing semver-check (full SemVer guarantees)."
-          fi
-          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
 
           # should-run: release-plz Release PRs always run (they validate
           # release readiness regardless of phase); otherwise alpha skips.
@@ -155,12 +165,17 @@ jobs:
           echo "release-type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
 
           # baseline-rev: prefer the PR base SHA (works for both release-plz and
-          # normal PRs since crates may not yet be on crates.io). Falls back to
-          # HEAD~1 for workflow_dispatch.
+          # normal PRs since crates may not yet be on crates.io). For
+          # workflow_dispatch we resolve HEAD~1 to a concrete SHA *here* so
+          # that all matrix shards baseline against the same commit even if
+          # main advances between discover and shard start, or if shards
+          # queue behind each other on a busy self-hosted Spot fleet (Copilot
+          # review feedback). Without this pin, each shard would re-resolve
+          # HEAD~1 against its own independent checkout.
           if [[ -n "$PR_BASE_SHA" ]]; then
             BASELINE_REV="$PR_BASE_SHA"
           else
-            BASELINE_REV="HEAD~1"
+            BASELINE_REV=$(git rev-parse HEAD~1)
           fi
           echo "baseline-rev=$BASELINE_REV" >> "$GITHUB_OUTPUT"
 
@@ -171,7 +186,7 @@ jobs:
   # the setup-test-env composite action's rust-cache integration with
   # rust-cache-key="semver-check".
   semver-check:
-    name: SemVer (${{ matrix.crate }})
+    name: SemVer (${{ matrix.crate.name }})
     needs: discover
     if: needs.discover.outputs.should-run == 'true'
     runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
@@ -182,6 +197,9 @@ jobs:
         crate: ${{ fromJSON(needs.discover.outputs.crates) }}
     steps:
       - name: Free Disk Space (Ubuntu)
+        # Skipped on self-hosted runners — they have ample disk and the
+        # 47-shard concurrent disk-cleanup spike on the Spot fleet would
+        # otherwise be wasteful (Copilot review feedback acknowledged).
         if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -241,15 +259,26 @@ jobs:
           mv /tmp/csc/cargo-semver-checks ~/.cargo/bin/
           rm -rf /tmp/csc /tmp/cargo-semver-checks.tar.gz
 
-      - name: Run cargo-semver-checks for ${{ matrix.crate }}
+      - name: Run cargo-semver-checks for ${{ matrix.crate.name }}
         env:
-          CRATE: ${{ matrix.crate }}
+          CRATE_NAME: ${{ matrix.crate.name }}
+          CRATE_MANIFEST: ${{ matrix.crate.manifest_path }}
           BASELINE_REV: ${{ needs.discover.outputs.baseline-rev }}
           RELEASE_TYPE: ${{ needs.discover.outputs.release-type }}
         run: |
+          # Skip newly-introduced crates whose Cargo.toml does not exist at
+          # BASELINE_REV. The previous workspace-wide invocation tolerated this
+          # for added members (cargo-semver-checks silently skipped them); the
+          # per-crate --package invocation errors instead, so we replicate the
+          # old behaviour here (Copilot review feedback).
+          if ! git cat-file -e "$BASELINE_REV:$CRATE_MANIFEST" 2>/dev/null; then
+            echo "::notice::Crate $CRATE_NAME ($CRATE_MANIFEST) has no manifest at baseline $BASELINE_REV — newly introduced in this PR. Skipping (no baseline API to compare against)."
+            exit 0
+          fi
+
           ARGS=(
             check-release
-            --package "$CRATE"
+            --package "$CRATE_NAME"
             --all-features
             --baseline-rev "$BASELINE_REV"
           )
@@ -263,6 +292,12 @@ jobs:
   # depend on a single status instead of pinning every matrix shard. Treats
   # the skipped-on-alpha case as success to match the previous workflow's
   # behaviour.
+  #
+  # NOTE FOR ADMINS: this job's check-run name is "SemVer Check Summary"
+  # (workflow name "SemVer Check" + job name "SemVer Check Summary"). Any
+  # branch-protection rule previously pinned to the old single-job name
+  # "SemVer Compatibility Check" must be repointed here before this PR
+  # merges, otherwise the gate effectively disappears.
   semver-check-summary:
     name: SemVer Check Summary
     needs: [discover, semver-check]

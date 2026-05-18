@@ -101,7 +101,7 @@ args = [
 ]
 
 [tasks.semver-check]
-description = "Run cargo-semver-checks locally (mirrors CI semver-check.yml for normal PRs). Override baseline via BASELINE_REV env var; set SEMVER_PACKAGE=<name> to check a single crate (mirrors CI's per-crate matrix shard)."
+description = "Run cargo-semver-checks locally (mirrors CI semver-check.yml). Override baseline via BASELINE_REV; set SEMVER_PACKAGE=<name> to check a single crate (mirrors CI's per-crate matrix shard); override release-type via SEMVER_RELEASE_TYPE (e.g. SEMVER_RELEASE_TYPE=major for SP-3 breaking-change PRs, SEMVER_RELEASE_TYPE= [empty] to omit --release-type and let cargo-semver-checks auto-detect from Cargo.toml version bumps as on release-plz PRs). Defaults to --release-type minor when unset."
 script_runner = "sh"
 script = '''
 set -e
@@ -122,26 +122,42 @@ else
   BASELINE="HEAD~1"
 fi
 echo "semver-check: using baseline-rev=${BASELINE}"
+
+# Build the cargo-semver-checks argv into "$@" so we can conditionally include
+# --release-type and switch between --package and --workspace without quoting
+# pitfalls. POSIX sh: `set --` resets positional params, then we append.
+set -- check-release --all-features --baseline-rev "$BASELINE"
+
 # When SEMVER_PACKAGE is set, target a single crate (mirrors the CI per-crate
 # matrix shard introduced by reinhardt-web#4529). Otherwise fall back to the
 # workspace-wide invocation, preserving backward compatibility for callers
 # that run the task without arguments.
 if [ -n "${SEMVER_PACKAGE:-}" ]; then
   echo "semver-check: targeting package ${SEMVER_PACKAGE}"
-  cargo semver-checks check-release \
-    --package "$SEMVER_PACKAGE" \
-    --all-features \
-    --release-type minor \
-    --baseline-rev "$BASELINE"
+  set -- "$@" --package "$SEMVER_PACKAGE"
 else
-  cargo semver-checks check-release \
-    --workspace \
-    --exclude reinhardt-web \
-    --exclude reinhardt-pages \
-    --all-features \
-    --release-type minor \
-    --baseline-rev "$BASELINE"
+  set -- "$@" --workspace --exclude reinhardt-web --exclude reinhardt-pages
 fi
+
+# SEMVER_RELEASE_TYPE mirrors the CI release-type matrix: empty (variable set
+# but blank) → omit --release-type entirely so cargo-semver-checks auto-detects
+# from Cargo.toml version bumps (release-plz PR path); explicit value → pass
+# through (e.g. SEMVER_RELEASE_TYPE=major for SP-3 breaking-change PRs); unset
+# → default to --release-type minor (normal PR path). The `${VAR+set}`
+# expansion distinguishes unset from set-but-empty in POSIX sh.
+if [ -n "${SEMVER_RELEASE_TYPE+set}" ]; then
+  if [ -n "$SEMVER_RELEASE_TYPE" ]; then
+    set -- "$@" --release-type "$SEMVER_RELEASE_TYPE"
+    echo "semver-check: release-type=${SEMVER_RELEASE_TYPE} (override via SEMVER_RELEASE_TYPE)"
+  else
+    echo "semver-check: --release-type omitted (SEMVER_RELEASE_TYPE explicitly empty — auto-detect from Cargo.toml)"
+  fi
+else
+  set -- "$@" --release-type minor
+fi
+
+echo "semver-check: cargo semver-checks $*"
+cargo semver-checks "$@"
 '''
 
 [tasks.placeholder-check]
