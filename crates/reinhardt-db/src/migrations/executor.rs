@@ -2085,9 +2085,9 @@ mod rollback_orchestration_tests {
 			.await
 			.expect("apply migration to create the table");
 
-		// Re-mark the migration as state_only for the rollback request, which
-		// per `rollback_migration` (executor.rs around line 431) must
-		// short-circuit before touching the schema.
+		// Re-mark the migration as state_only for the rollback request,
+		// which must hit the `state_only` short-circuit in
+		// `rollback_migration` and skip schema operations entirely.
 		migration.state_only = true;
 
 		// Act
@@ -2118,11 +2118,11 @@ mod rollback_orchestration_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn rollback_run_sql_without_reverse_sql_completes_without_error() {
-		// Pins the current contract at `rollback_migration` (executor.rs around
-		// line 490-496): when an operation yields `None` for `to_reverse_sql`,
-		// the rollback logs a warning and continues. It does NOT return an
-		// error. If a future change promotes that to a typed error, this test
-		// will fail and force the change to be explicit rather than silent.
+		// Pins the current contract of the `Operation::RunSQL` arm in
+		// `rollback_migration` when `reverse_sql` is `None`: the rollback
+		// logs a warning and continues. It does NOT return an error. If a
+		// future change promotes that to a typed error, this test will fail
+		// and force the change to be explicit rather than silent.
 		let mut migration = Migration::new("0001_run_sql_noop", "rolltest");
 		migration.operations.push(Operation::RunSQL {
 			sql: "CREATE TABLE rolltest_runsql (id INTEGER PRIMARY KEY)".to_string(),
@@ -2141,8 +2141,9 @@ mod rollback_orchestration_tests {
 			.await
 			.expect("rollback should succeed even when reverse_sql is missing");
 
-		// Assert - rollback is recorded for the migration even though no
-		// schema change was reversed.
+		// Assert - the rollback is reported in `result.applied` and the
+		// recorder is cleared even though no reverse SQL ran (the
+		// warn-and-skip contract still updates bookkeeping).
 		assert_eq!(result.applied, vec![migration.id()]);
 
 		let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
