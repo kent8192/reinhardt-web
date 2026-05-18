@@ -66,6 +66,11 @@ if [ "$PRIOR" = "$NEW" ]; then
 	exit 0
 fi
 
+if [[ "$PRIOR" != "$NEW" && "$PRIOR" == "$TARGET"-* ]]; then
+	echo "Error: branch has already advanced to $PRIOR; refusing to overwrite with $NEW" >&2
+	exit 1
+fi
+
 echo "Initializing develop branch:"
 echo "  prior version: $PRIOR"
 echo "  new version:   $NEW"
