@@ -180,3 +180,17 @@ fn test_dto_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/dto/fail/*.rs");
 }
+
+// ===== ViewSet (Issue #4507) =====
+
+#[test]
+fn test_viewset_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/viewset/pass/*.rs");
+}
+
+#[test]
+fn test_viewset_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/viewset/fail/*.rs");
+}
