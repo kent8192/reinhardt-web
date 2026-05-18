@@ -108,6 +108,7 @@ examples-tutorial-rest/
 │   ├── lib.rs                      # Library entry point
 │   ├── config.rs                   # Config aggregator
 │   ├── apps.rs                     # Apps aggregator
+│   ├── urls_demo.rs                # Typed `ResolvedUrls` accessor shims (Issue #4548)
 │   ├── bin/
 │   │   └── manage.rs               # Management command
 │   ├── config/
@@ -123,7 +124,8 @@ examples-tutorial-rest/
 │           │                       # registers both function-based and ViewSet endpoints
 │           └── views.rs            # HTTP method handlers + #[viewset]
 └── tests/
-    └── integration.rs              # Integration tests
+    ├── integration.rs              # CRUD + edge-case integration tests
+    └── urls_typed_accessors.rs     # Typed `ResolvedUrls` accessor end-to-end tests
 ```
 
 ## Learning Path
@@ -241,7 +243,85 @@ The `/api/` prefix is a literal path (no `{...}` segments), satisfying the
 rc.24 guard that panics when `ServerRouter::mount()` receives a parameterised
 prefix.
 
-### 5. Validation
+### 5. URL Resolution: Typed `ResolvedUrls` Accessors
+
+Once the `#[routes]` macro has registered the router globally, application
+code can resolve any registered route through the **typed**
+`ResolvedUrls::server().<app>().<route>()` accessor instead of formatting
+URLs inline or reaching for the deprecated flat `urls.snippet_list()`
+surface (deprecated since `0.1.0-rc.16`). The typed accessor was
+introduced by [PR #4518](https://github.com/kent8192/reinhardt-web/pull/4518)
+and is the recommended pattern going forward — see
+[Issue #4548](https://github.com/kent8192/reinhardt-web/issues/4548) for
+the migration milestone.
+
+This example demonstrates the typed accessor pattern in
+`src/urls_demo.rs` (thin shims) and pins the resolved URL strings in
+`tests/urls_typed_accessors.rs` (end-to-end registration + assertions).
+
+```rust
+use examples_tutorial_rest::urls_demo;
+use reinhardt::ResolvedUrls;
+
+// Once per request after the server has booted.
+let urls = ResolvedUrls::from_global();
+
+// Function-based endpoints (Tutorial 1-5)
+let list_url   = urls.server().snippets().snippets_list();      // "/api/snippets/"
+let create_url = urls.server().snippets().snippets_create();    // "/api/snippets/"
+let detail_url = urls.server().snippets().snippets_retrieve("42"); // "/api/snippets/42/"
+
+// ViewSet endpoints (Tutorial 6) — the typed accessor is namespaced
+// per app, so the viewset's `<basename>_list` and `<basename>_detail`
+// live next to the function-based ones on the same gateway.
+let vs_list   = urls.server().snippets().snippet_list();        // see note below
+let vs_detail = urls.server().snippets().snippet_detail("42");  // see note below
+
+// Equivalent calls through the `urls_demo` shim — useful when a caller
+// already has an `id: i64` and does not want to stringify at every
+// call site.
+assert_eq!(urls_demo::snippets_list(&urls), list_url);
+assert_eq!(urls_demo::snippets_retrieve(&urls, 42), detail_url);
+```
+
+#### Why typed accessors
+
+| Concern | Typed accessor | Deprecated flat surface |
+|---|---|---|
+| Compile-time misspelling check | ✅ method name is a Rust identifier | ❌ panics at runtime |
+| Namespace safety | ✅ auto-prefixes `"<app>:"` | ❌ relies on `UrlResolverUnprefixed` iteration |
+| Refactor-safe across renamed routes | ✅ accessor follows route name | ❌ same surface for every route |
+| Discoverable from IDE auto-complete | ✅ on `SnippetsUrls<'_>` | ❌ blanket trait, hidden in extensions |
+
+#### Migration recipe
+
+1. `let urls = ResolvedUrls::from_global();` (or `ResolvedUrls::from_router(...)`
+   when you already have an `Arc<ServerRouter>` in hand — useful in tests).
+2. Replace `urls.<route>()` → `urls.server().<app>().<route>()`.
+3. If a route takes a path parameter, pass it as `&str` (use
+   `&id.to_string()` for `i64` primary keys).
+
+#### Deprecation removal
+
+The flat accessors (`urls.snippet_list()`, `urls.snippet_detail("42")`)
+remain functional but will be removed in `v0.2.0`. Run
+`cargo build --message-format=short 2>&1 | grep deprecated` to discover
+remaining call sites in your own code.
+
+#### Known framework defect — triple-slash in viewset mount
+
+The viewset endpoints registered via `.viewset("/snippets-viewset", ...)`
+in `apps/snippets/urls.rs` currently resolve to `/api///snippets-viewset/`
+through the typed accessor (rather than the expected
+`/api/snippets-viewset/`) when the project root mounts the per-app
+router with a literal prefix (`UnifiedRouter::new().mount("/api/", ...)`).
+The example's integration test (`tests/urls_typed_accessors.rs`) pins the
+currently observable values so a framework-side fix surfaces as a
+deliberate, reviewable diff. The function-based endpoints
+(`urls.server().snippets().snippets_list()` → `/api/snippets/`) are
+unaffected.
+
+### 6. Validation
 
 ```rust
 // Serializer side: declare validation rules with `#[validate(...)]`.
