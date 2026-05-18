@@ -104,7 +104,25 @@ pub(crate) fn parse_action_args_with_defaults(
 					lit: Lit::Str(lit), ..
 				}) = &nv.value
 			{
-				url_name = Some(lit.value());
+				// `url_name` is later passed to `syn::Ident::new(...)` by
+				// the viewset/routes macro emitters to build identifiers
+				// like `__for_each_viewset_meta_<url_name>` and the typed
+				// `ResolvedUrls::<route>()` accessor. `syn::Ident::new`
+				// panics on non-identifier input (e.g. `"highlight-code"`
+				// or `"foo bar"`), which surfaces at proc-macro expansion
+				// as an obscure rustc message. Validate as a Rust
+				// identifier here so the failure becomes a clean
+				// compile-time error tied to the attribute's own span.
+				let value = lit.value();
+				if syn::parse_str::<syn::Ident>(&value).is_err() {
+					return Err(syn::Error::new_spanned(
+						lit,
+						format!(
+							"url_name `{value}` is not a valid Rust identifier (use snake_case ASCII letters, digits, and underscores; cannot start with a digit)"
+						),
+					));
+				}
+				url_name = Some(value);
 			}
 		}
 	}
