@@ -467,6 +467,8 @@ pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 /// and generates a `url_resolvers` module re-exporting all resolver traits.
 ///
 /// Requires the `url-resolver` feature in the consuming crate.
+///
+#[doc = include_str!("upstream_workaround_note.md")]
 #[proc_macro_attribute]
 pub fn url_patterns(args: TokenStream, input: TokenStream) -> TokenStream {
 	url_patterns_impl(args.into(), input.into())
@@ -489,6 +491,8 @@ pub fn url_patterns(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// // Generates: __url_resolver_snippet_list, __url_resolver_snippet_detail
 /// ```
+///
+#[doc = include_str!("upstream_workaround_note.md")]
 #[proc_macro_attribute]
 pub fn viewset(args: TokenStream, input: TokenStream) -> TokenStream {
 	viewset_macro::viewset_macro_impl(args.into(), input.into())
