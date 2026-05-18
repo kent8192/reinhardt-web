@@ -148,14 +148,129 @@ impl DatabaseMigrationRecorder {
 
 	/// Performs the ensure schema table operation.
 	pub async fn ensure_schema_table(&self) -> super::Result<()> {
-		// Acquire advisory lock to prevent concurrent schema modifications
-		self.acquire_schema_lock().await?;
+		use crate::backends::types::DatabaseType;
 
-		// Execute schema operations
+		// MySQL `GET_LOCK()` / `RELEASE_LOCK()` are session-scoped: the lock is owned
+		// by the connection that called `GET_LOCK`, and `RELEASE_LOCK` only succeeds
+		// when issued on that same session. The pooled `DatabaseConnection::execute`
+		// path acquires a new pool connection per call, so acquiring and releasing
+		// through it routinely hits two different sessions — the lock is acquired on
+		// session A and the bogus release runs on session B, leaving the lock leaked
+		// in session A. Subsequent migration calls in the same process then time out
+		// waiting for the leaked lock (manifesting as the rollback timeout in
+		// issue #4585). To make the lock symmetrical, MySQL must acquire and release
+		// on a single dedicated pool connection that we hold for the lock's lifetime.
+		match self.connection.database_type() {
+			#[cfg(feature = "mysql")]
+			DatabaseType::Mysql => self.ensure_schema_table_mysql().await,
+			_ => {
+				// Acquire advisory lock to prevent concurrent schema modifications
+				self.acquire_schema_lock().await?;
+
+				// Execute schema operations
+				let result = self.ensure_schema_table_internal().await;
+
+				// Always release lock, even if operations failed
+				let _ = self.release_schema_lock().await;
+
+				result
+			}
+		}
+	}
+
+	/// MySQL-specific variant of `ensure_schema_table` that holds the advisory
+	/// lock on a dedicated pool connection for the lifetime of the lock.
+	///
+	/// `GET_LOCK()` and `RELEASE_LOCK()` are session-scoped in MySQL: the lock
+	/// belongs to the connection (session) that successfully acquired it, and
+	/// only that same session can release it. Running these two statements on
+	/// different pool connections (as happens when each call goes through the
+	/// generic `DatabaseConnection::execute` path) leaks the lock into the
+	/// acquiring session, which is then returned to the pool while still
+	/// holding the named lock. Subsequent calls block waiting on that leaked
+	/// lock and surface as the `Failed to acquire migration lock (timeout)`
+	/// error reported in issue #4585.
+	///
+	/// This routine acquires a single `PoolConnection`, runs `GET_LOCK` on it,
+	/// performs the DDL through the shared connection (the lock still
+	/// serialises concurrent migrators because they all queue on the same
+	/// named lock), and finally runs `RELEASE_LOCK` on the same held
+	/// connection before returning it to the pool. The result: no leaked
+	/// session-bound lock between consecutive `apply_migrations` /
+	/// `rollback_migrations` calls.
+	#[cfg(feature = "mysql")]
+	async fn ensure_schema_table_mysql(&self) -> super::Result<()> {
+		let pool = self.connection.into_mysql().ok_or_else(|| {
+			super::MigrationError::DatabaseError(crate::backends::DatabaseError::ConnectionError(
+				"MySQL backend unavailable when acquiring schema lock".to_string(),
+			))
+		})?;
+
+		let mut conn = pool.acquire().await.map_err(|e| {
+			super::MigrationError::DatabaseError(crate::backends::DatabaseError::ConnectionError(
+				format!("Failed to acquire MySQL connection for schema lock: {e}"),
+			))
+		})?;
+
+		// Acquire the named advisory lock on this specific session, with a
+		// 10 second timeout (matches the previous behaviour).
+		//
+		// `GET_LOCK` can return NULL on internal errors (e.g. interrupted by
+		// `KILL`), so we model the column as `Option<i64>` and treat NULL as
+		// a failed acquisition.
+		let locked: Option<i64> = sqlx::query_scalar("SELECT GET_LOCK('reinhardt_migrations', 10)")
+			.fetch_one(&mut *conn)
+			.await
+			.map_err(|e| {
+				super::MigrationError::DatabaseError(crate::backends::DatabaseError::QueryError(
+					format!("Failed to call GET_LOCK on MySQL: {e}"),
+				))
+			})?;
+
+		if locked != Some(1) {
+			return Err(super::MigrationError::DatabaseError(
+				crate::backends::DatabaseError::QueryError(
+					"Failed to acquire migration lock (timeout)".to_string(),
+				),
+			));
+		}
+
+		// Execute schema operations while the lock is held. The DDL runs on
+		// the pooled `DatabaseConnection`, but the named lock — owned by
+		// `conn` here — still serialises any concurrent migrator process
+		// because `GET_LOCK` is a global named lock, not a row/table lock.
 		let result = self.ensure_schema_table_internal().await;
 
-		// Always release lock, even if operations failed
-		let _ = self.release_schema_lock().await;
+		// Always release the lock on the same session that acquired it,
+		// regardless of whether the DDL succeeded.
+		//
+		// `RELEASE_LOCK` returns a column rather than signalling failure via
+		// `Err`: `Some(1)` = released, `Some(0)` = not held by this session,
+		// `None` = lock did not exist. Anything other than `Some(1)` indicates
+		// the release silently no-op'd on the wrong session and would
+		// reintroduce a lock leak — surface that as a warning. Mirrors the
+		// `GET_LOCK` handling above.
+		let release_result: Result<Option<i64>, _> =
+			sqlx::query_scalar("SELECT RELEASE_LOCK('reinhardt_migrations')")
+				.fetch_one(&mut *conn)
+				.await;
+		match release_result {
+			Ok(Some(1)) => {}
+			Ok(other) => {
+				tracing::warn!(
+					result = ?other,
+					"RELEASE_LOCK did not release the MySQL migration advisory lock; \
+					 the session will release it on connection close"
+				);
+			}
+			Err(e) => {
+				tracing::warn!(
+					error = %e,
+					"Failed to call RELEASE_LOCK for the MySQL migration advisory lock; \
+					 the session will release it on connection close"
+				);
+			}
+		}
 
 		result
 	}

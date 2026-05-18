@@ -31,78 +31,75 @@ Notice what *neither* does: client-side mirror validation. We deliberately do no
 
 ### Flavor 1: DTO field validation in `shared/types.rs`
 
-The `LoginRequest` and `RegisterRequest` DTOs both live in `src/shared/types.rs`. They are normal `serde` payloads — except `derive(Validate)` is wrapped in `#[cfg_attr(native, …)]`, and so are the per-field `#[validate(...)]` attributes:
+The `LoginRequest` and `RegisterRequest` DTOs both live in `src/shared/types.rs`. They are normal `serde` payloads, decorated with the **`#[dto]`** attribute macro — `#[dto]` is the convention-driven entry point that wraps `Validate` (and an OpenAPI `Schema`) `derive` behind `cfg(native)` for you, so the per-field `#[validate(...)]` attributes can be written plainly without any `#[cfg_attr(...)]` noise:
 
 ```rust
 // src/shared/types.rs
 
 use chrono::{DateTime, Utc};
-#[cfg(native)]
-use reinhardt::Validate;
+use reinhardt::dto;
 use serde::{Deserialize, Serialize};
 
 /// Login request (DTO)
 ///
 /// Sent from the WASM client to the server when submitting the login form.
 ///
-/// `Validate` is gated on `cfg(native)` so the WASM client does not pull in
-/// the validator-crate machinery — the server is the only side that needs
-/// `request.validate()` to enforce these rules before hitting the database.
-#[cfg_attr(native, derive(Validate))]
+/// The `#[dto]` macro emits `Validate` (and an OpenAPI `Schema`)
+/// derive behind `cfg(native)` so the WASM client does not pull in the
+/// validator-crate machinery — the server is the only side that runs
+/// `request.validate()` before hitting the database.
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
-	#[cfg_attr(
-		native,
-		validate(length(
-			min = 1,
-			max = 150,
-			message = "Username must be between 1 and 150 characters"
-		))
-	)]
+	#[validate(length(
+		min = 1,
+		max = 150,
+		message = "Username must be between 1 and 150 characters"
+	))]
 	pub username: String,
 
-	#[cfg_attr(
-		native,
-		validate(length(min = 1, message = "Password must not be empty"))
-	)]
+	#[validate(length(min = 1, message = "Password must not be empty"))]
 	pub password: String,
 }
 
 /// Register request (DTO)
-#[cfg_attr(native, derive(Validate))]
+///
+/// Sent from the WASM client to the server when submitting the sign-up form.
+/// `password_confirmation` is matched against `password` server-side; both
+/// fields travel in the clear over HTTPS just like the login form and are
+/// never persisted — only the Argon2 hash of `password` is stored.
+///
+/// Validation gating is handled by `#[dto]` (same rationale as on
+/// [`LoginRequest`]). Field-level rules (length / non-empty) run through
+/// `request.validate()`; the password-confirmation equality check is
+/// expressed as a dedicated [`RegisterRequest::validate_passwords_match`]
+/// helper because the validator crate's `must_match` is brittle across
+/// versions (mirroring the pattern in `examples-twitter`).
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRequest {
-	#[cfg_attr(
-		native,
-		validate(length(
-			min = 1,
-			max = 150,
-			message = "Username must be between 1 and 150 characters"
-		))
-	)]
+	#[validate(length(
+		min = 1,
+		max = 150,
+		message = "Username must be between 1 and 150 characters"
+	))]
 	pub username: String,
 
-	#[cfg_attr(
-		native,
-		validate(length(min = 8, message = "Password must be at least 8 characters"))
-	)]
+	#[validate(length(min = 8, message = "Password must be at least 8 characters"))]
 	pub password: String,
 
-	#[cfg_attr(
-		native,
-		validate(length(
-			min = 8,
-			message = "Password confirmation must be at least 8 characters"
-		))
-	)]
+	#[validate(length(
+		min = 8,
+		message = "Password confirmation must be at least 8 characters"
+	))]
 	pub password_confirmation: String,
 }
 ```
 
 Three details are load-bearing:
 
-1. **`#[cfg_attr(native, derive(Validate))]`** — the `Validate` *derive* is server-only. On WASM the struct still serialises and deserialises, but it has no `validate()` method.
-2. **`#[cfg_attr(native, validate(...))]`** on every rule — the attributes are stripped from the WASM build, so the validator crate is not pulled into the browser bundle at all.
+1. **`#[dto]`** — this single attribute is the convention. It emits `#[cfg_attr(native, derive(Validate, Schema))]` for you so the validator-crate `derive` (and the OpenAPI `Schema` derive) are server-only. On WASM the struct still serialises and deserialises, but it has no `validate()` method and pulls in neither dependency.
+2. **Plain `#[validate(...)]`** on every rule — no `#[cfg_attr(...)]` wrapping needed. `#[dto]` propagates the native-only gating to these attributes too, so the validator crate is not pulled into the browser bundle at all.
 3. **No `must_match` for password confirmation.** Cross-field equality lives in a hand-written helper rather than the derive macro:
 
 ```rust
@@ -946,7 +943,7 @@ If you absolutely need a lower-level form-handling path — multi-step wizards w
 
 You now have everything Part 4 set out to deliver:
 
-- DTO field-level validation lives in `src/shared/types.rs`, gated `#[cfg_attr(native, derive(Validate))]` so the WASM bundle stays small.
+- DTO field-level validation lives in `src/shared/types.rs`, with `#[dto]` emitting `derive(Validate)` (and OpenAPI `Schema`) behind `cfg(native)` so the WASM bundle stays small.
 - The voting form's metadata + CSRF token come from `create_vote_form()` in `src/shared/forms.rs` (server-only) via `Form::to_metadata()` exposed by the `get_vote_form_metadata` `#[server_fn]`.
 - The `form!` macro in `src/client/components/polls.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, appends the CSRF token through `strip_arguments`, and surfaces success/error reactively through `state: { loading, error }` and matching `watch` blocks.
 - Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `require_user` (authentication) and `require_question_author` (authorization) on top of typed model builders.

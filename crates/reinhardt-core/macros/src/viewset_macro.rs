@@ -304,23 +304,113 @@ pub(crate) fn viewset_macro_impl(
 	))
 }
 
+/// Parse the optional `basename = "..."` argument of the fn-form
+/// `#[viewset]`.
+///
+/// Returns:
+/// * `Ok(Some(s))` when the caller wrote `#[viewset(basename = "...")]`
+///   — the explicit, recommended form (Issue #4549).
+/// * `Ok(None)` when the attribute argument list is empty
+///   (`#[viewset]`), in which case the caller falls back to the legacy
+///   `extract_basename` token walker and the macro emits a deprecation
+///   marker pointing the user at the explicit form.
+/// * `Err(_)` when a non-empty argument list does not match the
+///   `basename = "..."` shape — surfaced as a compile error at the
+///   attribute call site.
+///
+/// Refs Issue #4549.
+fn parse_optional_basename_arg(args: TokenStream) -> syn::Result<Option<String>> {
+	if args.is_empty() {
+		return Ok(None);
+	}
+	let parser = |input: syn::parse::ParseStream<'_>| -> syn::Result<String> {
+		let key: syn::Ident = input.parse()?;
+		if key != "basename" {
+			return Err(syn::Error::new(
+				key.span(),
+				"#[viewset] only accepts `basename = \"...\"`. \
+				 Example: #[viewset(basename = \"snippet\")]",
+			));
+		}
+		input.parse::<syn::Token![=]>()?;
+		let lit: syn::LitStr = input.parse()?;
+		Ok(lit.value())
+	};
+	syn::parse::Parser::parse2(parser, args).map(Some)
+}
+
+/// Emit a `#[deprecated]` marker that fires a rustc `deprecated` lint
+/// warning at the call site of `#[viewset]` when the legacy body-token
+/// `extract_basename` fallback was used.
+///
+/// The marker is a self-contained `mod` that defines a deprecated
+/// `const REASON: () = ()` and a sibling `const _: () = REASON;` that
+/// reads it — reading a `#[deprecated]` item is the lint trigger
+/// rustc understands on stable. The module is uniquely named per
+/// fn so multiple `#[viewset]` invocations in the same module do not
+/// produce E0428 ("the name `__viewset_basename_inferred_<fn>` is
+/// defined multiple times"). The marker is also gated off on `wasm32`
+/// to match the gating applied to the rest of the fn-form expansion
+/// — the deprecation has nothing useful to say on the client target.
+///
+/// `#[doc(hidden)]` keeps the noise out of `cargo doc` output.
+///
+/// Refs Issue #4549.
+fn emit_basename_fallback_deprecation(fn_name: &syn::Ident, basename: &str) -> TokenStream {
+	let module_ident = syn::Ident::new(
+		&format!("__viewset_basename_inferred_{fn_name}"),
+		Span::call_site(),
+	);
+	let note = format!(
+		"#[viewset] inferred basename = \"{basename}\" from the function body. \
+		 Prefer the explicit form #[viewset(basename = \"{basename}\")]; the body-walker \
+		 fallback will be removed in v0.2.0 (see Issue #4549)."
+	);
+	quote! {
+		#[doc(hidden)]
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+		#[allow(non_snake_case)]
+		mod #module_ident {
+			#[deprecated(note = #note)]
+			pub const REASON: () = ();
+			// Reading the `#[deprecated]` const is what causes rustc to
+			// emit a `deprecated` lint at the `#[viewset]` call site.
+			#[allow(deprecated_in_future, clippy::no_effect)]
+			const _: () = REASON;
+		}
+	}
+}
+
 /// Fn-form expansion of `#[viewset]`.
 ///
-/// Pre-existing behaviour: extracts the basename from the function body
-/// (`ModelViewSet::new("...")` / `GenericViewSet::new("...", ...)`),
-/// generates the typed list/detail resolver traits, and emits the
+/// Accepts an optional `basename = "..."` attribute argument (Issue
+/// #4549). When the argument is provided, the legacy body-token walker
+/// (`extract_basename`) is bypassed and the supplied literal is used
+/// directly. When the argument is absent, the macro falls back to the
+/// body-walker for one release for backwards compatibility and emits a
+/// `#[deprecated]` marker so callers see a deprecation warning at the
+/// macro call site. The walker fallback is scheduled for removal in
+/// v0.2.0.
+///
+/// In addition to the resolver-trait emission, the macro emits the
 /// per-fn meta + manifest macros consumed by `__for_each_url_resolver`.
-fn viewset_fn_impl(_args: TokenStream, func: ItemFn) -> syn::Result<TokenStream> {
+fn viewset_fn_impl(args: TokenStream, func: ItemFn) -> syn::Result<TokenStream> {
 	let fn_name = &func.sig.ident;
 
-	let basename = extract_basename(&func).ok_or_else(|| {
-		syn::Error::new_spanned(
-			&func.sig.ident,
-			"#[viewset] could not extract basename. \
-			 Expected ModelViewSet::new(\"basename\") or \
-			 GenericViewSet::new(\"basename\", ...) in the function body.",
-		)
-	})?;
+	let explicit_basename = parse_optional_basename_arg(args)?;
+	let used_fallback = explicit_basename.is_none();
+	let basename = match explicit_basename {
+		Some(b) => b,
+		None => extract_basename(&func).ok_or_else(|| {
+			syn::Error::new_spanned(
+				&func.sig.ident,
+				"#[viewset] could not extract basename. \
+				 Pass it explicitly via #[viewset(basename = \"...\")], or \
+				 ensure the function body contains ModelViewSet::new(\"basename\") \
+				 or GenericViewSet::new(\"basename\", ...).",
+			)
+		})?,
+	};
 
 	let resolver_tokens = generate_viewset_resolver_tokens(&basename);
 
@@ -349,8 +439,22 @@ fn viewset_fn_impl(_args: TokenStream, func: ItemFn) -> syn::Result<TokenStream>
 		Span::call_site(),
 	);
 
+	// Issue #4549: emit a `#[deprecated]`-driven warning when the caller
+	// relied on the legacy body-token `extract_basename` fallback instead
+	// of passing `basename = "..."` explicitly. The marker uses the
+	// const-read-of-deprecated-item pattern because rustc only fires the
+	// `deprecated` lint at the *use site* of a `#[deprecated]` item,
+	// not at its definition. The marker is scoped to a module so multiple
+	// `#[viewset]` invocations do not collide on the const identifier.
+	let deprecation_marker = if used_fallback {
+		emit_basename_fallback_deprecation(fn_name, &basename)
+	} else {
+		TokenStream::new()
+	};
+
 	Ok(quote! {
 		#func
+		#deprecation_marker
 		#resolver_tokens
 		#list_meta
 		#detail_meta
@@ -888,7 +992,9 @@ mod tests {
 		let snippet_out = viewset_macro_impl(quote! {}, snippet_input)
 			.unwrap()
 			.to_string();
-		let post_out = viewset_macro_impl(quote! {}, post_input).unwrap().to_string();
+		let post_out = viewset_macro_impl(quote! {}, post_input)
+			.unwrap()
+			.to_string();
 
 		// Assert: the two manifests have non-overlapping crate-root names.
 		assert!(snippet_out.contains("__for_each_viewset_meta_viewset_snippet"));
@@ -1121,6 +1227,109 @@ mod tests {
 		assert!(
 			out_s.contains("UrlResolverUnprefixed"),
 			"trait must reference UrlResolverUnprefixed as supertrait; got: {out_s}"
+		);
+	}
+
+	#[test]
+	fn fn_form_emits_deprecation_when_basename_arg_absent() {
+		// Arrange: bare `#[viewset]` triggers the legacy body-walker
+		// fallback path that the Issue #4549 deprecation flow targets.
+		let input = quote! {
+			pub fn viewset() -> ModelViewSet<Snippet, S> {
+				ModelViewSet::new("snippet")
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(quote! {}, input).unwrap().to_string();
+
+		// Assert: the per-fn deprecation marker module is emitted, and it
+		// contains the `#[deprecated]` const that triggers the rustc
+		// `deprecated` lint at the macro call site.
+		assert!(
+			out_s.contains("__viewset_basename_inferred_viewset"),
+			"fallback path must emit per-fn deprecation marker module; got: {out_s}"
+		);
+		// The note steers users toward the explicit form.
+		assert!(
+			out_s.contains("#[viewset(basename = \\\"snippet\\\")]"),
+			"deprecation note must show the recommended explicit form; got: {out_s}"
+		);
+		// The marker reads its own deprecated const so rustc fires the lint.
+		assert!(
+			out_s.contains("const _ : () = REASON ;") || out_s.contains("const _: () = REASON;"),
+			"deprecation marker must read the deprecated const; got: {out_s}"
+		);
+	}
+
+	#[test]
+	fn fn_form_skips_deprecation_when_basename_arg_provided() {
+		// Arrange: explicit `basename = "..."` bypasses the body-walker
+		// and the associated deprecation marker (Issue #4549).
+		let args = quote! { basename = "snippet" };
+		let input = quote! {
+			pub fn viewset() -> ModelViewSet<Snippet, S> {
+				ModelViewSet::new("snippet")
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(args, input).unwrap().to_string();
+
+		// Assert: explicit basename callers must not see the deprecation
+		// marker module nor a reference to it.
+		assert!(
+			!out_s.contains("__viewset_basename_inferred_viewset"),
+			"explicit basename must NOT emit the deprecation marker; got: {out_s}"
+		);
+	}
+
+	#[test]
+	fn fn_form_explicit_basename_overrides_body_walker() {
+		// Arrange: the fn body uses `ModelViewSet::new("auto_snippet")`,
+		// but the attribute requests `basename = "snippet"`. The explicit
+		// argument must win (Issue #4549) so the generated resolver
+		// modules use `snippet`, not `auto_snippet`.
+		let args = quote! { basename = "snippet" };
+		let input = quote! {
+			pub fn viewset() -> ModelViewSet<Snippet, S> {
+				ModelViewSet::new("auto_snippet")
+			}
+		};
+
+		// Act
+		let out_s = viewset_macro_impl(args, input).unwrap().to_string();
+
+		// Assert
+		assert!(
+			out_s.contains("__url_resolver_snippet_list"),
+			"explicit basename must drive the list resolver mod name; got: {out_s}"
+		);
+		assert!(
+			!out_s.contains("__url_resolver_auto_snippet_list"),
+			"body-walker result must be ignored when basename is explicit; got: {out_s}"
+		);
+	}
+
+	#[test]
+	fn fn_form_rejects_unknown_attribute_arg() {
+		// Arrange: only `basename = "..."` is accepted by the fn-form
+		// attribute argument list. Anything else is a hard compile error
+		// at the call site (Issue #4549).
+		let args = quote! { foo = "bar" };
+		let input = quote! {
+			pub fn viewset() -> ModelViewSet<Snippet, S> {
+				ModelViewSet::new("snippet")
+			}
+		};
+
+		// Act
+		let err = viewset_macro_impl(args, input).unwrap_err().to_string();
+
+		// Assert
+		assert!(
+			err.contains("only accepts `basename = \"...\"`"),
+			"unknown attr arg must produce the explicit error; got: {err}"
 		);
 	}
 
