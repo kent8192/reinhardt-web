@@ -200,7 +200,10 @@ jobs:
 
   wasm-check:
     name: WASM Check
-    needs: [determine-runner, check-branch-status]
+    # Deferred to Phase 2b (Issue #4534): release self-hosted runner slots
+    # ~10 min earlier for jobs blocked on Spot vCPU quota. wasm-check only
+    # starts once unit-test and intra-crate-integration-test have completed.
+    needs: [determine-runner, check-branch-status, unit-test, intra-crate-integration-test]
     if: needs.check-branch-status.outputs.has-conflicts != 'true'
     uses: ./.github/workflows/wasm-check.yml
     with:
