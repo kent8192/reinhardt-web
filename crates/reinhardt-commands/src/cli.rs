@@ -416,14 +416,19 @@ pub async fn execute_from_command_line_with_registry(
 	run_command_with_registry(command, verbosity, registry).await
 }
 
-/// Returns `true` for commands that require HTTP route registration.
+/// Returns `true` for commands that need URL patterns registered **before**
+/// the command body runs.
 ///
-/// Only HTTP-serving commands (`runserver`, `showurls`, `generateopenapi`)
-/// need URL patterns registered. DB-only and utility commands work without
-/// a `#[routes]` function being present.
+/// `Runserver` is intentionally **not** in this list (Refs #4453): the
+/// HTTP-route inventory pull is now performed explicitly inside
+/// [`RunServerCommand::execute`](crate::RunServerCommand) so that the
+/// registration step is visible at the command's call site rather than
+/// hidden in this dispatch loop. `Showurls` / `Introspect` /
+/// `Generateopenapi` still receive the pre-dispatch
+/// [`auto_register_router`] call until they grow their own explicit
+/// `register_*_from_inventory()` methods (tracked separately).
 fn requires_router(command: &Commands) -> bool {
 	match command {
-		Commands::Runserver { .. } => true,
 		#[cfg(feature = "routers")]
 		Commands::Showurls { .. } => true,
 		#[cfg(feature = "introspect")]
@@ -1253,62 +1258,31 @@ async fn execute_generateopenapi(
 /// ```
 #[cfg(feature = "routers")]
 pub async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
-	use reinhardt_urls::routers::{UrlPatternsRegistration, register_router_arc};
-
-	// Collect all registrations for validation
-	let registrations: Vec<_> = inventory::iter::<UrlPatternsRegistration>().collect();
-
-	// Validate single registration
-	match registrations.len() {
-		0 => {
-			return Err("No URL patterns registered.\n\
-				 Add the `#[routes]` attribute to your routes function in src/config/urls.rs:\n\n\
-				 #[routes]\n\
-				 pub fn routes() -> UnifiedRouter {\n\
-				     UnifiedRouter::new()\n\
-				 }\n\n\
-				 If your project uses a library/binary split (src/lib.rs + src/bin/manage.rs),\n\
-				 the linker may silently discard route registrations from the library crate.\n\
-				 Fix: add `use your_crate_name as _;` to src/bin/manage.rs to force-link\n\
-				 the library and preserve its side-effectful route registrations."
-				.to_string()
-				.into());
-		}
-		1 => {
-			// Expected case: exactly one registration
-		}
-		n => {
-			// Multiple registrations detected.
-			// This should normally be caught at link time by the linker marker,
-			// but we provide a clear error message as a fallback.
-			return Err(format!(
-				"Multiple #[routes] functions detected ({n} found).\n\
-				 Only one function in the entire project should be annotated with #[routes].\n\n\
-				 Please ensure that:\n\
-				 1. Only one #[routes] attribute exists in your codebase\n\
-				 2. Check src/config/urls.rs and any other files that might have #[routes]\n\
-				 3. If you have multiple router configurations, combine them into a single function\n\n\
-				 Example:\n\
-				 #[routes]\n\
-				 pub fn routes() -> UnifiedRouter {{\n\
-				     UnifiedRouter::new()\n\
-				         .mount(\"/api/\", api::routes())  // NOT annotated with #[routes]\n\
-				         .mount(\"/admin/\", admin::routes())\n\
-				 }}"
-			)
-			.into());
-		}
+	// Thin delegation to the named consumer on `RunServerCommand`
+	// (Refs #4453). The actual inventory iteration, multi/empty
+	// validation, and global registration live in
+	// `RunServerCommand::register_http_routes_from_inventory(..)` so the
+	// `runserver` command body can call them at a visible call site.
+	//
+	// This function is preserved as a `pub` API for backward
+	// compatibility with non-`runserver` HTTP-serving commands
+	// (`showurls`, `generateopenapi`, `introspect`) whose own explicit
+	// `register_*_from_inventory()` plumbing is tracked separately.
+	//
+	// Short-circuit if a router was already registered manually via
+	// `reinhardt_urls::routers::register_router(..)`. Without this guard,
+	// `register_http_routes_from_inventory()`'s DP-7 mutual-exclusion
+	// check would turn the pre-registered router (a reusable manual
+	// escape hatch) into a hard error on `showurls`/`introspect`/
+	// `generateopenapi` and `start_server()`. The explicit
+	// `RunServerCommand::register_http_routes_from_inventory()` entry
+	// keeps the strict guard for its single direct call site.
+	if reinhardt_urls::routers::is_router_registered() {
+		return Ok(());
 	}
-
-	// Get and register the router (supports both sync and async factories)
-	let registration = &registrations[0];
-	let router = registration
-		.server_router_async()
+	crate::RunServerCommand
+		.register_http_routes_from_inventory()
 		.await
-		.map_err(|e| format!("Failed to create router from #[routes] function: {e}"))?;
-	register_router_arc(router);
-
-	Ok(())
 }
 
 /// No-op implementation when the `routers` feature is disabled.
@@ -1322,20 +1296,25 @@ pub async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 	Ok(())
 }
 
-/// Start the HTTP server bound to `addr`, performing automatic route
-/// registration via [`auto_register_router`] beforehand.
+/// Start the HTTP server bound to `addr`.
 ///
-/// This is a one-call convenience wrapper around the
-/// [`auto_register_router`] + [`RunServerCommand`]
-/// composition. It is intended for **non-CLI server entrypoints** — for
-/// example, a container entrypoint binary that should expose only an HTTP
-/// server without the full `manage` clap surface.
+/// This is a one-call convenience wrapper around [`RunServerCommand`] for
+/// **non-CLI server entrypoints** — for example, a container entrypoint
+/// binary that should expose only an HTTP server without the full `manage`
+/// clap surface.
 ///
-/// All [`RunServerCommand`] options other than the
-/// bind address use their built-in defaults (autoreload enabled, no WASM
-/// frontend, `dist` static directory, etc.). Callers needing finer control
-/// should compose with [`auto_register_router`] and
-/// [`RunServerCommand`] directly.
+/// HTTP-route inventory registration happens inside
+/// [`RunServerCommand::execute`] itself (Refs #4453 DP-1), guarded by
+/// `reinhardt_urls::routers::is_router_registered()`. This wrapper therefore
+/// delegates straight to `execute` without a separate
+/// [`auto_register_router`] call — wiring both would double-register on
+/// callers that do not pre-mount a router and would no-op redundantly on
+/// callers that do.
+///
+/// All [`RunServerCommand`] options other than the bind address use their
+/// built-in defaults (autoreload enabled, no WASM frontend, `dist` static
+/// directory, etc.). Callers needing finer control should construct a
+/// [`CommandContext`] and call [`RunServerCommand::execute`] directly.
 ///
 /// Use [`execute_from_command_line`] instead when you want full clap argument
 /// parsing for the `manage` subcommand surface.
@@ -1361,7 +1340,6 @@ pub async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 /// ```
 #[cfg(feature = "server")]
 pub async fn start_server(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
-	auto_register_router().await?;
 	let ctx = CommandContext::new(vec![addr.to_string()]);
 	RunServerCommand.execute(&ctx).await.map_err(Into::into)
 }
@@ -1389,8 +1367,14 @@ mod tests {
 	use super::*;
 	use rstest::rstest;
 
+	/// `Runserver` is intentionally **not** in the pre-dispatch
+	/// `requires_router` list (Refs #4453): the HTTP-route inventory
+	/// pull now happens inside
+	/// [`RunServerCommand::register_http_routes_from_inventory`] at a
+	/// visible call site, so the dispatcher must **not** auto-register
+	/// a router for `runserver` ahead of time.
 	#[rstest]
-	fn test_requires_router_for_runserver() {
+	fn test_runserver_does_not_require_pre_dispatch_router_registration() {
 		// Arrange
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
@@ -1412,7 +1396,7 @@ mod tests {
 		let result = requires_router(&command);
 
 		// Assert
-		assert!(result);
+		assert!(!result);
 	}
 
 	#[cfg(feature = "routers")]
