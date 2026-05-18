@@ -1208,7 +1208,7 @@ mod tests {
 		let response = result.unwrap();
 		assert_eq!(response.status, hyper::StatusCode::OK);
 		let body: TestItem =
-			serde_json::from_slice(&response.body.to_vec()).expect("response should be valid JSON");
+			serde_json::from_slice(&response.body).expect("response should be valid JSON");
 		assert_eq!(body.name, "first");
 		assert_eq!(body.id, Some(1));
 	}
@@ -1233,7 +1233,7 @@ mod tests {
 		let response = result.unwrap();
 		assert_eq!(response.status, hyper::StatusCode::OK);
 		let body: TestItem =
-			serde_json::from_slice(&response.body.to_vec()).expect("response should be valid JSON");
+			serde_json::from_slice(&response.body).expect("response should be valid JSON");
 		assert_eq!(body.name, "answer");
 		assert_eq!(body.id, Some(42));
 	}

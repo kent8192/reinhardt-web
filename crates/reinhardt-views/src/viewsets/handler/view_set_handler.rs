@@ -196,8 +196,7 @@ mod tests {
 			let _ = handle.join(); // Thread panicked
 
 			// Assert - lock is still usable (no poisoning)
-			let value = *lock_ref.read();
-			value
+			*lock_ref.read()
 		});
 
 		// parking_lot recovers the lock after panic

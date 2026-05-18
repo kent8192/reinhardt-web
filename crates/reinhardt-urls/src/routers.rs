@@ -251,6 +251,13 @@ pub use client_router::{
 	register_client_reverser,
 };
 pub use resolver::{ClientUrlResolver, WebSocketUrlResolver};
+// Re-export the deprecated `UrlResolverUnprefixed` helper trait so the macro
+// can refer to it via `<reinhardt-facade>::UrlResolverUnprefixed`. Refs #4507.
+#[allow(
+	deprecated,
+	reason = "re-export deprecated helper trait during the deprecation cycle"
+)]
+pub use resolver::UrlResolverUnprefixed;
 
 // Re-export the canonical `StreamingTopicResolver` trait from
 // `reinhardt-streaming` so downstream users can keep importing it from
