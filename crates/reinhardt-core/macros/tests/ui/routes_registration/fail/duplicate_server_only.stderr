@@ -1,0 +1,5 @@
+error: `server_only` specified twice
+ --> tests/ui/routes_registration/fail/duplicate_server_only.rs:8:23
+  |
+8 | #[routes(server_only, server_only)]
+  |                       ^^^^^^^^^^^
