@@ -2474,37 +2474,50 @@ impl Operation {
 				new_definition: _,
 				..
 			} => {
-				// Prioritize old_definition if available (accurate rollback)
-				if let Some(old_def) = old_definition {
-					let type_sql = old_def.type_definition.to_sql_for_dialect(dialect);
-					let null_clause = if old_def.not_null { " NOT NULL" } else { "" };
-					return Ok(Some(format!(
-						"ALTER TABLE {} ALTER COLUMN {} TYPE {}{};",
-						quote_identifier(table),
-						quote_identifier(column),
-						type_sql,
-						null_clause
-					)));
-				}
+				// Resolve the original column definition to revert to.
+				// Prioritize the explicit `old_definition` over ProjectState lookup.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
 
-				// Fallback: Retrieve original column definition from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
-					// Generate ALTER COLUMN to restore original definition
-					let type_sql = col_def.type_definition.to_sql_for_dialect(dialect);
-					let null_clause = if col_def.not_null { " NOT NULL" } else { "" };
-					return Ok(Some(format!(
+				let Some(old_def) = resolved_old_def else {
+					// Cannot reconstruct without state
+					return Ok(None);
+				};
+
+				let type_sql = old_def.type_definition.to_sql_for_dialect(dialect);
+				let null_clause = if old_def.not_null { " NOT NULL" } else { "" };
+
+				// Dispatch reverse SQL per dialect.
+				// SQLite is handled via the SQLite-recreation path before reaching
+				// here (see executor::rollback_migration and
+				// `Operation::reverse_requires_sqlite_recreation`). The placeholder
+				// comment below is a defensive fallback: emitting executable
+				// ALTER COLUMN syntax on SQLite would always error (#4582).
+				let sql = match dialect {
+					SqlDialect::Postgres | SqlDialect::Cockroachdb => format!(
 						"ALTER TABLE {} ALTER COLUMN {} TYPE {}{};",
 						quote_identifier(table),
 						quote_identifier(column),
 						type_sql,
 						null_clause
-					)));
-				}
-				// Cannot reconstruct without state
-				Ok(None)
+					),
+					SqlDialect::Mysql => format!(
+						"ALTER TABLE {} MODIFY COLUMN {} {}{};",
+						quote_identifier(table),
+						quote_identifier(column),
+						type_sql,
+						null_clause
+					),
+					SqlDialect::Sqlite => format!(
+						"-- SQLite does not support ALTER COLUMN, table recreation required for {}",
+						quote_identifier(table)
+					),
+				};
+				Ok(Some(sql))
 			}
 			Operation::DropIndex { table, columns } => {
 				// Enhancement opportunity: Full index reconstruction would preserve
@@ -3387,14 +3400,21 @@ impl Operation {
 			Operation::AlterColumn {
 				table,
 				column,
+				old_definition,
 				new_definition: _,
 				..
 			} => {
-				// Reconstruct AlterColumn with original definition from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
+				// Reconstruct AlterColumn with the original definition. Prefer the
+				// explicit `old_definition` carried by the forward operation; fall
+				// back to ProjectState lookup only if `old_definition` is absent.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
+
+				if let Some(col_def) = resolved_old_def {
 					return Ok(Some(Operation::AlterColumn {
 						table: table.clone(),
 						column: column.clone(),
@@ -5403,6 +5423,163 @@ mod tests {
 			"Reverse SQL should reference 'email' column, got: {}",
 			sql
 		);
+	}
+
+	/// Build an [`Operation::AlterColumn`] that carries an `old_definition`,
+	/// so reverse-SQL generation has all the inputs it needs without a
+	/// populated `ProjectState`. Used by the dialect-dispatch regression
+	/// tests for reinhardt-web#4582.
+	fn alter_column_with_old_def() -> Operation {
+		Operation::AlterColumn {
+			table: "products".to_string(),
+			column: "name".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "name".to_string(),
+				type_definition: FieldType::VarChar(50),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			}),
+			new_definition: ColumnDefinition {
+				name: "name".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			mysql_options: None,
+		}
+	}
+
+	/// Reverse SQL for Postgres must use `ALTER COLUMN ... TYPE` syntax
+	/// (regression coverage for reinhardt-web#4582).
+	#[test]
+	fn test_to_reverse_sql_alter_column_postgres() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.expect("reverse SQL should succeed")
+			.expect("reverse SQL should be present");
+
+		// Assert
+		assert!(
+			sql.contains("ALTER COLUMN") && sql.contains("TYPE"),
+			"Postgres reverse SQL should use ALTER COLUMN ... TYPE syntax, got: {}",
+			sql
+		);
+		assert!(
+			sql.contains("VARCHAR(50)"),
+			"Postgres reverse SQL should restore VARCHAR(50), got: {}",
+			sql
+		);
+	}
+
+	/// Reverse SQL for MySQL must use `MODIFY COLUMN` syntax — the previous
+	/// implementation emitted Postgres `ALTER COLUMN ... TYPE` which MySQL
+	/// rejects with error 1064 (reinhardt-web#4582).
+	#[test]
+	fn test_to_reverse_sql_alter_column_mysql() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Mysql, &state)
+			.expect("reverse SQL should succeed")
+			.expect("reverse SQL should be present");
+
+		// Assert
+		assert!(
+			sql.contains("MODIFY COLUMN"),
+			"MySQL reverse SQL should use MODIFY COLUMN syntax, got: {}",
+			sql
+		);
+		assert!(
+			!sql.contains("ALTER COLUMN"),
+			"MySQL reverse SQL must not emit Postgres ALTER COLUMN syntax, got: {}",
+			sql
+		);
+		assert!(
+			!sql.contains(" TYPE "),
+			"MySQL reverse SQL must not contain Postgres ' TYPE ' token, got: {}",
+			sql
+		);
+		assert!(
+			sql.contains("VARCHAR(50)"),
+			"MySQL reverse SQL should restore VARCHAR(50), got: {}",
+			sql
+		);
+	}
+
+	/// SQLite has no general `ALTER COLUMN`; the rollback path is handled
+	/// via table recreation in the executor. `to_reverse_sql` therefore
+	/// returns an inert comment so that any accidental fall-through does
+	/// not produce executable SQL that SQLite would reject
+	/// (reinhardt-web#4582).
+	#[test]
+	fn test_to_reverse_sql_alter_column_sqlite() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Sqlite, &state)
+			.expect("reverse SQL should succeed")
+			.expect("reverse SQL should be present");
+
+		// Assert
+		assert!(
+			sql.trim_start().starts_with("--"),
+			"SQLite reverse SQL should be a SQL comment (recreation handled by executor), got: {}",
+			sql
+		);
+		// Strip leading `--` (and any whitespace) before checking; the comment
+		// body itself is allowed to mention ALTER COLUMN as English prose.
+		let body = sql.trim_start_matches("--").trim_start();
+		assert!(
+			!body.to_uppercase().contains("ALTER TABLE"),
+			"SQLite reverse SQL body must not emit executable ALTER TABLE statement, got: {}",
+			sql
+		);
+	}
+
+	/// `to_reverse_operation` for `AlterColumn` must prefer the explicit
+	/// `old_definition` carried by the forward operation, instead of
+	/// always falling back to an (often empty) `ProjectState` lookup
+	/// (reinhardt-web#4582).
+	#[test]
+	fn test_to_reverse_operation_alter_column_uses_old_definition() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let reverse = op
+			.to_reverse_operation(&state)
+			.expect("reverse operation should succeed")
+			.expect("reverse operation should be present (old_definition is supplied)");
+
+		// Assert
+		match reverse {
+			Operation::AlterColumn { new_definition, .. } => {
+				assert!(
+					matches!(new_definition.type_definition, FieldType::VarChar(50)),
+					"reverse AlterColumn should restore VARCHAR(50), got: {:?}",
+					new_definition.type_definition
+				);
+			}
+			other => panic!("reverse operation should be AlterColumn, got: {:?}", other),
+		}
 	}
 
 	#[test]
