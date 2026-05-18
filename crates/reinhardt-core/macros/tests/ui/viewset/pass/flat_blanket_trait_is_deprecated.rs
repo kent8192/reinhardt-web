@@ -15,7 +15,12 @@
 //!
 //! Refs Issue #4507.
 
+// `reinhardt_macros::viewset` is brought in only so the `#[viewset]`
+// attribute expansion below has its proc-macro driver; the name is not
+// referenced from any path expression. Permit the otherwise-unused import.
 #![allow(unused_imports)]
+// `SnippetViewSet` exists only to give `#[viewset]` something to attach to;
+// it is never constructed or referenced. Permit the dead struct.
 #![allow(dead_code)]
 
 use reinhardt_macros::viewset;
