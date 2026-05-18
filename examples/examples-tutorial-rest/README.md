@@ -101,29 +101,29 @@ curl -X DELETE http://127.0.0.1:8000/api/snippets/1/
 
 ```
 examples-tutorial-rest/
-├── Cargo.toml                 # Project configuration
-├── build.rs                   # Build script
-├── README.md                  # This file
+├── Cargo.toml                      # Project configuration
+├── build.rs                        # Build script
+├── README.md                       # This file
 ├── src/
-│   ├── lib.rs                # Library entry point
-│   ├── config.rs             # Config module
-│   ├── apps.rs               # Apps module
+│   ├── lib.rs                      # Library entry point
+│   ├── config.rs                   # Config aggregator
+│   ├── apps.rs                     # Apps aggregator
 │   ├── bin/
-│   │   └── manage.rs         # Management command
+│   │   └── manage.rs               # Management command
 │   ├── config/
-│   │   ├── settings.rs       # Settings configuration
-│   │   ├── urls.rs           # URL routing
-│   │   └── apps.rs           # Installed apps
+│   │   ├── apps.rs                 # installed_apps! { snippets: "snippets" }
+│   │   ├── settings.rs             # Settings composition
+│   │   └── urls.rs                 # #[routes] entry point, mounts /api/
 │   └── apps/
+│       ├── snippets.rs             # snippets app entry (sibling of snippets/)
 │       └── snippets/
-│           ├── lib.rs        # App module
-│           ├── models.rs     # Snippet model
-│           ├── serializers.rs  # Serializers
-│           ├── views.rs      # View handlers
-│           └── urls.rs       # URL patterns
+│           ├── models.rs           # Snippet model (#[model])
+│           ├── serializers.rs      # SnippetSerializer + SnippetResponse
+│           ├── urls.rs             # aggregator: #[url_patterns(InstalledApp::snippets, mode = server)]
+│           │                       # registers both function-based and ViewSet endpoints
+│           └── views.rs            # HTTP method handlers + #[viewset]
 └── tests/
-    ├── integration.rs        # Integration tests
-    └── availability.rs       # Availability tests
+    └── integration.rs              # Integration tests
 ```
 
 ## Learning Path
@@ -167,36 +167,97 @@ pub struct SnippetSerializer {
 ### 3. Views (views.rs)
 
 ```rust
-pub async fn list(_req: Request) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-    // List all snippets
+// HTTP method decorator + `pre_validate = true` (declarative validation,
+// available since rc.5). The macro extracts `Json<SnippetSerializer>`, calls
+// `Validate::validate` on the dereferenced value, and returns HTTP 400 with
+// JSON error details on failure — all before this function body runs.
+#[get("/snippets/", name = "snippets_list")]
+pub async fn list() -> ViewResult<Response> {
+    // List all snippets — return JSON via `Response::new(StatusCode::OK).with_body(...)`.
 }
 
-pub async fn create(mut req: Request) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-    // Create a new snippet with validation
-    let serializer: SnippetSerializer = serde_json::from_slice(&req.body)?;
-    serializer.validate()?;
-    // ...
+#[post("/snippets/", name = "snippets_create", pre_validate = true)]
+pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
+    // `serializer` is already validated. Just persist and return 201.
 }
 ```
 
 ### 4. URL Routing (urls.rs)
 
+The snippets app exposes a single `url_patterns()` entry point in
+`src/apps/snippets/urls.rs`. It carries the typed
+`#[url_patterns(InstalledApp::snippets, mode = server)]` macro (rc.18+,
+discussion #3770), which binds the router to its owning app at compile
+time via the `AppLabel` trait and applies `.with_namespace("snippets")`
+for URL reversal (e.g. `"snippets:snippets_list"`) without changing the
+request path. Both the function-based endpoints (Tutorial 1-5) and the
+ViewSet endpoints (Tutorial 6) are registered on the same router:
+
 ```rust
-UnifiedRouter::new()
-    .function("/", Method::GET, super::views::list)
-    .function("/", Method::POST, super::views::create)
-    .function("/{id}/", Method::PUT, super::views::update)
-    .function("/{id}/", Method::GET, super::views::retrieve)
-    .function("/{id}/", Method::DELETE, super::views::delete)
+// src/apps/snippets/urls.rs
+#[url_patterns(InstalledApp::snippets, mode = server)]
+pub fn url_patterns() -> ServerRouter {
+    ServerRouter::new()
+        // Function-based endpoints (Tutorial 1-5)
+        .endpoint(views::list)
+        .endpoint(views::create)
+        .endpoint(views::retrieve)
+        .endpoint(views::update)
+        .endpoint(views::delete)
+        // ViewSet endpoints (Tutorial 6)
+        .viewset("/snippets-viewset", views::viewset())
+}
 ```
+
+> **Why the routes are inlined here**: the framework currently supports at
+> most one `#[url_patterns(InstalledApp::<app>, mode = server)]` per app
+> (sibling occurrences emit duplicate `__for_each_url_resolver` macros and
+> fail with `E0659: ambiguous name`), and `.mount("/", helper())` calls
+> additionally require each mount target to have its own `url_resolvers`
+> module. Splitting the function-based and ViewSet registrations into
+> separate helper files is therefore not possible today. See `urls.rs`'s
+> module-level comment for the full rationale and the framework path that
+> would lift the constraint.
+
+Mounted at the project root with an explicit literal prefix.
+`#[routes(server_only)]` is used because this project is REST-only —
+the `server_only` flag (Issue #4509) tells the macro to skip per-app
+`client_url_resolvers` / `ws_url_resolvers` module lookups, so the
+`snippets` app does not need empty `client_router.rs` / `ws_urls.rs`
+stub modules and the `websockets` Cargo feature can stay off. The
+macro still consumes `installed_apps!` and generates the typed
+`ResolvedUrls::snippets()` accessor that `standalone` would have
+suppressed:
+
+```rust
+// src/config/urls.rs
+#[routes(server_only)]
+pub fn routes() -> UnifiedRouter {
+    UnifiedRouter::new().mount("/api/", crate::apps::snippets::urls::url_patterns())
+}
+```
+
+The `/api/` prefix is a literal path (no `{...}` segments), satisfying the
+rc.24 guard that panics when `ServerRouter::mount()` receives a parameterised
+prefix.
 
 ### 5. Validation
 
 ```rust
+// Serializer side: declare validation rules with `#[validate(...)]`.
 use reinhardt::Validate;
 
-// In view handler
-serializer.validate()?;  // Returns validation errors if invalid
+#[derive(serde::Deserialize, Validate)]
+pub struct SnippetSerializer { /* ... */ }
+
+// Handler side: enable `pre_validate = true` on the route macro.
+// Manual `serializer.validate()?` is no longer needed inside the handler
+// body — the macro generates the call for you and converts failures into
+// a HTTP 400 JSON response.
+#[post("/snippets/", name = "snippets_create", pre_validate = true)]
+pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
+    /* serializer is already validated here */
+}
 ```
 
 ## Testing
@@ -216,21 +277,35 @@ cargo test -- --nocapture
 
 ## ViewSets (Tutorial 6)
 
-This example demonstrates both function-based views (Tutorial 1-5) and ViewSet-based views (Tutorial 6).
-
-### Switching Between Approaches
-
-You can switch between the two approaches using the `USE_VIEWSET` environment variable:
+This example demonstrates both function-based views (Tutorial 1-5) and ViewSet-based views (Tutorial 6). **Both are mounted simultaneously** on the same running server — there is no toggle between them. The two endpoint sets coexist under separate URL prefixes:
 
 ```bash
-# Function-based views (default) - Tutorial 1-5 approach
 cargo run --bin manage runserver
-# Visit http://127.0.0.1:8000/api/snippets/
 
-# ViewSet-based views - Tutorial 6 approach
-USE_VIEWSET=1 cargo run --bin manage runserver
-# Visit http://127.0.0.1:8000/api/snippets-viewset/
+# Function-based endpoints (Tutorial 1-5)
+curl http://127.0.0.1:8000/api/snippets/
+
+# ViewSet endpoints (Tutorial 6)
+curl http://127.0.0.1:8000/api/snippets-viewset/
 ```
+
+The Bruno collection under `bruno/` contains a `Snippets CRUD` folder for the function-based path and a `Snippets ViewSet` folder for the ViewSet path; both can be exercised back-to-back without restarting the server.
+
+> **rc.23+ runtime behaviour**: Starting with reinhardt-web rc.23,
+> `ModelViewSet` (and `ReadOnlyModelViewSet`) issue **real database
+> queries** instead of returning skeleton `[]` / `{}` responses. To exercise
+> the ViewSet endpoints you must therefore migrate the `snippets` table
+> first:
+>
+> ```bash
+> cargo run --bin manage -- migrate
+> cargo run --bin manage runserver
+> ```
+>
+> Until rows are inserted, the `/api/snippets-viewset/` endpoints will
+> return an empty list. The function-based path (`/api/snippets/`) is
+> unaffected — it falls back to in-memory sample snippets defined in
+> `views.rs::get_sample_snippets`.
 
 ### Comparison
 

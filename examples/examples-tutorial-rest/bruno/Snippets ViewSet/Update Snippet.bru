@@ -1,0 +1,34 @@
+meta {
+  name: Update Snippet
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/snippets-viewset/{{viewsetSnippetId}}/
+  body: json
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "title": "ViewSet Hello (updated)",
+    "code": "fn main() {\n    println!(\"Hello from updated ViewSet!\");\n}",
+    "language": "rust"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("Snippet was updated", function() {
+    const snippet = res.body && res.body.id !== undefined ? res.body : (res.body && res.body.snippet ? res.body.snippet : null);
+    expect(snippet, "response should contain a snippet object").to.not.equal(null);
+    expect(snippet.title).to.equal("ViewSet Hello (updated)");
+  });
+}

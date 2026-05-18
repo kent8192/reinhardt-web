@@ -1,0 +1,21 @@
+meta {
+  name: Filter by Language
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/snippets-viewset/?language=rust
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}
+
+docs {
+  Exercises the `FilterConfig::with_filterable_fields(["language", "title"])`
+  configuration in `views::viewset()`. Returns only rows whose `language`
+  column equals "rust".
+}

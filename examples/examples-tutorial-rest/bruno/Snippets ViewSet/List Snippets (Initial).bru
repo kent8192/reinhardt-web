@@ -1,0 +1,26 @@
+meta {
+  name: List Snippets (Initial)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/snippets-viewset/?page=1&page_size=10
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("Response is JSON", function() {
+    expect(res.headers["content-type"] || "").to.match(/json/i);
+  });
+}
+
+docs {
+  List the snippets via the rc.23+ ModelViewSet.
+  Pagination is enabled (page_size up to 100).
+  Until rows are inserted into the `snippets` table, the response
+  contains an empty `results` array — that's by design (real DB query).
+}
