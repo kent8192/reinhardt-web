@@ -1286,6 +1286,122 @@ impl ShellCommand {
 /// Development server command
 pub struct RunServerCommand;
 
+impl RunServerCommand {
+	/// Consume `UrlPatternsRegistration` `inventory` entries and install the
+	/// merged `ServerRouter` as the process-wide HTTP router.
+	///
+	/// This is the canonical, named consumer of the `#[routes]`-emitted
+	/// server-side `inventory::submit!` block. It is invoked explicitly
+	/// from [`RunServerCommand::execute`] so that the registration step
+	/// is **visible at the call site** rather than hidden inside the
+	/// command-dispatch loop (Refs #4453 DP-1).
+	///
+	/// Users running the canonical `cargo run --bin manage runserver`
+	/// path get registration "for free" — `execute(..)` calls this method.
+	/// Users who bypass `--bin manage` and assemble their own server
+	/// entrypoint can call this method directly on `RunServerCommand`
+	/// instead of going through [`crate::auto_register_router`].
+	///
+	/// # Errors
+	///
+	/// - Zero `#[routes]` registrations found (missing `#[routes]` or
+	///   `src/lib.rs` + `src/bin/manage.rs` linker drop — the error
+	///   message includes the fix)
+	/// - Multiple `#[routes]` registrations (linker marker should normally
+	///   catch this at link time; we provide a clear fallback message)
+	/// - The async server factory returned an error
+	/// - A router is already registered when this method is called
+	///   (DP-7 confusable-API guard). Users who intentionally pre-register
+	///   via [`reinhardt_urls::routers::register_router`] should not also
+	///   call this method.
+	///
+	/// Refs #4453.
+	#[cfg(feature = "routers")]
+	pub async fn register_http_routes_from_inventory(
+		&self,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		use reinhardt_urls::routers::{
+			UrlPatternsRegistration, is_router_registered, register_router_arc,
+		};
+
+		// DP-7 confusable-API guard: reject if a router is already registered.
+		// Callers that intentionally pre-register a hand-built `ServerRouter`
+		// must not also call this method; the two paths are mutually exclusive.
+		if is_router_registered() {
+			return Err("ServerRouter is already registered.\n\
+				`RunServerCommand::register_http_routes_from_inventory()` and \
+				`reinhardt_urls::routers::register_router(..)` are mutually \
+				exclusive: choose exactly one. If you want the inventory path, \
+				do not pre-register a router; if you want manual registration, \
+				skip this method and let `RunServerCommand::execute(..)` reuse \
+				the pre-registered router."
+				.into());
+		}
+
+		// Collect all server-side registrations for validation.
+		let registrations: Vec<_> = inventory::iter::<UrlPatternsRegistration>().collect();
+
+		match registrations.len() {
+			0 => {
+				return Err("No URL patterns registered.\n\
+					Add the `#[routes]` attribute to your routes function in src/config/urls.rs:\n\n\
+					#[routes]\n\
+					pub fn routes() -> UnifiedRouter {\n\
+					    UnifiedRouter::new()\n\
+					}\n\n\
+					If your project uses a library/binary split (src/lib.rs + src/bin/manage.rs),\n\
+					the linker may silently discard route registrations from the library crate.\n\
+					Fix: add `use your_crate_name as _;` to src/bin/manage.rs to force-link\n\
+					the library and preserve its side-effectful route registrations."
+					.into());
+			}
+			1 => { /* expected case */ }
+			n => {
+				return Err(format!(
+					"Multiple #[routes] functions detected ({n} found).\n\
+					Only one function in the entire project should be annotated with #[routes].\n\n\
+					Please ensure that:\n\
+					1. Only one #[routes] attribute exists in your codebase\n\
+					2. Check src/config/urls.rs and any other files that might have #[routes]\n\
+					3. If you have multiple router configurations, combine them into a single function\n\n\
+					Example:\n\
+					#[routes]\n\
+					pub fn routes() -> UnifiedRouter {{\n\
+					    UnifiedRouter::new()\n\
+					        .mount(\"/api/\", api::routes())  // NOT annotated with #[routes]\n\
+					        .mount(\"/admin/\", admin::routes())\n\
+					}}"
+				)
+				.into());
+			}
+		}
+
+		let registration = &registrations[0];
+		let router = registration
+			.server_router_async()
+			.await
+			.map_err(|e| format!("Failed to create router from #[routes] function: {e}"))?;
+		register_router_arc(router);
+		Ok(())
+	}
+
+	/// No-op when the `routers` feature is disabled.
+	///
+	/// Kept public to preserve API stability across feature-flag toggles.
+	///
+	/// # Errors
+	///
+	/// Never returns an error in the `routers`-disabled build — always
+	/// resolves to `Ok(())`. The signature matches the active variant so
+	/// downstream callers can stay feature-flag-agnostic.
+	#[cfg(not(feature = "routers"))]
+	pub async fn register_http_routes_from_inventory(
+		&self,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		Ok(())
+	}
+}
+
 #[async_trait]
 impl BaseCommand for RunServerCommand {
 	fn name(&self) -> &str {
@@ -1356,6 +1472,32 @@ impl BaseCommand for RunServerCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		// Explicit HTTP route registration (Refs #4453 DP-1):
+		// the inventory consumption used to be hidden inside the dispatch
+		// chain (cli.rs's `auto_register_router()` called before this body).
+		// We now make the call site visible here, on `RunServerCommand`,
+		// so that readers of `execute(..)` see exactly when and how the
+		// `#[routes]`-emitted server inventory becomes the global router.
+		//
+		// Opt-out path: users who hand-build a `ServerRouter` and call
+		// `reinhardt_urls::routers::register_router(..)` before this body
+		// runs will short-circuit through the `is_router_registered()`
+		// guard and skip the inventory pull — preserving the existing
+		// escape hatch unchanged.
+		#[cfg(feature = "routers")]
+		{
+			if !reinhardt_urls::routers::is_router_registered() {
+				self.register_http_routes_from_inventory()
+					.await
+					.map_err(|e| crate::CommandError::ExecutionError(e.to_string()))?;
+			} else {
+				ctx.verbose(
+					"ServerRouter already registered before RunServerCommand::execute; \
+					 skipping inventory pull (manual setter opt-out path).",
+				);
+			}
+		}
+
 		let address = ctx.arg(0).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000");
 		let noreload = ctx.has_option("noreload");
 		let no_wasm_rebuild = ctx.has_option("no-wasm-rebuild");
@@ -3659,6 +3801,51 @@ mod tests {
 			// Task should have been cancelled
 			assert!(result.is_err(), "Server task should have been cancelled");
 		}
+	}
+
+	// Confusable-API guard: explicit invocation of
+	// `register_http_routes_from_inventory` after a manual
+	// `register_router(..)` must be rejected with a clear message
+	// (Refs #4453 DP-7).
+	#[cfg(all(feature = "routers", feature = "server"))]
+	#[tokio::test]
+	#[serial_test::serial(runserver)]
+	async fn test_register_http_routes_from_inventory_rejects_pre_registered_router() {
+		use reinhardt_urls::routers::ServerRouter;
+
+		// RAII guard so the manually registered router is cleared even if
+		// an assertion below panics. Keeps the `runserver` serial group
+		// hygienic without ordering the cleanup against `expect_err`.
+		struct RouterCleanupGuard;
+		impl Drop for RouterCleanupGuard {
+			fn drop(&mut self) {
+				reinhardt_urls::routers::clear_router();
+			}
+		}
+
+		// Arrange: a router is already registered via the manual setter
+		// (simulating an opt-out user who hand-built a ServerRouter and
+		// called `register_router(..)` themselves before invoking
+		// `RunServerCommand`).
+		reinhardt_urls::routers::register_router(ServerRouter::new());
+		let _cleanup_guard = RouterCleanupGuard;
+
+		// Act: explicit call to the inventory consumer must error.
+		let result = RunServerCommand.register_http_routes_from_inventory().await;
+
+		// Assert: error mentions the mutual-exclusion contract so the
+		// caller can fix the bootstrap rather than silently overriding.
+		let err = result
+			.expect_err("expected DP-7 confusable-API rejection when a router is pre-registered");
+		let msg = err.to_string();
+		assert!(
+			msg.contains("already registered"),
+			"error must call out the pre-registered router; got: {msg}"
+		);
+		assert!(
+			msg.contains("mutually exclusive"),
+			"error must state the two paths are mutually exclusive; got: {msg}"
+		);
 	}
 
 	// ==================== Command Metadata Tests ====================

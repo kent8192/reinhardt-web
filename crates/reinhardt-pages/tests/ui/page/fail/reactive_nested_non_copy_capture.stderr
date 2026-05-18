@@ -1,0 +1,26 @@
+error[E0507]: cannot move out of `outer_signal`, a captured variable in an `Fn` closure
+  --> tests/ui/page/fail/reactive_nested_non_copy_capture.rs:49:31
+   |
+42 |     let outer_signal = NotCopy(std::rc::Rc::new(1));
+   |         ------------   ---------------------------- move occurs because `outer_signal` has type `NotCopy`, which does not implement the `Copy` trait
+   |         |
+   |         captured outer variable
+...
+48 |     let _page = Page::reactive(move || {
+   |                                ------- captured by this `Fn` closure
+49 |         let _inner = Page::reactive(move || {
+   |                                     ^^^^^^^ `outer_signal` is moved here
+50 |             if outer_signal.get() > 0 {
+   |                ------------ variable moved due to use in closure
+   |
+help: `Fn` and `FnMut` closures require captured values to be able to be consumed multiple times, but `FnOnce` closures may consume them only once
+  --> $WORKSPACE/crates/reinhardt-core/src/types/page.rs
+   |
+   |         F: Fn() -> Page + 'static,
+   |            ^^^^^^^^^^^^
+help: consider cloning the value before moving it into the closure
+   |
+49 ~         let value = outer_signal.clone();
+50 ~         let _inner = Page::reactive(move || {
+51 ~             if value.get() > 0 {
+   |

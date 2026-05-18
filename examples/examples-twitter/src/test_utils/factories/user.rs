@@ -60,6 +60,7 @@ impl UserFactory {
 				Alias::new("email"),
 				Alias::new("password_hash"),
 				Alias::new("is_active"),
+				Alias::new("is_superuser"),
 				Alias::new("created_at"),
 				Alias::new("bio"),
 			])
@@ -69,6 +70,7 @@ impl UserFactory {
 				Value::from(test_user.email.clone()),
 				Value::from(password_hash),
 				Value::from(test_user.is_active),
+				Value::from(test_user.is_superuser),
 				Value::from(Utc::now()),
 				test_user.bio.clone().into_value(),
 			])
@@ -110,6 +112,7 @@ impl UserFactory {
 				Alias::new("email"),
 				Alias::new("password_hash"),
 				Alias::new("is_active"),
+				Alias::new("is_superuser"),
 				Alias::new("last_login"),
 				Alias::new("created_at"),
 				Alias::new("bio"),
@@ -134,6 +137,7 @@ impl UserFactory {
 				Alias::new("email"),
 				Alias::new("password_hash"),
 				Alias::new("is_active"),
+				Alias::new("is_superuser"),
 				Alias::new("last_login"),
 				Alias::new("created_at"),
 				Alias::new("bio"),
@@ -286,9 +290,9 @@ mod tests {
 			.await
 			.expect("User creation should succeed");
 
-		assert_eq!(user.username(), "factoryuser");
-		assert_eq!(user.email(), "factoryuser@example.com");
-		assert!(user.is_active());
+		assert_eq!(user.username, "factoryuser");
+		assert_eq!(user.email, "factoryuser@example.com");
+		assert!(user.is_active);
 	}
 
 	#[rstest]
