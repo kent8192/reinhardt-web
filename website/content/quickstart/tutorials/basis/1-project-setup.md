@@ -33,7 +33,7 @@ Install the global tool for project generation. During the RC phase, only releas
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.0-rc.29"
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
 ## Creating a Project
