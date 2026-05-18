@@ -29,13 +29,6 @@ env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
   RUST_MIN_STACK: 8388608
-  # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
-  # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
-  # once all three upstreams ship node24 releases.
-  #
-  # Ideal implementation (without workaround):
-  #   (no env override; let runner default kick in)
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   unit-coverage:
@@ -69,14 +62,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@v3
+      - name: Setup test environment (Rust + protoc)
+        uses: ./.github/actions/setup-test-env
         with:
-          version: "28.x"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-make
         uses: taiki-e/install-action@v2
@@ -217,14 +206,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@v3
+      - name: Setup test environment (Rust + protoc)
+        uses: ./.github/actions/setup-test-env
         with:
-          version: "28.x"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install mold linker and build dependencies
         run: |
@@ -375,14 +360,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@v3
+      - name: Setup test environment (Rust + protoc)
+        uses: ./.github/actions/setup-test-env
         with:
-          version: "28.x"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install mold linker and build dependencies
         run: |
