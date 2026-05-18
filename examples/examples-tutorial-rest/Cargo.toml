@@ -52,5 +52,9 @@ with-reinhardt = []
 name = "integration"
 required-features = ["with-reinhardt"]
 
+[[test]]
+name = "urls_typed_accessors"
+required-features = ["with-reinhardt"]
+
 [lints]
 workspace = true
