@@ -553,6 +553,41 @@ Items behind `#[cfg(feature = "...")]` are not in scope when docs are built with
 - If an item is behind `#[cfg(feature = "X")]`, use `` `ItemName` `` not `` [`ItemName`] ``
 - Mention the required feature in the description: "(requires `X` feature)"
 
+#### RD-7: Continuation Lines Must Not Begin with a Rust Keyword
+
+Multi-line `//` and `///` comments must not have any continuation line begin with a Rust keyword. The Semgrep `rust-commented-out-code` rule (enforced by the TODO Check CI job) treats keyword-led lines as commented-out source code and blocks the build.
+
+**Triggering keywords:** `impl`, `fn`, `struct`, `mod`, `pub`, `let`, `use`, `trait`, `enum`, `const`, `static`, `match`, `if`, `for`, `while`, `loop`, `return`.
+
+**Why:** Semgrep cannot distinguish prose from code when a comment line is structurally indistinguishable from Rust. Restructuring prose is cheaper than tuning the rule per occurrence — recent trips include PR #4518 (`crates/reinhardt-core/macros/src/viewset_macro.rs:1046`, continuation began with `impl ...`) and prior occurrences predating Issue #4550.
+
+```rust
+// ❌ INCORRECT (Semgrep trips on the `impl ...` line)
+/// Bridges marker-keyed actions into the runtime registry.
+///
+/// impl UrlResolverUnprefixed for ResolvedUrls must be in scope at the call site.
+pub fn bridge() { /* ... */ }
+
+// ✅ CORRECT (keyword wrapped in backticks)
+/// Bridges marker-keyed actions into the runtime registry.
+///
+/// The `impl UrlResolverUnprefixed for ResolvedUrls` block must be in scope at the call site.
+pub fn bridge() { /* ... */ }
+
+// ✅ CORRECT (keyword moved mid-line)
+/// Bridges marker-keyed actions into the runtime registry.
+///
+/// At the call site, an `impl UrlResolverUnprefixed for ResolvedUrls` block must be in scope.
+pub fn bridge() { /* ... */ }
+```
+
+**How to detect locally before pushing:**
+
+```bash
+docker run --rm -v "$(pwd):/src" semgrep/semgrep \
+  semgrep scan --config .semgrep/ --error --metrics off
+```
+
 #### Quick Reference Table
 
 | Pattern | Incorrect | Correct |
@@ -563,6 +598,7 @@ Items behind `#[cfg(feature = "...")]` are not in scope when docs are built with
 | Code blocks | ` ``` ` | ` ```rust ` |
 | Array access | `arr[0]` | `` `arr[0]` `` |
 | Feature-gated items | `` [`TypeName`] `` | `` `TypeName` `` |
+| Keyword-led continuation | `/// impl Foo for Bar ...` | `` /// The `impl Foo for Bar` ... `` |
 
 #### Verification
 

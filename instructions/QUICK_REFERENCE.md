@@ -49,6 +49,7 @@
 - Specify language for code blocks: ` ```rust `, NOT ` ``` `
 - Wrap bracket patterns in backticks: `` `array[0]` ``, NOT `array[0]`
 - Use backticks (not intra-doc links) for feature-gated types: `` `FeatureType` ``, NOT `` [`FeatureType`] ``
+- Avoid starting doc-comment continuation lines with a Rust keyword (`impl`, `fn`, `struct`, `mod`, `pub`, `let`, `use`, `trait`, `enum`, `const`, `static`, `match`, `if`, `for`, `while`, `loop`, `return`) — restructure prose so the keyword is wrapped in backticks or appears mid-line (Semgrep `rust-commented-out-code` rule trips otherwise; see instructions/DOCUMENTATION_STANDARDS.md § RD-7)
 - Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
 - Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
 - Resolve all `todo!()` and `// TODO:` before merging PR (enforced by TODO Check CI)
@@ -137,6 +138,7 @@
 - Write macro attributes without backticks in doc comments (causes unresolved link warnings)
 - Write bare URLs in doc comments (causes bare URL warnings)
 - Use intra-doc links for feature-gated items (causes unresolved link warnings)
+- Start a doc-comment continuation line with a Rust keyword (`impl`, `fn`, `struct`, `mod`, `pub`, `let`, `use`, `trait`, `enum`, `const`, `static`, `match`, `if`, `for`, `while`, `loop`, `return`) — Semgrep flags the line as commented-out code and blocks the TODO Check CI; wrap the keyword in backticks or move it mid-line (see instructions/DOCUMENTATION_STANDARDS.md § RD-7)
 - Create new ASCII art diagrams in doc comments (use Mermaid instead)
 - Mix warnings and errors in trybuild `.stderr` files
 - Merge PR with unresolved `todo!()` or `// TODO:` comments (blocked by TODO Check CI)
