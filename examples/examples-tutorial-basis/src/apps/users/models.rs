@@ -8,16 +8,27 @@
 //! `first_name` / `last_name` / `date_joined` / `is_staff`), which keeps
 //! both the schema and the SignupForm small.
 //!
-//! All registration / authentication-state changes go through
-//! [`UserManager`] (a project-local implementation of
+//! All registration / authentication-state changes from application code
+//! go through [`UserManager`] (a project-local implementation of
 //! `BaseUserManager<User>`) rather than constructing `User` instances
 //! by hand — see the `register` server function in
 //! `crate::apps::users::server_fn`.
+//!
+//! The `createsuperuser` management command takes a **different** path:
+//! it drives `TypedSuperuserCreator<User>` (via the manual `SuperuserInit`
+//! impl + `register_superuser_creator` call wired up in
+//! `src/bin/manage.rs`), which calls `User::objects().create(&user)`
+//! directly. That path therefore **bypasses** the password-length / username
+//! trim / uniqueness checks that [`UserManager::build_user`] performs for
+//! the application signup flow. Acceptable for the tutorial CLI; tracked
+//! upstream as reinhardt-web#4522 (relax the macro auto-registration guard
+//! so this manual wiring is no longer necessary).
 
 use chrono::{DateTime, Utc};
 use reinhardt::Argon2Hasher;
 use reinhardt::macros::user;
 use reinhardt::prelude::*;
+use reinhardt::reinhardt_auth::SuperuserInit;
 use serde::{Deserialize, Serialize};
 
 // `manager = false` opts out of the auto-generated `UserManager` that
@@ -51,6 +62,23 @@ pub struct User {
 
 	#[field(auto_now_add = true)]
 	pub created_at: DateTime<Utc>,
+}
+
+// Minimal `SuperuserInit` impl wired up so the `createsuperuser`
+// management command can construct a `User` instance for the framework's
+// `TypedSuperuserCreator<User>`. The `email` parameter is intentionally
+// dropped because the tutorial's minimal user has no email column; the PK
+// (`i64` auto-increment) is left as `0` so the DB assigns the real value
+// on insert (`Default::default()` for `i64`).
+impl SuperuserInit for User {
+	fn init_superuser(username: &str, _email: &str) -> Self {
+		User {
+			username: username.to_string(),
+			is_active: true,
+			is_superuser: true,
+			..User::default()
+		}
+	}
 }
 
 #[cfg(native)]
