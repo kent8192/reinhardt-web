@@ -1906,3 +1906,252 @@ CREATE UNIQUE INDEX "idx_products_id" ON "products" ("id");"###;
 		}
 	}
 }
+
+#[cfg(all(test, feature = "sqlite"))]
+mod rollback_orchestration_tests {
+	//! In-crate tests for [`DatabaseMigrationExecutor::rollback_migrations`] and
+	//! the private [`DatabaseMigrationExecutor::rollback_migration`].
+	//!
+	//! These exercise the orchestration layer — reverse iteration of the input
+	//! slice, recorder synchronisation, the `state_only` short-circuit, and the
+	//! warn-and-continue behaviour for `RunSQL` operations that lack a
+	//! `reverse_sql`. Per-`Operation` SQL generation is already covered by the
+	//! `to_reverse_sql` tests in `operations.rs`; this module focuses on what
+	//! sits above those primitives in `executor.rs`.
+	//!
+	//! A real SQLite `:memory:` connection is used rather than test doubles
+	//! because [`DatabaseConnection`], [`DatabaseMigrationRecorder`], and
+	//! [`SchemaEditor`] are concrete types with no trait abstraction today.
+	//! `:memory:` is the lightest available substitute — sub-second per case,
+	//! no external services, and gated behind the `sqlite` feature that the
+	//! rollback path itself already references.
+	//!
+	//! Not covered here (require failure injection, which needs a trait
+	//! refactor to land first): non-atomic partial-rollback bookkeeping when
+	//! an operation fails mid-run, atomic-mode rollback-on-failure, and
+	//! foreign-key violation behaviour during rollback. Those paths remain
+	//! exercised by the container-backed suite in
+	//! `tests/integration/tests/migrations/migration_rollback_integration.rs`.
+
+	use super::*;
+	use crate::backends::DatabaseConnection;
+	use crate::migrations::recorder::DatabaseMigrationRecorder;
+	use crate::migrations::{ColumnDefinition, FieldType, Migration};
+	use rstest::*;
+
+	/// Open a fresh SQLite `:memory:` database and wrap it in a
+	/// [`DatabaseMigrationExecutor`]. Each call returns an isolated database.
+	async fn make_executor() -> DatabaseMigrationExecutor {
+		let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.expect("failed to open sqlite :memory: connection");
+		DatabaseMigrationExecutor::new(connection)
+	}
+
+	/// Build a single-operation `CreateTable` migration with one integer
+	/// primary key column.
+	fn make_create_table_migration(name: &str, table: &str) -> Migration {
+		let mut migration = Migration::new(name, "rolltest");
+		migration.operations.push(Operation::CreateTable {
+			name: table.to_string(),
+			columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		});
+		migration
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_with_empty_input_returns_empty_result() {
+		// Arrange
+		let mut executor = make_executor().await;
+
+		// Act
+		let result = executor
+			.rollback_migrations(&[])
+			.await
+			.expect("rollback of empty input should not fail");
+
+		// Assert
+		assert!(
+			result.applied.is_empty(),
+			"no migrations should be reported as rolled back"
+		);
+		assert!(result.failed.is_none(), "no failure should be reported");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_iterates_input_slice_in_reverse_order() {
+		// Arrange - apply three independent migrations.
+		let m1 = make_create_table_migration("0001_a", "rolltest_a");
+		let m2 = make_create_table_migration("0002_b", "rolltest_b");
+		let m3 = make_create_table_migration("0003_c", "rolltest_c");
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(&[m1.clone(), m2.clone(), m3.clone()])
+			.await
+			.expect("apply m1..m3");
+
+		// Act - pass the slice in declaration order; rollback must consume in reverse.
+		let result = executor
+			.rollback_migrations(&[m1.clone(), m2.clone(), m3.clone()])
+			.await
+			.expect("rollback m1..m3");
+
+		// Assert - newest-first order, independent of how apply_migrations
+		// ordered them via the topological sort.
+		assert_eq!(
+			result.applied,
+			vec![m3.id(), m2.id(), m1.id()],
+			"rollback_migrations must iterate input in reverse"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_skips_migrations_that_were_never_applied() {
+		// Arrange - apply only m1, leave m2 unrecorded.
+		let m1 = make_create_table_migration("0001_first", "rolltest_first");
+		let m2 = make_create_table_migration("0002_second", "rolltest_second");
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(std::slice::from_ref(&m1))
+			.await
+			.expect("apply m1");
+
+		// Act - ask to roll both back.
+		let result = executor
+			.rollback_migrations(&[m1.clone(), m2.clone()])
+			.await
+			.expect("rollback should succeed even with an unapplied entry");
+
+		// Assert - only the actually-applied migration is reported as rolled back.
+		assert_eq!(
+			result.applied,
+			vec![m1.id()],
+			"unapplied migrations must be silently skipped, not rolled back"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_clears_recorder_state_for_rolled_back_migration() {
+		// Arrange
+		let migration = make_create_table_migration("0001_only", "rolltest_only");
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("apply migration");
+
+		let recorder_before = DatabaseMigrationRecorder::new(executor.connection().clone());
+		assert!(
+			recorder_before
+				.is_applied(&migration.app_label, &migration.name)
+				.await
+				.expect("query recorder before"),
+			"sanity: migration should be applied before rollback"
+		);
+
+		// Act
+		executor
+			.rollback_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("rollback");
+
+		// Assert - recorder no longer marks the migration as applied.
+		let recorder_after = DatabaseMigrationRecorder::new(executor.connection().clone());
+		assert!(
+			!recorder_after
+				.is_applied(&migration.app_label, &migration.name)
+				.await
+				.expect("query recorder after"),
+			"recorder must report unapplied after successful rollback"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_with_state_only_flag_skips_schema_changes() {
+		// Arrange - apply a normal migration so the table really exists.
+		let mut migration = make_create_table_migration("0001_state", "rolltest_state");
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("apply migration to create the table");
+
+		// Re-mark the migration as state_only for the rollback request, which
+		// per `rollback_migration` (executor.rs around line 431) must
+		// short-circuit before touching the schema.
+		migration.state_only = true;
+
+		// Act
+		let result = executor
+			.rollback_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("state_only rollback should succeed without DB ops");
+
+		// Assert - rollback is recorded, but the table is intentionally still
+		// present because no DROP TABLE was issued.
+		assert_eq!(result.applied, vec![migration.id()]);
+
+		let table_still_present = executor
+			.connection()
+			.fetch_optional(
+				"SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+				vec!["rolltest_state".into()],
+			)
+			.await
+			.expect("introspect sqlite_master")
+			.is_some();
+		assert!(
+			table_still_present,
+			"state_only rollback must not execute schema operations"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_run_sql_without_reverse_sql_completes_without_error() {
+		// Pins the current contract at `rollback_migration` (executor.rs around
+		// line 490-496): when an operation yields `None` for `to_reverse_sql`,
+		// the rollback logs a warning and continues. It does NOT return an
+		// error. If a future change promotes that to a typed error, this test
+		// will fail and force the change to be explicit rather than silent.
+		let mut migration = Migration::new("0001_run_sql_noop", "rolltest");
+		migration.operations.push(Operation::RunSQL {
+			sql: "CREATE TABLE rolltest_runsql (id INTEGER PRIMARY KEY)".to_string(),
+			reverse_sql: None,
+		});
+
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("apply RunSQL migration");
+
+		// Act
+		let result = executor
+			.rollback_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("rollback should succeed even when reverse_sql is missing");
+
+		// Assert - rollback is recorded for the migration even though no
+		// schema change was reversed.
+		assert_eq!(result.applied, vec![migration.id()]);
+
+		let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+		assert!(
+			!recorder
+				.is_applied(&migration.app_label, &migration.name)
+				.await
+				.expect("query recorder after"),
+			"recorder must reflect unapplied state after warn-and-skip rollback"
+		);
+	}
+}
