@@ -11,6 +11,184 @@ use syn::{
 	Expr, ExprLit, FnArg, ItemFn, Lit, Meta, Result, Token, parse::Parser, punctuated::Punctuated,
 };
 
+/// Parsed `#[action(...)]` attribute metadata reused by `#[viewset]`'s
+/// impl-form expansion.
+///
+/// Phase 5 of Issue #4507 extracts this struct so `viewset_macro.rs` can
+/// reuse the exact same parsing logic the `#[action]` macro uses when
+/// emitting `__url_resolver_meta_action_*` macros.
+///
+/// Refs Issue #4507.
+// `Debug` is needed for `.expect_err(...)` calls inside the parser tests
+// (see `tests` module). Gated to `cfg(test)` so the derive does not affect
+// release builds of the proc-macro.
+#[cfg_attr(test, derive(Debug))]
+pub(crate) struct ActionMeta {
+	// `methods` is parsed for parity with `action_impl` but is not consumed
+	// by the impl-form `#[viewset]` expansion (which only needs the URL
+	// metadata). Kept on the struct so future callers do not need to
+	// re-parse the attribute. Refs Issue #4507.
+	#[allow(dead_code)]
+	pub methods: Vec<String>,
+	pub detail: bool,
+	/// Empty string when `url_path` is absent from the attribute.
+	pub url_path: String,
+	/// Defaults to the annotated function's identifier when `url_name` is
+	/// absent. Always non-empty.
+	pub url_name: String,
+}
+
+/// Parse the `#[action(...)]` attribute argument list into an `ActionMeta`.
+///
+/// Defaults `url_name` to `fn_ident` when absent, leaves `url_path` empty
+/// when absent, and reuses the same validation as `action_impl` for
+/// `methods` / `detail` / `url_path`.
+///
+/// This extractor is reused by `viewset_macro.rs::parse_action_meta_for_viewset`
+/// (Phase 5 of Issue #4507) so the impl-form of `#[viewset]` emits the same
+/// names and parameters that `#[action]` would compute.
+///
+/// Refs Issue #4507.
+pub(crate) fn parse_action_args_with_defaults(
+	args: TokenStream,
+	fn_ident: &syn::Ident,
+) -> Result<ActionMeta> {
+	let mut methods = Vec::<String>::new();
+	let mut detail = false;
+	let mut url_path: Option<String> = None;
+	let mut url_name: Option<String> = None;
+	let mut has_methods = false;
+	let mut has_detail = false;
+
+	let meta_list = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(args)?;
+	for meta in meta_list {
+		if let Meta::NameValue(nv) = meta {
+			if nv.path.is_ident("methods") {
+				// Validate the value type BEFORE marking the parameter as
+				// present, so a malformed `methods = true` raises a clean
+				// compile-time error instead of silently falling back to
+				// the default `GET` method. Mirrors `action_impl`.
+				let Expr::Lit(ExprLit {
+					lit: Lit::Str(lit), ..
+				}) = &nv.value
+				else {
+					return Err(syn::Error::new_spanned(
+						&nv.value,
+						"methods parameter must be a string literal",
+					));
+				};
+				has_methods = true;
+				let s = lit.value();
+				let s = s.trim_matches(|c| c == '[' || c == ']');
+				for m in s.split(',') {
+					let m = m.trim().trim_matches('"');
+					if !m.is_empty() {
+						methods.push(m.to_string());
+					}
+				}
+			} else if nv.path.is_ident("detail") {
+				// Validate the value type BEFORE marking the parameter as
+				// present. A non-boolean `detail = "false"` would
+				// otherwise be silently treated as `detail = false`,
+				// diverging from `action_impl` which rejects it.
+				let Expr::Lit(ExprLit {
+					lit: Lit::Bool(lit),
+					..
+				}) = &nv.value
+				else {
+					return Err(syn::Error::new_spanned(
+						&nv.value,
+						"detail parameter must be a boolean literal (true or false)",
+					));
+				};
+				has_detail = true;
+				detail = lit.value;
+			} else if nv.path.is_ident("url_path") {
+				// Reject non-string `url_path` values with a clean
+				// compile error instead of silently ignoring them, so
+				// the impl-form `#[viewset]` and `#[action]` diverge
+				// only in surface syntax, not in validation strictness.
+				let Expr::Lit(ExprLit {
+					lit: Lit::Str(lit), ..
+				}) = &nv.value
+				else {
+					return Err(syn::Error::new_spanned(
+						&nv.value,
+						"url_path parameter must be a string literal",
+					));
+				};
+				let p = lit.value();
+				if p.contains(' ') {
+					return Err(syn::Error::new_spanned(
+						lit,
+						"url_path cannot contain spaces",
+					));
+				}
+				if !p.starts_with('/') {
+					return Err(syn::Error::new_spanned(lit, "url_path must start with '/'"));
+				}
+				url_path = Some(p);
+			} else if nv.path.is_ident("url_name") {
+				// Reject non-string `url_name` values with a clean
+				// compile error. Otherwise a bogus literal (e.g.
+				// `url_name = 42`) would silently fall back to the
+				// function identifier default.
+				let Expr::Lit(ExprLit {
+					lit: Lit::Str(lit), ..
+				}) = &nv.value
+				else {
+					return Err(syn::Error::new_spanned(
+						&nv.value,
+						"url_name parameter must be a string literal",
+					));
+				};
+				// `url_name` is later passed to `syn::Ident::new(...)` by
+				// the viewset/routes macro emitters to build identifiers
+				// like `__for_each_viewset_meta_<url_name>` and the typed
+				// `ResolvedUrls::<route>()` accessor. `syn::Ident::new`
+				// panics on non-identifier input (e.g. `"highlight-code"`
+				// or `"foo bar"`), which surfaces at proc-macro expansion
+				// as an obscure rustc message. Validate as a Rust
+				// identifier here so the failure becomes a clean
+				// compile-time error tied to the attribute's own span.
+				let value = lit.value();
+				if syn::parse_str::<syn::Ident>(&value).is_err() {
+					return Err(syn::Error::new_spanned(
+						lit,
+						format!(
+							"url_name `{value}` is not a valid Rust identifier (use snake_case ASCII letters, digits, and underscores; cannot start with a digit)"
+						),
+					));
+				}
+				url_name = Some(value);
+			}
+		}
+	}
+
+	if !has_methods {
+		return Err(syn::Error::new(
+			proc_macro2::Span::call_site(),
+			"action macro requires 'methods' parameter",
+		));
+	}
+	if !has_detail {
+		return Err(syn::Error::new(
+			proc_macro2::Span::call_site(),
+			"action macro requires 'detail' parameter",
+		));
+	}
+	if methods.is_empty() {
+		methods.push("GET".to_string());
+	}
+
+	Ok(ActionMeta {
+		methods,
+		detail,
+		url_path: url_path.unwrap_or_default(),
+		url_name: url_name.unwrap_or_else(|| fn_ident.to_string()),
+	})
+}
+
 /// Implementation of the `action` procedural macro
 ///
 /// This function is used internally by the `#[action]` attribute macro.
@@ -264,5 +442,150 @@ pub(crate) fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				#fn_block
 			}
 		})
+	}
+}
+
+#[cfg(test)]
+mod meta_extractor_tests {
+	use super::*;
+	use quote::quote;
+
+	#[test]
+	fn url_name_defaults_to_fn_name_when_absent() {
+		// Arrange
+		let args = quote! { methods = "POST", detail = true };
+		let fn_ident: syn::Ident = syn::parse_quote! { highlight };
+
+		// Act
+		let meta = parse_action_args_with_defaults(args, &fn_ident).unwrap();
+
+		// Assert
+		assert_eq!(meta.url_name, "highlight");
+		assert!(meta.detail);
+		assert!(meta.url_path.is_empty());
+	}
+
+	#[test]
+	fn explicit_url_name_wins_over_fn_name() {
+		// Arrange
+		let args = quote! { methods = "POST", detail = true, url_name = "highlight_code" };
+		let fn_ident: syn::Ident = syn::parse_quote! { highlight };
+
+		// Act
+		let meta = parse_action_args_with_defaults(args, &fn_ident).unwrap();
+
+		// Assert
+		assert_eq!(meta.url_name, "highlight_code");
+	}
+
+	#[test]
+	fn url_path_with_placeholders_is_preserved() {
+		// Arrange
+		let args = quote! {
+			methods = "GET",
+			detail = true,
+			url_name = "child",
+			url_path = "/children/{child_id}"
+		};
+		let fn_ident: syn::Ident = syn::parse_quote! { child };
+
+		// Act
+		let meta = parse_action_args_with_defaults(args, &fn_ident).unwrap();
+
+		// Assert
+		assert_eq!(meta.url_path, "/children/{child_id}");
+	}
+
+	#[test]
+	fn missing_methods_errors() {
+		// Arrange
+		let args = quote! { detail = true };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act + Assert
+		assert!(parse_action_args_with_defaults(args, &fn_ident).is_err());
+	}
+
+	#[test]
+	fn non_string_methods_value_errors() {
+		// Arrange: `methods = true` is malformed -- value must be a
+		// string literal. Previously the parser silently accepted this
+		// and fell back to the default `GET` method, diverging from
+		// `action_impl`.
+		let args = quote! { methods = true, detail = false };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act
+		let err = parse_action_args_with_defaults(args, &fn_ident)
+			.expect_err("non-string methods value must error");
+
+		// Assert
+		assert!(
+			err.to_string()
+				.contains("methods parameter must be a string literal"),
+			"unexpected error message: {err}"
+		);
+	}
+
+	#[test]
+	fn non_bool_detail_value_errors() {
+		// Arrange: `detail = "false"` is malformed -- value must be a
+		// boolean literal. Previously the parser silently treated this
+		// as `detail = false` (the field's zero value), diverging from
+		// `action_impl`.
+		let args = quote! { methods = "GET", detail = "false" };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act
+		let err = parse_action_args_with_defaults(args, &fn_ident)
+			.expect_err("non-boolean detail value must error");
+
+		// Assert
+		assert!(
+			err.to_string()
+				.contains("detail parameter must be a boolean literal"),
+			"unexpected error message: {err}"
+		);
+	}
+
+	#[test]
+	fn non_string_url_path_value_errors() {
+		// Arrange: `url_path = 42` is malformed -- value must be a
+		// string literal. Previously the parser silently ignored the
+		// field, leaving `url_path` empty rather than rejecting the
+		// attribute.
+		let args = quote! { methods = "GET", detail = true, url_path = 42 };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act
+		let err = parse_action_args_with_defaults(args, &fn_ident)
+			.expect_err("non-string url_path value must error");
+
+		// Assert
+		assert!(
+			err.to_string()
+				.contains("url_path parameter must be a string literal"),
+			"unexpected error message: {err}"
+		);
+	}
+
+	#[test]
+	fn non_string_url_name_value_errors() {
+		// Arrange: `url_name = false` is malformed -- value must be a
+		// string literal. Previously the parser silently ignored the
+		// field, falling back to the function identifier default.
+		let args = quote! { methods = "GET", detail = true, url_name = false };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act
+		let err = parse_action_args_with_defaults(args, &fn_ident)
+			.expect_err("non-string url_name value must error");
+
+		// Assert
+		assert!(
+			err.to_string()
+				.contains("url_name parameter must be a string literal"),
+			"unexpected error message: {err}"
+		);
 	}
 }

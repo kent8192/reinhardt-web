@@ -20,6 +20,17 @@
 //!
 //! The environment is determined by the `REINHARDT_ENV` environment variable.
 //! If `REINHARDT_ENV` is not set, it defaults to `local`.
+//!
+//! ## Variable Interpolation (rc.27+)
+//!
+//! `TomlFileSource::new(path)` enables `${VAR}` interpolation by default
+//! (kent8192/reinhardt-web#4229). To opt out, call `.without_interpolation()`
+//! on the source. Typed coercion of interpolated values (e.g.,
+//! `port = "${PORT:-5432}"` -> `u16`) is also ON by default (#4241);
+//! opt out with `SettingsBuilder::with_typed_coercion(false)`.
+//!
+//! `build_composed()` uses `MergeStrategy::Deep` by default starting in
+//! rc.28 (#4264), which merges nested tables key-by-key across sources.
 
 use reinhardt::conf::settings::builder::SettingsBuilder;
 use reinhardt::conf::settings::profile::Profile;

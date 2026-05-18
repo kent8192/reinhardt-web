@@ -1,13 +1,19 @@
 //! User model for authentication
 //!
-//! Implements BaseUser trait with Argon2id password hashing.
-//! Note: `#[user]` macro cannot be used here due to ManyToManyField<User, User>
-//! self-referential relationships causing type inference issues.
+//! Implements BaseUser trait with Argon2id password hashing via the `#[user]`
+//! attribute macro. Supports self-referential `ManyToManyField<User, User>`
+//! relationships for following/blocking (kent8192/reinhardt-web#3651).
+//!
+//! Also provides a manual `impl AdminUser for User` so that `AdminSite::set_user_type::<User>()`
+//! works without requiring the full `FullUser` field set (kent8192/reinhardt-web#3652).
 
 use chrono::{DateTime, Utc};
+use reinhardt::Argon2Hasher;
+#[cfg(native)]
+use reinhardt::admin::AdminUser;
 use reinhardt::db::associations::ManyToManyField;
+use reinhardt::macros::user;
 use reinhardt::prelude::*;
-use reinhardt::{Argon2Hasher, BaseUser};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -15,6 +21,7 @@ use uuid::Uuid;
 #[cfg(all(test, native))]
 use sqlx::FromRow;
 
+#[user(hasher = Argon2Hasher, username_field = "email", manager = false)]
 #[model(app_label = "auth", table_name = "auth_user")]
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(all(test, native), derive(FromRow))]
@@ -33,6 +40,9 @@ pub struct User {
 
 	#[field(default = true)]
 	pub is_active: bool,
+
+	#[field(default = false)]
+	pub is_superuser: bool,
 
 	#[field(include_in_new = false)]
 	pub last_login: Option<DateTime<Utc>>,
@@ -55,42 +65,28 @@ pub struct User {
 	pub blocked_users: ManyToManyField<User, User>,
 }
 
-// Workaround for kent8192/reinhardt-web#3651 (tracked in reinhardt-web#3651)
-// Remove this workaround when the upstream issue is resolved.
-//
-// Ideal implementation (without workaround):
-//   #[user(hasher = Argon2Hasher, username_field = "email")]
-//   #[model(app_label = "auth", table_name = "auth_user")]
-//   pub struct User { ... }
-impl BaseUser for User {
-	type PrimaryKey = Uuid;
-	type Hasher = Argon2Hasher;
+// Manual `AdminUser` implementation for BaseUser-only models
+// (kent8192/reinhardt-web#3652, enabled by PR #3656). The struct intentionally
+// omits most of the `FullUser` field set (`first_name`/`last_name`/`is_staff`/
+// `date_joined`) to keep the demo schema small, so we cannot rely on the
+// blanket `impl<T: FullUser> AdminUser for T`. `is_staff` is delegated to
+// `is_superuser` for this demo — a real application would back it with a
+// dedicated DB column.
+#[cfg(native)]
+impl AdminUser for User {
+	fn is_active(&self) -> bool {
+		self.is_active
+	}
 
-	fn get_username_field() -> &'static str {
-		"email"
+	fn is_staff(&self) -> bool {
+		self.is_superuser
+	}
+
+	fn is_superuser(&self) -> bool {
+		self.is_superuser
 	}
 
 	fn get_username(&self) -> &str {
 		&self.email
-	}
-
-	fn password_hash(&self) -> Option<&str> {
-		self.password_hash.as_deref()
-	}
-
-	fn set_password_hash(&mut self, hash: String) {
-		self.password_hash = Some(hash);
-	}
-
-	fn last_login(&self) -> Option<DateTime<Utc>> {
-		self.last_login
-	}
-
-	fn set_last_login(&mut self, time: DateTime<Utc>) {
-		self.last_login = Some(time);
-	}
-
-	fn is_active(&self) -> bool {
-		self.is_active
 	}
 }
