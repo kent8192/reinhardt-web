@@ -70,10 +70,14 @@ jobs:
           # Publishable crate set: intersect with .workspace_members so that
           # future path-dependencies outside the workspace cannot leak into the
           # matrix (Copilot review feedback), then drop unpublished crates and
-          # the two binary-only members (reinhardt-web, reinhardt-pages) that
-          # have no public-library SemVer surface. Single source of truth for
-          # both the matrix and phase detection so an excluded/private crate
-          # cannot diverge phase from the crates actually under check
+          # crates without any library-shaped target (lib/rlib/cdylib/dylib/
+          # proc-macro). cargo-semver-checks only operates on library API
+          # surfaces and exits 1 when handed a binary-only crate (Issue #4575).
+          # The two members reinhardt-web and reinhardt-pages do expose library
+          # targets but are intentionally opted out of SemVer enforcement, so
+          # they remain on a hard-coded exclusion list. Single source of truth
+          # for both the matrix and phase detection so an excluded/private
+          # crate cannot diverge phase from the crates actually under check
           # (CodeRabbit review feedback). Emit name+version+manifest_path; the
           # manifest path is forwarded to the matrix shards so they can detect
           # newly-introduced crates whose Cargo.toml does not exist at the
@@ -84,6 +88,10 @@ jobs:
             [.packages[]
              | select(.id as $id | $wm | index($id))
              | select(.publish == null or (.publish | length > 0))
+             | select(.targets | any(.kind | any(
+                 . == "lib" or . == "rlib" or
+                 . == "cdylib" or . == "dylib" or
+                 . == "proc-macro")))
              | {name: .name,
                 version: .version,
                 manifest_path: (.manifest_path | sub("^" + $ws + "/"; ""))}]
