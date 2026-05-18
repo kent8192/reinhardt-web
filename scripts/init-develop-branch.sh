@@ -36,11 +36,21 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Best-effort branch check (skip gracefully if detached HEAD or git missing).
+# Fail fast on branch mismatch: this script rewrites every Cargo.toml in the
+# repo, so running it on the wrong branch (or in a detached HEAD state where
+# we cannot verify the branch) risks polluting main / a feature branch with
+# alpha version bumps that should only live on develop/<target>.
 CURRENT_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 EXPECTED_BRANCH="develop/${TARGET}"
-if [ -n "$CURRENT_BRANCH" ] && [ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]; then
-	echo "Warning: current branch '$CURRENT_BRANCH' is not '$EXPECTED_BRANCH'." >&2
+if [ -z "$CURRENT_BRANCH" ] || [ "$CURRENT_BRANCH" = "HEAD" ]; then
+	echo "Error: could not determine current branch (detached HEAD, or '$REPO_ROOT' is not a git repository)." >&2
+	echo "       Check out '$EXPECTED_BRANCH' before running this script." >&2
+	exit 1
+fi
+if [ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]; then
+	echo "Error: current branch '$CURRENT_BRANCH' is not '$EXPECTED_BRANCH'." >&2
+	echo "       Check out '$EXPECTED_BRANCH' (e.g. \`git checkout -b $EXPECTED_BRANCH main\`) before running this script." >&2
+	exit 1
 fi
 
 PRIOR="$(awk -F'"' '/^version = / { print $2; exit }' "$REPO_ROOT/Cargo.toml")"
