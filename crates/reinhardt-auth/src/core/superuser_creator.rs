@@ -15,23 +15,26 @@
 //!
 //! # Registration
 //!
-//! When `#[user(full = true)]` and `#[model]` are both applied to a struct,
-//! the framework automatically registers a [`SuperuserCreator`] via the
-//! `inventory` crate. No manual registration is needed.
+//! When `#[user]` and `#[model]` are both applied to a struct, the framework
+//! automatically registers a [`SuperuserCreator`] via the `inventory` crate.
+//! No manual registration is needed. This works for both full user models
+//! (with `full = true`) and minimal user models — fields that are absent
+//! from the user struct (e.g., `email`, `is_staff`, `date_joined`) are
+//! simply skipped when constructing the superuser.
 //!
 //! For advanced use cases (e.g., custom creator logic), manual registration
 //! is still supported and takes priority over auto-registration:
 //!
 //! ## Recommended: Using `#[user]` macro
 //!
-//! The simplest path is to use `#[user(full=true)]` with `#[model]`,
-//! which auto-generates [`SuperuserInit`]:
+//! The simplest path is to use `#[user(...)]` with `#[model]`, which
+//! auto-generates [`SuperuserInit`]:
 //!
 //! ```rust,ignore
 //! use reinhardt_auth::{register_superuser_creator, superuser_creator_for};
 //! use myapp::models::CustomUser;
 //!
-//! // CustomUser has #[user(hasher = Argon2Hasher, username_field = "username", full = true)]
+//! // CustomUser has #[user(hasher = Argon2Hasher, username_field = "username")]
 //! // and #[model(table_name = "auth_user")] — SuperuserInit is auto-generated.
 //! register_superuser_creator(superuser_creator_for::<CustomUser>());
 //! ```
@@ -52,10 +55,12 @@ use crate::core::BaseUser;
 ///
 /// # Auto-generation (recommended)
 ///
-/// This trait is automatically implemented by the `#[user(full=true)]`
-/// attribute macro when `#[model]` is also present. The macro uses
-/// compile-time field name resolution, so field renames via
-/// `#[user_field(...)]` are handled correctly.
+/// This trait is automatically implemented by the `#[user]` attribute macro
+/// when `#[model]` is also present, regardless of whether `full = true` is
+/// set. Setters for optional fields (`email`, `is_staff`, `date_joined`,
+/// etc.) are emitted as no-ops when the field is absent, so minimal user
+/// structs are supported. The macro uses compile-time field name resolution,
+/// so field renames via `#[user_field(...)]` are handled correctly.
 ///
 /// # Manual implementation
 ///
@@ -229,9 +234,10 @@ pub fn get_superuser_creator() -> Option<&'static dyn SuperuserCreator> {
 
 /// Compile-time registration entry for auto-discovered superuser creators.
 ///
-/// Submitted via `inventory::submit!` by the `#[user]` macro when
-/// `full = true` and `#[model]` is present. The framework collects all
-/// submissions at startup and populates the global [`OnceLock`].
+/// Submitted via `inventory::submit!` by the `#[user]` macro whenever
+/// `#[model]` is also present. The framework collects all submissions at
+/// startup and populates the global [`OnceLock`]. `full = true` is not
+/// required.
 ///
 /// You typically do not create this struct directly — the `#[user]` macro
 /// generates the registration code automatically.
@@ -260,13 +266,25 @@ inventory::collect!(SuperuserCreatorRegistration);
 ///
 /// Called by the framework before command dispatch. If a creator was already
 /// registered manually via [`register_superuser_creator`], this is a no-op
-/// (preserving backwards compatibility).
+/// (preserving backwards compatibility) regardless of how many `#[user]` +
+/// `#[model]` types exist in the inventory.
 ///
 /// # Panics
 ///
-/// Panics if multiple `#[user(full = true)]` + `#[model]` types are found
-/// in the inventory. Only one user model can serve as superuser creator.
+/// Panics if multiple `#[user]` + `#[model]` types are found in the
+/// inventory and no manual registration has been made. Only one user model
+/// can serve as the auto-registered superuser creator; if you legitimately
+/// have multiple user models, opt out by calling
+/// [`register_superuser_creator`] manually before command dispatch.
 pub fn auto_register_superuser_creator() {
+	// Honor an existing manual registration first, regardless of how many
+	// inventory entries exist. This makes manual registration a reliable
+	// escape hatch for projects that intentionally define multiple
+	// `#[user]` + `#[model]` types.
+	if SUPERUSER_CREATOR.get().is_some() {
+		return;
+	}
+
 	let registrations: Vec<_> = inventory::iter::<SuperuserCreatorRegistration>().collect();
 
 	match registrations.len() {
@@ -275,10 +293,6 @@ pub fn auto_register_superuser_creator() {
 			// a later error in get_superuser_creator() will handle this.
 		}
 		1 => {
-			if SUPERUSER_CREATOR.get().is_some() {
-				// Manual registration already happened; respect it.
-				return;
-			}
 			let reg = &registrations[0];
 			let creator = (reg.create)();
 			// Ignore set failure: another thread may have registered
@@ -289,8 +303,9 @@ pub fn auto_register_superuser_creator() {
 			let names: Vec<&str> = registrations.iter().map(|r| r.type_name).collect();
 			panic!(
 				"Multiple SuperuserCreator registrations found: {:?}. \
-				 Only one user model may have #[user(full = true)] with #[model]. \
-				 Remove `full = true` from all but one user model.",
+				 Only one user model may have #[user] together with #[model]. \
+				 Remove the #[user] or #[model] attribute from all but one user model, \
+				 or call register_superuser_creator() manually before command dispatch.",
 				names
 			);
 		}

@@ -241,7 +241,10 @@ pub use nested_resources::{
 	NestedResource, NestedResourcePath, NestedViewSet, nested_detail_url, nested_url,
 };
 pub use pagination_support::{PaginatedViewSet, PaginationConfig};
-pub use registry::{action, clear_actions, get_registered_actions, register_action};
+pub use registry::{
+	action, bridge_marker_actions_to_viewset, clear_actions, get_registered_actions,
+	register_action,
+};
 pub use schema_metadata::{FieldSchema, ModelSchema, RequestSchema, ResponseSchema, ViewSetSchema};
 pub use viewset::{GenericViewSet, ModelViewSet, ReadOnlyModelViewSet, ViewSet};
 

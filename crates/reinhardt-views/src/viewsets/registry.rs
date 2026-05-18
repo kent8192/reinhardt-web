@@ -1,6 +1,6 @@
 /// Manual action registration support
 /// This provides a simpler API for registering actions without macros
-use crate::viewsets::metadata::{ActionMetadata, FunctionActionHandler};
+use crate::viewsets::metadata::{ActionMetadata, FunctionActionHandler, get_actions_for_viewset};
 use reinhardt_http::{Request, Response, Result};
 use std::collections::HashMap;
 use std::future::Future;
@@ -68,6 +68,76 @@ pub fn get_registered_actions(viewset_type: &str) -> Vec<ActionMetadata> {
 /// Clear all registered actions (primarily for testing)
 pub fn clear_actions() {
 	GLOBAL_REGISTRY.clear();
+}
+
+/// Bridge marker-keyed action submissions into the runtime-ViewSet-keyed
+/// registry.
+///
+/// The impl-form of `#[viewset(basename = "...")]` (Issue #4507, Phase 5.1)
+/// emits a `#[ctor::ctor]` startup function that calls `register_action`
+/// keyed by the marker type's `std::any::type_name` — e.g.
+/// `type_name::<SnippetViewSet>()`. At runtime the `ViewSet` trait's
+/// `get_extra_actions()` queries the registry by the *concrete* ViewSet's
+/// type name (e.g. `ModelViewSet<Snippet, ...>`), so the marker-keyed
+/// entries must be re-registered under the runtime key before the
+/// dispatcher can find them.
+///
+/// `viewset_with_actions::<V, M>(...)` calls this helper after inserting
+/// the ViewSet into the router, passing the marker's `type_name` as
+/// `marker_type` and the concrete ViewSet's `type_name` as `viewset_type`.
+/// The bridge:
+///
+/// 1. Reads every action registered under `marker_type` (from both the
+///    manual registry — populated by the `#[ctor]` emitter — and the
+///    `inventory` static collection — for forward compatibility once
+///    `const_type_name` stabilizes).
+/// 2. Re-registers each `ActionMetadata` under `viewset_type` in the
+///    manual registry.
+///
+/// The helper short-circuits when `marker_type == viewset_type` to avoid
+/// duplicating entries when the marker happens to BE the runtime ViewSet.
+///
+/// Refs Issue #4507.
+pub fn bridge_marker_actions_to_viewset(marker_type: &str, viewset_type: &str) {
+	if marker_type == viewset_type {
+		// No-op: the marker IS the runtime ViewSet (rare but valid).
+		return;
+	}
+
+	// Dedupe by `(url_name, name, detail)` against the destination slot so
+	// repeated bridge calls (multiple `viewset_with_actions::<V, M>(...)`
+	// mounts, repeated `register_router` runs, or test setups that rebuild
+	// the router) do not append duplicate `ActionMetadata` entries. The
+	// underlying `ManualActionRegistry::register` appends without checking,
+	// and downstream routers warn on duplicate route names and keep only
+	// the first registration in the reverser — silently dropping later
+	// updates. Deduping here keeps the destination slot canonical.
+	let existing: std::collections::HashSet<(Option<String>, String, bool)> =
+		get_registered_actions(viewset_type)
+			.into_iter()
+			.map(|a| (a.url_name.clone(), a.name.clone(), a.detail))
+			.collect();
+
+	let mut already_bridged = existing;
+
+	let mut bridge_one = |action: ActionMetadata| {
+		let key = (action.url_name.clone(), action.name.clone(), action.detail);
+		if already_bridged.insert(key) {
+			register_action(viewset_type, action);
+		}
+	};
+
+	// Manual-registry side (populated by the impl-form `#[viewset]` macro's
+	// `#[ctor]` startup hook).
+	for action in get_registered_actions(marker_type) {
+		bridge_one(action);
+	}
+	// Inventory side (forward-compatibility for once `const_type_name`
+	// stabilizes — currently empty for marker-keyed submissions but the
+	// fan-out is a few cycles and keeps the contract stable).
+	for action in get_actions_for_viewset(marker_type) {
+		bridge_one(action);
+	}
 }
 
 /// Helper to create an action with a closure

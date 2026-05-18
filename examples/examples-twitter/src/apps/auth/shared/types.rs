@@ -23,10 +23,10 @@ pub struct UserInfo {
 impl From<crate::apps::auth::models::User> for UserInfo {
 	fn from(user: crate::apps::auth::models::User) -> Self {
 		UserInfo {
-			id: user.id(),
-			username: user.username().to_string(),
-			email: user.email().to_string(),
-			is_active: user.is_active(),
+			id: user.id,
+			username: user.username,
+			email: user.email,
+			is_active: user.is_active,
 		}
 	}
 }

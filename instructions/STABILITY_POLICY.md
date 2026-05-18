@@ -399,14 +399,37 @@ git push origin --delete develop/0.2.0
 
 ### DB-6 (MUST): release-plz Interaction
 
-release-plz is configured to monitor `main` only:
+release-plz monitors both `main` and `develop/**`. Each branch follows the
+Cargo.toml version it currently carries, with no branch-specific
+configuration in `release-plz.toml`:
 
-- The develop branch is **NOT** monitored by release-plz
-- No Release PRs, publishing, or tag creation occurs for the develop branch
-- `Cargo.toml` versions in the develop branch do NOT need manual management
-- After the develop branch is merged into `main`, release-plz will detect the changes and generate appropriate Release PRs for the next version cycle
+| Branch | Cargo.toml version | Release PR output |
+|---|---|---|
+| `main` | `x.y.z` (stable) | Stable Release PR (`x.y.z` → `x.y.(z+1)` or `x.(y+1).0`) |
+| `develop/m.n.l` (alpha phase) | `m.n.l-alpha.N` | Prerelease Release PR (`alpha.N` → `alpha.(N+1)`) |
+| `develop/m.n.l` (rc phase) | `m.n.l-rc.N` | Prerelease Release PR (`rc.N` → `rc.(N+1)`) |
 
-**No changes to `release-plz.toml` are required** for the develop branch workflow.
+**Version management on the develop branch** is operator-controlled at three
+explicit gates (see `instructions/RELEASE_PROCESS.md` § "Develop Branch
+Release Workflow" for the operator commands):
+
+| Gate | Trigger | Script / workflow | Effect |
+|---|---|---|---|
+| DBR-1 Initialize | After `develop/m.n.l` branch creation from `main` | `scripts/init-develop-branch.sh m.n.l` | Cargo.toml from main's stable → `m.n.l-alpha.1` |
+| DBR-2 Freeze | API freeze decision | `scripts/freeze-develop-to-rc.sh` | Cargo.toml from `m.n.l-alpha.N` → `m.n.l-rc.1` |
+| DBR-3 Promote | After `develop/m.n.l` merges to `main` | `gh workflow run release-plz-promote.yml -f develop_branch=develop/m.n.l` | Cargo.toml on main from `m.n.l-rc.N` → `m.n.l` |
+
+Subsequent bumps within each phase (alpha.N → alpha.N+1, rc.N → rc.N+1) are
+handled automatically by release-plz on every push to `develop/**`.
+
+**Crates.io publication**: Prerelease versions are published to crates.io
+the same way as stable versions. KI-6 (crates.io rate limit) applies to
+prerelease publishes; the existing 3-attempt retry in `release-plz.yml`
+absorbs the additional throughput.
+
+**Announcements**: GitHub Discussion announcements fire only for stable
+tags. Prerelease tags (`vX.Y.Z-alpha.N` / `vX.Y.Z-rc.N`) are intentionally
+excluded by a stable-tag regex filter in `release-plz.yml`.
 
 ### DB-7 (SHOULD): CI Coverage
 
@@ -591,6 +614,9 @@ During the RC phase:
 - Apply RC bug fixes to `main` first, then forward-merge to develop (DB-3)
 - Forward-merge `main` into develop branch regularly (DB-4)
 - Merge develop branch into `main` after stable release using merge commit (DB-5)
+- Initialize a freshly-created develop branch with `scripts/init-develop-branch.sh m.n.l` so release-plz on `develop/**` produces alpha Release PRs (DBR-1)
+- Run `scripts/freeze-develop-to-rc.sh` at API freeze to transition the develop branch from `alpha.N` to `rc.1` (DBR-2)
+- Trigger `release-plz-promote.yml` (`workflow_dispatch`) after merging `develop/m.n.l` into `main` to graduate the prerelease suffix to stable (DBR-3)
 
 ### NEVER DO
 - Regress from RC back to alpha
@@ -609,7 +635,8 @@ During the RC phase:
 - Count `agent-suspect` labeled issues toward stability timer reset
 - Merge next-version features or breaking changes directly into `main` during RC (use `develop/0.x+1.0`)
 - Apply bug fixes only to the develop branch without fixing on `main` first (DB-3)
-- Configure release-plz to monitor the develop branch (DB-6)
+- Push to `develop/m.n.l` before running `scripts/init-develop-branch.sh m.n.l` (release-plz would otherwise publish a stable `m.n.l` immediately, bypassing the alpha phase) (DBR-1)
+- Graduate prerelease identifiers manually (e.g., editing Cargo.toml by hand instead of running `scripts/freeze-develop-to-rc.sh` or `release-plz-promote.yml`) — the scripts are the single source of truth (DBR-2, DBR-3)
 - Delete the develop branch before merging into `main` (DB-5)
 - Squash-merge the develop branch into `main` (DB-5)
 
