@@ -7,6 +7,13 @@ on:
     - cron: "0 2 * * 1"
   workflow_dispatch:
 
+# Include github.event_name in the group so scheduled security scans and
+# workflow_dispatch runs do not cancel each other or PR scans. PR-triggered
+# runs still benefit from cancel-in-progress within their own group.
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 permissions:
   contents: read
   security-events: write

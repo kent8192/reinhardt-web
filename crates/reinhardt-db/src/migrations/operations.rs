@@ -2426,10 +2426,19 @@ impl Operation {
 				// This ensures the rollback DROP INDEX targets the correct index name
 				let columns_joined = columns.join("_");
 				let index_name = format!("idx_{}_{}", table, columns_joined);
-				Ok(Some(format!(
-					"DROP INDEX {};",
-					quote_identifier(&index_name)
-				)))
+				// MySQL requires `DROP INDEX <name> ON <table>`; PostgreSQL/SQLite/CockroachDB
+				// only need the index name. Mirror the dialect dispatch used by the forward
+				// `Operation::DropIndex` SQL generator above.
+				Ok(Some(match dialect {
+					SqlDialect::Mysql => format!(
+						"DROP INDEX {} ON {};",
+						quote_identifier(&index_name),
+						quote_identifier(table)
+					),
+					SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
+						format!("DROP INDEX {};", quote_identifier(&index_name))
+					}
+				}))
 			}
 			Operation::AddConstraint {
 				table,
@@ -6176,6 +6185,79 @@ mod tests {
 			sql.contains("DROP INDEX \"idx_my-table_col a\""),
 			"Index name must be quoted, got: {}",
 			sql
+		);
+	}
+
+	/// Regression test for kent8192/reinhardt-web#4583.
+	///
+	/// MySQL requires `DROP INDEX <name> ON <table>` when reversing a `CreateIndex`
+	/// operation. The previous implementation emitted `DROP INDEX <name>;` for every
+	/// dialect, which produced malformed SQL on MySQL (1064 syntax error). This test
+	/// pins the MySQL-specific `ON <table>` clause to prevent regressions.
+	#[rstest]
+	fn test_to_reverse_sql_create_index_emits_on_table_clause_for_mysql() {
+		// Arrange
+		let op = Operation::CreateIndex {
+			table: "users".to_string(),
+			columns: vec!["email".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Mysql, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert: `quote_identifier` is `pg_escape::quote_identifier`, which only
+		// adds quotes when the identifier contains reserved or non-lowercase
+		// characters. For plain ASCII names, the output is unquoted. What matters
+		// for regression is the presence of the `ON <table>` suffix.
+		assert_eq!(
+			sql, "DROP INDEX idx_users_email ON users;",
+			"MySQL reverse SQL must include `ON <table>` clause"
+		);
+	}
+
+	/// Verify Postgres / SQLite / CockroachDB continue to emit the bare
+	/// `DROP INDEX <name>;` form without an `ON <table>` clause.
+	#[rstest]
+	#[case(SqlDialect::Postgres, "DROP INDEX idx_users_email;")]
+	#[case(SqlDialect::Sqlite, "DROP INDEX idx_users_email;")]
+	#[case(SqlDialect::Cockroachdb, "DROP INDEX idx_users_email;")]
+	fn test_to_reverse_sql_create_index_omits_on_table_for_non_mysql(
+		#[case] dialect: SqlDialect,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let op = Operation::CreateIndex {
+			table: "users".to_string(),
+			columns: vec!["email".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op.to_reverse_sql(&dialect, &state).unwrap().unwrap();
+
+		// Assert
+		assert_eq!(
+			sql, expected,
+			"Non-MySQL reverse SQL must remain unchanged for dialect {:?}",
+			dialect
 		);
 	}
 
