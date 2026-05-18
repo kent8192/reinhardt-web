@@ -163,7 +163,7 @@ async fn test_login_server_fn_success(#[future] twitter_db_pool: (PgPool, String
 	// Assert
 	assert_eq!(response.status, StatusCode::OK, "Login should succeed");
 	let user_info: UserInfo = parse_ok_body(&response);
-	assert_eq!(user_info.id, user.id());
+	assert_eq!(user_info.id, user.id);
 	assert_eq!(user_info.username, test_user.username);
 	assert_eq!(user_info.email, test_user.email);
 	assert!(user_info.is_active);
@@ -303,7 +303,7 @@ async fn test_current_user_authenticated(#[future] twitter_db_pool: (PgPool, Str
 	// Pre-populate session with user_id (simulating post-login state)
 	let mut session = SessionData::new(Duration::from_secs(3600));
 	session
-		.set("user_id".to_string(), created_user.id())
+		.set("user_id".to_string(), created_user.id)
 		.expect("Session set should succeed");
 	let session_id = session.id.clone();
 	store.save(session);
@@ -324,7 +324,7 @@ async fn test_current_user_authenticated(#[future] twitter_db_pool: (PgPool, Str
 	let user_info: Option<UserInfo> = parse_ok_body(&response);
 	assert!(user_info.is_some(), "Should return user info");
 	let user_info = user_info.unwrap();
-	assert_eq!(user_info.id, created_user.id());
+	assert_eq!(user_info.id, created_user.id);
 	assert_eq!(user_info.username, test_user.username);
 	assert_eq!(user_info.email, test_user.email);
 }
@@ -503,7 +503,7 @@ async fn test_auth_flow_login_then_current_user(#[future] twitter_db_pool: (PgPo
 		"Login should succeed"
 	);
 	let login_user_info: UserInfo = parse_ok_body(&login_response);
-	assert_eq!(login_user_info.id, created_user.id());
+	assert_eq!(login_user_info.id, created_user.id);
 
 	// Step 2: current_user with the login session cookie.
 	// The login handler stores user_id in the new session and sets a Set-Cookie
@@ -540,7 +540,7 @@ async fn test_auth_flow_login_then_current_user(#[future] twitter_db_pool: (PgPo
 		"Should return user after login"
 	);
 	let current_user_info = current_user_info.unwrap();
-	assert_eq!(current_user_info.id, created_user.id());
+	assert_eq!(current_user_info.id, created_user.id);
 	assert_eq!(current_user_info.username, test_user.username);
 	assert_eq!(current_user_info.email, test_user.email);
 
@@ -606,8 +606,8 @@ async fn test_login_success(#[future] twitter_db_pool: (PgPool, String)) {
 		.expect("User creation should succeed");
 
 	// Act & Assert
-	assert_eq!(user.email(), &test_user.email);
-	assert!(user.is_active());
+	assert_eq!(&user.email, &test_user.email);
+	assert!(user.is_active);
 
 	let password_valid = user
 		.check_password(&test_user.password)
@@ -651,7 +651,7 @@ async fn test_login_inactive_user(#[future] twitter_db_pool: (PgPool, String)) {
 		.expect("User creation should succeed");
 
 	// Assert
-	assert!(!user.is_active(), "User should be inactive");
+	assert!(!user.is_active, "User should be inactive");
 }
 
 #[rstest]
@@ -679,9 +679,9 @@ async fn test_register_success(#[future] twitter_db_pool: (PgPool, String)) {
 		.expect("User creation should succeed");
 
 	// Assert
-	assert_eq!(user.username(), "newuser");
-	assert_eq!(user.email(), "newuser@example.com");
-	assert!(user.is_active());
+	assert_eq!(user.username, "newuser");
+	assert_eq!(user.email, "newuser@example.com");
+	assert!(user.is_active);
 
 	let password_valid = user
 		.check_password("SecurePassword123")
@@ -849,8 +849,8 @@ async fn test_user_info_conversion(#[future] twitter_db_pool: (PgPool, String)) 
 	let user_info = UserInfo::from(user.clone());
 
 	// Assert
-	assert_eq!(user_info.id, user.id());
-	assert_eq!(&user_info.username, user.username());
-	assert_eq!(&user_info.email, user.email());
-	assert_eq!(user_info.is_active, user.is_active());
+	assert_eq!(user_info.id, user.id);
+	assert_eq!(&user_info.username, &user.username);
+	assert_eq!(&user_info.email, &user.email);
+	assert_eq!(user_info.is_active, user.is_active);
 }
