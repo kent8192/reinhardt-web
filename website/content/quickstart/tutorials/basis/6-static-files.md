@@ -292,7 +292,7 @@ A subtle point: under `cargo make dev`, the server is *not* serving from `static
 
 ## `index.html`: The SPA Shell
 
-`index.html` lives at the project root and is copied (verbatim) into the directory that the dev server serves at `/`. It is what the browser fetches when a user visits `http://127.0.0.1:8000/` for the first time. The entire file is short enough to read top to bottom:
+`index.html` lives at the project root and is copied (verbatim) into the directory that the dev server serves at `/`. It is what the browser fetches when a user visits `http://127.0.0.1:8000/` for the first time. The file is longer than a textbook SPA shell because it also wires up CDN integrity hints, a pre-render theme detector, the UnoCSS configuration, and a `MutationObserver`-based theme-toggle handler — every piece below is loaded directly from `examples/examples-tutorial-basis/index.html`:
 
 ```html
 <!DOCTYPE html>
@@ -303,47 +303,165 @@ A subtle point: under `cargo make dev`, the server is *not* serving from `static
 	<title>Polls App - Reinhardt Tutorial</title>
 	<link rel="icon" type="image/png" href="/favicon.png">
 
-	<!-- UnoCSS Reset -->
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css">
+	<!-- UnoCSS Reset (pinned + SRI) -->
+	<link rel="stylesheet"
+		href="https://cdn.jsdelivr.net/npm/@unocss/reset@66.0.0/tailwind.min.css"
+		integrity="sha384-LGhsJsqCgUoTJMa7Fmn8Q0Q5/3WY9D96e4lfXpNTzs54EqijDEpPD13nfjueItEK"
+		crossorigin="anonymous">
+
+	<!-- Hand-written base styles + fallback component CSS.
+	     Listed before the blocking UnoCSS runtime script below so the
+	     browser preloader can discover it as early as possible, giving
+	     the first paint a fully-styled view even before UnoCSS runs. -->
+	<link rel="stylesheet" href="/static/css/style.css">
+
+	<!-- Theme detection (runs before render to avoid FOUC) -->
+	<script>
+	(function() {
+		var stored = null;
+		try {
+			stored = localStorage.getItem('theme');
+		} catch (e) {
+			// localStorage may be unavailable (private mode, sandboxed iframe,
+			// storage disabled by user). Fall back to OS preference below.
+		}
+		var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		var theme = stored || (prefersDark ? 'dark' : 'light');
+		document.documentElement.setAttribute('data-theme', theme);
+		if (theme === 'dark') {
+			document.documentElement.classList.add('dark');
+		}
+	})();
+	</script>
 
 	<!-- UnoCSS Configuration -->
 	<script>
-		window.__unocss = {
-			theme: {
-				colors: {
-					brand: '#4a90e2',
-					'brand-hover': '#357abd',
+	window.__unocss = {
+		theme: {
+			colors: {
+				brand: {
+					DEFAULT: '#4A90E2',
+					hover: '#357ABD',
+					light: '#E8F1FB',
+				},
+				surface: {
+					primary: 'var(--bg-primary)',
+					secondary: 'var(--bg-secondary)',
+					tertiary: 'var(--bg-tertiary)',
+				},
+				content: {
+					primary: 'var(--text-primary)',
+					secondary: 'var(--text-secondary)',
+					tertiary: 'var(--text-tertiary)',
+				},
+				success: '#10B981',
+				danger: '#EF4444',
+				warning: '#F59E0B',
+				border: {
+					DEFAULT: 'var(--border-color)',
+					secondary: 'var(--border-secondary)',
 				},
 			},
-			shortcuts: [
-				['btn', 'inline-flex items-center px-4 py-2 rounded-full font-semibold'],
-				['btn-primary', 'btn bg-brand text-white hover:bg-brand-hover'],
-				['btn-secondary', 'btn bg-gray-600 text-white hover:bg-gray-700'],
-				['spinner', 'animate-spin rounded-full border-2 border-gray-200 border-t-brand'],
-				['card', 'bg-white rounded-lg shadow-md'],
-				['card-body', 'p-6'],
-				['form-check', 'flex items-center p-3 mb-2 border rounded cursor-pointer hover:bg-gray-50'],
-				['alert-danger', 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded'],
-				['alert-warning', 'bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded'],
-			],
-		};
+		},
+		shortcuts: [
+			// Layout
+			['layout-container', 'max-w-4xl mx-auto px-4'],
+			['layout-page', 'layout-container mt-12'],
+
+			// Button base
+			['btn', 'inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full font-semibold text-sm leading-5 border border-transparent cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed no-underline'],
+			['btn-primary',   'btn bg-brand text-white hover:bg-brand-hover active:scale-97'],
+			['btn-secondary', 'btn bg-surface-tertiary text-content-primary hover:bg-border-secondary'],
+			['btn-outline',   'btn bg-transparent text-content-primary border-border-secondary hover:bg-surface-tertiary'],
+			['btn-danger',    'btn bg-danger text-white hover:opacity-90 active:scale-97'],
+			['btn-success',   'btn bg-success text-white hover:opacity-90 active:scale-97'],
+
+			// Card
+			['card',       'bg-surface-primary border border-border rounded-xl shadow-sm overflow-hidden'],
+			['card-body',  'p-6'],
+			['card-title', 'text-xl font-bold mb-4'],
+
+			// Form
+			['form-control', 'block w-full px-3.5 py-2.5 bg-surface-primary text-content-primary border border-border rounded-lg placeholder-content-tertiary focus:outline-none focus:border-brand focus:ring-3 focus:ring-brand-light transition-colors'],
+			['form-check',   'flex items-center gap-3 p-3 mb-2 bg-surface-primary border border-border rounded-lg cursor-pointer hover:bg-surface-secondary hover:border-border-secondary transition-colors'],
+			['form-label',   'block text-sm font-medium text-content-primary mb-1.5'],
+
+			// Alerts
+			['alert',         'px-4 py-3 rounded-lg border text-sm'],
+			['alert-danger',  'alert bg-red-50 border-red-200 text-danger dark:bg-red-950/30 dark:border-red-900/50'],
+			['alert-warning', 'alert bg-yellow-50 border-yellow-200 text-yellow-700 dark:bg-yellow-950/30 dark:border-yellow-900/50'],
+			['alert-success', 'alert bg-green-50 border-green-200 text-success dark:bg-green-950/30 dark:border-green-900/50'],
+
+			// Nav
+			['nav-bar', 'layout-container pt-4 mb-6 flex justify-between items-center border-b border-border pb-3'],
+
+			// Spinner
+			['spinner', 'inline-block animate-spin rounded-full border-2 border-surface-tertiary border-t-brand'],
+
+			// Misc text helpers
+			['text-muted', 'text-content-secondary'],
+		],
+	};
 	</script>
 
-	<!-- UnoCSS Runtime -->
-	<script src="https://cdn.jsdelivr.net/npm/@unocss/runtime"></script>
+	<!-- UnoCSS Runtime (pinned + SRI) -->
+	<script
+		src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.0.0"
+		integrity="sha384-LYmmhezFyzRAT4ivJD/xzz7PEZ3b+pHHgxsOuSVPG8wKScOK2Bx+itfNE+ziDDEv"
+		crossorigin="anonymous"></script>
 
-	<style>
-		body {
-			background-color: #f8f9fa;
+	<!-- Theme toggle handler -->
+	<script>
+	function toggleTheme() {
+		var html = document.documentElement;
+		var current = html.getAttribute('data-theme');
+		var next = current === 'dark' ? 'light' : 'dark';
+		html.setAttribute('data-theme', next);
+		html.classList.toggle('dark', next === 'dark');
+		try {
+			localStorage.setItem('theme', next);
+		} catch (e) {
+			// Persisting the preference is best-effort; ignore storage
+			// failures (private mode, sandboxed iframe, disabled storage).
 		}
-	</style>
+	}
+
+	// Attach to any #theme-toggle-btn rendered by WASM via MutationObserver.
+	// The observer disconnects itself as soon as the button is found and
+	// wired up, so it does not keep reacting to unrelated DOM changes.
+	window.addEventListener('load', function() {
+		function tryAttach() {
+			var btn = document.getElementById('theme-toggle-btn');
+			if (btn && !btn.hasAttribute('data-theme-attached')) {
+				btn.setAttribute('data-theme-attached', 'true');
+				btn.addEventListener('click', toggleTheme);
+				return true;
+			}
+			return false;
+		}
+
+		// Button may already be present (SSR / fast WASM mount).
+		if (tryAttach()) {
+			return;
+		}
+
+		var observer = new MutationObserver(function() {
+			if (tryAttach()) {
+				observer.disconnect();
+			}
+		});
+		if (document.body) {
+			observer.observe(document.body, { childList: true, subtree: true });
+		}
+	});
+	</script>
 </head>
-<body class="bg-gray-50 text-gray-900 antialiased">
+<body>
 	<div id="root">
 		<div class="flex items-center justify-center min-h-screen">
 			<div class="text-center">
 				<div class="spinner w-12 h-12 mx-auto mb-4"></div>
-				<p class="text-gray-600">Loading...</p>
+				<p class="text-muted">Loading...</p>
 			</div>
 		</div>
 	</div>
@@ -351,13 +469,15 @@ A subtle point: under `cargo make dev`, the server is *not* serving from `static
 </html>
 ```
 
-Three things deserve attention.
+Four things deserve attention.
 
 First, the `#root` `<div>` is where the SPA mounts. Recall from Part 3 that `src/client/lib.rs` calls `ClientLauncher::new("#root").router_client(...).launch()` — that selector matches this element. The placeholder content inside `#root` (the spinner plus "Loading…") is what the user sees during the brief window between the HTML being parsed and the WASM bundle being instantiated. Once the launcher takes over, it replaces the entire subtree with the router's first page.
 
 Second, there is no explicit `<script type="module">` here that imports the WASM bundle. The pages template's `ClientLauncher` is responsible for locating and instantiating `examples_tutorial_basis.js` and `examples_tutorial_basis_bg.wasm` from the same origin — the SPA shell does not need to hand-wire `init(wasmUrl)`. This is deliberate: the shell stays static while the framework controls how the bundle is loaded.
 
-Third, UnoCSS is delivered straight from a CDN with a small inline configuration. The `window.__unocss` object pre-declares the theme colour `brand` (used as `text-brand`, `bg-brand`, `border-brand` on the framework's atomic utilities) and a handful of shortcuts (`btn`, `btn-primary`, `card`, `card-body`, `form-check`, `spinner`, `alert-danger`, `alert-warning`). Those shortcuts are exactly the class names the `page!` macros in `src/client/components/` reach for, so adding a new shortcut here is the quickest way to keep the markup terse without writing custom CSS files. The CDN URL is left unpinned in the example because the runtime script is small and the project does not need bit-for-bit reproducibility for it; if you want offline builds, mirror it into a registered static directory and reference that local copy instead.
+Third, UnoCSS is delivered straight from a CDN but with the URL **pinned to `@66.0.0`** and protected by **Subresource Integrity (SRI)** hashes on both the reset stylesheet and the runtime script — `integrity="sha384-…"` + `crossorigin="anonymous"`. The browser refuses to apply or execute either resource if the bytes do not match, which keeps the SPA shell reproducible across visits even though the framework itself never bundles the CDN payload. The accompanying `window.__unocss` configuration pre-declares the `brand`, `surface`, `content`, `success`, `danger`, `warning`, and `border` colour tokens (most of which proxy through `var(--…)` CSS custom properties so light/dark mode flips in one place) plus a richer shortcut catalogue — `layout-container`, `btn-*`, `card`, `card-body`, `card-title`, `form-control`, `form-check`, `form-label`, `alert-*`, `nav-bar`, `spinner`, `text-muted`. Those shortcuts are exactly the class names the `page!` macros in `src/client/components/` reach for, so adding a new shortcut here is the quickest way to keep the markup terse without writing custom CSS files.
+
+Fourth, the shell preloads `/static/css/style.css` via `<link rel="stylesheet" href="/static/css/style.css">` *before* the blocking UnoCSS runtime script. That file lives at `static/css/style.css` in the example crate (defining the `--bg-primary`, `--text-primary`, `--brand-primary` … CSS custom properties referenced by the `surface-*` / `content-*` / `border` tokens above) and is what gives the first paint a fully-styled view even before the runtime script has had a chance to process the WASM-mounted DOM nodes. A short inline `<script>` block higher up reads `localStorage.getItem('theme')` (falling back to `prefers-color-scheme`) and sets `data-theme` + the `dark` class on `<html>` *before* the first render, which is what avoids the flash-of-unstyled-content when the user has chosen dark mode. A second script block at the bottom installs a `MutationObserver` that wires a click handler onto whatever `#theme-toggle-btn` the WASM bundle eventually renders, then disconnects itself.
 
 ## The `msw` Feature
 
@@ -410,7 +530,7 @@ It is worth being explicit about what *isn't* part of Reinhardt's pages static p
 
 - **There is no `STATICFILES_DIRS` array configured in `settings/base.toml`.** Look at the file from Part 1 — it has `[core]`, `[core.security]`, and `[database]`, but no `[static]` section. The pages template registers static directories programmatically via `AppStaticFilesConfig` + `inventory::submit!`, not declaratively via a settings list. If you want to register an additional static directory (say, a `static/` folder for hand-authored CSS), you add another `inventory::submit!` block alongside `src/config/wasm.rs` rather than appending to a TOML array.
 - **There is no `STATICFILES_STORAGE` to swap in for hashed filenames or S3 uploads.** The example uses the framework's default storage, which is a plain filesystem copy into `STATIC_ROOT`. CDN integration and content-hashed asset names are out of scope for this tutorial's example project; they are framework-level concerns that the pages template intentionally leaves to deployment configuration.
-- **There is no per-app `static/` directory convention enforced by the framework.** Django auto-collects from any app's `static/` folder; Reinhardt does not. Each static source is registered explicitly via `AppStaticFilesConfig`, which means there are no surprises at collect time — you can `grep` the codebase for `AppStaticFilesConfig` to see every static-asset source the project ships with.
+- **There is no per-app `static/` directory convention enforced by the framework.** Django auto-collects from any app's `static/` folder; Reinhardt does not. Each static source is registered explicitly via `AppStaticFilesConfig`, which means there are no surprises at collect time — you can `grep` the codebase for `AppStaticFilesConfig` to see every static-asset source the project ships with. The example does ship a *project-level* `static/` directory at the crate root (`static/css/style.css`, `static/images/poll-icon.svg`) — that path is served at `/static/…` and is referenced by `index.html` (`<link rel="stylesheet" href="/static/css/style.css">`) and by `src/client/components/polls.rs` (`src: "/static/images/poll-icon.svg"`), but it is intentionally **not** scoped to an app and is **not** registered through `AppStaticFilesConfig` in `src/config/wasm.rs`. If you add a new project-wide stylesheet or icon, dropping it under `static/` and referencing it by absolute URL is the lowest-ceremony path; per-app assets you want isolated still need an explicit `inventory::submit!` block.
 - **There is no `{% static %}` template tag in `index.html`.** The shell HTML is served as-is, without template rendering. Substitution happens (if at all) inside the WASM bundle once it runs, not before.
 
 These omissions are intentional. The pages template's static story is "build the WASM bundle, register the build output for collection, copy everything into a known root, and serve from there" — concrete, scriptable, and free of the implicit per-app discovery that Django uses.
