@@ -113,11 +113,17 @@ pub(super) fn migration() -> Migration {
 					ColumnDefinition {
 						name: "is_active".to_string(),
 						type_definition: FieldType::Boolean,
-						not_null: false,
+						// The Rust model declares `pub is_active: bool`
+						// (non-optional) with `#[field(default = true)]`,
+						// so the schema must mirror that contract: NOT NULL
+						// with a database-level default of `true`. Allowing
+						// NULL would let the column decode into a state the
+						// Rust type cannot represent.
+						not_null: true,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
-						default: None,
+						default: Some("true".to_string()),
 					},
 					ColumnDefinition {
 						name: "is_superuser".to_string(),
