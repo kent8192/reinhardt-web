@@ -244,10 +244,20 @@ jobs:
           rust-save-if: ${{ github.ref == 'refs/heads/main' }}
           protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # NOTE: cargo-semver-checks binary download is duplicated N times across
-      # matrix shards. Issue #4535 will wrap this step with actions/cache keyed
-      # on the version literal to amortise the download.
+      # Cache the cargo-semver-checks binary across matrix shards and runs.
+      # The cache key embeds the version literal so bumping VERSION below
+      # automatically invalidates the cache and forces a fresh download with
+      # SHA-256 verification. Cache footprint is ~10 MB per OS+arch entry.
+      # Issue #4535.
+      - name: Restore cargo-semver-checks binary cache
+        id: cache-csc
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/cargo-semver-checks
+          key: cargo-semver-checks-v0.47.0-${{ runner.os }}-${{ runner.arch }}
+
       - name: Install cargo-semver-checks
+        if: steps.cache-csc.outputs.cache-hit != 'true'
         run: |
           VERSION="v0.47.0"
           ARCH=$(uname -m)
