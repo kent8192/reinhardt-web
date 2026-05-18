@@ -757,10 +757,7 @@ fn build_viewset_meta_alias_reexport(factory: &TokenStream) -> TokenStream {
 		return quote! {};
 	};
 	let fn_name = &parsed.segments.last().unwrap().ident;
-	let bundle_mod = syn::Ident::new(
-		&format!("__viewset_resolvers_{fn_name}"),
-		fn_name.span(),
-	);
+	let bundle_mod = syn::Ident::new(&format!("__viewset_resolvers_{fn_name}"), fn_name.span());
 	let module_segments: Vec<&syn::Ident> = parsed
 		.segments
 		.iter()

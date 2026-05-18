@@ -52,9 +52,19 @@ fn main() {
 			.unwrap_or(false);
 
 	if is_local_dev {
+		// In subtree context - enable integration tests
 		println!("cargo:rustc-cfg=with_reinhardt");
-		// (Warns if .cargo/config.toml is missing in local-dev mode.)
+
+		// Warn if .cargo/config.toml is not set up for local override
+		let config_path = examples_dir.join(".cargo/config.toml");
+		if !config_path.exists() {
+			println!(
+				"cargo:warning=Local reinhardt workspace detected but .cargo/config.toml is missing. \
+				 Copy the template: cp .cargo/config.local.toml .cargo/config.toml"
+			);
+		}
 	} else {
+		// Standalone mode - enable tests if crates.io versions are available
 		println!("cargo:rustc-cfg=with_reinhardt");
 	}
 
@@ -90,22 +100,34 @@ reinhardt = { workspace = true, features = ["pages", "client-router"] }
 wasm-bindgen = "0.2.106"
 wasm-bindgen-futures = "0.4.56"
 web-sys = { version = "0.3.83", features = [
-	"Window", "Document", "Element",
-	"HtmlFormElement", "HtmlInputElement",
-	"Event", "EventTarget",
+	"Window",
+	"Document",
+	"Element",
+	"HtmlFormElement",
+	"HtmlInputElement",
+	"Event",
+	"EventTarget",
 ] }
 console_error_panic_hook = "0.1"
 gloo-net = "0.6"
+# WASM-compatible chrono and uuid
 chrono = { version = "0.4", features = ["serde", "wasmbind"] }
 uuid = { version = "1.11.0", features = ["serde", "v4", "v7", "js"] }
 
 # Server-specific dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 reinhardt = { workspace = true, features = [
-	"full", "pages", "conf", "commands", "db-sqlite",
-	"forms", "client-router", "auth-session",
+	"full",
+	"pages",
+	"conf",
+	"commands",
+	"db-sqlite",
+	"forms",
+	"client-router",
+	"auth-session",
 ] }
 tokio = { version = "1.48.0", features = ["full"] }
+# Server-specific common dependencies
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.11.0", features = ["serde", "v4", "v7"] }
 anyhow = { workspace = true }
@@ -1040,31 +1062,52 @@ earlier.
 The project-level `routes()` function plays three roles:
 
 1. Registers every server function via `.server(|s| s.server_fn(...))`.
-   App-level routers (both `ServerRouter` and `ClientRouter`) are
-   auto-mounted by the `#[url_patterns]` attribute, so this file does
-   not call `.mount("/polls/", ...)` for them.
+   Per-app `ServerRouter`s are auto-mounted by `#[url_patterns(...,
+   mode = server)]`, so this file does not call `.mount("/polls/", ...)`
+   for them. On wasm, it also aggregates every app's
+   `client_url_patterns()` so the `#[routes]`-emitted
+   `ClientRouterRegistration` carries the full SPA route table (the
+   `client_inventory` flag described below).
 2. On native, mounts the admin panel at `/admin/` (and its static
    assets at `/static/admin/`) using `admin_routes_with_di`, which also
    wires the `AdminDatabase` DI registration.
 3. On native, applies the `SessionMiddleware` with a two-week TTL, `Lax`
    SameSite, `httpOnly`, and path `/`.
 
-The `#[routes(standalone)]` attribute is applied unconditionally so that
-the macro can generate `__url_resolver_support::ResolvedUrls` for the
-WASM SPA to consume. The macro internally gates the function body on
-`#[cfg(not(wasm))]`, so the native body below is compiled out on the
-WASM target.
+The attribute is `#[routes(standalone, client_inventory)]`. Both flags
+are unconditional:
+
+- `client_inventory` (#4453) drops the macro's `native_only` cfg gate on
+  the user function body and emits
+  `inventory::submit!(ClientRouterRegistration)` on
+  `wasm32-unknown-unknown`. The body therefore MUST compile on both
+  targets — `.server(|s| ...)` (where `s` is a `ServerRouterStub` on
+  wasm) and the `#[cfg(wasm)]` aggregation block below ensure that.
+- `standalone` suppresses generation of `crate::urls::url_prelude` and
+  the `ResolvedUrls::<app>()` accessor methods. This project does not
+  consume `installed_apps!`-generated `client_url_resolvers` modules
+  from a top-level `urls` directory — per-app
+  `#[url_patterns(..., mode = client)]` declarations live in
+  `apps/<app>/urls/client_router.rs` instead, and SPA URL resolution
+  flows through `register_client_reverser` (called inside
+  `collect_client_router_from_inventory`).
 
 ```rust
 //! URL configuration for examples-tutorial-basis project
 //!
-//! The `routes` function defines the top-level project router. Per-app routes
-//! are registered separately by `#[url_patterns(InstalledApp::<app>, mode = ...)]`
-//! attributes on the app's URL functions (see
-//! `apps/polls/urls/server_urls.rs::server_url_patterns`), so this file only
-//! needs to register server functions and apply the middleware stack.
+//! The `routes` function defines the top-level project router. Per-app server
+//! routes are auto-mounted via `#[url_patterns(InstalledApp::<app>, mode = server)]`,
+//! and per-app client routes are aggregated through the `.client(|c| ...)`
+//! closure below so that the `#[routes]` macro's WASM-side
+//! `inventory::submit!(ClientRouterRegistration)` emission carries every
+//! SPA route. `ClientLauncher::register_routes_from_inventory()` in
+//! `client/lib.rs` then merges those entries and installs them as the SPA
+//! route table.
+//!
+//! Middleware stack (server-only):
+//! 1. `SessionMiddleware` — cookie-based session management used by the
+//!    `users` app's login/logout server functions
 
-#[cfg(native)]
 use reinhardt::UnifiedRouter;
 #[cfg(native)]
 use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
@@ -1091,6 +1134,8 @@ use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
 use std::time::Duration;
 
 /// Build the session middleware with a two-week TTL and Lax SameSite.
+///
+/// Mirrors the production defaults used in `examples-twitter/src/config/middleware.rs`.
 #[cfg(native)]
 fn create_session_middleware() -> SessionMiddleware {
 	let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(1_209_600))
@@ -1100,37 +1145,105 @@ fn create_session_middleware() -> SessionMiddleware {
 	SessionMiddleware::new(config)
 }
 
-#[routes(standalone)]
+/// Build the top-level project router.
+///
+/// `#[routes(standalone, client_inventory)]` opts into the new cross-target
+/// convention introduced in #4453 without enabling per-app URL-resolver
+/// generation (this project does not consume `installed_apps!`-generated
+/// `client_url_resolvers` modules from a top-level `urls` directory; the
+/// per-app `#[url_patterns(..., mode = client)]` declarations live in
+/// `apps/<app>/urls/client_router.rs` instead). The flags compose:
+///
+/// - `client_inventory` (#4453): drops the macro's `native_only` cfg gate
+///   from the user function body and emits
+///   `inventory::submit!(ClientRouterRegistration)` on
+///   `wasm32-unknown-unknown`. The body below MUST therefore compile on
+///   both targets — `.server(|s| ...)` and the `#[cfg(wasm)]` aggregation
+///   block ensure that.
+/// - `standalone`: suppresses generation of `crate::urls::url_prelude` and
+///   the `ResolvedUrls::<app>()` accessor methods. The project still
+///   resolves SPA URLs via `register_client_reverser` (called inside
+///   `collect_client_router_from_inventory`).
+///
+/// On native, the macro emits `inventory::submit!(UrlPatternsRegistration)`
+/// for the `ServerRouter` carried by the returned `UnifiedRouter`. On wasm
+/// it emits the parallel `ClientRouterRegistration`, and
+/// `ClientLauncher::register_routes_from_inventory()` in
+/// `client/lib.rs` consumes those entries to install the SPA route table.
+///
+/// Per-app server routers are still discovered through their own
+/// `#[url_patterns(InstalledApp::<app>, mode = server)]` registrations; this
+/// function only registers the project-level server functions, the admin
+/// panel, and the session middleware on top of them.
+#[routes(standalone, client_inventory)]
 pub fn routes() -> UnifiedRouter {
-	// Server: register server functions. App routers are auto-mounted via
-	// `#[url_patterns(InstalledApp::<app>, mode = server)]`.
-	#[cfg(native)]
 	let router = UnifiedRouter::new().server(|s| {
-		s.server_fn(get_questions::marker)
-			.server_fn(get_question_detail::marker)
-			.server_fn(get_question_results::marker)
-			.server_fn(vote::marker)
-			.server_fn(get_vote_form_metadata::marker)
-			.server_fn(submit_vote::marker)
-			.server_fn(create_question::marker)
-			.server_fn(update_question::marker)
-			.server_fn(delete_question::marker)
-			.server_fn(create_choice::marker)
-			.server_fn(update_choice::marker)
-			.server_fn(delete_choice::marker)
-			.server_fn(login::marker)
-			.server_fn(logout::marker)
-			.server_fn(register::marker)
-			.server_fn(current_user::marker)
+		// On wasm the `s` parameter is a `ServerRouterStub` and every
+		// builder call inside this closure is absorbed by the stub
+		// (see `reinhardt_urls::routers::unified_router::ServerRouterStub`),
+		// so the `server_fn` markers do not need to compile on wasm. We
+		// still gate the marker references on `#[cfg(native)]` because
+		// the `server_fn` marker modules themselves are native-only.
+		#[cfg(native)]
+		{
+			s.server_fn(get_questions::marker)
+				.server_fn(get_question_detail::marker)
+				.server_fn(get_question_results::marker)
+				.server_fn(vote::marker)
+				.server_fn(get_vote_form_metadata::marker)
+				.server_fn(submit_vote::marker)
+				.server_fn(create_question::marker)
+				.server_fn(update_question::marker)
+				.server_fn(delete_question::marker)
+				.server_fn(create_choice::marker)
+				.server_fn(update_choice::marker)
+				.server_fn(delete_choice::marker)
+				.server_fn(login::marker)
+				.server_fn(logout::marker)
+				.server_fn(register::marker)
+				.server_fn(current_user::marker)
+		}
+		#[cfg(not(native))]
+		{
+			s
+		}
 	});
 
-	// Client: empty top-level router. App client routers are registered via
-	// `#[url_patterns(InstalledApp::<app>, mode = client)]` and bootstrapped
-	// directly by `ClientLauncher::router_client(...)` in `client/lib.rs`.
+	// Aggregate every app's client routes on wasm so the macro-emitted
+	// `ClientRouterRegistration` carries the full SPA route table.
+	//
+	// Each `client_url_patterns()` already namespaces its routes
+	// (`polls:` / `users:`) via its own `#[url_patterns(..., mode = client)]`
+	// registration. We compose them by wrapping each in a single-purpose
+	// `UnifiedRouter` and stitching with `mount_unified`, which uses
+	// `ClientRouter::merge` internally (still `pub(crate)` upstream —
+	// tracked in #4442). When #4442 ships, this collapses to
+	// `.client(|c| c.merge(polls).merge(users))`.
+	//
+	// The aggregation is `#[cfg(wasm)]` because:
+	// - The per-app `client_router` submodules are themselves wasm-only
+	//   (they import `crate::client::pages::*`, which is wasm-only).
+	// - On native, `#[routes(standalone, client_inventory)]` consumes the
+	//   server portion of the returned `UnifiedRouter` via
+	//   `UrlPatternsRegistration`; the `ClientRouter` field is unused on
+	//   the native side.
 	#[cfg(wasm)]
-	let router = UnifiedRouter::new();
+	let router = router
+		.mount_unified(
+			"/",
+			UnifiedRouter::new()
+				.client(|_| crate::apps::polls::urls::client_router::client_url_patterns()),
+		)
+		.mount_unified(
+			"/",
+			UnifiedRouter::new()
+				.client(|_| crate::apps::users::urls::client_router::client_url_patterns()),
+		);
 
 	// Mount the auto-generated admin panel at /admin/ (server-only).
+	// `admin_routes_with_di` returns both the router and a DI registration
+	// list that lazily provides `AdminDatabase` to admin handlers from the
+	// project's `DatabaseConnection`.
 	#[cfg(native)]
 	let router = {
 		let admin_site = std::sync::Arc::new(configure_admin());
@@ -1145,7 +1258,8 @@ pub fn routes() -> UnifiedRouter {
 	// singleton via `Middleware::di_registrations`, so server functions that
 	// `#[inject] session: SessionData` (or `#[inject] store: SessionStoreRef`)
 	// can resolve the same store the middleware writes to without a parallel
-	// `with_di_registrations(...)` call.
+	// `with_di_registrations(...)` call. See #4426 (and the original #4423
+	// regression that motivated the auto-registration hook).
 	#[cfg(native)]
 	let router = router.with_middleware(create_session_middleware());
 
@@ -1153,13 +1267,18 @@ pub fn routes() -> UnifiedRouter {
 }
 ```
 
-Two registration conventions are worth memorising:
+Three registration conventions are worth memorising:
 
 - Each server function exposes a unit-struct `marker` (e.g.,
   `submit_vote::marker`) that the macro generates. The
   `s.server_fn(name::marker)` call passes that marker into the router.
 - The import list is in snake_case and refers to the function names, not
   to a separate type — `use ... submit_vote;` then `submit_vote::marker`.
+- The wasm-side aggregation lives in the `routes()` body itself, not in
+  `client/lib.rs`. Because `#[routes(..., client_inventory)]` emits a
+  `ClientRouterRegistration` from this function, every per-app
+  `client_url_patterns()` it stitches in becomes part of the SPA route
+  table that `ClientLauncher::register_routes_from_inventory()` consumes.
 
 ## Client Routing in `urls/client_router.rs`
 
@@ -1246,14 +1365,14 @@ fn error_page(message: &str) -> Page {
 	let home_href = links::polls_index();
 	page!(|message: String, home_href: String| {
 		div {
-			class: "container mt-5",
+			class: "layout-page",
 			div {
-				class: "alert alert-danger",
+				class: "alert-danger mb-4",
 				{ message }
 			}
 			a {
 				href: home_href,
-				class: "btn btn-primary",
+				class: "btn-primary",
 				"Back to Home"
 			}
 		}
@@ -1361,86 +1480,67 @@ the polls components need an `href` for navigation.
 
 ## Bootstrapping the SPA in `src/client/lib.rs`
 
-The WASM entry point is small. It uses `ClientLauncher::new("#root")`
-(per Breaking Change
-[#4117](https://github.com/kent8192/reinhardt-web/issues/4117) the
-launcher now wires the SPA through `Router::on_navigate` callbacks
-internally — the public API did not change), hands it a closure that
-builds the merged `ClientRouter` and registers a reverser, then calls
-`.launch()`. The reverser is what makes
-`ResolvedUrls::from_global()` work inside components and `links.rs`.
+With `#[routes(..., client_inventory)]` carrying every app's
+`ClientRouter` into the macro-emitted `ClientRouterRegistration`, the
+WASM entry point collapses to three lines.
+`ClientLauncher::register_routes_from_inventory()` pulls each
+registration out of `inventory`, merges them into a single SPA route
+table, installs the project-level client reverser (so
+`ResolvedUrls::from_global()` lookups resolve in components and the nav
+bar), and mounts the result on `#root`:
 
 ```rust
-//! WASM entry point.
+//! WASM SPA entry point.
 //!
-//! Bootstraps the SPA via `ClientLauncher::router_client`. The launcher
-//! installs the panic hook, history listener, and DOM mount on `#root`,
-//! then takes a single `ClientRouter` to use both for in-SPA navigation
-//! and (after our explicit `register_client_reverser` call below) for
-//! `ResolvedUrls::from_global()` lookups in components and the nav bar.
+//! The `#[routes]`-annotated function in
+//! [`crate::config::urls::routes`] aggregates every app's
+//! `client_url_patterns()` through `UnifiedRouter::mount_unified` and the
+//! macro submits the resulting `ClientRouter` into `inventory` at compile
+//! time as a `ClientRouterRegistration`.
+//!
+//! [`ClientLauncher::register_routes_from_inventory`] consumes those
+//! registrations at launch time, merges them into a single SPA route
+//! table, registers the project-level client reverser so
+//! `ResolvedUrls::from_global()` lookups resolve in components and the
+//! nav bar, and installs the router as the SPA mount on `#root`. Refs
+//! #4453.
 
 use reinhardt::pages::ClientLauncher;
-use reinhardt::{ClientRouter, UnifiedRouter, register_client_reverser};
 use wasm_bindgen::prelude::*;
-
-use crate::apps::polls::urls::client_router::client_url_patterns as polls_client_url_patterns;
-use crate::apps::users::urls::client_router::client_url_patterns as users_client_url_patterns;
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
 	ClientLauncher::new("#root")
-		.router_client(|| {
-			let router = build_spa_router();
-			register_client_reverser(router.to_reverser());
-			router
-		})
+		.register_routes_from_inventory()
 		.launch()
 }
 ```
 
-The `build_spa_router` helper is the only piece of glue you have to write
-manually today. `ClientRouter` does not yet expose a public `merge`, so
-the helper wraps each app's `ClientRouter` in a single-purpose
-`UnifiedRouter` and stitches them together with
-`UnifiedRouter::mount_unified`, then extracts the merged `ClientRouter`
-with `into_client`. The workaround comment in the file points to
-[reinhardt-web#4442](https://github.com/kent8192/reinhardt-web/issues/4442)
-for the upstream fix and shows the ideal one-liner that becomes possible
-once it ships:
+Two earlier design points are worth knowing about, because older
+tutorials and snippets still reference them:
 
-```rust
-/// Compose every app's `#[url_patterns(InstalledApp::<app>, mode = client)]`
-/// router into the single `ClientRouter` that `ClientLauncher::router_client`
-/// expects.
-///
-/// Each app's `client_url_patterns()` returns a `ClientRouter` with the
-/// app's namespace (`polls:` / `users:`) already applied. Wrapping each
-/// one in a `UnifiedRouter` and stitching with `mount_unified` reuses
-/// the framework's existing client-router merge logic without depending
-/// on the still-`pub(crate)` `ClientRouter::merge` (see #4442).
-fn build_spa_router() -> ClientRouter {
-	let polls = UnifiedRouter::new().client(|_| polls_client_url_patterns());
-	let users = UnifiedRouter::new().client(|_| users_client_url_patterns());
-
-	UnifiedRouter::new()
-		.mount_unified("/", polls)
-		.mount_unified("/", users)
-		.into_client()
-}
-```
-
-Two follow-up changes are already in flight upstream:
-
+- Per Breaking Change
+  [#4117](https://github.com/kent8192/reinhardt-web/issues/4117) the
+  launcher wires the SPA through `Router::on_navigate` callbacks
+  internally — the public API did not change.
 - [reinhardt-web#4219](https://github.com/kent8192/reinhardt-web/issues/4219)
-  deduplicated `client_router::history` into a single module, which means
-  no import path mentions a duplicate history submodule any more — the
-  bare `reinhardt::ClientRouter` import in `client/lib.rs` is the only
-  routing import that file ever needs.
+  deduplicated `client_router::history` into a single module, so no
+  import path mentions a duplicate history submodule any more — the
+  bare `reinhardt::pages::ClientLauncher` import shown above is the
+  only routing import this file ever needs.
 - [reinhardt-web#4453](https://github.com/kent8192/reinhardt-web/issues/4453)
-  will collapse the whole file to
-  `ClientLauncher::new("#root").launch()` once `#[url_patterns(..., mode = client)]`
-  registrations can be discovered and merged by the launcher itself, and
-  the reverser registration becomes implicit.
+  is what made the file this short in the first place: client routers
+  are now discovered through `inventory` (via the `client_inventory`
+  flag on `#[routes]`) instead of being stitched together with a
+  hand-written `build_spa_router()` helper.
+
+If you read older Reinhardt code, you may see a longer
+`client/lib.rs` that used `router_client(|| { … })` with a manual
+`UnifiedRouter::mount_unified` + `into_client` helper and an explicit
+`register_client_reverser(router.to_reverser())` call. That is the
+pre-#4453 shape; the body of `routes()` in
+`src/config/urls.rs` now does that aggregation, and
+`register_routes_from_inventory()` handles the reverser implicitly.
 
 ## Page Factories in `src/client/pages.rs`
 
@@ -1501,9 +1601,18 @@ index, the voting form, and the auth pages.
 
 The reference example serves the SPA from a single `index.html` at the
 project root. It mounts the WASM bundle on `#root`, shows a loading
-indicator while the bundle downloads, and configures UnoCSS from a CDN
-for development. It is not strictly part of the routing story but it is
-the document that `ClientLauncher::new("#root")` mounts into, so it is
+indicator while the bundle downloads, and configures UnoCSS at runtime
+with the project's design tokens (brand colours, dark-mode surfaces,
+layout primitives). The CDN URLs for `@unocss/reset` and
+`@unocss/runtime` are pinned to a specific version *and* carry
+`integrity` + `crossorigin` so a CDN compromise cannot silently inject
+script. A small inline script in the `<head>` resolves
+`prefers-color-scheme` + `localStorage` before the first paint to avoid
+the flash-of-unstyled-content that would otherwise happen when the
+WASM bundle later sets `data-theme`.
+
+The file is not strictly part of the routing story but it is the
+document that `ClientLauncher::new("#root")` mounts into, so it is
 worth seeing once in full:
 
 ```html
@@ -1515,47 +1624,165 @@ worth seeing once in full:
 	<title>Polls App - Reinhardt Tutorial</title>
 	<link rel="icon" type="image/png" href="/favicon.png">
 
-	<!-- UnoCSS Reset -->
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css">
+	<!-- UnoCSS Reset (pinned + SRI) -->
+	<link rel="stylesheet"
+		href="https://cdn.jsdelivr.net/npm/@unocss/reset@66.0.0/tailwind.min.css"
+		integrity="sha384-LGhsJsqCgUoTJMa7Fmn8Q0Q5/3WY9D96e4lfXpNTzs54EqijDEpPD13nfjueItEK"
+		crossorigin="anonymous">
+
+	<!-- Hand-written base styles + fallback component CSS.
+	     Listed before the blocking UnoCSS runtime script below so the
+	     browser preloader can discover it as early as possible, giving
+	     the first paint a fully-styled view even before UnoCSS runs. -->
+	<link rel="stylesheet" href="/static/css/style.css">
+
+	<!-- Theme detection (runs before render to avoid FOUC) -->
+	<script>
+	(function() {
+		var stored = null;
+		try {
+			stored = localStorage.getItem('theme');
+		} catch (e) {
+			// localStorage may be unavailable (private mode, sandboxed iframe,
+			// storage disabled by user). Fall back to OS preference below.
+		}
+		var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		var theme = stored || (prefersDark ? 'dark' : 'light');
+		document.documentElement.setAttribute('data-theme', theme);
+		if (theme === 'dark') {
+			document.documentElement.classList.add('dark');
+		}
+	})();
+	</script>
 
 	<!-- UnoCSS Configuration -->
 	<script>
-		window.__unocss = {
-			theme: {
-				colors: {
-					brand: '#4a90e2',
-					'brand-hover': '#357abd',
+	window.__unocss = {
+		theme: {
+			colors: {
+				brand: {
+					DEFAULT: '#4A90E2',
+					hover: '#357ABD',
+					light: '#E8F1FB',
+				},
+				surface: {
+					primary: 'var(--bg-primary)',
+					secondary: 'var(--bg-secondary)',
+					tertiary: 'var(--bg-tertiary)',
+				},
+				content: {
+					primary: 'var(--text-primary)',
+					secondary: 'var(--text-secondary)',
+					tertiary: 'var(--text-tertiary)',
+				},
+				success: '#10B981',
+				danger: '#EF4444',
+				warning: '#F59E0B',
+				border: {
+					DEFAULT: 'var(--border-color)',
+					secondary: 'var(--border-secondary)',
 				},
 			},
-			shortcuts: [
-				['btn', 'inline-flex items-center px-4 py-2 rounded-full font-semibold'],
-				['btn-primary', 'btn bg-brand text-white hover:bg-brand-hover'],
-				['btn-secondary', 'btn bg-gray-600 text-white hover:bg-gray-700'],
-				['spinner', 'animate-spin rounded-full border-2 border-gray-200 border-t-brand'],
-				['card', 'bg-white rounded-lg shadow-md'],
-				['card-body', 'p-6'],
-				['form-check', 'flex items-center p-3 mb-2 border rounded cursor-pointer hover:bg-gray-50'],
-				['alert-danger', 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded'],
-				['alert-warning', 'bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded'],
-			],
-		};
+		},
+		shortcuts: [
+			// Layout
+			['layout-container', 'max-w-4xl mx-auto px-4'],
+			['layout-page', 'layout-container mt-12'],
+
+			// Button base
+			['btn', 'inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full font-semibold text-sm leading-5 border border-transparent cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed no-underline'],
+			['btn-primary',   'btn bg-brand text-white hover:bg-brand-hover active:scale-97'],
+			['btn-secondary', 'btn bg-surface-tertiary text-content-primary hover:bg-border-secondary'],
+			['btn-outline',   'btn bg-transparent text-content-primary border-border-secondary hover:bg-surface-tertiary'],
+			['btn-danger',    'btn bg-danger text-white hover:opacity-90 active:scale-97'],
+			['btn-success',   'btn bg-success text-white hover:opacity-90 active:scale-97'],
+
+			// Card
+			['card',       'bg-surface-primary border border-border rounded-xl shadow-sm overflow-hidden'],
+			['card-body',  'p-6'],
+			['card-title', 'text-xl font-bold mb-4'],
+
+			// Form
+			['form-control', 'block w-full px-3.5 py-2.5 bg-surface-primary text-content-primary border border-border rounded-lg placeholder-content-tertiary focus:outline-none focus:border-brand focus:ring-3 focus:ring-brand-light transition-colors'],
+			['form-check',   'flex items-center gap-3 p-3 mb-2 bg-surface-primary border border-border rounded-lg cursor-pointer hover:bg-surface-secondary hover:border-border-secondary transition-colors'],
+			['form-label',   'block text-sm font-medium text-content-primary mb-1.5'],
+
+			// Alerts
+			['alert',         'px-4 py-3 rounded-lg border text-sm'],
+			['alert-danger',  'alert bg-red-50 border-red-200 text-danger dark:bg-red-950/30 dark:border-red-900/50'],
+			['alert-warning', 'alert bg-yellow-50 border-yellow-200 text-yellow-700 dark:bg-yellow-950/30 dark:border-yellow-900/50'],
+			['alert-success', 'alert bg-green-50 border-green-200 text-success dark:bg-green-950/30 dark:border-green-900/50'],
+
+			// Nav
+			['nav-bar', 'layout-container pt-4 mb-6 flex justify-between items-center border-b border-border pb-3'],
+
+			// Spinner
+			['spinner', 'inline-block animate-spin rounded-full border-2 border-surface-tertiary border-t-brand'],
+
+			// Misc text helpers
+			['text-muted', 'text-content-secondary'],
+		],
+	};
 	</script>
 
-	<!-- UnoCSS Runtime -->
-	<script src="https://cdn.jsdelivr.net/npm/@unocss/runtime"></script>
+	<!-- UnoCSS Runtime (pinned + SRI) -->
+	<script
+		src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.0.0"
+		integrity="sha384-LYmmhezFyzRAT4ivJD/xzz7PEZ3b+pHHgxsOuSVPG8wKScOK2Bx+itfNE+ziDDEv"
+		crossorigin="anonymous"></script>
 
-	<style>
-		body {
-			background-color: #f8f9fa;
+	<!-- Theme toggle handler -->
+	<script>
+	function toggleTheme() {
+		var html = document.documentElement;
+		var current = html.getAttribute('data-theme');
+		var next = current === 'dark' ? 'light' : 'dark';
+		html.setAttribute('data-theme', next);
+		html.classList.toggle('dark', next === 'dark');
+		try {
+			localStorage.setItem('theme', next);
+		} catch (e) {
+			// Persisting the preference is best-effort; ignore storage
+			// failures (private mode, sandboxed iframe, disabled storage).
 		}
-	</style>
+	}
+
+	// Attach to any #theme-toggle-btn rendered by WASM via MutationObserver.
+	// The observer disconnects itself as soon as the button is found and
+	// wired up, so it does not keep reacting to unrelated DOM changes.
+	window.addEventListener('load', function() {
+		function tryAttach() {
+			var btn = document.getElementById('theme-toggle-btn');
+			if (btn && !btn.hasAttribute('data-theme-attached')) {
+				btn.setAttribute('data-theme-attached', 'true');
+				btn.addEventListener('click', toggleTheme);
+				return true;
+			}
+			return false;
+		}
+
+		// Button may already be present (SSR / fast WASM mount).
+		if (tryAttach()) {
+			return;
+		}
+
+		var observer = new MutationObserver(function() {
+			if (tryAttach()) {
+				observer.disconnect();
+			}
+		});
+		if (document.body) {
+			observer.observe(document.body, { childList: true, subtree: true });
+		}
+	});
+	</script>
 </head>
-<body class="bg-gray-50 text-gray-900 antialiased">
+<body>
 	<div id="root">
 		<div class="flex items-center justify-center min-h-screen">
 			<div class="text-center">
 				<div class="spinner w-12 h-12 mx-auto mb-4"></div>
-				<p class="text-gray-600">Loading...</p>
+				<p class="text-muted">Loading...</p>
 			</div>
 		</div>
 	</div>
@@ -1632,20 +1859,25 @@ the polling application:
   the same business logic over plain JSON for non-WASM consumers; the
   handlers use `Path<T>`, `Json<T>`, and return a `Response` with an
   explicit content type.
-- **Project-level glue.** `src/config/urls.rs` registers every server
-  function with `.server(|s| s.server_fn(name::marker))`, mounts the
-  admin panel at `/admin/` via `admin_routes_with_di`, and applies
+- **Project-level glue.** `src/config/urls.rs` carries
+  `#[routes(standalone, client_inventory)]` so the macro emits both
+  `UrlPatternsRegistration` (native) and `ClientRouterRegistration`
+  (wasm) into `inventory`. The function registers every server function
+  with `.server(|s| s.server_fn(name::marker))`, aggregates every app's
+  `client_url_patterns()` via `mount_unified` on wasm, mounts the admin
+  panel at `/admin/` via `admin_routes_with_di`, and applies
   `SessionMiddleware` with a two-week TTL and Lax SameSite.
 - **Client routing and link resolution.** Each app's
   `urls/client_router.rs` registers routes by stable name through
   `named_route` / `named_route_path` / `named_route_path2`;
   `src/client/links.rs` wraps every `ResolvedUrls::resolve_client_url`
   lookup so components never construct URLs by hand.
-- **SPA bootstrap.** `src/client/lib.rs` uses
-  `ClientLauncher::new("#root").router_client(...).launch()` with a
-  `build_spa_router()` helper that composes the polls and users client
-  routers through `UnifiedRouter::mount_unified`, and registers the
-  reverser so `ResolvedUrls::from_global()` works.
+- **SPA bootstrap.** `src/client/lib.rs` collapses to
+  `ClientLauncher::new("#root").register_routes_from_inventory().launch()`
+  thanks to `client_inventory`; the launcher merges every
+  `ClientRouterRegistration` submitted by `routes()`, installs the
+  project-level reverser so `ResolvedUrls::from_global()` works, and
+  mounts the SPA on `#root`.
 - **Page factories.** `src/client/pages.rs` wraps each body component in
   `with_nav(...)` so every routed page shares the same header — the
   body components themselves are the subject of Part 4.

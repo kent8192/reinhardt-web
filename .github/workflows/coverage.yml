@@ -65,6 +65,11 @@ jobs:
       - name: Setup test environment (Rust + protoc)
         uses: ./.github/actions/setup-test-env
         with:
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries, so
+          # parallel coverage jobs do not compete to write the same key and
+          # only the main-branch authoritative cache is updated.
+          rust-save-if: ${{ github.ref == 'refs/heads/main' }}
           protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-make
@@ -209,6 +214,11 @@ jobs:
       - name: Setup test environment (Rust + protoc)
         uses: ./.github/actions/setup-test-env
         with:
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries, so
+          # parallel coverage jobs do not compete to write the same key and
+          # only the main-branch authoritative cache is updated.
+          rust-save-if: ${{ github.ref == 'refs/heads/main' }}
           protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install mold linker and build dependencies
@@ -363,6 +373,11 @@ jobs:
       - name: Setup test environment (Rust + protoc)
         uses: ./.github/actions/setup-test-env
         with:
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries, so
+          # parallel coverage jobs do not compete to write the same key and
+          # only the main-branch authoritative cache is updated.
+          rust-save-if: ${{ github.ref == 'refs/heads/main' }}
           protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install mold linker and build dependencies
