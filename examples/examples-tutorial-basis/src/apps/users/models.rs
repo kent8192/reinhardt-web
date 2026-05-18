@@ -97,10 +97,13 @@ mod manager {
 	/// / `create_superuser` so password hashing, uniqueness checks, and
 	/// saves stay in a single place.
 	///
-	/// Until `#[user(...)]` learns to emit a manager itself (tracked in
-	/// #4444), every `#[user]`-decorated model needs a manager like this
-	/// one. `Clone` is derived so a server function can pull an owned
-	/// `UserManager` out of `Depends<_>` and invoke the
+	/// `#[user(...)]` does emit a manager by default (since
+	/// reinhardt-web#4451), but this tutorial opts out via `manager = false`
+	/// on the `#[user]` attribute above so the auto-emitted manager does not
+	/// shadow this hand-written one — and because the auto-manager is gated
+	/// to `Uuid` / `Option<Uuid>` primary keys (issue #4455) whereas this
+	/// model uses `i64`. `Clone` is derived so a server function can pull an
+	/// owned `UserManager` out of `Depends<_>` and invoke the
 	/// `BaseUserManager::create_user(&mut self, …)` trait method without
 	/// fighting `Arc` mutability.
 	///
