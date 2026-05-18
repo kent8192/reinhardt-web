@@ -1,0 +1,5 @@
+error: `no_ws_resolvers` specified twice
+ --> tests/ui/routes_registration/fail/duplicate_no_ws_resolvers.rs:8:27
+  |
+8 | #[routes(no_ws_resolvers, no_ws_resolvers)]
+  |                           ^^^^^^^^^^^^^^^

@@ -1,7 +1,6 @@
 //! URL configuration for the snippets app.
 //!
 //! This file is the canonical aggregator for the `snippets` app — it
-//! declares the per-mode submodules that the routes macro looks for and
 //! exposes a single `url_patterns()` entry point that `src/config/urls.rs`
 //! mounts under `/api/`. The `#[url_patterns(InstalledApp::snippets, mode = server)]`
 //! attribute lives here so the routes macro can find the generated
@@ -13,6 +12,13 @@
 //! no `USE_VIEWSET`-style toggle. Bruno (and `curl`, `httpie`, the
 //! integration tests, …) can therefore drive either path against the
 //! same running server.
+//!
+//! This app is REST-only — it has no client (WASM SPA) or WebSocket
+//! surface, so the routes macro is invoked in
+//! `examples/examples-tutorial-rest/src/config/urls.rs` with
+//! `#[routes(server_only)]` (Issue #4509) and the per-app
+//! `client_url_resolvers` / `ws_url_resolvers` module lookups are
+//! skipped. No stub modules are required.
 //!
 //! ### Why the routes are inlined here instead of being aggregated from
 //! ### per-style submodules
@@ -31,33 +37,12 @@
 //! is ambiguous`. The framework currently supports at most one
 //! `#[url_patterns(..., mode = server)]` per app, so we keep the macro
 //! here and inline the endpoint/viewset registrations.
-//!
-//! Submodules:
-//! - `client_router` — empty `ClientRouter` stub, only present to satisfy
-//!   the non-`standalone` `#[routes]` macro's per-app lookup of
-//!   `crate::apps::<app>::urls::client_url_resolvers` (tracked upstream
-//!   as reinhardt-web#4509)
-//! - `ws_urls` — empty `WebSocketRouter` stub, only present to satisfy
-//!   the same macro's per-app lookup of
-//!   `crate::apps::<app>::urls::ws_urls::ws_url_resolvers` (also #4509)
 
 use reinhardt::ServerRouter;
 use reinhardt::url_patterns;
 
 use super::views;
 use crate::config::apps::InstalledApp;
-
-pub mod client_router;
-pub mod ws_urls;
-
-// Re-export the client-mode resolver module at the `urls` level so the
-// top-level `#[routes]` macro can find it at the flat path
-// `crate::apps::snippets::urls::client_url_resolvers`. The server resolver
-// is generated directly here by the `#[url_patterns]` attribute below
-// (at `urls::url_resolvers`), and the ws resolver is referenced through
-// the nested `ws_urls::ws_url_resolvers` path the routes macro expects,
-// so neither needs a flat re-export.
-pub use client_router::client_url_resolvers;
 
 /// Register every snippets-app URL on a single `ServerRouter`.
 ///

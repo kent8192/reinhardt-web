@@ -121,11 +121,6 @@ examples-tutorial-rest/
 │           ├── serializers.rs      # SnippetSerializer + SnippetResponse
 │           ├── urls.rs             # aggregator: #[url_patterns(InstalledApp::snippets, mode = server)]
 │           │                       # registers both function-based and ViewSet endpoints
-│           ├── urls/
-│           │   ├── client_router.rs  # mode = client (empty stub — only present
-│           │   │                     # to satisfy non-standalone #[routes];
-│           │   │                     # upstream tracking: #4509)
-│           │   └── ws_urls.rs        # mode = ws (empty stub — same reason; #4509)
 │           └── views.rs            # HTTP method handlers + #[viewset]
 └── tests/
     └── integration.rs              # Integration tests
@@ -200,10 +195,6 @@ ViewSet endpoints (Tutorial 6) are registered on the same router:
 
 ```rust
 // src/apps/snippets/urls.rs
-pub mod client_router;  // empty stub — see #4509
-pub mod ws_urls;        // empty stub — see #4509
-pub use client_router::client_url_resolvers;
-
 #[url_patterns(InstalledApp::snippets, mode = server)]
 pub fn url_patterns() -> ServerRouter {
     ServerRouter::new()
@@ -228,14 +219,19 @@ pub fn url_patterns() -> ServerRouter {
 > module-level comment for the full rationale and the framework path that
 > would lift the constraint.
 
-Mounted at the project root with an explicit literal prefix. Plain
-`#[routes]` (not `#[routes(standalone)]`) is used because this project
-consumes `installed_apps!`, so the macro generates the
-`ResolvedUrls::snippets()` accessor that `standalone` would suppress:
+Mounted at the project root with an explicit literal prefix.
+`#[routes(server_only)]` is used because this project is REST-only —
+the `server_only` flag (Issue #4509) tells the macro to skip per-app
+`client_url_resolvers` / `ws_url_resolvers` module lookups, so the
+`snippets` app does not need empty `client_router.rs` / `ws_urls.rs`
+stub modules and the `websockets` Cargo feature can stay off. The
+macro still consumes `installed_apps!` and generates the typed
+`ResolvedUrls::snippets()` accessor that `standalone` would have
+suppressed:
 
 ```rust
 // src/config/urls.rs
-#[routes]
+#[routes(server_only)]
 pub fn routes() -> UnifiedRouter {
     UnifiedRouter::new().mount("/api/", crate::apps::snippets::urls::url_patterns())
 }
