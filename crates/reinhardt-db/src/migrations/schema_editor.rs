@@ -189,10 +189,11 @@ impl SchemaEditor {
 
 		match self.db_type {
 			DatabaseType::Postgres => {
-				// Build parameterized query using reinhardt-query, mirroring
-				// the introspection emitted by DatabaseMigrationExecutor so
-				// the routing change here is purely about which connection
-				// runs the query.
+				// Build an escaped/quoted literal query using reinhardt-query
+				// (values are inlined via `to_string(QueryBuilder)`, not bound
+				// as parameters), mirroring the introspection emitted by
+				// `DatabaseMigrationExecutor` so the routing change here is
+				// purely about which connection runs the query.
 				let subquery = Query::select()
 					.expr(Expr::asterisk())
 					.from((Alias::new("information_schema"), Alias::new("tables")))
@@ -203,13 +204,16 @@ impl SchemaEditor {
 					)
 					.to_owned();
 
+				// Explicitly alias the EXISTS expression so we can look it up
+				// by a stable column key regardless of how a given adapter
+				// exposes an unnamed expression.
 				let query_str = format!(
-					"SELECT EXISTS ({})",
+					"SELECT EXISTS ({}) AS table_exists",
 					subquery.to_string(PostgresQueryBuilder)
 				);
 
 				match self.fetch_optional(&query_str, vec![]).await? {
-					Some(row) => match row.data.get("exists") {
+					Some(row) => match row.data.get("table_exists") {
 						Some(QueryValue::Bool(b)) => Ok(*b),
 						_ => Ok(false),
 					},
@@ -232,13 +236,17 @@ impl SchemaEditor {
 				Ok(row.is_some())
 			}
 			DatabaseType::Mysql => {
+				// `information_schema.tables` exposes canonical UPPER_CASE
+				// column names (e.g. `TABLE_SCHEMA`, `TABLE_NAME`); use them
+				// consistently to avoid surprises if identifier-quoting or
+				// casing behaviour changes in MySQL configurations.
 				let query = Query::select()
 					.column(Alias::new("TABLE_NAME"))
 					.from((Alias::new("information_schema"), Alias::new("tables")))
 					.cond_where(
 						Cond::all()
-							.add(Expr::col(Alias::new("table_schema")).eq(Expr::cust("DATABASE()")))
-							.add(Expr::col(Alias::new("table_name")).eq(table_name)),
+							.add(Expr::col(Alias::new("TABLE_SCHEMA")).eq(Expr::cust("DATABASE()")))
+							.add(Expr::col(Alias::new("TABLE_NAME")).eq(table_name)),
 					)
 					.to_owned();
 
