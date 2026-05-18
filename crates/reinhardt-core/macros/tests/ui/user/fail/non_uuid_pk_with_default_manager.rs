@@ -4,7 +4,12 @@
 //! `Uuid::now_v7()` re-seed; any other PK type (e.g. `i64`) would silently
 //! overwrite previous users in the map. See issue #4455.
 
-#![allow(unused_imports)]
+// Defensive allow attributes to guarantee the `.stderr` golden stays a
+// single-error block across future rustc / trybuild updates. The fixture
+// is rejected by the `#[user(...)]` macro before any item-level usage is
+// considered, so every import and field would otherwise produce a
+// trailing warning block (issue #4552).
+#![allow(unused_imports, dead_code)]
 
 use chrono::{DateTime, Utc};
 use reinhardt_auth::Argon2Hasher;
