@@ -60,34 +60,59 @@ pub(crate) fn parse_action_args_with_defaults(
 	for meta in meta_list {
 		if let Meta::NameValue(nv) = meta {
 			if nv.path.is_ident("methods") {
-				has_methods = true;
-				if let Expr::Lit(ExprLit {
+				// Validate the value type BEFORE marking the parameter as
+				// present, so a malformed `methods = true` raises a clean
+				// compile-time error instead of silently falling back to
+				// the default `GET` method. Mirrors `action_impl`.
+				let Expr::Lit(ExprLit {
 					lit: Lit::Str(lit), ..
 				}) = &nv.value
-				{
-					let s = lit.value();
-					let s = s.trim_matches(|c| c == '[' || c == ']');
-					for m in s.split(',') {
-						let m = m.trim().trim_matches('"');
-						if !m.is_empty() {
-							methods.push(m.to_string());
-						}
+				else {
+					return Err(syn::Error::new_spanned(
+						&nv.value,
+						"methods parameter must be a string literal",
+					));
+				};
+				has_methods = true;
+				let s = lit.value();
+				let s = s.trim_matches(|c| c == '[' || c == ']');
+				for m in s.split(',') {
+					let m = m.trim().trim_matches('"');
+					if !m.is_empty() {
+						methods.push(m.to_string());
 					}
 				}
 			} else if nv.path.is_ident("detail") {
-				has_detail = true;
-				if let Expr::Lit(ExprLit {
+				// Validate the value type BEFORE marking the parameter as
+				// present. A non-boolean `detail = "false"` would
+				// otherwise be silently treated as `detail = false`,
+				// diverging from `action_impl` which rejects it.
+				let Expr::Lit(ExprLit {
 					lit: Lit::Bool(lit),
 					..
 				}) = &nv.value
-				{
-					detail = lit.value;
-				}
-			} else if nv.path.is_ident("url_path")
-				&& let Expr::Lit(ExprLit {
+				else {
+					return Err(syn::Error::new_spanned(
+						&nv.value,
+						"detail parameter must be a boolean literal (true or false)",
+					));
+				};
+				has_detail = true;
+				detail = lit.value;
+			} else if nv.path.is_ident("url_path") {
+				// Reject non-string `url_path` values with a clean
+				// compile error instead of silently ignoring them, so
+				// the impl-form `#[viewset]` and `#[action]` diverge
+				// only in surface syntax, not in validation strictness.
+				let Expr::Lit(ExprLit {
 					lit: Lit::Str(lit), ..
 				}) = &nv.value
-			{
+				else {
+					return Err(syn::Error::new_spanned(
+						&nv.value,
+						"url_path parameter must be a string literal",
+					));
+				};
 				let p = lit.value();
 				if p.contains(' ') {
 					return Err(syn::Error::new_spanned(
@@ -99,11 +124,20 @@ pub(crate) fn parse_action_args_with_defaults(
 					return Err(syn::Error::new_spanned(lit, "url_path must start with '/'"));
 				}
 				url_path = Some(p);
-			} else if nv.path.is_ident("url_name")
-				&& let Expr::Lit(ExprLit {
+			} else if nv.path.is_ident("url_name") {
+				// Reject non-string `url_name` values with a clean
+				// compile error. Otherwise a bogus literal (e.g.
+				// `url_name = 42`) would silently fall back to the
+				// function identifier default.
+				let Expr::Lit(ExprLit {
 					lit: Lit::Str(lit), ..
 				}) = &nv.value
-			{
+				else {
+					return Err(syn::Error::new_spanned(
+						&nv.value,
+						"url_name parameter must be a string literal",
+					));
+				};
 				// `url_name` is later passed to `syn::Ident::new(...)` by
 				// the viewset/routes macro emitters to build identifiers
 				// like `__for_each_viewset_meta_<url_name>` and the typed
@@ -466,5 +500,88 @@ mod meta_extractor_tests {
 
 		// Act + Assert
 		assert!(parse_action_args_with_defaults(args, &fn_ident).is_err());
+	}
+
+	#[test]
+	fn non_string_methods_value_errors() {
+		// Arrange: `methods = true` is malformed -- value must be a
+		// string literal. Previously the parser silently accepted this
+		// and fell back to the default `GET` method, diverging from
+		// `action_impl`.
+		let args = quote! { methods = true, detail = false };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act
+		let err = parse_action_args_with_defaults(args, &fn_ident)
+			.expect_err("non-string methods value must error");
+
+		// Assert
+		assert!(
+			err.to_string()
+				.contains("methods parameter must be a string literal"),
+			"unexpected error message: {err}"
+		);
+	}
+
+	#[test]
+	fn non_bool_detail_value_errors() {
+		// Arrange: `detail = "false"` is malformed -- value must be a
+		// boolean literal. Previously the parser silently treated this
+		// as `detail = false` (the field's zero value), diverging from
+		// `action_impl`.
+		let args = quote! { methods = "GET", detail = "false" };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act
+		let err = parse_action_args_with_defaults(args, &fn_ident)
+			.expect_err("non-boolean detail value must error");
+
+		// Assert
+		assert!(
+			err.to_string()
+				.contains("detail parameter must be a boolean literal"),
+			"unexpected error message: {err}"
+		);
+	}
+
+	#[test]
+	fn non_string_url_path_value_errors() {
+		// Arrange: `url_path = 42` is malformed -- value must be a
+		// string literal. Previously the parser silently ignored the
+		// field, leaving `url_path` empty rather than rejecting the
+		// attribute.
+		let args = quote! { methods = "GET", detail = true, url_path = 42 };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act
+		let err = parse_action_args_with_defaults(args, &fn_ident)
+			.expect_err("non-string url_path value must error");
+
+		// Assert
+		assert!(
+			err.to_string()
+				.contains("url_path parameter must be a string literal"),
+			"unexpected error message: {err}"
+		);
+	}
+
+	#[test]
+	fn non_string_url_name_value_errors() {
+		// Arrange: `url_name = false` is malformed -- value must be a
+		// string literal. Previously the parser silently ignored the
+		// field, falling back to the function identifier default.
+		let args = quote! { methods = "GET", detail = true, url_name = false };
+		let fn_ident: syn::Ident = syn::parse_quote! { x };
+
+		// Act
+		let err = parse_action_args_with_defaults(args, &fn_ident)
+			.expect_err("non-string url_name value must error");
+
+		// Assert
+		assert!(
+			err.to_string()
+				.contains("url_name parameter must be a string literal"),
+			"unexpected error message: {err}"
+		);
 	}
 }
