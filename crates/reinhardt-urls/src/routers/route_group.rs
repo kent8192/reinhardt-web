@@ -295,6 +295,38 @@ impl RouteGroup {
 		self
 	}
 
+	/// Same as [`Self::viewset`] at runtime, but carries a `PhantomData<M>`
+	/// marker that `#[url_patterns]` recovers at expansion time to discover
+	/// `#[action]`-decorated methods on the impl block `M`.
+	///
+	/// `M` is purely a name-bearing token. Users write
+	/// `PhantomData::<MyViewSetImpl>` as the third argument. The bound is
+	/// `M: 'static` so the marker's `std::any::type_name` is reachable for
+	/// the marker→runtime bridge below.
+	///
+	/// Phase 5.1 of Issue #4507: copies every action submitted under
+	/// `type_name::<M>()` (via the impl-form `#[viewset]` macro's runtime
+	/// registration) into the runtime-keyed `register_action(type_name::<V>(), ...)`
+	/// slot so `ViewSet::get_extra_actions` finds them at dispatch time.
+	///
+	/// Refs Issue #4507.
+	pub fn viewset_with_actions<V, M>(
+		self,
+		prefix: &str,
+		viewset: V,
+		_marker: std::marker::PhantomData<M>,
+	) -> Self
+	where
+		V: reinhardt_views::viewsets::ViewSet + 'static,
+		M: 'static,
+	{
+		reinhardt_views::viewsets::bridge_marker_actions_to_viewset(
+			std::any::type_name::<M>(),
+			std::any::type_name::<V>(),
+		);
+		self.viewset(prefix, viewset)
+	}
+
 	/// Add a class-based view
 	///
 	/// # Examples
@@ -548,5 +580,66 @@ mod tests {
 
 		let _router = group.build();
 		// Verify that multiple middleware are correctly added in integration tests
+	}
+}
+
+#[cfg(test)]
+mod viewset_with_actions_tests {
+	use super::*;
+	use async_trait::async_trait;
+	use reinhardt_http::{Request, Response, Result};
+	use reinhardt_views::viewsets::{Action, ViewSet};
+	use rstest::rstest;
+	use std::marker::PhantomData;
+
+	/// Minimal `ViewSet` fixture for parity tests between `viewset` and
+	/// `viewset_with_actions` on `RouteGroup`.
+	#[derive(Debug, Clone)]
+	struct DummyViewSet {
+		basename: String,
+	}
+
+	#[async_trait]
+	impl ViewSet for DummyViewSet {
+		fn get_basename(&self) -> &str {
+			&self.basename
+		}
+
+		async fn dispatch(&self, _request: Request, _action: Action) -> Result<Response> {
+			Ok(Response::ok())
+		}
+	}
+
+	/// Marker type the future `#[url_patterns]` macro will recover at
+	/// expansion time. It carries no runtime state.
+	struct DummyImpl;
+
+	#[rstest]
+	fn viewset_with_actions_is_equivalent_to_viewset() {
+		// Arrange
+		let group_a = RouteGroup::new().viewset(
+			"/users",
+			DummyViewSet {
+				basename: "users".to_string(),
+			},
+		);
+		let group_b = RouteGroup::new().viewset_with_actions(
+			"/users",
+			DummyViewSet {
+				basename: "users".to_string(),
+			},
+			PhantomData::<DummyImpl>,
+		);
+		let mut router_a = group_a.build();
+		let mut router_b = group_b.build();
+
+		// Act
+		let _ = router_a.register_all_routes();
+		let _ = router_b.register_all_routes();
+		let routes_a = router_a.get_all_routes();
+		let routes_b = router_b.get_all_routes();
+
+		// Assert
+		assert_eq!(routes_a, routes_b);
 	}
 }

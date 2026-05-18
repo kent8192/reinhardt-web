@@ -2,6 +2,28 @@
 //!
 //! Provides UI components for the polling application including
 //! the index page, detail page with voting form, and results page.
+//!
+//! ## Reactive page shape (canonical template)
+//!
+//! Every async-loading view in this module (`polls_detail`,
+//! `polls_results`, `question_edit`, `question_delete_confirm`) follows
+//! the same reactive shape as `polls_results`:
+//!
+//! - An outer `div` wraps a single `watch{}` block so the function
+//!   returns a top-level `Page::Element` (matching the
+//!   `matches!(view, Page::Element(_))` assertion in
+//!   `tests/wasm/polls_mock_test.rs`).
+//! - Only the reactive `Signal` (`Action<..>`) and the route id flow
+//!   into `page!` as typed parameters. Forms (whose types live inside
+//!   the `form!` macro's block expression and are therefore not
+//!   nameable as `page!` parameter types) and static hrefs are
+//!   captured from the surrounding scope by the implicit `move` of
+//!   the `watch` closure.
+//!
+//! **Anti-pattern that root-caused Issue #4514:** returning a static
+//! `Page` (e.g. `return page!(|| spinner)();`) from outside the
+//! `watch{}` block strands the SPA on the spinner forever because the
+//! reactive subscription is never established.
 
 use crate::shared::types::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::component::Page;
@@ -235,120 +257,102 @@ pub fn polls_detail(question_id: i64) -> Page {
 
 	let load_detail_signal = load_detail.clone();
 
-	// Loading state
-	if load_detail_signal.is_pending() {
-		return page!(|| {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12 text-center",
-				div {
-					class: "spinner w-8 h-8",
-					role: "status",
-					span {
-						class: "sr-only",
-						"Loading..."
-					}
-				}
-			}
-		})();
-	}
-
-	// Error state
-	if let Some(err) = load_detail_signal.error() {
-		let retry_href = links::poll_detail(question_id);
-		let polls_index_href = links::polls_index();
-		return page!(|err: String, retry_href: String, polls_index_href: String| {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				div {
-					class: "alert-danger",
-					{ err }
-				}
-				a {
-					href: retry_href,
-					class: "btn-secondary",
-					"Try Again"
-				}
-				a {
-					href: polls_index_href,
-					class: "btn-primary ml-2",
-					"Back to Polls"
-				}
-			}
-		})(err, retry_href, polls_index_href);
-	}
-
-	// Question found - render voting form
-	if let Some((ref q, _)) = load_detail_signal.result() {
-		let question_text = q.question_text.clone();
-		let form_view = voting_form.into_page();
-		let edit_href = links::question_edit(question_id);
-		let delete_href = links::question_delete(question_id);
-		let results_href = links::poll_results(question_id);
-		let add_choice_href = links::choice_new(question_id);
-
-		page!(|question_text: String, form_view: Page, edit_href: String, delete_href: String, results_href: String, add_choice_href: String| {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				div {
-					class: "flex justify-between items-center mb-4",
-					h1 {
-						{ question_text }
-					}
+	// Render reactively in the canonical shape (see module-level docs):
+	// outer `div` + single `watch{}` + `Action<..>` and route id flowing
+	// into `page!` as typed parameters. The voting form is captured by
+	// the watch closure's implicit `move`.
+	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
+		div {
+			watch {
+				if load_detail_signal.is_pending() {
 					div {
-						class: "flex gap-2",
-						a {
-							href: results_href,
-							class: "btn-secondary",
-							"View results"
+						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
+						div {
+							class: "spinner w-8 h-8",
+							role: "status",
+							span {
+								class: "sr-only",
+								"Loading..."
+							}
+						}
+					}
+				} else if load_detail_signal.error().is_some() {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "alert-danger",
+							{ load_detail_signal.error().unwrap_or_default() }
 						}
 						a {
-							href: edit_href,
+							href: links::poll_detail(question_id),
 							class: "btn-secondary",
-							"Edit"
+							"Try Again"
 						}
 						a {
-							href: delete_href,
-							class: "btn-danger",
-							"Delete"
+							href: links::polls_index(),
+							class: "btn-primary ml-2",
+							"Back to Polls"
+						}
+					}
+				} else if load_detail_signal.result().is_some() {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "flex justify-between items-center mb-4",
+							h1 {
+								{
+									load_detail_signal
+											.result()
+											.map(|(q, _)| q.question_text.clone())
+											.unwrap_or_default()
+								}
+							}
+							div {
+								class: "flex gap-2",
+								a {
+									href: links::poll_results(question_id),
+									class: "btn-secondary",
+									"View results"
+								}
+								a {
+									href: links::question_edit(question_id),
+									class: "btn-secondary",
+									"Edit"
+								}
+								a {
+									href: links::question_delete(question_id),
+									class: "btn-danger",
+									"Delete"
+								}
+							}
+						}
+						{ voting_form.clone().into_page() }
+						div {
+							class: "mt-4",
+							a {
+								href: links::choice_new(question_id),
+								class: "btn-secondary",
+								"Add choice"
+							}
+						}
+					}
+				} else {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "alert-warning",
+							"Question not found"
+						}
+						a {
+							href: links::polls_index(),
+							class: "btn-primary",
+							"Back to Polls"
 						}
 					}
 				}
-				{ form_view }
-				div {
-					class: "mt-4",
-					a {
-						href: add_choice_href,
-						class: "btn-secondary",
-						"Add choice"
-					}
-				}
 			}
-		})(
-			question_text,
-			form_view,
-			edit_href,
-			delete_href,
-			results_href,
-			add_choice_href,
-		)
-	} else {
-		// Question not found
-		let polls_index_href = links::polls_index();
-		page!(|polls_index_href: String| {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				div {
-					class: "alert-warning",
-					"Question not found"
-				}
-				a {
-					href: polls_index_href,
-					class: "btn-primary",
-					"Back to Polls"
-				}
-			}
-		})(polls_index_href)
-	}
+		}
+	})(load_detail_signal, question_id)
 }
 
 /// Poll results page - Show voting results
@@ -733,91 +737,115 @@ pub fn question_edit(question_id: i64) -> Page {
 		});
 	}
 
-	let loading_signal = edit_form.loading().clone();
-	let error_signal = edit_form.error().clone();
-	let form_view = edit_form.into_page();
 	let load_detail_signal = load_detail.clone();
 
-	if load_detail_signal.is_pending() {
-		return page!(|| {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12 text-center",
-				div {
-					class: "spinner w-8 h-8",
-					role: "status",
-					span {
-						class: "sr-only",
-						"Loading..."
-					}
-				}
-			}
-		})();
-	}
-
-	if let Some(err) = load_detail_signal.error() {
-		let polls_index_href = links::polls_index();
-		return page!(|err: String, polls_index_href: String| {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				div {
-					class: "alert-danger",
-					{ err }
-				}
-				a {
-					href: polls_index_href,
-					class: "btn-primary",
-					"Back to Polls"
-				}
-			}
-		})(err, polls_index_href);
-	}
-
-	let cancel_href = links::poll_detail(question_id);
-
-	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+	// Render reactively in the canonical shape (see module-level docs).
+	// The `edit_form` is captured by the watch closure's implicit `move`.
+	//
+	// Workaround for #4515 (framework usability: nested `watch{}` cannot
+	// share `!Copy` Signal captures). The `edit_form`'s own loading/error UI
+	// is inlined inside this single outer `watch{}` instead of a second
+	// nested `watch{}` block. The root cause is that `Page::reactive` requires
+	// `F: Fn() -> Page + 'static`; when an inner `watch` is added inside an
+	// outer one, both closures try to capture the same `!Copy` `Signal<T>`
+	// from the surrounding scope, which rustc rejects with
+	// E0507 "cannot move out of … a captured variable in an `Fn` closure"
+	// (the inner closure's capture conflicts with the outer closure's
+	// re-execution semantics). Until #4515 lands a framework-level fix,
+	// flattening the inner reactive switch into the outer `watch{}` is the
+	// least-invasive way to preserve reactivity — a single `watch` already
+	// subscribes to every Signal accessed inside its body, so the reactive
+	// contract is unchanged.
+	//
+	// Ideal implementation (without workaround, blocked on #4515):
+	//   watch {
+	//       if edit_form.error().get().is_some() {
+	//           div { class: "alert-danger mb-3",
+	//               { edit_form.error().get().unwrap_or_default() } }
+	//       }
+	//   }
+	//   { edit_form.clone().into_page() }
+	//   div {
+	//       class: "mt-3",
+	//       watch {
+	//           if edit_form.loading().get() {
+	//               button { /* "Saving..." */ }
+	//           } else {
+	//               button { /* "Save" */ }
+	//           }
+	//       }
+	//   }
+	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
 		div {
-			class: "max-w-4xl mx-auto px-4 mt-12",
-			h1 {
-				class: "mb-4",
-				"Edit Question"
-			}
 			watch {
-				if error_signal.get().is_some() {
+				if load_detail_signal.is_pending() {
 					div {
-						class: "alert-danger mb-3",
-						{ error_signal.get().unwrap_or_default() }
-					}
-				}
-			}
-			{ form_view }
-			div {
-				class: "mt-3",
-				watch {
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "edit-question-form",
-							"Saving..."
+						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
+						div {
+							class: "spinner w-8 h-8",
+							role: "status",
+							span {
+								class: "sr-only",
+								"Loading..."
+							}
 						}
-					} else {
-						button {
-							type: "submit",
+					}
+				} else if load_detail_signal.error().is_some() {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "alert-danger",
+							{ load_detail_signal.error().unwrap_or_default() }
+						}
+						a {
+							href: links::polls_index(),
 							class: "btn-primary",
-							form: "edit-question-form",
-							"Save"
+							"Back to Polls"
 						}
 					}
-				}
-				a {
-					href: cancel_href,
-					class: "btn-secondary ml-2",
-					"Cancel"
+				} else {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						h1 {
+							class: "mb-4",
+							"Edit Question"
+						}
+						if edit_form.error().get().is_some() {
+							div {
+								class: "alert-danger mb-3",
+								{ edit_form.error().get().unwrap_or_default() }
+							}
+						}
+						{ edit_form.clone().into_page() }
+						div {
+							class: "mt-3",
+							if edit_form.loading().get() {
+								button {
+									type: "submit",
+									class: "btn-primary opacity-50 cursor-not-allowed",
+									disabled: true,
+									form: "edit-question-form",
+									"Saving..."
+								}
+							} else {
+								button {
+									type: "submit",
+									class: "btn-primary",
+									form: "edit-question-form",
+									"Save"
+								}
+							}
+							a {
+								href: links::poll_detail(question_id),
+								class: "btn-secondary ml-2",
+								"Cancel"
+							}
+						}
+					}
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view, cancel_href)
+	})(load_detail_signal, question_id)
 }
 
 /// Delete confirmation page (`/polls/{question_id}/delete/`).

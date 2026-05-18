@@ -1326,6 +1326,42 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						}
 					}
 
+					// Override `UrlResolverUnprefixed` so the deprecated flat
+					// ViewSet trait accessors (`urls.snippet_list()` etc.)
+					// resolve against `"<app>:<name>"` instead of the bare
+					// `"<name>"`. Iterates installed apps and uses the
+					// non-panicking `try_resolve_url` on each candidate;
+					// falls back to the panicking `resolve_url` if no app
+					// owns the route (preserves the original failure mode
+					// for routes that genuinely aren't registered).
+					//
+					// Refs Issue #4507 (defect #2).
+					#[allow(deprecated)]
+					impl #reinhardt::UrlResolverUnprefixed for ResolvedUrls {
+						fn resolve_url_unprefixed(
+							&self,
+							name: &str,
+							params: &[(&str, &str)],
+						) -> ::std::string::String {
+							#(
+								{
+									let full = ::std::format!(
+										"{}:{}", stringify!(#app_idents), name
+									);
+									if let ::std::option::Option::Some(u) =
+										#reinhardt::UrlResolver::try_resolve_url(self, &full, params)
+									{
+										return u;
+									}
+								}
+							)*
+							// Fall back to the bare lookup; this preserves
+							// the original panicking behavior for genuinely
+							// unregistered routes.
+							#reinhardt::UrlResolver::resolve_url(self, name, params)
+						}
+					}
+
 					/// Prelude module re-exporting URL resolver types.
 					pub mod url_prelude {
 						pub use super::ResolvedUrls;
@@ -1376,6 +1412,13 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					self.router
 						.reverse(name, params)
 						.unwrap_or_else(|| panic!("Route '{}' not found in router", name))
+				}
+
+				// Non-panicking lookup used by `UrlResolverUnprefixed`'s
+				// override below to probe candidate `"<app>:<name>"`
+				// namespaces without panicking. Refs Issue #4507.
+				fn try_resolve_url(&self, name: &str, params: &[(&str, &str)]) -> Option<String> {
+					self.router.reverse(name, params)
 				}
 			}
 
