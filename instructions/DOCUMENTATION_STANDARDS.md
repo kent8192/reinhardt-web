@@ -555,9 +555,27 @@ Items behind `#[cfg(feature = "...")]` are not in scope when docs are built with
 
 #### RD-7: Continuation Lines Must Not Begin with a Rust Keyword
 
-Multi-line `//` and `///` comments must not have any continuation line begin with a Rust keyword. The Semgrep `rust-commented-out-code` rule (enforced by the TODO Check CI job) treats keyword-led lines as commented-out source code and blocks the build.
+Continuation lines of multi-line `//` and `///` comments must not begin with a Rust keyword or macro call. The Semgrep `rust-commented-out-code` rule in `.semgrep/nonprod-markers.yml` (enforced by the TODO Check CI job) treats such lines as commented-out source code and blocks the build.
 
-**Triggering keywords:** `impl`, `fn`, `struct`, `mod`, `pub`, `let`, `use`, `trait`, `enum`, `const`, `static`, `match`, `if`, `for`, `while`, `loop`, `return`.
+**Triggering tokens** (canonical list — must mirror `.semgrep/nonprod-markers.yml` `rust-commented-out-code`):
+
+The rule fires when a comment line (after `//` or `///` and optional whitespace) begins with any of:
+
+- `let` or `let mut` followed by an identifier (e.g., `// let foo`)
+- `fn` followed by an identifier (e.g., `// fn bridge(`)
+- `pub fn` (with or without visibility modifier, e.g., `// pub(crate) fn`)
+- `impl` followed by `<` or an identifier (e.g., `// impl Foo for Bar`)
+- `use` followed by `crate`, `super`, `self`, or an identifier ending in `::` (e.g., `// use crate::foo::Bar`)
+- `if` followed by an identifier or `(`
+- `match` followed by an identifier or `(`
+- `return` followed by `;` or any expression ending in `;`
+- `struct` followed by an identifier and `{`, `<`, or `(`
+- `enum` followed by an identifier and `{` or `<`
+- Macro calls: `println!`, `eprintln!`, `dbg!`, `assert!`, `assert_eq!`, `assert_ne!`
+
+**Tokens that do not currently trigger** (safe to start a continuation line with, but still discouraged for clarity): bare `pub` / `mod` / `trait` / `const` / `static` / `for` / `while` / `loop`. The rule may broaden over time, so prefer backticks even for these.
+
+**Scope:** the rule applies only to `**/*.rs` files. Markdown files under `instructions/`, README files, and other non-Rust sources are excluded by the rule's `paths.include`. Fenced ` ```rust ` blocks inside Markdown are likewise not scanned.
 
 **Why:** Semgrep cannot distinguish prose from code when a comment line is structurally indistinguishable from Rust. Restructuring prose is cheaper than tuning the rule per occurrence — recent trips include PR #4518 (`crates/reinhardt-core/macros/src/viewset_macro.rs:1046`, continuation began with `impl ...`) and prior occurrences predating Issue #4550.
 
@@ -584,9 +602,11 @@ pub fn bridge() { /* ... */ }
 **How to detect locally before pushing:**
 
 ```bash
-docker run --rm -v "$(pwd):/src" semgrep/semgrep \
+docker run --rm -w /src -v "$(pwd):/src" semgrep/semgrep \
   semgrep scan --config .semgrep/ --error --metrics off
 ```
+
+The explicit `-w /src` ensures `--config .semgrep/` resolves relative to the mounted repo regardless of the image's default `WORKDIR`.
 
 #### Quick Reference Table
 
@@ -598,7 +618,7 @@ docker run --rm -v "$(pwd):/src" semgrep/semgrep \
 | Code blocks | ` ``` ` | ` ```rust ` |
 | Array access | `arr[0]` | `` `arr[0]` `` |
 | Feature-gated items | `` [`TypeName`] `` | `` `TypeName` `` |
-| Keyword-led continuation | `/// impl Foo for Bar ...` | `` /// The `impl Foo for Bar` ... `` |
+| Keyword-led continuation | `// impl Foo for Bar ...` or `/// fn foo(` | `` // The `impl Foo for Bar` ... `` or `` /// The `fn foo()` ... `` |
 
 #### Verification
 
