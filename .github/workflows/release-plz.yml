@@ -56,8 +56,15 @@ jobs:
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
     concurrency:
+      # Cancel any in-flight Release PR regeneration when a newer push lands
+      # on the same ref. release-plz rebuilds the release-plz-* branch from
+      # the latest Cargo.toml each run, so older runs are stale the moment
+      # a newer commit appears. Safe because this job only writes to the
+      # release-plz-* branch (idempotent regeneration), not to crates.io.
+      # The publish job (release-plz-release) intentionally keeps
+      # cancel-in-progress: false to avoid mid-publish interruption.
       group: release-plz-${{ github.ref }}
-      cancel-in-progress: false
+      cancel-in-progress: true
     steps:
       - name: Generate GitHub token
         uses: actions/create-github-app-token@v2
