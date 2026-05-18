@@ -215,12 +215,19 @@ jobs:
     #   - regular merge → `Merge pull request #N from .../release-plz-...`
     #     (release-plz's `pr_branch_prefix = "release-plz-"`)
     #
+    # `startsWith()` is used for the squash-merge form so we don't false-match
+    # arbitrary commits that happen to contain the substring `chore: release`
+    # in their body (e.g. `feat: add release-plz-compatible versioning`).
+    # `contains()` is retained for the merge-commit form because the GitHub
+    # default subject is `Merge pull request #N from <repo>/release-plz-...`,
+    # which doesn't start with the release-plz marker.
+    #
     # release-plz-pr (above) still runs on every develop/** push, so the
     # next Release PR is always kept up to date.
     if: |
       github.event_name == 'push' && (
         github.ref == 'refs/heads/main' ||
-        contains(github.event.head_commit.message, 'chore: release') ||
+        startsWith(github.event.head_commit.message, 'chore: release') ||
         contains(github.event.head_commit.message, 'release-plz-')
       )
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
