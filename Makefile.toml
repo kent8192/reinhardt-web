@@ -101,7 +101,7 @@ args = [
 ]
 
 [tasks.semver-check]
-description = "Run cargo-semver-checks locally (mirrors CI semver-check.yml for normal PRs). Override baseline via BASELINE_REV env var."
+description = "Run cargo-semver-checks locally (mirrors CI semver-check.yml for normal PRs). Override baseline via BASELINE_REV env var; set SEMVER_PACKAGE=<name> to check a single crate (mirrors CI's per-crate matrix shard)."
 script_runner = "sh"
 script = '''
 set -e
@@ -122,13 +122,26 @@ else
   BASELINE="HEAD~1"
 fi
 echo "semver-check: using baseline-rev=${BASELINE}"
-cargo semver-checks check-release \
-  --workspace \
-  --exclude reinhardt-web \
-  --exclude reinhardt-pages \
-  --all-features \
-  --release-type minor \
-  --baseline-rev "$BASELINE"
+# When SEMVER_PACKAGE is set, target a single crate (mirrors the CI per-crate
+# matrix shard introduced by reinhardt-web#4529). Otherwise fall back to the
+# workspace-wide invocation, preserving backward compatibility for callers
+# that run the task without arguments.
+if [ -n "${SEMVER_PACKAGE:-}" ]; then
+  echo "semver-check: targeting package ${SEMVER_PACKAGE}"
+  cargo semver-checks check-release \
+    --package "$SEMVER_PACKAGE" \
+    --all-features \
+    --release-type minor \
+    --baseline-rev "$BASELINE"
+else
+  cargo semver-checks check-release \
+    --workspace \
+    --exclude reinhardt-web \
+    --exclude reinhardt-pages \
+    --all-features \
+    --release-type minor \
+    --baseline-rev "$BASELINE"
+fi
 '''
 
 [tasks.placeholder-check]
