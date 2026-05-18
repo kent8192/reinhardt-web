@@ -30,7 +30,11 @@ jobs:
   # that shards on different runners do not race main).
   discover:
     name: Discover crates and context
-    runs-on: ubuntu-latest
+    # Honor the reusable workflow's inputs.runner contract so callers passing a
+    # self-hosted label do not silently fall back to GitHub-hosted capacity for
+    # this helper job (CodeRabbit review feedback). The matrix shards on line
+    # ~192 and the summary job below use the same expression.
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
     timeout-minutes: 15
     outputs:
       crates: ${{ steps.list-crates.outputs.crates }}
@@ -63,22 +67,33 @@ jobs:
           # phase detection.
           METADATA=$(cargo metadata --format-version 1 --no-deps)
 
-          # Crates: intersect with .workspace_members so that future
-          # path-dependencies outside the workspace cannot leak into the matrix
-          # (Copilot review feedback). Emit each entry as {name, manifest_path}
-          # — the manifest path is forwarded to the matrix shards so they can
-          # detect newly-introduced crates whose Cargo.toml does not exist at
-          # the baseline rev (also Copilot review feedback) without re-running
-          # cargo metadata per shard.
-          CRATES=$(echo "$METADATA" | jq -c --arg ws "$WORKSPACE_PATH" '
+          # Publishable crate set: intersect with .workspace_members so that
+          # future path-dependencies outside the workspace cannot leak into the
+          # matrix (Copilot review feedback), then drop unpublished crates and
+          # the two binary-only members (reinhardt-web, reinhardt-pages) that
+          # have no public-library SemVer surface. Single source of truth for
+          # both the matrix and phase detection so an excluded/private crate
+          # cannot diverge phase from the crates actually under check
+          # (CodeRabbit review feedback). Emit name+version+manifest_path; the
+          # manifest path is forwarded to the matrix shards so they can detect
+          # newly-introduced crates whose Cargo.toml does not exist at the
+          # baseline rev (Copilot review feedback) without re-running cargo
+          # metadata per shard.
+          PUBLISHABLE=$(echo "$METADATA" | jq -c --arg ws "$WORKSPACE_PATH" '
             (.workspace_members) as $wm |
             [.packages[]
              | select(.id as $id | $wm | index($id))
              | select(.publish == null or (.publish | length > 0))
              | {name: .name,
+                version: .version,
                 manifest_path: (.manifest_path | sub("^" + $ws + "/"; ""))}]
             | map(select(.name == "reinhardt-web" or .name == "reinhardt-pages" | not))
             | sort_by(.name)')
+
+          # CRATES projects to name+manifest_path for the matrix payload.
+          # version is dropped here because the matrix shards do not consume it
+          # (they re-read Cargo.toml in their own checkout).
+          CRATES=$(echo "$PUBLISHABLE" | jq -c '[.[] | {name, manifest_path}]')
           COUNT=$(echo "$CRATES" | jq 'length')
           if [ "$COUNT" -eq 0 ]; then
             echo "::error::No publishable workspace crates detected. Discover step cannot fan out to an empty matrix."
@@ -98,17 +113,15 @@ jobs:
           echo "crate-count=$COUNT" >> "$GITHUB_OUTPUT"
           echo "::notice::Publishable crates ($COUNT): $(echo "$CRATES" | jq -c 'map(.name)')"
 
-          # Phase: derive from workspace package versions in cargo metadata
-          # rather than a regex over Cargo.toml (Copilot review feedback —
-          # the previous grep could false-positive on a `version` key inside a
-          # [dependencies] table, only working because of the leading ^).
-          # Alpha pre-releases disable semver-check; rc and stable both enforce
-          # it with different release-type defaults handled by the context step.
-          PHASE=$(echo "$METADATA" | jq -r '
-            (.workspace_members) as $wm |
-            [.packages[]
-             | select(.id as $id | $wm | index($id))
-             | .version] as $vs |
+          # Phase: derive from PUBLISHABLE — the same crate set the matrix
+          # iterates over — so a private/excluded crate (e.g. a benchmark
+          # member at -alpha.1 or a path-dep gated out of the matrix) cannot
+          # silently flip should-run/release-type for the crates actually
+          # under check (CodeRabbit review feedback). Alpha pre-releases
+          # disable semver-check; rc and stable both enforce it with different
+          # release-type defaults handled by the context step.
+          PHASE=$(echo "$PUBLISHABLE" | jq -r '
+            [.[].version] as $vs |
             if   ($vs | any(test("-alpha"))) then "alpha"
             elif ($vs | any(test("-rc")))    then "rc"
             else "stable"
@@ -302,7 +315,9 @@ jobs:
     name: SemVer Check Summary
     needs: [discover, semver-check]
     if: always()
-    runs-on: ubuntu-latest
+    # Honor the reusable workflow's inputs.runner contract (CodeRabbit review
+    # feedback). See discover job above for rationale.
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
     timeout-minutes: 5
     steps:
       - name: Aggregate matrix result
