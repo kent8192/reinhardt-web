@@ -1,0 +1,5 @@
+error: `no_client_resolvers` specified twice
+ --> tests/ui/routes_registration/fail/duplicate_no_client_resolvers.rs:8:31
+  |
+8 | #[routes(no_client_resolvers, no_client_resolvers)]
+  |                               ^^^^^^^^^^^^^^^^^^^

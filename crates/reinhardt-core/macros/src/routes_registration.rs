@@ -202,8 +202,23 @@ pub(crate) fn extract_depends_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
 ///
 /// # Parameters
 ///
-/// * `args` - Attribute arguments. Accepts `standalone` to skip URL resolver
-///   generation (for projects that don't use `installed_apps!`)
+/// * `args` - Attribute arguments. Accepts a comma-separated list of flags:
+///   - `standalone`: skip URL resolver generation (for projects that don't use
+///     `installed_apps!`)
+///   - `client_inventory`: opt into the WASM cross-target `ClientRouter`
+///     `inventory::submit!` registration
+///   - `server_only`: shorthand for `no_client_resolvers, no_ws_resolvers`;
+///     for REST-only apps that don't have `client_url_resolvers` or
+///     `ws_url_resolvers` modules per app (Issue #4509)
+///   - `no_client_resolvers`: skip per-app client resolver lookups; the
+///     `ClientUrls` gateway and `<app>ClientUrls` structs are not emitted
+///   - `no_ws_resolvers`: skip per-app WebSocket resolver lookups; the
+///     `WsUrls` gateway and `<app>WsUrls` structs are not emitted, and the
+///     stub `WebSocketUrlResolver` impl is suppressed
+///
+///   `client_inventory` is mutually exclusive with the `no_*` flags
+///   (`client_inventory` exists precisely to register the client surface
+///   the suppression flags disable).
 /// * `input` - The function to annotate
 ///
 /// # Returns
@@ -215,11 +230,12 @@ pub(crate) fn extract_depends_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
 /// Returns an error if the function signature is invalid (e.g., missing return type,
 /// sync function with `#[inject]` parameters)
 pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
-	// Parse comma-separated arguments: `standalone`, `client_inventory`.
+	// Parse comma-separated arguments: `standalone`, `client_inventory`,
+	// `server_only`, `no_client_resolvers`, `no_ws_resolvers`.
 	//
 	// - `standalone` (existing): skip per-app URL-resolver generation and the
 	//   `url_prelude` module for projects that do not use `installed_apps!`.
-	// - `client_inventory` (new, #4453): opt into the cross-target macro
+	// - `client_inventory` (#4453): opt into the cross-target macro
 	//   expansion. Drops the `native_only` gate from the user function and
 	//   linker marker, and emits a WASM-only `ClientRouterRegistration`
 	//   `inventory::submit!` block consumed by
@@ -229,18 +245,48 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 	//   `UnifiedRouter::new().mount(server_router())` does NOT compile on
 	//   wasm and should stay with plain `#[routes]` or
 	//   `#[routes(standalone)]` without `client_inventory`).
+	// - `server_only` (#4509): shorthand for `no_client_resolvers,
+	//   no_ws_resolvers`. Lets REST-only apps use `#[routes]` (rather than
+	//   `#[routes(standalone)]`) without supplying per-app
+	//   `client_url_resolvers` / `ws_url_resolvers` modules. The
+	//   `ResolvedUrls::<app>()` server-side accessor is preserved.
+	// - `no_client_resolvers` (#4509): skip the client-side per-app
+	//   resolver lookups (`__for_each_client_url_resolver!`) and the
+	//   `ClientUrls` / `<app>ClientUrls` gateway. Apps that do not use
+	//   `#[url_patterns(..., mode = client | unified)]` do not need
+	//   `client_url_resolvers` modules.
+	// - `no_ws_resolvers` (#4509): skip the WebSocket per-app resolver
+	//   lookups (`__for_each_ws_url_resolver!`), the `WsUrls` /
+	//   `<app>WsUrls` gateway, and the stub `WebSocketUrlResolver` impl.
+	//   Apps that do not use `#[url_patterns(..., mode = ws)]` do not
+	//   need `ws_urls::ws_url_resolvers` modules.
+	//
+	// `client_inventory` cannot combine with any `no_*` (or `server_only`)
+	// flag, since `client_inventory` registers the very surface those
+	// flags suppress.
 	//
 	// Plain `#[routes]` (no arguments) keeps the pre-#4453 native-only
 	// behavior verbatim, so existing consumers see no regression.
 	let mut standalone = false;
 	let mut client_inventory = false;
+	// Track the `Ident` token positions of the flags we accept so downstream
+	// diagnostics (e.g. the mutual-exclusion check below) can point at the
+	// exact offending argument instead of the function signature.
+	let mut client_inventory_ident: Option<syn::Ident> = None;
+	let mut server_only_seen = false;
+	let mut server_only_ident: Option<syn::Ident> = None;
+	let mut no_client_resolvers_seen = false;
+	let mut no_client_resolvers_ident: Option<syn::Ident> = None;
+	let mut no_ws_resolvers_seen = false;
+	let mut no_ws_resolvers_ident: Option<syn::Ident> = None;
 	if !args.is_empty() {
 		let parser = syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated;
 		let parsed = syn::parse::Parser::parse2(parser, args).map_err(|e| {
 			syn::Error::new(
 				e.span(),
 				"invalid arguments for #[routes]; expected comma-separated flags from \
-				 `standalone`, `client_inventory`",
+				 `standalone`, `client_inventory`, `server_only`, \
+				 `no_client_resolvers`, `no_ws_resolvers`",
 			)
 		})?;
 		for ident in parsed {
@@ -260,14 +306,76 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					));
 				}
 				client_inventory = true;
+				client_inventory_ident = Some(ident);
+			} else if ident == "server_only" {
+				if server_only_seen {
+					return Err(syn::Error::new_spanned(
+						ident,
+						"`server_only` specified twice",
+					));
+				}
+				server_only_seen = true;
+				server_only_ident = Some(ident);
+			} else if ident == "no_client_resolvers" {
+				if no_client_resolvers_seen {
+					return Err(syn::Error::new_spanned(
+						ident,
+						"`no_client_resolvers` specified twice",
+					));
+				}
+				no_client_resolvers_seen = true;
+				no_client_resolvers_ident = Some(ident);
+			} else if ident == "no_ws_resolvers" {
+				if no_ws_resolvers_seen {
+					return Err(syn::Error::new_spanned(
+						ident,
+						"`no_ws_resolvers` specified twice",
+					));
+				}
+				no_ws_resolvers_seen = true;
+				no_ws_resolvers_ident = Some(ident);
 			} else {
 				return Err(syn::Error::new_spanned(
 					ident,
 					"unknown argument for #[routes]; expected `standalone`, \
-					 `client_inventory`, or no arguments",
+					 `client_inventory`, `server_only`, `no_client_resolvers`, \
+					 `no_ws_resolvers`, or no arguments",
 				));
 			}
 		}
+	}
+
+	// `server_only` is shorthand: it sets both suppression flags. Idempotent
+	// with explicit `no_*` flags (no error if both forms appear).
+	let no_client_resolvers = server_only_seen || no_client_resolvers_seen;
+	let no_ws_resolvers = server_only_seen || no_ws_resolvers_seen;
+
+	// `client_inventory` registers the WASM `ClientRouter` surface that the
+	// `no_*` flags suppress. Combining them is contradictory — fail at parse
+	// time with an actionable message rather than emitting unreachable code.
+	if client_inventory && (no_client_resolvers || no_ws_resolvers) {
+		// Span the diagnostic on the offending `client_inventory` argument
+		// (preferred) or the first conflicting suppression flag, so the
+		// user is taken straight to one of the contradictory tokens. Fall
+		// back to `&input.sig` only when the tokens have been moved out of
+		// scope (which the bookkeeping above prevents in practice).
+		let err_msg = "`#[routes(client_inventory)]` cannot be combined with `server_only`, \
+			 `no_client_resolvers`, or `no_ws_resolvers` — `client_inventory` \
+			 registers the WASM `ClientRouter` surface that the suppression flags \
+			 disable. Drop one of the flags.";
+		if let Some(ident) = client_inventory_ident {
+			return Err(syn::Error::new_spanned(ident, err_msg));
+		}
+		if let Some(ident) = server_only_ident {
+			return Err(syn::Error::new_spanned(ident, err_msg));
+		}
+		if let Some(ident) = no_client_resolvers_ident {
+			return Err(syn::Error::new_spanned(ident, err_msg));
+		}
+		if let Some(ident) = no_ws_resolvers_ident {
+			return Err(syn::Error::new_spanned(ident, err_msg));
+		}
+		return Err(syn::Error::new_spanned(&input.sig, err_msg));
 	}
 
 	let reinhardt = get_reinhardt_crate();
@@ -818,87 +926,104 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			// typed methods are generated via __for_each_client_url_resolver
 			// (same pattern as server-side). A fallback resolve() method is
 			// always available for runtime string-based resolution.
-			let per_app_client_code: Vec<_> = app_idents
-				.iter()
-				.map(|app| {
-					let client_urls_struct_name = crate::pascal_case::to_pascal_case_with_suffix(
-						&app.to_string(),
-						"ClientUrls",
-					);
-					let client_urls_struct = proc_macro2::Ident::new(
-						&client_urls_struct_name,
-						proc_macro2::Span::call_site(),
-					);
-					let gen_client_method_macro = proc_macro2::Ident::new(
-						&format!("__gen_{}_client_method", app),
-						proc_macro2::Span::call_site(),
-					);
-					let accessor_method = proc_macro2::Ident::new(
-						&format!("{}_client", app),
-						proc_macro2::Span::call_site(),
-					);
-					let app_str = app.to_string();
+			//
+			// Issue #4509: when `no_client_resolvers` (or `server_only`) is set,
+			// the per-app client resolver lookups would target nonexistent
+			// `crate::apps::<app>::urls::client_url_resolvers` modules — skip
+			// the entire construction so REST-only apps need not stub them.
+			let per_app_client_code: Vec<_> = if no_client_resolvers {
+				Vec::new()
+			} else {
+				app_idents
+					.iter()
+					.map(|app| {
+						let client_urls_struct_name =
+							crate::pascal_case::to_pascal_case_with_suffix(
+								&app.to_string(),
+								"ClientUrls",
+							);
+						let client_urls_struct = proc_macro2::Ident::new(
+							&client_urls_struct_name,
+							proc_macro2::Span::call_site(),
+						);
+						let gen_client_method_macro = proc_macro2::Ident::new(
+							&format!("__gen_{}_client_method", app),
+							proc_macro2::Span::call_site(),
+						);
+						let accessor_method = proc_macro2::Ident::new(
+							&format!("{}_client", app),
+							proc_macro2::Span::call_site(),
+						);
+						let app_str = app.to_string();
 
-					let client_callback_arms = gen_resolver_callback_arms(
-						&client_urls_struct,
-						&quote! { resolve_client_url },
-						&quote! { #app_str },
-						&quote! { use #reinhardt::ClientUrlResolver as _; },
-					);
-
-					quote! {
-						/// Per-app client URL resolver.
-						///
-						/// Access via `ResolvedUrls::#accessor_method()`.
-						pub struct #client_urls_struct<'a> {
-							resolver: &'a ResolvedUrls,
-						}
-
-						impl #client_urls_struct<'_> {
-							/// Resolve a client-side URL by route name and parameters.
-							///
-							/// Fallback for routes not covered by typed methods.
-							/// The route name is automatically prefixed with the app label.
-							pub fn resolve(&self, route_name: &str, params: &[(&str, &str)]) -> String {
-								// Bring `ClientUrlResolver` into scope so that
-								// `resolve_client_url` is callable on `&ResolvedUrls`.
-								use #reinhardt::ClientUrlResolver as _;
-								let full_name = ::std::format!("{}:{}", #app_str, route_name);
-								self.resolver.resolve_client_url(&full_name, params)
-							}
-						}
-
-						// Callback macro for __for_each_client_url_resolver to generate
-						// typed methods (same pattern as server-side __gen_<app>_method).
-						// Arms generated by gen_resolver_callback_arms() for 0..=5 params.
-						macro_rules! #gen_client_method_macro {
-							#client_callback_arms
-						}
-
-						// Invoke __for_each_client_url_resolver to populate typed methods.
-						// This is a no-op if the app has no client_url_resolvers module
-						// (i.e., does not use #[url_patterns(..., mode = client)] or
-						// #[url_patterns(..., mode = unified)]).
-						crate::apps::#app::urls::client_url_resolvers::__for_each_client_url_resolver!(
-							#gen_client_method_macro, #app,
-							crate::apps::#app::urls::client_url_resolvers
+						let client_callback_arms = gen_resolver_callback_arms(
+							&client_urls_struct,
+							&quote! { resolve_client_url },
+							&quote! { #app_str },
+							&quote! { use #reinhardt::ClientUrlResolver as _; },
 						);
 
-						// Deprecated 2-level accessor (use urls.client().#app() instead)
-						impl ResolvedUrls {
-							#[deprecated(
-								since = "0.1.0-rc.16",
-								note = "use `urls.client().#app()` instead"
-							)]
-							pub fn #accessor_method(&self) -> #client_urls_struct<'_> {
-								#client_urls_struct { resolver: self }
+						quote! {
+							/// Per-app client URL resolver.
+							///
+							/// Access via `ResolvedUrls::#accessor_method()`.
+							pub struct #client_urls_struct<'a> {
+								resolver: &'a ResolvedUrls,
+							}
+
+							impl #client_urls_struct<'_> {
+								/// Resolve a client-side URL by route name and parameters.
+								///
+								/// Fallback for routes not covered by typed methods.
+								/// The route name is automatically prefixed with the app label.
+								pub fn resolve(&self, route_name: &str, params: &[(&str, &str)]) -> String {
+									// Bring `ClientUrlResolver` into scope so that
+									// `resolve_client_url` is callable on `&ResolvedUrls`.
+									use #reinhardt::ClientUrlResolver as _;
+									let full_name = ::std::format!("{}:{}", #app_str, route_name);
+									self.resolver.resolve_client_url(&full_name, params)
+								}
+							}
+
+							// Callback macro for __for_each_client_url_resolver to generate
+							// typed methods (same pattern as server-side __gen_<app>_method).
+							// Arms generated by gen_resolver_callback_arms() for 0..=5 params.
+							macro_rules! #gen_client_method_macro {
+								#client_callback_arms
+							}
+
+							// Invoke __for_each_client_url_resolver to populate typed methods.
+							// This is a no-op if the app has no client_url_resolvers module
+							// (i.e., does not use #[url_patterns(..., mode = client)] or
+							// #[url_patterns(..., mode = unified)]).
+							crate::apps::#app::urls::client_url_resolvers::__for_each_client_url_resolver!(
+								#gen_client_method_macro, #app,
+								crate::apps::#app::urls::client_url_resolvers
+							);
+
+							// Deprecated 2-level accessor (use urls.client().#app() instead)
+							impl ResolvedUrls {
+								#[deprecated(
+									since = "0.1.0-rc.16",
+									note = "use `urls.client().#app()` instead"
+								)]
+								pub fn #accessor_method(&self) -> #client_urls_struct<'_> {
+									#client_urls_struct { resolver: self }
+								}
 							}
 						}
-					}
-				})
-				.collect();
+					})
+					.collect()
+			};
 
-			// Generate url_prelude re-exports
+			// Generate url_prelude re-exports.
+			//
+			// Issue #4509: when `no_client_resolvers` is set the
+			// `__namespaced_client_resolvers` module is not emitted, so the
+			// per-app `<App>ClientUrls` re-export must be skipped — otherwise
+			// it would dangle on the missing module path. The
+			// `<App>Urls` (server-side) re-export and the deprecated trait
+			// glob are always emitted.
 			let prelude_exports: Vec<_> = app_idents
 				.iter()
 				.map(|app| {
@@ -906,18 +1031,26 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						crate::pascal_case::to_pascal_case_with_suffix(&app.to_string(), "Urls");
 					let urls_struct =
 						proc_macro2::Ident::new(&urls_struct_name, proc_macro2::Span::call_site());
-					let client_urls_struct_name = crate::pascal_case::to_pascal_case_with_suffix(
-						&app.to_string(),
-						"ClientUrls",
-					);
-					let client_urls_struct = proc_macro2::Ident::new(
-						&client_urls_struct_name,
-						proc_macro2::Span::call_site(),
-					);
+					let client_export = if no_client_resolvers {
+						quote! {}
+					} else {
+						let client_urls_struct_name =
+							crate::pascal_case::to_pascal_case_with_suffix(
+								&app.to_string(),
+								"ClientUrls",
+							);
+						let client_urls_struct = proc_macro2::Ident::new(
+							&client_urls_struct_name,
+							proc_macro2::Span::call_site(),
+						);
+						quote! {
+							#[cfg(feature = "client-router")]
+							pub use super::super::__namespaced_client_resolvers::#client_urls_struct;
+						}
+					};
 					quote! {
 						pub use super::#urls_struct;
-						#[cfg(feature = "client-router")]
-						pub use super::super::__namespaced_client_resolvers::#client_urls_struct;
+						#client_export
 						// Deprecated flat trait re-exports (backward compatibility)
 						#[allow(deprecated)]
 						pub use crate::apps::#app::urls::url_resolvers::*;
@@ -926,50 +1059,61 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				.collect();
 
 			// Generate per-app WS resolver structs (parallel to per_app_code for HTTP).
-			let per_app_ws_code: Vec<_> = app_idents
-				.iter()
-				.map(|app| {
-					let ws_urls_struct_name =
-						crate::pascal_case::to_pascal_case_with_suffix(&app.to_string(), "WsUrls");
-					let ws_urls_struct = proc_macro2::Ident::new(
-						&ws_urls_struct_name,
-						proc_macro2::Span::call_site(),
-					);
-					let gen_ws_method_macro = proc_macro2::Ident::new(
-						&format!("__gen_{}_ws_method", app),
-						proc_macro2::Span::call_site(),
-					);
-
-					// Parallel to server_callback_arms but uses resolve_ws_url + WebSocketUrlResolver
-					let ws_callback_arms = gen_resolver_callback_arms(
-						&ws_urls_struct,
-						&quote! { resolve_ws_url },
-						&quote! { stringify!($app_label) },
-						&quote! { use #reinhardt::WebSocketUrlResolver as _; },
-					);
-
-					quote! {
-						/// Per-app WebSocket URL resolver.
-						///
-						/// Access via `WsUrls::#app()`.
-						pub struct #ws_urls_struct<'a> {
-							resolver: &'a ResolvedUrls,
-						}
-
-						macro_rules! #gen_ws_method_macro {
-							#ws_callback_arms
-						}
-
-						// Invoke __for_each_ws_url_resolver to populate methods.
-						// This is a no-op if the app has no urls/ws_urls.rs module.
-						// #3914: ws resolver was hoisted under `urls/` in rc.19 (breaking change).
-						crate::apps::#app::urls::ws_urls::ws_url_resolvers::__for_each_ws_url_resolver!(
-							#gen_ws_method_macro, #app,
-							crate::apps::#app::urls::ws_urls::ws_url_resolvers
+			//
+			// Issue #4509: when `no_ws_resolvers` (or `server_only`) is set, the
+			// per-app WS resolver lookups would target nonexistent
+			// `crate::apps::<app>::urls::ws_urls::ws_url_resolvers` modules — skip
+			// the entire construction so REST-only apps need not stub them.
+			let per_app_ws_code: Vec<_> = if no_ws_resolvers {
+				Vec::new()
+			} else {
+				app_idents
+					.iter()
+					.map(|app| {
+						let ws_urls_struct_name = crate::pascal_case::to_pascal_case_with_suffix(
+							&app.to_string(),
+							"WsUrls",
 						);
-					}
-				})
-				.collect();
+						let ws_urls_struct = proc_macro2::Ident::new(
+							&ws_urls_struct_name,
+							proc_macro2::Span::call_site(),
+						);
+						let gen_ws_method_macro = proc_macro2::Ident::new(
+							&format!("__gen_{}_ws_method", app),
+							proc_macro2::Span::call_site(),
+						);
+
+						// Parallel to server_callback_arms but uses resolve_ws_url + WebSocketUrlResolver
+						let ws_callback_arms = gen_resolver_callback_arms(
+							&ws_urls_struct,
+							&quote! { resolve_ws_url },
+							&quote! { stringify!($app_label) },
+							&quote! { use #reinhardt::WebSocketUrlResolver as _; },
+						);
+
+						quote! {
+							/// Per-app WebSocket URL resolver.
+							///
+							/// Access via `WsUrls::#app()`.
+							pub struct #ws_urls_struct<'a> {
+								resolver: &'a ResolvedUrls,
+							}
+
+							macro_rules! #gen_ws_method_macro {
+								#ws_callback_arms
+							}
+
+							// Invoke __for_each_ws_url_resolver to populate methods.
+							// This is a no-op if the app has no urls/ws_urls.rs module.
+							// #3914: ws resolver was hoisted under `urls/` in rc.19 (breaking change).
+							crate::apps::#app::urls::ws_urls::ws_url_resolvers::__for_each_ws_url_resolver!(
+								#gen_ws_method_macro, #app,
+								crate::apps::#app::urls::ws_urls::ws_url_resolvers
+							);
+						}
+					})
+					.collect()
+			};
 
 			// ServerUrls gateway: urls.server().<app>().<handler>()
 			// Delegates to the existing XxxUrls structs (no new struct needed).
@@ -989,42 +1133,165 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				.collect();
 
 			// ClientUrls gateway: urls.client().<app>().<handler>()
-			let client_app_accessors: Vec<_> = app_idents
-				.iter()
-				.map(|app| {
-					let client_urls_struct_name = crate::pascal_case::to_pascal_case_with_suffix(
-						&app.to_string(),
-						"ClientUrls",
-					);
-					let client_urls_struct = proc_macro2::Ident::new(
-						&client_urls_struct_name,
-						proc_macro2::Span::call_site(),
-					);
-					quote! {
-						pub fn #app(&self) -> #client_urls_struct<'_> {
-							#client_urls_struct { resolver: self.resolver }
+			//
+			// Issue #4509: skipped entirely when `no_client_resolvers` is set —
+			// the surrounding `__client_router_gate` mod is not emitted.
+			let client_app_accessors: Vec<_> = if no_client_resolvers {
+				Vec::new()
+			} else {
+				app_idents
+					.iter()
+					.map(|app| {
+						let client_urls_struct_name =
+							crate::pascal_case::to_pascal_case_with_suffix(
+								&app.to_string(),
+								"ClientUrls",
+							);
+						let client_urls_struct = proc_macro2::Ident::new(
+							&client_urls_struct_name,
+							proc_macro2::Span::call_site(),
+						);
+						quote! {
+							pub fn #app(&self) -> #client_urls_struct<'_> {
+								#client_urls_struct { resolver: self.resolver }
+							}
 						}
-					}
-				})
-				.collect();
+					})
+					.collect()
+			};
 
 			// WsUrls gateway: urls.ws().<app>().<handler>()
-			let ws_app_accessors: Vec<_> = app_idents
-				.iter()
-				.map(|app| {
-					let ws_urls_struct_name =
-						crate::pascal_case::to_pascal_case_with_suffix(&app.to_string(), "WsUrls");
-					let ws_urls_struct = proc_macro2::Ident::new(
-						&ws_urls_struct_name,
-						proc_macro2::Span::call_site(),
-					);
-					quote! {
-						pub fn #app(&self) -> #ws_urls_struct<'_> {
-							#ws_urls_struct { resolver: self.resolver }
+			//
+			// Issue #4509: skipped entirely when `no_ws_resolvers` is set — the
+			// surrounding `__namespaced_ws_resolvers` mod is not emitted.
+			let ws_app_accessors: Vec<_> = if no_ws_resolvers {
+				Vec::new()
+			} else {
+				app_idents
+					.iter()
+					.map(|app| {
+						let ws_urls_struct_name = crate::pascal_case::to_pascal_case_with_suffix(
+							&app.to_string(),
+							"WsUrls",
+						);
+						let ws_urls_struct = proc_macro2::Ident::new(
+							&ws_urls_struct_name,
+							proc_macro2::Span::call_site(),
+						);
+						quote! {
+							pub fn #app(&self) -> #ws_urls_struct<'_> {
+								#ws_urls_struct { resolver: self.resolver }
+							}
+						}
+					})
+					.collect()
+			};
+
+			// Issue #4509: build the WebSocket and client-router blocks as
+			// conditional sub-quotes so REST-only apps under `server_only`
+			// (or fine-grained `no_*_resolvers`) skip the module emission
+			// entirely. Apps without `urls/ws_urls/` or `client_url_resolvers`
+			// modules then compile cleanly without stub files.
+			let ws_block = if no_ws_resolvers {
+				quote! {}
+			} else {
+				quote! {
+					// WebSocket per-app resolver structs (native-only, parallel to HTTP resolvers).
+					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+					#[doc(hidden)]
+					mod __namespaced_ws_resolvers {
+						// `unexpected_cfgs`: macro-generated `#[cfg(feature = "...")]` arms
+						// may reference features that the downstream crate has not declared
+						// when running under `-D unexpected_cfgs`.
+						// `dead_code`: when an app exposes no `#[url_patterns(..., mode = ws)]`
+						// surface, the per-app `ws_url_resolvers` re-exports and helpers
+						// emitted here are intentionally unused.
+						#![allow(unexpected_cfgs, dead_code)]
+						pub use super::ResolvedUrls;
+
+						#(#per_app_ws_code)*
+
+						/// WebSocket URL gateway. Access via `urls.ws().<app>().<route>()`.
+						pub struct WsUrls<'a> {
+							resolver: &'a ResolvedUrls,
+						}
+
+						impl WsUrls<'_> {
+							#(#ws_app_accessors)*
+						}
+
+						// urls.ws() accessor lives inside this module so that WsUrls.resolver
+						// (a private field) is accessible via struct-literal syntax (E0451 fix).
+						impl ResolvedUrls {
+							/// Access WebSocket URL resolvers via `urls.ws().<app>().<route>()`.
+							pub fn ws(&self) -> WsUrls<'_> {
+								WsUrls { resolver: self }
+							}
 						}
 					}
-				})
-				.collect();
+					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+					pub use __namespaced_ws_resolvers::*;
+
+					// WebSocketUrlResolver stub impl: allows the type chain to compile.
+					// For actual WS URL resolution, call impl_ws_url_resolver!(ResolvedUrls)
+					// after importing reinhardt-websockets.
+					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+					impl #reinhardt::WebSocketUrlResolver for ResolvedUrls {
+						fn resolve_ws_url(&self, _name: &str, _params: &[(&str, &str)]) -> String {
+							unimplemented!(
+								"WebSocket URL resolution requires reinhardt-websockets. \
+								 Call impl_ws_url_resolver!(ResolvedUrls) to enable it."
+							)
+						}
+					}
+				}
+			};
+
+			let client_block = if no_client_resolvers {
+				quote! {}
+			} else {
+				quote! {
+					// Client-side per-app resolvers are cross-platform (native + WASM).
+					#[doc(hidden)]
+					mod __client_router_gate {
+						// `unexpected_cfgs`: the generated `#[cfg(feature = "client-router")]`
+						// gate references a feature only declared on the consumer side, so
+						// downstream builds with `-D unexpected_cfgs` would otherwise reject
+						// the emitted module wrapper.
+						// `deprecated`: emitted helper trait impls may forward through
+						// items that carry `#[deprecated]` during RC transitions; the
+						// generated forwards intentionally outlive the deprecation window.
+						#![allow(unexpected_cfgs, deprecated)]
+
+						#[cfg(feature = "client-router")]
+						#[doc(hidden)]
+						pub mod __namespaced_client_resolvers {
+							pub use super::super::ResolvedUrls;
+
+							#(#per_app_client_code)*
+
+							/// Client URL gateway. Access via `urls.client().<app>().<route>()`.
+							pub struct ClientUrls<'a> {
+								resolver: &'a ResolvedUrls,
+							}
+
+							impl ClientUrls<'_> {
+								#(#client_app_accessors)*
+							}
+
+							impl ResolvedUrls {
+								/// Access client URL resolvers via `urls.client().<app>().<route>()`.
+								pub fn client(&self) -> ClientUrls<'_> {
+									ClientUrls { resolver: self }
+								}
+							}
+						}
+						#[cfg(feature = "client-router")]
+						pub use __namespaced_client_resolvers::*;
+					}
+					pub use __client_router_gate::*;
+				}
+			};
 
 			quote! {
 				// Track state file for incremental compilation invalidation.
@@ -1068,81 +1335,9 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				pub use __namespaced_resolvers::*;
 
-				// WebSocket per-app resolver structs (native-only, parallel to HTTP resolvers).
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				#[doc(hidden)]
-				mod __namespaced_ws_resolvers {
-					#![allow(unexpected_cfgs, dead_code)]
-					pub use super::ResolvedUrls;
+				#ws_block
 
-					#(#per_app_ws_code)*
-
-					/// WebSocket URL gateway. Access via `urls.ws().<app>().<route>()`.
-					pub struct WsUrls<'a> {
-						resolver: &'a ResolvedUrls,
-					}
-
-					impl WsUrls<'_> {
-						#(#ws_app_accessors)*
-					}
-
-					// urls.ws() accessor lives inside this module so that WsUrls.resolver
-					// (a private field) is accessible via struct-literal syntax (E0451 fix).
-					impl ResolvedUrls {
-						/// Access WebSocket URL resolvers via `urls.ws().<app>().<route>()`.
-						pub fn ws(&self) -> WsUrls<'_> {
-							WsUrls { resolver: self }
-						}
-					}
-				}
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				pub use __namespaced_ws_resolvers::*;
-
-				// WebSocketUrlResolver stub impl: allows the type chain to compile.
-				// For actual WS URL resolution, call impl_ws_url_resolver!(ResolvedUrls)
-				// after importing reinhardt-websockets.
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				impl #reinhardt::WebSocketUrlResolver for ResolvedUrls {
-					fn resolve_ws_url(&self, _name: &str, _params: &[(&str, &str)]) -> String {
-						unimplemented!(
-							"WebSocket URL resolution requires reinhardt-websockets. \
-							 Call impl_ws_url_resolver!(ResolvedUrls) to enable it."
-						)
-					}
-				}
-
-				// Client-side per-app resolvers are cross-platform (native + WASM).
-				#[doc(hidden)]
-				mod __client_router_gate {
-					#![allow(unexpected_cfgs, deprecated)]
-
-					#[cfg(feature = "client-router")]
-					#[doc(hidden)]
-					pub mod __namespaced_client_resolvers {
-						pub use super::super::ResolvedUrls;
-
-						#(#per_app_client_code)*
-
-						/// Client URL gateway. Access via `urls.client().<app>().<route>()`.
-						pub struct ClientUrls<'a> {
-							resolver: &'a ResolvedUrls,
-						}
-
-						impl ClientUrls<'_> {
-							#(#client_app_accessors)*
-						}
-
-						impl ResolvedUrls {
-							/// Access client URL resolvers via `urls.client().<app>().<route>()`.
-							pub fn client(&self) -> ClientUrls<'_> {
-								ClientUrls { resolver: self }
-							}
-						}
-					}
-					#[cfg(feature = "client-router")]
-					pub use __namespaced_client_resolvers::*;
-				}
-				pub use __client_router_gate::*;
+				#client_block
 			}
 		}
 	};
