@@ -123,7 +123,10 @@ pub mod apps {
 	}
 }
 
-#[reinhardt::routes]
+// `no_client_resolvers`: snippets declares only server + ws modes; without
+// this flag `#[routes]` would reference a nonexistent `client_url_resolvers`
+// module and fail E0433. See Issue #4509.
+#[reinhardt::routes(no_client_resolvers)]
 pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new().server(|_| apps::snippets::urls::url_patterns())
 }

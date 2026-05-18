@@ -117,7 +117,6 @@ pub mod apps {
 					UnifiedRouter::new()
 				}
 			}
-
 		}
 	}
 
@@ -155,7 +154,6 @@ pub mod apps {
 					UnifiedRouter::new()
 				}
 			}
-
 		}
 	}
 }
@@ -165,7 +163,11 @@ pub mod apps {
 // `UnifiedRouter::server(|s| f(s))` accepts any `ServerRouter`. We chain
 // both apps through `.with_namespace`-wrapped routers so each viewset
 // resolves under its own per-app prefix.
-#[reinhardt::routes]
+//
+// `no_client_resolvers`: both apps declare only server + ws modes; without
+// this flag `#[routes]` would reference nonexistent `client_url_resolvers`
+// modules and fail E0433. See Issue #4509.
+#[reinhardt::routes(no_client_resolvers)]
 pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new().server(|_| {
 		use reinhardt_urls::routers::ServerRouter;

@@ -992,7 +992,9 @@ mod tests {
 		let snippet_out = viewset_macro_impl(quote! {}, snippet_input)
 			.unwrap()
 			.to_string();
-		let post_out = viewset_macro_impl(quote! {}, post_input).unwrap().to_string();
+		let post_out = viewset_macro_impl(quote! {}, post_input)
+			.unwrap()
+			.to_string();
 
 		// Assert: the two manifests have non-overlapping crate-root names.
 		assert!(snippet_out.contains("__for_each_viewset_meta_viewset_snippet"));
