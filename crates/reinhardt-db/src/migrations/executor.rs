@@ -559,9 +559,19 @@ impl DatabaseMigrationExecutor {
 				continue;
 			}
 
-			// Check if this is a CreateTable operation and if the table already exists
+			// Check if this is a CreateTable operation and if the table already
+			// exists. The check MUST run through the schema editor (and thus
+			// through the editor's open transaction, if any) — otherwise the
+			// pool may pick a different physical connection whose schema cache
+			// is stale w.r.t. DDL committed earlier in this same migration.
+			//
+			// On SQLite, an introspection read on a separate pool connection
+			// after a DDL on the transaction's connection raises SQLITE_SCHEMA
+			// (code 262, "database schema is locked") because the schema
+			// cookie has been bumped on the writer but the reader's prepared
+			// statement cache is stale. See reinhardt-web#4584.
 			if let Operation::CreateTable { name, .. } = operation {
-				let table_exists = self.table_exists(name).await?;
+				let table_exists = editor.table_exists(name).await?;
 				if table_exists {
 					tracing::info!(
 						"Table '{}' already exists, skipping CREATE TABLE operation",

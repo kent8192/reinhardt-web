@@ -164,6 +164,99 @@ impl SchemaEditor {
 		}
 	}
 
+	/// Check whether a table exists, routed through the editor's open
+	/// transaction so that schema changes made earlier in the same atomic
+	/// migration are visible to the check.
+	///
+	/// When the editor is non-atomic this falls back to the pool, identical
+	/// in semantics to [`DatabaseConnection::fetch_optional`].
+	///
+	/// # SQLite-specific rationale (reinhardt-web#4584)
+	///
+	/// On SQLite, when an atomic migration has already executed a DDL on the
+	/// transaction's connection, the schema cookie has been bumped. A read
+	/// issued through the pool transparently lands on a *different* physical
+	/// connection whose prepared-statement / schema cache is stale. SQLite
+	/// then returns SQLITE_SCHEMA (code 262, "database schema is locked")
+	/// instead of returning the up-to-date row. Routing the existence check
+	/// through the same connection that performed the DDL avoids the stale
+	/// cache entirely.
+	pub async fn table_exists(&mut self, table_name: &str) -> Result<bool> {
+		use reinhardt_query::prelude::{
+			Alias, Cond, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query,
+			QueryStatementBuilder, SqliteQueryBuilder,
+		};
+
+		match self.db_type {
+			DatabaseType::Postgres => {
+				// Build an escaped/quoted literal query using reinhardt-query
+				// (values are inlined via `to_string(QueryBuilder)`, not bound
+				// as parameters), mirroring the introspection emitted by
+				// `DatabaseMigrationExecutor` so the routing change here is
+				// purely about which connection runs the query.
+				let subquery = Query::select()
+					.expr(Expr::asterisk())
+					.from((Alias::new("information_schema"), Alias::new("tables")))
+					.cond_where(
+						Cond::all()
+							.add(Expr::col(Alias::new("table_schema")).eq("public"))
+							.add(Expr::col(Alias::new("table_name")).eq(table_name)),
+					)
+					.to_owned();
+
+				// Explicitly alias the EXISTS expression so we can look it up
+				// by a stable column key regardless of how a given adapter
+				// exposes an unnamed expression.
+				let query_str = format!(
+					"SELECT EXISTS ({}) AS table_exists",
+					subquery.to_string(PostgresQueryBuilder)
+				);
+
+				match self.fetch_optional(&query_str, vec![]).await? {
+					Some(row) => match row.data.get("table_exists") {
+						Some(QueryValue::Bool(b)) => Ok(*b),
+						_ => Ok(false),
+					},
+					None => Ok(false),
+				}
+			}
+			DatabaseType::Sqlite => {
+				let query = Query::select()
+					.column(Alias::new("name"))
+					.from(Alias::new("sqlite_master"))
+					.cond_where(
+						Cond::all()
+							.add(Expr::col(Alias::new("type")).eq("table"))
+							.add(Expr::col(Alias::new("name")).eq(table_name)),
+					)
+					.to_owned();
+
+				let query_str = query.to_string(SqliteQueryBuilder);
+				let row = self.fetch_optional(&query_str, vec![]).await?;
+				Ok(row.is_some())
+			}
+			DatabaseType::Mysql => {
+				// `information_schema.tables` exposes canonical UPPER_CASE
+				// column names (e.g. `TABLE_SCHEMA`, `TABLE_NAME`); use them
+				// consistently to avoid surprises if identifier-quoting or
+				// casing behaviour changes in MySQL configurations.
+				let query = Query::select()
+					.column(Alias::new("TABLE_NAME"))
+					.from((Alias::new("information_schema"), Alias::new("tables")))
+					.cond_where(
+						Cond::all()
+							.add(Expr::col(Alias::new("TABLE_SCHEMA")).eq(Expr::cust("DATABASE()")))
+							.add(Expr::col(Alias::new("TABLE_NAME")).eq(table_name)),
+					)
+					.to_owned();
+
+				let query_str = query.to_string(MySqlQueryBuilder);
+				let row = self.fetch_optional(&query_str, vec![]).await?;
+				Ok(row.is_some())
+			}
+		}
+	}
+
 	/// Defer SQL execution until finish()
 	///
 	/// Some operations need to be executed after all other operations
