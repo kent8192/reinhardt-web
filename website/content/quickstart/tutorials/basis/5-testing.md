@@ -366,7 +366,7 @@ The third module, `auth_tests`, demonstrates that not every native integration t
 ```rust
 #[cfg(with_reinhardt)]
 mod auth_tests {
-    use examples_tutorial_basis::server_fn::polls::{
+    use examples_tutorial_basis::apps::polls::server_fn::{
         create_choice, create_question, delete_choice, delete_question, update_choice,
         update_question,
     };
