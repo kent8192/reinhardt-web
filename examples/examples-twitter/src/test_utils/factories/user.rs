@@ -290,7 +290,7 @@ mod tests {
 			.await
 			.expect("User creation should succeed");
 
-		assert_eq!(user.username(), "factoryuser");
+		assert_eq!(user.username, "factoryuser");
 		assert_eq!(user.email, "factoryuser@example.com");
 		assert!(user.is_active);
 	}
