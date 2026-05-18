@@ -1,0 +1,71 @@
+name: Setup Test Environment
+description: |
+  Install the Rust toolchain (via the local setup-rust composite action) plus
+  the protoc compiler, applying the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 workaround
+  required for arduino/setup-protoc on node24-affected upstream releases.
+  Bundles the Rust + protoc + workaround triplet duplicated across the test
+  workflows (semver-check, reinhardt-feature-check, unit-test, coverage,
+  intra-crate-integration-test, cross-crate-integration-test).
+
+inputs:
+  rust-components:
+    description: 'Rust components to install (forwarded to setup-rust).'
+    required: false
+    default: ''
+  rust-cache:
+    description: |
+      Enable Rust cache (forwarded to setup-rust). Set to 'false' when the
+      caller manages caching separately via Swatinem/rust-cache with shared-key
+      (e.g. reinhardt-feature-check.yml's cache-seed pattern).
+    required: false
+    default: 'true'
+  rust-cache-key:
+    description: 'Rust cache key suffix to differentiate parallel jobs (forwarded to setup-rust).'
+    required: false
+    default: ''
+  rust-save-if:
+    description: >
+      Save Rust cache condition (forwarded to setup-rust). Pass a github.ref
+      comparison that evaluates to true only on the main branch (so PR-triggered
+      jobs restore the main cache but do not save their own) to avoid PR cache
+      pollution (Issue #2879). Defaults to 'true' (always save).
+    required: false
+    default: 'true'
+  protoc-version:
+    description: 'protoc release version to install via arduino/setup-protoc.'
+    required: false
+    default: '28.x'
+  protoc-token:
+    description: >
+      GitHub token forwarded to arduino/setup-protoc as repo-token, used to
+      avoid unauthenticated rate limiting on the protoc download. Callers
+      should pass the workflow's secrets.GITHUB_TOKEN.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
+    # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
+    # step (and the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 env propagation) once
+    # all three upstreams ship node24 releases.
+    #
+    # Ideal implementation (without workaround):
+    #   (no env override; let the runner default kick in)
+    - name: Apply FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 workaround
+      shell: bash
+      run: echo "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true" >> "$GITHUB_ENV"
+
+    - name: Setup Rust
+      uses: ./.github/actions/setup-rust
+      with:
+        components: ${{ inputs.rust-components }}
+        cache: ${{ inputs.rust-cache }}
+        cache-key: ${{ inputs.rust-cache-key }}
+        save-if: ${{ inputs.rust-save-if }}
+
+    - name: Setup protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        version: ${{ inputs.protoc-version }}
+        repo-token: ${{ inputs.protoc-token }}
