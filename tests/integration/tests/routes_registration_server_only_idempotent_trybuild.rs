@@ -17,7 +17,6 @@
 //!
 //! Refs #4553, follow-up to PR #4510 review item I-2.
 
-use reinhardt::ServerRouter;
 use reinhardt::UnifiedRouter;
 use reinhardt::installed_apps;
 use reinhardt::routes;
