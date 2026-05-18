@@ -17,6 +17,13 @@
 
 use std::marker::PhantomData;
 
+// Anchor to a Reinhardt component to satisfy the "EVERY test MUST use at least
+// one Reinhardt component" policy without affecting the E0308 golden below.
+// `reinhardt-apps` is the only reinhardt crate visible from this trybuild
+// fixture (other reinhardt crates would form a circular dev-dep through
+// `reinhardt-core/macros`; see the module-level comment above).
+use reinhardt_apps as _;
+
 /// Stand-in for the real `ServerRouter`. Only the third-parameter shape of
 /// `viewset_with_actions` matters for this golden.
 struct MiniRouter;
