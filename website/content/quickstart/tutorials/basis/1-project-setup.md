@@ -137,7 +137,7 @@ Each generated file has a specific role. Walking top-down:
   - `types.rs` — DTOs (`QuestionInfo`, `ChoiceInfo`, `UserInfo`, `LoginRequest`, `RegisterRequest`, `VoteRequest`) shared between WASM and server. `Validate` derives are wrapped in `#[cfg_attr(native, derive(Validate))]` so the WASM client does not pull in the validator crate.
   - `forms.rs` — `#[cfg(native)]`-only `Form` definitions used by the `form!` macro on the client (forms are constructed server-side and serialized to `FormMetadata`).
 - `src/apps/` — Reinhardt apps. Each app owns its models, server functions, views, URLs, admin, and serializers. We fill these in starting from Part 2.
-- `src/client/` — WASM-only UI. `lib.rs` is the `#[wasm_bindgen(start)]` entry that hands a `ClientRouter` to `ClientLauncher::new("#root").router_client(...).launch()`. `pages.rs` exposes page factories, `components/` contains the `page!` components, and `links.rs` wraps `ResolvedUrls::resolve_client_url(...)` so components never construct URLs by hand. We build this layer in Part 3.
+- `src/client/` — WASM-only UI. `lib.rs` is the `#[wasm_bindgen(start)]` entry that calls `ClientLauncher::new("#root").register_routes_from_inventory().launch()`, picking up every `ClientRouterRegistration` that the `#[routes(standalone, client_inventory)]` aggregator in `src/config/urls.rs` submitted to `inventory` (PR #4453). `pages.rs` exposes page factories, `components/` contains the `page!` components, and `links.rs` wraps `ResolvedUrls::resolve_client_url(...)` so components never construct URLs by hand. We build this layer in Part 3.
 
 ### Architecture: WASM + SSR (reinhardt-pages)
 

@@ -471,7 +471,7 @@ A subtle point: under `cargo make dev`, the server is *not* serving from `static
 
 Four things deserve attention.
 
-First, the `#root` `<div>` is where the SPA mounts. Recall from Part 3 that `src/client/lib.rs` calls `ClientLauncher::new("#root").router_client(...).launch()` — that selector matches this element. The placeholder content inside `#root` (the spinner plus "Loading…") is what the user sees during the brief window between the HTML being parsed and the WASM bundle being instantiated. Once the launcher takes over, it replaces the entire subtree with the router's first page.
+First, the `#root` `<div>` is where the SPA mounts. Recall from Part 3 that `src/client/lib.rs` calls `ClientLauncher::new("#root").register_routes_from_inventory().launch()` — that selector matches this element. The placeholder content inside `#root` (the spinner plus "Loading…") is what the user sees during the brief window between the HTML being parsed and the WASM bundle being instantiated. Once the launcher takes over, it replaces the entire subtree with the router's first page.
 
 Second, there is no explicit `<script type="module">` here that imports the WASM bundle. The pages template's `ClientLauncher` is responsible for locating and instantiating `examples_tutorial_basis.js` and `examples_tutorial_basis_bg.wasm` from the same origin — the SPA shell does not need to hand-wire `init(wasmUrl)`. This is deliberate: the shell stays static while the framework controls how the bundle is loaded.
 
