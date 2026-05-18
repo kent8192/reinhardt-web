@@ -18,6 +18,7 @@ mod tests {
 	use reinhardt::register_client_reverser;
 	use reinhardt::register_router;
 	use rstest::rstest;
+	use serial_test::serial;
 	use std::sync::Once;
 
 	// `register_router` and `register_client_reverser` overwrite global
@@ -27,6 +28,14 @@ mod tests {
 	// exercises raw SQL through `sqlx`), so a single-process `Once`
 	// guard is sufficient here — every `#[rstest]` below shares the
 	// same registered routes.
+	//
+	// Every test below is additionally marked `#[serial(routes_global)]`
+	// so it runs serially with any future test (in this crate or another
+	// integration binary in the same `cargo test` invocation) that
+	// touches the same global router slots. This matches the project-
+	// wide convention in `CLAUDE.md` § Testing for global-state tests
+	// and mirrors the framework's own typed-viewset integration test
+	// (see `tests/integration/tests/url_patterns_viewset_typed_integration.rs`).
 	static INSTALL_ROUTES: Once = Once::new();
 
 	fn install_routes_and_resolve() -> ResolvedUrls {
@@ -58,6 +67,7 @@ mod tests {
 	// ------------------------------------------------------------------
 
 	#[rstest]
+	#[serial(routes_global)]
 	fn typed_accessor_resolves_snippets_list() {
 		// Arrange
 		let urls = install_routes_and_resolve();
@@ -71,6 +81,7 @@ mod tests {
 	}
 
 	#[rstest]
+	#[serial(routes_global)]
 	fn typed_accessor_resolves_snippets_create() {
 		// Arrange
 		let urls = install_routes_and_resolve();
@@ -83,6 +94,7 @@ mod tests {
 	}
 
 	#[rstest]
+	#[serial(routes_global)]
 	fn typed_accessor_resolves_snippets_retrieve_with_id() {
 		// Arrange
 		let urls = install_routes_and_resolve();
@@ -95,6 +107,7 @@ mod tests {
 	}
 
 	#[rstest]
+	#[serial(routes_global)]
 	fn typed_accessor_resolves_snippets_update_with_id() {
 		// Arrange
 		let urls = install_routes_and_resolve();
@@ -107,6 +120,7 @@ mod tests {
 	}
 
 	#[rstest]
+	#[serial(routes_global)]
 	fn typed_accessor_resolves_snippets_delete_with_id() {
 		// Arrange
 		let urls = install_routes_and_resolve();
@@ -153,6 +167,7 @@ mod tests {
 	// ------------------------------------------------------------------
 
 	#[rstest]
+	#[serial(routes_global)]
 	fn typed_accessor_resolves_viewset_list() {
 		// Arrange
 		let urls = install_routes_and_resolve();
@@ -166,6 +181,7 @@ mod tests {
 	}
 
 	#[rstest]
+	#[serial(routes_global)]
 	fn typed_accessor_resolves_viewset_detail_with_id() {
 		// Arrange
 		let urls = install_routes_and_resolve();
@@ -185,6 +201,7 @@ mod tests {
 	// ------------------------------------------------------------------
 
 	#[rstest]
+	#[serial(routes_global)]
 	fn urls_demo_helpers_match_typed_accessors() {
 		// Arrange
 		let urls = install_routes_and_resolve();
@@ -227,6 +244,7 @@ mod tests {
 	// ------------------------------------------------------------------
 
 	#[rstest]
+	#[serial(routes_global)]
 	#[allow(deprecated)]
 	fn deprecated_flat_viewset_accessor_matches_typed_accessor() {
 		// Arrange
