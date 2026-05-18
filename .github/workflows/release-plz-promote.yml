@@ -1,0 +1,192 @@
+name: Release-plz Promote (develop → stable)
+
+# Explicit graduation gate for promoting a develop/m.n.l release stream from
+# prerelease (m.n.l-alpha.N or -rc.N) to stable (m.n.l). See issue #4541
+# and instructions/RELEASE_PROCESS.md "Develop Branch Release Workflow" (DBR-3).
+#
+# Prerequisites:
+#   1. develop/X.Y.Z must already be merged into main via an approved PR
+#      (`develop-merge-guard.yml` enforces the migration-approved label and
+#      version transition).
+#   2. main's Cargo.toml currently has the latest prerelease that came from
+#      develop (e.g., `0.2.0-rc.5`).
+#
+# What this workflow does:
+#   1. Validates input format and verifies the merge state.
+#   2. Runs `scripts/strip-prerelease-suffix.sh` to drop the suffix from
+#      every Cargo.toml in the workspace.
+#   3. Pushes via GraphQL `createCommitOnBranch` so the committer is
+#      `web-flow` — pushing via `git push` from a runner would keep the
+#      `[bot]` committer and suppress `pull_request: synchronize`, mirroring
+#      the trap fixed by PR #4042 in release-plz.yml.
+#   4. The new commit on main triggers existing release-plz.yml which then
+#      creates the stable Release PR.
+
+on:
+  workflow_dispatch:
+    inputs:
+      develop_branch:
+        description: 'Develop branch to promote (format: develop/X.Y.Z, e.g., develop/0.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-plz-promote-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote develop to stable
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Generate GitHub token
+        uses: actions/create-github-app-token@v2
+        id: generate-token
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+
+      - name: Validate develop branch input
+        id: validate-input
+        env:
+          DEVELOP_BRANCH: ${{ inputs.develop_branch }}
+        run: |
+          set -euo pipefail
+          # Strict format: develop/X.Y.Z where each segment is a non-negative
+          # integer. Reject anything else to avoid injection via free-form input.
+          if ! [[ "$DEVELOP_BRANCH" =~ ^develop/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid develop_branch format: '$DEVELOP_BRANCH'"
+            echo "Expected: develop/X.Y.Z (e.g., develop/0.2.0)"
+            exit 1
+          fi
+          TARGET_VERSION="${DEVELOP_BRANCH#develop/}"
+          {
+            echo "develop_branch=$DEVELOP_BRANCH"
+            echo "target_version=$TARGET_VERSION"
+          } >> "$GITHUB_OUTPUT"
+          echo "Validated: $DEVELOP_BRANCH -> stable v$TARGET_VERSION"
+
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Verify develop branch is merged into main
+        env:
+          DEVELOP_BRANCH: ${{ steps.validate-input.outputs.develop_branch }}
+        run: |
+          set -euo pipefail
+          if ! git fetch origin "$DEVELOP_BRANCH"; then
+            echo "::error::develop branch '$DEVELOP_BRANCH' not found on origin"
+            exit 1
+          fi
+          DEVELOP_SHA="$(git rev-parse "origin/$DEVELOP_BRANCH")"
+          if ! git merge-base --is-ancestor "$DEVELOP_SHA" HEAD; then
+            echo "::error::develop branch '$DEVELOP_BRANCH' is not merged into main."
+            echo "Merge the develop PR into main first, then re-run this workflow."
+            exit 1
+          fi
+          echo "develop branch '$DEVELOP_BRANCH' (sha: $DEVELOP_SHA) is merged into main."
+
+      - name: Read and validate current version
+        id: read-version
+        env:
+          TARGET_VERSION: ${{ steps.validate-input.outputs.target_version }}
+        run: |
+          set -euo pipefail
+          CURRENT="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
+          if [ -z "$CURRENT" ]; then
+            echo "::error::Could not read version from root Cargo.toml"
+            exit 1
+          fi
+          echo "Current root Cargo.toml version: $CURRENT"
+          EXPECT_PREFIX="${TARGET_VERSION}-"
+          if [[ "$CURRENT" != "${EXPECT_PREFIX}"* ]]; then
+            echo "::error::Current version '$CURRENT' does not start with '$EXPECT_PREFIX'"
+            echo "The develop branch must have been merged with its prerelease Cargo.toml intact."
+            exit 1
+          fi
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+      - name: Strip prerelease suffix
+        env:
+          TARGET_VERSION: ${{ steps.validate-input.outputs.target_version }}
+        run: |
+          ./scripts/strip-prerelease-suffix.sh "$TARGET_VERSION"
+
+      - name: Verify changes were made
+        run: |
+          if git diff --quiet; then
+            echo "::error::strip-prerelease-suffix.sh produced no changes."
+            echo "Cargo.toml may already be at the stable version, or the script is broken."
+            exit 1
+          fi
+          echo "Changed files:"
+          git diff --name-only
+
+      - name: Push promote commit via GraphQL createCommitOnBranch
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          TARGET_VERSION: ${{ steps.validate-input.outputs.target_version }}
+        run: |
+          set -euo pipefail
+          HEAD_OID="$(git rev-parse HEAD)"
+
+          # Stream additions to a temp file. With dozens of Cargo.toml files
+          # base64-encoded, accumulating the JSON via --argjson would exceed
+          # ARG_MAX (mirrors the pattern in release-plz.yml; see #4045).
+          ADDITIONS_FILE="$(mktemp)"
+          trap 'rm -f "$ADDITIONS_FILE"' EXIT
+          while IFS=$'\t' read -r status path; do
+            case "$status" in
+              M|A)
+                base64 -w0 < "$path" \
+                  | jq -ncR --arg p "$path" '{path: $p, contents: input}' \
+                  >> "$ADDITIONS_FILE"
+                ;;
+              *)
+                echo "::warning::Unsupported diff status '$status' for path '$path'; skipping."
+                ;;
+            esac
+          done < <(git diff --name-status HEAD)
+
+          PAYLOAD_FILE="$(mktemp)"
+          jq -n \
+            --arg query 'mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url oid } } }' \
+            --arg repo "$REPO" \
+            --arg branch "main" \
+            --arg msg "chore(release): promote ${TARGET_VERSION} to stable" \
+            --arg oid "$HEAD_OID" \
+            --slurpfile adds "$ADDITIONS_FILE" \
+            '{
+              query: $query,
+              variables: {
+                input: {
+                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                  message: { headline: $msg },
+                  expectedHeadOid: $oid,
+                  fileChanges: { additions: $adds }
+                }
+              }
+            }' > "$PAYLOAD_FILE"
+
+          RESPONSE="$(gh api graphql --input "$PAYLOAD_FILE")"
+          rm -f "$PAYLOAD_FILE"
+
+          NEW_OID="$(jq -r '.data.createCommitOnBranch.commit.oid' <<< "$RESPONSE")"
+          NEW_URL="$(jq -r '.data.createCommitOnBranch.commit.url' <<< "$RESPONSE")"
+          if [ -z "$NEW_OID" ] || [ "$NEW_OID" = "null" ]; then
+            echo "::error::createCommitOnBranch did not return a commit oid"
+            echo "$RESPONSE"
+            exit 1
+          fi
+          echo "Promoted to stable v${TARGET_VERSION}: $NEW_URL"
+          echo "::notice::Existing release-plz.yml on main will detect this change and create a stable Release PR."
