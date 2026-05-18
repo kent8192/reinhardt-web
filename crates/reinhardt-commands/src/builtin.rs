@@ -1388,6 +1388,12 @@ impl RunServerCommand {
 	/// No-op when the `routers` feature is disabled.
 	///
 	/// Kept public to preserve API stability across feature-flag toggles.
+	///
+	/// # Errors
+	///
+	/// Never returns an error in the `routers`-disabled build — always
+	/// resolves to `Ok(())`. The signature matches the active variant so
+	/// downstream callers can stay feature-flag-agnostic.
 	#[cfg(not(feature = "routers"))]
 	pub async fn register_http_routes_from_inventory(
 		&self,
