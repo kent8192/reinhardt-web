@@ -251,19 +251,24 @@ async fn column_exists(
 	}
 }
 
-/// Check whether an index exists.
+/// Check whether an index exists on the given table.
 ///
-/// For Postgres and MySQL the lookup is by index name. SQLite stores
-/// auto-generated index names in `sqlite_master` as well.
-async fn index_exists(connection: &DatabaseConnection, index_name: &str) -> bool {
+/// `table_name` is required because MySQL's `information_schema.statistics`
+/// keys indexes by `(table_schema, table_name, index_name)` — filtering by
+/// `index_name` alone can produce false positives if another table happens to
+/// use the same index name. Postgres and SQLite are also constrained by table
+/// name for consistency.
+async fn index_exists(connection: &DatabaseConnection, table_name: &str, index_name: &str) -> bool {
 	match connection.database_type() {
 		DatabaseType::Postgres => {
 			let pool = connection
 				.into_postgres()
 				.expect("postgres pool unavailable");
 			sqlx::query_scalar::<_, bool>(
-				"SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE indexname = $1)",
+				"SELECT EXISTS(SELECT 1 FROM pg_indexes \
+				 WHERE tablename = $1 AND indexname = $2)",
 			)
+			.bind(table_name)
 			.bind(index_name)
 			.fetch_one(&pool)
 			.await
@@ -273,8 +278,10 @@ async fn index_exists(connection: &DatabaseConnection, index_name: &str) -> bool
 			let pool = connection.into_mysql().expect("mysql pool unavailable");
 			let count: i64 = sqlx::query_scalar(
 				"SELECT COUNT(*) FROM information_schema.statistics \
-				 WHERE table_schema = DATABASE() AND index_name = ?",
+				 WHERE table_schema = DATABASE() \
+				 AND table_name = ? AND index_name = ?",
 			)
+			.bind(table_name)
 			.bind(index_name)
 			.fetch_one(&pool)
 			.await
@@ -285,14 +292,61 @@ async fn index_exists(connection: &DatabaseConnection, index_name: &str) -> bool
 			let pool = connection.into_sqlite().expect("sqlite pool unavailable");
 			let count: i64 = sqlx::query_scalar(
 				"SELECT COUNT(*) FROM sqlite_master \
-				 WHERE type = 'index' AND name = ?",
+				 WHERE type = 'index' AND tbl_name = ? AND name = ?",
 			)
+			.bind(table_name)
 			.bind(index_name)
 			.fetch_one(&pool)
 			.await
 			.unwrap_or(0);
 			count > 0
 		}
+	}
+}
+
+/// Fetch the data type of a column from `information_schema.columns`.
+///
+/// Returns `None` if the column does not exist or for SQLite (which stores
+/// declared types as opaque strings in `sqlite_master` and does not expose
+/// `information_schema.columns`). Postgres returns canonical names like
+/// `character varying`, `text`, `integer`. MySQL returns names like
+/// `varchar`, `text`, `int`.
+async fn column_data_type(
+	connection: &DatabaseConnection,
+	table_name: &str,
+	column_name: &str,
+) -> Option<String> {
+	match connection.database_type() {
+		DatabaseType::Postgres => {
+			let pool = connection
+				.into_postgres()
+				.expect("postgres pool unavailable");
+			sqlx::query_scalar::<_, String>(
+				"SELECT data_type FROM information_schema.columns \
+				 WHERE table_name = $1 AND column_name = $2",
+			)
+			.bind(table_name)
+			.bind(column_name)
+			.fetch_optional(&pool)
+			.await
+			.ok()
+			.flatten()
+		}
+		DatabaseType::Mysql => {
+			let pool = connection.into_mysql().expect("mysql pool unavailable");
+			sqlx::query_scalar::<_, String>(
+				"SELECT data_type FROM information_schema.columns \
+				 WHERE table_schema = DATABASE() \
+				 AND table_name = ? AND column_name = ?",
+			)
+			.bind(table_name)
+			.bind(column_name)
+			.fetch_optional(&pool)
+			.await
+			.ok()
+			.flatten()
+		}
+		DatabaseType::Sqlite => None,
 	}
 }
 
@@ -485,20 +539,47 @@ async fn test_alter_column_type_rollback(#[case] backend: DatabaseType) {
 		"[{backend:?}] column should still exist after ALTER"
 	);
 
+	// Backend-conditional: on Postgres and MySQL, `information_schema` reports
+	// the post-ALTER type as `text`. Skip the check on SQLite, which records
+	// declared types as opaque strings in `sqlite_master` and does not expose
+	// `information_schema.columns`.
+	if matches!(backend, DatabaseType::Postgres | DatabaseType::Mysql) {
+		let after_alter = column_data_type(&connection, "products", "name")
+			.await
+			.expect("data_type should be available for Postgres/MySQL");
+		assert_eq!(
+			after_alter.to_lowercase(),
+			"text",
+			"[{backend:?}] column type should be TEXT after ALTER",
+		);
+	}
+
 	// Act: rollback
 	executor
 		.rollback_migrations(std::slice::from_ref(&alter_column_migration))
 		.await
 		.expect("Failed to rollback migration");
 
-	// Assert: column still exists with same name; backend-specific type-text
-	// shape varies (e.g. SQLite stores declared types as opaque strings), so
-	// we only assert structural reversibility here. Postgres-specific type-
-	// reversal coverage stays in the dedicated Postgres dialect tests.
+	// Assert: column still exists with same name on every backend.
 	assert!(
 		column_exists(&connection, "products", "name").await,
 		"[{backend:?}] column should still exist after rollback"
 	);
+
+	// Backend-conditional: on Postgres and MySQL, the column type should
+	// revert to the original VARCHAR(50) — Postgres reports it as
+	// `character varying`, MySQL as `varchar`. SQLite is skipped (see above).
+	if matches!(backend, DatabaseType::Postgres | DatabaseType::Mysql) {
+		let after_rollback = column_data_type(&connection, "products", "name")
+			.await
+			.expect("data_type should be available for Postgres/MySQL");
+		let lower = after_rollback.to_lowercase();
+		assert!(
+			lower == "character varying" || lower == "varchar",
+			"[{backend:?}] column type should revert to VARCHAR after rollback, \
+			 got {after_rollback:?}",
+		);
+	}
 }
 
 /// Test RunSQL with reverse_sql rollback.
@@ -823,7 +904,7 @@ async fn test_index_rollback(#[case] backend: DatabaseType) {
 
 	// Assert: index exists
 	assert!(
-		index_exists(&connection, "idx_users_email").await,
+		index_exists(&connection, "users", "idx_users_email").await,
 		"[{backend:?}] index should exist after creation",
 	);
 
@@ -835,7 +916,7 @@ async fn test_index_rollback(#[case] backend: DatabaseType) {
 
 	// Assert: index dropped
 	assert!(
-		!index_exists(&connection, "idx_users_email").await,
+		!index_exists(&connection, "users", "idx_users_email").await,
 		"[{backend:?}] index should not exist after rollback",
 	);
 }
@@ -884,25 +965,45 @@ async fn test_rollback_fail_without_reverse_sql(
 		.await
 		.expect("Forward migration should succeed");
 
+	// Sanity: forward DDL succeeded; the table exists.
+	assert!(
+		table_exists(&connection, "irreversible").await,
+		"[{backend:?}] table should exist after forward",
+	);
+
 	// Act: rollback (must not panic)
 	let rollback_result = executor
 		.rollback_migrations(std::slice::from_ref(&migration))
 		.await;
 
-	// Assert: either an explicit error or a no-op skip — both are policy-
-	// compliant, but the system must remain consistent across backends and
-	// must not crash.
+	// Assert observable state: both policies are acceptable but must be
+	// self-consistent.
+	// - Policy A (`Err`): the migration is rejected as irreversible; the
+	//   table MUST remain because no destructive action was taken.
+	// - Policy B (`Ok`): the migration is treated as a no-op skip; the table
+	//   MUST also remain — a successful rollback without a reverse must not
+	//   silently drop user data.
+	// In other words, regardless of return-value policy, the table must
+	// still exist after the call.
+	let _ = rollback_result;
 	assert!(
-		rollback_result.is_err() || rollback_result.is_ok(),
-		"[{backend:?}] rollback should either fail or skip irreversible ops",
+		table_exists(&connection, "irreversible").await,
+		"[{backend:?}] irreversible table must remain after rollback regardless of policy",
 	);
 }
 
-/// Test partial rollback with atomic=false.
+/// Test non-atomic single-operation rollback (`atomic = false`).
 ///
-/// **Test Intent**: Verify that `atomic = false` allows non-atomic rollback.
-/// MySQL is the canonical user here (non-transactional DDL), but Postgres /
-/// SQLite must also succeed.
+/// **Test Intent**: Verify that a migration declared with `atomic = false`
+/// can be applied and rolled back successfully on every backend, even though
+/// no transactional wrapper is used. This is the canonical setting for
+/// MySQL (non-transactional DDL), but Postgres and SQLite must accept the
+/// flag too and produce the same end state.
+///
+/// **Scope**: Single-operation migration only. Multi-operation partial-
+/// failure scenarios under `atomic = false` (which exercise the "some
+/// operations applied, some not" path) are covered by separate tests in
+/// the error-handling integration suite.
 #[rstest]
 #[case::postgres(DatabaseType::Postgres)]
 #[case::mysql(DatabaseType::Mysql)]
@@ -1248,12 +1349,12 @@ async fn test_rollback_with_dependencies(
 
 /// Test circular dependency detection in rollback.
 ///
-/// **Test Intent**: Verify that circular dependencies are handled gracefully
-/// (either detected and rejected, or skipped) without panicking.
-///
-/// **Note**: In a real migration system, circular dependencies should be
-/// rejected at the dependency-resolution stage. The test only asserts that
-/// the system does not panic regardless of the resolution policy.
+/// **Test Intent**: Verify that a true cycle in `dependencies` (A → B and
+/// B → A) is either detected at the dependency-resolution stage (preferred
+/// outcome — `apply_migrations` returns `Err`) or, if the resolver is
+/// lenient, that the resulting `rollback_migrations` call still completes
+/// without panicking. Either policy is acceptable as long as the system
+/// remains consistent and does not crash.
 #[rstest]
 #[case::postgres(DatabaseType::Postgres)]
 #[case::mysql(DatabaseType::Mysql)]
@@ -1264,6 +1365,7 @@ async fn test_circular_dependency_rollback(#[case] backend: DatabaseType) {
 	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection);
 
+	// Build an actual cycle: A depends on B, and B depends on A.
 	let migration_a = Migration {
 		app_label: "testapp".to_string(),
 		name: "0001_migration_a".to_string(),
@@ -1285,19 +1387,42 @@ async fn test_circular_dependency_rollback(#[case] backend: DatabaseType) {
 		optional_dependencies: vec![],
 	};
 
-	// Act: apply (likely errors due to missing/circular dependency)
+	let migration_b = Migration {
+		app_label: "testapp".to_string(),
+		name: "0002_migration_b".to_string(),
+		operations: vec![Operation::CreateTable {
+			name: leak_str("table_b").to_string(),
+			columns: vec![create_auto_pk_column("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		}],
+		dependencies: vec![("testapp".to_string(), "0001_migration_a".to_string())],
+		replaces: vec![],
+		atomic: true,
+		initial: None,
+		state_only: false,
+		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
+	};
+
+	// Act: apply both migrations together so the resolver sees the cycle.
 	let apply_result = executor
-		.apply_migrations(std::slice::from_ref(&migration_a))
+		.apply_migrations(&[migration_a.clone(), migration_b.clone()])
 		.await;
 
-	// Assert: the system handles the case without panicking. If forward
-	// happened to succeed (lenient resolver), the rollback must also be
-	// well-behaved.
+	// Assert: the system handles the cycle without panicking. The preferred
+	// policy is to reject it (`Err`); a lenient resolver that breaks the
+	// cycle deterministically and applies the migrations is also acceptable
+	// as long as the subsequent rollback also completes.
 	if apply_result.is_ok() {
 		let rollback_result = executor
-			.rollback_migrations(std::slice::from_ref(&migration_a))
+			.rollback_migrations(&[migration_a, migration_b])
 			.await;
-		// Either outcome is acceptable as long as the call returns.
+		// Either Ok or Err is acceptable here — we only require that the
+		// call returns rather than panicking.
 		let _ = rollback_result;
 	} else {
 		assert!(
