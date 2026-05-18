@@ -47,6 +47,12 @@ installed_apps! {
 	snippets: "snippets",
 }
 
+// `Snippet` is required by `#[model(app_label = "snippets", ...)]` so the
+// generated `AppLabel` impl finds a backing type, and by `ModelViewSet<Snippet,
+// S>` below to give the ViewSet a concrete model parameter. The fields
+// themselves are never read by this regression test (which only asserts the
+// `snippets:snippet-detail-publish` route name resolves); permit the
+// dead-code lint.
 #[allow(dead_code)]
 #[reinhardt_macros::model(app_label = "snippets", table_name = "snippets")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -57,6 +63,9 @@ pub struct Snippet {
 	pub title: String,
 }
 
+// `SnippetSerializer` exists only as the `S` type parameter for
+// `ModelViewSet<Snippet, S>` in the `views` module below; it is never
+// constructed or otherwise referenced.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SnippetSerializer;
