@@ -114,17 +114,6 @@ release-plz tag (release-plz correctly skips a bump in that case). At
   its rc.28 tag; re-exported through `reinhardt-testkit`, so depending on
   `reinhardt-testkit` alone gives you a compatible pair).
 
-> **0.x.y Series Caveat:** The RC policy below — API freeze during `rc.*` and a
-> 2-week stability window before the first stable release — is followed strictly
-> from `1.0.0` onward. During the pre-1.0 (`0.x.y`) period, Reinhardt reserves
-> the right to **break RC API compatibility or waive the 2-week stability
-> window** when blocking design issues are discovered. Any such exception is
-> documented in the affected crate's `CHANGELOG.md` and is confined to the `0.x`
-> series; starting with `1.0.0`, full SemVer 2.0 guarantees apply without
-> exception. See [`docs/API_STABILITY.md`](docs/API_STABILITY.md) and
-> [`instructions/STABILITY_POLICY.md`](instructions/STABILITY_POLICY.md) for the
-> complete policy.
-
 **What this means for you:**
 - Public APIs will only change to fix critical bugs -- no new features or additions
 - If a critical fix requires an API change, a migration guide is provided
@@ -132,7 +121,7 @@ release-plz tag (release-plz correctly skips a bump in that case). At
 - Bug fixes are shipped as `rc.2`, `rc.3`, etc.
 - Stable `0.1.0` will be released after a 2-week stability period with no critical issues
 
-For the full stability policy, see [API Stability Policy](docs/API_STABILITY.md).
+For the full stability policy, see [Stability Policy](instructions/STABILITY_POLICY.md).
 
 ## Installation
 
