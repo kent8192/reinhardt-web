@@ -128,14 +128,14 @@ impl RouterHandle {
 /// Returns a [`RouterHandle`] for imperative navigation from the current
 /// component or reactive context.
 ///
-/// # Errors
-///
-/// `RouterHandle`'s methods return
-/// `Err(NavigateError::RouterNotInstalled)` when `ClientLauncher::launch()`
-/// has not installed an SPA router on the current thread. The form! macro's
-/// WASM-side codegen uses this discriminant to fall back to a hard
-/// navigation; component / hook callers SHOULD treat it as a programmer
-/// error.
+/// The handle itself is infallible to obtain; navigation methods on
+/// [`RouterHandle`] (`push`, `replace`, `navigate`) return a
+/// `Result<(), NavigateError>` whose variants document the fallible
+/// cases. In particular, `Err(NavigateError::RouterNotInstalled)` is
+/// returned when `ClientLauncher::launch()` has not installed an SPA
+/// router on the current thread — the form! macro's WASM-side codegen
+/// uses this discriminant to fall back to a hard navigation, while
+/// component / hook callers SHOULD treat it as a programmer error.
 ///
 /// # Example
 ///

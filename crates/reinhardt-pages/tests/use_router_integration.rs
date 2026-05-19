@@ -16,7 +16,9 @@
 
 #![allow(deprecated)] // (Refs #4234) Tests exercise deprecated `pages::Router` directly.
 
-use reinhardt_pages::app::{__clear_spa_router_for_test, __install_router_for_test};
+use reinhardt_pages::app::{
+	__clear_spa_router_for_test, __current_path_for_test, __install_router_for_test,
+};
 use reinhardt_pages::component::Page;
 use reinhardt_pages::reactive::hooks::use_router;
 use reinhardt_pages::router::Router;
@@ -43,20 +45,28 @@ fn use_router_push_updates_current_path() {
 	let handle = use_router();
 	let result = handle.push("/welcome");
 
-	// Assert
+	// Assert — the call returned Ok AND the installed router's
+	// `current_path` signal moved. Observing the signal directly (rather
+	// than only checking the return value) guards against a regression
+	// where `push` returns Ok while silently no-op'ing.
 	assert!(
 		result.is_ok(),
 		"push to a registered route must succeed: {:?}",
 		result
 	);
+	assert_eq!(
+		__current_path_for_test().as_deref(),
+		Some("/welcome"),
+		"first push must move `current_path` to /welcome"
+	);
 
-	// Inspect the installed router's current_path signal via a fresh handle
-	// — Router::push updates the shared thread-local copy.
-	// We can't access the original `router` (moved into the slot), so we
-	// observe through a second `use_router()` call: the round-trip is what
-	// the test cares about anyway.
 	let result2 = handle.push("/");
 	assert!(result2.is_ok(), "second push must succeed: {:?}", result2);
+	assert_eq!(
+		__current_path_for_test().as_deref(),
+		Some("/"),
+		"second push must move `current_path` back to /"
+	);
 
 	// Cleanup
 	__clear_spa_router_for_test();
@@ -72,11 +82,18 @@ fn use_router_replace_updates_current_path() {
 	// Act
 	let result = use_router().replace("/welcome");
 
-	// Assert
+	// Assert — Result is Ok AND the path signal moved. Without the
+	// signal observation the test would still pass if `replace` silently
+	// no-op'd while returning Ok.
 	assert!(
 		result.is_ok(),
 		"replace to a registered route must succeed: {:?}",
 		result
+	);
+	assert_eq!(
+		__current_path_for_test().as_deref(),
+		Some("/welcome"),
+		"replace must move `current_path` to /welcome"
 	);
 
 	// Cleanup
@@ -95,11 +112,18 @@ fn use_router_navigate_dispatches_push() {
 	// Act
 	let result = use_router().navigate("/welcome", NavigationType::Push);
 
-	// Assert
+	// Assert — Result is Ok AND the path signal moved, confirming
+	// `navigate(Push)` truly dispatched through to `push` rather than
+	// returning Ok without effect.
 	assert!(
 		result.is_ok(),
 		"navigate(Push) must dispatch to push: {:?}",
 		result
+	);
+	assert_eq!(
+		__current_path_for_test().as_deref(),
+		Some("/welcome"),
+		"navigate(Push) must move `current_path` to /welcome"
 	);
 
 	// Cleanup
@@ -114,6 +138,7 @@ fn use_router_navigate_pop_is_noop() {
 	// Arrange
 	let router = build_test_router();
 	__install_router_for_test(router);
+	let initial_path = __current_path_for_test();
 
 	// Act — Pop and Initial are browser-originated; the imperative API
 	// must accept them as no-ops so callers can pass values straight from
@@ -121,7 +146,9 @@ fn use_router_navigate_pop_is_noop() {
 	let pop_result = use_router().navigate("/welcome", NavigationType::Pop);
 	let initial_result = use_router().navigate("/welcome", NavigationType::Initial);
 
-	// Assert
+	// Assert — both succeed AND the `current_path` signal stays put,
+	// confirming the Pop / Initial arms truly no-op rather than silently
+	// pushing a history entry.
 	assert!(
 		pop_result.is_ok(),
 		"navigate(Pop) must succeed as a no-op: {:?}",
@@ -131,6 +158,11 @@ fn use_router_navigate_pop_is_noop() {
 		initial_result.is_ok(),
 		"navigate(Initial) must succeed as a no-op: {:?}",
 		initial_result
+	);
+	assert_eq!(
+		__current_path_for_test(),
+		initial_path,
+		"Pop/Initial navigation must not move `current_path`"
 	);
 
 	// Cleanup

@@ -161,6 +161,27 @@ pub fn __clear_spa_router_for_test() {
 	});
 }
 
+/// Hidden API that snapshots the installed SPA router's `current_path`
+/// signal for assertion in integration tests.
+///
+/// Returns `None` when no router is installed; otherwise returns the
+/// current path as it would be observed by a reactive consumer right
+/// now. Uses `get_untracked()` because tests are not run inside a
+/// reactive context and we only need a point-in-time value.
+///
+/// Refs #4610: lets `tests/use_router_integration.rs` verify that
+/// `RouterHandle::push` / `RouterHandle::replace` actually move the
+/// shared `current_path` signal, rather than just returning `Ok` while
+/// silently no-op'ing.
+#[doc(hidden)]
+pub fn __current_path_for_test() -> Option<String> {
+	APP_ROUTER.with(|slot| {
+		slot.borrow()
+			.as_ref()
+			.map(|spa| spa.current_path().get_untracked())
+	})
+}
+
 #[cfg(test)]
 #[allow(deprecated)] // (Refs #4234) Tests exercise deprecated `pages::Router` directly.
 mod tests {

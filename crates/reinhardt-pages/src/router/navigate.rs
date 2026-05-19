@@ -20,10 +20,17 @@ use crate::router::NavigationType;
 /// Equivalent to `use_router().navigate(path, nav)` — see
 /// [`crate::reactive::hooks::use_router`] for the hook form.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if `ClientLauncher::launch()` has not installed an SPA router on
-/// the current thread.
+/// - `Err(NavigateError::RouterNotInstalled)` — `ClientLauncher::launch()`
+///   has not installed an SPA router on the current thread. The form!
+///   macro's WASM-side codegen uses this discriminant to fall back to a
+///   hard navigation; component / hook callers SHOULD treat it as a
+///   programmer error.
+/// - `Err(NavigateError::RouterRejected(_))` — the installed router
+///   rejected the navigation (e.g. unknown route, invalid path). The
+///   inner string is the router's error message, suitable for logging
+///   but not for direct user display.
 ///
 /// # Example
 ///

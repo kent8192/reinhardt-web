@@ -148,6 +148,22 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 
 	let success_url = ast.success_url.clone();
 
+	// Reject simultaneous `redirect_on_success` + `success_url`: both
+	// generate `navigate()` calls in the same `submit()` body, which
+	// would push two history entries and fire two observer cycles for a
+	// single successful submit (Refs #4610 codegen review). Force the
+	// user to pick one — `redirect_on_success` for a static URL, or
+	// `success_url` for a dynamically-computed one.
+	if let (Some(_), Some(url_expr)) = (ast.redirect_on_success.as_ref(), success_url.as_ref()) {
+		return Err(Error::new_spanned(
+			url_expr,
+			"form! cannot specify both `redirect_on_success` and `success_url`: each generates an \
+			 SPA navigation on successful submit, so combining them would push two history \
+			 entries and fire two observer cycles. Use `redirect_on_success` for a static URL or \
+			 `success_url` for a dynamically-computed one, not both.",
+		));
+	}
+
 	// Transform initial_loader (pass through the Path)
 	let initial_loader = ast.initial_loader.clone();
 
@@ -3741,6 +3757,71 @@ mod tests {
 		let result = transform_redirect(&None);
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap(), None);
+	}
+
+	#[rstest::rstest]
+	fn test_reject_simultaneous_redirect_on_success_and_success_url() {
+		// Arrange — both navigation hooks specified at once. The generated
+		// `submit()` would otherwise call `navigate()` twice for a single
+		// successful submit (Refs #4610 codegen review).
+		//
+		// The `success_url:` token cannot be exercised through the
+		// untyped parser today because of upstream issue #4604 / #4611
+		// (the `reinhardt-manouche` `success_url:` parser arm consumes a
+		// redundant `:`). To still test the validator's mutual-exclusion
+		// branch *now*, parse the redirect-only form and graft a
+		// hand-built `success_url` expression onto the AST, then invoke
+		// `validate` directly.
+		let input = quote! {
+			name: VoteForm,
+			action: "/api/vote",
+			redirect_on_success: "/thanks",
+
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+		let mut ast: FormMacro = syn::parse2(input).expect("redirect-only form must parse");
+		ast.success_url = Some(
+			syn::parse_str::<syn::Expr>("|_form| String::from(\"/thanks-too\")")
+				.expect("success_url expression must parse"),
+		);
+
+		// Act
+		let result = validate(&ast);
+
+		// Assert
+		let err = result.expect_err("must reject both attributes together");
+		let msg = err.to_string();
+		assert!(
+			msg.contains("redirect_on_success") && msg.contains("success_url"),
+			"error must name both conflicting attributes, got: {msg}"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_redirect_on_success_alone_is_accepted() {
+		// Arrange — only `redirect_on_success`, no `success_url`. Must
+		// still validate cleanly (regression guard for the mutual-exclusion
+		// check above).
+		let input = quote! {
+			name: VoteForm,
+			action: "/api/vote",
+			redirect_on_success: "/thanks",
+
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(
+			result.is_ok(),
+			"single-attribute case must pass: {result:?}"
+		);
 	}
 
 	#[rstest::rstest]
