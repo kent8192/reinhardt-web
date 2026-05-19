@@ -137,7 +137,16 @@ pub mod apps {
 // `#[routes]` requires the function to return a `UnifiedRouter` — the macro
 // calls `.into_server()` on it to populate the global server router used by
 // `ResolvedUrls::from_global()`.
-#[reinhardt::routes]
+//
+// `no_client_resolvers` is required because the `snippets` app above declares
+// only `#[url_patterns(..., mode = server)]` (plus `mode = ws`) and never emits
+// a `client_url_resolvers` module. Without the flag, `#[routes]` expands a
+// `crate::apps::snippets::urls::client_url_resolvers::__for_each_client_url_resolver!`
+// reference that fails E0433 in `cargo check --tests`. The two sibling
+// regression tests (`url_patterns_viewset_collision_regression.rs`,
+// `url_patterns_viewset_namespace_regression.rs`) carry the same flag for
+// the same reason.
+#[reinhardt::routes(no_client_resolvers)]
 pub fn routes() -> UnifiedRouter {
 	// Replace the default empty `ServerRouter` with the snippets app's
 	// `ServerRouter` directly. `UnifiedRouter::server(|s| f(s))` lets the
