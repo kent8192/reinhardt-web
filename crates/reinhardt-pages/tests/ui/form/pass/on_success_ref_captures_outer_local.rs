@@ -12,12 +12,19 @@
 use reinhardt_pages::form;
 
 mod server_fns {
-	// Stub server_fn body. Returns an `impl Future<Output = Result<T, E>>`
-	// so the compile-time type-safety guard inside the `on_success_ref:`
-	// lift (#4624) can extract the Ok type `T = i64` and force-unify it
-	// with the user closure's value parameter type. A real `#[server_fn]`
-	// expansion has the same shape.
-	pub async fn update_profile() -> ::core::result::Result<i64, ::core::convert::Infallible> {
+	// Stub server_fn body. The signature must match what `form!` would
+	// generate at the call site: one positional arg per form field
+	// (`name: String` from the `CharField`) plus a trailing CSRF token
+	// arg (auto-injected for the default POST method). Returns an
+	// `impl Future<Output = Result<T, E>>` so the compile-time
+	// type-safety guard inside the `on_success_ref:` lift (#4624) can
+	// extract `T = i64` and force-unify it with the user closure's
+	// value parameter type. A real `#[server_fn]` expansion has the
+	// same shape.
+	pub async fn update_profile(
+		_name: ::std::string::String,
+		_csrf: ::std::string::String,
+	) -> ::core::result::Result<i64, ::core::convert::Infallible> {
 		::core::result::Result::Ok(0)
 	}
 }

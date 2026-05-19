@@ -9,7 +9,14 @@
 use reinhardt_pages::form;
 
 mod server_fns {
-	pub async fn update_profile() -> ::core::result::Result<i64, ::core::convert::Infallible> {
+	// Signature mirrors what `form!` calls at runtime: one positional
+	// arg per field + a trailing CSRF arg (auto-injected for POST).
+	// Returns a Future-of-Result so the on_success_ref type-safety
+	// guard can extract `T = i64`.
+	pub async fn update_profile(
+		_name: ::std::string::String,
+		_csrf: ::std::string::String,
+	) -> ::core::result::Result<i64, ::core::convert::Infallible> {
 		::core::result::Result::Ok(0)
 	}
 }
