@@ -1746,8 +1746,24 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// |----------|-----------|-------------|
 /// | `on_submit` | `\|&Form\|` | Before submission starts |
 /// | `on_loading` | `\|bool\|` | When loading state changes |
-/// | `on_success` | `\|Result\|` | After successful submission |
+/// | `on_success` | `\|T\|` | After successful submission (consumes `T` by move) |
+/// | `on_success_ref` | `\|&Form, &T\|` | After successful submission (borrows `&T`, can capture outer-scope locals) |
 /// | `on_error` | `\|ServerFnError\|` | After submission error |
+///
+/// ### Choosing between `on_success` and `on_success_ref`
+///
+/// Use `on_success_ref:` when the callback needs to reference locals
+/// from the surrounding function — the closure is expanded at the
+/// `form!` call site rather than inside the generated `submit()` body,
+/// so enclosing-scope captures work naturally (issue #4624).
+///
+/// Use `on_success:` when the callback needs to *consume* the server_fn
+/// return value (`T`) by move — for example to call a function that
+/// takes `T` by value.
+///
+/// Both may be supplied together; `on_success_ref` runs first
+/// (receives `&value`), then `on_success` runs (receives `value` by
+/// move).
 ///
 /// ### Example
 ///
@@ -1772,6 +1788,25 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///     fields: {
 ///         message: TextField { required },
 ///     },
+/// };
+/// ```
+///
+/// ### Example: outer-scope capture with `on_success_ref`
+///
+/// ```ignore
+/// let user_id: i64 = 42;
+/// let form = form! {
+///     name: ProfileForm,
+///     server_fn: update_profile,
+///
+///     // The closure can reference `user_id` from the surrounding
+///     // function. `on_success: |_v| { let _ = user_id; }` would
+///     // fail with E0434.
+///     on_success_ref: |_form, _updated: &ProfileUpdate| {
+///         navigate(&format!("/users/{user_id}/"), NavigationType::Push);
+///     },
+///
+///     fields: { /* ... */ },
 /// };
 /// ```
 ///
