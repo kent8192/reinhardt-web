@@ -93,6 +93,8 @@ Items explicitly documented as experimental are **experimental** and may change 
 **Guarantee**: Breaking changes require documenting migration paths in the affected crate's CHANGELOG.
 
 > **Note**: There is currently no `unstable` feature flag in the codebase. Experimental items are identified by documentation annotations rather than feature-gating.
+>
+> **Enforcement mechanism**: Because experimental items are still part of the public API surface, `cargo-semver-checks` (run on every PR by `.github/workflows/semver-check.yml`) will flag breaking changes to them just like changes to stable APIs. Permission to break an experimental API in a MINOR release is granted at review time via the `breaking-change` label combined with a CHANGELOG migration note — not through any automated SemVer exemption. Maintainers MUST verify, before applying the label, that the affected item is documented as experimental.
 
 ### Internal API
 
@@ -488,7 +490,7 @@ The following are categorically breaking and require a MAJOR version bump:
 
 For stable crates, breaking changes follow this workflow:
 
-1. Open an RFC issue using the API Change Proposal template (`.github/ISSUE_TEMPLATE/8-api_change.yml`) with the title `[RFC]: <description>` and label it `enhancement`
+1. Open an RFC issue using the [API Change Proposal template](../.github/ISSUE_TEMPLATE/8-api_change.yml) (repo-root path: `.github/ISSUE_TEMPLATE/8-api_change.yml`) with the title `[RFC]: <description>` and label it `enhancement`
 2. Final Comment Period (FCP) of at least 7 days for community feedback
 3. Breaking changes require MAJOR version bump
 4. A migration guide MUST be provided (see [Migration Guide Requirements](#migration-guide-requirements))
@@ -496,7 +498,7 @@ For stable crates, breaking changes follow this workflow:
 
 ### BC-4 (SHOULD): `#[non_exhaustive]` as a Preventative Measure
 
-All public error enums and configuration structs are marked `#[non_exhaustive]` to allow adding new variants/fields in MINOR releases without breaking downstream exhaustive matches or struct literal initializations.
+All new public error enums and configuration structs SHOULD be marked `#[non_exhaustive]` to allow adding new variants/fields in MINOR releases without breaking downstream exhaustive matches or struct literal initializations. Existing public error enums and configuration structs SHOULD be retrofitted with `#[non_exhaustive]` opportunistically as part of the next breaking change touching them.
 
 This means downstream users MUST:
 
