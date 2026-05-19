@@ -2184,8 +2184,7 @@ mod tests {
 		let result: Result<FormMacro> = syn::parse2(input);
 
 		// Assert
-		assert!(result.is_ok(), "parse failed: {:?}", result.err());
-		let form = result.unwrap();
+		let form = result.unwrap_or_else(|err| panic!("parse failed: {err}"));
 		assert!(form.success_url.is_some());
 	}
 
@@ -2211,8 +2210,7 @@ mod tests {
 		let result: Result<FormMacro> = syn::parse2(input);
 
 		// Assert
-		assert!(result.is_ok(), "parse failed: {:?}", result.err());
-		let form = result.unwrap();
+		let form = result.unwrap_or_else(|err| panic!("parse failed: {err}"));
 		assert!(form.success_url.is_some());
 		assert!(form.callbacks.on_error.is_some());
 	}
