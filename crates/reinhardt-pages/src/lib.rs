@@ -254,6 +254,11 @@ pub use reinhardt_forms::{
 #[allow(deprecated)]
 // (Refs #4234) Re-exporting deprecated `PathPattern`, `Route`, `Router` for backward compatibility.
 pub use router::{Link, PathPattern, Route, Router, RouterOutlet};
+// Imperative SPA navigation API (Issue #4610). `navigate` is the free
+// function; `use_router` returns a `RouterHandle` for use inside hooks /
+// components. `NavigateError` is the public error returned by both paths.
+pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
+pub use router::{NavigationType, navigate};
 pub use server_fn::{ServerFn, ServerFnError};
 pub use ssr::{SsrOptions, SsrRenderer, SsrState};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
