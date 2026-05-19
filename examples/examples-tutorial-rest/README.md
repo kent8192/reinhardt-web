@@ -274,8 +274,8 @@ let detail_url = urls.server().snippets().snippets_retrieve("42"); // "/api/snip
 // ViewSet endpoints (Tutorial 6) — the typed accessor is namespaced
 // per app, so the viewset's `<basename>_list` and `<basename>_detail`
 // live next to the function-based ones on the same gateway.
-let vs_list   = urls.server().snippets().snippet_list();        // see note below
-let vs_detail = urls.server().snippets().snippet_detail("42");  // see note below
+let vs_list   = urls.server().snippets().snippet_list();        // "/api/snippets-viewset/"
+let vs_detail = urls.server().snippets().snippet_detail("42");  // "/api/snippets-viewset/42/"
 
 // Equivalent calls through the `urls_demo` shim — useful when a caller
 // already has an `id: i64` and does not want to stringify at every
