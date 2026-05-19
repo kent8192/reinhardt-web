@@ -222,14 +222,24 @@ impl BaseCommand for MigrateCommand {
 				// lazily — `apply_migrations()` does the same precaution before
 				// recording (executor.rs:313/397/640).
 				//
-				// For `--plan` we DO NOT create the table: the contract is that
-				// dry-run modes leave the database untouched. If the table is
-				// absent on a fresh database, the applied set is by definition
-				// empty, so we swallow query failures in that mode and treat them
-				// as "no migrations applied". A real (non-table-missing) error
-				// would still surface when the user re-runs without `--plan`.
+				// For `--plan` we DO NOT create the table: dry-run must leave the
+				// database untouched. When the table is absent on a fresh database,
+				// the applied set is by definition empty — we ONLY recover from
+				// that specific class of error. Connection failures, permission
+				// errors, and other database faults are propagated so the user
+				// sees them rather than silently planning against a hallucinated
+				// empty state.
 				let applied = if is_plan {
-					recorder.get_applied_migrations().await.unwrap_or_default()
+					match recorder.get_applied_migrations().await {
+						Ok(v) => v,
+						Err(ref e) if is_relation_missing_error(e) => Vec::new(),
+						Err(e) => {
+							return Err(crate::CommandError::ExecutionError(format!(
+								"Failed to query applied migrations: {}",
+								e
+							)));
+						}
+					}
 				} else {
 					recorder.ensure_schema_table().await.map_err(|e| {
 						crate::CommandError::ExecutionError(format!(
@@ -637,14 +647,22 @@ impl BaseCommand for MigrationRollbackCommand {
 			let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
 			// For non-dry-run execution, ensure the bookkeeping table exists so the
 			// subsequent rollback can persist its unapply records. For `--dry-run`
-			// we must NOT create the table — the contract is that the database is
-			// left untouched. A missing table on a fresh database means no
-			// migrations are applied, so swallowing the query failure is
-			// equivalent to returning an empty applied set; real connectivity or
-			// permission errors would still surface when the user re-runs without
-			// `--dry-run`.
+			// we must NOT create the table; instead we ONLY treat the specific
+			// "relation does not exist" class of error as an empty applied set.
+			// Other errors (connectivity, permission, etc.) are propagated so the
+			// user sees them rather than silently rolling back against a
+			// hallucinated empty state.
 			let applied = if dry_run {
-				recorder.get_applied_migrations().await.unwrap_or_default()
+				match recorder.get_applied_migrations().await {
+					Ok(v) => v,
+					Err(ref e) if is_relation_missing_error(e) => Vec::new(),
+					Err(e) => {
+						return Err(crate::CommandError::ExecutionError(format!(
+							"Failed to query applied migrations: {}",
+							e
+						)));
+					}
+				}
 			} else {
 				recorder.ensure_schema_table().await.map_err(|e| {
 					crate::CommandError::ExecutionError(format!(
@@ -2560,6 +2578,34 @@ fn sanitize_database_url(url: &str) -> String {
 	}
 	// For non-URL formats (e.g., sqlite:file.db), return as-is
 	url.to_string()
+}
+
+/// Heuristic for "the bookkeeping table does not exist yet" errors.
+///
+/// `MigrateCommand` and `MigrationRollbackCommand` use this in their dry-run
+/// paths to distinguish a fresh database (where the `reinhardt_migrations`
+/// table has not been created yet) from real connectivity, permission, or
+/// SQL errors. Substring matching is deliberately conservative; the three
+/// supported backends emit messages of the form:
+///
+/// * PostgreSQL: `relation "reinhardt_migrations" does not exist` (SQLSTATE
+///   `42P01`).
+/// * SQLite:     `no such table: reinhardt_migrations`.
+/// * MySQL:      `Table 'db.reinhardt_migrations' doesn't exist` (error 1146).
+///
+/// We anchor the match to phrases that are highly specific to "missing
+/// table" so that unrelated errors (e.g. column-does-not-exist) still
+/// surface to the user.
+#[cfg(feature = "migrations")]
+fn is_relation_missing_error(err: &reinhardt_db::migrations::MigrationError) -> bool {
+	let msg = err.to_string().to_lowercase();
+	// PostgreSQL phrases the error as "relation ... does not exist".
+	let pg_match = msg.contains("relation") && msg.contains("does not exist");
+	// SQLite reports "no such table: <name>".
+	let sqlite_match = msg.contains("no such table");
+	// MySQL reports "table '<schema>.<name>' doesn't exist".
+	let mysql_match = msg.contains("table") && msg.contains("doesn't exist");
+	pg_match || sqlite_match || mysql_match
 }
 
 /// Helper function to get DATABASE_URL from environment or settings
