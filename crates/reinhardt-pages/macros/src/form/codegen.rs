@@ -148,6 +148,21 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 		submit_invocation: success_url_submit_invocation,
 	} = build_success_url_artifacts(&macro_ast.success_url, pages_crate, struct_name);
 
+	// Lift `on_success:` (when the user closure carries an explicit parameter
+	// type annotation) to the outer block so it can capture enclosing-scope
+	// locals like `qid`. Closures without annotations stay inline in the
+	// generated `fn submit()` body (which is what the historical contract
+	// guarantees for `|_x|` / `|y|` shapes whose `T` cannot be inferred at
+	// outer scope). Issue #4624.
+	let OnSuccessArtifacts {
+		field_decl: on_success_field_decl,
+		field_default_init: on_success_field_default_init,
+		setter_method: on_success_setter_method,
+		outer_setup: on_success_outer_setup,
+		submit_invocation: on_success_submit_invocation,
+		lifted: on_success_lifted,
+	} = build_on_success_artifacts(&macro_ast.callbacks.on_success);
+
 	// Generate derived methods
 	let derived_methods = generate_derived_methods(&macro_ast.derived, pages_crate);
 
@@ -158,8 +173,13 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	let into_view_impl = generate_into_page(macro_ast, pages_crate);
 
 	// Generate submit method if action is specified
-	let submit_method =
-		generate_submit_method(macro_ast, pages_crate, &success_url_submit_invocation);
+	let submit_method = generate_submit_method(
+		macro_ast,
+		pages_crate,
+		&success_url_submit_invocation,
+		&on_success_submit_invocation,
+		on_success_lifted,
+	);
 
 	// Generate validation method
 	let validate_method = generate_validate_method(macro_ast, pages_crate);
@@ -180,6 +200,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#state_decls
 				#watch_field_decls
 				#success_url_field_decl
+				#on_success_field_decl
 			}
 
 			impl #struct_name {
@@ -189,6 +210,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 						#state_inits
 						#watch_field_default_inits
 						#success_url_field_default_init
+						#on_success_field_default_init
 					}
 				}
 
@@ -197,6 +219,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#watch_methods
 				#watch_setter_methods
 				#success_url_setter_method
+				#on_success_setter_method
 				#derived_methods
 				#metadata_fn
 				#validate_method
@@ -210,12 +233,14 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 			// the outer scope, where enclosing-scope locals are visible. This is
 			// what makes `watch:` handlers behave as real closures (issue #4414),
 			// what makes `initial: <expr>` capture outer locals (issue #4420),
-			// and what makes `success_url:` capture outer locals like `qid`
-			// (issue #4605 / #4612).
+			// what makes `success_url:` capture outer locals like `qid`
+			// (issue #4605 / #4612), and — when the user closure is annotated —
+			// makes `on_success:` capture outer locals as well (issue #4624).
 			let mut __reinhardt_form = #struct_name::new();
 			#initial_outer_setup
 			#watch_outer_setup
 			#success_url_outer_setup
+			#on_success_outer_setup
 			__reinhardt_form
 		}
 	}
@@ -1704,6 +1729,8 @@ fn generate_submit_method(
 	macro_ast: &TypedFormMacro,
 	pages_crate: &TokenStream,
 	success_url_submit_invocation: &TokenStream,
+	on_success_submit_invocation: &TokenStream,
+	on_success_lifted: bool,
 ) -> TokenStream {
 	let callbacks = &macro_ast.callbacks;
 	let state = &macro_ast.state;
@@ -1763,8 +1790,12 @@ fn generate_submit_method(
 			let on_submit_code = generate_on_submit_callback(callbacks);
 			let on_loading_start_code = generate_on_loading_callback(callbacks, state, true);
 			let on_loading_end_code = generate_on_loading_callback(callbacks, state, false);
-			let on_success_code =
-				generate_on_success_callback(callbacks, state, &macro_ast.success_url);
+			let on_success_code = generate_on_success_callback(
+				callbacks,
+				state,
+				&macro_ast.success_url,
+				on_success_lifted,
+			);
 			let on_error_code = generate_on_error_callback(callbacks, state);
 			let redirect_code = generate_redirect_code(redirect, pages_crate);
 
@@ -1794,6 +1825,14 @@ fn generate_submit_method(
 							let _ = &value;
 							#redirect_code
 							#success_url_submit_invocation
+							// Issue #4624: when the user annotated their
+							// `on_success:` closure (and the lift is therefore
+							// active), this splice forwards `value` to the
+							// outer-scope-lifted handler stored on the form
+							// struct. When the lift is not active this is the
+							// empty token stream and `value` is consumed by the
+							// inline #on_success_code above instead.
+							#on_success_submit_invocation
 							Ok(())
 						}
 						Err(e) => {
@@ -2147,11 +2186,20 @@ pub(crate) struct SuccessUrlArtifacts {
 /// Generates the on_success callback invocation and state update spliced
 /// inline inside the generated `submit()` body.
 ///
-/// `on_success` (the user callback that takes the server_fn return value)
-/// stays inlined into `submit()` as before — its closure body cannot reach
-/// outer-scope locals, but this matches the historical contract and the
-/// in-tree callers do not need outer capture (they call free functions
-/// like `set_current_user(value)`).
+/// Issue #4624: when the user's `on_success:` closure carries explicit
+/// parameter type annotations (e.g. `|value: LoginResponse|`), the lift
+/// performed by [`build_on_success_artifacts`] is active and the user
+/// closure is invoked from the outer-scope-bound handler — not inline
+/// here. In that case `on_success_lifted` is `true` and we skip emitting
+/// the inline `let callback = #on_success; callback(value);`. The
+/// `__success.set(true)` state update is still emitted because state
+/// signals live on the form struct itself and are unaffected by the lift.
+///
+/// When `on_success_lifted` is `false` (unannotated closure, or no
+/// closure at all) we preserve the historical inline emit — the closure
+/// body executes inside `fn submit()` exactly as before. This branch
+/// matches every existing in-tree caller that did not need outer-scope
+/// capture, so it remains the zero-friction default.
 ///
 /// `success_url` is handled separately by [`build_success_url_artifacts`]:
 /// it IS lifted to outer scope because its target use case (URL builders
@@ -2164,6 +2212,7 @@ fn generate_on_success_callback(
 	callbacks: &TypedFormCallbacks,
 	state: &Option<TypedFormState>,
 	success_url: &Option<syn::Expr>,
+	on_success_lifted: bool,
 ) -> TokenStream {
 	let mut code = Vec::new();
 
@@ -2174,7 +2223,7 @@ fn generate_on_success_callback(
 		});
 	}
 
-	if let Some(on_success) = &callbacks.on_success {
+	if !on_success_lifted && let Some(on_success) = &callbacks.on_success {
 		code.push(quote! {
 			{
 				let callback = #on_success;
@@ -2319,6 +2368,189 @@ fn build_success_url_artifacts(
 		setter_method,
 		outer_setup,
 		submit_invocation,
+	}
+}
+
+/// Aggregated token-stream products of an `on_success:` lift.
+///
+/// Issue #4624: companion to [`SuccessUrlArtifacts`]. When the user's
+/// `on_success:` closure carries explicit parameter type annotations
+/// (e.g. `|value: LoginResponse|`), this struct describes a lift that
+/// stores the closure in an outer-scope-bound dispatcher on the form
+/// struct, so the closure body can capture enclosing-scope locals like a
+/// `qid` route parameter. When the closure is unannotated, every field
+/// here is empty and the closure stays inline in `fn submit()` (the
+/// historical contract).
+///
+/// The dispatcher's value parameter is type-erased through
+/// `Box<dyn Any + Send>` so the form struct does not need a generic
+/// parameter for the server_fn's return type `T`. `T` is recovered from
+/// the user's annotation via a monomorphized `__coerce<T, F>` helper
+/// (the same pattern used by [`build_success_url_artifacts`] and by
+/// `WatchArtifacts`). The runtime downcast in the dispatcher is
+/// statically guaranteed to succeed because the only producer of the
+/// boxed value is `submit()`, which boxes the server_fn's `Output` (the
+/// same type the annotated closure expects).
+pub(crate) struct OnSuccessArtifacts {
+	/// Field declaration appended to `struct #struct_name { ... }`. Empty
+	/// when the closure is not lifted.
+	field_decl: TokenStream,
+	/// Default initializer appended to `Self { ... }` inside `fn new()`.
+	/// Stores `None` so the form is usable before the outer-scope setup
+	/// binds the real dispatcher.
+	field_default_init: TokenStream,
+	/// Private setter method spliced into `impl #struct_name`. Used by
+	/// the outer-scope setup to install the type-erased dispatcher.
+	setter_method: TokenStream,
+	/// Code spliced into the outer block (after `let mut __reinhardt_form
+	/// = ...::new();`) where the user closure literal is expanded with
+	/// full access to enclosing-scope locals.
+	outer_setup: TokenStream,
+	/// Code spliced into the WASM-only `submit()` body after the
+	/// server_fn's `Ok(value)` arm. Boxes `value` and forwards it to the
+	/// stored dispatcher.
+	submit_invocation: TokenStream,
+	/// `true` when the user's `on_success:` closure was eligible for the
+	/// lift (every parameter carries an explicit type annotation) and the
+	/// other fields are populated. `false` when the closure stays inline
+	/// in `fn submit()` and the other fields are empty token streams.
+	lifted: bool,
+}
+
+/// Builds the [`OnSuccessArtifacts`] for the optional `on_success:` callback.
+///
+/// The lift only activates when the user closure carries explicit type
+/// annotations on every parameter — `|value: LoginResponse|` lifts;
+/// `|value|` or `|_value|` does not. The annotation requirement exists
+/// because the macro itself never sees the server_fn's return type as a
+/// token; instead the monomorphized `__coerce<T, F>` helper recovers `T`
+/// from the closure's annotated parameter. Closures with elided
+/// parameter types leave `T` unconstrained and would fail to compile
+/// inside `__coerce`, so we keep them on the historical inline path.
+///
+/// The `TypedFormCallbacks` parser narrows `on_success` to `ExprClosure`
+/// already (see `reinhardt-manouche`), so this helper only inspects the
+/// closure's parameter list and never sees a non-closure `Expr`.
+fn build_on_success_artifacts(on_success: &Option<syn::ExprClosure>) -> OnSuccessArtifacts {
+	let empty = OnSuccessArtifacts {
+		field_decl: quote! {},
+		field_default_init: quote! {},
+		setter_method: quote! {},
+		outer_setup: quote! {},
+		submit_invocation: quote! {},
+		lifted: false,
+	};
+
+	let Some(closure) = on_success else {
+		return empty;
+	};
+
+	// Eligibility gate: only closures whose every parameter has an
+	// explicit type annotation are lifted. This guards `__coerce<T, F>`
+	// against type-inference dead ends for `|_x|` / `|y|` shapes.
+	if closure.inputs.is_empty() {
+		return empty;
+	}
+	let all_annotated = closure
+		.inputs
+		.iter()
+		.all(|pat| matches!(pat, syn::Pat::Type(_)));
+	if !all_annotated {
+		return empty;
+	}
+
+	// Type-erased dispatcher. The form struct never names `T`; `T` is
+	// recovered from the user closure's annotation via `__coerce<T, F>`
+	// at outer setup time, and re-materialized at submit time via an
+	// `Any` downcast. The `Send + Sync` bounds mirror the precedent set
+	// by [`build_success_url_artifacts`] and `WatchArtifacts` so the
+	// form struct can stay `Clone` + cross-thread.
+	let dispatcher_ty = quote! {
+		::std::sync::Arc<
+			dyn ::core::ops::Fn(::std::boxed::Box<
+				dyn ::core::any::Any + ::core::marker::Send,
+			>)
+				+ ::core::marker::Send
+				+ ::core::marker::Sync,
+		>
+	};
+
+	let field_decl = quote! {
+		__on_success_dispatcher: ::core::option::Option<#dispatcher_ty>,
+	};
+
+	let field_default_init = quote! {
+		__on_success_dispatcher: ::core::option::Option::None,
+	};
+
+	let setter_method = quote! {
+		#[doc(hidden)]
+		fn __set_on_success_dispatcher(&mut self, __dispatcher: #dispatcher_ty) {
+			self.__on_success_dispatcher = ::core::option::Option::Some(__dispatcher);
+		}
+	};
+
+	// Outer-scope wrap. The closure literal is expanded here where
+	// enclosing-scope locals are visible (issue #4624). The
+	// monomorphized `__coerce` is what makes the lift work without the
+	// macro knowing the server_fn's return type — `T` and `F` are
+	// inferred from the user's closure expression.
+	let outer_setup = quote! {
+		{
+			fn __coerce<__T, __F>(__cb: __F) -> #dispatcher_ty
+			where
+				__T: 'static + ::core::marker::Send,
+				__F: ::core::ops::Fn(__T)
+					+ ::core::marker::Send
+					+ ::core::marker::Sync
+					+ 'static,
+			{
+				::std::sync::Arc::new(
+					move |__erased: ::std::boxed::Box<
+						dyn ::core::any::Any + ::core::marker::Send,
+					>| {
+						// The only producer of `__erased` is the
+						// generated `submit()` body below, which always
+						// boxes the server_fn's `Output`. The downcast
+						// therefore cannot fail at runtime; the `expect`
+						// is purely defensive and would only fire if a
+						// future codegen change broke the type-erasure
+						// invariant.
+						let __value = *__erased
+							.downcast::<__T>()
+							.expect("form! on_success: dispatcher received a value of unexpected type");
+						__cb(__value);
+					},
+				)
+			}
+			let __wrapped = __coerce(#closure);
+			__reinhardt_form.__set_on_success_dispatcher(__wrapped);
+		}
+	};
+
+	// Submit-time invocation. Runs only on browser wasm because the
+	// inline `fn submit()` body is itself gated by the same `cfg`.
+	let submit_invocation = quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		{
+			if let ::core::option::Option::Some(__dispatcher) =
+				self.__on_success_dispatcher.as_ref()
+			{
+				let __erased: ::std::boxed::Box<
+					dyn ::core::any::Any + ::core::marker::Send,
+				> = ::std::boxed::Box::new(value);
+				__dispatcher(__erased);
+			}
+		}
+	};
+
+	OnSuccessArtifacts {
+		field_decl,
+		field_default_init,
+		setter_method,
+		outer_setup,
+		submit_invocation,
+		lifted: true,
 	}
 }
 
