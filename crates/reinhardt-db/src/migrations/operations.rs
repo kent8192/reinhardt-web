@@ -2804,15 +2804,21 @@ impl ColumnDefinition {
 			.unwrap_or(false);
 
 		// Derive `not_null` from FieldState's nullability field (single source
-		// of truth set in `ModelMetadata::to_model_state()`). Primary keys are
-		// always NOT NULL regardless of the nullability flag.
+		// of truth set in `ModelMetadata::to_model_state()` from
+		// `FieldMetadata::is_nullable()`). Primary keys are always NOT NULL
+		// regardless of the nullability flag.
 		//
-		// Fixes #4573: the previous implementation read a `params["not_null"]`
-		// key that the proc-macro never emits (the macro emits the inverse,
-		// `params["null"]`, via `FieldMetadata::with_nullable`). The lookup
-		// always missed and `unwrap_or(false)` silently produced NULLABLE
-		// columns for every non-PK field, breaking the non-Optional Rust
-		// type ↔ NOT NULL schema contract.
+		// Fixes #4573: the previous implementation derived `not_null` from a
+		// `params["not_null"]` key, which the `#[model]` proc-macro only
+		// emits conditionally (when its `is_not_null` calculation returns
+		// `true`). The same macro also always emits `params["null"]`, which
+		// `is_nullable()` reads into `field_state.nullable`. Keeping the two
+		// keys as parallel sources of truth for nullability was the root
+		// cause of the drift: any code path that bypassed or mis-routed the
+		// `not_null` emission (e.g., offline state reconstruction, future
+		// macro refactors, or hand-built `FieldState` values in tests) would
+		// produce NULLABLE columns for non-Optional fields. Consolidating on
+		// `field_state.nullable` removes that class of regression.
 		let not_null = !field_state.nullable || primary_key;
 
 		let unique = params
@@ -5690,7 +5696,9 @@ mod tests {
 		// `field_state.nullable = false` via `FieldMetadata::with_nullable`,
 		// and emits the default value as `params["default"] = "true"`.
 		let mut field_state = FieldState::new("is_active", FieldType::Boolean, false);
-		field_state.params.insert("default".to_string(), "true".to_string());
+		field_state
+			.params
+			.insert("default".to_string(), "true".to_string());
 
 		// Act
 		let col = ColumnDefinition::from_field_state("is_active", &field_state);
@@ -5784,7 +5792,10 @@ mod tests {
 			"Non-Optional String must emit NOT NULL (regression #4573 — bug \
 			 affected all field types, not just bool)"
 		);
-		assert!(col.default.is_none(), "No default annotation → default = None");
+		assert!(
+			col.default.is_none(),
+			"No default annotation → default = None"
+		);
 	}
 
 	#[rstest]
