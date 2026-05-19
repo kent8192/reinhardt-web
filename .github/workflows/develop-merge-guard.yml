@@ -20,10 +20,11 @@ concurrency:
 jobs:
   develop-merge-guard:
     name: Develop Merge Guard
-    timeout-minutes: 360
+    timeout-minutes: 10
     if: >-
       github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
       github.event.label.name == 'migration-approved'
+    # See infra/github-runners/hotpath-runner-userdata.sh for the canonical hotpath runner labels.
     runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     steps:
       - name: Check if guard applies
