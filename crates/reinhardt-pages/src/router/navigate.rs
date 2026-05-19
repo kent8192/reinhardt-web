@@ -32,9 +32,6 @@ use crate::router::NavigationType;
 ///
 /// let _ = navigate("/welcome", NavigationType::Push);
 /// ```
-pub fn navigate(
-	path: impl Into<String>,
-	nav: NavigationType,
-) -> Result<(), NavigateError> {
+pub fn navigate(path: impl Into<String>, nav: NavigationType) -> Result<(), NavigateError> {
 	RouterHandle.navigate(path, nav)
 }
