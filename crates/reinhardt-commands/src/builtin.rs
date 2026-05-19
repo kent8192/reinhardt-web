@@ -49,6 +49,16 @@ impl BaseCommand for MigrateCommand {
 				"fake-initial",
 				"Skip initial migration if tables exist",
 			),
+			CommandOption::flag(
+				None,
+				"plan",
+				"Preview the migration plan without applying or rolling back",
+			),
+			CommandOption::option(
+				None,
+				"migrations-dir",
+				"Root directory containing migration files (default: ./migrations)",
+			),
 			CommandOption::option(Some('d'), "database", "Database to migrate")
 				.with_default("default"),
 		]
@@ -58,9 +68,10 @@ impl BaseCommand for MigrateCommand {
 		ctx.info("Running migrations...");
 
 		let app_label = ctx.arg(0).map(|s| s.to_string());
-		let _migration_name = ctx.arg(1).map(|s| s.to_string());
+		let target = ctx.arg(1).map(|s| s.to_string());
 		let is_fake = ctx.has_option("fake");
 		let _is_fake_initial = ctx.has_option("fake-initial");
+		let is_plan = ctx.has_option("plan");
 		let _database = ctx
 			.option("database")
 			.map(|s| s.to_string())
@@ -177,6 +188,191 @@ impl BaseCommand for MigrateCommand {
 				))
 			})?;
 
+			// 4.5. Direction detection (Django-style migrate-with-target semantics).
+			//
+			// Django's `manage.py migrate <app> <target>` syntax expresses both apply
+			// and unapply in a single command. The direction is resolved by comparing
+			// `<target>` against the currently applied state:
+			//
+			//   * `<target> == "zero"`  -> unapply ALL migrations for `<app>`.
+			//   * `<target>` is currently applied and migrations are applied AFTER it
+			//                            -> roll back those later migrations.
+			//   * `<target>` equals the current head -> no-op.
+			//   * `<target>` is not yet applied      -> forward direction (not yet
+			//                            supported in this PR; tracked separately).
+			//
+			// `--plan` previews the action without touching the database.
+			if let Some(target_name) = target.as_deref() {
+				use reinhardt_db::migrations::{
+					DatabaseMigrationRecorder, FilesystemSource, MigrationSource,
+				};
+				use std::path::PathBuf;
+
+				let app = app_label.as_ref().ok_or_else(|| {
+					crate::CommandError::InvalidArguments(
+						"<migration_name> requires <app_label>; usage: `migrate <app> <target>` or `migrate <app> zero`"
+							.to_string(),
+					)
+				})?;
+
+				let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+				let applied = recorder.get_applied_migrations().await.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to query applied migrations: {}",
+						e
+					))
+				})?;
+				let applied_for_app: Vec<_> =
+					applied.iter().filter(|r| r.app == *app).cloned().collect();
+
+				let migrations_dir = ctx
+					.option("migrations-dir")
+					.map(PathBuf::from)
+					.unwrap_or_else(|| PathBuf::from("migrations"));
+				let source = FilesystemSource::new(migrations_dir);
+
+				// Helper closure to load full Migration objects (with reverse SQL)
+				// from records, preserving the input slice order.
+				async fn load_migrations_from_records(
+					source: &reinhardt_db::migrations::FilesystemSource,
+					records: &[reinhardt_db::migrations::MigrationRecord],
+				) -> Result<Vec<reinhardt_db::migrations::Migration>, crate::CommandError> {
+					let mut out = Vec::with_capacity(records.len());
+					for record in records {
+						let migration = source
+							.get_migration(&record.app, &record.name)
+							.await
+							.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to load migration {}:{}: {}",
+									record.app, record.name, e
+								))
+							})?;
+						out.push(migration);
+					}
+					Ok(out)
+				}
+
+				// Branch (a): `migrate <app> zero` -> unapply ALL applied migrations for app.
+				if target_name == "zero" {
+					if applied_for_app.is_empty() {
+						ctx.info(&format!(
+							"No applied migrations for app '{}'; nothing to do.",
+							app
+						));
+						return Ok(());
+					}
+
+					let to_rollback =
+						load_migrations_from_records(&source, &applied_for_app).await?;
+
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}':",
+							to_rollback.len(),
+							app
+						));
+						for migration in to_rollback.iter().rev() {
+							ctx.info(&format!(
+								"  - {}:{} (unapply)",
+								migration.app_label, migration.name
+							));
+						}
+						return Ok(());
+					}
+
+					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let result = executor
+						.rollback_migrations(&to_rollback)
+						.await
+						.map_err(|e| {
+							crate::CommandError::ExecutionError(format!(
+								"Failed to roll back migrations: {}",
+								e
+							))
+						})?;
+					for id in &result.applied {
+						ctx.success(&format!("  ✓ Rolled back: {}", id));
+					}
+					ctx.success(&format!(
+						"Rolled back {} migration(s) for app '{}'",
+						result.applied.len(),
+						app
+					));
+					return Ok(());
+				}
+
+				// Branch (b): target is currently applied -> roll back everything after it.
+				if let Some(pos) = applied_for_app.iter().position(|r| r.name == target_name) {
+					let to_rollback_records: Vec<_> = applied_for_app[pos + 1..].to_vec();
+					if to_rollback_records.is_empty() {
+						ctx.info(&format!(
+							"Already at {}:{}; nothing to do.",
+							app, target_name
+						));
+						return Ok(());
+					}
+
+					let to_rollback =
+						load_migrations_from_records(&source, &to_rollback_records).await?;
+
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}' to reach target '{}':",
+							to_rollback.len(),
+							app,
+							target_name
+						));
+						for migration in to_rollback.iter().rev() {
+							ctx.info(&format!(
+								"  - {}:{} (unapply)",
+								migration.app_label, migration.name
+							));
+						}
+						return Ok(());
+					}
+
+					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let result = executor
+						.rollback_migrations(&to_rollback)
+						.await
+						.map_err(|e| {
+							crate::CommandError::ExecutionError(format!(
+								"Failed to roll back migrations: {}",
+								e
+							))
+						})?;
+					for id in &result.applied {
+						ctx.success(&format!("  ✓ Rolled back: {}", id));
+					}
+					ctx.success(&format!(
+						"Rolled back to {}:{} ({} migration(s) unapplied)",
+						app,
+						target_name,
+						result.applied.len()
+					));
+					return Ok(());
+				}
+
+				// Branch (c): target is NOT currently applied. Forward-with-target is
+				// out of scope for issue #4558 (rollback only). Validate existence and
+				// surface a clear error pointing operators at the supported forms.
+				let target_exists = all_migrations
+					.iter()
+					.any(|m| m.app_label == *app && m.name == target_name);
+				if !target_exists {
+					return Err(crate::CommandError::ExecutionError(format!(
+						"Migration {}:{} does not exist on disk",
+						app, target_name
+					)));
+				}
+				return Err(crate::CommandError::ExecutionError(format!(
+					"Forward migration to a specific target ({}:{}) is not yet supported. \
+					 Use `migrate {}` to apply all unapplied migrations.",
+					app, target_name, app
+				)));
+			}
+
 			// 5. Filter and check migrations
 			let migrations_to_apply: Vec<_> = if let Some(ref app) = app_label {
 				all_migrations
@@ -259,6 +455,252 @@ impl BaseCommand for MigrateCommand {
 			ctx.warning("Migrations feature not enabled");
 			ctx.info("To use migrate, enable the 'migrations' feature");
 			Ok(())
+		}
+	}
+}
+
+/// Database migration rollback command (deprecated).
+///
+/// **Deprecated:** Prefer the Django-style `migrate <app_label> <target_migration>` form
+/// exposed by [`MigrateCommand`]. To unapply all migrations for an app, target the special
+/// migration name `"zero"`. Specifying a `<target_migration>` earlier than the currently
+/// applied state causes `MigrateCommand` to roll back to that target automatically; that
+/// is the canonical operator workflow.
+///
+/// This command is retained to honor the original CLI design proposed in
+/// <https://github.com/kent8192/reinhardt-web/issues/4558> and may be removed in a future
+/// release. Removal is tracked under the `rc-migration` label.
+///
+/// Behavior: rolls back the most recent N applied migrations on the configured database.
+/// The resolution order for the database URL is:
+///
+/// 1. `--database <url>` option (highest priority)
+/// 2. `DATABASE_URL` environment variable
+/// 3. `database.*` keys in `settings/base.toml` and `settings/<profile>.toml`
+///    under `--project-root` (defaults to current working directory)
+///
+/// The `--dry-run` flag previews which migrations would be rolled back without
+/// touching the database.
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `MigrateCommand` with a target migration name (Django-style). For full rollback, target `\"zero\"`. Tracked for removal under the `rc-migration` label."
+)]
+pub struct MigrationRollbackCommand;
+
+// The impl block references the deprecated struct via `Self`; that does not
+// itself constitute a user-facing call, so suppress the lint locally.
+#[allow(deprecated)]
+#[async_trait]
+impl BaseCommand for MigrationRollbackCommand {
+	fn name(&self) -> &str {
+		"migrate-rollback"
+	}
+
+	fn description(&self) -> &str {
+		"Roll back the most recent N applied database migrations"
+	}
+
+	fn options(&self) -> Vec<CommandOption> {
+		vec![
+			CommandOption::option(
+				Some('n'),
+				"steps",
+				"Number of migrations to roll back (default: 1)",
+			)
+			.with_default("1"),
+			CommandOption::flag(
+				None,
+				"dry-run",
+				"Preview which migrations would be rolled back without modifying the database",
+			),
+			CommandOption::option(
+				None,
+				"project-root",
+				"Project root directory (used to locate settings/*.toml). Defaults to the current working directory.",
+			),
+			CommandOption::option(Some('d'), "database", "Database URL override"),
+		]
+	}
+
+	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		#[cfg(feature = "migrations")]
+		{
+			use reinhardt_db::migrations::{
+				DatabaseMigrationRecorder, FilesystemSource, MigrationSource,
+			};
+			use std::path::PathBuf;
+
+			// 1. Parse arguments
+			let steps: usize = ctx
+				.option("steps")
+				.map(|s| s.to_string())
+				.unwrap_or_else(|| "1".to_string())
+				.parse()
+				.map_err(|e| {
+					crate::CommandError::InvalidArguments(format!("Invalid --steps value: {}", e))
+				})?;
+			if steps == 0 {
+				return Err(crate::CommandError::InvalidArguments(
+					"--steps must be at least 1".to_string(),
+				));
+			}
+			let dry_run = ctx.has_option("dry-run");
+			let project_root = ctx.option("project-root").map(PathBuf::from);
+
+			// 2. Resolve database URL via the standard precedence chain.
+			let database_url = ctx
+				.option("database")
+				.map(|s| s.to_string())
+				.or_else(|| {
+					DatabaseConnection::get_database_url_from_env_or_settings(
+						project_root.clone(),
+					)
+					.ok()
+				})
+				.ok_or_else(|| {
+					crate::CommandError::ExecutionError(
+						"No database URL provided. Use --database, set DATABASE_URL, or configure database in settings/*.toml".to_string()
+					)
+				})?;
+
+			// 3. Connect to the database. `backends::DatabaseConnection` exposes
+			//    scheme-specific constructors; dispatch by URL prefix to mirror
+			//    the pattern used by `MigrateCommand` above.
+			let connection: DatabaseConnection = if database_url.starts_with("postgres://")
+				|| database_url.starts_with("postgresql://")
+			{
+				#[cfg(feature = "postgres")]
+				{
+					DatabaseConnection::connect_postgres(&database_url).await
+				}
+				#[cfg(not(feature = "postgres"))]
+				{
+					return Err(crate::CommandError::ExecutionError(
+						"PostgreSQL support not enabled. Enable 'postgres' feature.".to_string(),
+					));
+				}
+			} else if database_url.starts_with("mysql://") {
+				#[cfg(feature = "mysql")]
+				{
+					DatabaseConnection::connect_mysql(&database_url).await
+				}
+				#[cfg(not(feature = "mysql"))]
+				{
+					return Err(crate::CommandError::ExecutionError(
+						"MySQL support not enabled. Enable 'mysql' feature.".to_string(),
+					));
+				}
+			} else if database_url.starts_with("sqlite:") {
+				#[cfg(feature = "sqlite")]
+				{
+					DatabaseConnection::connect_sqlite(&database_url).await
+				}
+				#[cfg(not(feature = "sqlite"))]
+				{
+					return Err(crate::CommandError::ExecutionError(
+						"SQLite support not enabled. Enable 'sqlite' feature.".to_string(),
+					));
+				}
+			} else {
+				return Err(crate::CommandError::ExecutionError(format!(
+					"Unsupported database URL scheme: {}",
+					database_url
+				)));
+			}
+			.map_err(|e| {
+				crate::CommandError::ExecutionError(format!("Failed to connect to database: {}", e))
+			})?;
+
+			// 4. Query the recorder for applied migrations (ordered ASC by applied timestamp).
+			let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+			let applied = recorder.get_applied_migrations().await.map_err(|e| {
+				crate::CommandError::ExecutionError(format!(
+					"Failed to query applied migrations: {}",
+					e
+				))
+			})?;
+
+			if applied.is_empty() {
+				return Err(crate::CommandError::ExecutionError(
+					"no migrations to roll back".to_string(),
+				));
+			}
+
+			if steps > applied.len() {
+				return Err(crate::CommandError::ExecutionError(format!(
+					"only {} migration(s) applied, cannot roll back {}",
+					applied.len(),
+					steps
+				)));
+			}
+
+			// 5. Select the last `steps` records (newest first) and reconstruct
+			//    full Migration objects (with reverse SQL) via the filesystem source.
+			//
+			//    We collect them in ASC order; the executor reverses internally,
+			//    so the newest one is rolled back first.
+			let migrations_dir = project_root
+				.clone()
+				.unwrap_or_else(|| PathBuf::from("."))
+				.join("migrations");
+			let source = FilesystemSource::new(migrations_dir);
+
+			let to_rollback_records: Vec<_> = applied.iter().rev().take(steps).collect();
+			let mut to_rollback = Vec::with_capacity(to_rollback_records.len());
+			for record in to_rollback_records.iter().rev() {
+				let migration = source
+					.get_migration(&record.app, &record.name)
+					.await
+					.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to load migration {}:{}: {}",
+							record.app, record.name, e
+						))
+					})?;
+				to_rollback.push(migration);
+			}
+
+			// 6. Dry-run preview — list and exit without mutating the database.
+			if dry_run {
+				ctx.info(&format!(
+					"[dry-run] Would roll back {} migration(s):",
+					to_rollback.len()
+				));
+				for migration in to_rollback.iter().rev() {
+					ctx.info(&format!("  - {}:{}", migration.app_label, migration.name));
+				}
+				return Ok(());
+			}
+
+			// 7. Execute the rollback.
+			let mut executor = DatabaseMigrationExecutor::new(connection);
+			let result = executor
+				.rollback_migrations(&to_rollback)
+				.await
+				.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to roll back migrations: {}",
+						e
+					))
+				})?;
+
+			for id in &result.applied {
+				ctx.success(&format!("  ✓ Rolled back: {}", id));
+			}
+			ctx.success(&format!(
+				"Rolled back {} migration(s) successfully",
+				result.applied.len()
+			));
+			Ok(())
+		}
+
+		#[cfg(not(feature = "migrations"))]
+		{
+			ctx.warning("Migrations feature not enabled");
+			ctx.info("To use migrate-rollback, enable the 'migrations' feature");
+			Err(crate::CommandError::ExecutionError(
+				"migrations feature not enabled".to_string(),
+			))
 		}
 	}
 }

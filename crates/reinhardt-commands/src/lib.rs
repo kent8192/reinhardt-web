@@ -177,6 +177,10 @@ use thiserror::Error;
 pub use base::{BaseCommand, CommandArgument, CommandOption};
 #[cfg(feature = "migrations")]
 pub use builtin::MakeMigrationsCommand;
+// Deprecated re-export retained for compatibility with the original issue #4558 proposal.
+// Prefer `MigrateCommand` with a target migration name (Django-style); see the type's docs.
+#[allow(deprecated)]
+pub use builtin::MigrationRollbackCommand;
 #[cfg(feature = "routers")]
 pub use builtin::ShowUrlsCommand;
 pub use builtin::{CheckCommand, CheckDiCommand, MigrateCommand, RunServerCommand, ShellCommand};
