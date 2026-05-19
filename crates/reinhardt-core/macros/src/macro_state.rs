@@ -16,6 +16,21 @@
 //! `OUT_DIR` is only available during build-script execution, not during proc-macro
 //! expansion. Proc macros have access to `CARGO_MANIFEST_DIR` via `std::env::var`,
 //! so the state file is placed under `$CARGO_MANIFEST_DIR/target/reinhardt/`.
+//!
+//! ## Why a per-crate subdirectory? (Issue #4592)
+//!
+//! When a single Cargo manifest contains multiple compilation units that each expand
+//! `installed_apps!` independently — most commonly the `[[test]]` targets under
+//! `tests/integration/tests/*.rs` — cargo invokes rustc in parallel for every target.
+//! All those rustc instances see the same `CARGO_MANIFEST_DIR`, so a flat state path
+//! would race: one binary's `installed_apps!` would overwrite the labels another
+//! binary's `#[routes]` is about to read, producing spurious E0433 errors.
+//!
+//! Cargo additionally sets `CARGO_CRATE_NAME` per compilation unit. We use it as a
+//! subdirectory under `target/reinhardt/`, isolating each binary's state file. The
+//! fallback sentinel `_crate_name_unset` is used if the variable is missing — that
+//! only happens outside cargo (e.g., a hand-rolled `rustc` invocation) and at worst
+//! reproduces the pre-fix flat layout.
 
 use std::path::PathBuf;
 
@@ -25,14 +40,28 @@ const STATE_FILE_NAME: &str = ".installed_apps";
 /// Subdirectory under `target/` for reinhardt state files.
 const STATE_SUBDIR: &str = "reinhardt";
 
-/// Returns the directory path for state files: `$CARGO_MANIFEST_DIR/target/reinhardt/`.
+/// Sentinel subdirectory used when `CARGO_CRATE_NAME` is not set. Only reachable
+/// outside a cargo-driven build.
+const CRATE_NAME_FALLBACK: &str = "_crate_name_unset";
+
+/// Composes the state directory path. Pure function — extracted so it can be unit
+/// tested without mutating process env vars.
+fn compose_state_dir_path(manifest_dir: &str, crate_name: &str) -> PathBuf {
+	PathBuf::from(manifest_dir)
+		.join("target")
+		.join(STATE_SUBDIR)
+		.join(crate_name)
+}
+
+/// Returns the directory path for state files:
+/// `$CARGO_MANIFEST_DIR/target/reinhardt/$CARGO_CRATE_NAME/`.
 fn state_dir_path() -> Result<PathBuf, String> {
 	let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").map_err(|_| {
 		"CARGO_MANIFEST_DIR not set. Cannot locate installed apps state file".to_string()
 	})?;
-	Ok(PathBuf::from(manifest_dir)
-		.join("target")
-		.join(STATE_SUBDIR))
+	let crate_name =
+		std::env::var("CARGO_CRATE_NAME").unwrap_or_else(|_| CRATE_NAME_FALLBACK.to_string());
+	Ok(compose_state_dir_path(&manifest_dir, &crate_name))
 }
 
 /// Writes the installed app labels to the state file.
@@ -70,4 +99,46 @@ pub(crate) fn read_installed_apps() -> Result<Vec<String>, String> {
 		.filter(|line| !line.is_empty())
 		.map(|line| line.to_string())
 		.collect())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// Note: `state_dir_path()`, `write_installed_apps()`, and `read_installed_apps()`
+	// rely on `CARGO_MANIFEST_DIR` / `CARGO_CRATE_NAME` set by cargo in the rustc
+	// invocation environment. Cargo propagates `CARGO_MANIFEST_DIR` to test
+	// runtimes but NOT `CARGO_CRATE_NAME`, so we cannot meaningfully exercise the
+	// runtime wrappers from a unit test without mutating process env (unsafe in
+	// Rust 2024). Instead we unit-test the pure path-composition helper, which
+	// captures the Issue #4592 invariant. End-to-end behavior is covered by
+	// `tests/integration/tests/*.rs` cleanly compiling from an empty
+	// `target/reinhardt/`.
+
+	#[test]
+	fn compose_appends_crate_name_as_final_segment() {
+		let path = compose_state_dir_path("/tmp/manifest", "widget_test");
+		assert_eq!(
+			path,
+			PathBuf::from("/tmp/manifest")
+				.join("target")
+				.join("reinhardt")
+				.join("widget_test"),
+		);
+	}
+
+	#[test]
+	fn compose_produces_distinct_paths_for_distinct_crate_names() {
+		// Core Issue #4592 invariant: different test binaries must not collide
+		// on the state file.
+		let a = compose_state_dir_path("/tmp/manifest", "test_a");
+		let b = compose_state_dir_path("/tmp/manifest", "test_b");
+		assert_ne!(a, b);
+	}
+
+	#[test]
+	fn compose_uses_fallback_constant_when_passed() {
+		let path = compose_state_dir_path("/tmp/manifest", CRATE_NAME_FALLBACK);
+		assert!(path.ends_with(CRATE_NAME_FALLBACK));
+	}
 }

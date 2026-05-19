@@ -1296,10 +1296,18 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			quote! {
 				// Track state file for incremental compilation invalidation.
 				// When installed_apps! rewrites the file, the compiler re-expands #[routes].
+				//
+				// Path is namespaced by `CARGO_CRATE_NAME` to match
+				// `crate::macro_state::state_dir_path` — required to keep multiple
+				// `[[test]]` binaries in one crate from racing on a shared state
+				// file (Issue #4592).
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				const _: &[u8] = include_bytes!(
-					concat!(env!("CARGO_MANIFEST_DIR"), "/target/reinhardt/.installed_apps")
-				);
+				const _: &[u8] = include_bytes!(concat!(
+					env!("CARGO_MANIFEST_DIR"),
+					"/target/reinhardt/",
+					env!("CARGO_CRATE_NAME"),
+					"/.installed_apps",
+				));
 
 				// Server-side per-app resolvers are native-only.
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
