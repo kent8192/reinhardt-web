@@ -1826,8 +1826,6 @@ fn generate_submit_method(
 							// trailing borrow for non-`Copy` server-fn outputs.
 							let _ = &value;
 							#on_success_code
-							#redirect_code
-							#success_url_submit_invocation
 							// Issue #4624: when the user annotated their
 							// `on_success:` closure (and the lift is therefore
 							// active), this splice forwards `value` to the
@@ -1835,7 +1833,16 @@ fn generate_submit_method(
 							// struct. When the lift is not active this is the
 							// empty token stream and `value` is consumed by the
 							// inline #on_success_code above instead.
+							//
+							// Must run in the same slot as `#on_success_code`
+							// — i.e. before `#redirect_code` and
+							// `#success_url_submit_invocation` — so the
+							// annotated callback is not skipped when those
+							// dispatchers fall back to `set_href()` and unload
+							// the page.
 							#on_success_submit_invocation
+							#redirect_code
+							#success_url_submit_invocation
 							Ok(())
 						}
 						Err(e) => {
