@@ -301,6 +301,49 @@ async fn rollback_no_applied_migrations_exits_cleanly(
 #[rstest]
 #[tokio::test]
 #[serial(migrate_target_e2e)]
+async fn plan_on_fresh_db_does_not_create_recorder_table(
+	#[future] migration_executor: MigrationExecutorFixture,
+) {
+	// Regression test for the `--plan` no-mutation contract: on a fresh
+	// container the `reinhardt_migrations` bookkeeping table has not been
+	// created yet. A naïve implementation that unconditionally calls
+	// `recorder.ensure_schema_table()` before querying the applied set
+	// would silently create the table as a side effect, violating the
+	// dry-run guarantee. This test pins that behavior down.
+	let (_executor, _container, _pool, _port, url) = migration_executor.await;
+	let tempdir = tempfile::tempdir().expect("create tempdir");
+	let migrations_root = tempdir.path().join("migrations");
+	write_test_migration(&migrations_root, "myapp", "0001_first", &[]).unwrap();
+
+	// Act — `migrate myapp zero --plan` on a database without the recorder
+	// table must succeed (planning an empty rollback) without touching the
+	// database.
+	let ctx = build_ctx(&migrations_root, &url, Some("myapp"), Some("zero"), true);
+	MigrateCommand
+		.execute(&ctx)
+		.await
+		.expect("`--plan` on a fresh DB must succeed without modifying state");
+
+	// Assert — the recorder table still does not exist. Re-querying the
+	// applied set must therefore error (with a "relation does not exist"
+	// style error from the underlying driver) rather than returning an
+	// empty success.
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.expect("re-connect to test Postgres");
+	let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+	let result = recorder.get_applied_migrations().await;
+	assert!(
+		result.is_err(),
+		"--plan must NOT create the recorder table as a side effect; \
+		 got Ok({:?}) — table appears to exist after dry-run",
+		result.ok()
+	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(migrate_target_e2e)]
 async fn rollback_with_missing_reverse_sql_fails_loudly(
 	#[future] migration_executor: MigrationExecutorFixture,
 ) {

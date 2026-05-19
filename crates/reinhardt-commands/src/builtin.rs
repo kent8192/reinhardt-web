@@ -216,23 +216,34 @@ impl BaseCommand for MigrateCommand {
 				})?;
 
 				let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
-				// Ensure the recorder's bookkeeping table exists before querying it.
-				// On a fresh database the table has not been created yet; without this
-				// `get_applied_migrations()` fails with a "relation does not exist"
-				// error instead of returning an empty applied set — which would break
-				// the `migrate <app> zero` no-op contract on an empty database.
-				recorder.ensure_schema_table().await.map_err(|e| {
-					crate::CommandError::ExecutionError(format!(
-						"Failed to ensure migration recorder table: {}",
-						e
-					))
-				})?;
-				let applied = recorder.get_applied_migrations().await.map_err(|e| {
-					crate::CommandError::ExecutionError(format!(
-						"Failed to query applied migrations: {}",
-						e
-					))
-				})?;
+				// For non-plan execution, ensure the bookkeeping table exists so
+				// that the subsequent rollback can persist its unapply records.
+				// On a fresh database the `reinhardt_migrations` table is created
+				// lazily — `apply_migrations()` does the same precaution before
+				// recording (executor.rs:313/397/640).
+				//
+				// For `--plan` we DO NOT create the table: the contract is that
+				// dry-run modes leave the database untouched. If the table is
+				// absent on a fresh database, the applied set is by definition
+				// empty, so we swallow query failures in that mode and treat them
+				// as "no migrations applied". A real (non-table-missing) error
+				// would still surface when the user re-runs without `--plan`.
+				let applied = if is_plan {
+					recorder.get_applied_migrations().await.unwrap_or_default()
+				} else {
+					recorder.ensure_schema_table().await.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to ensure migration recorder table: {}",
+							e
+						))
+					})?;
+					recorder.get_applied_migrations().await.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to query applied migrations: {}",
+							e
+						))
+					})?
+				};
 				let applied_for_app: Vec<_> =
 					applied.iter().filter(|r| r.app == *app).cloned().collect();
 
@@ -624,22 +635,30 @@ impl BaseCommand for MigrationRollbackCommand {
 
 			// 4. Query the recorder for applied migrations (ordered ASC by applied timestamp).
 			let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
-			// Ensure the recorder's bookkeeping table exists. On a fresh database the
-			// table has not been created yet, in which case `get_applied_migrations()`
-			// would fail with a "relation does not exist" error instead of the
-			// expected "no migrations to roll back" message.
-			recorder.ensure_schema_table().await.map_err(|e| {
-				crate::CommandError::ExecutionError(format!(
-					"Failed to ensure migration recorder table: {}",
-					e
-				))
-			})?;
-			let applied = recorder.get_applied_migrations().await.map_err(|e| {
-				crate::CommandError::ExecutionError(format!(
-					"Failed to query applied migrations: {}",
-					e
-				))
-			})?;
+			// For non-dry-run execution, ensure the bookkeeping table exists so the
+			// subsequent rollback can persist its unapply records. For `--dry-run`
+			// we must NOT create the table — the contract is that the database is
+			// left untouched. A missing table on a fresh database means no
+			// migrations are applied, so swallowing the query failure is
+			// equivalent to returning an empty applied set; real connectivity or
+			// permission errors would still surface when the user re-runs without
+			// `--dry-run`.
+			let applied = if dry_run {
+				recorder.get_applied_migrations().await.unwrap_or_default()
+			} else {
+				recorder.ensure_schema_table().await.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to ensure migration recorder table: {}",
+						e
+					))
+				})?;
+				recorder.get_applied_migrations().await.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to query applied migrations: {}",
+						e
+					))
+				})?
+			};
 
 			if applied.is_empty() {
 				return Err(crate::CommandError::ExecutionError(
