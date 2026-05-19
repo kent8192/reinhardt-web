@@ -135,6 +135,19 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 		outer_setup: watch_outer_setup,
 	} = generate_watch_artifacts(&macro_ast.watch, pages_crate, struct_name);
 
+	// Lift `success_url:` (when present) to the outer block so its closure
+	// literal is expanded where enclosing-scope locals are visible. The
+	// artifacts are spliced into the struct, the `new()` initializer, the
+	// outer setup block, and the submit method body. Refs #4605 / #4612 /
+	// #4610.
+	let SuccessUrlArtifacts {
+		field_decl: success_url_field_decl,
+		field_default_init: success_url_field_default_init,
+		setter_method: success_url_setter_method,
+		outer_setup: success_url_outer_setup,
+		submit_invocation: success_url_submit_invocation,
+	} = build_success_url_artifacts(&macro_ast.success_url, pages_crate, struct_name);
+
 	// Generate derived methods
 	let derived_methods = generate_derived_methods(&macro_ast.derived, pages_crate);
 
@@ -145,7 +158,8 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	let into_view_impl = generate_into_page(macro_ast, pages_crate);
 
 	// Generate submit method if action is specified
-	let submit_method = generate_submit_method(macro_ast, pages_crate);
+	let submit_method =
+		generate_submit_method(macro_ast, pages_crate, &success_url_submit_invocation);
 
 	// Generate validation method
 	let validate_method = generate_validate_method(macro_ast, pages_crate);
@@ -165,6 +179,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#field_decls
 				#state_decls
 				#watch_field_decls
+				#success_url_field_decl
 			}
 
 			impl #struct_name {
@@ -173,6 +188,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 						#field_inits
 						#state_inits
 						#watch_field_default_inits
+						#success_url_field_default_init
 					}
 				}
 
@@ -180,6 +196,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#state_accessors
 				#watch_methods
 				#watch_setter_methods
+				#success_url_setter_method
 				#derived_methods
 				#metadata_fn
 				#validate_method
@@ -191,11 +208,14 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 
 			// Build the form instance and bind user-supplied watch handlers in
 			// the outer scope, where enclosing-scope locals are visible. This is
-			// what makes `watch:` handlers behave as real closures (issue #4414)
-			// and what makes `initial: <expr>` capture outer locals (issue #4420).
+			// what makes `watch:` handlers behave as real closures (issue #4414),
+			// what makes `initial: <expr>` capture outer locals (issue #4420),
+			// and what makes `success_url:` capture outer locals like `qid`
+			// (issue #4605 / #4612).
 			let mut __reinhardt_form = #struct_name::new();
 			#initial_outer_setup
 			#watch_outer_setup
+			#success_url_outer_setup
 			__reinhardt_form
 		}
 	}
@@ -996,11 +1016,22 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				quote! { #(#clones)* }
 			};
 
-			// Generate redirect code
+			// Generate redirect code. Issue #4610: prefer the SPA-aware
+			// navigation API so the redirect does not trigger a hard
+			// document reload when the application installed a client-side
+			// router. Fall back to `location.set_href` if the SPA router
+			// is not installed.
 			let redirect_code = if let Some(url) = redirect {
 				quote! {
-					if let Some(window) = web_sys::window() {
-						let _ = window.location().set_href(#url);
+					if #pages_crate::navigate(
+						::std::string::ToString::to_string(#url),
+						#pages_crate::NavigationType::Push,
+					)
+					.is_err()
+					{
+						if let ::core::option::Option::Some(window) = ::web_sys::window() {
+							let _ = window.location().set_href(#url);
+						}
 					}
 				}
 			} else {
@@ -1669,7 +1700,11 @@ fn generate_server_validator_rules(
 /// - `on_loading(true/false)`: Called when loading state changes
 /// - `on_success(result)`: Called when submission succeeds
 /// - `on_error(e)`: Called when submission fails
-fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) -> TokenStream {
+fn generate_submit_method(
+	macro_ast: &TypedFormMacro,
+	pages_crate: &TokenStream,
+	success_url_submit_invocation: &TokenStream,
+) -> TokenStream {
 	let callbacks = &macro_ast.callbacks;
 	let state = &macro_ast.state;
 	let redirect = &macro_ast.redirect_on_success;
@@ -1731,7 +1766,7 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 			let on_success_code =
 				generate_on_success_callback(callbacks, state, &macro_ast.success_url);
 			let on_error_code = generate_on_error_callback(callbacks, state);
-			let redirect_code = generate_redirect_code(redirect);
+			let redirect_code = generate_redirect_code(redirect, pages_crate);
 
 			quote! {
 				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
@@ -1752,7 +1787,13 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 					match result {
 						Ok(value) => {
 							#on_success_code
+							// Reference `value` so the binding is always considered
+							// used even when no `on_success` / `success_url`
+							// callback consumes it. Avoids `unused_variables`
+							// under `-D warnings`.
+							let _ = &value;
 							#redirect_code
+							#success_url_submit_invocation
 							Ok(())
 						}
 						Err(e) => {
@@ -2066,7 +2107,59 @@ fn generate_on_loading_callback(
 	quote! { #(#code)* }
 }
 
-/// Generates the on_success callback invocation and state update.
+/// Aggregated token-stream products of a `success_url:` lift.
+///
+/// Issue #4605 / #4612 / #4610: the original `generate_on_success_callback`
+/// emitted the user's `success_url:` closure literal *inside* the generated
+/// `fn submit()` method. Closures inside a `fn` item cannot capture
+/// enclosing-scope locals (Rust E0434), so a user closure that referenced
+/// outer locals like `let qid = ...;` failed to compile. This struct mirrors
+/// the [`WatchArtifacts`] shape: a single helper computes the field
+/// declaration, the outer-scope setup (where the user's closure literal is
+/// expanded — and where outer locals are still visible), and the
+/// per-submit invocation that pulls the stored handler off the form and
+/// runs it.
+///
+/// Empty defaults are produced when the user did not write `success_url:`
+/// (every splice point becomes `quote! {}`).
+pub(crate) struct SuccessUrlArtifacts {
+	/// Field declaration appended to `struct #struct_name { ... }`. Empty
+	/// when no `success_url` was supplied.
+	field_decl: TokenStream,
+	/// Default initializer appended to `Self { ... }` inside `fn new()`.
+	/// Stores `None` so the form is usable before the outer-scope setup
+	/// binds the real handler.
+	field_default_init: TokenStream,
+	/// Private setter method spliced into `impl #struct_name`. Used by the
+	/// outer-scope setup to install the type-erased handler.
+	setter_method: TokenStream,
+	/// Code spliced into the outer block (after `let mut __reinhardt_form
+	/// = ...::new();`) where the user closure literal is expanded with full
+	/// access to enclosing-scope locals like `qid`.
+	outer_setup: TokenStream,
+	/// Code spliced into the WASM-only `submit()` body after the
+	/// server_fn's `Ok(value)` arm. Pulls the stored handler off the form
+	/// and dispatches navigation through the new
+	/// [`crate::router::navigate`] API.
+	submit_invocation: TokenStream,
+}
+
+/// Generates the on_success callback invocation and state update spliced
+/// inline inside the generated `submit()` body.
+///
+/// `on_success` (the user callback that takes the server_fn return value)
+/// stays inlined into `submit()` as before — its closure body cannot reach
+/// outer-scope locals, but this matches the historical contract and the
+/// in-tree callers do not need outer capture (they call free functions
+/// like `set_current_user(value)`).
+///
+/// `success_url` is handled separately by [`build_success_url_artifacts`]:
+/// it IS lifted to outer scope because its target use case (URL builders
+/// like `links::poll_results(qid)`) is *intrinsically* outer-scope-capturing.
+/// The lift changes the closure signature from `|form, value|` to `|form|`
+/// (the value parameter is dropped); the form's state signals are
+/// accessible through the `form` parameter, and outer-scope locals like
+/// `qid` are now captured normally. Refs #4605 / #4612.
 fn generate_on_success_callback(
 	callbacks: &TypedFormCallbacks,
 	state: &Option<TypedFormState>,
@@ -2090,32 +2183,143 @@ fn generate_on_success_callback(
 		});
 	}
 
-	if let Some(url_expr) = success_url {
-		if matches!(url_expr, syn::Expr::Closure(_)) {
-			code.push(quote! {
-				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+	quote! { #(#code)* }
+}
+
+/// Builds the [`SuccessUrlArtifacts`] for the optional `success_url:`
+/// attribute.
+///
+/// When the user supplies a closure (`success_url: |form| <expr>`), the
+/// closure literal is expanded at the outer block — capturing
+/// enclosing-scope locals normally — and stored on the form struct via the
+/// generated setter. `submit()` then invokes the stored handler and
+/// dispatches the resulting URL through the SPA-aware navigation API.
+///
+/// When the user supplies a string-literal or other non-closure expression,
+/// the macro evaluates it once at outer scope and dispatches the captured
+/// value the same way.
+fn build_success_url_artifacts(
+	success_url: &Option<syn::Expr>,
+	pages_crate: &TokenStream,
+	struct_name: &syn::Ident,
+) -> SuccessUrlArtifacts {
+	let empty = SuccessUrlArtifacts {
+		field_decl: quote! {},
+		field_default_init: quote! {},
+		setter_method: quote! {},
+		outer_setup: quote! {},
+		submit_invocation: quote! {},
+	};
+
+	let Some(url_expr) = success_url else {
+		return empty;
+	};
+
+	// Handler type — type-erased so the form struct stays nameable. The
+	// `Send + Sync` bounds mirror `WatchArtifacts` so callbacks can be
+	// stored uniformly across SSR / CSR.
+	let handler_ty = quote! {
+		::std::sync::Arc<
+			dyn ::core::ops::Fn(&#struct_name) -> ::std::string::String
+				+ ::core::marker::Send
+				+ ::core::marker::Sync,
+		>
+	};
+
+	let field_decl = quote! {
+		__success_url_handler: ::core::option::Option<#handler_ty>,
+	};
+
+	let field_default_init = quote! {
+		__success_url_handler: ::core::option::Option::None,
+	};
+
+	let setter_method = quote! {
+		#[doc(hidden)]
+		fn __set_success_url_handler(&mut self, __handler: #handler_ty) {
+			self.__success_url_handler = ::core::option::Option::Some(__handler);
+		}
+	};
+
+	// Outer-scope wrap. Mirrors the WatchArtifacts pattern: the user
+	// closure literal is expanded here, where enclosing-scope locals are
+	// visible (issues #4605 / #4612). For closure expressions we use the
+	// same `__coerce` identity-function trick that watch artifacts use so
+	// the user's `|form| ...` closure infers its parameter type to
+	// `&#struct_name` without needing an explicit annotation. For
+	// non-closure expressions (string literals, expressions), the value is
+	// evaluated once and reused on every call.
+	let outer_setup = if matches!(url_expr, syn::Expr::Closure(_)) {
+		quote! {
+			{
+				let __wrapped: #handler_ty = ::std::sync::Arc::new(
+					move |__form: &#struct_name| -> ::std::string::String {
+						fn __coerce<__F, __R>(__f: __F) -> __F
+						where
+							__F: ::core::ops::Fn(&#struct_name) -> __R,
+						{
+							__f
+						}
+						let __user_success_url = __coerce(#url_expr);
+						::std::string::ToString::to_string(&__user_success_url(__form))
+					},
+				);
+				__reinhardt_form.__set_success_url_handler(__wrapped);
+			}
+		}
+	} else {
+		quote! {
+			{
+				let __captured_url: ::std::string::String =
+					::std::string::ToString::to_string(&{ #url_expr });
+				let __wrapped: #handler_ty = ::std::sync::Arc::new(
+					move |_form: &#struct_name| -> ::std::string::String {
+						__captured_url.clone()
+					},
+				);
+				__reinhardt_form.__set_success_url_handler(__wrapped);
+			}
+		}
+	};
+
+	// Submit-time invocation: pull the handler off `self`, compute the
+	// URL, and dispatch through the SPA-aware navigation API. Wrapped in
+	// `#[cfg(all(target_family = "wasm", target_os = "unknown"))]`
+	// because the navigation primitives only exist on browser wasm — on
+	// native/SSR there is no browser history to drive.
+	let submit_invocation = quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		{
+			if let ::core::option::Option::Some(__handler) =
+				self.__success_url_handler.as_ref()
+			{
+				let __url = __handler(self);
+				// Try the SPA-aware navigation API first; fall back to a
+				// hard navigation if the router is not installed (e.g. a
+				// form rendered outside `ClientLauncher::launch`).
+				if #pages_crate::navigate(
+					__url.clone(),
+					#pages_crate::NavigationType::Push,
+				)
+				.is_err()
 				{
-					let __url_fn = #url_expr;
-					let __url = __url_fn(self, &value);
-					if let Some(__window) = web_sys::window() {
+					if let ::core::option::Option::Some(__window) =
+						::web_sys::window()
+					{
 						let _ = __window.location().set_href(&__url);
 					}
 				}
-			});
-		} else {
-			code.push(quote! {
-				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-				{
-					let __url = #url_expr;
-					if let Some(__window) = web_sys::window() {
-						let _ = __window.location().set_href(__url);
-					}
-				}
-			});
+			}
 		}
-	}
+	};
 
-	quote! { #(#code)* }
+	SuccessUrlArtifacts {
+		field_decl,
+		field_default_init,
+		setter_method,
+		outer_setup,
+		submit_invocation,
+	}
 }
 
 /// Generates the on_error callback invocation and state update.
@@ -2147,16 +2351,32 @@ fn generate_on_error_callback(
 	quote! { #(#code)* }
 }
 
-/// Generates the redirect code if redirect_on_success is specified.
-fn generate_redirect_code(redirect: &Option<String>) -> TokenStream {
+/// Generates the redirect code if `redirect_on_success` is specified.
+///
+/// Issue #4610: prefer the SPA-aware navigation API
+/// (`#pages_crate::navigate`) so the redirect does not trigger a hard
+/// document reload when the application installed a client-side router.
+/// Fall back to `location.set_href` when the SPA router is not installed
+/// (e.g. forms rendered outside `ClientLauncher::launch`).
+fn generate_redirect_code(redirect: &Option<String>, pages_crate: &TokenStream) -> TokenStream {
 	let Some(url) = redirect else {
 		return quote! {};
 	};
 
 	quote! {
-		// Redirect to the specified URL on success
-		if let Some(window) = web_sys::window() {
-			let _ = window.location().set_href(#url);
+		// Redirect to the specified URL on success. SPA-aware: try the
+		// router first so registered observers fire and the matching route
+		// re-renders without a document reload; fall back to a hard
+		// navigation if no SPA router is installed.
+		if #pages_crate::navigate(
+			::std::string::ToString::to_string(#url),
+			#pages_crate::NavigationType::Push,
+		)
+		.is_err()
+		{
+			if let ::core::option::Option::Some(__window) = ::web_sys::window() {
+				let _ = __window.location().set_href(#url);
+			}
 		}
 	}
 }
