@@ -65,6 +65,7 @@ mod components;
 mod core;
 mod handler;
 mod history;
+mod navigate;
 mod params;
 mod pattern;
 
@@ -72,6 +73,7 @@ pub use components::{Link, Redirect, RouterOutlet, guard, guard_or};
 #[allow(deprecated)] // (Refs #4234) Re-exporting deprecated symbols intentionally.
 pub use core::{NavigationSubscription, PathError, Route, RouteMatch, Router, RouterError};
 pub use history::{HistoryState, NavigationType};
+pub use navigate::navigate;
 // `setup_popstate_listener` is wasm-only — see `history` module docs.
 #[cfg(wasm)]
 pub use history::setup_popstate_listener;

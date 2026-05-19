@@ -277,8 +277,19 @@ impl TypedFormState {
 pub struct TypedFormCallbacks {
 	/// Callback called before form submission starts.
 	pub on_submit: Option<ExprClosure>,
-	/// Callback called when submission succeeds (receives `T` by move,
-	/// expanded inline inside `fn submit()` — cannot capture outer-scope locals).
+	/// Callback called when submission succeeds (receives `T` by move).
+	///
+	/// Closures without parameter type annotations (`|value|`, `|_value|`)
+	/// are expanded inline inside `fn submit()` and cannot capture
+	/// outer-scope locals. When every parameter carries an explicit type
+	/// annotation (e.g. `|value: LoginResponse|`), the `reinhardt-pages`
+	/// `form!` codegen lifts the closure into the outer construction
+	/// block so its body can capture enclosing-scope locals like a
+	/// route parameter. See
+	/// [reinhardt-web#4624](https://github.com/kent8192/reinhardt-web/issues/4624).
+	///
+	/// For an always-lifted, borrow-based alternative that does not consume
+	/// `T`, use `on_success_ref` (same issue).
 	pub on_success: Option<ExprClosure>,
 	/// Lifted variant of `on_success` (receives `&T` by ref, expanded at the
 	/// outer construction block — can capture enclosing-scope locals).

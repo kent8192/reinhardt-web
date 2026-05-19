@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(pages)* lift `form! { on_success: |value: T| ... }` user closure to the outer construction block when the closure parameter carries an explicit type annotation, so the body can capture enclosing-scope locals like a `qid` route parameter (fixes [[#4624](https://github.com/kent8192/reinhardt-web/issues/4624)](https://github.com/kent8192/reinhardt-web/issues/4624), completes [[#4605](https://github.com/kent8192/reinhardt-web/issues/4605)](https://github.com/kent8192/reinhardt-web/issues/4605)). Unannotated closures (`|value|`, `|_value|`) keep the historical inline emit, so every in-tree caller continues to compile without changes.
+
+### Changed
+
+- *(pages)* lifted `form! on_success:` closures now require `Send + Sync` (mirroring the `success_url:` lift from [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)). Unannotated closures are unaffected.
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.28...reinhardt-pages@v0.1.0-rc.29) - 2026-05-13
 
 ### Fixed

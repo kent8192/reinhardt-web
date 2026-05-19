@@ -146,34 +146,28 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// - strip_arguments: explicitly routes the CSRF token to the trailing
 	//   server_fn argument (reinhardt-web#3971), replacing the implicit
 	//   auto-injection that broke when server_fn signatures evolved.
-	// - state: loading/error/success signals for form submission feedback.
-	//   `success` is required so that a sibling `use_effect` below can
-	//   trigger a one-shot navigation when the form's success signal flips
-	//   to `true` (reinhardt-web#4519).
-	// - watch blocks for reactive UI updates (submit button + error display)
+	// - state: loading / error signals for form submission feedback.
+	// - watch blocks for reactive UI updates (submit button + error display).
+	// - success_url: |_form| ...  triggers a one-shot SPA navigation to the
+	//   results page on successful vote submission (issues #4605 / #4612 /
+	//   #4610). The closure literal is captured at the outer block where
+	//   `qid` is visible, then stored on the form struct and invoked by
+	//   the generated `submit()` method post-success. The generated body
+	//   dispatches through `pages::navigate()` so the navigation stays
+	//   inside the SPA route table (no document reload) when the
+	//   `ClientLauncher::router_client` builder installed a router.
 	//
-	// The success-driven redirect is implemented with `use_effect` rather
-	// than the form macro's `success_url:` property because `success_url:`
-	// (a) has a parser bug in `reinhardt-manouche` that emits
-	// `error: expected `:`` at every call site
-	// (`crates/reinhardt-manouche/src/parser/form.rs:117-121` consumes a
-	// redundant colon), and (b) embeds the user closure inside the
-	// generated form struct's `submit()` method, which cannot capture
-	// enclosing-scope locals like `qid` (issues #4414 / #4420 fixed this
-	// for `watch:` and `initial:` only, by binding them in the outer
-	// scope where the form is constructed). `use_effect` runs in that
-	// same outer scope, so `qid` is captured cleanly and the redirect
-	// fires exactly once per `success.set(true)` transition.
-	//
-	// Ideal implementation (once the upstream parser bug is fixed AND
-	// `success_url:` is reworked to bind in the outer scope like `watch:`):
-	//     state: { loading, error },
-	//     success_url: |_form, _value| links::poll_results(qid),
+	// NOTE: depends on the `reinhardt-manouche` parser fix for #4604 /
+	// #4611 (the `success_url:` arm currently consumes a redundant
+	// `Token![:]`). Until that fix lands on `main`, this file will not
+	// compile — see the matching trybuild fixture at
+	// `crates/reinhardt-pages/tests/ui/form/pass/success_url_captures_outer_local.rs`,
+	// which is gated the same way.
 	let voting_form = form! {
 		name: VotingForm,
 		server_fn: submit_vote,
 		method: Post,
-		state: { loading, error, success },
+		state: { loading, error },
 
 		fields: {
 			question_id: HiddenField {
@@ -230,6 +224,8 @@ pub fn polls_detail(question_id: i64) -> Page {
 				})(err)
 			},
 		},
+
+		success_url: |_form| links::poll_results(qid),
 	};
 
 	// Bridge load_detail results to form choices via use_effect
@@ -245,36 +241,6 @@ pub fn polls_detail(question_id: i64) -> Page {
 				voting_form_for_effect
 					.choice_id_choices()
 					.set(choice_options);
-			}
-		});
-	}
-
-	// One-shot redirect to the results page on a successful vote (reinhardt-web#4519).
-	//
-	// The form macro flips `__success` from `false` to `true` exactly once in
-	// the `on_success` codepath (`crates/reinhardt-pages/macros/src/form/codegen.rs`
-	// `generate_on_success_callback` — `self.__success.set(true)` after the
-	// `Ok(value)` branch). This `use_effect` reads `voting_form.success().get()`
-	// so it re-runs on every transition of that signal; the `if did_succeed`
-	// guard ensures the navigation fires only on the `true` edge and not on
-	// the initial `false` value at mount time. That avoids the redirect-on-mount
-	// bug from PR #4517 (the previous `watch{}` predicate
-	// `if !is_loading && err.is_none()` was true on first render).
-	//
-	// The entire block is gated to `wasm32-unknown-unknown`: on native/SSR
-	// builds there is no browser `History` to drive, so cloning
-	// `voting_form`, allocating `dest`, and installing a re-running
-	// `use_effect` would be pure overhead with no observable effect.
-	#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-	{
-		let voting_form_for_redirect = voting_form.clone();
-		let dest = links::poll_results(qid);
-		use_effect(move || {
-			let did_succeed = voting_form_for_redirect.success().get();
-			if did_succeed {
-				if let Some(window) = web_sys::window() {
-					let _ = window.location().set_href(&dest);
-				}
 			}
 		});
 	}

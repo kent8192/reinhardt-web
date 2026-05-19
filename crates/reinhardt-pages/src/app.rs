@@ -87,11 +87,102 @@ where
 	})
 }
 
+/// Fallible variant of [`with_spa_router`] used by the public imperative
+/// navigation API ([`crate::router::navigate`],
+/// [`crate::reactive::hooks::router::RouterHandle`]).
+///
+/// Returns `None` when the SPA router has not been installed (instead of
+/// panicking like [`with_spa_router`]), so the form! macro's WASM-side
+/// codegen can fall back to a hard navigation when the form is rendered
+/// outside `ClientLauncher::launch` — e.g. in unit tests, dev tooling, or
+/// applications that intentionally mount forms without an SPA router.
+/// Refs #4610.
+// Native builds never instantiate this helper (the form! macro's
+// fallback path is gated on `#[cfg(wasm)]`), so silence the dead-code
+// warning off-wasm.
+#[cfg_attr(not(wasm), allow(dead_code))]
+pub(crate) fn try_with_spa_router<F, R>(f: F) -> Option<R>
+where
+	F: FnOnce(&dyn SpaRouter) -> R,
+{
+	APP_ROUTER.with(|r| {
+		let borrow = r.borrow();
+		borrow.as_ref().map(|spa| f(&**spa))
+	})
+}
+
 #[cfg(wasm)]
 fn store_spa_router(router: Box<dyn SpaRouter>) {
 	APP_ROUTER.with(|r| {
 		*r.borrow_mut() = Some(router);
 	});
+}
+
+/// Hidden API for installing a [`crate::router::Router`] in the per-thread
+/// `APP_ROUTER` slot from integration tests on native targets.
+///
+/// On wasm the launcher's `launch()` does this through the private
+/// `store_spa_router` above; on native the launcher's render path is
+/// behind `#[cfg(wasm)]`, so integration tests that exercise the imperative
+/// navigation API (`use_router`, `navigate`) need a way to seed the slot
+/// without going through the full launcher. Marked `#[doc(hidden)]` so it
+/// stays out of the SemVer surface and the published documentation —
+/// mirrors the `__diag_*` testing pattern in `router::core::Router`.
+///
+/// Tests MUST clear the slot at the end of the test (see
+/// [`__clear_spa_router_for_test`]) and SHOULD use `#[serial(router)]` to
+/// avoid interleaving with other tests that touch the same thread-local.
+///
+/// Refs #4610.
+#[doc(hidden)]
+#[allow(deprecated)] // (Refs #4234) Bridge for the deprecated `Router` path used by tests.
+pub fn __install_router_for_test(router: crate::router::Router) {
+	APP_ROUTER.with(|slot| {
+		*slot.borrow_mut() = Some(Box::new(router));
+	});
+}
+
+/// Hidden API for installing a
+/// [`reinhardt_urls::routers::ClientRouter`] in the per-thread
+/// `APP_ROUTER` slot from integration tests on native targets.
+///
+/// Companion to [`__install_router_for_test`] for the canonical
+/// `router_client` path. Refs #4610.
+#[doc(hidden)]
+pub fn __install_client_router_for_test(router: reinhardt_urls::routers::ClientRouter) {
+	APP_ROUTER.with(|slot| {
+		*slot.borrow_mut() = Some(Box::new(router));
+	});
+}
+
+/// Hidden API for clearing the per-thread `APP_ROUTER` slot at the end of
+/// an integration test. Refs #4610.
+#[doc(hidden)]
+pub fn __clear_spa_router_for_test() {
+	APP_ROUTER.with(|slot| {
+		*slot.borrow_mut() = None;
+	});
+}
+
+/// Hidden API that snapshots the installed SPA router's `current_path`
+/// signal for assertion in integration tests.
+///
+/// Returns `None` when no router is installed; otherwise returns the
+/// current path as it would be observed by a reactive consumer right
+/// now. Uses `get_untracked()` because tests are not run inside a
+/// reactive context and we only need a point-in-time value.
+///
+/// Refs #4610: lets `tests/use_router_integration.rs` verify that
+/// `RouterHandle::push` / `RouterHandle::replace` actually move the
+/// shared `current_path` signal, rather than just returning `Ok` while
+/// silently no-op'ing.
+#[doc(hidden)]
+pub fn __current_path_for_test() -> Option<String> {
+	APP_ROUTER.with(|slot| {
+		slot.borrow()
+			.as_ref()
+			.map(|spa| spa.current_path().get_untracked())
+	})
 }
 
 #[cfg(test)]
