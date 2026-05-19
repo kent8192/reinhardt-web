@@ -146,20 +146,34 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// - strip_arguments: explicitly routes the CSRF token to the trailing
 	//   server_fn argument (reinhardt-web#3971), replacing the implicit
 	//   auto-injection that broke when server_fn signatures evolved.
-	// - state: loading/error signals for form submission feedback
+	// - state: loading/error/success signals for form submission feedback.
+	//   `success` is required so that a sibling `use_effect` below can
+	//   trigger a one-shot navigation when the form's success signal flips
+	//   to `true` (reinhardt-web#4519).
 	// - watch blocks for reactive UI updates (submit button + error display)
-	// - success_url: WASM-only declarative redirect that fires once per
-	//   successful submit (reinhardt-web#4519). The closure receives
-	//   `(&form, &value)` (the generated form struct and the submitted
-	//   payload) and is invoked from the form macro's `on_success`
-	//   codepath — NOT from a `watch` block — so it cannot fire on
-	//   initial mount when `loading == false && error == None`, which
-	//   was the root cause of the previous redirect-on-mount bug.
+	//
+	// The success-driven redirect is implemented with `use_effect` rather
+	// than the form macro's `success_url:` property because `success_url:`
+	// (a) has a parser bug in `reinhardt-manouche` that emits
+	// `error: expected `:`` at every call site
+	// (`crates/reinhardt-manouche/src/parser/form.rs:117-121` consumes a
+	// redundant colon), and (b) embeds the user closure inside the
+	// generated form struct's `submit()` method, which cannot capture
+	// enclosing-scope locals like `qid` (issues #4414 / #4420 fixed this
+	// for `watch:` and `initial:` only, by binding them in the outer
+	// scope where the form is constructed). `use_effect` runs in that
+	// same outer scope, so `qid` is captured cleanly and the redirect
+	// fires exactly once per `success.set(true)` transition.
+	//
+	// Ideal implementation (once the upstream parser bug is fixed AND
+	// `success_url:` is reworked to bind in the outer scope like `watch:`):
+	//     state: { loading, error },
+	//     success_url: |_form, _value| links::poll_results(qid),
 	let voting_form = form! {
 		name: VotingForm,
 		server_fn: submit_vote,
 		method: Post,
-		state: { loading, error },
+		state: { loading, error, success },
 
 		fields: {
 			question_id: HiddenField {
@@ -180,8 +194,6 @@ pub fn polls_detail(question_id: i64) -> Page {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
 				.unwrap_or_default(),
 		},
-
-		success_url: |_form, _value| links::poll_results(qid),
 
 		watch: {
 			submit_button: |form| {
@@ -233,6 +245,33 @@ pub fn polls_detail(question_id: i64) -> Page {
 				voting_form_for_effect
 					.choice_id_choices()
 					.set(choice_options);
+			}
+		});
+	}
+
+	// One-shot redirect to the results page on a successful vote (reinhardt-web#4519).
+	//
+	// The form macro flips `__success` from `false` to `true` exactly once in
+	// the `on_success` codepath (`crates/reinhardt-pages/macros/src/form/codegen.rs`
+	// `generate_on_success_callback` — `self.__success.set(true)` after the
+	// `Ok(value)` branch). This `use_effect` reads `voting_form.success().get()`
+	// so it re-runs on every transition of that signal; the `if did_succeed`
+	// guard ensures the navigation fires only on the `true` edge and not on
+	// the initial `false` value at mount time. That avoids the redirect-on-mount
+	// bug from PR #4517 (the previous `watch{}` predicate
+	// `if !is_loading && err.is_none()` was true on first render).
+	{
+		let voting_form_for_redirect = voting_form.clone();
+		let dest = links::poll_results(qid);
+		use_effect(move || {
+			let did_succeed = voting_form_for_redirect.success().get();
+			if did_succeed {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				{
+					if let Some(window) = web_sys::window() {
+						let _ = window.location().set_href(&dest);
+					}
+				}
 			}
 		});
 	}
