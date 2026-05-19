@@ -18,8 +18,9 @@ permissions:
 jobs:
   label-by-path:
     name: Label by changed files
-    timeout-minutes: 360
-    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # See infra/github-runners/hotpath-runner-userdata.sh for the canonical hotpath runner labels.
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     steps:
       - uses: actions/labeler@v6
         with:
@@ -29,8 +30,8 @@ jobs:
 
   label-by-title:
     name: Label by PR title
-    timeout-minutes: 360
-    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     steps:
       - uses: actions/github-script@v8
         with:
