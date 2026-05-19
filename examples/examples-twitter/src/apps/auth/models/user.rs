@@ -23,7 +23,7 @@ use sqlx::FromRow;
 
 #[user(hasher = Argon2Hasher, username_field = "email", manager = false)]
 #[model(app_label = "auth", table_name = "auth_user")]
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 #[cfg_attr(all(test, native), derive(FromRow))]
 pub struct User {
 	#[field(primary_key = true)]

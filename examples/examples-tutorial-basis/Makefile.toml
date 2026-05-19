@@ -147,10 +147,20 @@ args = ["clean"]
 # (native-only, uses tokio / reinhardt::commands / async fn main) is skipped
 # via its `required-features`. Without this flag the wasm test build pulls
 # the bin in and fails to compile.
+#
+# `--features client-router` is also forwarded so that the
+# `#[cfg(feature = "client-router")]`-gated `impl ClientUrlResolver for
+# ResolvedUrls` block emitted by the `#[routes]` macro (see
+# `crates/reinhardt-core/macros/src/routes_registration.rs` around the
+# `ResolvedUrls` definition) stays in scope. Without it, `links.rs` cannot
+# call `resolve_client_url(name, params)` because the trait impl is gated
+# out — `--no-default-features` alone disables the example's default
+# `client-router` feature flag, which is what the macro probes at expansion
+# time in the consumer crate.
 [tasks.wasm-test]
 description = "Run WASM tests in headless Chrome"
 command = "wasm-pack"
-args = ["test", "--headless", "--chrome", "--", "--no-default-features"]
+args = ["test", "--headless", "--chrome", "--", "--no-default-features", "--features", "client-router"]
 
 [tasks.wasm-compile-dev]
 description = "Compile WASM binary (debug mode)"
