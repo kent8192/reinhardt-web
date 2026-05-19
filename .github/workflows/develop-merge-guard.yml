@@ -24,7 +24,7 @@ jobs:
     if: >-
       github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
       github.event.label.name == 'migration-approved'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     steps:
       - name: Check if guard applies
         id: guard-scope

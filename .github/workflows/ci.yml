@@ -35,7 +35,7 @@ jobs:
     name: Check Branch Status
     timeout-minutes: 360
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     outputs:
       has-conflicts: ${{ steps.check.outputs.has-conflicts }}
       infra-changed: ${{ steps.check-infra.outputs.infra-changed }}
