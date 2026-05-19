@@ -277,6 +277,14 @@ pub struct TypedFormCallbacks {
 	/// Callback called before form submission starts.
 	pub on_submit: Option<ExprClosure>,
 	/// Callback called when submission succeeds.
+	///
+	/// When every parameter of this closure carries an explicit type
+	/// annotation (e.g. `|value: LoginResponse|`), the `reinhardt-pages`
+	/// `form!` codegen lifts the closure into the outer construction
+	/// block so its body can capture enclosing-scope locals like a
+	/// route parameter. Closures without annotations (`|value|`,
+	/// `|_value|`) keep the historical inline emit. See
+	/// [reinhardt-web#4624](https://github.com/kent8192/reinhardt-web/issues/4624).
 	pub on_success: Option<ExprClosure>,
 	/// Callback called when submission fails.
 	pub on_error: Option<ExprClosure>,
