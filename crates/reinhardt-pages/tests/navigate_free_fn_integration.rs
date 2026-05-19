@@ -1,0 +1,87 @@
+#![cfg(not(target_arch = "wasm32"))]
+//! Issue #4610: integration coverage for the free `navigate()` SPA
+//! navigation function on the native target.
+//!
+//! Companion to `use_router_integration.rs` — that file exercises the hook
+//! form; this one verifies the free function delegates identically. The
+//! form! macro's WASM-side codegen calls the free function (not the hook)
+//! because hooks must be invoked from a reactive context, which the
+//! generated `async fn submit(&self)` is not.
+
+#![allow(deprecated)] // (Refs #4234) Tests exercise deprecated `pages::Router` directly.
+
+use reinhardt_pages::app::{__clear_spa_router_for_test, __install_router_for_test};
+use reinhardt_pages::component::Page;
+use reinhardt_pages::router::{NavigationType, Router, navigate};
+
+use rstest::rstest;
+use serial_test::serial;
+
+/// Builds a small `Router` with two named routes so navigation observably
+/// changes the `current_path` signal.
+fn build_test_router() -> Router {
+	Router::new()
+		.named_route("home", "/", || Page::text("Home"))
+		.named_route("profile", "/profile", || Page::text("Profile"))
+}
+
+#[rstest]
+#[serial(router)]
+fn navigate_push_succeeds() {
+	// Arrange
+	__install_router_for_test(build_test_router());
+
+	// Act
+	let result = navigate("/profile", NavigationType::Push);
+
+	// Assert
+	assert!(
+		result.is_ok(),
+		"navigate(Push) to a registered route must succeed: {:?}",
+		result
+	);
+
+	// Cleanup
+	__clear_spa_router_for_test();
+}
+
+#[rstest]
+#[serial(router)]
+fn navigate_replace_succeeds() {
+	// Arrange
+	__install_router_for_test(build_test_router());
+
+	// Act
+	let result = navigate("/profile", NavigationType::Replace);
+
+	// Assert
+	assert!(
+		result.is_ok(),
+		"navigate(Replace) to a registered route must succeed: {:?}",
+		result
+	);
+
+	// Cleanup
+	__clear_spa_router_for_test();
+}
+
+#[rstest]
+#[serial(router)]
+fn navigate_accepts_owned_string() {
+	// Arrange — `impl Into<String>` must accept `&str` (above) and `String`.
+	__install_router_for_test(build_test_router());
+
+	// Act
+	let path: String = "/profile".to_string();
+	let result = navigate(path, NavigationType::Push);
+
+	// Assert
+	assert!(
+		result.is_ok(),
+		"navigate must accept owned String: {:?}",
+		result
+	);
+
+	// Cleanup
+	__clear_spa_router_for_test();
+}

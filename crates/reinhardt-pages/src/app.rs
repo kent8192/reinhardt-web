@@ -94,6 +94,52 @@ fn store_spa_router(router: Box<dyn SpaRouter>) {
 	});
 }
 
+/// Hidden API for installing a [`crate::router::Router`] in the per-thread
+/// `APP_ROUTER` slot from integration tests on native targets.
+///
+/// On wasm the launcher's `launch()` does this through the private
+/// `store_spa_router` above; on native the launcher's render path is
+/// behind `#[cfg(wasm)]`, so integration tests that exercise the imperative
+/// navigation API (`use_router`, `navigate`) need a way to seed the slot
+/// without going through the full launcher. Marked `#[doc(hidden)]` so it
+/// stays out of the SemVer surface and the published documentation —
+/// mirrors the `__diag_*` testing pattern in `router::core::Router`.
+///
+/// Tests MUST clear the slot at the end of the test (see
+/// [`__clear_spa_router_for_test`]) and SHOULD use `#[serial(router)]` to
+/// avoid interleaving with other tests that touch the same thread-local.
+///
+/// Refs #4610.
+#[doc(hidden)]
+#[allow(deprecated)] // (Refs #4234) Bridge for the deprecated `Router` path used by tests.
+pub fn __install_router_for_test(router: crate::router::Router) {
+	APP_ROUTER.with(|slot| {
+		*slot.borrow_mut() = Some(Box::new(router));
+	});
+}
+
+/// Hidden API for installing a
+/// [`reinhardt_urls::routers::ClientRouter`] in the per-thread
+/// `APP_ROUTER` slot from integration tests on native targets.
+///
+/// Companion to [`__install_router_for_test`] for the canonical
+/// `router_client` path. Refs #4610.
+#[doc(hidden)]
+pub fn __install_client_router_for_test(router: reinhardt_urls::routers::ClientRouter) {
+	APP_ROUTER.with(|slot| {
+		*slot.borrow_mut() = Some(Box::new(router));
+	});
+}
+
+/// Hidden API for clearing the per-thread `APP_ROUTER` slot at the end of
+/// an integration test. Refs #4610.
+#[doc(hidden)]
+pub fn __clear_spa_router_for_test() {
+	APP_ROUTER.with(|slot| {
+		*slot.borrow_mut() = None;
+	});
+}
+
 #[cfg(test)]
 #[allow(deprecated)] // (Refs #4234) Tests exercise deprecated `pages::Router` directly.
 mod tests {
