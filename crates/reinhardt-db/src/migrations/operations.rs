@@ -2777,8 +2777,11 @@ impl ColumnDefinition {
 
 	/// Create a ColumnDefinition from FieldState with attribute parsing
 	///
-	/// This method reads field attributes (primary_key, not_null, unique, etc.) from
-	/// the FieldState.params HashMap and properly initializes ColumnDefinition fields.
+	/// Reads boolean attributes (primary_key, unique, auto_increment) and the
+	/// default expression from `FieldState.params`, and derives the NOT NULL
+	/// constraint from `FieldState.nullable` (the single source of truth
+	/// populated by `FieldMetadata::is_nullable()` in
+	/// `ModelMetadata::to_model_state()`).
 	///
 	/// # Arguments
 	///
@@ -2787,7 +2790,8 @@ impl ColumnDefinition {
 	///
 	/// # Notes
 	///
-	/// - If `primary_key` is true, `not_null` is automatically set to true
+	/// - If `primary_key` is true, `not_null` is forced to true regardless of
+	///   `FieldState.nullable` — primary keys cannot accept NULL.
 	/// - Default values are false/None for unspecified attributes
 	pub fn from_field_state(name: impl Into<String>, field_state: &FieldState) -> Self {
 		let name_str = name.into();
@@ -2799,11 +2803,17 @@ impl ColumnDefinition {
 			.and_then(|v| v.parse::<bool>().ok())
 			.unwrap_or(false);
 
-		let not_null = params
-			.get("not_null")
-			.and_then(|v| v.parse::<bool>().ok())
-			.or(if primary_key { Some(true) } else { None })
-			.unwrap_or(false);
+		// Derive `not_null` from FieldState's nullability field (single source
+		// of truth set in `ModelMetadata::to_model_state()`). Primary keys are
+		// always NOT NULL regardless of the nullability flag.
+		//
+		// Fixes #4573: the previous implementation read a `params["not_null"]`
+		// key that the proc-macro never emits (the macro emits the inverse,
+		// `params["null"]`, via `FieldMetadata::with_nullable`). The lookup
+		// always missed and `unwrap_or(false)` silently produced NULLABLE
+		// columns for every non-PK field, breaking the non-Optional Rust
+		// type ↔ NOT NULL schema contract.
+		let not_null = !field_state.nullable || primary_key;
 
 		let unique = params
 			.get("unique")
@@ -5661,6 +5671,164 @@ mod tests {
 			"auto_increment should default to false"
 		);
 		assert!(col.default.is_none(), "default should be None");
+	}
+
+	// -----------------------------------------------------------------------
+	// Regression tests for issue #4573:
+	// `ColumnDefinition::from_field_state` previously read a non-existent
+	// `params["not_null"]` key and silently emitted NULLABLE columns for
+	// every non-PK field, violating the non-Optional Rust type ↔ NOT NULL
+	// schema contract. These tests pin the corrected behavior:
+	//   not_null = !field_state.nullable || primary_key
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn from_field_state_non_optional_bool_with_true_default() {
+		// Arrange
+		// Models a Rust field declared as `pub is_active: bool` with
+		// `#[field(default = true)]`. The proc-macro sets
+		// `field_state.nullable = false` via `FieldMetadata::with_nullable`,
+		// and emits the default value as `params["default"] = "true"`.
+		let mut field_state = FieldState::new("is_active", FieldType::Boolean, false);
+		field_state.params.insert("default".to_string(), "true".to_string());
+
+		// Act
+		let col = ColumnDefinition::from_field_state("is_active", &field_state);
+
+		// Assert
+		assert_eq!(col.name, "is_active", "Column name should round-trip");
+		assert_eq!(
+			col.type_definition,
+			FieldType::Boolean,
+			"Boolean field type should round-trip"
+		);
+		assert!(
+			col.not_null,
+			"Non-Optional bool must emit NOT NULL (regression #4573)"
+		);
+		assert_eq!(
+			col.default,
+			Some("true".to_string()),
+			"`#[field(default = true)]` must propagate as Some(\"true\")"
+		);
+		assert!(!col.primary_key, "Non-PK field must not be primary_key");
+	}
+
+	#[rstest]
+	fn from_field_state_non_optional_bool_with_false_default() {
+		// Arrange
+		// Models a Rust field declared as `pub is_superuser: bool` with
+		// `#[field(default = false)]` — the symptom previously hand-patched
+		// in PR #4513.
+		let mut field_state = FieldState::new("is_superuser", FieldType::Boolean, false);
+		field_state
+			.params
+			.insert("default".to_string(), "false".to_string());
+
+		// Act
+		let col = ColumnDefinition::from_field_state("is_superuser", &field_state);
+
+		// Assert
+		assert!(
+			col.not_null,
+			"Non-Optional bool with default=false must emit NOT NULL"
+		);
+		assert_eq!(
+			col.default,
+			Some("false".to_string()),
+			"default=false must propagate as Some(\"false\")"
+		);
+	}
+
+	#[rstest]
+	fn from_field_state_optional_bool_with_default() {
+		// Arrange
+		// Models a Rust field declared as `pub maybe_flag: Option<bool>` with
+		// `#[field(default = true)]`. Existing behavior must be preserved:
+		// nullable column with default still set.
+		let mut field_state = FieldState::new("maybe_flag", FieldType::Boolean, true);
+		field_state
+			.params
+			.insert("default".to_string(), "true".to_string());
+
+		// Act
+		let col = ColumnDefinition::from_field_state("maybe_flag", &field_state);
+
+		// Assert
+		assert!(
+			!col.not_null,
+			"Optional bool must remain NULLABLE — no regression on Option<T>"
+		);
+		assert_eq!(
+			col.default,
+			Some("true".to_string()),
+			"Default propagation must work for Optional fields too"
+		);
+	}
+
+	#[rstest]
+	fn from_field_state_non_optional_non_bool() {
+		// Arrange
+		// Models a Rust field declared as `pub username: String` with no
+		// default. This confirms the fix is type-agnostic (not bool-only) —
+		// the broader symptom in `examples-twitter/migrations/auth/0001_initial.rs`
+		// where `username`, `bio`, `email`, etc. were all silently NULLABLE.
+		let field_state = FieldState::new("username", FieldType::VarChar(150), false);
+
+		// Act
+		let col = ColumnDefinition::from_field_state("username", &field_state);
+
+		// Assert
+		assert!(
+			col.not_null,
+			"Non-Optional String must emit NOT NULL (regression #4573 — bug \
+			 affected all field types, not just bool)"
+		);
+		assert!(col.default.is_none(), "No default annotation → default = None");
+	}
+
+	#[rstest]
+	fn from_field_state_primary_key_is_always_not_null() {
+		// Arrange
+		// A primary key column must be NOT NULL even when the nullability
+		// flag would otherwise allow NULL. This pins the `|| primary_key`
+		// short-circuit in the corrected expression.
+		let mut field_state = FieldState::new("id", FieldType::Uuid, true);
+		field_state
+			.params
+			.insert("primary_key".to_string(), "true".to_string());
+
+		// Act
+		let col = ColumnDefinition::from_field_state("id", &field_state);
+
+		// Assert
+		assert!(
+			col.primary_key,
+			"primary_key param must propagate to ColumnDefinition"
+		);
+		assert!(
+			col.not_null,
+			"Primary key must be NOT NULL regardless of nullable flag"
+		);
+	}
+
+	#[rstest]
+	fn from_field_state_optional_field_remains_nullable() {
+		// Arrange
+		// Models a Rust field declared as `pub last_login: Option<DateTime<Utc>>`
+		// with no default. Existing nullable-field behavior must be preserved.
+		let field_state = FieldState::new("last_login", FieldType::TimestampTz, true);
+
+		// Act
+		let col = ColumnDefinition::from_field_state("last_login", &field_state);
+
+		// Assert
+		assert!(
+			!col.not_null,
+			"Optional field with no default must remain NULLABLE"
+		);
+		assert!(col.default.is_none(), "No default → default = None");
+		assert!(!col.primary_key, "Non-PK field must not be primary_key");
 	}
 
 	#[test]
