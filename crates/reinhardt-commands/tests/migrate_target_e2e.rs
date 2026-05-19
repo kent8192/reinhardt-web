@@ -102,6 +102,12 @@ fn build_ctx(
 /// Set up a tempdir with three sequential migrations for `myapp` and mark them
 /// all as applied in the recorder via `record_migration`. Returns the tempdir
 /// (keep it alive for the duration of the test) and the migrations root path.
+///
+/// On a fresh TestContainers Postgres the `reinhardt_migrations` table does
+/// not exist yet — `record_migration` does NOT auto-create it (it just issues
+/// an INSERT against the table). We therefore construct a side recorder from
+/// `executor.connection()` and call `ensure_schema_table()` once before
+/// recording any applied migrations.
 async fn arrange_three_applied_migrations(
 	executor: &mut reinhardt_db::migrations::DatabaseMigrationExecutor,
 ) -> (TempDir, std::path::PathBuf) {
@@ -122,6 +128,12 @@ async fn arrange_three_applied_migrations(
 		&[("myapp", "0002_second")],
 	)
 	.unwrap();
+
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	recorder
+		.ensure_schema_table()
+		.await
+		.expect("ensure_schema_table on fresh Postgres");
 
 	for name in ["0001_first", "0002_second", "0003_third"] {
 		executor
@@ -308,6 +320,11 @@ async fn rollback_with_missing_reverse_sql_fails_loudly(
 	)
 	.unwrap();
 	// Note: 0003_third is intentionally NOT written to disk.
+
+	// `record_migration` does not auto-create `reinhardt_migrations`; ensure
+	// the recorder table exists on the fresh container before recording.
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	recorder.ensure_schema_table().await.unwrap();
 
 	for name in ["0001_first", "0002_second", "0003_third"] {
 		executor.record_migration("myapp", name).await.unwrap();

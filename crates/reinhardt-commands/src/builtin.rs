@@ -216,6 +216,17 @@ impl BaseCommand for MigrateCommand {
 				})?;
 
 				let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+				// Ensure the recorder's bookkeeping table exists before querying it.
+				// On a fresh database the table has not been created yet; without this
+				// `get_applied_migrations()` fails with a "relation does not exist"
+				// error instead of returning an empty applied set — which would break
+				// the `migrate <app> zero` no-op contract on an empty database.
+				recorder.ensure_schema_table().await.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to ensure migration recorder table: {}",
+						e
+					))
+				})?;
 				let applied = recorder.get_applied_migrations().await.map_err(|e| {
 					crate::CommandError::ExecutionError(format!(
 						"Failed to query applied migrations: {}",
@@ -613,6 +624,16 @@ impl BaseCommand for MigrationRollbackCommand {
 
 			// 4. Query the recorder for applied migrations (ordered ASC by applied timestamp).
 			let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+			// Ensure the recorder's bookkeeping table exists. On a fresh database the
+			// table has not been created yet, in which case `get_applied_migrations()`
+			// would fail with a "relation does not exist" error instead of the
+			// expected "no migrations to roll back" message.
+			recorder.ensure_schema_table().await.map_err(|e| {
+				crate::CommandError::ExecutionError(format!(
+					"Failed to ensure migration recorder table: {}",
+					e
+				))
+			})?;
 			let applied = recorder.get_applied_migrations().await.map_err(|e| {
 				crate::CommandError::ExecutionError(format!(
 					"Failed to query applied migrations: {}",
