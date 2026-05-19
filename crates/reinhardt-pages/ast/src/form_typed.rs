@@ -252,15 +252,20 @@ impl TypedFormState {
 /// | Callback | Signature | Description |
 /// |----------|-----------|-------------|
 /// | `on_submit` | `\|form: &Self\| { ... }` | Called before submission starts |
-/// | `on_success` | `\|result: T\| { ... }` | Called when server_fn returns successfully |
+/// | `on_success` | `\|result: T\| { ... }` | Called when server_fn returns successfully (consumes `T` by move) |
+/// | `on_success_ref` | `\|form: &Self, result: &T\| { ... }` | Lifted variant: captures outer-scope locals, receives `&T` by ref |
 /// | `on_error` | `\|error: ServerFnError\| { ... }` | Called when submission fails |
 /// | `on_loading` | `\|is_loading: bool\| { ... }` | Called when loading state changes |
 #[derive(Debug, Clone, Default)]
 pub struct TypedFormCallbacks {
 	/// Callback called before form submission starts.
 	pub on_submit: Option<ExprClosure>,
-	/// Callback called when submission succeeds.
+	/// Callback called when submission succeeds (receives `T` by move,
+	/// expanded inline inside `fn submit()` — cannot capture outer-scope locals).
 	pub on_success: Option<ExprClosure>,
+	/// Lifted variant of `on_success` (receives `&T` by ref, expanded at the
+	/// outer construction block — can capture enclosing-scope locals).
+	pub on_success_ref: Option<ExprClosure>,
 	/// Callback called when submission fails.
 	pub on_error: Option<ExprClosure>,
 	/// Callback called when loading state changes.
@@ -279,6 +284,7 @@ impl TypedFormCallbacks {
 	pub fn has_any(&self) -> bool {
 		self.on_submit.is_some()
 			|| self.on_success.is_some()
+			|| self.on_success_ref.is_some()
 			|| self.on_error.is_some()
 			|| self.on_loading.is_some()
 	}
@@ -291,6 +297,11 @@ impl TypedFormCallbacks {
 	/// Returns true if on_success callback is defined.
 	pub fn has_on_success(&self) -> bool {
 		self.on_success.is_some()
+	}
+
+	/// Returns true if on_success_ref callback is defined.
+	pub fn has_on_success_ref(&self) -> bool {
+		self.on_success_ref.is_some()
 	}
 
 	/// Returns true if on_error callback is defined.
