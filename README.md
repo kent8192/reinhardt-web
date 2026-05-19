@@ -49,7 +49,7 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 # During the RC phase, `cargo install` requires an explicit `--version`
 # because pre-releases are not selected by default. Once a stable release
 # ships, `cargo install reinhardt-admin-cli` (no flag) will also work.
-cargo install reinhardt-admin-cli --version "0.1.0-rc.29"
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 
 reinhardt-admin startproject my-api && cd my-api
 cargo run --bin manage runserver  # Visit http://127.0.0.1:8000
@@ -104,7 +104,7 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current status:** Reinhardt is at `0.1.0-rc.29` (Release Candidate). Most
+**Current status:** Reinhardt is at `0.1.0-rc.30` (Release Candidate). Most
 crates track this version; a small number lag by one or more patch numbers
 when no conventional-commit changes have touched them since their previous
 release-plz tag (release-plz correctly skips a bump in that case). At
@@ -149,7 +149,7 @@ Get a well-balanced feature set with zero configuration:
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
 # Default enables the "standard" preset (balanced feature set)
-reinhardt = { version = "0.1.0-rc.29", package = "reinhardt-web" }
+reinhardt = { version = "0.1.0-rc.30", package = "reinhardt-web" }
 ```
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
@@ -169,7 +169,7 @@ For projects that need every available component:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.29", package = "reinhardt-web", default-features = false, features = ["full"] }
+reinhardt = { version = "0.1.0-rc.30", package = "reinhardt-web", default-features = false, features = ["full"] }
 ```
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
@@ -183,7 +183,7 @@ Lightweight and fast, perfect for simple APIs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.29", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.1.0-rc.30", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
@@ -198,24 +198,24 @@ Install only the components you need:
 ```toml
 [dependencies]
 # Core components
-reinhardt-http = "0.1.0-rc.29"
-reinhardt-urls = "0.1.0-rc.29"
+reinhardt-http = "0.1.0-rc.30"
+reinhardt-urls = "0.1.0-rc.30"
 
 # Optional: Database
-reinhardt-db = "0.1.0-rc.29"
+reinhardt-db = "0.1.0-rc.30"
 
 # Optional: Authentication
-reinhardt-auth = "0.1.0-rc.29"
+reinhardt-auth = "0.1.0-rc.30"
 
 # Optional: REST API features
-reinhardt-rest = "0.1.0-rc.29"
+reinhardt-rest = "0.1.0-rc.30"
 
 # Optional: Admin panel
-reinhardt-admin = "0.1.0-rc.29"
+reinhardt-admin = "0.1.0-rc.30"
 
 # Optional: Advanced features
-reinhardt-graphql = "0.1.0-rc.29"
-reinhardt-websockets = "0.1.0-rc.29"
+reinhardt-graphql = "0.1.0-rc.30"
+reinhardt-websockets = "0.1.0-rc.30"
 ```
 
 **Note on Crate Naming:**
@@ -234,7 +234,7 @@ release ships, `cargo install reinhardt-admin-cli` (no flag) will also work.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.0-rc.29"
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
 ### 2. Create a New Project
