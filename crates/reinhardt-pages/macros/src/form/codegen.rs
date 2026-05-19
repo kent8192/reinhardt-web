@@ -1786,12 +1786,15 @@ fn generate_submit_method(
 					// Handle result with callbacks and redirect
 					match result {
 						Ok(value) => {
-							#on_success_code
 							// Reference `value` so the binding is always considered
 							// used even when no `on_success` / `success_url`
 							// callback consumes it. Avoids `unused_variables`
-							// under `-D warnings`.
+							// under `-D warnings`. Must precede `#on_success_code`
+							// because the user's `on_success:` closure takes `value`
+							// by move (`callback(value)`), which would invalidate a
+							// trailing borrow for non-`Copy` server-fn outputs.
 							let _ = &value;
+							#on_success_code
 							#redirect_code
 							#success_url_submit_invocation
 							Ok(())
