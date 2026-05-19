@@ -9,13 +9,18 @@ This document defines the stability guarantees and versioning policies for the R
 ## Table of Contents
 
 - [Version Lifecycle](#version-lifecycle)
+- [API Categories](#api-categories)
 - [Alpha Phase](#alpha-phase)
 - [RC Phase](#rc-phase)
 - [Develop Branch Strategy](#develop-branch-strategy)
 - [Stable Phase](#stable-phase)
+- [Breaking Change Policy](#breaking-change-policy)
+- [Migration Guide Requirements](#migration-guide-requirements)
 - [RC to Stable Criteria](#rc-to-stable-criteria)
 - [Version Bump Rules During RC](#version-bump-rules-during-rc)
+- [Continuous SemVer Verification](#continuous-semver-verification)
 - [Quick Reference](#quick-reference)
+- [References](#references)
 
 ---
 
@@ -62,6 +67,45 @@ stateDiagram-v2
 
 ---
 
+## API Categories
+
+Reinhardt classifies every exported item into one of three stability tiers. The tier determines what kind of changes are permitted between releases.
+
+### Stable API
+
+Public items that are NOT marked with `#[doc(hidden)]` and are NOT documented as experimental are considered **stable**:
+
+- All items in the primary re-exports of each crate's `lib.rs`
+- Trait definitions and their required methods
+- Public struct field accessibility
+- Public enum variant names
+
+**Guarantee**: No breaking changes without a MAJOR version bump (see [Breaking Change Policy](#breaking-change-policy)).
+
+### Experimental API
+
+Items explicitly documented as experimental are **experimental** and may change in MINOR releases:
+
+- New traits under active development
+- Extension points that may be redesigned
+- Performance-sensitive APIs pending benchmarking
+
+**Guarantee**: Breaking changes require documenting migration paths in the affected crate's CHANGELOG.
+
+> **Note**: There is currently no `unstable` feature flag in the codebase. Experimental items are identified by documentation annotations rather than feature-gating.
+
+### Internal API
+
+Items marked with `#[doc(hidden)]`, items whose name starts with `__`, and items that are not publicly accessible (`pub(crate)` / `pub(super)`) are **internal** and provide no stability guarantees:
+
+- Macro implementation helpers
+- Proc-macro infrastructure
+- Crate-private utilities
+
+**Guarantee**: None. May change in any release without notice.
+
+---
+
 ## Alpha Phase
 
 ### AP-1: No Stability Guarantees
@@ -82,40 +126,6 @@ APIs deprecated during alpha **MAY** be removed when transitioning to RC. Deprec
 ## RC Phase
 
 The RC phase is a stabilization period. The primary goal is to validate the API surface and fix bugs before the stable release.
-
-### SP-0 (MUST): 0.x Series Exception Clause
-
-While Reinhardt is on a `0.x.y` version, the RC rules defined below (SP-1
-through SP-7) and the stable-release timer described in [RC to Stable
-Criteria](#rc-to-stable-criteria) are applied as the **default**, but may be
-waived when a blocking design issue is discovered. Specifically, during the
-pre-1.0 period:
-
-- A breaking RC API change may ship **without** the full SP-3 / SP-6 /
-  API Change Proposal workflow if the maintainer determines that deferring
-  the fix would block the `0.1.0` stable release or compromise framework
-  correctness. A migration guide is still required.
-- The 2-week stability window before `0.1.0` (see SC-2) may be shortened or
-  reset outside the normal reset triggers when a new RC is cut to fix a
-  blocking issue.
-
-Both waivers **end at `1.0.0`**. From `1.0.0` onward, SP-1 through SP-7 and the
-stability timer are enforced without exception, and full SemVer 2.0 applies.
-
-Any SP-0 waiver MUST be:
-
-1. Recorded in the affected crate's `CHANGELOG.md` under the appropriate
-   section (`Changed` for breaking, `Fixed` for timer resets) with a link to
-   the triggering Issue / PR.
-2. Announced in the PR description with the `stability-waiver` label (or an
-   equivalent marker if the label is not yet defined).
-3. Consistent with [Design Philosophy](DESIGN_PHILOSOPHY.md) — the waiver
-   exists to ship *correct* design, not to skip review of convenient changes.
-
-SP-0 does **not** override SP-2 (bug-fix-only default posture) or SP-4
-(deprecation policy); it only relaxes the blocking conditions on SP-1 / SP-3 /
-SP-6 and the stable-release timer. Routine RC work still follows SP-1 through
-SP-7.
 
 ### SP-1 (MUST): API Freeze
 
@@ -455,6 +465,102 @@ Once a crate reaches stable (`0.1.0`), it follows [Semantic Versioning 2.0.0](ht
 
 ---
 
+## Breaking Change Policy
+
+This section applies once a crate reaches stable (`0.1.0` or later). During the RC phase, the stricter rules in [RC Phase](#rc-phase) (SP-1 〜 SP-7) take precedence.
+
+### BC-1 (MUST): Definition
+
+A breaking change is any modification that causes downstream code compiled against the previous version to fail compilation or to exhibit different runtime behavior when recompiled against the new version.
+
+### BC-2 (MUST): Common Breaking Changes
+
+The following are categorically breaking and require a MAJOR version bump:
+
+- Removing or renaming a public item
+- Changing function signatures (parameters, return types)
+- Adding required methods to a public trait
+- Changing enum variants without `#[non_exhaustive]`
+- Adding fields to non-`#[non_exhaustive]` structs
+- Narrowing trait bounds on public functions
+
+### BC-3 (MUST): Breaking Change Approval Process
+
+For stable crates, breaking changes follow this workflow:
+
+1. Open an RFC issue using the API Change Proposal template (`.github/ISSUE_TEMPLATE/8-api_change.yml`) with the title `[RFC]: <description>` and label it `enhancement`
+2. Final Comment Period (FCP) of at least 7 days for community feedback
+3. Breaking changes require MAJOR version bump
+4. A migration guide MUST be provided (see [Migration Guide Requirements](#migration-guide-requirements))
+5. The `breaking-change` label MUST be applied to the implementing PR (triggers SP-7 Discussion announcement)
+
+### BC-4 (SHOULD): `#[non_exhaustive]` as a Preventative Measure
+
+All public error enums and configuration structs are marked `#[non_exhaustive]` to allow adding new variants/fields in MINOR releases without breaking downstream exhaustive matches or struct literal initializations.
+
+This means downstream users MUST:
+
+- Include a `_ =>` wildcard arm when `match`ing on error enums
+- Use `..Default::default()` or builder methods when constructing config structs
+
+**Example for error enums:**
+
+```rust
+match error {
+    MyError::NotFound => handle_not_found(),
+    MyError::PermissionDenied => handle_denied(),
+    _ => handle_unknown(), // Required for #[non_exhaustive] enums
+}
+```
+
+**Example for config structs:**
+
+```rust
+// Use builder methods (preferred):
+let config = MyConfig::new()
+    .with_timeout(Duration::from_secs(30));
+
+// Or use struct update syntax:
+let config = MyConfig {
+    timeout: Duration::from_secs(30),
+    ..MyConfig::default()
+};
+```
+
+### BC-5 (MUST): Deprecation Attribute Format
+
+When marking a public item as deprecated, the `#[deprecated]` attribute MUST include both `since` and `note` fields:
+
+```rust
+#[deprecated(
+    since = "0.3.0",
+    note = "Use `new_function` instead. This function will be removed in 1.0.0."
+)]
+pub fn old_function() { /* ... */ }
+```
+
+Requirements:
+
+- `since`: version when deprecation was introduced
+- `note`: specific replacement and removal timeline
+
+For the full deprecation policy (timing, mandatory survival across versions), see SP-4 above.
+
+---
+
+## Migration Guide Requirements
+
+Every breaking change (MAJOR release) and every significant deprecation MUST ship with a migration guide that contains:
+
+1. **What changed**: Clear description of the old vs. new behavior
+2. **Why it changed**: Technical rationale for the breaking change
+3. **How to migrate**: Step-by-step migration instructions with code examples
+4. **Timeline**: When the old behavior will be fully removed (if applicable)
+
+Migration guides are placed in the affected crate's `CHANGELOG.md` and in release notes. For RC-phase breaking changes (per SP-3), the same requirements apply — the migration guide is included in the PR description and the affected crate's CHANGELOG.
+
+---
+
 ## RC to Stable Criteria
 
 ### SC-1 (MUST): All Criteria Must Be Met
@@ -591,6 +697,16 @@ During the RC phase:
 
 ---
 
+## Continuous SemVer Verification
+
+Automated SemVer checking is performed on every pull request targeting `main` using [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks).
+
+- **CI workflow**: `.github/workflows/semver-check.yml` reports any detected SemVer violations before code is merged.
+- **Local mirror**: `cargo make semver-check` mirrors the CI workflow and MUST be run before converting a Draft PR to Ready for Review on any PR touching public API (see `instructions/PR_GUIDELINE.md` § RP-1a).
+- **Audit trail**: A full breaking change audit is maintained at `docs/breaking-change-audit.md`.
+
+---
+
 ## Quick Reference
 
 ### MUST DO
@@ -648,6 +764,16 @@ During the RC phase:
 - **Commit Guidelines**: instructions/COMMIT_GUIDELINE.md
 - **PR Guidelines**: instructions/PR_GUIDELINE.md
 - **Issue Guidelines**: instructions/ISSUE_GUIDELINES.md
+
+---
+
+## References
+
+- [Semantic Versioning 2.0.0](https://semver.org/)
+- [RFC 1105: API Evolution](https://rust-lang.github.io/rfcs/1105-api-evolution.html)
+- [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
+- [Breaking Change Audit](../docs/breaking-change-audit.md)
+- [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks)
 
 ---
 
