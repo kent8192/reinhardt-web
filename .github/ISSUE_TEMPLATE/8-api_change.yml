@@ -16,7 +16,7 @@ body:
       options:
         - label: I have searched existing issues to verify this API change hasn't been proposed
           required: true
-        - label: I have reviewed the API stability policy in docs/API_STABILITY.md
+        - label: I have reviewed the API stability policy in instructions/STABILITY_POLICY.md
           required: false
 
   - type: textarea
