@@ -12,10 +12,14 @@
 use reinhardt_pages::form;
 
 mod server_fns {
-	// Stub server_fn body. The submit body that would actually `.await`
-	// this is wasm-only-gated, so on native we only need the function
-	// to exist as a referenceable item.
-	pub fn update_profile() {}
+	// Stub server_fn body. Returns an `impl Future<Output = Result<T, E>>`
+	// so the compile-time type-safety guard inside the `on_success_ref:`
+	// lift (#4624) can extract the Ok type `T = i64` and force-unify it
+	// with the user closure's value parameter type. A real `#[server_fn]`
+	// expansion has the same shape.
+	pub async fn update_profile() -> ::core::result::Result<i64, ::core::convert::Infallible> {
+		::core::result::Result::Ok(0)
+	}
 }
 
 use server_fns::update_profile;

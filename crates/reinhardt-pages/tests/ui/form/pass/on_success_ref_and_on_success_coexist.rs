@@ -9,7 +9,9 @@
 use reinhardt_pages::form;
 
 mod server_fns {
-	pub fn update_profile() {}
+	pub async fn update_profile() -> ::core::result::Result<i64, ::core::convert::Infallible> {
+		::core::result::Result::Ok(0)
+	}
 }
 
 use server_fns::update_profile;

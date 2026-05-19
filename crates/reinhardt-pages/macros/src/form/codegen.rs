@@ -138,12 +138,14 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	// Generate on_success_ref artifacts (#4624). When the user has not
 	// supplied `on_success_ref:`, all four TokenStreams are empty, so the
 	// macro output is unchanged for forms that don't use this feature.
+	// Takes the full `macro_ast` so the outer-scope wrapper can emit a
+	// dead-code type-safety guard against the server_fn signature.
 	let OnSuccessRefArtifacts {
 		field_decl: on_success_ref_field_decl,
 		field_default_init: on_success_ref_field_default_init,
 		setter_method: on_success_ref_setter_method,
 		outer_setup: on_success_ref_outer_setup,
-	} = generate_on_success_ref_artifacts(&macro_ast.callbacks, pages_crate, struct_name);
+	} = generate_on_success_ref_artifacts(macro_ast, pages_crate);
 
 	// Generate derived methods
 	let derived_methods = generate_derived_methods(&macro_ast.derived, pages_crate);
@@ -715,11 +717,13 @@ struct OnSuccessRefArtifacts {
 ///    shape `(&FormName, &__T) -> __R`, wraps it in an `Arc`, and calls
 ///    the setter on the form instance.
 fn generate_on_success_ref_artifacts(
-	callbacks: &TypedFormCallbacks,
+	macro_ast: &TypedFormMacro,
 	pages_crate: &TokenStream,
-	struct_name: &syn::Ident,
 ) -> OnSuccessRefArtifacts {
 	let _ = pages_crate; // reserved for future cross-crate refs; quiet warnings now.
+	let callbacks = &macro_ast.callbacks;
+	let struct_name = &macro_ast.name;
+
 	let empty = OnSuccessRefArtifacts {
 		field_decl: quote! {},
 		field_default_init: quote! {},
@@ -729,6 +733,69 @@ fn generate_on_success_ref_artifacts(
 
 	let Some(closure) = &callbacks.on_success_ref else {
 		return empty;
+	};
+
+	// Compile-time type-safety guard (#4624). Forces the user closure's
+	// inferred `__T` (the second-parameter type, e.g. `&Wrong` in
+	// `on_success_ref: |_, _v: &Wrong| { ... }`) to equal the server_fn's
+	// Ok arm. Implemented as a dead-code branch that calls the server_fn
+	// (via `::core::unreachable!()` for every argument, which never-coerces
+	// to any required type) and feeds the extracted Ok value into the
+	// user closure. If the types disagree, compilation fails AT the user
+	// closure's parameter type — not at runtime in `downcast_ref().expect()`.
+	//
+	// Skipped for non-ServerFn actions: a URL form has no Future to extract
+	// `T` from, and `on_success_ref` would never actually fire there.
+	let type_check_dead_code = match &macro_ast.action {
+		TypedFormAction::ServerFn(server_fn_ident) => {
+			// Replicate `generate_submit_method`'s argument count
+			// computation (codegen.rs ~L1698-1725) so that the dead-code
+			// call below matches whatever signature the runtime call uses.
+			let all_fields = collect_all_fields(&macro_ast.fields);
+			let field_count = all_fields.len();
+			let has_explicit_csrf_field =
+				all_fields.iter().any(|f| f.name == "csrf_token");
+			let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
+			let strip_arg_count = macro_ast.strip_arguments.len();
+			let extra_count = if strip_arg_count > 0 {
+				strip_arg_count
+			} else if needs_csrf && !has_explicit_csrf_field {
+				1usize
+			} else {
+				0usize
+			};
+			let total_arg_count = field_count + extra_count;
+			let probe_args = (0..total_arg_count)
+				.map(|_| quote! { ::core::unreachable!() })
+				.collect::<Vec<_>>();
+
+			quote! {
+				#[allow(unreachable_code, dead_code, unused_variables, clippy::diverging_sub_expression)]
+				if false {
+					// Extract the `Ok` type `T` from the server_fn's
+					// `Future<Output = Result<T, _>>`. Generic over the
+					// future / Ok / Err types so it works regardless of
+					// the user's concrete server_fn signature.
+					fn __on_success_ref_extract_ok<__Fut, __T, __E>(_: __Fut) -> __T
+					where
+						__Fut: ::core::future::Future<
+							Output = ::core::result::Result<__T, __E>,
+						>,
+					{
+						::core::unreachable!()
+					}
+					let __probe_future = #server_fn_ident(#(#probe_args),*);
+					let __probe_ok = __on_success_ref_extract_ok(__probe_future);
+					// This call forces `__user_on_success_ref`'s second
+					// parameter type to equal `__probe_ok`'s type, which
+					// equals the server_fn's `Ok` arm. A mismatch with
+					// the user closure's annotated/inferred `__T` fails
+					// here at compile time.
+					let _ = __user_on_success_ref(__form, &__probe_ok);
+				}
+			}
+		}
+		_ => quote! {},
 	};
 
 	// Stored handler type — type-erased so the form struct stays nameable.
@@ -773,12 +840,15 @@ fn generate_on_success_ref_artifacts(
 	// types — server_fn return types are owned types and naturally
 	// satisfy this.
 	//
-	// The downcast at the call boundary is infallible by macro
-	// construction: at the submit site, the value passed via
-	// `&value as &dyn Any` has the exact concrete type the server_fn
-	// returns in its Ok arm, and that type is the same `__T` inferred
-	// from this closure literal. A mismatch would indicate a bug in the
-	// macro itself, not in user code, so `expect` is appropriate.
+	// Type safety is enforced by `#type_check_dead_code`: a dead-code
+	// branch that calls the server_fn (via `unreachable!()` args) and
+	// feeds the extracted Ok value into the user closure, forcing
+	// Rust's type-checker to unify the closure's `__T` with the
+	// server_fn's Ok arm at COMPILE TIME. With that guard in place,
+	// the `downcast_ref().expect(...)` below is provably unreachable
+	// in user-facing builds — it remains as a defensive runtime
+	// invariant check in case the macro's own scaffolding ever
+	// regresses, not as a fallibility ever surfaced to users.
 	let outer_setup = quote! {
 		{
 			let __wrapped: #handler_ty = ::std::sync::Arc::new(
@@ -791,10 +861,19 @@ fn generate_on_success_ref_artifacts(
 						__f
 					}
 					let __user_on_success_ref = __coerce_form(#closure);
+
+					// Compile-time type assertion (#4624): forces
+					// `__T` == server_fn's Ok type. See the macro
+					// doc comment on `generate_on_success_ref_artifacts`
+					// for why this is sound.
+					#type_check_dead_code
+
 					let __value_ref = __erased.downcast_ref().expect(
 						"on_success_ref: server_fn Ok value type does not match \
-						 the closure parameter type — this is a bug in \
-						 reinhardt-pages-macros, not in user code",
+						 the closure parameter type — unreachable in user-facing \
+						 builds because `#type_check_dead_code` makes any \
+						 mismatch a compile error; this `expect` is a defensive \
+						 macro-internal invariant",
 					);
 					let _ = __user_on_success_ref(__form, __value_ref);
 				},
@@ -2638,6 +2717,89 @@ mod tests {
 		assert!(
 			output_str.contains("downcast_ref"),
 			"missing infallible type-erasure downcast"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_generate_on_success_ref_type_safety_guard() {
+		// Arrange — issue #4624 type-safety regression caught by review.
+		// The runtime `downcast_ref().expect()` is only sound if the
+		// macro *also* emits a compile-time check that the user closure's
+		// `__T` matches the server_fn's Ok type. The guard takes the form
+		// of a dead-code branch that calls the server_fn (with
+		// `unreachable!()` for every arg) and feeds the extracted Ok
+		// value into the user closure.
+		let input = quote! {
+			name: TypeSafeRefForm,
+			server_fn: update_profile,
+
+			on_success_ref: |_form, _value| {
+				let _ = _value;
+			},
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert — the dead-code typecheck infrastructure must appear:
+		// the Future-Ok extractor, the never-typed arg placeholders, and
+		// the user-closure invocation that pins `__T` to the server_fn
+		// Ok arm.
+		assert!(
+			output_str.contains("__on_success_ref_extract_ok"),
+			"missing dead-code Future<Output=Result<T,E>> Ok extractor"
+		);
+		assert!(
+			output_str.contains("unreachable"),
+			"missing never-typed arg placeholders for server_fn probe call"
+		);
+		assert!(
+			output_str.contains("__probe_ok"),
+			"missing probe-value binding that forces __T = server_fn Ok type"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_generate_on_success_ref_no_type_guard_for_url_action() {
+		// Arrange — URL action forms have no server_fn to extract a
+		// return type from, and `on_success_ref` would never actually
+		// fire there. The type-safety guard must be omitted in that case
+		// (otherwise we'd emit a dead-code call to a nonexistent
+		// `server_fn_ident`).
+		//
+		// The lifted handler scaffold is still emitted (parser/codegen
+		// don't reject the combination — it's a no-op at runtime), but
+		// without the compile-time probe.
+		let input = quote! {
+			name: UrlActionRefForm,
+			action: "/api/submit",
+
+			on_success_ref: |_form, _value| {
+				let _ = _value;
+			},
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert — scaffold present, but typecheck infrastructure absent.
+		assert!(
+			output_str.contains("__on_success_ref_handler"),
+			"scaffold should still be emitted for URL forms"
+		);
+		assert!(
+			!output_str.contains("__on_success_ref_extract_ok"),
+			"URL form must not emit the Future Ok extractor (no server_fn to probe)"
 		);
 	}
 
