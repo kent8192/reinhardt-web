@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.29...reinhardt-pages@v0.1.0-rc.30) - 2026-05-19
+
+### Added
+
+- *(pages)* add select_router_source_counts helper and tests
+- *(pages)* add ClientLauncher::register_routes_from_inventory
+- *(pages)* extend launch() to 3-way mutual exclusion for inventory
+- *(macros)* make WASM client inventory submission opt-in via client_inventory flag
+- *(pages)* add use_router() hook + RouterHandle + navigate() free function
+- *(pages)* add try_with_spa_router + NavigateError::RouterNotInstalled
+
+### Documentation
+
+- *(pages)* use backticks for cfg(wasm)-gated launch in builder docs
+- *(core,pages)* document nested watch{} !Copy Signal footgun and pin rustc diagnostic
+
+### Fixed
+
+- *(pages-macros)* allow form! watch handlers to capture outer locals
+- *(pages/macros)* apply HiddenField initial to signal at first render
+- *(pages-macros)* collapse nested if-let into let-chain in extract_initial_expr
+- *(pages-macros)* make form! watch handler a real closure ([[#4414](https://github.com/kent8192/reinhardt-web/issues/4414)](https://github.com/kent8192/reinhardt-web/issues/4414))
+- *(pages-macros)* let form! initial and inner watch capture outer scope
+- address Copilot review threads on PR [[#4477](https://github.com/kent8192/reinhardt-web/issues/4477)](https://github.com/kent8192/reinhardt-web/issues/4477)
+- *(pages-macros)* lift success_url to outer scope + SPA-aware redirect
+- *(pages)* address Copilot review feedback on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
+- *(pages)* address CodeRabbit review on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
+- *(pages-macros)* hoist value-sink before on_success to avoid borrow-after-move
+- *(pages-macros)* hoist on_success_submit_invocation before navigation
+
+### Other
+
+- incorporate remote on_success lift (PR [[#4624](https://github.com/kent8192/reinhardt-web/issues/4624)](https://github.com/kent8192/reinhardt-web/issues/4624) splice point)
+- resolve conflicts with main (on_success_ref + on_success lift)
+
+### Styling
+
+- *(pages)* apply rustfmt to navigate.rs
+
+### Testing
+
+- *(pages-macros)* trybuild compile_pass for [[#4420](https://github.com/kent8192/reinhardt-web/issues/4420)](https://github.com/kent8192/reinhardt-web/issues/4420) env capture
+- *(pages)* cover use_router and navigate integration paths
+- *(pages)* trybuild fixture for success_url outer-scope capture
+
 ### Fixed
 
 - *(pages)* lift `form! { on_success: |value: T| ... }` user closure to the outer construction block when the closure parameter carries an explicit type annotation, so the body can capture enclosing-scope locals like a `qid` route parameter (fixes [[#4624](https://github.com/kent8192/reinhardt-web/issues/4624)](https://github.com/kent8192/reinhardt-web/issues/4624), completes [[#4605](https://github.com/kent8192/reinhardt-web/issues/4605)](https://github.com/kent8192/reinhardt-web/issues/4605)). Unannotated closures (`|value|`, `|_value|`) keep the historical inline emit, so every in-tree caller continues to compile without changes.

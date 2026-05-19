@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.29...reinhardt-manouche@v0.1.0-rc.30) - 2026-05-19
+
+### Added
+
+- *(pages/macros)* add success_url for first-class post-submit navigation
+- *(manouche)* add on_success_ref to form callbacks AST and parser
+
+### Documentation
+
+- *(pages-macros)* address Copilot + CodeRabbit review feedback
+
+### Fixed
+
+- *(pages/macros)* apply HiddenField initial to signal at first render
+- *(manouche)* resolve clippy errors blocking release-plz PR
+- *(manouche)* drop redundant ':' in success_url parser arm
+
+### Other
+
+- resolve conflicts with main (on_success_ref + on_success lift)
+
+### Testing
+
+- *(manouche)* use unwrap_or_else for parse error in success_url tests
+
 ## [0.1.0-rc.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.21...reinhardt-manouche@v0.1.0-rc.22) - 2026-04-25
 
 ### Added

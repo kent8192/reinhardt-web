@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.29...reinhardt-di@v0.1.0-rc.30) - 2026-05-19
+
+### Added
+
+- *(http,di)* add Middleware::di_registrations hook and type-erased DI APIs
+- *(di)* add ParamError::Authentication variant for 401 mapping
+
+### Fixed
+
+- *(di-macros)* route async_trait through reinhardt-core re-export
+- *(middleware,di)* map non-auth DiError variants to ParamError::Internal
+
+### Testing
+
+- *(di-macros)* trybuild pass test for #[injectable] without async-trait dep
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.28...reinhardt-di@v0.1.0-rc.29) - 2026-05-13
 
 ### Added
