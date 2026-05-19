@@ -862,18 +862,26 @@ fn generate_on_success_ref_artifacts(
 					}
 					let __user_on_success_ref = __coerce_form(#closure);
 
-					// Compile-time type assertion (#4624): forces
-					// `__T` == server_fn's Ok type. See the macro
-					// doc comment on `generate_on_success_ref_artifacts`
-					// for why this is sound.
+					// Compile-time type assertion (#4624). The dead-code
+					// branch emitted by `#type_check_dead_code` calls the
+					// server_fn and feeds its Ok value into the user
+					// closure, so the compiler unifies `__T` with the
+					// server_fn's Ok type. If the user annotates the
+					// closure parameter with a wrong type, compilation
+					// fails AT the annotation site — never here at the
+					// runtime downcast. See the doc comment on
+					// `generate_on_success_ref_artifacts` for the full
+					// soundness argument.
 					#type_check_dead_code
 
 					let __value_ref = __erased.downcast_ref().expect(
-						"on_success_ref: server_fn Ok value type does not match \
-						 the closure parameter type — unreachable in user-facing \
-						 builds because `#type_check_dead_code` makes any \
-						 mismatch a compile error; this `expect` is a defensive \
-						 macro-internal invariant",
+						"on_success_ref: internal invariant violated — \
+						 server_fn Ok value did not downcast to the user \
+						 closure's parameter type. This branch should be \
+						 unreachable because the macro emits a compile-time \
+						 type assertion that forces them to match; \
+						 reaching it indicates a macro implementation bug, \
+						 not a user error",
 					);
 					let _ = __user_on_success_ref(__form, __value_ref);
 				},

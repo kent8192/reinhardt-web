@@ -166,7 +166,7 @@ impl Parse for FormMacro {
 					return Err(syn::Error::new(
 						key.span(),
 						format!(
-							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, success_url, initial_loader, choices_loader, slots, fields, validators, strip_arguments",
+							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, success_url, initial_loader, choices_loader, slots, fields, validators, derived, strip_arguments",
 							key
 						),
 					));

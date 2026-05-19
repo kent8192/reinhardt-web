@@ -1744,11 +1744,11 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// | Callback | Signature | When Called |
 /// |----------|-----------|-------------|
-/// | `on_submit` | `\|&Form\|` | Before submission starts |
-/// | `on_loading` | `\|bool\|` | When loading state changes |
-/// | `on_success` | `\|T\|` | After successful submission (consumes `T` by move) |
-/// | `on_success_ref` | `\|&Form, &T\|` | After successful submission (borrows `&T`, can capture outer-scope locals) |
-/// | `on_error` | `\|ServerFnError\|` | After submission error |
+/// | `on_submit` | `\|form: &Self\|` | Before submission starts |
+/// | `on_loading` | `\|loading: bool\|` | When loading state changes |
+/// | `on_success` | `\|result: T\|` | After successful submission (consumes `T` by move) |
+/// | `on_success_ref` | `\|form: &Self, result: &T\|` | After successful submission (borrows `&T`, can capture outer-scope locals) |
+/// | `on_error` | `\|err: ServerFnError\|` | After submission error |
 ///
 /// ### Choosing between `on_success` and `on_success_ref`
 ///
