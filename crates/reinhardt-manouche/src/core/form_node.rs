@@ -817,6 +817,23 @@ pub struct FormCallbacks {
 	/// Receives the server_fn return value.
 	/// Signature: `|result: T| { ... }`
 	pub on_success: Option<ExprClosure>,
+	/// Lifted variant of `on_success` that captures outer-scope locals.
+	///
+	/// Unlike `on_success` (which is expanded inside the generated `fn submit()`
+	/// body and therefore cannot see enclosing-scope locals like `user_id`),
+	/// `on_success_ref` is expanded at the outer construction block. This lets
+	/// the user closure capture locals from the surrounding function scope.
+	///
+	/// The closure receives the server_fn return value by reference (`&T`)
+	/// instead of by move (`T`); for callbacks that must *consume* the value
+	/// (e.g., `set_current_user(Some(value))`), keep using `on_success`.
+	///
+	/// Both may be supplied together. Execution order: `on_success_ref` runs
+	/// first (receives `&value`), then `on_success` runs (receives `value` by
+	/// move).
+	///
+	/// Signature: `|form: &Self, result: &T| { ... }`
+	pub on_success_ref: Option<ExprClosure>,
 	/// Callback called when submission fails.
 	/// Signature: `|error: ServerFnError| { ... }`
 	pub on_error: Option<ExprClosure>,
@@ -837,6 +854,7 @@ impl FormCallbacks {
 	pub fn has_any(&self) -> bool {
 		self.on_submit.is_some()
 			|| self.on_success.is_some()
+			|| self.on_success_ref.is_some()
 			|| self.on_error.is_some()
 			|| self.on_loading.is_some()
 	}

@@ -82,6 +82,14 @@ impl Parse for FormMacro {
 					form.callbacks.on_success = Some(closure);
 					parse_optional_comma(input)?;
 				}
+				"on_success_ref" => {
+					let closure: ExprClosure = input.parse()?;
+					if form.callbacks.span.is_none() {
+						form.callbacks.span = Some(key.span());
+					}
+					form.callbacks.on_success_ref = Some(closure);
+					parse_optional_comma(input)?;
+				}
 				"on_error" => {
 					let closure: ExprClosure = input.parse()?;
 					if form.callbacks.span.is_none() {
@@ -158,7 +166,7 @@ impl Parse for FormMacro {
 					return Err(syn::Error::new(
 						key.span(),
 						format!(
-							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_error, on_loading, watch, redirect_on_success, initial_loader, choices_loader, slots, fields, validators, strip_arguments",
+							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, success_url, initial_loader, choices_loader, slots, fields, validators, strip_arguments",
 							key
 						),
 					));
@@ -1190,6 +1198,60 @@ mod tests {
 		assert!(form.callbacks.on_success.is_some());
 		assert!(form.callbacks.on_error.is_none());
 		assert!(form.callbacks.on_loading.is_none());
+	}
+
+	#[rstest]
+	fn test_parse_on_success_ref() {
+		// Arrange — issue #4624: the lifted `on_success_ref:` keyword.
+		let input = quote! {
+			name: OnSuccessRefForm,
+			server_fn: update_profile,
+
+			on_success_ref: |_form, _result| {
+				let _ = _result;
+			},
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let result: Result<FormMacro> = syn::parse2(input);
+
+		// Assert
+		assert!(result.is_ok(), "form! with on_success_ref should parse");
+		let form = result.unwrap();
+		assert!(form.callbacks.has_any());
+		assert!(form.callbacks.on_success_ref.is_some());
+		assert!(form.callbacks.on_success.is_none());
+	}
+
+	#[rstest]
+	fn test_parse_on_success_and_on_success_ref_coexist() {
+		// Arrange — issue #4624 contract: both callbacks may be supplied
+		// simultaneously. The validator does not reject the combination;
+		// codegen documents the order (ref-first, move-second).
+		let input = quote! {
+			name: DualCallbackForm,
+			server_fn: update_profile,
+
+			on_success_ref: |_form, _result| {},
+			on_success: |_result| {},
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let result: Result<FormMacro> = syn::parse2(input);
+
+		// Assert
+		assert!(result.is_ok(), "coexistence must parse");
+		let form = result.unwrap();
+		assert!(form.callbacks.on_success_ref.is_some());
+		assert!(form.callbacks.on_success.is_some());
 	}
 
 	#[rstest]
