@@ -135,6 +135,16 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 		outer_setup: watch_outer_setup,
 	} = generate_watch_artifacts(&macro_ast.watch, pages_crate, struct_name);
 
+	// Generate on_success_ref artifacts (#4624). When the user has not
+	// supplied `on_success_ref:`, all four TokenStreams are empty, so the
+	// macro output is unchanged for forms that don't use this feature.
+	let OnSuccessRefArtifacts {
+		field_decl: on_success_ref_field_decl,
+		field_default_init: on_success_ref_field_default_init,
+		setter_method: on_success_ref_setter_method,
+		outer_setup: on_success_ref_outer_setup,
+	} = generate_on_success_ref_artifacts(&macro_ast.callbacks, pages_crate, struct_name);
+
 	// Generate derived methods
 	let derived_methods = generate_derived_methods(&macro_ast.derived, pages_crate);
 
@@ -165,6 +175,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#field_decls
 				#state_decls
 				#watch_field_decls
+				#on_success_ref_field_decl
 			}
 
 			impl #struct_name {
@@ -173,6 +184,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 						#field_inits
 						#state_inits
 						#watch_field_default_inits
+						#on_success_ref_field_default_init
 					}
 				}
 
@@ -180,6 +192,7 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#state_accessors
 				#watch_methods
 				#watch_setter_methods
+				#on_success_ref_setter_method
 				#derived_methods
 				#metadata_fn
 				#validate_method
@@ -191,11 +204,13 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 
 			// Build the form instance and bind user-supplied watch handlers in
 			// the outer scope, where enclosing-scope locals are visible. This is
-			// what makes `watch:` handlers behave as real closures (issue #4414)
-			// and what makes `initial: <expr>` capture outer locals (issue #4420).
+			// what makes `watch:` handlers behave as real closures (issue #4414),
+			// what makes `initial: <expr>` capture outer locals (issue #4420),
+			// and what makes `on_success_ref:` capture outer locals (issue #4624).
 			let mut __reinhardt_form = #struct_name::new();
 			#initial_outer_setup
 			#watch_outer_setup
+			#on_success_ref_outer_setup
 			__reinhardt_form
 		}
 	}
@@ -644,6 +659,158 @@ fn generate_watch_artifacts(
 	}
 }
 
+/// Artifacts produced for the `on_success_ref:` callback (issue #4624).
+///
+/// `on_success_ref:` is the "lifted" sibling of `on_success:` — its user
+/// closure is expanded at the outer construction block (same lexical scope
+/// as the `form!` macro invocation), so it can capture enclosing-scope
+/// locals (e.g. a `user_id` bound earlier in the surrounding function).
+/// `on_success:` itself stays inline in `fn submit()` because it consumes
+/// the server_fn return value `T` by move, and three in-tree callers rely
+/// on that — flipping the signature to `&T` is a SemVer break deferred to
+/// `develop/0.2.0`.
+///
+/// The trick that makes this work without naming `T` anywhere in the
+/// macro output is the same `__coerce`-style identity-fn pattern used by
+/// `WatchArtifacts`, extended to three generic parameters so the user
+/// closure's `&T` value parameter can be inferred without the user having
+/// to annotate it. At the `Arc<dyn Fn(&Form, &dyn Any)>` storage boundary
+/// the inferred `T` is then type-erased; the submit-site downcast is
+/// infallible by macro construction because both sides of the type
+/// identity are produced from the same closure literal.
+struct OnSuccessRefArtifacts {
+	/// Field declaration to splice into `struct FormName { ... }`. Empty
+	/// when the user did not supply `on_success_ref:`.
+	field_decl: TokenStream,
+	/// Default initializer used in `FormName::new()`. Empty when the user
+	/// did not supply `on_success_ref:`.
+	field_default_init: TokenStream,
+	/// Private setter method on `FormName` used to bind the real handler
+	/// after `new()` returns. Empty when the user did not supply
+	/// `on_success_ref:`.
+	setter_method: TokenStream,
+	/// Code emitted in the outer block, after `let mut __reinhardt_form = FormName::new();`.
+	/// This is where the user's closure literal appears lexically, so it
+	/// can capture enclosing-scope locals.
+	outer_setup: TokenStream,
+}
+
+/// Generates the artifacts needed to wire up `on_success_ref:`.
+///
+/// When the user has not supplied `on_success_ref:`, every TokenStream in
+/// the returned artifacts is empty — the resulting macro output is
+/// indistinguishable from a form that doesn't use the feature.
+///
+/// When supplied, this produces:
+///
+/// 1. A private struct field
+///    `__on_success_ref_handler: Arc<dyn Fn(&FormName, &dyn Any)>` storing
+///    a type-erased handler.
+/// 2. A default initializer in `FormName::new()` returning a no-op closure
+///    so `new()` keeps its zero-argument signature.
+/// 3. A private setter `__set_on_success_ref_handler` used internally.
+/// 4. Outer-scope setup code that captures the user's closure literal
+///    (where enclosing-scope locals are visible), funnels it through a
+///    `__coerce_form<__F, __T, __R>` identity fn to fix the parameter
+///    shape `(&FormName, &__T) -> __R`, wraps it in an `Arc`, and calls
+///    the setter on the form instance.
+fn generate_on_success_ref_artifacts(
+	callbacks: &TypedFormCallbacks,
+	pages_crate: &TokenStream,
+	struct_name: &syn::Ident,
+) -> OnSuccessRefArtifacts {
+	let _ = pages_crate; // reserved for future cross-crate refs; quiet warnings now.
+	let empty = OnSuccessRefArtifacts {
+		field_decl: quote! {},
+		field_default_init: quote! {},
+		setter_method: quote! {},
+		outer_setup: quote! {},
+	};
+
+	let Some(closure) = &callbacks.on_success_ref else {
+		return empty;
+	};
+
+	// Stored handler type — type-erased so the form struct stays nameable.
+	// The `&dyn Any` parameter is what lets the macro avoid spelling `T`:
+	// `T` is inferred from the user closure's second parameter via the
+	// `__coerce_form` identity fn below, and immediately erased here.
+	let handler_ty = quote! {
+		::std::sync::Arc<
+			dyn ::core::ops::Fn(&#struct_name, &dyn ::core::any::Any),
+		>
+	};
+
+	let field_decl = quote! {
+		__on_success_ref_handler: #handler_ty,
+	};
+
+	// Default no-op handler used before the real one is bound. Calling it
+	// is harmless: it ignores both the form ref and the erased value.
+	let field_default_init = quote! {
+		__on_success_ref_handler: ::std::sync::Arc::new(
+			|_: &#struct_name, _: &dyn ::core::any::Any| {},
+		),
+	};
+
+	let setter_method = quote! {
+		#[doc(hidden)]
+		fn __set_on_success_ref_handler(&mut self, __handler: #handler_ty) {
+			self.__on_success_ref_handler = __handler;
+		}
+	};
+
+	// Outer-scope capture. The user's `#closure` is expanded *here*,
+	// which is the same lexical scope as the `form!` macro invocation,
+	// so it can capture locals from the enclosing function (issue #4624).
+	//
+	// The closure is funneled through `__coerce_form` whose `where`-bound
+	// pins its parameter shape to `(&#struct_name, &__T) -> __R`. This
+	// gives the user's `|form, value| { ... }` enough type information
+	// to infer the value type from the body, without the user having to
+	// write `|form: &MyForm, value: &MyT|` annotations. `__T: 'static`
+	// is required because `Any::downcast_ref` only works on `'static`
+	// types — server_fn return types are owned types and naturally
+	// satisfy this.
+	//
+	// The downcast at the call boundary is infallible by macro
+	// construction: at the submit site, the value passed via
+	// `&value as &dyn Any` has the exact concrete type the server_fn
+	// returns in its Ok arm, and that type is the same `__T` inferred
+	// from this closure literal. A mismatch would indicate a bug in the
+	// macro itself, not in user code, so `expect` is appropriate.
+	let outer_setup = quote! {
+		{
+			let __wrapped: #handler_ty = ::std::sync::Arc::new(
+				move |__form: &#struct_name, __erased: &dyn ::core::any::Any| {
+					fn __coerce_form<__F, __T, __R>(__f: __F) -> __F
+					where
+						__F: ::core::ops::Fn(&#struct_name, &__T) -> __R,
+						__T: 'static,
+					{
+						__f
+					}
+					let __user_on_success_ref = __coerce_form(#closure);
+					let __value_ref = __erased.downcast_ref().expect(
+						"on_success_ref: server_fn Ok value type does not match \
+						 the closure parameter type — this is a bug in \
+						 reinhardt-pages-macros, not in user code",
+					);
+					let _ = __user_on_success_ref(__form, __value_ref);
+				},
+			);
+			__reinhardt_form.__set_on_success_ref_handler(__wrapped);
+		}
+	};
+
+	OnSuccessRefArtifacts {
+		field_decl,
+		field_default_init,
+		setter_method,
+		outer_setup,
+	}
+}
+
 /// Generates derived methods that compute derived values.
 ///
 /// Each derived item becomes a method on the form struct that evaluates the closure
@@ -1014,6 +1181,30 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				quote! {}
 			};
 
+			// Generate on_success_ref clones + invocation if present (#4624).
+			// The `spawn_task` async block captures by move, so the lifted
+			// `Arc<dyn Fn(&Self, &dyn Any)>` handler and a form-instance
+			// clone must be hoisted into the surrounding scope first.
+			// `Form::clone()` is cheap — every field is an `Arc` or `Signal`.
+			let on_success_ref_outer_clones = if callbacks.on_success_ref.is_some() {
+				quote! {
+					let __on_success_ref_handler_clone = self.__on_success_ref_handler.clone();
+					let __form_clone_for_on_success_ref = self.clone();
+				}
+			} else {
+				quote! {}
+			};
+			let on_success_ref_invocation = if callbacks.on_success_ref.is_some() {
+				quote! {
+					__on_success_ref_handler_clone(
+						&__form_clone_for_on_success_ref,
+						&_value as &dyn ::core::any::Any,
+					);
+				}
+			} else {
+				quote! {}
+			};
+
 			// Generate on_error callback if present
 			let on_error_code = if let Some(callback) = &callbacks.on_error {
 				quote! { (#callback)(e.clone()); }
@@ -1054,6 +1245,11 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				// Clone state signals for onsubmit handler
 				#state_signal_clones
 
+				// Clone the lifted on_success_ref Arc + a form-instance ref
+				// for the async block (#4624). Both must live in the outer
+				// scope so `async move` can capture them.
+				#on_success_ref_outer_clones
+
 				let form_element = PageElement::new("form")
 					.attr("id", #form_id_str)
 					.attr("action", #action_str)
@@ -1088,6 +1284,10 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 								#pages_crate::spawn::spawn_task(async move {
 									match #server_fn_call {
 										Ok(_value) => {
+											// Order matters: on_success_ref
+											// (borrows) runs before on_success
+											// (may consume by move). #4624.
+											#on_success_ref_invocation
 											#on_success_code
 											#redirect_code
 										}
@@ -1733,6 +1933,28 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 			let on_error_code = generate_on_error_callback(callbacks, state);
 			let redirect_code = generate_redirect_code(redirect);
 
+			// Lifted `on_success_ref:` invocation (issue #4624). Pulls the
+			// stored `Arc<dyn Fn(&Self, &dyn Any)>` handler installed by
+			// the outer-scope setup and invokes it with `&value as &dyn Any`.
+			// Emitted only when the user supplied `on_success_ref:` — when
+			// they did not, the field itself is absent from the form
+			// struct (gated symmetrically in `generate_on_success_ref_artifacts`)
+			// so the invocation must be gated here too. Ordering: this
+			// runs *before* `#on_success_code` so that the by-ref handler
+			// observes `value` first and the by-move `on_success` consumes
+			// it second (ref-first, move-second contract documented on
+			// `TypedFormCallbacks::on_success_ref`).
+			let on_success_ref_invocation = if callbacks.on_success_ref.is_some() {
+				quote! {
+					{
+						let __handler = self.__on_success_ref_handler.clone();
+						__handler(self, &value as &dyn ::core::any::Any);
+					}
+				}
+			} else {
+				quote! {}
+			};
+
 			quote! {
 				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 				pub async fn submit(&self) -> Result<(), #pages_crate::ServerFnError> {
@@ -1751,6 +1973,12 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 					// Handle result with callbacks and redirect
 					match result {
 						Ok(value) => {
+							// Order matters: `on_success_ref` (lifted,
+							// borrows `value` via `&dyn Any`) runs before
+							// `on_success` (inline, may consume `value`
+							// by move). See #4624 ordering contract on
+							// `TypedFormCallbacks::on_success_ref`.
+							#on_success_ref_invocation
 							#on_success_code
 							#redirect_code
 							Ok(())
@@ -2368,6 +2596,77 @@ mod tests {
 		assert!(output_str.contains("my-form"));
 		assert!(output_str.contains("email-input"));
 		assert!(output_str.contains("field-wrapper"));
+	}
+
+	#[rstest::rstest]
+	fn test_generate_on_success_ref_lift() {
+		// Arrange — issue #4624. When `on_success_ref:` is supplied, the
+		// macro must emit the lifted-handler scaffold: a private struct
+		// field, its setter, the `__coerce_form` 3-param identity fn that
+		// pins the user closure's `(&Self, &__T)` shape, and the
+		// outer-scope setup that installs the Arc.
+		let input = quote! {
+			name: OnSuccessRefForm,
+			server_fn: update_profile,
+
+			on_success_ref: |_form, _value| {
+				let _ = _value;
+			},
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert — all four artifact splice points are present.
+		assert!(
+			output_str.contains("__on_success_ref_handler"),
+			"missing field declaration"
+		);
+		assert!(
+			output_str.contains("__set_on_success_ref_handler"),
+			"missing setter method"
+		);
+		assert!(
+			output_str.contains("__coerce_form"),
+			"missing identity-fn type-coercion trick (E0282 will return)"
+		);
+		assert!(
+			output_str.contains("downcast_ref"),
+			"missing infallible type-erasure downcast"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_generate_omits_on_success_ref_scaffold_when_unused() {
+		// Arrange — a form without `on_success_ref:` must NOT pay the
+		// scaffold cost: no field, no setter, no Arc allocation in `new()`.
+		let input = quote! {
+			name: NoRefForm,
+			server_fn: update_profile,
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert — the scaffold tokens are absent when the feature is unused.
+		assert!(
+			!output_str.contains("__on_success_ref_handler"),
+			"unused on_success_ref must not allocate a struct field"
+		);
+		assert!(
+			!output_str.contains("__set_on_success_ref_handler"),
+			"unused on_success_ref must not generate a setter"
+		);
 	}
 
 	#[rstest::rstest]
