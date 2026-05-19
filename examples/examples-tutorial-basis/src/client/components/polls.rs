@@ -260,17 +260,20 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// the initial `false` value at mount time. That avoids the redirect-on-mount
 	// bug from PR #4517 (the previous `watch{}` predicate
 	// `if !is_loading && err.is_none()` was true on first render).
+	//
+	// The entire block is gated to `wasm32-unknown-unknown`: on native/SSR
+	// builds there is no browser `History` to drive, so cloning
+	// `voting_form`, allocating `dest`, and installing a re-running
+	// `use_effect` would be pure overhead with no observable effect.
+	#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 	{
 		let voting_form_for_redirect = voting_form.clone();
 		let dest = links::poll_results(qid);
 		use_effect(move || {
 			let did_succeed = voting_form_for_redirect.success().get();
 			if did_succeed {
-				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-				{
-					if let Some(window) = web_sys::window() {
-						let _ = window.location().set_href(&dest);
-					}
+				if let Some(window) = web_sys::window() {
+					let _ = window.location().set_href(&dest);
 				}
 			}
 		});
