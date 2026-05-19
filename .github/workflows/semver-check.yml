@@ -70,14 +70,18 @@ jobs:
           # Publishable crate set: intersect with .workspace_members so that
           # future path-dependencies outside the workspace cannot leak into the
           # matrix (Copilot review feedback), then drop unpublished crates and
-          # crates without any library-shaped target (lib/rlib/cdylib/dylib/
-          # proc-macro). cargo-semver-checks only operates on library API
-          # surfaces and exits 1 when handed a binary-only crate (Issue #4575).
-          # The two members reinhardt-web and reinhardt-pages do expose library
-          # targets but are intentionally opted out of SemVer enforcement, so
-          # they remain on a hard-coded exclusion list. Single source of truth
-          # for both the matrix and phase detection so an excluded/private
-          # crate cannot diverge phase from the crates actually under check
+          # crates without any analyzable library-shaped target
+          # (lib/rlib/cdylib/dylib). cargo-semver-checks only operates on
+          # library API surfaces and exits 1 when handed a binary-only crate
+          # (Issue #4575) or a proc-macro-only crate (Issue #4597) — proc-macro
+          # crates declare `[lib] proc-macro = true` but expose no analyzable
+          # library target surface, so they are dropped here too rather than
+          # producing one failing matrix shard per crate. The two members
+          # reinhardt-web and reinhardt-pages do expose library targets but
+          # are intentionally opted out of SemVer enforcement, so they remain
+          # on a hard-coded exclusion list. Single source of truth for both
+          # the matrix and phase detection so an excluded/private crate
+          # cannot diverge phase from the crates actually under check
           # (CodeRabbit review feedback). Emit name+version+manifest_path; the
           # manifest path is forwarded to the matrix shards so they can detect
           # newly-introduced crates whose Cargo.toml does not exist at the
@@ -90,8 +94,7 @@ jobs:
              | select(.publish == null or (.publish | length > 0))
              | select(.targets | any(.kind | any(
                  . == "lib" or . == "rlib" or
-                 . == "cdylib" or . == "dylib" or
-                 . == "proc-macro")))
+                 . == "cdylib" or . == "dylib")))
              | {name: .name,
                 version: .version,
                 manifest_path: (.manifest_path | sub("^" + $ws + "/"; ""))}]

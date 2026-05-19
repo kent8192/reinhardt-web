@@ -22,16 +22,24 @@ installed_apps! {
 	snippets: "snippets",
 }
 
-mod snippets {
-	pub mod urls {
-		use reinhardt::ServerRouter;
-		use reinhardt::url_patterns;
+// `#[routes(...)]` emits absolute paths of the form
+// `crate::apps::<app>::urls::url_resolvers::...` (see
+// `crates/reinhardt-core/macros/src/routes_registration.rs:905`). The
+// fixture's app module must therefore live under a `mod apps { ... }`
+// parent so the emitted path resolves; placing `mod snippets` at the
+// crate root would yield E0433. See #4596.
+mod apps {
+	pub(crate) mod snippets {
+		pub(crate) mod urls {
+			use reinhardt::ServerRouter;
+			use reinhardt::url_patterns;
 
-		use super::super::InstalledApp;
+			use super::super::super::InstalledApp;
 
-		#[url_patterns(InstalledApp::snippets, mode = server)]
-		pub fn url_patterns() -> ServerRouter {
-			ServerRouter::new()
+			#[url_patterns(InstalledApp::snippets, mode = server)]
+			pub fn url_patterns() -> ServerRouter {
+				ServerRouter::new()
+			}
 		}
 	}
 }
@@ -45,7 +53,7 @@ pub fn routes() -> UnifiedRouter {
 	// user is responsible for the `.mount()` call. This mirrors the
 	// canonical pattern in
 	// `examples/examples-tutorial-rest/src/config/urls.rs`.
-	UnifiedRouter::new().mount("/api/", crate::snippets::urls::url_patterns())
+	UnifiedRouter::new().mount("/api/", crate::apps::snippets::urls::url_patterns())
 }
 
 #[test]
