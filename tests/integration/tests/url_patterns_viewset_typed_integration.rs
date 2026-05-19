@@ -130,6 +130,22 @@ pub mod apps {
 					UnifiedRouter::new()
 				}
 			}
+
+			// Under `--all-features` (or any feature set enabling
+			// `client-router`), `#[routes]` *also* references
+			// `crate::apps::<app>::urls::client_url_resolvers` (a *direct*
+			// child of `urls`, unlike `ws_url_resolvers` which is nested
+			// inside `ws_urls`) via a `#[cfg(feature = "client-router")]`-
+			// gated fan-out (see `routes_registration.rs:999`). The
+			// `#[url_patterns(.., mode = client)]` invocation must therefore
+			// sit directly inside `mod urls` so its emitted
+			// `pub mod client_url_resolvers { .. }` lands at the path the
+			// fan-out resolves. Mirrors PR #4601's fix for the trybuild
+			// fixtures (#4596).
+			#[url_patterns(crate::InstalledApp::snippets, mode = client)]
+			pub fn client_url_patterns() -> reinhardt_urls::routers::ClientRouter {
+				reinhardt_urls::routers::ClientRouter::new()
+			}
 		}
 	}
 }
