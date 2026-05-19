@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.29...reinhardt-commands@v0.1.0-rc.30) - 2026-05-19
+
+### Added
+
+- *(commands/templates)* add per-app server_fn.rs.tpl
+- *(commands/templates)* add per-app client.rs.tpl aggregator
+- *(commands/templates)* add per-app client/components.rs.tpl
+- *(commands/templates)* add per-app client/pages.rs.tpl
+- *(runserver)* auto-mount project static/ at /static/ with opt-out
+- *(core)* auto-register SuperuserCreator for any #[user] + #[model] type
+
+### Changed
+
+- refactor!(commands/templates): gate per-app aggregator by target
+- *(commands/templates)* empty server_urls.rs.tpl body
+- *(commands/templates)* empty client_router.rs.tpl body
+- *(commands/templates)* update project lib.rs.tpl
+- *(commands/templates)* delete project server_fn.rs.tpl
+- *(commands/templates)* update project client.rs.tpl
+- *(commands/templates)* wire client lib.rs.tpl to router_client
+- *(commands/templates)* delete project router.rs.tpl
+- *(commands/templates)* delete project pages.rs.tpl
+- *(commands/templates)* update project components.rs.tpl
+- *(commands/templates)* create project nav.rs.tpl
+- *(commands/templates)* update project urls.rs.tpl with server function notes
+
+### Documentation
+
+- *(commands/templates)* correct project urls.rs comment on url_patterns behavior
+- *(commands/templates)* correct server_urls.rs comment on auto-mount behavior
+- *(commands/templates)* correct client_router.rs comment on launcher wiring
+- *(runserver)* clarify MiddlewareChain order reverses at handle time
+
+### Fixed
+
+- *(staticfiles)* disable immutable cache for bundle assets in debug builds
+- address Copilot review feedback
+- *(commands)* gate startproject manage.rs template off wasm32 target
+- *(commands/templates)* correct project-wide pages template content
+- *(commands/templates)* switch project routes to standalone mode
+- *(commands)* make per-app templates compile under wasm32
+- *(commands/templates)* install default empty ClientRouter in Pages WASM entry
+- *(commands)* only gate apps.rs Config re-export with cfg(server) for Pages
+
+### Styling
+
+- *(commands)* apply rustfmt to e2e_pages.rs
+
+### Testing
+
+- *(commands)* assert per-app pages layout in e2e_pages (RED)
+- *(commands)* renumber urls.rs assertion block to section 5
+- *(commands)* scope server/client_url assertions to function body
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.28...reinhardt-commands@v0.1.0-rc.29) - 2026-05-13
 
 ### Changed
