@@ -2483,19 +2483,54 @@ fn build_on_success_artifacts(on_success: &Option<syn::ExprClosure>) -> OnSucces
 		__on_success_dispatcher: ::core::option::Option::None,
 	};
 
+	// Setter is wasm-only because [`outer_setup`] is wasm-only (see the
+	// rationale below). Keeping the setter ungated would mean dead code on
+	// server builds where the only caller (`outer_setup`) is `cfg`'d out.
 	let setter_method = quote! {
 		#[doc(hidden)]
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		fn __set_on_success_dispatcher(&mut self, __dispatcher: #dispatcher_ty) {
 			self.__on_success_dispatcher = ::core::option::Option::Some(__dispatcher);
 		}
 	};
+
+	// Force the user closure to capture by value. Without an explicit
+	// `move`, Rust captures enclosing-scope locals by reference, which
+	// leaves the resulting closure with a non-`'static` lifetime — and the
+	// `Arc<dyn Fn(...) + Send + Sync>` dispatcher field is implicitly
+	// `'static` (the trait object's default object lifetime in a struct
+	// field). Injecting `move` is strictly an improvement: outer-scope
+	// captures that wouldn't have compiled inside the historical
+	// `fn submit()` body (E0434) now succeed; captures that worked before
+	// (function paths, `'static` values) are unaffected; non-trivial
+	// captures are moved into the closure, matching the typical Rust
+	// idiom for "store this closure in a 'static container".
+	let mut moved_closure = closure.clone();
+	if moved_closure.capture.is_none() {
+		moved_closure.capture = Some(syn::Token![move](proc_macro2::Span::call_site()));
+	}
 
 	// Outer-scope wrap. The closure literal is expanded here where
 	// enclosing-scope locals are visible (issue #4624). The
 	// monomorphized `__coerce` is what makes the lift work without the
 	// macro knowing the server_fn's return type — `T` and `F` are
 	// inferred from the user's closure expression.
+	//
+	// The `#[cfg(all(target_family = "wasm", target_os = "unknown"))]`
+	// gate matches the historical inline path: pre-lift, the user
+	// closure was spliced inside the wasm-only `fn submit()` body, so
+	// any types referenced by the closure (often `cfg(client)`-gated
+	// types like `LoginResponse` in `reinhardt-admin`) only needed to
+	// be in scope on wasm builds. Lifting the closure to the outer
+	// block at the form! call site unconditionally would resurface
+	// those imports on server builds — which is exactly the bug that
+	// caused `reinhardt-admin`'s login form to stop compiling. Keep the
+	// expansion wasm-only so the historical scope contract holds. On
+	// server builds, `submit()` is a stub that does not invoke
+	// `on_success` anyway, so skipping the lift there is a true
+	// no-op.
 	let outer_setup = quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		{
 			fn __coerce<__T, __F>(__cb: __F) -> #dispatcher_ty
 			where
@@ -2523,7 +2558,7 @@ fn build_on_success_artifacts(on_success: &Option<syn::ExprClosure>) -> OnSucces
 					},
 				)
 			}
-			let __wrapped = __coerce(#closure);
+			let __wrapped = __coerce(#moved_closure);
 			__reinhardt_form.__set_on_success_dispatcher(__wrapped);
 		}
 	};
