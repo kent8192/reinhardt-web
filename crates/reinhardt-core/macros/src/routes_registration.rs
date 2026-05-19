@@ -1301,6 +1301,13 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				// `crate::macro_state::state_dir_path` — required to keep multiple
 				// `[[test]]` binaries in one crate from racing on a shared state
 				// file (Issue #4592).
+				//
+				// Both `env!()` calls hard-fail at compile time if the env var is
+				// missing; `concat!()` cannot consume `option_env!()` with a
+				// compile-time fallback. `macro_state::state_dir_path` is
+				// symmetrically hard-fail (both vars are `?`-propagated) so the
+				// two paths stay consistent — see the module-level doc-comment in
+				// `macro_state.rs` for rationale.
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				const _: &[u8] = include_bytes!(concat!(
 					env!("CARGO_MANIFEST_DIR"),

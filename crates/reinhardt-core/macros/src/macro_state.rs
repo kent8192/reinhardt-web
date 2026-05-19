@@ -27,10 +27,16 @@
 //! binary's `#[routes]` is about to read, producing spurious E0433 errors.
 //!
 //! Cargo additionally sets `CARGO_CRATE_NAME` per compilation unit. We use it as a
-//! subdirectory under `target/reinhardt/`, isolating each binary's state file. The
-//! fallback sentinel `_crate_name_unset` is used if the variable is missing — that
-//! only happens outside cargo (e.g., a hand-rolled `rustc` invocation) and at worst
-//! reproduces the pre-fix flat layout.
+//! subdirectory under `target/reinhardt/`, isolating each binary's state file.
+//!
+//! Both `CARGO_MANIFEST_DIR` and `CARGO_CRATE_NAME` are treated as hard requirements
+//! and surface as `compile_error!` if missing. This matches the symmetric hard-fail
+//! in the `include_bytes!` tracker emitted by `#[routes]`
+//! (`routes_registration.rs`), which uses `env!("CARGO_MANIFEST_DIR")` and
+//! `env!("CARGO_CRATE_NAME")` — `concat!()` cannot consume `option_env!()` with a
+//! compile-time fallback, so emitting a runtime sentinel on one side and a
+//! compile-time hard-fail on the other would be inconsistent. Both sides hard-fail
+//! together (Issue #4592 / CodeRabbit thread).
 
 use std::path::PathBuf;
 
@@ -39,10 +45,6 @@ const STATE_FILE_NAME: &str = ".installed_apps";
 
 /// Subdirectory under `target/` for reinhardt state files.
 const STATE_SUBDIR: &str = "reinhardt";
-
-/// Sentinel subdirectory used when `CARGO_CRATE_NAME` is not set. Only reachable
-/// outside a cargo-driven build.
-const CRATE_NAME_FALLBACK: &str = "_crate_name_unset";
 
 /// Composes the state directory path. Pure function — extracted so it can be unit
 /// tested without mutating process env vars.
@@ -59,8 +61,10 @@ fn state_dir_path() -> Result<PathBuf, String> {
 	let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").map_err(|_| {
 		"CARGO_MANIFEST_DIR not set. Cannot locate installed apps state file".to_string()
 	})?;
-	let crate_name =
-		std::env::var("CARGO_CRATE_NAME").unwrap_or_else(|_| CRATE_NAME_FALLBACK.to_string());
+	let crate_name = std::env::var("CARGO_CRATE_NAME").map_err(|_| {
+		"CARGO_CRATE_NAME not set. Cannot namespace installed apps state file (Issue #4592)"
+			.to_string()
+	})?;
 	Ok(compose_state_dir_path(&manifest_dir, &crate_name))
 }
 
@@ -134,11 +138,5 @@ mod tests {
 		let a = compose_state_dir_path("/tmp/manifest", "test_a");
 		let b = compose_state_dir_path("/tmp/manifest", "test_b");
 		assert_ne!(a, b);
-	}
-
-	#[test]
-	fn compose_uses_fallback_constant_when_passed() {
-		let path = compose_state_dir_path("/tmp/manifest", CRATE_NAME_FALLBACK);
-		assert!(path.ends_with(CRATE_NAME_FALLBACK));
 	}
 }
