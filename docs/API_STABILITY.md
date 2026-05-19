@@ -23,7 +23,7 @@ Inbound deep-links to the old section anchors below continue to resolve to this 
 
 <a id="pre-release-labels"></a>**`#pre-release-labels`** → [Version Lifecycle](../instructions/STABILITY_POLICY.md#version-lifecycle)
 
-<a id="version-bump-rules"></a>**`#version-bump-rules`** → [Breaking Change Policy](../instructions/STABILITY_POLICY.md#breaking-change-policy)
+<a id="version-bump-rules"></a>**`#version-bump-rules`** → [BC-3: Breaking Change Approval Process](../instructions/STABILITY_POLICY.md#bc-3-must-breaking-change-approval-process)
 
 <a id="api-categories"></a>**`#api-categories`** → [API Categories](../instructions/STABILITY_POLICY.md#api-categories)
 
@@ -33,7 +33,7 @@ Inbound deep-links to the old section anchors below continue to resolve to this 
 
 <a id="internal-api"></a>**`#internal-api`** → [Internal API](../instructions/STABILITY_POLICY.md#internal-api)
 
-<a id="rc-phase-rules"></a>**`#rc-phase-rules`** → [RC Phase Rules](../instructions/STABILITY_POLICY.md#rc-phase-rules)
+<a id="rc-phase-rules"></a>**`#rc-phase-rules`** → [RC Phase](../instructions/STABILITY_POLICY.md#rc-phase)
 
 <a id="breaking-change-policy"></a>**`#breaking-change-policy`** → [Breaking Change Policy](../instructions/STABILITY_POLICY.md#breaking-change-policy)
 
