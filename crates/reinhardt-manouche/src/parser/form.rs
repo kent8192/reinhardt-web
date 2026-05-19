@@ -115,7 +115,6 @@ impl Parse for FormMacro {
 					parse_optional_comma(input)?;
 				}
 				"success_url" => {
-					let _colon: Token![:] = input.parse()?;
 					form.success_url = Some(input.parse()?);
 					parse_optional_comma(input)?;
 				}
@@ -2162,6 +2161,58 @@ mod tests {
 		assert!(form.callbacks.on_success.is_some());
 		assert!(form.redirect_on_success.is_some());
 		assert_eq!(form.redirect_on_success.unwrap().value(), "/dashboard");
+	}
+
+	#[rstest]
+	fn test_parse_success_url_closure() {
+		// Arrange — minimal valid form that declares a closure-valued
+		// `success_url:` attribute. Regression coverage for #4604/#4611: the
+		// outer key/value loop already consumes the `:`, so the `success_url`
+		// arm must not consume it again.
+		let input = quote! {
+			name: VotingForm,
+			server_fn: submit,
+
+			success_url: |_form, _value| String::new(),
+
+			fields: {
+				choice: CharField { required },
+			},
+		};
+
+		// Act
+		let result: Result<FormMacro> = syn::parse2(input);
+
+		// Assert
+		let form = result.unwrap_or_else(|err| panic!("parse failed: {err}"));
+		assert!(form.success_url.is_some());
+	}
+
+	#[rstest]
+	fn test_parse_success_url_followed_by_sibling() {
+		// Arrange — `success_url:` followed by a sibling attribute. This
+		// pins the original symptom of #4604/#4611: under the bug, the
+		// success_url arm consumed an extra `:`, causing the parser to bail
+		// at the sibling key with "expected `:`".
+		let input = quote! {
+			name: VotingForm,
+			server_fn: submit,
+
+			success_url: |_form, _value| "/x".to_string(),
+			on_error: |_err| {},
+
+			fields: {
+				choice: CharField { required },
+			},
+		};
+
+		// Act
+		let result: Result<FormMacro> = syn::parse2(input);
+
+		// Assert
+		let form = result.unwrap_or_else(|err| panic!("parse failed: {err}"));
+		assert!(form.success_url.is_some());
+		assert!(form.callbacks.on_error.is_some());
 	}
 
 	// =====================================================
