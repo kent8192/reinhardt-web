@@ -19,7 +19,7 @@
 //! See also the free [`crate::router::navigate`] function for one-shot
 //! navigation calls outside a hook context.
 
-use crate::app::with_spa_router;
+use crate::app::try_with_spa_router;
 use crate::router::NavigationType;
 
 /// Public navigation error returned by [`RouterHandle::push`],
@@ -32,6 +32,14 @@ use crate::router::NavigationType;
 /// public API does not couple to either crate's error enum.
 #[derive(Debug)]
 pub enum NavigateError {
+	/// `ClientLauncher::launch()` has not installed an SPA router on the
+	/// current thread, so SPA navigation is impossible.
+	///
+	/// The form! macro's WASM-side codegen uses this discriminant to
+	/// decide whether to fall back to a hard `location.set_href` —
+	/// callers outside that codegen path SHOULD treat this as a programmer
+	/// error (the hook was called outside a mounted SPA).
+	RouterNotInstalled,
 	/// The underlying SPA router rejected the navigation.
 	///
 	/// The string is the inner router's `Display` representation.
@@ -41,6 +49,7 @@ pub enum NavigateError {
 impl core::fmt::Display for NavigateError {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
+			Self::RouterNotInstalled => write!(f, "SPA router not installed"),
 			Self::RouterRejected(msg) => write!(f, "router rejected navigation: {}", msg),
 		}
 	}
@@ -55,12 +64,15 @@ impl std::error::Error for NavigateError {}
 /// captured closures free of router-lifetime bookkeeping and lets the
 /// launcher swap the router out at teardown without dangling clones.
 ///
-/// # Panics
+/// # Behaviour when no router is installed
 ///
-/// All methods on `RouterHandle` panic if `ClientLauncher::launch()` has not
-/// installed an SPA router on the current thread. This mirrors the contract
-/// of `use_state`/`use_effect`: hooks are only callable from inside a
-/// mounted component tree.
+/// All methods return `Err(NavigateError::RouterNotInstalled)` when
+/// `ClientLauncher::launch()` has not installed an SPA router on the
+/// current thread. The form! macro's WASM-side codegen relies on this
+/// fallible shape to fall back to a hard `location.set_href` when a form
+/// is rendered outside `ClientLauncher::launch`. Callers from a normal
+/// component / hook context SHOULD treat the variant as a programmer
+/// error (the hook was called outside a mounted SPA).
 #[derive(Clone, Copy, Debug)]
 pub struct RouterHandle;
 
@@ -73,7 +85,8 @@ impl RouterHandle {
 	/// component re-renders — all without a document reload.
 	pub fn push(&self, path: impl Into<String>) -> Result<(), NavigateError> {
 		let path = path.into();
-		with_spa_router(|router| router.push(&path))
+		try_with_spa_router(|router| router.push(&path))
+			.ok_or(NavigateError::RouterNotInstalled)?
 			.map_err(|e| NavigateError::RouterRejected(e.to_string()))
 	}
 
@@ -84,7 +97,8 @@ impl RouterHandle {
 	/// the user's back/forward history (e.g. post-login redirect).
 	pub fn replace(&self, path: impl Into<String>) -> Result<(), NavigateError> {
 		let path = path.into();
-		with_spa_router(|router| router.replace(&path))
+		try_with_spa_router(|router| router.replace(&path))
+			.ok_or(NavigateError::RouterNotInstalled)?
 			.map_err(|e| NavigateError::RouterRejected(e.to_string()))
 	}
 
@@ -114,11 +128,14 @@ impl RouterHandle {
 /// Returns a [`RouterHandle`] for imperative navigation from the current
 /// component or reactive context.
 ///
-/// # Panics
+/// # Errors
 ///
-/// `RouterHandle`'s methods panic if `ClientLauncher::launch()` has not
-/// installed an SPA router on the current thread (same contract as
-/// `use_state` and `use_effect`).
+/// `RouterHandle`'s methods return
+/// `Err(NavigateError::RouterNotInstalled)` when `ClientLauncher::launch()`
+/// has not installed an SPA router on the current thread. The form! macro's
+/// WASM-side codegen uses this discriminant to fall back to a hard
+/// navigation; component / hook callers SHOULD treat it as a programmer
+/// error.
 ///
 /// # Example
 ///

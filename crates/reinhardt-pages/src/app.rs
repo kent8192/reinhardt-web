@@ -87,6 +87,27 @@ where
 	})
 }
 
+/// Fallible variant of [`with_spa_router`] used by the public imperative
+/// navigation API ([`crate::router::navigate`],
+/// [`crate::reactive::hooks::router::RouterHandle`]).
+///
+/// Returns `None` when the SPA router has not been installed (instead of
+/// panicking like [`with_spa_router`]), so the form! macro's WASM-side
+/// codegen can fall back to a hard navigation when the form is rendered
+/// outside `ClientLauncher::launch` — e.g. in unit tests, dev tooling, or
+/// applications that intentionally mount forms without an SPA router.
+/// Refs #4610.
+#[cfg_attr(not(wasm), allow(dead_code))]
+pub(crate) fn try_with_spa_router<F, R>(f: F) -> Option<R>
+where
+	F: FnOnce(&dyn SpaRouter) -> R,
+{
+	APP_ROUTER.with(|r| {
+		let borrow = r.borrow();
+		borrow.as_ref().map(|spa| f(&**spa))
+	})
+}
+
 #[cfg(wasm)]
 fn store_spa_router(router: Box<dyn SpaRouter>) {
 	APP_ROUTER.with(|r| {

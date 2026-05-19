@@ -139,17 +139,22 @@ fn use_router_navigate_pop_is_noop() {
 
 #[rstest]
 #[serial(router)]
-fn use_router_panics_when_no_router_installed() {
+fn use_router_returns_not_installed_when_no_router() {
+	use reinhardt_pages::reactive::hooks::router::NavigateError;
+
 	// Arrange — make sure the slot is empty.
 	__clear_spa_router_for_test();
 
-	// Act / Assert — the contract matches `use_state` / `use_effect`:
-	// calling the hook outside a mounted SPA panics.
-	let result = std::panic::catch_unwind(|| {
-		let _ = use_router().push("/welcome");
-	});
+	// Act
+	let result = use_router().push("/welcome");
+
+	// Assert — `RouterHandle::push` returns a fallible Result so the
+	// form! macro's WASM-side codegen can fall back to a hard navigation
+	// when no SPA router is installed. Plain hook callers SHOULD treat
+	// this variant as a programmer error.
 	assert!(
-		result.is_err(),
-		"use_router().push must panic when APP_ROUTER is uninitialised"
+		matches!(result, Err(NavigateError::RouterNotInstalled)),
+		"expected Err(RouterNotInstalled), got {:?}",
+		result
 	);
 }
