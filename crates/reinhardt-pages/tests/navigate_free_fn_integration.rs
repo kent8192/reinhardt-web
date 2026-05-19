@@ -25,11 +25,31 @@ fn build_test_router() -> Router {
 		.named_route("profile", "/profile", || Page::text("Profile"))
 }
 
+/// RAII guard that installs a test router on construction and clears the
+/// thread-local SPA router slot on drop. Using `Drop` (instead of an
+/// explicit cleanup call) guarantees the slot is cleared even when an
+/// assertion panic short-circuits the test body, preventing leakage into
+/// the next `#[serial(router)]` test.
+struct SpaRouterGuard;
+
+impl SpaRouterGuard {
+	fn install(router: Router) -> Self {
+		__install_router_for_test(router);
+		Self
+	}
+}
+
+impl Drop for SpaRouterGuard {
+	fn drop(&mut self) {
+		__clear_spa_router_for_test();
+	}
+}
+
 #[rstest]
 #[serial(router)]
 fn navigate_push_succeeds() {
 	// Arrange
-	__install_router_for_test(build_test_router());
+	let _guard = SpaRouterGuard::install(build_test_router());
 
 	// Act
 	let result = navigate("/profile", NavigationType::Push);
@@ -40,16 +60,13 @@ fn navigate_push_succeeds() {
 		"navigate(Push) to a registered route must succeed: {:?}",
 		result
 	);
-
-	// Cleanup
-	__clear_spa_router_for_test();
 }
 
 #[rstest]
 #[serial(router)]
 fn navigate_replace_succeeds() {
 	// Arrange
-	__install_router_for_test(build_test_router());
+	let _guard = SpaRouterGuard::install(build_test_router());
 
 	// Act
 	let result = navigate("/profile", NavigationType::Replace);
@@ -60,16 +77,13 @@ fn navigate_replace_succeeds() {
 		"navigate(Replace) to a registered route must succeed: {:?}",
 		result
 	);
-
-	// Cleanup
-	__clear_spa_router_for_test();
 }
 
 #[rstest]
 #[serial(router)]
 fn navigate_accepts_owned_string() {
 	// Arrange — `impl Into<String>` must accept `&str` (above) and `String`.
-	__install_router_for_test(build_test_router());
+	let _guard = SpaRouterGuard::install(build_test_router());
 
 	// Act
 	let path: String = "/profile".to_string();
@@ -81,7 +95,4 @@ fn navigate_accepts_owned_string() {
 		"navigate must accept owned String: {:?}",
 		result
 	);
-
-	// Cleanup
-	__clear_spa_router_for_test();
 }

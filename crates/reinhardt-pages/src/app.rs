@@ -97,6 +97,9 @@ where
 /// outside `ClientLauncher::launch` — e.g. in unit tests, dev tooling, or
 /// applications that intentionally mount forms without an SPA router.
 /// Refs #4610.
+// Native builds never instantiate this helper (the form! macro's
+// fallback path is gated on `#[cfg(wasm)]`), so silence the dead-code
+// warning off-wasm.
 #[cfg_attr(not(wasm), allow(dead_code))]
 pub(crate) fn try_with_spa_router<F, R>(f: F) -> Option<R>
 where

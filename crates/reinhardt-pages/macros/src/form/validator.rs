@@ -3772,6 +3772,21 @@ mod tests {
 		// branch *now*, parse the redirect-only form and graft a
 		// hand-built `success_url` expression onto the AST, then invoke
 		// `validate` directly.
+		//
+		// Ideal implementation after #4604 / #4611:
+		//
+		//     let input = quote! {
+		//         name: VoteForm,
+		//         action: "/api/vote",
+		//         redirect_on_success: "/thanks",
+		//         success_url: |_form| String::from("/thanks-too"),
+		//         fields: { choice_id: IntegerField { required } },
+		//     };
+		//     let err = parse_and_validate(input)
+		//         .expect_err("must reject both attributes together");
+		//
+		// — i.e. parse `success_url:` directly through the untyped parser
+		// and reuse `parse_and_validate` instead of grafting onto the AST.
 		let input = quote! {
 			name: VoteForm,
 			action: "/api/vote",
@@ -3790,12 +3805,17 @@ mod tests {
 		// Act
 		let result = validate(&ast);
 
-		// Assert
+		// Assert — strict equality on the full diagnostic so any wording
+		// change forces an intentional test update (CLAUDE.md: prefer
+		// `assert_eq!` over loose `contains`).
 		let err = result.expect_err("must reject both attributes together");
 		let msg = err.to_string();
-		assert!(
-			msg.contains("redirect_on_success") && msg.contains("success_url"),
-			"error must name both conflicting attributes, got: {msg}"
+		assert_eq!(
+			msg,
+			"form! cannot specify both `redirect_on_success` and `success_url`: each generates an \
+			 SPA navigation on successful submit, so combining them would push two history \
+			 entries and fire two observer cycles. Use `redirect_on_success` for a static URL or \
+			 `success_url` for a dynamically-computed one, not both."
 		);
 	}
 
