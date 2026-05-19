@@ -697,7 +697,7 @@ When an API is deprecated:
 
 ### Resources
 
-- [API Stability Policy](docs/API_STABILITY.md) - Detailed stability guarantees
+- [Stability Policy](instructions/STABILITY_POLICY.md) - Detailed stability guarantees
 - [API Change Proposal Template](.github/ISSUE_TEMPLATE/8-api_change.yml) - Template for API proposals
 - [SemVer specification](https://semver.org/) - Versioning guidelines
 

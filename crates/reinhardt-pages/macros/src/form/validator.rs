@@ -346,6 +346,7 @@ fn transform_callbacks(callbacks: &FormCallbacks) -> Result<TypedFormCallbacks> 
 	Ok(TypedFormCallbacks {
 		on_submit: callbacks.on_submit.clone(),
 		on_success: callbacks.on_success.clone(),
+		on_success_ref: callbacks.on_success_ref.clone(),
 		on_error: callbacks.on_error.clone(),
 		on_loading: callbacks.on_loading.clone(),
 		span: callbacks.span,
