@@ -109,11 +109,14 @@ impl ServerRouter {
 
 		// Collect ViewSet routes
 		for prefix in self.viewsets.keys() {
-			let base_path = if self.prefix.is_empty() {
-				format!("/{}", prefix)
-			} else {
-				format!("{}/{}", self.prefix, prefix)
-			};
+			// Same composition rule as `collect_routes_recursive` below: normalize
+			// the viewset prefix to a single leading `/` and join via
+			// `join_prefix_path` so a trailing `/` on `self.prefix` and a leading
+			// `/` on `prefix` do not stack into a double / triple slash. Refs
+			// Issue #4581.
+			let prefix_normalized = format!("/{}", prefix.trim_matches('/'));
+			let base_path =
+				crate::routers::path_utils::join_prefix_path(&self.prefix, &prefix_normalized);
 
 			// ViewSets generate standard CRUD routes
 			let viewset_routes = vec![
@@ -306,11 +309,22 @@ impl ServerRouter {
 
 		// Collect ViewSet routes with standard names (Django convention: basename, not prefix)
 		for (prefix, viewset) in &self.viewsets {
-			let base_path = if current_prefix.is_empty() {
-				format!("/{}", prefix)
-			} else {
-				format!("{}/{}", current_prefix, prefix)
-			};
+			// Normalize the viewset prefix to a single leading `/` (and no
+			// trailing `/`) before composing it under `current_prefix` with
+			// `join_prefix_path`. Function and view routes already go through
+			// `join_prefix_path` (see above), but the viewset branch used to
+			// concatenate with a raw `format!("{}/{}", current_prefix, prefix)`,
+			// which produced a triple slash whenever `current_prefix` carried
+			// a trailing `/` (e.g. from `UnifiedRouter::mount("/api/", ...)`)
+			// AND `prefix` carried a leading `/` (the common user input from
+			// `.viewset("/snippets-viewset", ...)`). Routing the viewset prefix
+			// through the same slash-collapsing helper mirrors the runtime
+			// `register_viewset` normalization (see `router.rs::register_viewset`,
+			// which uses `prefix.trim_matches('/')`) and brings reversal in
+			// line with function-route composition. Refs Issue #4581.
+			let prefix_normalized = format!("/{}", prefix.trim_matches('/'));
+			let base_path =
+				crate::routers::path_utils::join_prefix_path(&current_prefix, &prefix_normalized);
 
 			let basename = viewset.get_basename();
 			let lookup_field = viewset.get_lookup_field();
@@ -419,5 +433,114 @@ impl ServerRouter {
 		}
 
 		None
+	}
+}
+
+#[cfg(test)]
+mod viewset_path_composition_tests {
+	use super::*;
+	use async_trait::async_trait;
+	use reinhardt_http::{Request, Response, Result};
+	use reinhardt_views::viewsets::{Action, ViewSet};
+	use rstest::rstest;
+
+	/// Minimal `ViewSet` fixture used purely for URL-pattern composition
+	/// assertions — the dispatch body is irrelevant because these tests only
+	/// inspect what `collect_routes_recursive` reports back.
+	#[derive(Debug, Clone)]
+	struct DummyViewSet {
+		basename: String,
+	}
+
+	#[async_trait]
+	impl ViewSet for DummyViewSet {
+		fn get_basename(&self) -> &str {
+			&self.basename
+		}
+
+		async fn dispatch(&self, _request: Request, _action: Action) -> Result<Response> {
+			Ok(Response::ok())
+		}
+	}
+
+	fn find_path<'a>(routes: &'a [(String, String)], name: &str) -> Option<&'a str> {
+		routes
+			.iter()
+			.find_map(|(n, p)| if n == name { Some(p.as_str()) } else { None })
+	}
+
+	/// Regression for Issue #4581: when a router carries a `with_prefix("/api/")`
+	/// (which is what `UnifiedRouter::mount("/api/", child)` plants on the
+	/// child) AND the user passes a viewset prefix that starts with `/`
+	/// (the natural form, e.g. `.viewset("/snippets-viewset", _)`), the
+	/// typed-accessor URL must be a single-slashed `/api/snippets-viewset/`,
+	/// not the previously observed triple-slash `/api///snippets-viewset/`.
+	#[rstest]
+	fn viewset_under_mount_prefix_emits_single_slash() {
+		// Arrange — mirror what `UnifiedRouter::mount("/api/", url_patterns())`
+		// plants: the child ServerRouter ends up with `prefix = "/api/"` and a
+		// viewset registered at `/snippets-viewset`.
+		let router = ServerRouter::new().with_prefix("/api/").viewset(
+			"/snippets-viewset",
+			DummyViewSet {
+				basename: "snippet".to_string(),
+			},
+		);
+
+		// Act — `register_all_routes` calls into this with `parent_prefix=""`,
+		// so we replicate that contract directly.
+		let routes = router.collect_routes_recursive(None, "");
+
+		// Assert — both the list and detail forms must compose to single-slash
+		// paths. The previously broken values were `/api///snippets-viewset/`
+		// and `/api///snippets-viewset/{id}/`.
+		assert_eq!(
+			find_path(&routes, "snippet-list"),
+			Some("/api/snippets-viewset/"),
+			"snippet-list path corrupted (got {:?})",
+			find_path(&routes, "snippet-list"),
+		);
+		assert_eq!(
+			find_path(&routes, "snippet-detail"),
+			Some("/api/snippets-viewset/{id}/"),
+			"snippet-detail path corrupted (got {:?})",
+			find_path(&routes, "snippet-detail"),
+		);
+	}
+
+	/// Sanity check — the historical "no mount" path is unchanged. Both
+	/// fed-prefix-less invocations and explicit-no-leading-slash prefixes
+	/// must still produce single-slashed URLs.
+	#[rstest]
+	#[case::leading_slash_no_mount("", "/snippets-viewset", "/snippets-viewset/")]
+	#[case::no_leading_slash_no_mount("", "snippets-viewset", "/snippets-viewset/")]
+	#[case::mount_with_no_leading_slash_viewset(
+		"/api/",
+		"snippets-viewset",
+		"/api/snippets-viewset/"
+	)]
+	#[case::mount_without_trailing_slash("/api", "/snippets-viewset", "/api/snippets-viewset/")]
+	fn viewset_prefix_normalization_matrix(
+		#[case] router_prefix: &str,
+		#[case] viewset_prefix: &str,
+		#[case] expected_list_path: &str,
+	) {
+		// Arrange
+		let mut builder = ServerRouter::new();
+		if !router_prefix.is_empty() {
+			builder = builder.with_prefix(router_prefix);
+		}
+		let router = builder.viewset(
+			viewset_prefix,
+			DummyViewSet {
+				basename: "snippet".to_string(),
+			},
+		);
+
+		// Act
+		let routes = router.collect_routes_recursive(None, "");
+
+		// Assert
+		assert_eq!(find_path(&routes, "snippet-list"), Some(expected_list_path));
 	}
 }

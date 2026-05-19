@@ -274,8 +274,8 @@ let detail_url = urls.server().snippets().snippets_retrieve("42"); // "/api/snip
 // ViewSet endpoints (Tutorial 6) — the typed accessor is namespaced
 // per app, so the viewset's `<basename>_list` and `<basename>_detail`
 // live next to the function-based ones on the same gateway.
-let vs_list   = urls.server().snippets().snippet_list();        // see note below
-let vs_detail = urls.server().snippets().snippet_detail("42");  // see note below
+let vs_list   = urls.server().snippets().snippet_list();        // "/api/snippets-viewset/"
+let vs_detail = urls.server().snippets().snippet_detail("42");  // "/api/snippets-viewset/42/"
 
 // Equivalent calls through the `urls_demo` shim — useful when a caller
 // already has an `id: i64` and does not want to stringify at every
@@ -307,19 +307,6 @@ The flat accessors (`urls.snippet_list()`, `urls.snippet_detail("42")`)
 remain functional but will be removed in `v0.2.0`. Run
 `cargo build --message-format=short 2>&1 | grep deprecated` to discover
 remaining call sites in your own code.
-
-#### Known framework defect — triple-slash in viewset mount
-
-The viewset endpoints registered via `.viewset("/snippets-viewset", ...)`
-in `apps/snippets/urls.rs` currently resolve to `/api///snippets-viewset/`
-through the typed accessor (rather than the expected
-`/api/snippets-viewset/`) when the project root mounts the per-app
-router with a literal prefix (`UnifiedRouter::new().mount("/api/", ...)`).
-The example's integration test (`tests/urls_typed_accessors.rs`) pins the
-currently observable values so a framework-side fix surfaces as a
-deliberate, reviewable diff. The function-based endpoints
-(`urls.server().snippets().snippets_list()` → `/api/snippets/`) are
-unaffected.
 
 ### 6. Validation
 

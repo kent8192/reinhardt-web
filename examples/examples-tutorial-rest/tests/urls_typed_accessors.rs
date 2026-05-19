@@ -140,30 +140,14 @@ mod tests {
 	// generated accessors live next to the function-based ones on the
 	// same `urls.server().snippets()` gateway.
 	//
-	// KNOWN-DEFECT NOTE — TRIPLE-SLASH IN VIEWSET-MOUNT COMPOSITION:
-	//
-	// The example's `routes()` function uses
-	// `UnifiedRouter::new().mount("/api/", url_patterns())`. The
-	// `url_patterns()` body in turn calls
-	// `ServerRouter::new().viewset("/snippets-viewset", ...)`, and the
-	// outer `#[url_patterns(InstalledApp::snippets, mode = server)]`
-	// applies `with_namespace("snippets")` which prepends another `"/"`
-	// to the route's URL pattern. The three slashes compose to
-	// `/api///snippets-viewset/`. The framework's own integration test
-	// for the typed viewset accessor (see
-	// `tests/integration/tests/url_patterns_viewset_typed_integration.rs`)
-	// works around this by replacing the default `ServerRouter` directly
-	// via `UnifiedRouter::new().server(|_| url_patterns())` so no `mount`
-	// indirection is involved.
-	//
-	// The assertions below pin the *currently observable* URL strings
-	// (with the duplicated slashes) so a fix in the framework will
-	// surface as a deliberate, reviewable test diff rather than a silent
-	// behaviour change. The function-based endpoints above are
-	// unaffected because their URL pattern (`/snippets/`) already starts
-	// with a leading slash that the namespace wrapper does not duplicate
-	// — the duplication is specific to the `.viewset()`-internal mount
-	// path. A follow-up framework Issue tracks the fix.
+	// The viewset path composition is symmetric with the function-based
+	// endpoints: `mount("/api/", url_patterns())` plants `/api/` on the
+	// child router, and `.viewset("/snippets-viewset", _)` registers the
+	// viewset under that prefix; the framework's URL-reversal layer joins
+	// them through `path_utils::join_prefix_path`, which collapses the
+	// trailing-slash-on-prefix + leading-slash-on-path boundary into a
+	// single `/`. This wasn't always the case — see Issue #4581 (fixed)
+	// for the historical triple-slash (`/api///snippets-viewset/`) bug.
 	// ------------------------------------------------------------------
 
 	#[rstest]
@@ -175,9 +159,8 @@ mod tests {
 		// Act
 		let url = urls.server().snippets().snippet_list();
 
-		// Assert: currently observed value — see the "TRIPLE-SLASH"
-		// note above for the framework-side root cause and tracking.
-		assert_eq!(url, "/api///snippets-viewset/");
+		// Assert: single slash between `/api/` and the viewset prefix.
+		assert_eq!(url, "/api/snippets-viewset/");
 	}
 
 	#[rstest]
@@ -189,9 +172,8 @@ mod tests {
 		// Act
 		let url = urls.server().snippets().snippet_detail("42");
 
-		// Assert: currently observed value — see the "TRIPLE-SLASH"
-		// note above for the framework-side root cause and tracking.
-		assert_eq!(url, "/api///snippets-viewset/42/");
+		// Assert: single slash between `/api/` and the viewset prefix.
+		assert_eq!(url, "/api/snippets-viewset/42/");
 	}
 
 	// ------------------------------------------------------------------
@@ -209,17 +191,16 @@ mod tests {
 		// Act + Assert: every shim resolves to the same URL the underlying
 		// typed accessor would produce. This pins the helper-to-accessor
 		// mapping so a renamed route surfaces as a compile error rather
-		// than a behaviour drift. The viewset URLs reflect the same
-		// triple-slash known-defect noted above.
+		// than a behaviour drift.
 		assert_eq!(urls_demo::snippets_list(&urls), "/api/snippets/");
 		assert_eq!(urls_demo::snippets_create(&urls), "/api/snippets/");
 		assert_eq!(urls_demo::snippets_retrieve(&urls, 1), "/api/snippets/1/");
 		assert_eq!(urls_demo::snippets_update(&urls, 99), "/api/snippets/99/");
 		assert_eq!(urls_demo::snippets_delete(&urls, 7), "/api/snippets/7/");
-		assert_eq!(urls_demo::viewset_list(&urls), "/api///snippets-viewset/");
+		assert_eq!(urls_demo::viewset_list(&urls), "/api/snippets-viewset/");
 		assert_eq!(
 			urls_demo::viewset_detail(&urls, 42),
-			"/api///snippets-viewset/42/"
+			"/api/snippets-viewset/42/"
 		);
 	}
 
@@ -264,6 +245,6 @@ mod tests {
 		// flat one will be removed in v0.2.0. See Issue #4548 §
 		// "Deprecation removal milestone".
 		assert_eq!(typed, flat);
-		assert_eq!(typed, "/api///snippets-viewset/");
+		assert_eq!(typed, "/api/snippets-viewset/");
 	}
 }
