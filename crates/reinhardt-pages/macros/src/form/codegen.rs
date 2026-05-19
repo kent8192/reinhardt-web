@@ -753,8 +753,7 @@ fn generate_on_success_ref_artifacts(
 			// call below matches whatever signature the runtime call uses.
 			let all_fields = collect_all_fields(&macro_ast.fields);
 			let field_count = all_fields.len();
-			let has_explicit_csrf_field =
-				all_fields.iter().any(|f| f.name == "csrf_token");
+			let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
 			let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
 			let strip_arg_count = macro_ast.strip_arguments.len();
 			let extra_count = if strip_arg_count > 0 {
