@@ -25,6 +25,15 @@ use super::dialect::MySqlBackend;
 #[derive(Clone)]
 pub struct DatabaseConnection {
 	backend: Arc<dyn DatabaseBackend>,
+	/// True when the underlying server is CockroachDB rather than real PostgreSQL.
+	///
+	/// CockroachDB is PostgreSQL wire-compatible and shares the `PostgresBackend`,
+	/// so `database_type()` returns `DatabaseType::Postgres` for both. A few
+	/// migration paths (notably the schema-bootstrap lock — `pg_advisory_lock`
+	/// is not implemented on CockroachDB, see issue #4642) need to behave
+	/// differently. This flag is set at connection time via a `SELECT version()`
+	/// probe and is `false` for any non-Postgres backend.
+	is_cockroachdb: bool,
 }
 
 /// Injectable implementation for DatabaseConnection
@@ -88,8 +97,26 @@ impl reinhardt_di::Injectable for DatabaseConnection {
 
 impl DatabaseConnection {
 	/// Creates a new instance.
+	///
+	/// Defaults to `is_cockroachdb = false`, which is the correct choice when
+	/// the caller has not (or cannot) probe the server. If the supplied backend
+	/// is known to be CockroachDB, use [`Self::new_with_flavor`] instead so the
+	/// migration recorder routes through the sentinel-row lock path rather than
+	/// `pg_advisory_lock` (issue #4642).
 	pub fn new(backend: Arc<dyn DatabaseBackend>) -> Self {
-		Self { backend }
+		Self::new_with_flavor(backend, false)
+	}
+
+	/// Creates a new instance with an explicit CockroachDB flavor flag.
+	///
+	/// Use this when wrapping an externally constructed Postgres backend whose
+	/// flavor is already known — e.g. tests that mount a CockroachDB pool, or
+	/// adapters that pre-probe `SELECT version()` themselves.
+	pub fn new_with_flavor(backend: Arc<dyn DatabaseBackend>, is_cockroachdb: bool) -> Self {
+		Self {
+			backend,
+			is_cockroachdb,
+		}
 	}
 
 	#[cfg(feature = "postgres")]
@@ -105,10 +132,34 @@ impl DatabaseConnection {
 		pool_size: Option<u32>,
 	) -> Result<Self> {
 		let pool = Self::build_postgres_pool(url, pool_size).await?;
+		let is_cockroachdb = Self::probe_cockroachdb(&pool).await;
 
 		Ok(Self {
 			backend: Arc::new(PostgresBackend::new(pool)),
+			is_cockroachdb,
 		})
+	}
+
+	/// Probe whether the connected PostgreSQL-protocol server is CockroachDB.
+	///
+	/// CockroachDB's `SELECT version()` response always begins with the literal
+	/// string `CockroachDB` (e.g. `CockroachDB CCL v23.1.0 ...`), while
+	/// PostgreSQL's begins with `PostgreSQL`. The probe is best-effort: any
+	/// failure (network blip, RBAC denying `version()`) is treated as
+	/// "not CockroachDB" so the regular PostgreSQL path stays the default.
+	///
+	/// The comparison is pushed into SQL (`LIKE 'CockroachDB%'`) so the server
+	/// returns a single `bool` instead of streaming the full version string —
+	/// no allocation and no client-side sensitivity to whitespace or casing.
+	///
+	/// Used to drive the migration-lock dispatch in `MigrationRecorder`
+	/// (issue #4642: CockroachDB does not implement `pg_advisory_lock`).
+	#[cfg(feature = "postgres")]
+	async fn probe_cockroachdb(pool: &sqlx::PgPool) -> bool {
+		sqlx::query_scalar::<_, bool>("SELECT version() LIKE 'CockroachDB%'")
+			.fetch_one(pool)
+			.await
+			.unwrap_or(false)
 	}
 
 	/// Connect to PostgreSQL with automatic database creation if it doesn't exist.
@@ -184,8 +235,10 @@ impl DatabaseConnection {
 		// so we can check the SQLSTATE code
 		match Self::build_postgres_pool(url, pool_size).await {
 			Ok(pool) => {
+				let is_cockroachdb = Self::probe_cockroachdb(&pool).await;
 				return Ok(Self {
 					backend: Arc::new(PostgresBackend::new(pool)),
+					is_cockroachdb,
 				});
 			}
 			Err(e) => {
@@ -300,6 +353,7 @@ impl DatabaseConnection {
 			let pool = SqlitePool::connect(url).await?;
 			return Ok(Self {
 				backend: Arc::new(SqliteBackend::new(pool)),
+				is_cockroachdb: false,
 			});
 		}
 
@@ -400,6 +454,7 @@ impl DatabaseConnection {
 
 		Ok(Self {
 			backend: Arc::new(SqliteBackend::new(pool)),
+			is_cockroachdb: false,
 		})
 	}
 
@@ -408,6 +463,7 @@ impl DatabaseConnection {
 	pub fn from_sqlite_pool(pool: sqlx::SqlitePool) -> Self {
 		Self {
 			backend: Arc::new(SqliteBackend::new(pool)),
+			is_cockroachdb: false,
 		}
 	}
 
@@ -418,6 +474,7 @@ impl DatabaseConnection {
 		let pool = MySqlPool::connect(url).await?;
 		Ok(Self {
 			backend: Arc::new(MySqlBackend::new(pool)),
+			is_cockroachdb: false,
 		})
 	}
 
@@ -429,6 +486,20 @@ impl DatabaseConnection {
 	/// Get the database type
 	pub fn database_type(&self) -> super::types::DatabaseType {
 		self.backend.database_type()
+	}
+
+	/// Returns true when the underlying server is CockroachDB.
+	///
+	/// CockroachDB is wire-compatible with PostgreSQL and uses the same
+	/// `PostgresBackend`, so `database_type()` returns `DatabaseType::Postgres`
+	/// for both. Callers that must dispatch on the *server flavour* (e.g. the
+	/// migration-lock path, which cannot use `pg_advisory_lock` on CockroachDB —
+	/// see issue #4642) should check this flag first.
+	///
+	/// The flag is determined at connection time via a single `SELECT version()`
+	/// probe and is `false` for any non-Postgres backend.
+	pub fn is_cockroachdb(&self) -> bool {
+		self.is_cockroachdb
 	}
 
 	/// Performs the insert operation.
