@@ -9,15 +9,6 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
-	// Force-link the parent library so its `#[routes]` /
-	// `#[url_patterns]` `inventory::submit!` registrations (e.g. the
-	// `UrlPatternsRegistration` emitted from `config::urls::routes`)
-	// survive Rust's dead-code elimination. Without an explicit
-	// reference from this binary, the linker drops the library
-	// wholesale and `inventory::iter::<UrlPatternsRegistration>()`
-	// returns an empty set, which the framework surfaces as
-	// "No URL patterns registered" at runtime.
-	use examples_tutorial_basis as _;
 	use reinhardt::commands::execute_from_command_line;
 	use std::process;
 
