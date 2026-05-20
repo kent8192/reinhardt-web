@@ -11,7 +11,11 @@ use reinhardt::pages::reactive::Signal;
 
 #[cfg(wasm)]
 use crate::apps::users::server_fn::{login, logout, register};
-use crate::client::links;
+// users-app imports its own links plus polls's `polls_index` for the
+// post-login / post-signup landing-page redirect. Cross-app reference is
+// explicit so the dependency is greppable.
+use crate::apps::polls::client::links as polls_links;
+use crate::apps::users::client::links;
 
 /// Login page: username + password form posting to the `login` server function.
 ///
@@ -42,7 +46,7 @@ pub fn login_form() -> Page {
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
 	let form_view = login_form.into_page();
-	let polls_index_href = links::polls_index();
+	let polls_index_href = polls_links::polls_index();
 	let signup_href = links::signup();
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, signup_href: String| {
@@ -124,7 +128,7 @@ pub fn logout_form() -> Page {
 
 	let error_signal = logout_form.error().clone();
 	let form_view = logout_form.into_page();
-	let polls_index_href = links::polls_index();
+	let polls_index_href = polls_links::polls_index();
 
 	page!(|error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
@@ -207,7 +211,7 @@ pub fn signup_form() -> Page {
 	let loading_signal = signup_form.loading().clone();
 	let error_signal = signup_form.error().clone();
 	let form_view = signup_form.into_page();
-	let polls_index_href = links::polls_index();
+	let polls_index_href = polls_links::polls_index();
 	let login_href = links::login();
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, login_href: String| {

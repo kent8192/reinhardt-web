@@ -49,8 +49,7 @@ mod utils;
 /// ```ignore
 /// use reinhardt_di_macros::injectable;
 ///
-/// #[injectable]
-/// #[scope(singleton)]
+/// #[injectable(scope = "singleton")]
 /// struct Config {
 ///     #[no_inject]
 ///     database_url: String,
@@ -59,9 +58,12 @@ mod utils;
 ///
 /// # Attributes
 ///
-/// - `#[scope(singleton)]` - Singleton scope (default)
-/// - `#[scope(request)]` - Request scope
-/// - `#[scope(transient)]` - Transient scope
+/// Scope is passed as a macro argument in key-value form. `#[injectable]`
+/// defaults to `request` when no `scope` argument is supplied.
+///
+/// - `#[injectable(scope = "request")]` - Request scope (default)
+/// - `#[injectable(scope = "singleton")]` - Singleton scope
+/// - `#[injectable(scope = "transient")]` - Transient scope
 #[proc_macro_attribute]
 pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
@@ -79,8 +81,7 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use reinhardt_di::Depends;
 /// use reinhardt_di_macros::injectable_factory;
 ///
-/// #[injectable_factory]
-/// #[scope(singleton)]
+/// #[injectable_factory(scope = "singleton")]
 /// async fn create_database(#[inject] config: Depends<Config>) -> DatabaseConnection {
 ///     DatabaseConnection::connect(&config.database_url).await.unwrap()
 /// }
@@ -88,9 +89,13 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Attributes
 ///
-/// - `#[scope(singleton)]` - Singleton scope (default)
-/// - `#[scope(request)]` - Request scope
-/// - `#[scope(transient)]` - Transient scope
+/// Scope is passed as a macro argument in key-value form.
+/// `#[injectable_factory]` defaults to `singleton` when no `scope` argument
+/// is supplied.
+///
+/// - `#[injectable_factory(scope = "singleton")]` - Singleton scope (default)
+/// - `#[injectable_factory(scope = "request")]` - Request scope
+/// - `#[injectable_factory(scope = "transient")]` - Transient scope
 /// - `#[inject]` - Mark function parameters for automatic injection
 #[proc_macro_attribute]
 pub fn injectable_factory(args: TokenStream, input: TokenStream) -> TokenStream {

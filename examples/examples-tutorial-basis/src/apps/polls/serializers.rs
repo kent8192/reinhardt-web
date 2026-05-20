@@ -21,8 +21,14 @@ pub struct QuestionResponse {
 	pub was_published_recently: bool,
 }
 
-impl QuestionResponse {
-	pub fn from_model(model: &crate::apps::polls::models::Question) -> Self {
+// `From<&Question>` is the borrowed-input counterpart to the owned-input
+// `From<Question> for QuestionInfo` in `crate::shared::types`. Use this form
+// when the caller still needs the `Question` after the conversion (rendering
+// + auditing on the same instance), and use `QuestionInfo::from(question)`
+// when ownership can be transferred. Both follow the canonical `From` /
+// `Into` idiom — there is no `from_model` factory.
+impl From<&crate::apps::polls::models::Question> for QuestionResponse {
+	fn from(model: &crate::apps::polls::models::Question) -> Self {
 		Self {
 			id: model.id(),
 			question_text: model.question_text().to_string(),
@@ -54,8 +60,8 @@ pub struct ChoiceResponse {
 	pub votes: i32,
 }
 
-impl ChoiceResponse {
-	pub fn from_model(model: &crate::apps::polls::models::Choice) -> Self {
+impl From<&crate::apps::polls::models::Choice> for ChoiceResponse {
+	fn from(model: &crate::apps::polls::models::Choice) -> Self {
 		Self {
 			id: model.id(),
 			question_id: *model.question_id(),
