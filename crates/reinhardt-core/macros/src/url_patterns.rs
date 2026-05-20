@@ -635,6 +635,11 @@ fn lit_str_value(expr: &syn::Expr) -> Option<String> {
 /// binding does not match this shape — in that case the macro skips
 /// generating a typed helper for the route so a later, more relaxed
 /// extractor can be plugged in without a breaking change.
+///
+/// Both the binding *pattern* and the binding *type* must end in
+/// `ClientPath`; verifying only the type would silently accept a
+/// destructure like `OtherTupleStruct(id): ClientPath<i64>` and emit a
+/// helper from a non-`ClientPath` pattern.
 fn parse_closure_typed_params(closure: &syn::ExprClosure) -> Option<Vec<(syn::Ident, syn::Type)>> {
 	let mut params = Vec::with_capacity(closure.inputs.len());
 	for input in &closure.inputs {
@@ -643,10 +648,18 @@ fn parse_closure_typed_params(closure: &syn::ExprClosure) -> Option<Vec<(syn::Id
 			_ => return None,
 		};
 		let binding = match pat_type.pat.as_ref() {
-			syn::Pat::TupleStruct(ts) if ts.elems.len() == 1 => match &ts.elems[0] {
-				syn::Pat::Ident(pi) => pi.ident.clone(),
-				_ => return None,
-			},
+			syn::Pat::TupleStruct(ts) if ts.elems.len() == 1 => {
+				// Accept any path whose last segment is `ClientPath` so
+				// qualified forms like `reinhardt::ClientPath(id)` work too.
+				let last_seg = ts.path.segments.last()?;
+				if last_seg.ident != "ClientPath" {
+					return None;
+				}
+				match &ts.elems[0] {
+					syn::Pat::Ident(pi) => pi.ident.clone(),
+					_ => return None,
+				}
+			}
 			_ => return None,
 		};
 		let inner_ty = client_path_inner_type(pat_type.ty.as_ref())?;
@@ -1202,6 +1215,37 @@ fn build_client_resolvers(
 			continue;
 		}
 
+		// Pair each closure binding to its URL placeholder *by name*
+		// rather than by position, so a closure whose bindings happen to
+		// be written in a different order than the placeholders cannot
+		// silently produce mis-substituted URLs. A leading underscore on
+		// the binding (a common signal that the body does not use the
+		// value) is stripped before matching. If any binding does not
+		// correspond to a placeholder, skip helper generation entirely —
+		// the route is still routable, but the typed helper would be
+		// unsafe to emit.
+		let placeholder_positions: std::collections::HashMap<&str, usize> = url_param_names
+			.iter()
+			.enumerate()
+			.map(|(i, name)| (name.as_str(), i))
+			.collect();
+		let mut binding_to_placeholder: Vec<usize> = Vec::with_capacity(typed_params.len());
+		let mut name_mismatch = false;
+		for (binding, _) in typed_params {
+			let binding_str = binding.to_string();
+			let normalized = binding_str.strip_prefix('_').unwrap_or(&binding_str);
+			match placeholder_positions.get(normalized) {
+				Some(&idx) => binding_to_placeholder.push(idx),
+				None => {
+					name_mismatch = true;
+					break;
+				}
+			}
+		}
+		if name_mismatch {
+			continue;
+		}
+
 		let helper_ident = syn::Ident::new(&route.name, proc_macro2::Span::call_site());
 		let helper_args: Vec<TokenStream> = typed_params
 			.iter()
@@ -1214,7 +1258,14 @@ fn build_client_resolvers(
 			.iter()
 			.map(|(binding, _)| quote! { ::std::string::ToString::to_string(&#binding) })
 			.collect();
-		let key_strs: Vec<&str> = url_param_names.iter().map(|s| s.as_str()).collect();
+		// Build the key list in *binding order* so index `i` of `__owned`
+		// pairs with the placeholder this binding corresponds to (via
+		// the by-name lookup above), not with whichever placeholder sits
+		// at the same position in the pattern.
+		let key_strs: Vec<&str> = binding_to_placeholder
+			.iter()
+			.map(|&idx| url_param_names[idx].as_str())
+			.collect();
 		let helper_doc = format!(
 			"Resolve the `{route_name}` route registered with `#[url_patterns]`. \
 			 Returns the URL the global `ClientUrlReverser` currently produces \
@@ -1228,8 +1279,10 @@ fn build_client_resolvers(
 				let __reverser = #urls_crate::routers::get_client_reverser()
 					.expect(
 						"client URL reverser is not registered. \
-						 Call `UnifiedRouter::register_globally()` \
-						 (or equivalent) before using the typed `urls::*` helpers.",
+						 Register the client URL reverser globally \
+						 (e.g. via `UnifiedRouter::register_globally()` or \
+						 `register_client_reverser(...)`) before calling \
+						 the typed `urls::*` helpers.",
 					);
 				let __namespaced = ::std::format!(
 					"{}:{}",
