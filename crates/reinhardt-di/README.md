@@ -467,8 +467,7 @@ Mark a struct as injectable and automatically register it with the global regist
 
 **Syntax:**
 ```rust
-#[injectable]
-#[scope(singleton|request|transient)]
+#[injectable(scope = "singleton" | "request" | "transient")]
 struct YourStruct {
     #[no_inject]
     field: Type,
@@ -476,17 +475,20 @@ struct YourStruct {
 ```
 
 **Attributes:**
-- `` `#[scope(singleton)]` `` - Singleton scope (default)
-- `` `#[scope(request)]` `` - Request scope
-- `` `#[scope(transient)]` `` - Transient scope (new instance every time)
+
+Scope is passed as a macro argument in key-value form. `#[injectable]`
+defaults to `request` when no `scope` argument is supplied.
+
+- `` `#[injectable(scope = "request")]` `` - Request scope (default)
+- `` `#[injectable(scope = "singleton")]` `` - Singleton scope
+- `` `#[injectable(scope = "transient")]` `` - Transient scope (new instance every time)
 - `` `#[no_inject]` `` - Exclude specific fields from automatic injection
 
 **Example:**
 ```rust
 use reinhardt::di::macros::injectable;
 
-#[injectable]
-#[scope(singleton)]
+#[injectable(scope = "singleton")]
 struct Config {
     #[no_inject]
     database_url: String,
@@ -500,17 +502,21 @@ Mark an async function as a dependency factory for complex initialization logic.
 
 **Syntax:**
 ```rust
-#[injectable_factory]
-#[scope(singleton|request|transient)]
+#[injectable_factory(scope = "singleton" | "request" | "transient")]
 async fn factory_function(#[inject] dep: Arc<Dependency>) -> ReturnType {
     // Initialization logic
 }
 ```
 
 **Attributes:**
-- `` `#[scope(singleton)]` `` - Singleton scope (default)
-- `` `#[scope(request)]` `` - Request scope
-- `` `#[scope(transient)]` `` - Transient scope
+
+Scope is passed as a macro argument in key-value form.
+`#[injectable_factory]` defaults to `singleton` when no `scope` argument is
+supplied.
+
+- `` `#[injectable_factory(scope = "singleton")]` `` - Singleton scope (default)
+- `` `#[injectable_factory(scope = "request")]` `` - Request scope
+- `` `#[injectable_factory(scope = "transient")]` `` - Transient scope
 - `` `#[inject]` `` - Mark function parameters for automatic injection
 
 **Example:**
@@ -518,8 +524,7 @@ async fn factory_function(#[inject] dep: Arc<Dependency>) -> ReturnType {
 use reinhardt::di::macros::injectable_factory;
 use std::sync::Arc;
 
-#[injectable_factory]
-#[scope(singleton)]
+#[injectable_factory(scope = "singleton")]
 async fn create_database(#[inject] config: Arc<Config>) -> DatabaseConnection {
     DatabaseConnection::connect(&config.database_url)
         .await
@@ -572,8 +577,7 @@ async fn main() {
 use reinhardt::di::macros::{injectable, injectable_factory};
 use std::sync::Arc;
 
-#[injectable]
-#[scope(singleton)]
+#[injectable(scope = "singleton")]
 struct AppConfig {
     #[no_inject]
     db_url: String,
@@ -581,8 +585,7 @@ struct AppConfig {
     cache_size: usize,
 }
 
-#[injectable_factory]
-#[scope(request)]
+#[injectable_factory(scope = "request")]
 async fn create_service(
     #[inject] config: Arc<AppConfig>
 ) -> MyService {
