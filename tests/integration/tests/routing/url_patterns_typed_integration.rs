@@ -280,17 +280,24 @@ fn typed_urls_helpers_panic_when_no_reverser_is_registered() {
 	let result = std::panic::catch_unwind(|| typed_accounts_app::urls::index());
 
 	// Assert: helpers must surface "no reverser registered" loudly rather
-	// than silently returning an empty string. The exact wording is asserted
-	// loosely so future copy-edits to the panic message do not break the test.
+	// than silently returning an empty string. The full panic string is
+	// pinned with assert_eq! so any wording drift in the macro requires
+	// an intentional update of this test, in line with the project's
+	// "use strict assertions instead of loose matching" rule.
 	let err = result.expect_err("typed helper must panic when no reverser is registered");
 	let msg = err
 		.downcast_ref::<&'static str>()
 		.map(|s| (*s).to_string())
 		.or_else(|| err.downcast_ref::<String>().cloned())
 		.unwrap_or_default();
-	assert!(
-		msg.contains("reverser"),
-		"panic message should mention the missing reverser; got: {msg:?}"
+	assert_eq!(
+		msg,
+		"client URL reverser is not registered. \
+		 Register the client URL reverser globally \
+		 (e.g. via `UnifiedRouter::register_globally()` or \
+		 `register_client_reverser(...)`) before calling \
+		 the typed `urls::*` helpers.",
+		"panic message must match the macro's emitted text verbatim"
 	);
 }
 
