@@ -826,10 +826,12 @@ use reinhardt::di::injectable;
 // `scope` is passed as a macro argument:
 //   #[injectable(scope = "singleton" | "request" | "transient")]
 // When omitted, `#[injectable]` defaults to `request` and
-// `#[injectable_factory]` defaults to `singleton`. A longer-lived dependent
-// (e.g. singleton) cannot depend on a shorter-lived dependency (e.g. request),
-// so `Config` is registered as a singleton here to match the singleton-scoped
-// `database_connection` factory below.
+// `#[injectable_factory]` defaults to `singleton`. `Config` is registered
+// as a singleton here so it matches the singleton-scoped
+// `database_connection` factory below: mixing a longer-lived dependent
+// with a shorter-lived dependency is not rejected by the registry, but it
+// captures whichever request-scoped instance was live at first resolution
+// and reuses it for the singleton's lifetime — almost never what you want.
 #[injectable(scope = "singleton")]
 #[derive(Clone)]
 pub struct Config {
