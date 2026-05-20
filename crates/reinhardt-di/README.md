@@ -467,7 +467,8 @@ Mark a struct as injectable and automatically register it with the global regist
 
 **Syntax:**
 ```rust
-#[injectable(scope = "singleton" | "request" | "transient")]
+// `scope` accepts "singleton", "request", or "transient" (see Attributes below).
+#[injectable(scope = "singleton")]
 struct YourStruct {
     #[no_inject]
     field: Type,
@@ -502,7 +503,8 @@ Mark an async function as a dependency factory for complex initialization logic.
 
 **Syntax:**
 ```rust
-#[injectable_factory(scope = "singleton" | "request" | "transient")]
+// `scope` accepts "singleton", "request", or "transient" (see Attributes below).
+#[injectable_factory(scope = "singleton")]
 async fn factory_function(#[inject] dep: Arc<Dependency>) -> ReturnType {
     // Initialization logic
 }

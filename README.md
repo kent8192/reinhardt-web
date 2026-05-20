@@ -823,8 +823,8 @@ Non-injected fields are marked with `#[no_inject]` and must implement
 ```rust
 use reinhardt::di::injectable;
 
-// `scope` is passed as a macro argument:
-//   #[injectable(scope = "singleton" | "request" | "transient")]
+// `scope` is passed as a macro argument; accepted values are
+// "singleton", "request", or "transient" (one literal, not an alternation).
 // When omitted, `#[injectable]` defaults to `request` and
 // `#[injectable_factory]` defaults to `singleton`. `Config` is registered
 // as a singleton here so it matches the singleton-scoped
