@@ -199,9 +199,7 @@ mod typed_accounts_app {
 
 #[cfg(feature = "client-router")]
 fn install_reverser_for(router: reinhardt_urls::routers::ClientRouter) {
-	use reinhardt_urls::routers::client_router::{
-		clear_client_reverser, register_client_reverser,
-	};
+	use reinhardt_urls::routers::client_router::{clear_client_reverser, register_client_reverser};
 	clear_client_reverser();
 	register_client_reverser(router.to_reverser());
 }
@@ -324,8 +322,9 @@ mod typed_accounts_app_swapped_order {
 		ClientRouter::new().named_route_path2(
 			"choice_edit",
 			"/polls/{question_id}/choices/{choice_id}/edit/",
-			|ClientPath(_choice_id): ClientPath<i64>,
-			 ClientPath(_question_id): ClientPath<i64>| Page::Empty,
+			|ClientPath(_choice_id): ClientPath<i64>, ClientPath(_question_id): ClientPath<i64>| {
+				Page::Empty
+			},
 		)
 	}
 }
