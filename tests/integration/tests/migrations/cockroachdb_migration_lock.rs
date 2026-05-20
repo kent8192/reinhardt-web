@@ -75,6 +75,12 @@ fn create_users_migration() -> Migration {
 }
 
 /// Check whether `table_name` exists in the CockroachDB connection.
+///
+/// Panics on query error so a misconfigured connection (RBAC, network, etc.)
+/// fails loudly with a diagnostic message instead of being silently coerced
+/// into `false`, which would otherwise produce misleading assertion output
+/// like "expected table to exist, found absent" when the real cause is a
+/// driver-level error.
 async fn table_exists(connection: &DatabaseConnection, table_name: &str) -> bool {
 	let pool = connection
 		.into_postgres()
@@ -86,7 +92,9 @@ async fn table_exists(connection: &DatabaseConnection, table_name: &str) -> bool
 	.bind(table_name)
 	.fetch_one(&pool)
 	.await
-	.unwrap_or(false)
+	.unwrap_or_else(|e| {
+		panic!("table_exists({table_name:?}) query failed against CockroachDB: {e}")
+	})
 }
 
 // ============================================================================

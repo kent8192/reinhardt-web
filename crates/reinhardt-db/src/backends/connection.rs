@@ -133,14 +133,17 @@ impl DatabaseConnection {
 	/// failure (network blip, RBAC denying `version()`) is treated as
 	/// "not CockroachDB" so the regular PostgreSQL path stays the default.
 	///
+	/// The comparison is pushed into SQL (`LIKE 'CockroachDB%'`) so the server
+	/// returns a single `bool` instead of streaming the full version string —
+	/// no allocation and no client-side sensitivity to whitespace or casing.
+	///
 	/// Used to drive the migration-lock dispatch in `MigrationRecorder`
 	/// (issue #4642: CockroachDB does not implement `pg_advisory_lock`).
 	#[cfg(feature = "postgres")]
 	async fn probe_cockroachdb(pool: &sqlx::PgPool) -> bool {
-		sqlx::query_scalar::<_, String>("SELECT version()")
+		sqlx::query_scalar::<_, bool>("SELECT version() LIKE 'CockroachDB%'")
 			.fetch_one(pool)
 			.await
-			.map(|v| v.starts_with("CockroachDB"))
 			.unwrap_or(false)
 	}
 
