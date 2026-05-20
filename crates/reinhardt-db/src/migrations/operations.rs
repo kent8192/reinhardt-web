@@ -5630,16 +5630,19 @@ mod tests {
 			.expect("reverse SQL should succeed")
 			.expect("reverse SQL should be present");
 
-		// Assert: must use `ALTER COLUMN ... TYPE` syntax with the original
-		// `VARCHAR(50)` type restored.
-		assert!(
-			sql.contains("ALTER COLUMN") && sql.contains("TYPE"),
-			"CockroachDB reverse SQL should use ALTER COLUMN ... TYPE syntax, got: {}",
-			sql
-		);
-		assert!(
-			sql.contains("VARCHAR(50)"),
-			"CockroachDB reverse SQL should restore VARCHAR(50), got: {}",
+		// Assert: shape must match the expected single-statement form
+		// exactly. Asserting `==` (not `contains`) is intentional: the
+		// stop-gap is supposed to emit *only* `ALTER TABLE "products" ALTER
+		// COLUMN "name" TYPE VARCHAR(50);` with no extra clauses (no
+		// nullability, no USING, no comma-combined sibling). A `contains`
+		// check would silently allow `, ALTER COLUMN ... SET NOT NULL`
+		// suffixes — exactly the regression this test is meant to pin.
+		let expected = r#"ALTER TABLE "products" ALTER COLUMN "name" TYPE VARCHAR(50);"#;
+		assert_eq!(
+			sql, expected,
+			"CockroachDB reverse SQL must match the pinned single-statement \
+			 form exactly (table/column identifiers double-quoted, no extra \
+			 clauses), got: {}",
 			sql
 		);
 
@@ -5647,8 +5650,9 @@ mod tests {
 		// Postgres comma-combined form, and `SchemaEditor::execute()` is a
 		// single-statement dispatcher (sqlx Extended Query), so the stop-gap
 		// must not return a `;\n`-joined multi-statement payload either.
-		// Strip the optional trailing semicolon before counting separators.
-		let trimmed = sql.trim_end_matches(';').trim();
+		// Trim whitespace first so a trailing `;\n` or `; ` still has its
+		// terminating semicolon recognised by `trim_end_matches(';')`.
+		let trimmed = sql.trim().trim_end_matches(';').trim();
 		assert!(
 			!trimmed.contains(';'),
 			"CockroachDB reverse SQL must be exactly one statement (no internal \
