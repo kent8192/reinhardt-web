@@ -391,23 +391,36 @@ async fn column_data_type(
 			match result {
 				Ok(Some(s)) => Some(s),
 				Ok(None) => {
+					// Cap the diagnostic dump so a flake on a busy CI MySQL with
+					// many schemas can't produce multi-megabyte logs. 32 rows is
+					// large enough to spot duplicate-table-across-schemas drift
+					// without dominating the log.
 					let dump = sqlx::query_as::<_, (String, String, String, String)>(
 						"SELECT table_schema, table_name, column_name, data_type \
 						 FROM information_schema.columns \
-						 WHERE LOWER(table_name) = LOWER(?)",
+						 WHERE LOWER(table_name) = LOWER(?) \
+						 ORDER BY table_schema, column_name \
+						 LIMIT 32",
 					)
 					.bind(table_name)
 					.fetch_all(&pool)
 					.await;
-					let current_db: Option<String> = sqlx::query_scalar("SELECT DATABASE()")
-						.fetch_optional(&pool)
-						.await
-						.ok()
-						.flatten();
+					// Use an explicit match (not `.ok().flatten()`) so that a
+					// failed `SELECT DATABASE()` is logged as the failure it is
+					// rather than collapsing into a misleading `None`.
+					let current_db: Result<Option<String>, _> =
+						sqlx::query_scalar("SELECT DATABASE()")
+							.fetch_optional(&pool)
+							.await;
+					let current_db_repr = match current_db {
+						Ok(value) => format!("{value:?}"),
+						Err(err) => format!("<query failed: {err:?}>"),
+					};
 					eprintln!(
 						"[issue#4649] column_data_type({table_name:?}, {column_name:?}) \
-						 returned None; DATABASE()={current_db:?}, \
-						 information_schema.columns LIKE table = {dump:#?}"
+						 returned None; DATABASE()={current_db_repr}, \
+						 information_schema.columns WHERE LOWER(table_name)=LOWER(?) \
+						 (ORDER BY table_schema, column_name LIMIT 32) = {dump:#?}"
 					);
 					None
 				}
