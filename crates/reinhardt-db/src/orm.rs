@@ -113,6 +113,7 @@ pub mod indexes;
 pub mod inspection;
 /// Into primary key module.
 pub mod into_primary_key;
+pub(crate) mod m2m_naming;
 /// Model module.
 pub mod model;
 pub mod query_fields;

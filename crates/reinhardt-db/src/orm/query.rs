@@ -4,7 +4,7 @@
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
 use super::FieldSelector;
-use crate::migrations::to_snake_case;
+use crate::naming::to_snake_case;
 use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::orm::query_fields::comparison::FieldComparison;
