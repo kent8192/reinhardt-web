@@ -1410,10 +1410,26 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 	// projects that genuinely forgot to call `#[routes]` still get a clear
 	// diagnostic. Fixes #4629.
 	let client_reverser_fallback = if no_client_resolvers {
+		// Cache the empty fallback in a per-call-site `OnceLock` so that
+		// repeated `ResolvedUrls::from_global()` calls under
+		// `no_client_resolvers` mode (e.g. once per request) do not allocate
+		// a fresh `HashMap` + `Arc<ClientUrlReverser>` every time. The static
+		// is scoped inside the `unwrap_or_else` closure block, so each
+		// generated `from_global()` body gets its own one-shot cache. Fixes
+		// #4635.
 		quote! {
-			::std::sync::Arc::new(#reinhardt::ClientUrlReverser::new(
-				::std::collections::HashMap::new(),
-			))
+			{
+				static EMPTY_REVERSER:
+					::std::sync::OnceLock<::std::sync::Arc<#reinhardt::ClientUrlReverser>>
+					= ::std::sync::OnceLock::new();
+				::std::sync::Arc::clone(
+					EMPTY_REVERSER.get_or_init(|| {
+						::std::sync::Arc::new(#reinhardt::ClientUrlReverser::new(
+							::std::collections::HashMap::new(),
+						))
+					}),
+				)
+			}
 		}
 	} else {
 		quote! {
