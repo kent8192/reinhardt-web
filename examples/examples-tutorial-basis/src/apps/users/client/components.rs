@@ -12,10 +12,10 @@ use reinhardt::pages::reactive::Signal;
 #[cfg(wasm)]
 use crate::apps::users::server_fn::{login, logout, register};
 // Typed URL helpers are now emitted by `#[url_patterns]` directly
-// (issue #4656). We alias them locally as `polls_links` / `links` to keep
-// the call sites in this file unchanged for cross-app `polls_index` lookup
-// plus the users-app's own login/logout/signup helpers. Cross-app
-// reference stays explicit so the dependency is greppable.
+// (issue #4656). We alias them locally as `polls_links` / `links` so the
+// users-app's own login/logout/signup call sites stay concise, while
+// the cross-app reference (now `polls_links::index()`, previously the
+// hand-written `polls_index()` wrapper) remains explicit and greppable.
 use crate::apps::polls::urls::client_router::urls as polls_links;
 use crate::apps::users::urls::client_router::urls as links;
 
