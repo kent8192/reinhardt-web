@@ -120,18 +120,15 @@ where
 			.into_iter()
 			.find(|r| r.name == field_name && r.relationship_type == RelationshipType::ManyToMany);
 
-		// Get through table name from metadata or use Django naming convention
+		// Get through table name from metadata or derive from the source
+		// table_name via `default_through_table`. The default convention
+		// matches what `makemigrations` synthesizes in
+		// `MigrationAutodetector::create_intermediate_table_for_m2m` and
+		// `detect_created_many_to_many` (see #4659).
 		let through_table = rel_info
 			.as_ref()
 			.and_then(|r| r.through_table.clone())
-			.unwrap_or_else(|| {
-				format!(
-					"{}_{}_{}",
-					S::app_label(),
-					Self::table_name_lower(S::table_name()),
-					field_name
-				)
-			});
+			.unwrap_or_else(|| Self::default_through_table(field_name));
 
 		let source_id = source
 			.primary_key()
@@ -165,6 +162,20 @@ where
 	/// Convert table name to lowercase for field naming.
 	fn table_name_lower(table_name: &str) -> String {
 		table_name.to_lowercase()
+	}
+
+	/// Derive the default through-table name for the M2M field on `S`.
+	///
+	/// Returns `{S::table_name().to_lowercase()}_{field_name}`. This must
+	/// stay in lockstep with
+	/// `MigrationAutodetector::create_intermediate_table_for_m2m` and
+	/// `detect_created_many_to_many` (`crates/reinhardt-db/src/migrations/autodetector.rs`),
+	/// which synthesize the same name on the migration side. If the two
+	/// diverge, runtime M2M reads/writes target a table that
+	/// `makemigrations` never produced — the regression that #4659
+	/// surfaced.
+	pub(crate) fn default_through_table(field_name: &str) -> String {
+		format!("{}_{}", Self::table_name_lower(S::table_name()), field_name)
 	}
 
 	/// Add a relationship to the target model.
@@ -621,6 +632,30 @@ where
 mod tests {
 	use super::*;
 	use reinhardt_query::prelude::QueryStatementBuilder;
+
+	/// Regression test for #4659: the runtime accessor's default
+	/// through-table name MUST agree with the name `makemigrations`
+	/// synthesizes. The autodetector uses
+	/// `format!("{}_{}", source_model.table_name, field_name)`; the
+	/// accessor must do the same. Previously it prepended `S::app_label()`
+	/// as a separate segment, producing names like `auth_users_groups`
+	/// instead of `users_groups` (or `dm_dm_room_members` instead of
+	/// `dm_room_members`), so runtime M2M queries targeted a table that
+	/// `makemigrations` never created.
+	#[test]
+	fn default_through_table_matches_autodetector_convention() {
+		// Arrange / Act: TestUser has table_name = "users".
+		let through = ManyToManyAccessor::<TestUser, TestGroup>::default_through_table("members");
+
+		// Assert
+		assert_eq!(through, "users_members");
+		assert!(
+			!through.starts_with("auth_"),
+			"app_label must NOT be prepended; that would double-count it \
+			 when table_name already carries the prefix (e.g. \"dm_room\"). \
+			 See #4659 for the breakage this causes."
+		);
+	}
 
 	#[test]
 	fn test_table_name_lower() {
