@@ -334,10 +334,18 @@ async fn column_data_type(
 		}
 		DatabaseType::Mysql => {
 			let pool = connection.into_mysql().expect("mysql pool unavailable");
+			// MySQL's `information_schema.columns.table_name` preserves the
+			// case the table was created with. On Linux CI runners the lookup
+			// is case-sensitive unless `lower_case_table_names` is configured,
+			// which TestContainers does not set. Match the case-insensitive
+			// behaviour the rest of this fixture assumes so the assertion
+			// holds regardless of the runner's filesystem semantics.
+			// Fixes #4630.
 			sqlx::query_scalar::<_, String>(
 				"SELECT data_type FROM information_schema.columns \
 				 WHERE table_schema = DATABASE() \
-				 AND table_name = ? AND column_name = ?",
+				 AND LOWER(table_name) = LOWER(?) \
+				 AND LOWER(column_name) = LOWER(?)",
 			)
 			.bind(table_name)
 			.bind(column_name)
