@@ -150,6 +150,15 @@ impl DatabaseMigrationRecorder {
 	pub async fn ensure_schema_table(&self) -> super::Result<()> {
 		use crate::backends::types::DatabaseType;
 
+		// CockroachDB is wire-compatible with PostgreSQL but does NOT implement
+		// `pg_advisory_lock()` (returns `function undefined`). Route through a
+		// CockroachDB-specific path that locks a sentinel row via
+		// `SELECT ... FOR UPDATE` instead. See issue #4642.
+		#[cfg(feature = "postgres")]
+		if self.connection.is_cockroachdb() {
+			return self.ensure_schema_table_cockroachdb().await;
+		}
+
 		// MySQL `GET_LOCK()` / `RELEASE_LOCK()` are session-scoped: the lock is owned
 		// by the connection that called `GET_LOCK`, and `RELEASE_LOCK` only succeeds
 		// when issued on that same session. The pooled `DatabaseConnection::execute`
@@ -176,6 +185,118 @@ impl DatabaseMigrationRecorder {
 				result
 			}
 		}
+	}
+
+	/// CockroachDB-specific variant of `ensure_schema_table`.
+	///
+	/// CockroachDB does not implement PostgreSQL's `pg_advisory_lock()`
+	/// (returns `unknown function: pg_advisory_lock(): function undefined`),
+	/// so the generic Postgres path in `acquire_schema_lock` fails immediately.
+	/// To serialise concurrent migrators we use a sentinel-row mutex: a
+	/// single-row `_reinhardt_migration_lock` table whose row is locked with
+	/// `SELECT ... FOR UPDATE` inside a held transaction. CockroachDB blocks
+	/// concurrent `SELECT FOR UPDATE` on the same row until the holding
+	/// transaction commits, giving the same "one migrator at a time"
+	/// guarantee that `pg_advisory_lock` provides on real PostgreSQL.
+	///
+	/// The lock transaction is held on a dedicated pool connection for the
+	/// lifetime of `ensure_schema_table_internal`; the actual DDL still runs
+	/// through the shared `DatabaseConnection`. This mirrors the dedicated-
+	/// `PoolConnection` pattern used by `ensure_schema_table_mysql` (which
+	/// holds `GET_LOCK` for the same reason — issue #4585).
+	///
+	/// Bootstrap of the sentinel table itself is intentionally lock-free:
+	/// `CREATE TABLE IF NOT EXISTS` and `INSERT ... ON CONFLICT DO NOTHING`
+	/// are both idempotent under concurrent execution on CockroachDB, so
+	/// there is no chicken-and-egg race.
+	///
+	/// Fixes #4642.
+	#[cfg(feature = "postgres")]
+	async fn ensure_schema_table_cockroachdb(&self) -> super::Result<()> {
+		use sqlx::Connection as _;
+
+		let pool = self.connection.into_postgres().ok_or_else(|| {
+			super::MigrationError::DatabaseError(crate::backends::DatabaseError::ConnectionError(
+				"PostgreSQL backend unavailable when acquiring CockroachDB schema lock".to_string(),
+			))
+		})?;
+
+		let mut conn = pool.acquire().await.map_err(|e| {
+			super::MigrationError::DatabaseError(crate::backends::DatabaseError::ConnectionError(
+				format!("Failed to acquire CockroachDB connection for schema lock: {e}"),
+			))
+		})?;
+
+		// Bootstrap the sentinel lock table. Both statements are idempotent.
+		sqlx::query(
+			"CREATE TABLE IF NOT EXISTS _reinhardt_migration_lock (\
+			     id INT PRIMARY KEY, locked_at TIMESTAMPTZ DEFAULT now())",
+		)
+		.execute(&mut *conn)
+		.await
+		.map_err(|e| {
+			super::MigrationError::DatabaseError(crate::backends::DatabaseError::QueryError(
+				format!("Failed to create CockroachDB migration lock table: {e}"),
+			))
+		})?;
+
+		sqlx::query(
+			"INSERT INTO _reinhardt_migration_lock (id) VALUES (1) \
+			 ON CONFLICT (id) DO NOTHING",
+		)
+		.execute(&mut *conn)
+		.await
+		.map_err(|e| {
+			super::MigrationError::DatabaseError(crate::backends::DatabaseError::QueryError(
+				format!("Failed to seed CockroachDB migration lock row: {e}"),
+			))
+		})?;
+
+		// Acquire the lock by starting a transaction and locking the sentinel row.
+		// CockroachDB blocks concurrent `SELECT FOR UPDATE` of the same row until
+		// the holding transaction commits or rolls back.
+		let mut tx = conn.begin().await.map_err(|e| {
+			super::MigrationError::DatabaseError(crate::backends::DatabaseError::QueryError(
+				format!("Failed to begin CockroachDB migration lock transaction: {e}"),
+			))
+		})?;
+
+		sqlx::query("SELECT 1 FROM _reinhardt_migration_lock WHERE id = 1 FOR UPDATE")
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| {
+				super::MigrationError::DatabaseError(crate::backends::DatabaseError::QueryError(
+					format!("Failed to acquire CockroachDB migration lock row: {e}"),
+				))
+			})?;
+
+		// Run schema bootstrap through the shared connection while the
+		// sentinel-row lock is held on `tx`. The DDL runs on a *different*
+		// pooled connection from the lock holder — that is intentional and
+		// safe: the only thing the lock needs to serialise is the bootstrap
+		// itself, and any concurrent migrator process will block on
+		// `SELECT ... FOR UPDATE` of the same row.
+		let result = self.ensure_schema_table_internal().await;
+
+		// Release the lock. COMMIT and ROLLBACK both release `SELECT FOR
+		// UPDATE` row locks in CockroachDB; choose ROLLBACK on the error
+		// path so the lock-table side effects (none here, but defensively)
+		// are not retained. Release-failure is logged but not surfaced —
+		// the row lock is dropped on connection close in any case.
+		let release_result = if result.is_ok() {
+			tx.commit().await
+		} else {
+			tx.rollback().await
+		};
+		if let Err(e) = release_result {
+			tracing::warn!(
+				error = %e,
+				"Failed to release CockroachDB migration lock; the row lock will be \
+				 released when the connection is returned to the pool"
+			);
+		}
+
+		result
 	}
 
 	/// MySQL-specific variant of `ensure_schema_table` that holds the advisory

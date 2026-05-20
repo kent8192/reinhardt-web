@@ -98,3 +98,7 @@ mod field_default_propagation;
 // SQLite string-default preservation regression tests (reinhardt-web#4454)
 #[path = "migrations/sqlite_default_value_preservation.rs"]
 mod sqlite_default_value_preservation;
+
+// CockroachDB migration lock regression tests (reinhardt-web#4642)
+#[path = "migrations/cockroachdb_migration_lock.rs"]
+mod cockroachdb_migration_lock;
