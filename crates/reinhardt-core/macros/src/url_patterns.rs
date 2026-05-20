@@ -1343,7 +1343,7 @@ fn build_client_resolvers(
 ///
 /// The typed `urls` module emitted in `client` / `unified` mode is the
 /// user-facing entry point added by Issue #4644 — see
-/// [`build_client_resolvers`] for how each `pub fn <route>(<typed-args>)
+/// `build_client_resolvers` (below) for how each `pub fn <route>(<typed-args>)
 /// -> String` is derived from the closure binding, and the parent
 /// `#[url_patterns]` proc-macro doc (in `lib.rs`) for the public-facing
 /// description of the extraction rules.
