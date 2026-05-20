@@ -84,51 +84,7 @@ impl From<reinhardt_query::prelude::ForeignKeyAction> for ForeignKeyAction {
 /// assert_eq!(to_snake_case("User__Profile"), "user_profile");
 /// assert_eq!(to_snake_case("public.users"), "public_users");
 /// ```
-pub fn to_snake_case(name: &str) -> String {
-	if name.is_empty() {
-		return String::new();
-	}
-
-	let mut result = String::with_capacity(name.len() + 4);
-	let chars: Vec<char> = name.chars().collect();
-	let mut prev_was_separator = true; // Treat start as separator to avoid leading underscore
-
-	for i in 0..chars.len() {
-		let ch = chars[i];
-
-		// Handle separators: _, -, space, .
-		if ch == '_' || ch == '-' || ch == ' ' || ch == '.' {
-			// Only add underscore if previous char was not a separator
-			if !prev_was_separator && !result.is_empty() {
-				result.push('_');
-			}
-			prev_was_separator = true;
-		} else if ch.is_ascii_uppercase() {
-			if !prev_was_separator && i > 0 {
-				let prev = chars[i - 1];
-				let next = chars.get(i + 1);
-
-				// Add underscore if:
-				// 1. Previous char is lowercase (normal camelCase boundary)
-				// OR
-				// 2. Previous char is uppercase AND next char exists AND is lowercase
-				//    (this handles acronyms like HTTPRequest → http_request)
-				if prev.is_ascii_lowercase()
-					|| (prev.is_ascii_uppercase() && next.is_some_and(|&n| n.is_ascii_lowercase()))
-				{
-					result.push('_');
-				}
-			}
-			result.push(ch.to_ascii_lowercase());
-			prev_was_separator = false;
-		} else {
-			result.push(ch.to_ascii_lowercase());
-			prev_was_separator = false;
-		}
-	}
-
-	result
-}
+pub use crate::naming::to_snake_case;
 
 /// Convert a snake_case name to PascalCase
 ///

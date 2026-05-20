@@ -140,6 +140,8 @@
 //! | `di` | disabled | Dependency injection integration |
 //! | `database-full` | disabled | Enable all database features |
 
+pub mod naming;
+
 #[cfg(feature = "associations")]
 pub mod associations;
 #[cfg(feature = "backends")]
