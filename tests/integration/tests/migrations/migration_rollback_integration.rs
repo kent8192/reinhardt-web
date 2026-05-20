@@ -224,16 +224,36 @@ async fn column_exists(
 		}
 		DatabaseType::Mysql => {
 			let pool = connection.into_mysql().expect("mysql pool unavailable");
-			let count: i64 = sqlx::query_scalar(
+			// Symmetric with `column_data_type` — see Issue #4649. Both helpers
+			// case-fold `table_schema`, `table_name`, and `column_name` so that
+			// a passing `column_exists` strictly implies a hit in
+			// `column_data_type` and vice versa. Without this symmetry the two
+			// helpers could disagree on the same `information_schema.columns`
+			// rows, producing the impossible-looking failure shape reported in
+			// Issue #4649 (column_exists -> true, column_data_type -> None).
+			// We also surface sqlx errors via `eprintln!` instead of folding
+			// them into `count = 0`, so future flakes leave a debuggable trace
+			// in CI logs.
+			let result: Result<i64, _> = sqlx::query_scalar(
 				"SELECT COUNT(*) FROM information_schema.columns \
-				 WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+				 WHERE LOWER(table_schema) = LOWER(DATABASE()) \
+				 AND LOWER(table_name) = LOWER(?) \
+				 AND LOWER(column_name) = LOWER(?)",
 			)
 			.bind(table_name)
 			.bind(column_name)
 			.fetch_one(&pool)
-			.await
-			.unwrap_or(0);
-			count > 0
+			.await;
+			match result {
+				Ok(count) => count > 0,
+				Err(err) => {
+					eprintln!(
+						"[issue#4649] column_exists({table_name:?}, {column_name:?}) \
+						 MySQL query failed: {err:?}"
+					);
+					false
+				}
+			}
 		}
 		DatabaseType::Sqlite => {
 			let pool = connection.into_sqlite().expect("sqlite pool unavailable");
@@ -341,18 +361,64 @@ async fn column_data_type(
 			// behaviour the rest of this fixture assumes so the assertion
 			// holds regardless of the runner's filesystem semantics.
 			// Fixes #4630.
-			sqlx::query_scalar::<_, String>(
+			//
+			// Issue #4649 follow-up: the WHERE clause is now symmetric with
+			// `column_exists` (case-fold `table_schema` too), so any divergence
+			// between the two helpers can no longer come from the WHERE shape
+			// alone. We also split the previously-silent `.ok().flatten()`
+			// into three explicit outcomes:
+			//   - `Err(_)`      => sqlx error; print it and return None so the
+			//                       caller's `.expect(...)` still panics, but
+			//                       with the underlying error logged to stderr.
+			//   - `Ok(Some(s))` => column exists with data type `s`.
+			//   - `Ok(None)`    => column genuinely absent; dump the rows in
+			//                       `information_schema.columns` that match
+			//                       `LOWER(table_name) = LOWER(?)` (without
+			//                       the schema filter) and the current value
+			//                       of `DATABASE()`, so the next residual
+			//                       flake's CI log carries enough state to
+			//                       diagnose the root cause.
+			let result = sqlx::query_scalar::<_, String>(
 				"SELECT data_type FROM information_schema.columns \
-				 WHERE table_schema = DATABASE() \
+				 WHERE LOWER(table_schema) = LOWER(DATABASE()) \
 				 AND LOWER(table_name) = LOWER(?) \
 				 AND LOWER(column_name) = LOWER(?)",
 			)
 			.bind(table_name)
 			.bind(column_name)
 			.fetch_optional(&pool)
-			.await
-			.ok()
-			.flatten()
+			.await;
+			match result {
+				Ok(Some(s)) => Some(s),
+				Ok(None) => {
+					let dump = sqlx::query_as::<_, (String, String, String, String)>(
+						"SELECT table_schema, table_name, column_name, data_type \
+						 FROM information_schema.columns \
+						 WHERE LOWER(table_name) = LOWER(?)",
+					)
+					.bind(table_name)
+					.fetch_all(&pool)
+					.await;
+					let current_db: Option<String> = sqlx::query_scalar("SELECT DATABASE()")
+						.fetch_optional(&pool)
+						.await
+						.ok()
+						.flatten();
+					eprintln!(
+						"[issue#4649] column_data_type({table_name:?}, {column_name:?}) \
+						 returned None; DATABASE()={current_db:?}, \
+						 information_schema.columns LIKE table = {dump:#?}"
+					);
+					None
+				}
+				Err(err) => {
+					eprintln!(
+						"[issue#4649] column_data_type({table_name:?}, {column_name:?}) \
+						 MySQL query failed: {err:?}"
+					);
+					None
+				}
+			}
 		}
 		DatabaseType::Sqlite => None,
 	}
