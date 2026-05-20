@@ -4,6 +4,7 @@
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
 use super::FieldSelector;
+use crate::migrations::to_snake_case;
 use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::orm::query_fields::comparison::FieldComparison;
@@ -3439,10 +3440,32 @@ where
 		pk_values: &[i64],
 	) -> SelectStatement {
 		let table_name = T::table_name();
-		let junction_table = Alias::new(format!("{}_{}", table_name, related_field));
+		// Apply the canonical M2M naming rule used by
+		// `ManyToManyAccessor::default_through_table` and the autodetector
+		// (`crates/reinhardt-db/src/migrations/autodetector.rs`):
+		// `{source_table.to_lowercase()}_{to_snake_case(field_name)}`.
+		// Without this, prefetch joins target a junction table whose
+		// casing/snake-case diverges from what `makemigrations` produced
+		// for the same M2M field (#4659).
+		let junction_table = Alias::new(format!(
+			"{}_{}",
+			table_name.to_lowercase(),
+			to_snake_case(related_field)
+		));
+		// NOTE: the `{related_field}s` heuristic for `related_table` and the
+		// `trim_end_matches('s')` heuristic for `junction_main_fk` are
+		// pre-existing pluralization workarounds that should be replaced by
+		// a `RelationshipMetadata::table_name` lookup. Tracked in #4665
+		// (shared M2M naming helpers); fixing them here would expand this
+		// PR's scope beyond the #4659 regression. The casing of
+		// `junction_main_fk` is normalized to match the accessor's
+		// `default_link_fields`.
 		let related_table = Alias::new(format!("{}s", related_field));
-		let junction_main_fk = Alias::new(format!("{}_id", table_name.trim_end_matches('s')));
-		let junction_related_fk = Alias::new(format!("{}_id", related_field));
+		let junction_main_fk = Alias::new(format!(
+			"{}_id",
+			table_name.trim_end_matches('s').to_lowercase()
+		));
+		let junction_related_fk = Alias::new(format!("{}_id", to_snake_case(related_field)));
 
 		let mut stmt = Query::select();
 		stmt.from(related_table.clone())
