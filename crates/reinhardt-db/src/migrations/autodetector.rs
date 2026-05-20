@@ -1060,7 +1060,7 @@ impl ProjectState {
 		// `detect_created_many_to_many` (lookup) or `ManyToManyAccessor`
 		// (runtime). See issue #4665.
 		let table_name = m2m.through.clone().unwrap_or_else(|| {
-			super::naming::default_through_table(source_table_name, &m2m.field_name)
+			crate::m2m_naming::default_through_table(source_table_name, &m2m.field_name)
 		});
 
 		// Generate model name: PascalCase version of field_name
@@ -1083,7 +1083,7 @@ impl ProjectState {
 		// Determine source and target field names from explicit metadata, or
 		// fall back to the canonical `from_/to_` convention.
 		let (default_source_col, default_target_col) =
-			super::naming::default_m2m_columns(source_model_name, &m2m.to_model);
+			crate::m2m_naming::default_m2m_columns(source_model_name, &m2m.to_model);
 		let source_field_name = m2m.source_field.clone().unwrap_or(default_source_col);
 		let target_field_name = m2m.target_field.clone().unwrap_or(default_target_col);
 
@@ -5592,7 +5592,7 @@ impl MigrationAutodetector {
 					// See `super::naming` (issue #4665).
 					let through_table = m2m.through.clone().unwrap_or_else(|| {
 						let source_table = format!("{}_{}", app_label, model_name);
-						super::naming::default_through_table(&source_table, &m2m.field_name)
+						crate::m2m_naming::default_through_table(&source_table, &m2m.field_name)
 					});
 
 					// Add to created_many_to_many

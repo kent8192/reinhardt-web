@@ -49,7 +49,6 @@ pub mod migration;
 pub mod migration_namer;
 pub mod migration_numbering;
 pub mod model_registry;
-pub mod naming;
 pub mod operation_trait;
 pub mod operations;
 pub mod plan;
@@ -108,7 +107,10 @@ pub use model_registry::{
 	FieldMetadata, ManyToManyMetadata, ModelMetadata, ModelRegistry, RelationshipMetadata,
 	global_registry,
 };
-pub use naming::{default_m2m_columns, default_through_table};
+// Re-export the crate-root M2M naming helpers so callers can continue to
+// import them from `reinhardt_db::migrations::*`. The actual module lives at
+// the crate root because the `orm` and `migrations` features are independent.
+pub use crate::m2m_naming::{default_m2m_columns, default_through_table};
 pub use operation_trait::MigrationOperation;
 pub use operations::{
 	AddColumn, AlterColumn, AlterTableOptions, BulkLoadFormat, BulkLoadOptions, BulkLoadSource,

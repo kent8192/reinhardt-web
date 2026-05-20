@@ -11,7 +11,7 @@
 use super::Manager;
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::relationship::RelationshipType;
-use crate::migrations::naming::default_through_table;
+use crate::m2m_naming::default_through_table;
 use crate::orm::Model;
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, DeleteStatement, Expr, Func, InsertStatement, MySqlQueryBuilder,
