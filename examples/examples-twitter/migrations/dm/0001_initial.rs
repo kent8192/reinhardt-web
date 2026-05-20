@@ -1,6 +1,6 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
 	Migration {
 		app_label: "dm".to_string(),
 		name: "0001_initial".to_string(),
@@ -11,7 +11,7 @@ pub fn migration() -> Migration {
 					ColumnDefinition {
 						name: "content".to_string(),
 						type_definition: FieldType::VarChar(1000u32),
-						not_null: true,
+						not_null: false,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -20,7 +20,7 @@ pub fn migration() -> Migration {
 					ColumnDefinition {
 						name: "created_at".to_string(),
 						type_definition: FieldType::TimestampTz,
-						not_null: true,
+						not_null: false,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -38,16 +38,16 @@ pub fn migration() -> Migration {
 					ColumnDefinition {
 						name: "is_read".to_string(),
 						type_definition: FieldType::Boolean,
-						not_null: true,
+						not_null: false,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
-						default: Some("false".to_string()),
+						default: None,
 					},
 					ColumnDefinition {
 						name: "room_id".to_string(),
 						type_definition: FieldType::Uuid,
-						not_null: true,
+						not_null: false,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -56,7 +56,7 @@ pub fn migration() -> Migration {
 					ColumnDefinition {
 						name: "sender_id".to_string(),
 						type_definition: FieldType::Uuid,
-						not_null: true,
+						not_null: false,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -65,7 +65,7 @@ pub fn migration() -> Migration {
 					ColumnDefinition {
 						name: "updated_at".to_string(),
 						type_definition: FieldType::TimestampTz,
-						not_null: true,
+						not_null: false,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -83,7 +83,7 @@ pub fn migration() -> Migration {
 					ColumnDefinition {
 						name: "created_at".to_string(),
 						type_definition: FieldType::TimestampTz,
-						not_null: true,
+						not_null: false,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -101,11 +101,11 @@ pub fn migration() -> Migration {
 					ColumnDefinition {
 						name: "is_group".to_string(),
 						type_definition: FieldType::Boolean,
-						not_null: true,
+						not_null: false,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
-						default: Some("false".to_string()),
+						default: None,
 					},
 					ColumnDefinition {
 						name: "name".to_string(),
@@ -119,7 +119,7 @@ pub fn migration() -> Migration {
 					ColumnDefinition {
 						name: "updated_at".to_string(),
 						type_definition: FieldType::TimestampTz,
-						not_null: true,
+						not_null: false,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -133,65 +133,6 @@ pub fn migration() -> Migration {
 			},
 			Operation::CreateTable {
 				name: "dm_room_members".to_string(),
-				columns: vec![
-					ColumnDefinition {
-						name: "from_dm_room_id".to_string(),
-						type_definition: FieldType::Uuid,
-						not_null: true,
-						unique: false,
-						primary_key: false,
-						auto_increment: false,
-						default: None,
-					},
-					ColumnDefinition {
-						name: "id".to_string(),
-						type_definition: FieldType::Integer,
-						not_null: true,
-						unique: false,
-						primary_key: true,
-						auto_increment: true,
-						default: None,
-					},
-					ColumnDefinition {
-						name: "to_user_id".to_string(),
-						type_definition: FieldType::Uuid,
-						not_null: true,
-						unique: false,
-						primary_key: false,
-						auto_increment: false,
-						default: None,
-					},
-				],
-				constraints: vec![
-					Constraint::ForeignKey {
-						name: "fk_dm_room_members_from_dm_room_id".to_string(),
-						columns: vec!["from_dm_room_id".to_string()],
-						referenced_table: "dm_room".to_string(),
-						referenced_columns: vec!["id".to_string()],
-						on_delete: ForeignKeyAction::Cascade,
-						on_update: ForeignKeyAction::Cascade,
-						deferrable: None,
-					},
-					Constraint::ForeignKey {
-						name: "fk_dm_room_members_to_user_id".to_string(),
-						columns: vec!["to_user_id".to_string()],
-						referenced_table: "dm_user".to_string(),
-						referenced_columns: vec!["id".to_string()],
-						on_delete: ForeignKeyAction::Cascade,
-						on_update: ForeignKeyAction::Cascade,
-						deferrable: None,
-					},
-					Constraint::Unique {
-						name: "dm_room_members_unique".to_string(),
-						columns: vec!["from_dm_room_id".to_string(), "to_user_id".to_string()],
-					},
-				],
-				without_rowid: None,
-				interleave_in_parent: None,
-				partition: None,
-			},
-			Operation::CreateTable {
-				name: "dm_dmroom_members".to_string(),
 				columns: vec![
 					ColumnDefinition {
 						name: "id".to_string(),
@@ -223,7 +164,7 @@ pub fn migration() -> Migration {
 				],
 				constraints: vec![
 					Constraint::ForeignKey {
-						name: "fk_dm_dmroom_members_dmroom_id".to_string(),
+						name: "fk_dm_room_members_dmroom_id".to_string(),
 						columns: vec!["dmroom_id".to_string()],
 						referenced_table: "dm_room".to_string(),
 						referenced_columns: vec!["id".to_string()],
@@ -232,7 +173,7 @@ pub fn migration() -> Migration {
 						deferrable: None,
 					},
 					Constraint::ForeignKey {
-						name: "fk_dm_dmroom_members_user_id".to_string(),
+						name: "fk_dm_room_members_user_id".to_string(),
 						columns: vec!["user_id".to_string()],
 						referenced_table: "auth_user".to_string(),
 						referenced_columns: vec!["id".to_string()],
@@ -241,7 +182,7 @@ pub fn migration() -> Migration {
 						deferrable: None,
 					},
 					Constraint::Unique {
-						name: "dm_dmroom_members_unique".to_string(),
+						name: "dm_room_members_unique".to_string(),
 						columns: vec!["dmroom_id".to_string(), "user_id".to_string()],
 					},
 				],
@@ -250,13 +191,9 @@ pub fn migration() -> Migration {
 				partition: None,
 			},
 		],
-		dependencies: vec![],
+		dependencies: vec![("auth".to_string(), "0001_initial".to_string())],
 		atomic: true,
 		replaces: vec![],
-		initial: Some(true),
-		state_only: false,
-		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
+		..Default::default()
 	}
 }

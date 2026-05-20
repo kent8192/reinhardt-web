@@ -1,6 +1,6 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
 	Migration {
 		app_label: "profile".to_string(),
 		name: "0001_initial".to_string(),
@@ -10,7 +10,7 @@ pub fn migration() -> Migration {
 				ColumnDefinition {
 					name: "avatar_url".to_string(),
 					type_definition: FieldType::VarChar(255u32),
-					not_null: true,
+					not_null: false,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
@@ -19,7 +19,7 @@ pub fn migration() -> Migration {
 				ColumnDefinition {
 					name: "bio".to_string(),
 					type_definition: FieldType::VarChar(500u32),
-					not_null: true,
+					not_null: false,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
@@ -28,7 +28,7 @@ pub fn migration() -> Migration {
 				ColumnDefinition {
 					name: "created_at".to_string(),
 					type_definition: FieldType::TimestampTz,
-					not_null: true,
+					not_null: false,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
@@ -55,7 +55,7 @@ pub fn migration() -> Migration {
 				ColumnDefinition {
 					name: "updated_at".to_string(),
 					type_definition: FieldType::TimestampTz,
-					not_null: true,
+					not_null: false,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
@@ -64,7 +64,7 @@ pub fn migration() -> Migration {
 				ColumnDefinition {
 					name: "user_id".to_string(),
 					type_definition: FieldType::Uuid,
-					not_null: true,
+					not_null: false,
 					unique: true,
 					primary_key: false,
 					auto_increment: false,
@@ -91,10 +91,6 @@ pub fn migration() -> Migration {
 		dependencies: vec![],
 		atomic: true,
 		replaces: vec![],
-		initial: Some(true),
-		state_only: false,
-		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
+		..Default::default()
 	}
 }
