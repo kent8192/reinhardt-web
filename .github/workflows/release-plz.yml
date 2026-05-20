@@ -29,11 +29,20 @@ on:
     types: [closed]
     paths: ['announcements/**']
 
-# Serialize per-ref but never cancel an in-flight release-plz run; Release PRs
-# (Cargo.toml + CHANGELOG.md updates) must complete to keep the release branch
-# in a consistent state.
+# Serialize per-base-branch but never cancel an in-flight release-plz run;
+# Release PRs (Cargo.toml + CHANGELOG.md updates) must complete to keep the
+# release branch in a consistent state.
+#
+# `github.ref` resolves differently per trigger: it is `refs/heads/main` (or
+# `refs/heads/develop/<v>`) for push/workflow_dispatch but `refs/pull/<n>/merge`
+# for the `pull_request: closed` trigger on `announcements/**`. Keying off
+# `github.ref` alone would let a PR-closed run race against a push-to-main run
+# even though both mutate the same release state. Use the PR base branch when
+# the trigger is `pull_request`, and `github.ref_name` (e.g., `main`,
+# `develop/0.2.0`) otherwise, so all triggers that target the same branch land
+# in the same group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.base.ref || github.ref_name }}
   cancel-in-progress: false
 
 env:

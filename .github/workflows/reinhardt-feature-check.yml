@@ -26,11 +26,18 @@ on:
   workflow_dispatch:
 
 # The push-to-main path seeds the feature-check cache for downstream PRs, so a
-# new push must not cancel the in-flight seed run. workflow_call invocations
-# inherit the caller's (ci.yml) concurrency; this block only protects the
-# standalone push and workflow_dispatch invocations.
+# new push must not cancel the in-flight seed run.
+#
+# A workflow's own `concurrency` block applies to every trigger that runs it,
+# including `workflow_call`. It does NOT defer to the caller's concurrency.
+# That means without `github.event_name` in the group, ci.yml's matrix PR
+# invocations (workflow_call) would serialize against the standalone
+# push-to-main cache seed and starve each other. The two have different goals
+# (per-PR validation vs. cache warming) and should run in parallel — keying
+# off `event_name` keeps them in separate groups while still serializing
+# multiple invocations of the same trigger on the same ref.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
