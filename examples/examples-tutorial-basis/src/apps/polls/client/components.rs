@@ -33,7 +33,10 @@ use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
 use reinhardt::pages::resolve_static;
 
-use crate::apps::polls::client::links;
+// Typed URL helpers are now emitted by `#[url_patterns]` directly
+// (issue #4656); we alias the macro-emitted `urls` module as `links` to
+// keep call sites concise.
+use crate::apps::polls::urls::client_router::urls as links;
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, submit_vote, update_choice, update_question,
@@ -97,7 +100,7 @@ pub fn polls_index() -> Page {
 						class: "space-y-2",
 						for question in load_questions_signal.result().unwrap_or_default() {
 							a {
-								href: links::poll_detail(question.id),
+								href: links::detail(question.id),
 								class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
 								div {
 									class: "flex w-full justify-between",
@@ -183,7 +186,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 		watch: {
 			submit_button: |form| {
 				let is_loading = form.loading().get();
-				let back_href = links::polls_index();
+				let back_href = links::index();
 				page!(|is_loading: bool, back_href: String| {
 					div {
 						class: "mt-3",
@@ -216,7 +219,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 			},
 		},
 
-		success_url: |_form| links::poll_results(qid),
+		success_url: |_form| links::results(qid),
 	};
 
 	// Bridge load_detail results to form choices via use_effect
@@ -268,12 +271,12 @@ pub fn polls_detail(question_id: i64) -> Page {
 							{ load_detail_signal.error().unwrap_or_default() }
 						}
 						a {
-							href: links::poll_detail(question_id),
+							href: links::detail(question_id),
 							class: "btn-secondary",
 							"Try Again"
 						}
 						a {
-							href: links::polls_index(),
+							href: links::index(),
 							class: "btn-primary ml-2",
 							"Back to Polls"
 						}
@@ -294,7 +297,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 							div {
 								class: "flex gap-2",
 								a {
-									href: links::poll_results(question_id),
+									href: links::results(question_id),
 									class: "btn-secondary",
 									"View results"
 								}
@@ -328,7 +331,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 							"Question not found"
 						}
 						a {
-							href: links::polls_index(),
+							href: links::index(),
 							class: "btn-primary",
 							"Back to Polls"
 						}
@@ -375,7 +378,7 @@ pub fn polls_results(question_id: i64) -> Page {
 							{ load_results_signal.error().unwrap_or_default() }
 						}
 						a {
-							href: links::polls_index(),
+							href: links::index(),
 							class: "btn-primary",
 							"Back to Polls"
 						}
@@ -450,7 +453,7 @@ pub fn polls_results(question_id: i64) -> Page {
 						div {
 							class: "mt-3 flex flex-wrap gap-2",
 							a {
-								href: links::poll_detail(question_id),
+								href: links::detail(question_id),
 								class: "btn-primary",
 								"Vote Again"
 							}
@@ -465,7 +468,7 @@ pub fn polls_results(question_id: i64) -> Page {
 								"Delete question"
 							}
 							a {
-								href: links::polls_index(),
+								href: links::index(),
 								class: "btn-secondary",
 								"Back to Polls"
 							}
@@ -479,7 +482,7 @@ pub fn polls_results(question_id: i64) -> Page {
 							"Question not found"
 						}
 						a {
-							href: links::polls_index(),
+							href: links::index(),
 							class: "btn-primary",
 							"Back to Polls"
 						}
@@ -615,7 +618,7 @@ pub fn question_new() -> Page {
 	let loading_signal = new_form.loading().clone();
 	let error_signal = new_form.error().clone();
 	let form_view = new_form.into_page();
-	let cancel_href = links::polls_index();
+	let cancel_href = links::index();
 
 	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
 		div {
@@ -746,7 +749,7 @@ pub fn question_edit(question_id: i64) -> Page {
 							{ load_detail_signal.error().unwrap_or_default() }
 						}
 						a {
-							href: links::polls_index(),
+							href: links::index(),
 							class: "btn-primary",
 							"Back to Polls"
 						}
@@ -788,7 +791,7 @@ pub fn question_edit(question_id: i64) -> Page {
 								}
 							}
 							a {
-								href: links::poll_detail(question_id),
+								href: links::detail(question_id),
 								class: "btn-secondary ml-2",
 								"Cancel"
 							}
@@ -833,7 +836,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 	let error_signal = delete_form.error().clone();
 	let form_view = delete_form.into_page();
 	let load_detail_signal = load_detail.clone();
-	let cancel_href = links::poll_detail(question_id);
+	let cancel_href = links::detail(question_id);
 
 	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
 		div {
@@ -956,7 +959,7 @@ pub fn choice_new(question_id: i64) -> Page {
 	let loading_signal = new_form.loading().clone();
 	let error_signal = new_form.error().clone();
 	let form_view = new_form.into_page();
-	let back_href = links::poll_detail(qid);
+	let back_href = links::detail(qid);
 
 	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, back_href: String| {
 		div {
@@ -1011,7 +1014,7 @@ pub fn choice_new(question_id: i64) -> Page {
 /// pending-state fallback href.
 pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
-	let cancel_href = links::poll_detail(question_id);
+	let cancel_href = links::detail(question_id);
 
 	let edit_form = form! {
 		name: EditChoiceForm,
@@ -1095,7 +1098,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 /// links back to the parent poll synchronously without an extra fetch.
 pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
-	let cancel_href = links::poll_detail(question_id);
+	let cancel_href = links::detail(question_id);
 
 	let delete_form = form! {
 		name: DeleteChoiceForm,

@@ -14,7 +14,6 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 use reinhardt::url_patterns;
 
-use crate::apps::polls::client::links;
 use crate::client::pages::{
 	choice_delete_page, choice_edit_page, choice_new_page, index_page, polls_detail_page,
 	polls_results_page, question_delete_page, question_edit_page, question_new_page,
@@ -71,7 +70,9 @@ pub fn client_url_patterns() -> ClientRouter {
 /// Error page used as the `not_found` fallback.
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
-	let home_href = links::polls_index();
+	// `urls::index()` is the macro-emitted typed helper (issue #4656),
+	// sibling to `client_url_patterns` at this module's parent scope.
+	let home_href = urls::index();
 	page!(|message: String, home_href: String| {
 		div {
 			class: "layout-page",
