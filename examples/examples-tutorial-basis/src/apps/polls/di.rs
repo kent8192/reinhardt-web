@@ -141,9 +141,10 @@ impl SessionUser {
 			Self::Authenticated(u) => Ok(u),
 			Self::Inactive(_) => Err(ServerFnError::server(403, "User account is inactive")),
 			Self::Anonymous => Err(ServerFnError::server(401, "Authentication required")),
-			Self::Unavailable(_) => {
-				Err(ServerFnError::server(500, "User lookup temporarily unavailable"))
-			}
+			Self::Unavailable(_) => Err(ServerFnError::server(
+				500,
+				"User lookup temporarily unavailable",
+			)),
 		}
 	}
 }
