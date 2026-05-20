@@ -2548,14 +2548,21 @@ impl Operation {
 						// single-statement payloads can be dispatched — that
 						// change is tracked separately so this PR can unblock
 						// the rc.30 release without cascading into ~25 call
-						// sites and tests. The CockroachDB branch is
-						// exercised by `test_alter_column_type_rollback_cockroachdb`
-						// in `tests/integration/tests/migrations/migration_rollback_integration.rs`,
-						// which guards against regressions of this stop-gap
-						// (reinhardt-web#4639). The full `Vec<String>` API
-						// refactor that restores NOT NULL rollback fidelity
-						// is tracked in reinhardt-web#4640 and targets
-						// `develop/0.2.0`. Refs #4630, #4639, #4640.
+						// sites and tests. The stop-gap output shape of this
+						// branch (single statement, `ALTER COLUMN ... TYPE`,
+						// no nullability clause, no comma-combined form) is
+						// pinned by the inline unit test
+						// `test_to_reverse_sql_alter_column_cockroachdb` in
+						// the `#[cfg(test)] mod tests` block of this file,
+						// added under reinhardt-web#4639. An end-to-end
+						// integration test against a live CockroachDB
+						// testcontainer is blocked on reinhardt-web#4642
+						// (`DatabaseMigrationExecutor` calls
+						// `pg_advisory_lock()`, which CockroachDB does not
+						// implement). The full `Vec<String>` API refactor
+						// that restores NOT NULL rollback fidelity is
+						// tracked in reinhardt-web#4640 and targets
+						// `develop/0.2.0`. Refs #4630, #4639, #4640, #4642.
 						format!(
 							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
 							quote_identifier(table),
