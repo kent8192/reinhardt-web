@@ -114,7 +114,7 @@ impl DMRoomFactory {
 	) -> Result<(), sqlx::Error> {
 		let sql = Query::insert()
 			.into_table(Alias::new("dm_room_members"))
-			.columns([Alias::new("dmroom_id"), Alias::new("user_id")])
+			.columns([Alias::new("from_dm_room_id"), Alias::new("to_user_id")])
 			.values_panic([Value::from(room_id), Value::from(user_id)])
 			.to_string(PostgresQueryBuilder);
 
@@ -147,8 +147,8 @@ impl DMRoomFactory {
 	) -> Result<Vec<DMRoom>, sqlx::Error> {
 		let sql = "SELECT r.id, r.name, r.is_group, r.created_at, r.updated_at \
 		           FROM dm_room r \
-		           INNER JOIN dm_room_members m ON r.id = m.dmroom_id \
-		           WHERE m.user_id = $1 \
+		           INNER JOIN dm_room_members m ON r.id = m.from_dm_room_id \
+		           WHERE m.to_user_id = $1 \
 		           ORDER BY r.updated_at DESC";
 
 		sqlx::query_as::<_, DMRoom>(sql)
@@ -159,7 +159,7 @@ impl DMRoomFactory {
 
 	/// Count rooms for a user.
 	pub async fn count_by_member(&self, pool: &PgPool, user_id: Uuid) -> Result<i64, sqlx::Error> {
-		sqlx::query_scalar("SELECT COUNT(*) FROM dm_room_members WHERE user_id = $1")
+		sqlx::query_scalar("SELECT COUNT(*) FROM dm_room_members WHERE to_user_id = $1")
 			.bind(user_id)
 			.fetch_one(pool)
 			.await
@@ -177,7 +177,7 @@ impl DMRoomFactory {
 		// Delete members
 		let sql = Query::delete()
 			.from_table(Alias::new("dm_room_members"))
-			.and_where(Expr::col(Alias::new("dmroom_id")).eq(Expr::val(id)))
+			.and_where(Expr::col(Alias::new("from_dm_room_id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 		sqlx::query(&sql).execute(pool).await?;
 
