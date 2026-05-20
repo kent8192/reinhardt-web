@@ -4,6 +4,13 @@ on:
   issues:
     types: [closed, reopened]
 
+# Serialize so a rapid close -> reopen -> close burst is processed in order.
+# Issues fire on the default branch ref so all issue events share one queue;
+# cancel-in-progress: false preserves every close/reopen transition.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   issues: write
   contents: read
