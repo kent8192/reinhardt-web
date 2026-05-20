@@ -4825,11 +4825,13 @@ impl MigrationAutodetector {
 
 		// Generate through-table name: prefer explicit `through`, otherwise
 		// derive from the source table name (matches
-		// `create_intermediate_table_for_m2m`).
+		// `create_intermediate_table_for_m2m` and the ORM accessor's
+		// `default_through_table`, which both lowercase the source table
+		// before composition — see #4659).
 		let table_name = if let Some(custom_name) = through_table {
 			custom_name.clone()
 		} else {
-			format!("{}_{}", source_table, to_snake_case(field_name))
+			format!("{}_{}", source_table.to_lowercase(), to_snake_case(field_name))
 		};
 
 		// Derive column names from the resolved *table* names so the
@@ -5639,10 +5641,17 @@ impl MigrationAutodetector {
 				//      preserves `table_name`s (the original struct identifiers
 				//      are lost — see #4659), so any subsequent existence check
 				//      must use a `table_name`-derived key.
+				// Lowercase `model_state.table_name` so the synthesized
+				// through-table name agrees with the ORM accessor's
+				// `default_through_table` and with
+				// `create_intermediate_table_for_m2m` above (#4659). Without
+				// this, a mixed-case `table_name` would produce a
+				// case-sensitive `find_model_by_table` miss and cause
+				// repeated re-emission of the M2M create.
 				let through_table = m2m.through.clone().unwrap_or_else(|| {
 					format!(
 						"{}_{}",
-						model_state.table_name,
+						model_state.table_name.to_lowercase(),
 						m2m.field_name.to_lowercase()
 					)
 				});
