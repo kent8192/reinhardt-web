@@ -175,7 +175,13 @@ pub fn migration() -> Migration {
 					Constraint::ForeignKey {
 						name: "fk_dm_room_members_to_user_id".to_string(),
 						columns: vec!["to_user_id".to_string()],
-						referenced_table: "dm_user".to_string(),
+						// Manually corrected from generator output (reinhardt#4659):
+						// `makemigrations` emitted `dm_user` here, resolving the
+						// ManyToMany target `User` against the current app label
+						// instead of the target model's own app label (`auth`).
+						// Remove this note once reinhardt#4659 is fixed and the
+						// regenerated output emits `auth_user` directly.
+						referenced_table: "auth_user".to_string(),
 						referenced_columns: vec!["id".to_string()],
 						on_delete: ForeignKeyAction::Cascade,
 						on_update: ForeignKeyAction::Cascade,
