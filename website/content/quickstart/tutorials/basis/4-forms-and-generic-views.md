@@ -265,7 +265,10 @@ use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, submit_vote, update_choice, update_question,
 };
-use crate::client::links;
+// Typed URL helpers are now emitted by `#[url_patterns]` directly
+// (issue #4656); we alias the macro-emitted `urls` module as `links` to
+// keep call sites concise.
+use crate::apps::polls::urls::client_router::urls as links;
 
 /// Poll detail page - Show question and voting form
 pub fn polls_detail(question_id: i64) -> Page {
@@ -314,7 +317,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 		watch: {
 			submit_button: |form| {
 				let is_loading = form.loading().get();
-				let back_href = links::polls_index();
+				let back_href = links::index();
 				page!(|is_loading: bool, back_href: String| {
 					div {
 						class: "mt-3",
@@ -359,7 +362,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 												let parts: Vec<&str> = path.split('/').collect();
 												if parts.len() >= 3 && parts[1] == "polls" {
 													if let Ok(question_id) = parts[2].parse::<i64>() {
-														let results_url = links::poll_results(question_id);
+														let results_url = links::results(question_id);
 														let _ = window.location().set_href(&results_url);
 													}
 												}
@@ -793,7 +796,7 @@ pub fn question_new() -> Page {
 	let loading_signal = new_form.loading().clone();
 	let error_signal = new_form.error().clone();
 	let form_view = new_form.into_page();
-	let cancel_href = links::polls_index();
+	let cancel_href = links::index();
 
 	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
 		div {
