@@ -5,44 +5,21 @@
 use crate::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
-// Server-only imports
+// Server-only imports. Each addition here MUST also be wired in `[cfg(native)]`
+// at the call site — see the per-handler `use` blocks below for examples.
 #[cfg(native)]
 use {
-	crate::apps::users::models::User,
-	crate::shared::forms::create_vote_form,
-	reinhardt::Model,
-	reinhardt::db::orm::{FilterOperator, FilterValue},
-	reinhardt::forms::wasm_compat::{FormExt, FormMetadata},
-	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
+	crate::apps::polls::di::SessionUser, crate::apps::users::models::User, reinhardt::Model,
+	reinhardt::di::Depends,
 };
 
-/// Resolve the currently authenticated user from the session, or return a
-/// 401 ServerFnError. Shared by every authenticated mutation handler below
-/// so that the "load user_id from session, look up the row, 401 if absent"
-/// dance lives in exactly one place.
-#[cfg(native)]
-async fn require_user(session: &SessionData) -> std::result::Result<User, ServerFnError> {
-	let user_id = session
-		.get::<i64>(USER_ID_SESSION_KEY)
-		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
-
-	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(user_id),
-		)
-		.first()
-		.await
-		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
-		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
-
-	if !user.is_active {
-		return Err(ServerFnError::server(403, "User account is inactive"));
-	}
-
-	Ok(user)
-}
+// The previous request-scoped helper `require_user(&session)` has been
+// replaced by the `SessionUser` factory in `apps::polls::di`. Each
+// authenticated handler now receives `Depends<SessionUser>` from the DI
+// container and calls `.require_active()?` to surface 401/403. The factory
+// also documents the path to `reinhardt_auth::AuthUser<User>` once #4652
+// (the `CurrentUser` → `AuthUser` unification + `SessionMiddleware` →
+// `AuthState` bridge) lands.
 
 // WASM-only imports
 // (None needed - all forms logic is server-side)
@@ -84,7 +61,6 @@ pub async fn get_question_detail(
 ) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
 	use crate::apps::polls::models::{Choice, Question};
 	use reinhardt::Model;
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
 
 	// Get question
 	let question_manager = Question::objects();
@@ -95,7 +71,14 @@ pub async fn get_question_detail(
 		.map_err(|e| ServerFnError::application(e.to_string()))?
 		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
 
-	// Get choices
+	// Get choices.
+	//
+	// Ideal implementation (blocked on #4650): the typed builder
+	// `Field::eq` returns `Lookup<M>` but `Manager::filter` currently
+	// only accepts the legacy `(field_name, FilterOperator, FilterValue)`
+	// triple. Once that Issue ships, this call collapses to:
+	//   `.filter(Choice::field_question_id().eq(question_id))`.
+	use reinhardt::db::orm::{FilterOperator, FilterValue};
 	let choice_manager = Choice::objects();
 	let choices = choice_manager
 		.filter(
@@ -123,7 +106,6 @@ pub async fn get_question_results(
 ) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError> {
 	use crate::apps::polls::models::{Choice, Question};
 	use reinhardt::Model;
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
 
 	// Get question
 	let question_manager = Question::objects();
@@ -134,7 +116,9 @@ pub async fn get_question_results(
 		.map_err(|e| ServerFnError::application(e.to_string()))?
 		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
 
-	// Get choices
+	// Get choices. Same legacy-filter rationale as `get_question_detail`
+	// — typed builder is blocked on #4650.
+	use reinhardt::db::orm::{FilterOperator, FilterValue};
 	let choice_manager = Choice::objects();
 	let choices = choice_manager
 		.filter(
@@ -164,16 +148,6 @@ pub async fn vote(
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	vote_internal(request, db).await
-}
-
-/// Get vote form metadata for WASM client rendering
-///
-/// Returns form metadata with CSRF token for the voting form.
-#[cfg(native)]
-#[server_fn]
-pub async fn get_vote_form_metadata() -> std::result::Result<FormMetadata, ServerFnError> {
-	let form = create_vote_form();
-	Ok(form.to_metadata())
 }
 
 /// Submit vote via form! macro
@@ -236,16 +210,16 @@ async fn vote_internal(
 			return Err(anyhow::anyhow!("Choice does not belong to this question"));
 		}
 
-		// Increment vote count
-		choice.vote();
-
-		// Update in database
-		let updated = choice_manager
-			.update(&choice)
+		// Increment vote count AND persist in a single call.
+		// `Choice::vote()` returns `Result<(), exception::Error>` after
+		// invoking `Model::save()` internally — no separate
+		// `manager.update(&choice).await` is needed.
+		choice
+			.vote()
 			.await
 			.map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
-		Ok(updated)
+		Ok(choice)
 	})
 	.await
 	.map_err(|e| ServerFnError::application(e.to_string()))?;
@@ -266,8 +240,9 @@ async fn vote_internal(
 //   handler. The trailing `_csrf_token: String` parameter is appended by the
 //   `form!` macro for non-GET forms; the CSRF middleware verifies it before
 //   the handler runs.
-// * The session is required: `require_user` returns a 401 to unauthenticated
-//   clients before any database write happens.
+// * Authentication is required: `Depends<SessionUser>` is resolved by the
+//   request-scoped factory in `apps::polls::di` and exposes
+//   `.require_active()?` for the 401/403 surface.
 // * For `update_question` and `delete_question`, ownership is enforced by
 //   comparing `question.author_id()` with the current user's id; mismatched
 //   ownership returns a 403.
@@ -279,18 +254,18 @@ async fn vote_internal(
 ///       question_text: String,
 ///       _csrf_token: String,
 ///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session: SessionData,
+///       #[inject] session_user: Depends<SessionUser>,
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn create_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 
 	let trimmed = question_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -328,11 +303,11 @@ pub async fn update_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -384,11 +359,11 @@ pub async fn delete_question(
 	question_id: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -460,15 +435,15 @@ pub async fn create_choice(
 	choice_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 	let question_id: i64 = question_id
 		.parse()
 		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
-	let question = require_question_author(question_id, &user).await?;
+	let question = require_question_author(question_id, user).await?;
 
 	let trimmed = choice_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -499,11 +474,11 @@ pub async fn update_choice(
 	choice_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 	let choice_id: i64 = choice_id
 		.parse()
 		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
@@ -524,7 +499,7 @@ pub async fn update_choice(
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Choice not found"))?;
 
-	let _question = require_question_author(*choice.question_id(), &user).await?;
+	let _question = require_question_author(*choice.question_id(), user).await?;
 
 	choice.choice_text = trimmed.to_string();
 	let updated = manager
@@ -541,11 +516,11 @@ pub async fn delete_choice(
 	choice_id: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 	let choice_id: i64 = choice_id
 		.parse()
 		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
@@ -558,7 +533,7 @@ pub async fn delete_choice(
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Choice not found"))?;
 
-	let _question = require_question_author(*choice.question_id(), &user).await?;
+	let _question = require_question_author(*choice.question_id(), user).await?;
 
 	manager
 		.delete(choice.id())

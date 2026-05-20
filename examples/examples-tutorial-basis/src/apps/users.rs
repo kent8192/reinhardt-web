@@ -8,5 +8,7 @@
 #[cfg(native)]
 pub mod models;
 
+#[cfg(wasm)]
+pub mod client;
 pub mod server_fn;
 pub mod urls;

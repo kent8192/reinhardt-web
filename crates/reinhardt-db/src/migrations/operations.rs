@@ -2548,7 +2548,21 @@ impl Operation {
 						// single-statement payloads can be dispatched — that
 						// change is tracked separately so this PR can unblock
 						// the rc.30 release without cascading into ~25 call
-						// sites and tests. Refs #4630.
+						// sites and tests. The stop-gap output shape of this
+						// branch (single statement, `ALTER COLUMN ... TYPE`,
+						// no nullability clause, no comma-combined form) is
+						// pinned by the inline unit test
+						// `test_to_reverse_sql_alter_column_cockroachdb` in
+						// the `#[cfg(test)] mod tests` block of this file,
+						// added under reinhardt-web#4639. An end-to-end
+						// integration test against a live CockroachDB
+						// testcontainer is blocked on reinhardt-web#4642
+						// (`DatabaseMigrationExecutor` calls
+						// `pg_advisory_lock()`, which CockroachDB does not
+						// implement). The full `Vec<String>` API refactor
+						// that restores NOT NULL rollback fidelity is
+						// tracked in reinhardt-web#4640 and targets
+						// `develop/0.2.0`. Refs #4630, #4639, #4640, #4642.
 						format!(
 							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
 							quote_identifier(table),
@@ -5583,6 +5597,85 @@ mod tests {
 		assert!(
 			sql.contains("VARCHAR(50)"),
 			"MySQL reverse SQL should restore VARCHAR(50), got: {}",
+			sql
+		);
+	}
+
+	/// Reverse SQL for CockroachDB must emit the column-type reversion as a
+	/// single, dialect-isolated statement.
+	///
+	/// PR #4633 split CockroachDB off from PostgreSQL because CockroachDB
+	/// rejects the comma-combined `ALTER COLUMN ... TYPE T, ALTER COLUMN
+	/// ... {SET|DROP} NOT NULL` form that PostgreSQL accepts. The current
+	/// stop-gap emits only the column-type reversion and intentionally
+	/// drops nullability rollback fidelity (the full fix is tracked in
+	/// reinhardt-web#4640 and depends on `to_reverse_sql` returning
+	/// `Vec<String>`).
+	///
+	/// This unit test guards the stop-gap output shape so that a future
+	/// regression — e.g. re-folding CockroachDB into the Postgres comma form,
+	/// or accidentally appending the nullability clause as a second `\n`-joined
+	/// statement that `SchemaEditor::execute()` would reject — surfaces at
+	/// `cargo test` time instead of only at downstream CockroachDB deployments
+	/// (reinhardt-web#4639).
+	#[test]
+	fn test_to_reverse_sql_alter_column_cockroachdb() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Cockroachdb, &state)
+			.expect("reverse SQL should succeed")
+			.expect("reverse SQL should be present");
+
+		// Assert: shape must match the expected single-statement form
+		// exactly. Asserting `==` (not `contains`) is intentional: the
+		// stop-gap is supposed to emit *only* `ALTER TABLE "products" ALTER
+		// COLUMN "name" TYPE VARCHAR(50);` with no extra clauses (no
+		// nullability, no USING, no comma-combined sibling). A `contains`
+		// check would silently allow `, ALTER COLUMN ... SET NOT NULL`
+		// suffixes — exactly the regression this test is meant to pin.
+		let expected = r#"ALTER TABLE "products" ALTER COLUMN "name" TYPE VARCHAR(50);"#;
+		assert_eq!(
+			sql, expected,
+			"CockroachDB reverse SQL must match the pinned single-statement \
+			 form exactly (table/column identifiers double-quoted, no extra \
+			 clauses), got: {}",
+			sql
+		);
+
+		// Assert: must be exactly one SQL statement. CockroachDB rejects the
+		// Postgres comma-combined form, and `SchemaEditor::execute()` is a
+		// single-statement dispatcher (sqlx Extended Query), so the stop-gap
+		// must not return a `;\n`-joined multi-statement payload either.
+		// Trim whitespace first so a trailing `;\n` or `; ` still has its
+		// terminating semicolon recognised by `trim_end_matches(';')`.
+		let trimmed = sql.trim().trim_end_matches(';').trim();
+		assert!(
+			!trimmed.contains(';'),
+			"CockroachDB reverse SQL must be exactly one statement (no internal \
+			 `;`), got: {}",
+			sql
+		);
+		assert!(
+			!sql.contains(",\n") && !sql.contains(", ALTER COLUMN"),
+			"CockroachDB reverse SQL must not emit the Postgres comma-combined \
+			 form (CockroachDB rejects it), got: {}",
+			sql
+		);
+
+		// Assert: nullability rollback is intentionally dropped under the
+		// stop-gap. Regressing toward emitting `SET NOT NULL` / `DROP NOT
+		// NULL` either as a second statement or inline in the same `ALTER
+		// TABLE` payload would re-break CockroachDB rollback — the
+		// `Vec<String>` API refactor (reinhardt-web#4640) is the supported
+		// path for restoring NOT NULL fidelity.
+		assert!(
+			!sql.contains("SET NOT NULL") && !sql.contains("DROP NOT NULL"),
+			"CockroachDB reverse SQL must not emit nullability clause under \
+			 the current stop-gap (tracked in #4640), got: {}",
 			sql
 		);
 	}

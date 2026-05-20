@@ -20,22 +20,24 @@
 //!   captured from the surrounding scope by the implicit `move` of
 //!   the `watch` closure.
 //!
-//! **Anti-pattern that root-caused Issue #4514:** returning a static
-//! `Page` (e.g. `return page!(|| spinner)();`) from outside the
-//! `watch{}` block strands the SPA on the spinner forever because the
-//! reactive subscription is never established.
+//! **Anti-pattern**: returning a static `Page`
+//! (e.g. `return page!(|| spinner)();`) from outside the `watch{}` block
+//! strands the SPA on the spinner forever — the reactive subscription is
+//! never established. Every loading branch MUST stay inside the single
+//! outer `watch{}` block.
 
 use crate::shared::types::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
+use reinhardt::pages::resolve_static;
 
+use crate::apps::polls::client::links;
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, submit_vote, update_choice, update_question,
 };
-use crate::client::links;
 
 /// Polls index page - List all polls
 ///
@@ -93,26 +95,21 @@ pub fn polls_index() -> Page {
 				} else {
 					div {
 						class: "space-y-2",
-						{
-							Page::Fragment(
-							        load_questions_signal
-							            .result()
-							            .unwrap_or_default()
-							            .iter()
-							            .map(|question| {
-							                let href = links::poll_detail(question.id);
-							                let question_text = question.question_text.clone();
-							                let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string();
-							                page!(
-							                    | href : String, question_text : String, pub_date : String | { a {
-							                    href : href, class :
-							                    "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
-							                    div { class : "flex w-full justify-between", h5 { class : "mb-1", {
-							                    question_text } } small { { pub_date } } } } }
-							                )(href, question_text, pub_date)
-							            })
-							            .collect::<Vec<_>>(),
-							    )
+						for question in load_questions_signal.result().unwrap_or_default() {
+							a {
+								href: links::poll_detail(question.id),
+								class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
+								div {
+									class: "flex w-full justify-between",
+									h5 {
+										class: "mb-1",
+										{ question.question_text.clone() }
+									}
+									small {
+										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
+									}
+								}
+							}
 						}
 					}
 				}
@@ -139,30 +136,24 @@ pub fn polls_detail(question_id: i64) -> Page {
 			|qid: i64| async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
 		);
 
-	// Create the voting form using form! macro.
+	// Voting form via the `form!` macro.
 	//
-	// - server_fn: submit_vote accepts (question_id, choice_id, csrf_token)
-	// - method: Post enables CSRF hidden input rendering for non-WASM submits
-	// - strip_arguments: explicitly routes the CSRF token to the trailing
-	//   server_fn argument (reinhardt-web#3971), replacing the implicit
-	//   auto-injection that broke when server_fn signatures evolved.
-	// - state: loading / error signals for form submission feedback.
-	// - watch blocks for reactive UI updates (submit button + error display).
-	// - success_url: |_form| ...  triggers a one-shot SPA navigation to the
-	//   results page on successful vote submission (issues #4605 / #4612 /
-	//   #4610). The closure literal is captured at the outer block where
-	//   `qid` is visible, then stored on the form struct and invoked by
-	//   the generated `submit()` method post-success. The generated body
-	//   dispatches through `pages::navigate()` so the navigation stays
-	//   inside the SPA route table (no document reload) when the
-	//   `ClientLauncher::router_client` builder installed a router.
-	//
-	// NOTE: depends on the `reinhardt-manouche` parser fix for #4604 /
-	// #4611 (the `success_url:` arm currently consumes a redundant
-	// `Token![:]`). Until that fix lands on `main`, this file will not
-	// compile — see the matching trybuild fixture at
-	// `crates/reinhardt-pages/tests/ui/form/pass/success_url_captures_outer_local.rs`,
-	// which is gated the same way.
+	// - `server_fn: submit_vote` binds the form to the server function whose
+	//   typed signature is `(question_id, choice_id, csrf_token)`.
+	// - `method: Post` enables CSRF hidden-input rendering for non-WASM submits.
+	// - `strip_arguments: { csrf_token: ... }` routes the CSRF token to the
+	//   trailing server_fn argument — the macro then strips it from the
+	//   client-side argument list so the form only owns `question_id` and
+	//   `choice_id`. CSRF verification still happens server-side in the CSRF
+	//   middleware before this handler runs.
+	// - `state: { loading, error }` exposes per-field signals to drive the
+	//   submit button and error banner below.
+	// - `success_url: |_form| ...` triggers an in-SPA navigation to the results
+	//   page after a successful vote. The closure captures `qid` from the
+	//   outer scope; the macro stores it on the generated form struct and the
+	//   generated `submit()` method dispatches through `pages::navigate()` so
+	//   the route table installed by `ClientLauncher::router_client` handles
+	//   the transition without a full page load.
 	let voting_form = form! {
 		name: VotingForm,
 		server_fn: submit_vote,
@@ -251,9 +242,9 @@ pub fn polls_detail(question_id: i64) -> Page {
 	let load_detail_signal = load_detail.clone();
 
 	// Render reactively in the canonical shape (see module-level docs):
-	// outer `div` + single `watch{}` + `Action<..>` and route id flowing
-	// into `page!` as typed parameters. The voting form is captured by
-	// the watch closure's implicit `move`.
+	// outer `div` + single `watch{}` block + the `Action<..>` signal and
+	// the route id flow into `page!` as typed parameters. The voting form
+	// is captured by the watch closure's implicit `move`.
 	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
 		div {
 			watch {
@@ -412,38 +403,31 @@ pub fn polls_results(question_id: i64) -> Page {
 								div {
 									class: "divide-y divide-border",
 									{
-										Page::Fragment(
-										        load_results_signal
-										            .result()
-										            .map(|(_, choices, total)| {
-										                choices
-										                    .iter()
-										                    .map(|choice| {
-										                        let percentage = if total > 0 {
-										                            (choice.votes as f64 / total as f64 * 100.0) as i32
-										                        } else {
-										                            0
-										                        };
-										                        let choice_text = choice.choice_text.clone();
-										                        let votes = choice.votes;
-										                        page!(
-										                            | choice_text : String, votes : i32, percentage : i32 | { div
-										                            { class : "py-4", div { class :
-										                            "flex justify-between items-center mb-2", strong { {
-										                            choice_text } } span { class :
-										                            "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-										                            { format!("{} votes", votes) } } } div { class :
-										                            "w-full bg-surface-tertiary rounded-full h-2.5", div { class
-										                            : "bg-brand h-2.5 rounded-full", role : "progressbar", style
-										                            : format!("width: {}%", percentage), aria_valuenow :
-										                            percentage.to_string(), aria_valuemin : "0", aria_valuemax :
-										                            "100", { format!("{}%", percentage) } } } } }
-										                        )(choice_text, votes, percentage)
-										                    })
-										                    .collect::<Vec<_>>()
-										            })
-										            .unwrap_or_default(),
-										    )
+										if let Some((_, choices, total)) = load_results_signal.result() {
+												page!(|choices: Vec<ChoiceInfo>, total: i32| {
+													for choice in choices {
+														{
+															let percentage = if total > 0 {
+																(choice.votes as f64 / total as f64 * 100.0) as i32
+															} else {
+																0
+															};
+															page!(| choice : ChoiceInfo, percentage : i32 | { div {
+													class : "py-4", div { class : "flex justify-between items-center mb-2",
+													strong { { choice.choice_text.clone() } } span { class :
+													"inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
+													{ format!("{} votes", choice.votes) } } } div { class :
+													"w-full bg-surface-tertiary rounded-full h-2.5", div { class :
+													"bg-brand h-2.5 rounded-full", role : "progressbar", style :
+													format!("width: {}%", percentage), aria_valuenow : percentage.to_string(),
+													aria_valuemin : "0", aria_valuemax : "100", { format!("{}%", percentage) } }
+													} } })(choice, percentage)
+														}
+													}
+												})(choices, total)
+											} else {
+												Page::Empty
+											}
 									}
 								}
 								div {
@@ -525,7 +509,7 @@ pub fn polls_index_with_logo() -> Page {
 			div {
 				class: "text-center mb-6",
 				img {
-					src: "/static/images/poll-icon.svg",
+					src: resolve_static("images/poll-icon.svg"),
 					alt: "Polls App",
 					class: "mx-auto w-16 h-16",
 				}
@@ -563,28 +547,29 @@ pub fn polls_index_with_logo() -> Page {
 				} else {
 					div {
 						class: "space-y-2",
-						{
-							Page::Fragment(
-							        load_questions_signal
-							            .result()
-							            .unwrap_or_default()
-							            .iter()
-							            .map(|question| {
-							                let href = format!("/polls/{}/", question.id);
-							                let question_text = question.question_text.clone();
-							                let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string();
-							                page!(
-							                    | href : String, question_text : String, pub_date : String | { a {
-							                    href : href, class :
-							                    "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
-							                    div { class : "flex w-full justify-between items-center", img { src :
-							                    "/static/images/poll-icon.svg", alt : "Poll", class : "w-8 h-8 mr-3",
-							                    } div { class : "flex-1", h5 { class : "mb-1", { question_text } } }
-							                    small { { pub_date } } } } }
-							                )(href, question_text, pub_date)
-							            })
-							            .collect::<Vec<_>>(),
-							    )
+						for question in load_questions_signal.result().unwrap_or_default() {
+							a {
+								href: format!("/polls/{}/", question.id),
+								class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
+								div {
+									class: "flex w-full justify-between items-center",
+									img {
+										src: resolve_static("images/poll-icon.svg"),
+										alt: "Poll",
+										class: "w-8 h-8 mr-3",
+									}
+									div {
+										class: "flex-1",
+										h5 {
+											class: "mb-1",
+											{ question.question_text.clone() }
+										}
+									}
+									small {
+										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
+									}
+								}
+							}
 						}
 					}
 				}
@@ -732,42 +717,12 @@ pub fn question_edit(question_id: i64) -> Page {
 
 	let load_detail_signal = load_detail.clone();
 
-	// Render reactively in the canonical shape (see module-level docs).
-	// The `edit_form` is captured by the watch closure's implicit `move`.
-	//
-	// Workaround for #4515 (framework usability: nested `watch{}` cannot
-	// share `!Copy` Signal captures). The `edit_form`'s own loading/error UI
-	// is inlined inside this single outer `watch{}` instead of a second
-	// nested `watch{}` block. The root cause is that `Page::reactive` requires
-	// `F: Fn() -> Page + 'static`; when an inner `watch` is added inside an
-	// outer one, both closures try to capture the same `!Copy` `Signal<T>`
-	// from the surrounding scope, which rustc rejects with
-	// E0507 "cannot move out of … a captured variable in an `Fn` closure"
-	// (the inner closure's capture conflicts with the outer closure's
-	// re-execution semantics). Until #4515 lands a framework-level fix,
-	// flattening the inner reactive switch into the outer `watch{}` is the
-	// least-invasive way to preserve reactivity — a single `watch` already
-	// subscribes to every Signal accessed inside its body, so the reactive
-	// contract is unchanged.
-	//
-	// Ideal implementation (without workaround, blocked on #4515):
-	//   watch {
-	//       if edit_form.error().get().is_some() {
-	//           div { class: "alert-danger mb-3",
-	//               { edit_form.error().get().unwrap_or_default() } }
-	//       }
-	//   }
-	//   { edit_form.clone().into_page() }
-	//   div {
-	//       class: "mt-3",
-	//       watch {
-	//           if edit_form.loading().get() {
-	//               button { /* "Saving..." */ }
-	//           } else {
-	//               button { /* "Save" */ }
-	//           }
-	//       }
-	//   }
+	// Render reactively in the canonical shape (see module-level docs):
+	// outer `div` + single `watch{}` block on `load_detail_signal`, with
+	// **nested `watch{}` blocks** for the form's own error/loading signals.
+	// `edit_form` is captured by the closures' implicit `move`s — the
+	// inner watches each subscribe only to the form signal they read,
+	// while the outer watch re-runs on `load_detail_signal` changes.
 	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
 		div {
 			watch {
@@ -803,29 +758,33 @@ pub fn question_edit(question_id: i64) -> Page {
 							class: "mb-4",
 							"Edit Question"
 						}
-						if edit_form.error().get().is_some() {
-							div {
-								class: "alert-danger mb-3",
-								{ edit_form.error().get().unwrap_or_default() }
+						watch {
+							if edit_form.error().get().is_some() {
+								div {
+									class: "alert-danger mb-3",
+									{ edit_form.error().get().unwrap_or_default() }
+								}
 							}
 						}
 						{ edit_form.clone().into_page() }
 						div {
 							class: "mt-3",
-							if edit_form.loading().get() {
-								button {
-									type: "submit",
-									class: "btn-primary opacity-50 cursor-not-allowed",
-									disabled: true,
-									form: "edit-question-form",
-									"Saving..."
-								}
-							} else {
-								button {
-									type: "submit",
-									class: "btn-primary",
-									form: "edit-question-form",
-									"Save"
+							watch {
+								if edit_form.loading().get() {
+									button {
+										type: "submit",
+										class: "btn-primary opacity-50 cursor-not-allowed",
+										disabled: true,
+										form: "edit-question-form",
+										"Saving..."
+									}
+								} else {
+									button {
+										type: "submit",
+										class: "btn-primary",
+										form: "edit-question-form",
+										"Save"
+									}
 								}
 							}
 							a {
