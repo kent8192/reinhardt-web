@@ -97,6 +97,23 @@ async fn table_exists(connection: &DatabaseConnection, table_name: &str) -> bool
 	})
 }
 
+/// Check whether the sentinel row `id = 1` exists in
+/// `_reinhardt_migration_lock`. Only the row presence — combined with
+/// `SELECT ... FOR UPDATE` of that row — serialises concurrent migrators,
+/// so a regression in the seed `INSERT ... ON CONFLICT DO NOTHING` must
+/// fail the test rather than slip through a table-only check.
+async fn sentinel_row_exists(connection: &DatabaseConnection) -> bool {
+	let pool = connection
+		.into_postgres()
+		.expect("postgres pool unavailable on CockroachDB connection");
+	sqlx::query_scalar::<_, bool>(
+		"SELECT EXISTS(SELECT 1 FROM _reinhardt_migration_lock WHERE id = 1)",
+	)
+	.fetch_one(&pool)
+	.await
+	.unwrap_or_else(|e| panic!("sentinel_row_exists query failed against CockroachDB: {e}"))
+}
+
 // ============================================================================
 // Regression tests for #4642
 // ============================================================================
@@ -155,6 +172,16 @@ async fn test_apply_and_rollback_migrations_on_cockroachdb() {
 		table_exists(&connection, "_reinhardt_migration_lock").await,
 		"_reinhardt_migration_lock sentinel table should exist after a \
 		 CockroachDB migration acquires the schema lock"
+	);
+
+	// Assert: the sentinel row itself is present. `SELECT ... FOR UPDATE`
+	// only serialises migrators when the `id = 1` row exists — a regression
+	// in the seed `INSERT ... DO NOTHING` would silently lose the locking
+	// guarantee, so we require row presence, not just table presence.
+	assert!(
+		sentinel_row_exists(&connection).await,
+		"_reinhardt_migration_lock should contain the sentinel row (id = 1) \
+		 after a CockroachDB migration acquires the schema lock"
 	);
 
 	// Act: rollback

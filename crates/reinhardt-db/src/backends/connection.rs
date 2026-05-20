@@ -97,10 +97,25 @@ impl reinhardt_di::Injectable for DatabaseConnection {
 
 impl DatabaseConnection {
 	/// Creates a new instance.
+	///
+	/// Defaults to `is_cockroachdb = false`, which is the correct choice when
+	/// the caller has not (or cannot) probe the server. If the supplied backend
+	/// is known to be CockroachDB, use [`Self::new_with_flavor`] instead so the
+	/// migration recorder routes through the sentinel-row lock path rather than
+	/// `pg_advisory_lock` (issue #4642).
 	pub fn new(backend: Arc<dyn DatabaseBackend>) -> Self {
+		Self::new_with_flavor(backend, false)
+	}
+
+	/// Creates a new instance with an explicit CockroachDB flavor flag.
+	///
+	/// Use this when wrapping an externally constructed Postgres backend whose
+	/// flavor is already known — e.g. tests that mount a CockroachDB pool, or
+	/// adapters that pre-probe `SELECT version()` themselves.
+	pub fn new_with_flavor(backend: Arc<dyn DatabaseBackend>, is_cockroachdb: bool) -> Self {
 		Self {
 			backend,
-			is_cockroachdb: false,
+			is_cockroachdb,
 		}
 	}
 
