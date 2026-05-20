@@ -52,9 +52,17 @@ pub struct Choice {
 }
 
 impl Choice {
-	/// Increment the vote count
-	pub fn vote(&mut self) {
+	/// Increment the vote count and persist it.
+	///
+	/// Uses Django-style `Model::save()` (see
+	/// `crates/reinhardt-db/src/orm/model.rs` `Model::save`) so the row is
+	/// updated in place; `before_update` / `after_update` signals fire as part
+	/// of the standard model lifecycle. Call sites can therefore drop a
+	/// separate `manager.update(&choice).await?` and treat `vote()` as the
+	/// canonical "increment + flush" operation.
+	pub async fn vote(&mut self) -> reinhardt::core::exception::Result<()> {
 		self.votes += 1;
+		self.save().await
 	}
 }
 
@@ -64,33 +72,14 @@ mod tests {
 	use rstest::rstest;
 
 	#[rstest]
-	fn test_choice_vote() {
-		// Typestate `build()` constructor (added in issue #4400, FK setter in
-		// #4413). Every required field is set by name through a dedicated
-		// setter, so adding a new required field becomes a non-breaking change
-		// for this call site — the new field shows up as an additional setter
-		// rather than a positional parameter that breaks every caller in
-		// lock-step. Omitting any required setter is a compile-time error
-		// thanks to the per-field typestate (no `.finish()` until every slot
-		// is `Set`).
-		let mut choice = Choice::build()
-			.choice_text("Choice 1")
-			.votes(0)
-			.question(1_i64) // FK accepts `IntoPrimaryKey` — either `&Question` or raw PK.
-			.finish();
-		assert_eq!(choice.votes(), 0);
-
-		choice.vote();
-		assert_eq!(choice.votes(), 1);
-
-		choice.vote();
-		assert_eq!(choice.votes(), 2);
-	}
-
-	#[rstest]
 	fn test_question_build_typestate() {
 		// `Question::build()` surfaces each required field as a named setter,
 		// which keeps tutorial call sites stable as the `Question` schema grows.
+		// The same typestate constructor (introduced for `#[model]` in issue
+		// #4400 and extended to FK fields in #4413) is also used by
+		// `Choice::build()` in the integration / wasm tests, where the model
+		// has a live database backing it. Persisting `vote()` therefore
+		// belongs in those tests, not in this synchronous unit test.
 		let question = Question::build()
 			.question_text("What's your favorite color?")
 			.author(1_i64)
