@@ -11,7 +11,7 @@ sidebar_weight = 40
 In this chapter we add the interactive layer of the polling app: the voting form, the question CUD pages, and the choice CUD pages. The work splits across three files of the reference implementation:
 
 - [`src/shared/types.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/shared/types.rs) — DTOs that cross the WASM/native boundary, plus the `#[derive(Validate)]` rules that run *only* on the server.
-- [`src/shared/forms.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/shared/forms.rs) — server-only `Form` definitions used to emit `FormMetadata` (including the CSRF token).
+- [`src/shared/forms.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/shared/forms.rs) — server-only `Form` definitions that the unit test in this chapter pins against. The actual `FormMetadata` (incl. CSRF hidden input) is emitted on the client by the `form!` macro at expansion time.
 - [`src/client/components/polls.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/client/components/polls.rs) — the `form!` macro pages backed by `#[server_fn]` mutations in [`src/apps/polls/server_fn.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/polls/server_fn.rs).
 
 If you are coming from Django, this is roughly the chapter where "forms + ModelForm + class-based generic views" would appear. The pages template solves the same problem with a different cast: typed DTO validators, a server-side `Form` purely for metadata, and the **`form!`** macro on the client that renders the UI and dispatches to a `#[server_fn]`.

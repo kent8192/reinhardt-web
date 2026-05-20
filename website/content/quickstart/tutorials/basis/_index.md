@@ -74,7 +74,7 @@ examples-tutorial-basis/
 │   │   └── admin.rs           # configure_admin() -> AdminSite + register Question/Choice admins
 │   ├── shared/
 │   │   ├── types.rs           # DTOs: QuestionInfo, ChoiceInfo, VoteRequest, UserInfo, LoginRequest, RegisterRequest
-│   │   └── forms.rs           # #[cfg(native)] create_vote_form() — generates CSRF form metadata for the WASM voting form
+│   │   └── forms.rs           # #[cfg(native)] create_vote_form() — server-side Form definition used for unit testing the shape that the client-side form! macro emits (incl. CSRF) at expansion time
 │   ├── apps/
 │   │   ├── polls/
 │   │   │   ├── models.rs      # #[model] Question (author FK to User), Choice (question FK)
