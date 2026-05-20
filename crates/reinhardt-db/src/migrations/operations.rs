@@ -2548,7 +2548,14 @@ impl Operation {
 						// single-statement payloads can be dispatched — that
 						// change is tracked separately so this PR can unblock
 						// the rc.30 release without cascading into ~25 call
-						// sites and tests. Refs #4630.
+						// sites and tests. The CockroachDB branch is
+						// exercised by `test_alter_column_type_rollback_cockroachdb`
+						// in `tests/integration/tests/migrations/migration_rollback_integration.rs`,
+						// which guards against regressions of this stop-gap
+						// (reinhardt-web#4639). The full `Vec<String>` API
+						// refactor that restores NOT NULL rollback fidelity
+						// is tracked in reinhardt-web#4640 and targets
+						// `develop/0.2.0`. Refs #4630, #4639, #4640.
 						format!(
 							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
 							quote_identifier(table),
@@ -5583,6 +5590,81 @@ mod tests {
 		assert!(
 			sql.contains("VARCHAR(50)"),
 			"MySQL reverse SQL should restore VARCHAR(50), got: {}",
+			sql
+		);
+	}
+
+	/// Reverse SQL for CockroachDB must emit the column-type reversion as a
+	/// single, dialect-isolated statement.
+	///
+	/// PR #4633 split CockroachDB off from PostgreSQL because CockroachDB
+	/// rejects the comma-combined `ALTER COLUMN ... TYPE T, ALTER COLUMN
+	/// ... {SET|DROP} NOT NULL` form that PostgreSQL accepts. The current
+	/// stop-gap emits only the column-type reversion and intentionally
+	/// drops nullability rollback fidelity (the full fix is tracked in
+	/// reinhardt-web#4640 and depends on `to_reverse_sql` returning
+	/// `Vec<String>`).
+	///
+	/// This unit test guards the stop-gap output shape so that a future
+	/// regression — e.g. re-folding CockroachDB into the Postgres comma form,
+	/// or accidentally appending the nullability clause as a second `\n`-joined
+	/// statement that `SchemaEditor::execute()` would reject — surfaces at
+	/// `cargo test` time instead of only at downstream CockroachDB deployments
+	/// (reinhardt-web#4639).
+	#[test]
+	fn test_to_reverse_sql_alter_column_cockroachdb() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Cockroachdb, &state)
+			.expect("reverse SQL should succeed")
+			.expect("reverse SQL should be present");
+
+		// Assert: must use `ALTER COLUMN ... TYPE` syntax with the original
+		// `VARCHAR(50)` type restored.
+		assert!(
+			sql.contains("ALTER COLUMN") && sql.contains("TYPE"),
+			"CockroachDB reverse SQL should use ALTER COLUMN ... TYPE syntax, got: {}",
+			sql
+		);
+		assert!(
+			sql.contains("VARCHAR(50)"),
+			"CockroachDB reverse SQL should restore VARCHAR(50), got: {}",
+			sql
+		);
+
+		// Assert: must be exactly one SQL statement. CockroachDB rejects the
+		// Postgres comma-combined form, and `SchemaEditor::execute()` is a
+		// single-statement dispatcher (sqlx Extended Query), so the stop-gap
+		// must not return a `;\n`-joined multi-statement payload either.
+		// Strip the optional trailing semicolon before counting separators.
+		let trimmed = sql.trim_end_matches(';').trim();
+		assert!(
+			!trimmed.contains(';'),
+			"CockroachDB reverse SQL must be exactly one statement (no internal \
+			 `;`), got: {}",
+			sql
+		);
+		assert!(
+			!sql.contains(",\n") && !sql.contains(", ALTER COLUMN"),
+			"CockroachDB reverse SQL must not emit the Postgres comma-combined \
+			 form (CockroachDB rejects it), got: {}",
+			sql
+		);
+
+		// Assert: nullability rollback is intentionally dropped under the
+		// stop-gap. Regressing toward emitting `SET NOT NULL` / `DROP NOT
+		// NULL` either as a second statement or inline in the same `ALTER
+		// TABLE` payload would re-break CockroachDB rollback — the
+		// `Vec<String>` API refactor (reinhardt-web#4640) is the supported
+		// path for restoring NOT NULL fidelity.
+		assert!(
+			!sql.contains("SET NOT NULL") && !sql.contains("DROP NOT NULL"),
+			"CockroachDB reverse SQL must not emit nullability clause under \
+			 the current stop-gap (tracked in #4640), got: {}",
 			sql
 		);
 	}
