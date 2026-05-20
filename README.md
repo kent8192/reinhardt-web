@@ -823,8 +823,16 @@ Non-injected fields are marked with `#[no_inject]` and must implement
 ```rust
 use reinhardt::di::injectable;
 
-#[injectable]
-#[scope(singleton)] // optional: singleton (default) | request | transient
+// `scope` is passed as a macro argument; accepted values are
+// "singleton", "request", or "transient" (one literal, not an alternation).
+// When omitted, `#[injectable]` defaults to `request` and
+// `#[injectable_factory]` defaults to `singleton`. `Config` is registered
+// as a singleton here so it matches the singleton-scoped
+// `database_connection` factory below: mixing a longer-lived dependent
+// with a shorter-lived dependency is not rejected by the registry, but it
+// captures whichever request-scoped instance was live at first resolution
+// and reuses it for the singleton's lifetime — almost never what you want.
+#[injectable(scope = "singleton")]
 #[derive(Clone)]
 pub struct Config {
     #[no_inject]
@@ -848,8 +856,7 @@ hands the returned value to the DI container:
 use reinhardt::db::DatabaseConnection;
 use reinhardt::di::{Depends, injectable_factory};
 
-#[injectable_factory]
-#[scope(singleton)]
+#[injectable_factory(scope = "singleton")]
 async fn database_connection(
     #[inject] config: Depends<Config>,
 ) -> DatabaseConnection {

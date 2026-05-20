@@ -22,11 +22,20 @@
 //!
 //! # Modes
 //!
-//! | mode      | Router         | Scanned calls                                  | Resolver module(s)                             |
-//! |-----------|----------------|-----------------------------------------------|------------------------------------------------|
-//! | `server`  | `ServerRouter` | `.endpoint()`, `.viewset()`, `.mount()`        | `url_resolvers`                                 |
-//! | `client`  | `ClientRouter` | `.named_route()` family                        | `client_url_resolvers`                          |
-//! | `unified` | `UnifiedRouter`| both sides (inside `.server(\|s\|)` / `.client(\|c\|)` closures) | `url_resolvers` + `client_url_resolvers` |
+//! | mode      | Router         | Scanned calls                                  | Module(s) emitted                                          |
+//! |-----------|----------------|-----------------------------------------------|------------------------------------------------------------|
+//! | `server`  | `ServerRouter` | `.endpoint()`, `.viewset()`, `.mount()`        | `url_resolvers`                                            |
+//! | `client`  | `ClientRouter` | `.named_route()` family                        | `client_url_resolvers` + `urls` (typed helpers)            |
+//! | `unified` | `UnifiedRouter`| both sides (inside `.server(\|s\|)` / `.client(\|c\|)` closures) | `url_resolvers` + `client_url_resolvers` + `urls` |
+//!
+//! The `urls` module added for Issue #4644 contains one `pub fn` per named
+//! route whose path parameters the macro could lift from the handler's
+//! closure binding (`ClientPath(name): ClientPath<T>` → `fn name(name: T)
+//! -> String`). See the `#[url_patterns]` proc-macro doc in `lib.rs` for
+//! the detailed extraction rules; routes the macro cannot statically
+//! project are skipped silently so the stringly-typed
+//! `ResolvedUrls::resolve_client_url(...)` API remains the documented
+//! fallback.
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -468,15 +477,57 @@ fn build_mount_reexport(call: &ChainCall) -> TokenStream {
 ///
 /// Example: `.named_route("login_page", "/login/", handler)`
 /// yields `ClientNamedRoute { name: "login_page", pattern: "/login/" }`.
+///
+/// For `.named_route_path*` calls whose third argument is an inline closure
+/// with `ClientPath(name): ClientPath<T>` bindings, `typed_params` carries
+/// the per-binding `(name, T)` pairs so the macro can generate a typed
+/// helper `pub fn <name>(<name>: T, …) -> String`. When `typed_params` is
+/// `None`, the macro emits no typed helper for this route (the existing
+/// stringly-typed `ResolvedUrls::resolve_client_url(…)` API still works).
 struct ClientNamedRoute {
 	name: String,
 	pattern: String,
+	typed_params: Option<Vec<(syn::Ident, syn::Type)>>,
+}
+
+/// Method variant of a `.named_route*(…)` call.
+///
+/// Used to decide which call shapes carry path parameters whose types the
+/// macro should attempt to lift from the closure binding.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NamedRouteVariant {
+	/// `.named_route(name, pattern, component)` — zero path params.
+	None,
+	/// `.named_route_path*(name, pattern, |ClientPath(…): ClientPath<…>, …| body)`
+	/// — one `ClientPath<T>` binding per path param.
+	Path,
+	/// `.named_route_params(name, pattern, |Path(t): Path<Struct>| body)` or
+	/// `.named_route_result(name, pattern, …)` — typed struct binding the
+	/// macro does not attempt to expand into a typed helper today.
+	Untyped,
+}
+
+fn classify_named_route(ident: &proc_macro2::Ident) -> Option<NamedRouteVariant> {
+	if ident == "named_route" {
+		Some(NamedRouteVariant::None)
+	} else if ident == "named_route_path"
+		|| ident == "named_route_path2"
+		|| ident == "named_route_path3"
+	{
+		Some(NamedRouteVariant::Path)
+	} else if ident == "named_route_params" || ident == "named_route_result" {
+		Some(NamedRouteVariant::Untyped)
+	} else {
+		None
+	}
 }
 
 /// Extract `.named_route(NAME, PATTERN, HANDLER)` calls from a function body.
 ///
 /// Scans for the pattern `.named_route("name", "/pattern/", expr)` and
-/// extracts the route name and URL pattern strings.
+/// extracts the route name, URL pattern, and (when the call is one of the
+/// `named_route_path*` variants with an inline closure) the typed parameter
+/// list for typed-helper generation.
 fn extract_named_route_calls(body_tokens: &[proc_macro2::TokenTree]) -> Vec<ClientNamedRoute> {
 	let mut routes = Vec::new();
 
@@ -486,18 +537,11 @@ fn extract_named_route_calls(body_tokens: &[proc_macro2::TokenTree]) -> Vec<Clie
 			&& let proc_macro2::TokenTree::Punct(p) = &body_tokens[i]
 			&& p.as_char() == '.'
 			&& let proc_macro2::TokenTree::Ident(ident) = &body_tokens[i + 1]
-			&& (ident == "named_route"
-				|| ident == "named_route_path"
-				|| ident == "named_route_path2"
-				|| ident == "named_route_path3"
-				|| ident == "named_route_params"
-				|| ident == "named_route_result")
+			&& let Some(variant) = classify_named_route(ident)
 			&& let proc_macro2::TokenTree::Group(group) = &body_tokens[i + 2]
 			&& group.delimiter() == proc_macro2::Delimiter::Parenthesis
 		{
-			// Parse the first two string literal arguments: name, pattern
-			let inner_tokens: Vec<proc_macro2::TokenTree> = group.stream().into_iter().collect();
-			if let Some(route) = parse_named_route_args(&inner_tokens) {
+			if let Some(route) = parse_named_route_args(group.stream(), variant) {
 				routes.push(route);
 			}
 			i += 3;
@@ -508,15 +552,51 @@ fn extract_named_route_calls(body_tokens: &[proc_macro2::TokenTree]) -> Vec<Clie
 	routes
 }
 
-/// Parse the arguments of a `named_route(name, pattern, ...)` call.
+/// Parse the arguments of a `named_route*(name, pattern, …)` call.
 ///
-/// Extracts the first two string literals (name and pattern).
-fn parse_named_route_args(tokens: &[proc_macro2::TokenTree]) -> Option<ClientNamedRoute> {
+/// Returns the route's `(name, pattern)` plus, when `variant ==
+/// NamedRouteVariant::Path` and the handler is an inline closure with
+/// `ClientPath(name): ClientPath<T>` bindings, the typed parameter list.
+///
+/// Falls back to literal-only scanning if the argument list does not parse
+/// as a comma-separated expression list (preserves the previous behaviour
+/// for hand-rolled token sequences encountered in tests).
+fn parse_named_route_args(
+	stream: proc_macro2::TokenStream,
+	variant: NamedRouteVariant,
+) -> Option<ClientNamedRoute> {
+	let parser = syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated;
+	if let Ok(exprs) = syn::parse::Parser::parse2(parser, stream.clone()) {
+		let mut iter = exprs.iter();
+		let name = lit_str_value(iter.next()?)?;
+		let pattern = lit_str_value(iter.next()?)?;
+		let typed_params = match variant {
+			NamedRouteVariant::Path => match iter.next() {
+				Some(syn::Expr::Closure(closure)) => parse_closure_typed_params(closure),
+				_ => None,
+			},
+			// `.named_route(…)` has no path params, so the typed helper is
+			// always emittable as a zero-argument function.
+			NamedRouteVariant::None => Some(Vec::new()),
+			// `.named_route_params(…)` / `.named_route_result(…)` take a
+			// single struct-typed binding; the macro does not attempt to
+			// project them into a typed helper today.
+			NamedRouteVariant::Untyped => None,
+		};
+		return Some(ClientNamedRoute {
+			name,
+			pattern,
+			typed_params,
+		});
+	}
+
+	// Fallback for inputs that do not parse as a normal Rust expression list
+	// (legacy callers that pass raw token sequences). Recover only the two
+	// leading string literals; no typed helper is generated.
 	let mut literals = Vec::new();
-	for tt in tokens {
+	for tt in stream {
 		if let proc_macro2::TokenTree::Literal(lit) = tt {
 			let lit_str = lit.to_string();
-			// Check if it's a string literal (starts and ends with ")
 			if lit_str.starts_with('"') && lit_str.ends_with('"') && lit_str.len() >= 2 {
 				literals.push(lit_str[1..lit_str.len() - 1].to_string());
 				if literals.len() == 2 {
@@ -525,14 +605,91 @@ fn parse_named_route_args(tokens: &[proc_macro2::TokenTree]) -> Option<ClientNam
 			}
 		}
 	}
-
 	if literals.len() >= 2 {
 		Some(ClientNamedRoute {
 			name: literals[0].clone(),
 			pattern: literals[1].clone(),
+			typed_params: None,
 		})
 	} else {
 		None
+	}
+}
+
+/// Read a `&str` literal value out of `syn::Expr::Lit(syn::Lit::Str(…))`.
+fn lit_str_value(expr: &syn::Expr) -> Option<String> {
+	match expr {
+		syn::Expr::Lit(syn::ExprLit {
+			lit: syn::Lit::Str(s),
+			..
+		}) => Some(s.value()),
+		_ => None,
+	}
+}
+
+/// Lift the typed parameter list from a closure passed to a
+/// `.named_route_path*(…)` call.
+///
+/// Recognises bindings shaped like `ClientPath(name): ClientPath<T>` and
+/// returns the corresponding `(name, T)` pairs. Returns `None` if any
+/// binding does not match this shape — in that case the macro skips
+/// generating a typed helper for the route so a later, more relaxed
+/// extractor can be plugged in without a breaking change.
+///
+/// Both the binding *pattern* and the binding *type* must end in
+/// `ClientPath`; verifying only the type would silently accept a
+/// destructure like `OtherTupleStruct(id): ClientPath<i64>` and emit a
+/// helper from a non-`ClientPath` pattern.
+fn parse_closure_typed_params(closure: &syn::ExprClosure) -> Option<Vec<(syn::Ident, syn::Type)>> {
+	let mut params = Vec::with_capacity(closure.inputs.len());
+	for input in &closure.inputs {
+		let pat_type = match input {
+			syn::Pat::Type(pt) => pt,
+			_ => return None,
+		};
+		let binding = match pat_type.pat.as_ref() {
+			syn::Pat::TupleStruct(ts) if ts.elems.len() == 1 => {
+				// Accept any path whose last segment is `ClientPath` so
+				// qualified forms like `reinhardt::ClientPath(id)` work too.
+				let last_seg = ts.path.segments.last()?;
+				if last_seg.ident != "ClientPath" {
+					return None;
+				}
+				match &ts.elems[0] {
+					syn::Pat::Ident(pi) => pi.ident.clone(),
+					_ => return None,
+				}
+			}
+			_ => return None,
+		};
+		let inner_ty = client_path_inner_type(pat_type.ty.as_ref())?;
+		params.push((binding, inner_ty));
+	}
+	Some(params)
+}
+
+/// Pull the inner `T` out of a `ClientPath<T>` type, accepting any path
+/// whose last segment is `ClientPath` (so qualified paths like
+/// `reinhardt::ClientPath<i64>` work too).
+fn client_path_inner_type(ty: &syn::Type) -> Option<syn::Type> {
+	let type_path = match ty {
+		syn::Type::Path(tp) => tp,
+		_ => return None,
+	};
+	let last = type_path.path.segments.last()?;
+	if last.ident != "ClientPath" {
+		return None;
+	}
+	let args = match &last.arguments {
+		syn::PathArguments::AngleBracketed(args) => args,
+		_ => return None,
+	};
+	if args.args.len() != 1 {
+		return None;
+	}
+	match &args.args[0] {
+		syn::GenericArgument::Type(t) => Some(t.clone()),
+		_ => None,
 	}
 }
 
@@ -970,11 +1127,31 @@ fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream
 	}
 }
 
-/// Build `client_url_resolvers` module body for client-side scanning of a function body.
-fn build_client_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> syn::Result<TokenStream> {
+/// Build `client_url_resolvers` and `urls` module bodies for client-side
+/// scanning of a function body.
+///
+/// The first module (`client_url_resolvers`) is the existing manifest used
+/// by `#[routes]` aggregation. The second module (`urls`) — added for
+/// Issue #4644 — exposes a typed `pub fn <route>(<arg>: T, …) -> String`
+/// per named route whose path params the macro could extract from the
+/// closure binding. Routes whose param types could not be statically
+/// recovered (e.g., a function reference passed to `.named_route_path*`,
+/// or `.named_route_params(…)` whose binding is a single struct) are
+/// emitted in the resolver manifest but skipped in the typed `urls`
+/// module — the stringly-typed `ResolvedUrls::resolve_client_url(…)` API
+/// keeps working for them.
+fn build_client_resolvers(
+	body_tokens: &[proc_macro2::TokenTree],
+	app_path: &syn::ExprPath,
+) -> syn::Result<TokenStream> {
 	let named_routes = extract_named_route_calls(body_tokens);
 	let mut meta_macro_defs: Vec<TokenStream> = Vec::new();
 	let mut meta_idents: Vec<syn::Ident> = Vec::new();
+	let mut typed_helper_defs: Vec<TokenStream> = Vec::new();
+
+	let (enum_type_path, variant_path) = split_enum_type_and_variant(app_path)?;
+	let apps_crate = crate::crate_paths::get_reinhardt_apps_crate();
+	let urls_crate = crate::crate_paths::get_reinhardt_urls_crate();
 
 	for route in &named_routes {
 		if syn::parse_str::<syn::Ident>(&route.name).is_err() {
@@ -995,10 +1172,10 @@ fn build_client_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> syn::Result
 			proc_macro2::Span::call_site(),
 		);
 
-		let params = extract_url_params(&route.pattern);
-		let param_strs: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
+		let url_param_names = extract_url_params(&route.pattern);
+		let url_param_strs: Vec<&str> = url_param_names.iter().map(|s| s.as_str()).collect();
 
-		let meta_def = if params.is_empty() {
+		let meta_def = if url_param_names.is_empty() {
 			quote! {
 				#[doc(hidden)]
 				macro_rules! #meta_macro_ident {
@@ -1013,7 +1190,7 @@ fn build_client_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> syn::Result
 				#[doc(hidden)]
 				macro_rules! #meta_macro_ident {
 					($callback:ident, $app:ident) => {
-						$callback!($app, #method_ident, #route_name_str, #(#param_strs),* );
+						$callback!($app, #method_ident, #route_name_str, #(#url_param_strs),* );
 					};
 				}
 				pub(crate) use #meta_macro_ident;
@@ -1022,6 +1199,115 @@ fn build_client_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> syn::Result
 
 		meta_macro_defs.push(meta_def);
 		meta_idents.push(meta_macro_ident);
+
+		// Emit a typed helper only when we have a closure-extracted
+		// binding for every path parameter in the pattern. Mismatches
+		// between the pattern and the closure (e.g., a pattern with two
+		// `{…}` placeholders but a closure with one binding) are skipped
+		// rather than rejected: the underlying handler signature is what
+		// the framework enforces, and we do not want to gate `urls::*`
+		// generation behind an invariant the resolver runtime does not
+		// itself police.
+		let Some(typed_params) = route.typed_params.as_ref() else {
+			continue;
+		};
+		if typed_params.len() != url_param_names.len() {
+			continue;
+		}
+
+		// Pair each closure binding to its URL placeholder *by name*
+		// rather than by position, so a closure whose bindings happen to
+		// be written in a different order than the placeholders cannot
+		// silently produce mis-substituted URLs. A leading underscore on
+		// the binding (a common signal that the body does not use the
+		// value) is stripped before matching. If any binding does not
+		// correspond to a placeholder, skip helper generation entirely —
+		// the route is still routable, but the typed helper would be
+		// unsafe to emit.
+		let placeholder_positions: std::collections::HashMap<&str, usize> = url_param_names
+			.iter()
+			.enumerate()
+			.map(|(i, name)| (name.as_str(), i))
+			.collect();
+		let mut binding_to_placeholder: Vec<usize> = Vec::with_capacity(typed_params.len());
+		let mut name_mismatch = false;
+		for (binding, _) in typed_params {
+			let binding_str = binding.to_string();
+			let normalized = binding_str.strip_prefix('_').unwrap_or(&binding_str);
+			match placeholder_positions.get(normalized) {
+				Some(&idx) => binding_to_placeholder.push(idx),
+				None => {
+					name_mismatch = true;
+					break;
+				}
+			}
+		}
+		if name_mismatch {
+			continue;
+		}
+
+		let helper_ident = syn::Ident::new(&route.name, proc_macro2::Span::call_site());
+		let helper_args: Vec<TokenStream> = typed_params
+			.iter()
+			.map(|(name, ty)| quote! { #name: #ty })
+			.collect();
+		// `(key, binding.to_string())` per parameter — pushed into an
+		// owned `Vec<String>` so the `&str` slice handed to `reverse`
+		// borrows from a binding that outlives the call.
+		let owned_pushes: Vec<TokenStream> = typed_params
+			.iter()
+			.map(|(binding, _)| quote! { ::std::string::ToString::to_string(&#binding) })
+			.collect();
+		// Build the key list in *binding order* so index `i` of `__owned`
+		// pairs with the placeholder this binding corresponds to (via
+		// the by-name lookup above), not with whichever placeholder sits
+		// at the same position in the pattern.
+		let key_strs: Vec<&str> = binding_to_placeholder
+			.iter()
+			.map(|&idx| url_param_names[idx].as_str())
+			.collect();
+		let helper_doc = format!(
+			"Resolve the `{route_name}` route registered with `#[url_patterns]`. \
+			 Returns the URL the global `ClientUrlReverser` currently produces \
+			 for `{route_name}` (the app namespace is prepended automatically).",
+			route_name = route.name,
+		);
+
+		typed_helper_defs.push(quote! {
+			#[doc = #helper_doc]
+			pub fn #helper_ident(#(#helper_args),*) -> ::std::string::String {
+				let __reverser = #urls_crate::routers::get_client_reverser()
+					.expect(
+						"client URL reverser is not registered. \
+						 Register the client URL reverser globally \
+						 (e.g. via `UnifiedRouter::register_globally()` or \
+						 `register_client_reverser(...)`) before calling \
+						 the typed `urls::*` helpers.",
+					);
+				let __namespaced = ::std::format!(
+					"{}:{}",
+					super::__reinhardt_url_patterns_app_namespace(),
+					#route_name_str,
+				);
+				let __owned: ::std::vec::Vec<::std::string::String> =
+					::std::vec![ #(#owned_pushes),* ];
+				let __params: ::std::vec::Vec<(&str, &str)> = __owned
+					.iter()
+					.enumerate()
+					.map(|(__i, __v)| {
+						let __keys: &[&str] = &[ #(#key_strs),* ];
+						(__keys[__i], __v.as_str())
+					})
+					.collect();
+				match __reverser.reverse(&__namespaced, &__params) {
+					::std::option::Option::Some(url) => url,
+					::std::option::Option::None => ::std::panic!(
+						"named client route `{}` is not registered with the global reverser",
+						__namespaced,
+					),
+				}
+			}
+		});
 	}
 
 	// Client resolvers are cross-target (native + wasm) so that
@@ -1037,7 +1323,38 @@ fn build_client_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> syn::Result
 		false,
 	);
 
+	// Emit the typed `urls` module unconditionally so call sites can write
+	// `use crate::…::urls;` even before any route is typed-extractable.
+	// An empty module is harmless and disappears in dead-code elimination.
+	let urls_module_doc = "Typed URL helpers generated by `#[url_patterns]`.\n\n\
+		Each named route declared in this app appears here as a free \
+		function whose signature mirrors the path parameters and their \
+		declared types. The function resolves through the global \
+		`ClientUrlReverser`, so a route-pattern change in the surrounding \
+		`#[url_patterns]` body propagates without any call-site edits.\n\n\
+		Added by Issue #4644.";
+
+	// The typed helpers need the app namespace string (`"polls"` for
+	// `InstalledApp::polls`, etc.) at runtime. Resolving that via
+	// `<EnumType as AppLabel>::path(&Variant)` from *inside* the nested
+	// `urls` module would force every caller's `app_path` argument to
+	// re-encode the parent module's lookup scope (`super::super::…`),
+	// which breaks for paths the user wrote relatively
+	// (e.g. `super::InstalledApp::variant` in mod-scoped trybuild
+	// fixtures). Emitting a single private helper at the parent scope
+	// — the same scope as the user's `client_url_patterns` function —
+	// lets `super::__reinhardt_url_patterns_app_namespace()` work
+	// regardless of how the original path was qualified.
+	let namespace_helper = quote! {
+		#[doc(hidden)]
+		fn __reinhardt_url_patterns_app_namespace() -> &'static str {
+			<#enum_type_path as #apps_crate::apps::AppLabel>::path(&#variant_path)
+		}
+	};
+
 	Ok(quote! {
+		#namespace_helper
+
 		#[doc(hidden)]
 		pub mod client_url_resolvers {
 			#(
@@ -1046,26 +1363,43 @@ fn build_client_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> syn::Result
 
 			#for_each_client_resolver_macro
 		}
+
+		#[doc = #urls_module_doc]
+		pub mod urls {
+			#(#typed_helper_defs)*
+		}
 	})
 }
 
 /// Implementation of the `#[url_patterns]` attribute macro.
 ///
-/// Supports three modes, dispatched by the required `mode = ...` argument:
+/// Supports four modes, dispatched by the required `mode = ...` argument:
 ///
 /// - `#[url_patterns(InstalledApp::variant, mode = server)]` — scans for
 ///   `.endpoint()`, `.viewset()`, `.mount()` calls on a `ServerRouter`;
 ///   generates the `url_resolvers` module.
 /// - `#[url_patterns(InstalledApp::variant, mode = client)]` — scans for
-///   `.named_route()` family calls on a `ClientRouter`; generates the
-///   `client_url_resolvers` module.
+///   `.named_route()` family calls on a `ClientRouter`; generates both
+///   the `client_url_resolvers` manifest *and* the typed `urls` module
+///   (Issue #4644).
 /// - `#[url_patterns(InstalledApp::variant, mode = unified)]` — scans both
 ///   inside `.server(|s| ...)` and `.client(|c| ...)` closures on a
-///   `UnifiedRouter`; emits both resolver modules.
+///   `UnifiedRouter`; emits the server resolver manifest plus the same
+///   `client_url_resolvers` + `urls` pair as `mode = client`.
+/// - `#[url_patterns(InstalledApp::variant, mode = ws)]` — scans
+///   `.consumer(...)` calls on a `WsRouter`; generates the
+///   `ws_url_resolvers` module.
 ///
 /// The first argument must be a path to a variant of an enum implementing
 /// `reinhardt_apps::apps::AppLabel` (auto-implemented by `installed_apps!`).
 /// A compile-time trait-bound assertion is emitted to enforce this.
+///
+/// The typed `urls` module emitted in `client` / `unified` mode is the
+/// user-facing entry point added by Issue #4644 — see
+/// `build_client_resolvers` (below) for how each `pub fn <route>(<typed-args>)
+/// -> String` is derived from the closure binding, and the parent
+/// `#[url_patterns]` proc-macro doc (in `lib.rs`) for the public-facing
+/// description of the extraction rules.
 pub(crate) fn url_patterns_impl(args: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
 	let parsed_args = parse_url_patterns_args(args)?;
 	match parsed_args.mode {
@@ -1133,7 +1467,7 @@ fn url_patterns_client_impl(
 ) -> syn::Result<TokenStream> {
 	let func: ItemFn = parse2(input)?;
 	let body_tokens = flatten_body(&func);
-	let resolvers = build_client_resolvers(&body_tokens)?;
+	let resolvers = build_client_resolvers(&body_tokens, &parsed_args.app_path)?;
 	let (wrapper, trait_assertion) = build_wrapper_and_assertion(&func, &parsed_args.app_path)?;
 
 	Ok(quote! {
@@ -1246,7 +1580,7 @@ fn url_patterns_unified_impl(
 	let func: ItemFn = parse2(input)?;
 	let body_tokens = flatten_body(&func);
 	let server_resolvers = build_server_resolvers(&body_tokens);
-	let client_resolvers = build_client_resolvers(&body_tokens)?;
+	let client_resolvers = build_client_resolvers(&body_tokens, &parsed_args.app_path)?;
 	let (wrapper, trait_assertion) = build_wrapper_and_assertion(&func, &parsed_args.app_path)?;
 
 	Ok(quote! {

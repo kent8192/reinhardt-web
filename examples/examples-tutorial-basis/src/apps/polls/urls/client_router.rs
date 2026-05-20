@@ -14,7 +14,7 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 use reinhardt::url_patterns;
 
-use crate::client::links;
+use crate::apps::polls::client::links;
 use crate::client::pages::{
 	choice_delete_page, choice_edit_page, choice_new_page, index_page, polls_detail_page,
 	polls_results_page, question_delete_page, question_edit_page, question_new_page,
