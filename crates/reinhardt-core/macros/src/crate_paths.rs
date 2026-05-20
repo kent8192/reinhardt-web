@@ -391,6 +391,47 @@ pub(crate) fn get_reinhardt_exception_crate() -> TokenStream {
 	}
 }
 
+/// Resolves the path to the reinhardt_urls crate dynamically.
+///
+/// Used by `#[url_patterns]` to reference `get_client_reverser` and the
+/// `ClientUrlReverser` type from the typed-URL-helper module it emits.
+pub(crate) fn get_reinhardt_urls_crate() -> TokenStream {
+	use proc_macro_crate::{FoundCrate, crate_name};
+
+	// Try direct crate first.
+	match crate_name("reinhardt-urls") {
+		Ok(FoundCrate::Itself) => return quote!(crate),
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident);
+		}
+		Err(_) => {}
+	}
+
+	// Try via the `reinhardt` facade (when used with `package = "reinhardt-web"`).
+	match crate_name("reinhardt") {
+		Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_urls),
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident::reinhardt_urls);
+		}
+		Err(_) => {}
+	}
+
+	// Try via the published `reinhardt-web` facade.
+	match crate_name("reinhardt-web") {
+		Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_urls),
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident::reinhardt_urls);
+		}
+		Err(_) => {}
+	}
+
+	// Final fallback — assume the published `reinhardt-urls` crate is present.
+	quote!(::reinhardt_urls)
+}
+
 /// Resolves the path to the reinhardt_apps crate dynamically.
 pub(crate) fn get_reinhardt_apps_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
