@@ -522,7 +522,11 @@ command = "wasm-pack"
 args = ["test", "--headless", "--chrome", "--", "--no-default-features", "--features", "client-router"]
 ```
 
-`--features client-router` is also forwarded so that the `#[cfg(feature = "client-router")]`-gated `impl ClientUrlResolver for ResolvedUrls` block emitted by the `#[routes]` macro stays in scope. Without it, `links.rs`-style call sites (or, post-#4656, the macro-emitted `urls::*` helpers) cannot resolve `resolve_client_url(name, params)` because the trait impl would be gated out — `--no-default-features` alone disables the example's default `client-router` feature flag, which is what the macro probes at expansion time in the consumer crate.
+`--features client-router` is also forwarded for a specific reason:
+
+- **Symptom.** Without it, call sites that go through `resolve_client_url(name, params)` — the legacy `links.rs` wrappers, or (post-#4656) the macro-emitted `urls::*` helpers — fail to compile or resolve.
+- **Cause.** The `#[routes]` macro emits `impl ClientUrlResolver for ResolvedUrls` behind `#[cfg(feature = "client-router")]`, and `--no-default-features` disables the example's default `client-router` flag that the macro probes at expansion time in the consumer crate.
+- **Why `--features client-router` fixes it.** Re-enabling the flag puts the gated impl back in scope so the resolver is available to the WASM test target.
 
 The cross-reference between Part 5's testing chapter and this one is that the `msw` feature is what makes the test target compile, the `wasm-test` task is what *runs* it, and the static pipeline described above is what produces the bundle that the test target instantiates inside headless Chrome.
 
