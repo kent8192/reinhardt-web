@@ -108,8 +108,10 @@ pub use model_registry::{
 	global_registry,
 };
 // Re-export the crate-root M2M naming helpers so callers can continue to
-// import them from `reinhardt_db::migrations::*`. The actual module lives at
-// the crate root because the `orm` and `migrations` features are independent.
+// import them from `reinhardt_db::migrations::*` or
+// `reinhardt_db::migrations::naming::*`. The actual module lives at the
+// crate root because the `orm` and `migrations` features are independent.
+pub use crate::m2m_naming as naming;
 pub use crate::m2m_naming::{default_m2m_columns, default_through_table};
 pub use operation_trait::MigrationOperation;
 pub use operations::{
