@@ -21,7 +21,7 @@ pub async fn apply_twitter_migrations(url: &str) {
 	let migrations_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
 	let source = FilesystemSource::new(migrations_dir);
 	let migrations = source
-		.all_migrations()
+		.load_all()
 		.await
 		.expect("Failed to load Twitter migrations from disk");
 

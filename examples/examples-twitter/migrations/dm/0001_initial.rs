@@ -196,14 +196,65 @@ pub fn migration() -> Migration {
 				interleave_in_parent: None,
 				partition: None,
 			},
-			// Manually removed (reinhardt#4659): `makemigrations` also emitted a
-			// `CreateTable { name: "dm_dmroom_members", ... }` operation here
-			// that duplicates the M2M intermediate above with the legacy column
-			// naming (`dmroom_id` / `user_id`). The ORM's
-			// `ManyToManyAccessor::<DMRoom, User>` only queries `dm_room_members`
-			// with the new `from_dm_room_id` / `to_user_id` naming, so the
-			// duplicate table was dead schema. Remove this note once #4659 is
-			// fixed and only one M2M table is emitted.
+			Operation::CreateTable {
+				name: "dm_dmroom_members".to_string(),
+				columns: vec![
+					ColumnDefinition {
+						name: "id".to_string(),
+						type_definition: FieldType::Integer,
+						not_null: true,
+						unique: false,
+						primary_key: true,
+						auto_increment: true,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "dmroom_id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "user_id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+				],
+				constraints: vec![
+					Constraint::ForeignKey {
+						name: "fk_dm_dmroom_members_dmroom_id".to_string(),
+						columns: vec!["dmroom_id".to_string()],
+						referenced_table: "dm_room".to_string(),
+						referenced_columns: vec!["id".to_string()],
+						on_delete: ForeignKeyAction::Cascade,
+						on_update: ForeignKeyAction::Cascade,
+						deferrable: None,
+					},
+					Constraint::ForeignKey {
+						name: "fk_dm_dmroom_members_user_id".to_string(),
+						columns: vec!["user_id".to_string()],
+						referenced_table: "auth_user".to_string(),
+						referenced_columns: vec!["id".to_string()],
+						on_delete: ForeignKeyAction::Cascade,
+						on_update: ForeignKeyAction::Cascade,
+						deferrable: None,
+					},
+					Constraint::Unique {
+						name: "dm_dmroom_members_unique".to_string(),
+						columns: vec!["dmroom_id".to_string(), "user_id".to_string()],
+					},
+				],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
 		],
 		dependencies: vec![],
 		atomic: true,
