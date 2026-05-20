@@ -4843,7 +4843,11 @@ impl MigrationAutodetector {
 		let table_name = if let Some(custom_name) = through_table {
 			custom_name.clone()
 		} else {
-			format!("{}_{}", source_table.to_lowercase(), to_snake_case(field_name))
+			format!(
+				"{}_{}",
+				source_table.to_lowercase(),
+				to_snake_case(field_name)
+			)
 		};
 
 		// Derive column names from the resolved *table* names so the
