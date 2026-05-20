@@ -719,15 +719,20 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 		let auth_crate = get_reinhardt_auth_crate();
 		let reinhardt_crate = crate::crate_paths::get_reinhardt_crate();
 		let superuser_init = generate_superuser_init_impl(struct_name, &mapping, &parsed_args);
-		let type_name_str = struct_name.to_string();
 
+		// Use `std::any::type_name::<T>()` so the registration carries the
+		// fully-qualified path (e.g. `crate::apps::users::models::User`)
+		// rather than the bare ident (`User`). Consumers that disambiguate
+		// across crates — and the tutorial regression test in
+		// `examples-tutorial-basis/tests/createsuperuser.rs` that compares
+		// against `std::any::type_name::<User>()` — rely on this. Fixes #4632.
 		quote! {
 			#superuser_init
 
 			#reinhardt_crate::inventory::submit! {
 				#auth_crate::SuperuserCreatorRegistration::__macro_new(
 					|| #auth_crate::superuser_creator_for::<#struct_name>(),
-					#type_name_str,
+					::std::any::type_name::<#struct_name>(),
 				)
 			}
 		}
