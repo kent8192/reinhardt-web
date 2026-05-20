@@ -1477,7 +1477,22 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				///
 				/// # Panics
 				///
-				/// Panics if no global router has been registered via `#[routes]`.
+				/// Always panics if no global router has been registered via
+				/// `#[routes]`. The behaviour for a missing global client
+				/// reverser is conditional on the `#[routes(...)]` attribute
+				/// flags that built this `ResolvedUrls`:
+				///
+				/// - When `#[routes(...)]` did **not** specify
+				///   `no_client_resolvers` (or its alias `server_only`), a
+				///   missing client reverser panics with the same diagnostic
+				///   the router check uses.
+				/// - When `#[routes(no_client_resolvers)]` (or `server_only`)
+				///   *was* specified, no client reverser is ever registered
+				///   by `#[routes]`; `from_global()` falls back to an empty
+				///   `ClientUrlReverser` whose `reverse(...)` always returns
+				///   `None`. This lets server-only crates construct a
+				///   `ResolvedUrls` without panicking. See Issues #4509 and
+				///   #4629.
 				#[cfg(feature = "client-router")]
 				pub fn from_global() -> Self {
 					let router = #reinhardt::get_router()
@@ -1564,7 +1579,14 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				///
 				/// # Panics
 				///
-				/// Panics if no global client reverser has been registered via `#[routes]`.
+				/// When `#[routes(...)]` did not specify `no_client_resolvers`
+				/// (or its alias `server_only`), panics if no global client
+				/// reverser has been registered via `#[routes]`. When the
+				/// flag *was* specified — typically only meaningful on the
+				/// native target, but the WASM impl honors the same fallback
+				/// for symmetry — falls back to an empty
+				/// `ClientUrlReverser` whose `reverse(...)` always returns
+				/// `None`. See Issues #4509 and #4629.
 				pub fn from_global() -> Self {
 					let client_reverser = #reinhardt::get_client_reverser()
 						.unwrap_or_else(|| #client_reverser_fallback);

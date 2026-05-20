@@ -720,19 +720,29 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 		let reinhardt_crate = crate::crate_paths::get_reinhardt_crate();
 		let superuser_init = generate_superuser_init_impl(struct_name, &mapping, &parsed_args);
 
-		// Use `std::any::type_name::<T>()` so the registration carries the
-		// fully-qualified path (e.g. `crate::apps::users::models::User`)
-		// rather than the bare ident (`User`). Consumers that disambiguate
-		// across crates — and the tutorial regression test in
-		// `examples-tutorial-basis/tests/createsuperuser.rs` that compares
-		// against `std::any::type_name::<User>()` — rely on this. Fixes #4632.
+		// Build the registration's `type_name` string from `module_path!()`
+		// and `stringify!(#struct_name)` so the value is a compile-time
+		// `&'static str` literal. `inventory::submit!` expands to a `static`
+		// initializer that must be const-evaluable, so using a const macro
+		// pair (rather than `std::any::type_name::<T>()`, which only became
+		// `const fn` in Rust 1.62 and could surface toolchain edge cases)
+		// keeps the call within stable const-context guarantees while still
+		// producing the fully-qualified path the tutorial regression test in
+		// `examples-tutorial-basis/tests/createsuperuser.rs` compares
+		// against (`std::any::type_name::<User>()` for a simple struct
+		// returns `concat!(module_path!(), "::", stringify!(User))` —
+		// identical formatting). Fixes #4632.
 		quote! {
 			#superuser_init
 
 			#reinhardt_crate::inventory::submit! {
 				#auth_crate::SuperuserCreatorRegistration::__macro_new(
 					|| #auth_crate::superuser_creator_for::<#struct_name>(),
-					::std::any::type_name::<#struct_name>(),
+					::core::concat!(
+						::core::module_path!(),
+						"::",
+						::core::stringify!(#struct_name),
+					),
 				)
 			}
 		}
