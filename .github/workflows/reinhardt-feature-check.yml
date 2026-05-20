@@ -25,6 +25,14 @@ on:
       - 'crates/*/src/**'
   workflow_dispatch:
 
+# The push-to-main path seeds the feature-check cache for downstream PRs, so a
+# new push must not cancel the in-flight seed run. workflow_call invocations
+# inherit the caller's (ci.yml) concurrency; this block only protects the
+# standalone push and workflow_dispatch invocations.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1

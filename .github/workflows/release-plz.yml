@@ -29,6 +29,13 @@ on:
     types: [closed]
     paths: ['announcements/**']
 
+# Serialize per-ref but never cancel an in-flight release-plz run; Release PRs
+# (Cargo.toml + CHANGELOG.md updates) must complete to keep the release branch
+# in a consistent state.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
   # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
