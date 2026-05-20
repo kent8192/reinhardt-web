@@ -31,6 +31,7 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
+use reinhardt::pages::resolve_static;
 
 use crate::apps::polls::client::links;
 use crate::apps::polls::server_fn::{
@@ -100,8 +101,13 @@ pub fn polls_index() -> Page {
 								class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
 								div {
 									class: "flex w-full justify-between",
-									h5 { class: "mb-1", { question.question_text.clone() } }
-									small { { question.pub_date.format("%Y-%m-%d %H:%M").to_string() } }
+									h5 {
+										class: "mb-1",
+										{ question.question_text.clone() }
+									}
+									small {
+										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
+									}
 								}
 							}
 						}
@@ -397,44 +403,31 @@ pub fn polls_results(question_id: i64) -> Page {
 								div {
 									class: "divide-y divide-border",
 									{
-							let mut items: Vec<Page> = Vec::new();
-							if let Some((_, choices, total)) = load_results_signal.result() {
-								for choice in choices.iter() {
-									let percentage = if total > 0 {
-										(choice.votes as f64 / total as f64 * 100.0) as i32
-									} else {
-										0
-									};
-									let choice_text = choice.choice_text.clone();
-									let votes = choice.votes;
-									items.push(page!(|choice_text: String, votes: i32, percentage: i32| {
-										div {
-											class: "py-4",
-											div {
-												class: "flex justify-between items-center mb-2",
-												strong { { choice_text } }
-												span {
-													class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-													{ format!("{} votes", votes) }
-												}
+										if let Some((_, choices, total)) = load_results_signal.result() {
+												page!(|choices: Vec<ChoiceInfo>, total: i32| {
+													for choice in choices {
+														{
+															let percentage = if total > 0 {
+																(choice.votes as f64 / total as f64 * 100.0) as i32
+															} else {
+																0
+															};
+															page!(| choice : ChoiceInfo, percentage : i32 | { div {
+										            class : "py-4", div { class : "flex justify-between items-center mb-2",
+										            strong { { choice.choice_text.clone() } } span { class :
+										            "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
+										            { format!("{} votes", choice.votes) } } } div { class :
+										            "w-full bg-surface-tertiary rounded-full h-2.5", div { class :
+										            "bg-brand h-2.5 rounded-full", role : "progressbar", style :
+										            format!("width: {}%", percentage), aria_valuenow : percentage.to_string(),
+										            aria_valuemin : "0", aria_valuemax : "100", { format!("{}%", percentage) } }
+										            } } })(choice, percentage)
+														}
+													}
+												})(choices, total)
+											} else {
+												Page::Empty
 											}
-											div {
-												class: "w-full bg-surface-tertiary rounded-full h-2.5",
-												div {
-													class: "bg-brand h-2.5 rounded-full",
-													role: "progressbar",
-													style: format!("width: {}%", percentage),
-													aria_valuenow: percentage.to_string(),
-													aria_valuemin: "0",
-													aria_valuemax: "100",
-													{ format!("{}%", percentage) }
-												}
-											}
-										}
-									})(choice_text, votes, percentage));
-								}
-							}
-							Page::Fragment(items)
 									}
 								}
 								div {
@@ -516,7 +509,7 @@ pub fn polls_index_with_logo() -> Page {
 			div {
 				class: "text-center mb-6",
 				img {
-					src: "/static/images/poll-icon.svg",
+					src: resolve_static("images/poll-icon.svg"),
 					alt: "Polls App",
 					class: "mx-auto w-16 h-16",
 				}
@@ -561,15 +554,20 @@ pub fn polls_index_with_logo() -> Page {
 								div {
 									class: "flex w-full justify-between items-center",
 									img {
-										src: "/static/images/poll-icon.svg",
+										src: resolve_static("images/poll-icon.svg"),
 										alt: "Poll",
 										class: "w-8 h-8 mr-3",
 									}
 									div {
 										class: "flex-1",
-										h5 { class: "mb-1", { question.question_text.clone() } }
+										h5 {
+											class: "mb-1",
+											{ question.question_text.clone() }
+										}
 									}
-									small { { question.pub_date.format("%Y-%m-%d %H:%M").to_string() } }
+									small {
+										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
+									}
 								}
 							}
 						}
