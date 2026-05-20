@@ -2507,7 +2507,7 @@ impl Operation {
 				// comment below is a defensive fallback: emitting executable
 				// ALTER COLUMN syntax on SQLite would always error (#4582).
 				let sql = match dialect {
-					SqlDialect::Postgres | SqlDialect::Cockroachdb => {
+					SqlDialect::Postgres => {
 						// PostgreSQL allows multiple `ALTER COLUMN` clauses to
 						// be combined into a single `ALTER TABLE` statement via
 						// comma separation. Use this form (rather than two
@@ -2530,6 +2530,30 @@ impl Operation {
 							column = quote_identifier(column),
 							type_sql = type_sql,
 							nullability_clause = nullability_clause,
+						)
+					}
+					SqlDialect::Cockroachdb => {
+						// CockroachDB does NOT accept a combined `ALTER TABLE
+						// ... ALTER COLUMN c TYPE T, ALTER COLUMN c {SET|DROP}
+						// NOT NULL` in a single statement (it rejects mixing
+						// `ALTER COLUMN ... TYPE` with sibling `ALTER COLUMN`
+						// clauses), and `SchemaEditor::execute()` is a
+						// single-statement dispatcher (sqlx Extended Query),
+						// so the two clauses cannot share a payload either.
+						//
+						// Emit the column-type reversion only; nullability
+						// rollback for CockroachDB is intentionally
+						// best-effort here. The full fix requires returning
+						// `Vec<String>` from `to_reverse_sql` so multiple
+						// single-statement payloads can be dispatched — that
+						// change is tracked separately so this PR can unblock
+						// the rc.30 release without cascading into ~25 call
+						// sites and tests. Refs #4630.
+						format!(
+							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
+							quote_identifier(table),
+							quote_identifier(column),
+							type_sql
 						)
 					}
 					SqlDialect::Mysql => format!(
