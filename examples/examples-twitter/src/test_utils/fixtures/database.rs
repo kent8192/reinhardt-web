@@ -4,26 +4,30 @@
 
 use reinhardt::DatabaseConnection;
 use reinhardt::db::migrations::executor::DatabaseMigrationExecutor;
-use reinhardt::db::migrations::{DatabaseConnection as MigrationsConnection, MigrationProvider};
+use reinhardt::db::migrations::{
+	DatabaseConnection as MigrationsConnection, FilesystemSource, MigrationSource,
+};
 use reinhardt::test::fixtures::shared_postgres::get_test_pool_with_orm;
 use rstest::*;
 use sqlx::PgPool;
+use std::path::PathBuf;
 use std::sync::Arc;
-
-use crate::migrations::TwitterMigrations;
 
 /// Applies all Twitter migrations to the given database using DatabaseMigrationExecutor.
 ///
-/// Executes migrations in dependency order:
-/// 1. auth (User model)
-/// 2. tweet (Tweet model)
-/// 3. profile (Profile model)
-/// 4. dm (DM Room/Message models)
+/// Migrations are discovered from the `migrations/` directory at runtime
+/// using `FilesystemSource`, mirroring the `manage migrate` CLI path.
 pub async fn apply_twitter_migrations(url: &str) {
+	let migrations_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+	let source = FilesystemSource::new(migrations_dir);
+	let migrations = source
+		.load_all()
+		.await
+		.expect("Failed to load Twitter migrations from disk");
+
 	let connection = MigrationsConnection::connect_postgres(url)
 		.await
 		.expect("Failed to connect to PostgreSQL for migrations");
-	let migrations = TwitterMigrations::migrations();
 	let mut executor = DatabaseMigrationExecutor::new(connection);
 	executor
 		.apply_migrations(&migrations)

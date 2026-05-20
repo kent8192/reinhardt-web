@@ -28,8 +28,6 @@ pub mod apps;
 // Server-only modules
 // ============================================================================
 pub mod config;
-#[cfg(native)]
-pub mod migrations;
 
 // ============================================================================
 // Client-only modules (WASM)
