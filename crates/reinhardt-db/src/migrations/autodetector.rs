@@ -1057,12 +1057,24 @@ impl ProjectState {
 		source_table_name: &str,
 		m2m: &super::model_registry::ManyToManyMetadata,
 	) -> ModelState {
-		// Generate table name: {source_table_name}_{field_name}
-		// Example: "auth_user" + "_" + "following" = "auth_user_following"
-		let table_name = m2m
-			.through
-			.clone()
-			.unwrap_or_else(|| format!("{}_{}", source_table_name, m2m.field_name));
+		// Generate table name: {source_table_name.to_lowercase()}_{snake_case(field_name)}.
+		// Example: "auth_user" + "_" + "following" = "auth_user_following".
+		// Lowercase + snake_case here so this intermediate-table synthesis
+		// agrees with the through-table names produced elsewhere in
+		// autodetection (`detect_created_many_to_many`,
+		// `create_intermediate_table_for_m2m` at the M2M-emission site) and
+		// with the ORM accessor's `default_through_table`
+		// (`{S::table_name().to_lowercase()}_{field_name}`). Without this,
+		// a mixed/upper-case `table_name` or a non-snake_case field would
+		// produce a model name that diverges from the table the runtime
+		// reads/writes (#4659).
+		let table_name = m2m.through.clone().unwrap_or_else(|| {
+			format!(
+				"{}_{}",
+				source_table_name.to_lowercase(),
+				to_snake_case(&m2m.field_name)
+			)
+		});
 
 		// Generate model name: PascalCase version of field_name
 		// Example: "following" -> "UserFollowing"
@@ -5641,18 +5653,19 @@ impl MigrationAutodetector {
 				//      preserves `table_name`s (the original struct identifiers
 				//      are lost — see #4659), so any subsequent existence check
 				//      must use a `table_name`-derived key.
-				// Lowercase `model_state.table_name` so the synthesized
-				// through-table name agrees with the ORM accessor's
-				// `default_through_table` and with
-				// `create_intermediate_table_for_m2m` above (#4659). Without
-				// this, a mixed-case `table_name` would produce a
-				// case-sensitive `find_model_by_table` miss and cause
-				// repeated re-emission of the M2M create.
+				// Normalize so the synthesized through-table name agrees
+				// with the migration-emitting site
+				// (`create_intermediate_table_for_m2m`) and the ORM
+				// accessor's `default_through_table` (#4659). Apply the
+				// same rule both sides use: lowercase the source table
+				// and snake_case the field, so a mixed-case `table_name`
+				// or a non-snake_case field doesn't cause a case-sensitive
+				// `find_model_by_table` miss and re-emit the M2M create.
 				let through_table = m2m.through.clone().unwrap_or_else(|| {
 					format!(
 						"{}_{}",
 						model_state.table_name.to_lowercase(),
-						m2m.field_name.to_lowercase()
+						to_snake_case(&m2m.field_name)
 					)
 				});
 

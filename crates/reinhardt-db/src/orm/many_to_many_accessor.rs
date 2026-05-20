@@ -135,16 +135,21 @@ where
 			.expect("Source model must have primary key")
 			.clone();
 
-		// Get source/target field names from metadata or use default naming
+		// Get source/target field names from metadata or use default naming.
+		// The fallback mirrors `MigrationAutodetector::create_intermediate_table_for_m2m`
+		// (`crates/reinhardt-db/src/migrations/autodetector.rs`), which emits
+		// `from_{table}_id` / `to_{table}_id` for self-referential M2M to avoid
+		// duplicate column names in the synthesized through-table.
+		let (default_source_field, default_target_field) = Self::default_link_fields();
 		let source_field = rel_info
 			.as_ref()
 			.and_then(|r| r.source_field.clone())
-			.unwrap_or_else(|| format!("{}_id", Self::table_name_lower(S::table_name())));
+			.unwrap_or(default_source_field);
 
 		let target_field = rel_info
 			.as_ref()
 			.and_then(|r| r.target_field.clone())
-			.unwrap_or_else(|| format!("{}_id", Self::table_name_lower(T::table_name())));
+			.unwrap_or(default_target_field);
 
 		Self {
 			source_id,
@@ -176,6 +181,28 @@ where
 	/// surfaced.
 	pub(crate) fn default_through_table(field_name: &str) -> String {
 		format!("{}_{}", Self::table_name_lower(S::table_name()), field_name)
+	}
+
+	/// Derive the default `(source_field, target_field)` FK column names for
+	/// the M2M through-table.
+	///
+	/// For non-self-referential relations both default to `{table}_id`. For
+	/// self-referential relations (`S::table_name() == T::table_name()`) this
+	/// would collide, so we prefix with `from_` / `to_` to match the synthetic
+	/// columns produced by
+	/// `MigrationAutodetector::create_intermediate_table_for_m2m`
+	/// (`crates/reinhardt-db/src/migrations/autodetector.rs`). The two must
+	/// stay in lockstep, or runtime reads/writes will target columns that
+	/// `makemigrations` never produced (#4659 follow-up).
+	pub(crate) fn default_link_fields() -> (String, String) {
+		let source = Self::table_name_lower(S::table_name());
+		let target = Self::table_name_lower(T::table_name());
+
+		if source == target {
+			(format!("from_{}_id", source), format!("to_{}_id", target))
+		} else {
+			(format!("{}_id", source), format!("{}_id", target))
+		}
 	}
 
 	/// Add a relationship to the target model.
