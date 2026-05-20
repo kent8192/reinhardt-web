@@ -22,11 +22,20 @@
 //!
 //! # Modes
 //!
-//! | mode      | Router         | Scanned calls                                  | Resolver module(s)                             |
-//! |-----------|----------------|-----------------------------------------------|------------------------------------------------|
-//! | `server`  | `ServerRouter` | `.endpoint()`, `.viewset()`, `.mount()`        | `url_resolvers`                                 |
-//! | `client`  | `ClientRouter` | `.named_route()` family                        | `client_url_resolvers`                          |
-//! | `unified` | `UnifiedRouter`| both sides (inside `.server(\|s\|)` / `.client(\|c\|)` closures) | `url_resolvers` + `client_url_resolvers` |
+//! | mode      | Router         | Scanned calls                                  | Module(s) emitted                                          |
+//! |-----------|----------------|-----------------------------------------------|------------------------------------------------------------|
+//! | `server`  | `ServerRouter` | `.endpoint()`, `.viewset()`, `.mount()`        | `url_resolvers`                                            |
+//! | `client`  | `ClientRouter` | `.named_route()` family                        | `client_url_resolvers` + `urls` (typed helpers)            |
+//! | `unified` | `UnifiedRouter`| both sides (inside `.server(\|s\|)` / `.client(\|c\|)` closures) | `url_resolvers` + `client_url_resolvers` + `urls` |
+//!
+//! The `urls` module added for Issue #4644 contains one `pub fn` per named
+//! route whose path parameters the macro could lift from the handler's
+//! closure binding (`ClientPath(name): ClientPath<T>` → `fn name(name: T)
+//! -> String`). See the `#[url_patterns]` proc-macro doc in `lib.rs` for
+//! the detailed extraction rules; routes the macro cannot statically
+//! project are skipped silently so the stringly-typed
+//! `ResolvedUrls::resolve_client_url(...)` API remains the documented
+//! fallback.
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -1311,21 +1320,33 @@ fn build_client_resolvers(
 
 /// Implementation of the `#[url_patterns]` attribute macro.
 ///
-/// Supports three modes, dispatched by the required `mode = ...` argument:
+/// Supports four modes, dispatched by the required `mode = ...` argument:
 ///
 /// - `#[url_patterns(InstalledApp::variant, mode = server)]` — scans for
 ///   `.endpoint()`, `.viewset()`, `.mount()` calls on a `ServerRouter`;
 ///   generates the `url_resolvers` module.
 /// - `#[url_patterns(InstalledApp::variant, mode = client)]` — scans for
-///   `.named_route()` family calls on a `ClientRouter`; generates the
-///   `client_url_resolvers` module.
+///   `.named_route()` family calls on a `ClientRouter`; generates both
+///   the `client_url_resolvers` manifest *and* the typed `urls` module
+///   (Issue #4644).
 /// - `#[url_patterns(InstalledApp::variant, mode = unified)]` — scans both
 ///   inside `.server(|s| ...)` and `.client(|c| ...)` closures on a
-///   `UnifiedRouter`; emits both resolver modules.
+///   `UnifiedRouter`; emits the server resolver manifest plus the same
+///   `client_url_resolvers` + `urls` pair as `mode = client`.
+/// - `#[url_patterns(InstalledApp::variant, mode = ws)]` — scans
+///   `.consumer(...)` calls on a `WsRouter`; generates the
+///   `ws_url_resolvers` module.
 ///
 /// The first argument must be a path to a variant of an enum implementing
 /// `reinhardt_apps::apps::AppLabel` (auto-implemented by `installed_apps!`).
 /// A compile-time trait-bound assertion is emitted to enforce this.
+///
+/// The typed `urls` module emitted in `client` / `unified` mode is the
+/// user-facing entry point added by Issue #4644 — see
+/// [`build_client_resolvers`] for how each `pub fn <route>(<typed-args>)
+/// -> String` is derived from the closure binding, and the parent
+/// `#[url_patterns]` proc-macro doc (in `lib.rs`) for the public-facing
+/// description of the extraction rules.
 pub(crate) fn url_patterns_impl(args: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
 	let parsed_args = parse_url_patterns_args(args)?;
 	match parsed_args.mode {
