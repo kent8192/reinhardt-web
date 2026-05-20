@@ -2508,28 +2508,29 @@ impl Operation {
 				// ALTER COLUMN syntax on SQLite would always error (#4582).
 				let sql = match dialect {
 					SqlDialect::Postgres | SqlDialect::Cockroachdb => {
-						let mut statements = format!(
-							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
-							quote_identifier(table),
-							quote_identifier(column),
-							type_sql
-						);
-						// PostgreSQL requires a separate statement for nullability changes
-						let nullability_stmt = if old_def.not_null {
-							format!(
-								"\nALTER TABLE {} ALTER COLUMN {} SET NOT NULL;",
-								quote_identifier(table),
-								quote_identifier(column)
-							)
+						// PostgreSQL allows multiple `ALTER COLUMN` clauses to
+						// be combined into a single `ALTER TABLE` statement via
+						// comma separation. Use this form (rather than two
+						// independent statements joined by `\n`) so the payload
+						// remains a single statement and round-trips through
+						// `SchemaEditor::execute()`, which is backed by
+						// `sqlx::query(sql).execute(...)` and uses the Extended
+						// Query protocol that rejects multi-statement payloads.
+						// Fixes #4630.
+						let nullability_clause = if old_def.not_null {
+							"SET NOT NULL"
 						} else {
-							format!(
-								"\nALTER TABLE {} ALTER COLUMN {} DROP NOT NULL;",
-								quote_identifier(table),
-								quote_identifier(column)
-							)
+							"DROP NOT NULL"
 						};
-						statements.push_str(&nullability_stmt);
-						statements
+						format!(
+							"ALTER TABLE {table} \
+							 ALTER COLUMN {column} TYPE {type_sql}, \
+							 ALTER COLUMN {column} {nullability_clause};",
+							table = quote_identifier(table),
+							column = quote_identifier(column),
+							type_sql = type_sql,
+							nullability_clause = nullability_clause,
+						)
 					}
 					SqlDialect::Mysql => format!(
 						"ALTER TABLE {} MODIFY COLUMN {} {}{};",
