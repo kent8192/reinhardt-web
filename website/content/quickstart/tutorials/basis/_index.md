@@ -134,7 +134,7 @@ Three rules keep this structure predictable:
 ### [Part 4: Forms and Generic Views](4-forms-and-generic-views/)
 
 - Define `create_vote_form()` in `src/shared/forms.rs` (server-only, behind `#[cfg(native)]`) using `Form::new().add_field(CharField::new(...).with_widget(Widget::HiddenInput))`
-- Expose the form's `FormMetadata` (incl. CSRF token) through the `get_vote_form_metadata` `#[server_fn]`
+- Let the client-side `form!` macro emit the matching `FormMetadata` (incl. CSRF token) at expansion time — the `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default() }` clause forwards the per-request token to the trailing server-fn parameter
 - Build the voting UI in `src/client/components/polls.rs` with the **`form!` macro** + `watch { ... }` blocks inside a `page!` component
 - Call `submit_vote` (a `#[server_fn]` in `crate::apps::polls::server_fn`) on submit; show server validation errors reactively
 

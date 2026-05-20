@@ -557,7 +557,7 @@ ships — for example:
 ///       question_text: String,
 ///       _csrf_token: String,
 ///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session: SessionData,
+///       #[inject] session_user: Depends<SessionUser>,
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 ```
 

@@ -210,39 +210,9 @@ mod tests {
 
 ## Exposing the Form to the WASM Client
 
-The WASM client cannot call `create_vote_form()` directly — that function exists only when `#[cfg(native)]` is set. The bridge is a thin `#[server_fn]` whose only job is to call the constructor and serialise the result:
+The WASM client cannot call `create_vote_form()` directly — that function exists only when `#[cfg(native)]` is set. But it does not have to: the `form!` macro that drives the voting page (covered in the next section) handles the metadata plumbing internally. When a `form!` block declares `server_fn: submit_vote` + `method: Post`, the macro emits the matching `FormMetadata` (including a CSRF hidden input) at expansion time on the client side, and the `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default() }` clause pulls the per-request token from the page-level CSRF helper. The server-side `Form` definition in `shared/forms.rs` is no longer round-tripped through a dedicated `get_*_metadata` `#[server_fn]`; the test from the previous section is exactly enough to prove that the `Form` shape matches what the `form!` macro will emit on the client.
 
-```rust
-// src/apps/polls/server_fn.rs (extract)
-
-#[cfg(native)]
-use {
-	crate::apps::users::models::User,
-	crate::shared::forms::create_vote_form,
-	reinhardt::Model,
-	reinhardt::db::orm::{FilterOperator, FilterValue},
-	reinhardt::forms::wasm_compat::{FormExt, FormMetadata},
-	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
-};
-
-/// Get vote form metadata for WASM client rendering
-///
-/// Returns form metadata with CSRF token for the voting form.
-#[cfg(native)]
-#[server_fn]
-pub async fn get_vote_form_metadata() -> std::result::Result<FormMetadata, ServerFnError> {
-	let form = create_vote_form();
-	Ok(form.to_metadata())
-}
-```
-
-A few things to call out:
-
-- **`FormMetadata`** is `Serialize`/`Deserialize`, so it compiles on both targets and the `#[server_fn]` macro produces a typed WASM client stub for it.
-- The body of the function is `#[cfg(native)]`-gated because `create_vote_form` and `FormExt` are server-only. The macro's client stub does not call this body — it issues an HTTP request whose response carries the same metadata, so the WASM side only sees the typed signature.
-- The trailing argument convention used by other `form!`-backed handlers (`_csrf_token: String`) is *not* present here, because `get_vote_form_metadata` is a `GET` (it has no payload) and `form!` only appends a CSRF token to non-GET handlers.
-
-Like every other server function in the project, this one is registered in `src/config/urls.rs` (see Part 3). Once registered, the WASM client can `get_vote_form_metadata().await` and receive a typed `FormMetadata` value.
+This is the convention the reference example settled on. Earlier iterations of the tutorial exposed a `get_vote_form_metadata` server function for this purpose, and that pattern is still viable for one-off bespoke forms — but the typed `form!` macro removes the need from the canonical voting case, so the project no longer ships that handler.
 
 ## The `form!` Macro on the Client
 
@@ -581,18 +551,18 @@ The voting form is the headline use case, but the same pattern composes naturall
 ///       question_text: String,
 ///       _csrf_token: String,
 ///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session: SessionData,
+///       #[inject] session_user: Depends<SessionUser>,
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn create_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 
 	let trimmed = question_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -616,38 +586,36 @@ pub async fn create_question(
 }
 ```
 
-`require_user` is the shared 401/403 gate defined at the top of the file — load the user id from the session, fetch the row, return 401 if absent and 403 if `!is_active`:
+`session_user.require_active()?` is the shared 401/403 gate, layered on the `SessionUser` DI factory in `apps::polls::di`. The factory does the "load user_id from session, fetch the row, classify Anonymous / Authenticated / Inactive / Unavailable" dance once per request; each authenticated handler just consumes the result:
 
 ```rust
-// src/apps/polls/server_fn.rs (extract)
+// src/apps/polls/di.rs (extract)
 
-/// Resolve the currently authenticated user from the session, or return a
-/// 401 ServerFnError. Shared by every authenticated mutation handler below
-/// so that the "load user_id from session, look up the row, 401 if absent"
-/// dance lives in exactly one place.
-#[cfg(native)]
-async fn require_user(session: &SessionData) -> std::result::Result<User, ServerFnError> {
-	let user_id = session
-		.get::<i64>(USER_ID_SESSION_KEY)
-		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
-
-	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(user_id),
-		)
-		.first()
-		.await
-		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
-		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
-
-	if !user.is_active {
-		return Err(ServerFnError::server(403, "User account is inactive"));
-	}
-
-	Ok(user)
+/// Snapshot of the user the current session points at. Carries one of four
+/// states so handlers can decide how to react:
+///
+/// - `Anonymous` — no `user_id` in the session (no cookie / signed out).
+/// - `Authenticated(User)` — user row loaded and `is_active`.
+/// - `Inactive(User)` — user row loaded but `is_active == false`.
+/// - `Unavailable` — the DB lookup itself failed; surfaces a 503 (distinct
+///   from "no user").
+///
+/// `require_active()` is the convenience accessor every authenticated
+/// mutation calls — it folds the four-way enum into `Result<User, ServerFnError>`
+/// with the appropriate 401 / 403 / 503 codes.
+#[derive(Clone)]
+pub enum SessionUser {
+	Anonymous,
+	Authenticated(User),
+	Inactive(User),
+	Unavailable,
 }
+
+#[injectable_factory(scope = "request")]
+async fn session_user_factory(
+	#[inject] session: SessionData,
+	#[inject] db: Depends<DatabaseConnection>,
+) -> SessionUser { /* ... */ }
 ```
 
 `update_question` and `delete_question` follow the same shape; the only difference is the ownership check after loading the row:
@@ -670,11 +638,11 @@ pub async fn update_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -726,11 +694,11 @@ pub async fn delete_question(
 	question_id: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -886,11 +854,11 @@ pub async fn create_choice(
 	choice_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 	let question_id: i64 = question_id
 		.parse()
 		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
@@ -921,7 +889,7 @@ pub async fn create_choice(
 
 Read this top-to-bottom and the layering becomes obvious:
 
-1. `require_user(&session).await?` — authentication.
+1. `session_user.require_active()?` — authentication, resolved via the `Depends<SessionUser>` DI factory.
 2. `question_id.parse()?` — workaround for the `String`-only ABI.
 3. `require_question_author(question_id, &user).await?` — authorization, *through the parent row*.
 4. Local content validation (length).
@@ -947,7 +915,7 @@ If you absolutely need a lower-level form-handling path — multi-step wizards w
 You now have everything Part 4 set out to deliver:
 
 - DTO field-level validation lives in `src/shared/types.rs`, with `#[dto]` emitting `derive(Validate)` (and OpenAPI `Schema`) behind `cfg(native)` so the WASM bundle stays small.
-- The voting form's metadata + CSRF token come from `create_vote_form()` in `src/shared/forms.rs` (server-only) via `Form::to_metadata()` exposed by the `get_vote_form_metadata` `#[server_fn]`.
+- The voting form's metadata + CSRF token are emitted by the `form!` macro itself at expansion time on the client side; the server-only `create_vote_form()` in `src/shared/forms.rs` exists so the same shape can be unit-tested (`test_vote_form_metadata`) without compiling the macro, and the `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token() … }` clause pulls the per-request CSRF token from the page-level helper.
 - The `form!` macro in `src/client/components/polls.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, appends the CSRF token through `strip_arguments`, and surfaces success/error reactively through `state: { loading, error }` and matching `watch` blocks.
 - Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `require_user` (authentication) and `require_question_author` (authorization) on top of typed model builders.
 - "Generic views" are not a separate concept in the pages template — they are the page factory functions you already have, glued together with the reactive primitives above.
