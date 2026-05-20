@@ -175,17 +175,12 @@ pub fn migration() -> Migration {
 					Constraint::ForeignKey {
 						name: "fk_dm_room_members_to_user_id".to_string(),
 						columns: vec!["to_user_id".to_string()],
-						// Workaround for reinhardt#4659 (tracked in reinhardt#4659).
-						// Remove this workaround when reinhardt#4659 is resolved.
-						//
-						// `makemigrations` emitted `referenced_table: "dm_user"`
-						// here, templating the FK target as `<current_app>_user`
-						// instead of consulting `User::app_label()` (= `"auth"`).
-						// Once #4659 is fixed, regenerating from the current model
-						// will emit the line below directly.
-						//
-						// Ideal implementation (without workaround):
-						//   referenced_table: "auth_user".to_string(),
+						// Manually corrected from generator output (reinhardt#4659):
+						// `makemigrations` emitted `dm_user` here, resolving the
+						// ManyToMany target `User` against the current app label
+						// instead of the target model's own app label (`auth`).
+						// Remove this note once reinhardt#4659 is fixed and the
+						// regenerated output emits `auth_user` directly.
 						referenced_table: "auth_user".to_string(),
 						referenced_columns: vec!["id".to_string()],
 						on_delete: ForeignKeyAction::Cascade,
@@ -201,22 +196,14 @@ pub fn migration() -> Migration {
 				interleave_in_parent: None,
 				partition: None,
 			},
-			// Workaround for reinhardt#4659 (tracked in reinhardt#4659).
-			// Remove this workaround when reinhardt#4659 is resolved.
-			//
-			// `makemigrations` emitted a second `Operation::CreateTable
-			// { name: "dm_dmroom_members", ... }` here for the same DMRoom <-> User
-			// M2M relation under a legacy `<app>_<lowercase_struct>_members`
-			// naming. The ORM's `ManyToManyAccessor::<DMRoom, User>` queries
-			// only `dm_room_members` (with `from_dm_room_id` / `to_user_id`),
-			// so the duplicate table is dead schema and was deleted by hand.
-			// Once #4659 is fixed, regenerating from the current model will
-			// emit only the `dm_room_members` `CreateTable` above and the
-			// `operations` vec will end here directly.
-			//
-			// Ideal implementation (without workaround):
-			//   (no additional operations — only the `dm_room_members`
-			//   CreateTable defined above remains)
+			// Manually removed (reinhardt#4659): `makemigrations` also emitted a
+			// `CreateTable { name: "dm_dmroom_members", ... }` operation here
+			// that duplicates the M2M intermediate above with the legacy column
+			// naming (`dmroom_id` / `user_id`). The ORM's
+			// `ManyToManyAccessor::<DMRoom, User>` only queries `dm_room_members`
+			// with the new `from_dm_room_id` / `to_user_id` naming, so the
+			// duplicate table was dead schema. Remove this note once #4659 is
+			// fixed and only one M2M table is emitted.
 		],
 		dependencies: vec![],
 		atomic: true,
