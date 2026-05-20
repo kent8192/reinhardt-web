@@ -11,6 +11,7 @@
 use super::Manager;
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::relationship::RelationshipType;
+use crate::migrations::naming::default_through_table;
 use crate::orm::Model;
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, DeleteStatement, Expr, Func, InsertStatement, MySqlQueryBuilder,
@@ -120,34 +121,35 @@ where
 			.into_iter()
 			.find(|r| r.name == field_name && r.relationship_type == RelationshipType::ManyToMany);
 
-		// Get through table name from metadata or use Django naming convention
+		// Get through table name from metadata or fall back to the canonical
+		// convention. See `crate::migrations::naming` for the single source of
+		// truth shared with the migration autodetector.
 		let through_table = rel_info
 			.as_ref()
 			.and_then(|r| r.through_table.clone())
-			.unwrap_or_else(|| {
-				format!(
-					"{}_{}_{}",
-					S::app_label(),
-					Self::table_name_lower(S::table_name()),
-					field_name
-				)
-			});
+			.unwrap_or_else(|| default_through_table(S::table_name(), field_name));
 
 		let source_id = source
 			.primary_key()
 			.expect("Source model must have primary key")
 			.clone();
 
-		// Get source/target field names from metadata or use default naming
+		// Get source/target column names from metadata. The accessor cannot
+		// reconstruct the canonical `from_/to_{snake(model_name)}_id` columns
+		// the autodetector emits, because `Model` does not currently expose
+		// `model_name()` — only `table_name()`. The macro-generated metadata
+		// always populates `source_field` / `target_field`, so this fallback
+		// only fires for hand-rolled `Model` impls. Aligning the defaults is
+		// tracked as a follow-up to #4665.
 		let source_field = rel_info
 			.as_ref()
 			.and_then(|r| r.source_field.clone())
-			.unwrap_or_else(|| format!("{}_id", Self::table_name_lower(S::table_name())));
+			.unwrap_or_else(|| format!("{}_id", S::table_name().to_lowercase()));
 
 		let target_field = rel_info
 			.as_ref()
 			.and_then(|r| r.target_field.clone())
-			.unwrap_or_else(|| format!("{}_id", Self::table_name_lower(T::table_name())));
+			.unwrap_or_else(|| format!("{}_id", T::table_name().to_lowercase()));
 
 		Self {
 			source_id,
@@ -160,11 +162,6 @@ where
 			_phantom_source: PhantomData,
 			_phantom_target: PhantomData,
 		}
-	}
-
-	/// Convert table name to lowercase for field naming.
-	fn table_name_lower(table_name: &str) -> String {
-		table_name.to_lowercase()
 	}
 
 	/// Add a relationship to the target model.
@@ -574,11 +571,13 @@ where
 			.primary_key()
 			.ok_or_else(|| "Target model has no primary key".to_string())?;
 
-		// Calculate through table name (same logic as new())
-		let through_table = format!("{}_{}", Self::table_name_lower(S::table_name()), field_name);
-
-		let source_field = format!("{}_id", Self::table_name_lower(S::table_name()));
-		let target_field = format!("{}_id", Self::table_name_lower(T::table_name()));
+		// Calculate through-table name using the canonical convention shared
+		// with `Self::new` and the migration autodetector. Column names use
+		// the same hand-rolled fallback as `Self::new` (see the rationale
+		// there); this site does not consult relationship metadata.
+		let through_table = default_through_table(S::table_name(), field_name);
+		let source_field = format!("{}_id", S::table_name().to_lowercase());
+		let target_field = format!("{}_id", T::table_name().to_lowercase());
 
 		// Build JOIN query using reinhardt-query
 		let mut query = Query::select();
@@ -621,18 +620,6 @@ where
 mod tests {
 	use super::*;
 	use reinhardt_query::prelude::QueryStatementBuilder;
-
-	#[test]
-	fn test_table_name_lower() {
-		assert_eq!(
-			ManyToManyAccessor::<TestUser, TestGroup>::table_name_lower("Users"),
-			"users"
-		);
-		assert_eq!(
-			ManyToManyAccessor::<TestUser, TestGroup>::table_name_lower("UserGroups"),
-			"usergroups"
-		);
-	}
 
 	#[test]
 	fn test_sql_generation_add() {

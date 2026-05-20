@@ -1055,12 +1055,13 @@ impl ProjectState {
 		source_table_name: &str,
 		m2m: &super::model_registry::ManyToManyMetadata,
 	) -> ModelState {
-		// Generate table name: {source_table_name}_{field_name}
-		// Example: "auth_user" + "_" + "following" = "auth_user_following"
-		let table_name = m2m
-			.through
-			.clone()
-			.unwrap_or_else(|| format!("{}_{}", source_table_name, m2m.field_name));
+		// Default through-table and column names come from the canonical
+		// convention in `super::naming` so this site cannot drift from
+		// `detect_created_many_to_many` (lookup) or `ManyToManyAccessor`
+		// (runtime). See issue #4665.
+		let table_name = m2m.through.clone().unwrap_or_else(|| {
+			super::naming::default_through_table(source_table_name, &m2m.field_name)
+		});
 
 		// Generate model name: PascalCase version of field_name
 		// Example: "following" -> "UserFollowing"
@@ -1079,15 +1080,12 @@ impl ProjectState {
 			.insert("auto_increment".to_string(), "true".to_string());
 		model_state.add_field(id_field);
 
-		// Determine source and target field names
-		let source_field_name = m2m
-			.source_field
-			.clone()
-			.unwrap_or_else(|| format!("from_{}_id", to_snake_case(source_model_name)));
-		let target_field_name = m2m
-			.target_field
-			.clone()
-			.unwrap_or_else(|| format!("to_{}_id", to_snake_case(&m2m.to_model)));
+		// Determine source and target field names from explicit metadata, or
+		// fall back to the canonical `from_/to_` convention.
+		let (default_source_col, default_target_col) =
+			super::naming::default_m2m_columns(source_model_name, &m2m.to_model);
+		let source_field_name = m2m.source_field.clone().unwrap_or(default_source_col);
+		let target_field_name = m2m.target_field.clone().unwrap_or(default_target_col);
 
 		// Determine the primary key type for the source and target from the registry
 		let source_pk_type = self.get_primary_key_type(source_app_label, source_model_name);
@@ -5588,14 +5586,13 @@ impl MigrationAutodetector {
 					.unwrap_or(false);
 
 				if !exists_in_from {
-					// Generate through table name (Django naming convention)
+					// Generate the through-table name via the canonical
+					// convention. The source-table half of the formula is
+					// `{app_label}_{model_name}` per Django convention.
+					// See `super::naming` (issue #4665).
 					let through_table = m2m.through.clone().unwrap_or_else(|| {
-						format!(
-							"{}_{}_{}",
-							app_label.to_lowercase(),
-							model_name.to_lowercase(),
-							m2m.field_name.to_lowercase()
-						)
+						let source_table = format!("{}_{}", app_label, model_name);
+						super::naming::default_through_table(&source_table, &m2m.field_name)
 					});
 
 					// Add to created_many_to_many
