@@ -1398,6 +1398,31 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 	// WASM: holds only ClientUrlReverser.
 	// Gate using raw platform check because this code expands in consuming
 	// crates that do not have the `native` cfg alias.
+	//
+	// Fallback expression used by `ResolvedUrls::from_global()` when the
+	// global client reverser has not been registered. With `no_client_resolvers`
+	// (Issue #4509), the per-app `client_url_resolvers` lookups are skipped, so
+	// no client reverser is registered at startup; tests and binaries that only
+	// exercise server-side routing must still be able to construct
+	// `ResolvedUrls` without panicking. Fall back to an empty
+	// `ClientUrlReverser` (which returns `None` from `reverse(...)` for every
+	// name) in that case, and keep the explicit panic message otherwise so
+	// projects that genuinely forgot to call `#[routes]` still get a clear
+	// diagnostic. Fixes #4629.
+	let client_reverser_fallback = if no_client_resolvers {
+		quote! {
+			::std::sync::Arc::new(#reinhardt::ClientUrlReverser::new(
+				::std::collections::HashMap::new(),
+			))
+		}
+	} else {
+		quote! {
+			panic!(
+				"Global client reverser not registered. Ensure the #[routes] function has been called."
+			)
+		}
+	};
+
 	let url_resolver_code = quote! {
 		#[doc(hidden)]
 		pub mod __url_resolver_support {
@@ -1458,7 +1483,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					let router = #reinhardt::get_router()
 						.expect("Global router not registered. Ensure the #[routes] function has been called.");
 					let client_reverser = #reinhardt::get_client_reverser()
-						.expect("Global client reverser not registered. Ensure the #[routes] function has been called.");
+						.unwrap_or_else(|| #client_reverser_fallback);
 					Self { router, client_reverser }
 				}
 
@@ -1542,7 +1567,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 				/// Panics if no global client reverser has been registered via `#[routes]`.
 				pub fn from_global() -> Self {
 					let client_reverser = #reinhardt::get_client_reverser()
-						.expect("Global client reverser not registered. Ensure the #[routes] function has been called.");
+						.unwrap_or_else(|| #client_reverser_fallback);
 					Self { client_reverser }
 				}
 
