@@ -8,6 +8,13 @@ on:
     paths:
       - .github/workflows/copilot-setup-steps.yml
 
+# Cancel older runs on the same ref when a new push lands. The workflow only
+# triggers on changes to its own YAML, so cancellation is purely a runner-slot
+# reclaim (no historical artifacts are lost).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest

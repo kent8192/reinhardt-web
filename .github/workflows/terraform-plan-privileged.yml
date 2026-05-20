@@ -15,6 +15,20 @@ on:
     workflows: ["Terraform Validate (Fork PR)"]
     types: [completed]
 
+# Stage 2 is gated by maintainer approval via the fork-review environment, so
+# concurrent runs are already rare. cancel-in-progress: false guards against a
+# rapid Stage 1 retry overwriting an in-flight privileged plan.
+#
+# For `on: workflow_run`, `github.ref` is the base-branch ref (always `main`
+# for this workflow), so keying off it would serialize *all* privileged plan
+# runs across unrelated fork PRs into one global queue. Key off the upstream
+# run's head SHA instead so the lock scope matches what we actually want to
+# protect — a specific Stage 1 target — while still letting unrelated PRs run
+# in parallel.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   pull-requests: write
