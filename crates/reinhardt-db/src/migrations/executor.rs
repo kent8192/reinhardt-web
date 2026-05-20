@@ -483,8 +483,34 @@ impl DatabaseMigrationExecutor {
 				tracing::debug!("=== Reverse SQL for {:?} ===", operation);
 				tracing::debug!("{}", sql);
 
-				// Execute reverse SQL using SchemaEditor
-				editor.execute(&sql).await?;
+				// Execute reverse SQL using SchemaEditor.
+				//
+				// Some reverse-SQL generators (notably `Operation::AlterColumn`
+				// on PostgreSQL) emit multiple statements separated by `;\n`,
+				// because PostgreSQL requires the column type change and the
+				// `{SET,DROP} NOT NULL` change to be issued as distinct
+				// statements. `SchemaEditor::execute()` is backed by
+				// `sqlx::query(sql).execute(...)`, which uses the Extended
+				// Query protocol and rejects multi-statement payloads. Split
+				// on `;\n` and execute each non-empty statement individually
+				// so multi-statement reverse SQL round-trips correctly across
+				// every dialect. Fixes #4630.
+				for statement in sql.split(";\n") {
+					let trimmed = statement.trim();
+					if trimmed.is_empty() {
+						continue;
+					}
+					// Re-append the trailing `;` that `split(";\n")` strips,
+					// keeping the dispatched payload identical to what
+					// `to_reverse_sql` originally constructed (modulo the
+					// inter-statement newline).
+					let stmt_with_terminator = if trimmed.ends_with(';') {
+						trimmed.to_string()
+					} else {
+						format!("{};", trimmed)
+					};
+					editor.execute(&stmt_with_terminator).await?;
+				}
 
 				tracing::debug!("✅ Reverse operation executed successfully");
 			} else {
