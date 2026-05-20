@@ -520,7 +520,7 @@ pub async fn submit_vote(
 
 ## Question CUD via `form!`
 
-The voting form is the headline use case, but the same pattern composes naturally for create / update / delete. The Question CUD handlers in `src/apps/polls/server_fn.rs` show what an authenticated mutation looks like when stitched together with the `String`-based ABI and `require_user`:
+The voting form is the headline use case, but the same pattern composes naturally for create / update / delete. The Question CUD handlers in `src/apps/polls/server_fn.rs` show what an authenticated mutation looks like when stitched together with the `String`-based ABI and the `SessionUser` DI factory (see Part 3 for the factory definition):
 
 ```rust
 // src/apps/polls/server_fn.rs
@@ -538,8 +538,9 @@ The voting form is the headline use case, but the same pattern composes naturall
 //   handler. The trailing `_csrf_token: String` parameter is appended by the
 //   `form!` macro for non-GET forms; the CSRF middleware verifies it before
 //   the handler runs.
-// * The session is required: `require_user` returns a 401 to unauthenticated
-//   clients before any database write happens.
+// * Authentication is required: `Depends<SessionUser>` is resolved by the
+//   DI container from `apps::polls::di::SessionUser`, and each handler
+//   calls `.require_active()?` for the 401/403 surface.
 // * For `update_question` and `delete_question`, ownership is enforced by
 //   comparing `question.author_id()` with the current user's id; mismatched
 //   ownership returns a 403.
@@ -917,7 +918,7 @@ You now have everything Part 4 set out to deliver:
 - DTO field-level validation lives in `src/shared/types.rs`, with `#[dto]` emitting `derive(Validate)` (and OpenAPI `Schema`) behind `cfg(native)` so the WASM bundle stays small.
 - The voting form's metadata + CSRF token are emitted by the `form!` macro itself at expansion time on the client side; the server-only `create_vote_form()` in `src/shared/forms.rs` exists so the same shape can be unit-tested (`test_vote_form_metadata`) without compiling the macro, and the `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token() … }` clause pulls the per-request CSRF token from the page-level helper.
 - The `form!` macro in `src/client/components/polls.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, appends the CSRF token through `strip_arguments`, and surfaces success/error reactively through `state: { loading, error }` and matching `watch` blocks.
-- Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `require_user` (authentication) and `require_question_author` (authorization) on top of typed model builders.
+- Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `session_user.require_active()?` (authentication, via the `Depends<SessionUser>` DI factory) and `require_question_author` (authorization) on top of typed model builders.
 - "Generic views" are not a separate concept in the pages template — they are the page factory functions you already have, glued together with the reactive primitives above.
 
 In the next chapter we put this layer under test: native integration tests with `rstest` + `reinhardt-test` + `sqlx` + `tempfile`, plus a WASM-only target that mocks the server function HTTP calls with MSW.

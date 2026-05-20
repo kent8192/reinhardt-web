@@ -359,7 +359,7 @@ mod auth_tests {
 
     /// Fixture: an empty SQLite database + DatabaseConnection wired through
     /// reinhardt-orm. No tables are created; the authorization tests below
-    /// short-circuit on `require_user` before any query runs.
+    /// short-circuit on `session_user.require_active()` before any query runs.
     #[fixture]
     async fn empty_db_conn() -> (NamedTempFile, DatabaseConnection) {
         let temp_file = NamedTempFile::new().expect("Failed to create temp file");
@@ -371,8 +371,9 @@ mod auth_tests {
         (temp_file, db_conn)
     }
 
-    /// Empty (anonymous) session — has no `user_id` key, so every
-    /// `require_user` call should reject it with 401.
+    /// Empty (anonymous) session — has no `user_id` key, so the
+    /// `SessionUser` DI factory resolves to `SessionUser::Anonymous`
+    /// and every `session_user.require_active()` call rejects it with 401.
     fn anonymous_session() -> SessionData {
         SessionData::new(Duration::from_secs(60))
     }
@@ -416,9 +417,10 @@ fn assert_unauthorized<T>(
     let err = result
         .err()
         .unwrap_or_else(|| panic!("{} should reject anonymous callers", operation));
-    // The require_user gate emits `ServerFnError::server(401, ...)`. We
-    // match on the rendered Display because ServerFnError does not
-    // expose the inner status as a typed accessor in the public API.
+    // The `SessionUser::require_active()` gate emits
+    // `ServerFnError::server(401, ...)`. We match on the rendered Display
+    // because ServerFnError does not expose the inner status as a typed
+    // accessor in the public API.
     let rendered = format!("{:?}", err);
     assert!(
         rendered.contains("401") || rendered.contains("Authentication required"),
@@ -633,7 +635,7 @@ A few things from earlier drafts of this chapter are intentionally absent:
 You now have three concentric rings of test coverage:
 
 1. **Inline `#[rstest]` blocks** for the small things — typestate builders, form metadata, anything pure-Rust that does not need a database. They live in the same file as the code, and `cargo make test-unit` runs them.
-2. **`tests/integration.rs`** for the things that need state — raw `sqlx` for full schema control, the reinhardt ORM via `DatabaseConnection::connect_sqlite` for real `#[server_fn]` invocation, `serial_test` to serialise tests that touch `reinitialize_database` or any other process-global, and a deliberately schema-less module for the `require_user` 401 gate. `cargo make test` and `cargo make test-integration` run it.
+2. **`tests/integration.rs`** for the things that need state — raw `sqlx` for full schema control, the reinhardt ORM via `DatabaseConnection::connect_sqlite` for real `#[server_fn]` invocation, `serial_test` to serialise tests that touch `reinitialize_database` or any other process-global, and a deliberately schema-less module for the `SessionUser` DI factory's 401 gate. `cargo make test` and `cargo make test-integration` run it.
 3. **`tests/wasm/polls_mock_test.rs`** for the typed client stubs — MSW intercepts the `window.fetch()` call from `get_questions` / `get_question_detail` / `get_question_results` / `vote`, the test asserts on the typed return value, and the polls components are mounted in headless Chrome to confirm they construct without panicking. `cargo make wasm-test` runs it.
 
 If you change a server function signature, the native integration tests notice. If you change a DTO field, the WASM mock tests notice. If you change a typestate builder field, the in-file unit tests notice. Each ring catches a different class of regression, and the `Cargo.toml` feature flags make sure they only ever compile for the target they belong to.
