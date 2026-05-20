@@ -156,3 +156,201 @@ fn unified_mode_applies_namespace_to_both_server_and_client_sides() {
 		"unified-mode wrapper must propagate the namespace to the inner ServerRouter"
 	);
 }
+
+// --- Typed `urls::*` helpers (Issue #4644) ---
+//
+// The macro emits a sibling `urls` module containing a `pub fn` per named
+// route whose path parameters it can lift from the closure binding. The
+// helpers delegate to the globally-registered `ClientUrlReverser`, so the
+// tests below register the reverser explicitly under
+// `#[serial(client_reverser)]` to avoid races with any other suite that
+// touches the same singleton.
+
+#[cfg(feature = "client-router")]
+mod typed_accounts_app {
+	use super::InstalledApp;
+	use reinhardt::url_patterns;
+	use reinhardt_core::page::Page;
+	use reinhardt_urls::routers::ClientRouter;
+	use reinhardt_urls::routers::client_router::Path as ClientPath;
+
+	// Mix of zero-param and typed-param routes so the helper module exercises
+	// both branches of the closure-extraction code path. `index` and
+	// `question_new` produce `fn() -> String` helpers; the `_path` variants
+	// produce `fn(i64) -> String` and `fn(i64, i64) -> String`.
+	#[url_patterns(super::InstalledApp::accounts, mode = client)]
+	pub fn client_url_patterns() -> ClientRouter {
+		ClientRouter::new()
+			.named_route("index", "/", || Page::Empty)
+			.named_route("question_new", "/polls/new/", || Page::Empty)
+			.named_route_path(
+				"detail",
+				"/polls/{question_id}/",
+				|ClientPath(_question_id): ClientPath<i64>| Page::Empty,
+			)
+			.named_route_path2(
+				"choice_edit",
+				"/polls/{question_id}/choices/{choice_id}/edit/",
+				|ClientPath(_question_id): ClientPath<i64>,
+				 ClientPath(_choice_id): ClientPath<i64>| Page::Empty,
+			)
+	}
+}
+
+#[cfg(feature = "client-router")]
+fn install_reverser_for(router: reinhardt_urls::routers::ClientRouter) {
+	use reinhardt_urls::routers::client_router::{
+		clear_client_reverser, register_client_reverser,
+	};
+	clear_client_reverser();
+	register_client_reverser(router.to_reverser());
+}
+
+#[cfg(feature = "client-router")]
+#[test]
+#[serial_test::serial(client_reverser)]
+fn typed_urls_zero_param_helper_returns_namespaced_pattern() {
+	// Arrange
+	install_reverser_for(typed_accounts_app::client_url_patterns());
+
+	// Act
+	let href: String = typed_accounts_app::urls::index();
+
+	// Assert: pattern is the static "/" — namespacing is in the registry
+	// key, not the URL itself.
+	assert_eq!(
+		href, "/",
+		"the typed `urls::index()` helper must round-trip through the global reverser"
+	);
+
+	// Cleanup
+	reinhardt_urls::routers::client_router::clear_client_reverser();
+}
+
+#[cfg(feature = "client-router")]
+#[test]
+#[serial_test::serial(client_reverser)]
+fn typed_urls_single_param_helper_substitutes_path_segment() {
+	// Arrange
+	install_reverser_for(typed_accounts_app::client_url_patterns());
+
+	// Act
+	let href: String = typed_accounts_app::urls::detail(42);
+
+	// Assert
+	assert_eq!(
+		href, "/polls/42/",
+		"typed single-param helper must substitute the bound `question_id` into the pattern"
+	);
+
+	// Cleanup
+	reinhardt_urls::routers::client_router::clear_client_reverser();
+}
+
+#[cfg(feature = "client-router")]
+#[test]
+#[serial_test::serial(client_reverser)]
+fn typed_urls_two_param_helper_substitutes_both_segments_by_position() {
+	// Arrange
+	install_reverser_for(typed_accounts_app::client_url_patterns());
+
+	// Act
+	let href: String = typed_accounts_app::urls::choice_edit(7, 13);
+
+	// Assert: the macro must pass parameters by position matching the
+	// closure binding order, so the first argument fills `question_id`
+	// and the second fills `choice_id`.
+	assert_eq!(
+		href, "/polls/7/choices/13/edit/",
+		"typed two-param helper must respect binding-order positional substitution"
+	);
+
+	// Cleanup
+	reinhardt_urls::routers::client_router::clear_client_reverser();
+}
+
+#[cfg(feature = "client-router")]
+#[test]
+#[serial_test::serial(client_reverser)]
+fn typed_urls_helpers_panic_when_no_reverser_is_registered() {
+	// Arrange
+	reinhardt_urls::routers::client_router::clear_client_reverser();
+
+	// Act
+	let result = std::panic::catch_unwind(|| typed_accounts_app::urls::index());
+
+	// Assert: helpers must surface "no reverser registered" loudly rather
+	// than silently returning an empty string. The full panic string is
+	// pinned with assert_eq! so any wording drift in the macro requires
+	// an intentional update of this test, in line with the project's
+	// "use strict assertions instead of loose matching" rule.
+	let err = result.expect_err("typed helper must panic when no reverser is registered");
+	let msg = err
+		.downcast_ref::<&'static str>()
+		.map(|s| (*s).to_string())
+		.or_else(|| err.downcast_ref::<String>().cloned())
+		.unwrap_or_default();
+	assert_eq!(
+		msg,
+		"client URL reverser is not registered. \
+		 Register the client URL reverser globally \
+		 (e.g. via `UnifiedRouter::register_globally()` or \
+		 `register_client_reverser(...)`) before calling \
+		 the typed `urls::*` helpers.",
+		"panic message must match the macro's emitted text verbatim"
+	);
+}
+
+// --- Regression coverage for binding-name <-> placeholder pairing ---
+//
+// Helpers must pair each closure binding to its URL placeholder by *name*
+// (with leading underscores stripped), not by position. The app below
+// declares the closure inputs in the *opposite* order from the pattern
+// placeholders: pattern `{question_id}/.../{choice_id}/...` but bindings
+// `_choice_id, _question_id`. The emitted helper must therefore expose a
+// signature `fn(choice_id, question_id) -> String` and substitute each
+// placeholder from the matching named binding, not from positional order.
+
+#[cfg(feature = "client-router")]
+mod typed_accounts_app_swapped_order {
+	use super::InstalledApp;
+	use reinhardt::url_patterns;
+	use reinhardt_core::page::Page;
+	use reinhardt_urls::routers::ClientRouter;
+	use reinhardt_urls::routers::client_router::Path as ClientPath;
+
+	#[url_patterns(super::InstalledApp::accounts, mode = client)]
+	pub fn client_url_patterns() -> ClientRouter {
+		ClientRouter::new().named_route_path2(
+			"choice_edit",
+			"/polls/{question_id}/choices/{choice_id}/edit/",
+			|ClientPath(_choice_id): ClientPath<i64>,
+			 ClientPath(_question_id): ClientPath<i64>| Page::Empty,
+		)
+	}
+}
+
+#[cfg(feature = "client-router")]
+#[test]
+#[serial_test::serial(client_reverser)]
+fn typed_urls_helper_pairs_bindings_to_placeholders_by_name() {
+	// Arrange: register a reverser whose closure binds parameters in
+	// the opposite order from the placeholders.
+	install_reverser_for(typed_accounts_app_swapped_order::client_url_patterns());
+
+	// Act: pass arguments in the closure's binding order
+	// (choice_id, question_id) — the helper must place each value at
+	// the named placeholder, not at the positionally-matching one.
+	let href: String = typed_accounts_app_swapped_order::urls::choice_edit(13, 7);
+
+	// Assert: `{question_id}` resolves to 7, `{choice_id}` resolves to 13.
+	// A position-based implementation would (incorrectly) produce
+	// "/polls/13/choices/7/edit/" here.
+	assert_eq!(
+		href, "/polls/7/choices/13/edit/",
+		"typed helper must substitute each placeholder from its NAMED binding, not by position"
+	);
+
+	// Cleanup
+	reinhardt_urls::routers::client_router::clear_client_reverser();
+}
