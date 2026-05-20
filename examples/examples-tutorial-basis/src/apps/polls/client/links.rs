@@ -1,15 +1,17 @@
-//! Typed URL helpers backed by `ResolvedUrls`.
+//! Typed URL helpers for the polls SPA, backed by `ResolvedUrls`.
 //!
-//! Every page-to-page `href` in the SPA goes through this module rather
-//! than calling `format!("/polls/{}/", ...)` inline. The helpers delegate
-//! to `ResolvedUrls::from_global().resolve_client_url(name, params)`, so
-//! if a route pattern ever changes in `apps::<app>::urls::client_router`
-//! the components do not need to be updated — only the route definition
-//! does.
+//! Every `href` that points at a polls route goes through this module rather
+//! than calling `format!("/polls/{}/", ...)` inline. The helpers delegate to
+//! `ResolvedUrls::from_global().resolve_client_url(name, params)`, so if a
+//! polls route pattern ever changes in `apps::polls::urls::client_router`
+//! the components do not need to be updated — only the route definition does.
 //!
-//! Name convention: route names are namespaced `<app>:<name>` (see
-//! `#[url_patterns(InstalledApp::<app>, mode = client)]`); the bare names
-//! used by `named_route` are auto-prefixed for the polls and users apps.
+//! Route names are namespaced `polls:<name>` (see
+//! `#[url_patterns(InstalledApp::polls, mode = client)]`); the bare names
+//! used by `named_route` are auto-prefixed.
+//!
+//! See [#4644](https://github.com/kent8192/reinhardt-web/issues/4644) for a
+//! proposal to codegen these helpers directly from `#[url_patterns]`.
 
 use reinhardt::ClientUrlResolver;
 
@@ -22,8 +24,6 @@ fn urls() -> ResolvedUrls {
 fn resolve(name: &str, params: &[(&str, &str)]) -> String {
 	urls().resolve_client_url(name, params)
 }
-
-// ---- polls ---------------------------------------------------------------
 
 /// `/` — polls index.
 pub fn polls_index() -> String {
@@ -98,21 +98,4 @@ pub fn choice_delete(question_id: i64, choice_id: i64) -> String {
 			("choice_id", &choice_id.to_string()),
 		],
 	)
-}
-
-// ---- users ---------------------------------------------------------------
-
-/// `/users/login/` — sign-in form.
-pub fn login() -> String {
-	resolve("users:login", &[])
-}
-
-/// `/users/logout/` — sign-out form.
-pub fn logout() -> String {
-	resolve("users:logout", &[])
-}
-
-/// `/users/signup/` — account-creation form.
-pub fn signup() -> String {
-	resolve("users:signup", &[])
 }

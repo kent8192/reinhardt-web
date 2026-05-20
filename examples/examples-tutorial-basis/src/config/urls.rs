@@ -27,8 +27,7 @@ use crate::config::admin::configure_admin;
 #[cfg(native)]
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
-	get_question_results, get_questions, get_vote_form_metadata, submit_vote, update_choice,
-	update_question, vote,
+	get_question_results, get_questions, submit_vote, update_choice, update_question, vote,
 };
 #[cfg(native)]
 use crate::apps::users::server_fn::{current_user, login, logout, register};
@@ -95,7 +94,6 @@ pub fn routes() -> UnifiedRouter {
 				.server_fn(get_question_detail::marker)
 				.server_fn(get_question_results::marker)
 				.server_fn(vote::marker)
-				.server_fn(get_vote_form_metadata::marker)
 				.server_fn(submit_vote::marker)
 				.server_fn(create_question::marker)
 				.server_fn(update_question::marker)

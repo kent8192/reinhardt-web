@@ -111,5 +111,13 @@ name = "polls_mock_test"
 path = "tests/wasm/polls_mock_test.rs"
 required-features = ["msw"]
 
+# Mirror of `polls_mock_test` for the users (authentication) app. Same
+# `msw` feature gate — the typed MSW target compiles only once upstream
+# #4287 / PR #4288 lands and this project flips on the framework facade.
+[[test]]
+name = "users_mock_test"
+path = "tests/wasm/users_mock_test.rs"
+required-features = ["msw"]
+
 [lints]
 workspace = true

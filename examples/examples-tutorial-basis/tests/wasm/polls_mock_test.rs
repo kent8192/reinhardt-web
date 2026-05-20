@@ -1,8 +1,9 @@
 //! Polls Component WASM Tests with Mocking
 //!
 //! Layer 2 tests for polls components that interact with server functions.
-//! These tests verify that actual polls components from `src/client/components/polls.rs`
-//! render correctly and can interact with mocked server function responses.
+//! These tests verify that actual polls components from
+//! `src/apps/polls/client/components.rs` render correctly and can interact
+//! with mocked server function responses.
 //!
 //! **Test Categories:**
 //! - Pure rendering tests (no server_fn interaction)
@@ -18,10 +19,10 @@ use wasm_bindgen_test::*;
 wasm_bindgen_test_configure!(run_in_browser);
 
 // Import actual components from the application
-use examples_tutorial_basis::client::components::polls::{
+use examples_tutorial_basis::apps::polls::client::components::{
 	polls_detail, polls_index, polls_results,
 };
-use examples_tutorial_basis::server_fn::polls::{
+use examples_tutorial_basis::apps::polls::server_fn::{
 	get_question_detail, get_question_results, get_questions, vote,
 };
 use examples_tutorial_basis::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
