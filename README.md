@@ -823,10 +823,14 @@ Non-injected fields are marked with `#[no_inject]` and must implement
 ```rust
 use reinhardt::di::injectable;
 
-// `scope` is optional. Pass it as a macro argument:
+// `scope` is passed as a macro argument:
 //   #[injectable(scope = "singleton" | "request" | "transient")]
-// `#[injectable]` defaults to `request` scope; `#[injectable_factory]` defaults to `singleton`.
-#[injectable]
+// When omitted, `#[injectable]` defaults to `request` and
+// `#[injectable_factory]` defaults to `singleton`. A longer-lived dependent
+// (e.g. singleton) cannot depend on a shorter-lived dependency (e.g. request),
+// so `Config` is registered as a singleton here to match the singleton-scoped
+// `database_connection` factory below.
+#[injectable(scope = "singleton")]
 #[derive(Clone)]
 pub struct Config {
     #[no_inject]
