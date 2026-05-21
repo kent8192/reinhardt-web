@@ -174,7 +174,14 @@ impl<'a> PageMacroVisitor<'a> {
 	/// `expr.to_token_stream()` (it inserts whitespace between tokens).
 	/// Without the lenient match, nested `page!` macros inside such
 	/// wrapper code would be invisible to `protect_page_macros`.
-	fn find_macro_in_source(&self, _tokens_content: &str) -> Option<MacroInfo> {
+	///
+	/// `tokens_content` is the `TokenStream` Display form of the macro
+	/// being located (i.e. `mac.tokens.to_string()` from syn). It is
+	/// used to disambiguate when a `page!(...)`-shaped substring also
+	/// appears in a preceding string literal or comment: the parsed
+	/// candidate's `to_string()` must match `tokens_content` to be
+	/// accepted.
+	fn find_macro_in_source(&self, tokens_content: &str) -> Option<MacroInfo> {
 		let mut search_start = 0;
 
 		// Skip already found macros
@@ -192,8 +199,13 @@ impl<'a> PageMacroVisitor<'a> {
 			if let Some(end_pos) = find_matching_paren(self.source, content_start) {
 				let macro_content = &self.source[content_start..end_pos];
 
-				// Parse the content to get tokens
-				if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content) {
+				// Parse the content to get tokens, and verify it matches the
+				// AST node we're locating. Without this check, a `page!(...)`
+				// substring inside a preceding string literal or `//` comment
+				// could be mistaken for the real macro invocation.
+				if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content)
+					&& tokens.to_string() == tokens_content
+				{
 					return Some(MacroInfo {
 						start: abs_start,
 						end: end_pos + 1, // Include closing paren
@@ -1701,9 +1713,12 @@ impl AstPageFormatter {
 	) -> Option<String> {
 		// Extract `<inner>` from `page!(<inner>)` (or the equivalent
 		// TokenStream Display form `page ! ( <inner> )`).
+		// Use the string-aware `find_matching_paren` rather than
+		// `rfind(')')` so a `)` inside a string literal or nested group
+		// in the macro body never gets confused with the closing paren.
 		let hit = find_page_bang_paren(original)?;
 		let head = hit.paren_open + 1;
-		let tail = original.rfind(')')?;
+		let tail = find_matching_paren(original, head)?;
 		if tail <= head {
 			return None;
 		}
