@@ -244,14 +244,105 @@ struct PageBangParen {
 
 /// Find the next `page <ws>* ! <ws>* (` occurrence in `s`, ensuring the
 /// `page` token is at a word boundary (not part of a larger identifier
-/// like `mypage`). Returns `None` if none found. Accepts the canonical
-/// `page!(` form authored by users as well as the `page ! (` form emitted
-/// by `proc_macro2::TokenStream`'s `Display`.
+/// like `mypage`). Skips matches that appear inside line comments
+/// (`// ...`), block comments (`/* ... */`, nested), regular string
+/// literals (`"..."`), raw string literals (`r"..."`, `r#"..."#`, ...),
+/// and char literals (`'x'`), so a `page!(...)` substring embedded in
+/// such content cannot be mistaken for a real macro invocation.
+/// Returns `None` if none found. Accepts the canonical `page!(` form
+/// authored by users as well as the `page ! (` form emitted by
+/// `proc_macro2::TokenStream`'s `Display`.
 fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 	let bytes = s.as_bytes();
 	let mut i = 0;
-	while let Some(rel) = s[i..].find("page") {
-		let start = i + rel;
+	while i + "page".len() <= bytes.len() {
+		let b = bytes[i];
+
+		// Line comment: skip to end of line.
+		if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+			i += 2;
+			while i < bytes.len() && bytes[i] != b'\n' {
+				i += 1;
+			}
+			continue;
+		}
+
+		// Block comment (Rust allows nesting): skip to matching `*/`.
+		if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+			i += 2;
+			let mut depth: usize = 1;
+			while i + 1 < bytes.len() && depth > 0 {
+				if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+					depth += 1;
+					i += 2;
+				} else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+					depth -= 1;
+					i += 2;
+				} else {
+					i += 1;
+				}
+			}
+			continue;
+		}
+
+		// String literal — handle both raw (`r"..."`, `r#"..."#`...) and
+		// regular forms. `detect_raw_string_start` walks backwards from
+		// the `"` to find a leading `r` (plus optional `#`s) at a word
+		// boundary.
+		if b == b'"' {
+			if let Some(hash_count) = detect_raw_string_start(s, i)
+				&& let Some(end) = skip_raw_string(s, i + 1, hash_count)
+			{
+				i = end;
+				continue;
+			}
+			i += 1;
+			while i < bytes.len() {
+				match bytes[i] {
+					b'\\' if i + 1 < bytes.len() => i += 2,
+					b'"' => {
+						i += 1;
+						break;
+					}
+					_ => i += 1,
+				}
+			}
+			continue;
+		}
+
+		// Char literal vs lifetime. A char literal closes its apostrophe
+		// within a few bytes (`'x'`, `'\n'`, `'\u{1F600}'`); a lifetime
+		// (`'a`, `'static`) does not. Look ahead with a small budget and
+		// only skip when a closing quote is found.
+		if b == b'\'' {
+			let mut j = i + 1;
+			let limit = (i + 10).min(bytes.len());
+			let mut closed = None;
+			while j < limit {
+				match bytes[j] {
+					b'\\' if j + 1 < bytes.len() => j += 2,
+					b'\'' => {
+						closed = Some(j);
+						break;
+					}
+					_ => j += 1,
+				}
+			}
+			if let Some(close) = closed {
+				i = close + 1;
+				continue;
+			}
+			// Treat as lifetime — step past the apostrophe only.
+			i += 1;
+			continue;
+		}
+
+		// Not in a comment or literal — look for the `page` keyword.
+		if &bytes[i..i + "page".len()] != b"page" {
+			i += 1;
+			continue;
+		}
+		let start = i;
 		// Reject if preceded by an identifier-continuation byte.
 		if start > 0 {
 			let prev = bytes[start - 1];
@@ -2783,6 +2874,101 @@ fn main() {
 		);
 		assert_eq!(result.backups.len(), 1);
 		assert_eq!(restored, input);
+	}
+
+	// Regression: a `page!(...)`-shaped substring inside a preceding
+	// `//` comment with the same token sequence as the real macro must
+	// not be mistaken for the real invocation. Previously the source
+	// scanner would lock onto the comment substring and leave the real
+	// macro unprotected.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_line_comment() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "// page!(|| { div { \"hi\" } })\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert_eq!(
+			result.protected_content,
+			"// page!(|| { div { \"hi\" } })\nlet view = __reinhardt_placeholder_0__!();"
+		);
+	}
+
+	// Regression: same as the line-comment case but with a block comment
+	// preceding the real macro.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_block_comment() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "/* page!(|| { div { \"hi\" } }) */\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert_eq!(
+			result.protected_content,
+			"/* page!(|| { div { \"hi\" } }) */\nlet view = __reinhardt_placeholder_0__!();"
+		);
+	}
+
+	// Regression: a `page!(...)` literal inside a regular string literal
+	// must not be picked up as a macro invocation, even when its tokens
+	// match the real macro byte-for-byte.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_string_literal() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "let s = \"page!(|| { div { \\\"hi\\\" } })\";\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		// The string literal must be left intact and only the real
+		// macro on the second line should be replaced with a placeholder.
+		assert!(
+			result
+				.protected_content
+				.contains("\"page!(|| { div { \\\"hi\\\" } })\"")
+		);
+		assert!(
+			result
+				.protected_content
+				.contains("__reinhardt_placeholder_0__!()")
+		);
+	}
+
+	// Regression: same as the string-literal case but using a raw string
+	// (`r#"..."#`), which the scanner must traverse without descending
+	// into its body.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_raw_string() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "let s = r#\"page!(|| { div { \"hi\" } })\"#;\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert!(
+			result
+				.protected_content
+				.contains("r#\"page!(|| { div { \"hi\" } })\"#")
+		);
+		assert!(
+			result
+				.protected_content
+				.contains("__reinhardt_placeholder_0__!()")
+		);
 	}
 
 	// ==================== Unicode Character Tests ====================
