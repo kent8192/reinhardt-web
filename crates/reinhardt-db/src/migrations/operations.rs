@@ -5639,13 +5639,14 @@ mod tests {
 		// suffixes — exactly the regression this test is meant to pin.
 		//
 		// Identifier quoting note: `quote_identifier` here is
-		// `pg_escape::quote_identifier`, which only adds quotes when the
-		// identifier contains reserved words or non-lowercase characters.
-		// `products` and `name` are plain lowercase ASCII, so the expected
-		// output is unquoted. This matches the identical convention
-		// documented on `test_to_reverse_sql_drop_index_includes_on_table_for_mysql`
-		// (line 6516–6519). Identifier-quoting-by-default is tracked
-		// separately in #4674.
+		// `pg_escape::quote_identifier`, which only quotes identifiers
+		// that fall outside PostgreSQL's unquoted-identifier grammar
+		// (anything outside `[a-z_][a-z0-9_]*`, or a reserved keyword).
+		// `products` and `name` are plain lowercase ASCII matching that
+		// grammar, so the expected output is unquoted. This matches the
+		// identical convention documented on
+		// `test_to_reverse_sql_drop_index_includes_on_table_for_mysql`.
+		// Identifier-quoting-by-default is tracked separately in #4674.
 		let expected = "ALTER TABLE products ALTER COLUMN name TYPE VARCHAR(50);";
 		assert_eq!(
 			sql, expected,
