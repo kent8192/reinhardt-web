@@ -631,23 +631,9 @@ fn validate_attr_type(
 	// Enumerated attributes validation - check if value is in allowed list
 	validate_enum_attr(attr_name, value, element_tag, span)?;
 
-	// img element src attribute validation.
-	//
-	// String literals are checked for emptiness here; dynamic expressions
-	// (function calls such as `resolve_static(...)`, variable references,
-	// etc.) are passed through and validated at runtime. URL-scheme safety
-	// for string literals is already enforced earlier in this function by
-	// the generic URL-attribute checks.
-	if element_tag == "img"
-		&& attr_name == "src"
-		&& let Some(src_value) = value.as_string()
-		&& src_value.trim().is_empty()
-	{
-		return Err(syn::Error::new(
-			span,
-			"Element <img> 'src' attribute must not be empty",
-		));
-	}
+	// Note: emptiness of a string-literal `<img src="">` is rejected by the
+	// generic URL-attribute check above (URL_ATTRS includes ("src", img)).
+	// Dynamic expressions (e.g. `resolve_static(...)`) are deferred to runtime.
 
 	Ok(())
 }
