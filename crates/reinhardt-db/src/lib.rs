@@ -152,6 +152,8 @@ pub mod backends_pool;
 pub mod contenttypes;
 #[cfg(feature = "hybrid")]
 pub mod hybrid;
+#[cfg(any(feature = "orm", feature = "migrations"))]
+pub mod m2m_naming;
 #[cfg(feature = "migrations")]
 pub mod migrations;
 #[cfg(feature = "nosql")]

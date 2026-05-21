@@ -1013,23 +1013,13 @@ impl ProjectState {
 		source_table_name: &str,
 		m2m: &super::model_registry::ManyToManyMetadata,
 	) -> ModelState {
-		// Generate table name: {source_table_name.to_lowercase()}_{snake_case(field_name)}.
-		// Example: "auth_user" + "_" + "following" = "auth_user_following".
-		// Lowercase + snake_case here so this intermediate-table synthesis
-		// agrees with the through-table names produced elsewhere in
-		// autodetection (`detect_created_many_to_many`,
-		// `create_intermediate_table_for_m2m` at the M2M-emission site) and
-		// with the ORM accessor's `default_through_table`
-		// (`{S::table_name().to_lowercase()}_{field_name}`). Without this,
-		// a mixed/upper-case `table_name` or a non-snake_case field would
-		// produce a model name that diverges from the table the runtime
-		// reads/writes (#4659).
+		// Default through-table and column names come from the canonical
+		// convention in `crate::m2m_naming` (also re-exported as
+		// `crate::migrations::naming`) so this site cannot drift from
+		// `detect_created_many_to_many` (lookup) or `ManyToManyAccessor`
+		// (runtime). See issue #4665.
 		let table_name = m2m.through.clone().unwrap_or_else(|| {
-			format!(
-				"{}_{}",
-				source_table_name.to_lowercase(),
-				to_snake_case(&m2m.field_name)
-			)
+			crate::m2m_naming::default_through_table(source_table_name, &m2m.field_name)
 		});
 
 		// Generate model name: PascalCase version of field_name
@@ -1068,32 +1058,18 @@ impl ProjectState {
 			.map(|m| m.table_name.clone())
 			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(target_model)));
 
-		// Determine source and target field names. The default convention
-		// derives from the *actual* table names of source and target models
-		// (e.g. `dm_room_id`, `auth_user_id`), matching the ORM accessor
-		// fallback in `crates/reinhardt-db/src/orm/many_to_many_accessor.rs`
-		// (`format!("{}_id", T::table_name().to_lowercase())`). The previous
-		// convention used the struct identifier in `from_/to_` form
-		// (`from_dm_room_id`, `to_user_id`), which diverged from the accessor
-		// and from the on-disk schema produced by initial migrations
-		// (#4659 follow-up).
-		let source_table_lower = source_table_name.to_lowercase();
-		let target_table_lower = target_table_name.to_lowercase();
-		let is_self_referencing = source_table_lower == target_table_lower;
-		let source_field_name = m2m.source_field.clone().unwrap_or_else(|| {
-			if is_self_referencing {
-				format!("from_{}_id", source_table_lower)
-			} else {
-				format!("{}_id", source_table_lower)
-			}
-		});
-		let target_field_name = m2m.target_field.clone().unwrap_or_else(|| {
-			if is_self_referencing {
-				format!("to_{}_id", target_table_lower)
-			} else {
-				format!("{}_id", target_table_lower)
-			}
-		});
+		// Default FK column names come from the canonical convention in
+		// `crate::m2m_naming::default_m2m_columns` (single source of truth,
+		// see issue #4665): `{table}_id` for non-self-referential relations,
+		// and `from_/to_` prefixes when source and target tables match.
+		// Keying off the *actual* table names (not the struct identifiers)
+		// matches the ORM accessor fallback in
+		// `crates/reinhardt-db/src/orm/many_to_many_accessor.rs` and the
+		// on-disk schema produced by initial migrations (#4659).
+		let (default_source_col, default_target_col) =
+			crate::m2m_naming::default_m2m_columns(source_table_name, &target_table_name);
+		let source_field_name = m2m.source_field.clone().unwrap_or(default_source_col);
+		let target_field_name = m2m.target_field.clone().unwrap_or(default_target_col);
 
 		// Add foreign key to source model
 		let mut from_field =
@@ -5375,35 +5351,15 @@ impl MigrationAutodetector {
 					)
 				});
 
-			// Derive M2M column names from the resolved table names so that
-			// the autodetector agrees with the ORM accessor's fallback
-			// (`format!("{}_id", S::table_name().to_lowercase())` in
-			// `many_to_many_accessor.rs`). Previously this used
-			// `model_name.to_lowercase()` (the struct identifier), which
-			// diverged from runtime expectations and broke incremental
-			// `makemigrations` (#4659 follow-up).
-			let source_table_lower = source_table.to_lowercase();
-			let target_table_lower = target_table.to_lowercase();
-
-			// Self-referencing M2M (e.g. `User` follows `User`) needs
-			// `from_/to_` prefixes to avoid column-name collision. Compare by
-			// table identity, not by struct identifier.
-			let is_self_referencing = source_table_lower == target_table_lower;
-
-			let source_column = m2m.source_field.clone().unwrap_or_else(|| {
-				if is_self_referencing {
-					format!("from_{}_id", source_table_lower)
-				} else {
-					format!("{}_id", source_table_lower)
-				}
-			});
-			let target_column = m2m.target_field.clone().unwrap_or_else(|| {
-				if is_self_referencing {
-					format!("to_{}_id", target_table_lower)
-				} else {
-					format!("{}_id", target_table_lower)
-				}
-			});
+			// Default FK column names come from `crate::m2m_naming::default_m2m_columns`,
+			// the single source of truth shared with `create_intermediate_table_for_m2m`
+			// and the ORM accessor (issue #4665). The helper keys off the
+			// *actual* table names (not struct identifiers) and applies
+			// `from_/to_` prefixes only for self-referential M2M (#4659).
+			let (default_source_col, default_target_col) =
+				crate::m2m_naming::default_m2m_columns(&source_table, &target_table);
+			let source_column = m2m.source_field.clone().unwrap_or(default_source_col);
+			let target_column = m2m.target_field.clone().unwrap_or(default_target_col);
 
 			// Get source model's primary key type
 			let source_pk_type = self.to_state.get_primary_key_type(app_label, model_name);
@@ -5632,19 +5588,14 @@ impl MigrationAutodetector {
 				//      preserves `table_name`s (the original struct identifiers
 				//      are lost — see #4659), so any subsequent existence check
 				//      must use a `table_name`-derived key.
-				// Normalize so the synthesized through-table name agrees
-				// with the migration-emitting site
-				// (`create_intermediate_table_for_m2m`) and the ORM
-				// accessor's `default_through_table` (#4659). Apply the
-				// same rule both sides use: lowercase the source table
-				// and snake_case the field, so a mixed-case `table_name`
-				// or a non-snake_case field doesn't cause a case-sensitive
-				// `find_model_by_table` miss and re-emit the M2M create.
+				// Route through `crate::m2m_naming::default_through_table`
+				// so this existence-check key cannot drift from the
+				// migration-emitting site (`create_intermediate_table_for_m2m`)
+				// or the ORM accessor's fallback (#4659, #4665).
 				let through_table = m2m.through.clone().unwrap_or_else(|| {
-					format!(
-						"{}_{}",
-						model_state.table_name.to_lowercase(),
-						to_snake_case(&m2m.field_name)
+					crate::m2m_naming::default_through_table(
+						&model_state.table_name,
+						&m2m.field_name,
 					)
 				});
 
