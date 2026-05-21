@@ -880,9 +880,10 @@ mod auth_tests {
 			.err()
 			.unwrap_or_else(|| panic!("{} should reject anonymous callers", operation));
 		// The `SessionUser::require_active()` gate emits
-		// `ServerFnError::server(401, ...)`. We match on the rendered Display
-		// because ServerFnError does not expose the inner status as a typed
-		// accessor in the public API.
+		// `ServerFnError::server(401, ...)`. We match on the Debug-formatted
+		// output because ServerFnError does not expose the inner status as a
+		// typed accessor in the public API, and its `Debug` impl is the most
+		// stable representation that includes the numeric status.
 		let rendered = format!("{:?}", err);
 		assert!(
 			rendered.contains("401") || rendered.contains("Authentication required"),

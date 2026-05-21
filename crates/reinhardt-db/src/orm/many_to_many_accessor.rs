@@ -11,6 +11,7 @@
 use super::Manager;
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::relationship::RelationshipType;
+use crate::naming::to_snake_case;
 use crate::orm::Model;
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, DeleteStatement, Expr, Func, InsertStatement, MySqlQueryBuilder,
@@ -120,34 +121,36 @@ where
 			.into_iter()
 			.find(|r| r.name == field_name && r.relationship_type == RelationshipType::ManyToMany);
 
-		// Get through table name from metadata or use Django naming convention
+		// Get through table name from metadata or derive from the source
+		// table_name via `default_through_table`. The default convention
+		// matches what `makemigrations` synthesizes in
+		// `MigrationAutodetector::create_intermediate_table_for_m2m` and
+		// `detect_created_many_to_many` (see #4659).
 		let through_table = rel_info
 			.as_ref()
 			.and_then(|r| r.through_table.clone())
-			.unwrap_or_else(|| {
-				format!(
-					"{}_{}_{}",
-					S::app_label(),
-					Self::table_name_lower(S::table_name()),
-					field_name
-				)
-			});
+			.unwrap_or_else(|| Self::default_through_table(field_name));
 
 		let source_id = source
 			.primary_key()
 			.expect("Source model must have primary key")
 			.clone();
 
-		// Get source/target field names from metadata or use default naming
+		// Get source/target field names from metadata or use default naming.
+		// The fallback mirrors `MigrationAutodetector::create_intermediate_table_for_m2m`
+		// (`crates/reinhardt-db/src/migrations/autodetector.rs`), which emits
+		// `from_{table}_id` / `to_{table}_id` for self-referential M2M to avoid
+		// duplicate column names in the synthesized through-table.
+		let (default_source_field, default_target_field) = Self::default_link_fields();
 		let source_field = rel_info
 			.as_ref()
 			.and_then(|r| r.source_field.clone())
-			.unwrap_or_else(|| format!("{}_id", Self::table_name_lower(S::table_name())));
+			.unwrap_or(default_source_field);
 
 		let target_field = rel_info
 			.as_ref()
 			.and_then(|r| r.target_field.clone())
-			.unwrap_or_else(|| format!("{}_id", Self::table_name_lower(T::table_name())));
+			.unwrap_or(default_target_field);
 
 		Self {
 			source_id,
@@ -165,6 +168,47 @@ where
 	/// Convert table name to lowercase for field naming.
 	fn table_name_lower(table_name: &str) -> String {
 		table_name.to_lowercase()
+	}
+
+	/// Derive the default through-table name for the M2M field on `S`.
+	///
+	/// Returns `{S::table_name().to_lowercase()}_{to_snake_case(field_name)}`.
+	/// This must stay in lockstep with
+	/// `MigrationAutodetector::create_intermediate_table_for_m2m` and
+	/// `detect_created_many_to_many` (`crates/reinhardt-db/src/migrations/autodetector.rs`),
+	/// which apply the same lowercase-table + snake_case-field rule. If the
+	/// two diverge, runtime M2M reads/writes target a table that
+	/// `makemigrations` never produced — the regression that #4659
+	/// surfaced (and the secondary case for non-snake_case field
+	/// identifiers).
+	pub(crate) fn default_through_table(field_name: &str) -> String {
+		format!(
+			"{}_{}",
+			Self::table_name_lower(S::table_name()),
+			to_snake_case(field_name)
+		)
+	}
+
+	/// Derive the default `(source_field, target_field)` FK column names for
+	/// the M2M through-table.
+	///
+	/// For non-self-referential relations both default to `{table}_id`. For
+	/// self-referential relations (`S::table_name() == T::table_name()`) this
+	/// would collide, so we prefix with `from_` / `to_` to match the synthetic
+	/// columns produced by
+	/// `MigrationAutodetector::create_intermediate_table_for_m2m`
+	/// (`crates/reinhardt-db/src/migrations/autodetector.rs`). The two must
+	/// stay in lockstep, or runtime reads/writes will target columns that
+	/// `makemigrations` never produced (#4659 follow-up).
+	pub(crate) fn default_link_fields() -> (String, String) {
+		let source = Self::table_name_lower(S::table_name());
+		let target = Self::table_name_lower(T::table_name());
+
+		if source == target {
+			(format!("from_{}_id", source), format!("to_{}_id", target))
+		} else {
+			(format!("{}_id", source), format!("{}_id", target))
+		}
 	}
 
 	/// Add a relationship to the target model.
@@ -574,11 +618,35 @@ where
 			.primary_key()
 			.ok_or_else(|| "Target model has no primary key".to_string())?;
 
-		// Calculate through table name (same logic as new())
-		let through_table = format!("{}_{}", Self::table_name_lower(S::table_name()), field_name);
+		// Resolve through-table and FK column names through the same
+		// metadata-aware path as `new()`: honour an explicit `through`
+		// override on the relation, and fall back to `default_through_table`
+		// / `default_link_fields` (which handle self-referential M2M by
+		// emitting `from_/to_` prefixes — matching
+		// `MigrationAutodetector::create_intermediate_table_for_m2m` and
+		// the `created_many_to_many` emit site in autodetector.rs). Without
+		// this, `filter_by_target` queried a synthetic table/columns that
+		// the migrations never produced whenever the model used either
+		// `#[rel(through = "...")]` or a self-referential M2M (#4659
+		// follow-up).
+		let rel_info = S::relationship_metadata()
+			.into_iter()
+			.find(|r| r.name == field_name && r.relationship_type == RelationshipType::ManyToMany);
 
-		let source_field = format!("{}_id", Self::table_name_lower(S::table_name()));
-		let target_field = format!("{}_id", Self::table_name_lower(T::table_name()));
+		let through_table = rel_info
+			.as_ref()
+			.and_then(|r| r.through_table.clone())
+			.unwrap_or_else(|| Self::default_through_table(field_name));
+
+		let (default_source_field, default_target_field) = Self::default_link_fields();
+		let source_field = rel_info
+			.as_ref()
+			.and_then(|r| r.source_field.clone())
+			.unwrap_or(default_source_field);
+		let target_field = rel_info
+			.as_ref()
+			.and_then(|r| r.target_field.clone())
+			.unwrap_or(default_target_field);
 
 		// Build JOIN query using reinhardt-query
 		let mut query = Query::select();
@@ -621,6 +689,30 @@ where
 mod tests {
 	use super::*;
 	use reinhardt_query::prelude::QueryStatementBuilder;
+
+	/// Regression test for #4659: the runtime accessor's default
+	/// through-table name MUST agree with the name `makemigrations`
+	/// synthesizes. The autodetector uses
+	/// `format!("{}_{}", source_model.table_name, field_name)`; the
+	/// accessor must do the same. Previously it prepended `S::app_label()`
+	/// as a separate segment, producing names like `auth_users_groups`
+	/// instead of `users_groups` (or `dm_dm_room_members` instead of
+	/// `dm_room_members`), so runtime M2M queries targeted a table that
+	/// `makemigrations` never created.
+	#[test]
+	fn default_through_table_matches_autodetector_convention() {
+		// Arrange / Act: TestUser has table_name = "users".
+		let through = ManyToManyAccessor::<TestUser, TestGroup>::default_through_table("members");
+
+		// Assert
+		assert_eq!(through, "users_members");
+		assert!(
+			!through.starts_with("auth_"),
+			"app_label must NOT be prepended; that would double-count it \
+			 when table_name already carries the prefix (e.g. \"dm_room\"). \
+			 See #4659 for the breakage this causes."
+		);
+	}
 
 	#[test]
 	fn test_table_name_lower() {
