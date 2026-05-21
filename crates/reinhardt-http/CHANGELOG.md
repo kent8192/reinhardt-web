@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-rc.29...reinhardt-http@v0.1.0-rc.30) - 2026-05-21
+
+### Added
+
+- *(http,di)* add Middleware::di_registrations hook and type-erased DI APIs
+
 ## [0.1.0-rc.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-rc.23...reinhardt-http@v0.1.0-rc.24) - 2026-04-30
 
 ### Changed

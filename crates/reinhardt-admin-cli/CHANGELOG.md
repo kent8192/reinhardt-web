@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.29...reinhardt-admin-cli@v0.1.0-rc.30) - 2026-05-21
+
+### Fixed
+
+- *(admin-cli)* recursively format nested page! macros
+- *(admin-cli)* harden ast_formatter parser against false-positive page! spans
+- *(admin-cli)* skip page!-shaped substrings inside strings and comments
+- apply CodeRabbit auto-fixes
+- *(admin-cli)* reword comment so no line starts with `match`
+
+### Testing
+
+- *(admin-cli)* use strict equality for deterministic protect_page_macros assertions
+
 ## [0.1.0-rc.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.21...reinhardt-admin-cli@v0.1.0-rc.22) - 2026-04-25
 
 ### Documentation

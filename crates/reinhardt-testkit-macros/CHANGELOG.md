@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit-macros@v0.1.0-rc.28...reinhardt-testkit-macros@v0.1.0-rc.29) - 2026-05-21
+
+### Documentation
+
+- *(testkit-macros)* document intentional rc.28 lag in version table
+- *(testkit-macros)* use docs.rs links and American 'behavior' spelling
+
 ### Added
 
 - Initial release: `with_di_overrides!` procedural macro for ergonomic DI mocking in tests
