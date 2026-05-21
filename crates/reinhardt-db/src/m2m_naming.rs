@@ -90,7 +90,11 @@ fn to_snake_case(name: &str) -> String {
 /// assert_eq!(default_through_table("auth_user", "FollowedBy"), "auth_user_followed_by");
 /// ```
 pub fn default_through_table(source_table: &str, field_name: &str) -> String {
-	format!("{}_{}", source_table.to_lowercase(), to_snake_case(field_name))
+	format!(
+		"{}_{}",
+		source_table.to_lowercase(),
+		to_snake_case(field_name)
+	)
 }
 
 /// Default `(source_column, target_column)` for a ManyToMany intermediate table.
