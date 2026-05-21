@@ -7,6 +7,164 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.29...reinhardt-web@v0.1.0-rc.30) - 2026-05-21
+
+### Added
+
+- *(model)* add typestate Model::build() constructor alongside new()
+- *(http,di)* add Middleware::di_registrations hook and type-erased DI APIs
+- *(middleware)* auto-register SessionMiddleware's Arc<SessionStore> via di_registrations
+- *(urls)* harvest middleware-contributed DI registrations in with_middleware
+- *(macros)* emit fk_target_app for same-app FK targets
+- *(core-macros)* emit BaseUserManager impl from #[user(...)]
+- *(pages)* add use_router() hook + RouterHandle + navigate() free function
+- *(pages)* add try_with_spa_router + NavigateError::RouterNotInstalled
+
+### Changed
+
+- *(examples-tutorial-basis)* drop manual session DI wiring now that SessionMiddleware auto-registers
+- *(urls)* address Copilot review on PR [[#4438](https://github.com/kent8192/reinhardt-web/issues/4438)](https://github.com/kent8192/reinhardt-web/issues/4438)
+- *(core-macros)* single-lock manager ops, route Value via reinhardt-auth
+- *(examples-rest)* follow up rc.16-rc.29 announcements
+- *(examples-rest)* [**breaking**] drop standalone flag, restructure urls/ for ResolvedUrls
+- *(examples-rest)* [**breaking**] drop USE_VIEWSET toggle, inline aggregator, Bruno ViewSet folder
+- *(ci)* consolidate Rust + protoc setup into setup-test-env composite action
+- *(ci)* move lightweight gate jobs to self-hosted hotpath runner
+- *(examples-tutorial-basis)* restore success_url attribute, drop use_effect workaround
+- *(examples-tutorial-basis)* replace links.rs wrappers with macro-emitted urls::* helpers
+- *(db)* extract to_snake_case into feature-flag-agnostic naming module
+- *(manouche)* drop redundant <img src> empty check
+
+### Documentation
+
+- *(macros)* document Model::build() typestate constructor in MU-3
+- *(auth)* document Clone requirement and PK uniqueness caveat for auto-manager
+- *(basis)* rewrite _index.md to match current example layout
+- *(basis)* sync part 1 (project setup) with example structure
+- *(basis)* sync part 2 (models) and introduce users app
+- *(examples-tutorial-basis)* refresh README project structure
+- *(basis)* sync part 7 (admin) with split admin layout
+- *(basis)* sync part 4 (forms) snippets with shared/forms.rs
+- *(basis)* rewrite part 3 (views and server_fn) for per-app layout
+- *(basis)* sync part 6 (static files) with dist-wasm pipeline
+- *(basis)* sync part 5 (testing) with integration + msw tests
+- *(basis)* drop stale references to nonexistent tests/availability.rs
+- *(basis)* fix mermaid syntax errors in tutorial diagrams
+- *(pages)* use backticks for cfg(wasm)-gated launch in builder docs
+- *(examples-tutorial-basis)* align README with current MSRV and tutorial paths
+- *(examples-rest)* sync README routing example + Project Structure with final code
+- *(db)* wrap `struct` in backticks to satisfy semgrep commented-out-code rule
+- *(db)* clarify pg_escape::quote_identifier semantics in test comment
+
+### Fixed
+
+- *(staticfiles)* disable immutable cache for bundle assets in debug builds
+- address Copilot review feedback
+- *(manouche)* resolve clippy errors blocking release-plz PR
+- *(model)* box SetterKind::ForeignKey::related_type to satisfy clippy
+- *(model-macros)* add doc comments to generated typestate-builder setters
+- *(model-macros)* include ForeignKeyField<T> in typestate builder
+- *(model-macros)* address Copilot review on typestate builder FK
+- *(model-macros)* harden FK keyword handling in typestate builder
+- *(model-macros)* exclude `extern` from reserved-ident set
+- *(pages-macros)* let form! initial and inner watch capture outer scope
+- *(examples-tutorial-basis)* register polls CUD server_fns in routes
+- *(examples-tutorial-basis)* rephrase prose to avoid `// TODO` false positive
+- *(middleware)* register session store under Arc<SessionStore> TypeId
+- *(urls)* apply middleware DI to local InjectionContext when present
+- *(urls)* stage middleware DI on router to survive any builder order
+- *(urls)* propagate with_di_context into already-mounted children
+- *(urls)* drain nested children pending DI on mount
+- *(urls)* drain grouped routers' pending DI in group()
+- *(db)* fall back to by-name FK lookup on qualified miss
+- *(db)* refuse FK resolution when target name is ambiguous
+- *(db,macros)* path-typed FK targets disambiguate ambiguous model names
+- *(macros)* source FK app label from target type's Model::app_label()
+- *(admin,core-macros)* opt admin user out of auto-manager and re-apply rustfmt
+- *(ci)* opt #[user] integration test fixtures out of auto-manager
+- address Copilot review threads on PR [[#4477](https://github.com/kent8192/reinhardt-web/issues/4477)](https://github.com/kent8192/reinhardt-web/issues/4477)
+- *(ci)* rewrite setup-test-env input descriptions without literal expressions
+- *(scripts)* fail fast in init-develop-branch.sh on branch mismatch
+- *(ci)* tighten release-plz-release gate with startsWith for chore: release
+- apply CodeRabbit auto-fixes
+- *(ci)* skip binary-only crates in semver-check matrix
+- *(migrations)* dispatch ALTER COLUMN TYPE per backend (MySQL MODIFY, SQLite recreate)
+- apply CodeRabbit auto-fixes
+- *(macros)* namespace installed_apps state file by CARGO_CRATE_NAME
+- *(macros)* align macro_state.rs fallback with #[routes]'s hard-fail include_bytes!
+- *(ci)* bound hotpath gate timeouts and add canonical-label pointer
+- *(integration)* add no_client_resolvers to viewset_typed_integration #[routes]
+- *(pages-macros)* lift success_url to outer scope + SPA-aware redirect
+- *(pages)* address Copilot review feedback on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
+- *(pages)* address CodeRabbit review on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
+- *(pages-macros)* hoist value-sink before on_success to avoid borrow-after-move
+- *(pages-macros)* hoist on_success_submit_invocation before navigation
+- *(macros)* emit fully-qualified type name for SuperuserCreatorRegistration
+- *(macros)* fall back to empty client reverser when no_client_resolvers is set
+- *(db)* split multi-statement reverse SQL and harden MySQL test helper
+- *(db)* emit ALTER COLUMN reverse as a single comma-separated statement
+- *(db)* separate CockroachDB ALTER COLUMN reverse from PostgreSQL path
+- *(macros)* address Copilot review on type_name const-ness and stale from_global() docstrings
+- *(db)* use sentinel-row lock on CockroachDB instead of pg_advisory_lock
+- *(db)* address Copilot review on CockroachDB probe and test helper
+- *(db)* address CodeRabbit review on flavor-aware ctor and sentinel-row assertion
+- *(examples-tutorial-basis)* force-link library from manage bin to preserve #[routes] inventory
+- *(db)* key M2M autodetection on table_name and align column convention with ORM accessor
+- *(db)* align ORM M2M accessor default through_table with autodetector
+- *(db)* normalize source/through table casing in M2M autodetection
+- *(db)* normalize remaining M2M through-table sites per Codex review
+- *(db)* propagate canonical M2M naming rule to runtime accessor + prefetch
+- *(db)* apply M2M metadata-aware path to filter_by_target + snake_case in default_through_table
+- *(db)* apply canonical M2M naming to runtime accessor + prefetch (correction)
+- *(db)* consolidate to_snake_case on single crate::naming source
+- *(db)* resolve real PK types and parse qualified to_model in M2M autodetection
+- *(db)* keep app label in qualified to_model fallback for target_table
+- *(db)* restore main's M2M autodetector fixes lost in prior merge
+- *(admin-cli)* recursively format nested page! macros
+- *(admin-cli)* harden ast_formatter parser against false-positive page! spans
+- *(admin-cli)* skip page!-shaped substrings inside strings and comments
+- apply CodeRabbit auto-fixes
+- *(admin-cli)* reword comment so no line starts with `match`
+
+### Maintenance
+
+- *(examples-tutorial-basis)* regenerate polls/0003 after [[#4430](https://github.com/kent8192/reinhardt-web/issues/4430)](https://github.com/kent8192/reinhardt-web/issues/4430) / [[#4431](https://github.com/kent8192/reinhardt-web/issues/4431)](https://github.com/kent8192/reinhardt-web/issues/4431) fix
+- *(examples-tutorial-basis)* regenerate users/0002 after [[#4447](https://github.com/kent8192/reinhardt-web/issues/4447)](https://github.com/kent8192/reinhardt-web/issues/4447) fix
+- *(examples-tutorial-basis)* adopt #[user] auto-manager opt-out
+- *(release-plz)* cancel in-flight Release PR runs on newer pushes
+- *(examples-tutorial-basis)* purge stale require_user comments from auth_tests
+- *(db)* drop orphan m2m_naming module
+
+### Other
+
+- incorporate remote on_success lift (PR [[#4624](https://github.com/kent8192/reinhardt-web/issues/4624)](https://github.com/kent8192/reinhardt-web/issues/4624) splice point)
+- resolve conflicts with main (on_success_ref + on_success lift)
+
+### Performance
+
+- *(db)* add direct lookup APIs to ModelRegistry
+- *(db)* migrate resolve_foreign_key_column_type to direct lookup
+
+### Styling
+
+- *(examples-tutorial-basis)* apply reinhardt-admin fmt-all to client polls
+- *(pages)* apply rustfmt to navigate.rs
+- *(db)* apply rustfmt to many_to_many_accessor import order
+- apply reinhardt-admin fmt-all output
+- *(examples)* apply reinhardt-admin fmt to clear examples-test drift
+
+### Testing
+
+- *(pages-macros)* trybuild compile_pass for [[#4420](https://github.com/kent8192/reinhardt-web/issues/4420)](https://github.com/kent8192/reinhardt-web/issues/4420) env capture
+- *(middleware)* cover SessionData::inject end-to-end via InjectionContext
+- *(core-macros)* regenerate stderr for non_uuid_pk_with_default_manager fixture
+- *(examples-tutorial-basis)* fix integration import after server_fn relocation
+- *(pages)* cover use_router and navigate integration paths
+- *(pages)* trybuild fixture for success_url outer-scope capture
+- *(macros)* refresh trybuild snapshot for non_uuid_pk_with_default_manager
+- *(admin-cli)* use strict equality for deterministic protect_page_macros assertions
+- *(db)* fix CockroachDB pinned-form assertion to match pg_escape semantics
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.28...reinhardt-web@v0.1.0-rc.29) - 2026-05-13
 
 ### Added
