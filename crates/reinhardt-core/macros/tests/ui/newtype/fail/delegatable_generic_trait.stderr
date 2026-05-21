@@ -1,0 +1,5 @@
+error: #[delegatable] cannot forward generic trait `Container`; wrap it manually or provide the type arguments at the newtype site (Issue #4667 v4)
+ --> tests/ui/newtype/fail/delegatable_generic_trait.rs:7:20
+  |
+7 | pub trait Container<T> {
+  |                    ^

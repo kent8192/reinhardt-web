@@ -47,6 +47,22 @@ pub(crate) fn delegatable_impl(args: TokenStream, input: TokenStream) -> Result<
 	let trait_ident = &trait_def.ident;
 	let macro_name = format_ident!("__reinhardt_delegate_{}", trait_ident);
 
+	// Reject generic traits — the generated `impl #trait_ident for $NewType`
+	// uses the bare trait identifier, so a `trait Foo<T>` would expand to the
+	// malformed `impl Foo for NewType`. Picking the right type argument
+	// requires it to be supplied at the delegation site, which is a v4
+	// follow-up (Issue #4667 Codex stop-time review).
+	if !trait_def.generics.params.is_empty() {
+		return Err(Error::new(
+			trait_def.generics.span(),
+			format!(
+				"#[delegatable] cannot forward generic trait `{trait_ident}`; \
+				 wrap it manually or provide the type arguments at the \
+				 newtype site (Issue #4667 v4)"
+			),
+		));
+	}
+
 	// Reject unsupported item shapes at the trait-definition site instead of
 	// silently producing an `impl Trait for NewType` that is missing required
 	// associated items — that would surface as an opaque downstream error at
