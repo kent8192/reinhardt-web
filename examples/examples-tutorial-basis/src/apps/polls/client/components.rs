@@ -720,12 +720,23 @@ pub fn question_edit(question_id: i64) -> Page {
 
 	let load_detail_signal = load_detail.clone();
 
-	// Render reactively in the canonical shape (see module-level docs):
-	// outer `div` + single `watch{}` block on `load_detail_signal`, with
-	// **nested `watch{}` blocks** for the form's own error/loading signals.
-	// `edit_form` is captured by the closures' implicit `move`s — the
-	// inner watches each subscribe only to the form signal they read,
-	// while the outer watch re-runs on `load_detail_signal` changes.
+	// Render reactively. The previous shape used an outer `watch{}` on
+	// `load_detail_signal` with *nested* `watch{}` blocks on
+	// `edit_form.error()` / `edit_form.loading()`. Each `watch{}` lowers
+	// to `Page::reactive(move || ...)` (`Fn() -> Page + 'static`); the
+	// inner closures each tried to take the non-`Copy`
+	// `EditQuestionForm` out of the outer closure a second time, which
+	// rustc rejects with `E0507` (issue #4515,
+	// `crates/reinhardt-pages/docs/watch_semantics.md` § "Fix 1").
+	//
+	// The DSL does not accept Rust `let` statements between `} else {`
+	// and the next node, so the doc's "Fix 2" (clone the form into
+	// outer-scope locals inside the `else` branch) is not currently
+	// expressible. Apply "Fix 1" (preferred): a single `watch{}` already
+	// subscribes to every signal it reads, so collapsing all three
+	// `watch{}` blocks into the outer one removes the nested-capture
+	// move and still re-renders on `load_detail_signal`,
+	// `edit_form.error()`, and `edit_form.loading()` changes.
 	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
 		div {
 			watch {
@@ -761,33 +772,29 @@ pub fn question_edit(question_id: i64) -> Page {
 							class: "mb-4",
 							"Edit Question"
 						}
-						watch {
-							if edit_form.error().get().is_some() {
-								div {
-									class: "alert-danger mb-3",
-									{ edit_form.error().get().unwrap_or_default() }
-								}
+						if edit_form.error().get().is_some() {
+							div {
+								class: "alert-danger mb-3",
+								{ edit_form.error().get().unwrap_or_default() }
 							}
 						}
 						{ edit_form.clone().into_page() }
 						div {
 							class: "mt-3",
-							watch {
-								if edit_form.loading().get() {
-									button {
-										type: "submit",
-										class: "btn-primary opacity-50 cursor-not-allowed",
-										disabled: true,
-										form: "edit-question-form",
-										"Saving..."
-									}
-								} else {
-									button {
-										type: "submit",
-										class: "btn-primary",
-										form: "edit-question-form",
-										"Save"
-									}
+							if edit_form.loading().get() {
+								button {
+									type: "submit",
+									class: "btn-primary opacity-50 cursor-not-allowed",
+									disabled: true,
+									form: "edit-question-form",
+									"Saving..."
+								}
+							} else {
+								button {
+									type: "submit",
+									class: "btn-primary",
+									form: "edit-question-form",
+									"Save"
 								}
 							}
 							a {
