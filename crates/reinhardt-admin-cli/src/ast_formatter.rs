@@ -2926,8 +2926,8 @@ fn main() {
 	}
 
 	// Regression: a `page!(...)` literal inside a regular string literal
-	// must not be picked up as a macro invocation, even when its tokens
-	// match the real macro byte-for-byte.
+	// must not be picked up as a macro invocation, even when those tokens
+	// happen to match the real macro byte-for-byte.
 	#[rstest]
 	fn test_protect_skips_lookalike_in_string_literal() {
 		// Arrange
