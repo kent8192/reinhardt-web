@@ -5588,12 +5588,18 @@ impl MigrationAutodetector {
 
 				if !exists_in_from {
 					// Generate the through-table name via the canonical
-					// convention. The source-table half of the formula is
-					// `{app_label}_{model_name}` per Django convention.
-					// See `super::naming` (issue #4665).
+					// convention, feeding it the model's actual source table
+					// (which already accounts for multi-word names and
+					// `#[model(table_name = "...")]` overrides) instead of
+					// recomputing `{app_label}_{model_name}`. This keeps the
+					// existence check byte-aligned with what
+					// `create_intermediate_table_for_m2m` writes into
+					// `to_state`. See `crate::m2m_naming` (issue #4665).
 					let through_table = m2m.through.clone().unwrap_or_else(|| {
-						let source_table = format!("{}_{}", app_label, model_name);
-						crate::m2m_naming::default_through_table(&source_table, &m2m.field_name)
+						crate::m2m_naming::default_through_table(
+							&model_state.table_name,
+							&m2m.field_name,
+						)
 					});
 
 					// Add to created_many_to_many
