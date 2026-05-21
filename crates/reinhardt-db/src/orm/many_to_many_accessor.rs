@@ -11,8 +11,8 @@
 use super::Manager;
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::relationship::RelationshipType;
-use crate::orm::Model;
 use crate::naming::to_snake_case;
+use crate::orm::Model;
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, DeleteStatement, Expr, Func, InsertStatement, MySqlQueryBuilder,
 	PostgresQueryBuilder, Query, QueryBuilder, SelectStatement, SqliteQueryBuilder, Values,
