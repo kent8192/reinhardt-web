@@ -148,6 +148,9 @@ impl DatabaseMigrationRecorder {
 
 	/// Performs the ensure schema table operation.
 	pub async fn ensure_schema_table(&self) -> super::Result<()> {
+		// `DatabaseType` is only referenced from the mysql-gated match arm below;
+		// import it under the same gate so the non-mysql build does not warn.
+		#[cfg(feature = "mysql")]
 		use crate::backends::types::DatabaseType;
 
 		// CockroachDB is wire-compatible with PostgreSQL but does NOT implement

@@ -446,7 +446,9 @@ fn validate_accessibility(
 /// - Numeric attributes must have integer literals or dynamic expressions (no strings/floats/booleans)
 /// - URL attributes are checked for dangerous schemes (javascript:, data:, vbscript:) for XSS prevention
 /// - Enumerated attributes are validated against allowed values (`input[type]`, `button[type]`, etc.)
-/// - `img` element `src` attribute must be a string literal and non-empty
+/// - `img` element `src` attribute: when given as a string literal it must be non-empty
+///   and use a safe URL scheme; dynamic expressions (e.g. `resolve_static(...)`) are
+///   accepted and deferred to runtime
 ///
 /// Future phases will add accessibility checks.
 fn validate_attr_type(
@@ -658,16 +660,12 @@ fn validate_attr_type(
 
 	// img element src attribute validation
 	// Fixes #849
+	//
+	// String literals are checked here for emptiness and dangerous URL schemes.
+	// Dynamic expressions (e.g. `resolve_static(...)`, variable references) are
+	// accepted and deferred to runtime validation.
 	if element_tag == "img" && attr_name == "src" {
-		// Must be a string literal
-		if !value.is_string_literal() {
-			return Err(syn::Error::new(
-				span,
-				"Element <img> 'src' attribute must be a string literal",
-			));
-		}
-
-		// Must not be empty
+		// Must not be empty (only checkable on string literals)
 		if let Some(src_value) = value.as_string() {
 			if src_value.trim().is_empty() {
 				return Err(syn::Error::new(
@@ -984,15 +982,11 @@ mod tests {
 
 	#[test]
 	fn test_validate_attr_type_img_src_dynamic() {
-		let value = AttrValue::from_expr(parse_quote!(image_url));
+		// Dynamic expressions (function calls, identifiers) are accepted —
+		// their value can only be validated at runtime.
+		let value = AttrValue::from_expr(parse_quote!(resolve_static("images/poll.svg")));
 		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
-		assert!(result.is_err());
-		assert!(
-			result
-				.unwrap_err()
-				.to_string()
-				.contains("must be a string literal")
-		);
+		assert!(result.is_ok());
 	}
 
 	#[test]

@@ -327,6 +327,10 @@ fn parse_braced_expression(input: ParseStream) -> Result<PageNode> {
 	let span = input.span();
 	let content;
 	let brace_token = braced!(content in input);
+	// Accept a full block body (statements + trailing expression) so
+	// interpolations such as `{ let x = ...; expr }` are valid. A single
+	// expression remains valid because `Block::parse_within` accepts it as
+	// a one-element statement list.
 	let stmts = syn::Block::parse_within(&content)?;
 
 	let expr = match stmts.as_slice() {

@@ -414,7 +414,8 @@ fn validate_accessibility(
 /// - Numeric attributes must have integer literals or dynamic expressions (no strings/floats/booleans)
 /// - URL attributes are checked for dangerous schemes (javascript:, data:, vbscript:) for XSS prevention
 /// - Enumerated attributes are validated against allowed values (`input[type]`, `button[type]`, etc.)
-/// - `img` element `src` attribute must be a string literal and non-empty
+/// - `img` element `src` attribute: when given as a string literal it must be non-empty;
+///   dynamic expressions (e.g. `resolve_static(...)`) are allowed and deferred to runtime
 ///
 /// Future phases will add accessibility checks.
 fn validate_attr_type(
@@ -630,26 +631,9 @@ fn validate_attr_type(
 	// Enumerated attributes validation - check if value is in allowed list
 	validate_enum_attr(attr_name, value, element_tag, span)?;
 
-	// img element src attribute validation
-	if element_tag == "img" && attr_name == "src" {
-		// Must be a string literal
-		if !value.is_string_literal() {
-			return Err(syn::Error::new(
-				span,
-				"Element <img> 'src' attribute must be a string literal",
-			));
-		}
-
-		// Must not be empty
-		if let Some(src_value) = value.as_string()
-			&& src_value.trim().is_empty()
-		{
-			return Err(syn::Error::new(
-				span,
-				"Element <img> 'src' attribute must not be empty",
-			));
-		}
-	}
+	// Note: emptiness of a string-literal `<img src="">` is rejected by the
+	// generic URL-attribute check above (URL_ATTRS includes ("src", img)).
+	// Dynamic expressions (e.g. `resolve_static(...)`) are deferred to runtime.
 
 	Ok(())
 }
@@ -1079,20 +1063,15 @@ mod tests {
 
 	#[rstest]
 	fn test_validate_attr_type_img_src_dynamic() {
-		// Arrange
-		let value = AttrValue::from_expr(parse_quote!(image_url));
+		// Arrange: dynamic expressions (function calls, identifiers) are accepted
+		// because their value can only be validated at runtime.
+		let value = AttrValue::from_expr(parse_quote!(resolve_static("images/poll.svg")));
 
 		// Act
 		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
 
 		// Assert
-		assert!(result.is_err());
-		assert!(
-			result
-				.unwrap_err()
-				.to_string()
-				.contains("must be a string literal")
-		);
+		assert!(result.is_ok());
 	}
 
 	#[rstest]
