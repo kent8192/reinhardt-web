@@ -6,16 +6,18 @@
 //! the result is bound through `use_action`, so the bar reactively updates
 //! once the WASM client finishes its first roundtrip.
 //!
-//! All `href` values are resolved through the per-app `links` modules
-//! (`apps::polls::client::links`, `apps::users::client::links`), which
-//! delegate to `ResolvedUrls::from_global()`. The reverser is registered
-//! in `client::lib::main`.
+//! All `href` values are resolved through the typed `urls` modules emitted
+//! by `#[url_patterns]` (issue #4656): `apps::polls::urls::client_router::urls`
+//! and `apps::users::urls::client_router::urls`. The macro-generated
+//! helpers wrap `ResolvedUrls::from_global()` internally; the reverser is
+//! registered in `client::lib::main`.
 
 // `nav_bar` crosses app boundaries: the home link belongs to the polls
 // app, and the login/logout/signup links belong to the users app. Pulling
-// each from its owning app makes that coupling explicit.
-use crate::apps::polls::client::links as polls_links;
-use crate::apps::users::client::links as users_links;
+// each from its owning app's macro-emitted `urls` module makes that
+// coupling explicit.
+use crate::apps::polls::urls::client_router::urls as polls_links;
+use crate::apps::users::urls::client_router::urls as users_links;
 use crate::shared::types::UserInfo;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
@@ -36,7 +38,7 @@ pub fn nav_bar() -> Page {
 	load_user.dispatch(());
 
 	let auth_signal = load_user.clone();
-	let polls_index_href = polls_links::polls_index();
+	let polls_index_href = polls_links::index();
 	let login_href = users_links::login();
 	let logout_href = users_links::logout();
 	let signup_href = users_links::signup();

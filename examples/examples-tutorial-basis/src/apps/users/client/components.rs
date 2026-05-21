@@ -11,11 +11,13 @@ use reinhardt::pages::reactive::Signal;
 
 #[cfg(wasm)]
 use crate::apps::users::server_fn::{login, logout, register};
-// users-app imports its own links plus polls's `polls_index` for the
-// post-login / post-signup landing-page redirect. Cross-app reference is
-// explicit so the dependency is greppable.
-use crate::apps::polls::client::links as polls_links;
-use crate::apps::users::client::links;
+// Typed URL helpers are now emitted by `#[url_patterns]` directly
+// (issue #4656). We alias them locally as `polls_links` / `links` so the
+// users-app's own login/logout/signup call sites stay concise, while
+// the cross-app reference (now `polls_links::index()`, previously the
+// hand-written `polls_index()` wrapper) remains explicit and greppable.
+use crate::apps::polls::urls::client_router::urls as polls_links;
+use crate::apps::users::urls::client_router::urls as links;
 
 /// Login page: username + password form posting to the `login` server function.
 ///
@@ -46,7 +48,7 @@ pub fn login_form() -> Page {
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
 	let form_view = login_form.into_page();
-	let polls_index_href = polls_links::polls_index();
+	let polls_index_href = polls_links::index();
 	let signup_href = links::signup();
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, signup_href: String| {
@@ -128,7 +130,7 @@ pub fn logout_form() -> Page {
 
 	let error_signal = logout_form.error().clone();
 	let form_view = logout_form.into_page();
-	let polls_index_href = polls_links::polls_index();
+	let polls_index_href = polls_links::index();
 
 	page!(|error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
@@ -211,7 +213,7 @@ pub fn signup_form() -> Page {
 	let loading_signal = signup_form.loading().clone();
 	let error_signal = signup_form.error().clone();
 	let form_view = signup_form.into_page();
-	let polls_index_href = polls_links::polls_index();
+	let polls_index_href = polls_links::index();
 	let login_href = links::login();
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, login_href: String| {
