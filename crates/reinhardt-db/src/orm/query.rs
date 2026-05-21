@@ -3452,20 +3452,56 @@ where
 			table_name.to_lowercase(),
 			to_snake_case(related_field)
 		));
-		// NOTE: the `{related_field}s` heuristic for `related_table` and the
-		// `trim_end_matches('s')` heuristic for `junction_main_fk` are
-		// pre-existing pluralization workarounds that should be replaced by
-		// a `RelationshipMetadata::table_name` lookup. Tracked in #4665
-		// (shared M2M naming helpers); fixing them here would expand this
-		// PR's scope beyond the #4659 regression. The casing of
-		// `junction_main_fk` is normalized to match the accessor's
-		// `default_link_fields`.
-		let related_table = Alias::new(format!("{}s", related_field));
-		let junction_main_fk = Alias::new(format!(
-			"{}_id",
-			table_name.trim_end_matches('s').to_lowercase()
-		));
-		let junction_related_fk = Alias::new(format!("{}_id", to_snake_case(related_field)));
+
+		// Look up relationship metadata to derive FK names correctly
+		let rel_info = T::relationship_metadata()
+			.into_iter()
+			.find(|r| {
+				r.name == related_field
+					&& r.relationship_type == super::relationship::RelationshipType::ManyToMany
+			});
+
+		// Derive related table name from metadata
+		let related_table = if let Some(ref info) = rel_info {
+			Alias::new(to_snake_case(&info.related_model).to_lowercase())
+		} else {
+			// Fallback to pluralization heuristic
+			Alias::new(format!("{}s", related_field))
+		};
+
+		// Derive junction FK names from metadata or use default_link_fields logic
+		let table_name_lower = table_name.to_lowercase();
+		let (junction_main_fk, junction_related_fk) = if let Some(ref info) = rel_info {
+			let source_fk = if let Some(ref sf) = info.source_field {
+				sf.clone()
+			} else {
+				// Mirror ManyToManyAccessor::default_link_fields logic
+				let related_lower = to_snake_case(&info.related_model).to_lowercase();
+				if table_name_lower == related_lower {
+					format!("from_{}_id", table_name_lower)
+				} else {
+					format!("{}_id", table_name_lower)
+				}
+			};
+
+			let target_fk = if let Some(ref tf) = info.target_field {
+				tf.clone()
+			} else {
+				let related_lower = to_snake_case(&info.related_model).to_lowercase();
+				if table_name_lower == related_lower {
+					format!("to_{}_id", table_name_lower)
+				} else {
+					format!("{}_id", to_snake_case(related_field))
+				}
+			};
+
+			(Alias::new(source_fk), Alias::new(target_fk))
+		} else {
+			// Fallback to heuristics
+			let source_fk = format!("{}_id", table_name_lower);
+			let target_fk = format!("{}_id", to_snake_case(related_field));
+			(Alias::new(source_fk), Alias::new(target_fk))
+		};
 
 		let mut stmt = Query::select();
 		stmt.from(related_table.clone())
