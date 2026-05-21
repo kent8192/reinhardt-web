@@ -254,6 +254,31 @@ Provides compile-time code generation for common patterns.
   - Registers with global migration registry via `linkme::distributed_slice`
   - Requires migration modules to export `migration()` function
 
+#### Newtype Bundle (`#[newtype]`)
+
+- **`#[newtype]`** — opt-out attribute macro that bundles the canonical
+  newtype boilerplate into a single attribute (Issue #4667).
+  - Default-emits: `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`, `PartialOrd`,
+    `Ord`, `Hash`, `Default`, `Display`, `From<Inner>`, `From<Self> for Inner`,
+    `AsRef<Inner>`, `AsMut<Inner>`, `Deref`, `DerefMut`, `FromStr`,
+    transparent `serde::Serialize` / `Deserialize`
+  - Opt out of any trait via `skip(...)` — e.g. `#[newtype(skip(Copy))]` for
+    `String`-backed newtypes
+  - Override the inferred inner type with `inner = T` for single-field named
+    structs (`pub struct Counter { value: u64 }`)
+  - Companion `delegate(Trait, ...)` forwards user traits marked with the
+    sibling `#[delegatable]` attribute (same-module scope in MVP)
+  - Compile-time sanity checks reject self-contradictory opt-outs such as
+    `skip(PartialEq)` without `skip(Eq)`
+
+- **`#[delegatable]`** — attach to a trait so `#[newtype(delegate(Trait))]`
+  can synthesize an `impl Trait for NewType` that forwards every non-default
+  method through the wrapped inner field
+  - Methods that take `&self` / `&mut self` and have plain identifier
+    parameters are forwarded automatically
+  - Generic methods, value-`self` receivers, and associated items are
+    rejected with a clear error
+
 #### Generic Dependency Injection
 
 - **`#[use_inject]`** - Standalone dependency injection for any function

@@ -1,0 +1,5 @@
+error: #[newtype] does not support generic parameters in MVP scope; see Issue #4667 follow-up
+ --> tests/ui/newtype/fail/generic_struct.rs:6:19
+  |
+6 | pub struct Wrapper<T>(T);
+  |                   ^

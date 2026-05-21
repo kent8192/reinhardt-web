@@ -1,0 +1,5 @@
+error: unknown trait `MagicSauce` in `skip(...)`; known names: Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Display, From, Into, AsRef, AsMut, Deref, DerefMut, FromStr, Serialize, Deserialize
+ --> tests/ui/newtype/fail/unknown_skip.rs:5:16
+  |
+5 | #[newtype(skip(MagicSauce))]
+  |                ^^^^^^^^^^

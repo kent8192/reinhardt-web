@@ -1,0 +1,5 @@
+error: #[delegatable] cannot forward traits with required associated type items; wrap `Storage` manually or provide a default value
+ --> tests/ui/newtype/fail/delegatable_assoc_type.rs:8:7
+  |
+8 |     type Key;
+  |          ^^^

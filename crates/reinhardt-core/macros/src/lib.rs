@@ -24,6 +24,7 @@ mod apply_update_attribute;
 mod apply_update_derive;
 mod collect_migrations;
 mod crate_paths;
+mod delegatable;
 mod dto;
 mod flatten_imports;
 mod hook;
@@ -34,6 +35,7 @@ mod installed_apps;
 mod macro_state;
 mod model_attribute;
 mod model_derive;
+mod newtype;
 mod orm_reflectable_derive;
 mod pascal_case;
 mod path_macro;
@@ -81,6 +83,60 @@ use schema::derive_schema_impl;
 use url_patterns::url_patterns_impl;
 use use_inject::use_inject_impl;
 use user_attribute::user_attribute_impl;
+
+/// `#[newtype]` — bundle the canonical newtype boilerplate (`Debug`, `Clone`,
+/// `Copy`, `PartialEq`, `Eq`, `PartialOrd`, `Ord`, `Hash`, `Default`,
+/// `Display`, `From`, `Into`, `AsRef`, `AsMut`, `Deref`, `DerefMut`,
+/// `FromStr`, transparent `serde::Serialize` / `Deserialize`) into one
+/// attribute. All traits are emitted by default and can be removed individually
+/// via `skip(...)`. Optional `delegate(Trait, ...)` forwards user traits that
+/// were marked with the companion `#[delegatable]` attribute.
+///
+/// See `crate::newtype` for the full trait catalogue and DESIGN_PHILOSOPHY §3
+/// (CoC is a right, not an obligation) for the opt-out rationale.
+///
+/// ```rust,ignore
+/// use reinhardt_macros::newtype;
+///
+/// #[newtype]
+/// pub struct UserId(u64);
+///
+/// #[newtype(skip(Copy))]
+/// pub struct UserName(String);
+///
+/// #[newtype(skip(Deref, DerefMut, Display))]
+/// pub struct OpaqueToken(String);
+/// ```
+#[proc_macro_attribute]
+pub fn newtype(args: TokenStream, input: TokenStream) -> TokenStream {
+	newtype::newtype_impl(args.into(), input.into())
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// `#[delegatable]` — attach to a trait so `#[newtype(delegate(Trait))]` can
+/// forward every non-default method of the trait to the wrapped inner field.
+/// See `crate::delegatable` for the scope limitation (same-module only in
+/// MVP).
+///
+/// ```rust,ignore
+/// use reinhardt_macros::{delegatable, newtype};
+///
+/// #[delegatable]
+/// pub trait Repository {
+///     fn find(&self, id: u64) -> Option<String>;
+///     fn count(&self) -> usize;
+/// }
+///
+/// #[newtype(delegate(Repository))]
+/// pub struct LoggingRepo(PgRepo);
+/// ```
+#[proc_macro_attribute]
+pub fn delegatable(args: TokenStream, input: TokenStream) -> TokenStream {
+	delegatable::delegatable_impl(args.into(), input.into())
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
 
 /// Decorator for function-based API views
 #[proc_macro_attribute]

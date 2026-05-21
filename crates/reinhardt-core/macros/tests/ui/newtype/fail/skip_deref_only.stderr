@@ -1,0 +1,5 @@
+error: skipping `Deref` requires also skipping `DerefMut` (DerefMut depends on Deref)
+ --> tests/ui/newtype/fail/skip_deref_only.rs:6:12
+  |
+6 | pub struct Bad(u64);
+  |            ^^^

@@ -1,0 +1,5 @@
+error: #[newtype] requires a struct with exactly one field (tuple or named)
+ --> tests/ui/newtype/fail/multi_field.rs:6:15
+  |
+6 | pub struct Bad(u64, u64);
+  |               ^^^^^^^^^^

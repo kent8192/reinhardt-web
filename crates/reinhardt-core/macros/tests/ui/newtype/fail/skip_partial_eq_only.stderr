@@ -1,0 +1,5 @@
+error: skipping `PartialEq` requires also skipping `Eq` (Eq depends on PartialEq)
+ --> tests/ui/newtype/fail/skip_partial_eq_only.rs:6:12
+  |
+6 | pub struct Bad(u64);
+  |            ^^^
