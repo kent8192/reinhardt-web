@@ -66,11 +66,11 @@ pub fn login_form() -> Page {
 						if error_signal.get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ error_signal.get().unwrap_or_default() }
+								{ { error_signal.get().unwrap_or_default() } }
 							}
 						}
 					}
-					{ form_view }
+					{ { form_view } }
 					div {
 						class: "mt-4",
 						watch {
@@ -151,11 +151,11 @@ pub fn logout_form() -> Page {
 						if error_signal.get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ error_signal.get().unwrap_or_default() }
+								{ { error_signal.get().unwrap_or_default() } }
 							}
 						}
 					}
-					{ form_view }
+					{ { form_view } }
 					button {
 						type: "submit",
 						class: "btn-secondary w-full",
@@ -231,11 +231,11 @@ pub fn signup_form() -> Page {
 						if error_signal.get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ error_signal.get().unwrap_or_default() }
+								{ { error_signal.get().unwrap_or_default() } }
 							}
 						}
 					}
-					{ form_view }
+					{ { form_view } }
 					div {
 						class: "mt-4",
 						watch {

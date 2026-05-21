@@ -108,7 +108,7 @@ pub fn login_form() -> Page {
 					class: "text-center mb-8",
 					div {
 						class: "inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand/10 mb-4",
-						{ icons::chat_bubble_icon_brand() }
+						{ { icons::chat_bubble_icon_brand() } }
 					}
 					h1 {
 						class: "text-2xl font-bold text-content-primary",
@@ -129,15 +129,15 @@ pub fn login_form() -> Page {
 									class: "alert-danger mb-4",
 									div {
 										class: "flex items-center gap-2",
-										{ icons::error_circle_icon() }
+										{ { icons::error_circle_icon() } }
 										span {
-											{ error_signal.get().unwrap_or_default() }
+											{ { error_signal.get().unwrap_or_default() } }
 										}
 									}
 								}
 							}
 						}
-						{ form_view }
+						{ { form_view } }
 						div {
 							class: "flex items-center justify-between mt-4",
 							label {
@@ -322,7 +322,7 @@ pub fn register_form() -> Page {
 					class: "text-center mb-8",
 					div {
 						class: "inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand/10 mb-4",
-						{ icons::user_add_icon() }
+						{ { icons::user_add_icon() } }
 					}
 					h1 {
 						class: "text-2xl font-bold text-content-primary",
@@ -343,15 +343,15 @@ pub fn register_form() -> Page {
 									class: "alert-danger mb-4",
 									div {
 										class: "flex items-center gap-2",
-										{ icons::error_circle_icon() }
+										{ { icons::error_circle_icon() } }
 										span {
-											{ error_signal.get().unwrap_or_default() }
+											{ { error_signal.get().unwrap_or_default() } }
 										}
 									}
 								}
 							}
 						}
-						{ form_view }
+						{ { form_view } }
 						div {
 							class: "flex items-start gap-2 mt-4",
 							input {

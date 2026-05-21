@@ -73,7 +73,7 @@ pub fn polls_index() -> Page {
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ load_questions_error.error().unwrap_or_default() }
+						{ { load_questions_error.error().unwrap_or_default() } }
 					}
 				}
 			}
@@ -106,10 +106,10 @@ pub fn polls_index() -> Page {
 									class: "flex w-full justify-between",
 									h5 {
 										class: "mb-1",
-										{ question.question_text.clone() }
+										{ { question.question_text.clone() } }
 									}
 									small {
-										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
+										{ { question.pub_date.format("%Y-%m-%d %H:%M").to_string() } }
 									}
 								}
 							}
@@ -194,7 +194,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 							type: "submit",
 							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
 							disabled: is_loading,
-							{ if is_loading { "Voting..." } else { "Vote" } }
+							{ { if is_loading { "Voting..." } else { "Vote" } } }
 						}
 						a {
 							href: back_href,
@@ -211,7 +211,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 						if let Some(e) = err.clone() {
 							div {
 								class: "alert-danger mt-3",
-								{ e }
+								{ { e } }
 							}
 						}
 					}
@@ -268,7 +268,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ load_detail_signal.error().unwrap_or_default() }
+							{ { load_detail_signal.error().unwrap_or_default() } }
 						}
 						a {
 							href: links::detail(question_id),
@@ -288,10 +288,12 @@ pub fn polls_detail(question_id: i64) -> Page {
 							class: "flex justify-between items-center mb-4",
 							h1 {
 								{
-									load_detail_signal
-											.result()
-											.map(|(q, _)| q.question_text.clone())
-											.unwrap_or_default()
+									{
+											load_detail_signal
+												.result()
+												.map(|(q, _)| q.question_text.clone())
+												.unwrap_or_default()
+										}
 								}
 							}
 							div {
@@ -313,7 +315,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 								}
 							}
 						}
-						{ voting_form.clone().into_page() }
+						{ { voting_form.clone().into_page() } }
 						div {
 							class: "mt-4",
 							a {
@@ -375,7 +377,7 @@ pub fn polls_results(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ load_results_signal.error().unwrap_or_default() }
+							{ { load_results_signal.error().unwrap_or_default() } }
 						}
 						a {
 							href: links::index(),
@@ -389,10 +391,12 @@ pub fn polls_results(question_id: i64) -> Page {
 						h1 {
 							class: "mb-4",
 							{
-								load_results_signal
-										.result()
-										.map(|(q, _, _)| q.question_text.clone())
-										.unwrap_or_default()
+								{
+										load_results_signal
+											.result()
+											.map(|(q, _, _)| q.question_text.clone())
+											.unwrap_or_default()
+									}
 							}
 						}
 						div {
@@ -406,30 +410,33 @@ pub fn polls_results(question_id: i64) -> Page {
 								div {
 									class: "divide-y divide-border",
 									{
-										if let Some((_, choices, total)) = load_results_signal.result() {
-												page!(|choices: Vec<ChoiceInfo>, total: i32| {
-													for choice in choices {
-														{
-															let percentage = if total > 0 {
-																(choice.votes as f64 / total as f64 * 100.0) as i32
-															} else {
-																0
-															};
-															page!(| choice : ChoiceInfo, percentage : i32 | { div {
-										            class : "py-4", div { class : "flex justify-between items-center mb-2",
-										            strong { { choice.choice_text.clone() } } span { class :
-										            "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-										            { format!("{} votes", choice.votes) } } } div { class :
-										            "w-full bg-surface-tertiary rounded-full h-2.5", div { class :
-										            "bg-brand h-2.5 rounded-full", role : "progressbar", style :
-										            format!("width: {}%", percentage), aria_valuenow : percentage.to_string(),
-										            aria_valuemin : "0", aria_valuemax : "100", { format!("{}%", percentage) } }
-										            } } })(choice, percentage)
+										{
+												if let Some((_, choices, total)) = load_results_signal.result() {
+													page!(|choices: Vec<ChoiceInfo>, total: i32| {
+														for choice in choices {
+															{
+																let percentage = if total > 0 {
+																	(choice.votes as f64 / total as f64 * 100.0) as i32
+																} else {
+																	0
+																};
+																page!(| choice : ChoiceInfo, percentage : i32
+										                | { div { class : "py-4", div { class :
+										                "flex justify-between items-center mb-2", strong { { choice.choice_text
+										                .clone() } } span { class :
+										                "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
+										                { format!("{} votes", choice.votes) } } } div { class :
+										                "w-full bg-surface-tertiary rounded-full h-2.5", div { class :
+										                "bg-brand h-2.5 rounded-full", role : "progressbar", style :
+										                format!("width: {}%", percentage), aria_valuenow : percentage
+										                .to_string(), aria_valuemin : "0", aria_valuemax : "100", {
+										                format!("{}%", percentage) } } } } })(choice, percentage)
+															}
 														}
-													}
-												})(choices, total)
-											} else {
-												Page::Empty
+													})(choices, total)
+												} else {
+													Page::Empty
+												}
 											}
 									}
 								}
@@ -438,13 +445,15 @@ pub fn polls_results(question_id: i64) -> Page {
 									p {
 										class: "text-muted",
 										{
-											format!(
-													"Total votes: {}",
-													load_results_signal
-														.result()
-														.map(|(_, _, total)| total)
-														.unwrap_or(0)
-												)
+											{
+													format!(
+														"Total votes: {}",
+														load_results_signal
+															.result()
+															.map(|(_, _, total)| total)
+															.unwrap_or(0)
+													)
+												}
 										}
 									}
 								}
@@ -525,7 +534,7 @@ pub fn polls_index_with_logo() -> Page {
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ load_questions_error.error().unwrap_or_default() }
+						{ { load_questions_error.error().unwrap_or_default() } }
 					}
 				}
 			}
@@ -565,11 +574,11 @@ pub fn polls_index_with_logo() -> Page {
 										class: "flex-1",
 										h5 {
 											class: "mb-1",
-											{ question.question_text.clone() }
+											{ { question.question_text.clone() } }
 										}
 									}
 									small {
-										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
+										{ { question.pub_date.format("%Y-%m-%d %H:%M").to_string() } }
 									}
 								}
 							}
@@ -631,11 +640,11 @@ pub fn question_new() -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ { error_signal.get().unwrap_or_default() } }
 					}
 				}
 			}
-			{ form_view }
+			{ { form_view } }
 			div {
 				class: "mt-3",
 				watch {
@@ -757,7 +766,7 @@ pub fn question_edit(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ load_detail_signal.error().unwrap_or_default() }
+							{ { load_detail_signal.error().unwrap_or_default() } }
 						}
 						a {
 							href: links::index(),
@@ -775,10 +784,10 @@ pub fn question_edit(question_id: i64) -> Page {
 						if edit_form.error().get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ edit_form.error().get().unwrap_or_default() }
+								{ { edit_form.error().get().unwrap_or_default() } }
 							}
 						}
-						{ edit_form.clone().into_page() }
+						{ { edit_form.clone().into_page() } }
 						div {
 							class: "mt-3",
 							if edit_form.loading().get() {
@@ -869,14 +878,14 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 							}
 							blockquote {
 								class: "border-l-4 border-border-secondary pl-4 italic my-3",
-								{ q.question_text.clone() }
+								{ { q.question_text.clone() } }
 							}
 						}
 					}
 				} else if load_detail_signal.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ load_detail_signal.error().unwrap_or_default() }
+						{ { load_detail_signal.error().unwrap_or_default() } }
 					}
 				}
 			}
@@ -884,11 +893,11 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mt-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ { error_signal.get().unwrap_or_default() } }
 					}
 				}
 			}
-			{ form_view }
+			{ { form_view } }
 			div {
 				class: "mt-3",
 				watch {
@@ -979,11 +988,11 @@ pub fn choice_new(question_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ { error_signal.get().unwrap_or_default() } }
 					}
 				}
 			}
-			{ form_view }
+			{ { form_view } }
 			div {
 				class: "mt-3",
 				watch {
@@ -1063,11 +1072,11 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ { error_signal.get().unwrap_or_default() } }
 					}
 				}
 			}
-			{ form_view }
+			{ { form_view } }
 			div {
 				class: "mt-3",
 				watch {
@@ -1145,11 +1154,11 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mt-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ { error_signal.get().unwrap_or_default() } }
 					}
 				}
 			}
-			{ form_view }
+			{ { form_view } }
 			div {
 				class: "mt-3",
 				watch {

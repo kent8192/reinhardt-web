@@ -79,7 +79,7 @@ fn test_watch_ssr_basic_render(string_signal: Signal<String>) {
 			class: "container",
 			watch {
 				span {
-					{ signal.get() }
+					{ { signal.get() } }
 				}
 			}
 		}
@@ -284,7 +284,7 @@ fn test_watch_ssr_content_escaping() {
 	let view = page!(|xss_content: Signal<String>| {
 		div {
 			watch {
-				{ xss_content.get() }
+				{ { xss_content.get() } }
 			}
 		}
 	})(xss_content.clone());
@@ -317,7 +317,7 @@ fn test_watch_ssr_for_loop(list_signal: Signal<Vec<String>>) {
 			watch {
 				for item in items.get().iter() {
 					li {
-						{ item.clone() }
+						{ { item.clone() } }
 					}
 				}
 			}
@@ -354,7 +354,7 @@ fn test_watch_ssr_expression(counter_signal: Signal<i32>) {
 	let view = page!(|counter: Signal<i32>| {
 		div {
 			watch {
-				{ format!("Count: {}", counter.get()) }
+				{ { format!("Count: {}", counter.get()) } }
 			}
 		}
 	})(counter.clone());
@@ -394,7 +394,7 @@ fn test_watch_ssr_multiple_blocks(
 				if error.get().is_some() {
 					div {
 						class: "error",
-						{ error.get().unwrap_or_default() }
+						{ { error.get().unwrap_or_default() } }
 					}
 				}
 			}
@@ -426,7 +426,7 @@ fn test_watch_ssr_unicode() {
 	let view = page!(|content: Signal<String>| {
 		div {
 			watch {
-				{ content.get() }
+				{ { content.get() } }
 			}
 		}
 	})(unicode_content.clone());
@@ -487,7 +487,7 @@ fn test_watch_ssr_empty_content() {
 		div {
 			class: "wrapper",
 			watch {
-				{ empty.get() }
+				{ { empty.get() } }
 			}
 		}
 	})(empty.clone());
@@ -517,7 +517,7 @@ fn test_watch_ssr_with_renderer(ssr_renderer: SsrRenderer, string_signal: Signal
 		div {
 			watch {
 				p {
-					{ signal.get() }
+					{ { signal.get() } }
 				}
 			}
 		}
@@ -597,13 +597,15 @@ fn test_watch_ssr_fragment_result(list_signal: Signal<Vec<String>>) {
 		div {
 			watch {
 				{
-					Page::fragment(
-							items
-								.get()
-								.iter()
-								.map(|i| Page::text(i.clone()))
-								.collect::<Vec<Page>>(),
-						)
+					{
+							Page::fragment(
+								items
+									.get()
+									.iter()
+									.map(|i| Page::text(i.clone()))
+									.collect::<Vec<Page>>(),
+							)
+						}
 				}
 			}
 		}
@@ -648,7 +650,7 @@ fn test_watch_ssr_state_matrix(
 				if error.get().is_some() {
 					div {
 						class: "error",
-						{ error.get().unwrap_or_default() }
+						{ { error.get().unwrap_or_default() } }
 					}
 				}
 			}

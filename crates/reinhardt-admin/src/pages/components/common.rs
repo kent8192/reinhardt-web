@@ -70,7 +70,7 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, on_click: Sign
 				class: classes,
 				type: "button",
 				disabled: true,
-				{ text }
+				text
 			}
 		})();
 	}
@@ -82,7 +82,7 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, on_click: Sign
 			@click: move |_| {
 						_on_click.set(true);
 					},
-			{ text }
+			text
 		}
 	})(on_click)
 }
@@ -134,7 +134,7 @@ pub fn error_display(message: &str, dismissible: bool) -> Page {
 				class: "admin-alert admin-alert-danger flex items-start justify-between animate__animated animate__shakeX",
 				role: "alert",
 				span {
-					{ message }
+					message
 				}
 				button {
 					class: "ml-4 text-red-400 hover:text-red-600 cursor-pointer",
@@ -149,7 +149,7 @@ pub fn error_display(message: &str, dismissible: bool) -> Page {
 			div {
 				class: "admin-alert admin-alert-danger animate__animated animate__shakeX",
 				role: "alert",
-				{ message }
+				message
 			}
 		})()
 	}
@@ -224,7 +224,7 @@ pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> Page {
 	page!(|| {
 		div {
 			class: "flex justify-center gap-1 mt-6",
-			{ nav_items }
+			nav_items
 		}
 	})()
 }
@@ -248,7 +248,7 @@ where
 				class: "admin-page-link admin-page-link-disabled",
 				aria_disabled: "true",
 				tabindex: (- 1_i32).to_string(),
-				{ text }
+				text
 			}
 		})()
 	} else if active {
@@ -256,7 +256,7 @@ where
 			span {
 				class: "admin-page-link admin-page-link-active",
 				aria_current: "page",
-				{ text }
+				text
 			}
 		})()
 	} else {
@@ -268,7 +268,7 @@ where
 				@click: move |_| {
 							_handler(_signal.clone());
 						},
-				{ text }
+				text
 			}
 		})(signal, handler)
 	}

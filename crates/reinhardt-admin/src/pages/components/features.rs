@@ -71,9 +71,9 @@ pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
 			class: "dashboard animate__animated animate__fadeIn",
 			h1 {
 				class: "font-display text-2xl font-bold text-slate-900 mb-6",
-				{ format!("{} Dashboard", site_name) }
+				format!("{} Dashboard", site_name)
 			}
-			{ grid }
+			grid
 		}
 	})()
 }
@@ -97,7 +97,7 @@ fn models_grid(models: &[ModelInfo]) -> Page {
 	page!(|| {
 		div {
 			class: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4",
-			{ card_views }
+			card_views
 		}
 	})()
 }
@@ -113,16 +113,16 @@ fn model_card(name: &str, url: &str) -> Page {
 			class: "admin-card p-5 flex flex-col animate__animated animate__fadeInUp",
 			h3 {
 				class: "font-display text-lg font-bold text-slate-900 mb-1",
-				{ name.clone() }
+				name.clone()
 			}
 			p {
 				class: "text-sm text-slate-500 mb-4 flex-1",
-				{ format!("Manage {} records", name) }
+				format!("Manage {} records", name)
 			}
 			a {
 				class: "admin-btn admin-btn-primary text-center",
 				href: url,
-				{ label }
+				label
 			}
 		}
 	})()
@@ -205,15 +205,15 @@ pub fn list_view(
 			class: "list-view animate__animated animate__fadeIn",
 			h1 {
 				class: "font-display text-2xl font-bold text-slate-900 mb-6",
-				{ title }
+				title
 			}
-			{ filters_page }
+			filters_page
 			div {
 				class: "text-sm text-slate-500 mb-4",
-				{ summary }
+				summary
 			}
-			{ table_page }
-			{ pagination_page }
+			table_page
+			pagination_page
 		}
 	})()
 }
@@ -230,7 +230,7 @@ fn data_table(
 			let label = col.label.clone();
 			page!(|| {
 				th {
-					{ label }
+					label
 				}
 			})()
 		})
@@ -244,7 +244,7 @@ fn data_table(
 	let thead = page!(|| {
 		thead {
 			tr {
-				{ header_cells }
+				header_cells
 			}
 		}
 	})();
@@ -256,7 +256,7 @@ fn data_table(
 
 	let tbody = page!(|| {
 		tbody {
-			{ body_rows }
+			body_rows
 		}
 	})();
 
@@ -265,8 +265,8 @@ fn data_table(
 			class: "overflow-x-auto rounded-lg border border-slate-200",
 			table {
 				class: "admin-table",
-				{ thead }
-				{ tbody }
+				thead
+				tbody
 			}
 		}
 	})()
@@ -287,7 +287,7 @@ fn table_row(
 				.unwrap_or_else(|| "-".to_string());
 			page!(|| {
 				td {
-					{ value }
+					value
 				}
 			})()
 		})
@@ -297,14 +297,14 @@ fn table_row(
 	let actions = action_buttons(model_name, &record_id);
 	let actions_cell = page!(|| {
 		td {
-			{ actions }
+			actions
 		}
 	})();
 
 	page!(|| {
 		tr {
-			{ data_cells }
-			{ actions_cell }
+			data_cells
+			actions_cell
 		}
 	})()
 }
@@ -329,8 +329,8 @@ fn action_buttons(model_name: &str, record_id: &str) -> Page {
 	page!(|| {
 		div {
 			class: "flex gap-1",
-			{ view_link }
-			{ edit_link }
+			view_link
+			edit_link
 		}
 	})()
 }
@@ -392,13 +392,13 @@ pub fn detail_view(
 			class: "detail-view animate__animated animate__fadeIn",
 			h1 {
 				class: "font-display text-2xl font-bold text-slate-900 mb-6",
-				{ title }
+				title
 			}
-			{ table_page }
+			table_page
 			div {
 				class: "mt-6 flex gap-2",
-				{ edit_link }
-				{ back_link }
+				edit_link
+				back_link
 			}
 		}
 	})()
@@ -418,11 +418,11 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 				tr {
 					th {
 						class: "w-1/4 text-left text-sm font-medium text-slate-500 py-3 px-4 bg-slate-50",
-						{ key }
+						key
 					}
 					td {
 						class: "text-sm text-slate-800 py-3 px-4",
-						{ value }
+						value
 					}
 				}
 			})()
@@ -435,7 +435,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 			table {
 				class: "admin-table",
 				tbody {
-					{ rows }
+					rows
 				}
 			}
 		}
@@ -495,7 +495,7 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 	let form_groups = page!(|| {
 		div {
 			class: "admin-card p-6",
-			{ form_fields }
+			form_fields
 		}
 	})();
 	let cancel_link = Link::new(list_url, "Cancel")
@@ -507,12 +507,12 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 			class: "model-form max-w-2xl animate__animated animate__fadeIn",
 			h1 {
 				class: "font-display text-2xl font-bold text-slate-900 mb-6",
-				{ form_title }
+				form_title
 			}
 			form {
 				method: "post",
 				action: action_url,
-				{ form_groups }
+				form_groups
 				div {
 					class: "mt-6 flex gap-2",
 					button {
@@ -520,7 +520,7 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 						type: "submit",
 						"Save"
 					}
-					{ cancel_link }
+					cancel_link
 				}
 			}
 		}
@@ -539,9 +539,9 @@ fn form_group(field: &FormField) -> Page {
 			label {
 				for: input_id,
 				class: "admin-label",
-				{ label }
+				label
 			}
-			{ input }
+			input
 		}
 	})()
 }
@@ -564,14 +564,14 @@ fn render_option_elements(choices: &[(String, String)], selected: &[&str]) -> Ve
 					option {
 						value: value,
 						selected: true,
-						{ label }
+						label
 					}
 				})()
 			} else {
 				page!(|| {
 					option {
 						value: value,
-						{ label }
+						label
 					}
 				})()
 			}
@@ -615,7 +615,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						name: name,
 						required: true,
 						autocomplete: "off",
-						{ value }
+						value
 					}
 				})()
 			} else {
@@ -625,7 +625,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						id: input_id,
 						name: name,
 						autocomplete: "off",
-						{ value }
+						value
 					}
 				})()
 			}
@@ -639,7 +639,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						id: input_id,
 						name: name,
 						required: true,
-						{ options }
+						options
 					}
 				})()
 			} else {
@@ -648,7 +648,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						class: "admin-select",
 						id: input_id,
 						name: name,
-						{ options }
+						options
 					}
 				})()
 			}
@@ -664,7 +664,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						name: name,
 						multiple: true,
 						required: true,
-						{ options }
+						options
 					}
 				})()
 			} else {
@@ -674,7 +674,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						id: input_id,
 						name: name,
 						multiple: true,
-						{ options }
+						options
 					}
 				})()
 			}
@@ -773,14 +773,14 @@ fn create_filter_select(
 					option {
 						value: value,
 						selected: true,
-						{ label }
+						label
 					}
 				})()
 			} else {
 				page!(|| {
 					option {
 						value: value,
-						{ label }
+						label
 					}
 				})()
 			}
@@ -788,7 +788,7 @@ fn create_filter_select(
 		.collect();
 	let options_container = page!(|| {
 		span {
-			{ options }
+			options
 		}
 	})();
 	let field_str = field.to_string();
@@ -813,7 +813,7 @@ fn create_filter_select(
 							}
 						}
 					},
-			{ options_container }
+			options_container
 		}
 	})(field_str, filters_signal)
 }
@@ -839,9 +839,9 @@ fn create_filter_control(
 			class: "min-w-48",
 			label {
 				class: "admin-label",
-				{ label }
+				label
 			}
-			{ select }
+			select
 		}
 	})()
 }
@@ -891,7 +891,7 @@ pub fn filters(
 	let filter_controls = page!(|| {
 		div {
 			class: "flex flex-wrap gap-4",
-			{ filter_controls }
+			filter_controls
 		}
 	})();
 
@@ -902,7 +902,7 @@ pub fn filters(
 				class: "text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3",
 				"Filters"
 			}
-			{ filter_controls }
+			filter_controls
 		}
 	})()
 }

@@ -17,7 +17,7 @@ fn main() {
 				if error.get().is_some() {
 					div {
 						class: "alert alert-danger",
-						{ error.get().unwrap_or_default() }
+						{ { error.get().unwrap_or_default() } }
 					}
 				}
 			}
@@ -37,7 +37,7 @@ fn main() {
 						for item in items.get().iter() {
 							li {
 								class: "item",
-								{ item.clone() }
+								{ { item.clone() } }
 							}
 						}
 					}

@@ -8,7 +8,7 @@ fn main() {
 		ul {
 			for item in items {
 				li {
-					{ item }
+					{ { item } }
 				}
 			}
 		}
@@ -21,11 +21,11 @@ fn main() {
 				li {
 					if active {
 						strong {
-							{ format!("{}", num) }
+							{ { format!("{}", num) } }
 						}
 					} else {
 						span {
-							{ format!("{}", num) }
+							{ { format!("{}", num) } }
 						}
 					}
 				}
