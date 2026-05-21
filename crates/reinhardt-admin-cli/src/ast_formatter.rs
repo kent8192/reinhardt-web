@@ -167,10 +167,14 @@ impl<'a> PageMacroVisitor<'a> {
 	}
 
 	/// Find the page! macro in source and return its position info.
+	///
+	/// Accepts both the human-authored form `page!(...)` and the
+	/// `proc_macro2::TokenStream` Display form `page ! ( ... )`, which
+	/// appears when the formatter recurses via wrapper code built from
+	/// `expr.to_token_stream()` (it inserts whitespace between tokens).
+	/// Without the lenient match, nested `page!` macros inside such
+	/// wrapper code would be invisible to `protect_page_macros`.
 	fn find_macro_in_source(&self, _tokens_content: &str) -> Option<MacroInfo> {
-		// This is a simplified approach - we search for "page!(" patterns
-		// and verify by comparing token content
-		let pattern = "page!(";
 		let mut search_start = 0;
 
 		// Skip already found macros
@@ -180,9 +184,9 @@ impl<'a> PageMacroVisitor<'a> {
 			}
 		}
 
-		while let Some(pos) = self.source[search_start..].find(pattern) {
-			let abs_start = search_start + pos;
-			let content_start = abs_start + pattern.len();
+		while let Some(hit) = find_page_bang_paren(&self.source[search_start..]) {
+			let abs_start = search_start + hit.start;
+			let content_start = search_start + hit.paren_open + 1;
 
 			// Find matching closing paren
 			if let Some(end_pos) = find_matching_paren(self.source, content_start) {
@@ -216,6 +220,67 @@ impl<'ast, 'a> Visit<'ast> for PageMacroVisitor<'a> {
 		self.extract_macro_info(mac);
 		syn::visit::visit_macro(self, mac);
 	}
+}
+
+/// Result of locating a `page!(` invocation (with possible whitespace).
+struct PageBangParen {
+	/// Byte offset of the leading `p` of `page`.
+	start: usize,
+	/// Byte offset of the opening `(`.
+	paren_open: usize,
+}
+
+/// Find the next `page <ws>* ! <ws>* (` occurrence in `s`, ensuring the
+/// `page` token is at a word boundary (not part of a larger identifier
+/// like `mypage`). Returns `None` if none found. Accepts the canonical
+/// `page!(` form authored by users as well as the `page ! (` form emitted
+/// by `proc_macro2::TokenStream`'s `Display`.
+fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
+	let bytes = s.as_bytes();
+	let mut i = 0;
+	while let Some(rel) = s[i..].find("page") {
+		let start = i + rel;
+		// Reject if preceded by an identifier-continuation byte.
+		if start > 0 {
+			let prev = bytes[start - 1];
+			if prev.is_ascii_alphanumeric() || prev == b'_' {
+				i = start + 1;
+				continue;
+			}
+		}
+		let after = start + "page".len();
+		// Reject if followed by an identifier-continuation byte (excluding `!`).
+		if after < bytes.len() {
+			let nx = bytes[after];
+			if nx.is_ascii_alphanumeric() || nx == b'_' {
+				i = start + 1;
+				continue;
+			}
+		}
+		// Skip whitespace between `page` and `!`.
+		let mut j = after;
+		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+			j += 1;
+		}
+		if j >= bytes.len() || bytes[j] != b'!' {
+			i = start + 1;
+			continue;
+		}
+		j += 1;
+		// Skip whitespace between `!` and `(`.
+		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+			j += 1;
+		}
+		if j >= bytes.len() || bytes[j] != b'(' {
+			i = start + 1;
+			continue;
+		}
+		return Some(PageBangParen {
+			start,
+			paren_open: j,
+		});
+	}
+	None
 }
 
 /// Find the matching closing parenthesis, handling strings and nested parens.
@@ -436,7 +501,10 @@ impl AstPageFormatter {
 	pub(crate) fn format(&self, content: &str) -> Result<FormatResult, String> {
 		// Safety check FIRST: If no page! pattern exists, return unchanged.
 		// This is a successful no-op, not an intentional skip — skipped stays None.
-		if !content.contains("page!(") {
+		// Match both compact `page!(` and the TokenStream Display form `page ! (`
+		// so recursive formatting (which wraps via `to_token_stream()`) still
+		// sees nested macros at every depth.
+		if find_page_bang_paren(content).is_none() {
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
@@ -544,13 +612,16 @@ impl AstPageFormatter {
 	}
 
 	/// Text-based fallback for finding page! macros.
+	///
+	/// Accepts both the compact `page!(` form and the TokenStream Display
+	/// form `page ! (` (see `find_page_bang_paren`).
 	fn find_page_macros_text_based(&self, content: &str) -> Result<Vec<MacroInfo>, String> {
 		let mut macros = Vec::new();
-		let pattern = "page!(";
 		let mut search_start = 0;
 
-		while let Some(pos) = content[search_start..].find(pattern) {
-			let abs_start = search_start + pos;
+		while let Some(hit) = find_page_bang_paren(&content[search_start..]) {
+			let abs_start = search_start + hit.start;
+			let abs_open = search_start + hit.paren_open;
 
 			// Check if we're in a comment or string
 			if self.is_in_comment_or_string(content, abs_start) {
@@ -558,7 +629,7 @@ impl AstPageFormatter {
 				continue;
 			}
 
-			let content_start = abs_start + pattern.len();
+			let content_start = abs_open + 1;
 
 			if let Some(end_pos) = find_matching_paren(content, content_start) {
 				let macro_content = &content[content_start..end_pos];
@@ -1118,8 +1189,11 @@ impl AstPageFormatter {
 		let prettyplease_output = prettyplease::unparse(&file);
 		let formatted = self.format_with_rustfmt(&prettyplease_output);
 
-		// Restore nested page! macros
-		let restored = Self::restore_page_macros(&formatted, &protect_result.backups);
+		// Restore nested page! macros, recursively re-formatting each one so
+		// that nested page!() invocations are pretty-printed instead of being
+		// re-inserted as the compact TokenStream stringification captured at
+		// protect time.
+		let restored = self.restore_page_macros_recursive(&formatted, &protect_result.backups);
 
 		// Extract the expression from the wrapper
 		let Some(expr_str) = Self::extract_handler_from_wrapper(&restored) else {
@@ -1508,11 +1582,11 @@ impl AstPageFormatter {
 	/// let view = page!(|| { div { "hello" } })(props);
 	///
 	/// // After:
-	/// let view = __reinhardt_placeholder__!(/*0*/)(props);
+	/// let view = __reinhardt_placeholder_0__!()(props);
 	/// ```
 	pub(crate) fn protect_page_macros(&self, content: &str) -> ProtectResult {
-		// Quick check: if no page! pattern exists, return unchanged
-		if !content.contains("page!(") {
+		// Quick check: accept both `page!(` and `page ! (` (see `find_page_bang_paren`).
+		if find_page_bang_paren(content).is_none() {
 			return ProtectResult {
 				protected_content: content.to_string(),
 				backups: Vec::new(),
@@ -1555,7 +1629,7 @@ impl AstPageFormatter {
 			backups.push(PageMacroBackup { id, original });
 
 			// Insert placeholder (macro format so rustfmt doesn't touch it)
-			result.push_str(&format!("__reinhardt_placeholder__!(/*{}*/)", id));
+			result.push_str(&format!("__reinhardt_placeholder_{}__!()", id));
 
 			last_end = macro_info.end;
 		}
@@ -1582,11 +1656,73 @@ impl AstPageFormatter {
 
 		// Replace placeholders in reverse order to maintain correct positions
 		for backup in backups.iter().rev() {
-			let placeholder = format!("__reinhardt_placeholder__!(/*{}*/)", backup.id);
+			let placeholder = format!("__reinhardt_placeholder_{}__!()", backup.id);
 			result = result.replace(&placeholder, &backup.original);
 		}
 
 		result
+	}
+
+	/// Restore page! macros from placeholders, re-formatting each one so
+	/// nested page! invocations get the same pretty-printing as top-level
+	/// ones. The base indent for the recursive format pass is computed from
+	/// the column where the placeholder appears in `content`.
+	pub(crate) fn restore_page_macros_recursive(
+		&self,
+		content: &str,
+		backups: &[PageMacroBackup],
+	) -> String {
+		if backups.is_empty() {
+			return content.to_string();
+		}
+
+		let mut result = content.to_string();
+
+		for backup in backups.iter().rev() {
+			let placeholder = format!("__reinhardt_placeholder_{}__!()", backup.id);
+			let replacement = self
+				.format_inner_page_macro(&backup.original, &result, &placeholder)
+				.unwrap_or_else(|| backup.original.clone());
+			result = result.replace(&placeholder, &replacement);
+		}
+
+		result
+	}
+
+	/// Reformat a single backed-up `page!(...)` string with `format_macro_tokens`,
+	/// using the indentation of the placeholder's line as the base indent.
+	/// Returns `None` if parsing or re-formatting fails, in which case the
+	/// caller falls back to the original (unformatted) backup text.
+	fn format_inner_page_macro(
+		&self,
+		original: &str,
+		surrounding: &str,
+		placeholder: &str,
+	) -> Option<String> {
+		// Extract `<inner>` from `page!(<inner>)` (or the equivalent
+		// TokenStream Display form `page ! ( <inner> )`).
+		let hit = find_page_bang_paren(original)?;
+		let head = hit.paren_open + 1;
+		let tail = original.rfind(')')?;
+		if tail <= head {
+			return None;
+		}
+		let inner = &original[head..tail];
+
+		// Reparse so the recursive formatter receives a real TokenStream.
+		let tokens = syn::parse_str::<proc_macro2::TokenStream>(inner).ok()?;
+
+		// Compute base indent from the placeholder's column (tabs only — the
+		// file uses hard tabs per rustfmt.toml `hard_tabs = true`).
+		let pos = surrounding.find(placeholder)?;
+		let line_start = surrounding[..pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
+		let base_indent = surrounding[line_start..pos]
+			.chars()
+			.filter(|c| *c == '\t')
+			.count();
+
+		let formatted = self.format_macro_tokens(&tokens, base_indent).ok()?;
+		Some(format!("page!({})", formatted))
 	}
 }
 
@@ -2474,7 +2610,7 @@ fn main() {}"#;
 		assert!(
 			result
 				.protected_content
-				.contains("__reinhardt_placeholder__!(/*0*/)")
+				.contains("__reinhardt_placeholder_0__!()")
 		);
 		assert!(!result.protected_content.contains("page!("));
 		assert_eq!(result.backups.len(), 1);
@@ -2498,12 +2634,12 @@ let view2 = page!(|| { div { "second" } });
 		assert!(
 			result
 				.protected_content
-				.contains("__reinhardt_placeholder__!(/*0*/)")
+				.contains("__reinhardt_placeholder_0__!()")
 		);
 		assert!(
 			result
 				.protected_content
-				.contains("__reinhardt_placeholder__!(/*1*/)")
+				.contains("__reinhardt_placeholder_1__!()")
 		);
 		assert!(!result.protected_content.contains("page!("));
 		assert_eq!(result.backups.len(), 2);
@@ -2531,7 +2667,7 @@ fn main() {}"#;
 		assert!(
 			result
 				.protected_content
-				.contains("__reinhardt_placeholder__!(/*0*/)")
+				.contains("__reinhardt_placeholder_0__!()")
 		);
 	}
 
@@ -2636,7 +2772,7 @@ fn main() {
 		assert!(
 			result
 				.protected_content
-				.contains("__reinhardt_placeholder__!(/*0*/)(props)")
+				.contains("__reinhardt_placeholder_0__!()(props)")
 		);
 		assert_eq!(result.backups.len(), 1);
 		assert_eq!(restored, input);
@@ -2730,7 +2866,7 @@ fn main() {
 		assert!(
 			protected
 				.protected_content
-				.contains("__reinhardt_placeholder__")
+				.contains("__reinhardt_placeholder_")
 		);
 		assert_eq!(restored, original);
 	}
@@ -3023,7 +3159,7 @@ fn main() {
 		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
-			"page!(|signal: Action<Vec<Item>, String>| {\n\tdiv {\n\t\t{\n\t\t\tView::fragment(\n\t\t\t\t\tsignal\n\t\t\t\t\t\t.result()\n\t\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t\t.iter()\n\t\t\t\t\t\t.map(|item| {\n\t\t\t\t\t\t\tlet text = item.text.clone();\n\t\t\t\t\t\t\tpage!(| text : String | { span { { text } } })(text)\n\t\t\t\t\t\t})\n\t\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t\t)\n\t\t}\n\t}\n})(signal)"
+			"page!(|signal: Action<Vec<Item>, String>| {\n\tdiv {\n\t\t{\n\t\t\tView::fragment(\n\t\t\t\t\tsignal\n\t\t\t\t\t\t.result()\n\t\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t\t.iter()\n\t\t\t\t\t\t.map(|item| {\n\t\t\t\t\t\t\tlet text = item.text.clone();\n\t\t\t\t\t\t\tpage!(|text: String| {\n\t\t\t\t\t\t\t\tspan {\n\t\t\t\t\t\t\t\t\t{ text }\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t})(text)\n\t\t\t\t\t\t})\n\t\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t\t)\n\t\t}\n\t}\n})(signal)"
 		);
 	}
 
@@ -3048,7 +3184,7 @@ fn main() {
 		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
-			"page!(|signal: Action<Vec<Item>, String>| {\n\tdiv {\n\t\tif signal.result().is_some() {\n\t\t\t{\n\t\t\t\tView::fragment(\n\t\t\t\t\t\tsignal\n\t\t\t\t\t\t\t.result()\n\t\t\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t\t\t.iter()\n\t\t\t\t\t\t\t.map(|item| {\n\t\t\t\t\t\t\t\tlet text = item.text.clone();\n\t\t\t\t\t\t\t\tpage!(| text : String | { div class = \"item\" { { text } } })(text)\n\t\t\t\t\t\t\t})\n\t\t\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t\t\t)\n\t\t\t}\n\t\t} else {\n\t\t\tp {\n\t\t\t\t\"Loading...\"\n\t\t\t}\n\t\t}\n\t}\n})(signal)"
+			"page!(|signal: Action<Vec<Item>, String>| {\n\tdiv {\n\t\tif signal.result().is_some() {\n\t\t\t{\n\t\t\t\tView::fragment(\n\t\t\t\t\t\tsignal\n\t\t\t\t\t\t\t.result()\n\t\t\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t\t\t.iter()\n\t\t\t\t\t\t\t.map(|item| {\n\t\t\t\t\t\t\t\tlet text = item.text.clone();\n\t\t\t\t\t\t\t\tpage!(|text: String| {\n\t\t\t\t\t\t\t\t\tdiv\n\t\t\t\t\t\t\t\t\tclass = \"item\"\n\t\t\t\t\t\t\t\t\t{ { text } }\n\t\t\t\t\t\t\t\t})(text)\n\t\t\t\t\t\t\t})\n\t\t\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t\t\t)\n\t\t\t}\n\t\t} else {\n\t\t\tp {\n\t\t\t\t\"Loading...\"\n\t\t\t}\n\t\t}\n\t}\n})(signal)"
 		);
 	}
 
