@@ -194,4 +194,44 @@ mod tests {
 			),
 		);
 	}
+
+	// Cross-validate the local `to_snake_case` against the autodetector's
+	// implementation whenever both features are compiled. Turns the
+	// "MUST stay aligned" requirement at the top of this file into an
+	// automatic check that catches drift the next time either copy is
+	// edited. See issue #4665 for the follow-up that will consolidate
+	// these into a single function.
+	#[cfg(feature = "migrations")]
+	mod cross_validation {
+		use super::to_snake_case as orm_copy;
+		use crate::migrations::autodetector::to_snake_case as autodetector_copy;
+
+		#[test]
+		fn to_snake_case_matches_autodetector() {
+			let cases = [
+				"",
+				"a",
+				"A",
+				"User",
+				"BlogPost",
+				"HTTPRequest",
+				"APIKey",
+				"XMLHTTPRequest",
+				"already_snake",
+				"Mixed-Case_Name",
+				"public.users",
+				"With Space",
+				"ALLCAPS",
+				"camelCase",
+				"PascalCase",
+			];
+			for input in &cases {
+				assert_eq!(
+					orm_copy(input),
+					autodetector_copy(input),
+					"to_snake_case diverged for {input:?}"
+				);
+			}
+		}
+	}
 }

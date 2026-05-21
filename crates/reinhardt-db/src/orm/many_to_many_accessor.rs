@@ -124,6 +124,13 @@ where
 		// Get through table name from metadata or fall back to the canonical
 		// convention. See `crate::migrations::naming` for the single source of
 		// truth shared with the migration autodetector.
+		//
+		// The fallback assumes `S::table_name()` already follows the
+		// `{app_label}_{model}` convention emitted by `#[model]`, matching the
+		// table name the autodetector writes into `to_state`. `Model` impls
+		// that return a non-canonical `table_name()` should populate
+		// `RelationshipMetadata::through_table` explicitly to avoid producing
+		// a through-table name that diverges from migrations.
 		let through_table = rel_info
 			.as_ref()
 			.and_then(|r| r.through_table.clone())

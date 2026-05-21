@@ -1056,7 +1056,8 @@ impl ProjectState {
 		m2m: &super::model_registry::ManyToManyMetadata,
 	) -> ModelState {
 		// Default through-table and column names come from the canonical
-		// convention in `super::naming` so this site cannot drift from
+		// convention in `crate::m2m_naming` (also re-exported as
+		// `crate::migrations::naming`) so this site cannot drift from
 		// `detect_created_many_to_many` (lookup) or `ManyToManyAccessor`
 		// (runtime). See issue #4665.
 		let table_name = m2m.through.clone().unwrap_or_else(|| {
