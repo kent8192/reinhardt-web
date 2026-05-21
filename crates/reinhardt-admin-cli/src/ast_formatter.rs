@@ -285,9 +285,9 @@ fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 			continue;
 		}
 
-		// String literal — handle both raw (`r"..."`, `r#"..."#`...) and
-		// regular forms. `detect_raw_string_start` walks backwards from
-		// the `"` to find a leading `r` (plus optional `#`s) at a word
+		// String literal — handle both raw (`r"..."`, `r#"..."#`, `br#"..."#`...)
+		// and regular forms. `detect_raw_string_start` walks backwards from
+		// the `"` to find a leading `r` or `br` (plus optional `#`s) at a word
 		// boundary.
 		if b == b'"' {
 			if let Some(hash_count) = detect_raw_string_start(s, i)
@@ -472,14 +472,22 @@ fn find_matching_paren(source: &str, start: usize) -> Option<usize> {
 /// Detect if a '"' at the given offset is the start of a raw string.
 /// Returns Some(hash_count) if so (0 for r"...", 1 for r#"..."#, etc.).
 fn detect_raw_string_start(s: &str, quote_offset: usize) -> Option<usize> {
-	// Walk backwards from the quote to find r followed by optional #s
+	// Walk backwards from the quote to find r (or br) followed by optional #s
 	let before = &s[..quote_offset];
 	let trimmed = before.trim_end_matches('#');
 	let hash_count = before.len() - trimmed.len();
+
+	// Check for raw string (r"..." or r#"..."#) or raw byte string (br"..." or br#"..."#)
 	if trimmed.ends_with('r') {
 		// Verify the 'r' is not part of an identifier
 		let r_pos = trimmed.len() - 1;
 		if r_pos == 0 || !before.as_bytes()[r_pos - 1].is_ascii_alphanumeric() {
+			return Some(hash_count);
+		}
+	} else if trimmed.len() >= 2 && trimmed.ends_with("br") {
+		// Check for raw byte string: br"..." or br#"..."#
+		let br_pos = trimmed.len() - 2;
+		if br_pos == 0 || !before.as_bytes()[br_pos - 1].is_ascii_alphanumeric() {
 			return Some(hash_count);
 		}
 	}
@@ -2968,6 +2976,64 @@ fn main() {
 			result
 				.protected_content
 				.contains("__reinhardt_placeholder_0__!()")
+		);
+	}
+
+	// Regression: same as the raw string test but using raw byte strings
+	// (`br#"..."#`), which the scanner must also traverse without descending
+	// into the body.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_raw_byte_string() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "let s = br#\"page!(|| { div { \"hi\" } })\"#;\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert_eq!(
+			result
+				.protected_content
+				.matches("br#\"page!(|| { div { \"hi\" } })\"#")
+				.count(),
+			1
+		);
+		assert_eq!(
+			result
+				.protected_content
+				.matches("__reinhardt_placeholder_0__!()")
+				.count(),
+			1
+		);
+	}
+
+	// Regression: raw byte string with multiple hashes (`br##"..."##`).
+	#[rstest]
+	fn test_protect_skips_lookalike_in_raw_byte_string_multi_hash() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "let s = br##\"page!(|| { div { \"#hi#\" } })\"##;\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert_eq!(
+			result
+				.protected_content
+				.matches("br##\"page!(|| { div { \"#hi#\" } })\"##")
+				.count(),
+			1
+		);
+		assert_eq!(
+			result
+				.protected_content
+				.matches("__reinhardt_placeholder_0__!()")
+				.count(),
+			1
 		);
 	}
 
