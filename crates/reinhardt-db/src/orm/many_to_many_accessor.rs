@@ -578,13 +578,30 @@ where
 			.primary_key()
 			.ok_or_else(|| "Target model has no primary key".to_string())?;
 
-		// Calculate through-table name using the canonical convention shared
-		// with `Self::new` and the migration autodetector. Column names use
-		// the same hand-rolled fallback as `Self::new` (see the rationale
-		// there); this site does not consult relationship metadata.
-		let through_table = default_through_table(S::table_name(), field_name);
-		let source_field = format!("{}_id", S::table_name().to_lowercase());
-		let target_field = format!("{}_id", T::table_name().to_lowercase());
+		// Resolve through-table and column names from relationship metadata
+		// first, falling back to the canonical convention shared with
+		// `Self::new` and the migration autodetector. Honouring metadata here
+		// is required for self-referential relations and any model that
+		// overrides `through_table` / `source_field` / `target_field` via
+		// `#[model]`. The column fallback matches `Self::new` (tracked as a
+		// follow-up to align with `from_/to_` once `Model::model_name()` is
+		// public — see the PR #4666 "Out of scope" notes).
+		let rel_info = S::relationship_metadata()
+			.into_iter()
+			.find(|r| r.name == field_name && r.relationship_type == RelationshipType::ManyToMany);
+
+		let through_table = rel_info
+			.as_ref()
+			.and_then(|r| r.through_table.clone())
+			.unwrap_or_else(|| default_through_table(S::table_name(), field_name));
+		let source_field = rel_info
+			.as_ref()
+			.and_then(|r| r.source_field.clone())
+			.unwrap_or_else(|| format!("{}_id", S::table_name().to_lowercase()));
+		let target_field = rel_info
+			.as_ref()
+			.and_then(|r| r.target_field.clone())
+			.unwrap_or_else(|| format!("{}_id", T::table_name().to_lowercase()));
 
 		// Build JOIN query using reinhardt-query
 		let mut query = Query::select();

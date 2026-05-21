@@ -79,8 +79,8 @@ fn to_snake_case(name: &str) -> String {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_db::migrations::naming::default_through_table;
+/// ```
+/// use reinhardt_db::m2m_naming::default_through_table;
 ///
 /// assert_eq!(default_through_table("auth_user", "groups"), "auth_user_groups");
 /// assert_eq!(default_through_table("Auth_User", "Groups"), "auth_user_groups");
@@ -102,8 +102,8 @@ pub fn default_through_table(source_table: &str, field_name: &str) -> String {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_db::migrations::naming::default_m2m_columns;
+/// ```
+/// use reinhardt_db::m2m_naming::default_m2m_columns;
 ///
 /// assert_eq!(
 ///     default_m2m_columns("User", "Group"),
