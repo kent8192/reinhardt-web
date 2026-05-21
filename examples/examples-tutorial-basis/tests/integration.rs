@@ -946,7 +946,8 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result = delete_question("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
+		let result =
+			delete_question("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
 
 		assert_unauthorized(result, "delete_question");
 	}
@@ -999,7 +1000,8 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result = delete_choice("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
+		let result =
+			delete_choice("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
 
 		assert_unauthorized(result, "delete_choice");
 	}
