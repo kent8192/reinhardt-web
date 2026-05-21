@@ -1,9 +1,9 @@
 rules:
   - id: rust-reinhardt-placeholder-macro
     patterns:
-      - pattern-regex: "__reinhardt_placeholder__!\\("
+      - pattern-regex: "__reinhardt_placeholder(?:_\\d+)?__!\\("
     message: >-
-      Formatter placeholder macro __reinhardt_placeholder__! found in source code.
+      Formatter placeholder macro __reinhardt_placeholder_N__! found in source code.
       This is an internal marker used by reinhardt-admin-cli during page! macro formatting.
       The formatter should restore page!(...) calls before committing.
       Run `cargo make fmt-page-only` to restore the original macros.
