@@ -638,15 +638,15 @@ fn validate_attr_type(
 	// etc.) are passed through and validated at runtime. URL-scheme safety
 	// for string literals is already enforced earlier in this function by
 	// the generic URL-attribute checks.
-	if element_tag == "img" && attr_name == "src" {
-		if let Some(src_value) = value.as_string()
-			&& src_value.trim().is_empty()
-		{
-			return Err(syn::Error::new(
-				span,
-				"Element <img> 'src' attribute must not be empty",
-			));
-		}
+	if element_tag == "img"
+		&& attr_name == "src"
+		&& let Some(src_value) = value.as_string()
+		&& src_value.trim().is_empty()
+	{
+		return Err(syn::Error::new(
+			span,
+			"Element <img> 'src' attribute must not be empty",
+		));
 	}
 
 	Ok(())
