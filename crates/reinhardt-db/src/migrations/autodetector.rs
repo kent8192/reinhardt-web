@@ -5319,8 +5319,8 @@ impl MigrationAutodetector {
 		for (app_label, model_name, through_table, m2m) in &changes.created_many_to_many {
 			// Resolve source table name from the to_state model. The
 			// `table_name` (user-set via `#[model(table_name = "...")]` or
-			// derived by the macro) is the canonical identifier — never the
-			// struct identifier (see #4659).
+			// derived by the macro) is the canonical identifier — never
+			// the `struct` identifier (see #4659).
 			let source_table = self
 				.to_state
 				.get_model(app_label, model_name)
