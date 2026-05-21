@@ -16,7 +16,11 @@ thiserror = { workspace = true }
 reinhardt-core = { workspace = true, features = ["exception", "types"] }
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
-lettre = { version = "0.11", features = [
+# Floor at 0.11.22 to clear RUSTSEC-2026-0141 (TLS hostname verification disabled
+# under boring-tls backend; fixed in 0.11.22). The `tokio1-native-tls` feature
+# does not hit the vulnerable boring-tls code path here, but the floor protects
+# downstream consumers that may enable other TLS backends.
+lettre = { version = "0.11.22", features = [
   "tokio1",
   "tokio1-native-tls",
   "builder",
