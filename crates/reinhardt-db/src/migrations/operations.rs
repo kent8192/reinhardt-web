@@ -5632,17 +5632,26 @@ mod tests {
 
 		// Assert: shape must match the expected single-statement form
 		// exactly. Asserting `==` (not `contains`) is intentional: the
-		// stop-gap is supposed to emit *only* `ALTER TABLE "products" ALTER
-		// COLUMN "name" TYPE VARCHAR(50);` with no extra clauses (no
+		// stop-gap is supposed to emit *only* `ALTER TABLE products ALTER
+		// COLUMN name TYPE VARCHAR(50);` with no extra clauses (no
 		// nullability, no USING, no comma-combined sibling). A `contains`
 		// check would silently allow `, ALTER COLUMN ... SET NOT NULL`
 		// suffixes — exactly the regression this test is meant to pin.
-		let expected = r#"ALTER TABLE "products" ALTER COLUMN "name" TYPE VARCHAR(50);"#;
+		//
+		// Identifier quoting note: `quote_identifier` here is
+		// `pg_escape::quote_identifier`, which only quotes identifiers
+		// that fall outside PostgreSQL's unquoted-identifier grammar
+		// (anything outside `[a-z_][a-z0-9_]*`, or a reserved keyword).
+		// `products` and `name` are plain lowercase ASCII matching that
+		// grammar, so the expected output is unquoted. This matches the
+		// identical convention documented on
+		// `test_to_reverse_sql_drop_index_includes_on_table_for_mysql`.
+		// Identifier-quoting-by-default is tracked separately in #4674.
+		let expected = "ALTER TABLE products ALTER COLUMN name TYPE VARCHAR(50);";
 		assert_eq!(
 			sql, expected,
 			"CockroachDB reverse SQL must match the pinned single-statement \
-			 form exactly (table/column identifiers double-quoted, no extra \
-			 clauses), got: {}",
+			 form exactly (no extra clauses), got: {}",
 			sql
 		);
 
