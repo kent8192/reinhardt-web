@@ -162,8 +162,7 @@ sequenceDiagram
     M->>DB: SELECT * FROM choices WHERE id = ?
     DB-->>M: row
     M-->>S: Choice
-    S->>S: choice.vote();
-    S->>M: choice_manager.update(&choice)
+    S->>M: choice.vote().await (auto-saves)
     M->>DB: UPDATE choices SET votes = ? WHERE id = ?
     DB-->>M: ok
     S-->>C: Result<ChoiceInfo, ServerFnError>
@@ -186,7 +185,7 @@ sequenceDiagram
     M->>DB: SELECT * FROM choices WHERE id = ?
     DB-->>M: row
     M-->>V: Choice
-    V->>M: choice_manager.update(&choice)
+    V->>M: choice.vote().await (auto-saves)
     M->>DB: UPDATE choices SET votes = ? WHERE id = ?
     DB-->>M: ok
     V-->>U: 200 OK application/json
@@ -486,14 +485,14 @@ async fn vote_internal(
 			return Err(anyhow::anyhow!("Choice does not belong to this question"));
 		}
 
-		choice.vote();
-
-		let updated = choice_manager
-			.update(&choice)
-			.await
+		// `Choice::vote()` is `async fn` and calls `self.save().await`
+		// internally, so the increment AND the row-level UPDATE happen in
+		// one call. No separate `choice_manager.update(&choice).await?`
+		// step is needed.
+		choice.vote().await
 			.map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
-		Ok(updated)
+		Ok(choice)
 	})
 	.await
 	.map_err(|e| ServerFnError::application(e.to_string()))?;
@@ -512,16 +511,6 @@ so `submit_vote` exists as a thin adapter that takes strings, parses
 them, and reuses `vote_internal`.
 
 ```rust
-/// Get vote form metadata for WASM client rendering
-///
-/// Returns form metadata with CSRF token for the voting form.
-#[cfg(native)]
-#[server_fn]
-pub async fn get_vote_form_metadata() -> std::result::Result<FormMetadata, ServerFnError> {
-	let form = create_vote_form();
-	Ok(form.to_metadata())
-}
-
 /// Submit vote via form! macro
 ///
 /// Wrapper function that accepts individual field values from form! macro's
@@ -568,7 +557,7 @@ ships — for example:
 ///       question_text: String,
 ///       _csrf_token: String,
 ///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session: SessionData,
+///       #[inject] session_user: Depends<SessionUser>,
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 ```
 
@@ -576,45 +565,39 @@ This is the workaround comment convention the project uses everywhere:
 the ideal code is written next to the workaround so that the upgrade path
 is obvious when the upstream issue resolves.
 
-### `require_user`: the shared 401 gate
+### `SessionUser`: the DI-resolved 401 gate
 
 Every authenticated mutation needs the same three steps: pull `user_id`
 out of the session, look up the row, check `is_active`. Putting that
 inline at the top of every handler would be noisy and easy to skip, so
-the file declares one private helper that all the mutations reuse.
+the project pushes the "load user_id from session, look up the row,
+classify as Anonymous / Authenticated / Unavailable" pipeline into a
+**DI factory** that lives in `apps::polls::di::SessionUser`. Each
+authenticated handler then receives `Depends<SessionUser>` from the DI
+container and calls `.require_active()?` to surface the 401/403:
 
 ```rust
-/// Resolve the currently authenticated user from the session, or return a
-/// 401 ServerFnError. Shared by every authenticated mutation handler below
-/// so that the "load user_id from session, look up the row, 401 if absent"
-/// dance lives in exactly one place.
-#[cfg(native)]
-async fn require_user(session: &SessionData) -> std::result::Result<User, ServerFnError> {
-	let user_id = session
-		.get::<i64>(USER_ID_SESSION_KEY)
-		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
-
-	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(user_id),
-		)
-		.first()
-		.await
-		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
-		.ok_or_else(|| ServerFnError::server(401, "Authentication required"))?;
-
-	if !user.is_active {
-		return Err(ServerFnError::server(403, "User account is inactive"));
-	}
-
-	Ok(user)
-}
+// src/apps/polls/di.rs (excerpt)
+//
+// The factory is registered with `#[injectable_factory(scope = "request")]`
+// so each request resolves its own `SessionUser` once. The classification
+// closes over `SessionData` (cookie-loaded) and `DatabaseConnection` (DI
+// resolved), and returns one of:
+//
+//   - SessionUser::Anonymous            — no `user_id` in session
+//   - SessionUser::Authenticated(User)  — row exists and `is_active`
+//   - SessionUser::Inactive(User)       — row exists but `is_active == false`
+//   - SessionUser::Unavailable          — DB lookup failed (surfaces 503,
+//                                         distinct from "no user")
+//
+// `require_active()` returns `Result<User, ServerFnError>` and is what the
+// handlers below call.
 ```
 
 `create_question`, `update_question`, `delete_question`, `create_choice`,
-`update_choice`, and `delete_choice` all begin with `require_user`. The
+`update_choice`, and `delete_choice` all start with the same two lines:
+`#[inject] session_user: Depends<SessionUser>` in the signature,
+`let user = session_user.require_active()?;` as the first statement. The
 Question CUD handlers additionally enforce that the caller authored the
 row:
 
@@ -626,11 +609,11 @@ pub async fn update_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] session_user: Depends<SessionUser>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = require_user(&session).await?;
+	let user = session_user.require_active()?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -1008,8 +991,11 @@ pub async fn vote(
 		return Err("Choice does not belong to this question".into());
 	}
 
-	choice.vote();
-	let updated_choice = choice_manager.update(&choice).await?;
+	// `Choice::vote()` is `async fn` and persists the row internally via
+	// `self.save().await`, so a separate `manager.update(&choice)` call
+	// is not needed.
+	choice.vote().await?;
+	let updated_choice = choice;
 
 	let response_data = json!({
 		"message": "Vote recorded successfully",
@@ -1122,8 +1108,7 @@ use crate::config::admin::configure_admin;
 #[cfg(native)]
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
-	get_question_results, get_questions, get_vote_form_metadata, submit_vote, update_choice,
-	update_question, vote,
+	get_question_results, get_questions, submit_vote, update_choice, update_question, vote,
 };
 #[cfg(native)]
 use crate::apps::users::server_fn::{current_user, login, logout, register};
@@ -1190,7 +1175,6 @@ pub fn routes() -> UnifiedRouter {
 				.server_fn(get_question_detail::marker)
 				.server_fn(get_question_results::marker)
 				.server_fn(vote::marker)
-				.server_fn(get_vote_form_metadata::marker)
 				.server_fn(submit_vote::marker)
 				.server_fn(create_question::marker)
 				.server_fn(update_question::marker)
@@ -1305,7 +1289,6 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 use reinhardt::url_patterns;
 
-use crate::client::links;
 use crate::client::pages::{
 	choice_delete_page, choice_edit_page, choice_new_page, index_page, polls_detail_page,
 	polls_results_page, question_delete_page, question_edit_page, question_new_page,
@@ -1362,7 +1345,9 @@ pub fn client_url_patterns() -> ClientRouter {
 /// Error page used as the `not_found` fallback.
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
-	let home_href = links::polls_index();
+	// `urls::index()` is the macro-emitted typed helper (issue #4656),
+	// sibling to `client_url_patterns` at this module's parent scope.
+	let home_href = urls::index();
 	page!(|message: String, home_href: String| {
 		div {
 			class: "layout-page",
@@ -1850,11 +1835,13 @@ the polling application:
   and is auto-mounted via inventory.
 - **Typed RPC server functions.** Every reactive mutation the WASM
   client will call lives in `src/apps/<app>/server_fn.rs`. The DI
-  container injects `DatabaseConnection`, `SessionData`, and
-  `SessionStoreRef`; `require_user` is the shared 401 gate;
-  `atomic(&db, || async { … })` guards read-modify-write; the trailing
-  `_csrf_token: String` parameter is verified by middleware before the
-  handler runs.
+  container injects `DatabaseConnection`, `SessionData`,
+  `SessionStoreRef`, and (for the polls mutations)
+  `Depends<SessionUser>`; `session_user.require_active()?` is the shared
+  401 gate, layered on the `SessionUser` factory in
+  `apps::polls::di`; `atomic(&db, || async { … })` guards
+  read-modify-write; the trailing `_csrf_token: String` parameter is
+  verified by middleware before the handler runs.
 - **Server-rendered REST endpoints.** `src/apps/polls/views.rs` exposes
   the same business logic over plain JSON for non-WASM consumers; the
   handlers use `Path<T>`, `Json<T>`, and return a `Response` with an

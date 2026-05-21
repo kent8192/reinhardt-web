@@ -819,16 +819,17 @@ mod server_fn_tests {
 // Authorization tests for CUD server functions (Phase 4)
 // =========================================================================
 //
-// These tests cover the `require_user` gate at the entrance of every
-// authenticated mutation (`create_question`, `update_question`,
-// `delete_question`, and the three Choice mirrors). The gate runs *before*
-// any database access, so these tests do not depend on the schema and can
-// run against an empty SQLite file. They guarantee that:
+// These tests cover the `SessionUser` DI factory's `require_active()` gate
+// at the entrance of every authenticated mutation (`create_question`,
+// `update_question`, `delete_question`, and the three Choice mirrors). The
+// gate runs *before* any database access, so these tests do not depend on
+// the schema and can run against an empty SQLite file. They guarantee that:
 //
-//   - An empty `SessionData` (no `user_id` key) → 401 Unauthorized.
-//   - The error originates from `require_user`, not from the model layer
-//     (i.e. the auth gate is never accidentally bypassed for any of the
-//     six CUD entry points).
+//   - An empty `SessionData` (no `user_id` key) → `SessionUser::Anonymous`
+//     → `require_active()` returns 401 Unauthorized.
+//   - The error originates from the `SessionUser` gate, not from the model
+//     layer (i.e. the auth gate is never accidentally bypassed for any of
+//     the six CUD entry points).
 //
 // Session-positive ("author can update", "non-author gets 403") paths
 // require a `users` table + `author_id` column in the fixture — see the
@@ -851,7 +852,7 @@ mod auth_tests {
 
 	/// Fixture: an empty SQLite database + DatabaseConnection wired through
 	/// reinhardt-orm. No tables are created; the authorization tests below
-	/// short-circuit on `require_user` before any query runs.
+	/// short-circuit on `session_user.require_active()` before any query runs.
 	#[fixture]
 	async fn empty_db_conn() -> (NamedTempFile, DatabaseConnection) {
 		let temp_file = NamedTempFile::new().expect("Failed to create temp file");
@@ -863,8 +864,9 @@ mod auth_tests {
 		(temp_file, db_conn)
 	}
 
-	/// Empty (anonymous) session — has no `user_id` key, so every
-	/// `require_user` call should reject it with 401.
+	/// Empty (anonymous) session — has no `user_id` key, so the
+	/// `SessionUser` DI factory resolves to `SessionUser::Anonymous` and
+	/// every `session_user.require_active()` call rejects it with 401.
 	fn anonymous_session() -> SessionData {
 		SessionData::new(Duration::from_secs(60))
 	}
@@ -877,9 +879,11 @@ mod auth_tests {
 		let err = result
 			.err()
 			.unwrap_or_else(|| panic!("{} should reject anonymous callers", operation));
-		// The require_user gate emits `ServerFnError::server(401, ...)`. We
-		// match on the rendered Display because ServerFnError does not
-		// expose the inner status as a typed accessor in the public API.
+		// The `SessionUser::require_active()` gate emits
+		// `ServerFnError::server(401, ...)`. We match on the Debug-formatted
+		// output because ServerFnError does not expose the inner status as a
+		// typed accessor in the public API, and its `Debug` impl is the most
+		// stable representation that includes the numeric status.
 		let rendered = format!("{:?}", err);
 		assert!(
 			rendered.contains("401") || rendered.contains("Authentication required"),
