@@ -4825,6 +4825,15 @@ impl MigrationAutodetector {
 			)
 		};
 
+		// Resolve real PK types on both sides so the junction table matches
+		// what `create_intermediate_table_for_m2m` / `generate_migrations`
+		// produce. Without this, FK columns would hard-code `BigInteger`
+		// even when either side uses a different PK type.
+		let source_pk_type = self.to_state.get_primary_key_type(app_label, model_name);
+		let target_pk_type = self
+			.to_state
+			.get_primary_key_type(&target_app, &target_model);
+
 		// Create columns
 		let columns = vec![
 			// id column
@@ -4840,7 +4849,7 @@ impl MigrationAutodetector {
 			// source_id column
 			super::ColumnDefinition {
 				name: source_column.clone(),
-				type_definition: super::FieldType::BigInteger,
+				type_definition: source_pk_type,
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -4850,7 +4859,7 @@ impl MigrationAutodetector {
 			// target_id column
 			super::ColumnDefinition {
 				name: target_column.clone(),
-				type_definition: super::FieldType::BigInteger,
+				type_definition: target_pk_type,
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -5327,27 +5336,33 @@ impl MigrationAutodetector {
 				.map(|m| m.table_name.clone())
 				.unwrap_or_else(|| format!("{}_{}", app_label, model_name.to_lowercase()));
 
+			// Parse the target reference up-front so qualified names like
+			// "app.Model" resolve correctly throughout the rest of this
+			// block (table lookup, PK type lookup, and the lowercase
+			// fallback). Without this, lookups would use the literal
+			// "app.Model" string as the model name, miss every
+			// to_state/registry entry, and produce defaults like
+			// "app.model_id".
+			let (parsed_target_app, parsed_target_model) = self
+				.parse_model_reference(&m2m.to_model, app_label)
+				.unwrap_or_else(|| (app_label.to_string(), m2m.to_model.clone()));
+
 			// Resolve target table name: prefer to_state, then global registry,
-			// finally fall back to lowercasing the struct identifier as a
-			// last-resort heuristic.
+			// finally fall back to lowercasing the parsed model name.
 			let target_table = self
-				.find_model_app(&m2m.to_model)
-				.and_then(|target_app| {
-					// Try to_state first
-					if let Some(model) = self.to_state.get_model(&target_app, &m2m.to_model) {
-						return Some(model.table_name.clone());
-					}
-					// Fall back to global registry for cross-app references
-					for model_meta in super::model_registry::global_registry().get_models() {
-						if model_meta.app_label == target_app
-							&& model_meta.model_name == m2m.to_model
-						{
-							return Some(model_meta.table_name.clone());
-						}
-					}
-					None
+				.to_state
+				.get_model(&parsed_target_app, &parsed_target_model)
+				.map(|model| model.table_name.clone())
+				.or_else(|| {
+					super::model_registry::global_registry()
+						.get_models()
+						.iter()
+						.find(|m| {
+							m.app_label == parsed_target_app && m.model_name == parsed_target_model
+						})
+						.map(|m| m.table_name.clone())
 				})
-				.unwrap_or_else(|| m2m.to_model.to_lowercase());
+				.unwrap_or_else(|| parsed_target_model.to_lowercase());
 
 			// Derive M2M column names from the resolved table names so that
 			// the autodetector agrees with the ORM accessor's fallback
@@ -5382,19 +5397,12 @@ impl MigrationAutodetector {
 			// Get source model's primary key type
 			let source_pk_type = self.to_state.get_primary_key_type(app_label, model_name);
 
-			// Get target model's primary key type
-			// First extract target app_label from to_model (may be in "app.Model" format)
-			let (target_app, target_model) = if m2m.to_model.contains('.') {
-				let parts: Vec<&str> = m2m.to_model.split('.').collect();
-				(parts[0].to_string(), parts[1].to_string())
-			} else {
-				// Same app reference
-				(app_label.to_string(), m2m.to_model.clone())
-			};
-
+			// Get target model's primary key type. Reuse the values parsed
+			// from `m2m.to_model` at the top of this block so the lookup
+			// agrees with how `target_table` was resolved (#4659 follow-up).
 			let target_pk_type = self
 				.to_state
-				.get_primary_key_type(&target_app, &target_model);
+				.get_primary_key_type(&parsed_target_app, &parsed_target_model);
 
 			// Create intermediate table columns
 			let columns = vec![
