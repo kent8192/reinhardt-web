@@ -23,13 +23,20 @@
 //!
 //! ## What is intentionally rejected
 //!
-//! - Associated types and consts (no obvious "forward" semantics).
+//! - Generic traits (`trait Foo<T>`) — the generated `impl Foo for NewType`
+//!   would be missing the required type arguments. Picking them is a v4
+//!   follow-up.
+//! - Required associated types and consts — the generated impl would be
+//!   missing those item definitions, so we surface the error at the trait
+//!   definition rather than letting the downstream impl fail opaquely.
 //! - Methods taking `self` by value (would require knowing `Drop` semantics).
 //! - Generic methods (would need turbofish at invocation site).
+//! - Macro invocations inside the trait body.
 //!
-//! Rejected items raise a `compile_error!` directly inside the generated
-//! macro, so the message surfaces at the `#[newtype(delegate(T))]` site rather
-//! than the trait definition.
+//! All rejection diagnostics are emitted as `syn::Error` from
+//! `delegatable_impl` itself, so the message points at the offending
+//! item in the trait definition — not at the eventual
+//! `#[newtype(delegate(T))]` call site.
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};

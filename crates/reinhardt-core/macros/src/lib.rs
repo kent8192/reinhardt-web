@@ -116,8 +116,25 @@ pub fn newtype(args: TokenStream, input: TokenStream) -> TokenStream {
 
 /// `#[delegatable]` — attach to a trait so `#[newtype(delegate(Trait))]` can
 /// forward every non-default method of the trait to the wrapped inner field.
-/// See `crate::delegatable` for the scope limitation (same-module only in
-/// MVP).
+///
+/// ## Scope limitation (MVP)
+///
+/// The companion `macro_rules!` is not `#[macro_export]`-ed, so the
+/// `#[delegatable] trait` and every `#[newtype(delegate(Trait))]` that
+/// targets it must live in the same module-path scope (cross-crate
+/// delegation is a v4 follow-up of Issue #4667).
+///
+/// ## Rejected at trait-definition time
+///
+/// `delegatable_impl` returns a `syn::Error` (pointing at the offending
+/// item, not at the later `delegate(...)` site) when the trait:
+///
+/// - Has any generic parameters (`trait Foo<T>`).
+/// - Declares a required associated type or const without a default.
+/// - Contains a macro invocation in its body.
+/// - Declares a method that takes `self` by value, takes no receiver, uses
+///   non-identifier argument patterns, or carries its own generic
+///   parameters.
 ///
 /// ```rust,ignore
 /// use reinhardt_macros::{delegatable, newtype};

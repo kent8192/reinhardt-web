@@ -275,9 +275,14 @@ Provides compile-time code generation for common patterns.
   can synthesize an `impl Trait for NewType` that forwards every non-default
   method through the wrapped inner field
   - Methods that take `&self` / `&mut self` and have plain identifier
-    parameters are forwarded automatically
-  - Generic methods, value-`self` receivers, and associated items are
-    rejected with a clear error
+    parameters are forwarded automatically (including `async fn`)
+  - Rejected at trait-definition time with a `syn::Error` pointing at the
+    offending item: generic traits (`trait Foo<T>`), required associated
+    types/consts, in-body macro invocations, value-`self` receivers,
+    methods with non-identifier patterns, and methods with their own
+    generics
+  - Same-module scope only in MVP — cross-crate delegation is a planned
+    v4 follow-up of Issue #4667
 
 #### Generic Dependency Injection
 
