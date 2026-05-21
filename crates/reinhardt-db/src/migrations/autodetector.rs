@@ -84,51 +84,7 @@ impl From<reinhardt_query::prelude::ForeignKeyAction> for ForeignKeyAction {
 /// assert_eq!(to_snake_case("User__Profile"), "user_profile");
 /// assert_eq!(to_snake_case("public.users"), "public_users");
 /// ```
-pub fn to_snake_case(name: &str) -> String {
-	if name.is_empty() {
-		return String::new();
-	}
-
-	let mut result = String::with_capacity(name.len() + 4);
-	let chars: Vec<char> = name.chars().collect();
-	let mut prev_was_separator = true; // Treat start as separator to avoid leading underscore
-
-	for i in 0..chars.len() {
-		let ch = chars[i];
-
-		// Handle separators: _, -, space, .
-		if ch == '_' || ch == '-' || ch == ' ' || ch == '.' {
-			// Only add underscore if previous char was not a separator
-			if !prev_was_separator && !result.is_empty() {
-				result.push('_');
-			}
-			prev_was_separator = true;
-		} else if ch.is_ascii_uppercase() {
-			if !prev_was_separator && i > 0 {
-				let prev = chars[i - 1];
-				let next = chars.get(i + 1);
-
-				// Add underscore if:
-				// 1. Previous char is lowercase (normal camelCase boundary)
-				// OR
-				// 2. Previous char is uppercase AND next char exists AND is lowercase
-				//    (this handles acronyms like HTTPRequest → http_request)
-				if prev.is_ascii_lowercase()
-					|| (prev.is_ascii_uppercase() && next.is_some_and(|&n| n.is_ascii_lowercase()))
-				{
-					result.push('_');
-				}
-			}
-			result.push(ch.to_ascii_lowercase());
-			prev_was_separator = false;
-		} else {
-			result.push(ch.to_ascii_lowercase());
-			prev_was_separator = false;
-		}
-	}
-
-	result
-}
+pub use crate::naming::to_snake_case;
 
 /// Convert a snake_case name to PascalCase
 ///
@@ -1044,10 +1000,12 @@ impl ProjectState {
 	///
 	/// A `ModelState` representing the intermediate table with:
 	/// - Auto-increment primary key `id`
-	/// - Foreign key to source model: `from_{source_model}_id`
-	/// - Foreign key to target model: `to_{target_model}_id`
+	/// - Foreign key to source model: `{source_table}_id` (or
+	///   `from_{source_table}_id` for self-referencing M2M)
+	/// - Foreign key to target model: `{target_table}_id` (or
+	///   `to_{target_table}_id` for self-referencing M2M)
 	/// - Foreign key constraints with CASCADE
-	/// - Unique constraint on (from_id, to_id)
+	/// - Unique constraint on (source_id, target_id)
 	fn create_intermediate_table_for_m2m(
 		&self,
 		source_app_label: &str,
@@ -1081,13 +1039,6 @@ impl ProjectState {
 			.insert("auto_increment".to_string(), "true".to_string());
 		model_state.add_field(id_field);
 
-		// Determine source and target field names from explicit metadata, or
-		// fall back to the canonical `from_/to_` convention.
-		let (default_source_col, default_target_col) =
-			crate::m2m_naming::default_m2m_columns(source_model_name, &m2m.to_model);
-		let source_field_name = m2m.source_field.clone().unwrap_or(default_source_col);
-		let target_field_name = m2m.target_field.clone().unwrap_or(default_target_col);
-
 		// Determine the primary key type for the source and target from the registry
 		let source_pk_type = self.get_primary_key_type(source_app_label, source_model_name);
 		// Extract target app_label from to_model (may be in "app.Model" format)
@@ -1100,7 +1051,27 @@ impl ProjectState {
 
 		let target_pk_type = self.get_primary_key_type(target_app, target_model);
 
-		// Add foreign key to source model: from_{source_model}_id
+		// Resolve the target table name from ProjectState, falling back to the
+		// `app_label`-prefixed snake_case form as a last-resort heuristic.
+		let target_table_name = self
+			.get_model(target_app, target_model)
+			.map(|m| m.table_name.clone())
+			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(target_model)));
+
+		// Default FK column names come from the canonical convention in
+		// `crate::m2m_naming::default_m2m_columns` (single source of truth,
+		// see issue #4665): `{table}_id` for non-self-referential relations,
+		// and `from_/to_` prefixes when source and target tables match.
+		// Keying off the *actual* table names (not the struct identifiers)
+		// matches the ORM accessor fallback in
+		// `crates/reinhardt-db/src/orm/many_to_many_accessor.rs` and the
+		// on-disk schema produced by initial migrations (#4659).
+		let (default_source_col, default_target_col) =
+			crate::m2m_naming::default_m2m_columns(source_table_name, &target_table_name);
+		let source_field_name = m2m.source_field.clone().unwrap_or(default_source_col);
+		let target_field_name = m2m.target_field.clone().unwrap_or(default_target_col);
+
+		// Add foreign key to source model
 		let mut from_field =
 			FieldState::new(source_field_name.clone(), source_pk_type.clone(), false);
 		from_field
@@ -1114,12 +1085,7 @@ impl ProjectState {
 		});
 		model_state.add_field(from_field);
 
-		// Add foreign key to target model: to_{target_model}_id
-		// Get target table name from ProjectState, fallback to naming convention if model not found
-		let target_table_name = self
-			.get_model(target_app, target_model)
-			.map(|m| m.table_name.clone())
-			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(target_model)));
+		// Add foreign key to target model
 		let mut to_field = FieldState::new(target_field_name.clone(), target_pk_type, false);
 		to_field
 			.params
@@ -4775,37 +4741,74 @@ impl MigrationAutodetector {
 		to_model: &str,
 		through_table: &Option<String>,
 	) -> Option<super::Operation> {
-		// Generate table name
+		// Resolve the source table name from to_state. The source model is
+		// guaranteed to be in to_state because this function is called from
+		// `generate_operations` while iterating `to_state.models`.
+		let source_table = self
+			.to_state
+			.get_model(app_label, model_name)
+			.map(|m| m.table_name.clone())
+			.unwrap_or_else(|| {
+				format!("{}_{}", to_snake_case(app_label), to_snake_case(model_name))
+			});
+
+		// Parse target model to get its app and table name
+		let (target_app, target_model) = self.parse_model_reference(to_model, app_label)?;
+		let target_table = self
+			.to_state
+			.get_model(&target_app, &target_model)
+			.map(|m| m.table_name.clone())
+			.or_else(|| {
+				super::model_registry::global_registry()
+					.get_models()
+					.iter()
+					.find(|m| m.app_label == target_app && m.model_name == target_model)
+					.map(|m| m.table_name.clone())
+			})
+			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(&target_model)));
+
+		// Generate through-table name: prefer explicit `through`, otherwise
+		// derive from the source table name (matches
+		// `create_intermediate_table_for_m2m` and the ORM accessor's
+		// `default_through_table`, which both lowercase the source table
+		// before composition — see #4659).
 		let table_name = if let Some(custom_name) = through_table {
 			custom_name.clone()
 		} else {
-			// Auto-generate: {app}_{model}_{field_name}
 			format!(
-				"{}_{}_{}",
-				to_snake_case(app_label),
-				to_snake_case(model_name),
+				"{}_{}",
+				source_table.to_lowercase(),
 				to_snake_case(field_name)
 			)
 		};
 
-		// Parse target model to get table name
-		let (_target_app, target_model) = self.parse_model_reference(to_model, app_label)?;
-		let target_table = to_snake_case(&target_model);
-
-		// Handle self-referential relationships
-		let (source_column, target_column) = if model_name == target_model {
-			// Self-referential: use from_{model}_id and to_{model}_id
+		// Derive column names from the resolved *table* names so the
+		// autodetector matches the ORM accessor convention
+		// (`format!("{}_id", T::table_name().to_lowercase())` in
+		// `crates/reinhardt-db/src/orm/many_to_many_accessor.rs`). Compare by
+		// table identity for self-reference (#4659 follow-up).
+		let source_table_lower = source_table.to_lowercase();
+		let target_table_lower = target_table.to_lowercase();
+		let (source_column, target_column) = if source_table_lower == target_table_lower {
 			(
-				format!("from_{}_id", to_snake_case(model_name)),
-				format!("to_{}_id", to_snake_case(model_name)),
+				format!("from_{}_id", source_table_lower),
+				format!("to_{}_id", target_table_lower),
 			)
 		} else {
-			// Regular: use {source}_id and {target}_id
 			(
-				format!("{}_id", to_snake_case(model_name)),
-				format!("{}_id", to_snake_case(&target_model)),
+				format!("{}_id", source_table_lower),
+				format!("{}_id", target_table_lower),
 			)
 		};
+
+		// Resolve real PK types on both sides so the junction table matches
+		// what `create_intermediate_table_for_m2m` / `generate_migrations`
+		// produce. Without this, FK columns would hard-code `BigInteger`
+		// even when either side uses a different PK type.
+		let source_pk_type = self.to_state.get_primary_key_type(app_label, model_name);
+		let target_pk_type = self
+			.to_state
+			.get_primary_key_type(&target_app, &target_model);
 
 		// Create columns
 		let columns = vec![
@@ -4822,7 +4825,7 @@ impl MigrationAutodetector {
 			// source_id column
 			super::ColumnDefinition {
 				name: source_column.clone(),
-				type_definition: super::FieldType::BigInteger,
+				type_definition: source_pk_type,
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -4832,7 +4835,7 @@ impl MigrationAutodetector {
 			// target_id column
 			super::ColumnDefinition {
 				name: target_column.clone(),
-				type_definition: super::FieldType::BigInteger,
+				type_definition: target_pk_type,
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -4841,8 +4844,7 @@ impl MigrationAutodetector {
 			},
 		];
 
-		// Create constraints
-		let source_table = to_snake_case(model_name);
+		// Create constraints (use the resolved table names)
 		let constraints = vec![
 			// Foreign key to source table
 			super::Constraint::ForeignKey {
@@ -5300,74 +5302,74 @@ impl MigrationAutodetector {
 
 		// Generate intermediate tables for ManyToMany relationships
 		for (app_label, model_name, through_table, m2m) in &changes.created_many_to_many {
-			// Generate column names (Django-style naming convention)
-			let source_model_lower = model_name.to_lowercase();
-			let target_model_lower = m2m.to_model.to_lowercase();
-
-			// Check for self-referencing ManyToMany (e.g., User follows User)
-			let is_self_referencing = source_model_lower == target_model_lower;
-
-			// For self-referencing ManyToMany, use from_/to_ prefixes to avoid column name collision
-			// Django uses this convention: from_{model}_id and to_{model}_id
-			let source_column = m2m.source_field.clone().unwrap_or_else(|| {
-				if is_self_referencing {
-					format!("from_{}_id", source_model_lower)
-				} else {
-					format!("{}_id", source_model_lower)
-				}
-			});
-			let target_column = m2m.target_field.clone().unwrap_or_else(|| {
-				if is_self_referencing {
-					format!("to_{}_id", target_model_lower)
-				} else {
-					format!("{}_id", target_model_lower)
-				}
-			});
-
-			// Get source table name
+			// Resolve source table name from the to_state model. The
+			// `table_name` (user-set via `#[model(table_name = "...")]` or
+			// derived by the macro) is the canonical identifier — never
+			// the `struct` identifier (see #4659).
 			let source_table = self
 				.to_state
 				.get_model(app_label, model_name)
 				.map(|m| m.table_name.clone())
-				.unwrap_or_else(|| format!("{}_{}", app_label, source_model_lower));
+				.unwrap_or_else(|| format!("{}_{}", app_label, model_name.to_lowercase()));
 
-			// Get target table name
-			// First try to_state, then fall back to global registry for cross-app references
+			// Parse the target reference up-front so qualified names like
+			// "app.Model" resolve correctly throughout the rest of this
+			// block (table lookup, PK type lookup, and the lowercase
+			// fallback). Without this, lookups would use the literal
+			// "app.Model" string as the model name, miss every
+			// to_state/registry entry, and produce defaults like
+			// "app.model_id".
+			let (parsed_target_app, parsed_target_model) = self
+				.parse_model_reference(&m2m.to_model, app_label)
+				.unwrap_or_else(|| (app_label.to_string(), m2m.to_model.clone()));
+
+			// Resolve target table name: prefer to_state, then global registry,
+			// finally fall back to the canonical `{app}_{model_lower}` form
+			// (mirroring the source-table fallback above). The fallback must
+			// include the parsed app label — emitting only the lowercased
+			// model name would lose the app prefix that `#[model]` writes
+			// into the real `table_name`, so FK constraints would point at a
+			// table that does not exist.
 			let target_table = self
-				.find_model_app(&m2m.to_model)
-				.and_then(|target_app| {
-					// Try to_state first
-					if let Some(model) = self.to_state.get_model(&target_app, &m2m.to_model) {
-						return Some(model.table_name.clone());
-					}
-					// Fall back to global registry for cross-app references
-					for model_meta in super::model_registry::global_registry().get_models() {
-						if model_meta.app_label == target_app
-							&& model_meta.model_name == m2m.to_model
-						{
-							return Some(model_meta.table_name.clone());
-						}
-					}
-					None
+				.to_state
+				.get_model(&parsed_target_app, &parsed_target_model)
+				.map(|model| model.table_name.clone())
+				.or_else(|| {
+					super::model_registry::global_registry()
+						.get_models()
+						.iter()
+						.find(|m| {
+							m.app_label == parsed_target_app && m.model_name == parsed_target_model
+						})
+						.map(|m| m.table_name.clone())
 				})
-				.unwrap_or_else(|| m2m.to_model.to_lowercase());
+				.unwrap_or_else(|| {
+					format!(
+						"{}_{}",
+						parsed_target_app,
+						parsed_target_model.to_lowercase()
+					)
+				});
+
+			// Default FK column names come from `crate::m2m_naming::default_m2m_columns`,
+			// the single source of truth shared with `create_intermediate_table_for_m2m`
+			// and the ORM accessor (issue #4665). The helper keys off the
+			// *actual* table names (not struct identifiers) and applies
+			// `from_/to_` prefixes only for self-referential M2M (#4659).
+			let (default_source_col, default_target_col) =
+				crate::m2m_naming::default_m2m_columns(&source_table, &target_table);
+			let source_column = m2m.source_field.clone().unwrap_or(default_source_col);
+			let target_column = m2m.target_field.clone().unwrap_or(default_target_col);
 
 			// Get source model's primary key type
 			let source_pk_type = self.to_state.get_primary_key_type(app_label, model_name);
 
-			// Get target model's primary key type
-			// First extract target app_label from to_model (may be in "app.Model" format)
-			let (target_app, target_model) = if m2m.to_model.contains('.') {
-				let parts: Vec<&str> = m2m.to_model.split('.').collect();
-				(parts[0].to_string(), parts[1].to_string())
-			} else {
-				// Same app reference
-				(app_label.to_string(), m2m.to_model.clone())
-			};
-
+			// Get target model's primary key type. Reuse the values parsed
+			// from `m2m.to_model` at the top of this block so the lookup
+			// agrees with how `target_table` was resolved (#4659 follow-up).
 			let target_pk_type = self
 				.to_state
-				.get_primary_key_type(&target_app, &target_model);
+				.get_primary_key_type(&parsed_target_app, &parsed_target_model);
 
 			// Create intermediate table columns
 			let columns = vec![
@@ -5574,34 +5576,44 @@ impl MigrationAutodetector {
 	fn detect_created_many_to_many(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), model_state) in &self.to_state.models {
 			for m2m in &model_state.many_to_many_fields {
-				// Check if this ManyToMany already exists in from_state
+				// Generate the canonical through-table name from the source
+				// model's actual `table_name`. Using `table_name` (not the
+				// struct identifier) is required for two reasons:
+				//   1. The ORM accessor's fallback derives the through-table
+				//      and the source column from `S::table_name()` (see
+				//      `crates/reinhardt-db/src/orm/many_to_many_accessor.rs`).
+				//      The autodetector must agree on the same naming so that
+				//      generated migrations match runtime expectations.
+				//   2. `from_state` reconstructed from on-disk migrations only
+				//      preserves `table_name`s (the original struct identifiers
+				//      are lost — see #4659), so any subsequent existence check
+				//      must use a `table_name`-derived key.
+				// Route through `crate::m2m_naming::default_through_table`
+				// so this existence-check key cannot drift from the
+				// migration-emitting site (`create_intermediate_table_for_m2m`)
+				// or the ORM accessor's fallback (#4659, #4665).
+				let through_table = m2m.through.clone().unwrap_or_else(|| {
+					crate::m2m_naming::default_through_table(
+						&model_state.table_name,
+						&m2m.field_name,
+					)
+				});
+
+				// Check whether the through-table already exists in
+				// `from_state`. The previous implementation looked at
+				// `from_state.get_model(app_label, model_name).many_to_many_fields`,
+				// but the M2M metadata is not stored in on-disk
+				// `Operation::CreateTable`, so reconstructed `from_state`
+				// always reported `many_to_many_fields.is_empty()` and
+				// `exists_in_from` was always `false`. As a result, the
+				// intermediate `CreateTable` was re-emitted on every
+				// incremental `makemigrations` run (#4659).
 				let exists_in_from = self
 					.from_state
-					.get_model(app_label, model_name)
-					.map(|from_model| {
-						from_model
-							.many_to_many_fields
-							.iter()
-							.any(|f| f.field_name == m2m.field_name)
-					})
-					.unwrap_or(false);
+					.find_model_by_table(&through_table)
+					.is_some();
 
 				if !exists_in_from {
-					// Generate the through-table name via the canonical
-					// convention, feeding it the model's actual source table
-					// (which already accounts for multi-word names and
-					// `#[model(table_name = "...")]` overrides) instead of
-					// recomputing `{app_label}_{model_name}`. This keeps the
-					// existence check byte-aligned with what
-					// `create_intermediate_table_for_m2m` writes into
-					// `to_state`. See `crate::m2m_naming` (issue #4665).
-					let through_table = m2m.through.clone().unwrap_or_else(|| {
-						crate::m2m_naming::default_through_table(
-							&model_state.table_name,
-							&m2m.field_name,
-						)
-					});
-
 					// Add to created_many_to_many
 					changes.created_many_to_many.push((
 						app_label.clone(),
@@ -6315,6 +6327,76 @@ mod tests {
 			FieldState::new("id", super::super::FieldType::Integer, false),
 			FieldState::new("name", super::super::FieldType::VarChar(255), false),
 		]
+	}
+
+	/// Regression test for issue #4659.
+	///
+	/// Scenario: a model struct is renamed (`Room` -> `DMRoom`) but the
+	/// `table_name` stays the same (`dm_room`), and an M2M through-table
+	/// (`dm_room_members`) already exists on disk. The state reconstructed
+	/// from on-disk migrations loses the original struct identifier (it
+	/// derives a `RoomMembers`-style approximation via
+	/// `table_name_to_model_name`) and the M2M metadata is gone — only the
+	/// raw through-table survives.
+	///
+	/// Before the fix, `detect_created_many_to_many` keyed its existence
+	/// check on `(app_label, model_name)` and inspected
+	/// `many_to_many_fields`, which is always empty on reconstructed
+	/// states, so the through-table was spuriously re-created on every
+	/// incremental `makemigrations` run.
+	#[rstest]
+	fn detect_created_many_to_many_recognises_existing_through_table_by_table_name() {
+		use super::super::model_registry::ManyToManyMetadata;
+
+		// Arrange: from_state mimics the on-disk reconstruction.
+		// `table_name_to_model_name` produces `Room` / `RoomMembers` for
+		// tables `dm_room` / `dm_room_members`. The through table appears
+		// as an ordinary model with no M2M metadata attached.
+		let from_room = build_model_state_with_table_name("dm", "Room", "dm_room", sample_fields());
+		let from_through = build_model_state_with_table_name(
+			"dm",
+			"RoomMembers",
+			"dm_room_members",
+			sample_fields(),
+		);
+		let from_state = build_project_state(vec![
+			(("dm".to_string(), "Room".to_string()), from_room),
+			(("dm".to_string(), "RoomMembers".to_string()), from_through),
+		]);
+
+		// to_state: the renamed struct (`DMRoom`) re-declares the same
+		// M2M field. The synthetic through-table model (`DMRoomMembers`)
+		// the macro emits keeps the canonical `dm_room_members` table
+		// name.
+		let mut to_room =
+			build_model_state_with_table_name("dm", "DMRoom", "dm_room", sample_fields());
+		to_room
+			.many_to_many_fields
+			.push(ManyToManyMetadata::new("members", "User"));
+		let to_through = build_model_state_with_table_name(
+			"dm",
+			"DMRoomMembers",
+			"dm_room_members",
+			sample_fields(),
+		);
+		let to_state = build_project_state(vec![
+			(("dm".to_string(), "DMRoom".to_string()), to_room),
+			(("dm".to_string(), "DMRoomMembers".to_string()), to_through),
+		]);
+
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let changes = detector.detect_changes();
+
+		// Assert: the through table is already present in from_state, so
+		// the autodetector must not re-create it (#4659).
+		assert!(
+			changes.created_many_to_many.is_empty(),
+			"M2M through table already exists in from_state; expected no \
+			 created_many_to_many, got {:?}",
+			changes.created_many_to_many
+		);
 	}
 
 	#[rstest]

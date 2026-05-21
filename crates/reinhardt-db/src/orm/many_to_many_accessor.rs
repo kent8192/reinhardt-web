@@ -11,7 +11,7 @@
 use super::Manager;
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::relationship::RelationshipType;
-use crate::m2m_naming::default_through_table;
+use crate::m2m_naming::{default_m2m_columns, default_through_table};
 use crate::orm::Model;
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, DeleteStatement, Expr, Func, InsertStatement, MySqlQueryBuilder,
@@ -121,16 +121,12 @@ where
 			.into_iter()
 			.find(|r| r.name == field_name && r.relationship_type == RelationshipType::ManyToMany);
 
-		// Get through table name from metadata or fall back to the canonical
-		// convention. See `crate::migrations::naming` for the single source of
-		// truth shared with the migration autodetector.
-		//
-		// The fallback assumes `S::table_name()` already follows the
-		// `{app_label}_{model}` convention emitted by `#[model]`, matching the
-		// table name the autodetector writes into `to_state`. `Model` impls
-		// that return a non-canonical `table_name()` should populate
-		// `RelationshipMetadata::through_table` explicitly to avoid producing
-		// a through-table name that diverges from migrations.
+		// Get through table name and FK column names from metadata, falling
+		// back to the canonical convention defined in `crate::m2m_naming`
+		// (single source of truth shared with the migration autodetector;
+		// see issues #4659 and #4665). `default_m2m_columns` applies the
+		// `from_/to_` prefix only for self-referential M2M, matching what
+		// `MigrationAutodetector::create_intermediate_table_for_m2m` emits.
 		let through_table = rel_info
 			.as_ref()
 			.and_then(|r| r.through_table.clone())
@@ -141,22 +137,17 @@ where
 			.expect("Source model must have primary key")
 			.clone();
 
-		// Get source/target column names from metadata. The accessor cannot
-		// reconstruct the canonical `from_/to_{snake(model_name)}_id` columns
-		// the autodetector emits, because `Model` does not currently expose
-		// `model_name()` — only `table_name()`. The macro-generated metadata
-		// always populates `source_field` / `target_field`, so this fallback
-		// only fires for hand-rolled `Model` impls. Aligning the defaults is
-		// tracked as a follow-up to #4665.
+		let (default_source_field, default_target_field) =
+			default_m2m_columns(S::table_name(), T::table_name());
 		let source_field = rel_info
 			.as_ref()
 			.and_then(|r| r.source_field.clone())
-			.unwrap_or_else(|| format!("{}_id", S::table_name().to_lowercase()));
+			.unwrap_or(default_source_field);
 
 		let target_field = rel_info
 			.as_ref()
 			.and_then(|r| r.target_field.clone())
-			.unwrap_or_else(|| format!("{}_id", T::table_name().to_lowercase()));
+			.unwrap_or(default_target_field);
 
 		Self {
 			source_id,
@@ -578,14 +569,12 @@ where
 			.primary_key()
 			.ok_or_else(|| "Target model has no primary key".to_string())?;
 
-		// Resolve through-table and column names from relationship metadata
-		// first, falling back to the canonical convention shared with
-		// `Self::new` and the migration autodetector. Honouring metadata here
-		// is required for self-referential relations and any model that
-		// overrides `through_table` / `source_field` / `target_field` via
-		// `#[model]`. The column fallback matches `Self::new` (tracked as a
-		// follow-up to align with `from_/to_` once `Model::model_name()` is
-		// public — see the PR #4666 "Out of scope" notes).
+		// Resolve through-table and FK column names through the same
+		// metadata-aware path as `new()`, routing the fallbacks through
+		// `crate::m2m_naming` (single source of truth shared with the
+		// migration autodetector; see issues #4659, #4665). The helpers
+		// apply `from_/to_` prefixes for self-referential M2M, matching
+		// `MigrationAutodetector::create_intermediate_table_for_m2m`.
 		let rel_info = S::relationship_metadata()
 			.into_iter()
 			.find(|r| r.name == field_name && r.relationship_type == RelationshipType::ManyToMany);
@@ -594,14 +583,17 @@ where
 			.as_ref()
 			.and_then(|r| r.through_table.clone())
 			.unwrap_or_else(|| default_through_table(S::table_name(), field_name));
+
+		let (default_source_field, default_target_field) =
+			default_m2m_columns(S::table_name(), T::table_name());
 		let source_field = rel_info
 			.as_ref()
 			.and_then(|r| r.source_field.clone())
-			.unwrap_or_else(|| format!("{}_id", S::table_name().to_lowercase()));
+			.unwrap_or(default_source_field);
 		let target_field = rel_info
 			.as_ref()
 			.and_then(|r| r.target_field.clone())
-			.unwrap_or_else(|| format!("{}_id", T::table_name().to_lowercase()));
+			.unwrap_or(default_target_field);
 
 		// Build JOIN query using reinhardt-query
 		let mut query = Query::select();
@@ -644,6 +636,32 @@ where
 mod tests {
 	use super::*;
 	use reinhardt_query::prelude::QueryStatementBuilder;
+
+	/// Regression test for #4659: the runtime accessor's default
+	/// through-table name MUST agree with the name `makemigrations`
+	/// synthesizes. The autodetector uses
+	/// `format!("{}_{}", source_model.table_name, field_name)`; the
+	/// accessor must do the same. Previously it prepended `S::app_label()`
+	/// as a separate segment, producing names like `auth_users_groups`
+	/// instead of `users_groups` (or `dm_dm_room_members` instead of
+	/// `dm_room_members`), so runtime M2M queries targeted a table that
+	/// `makemigrations` never created.
+	#[test]
+	fn default_through_table_matches_autodetector_convention() {
+		// Arrange / Act: TestUser has table_name = "users". The accessor now
+		// routes through `crate::m2m_naming::default_through_table`, so this
+		// regression test exercises the same helper the autodetector uses.
+		let through = default_through_table(TestUser::table_name(), "members");
+
+		// Assert
+		assert_eq!(through, "users_members");
+		assert!(
+			!through.starts_with("auth_"),
+			"app_label must NOT be prepended; that would double-count it \
+			 when table_name already carries the prefix (e.g. \"dm_room\"). \
+			 See #4659 for the breakage this causes."
+		);
+	}
 
 	#[test]
 	fn test_sql_generation_add() {

@@ -72,10 +72,13 @@ fn to_snake_case(name: &str) -> String {
 
 /// Default name for a ManyToMany intermediate (through) table.
 ///
-/// Returns `format!("{source_table}_{field_name}")` after lower-casing both
-/// inputs. The source table already encodes the app label via the Django
+/// Returns `format!("{source_table.to_lowercase()}_{snake_case(field_name)}")`.
+/// The source table already encodes the app label via the Django
 /// convention `{app}_{model}`, so we deliberately do not re-prefix with the
-/// app label — that would double-prefix in practice.
+/// app label — that would double-prefix in practice. The field name is
+/// snake_cased so a `field_name` like `FollowedBy` produces
+/// `..._followed_by`, agreeing with the column convention enforced by the
+/// migration autodetector and ORM accessor.
 ///
 /// # Examples
 ///
@@ -84,21 +87,24 @@ fn to_snake_case(name: &str) -> String {
 ///
 /// assert_eq!(default_through_table("auth_user", "groups"), "auth_user_groups");
 /// assert_eq!(default_through_table("Auth_User", "Groups"), "auth_user_groups");
+/// assert_eq!(default_through_table("auth_user", "FollowedBy"), "auth_user_followed_by");
 /// ```
 pub fn default_through_table(source_table: &str, field_name: &str) -> String {
-	format!(
-		"{}_{}",
-		source_table.to_lowercase(),
-		field_name.to_lowercase()
-	)
+	format!("{}_{}", source_table.to_lowercase(), to_snake_case(field_name))
 }
 
 /// Default `(source_column, target_column)` for a ManyToMany intermediate table.
 ///
-/// Returns `("from_{snake(source_model)}_id", "to_{snake(target_model)}_id")`.
-/// The `from_`/`to_` prefixes make the columns unambiguous even when the
-/// relationship is self-referential (`source_model == target_model`), which is
-/// the exact case a column convention like `{table}_id` cannot represent.
+/// Both inputs are the *actual lowercased table names* of the source and
+/// target models. The convention matches the ORM accessor's fallback
+/// (`format!("{}_id", S::table_name().to_lowercase())` in
+/// `crate::orm::many_to_many_accessor`) and the migration autodetector's
+/// emit site in `crate::migrations::autodetector::generate_migrations`:
+///
+/// - Non-self-referential: `("{source_table}_id", "{target_table}_id")`
+/// - Self-referential (`source_table == target_table`): the bare convention
+///   would collide, so `from_/to_` prefixes are applied to keep the two
+///   columns distinct.
 ///
 /// # Examples
 ///
@@ -106,21 +112,24 @@ pub fn default_through_table(source_table: &str, field_name: &str) -> String {
 /// use reinhardt_db::m2m_naming::default_m2m_columns;
 ///
 /// assert_eq!(
-///     default_m2m_columns("User", "Group"),
-///     ("from_user_id".to_string(), "to_group_id".to_string()),
+///     default_m2m_columns("auth_user", "auth_group"),
+///     ("auth_user_id".to_string(), "auth_group_id".to_string()),
 /// );
 ///
-/// // Self-referential (User <-> User "follows" relationship) — names stay distinct.
+/// // Self-referential (e.g. `User.following -> User`).
 /// assert_eq!(
-///     default_m2m_columns("User", "User"),
-///     ("from_user_id".to_string(), "to_user_id".to_string()),
+///     default_m2m_columns("auth_user", "auth_user"),
+///     ("from_auth_user_id".to_string(), "to_auth_user_id".to_string()),
 /// );
 /// ```
-pub fn default_m2m_columns(source_model: &str, target_model: &str) -> (String, String) {
-	(
-		format!("from_{}_id", to_snake_case(source_model)),
-		format!("to_{}_id", to_snake_case(target_model)),
-	)
+pub fn default_m2m_columns(source_table: &str, target_table: &str) -> (String, String) {
+	let source = source_table.to_lowercase();
+	let target = target_table.to_lowercase();
+	if source == target {
+		(format!("from_{}_id", source), format!("to_{}_id", target))
+	} else {
+		(format!("{}_id", source), format!("{}_id", target))
+	}
 }
 
 #[cfg(test)]
@@ -160,8 +169,8 @@ mod tests {
 	#[test]
 	fn m2m_columns_basic() {
 		assert_eq!(
-			default_m2m_columns("User", "Group"),
-			("from_user_id".to_string(), "to_group_id".to_string()),
+			default_m2m_columns("auth_user", "auth_group"),
+			("auth_user_id".to_string(), "auth_group_id".to_string()),
 		);
 	}
 
@@ -170,28 +179,17 @@ mod tests {
 		// Self-referential M2M (e.g. User.following -> User) must produce two
 		// distinct column names, otherwise the intermediate table cannot model
 		// a directed relationship.
-		let (from, to) = default_m2m_columns("User", "User");
-		assert_eq!(from, "from_user_id");
-		assert_eq!(to, "to_user_id");
+		let (from, to) = default_m2m_columns("auth_user", "auth_user");
+		assert_eq!(from, "from_auth_user_id");
+		assert_eq!(to, "to_auth_user_id");
 		assert_ne!(from, to);
 	}
 
 	#[test]
-	fn m2m_columns_handles_pascal_case_model() {
+	fn m2m_columns_lowercases_inputs() {
 		assert_eq!(
-			default_m2m_columns("BlogPost", "Tag"),
-			("from_blog_post_id".to_string(), "to_tag_id".to_string()),
-		);
-	}
-
-	#[test]
-	fn m2m_columns_handles_acronym() {
-		assert_eq!(
-			default_m2m_columns("HTTPRequest", "APIKey"),
-			(
-				"from_http_request_id".to_string(),
-				"to_api_key_id".to_string()
-			),
+			default_m2m_columns("Auth_User", "Auth_Group"),
+			("auth_user_id".to_string(), "auth_group_id".to_string()),
 		);
 	}
 
