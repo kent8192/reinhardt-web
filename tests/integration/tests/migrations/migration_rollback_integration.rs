@@ -378,8 +378,16 @@ async fn column_data_type(
 			//                       of `DATABASE()`, so the next residual
 			//                       flake's CI log carries enough state to
 			//                       diagnose the root cause.
+			//
+			// Issue #4675: wrap every `information_schema` text column in
+			// `CAST(... AS CHAR)`. The unwrapped columns are typed as
+			// `LONGBLOB`/`LONGTEXT` over the binary protocol on some MySQL
+			// 8.x + sqlx combinations, which makes `query_scalar::<_, String>`
+			// fail with `ColumnDecode { mismatched types ... String (as
+			// VARCHAR) is not compatible with SQL type LONGBLOB }`. The CAST
+			// forces the result back to a text type sqlx recognises.
 			let result = sqlx::query_scalar::<_, String>(
-				"SELECT data_type FROM information_schema.columns \
+				"SELECT CAST(data_type AS CHAR) FROM information_schema.columns \
 				 WHERE LOWER(table_schema) = LOWER(DATABASE()) \
 				 AND LOWER(table_name) = LOWER(?) \
 				 AND LOWER(column_name) = LOWER(?)",
@@ -396,7 +404,10 @@ async fn column_data_type(
 					// large enough to spot duplicate-table-across-schemas drift
 					// without dominating the log.
 					let dump = sqlx::query_as::<_, (String, String, String, String)>(
-						"SELECT table_schema, table_name, column_name, data_type \
+						"SELECT CAST(table_schema AS CHAR), \
+						        CAST(table_name AS CHAR), \
+						        CAST(column_name AS CHAR), \
+						        CAST(data_type AS CHAR) \
 						 FROM information_schema.columns \
 						 WHERE LOWER(table_name) = LOWER(?) \
 						 ORDER BY table_schema, column_name \
@@ -409,7 +420,7 @@ async fn column_data_type(
 					// failed `SELECT DATABASE()` is logged as the failure it is
 					// rather than collapsing into a misleading `None`.
 					let current_db: Result<Option<String>, _> =
-						sqlx::query_scalar("SELECT DATABASE()")
+						sqlx::query_scalar("SELECT CAST(DATABASE() AS CHAR)")
 							.fetch_optional(&pool)
 							.await;
 					let current_db_repr = match current_db {
@@ -417,7 +428,7 @@ async fn column_data_type(
 						Err(err) => format!("<query failed: {err:?}>"),
 					};
 					eprintln!(
-						"[issue#4649] column_data_type({table_name:?}, {column_name:?}) \
+						"[issue#4675] column_data_type({table_name:?}, {column_name:?}) \
 						 returned None; DATABASE()={current_db_repr}, \
 						 information_schema.columns WHERE LOWER(table_name)=LOWER(?) \
 						 (ORDER BY table_schema, column_name LIMIT 32) = {dump:#?}"
@@ -426,7 +437,7 @@ async fn column_data_type(
 				}
 				Err(err) => {
 					eprintln!(
-						"[issue#4649] column_data_type({table_name:?}, {column_name:?}) \
+						"[issue#4675] column_data_type({table_name:?}, {column_name:?}) \
 						 MySQL query failed: {err:?}"
 					);
 					None
