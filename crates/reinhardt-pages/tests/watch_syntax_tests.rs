@@ -204,7 +204,7 @@ fn test_watch_with_text_content(string_signal: Signal<String>) {
 	let view = page!(|signal: Signal<String>| {
 		div {
 			watch {
-				{ { signal.get() } }
+				{ signal.get() }
 			}
 		}
 	})(signal.clone());
@@ -229,7 +229,7 @@ fn test_watch_with_expression_node(counter_signal: Signal<i32>) {
 	let view = page!(|signal: Signal<i32>| {
 		div {
 			watch {
-				{ { format!("Count: {}", signal.get()) } }
+				{ format!("Count: {}", signal.get()) }
 			}
 		}
 	})(signal.clone());
@@ -256,7 +256,7 @@ fn test_watch_with_for_loop(list_signal: Signal<Vec<String>>) {
 			watch {
 				for item in signal.get().iter() {
 					li {
-						{ { item.clone() } }
+						{ item.clone() }
 					}
 				}
 			}
@@ -332,7 +332,7 @@ fn test_multiple_watch_blocks(bool_signal: Signal<bool>, error_signal: Signal<Op
 			watch {
 				if error.get().is_some() {
 					div {
-						{ { error.get().unwrap_or_default() } }
+						{ error.get().unwrap_or_default() }
 					}
 				}
 			}
@@ -401,7 +401,7 @@ fn test_watch_with_unicode() {
 	let view = page!(|text: Signal<String>| {
 		div {
 			watch {
-				{ { text.get() } }
+				{ text.get() }
 			}
 		}
 	})(text.clone());
@@ -426,7 +426,7 @@ fn test_watch_with_empty_string() {
 	let view = page!(|text: Signal<String>| {
 		div {
 			watch {
-				{ { text.get() } }
+				{ text.get() }
 			}
 		}
 	})(text.clone());
@@ -452,15 +452,13 @@ fn test_watch_with_fragment_result(list_signal: Signal<Vec<String>>) {
 		div {
 			watch {
 				{
-					{
-							Page::fragment(
-								items
-									.get()
-									.iter()
-									.map(|i| Page::text(i.clone()))
-									.collect::<Vec<Page>>(),
-							)
-						}
+					Page::fragment(
+							items
+								.get()
+								.iter()
+								.map(|i| Page::text(i.clone()))
+								.collect::<Vec<Page>>(),
+						)
 				}
 			}
 		}
@@ -679,7 +677,7 @@ fn test_watch_complex_state_machine() {
 				if error.get().is_some() {
 					div {
 						class: "error",
-						{ { error.get().unwrap_or_default() } }
+						{ error.get().unwrap_or_default() }
 					}
 				}
 			}
@@ -696,7 +694,7 @@ fn test_watch_complex_state_machine() {
 					ul {
 						for item in data.get().iter() {
 							li {
-								{ { item.clone() } }
+								{ item.clone() }
 							}
 						}
 					}

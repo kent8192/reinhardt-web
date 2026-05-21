@@ -133,7 +133,7 @@ pub fn button_with_size(
 								on_click.set(true);
 							}
 						},
-				{ { text } }
+				{ text }
 			}
 		})(class, text, disabled)
 	}
@@ -147,7 +147,7 @@ pub fn button_with_size(
 				type: "button",
 				disabled: disabled,
 				data_reactive: "true",
-				{ { text } }
+				{ text }
 			}
 		})(class, text, disabled)
 	}
@@ -184,7 +184,7 @@ pub fn loading_spinner_large(message: &str) -> Page {
 			}
 			p {
 				class: "text-content-secondary text-sm",
-				{ { message } }
+				{ message }
 			}
 		}
 	})(message)
@@ -207,16 +207,16 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 				role: "alert",
 				div {
 					class: "flex items-start gap-3",
-					{ { icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") } }
+					{ icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") }
 					span {
 						class: "flex-1",
-						{ { message } }
+						{ message }
 					}
 					button {
 						type: "button",
 						class: "btn-icon text-danger hover:bg-red-100 dark:hover:bg-red-900/30 -mr-2 -mt-1",
 						aria_label: "Close",
-						{ { icons::close_icon() } }
+						{ icons::close_icon() }
 					}
 				}
 			}
@@ -228,9 +228,9 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 				role: "alert",
 				div {
 					class: "flex items-start gap-3",
-					{ { icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") } }
+					{ icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") }
 					span {
-						{ { message } }
+						{ message }
 					}
 				}
 			}
@@ -253,9 +253,9 @@ pub fn success_alert(message: &str) -> Page {
 			role: "alert",
 			div {
 				class: "flex items-start gap-3",
-				{ { icons::success_check_icon() } }
+				{ icons::success_check_icon() }
 				span {
-					{ { message } }
+					{ message }
 				}
 			}
 		}
@@ -271,9 +271,9 @@ pub fn warning_alert(message: &str) -> Page {
 			role: "alert",
 			div {
 				class: "flex items-start gap-3",
-				{ { icons::warning_icon() } }
+				{ icons::warning_icon() }
 				span {
-					{ { message } }
+					{ message }
 				}
 			}
 		}
@@ -317,7 +317,7 @@ pub fn text_input(
 				label {
 					for: id_owned.clone(),
 					class: "form-label",
-					{ { label_owned } }
+					{ label_owned }
 				}
 				watch {
 					input {
@@ -359,7 +359,7 @@ pub fn text_input(
 				label {
 					for: { id_owned.clone() },
 					class: "form-label",
-					{ { label_owned } }
+					{ label_owned }
 				}
 				watch {
 					input {
@@ -430,7 +430,7 @@ pub fn textarea(
 				label {
 					for: id_owned.clone(),
 					class: "form-label",
-					{ { label_owned } }
+					{ label_owned }
 				}
 				watch {
 					textarea {
@@ -450,7 +450,7 @@ pub fn textarea(
 										}
 									}
 								},
-						{ { value_signal.get() } }
+						{ value_signal.get() }
 					}
 				}
 				watch {
@@ -459,7 +459,7 @@ pub fn textarea(
 							class: "flex justify-end mt-1",
 							span {
 								class: if value_signal_for_count.get().len()> max_length { "text-danger font-medium" } else if value_signal_for_count.get().len()> max_length * 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" },
-								{ { format!("{}/{}", value_signal_for_count.get().len(), max_length) } }
+								{ format!("{}/{}", value_signal_for_count.get().len(), max_length) }
 							}
 						}
 					}
@@ -622,8 +622,8 @@ pub fn theme_toggle() -> Page {
 			type: "button",
 			id: "theme-toggle-btn",
 			aria_label: "Toggle theme",
-			{ { icons::sun_icon() } }
-			{ { icons::moon_icon() } }
+			{ icons::sun_icon() }
+			{ icons::moon_icon() }
 		}
 	})()
 }
@@ -657,7 +657,7 @@ pub fn badge(text: &str, primary: bool) -> Page {
 	page!(|text: String, class: String| {
 		span {
 			class: class,
-			{ { text } }
+			{ text }
 		}
 	})(text, class)
 }

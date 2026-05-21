@@ -31,7 +31,7 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 			div {
 				class: "admin-alert admin-alert-danger mt-4 text-center text-sm",
 				role: "alert",
-				msg
+				{ msg }
 			}
 		})()
 	});
@@ -54,10 +54,10 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 						class: "text-sm text-slate-500 text-center mb-6",
 						"Sign in to manage your application"
 					}
-					form_page
+					{ form_page }
 				}
 			}
-			error_page
+			{ error_page }
 		}
 	})()
 }

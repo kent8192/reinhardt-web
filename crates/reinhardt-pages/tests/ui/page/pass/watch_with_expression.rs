@@ -11,7 +11,7 @@ fn main() {
 	let _with_expr = page!(|count: Signal<i32>| {
 		div {
 			watch {
-				{ { format!("Count: {}", count.get()) } }
+				{ format!("Count: {}", count.get()) }
 			}
 		}
 	});
@@ -22,7 +22,7 @@ fn main() {
 			watch {
 				span {
 					class: "greeting",
-					{ { format!("Hello, {}!", name.get()) } }
+					{ format!("Hello, {}!", name.get()) }
 				}
 			}
 		}
@@ -32,7 +32,7 @@ fn main() {
 	let _conditional_expr = page!(|value: Signal<Option<String>>| {
 		div {
 			watch {
-				{ { value.get().unwrap_or_else(| | "Default".to_string()) } }
+				{ value.get().unwrap_or_else(| | "Default".to_string()) }
 			}
 		}
 	});

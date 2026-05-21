@@ -59,9 +59,9 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> Page {
 									});
 								}
 							},
-					{ { icons::heart_icon_filled() } }
+					{ icons::heart_icon_filled() }
 					span {
-						{ { format!("{}", like_count_signal.get()) } }
+						{ format!("{}", like_count_signal.get()) }
 					}
 				}
 			} else {
@@ -83,9 +83,9 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> Page {
 									});
 								}
 							},
-					{ { icons::heart_icon_outline() } }
+					{ icons::heart_icon_outline() }
 					span {
-						{ { format!("{}", like_count_signal_else.get()) } }
+						{ format!("{}", like_count_signal_else.get()) }
 					}
 				}
 			}
@@ -148,15 +148,13 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 							div {
 								class: "tweet-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold",
 								{
-									{
-											username
-												.clone()
-												.chars()
-												.next()
-												.unwrap_or('U')
-												.to_uppercase()
-												.to_string()
-										}
+									username
+											.clone()
+											.chars()
+											.next()
+											.unwrap_or('U')
+											.to_uppercase()
+											.to_string()
 								}
 							}
 						}
@@ -168,11 +166,11 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 									class: "flex items-center gap-1 min-w-0",
 									span {
 										class: "tweet-username truncate",
-										{ { username.clone() } }
+										{ username.clone() }
 									}
 									span {
 										class: "tweet-handle truncate",
-										{ { format!("@{}", username.clone()) } }
+										{ format!("@{}", username.clone()) }
 									}
 									span {
 										class: "text-content-tertiary",
@@ -180,7 +178,7 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 									}
 									span {
 										class: "tweet-time",
-										{ { created_at.clone() } }
+										{ created_at.clone() }
 									}
 								}
 								if show_delete {
@@ -194,13 +192,13 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 														delete_action.dispatch(tweet_id);
 													}
 												},
-										{ { icons::trash_icon() } }
+										{ icons::trash_icon() }
 									}
 								}
 							}
 							p {
 								class: "tweet-content",
-								{ { content.clone() } }
+								{ content.clone() }
 							}
 							div {
 								class: "tweet-actions",
@@ -208,7 +206,7 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 									class: "tweet-action-btn hover:text-brand",
 									type: "button",
 									aria_label: "Reply",
-									{ { icons::chat_bubble_icon() } }
+									{ icons::chat_bubble_icon() }
 									span {
 										"0"
 									}
@@ -217,17 +215,17 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 									class: "tweet-action-btn hover:text-success",
 									type: "button",
 									aria_label: "Retweet",
-									{ { icons::retweet_icon() } }
+									{ icons::retweet_icon() }
 									span {
 										"0"
 									}
 								}
-								{ { like_button(liked_signal.clone(), like_count_signal.clone()) } }
+								{ like_button(liked_signal.clone(), like_count_signal.clone()) }
 								button {
 									class: "tweet-action-btn hover:text-brand",
 									type: "button",
 									aria_label: "Share",
-									{ { icons::share_icon() } }
+									{ icons::share_icon() }
 								}
 							}
 						}
@@ -239,7 +237,7 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 			if delete_action_for_error.error().is_some() {
 				div {
 					class: "alert-danger mt-3",
-					{ { delete_action_for_error.error().unwrap_or_default() } }
+					{ delete_action_for_error.error().unwrap_or_default() }
 				}
 			}
 		}
@@ -315,7 +313,7 @@ pub fn tweet_form() -> Page {
 						class: "flex items-center gap-2",
 						div {
 							class: text_class,
-							{ { display_text } }
+							{ display_text }
 						}
 						div {
 							class: "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden",
@@ -340,7 +338,7 @@ pub fn tweet_form() -> Page {
 							type: "submit",
 							class: if is_disabled { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
 							disabled: is_disabled,
-							{ { if is_loading { "Posting..." } else { "Post" } } }
+							{ if is_loading { "Posting..." } else { "Post" } }
 						}
 					}
 				})(is_loading, is_disabled)
@@ -353,7 +351,7 @@ pub fn tweet_form() -> Page {
 				page!(|has_error: bool, error_msg: String| {
 					div {
 						class: if has_error { "alert-danger mb-3" } else { "hidden" },
-						{ { error_msg } }
+						{ error_msg }
 					}
 				})(has_error, error_msg)
 			},
@@ -391,7 +389,7 @@ pub fn tweet_form() -> Page {
 					}
 					div {
 						class: "flex-1",
-						{ { form_view } }
+						{ form_view }
 					}
 				}
 			}
@@ -464,9 +462,9 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 						role: "alert",
 						div {
 							class: "flex items-center gap-2",
-							{ { icons::error_circle_icon() } }
+							{ icons::error_circle_icon() }
 							span {
-								{ { error_signal.get().unwrap_or_default() } }
+								{ error_signal.get().unwrap_or_default() }
 							}
 						}
 					}
@@ -475,7 +473,7 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 						class: "flex flex-col items-center justify-center py-16 text-center",
 						div {
 							class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-							{ { icons::chat_bubble_icon_lg() } }
+							{ icons::chat_bubble_icon_lg() }
 						}
 						h3 {
 							class: "text-lg font-semibold text-content-primary mb-1",
@@ -490,15 +488,13 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 					div {
 						class: "card overflow-hidden",
 						{
-							{
-									Page::Fragment(
-										tweets_signal
-											.get()
-											.iter()
-											.map(|t| tweet_card(t, false))
-											.collect::<Vec<_>>(),
-									)
-								}
+							Page::Fragment(
+									tweets_signal
+										.get()
+										.iter()
+										.map(|t| tweet_card(t, false))
+										.collect::<Vec<_>>(),
+								)
 						}
 					}
 				}

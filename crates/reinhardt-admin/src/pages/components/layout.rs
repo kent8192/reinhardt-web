@@ -42,13 +42,13 @@ pub fn header(site_name: &str, user_name: Option<&str>) -> Page {
 				a {
 					class: "font-display text-lg font-bold tracking-tight text-white no-underline hover:text-amber-400",
 					href: "/admin/",
-					site_name
+					{ site_name }
 				}
 			}
 			div {
 				class: "flex items-center gap-2 text-sm text-slate-400",
 				span {
-					format!("User: {}", user_display)
+					{ format!("User: {}", user_display) }
 				}
 			}
 		}
@@ -106,7 +106,7 @@ pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> Page {
 			page!(|| {
 				li {
 					class: "list-none",
-					link
+					{ link }
 				}
 			})()
 		})
@@ -125,7 +125,7 @@ pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> Page {
 			}
 			ul {
 				class: "flex flex-col gap-0.5 px-0 m-0",
-				nav_items
+				{ nav_items }
 			}
 		}
 	})()
@@ -149,7 +149,7 @@ pub fn footer(version: &str) -> Page {
 		footer {
 			class: "text-center py-4 text-xs text-slate-400 border-t border-slate-200 animate__animated animate__fadeIn",
 			style: "margin-left: 240px;",
-			format!("Reinhardt Admin v{}", version)
+			{ format!("Reinhardt Admin v{}", version) }
 		}
 	})()
 }
@@ -198,14 +198,14 @@ pub fn main_layout(
 	page!(|| {
 		div {
 			class: "admin-layout min-h-screen bg-slate-50",
-			header_page
-			sidebar_page
+			{ header_page }
+			{ sidebar_page }
 			main {
 				class: "bg-slate-50",
 				style: "margin-left: 240px; margin-top: 56px; padding: 1.5rem 2rem; min-height: calc(100vh - 120px);",
-				outlet
+				{ outlet }
 			}
-			footer_page
+			{ footer_page }
 		}
 	})()
 }
