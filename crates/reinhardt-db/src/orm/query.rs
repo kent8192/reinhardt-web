@@ -3454,12 +3454,10 @@ where
 		));
 
 		// Look up relationship metadata to derive FK names correctly
-		let rel_info = T::relationship_metadata()
-			.into_iter()
-			.find(|r| {
-				r.name == related_field
-					&& r.relationship_type == super::relationship::RelationshipType::ManyToMany
-			});
+		let rel_info = T::relationship_metadata().into_iter().find(|r| {
+			r.name == related_field
+				&& r.relationship_type == super::relationship::RelationshipType::ManyToMany
+		});
 
 		// Derive related table name from metadata
 		let related_table = if let Some(ref info) = rel_info {

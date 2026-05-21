@@ -5348,7 +5348,12 @@ impl MigrationAutodetector {
 				.unwrap_or_else(|| (app_label.to_string(), m2m.to_model.clone()));
 
 			// Resolve target table name: prefer to_state, then global registry,
-			// finally fall back to lowercasing the parsed model name.
+			// finally fall back to the canonical `{app}_{model_lower}` form
+			// (mirroring the source-table fallback above). The fallback must
+			// include the parsed app label — emitting only the lowercased
+			// model name would lose the app prefix that `#[model]` writes
+			// into the real `table_name`, so FK constraints would point at a
+			// table that does not exist.
 			let target_table = self
 				.to_state
 				.get_model(&parsed_target_app, &parsed_target_model)
@@ -5362,7 +5367,13 @@ impl MigrationAutodetector {
 						})
 						.map(|m| m.table_name.clone())
 				})
-				.unwrap_or_else(|| parsed_target_model.to_lowercase());
+				.unwrap_or_else(|| {
+					format!(
+						"{}_{}",
+						parsed_target_app,
+						parsed_target_model.to_lowercase()
+					)
+				});
 
 			// Derive M2M column names from the resolved table names so that
 			// the autodetector agrees with the ORM accessor's fallback
