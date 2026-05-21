@@ -637,6 +637,12 @@ testcontainers-modules = { version = "0.15.0", features = [
   "mysql",
   "redis",
 ] }
+# Direct floor for the transitive dep of testcontainers-modules. Clears
+# RUSTSEC-2026-0145 (PAX header desynchronization in astral-tokio-tar; fixed
+# in 0.6.2). Referenced from reinhardt-testkit as an optional dep so the
+# minimum-version constraint reaches the resolver only when the
+# `testcontainers` feature is on.
+astral-tokio-tar = "0.6.2"
 proptest = "1.11.0"
 arbitrary = { version = "1.4", features = ["derive"] }
 tokio-test = "0.4.5"
