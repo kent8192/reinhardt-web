@@ -2607,12 +2607,10 @@ fn main() {}"#;
 		let result = formatter.protect_page_macros(input);
 
 		// Assert
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder_0__!()")
+		assert_eq!(
+			result.protected_content,
+			r#"let view = __reinhardt_placeholder_0__!();"#
 		);
-		assert!(!result.protected_content.contains("page!("));
 		assert_eq!(result.backups.len(), 1);
 		assert_eq!(result.backups[0].id, 0);
 		assert!(result.backups[0].original.starts_with("page!("));
@@ -2631,17 +2629,10 @@ let view2 = page!(|| { div { "second" } });
 		let result = formatter.protect_page_macros(input);
 
 		// Assert
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder_0__!()")
+		assert_eq!(
+			result.protected_content,
+			"\nlet view1 = __reinhardt_placeholder_0__!();\nlet view2 = __reinhardt_placeholder_1__!();\n"
 		);
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder_1__!()")
-		);
-		assert!(!result.protected_content.contains("page!("));
 		assert_eq!(result.backups.len(), 2);
 	}
 
@@ -2661,13 +2652,15 @@ fn main() {}"#;
 		let result = formatter.protect_page_macros(input);
 
 		// Assert
-		assert!(result.protected_content.contains("use foo::bar;"));
-		assert!(result.protected_content.contains("fn render() -> View"));
-		assert!(result.protected_content.contains("fn main() {}"));
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder_0__!()")
+		assert_eq!(
+			result.protected_content,
+			r#"use foo::bar;
+
+fn render() -> View {
+    __reinhardt_placeholder_0__!()
+}
+
+fn main() {}"#
 		);
 	}
 
@@ -2769,10 +2762,9 @@ fn main() {
 			AstPageFormatter::restore_page_macros(&result.protected_content, &result.backups);
 
 		// Assert
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder_0__!()(props)")
+		assert_eq!(
+			result.protected_content,
+			r#"let view = __reinhardt_placeholder_0__!()(props);"#
 		);
 		assert_eq!(result.backups.len(), 1);
 		assert_eq!(restored, input);
@@ -2863,10 +2855,9 @@ fn main() {
 
 		// Assert
 		assert_eq!(protected.backups.len(), 1);
-		assert!(
-			protected
-				.protected_content
-				.contains("__reinhardt_placeholder_")
+		assert_eq!(
+			protected.protected_content,
+			r#"let view = __reinhardt_placeholder_0__!();"#
 		);
 		assert_eq!(restored, original);
 	}
