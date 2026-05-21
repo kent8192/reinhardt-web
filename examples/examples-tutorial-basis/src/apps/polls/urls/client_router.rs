@@ -70,8 +70,8 @@ pub fn client_url_patterns() -> ClientRouter {
 /// Error page used as the `not_found` fallback.
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
-	// `urls::index()` is the macro-emitted typed helper (issue #4656),
-	// sibling to `client_url_patterns` at this module's parent scope.
+	// `urls::index()` is the macro-emitted typed helper (issue #4656);
+	// `urls` is a sibling of `client_url_patterns` in this module's scope.
 	let home_href = urls::index();
 	page!(|message: String, home_href: String| {
 		div {
