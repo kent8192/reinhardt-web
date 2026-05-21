@@ -316,7 +316,13 @@ fn parse_event(input: ParseStream) -> Result<PageEvent> {
 	})
 }
 
-/// Parses a braced expression: `{ expr }`
+/// Parses a braced expression: `{ expr }` (or `{ stmts...; expr }`).
+///
+/// Uses `Block::parse_within` so block bodies with let-statements such as
+/// `{ let x = ...; expr }` are accepted. When the body is a single trailing
+/// expression with no statements, the inner Expr is returned directly to
+/// preserve the legacy AST shape — wrapping it in `Expr::Block` would cause
+/// downstream formatters to emit a redundant outer `{ ... }`.
 fn parse_braced_expression(input: ParseStream) -> Result<PageNode> {
 	let span = input.span();
 	let content;
@@ -326,12 +332,18 @@ fn parse_braced_expression(input: ParseStream) -> Result<PageNode> {
 	// expression remains valid because `Block::parse_within` accepts it as
 	// a one-element statement list.
 	let stmts = syn::Block::parse_within(&content)?;
-	let block = syn::Block { brace_token, stmts };
-	let expr = Expr::Block(syn::ExprBlock {
-		attrs: Vec::new(),
-		label: None,
-		block,
-	});
+
+	let expr = match stmts.as_slice() {
+		// Single trailing expression (no trailing `;`): unwrap to preserve
+		// the historical PageExpression shape so legacy formatters do not
+		// see an extra `Expr::Block` wrapper.
+		[syn::Stmt::Expr(inner, None)] => inner.clone(),
+		_ => Expr::Block(syn::ExprBlock {
+			attrs: Vec::new(),
+			label: None,
+			block: syn::Block { brace_token, stmts },
+		}),
+	};
 
 	Ok(PageNode::Expression(PageExpression {
 		expr,

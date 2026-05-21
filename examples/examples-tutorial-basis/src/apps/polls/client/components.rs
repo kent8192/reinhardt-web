@@ -410,21 +410,40 @@ pub fn polls_results(question_id: i64) -> Page {
 												page!(|choices: Vec<ChoiceInfo>, total: i32| {
 													for choice in choices {
 														{
-															let percentage = if total > 0 {
-																(choice.votes as f64 / total as f64 * 100.0) as i32
-															} else {
-																0
-															};
-															page!(| choice : ChoiceInfo, percentage : i32 | { div {
-										            class : "py-4", div { class : "flex justify-between items-center mb-2",
-										            strong { { choice.choice_text.clone() } } span { class :
-										            "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-										            { format!("{} votes", choice.votes) } } } div { class :
-										            "w-full bg-surface-tertiary rounded-full h-2.5", div { class :
-										            "bg-brand h-2.5 rounded-full", role : "progressbar", style :
-										            format!("width: {}%", percentage), aria_valuenow : percentage.to_string(),
-										            aria_valuemin : "0", aria_valuemax : "100", { format!("{}%", percentage) } }
-										            } } })(choice, percentage)
+															{
+																	let percentage = if total > 0 {
+																		(choice.votes as f64 / total as f64 * 100.0) as i32
+																	} else {
+																		0
+																	};
+																	page!(|choice: ChoiceInfo, percentage: i32| {
+																		div {
+																			class: "py-4",
+																			div {
+																				class: "flex justify-between items-center mb-2",
+																				strong {
+																					{ choice.choice_text.clone() }
+																				}
+																				span {
+																					class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
+																					{ format!("{} votes", choice.votes) }
+																				}
+																			}
+																			div {
+																				class: "w-full bg-surface-tertiary rounded-full h-2.5",
+																				div {
+																					class: "bg-brand h-2.5 rounded-full",
+																					role: "progressbar",
+																					style: format!("width: {}%", percentage),
+																					aria_valuenow: percentage.to_string(),
+																					aria_valuemin: "0",
+																					aria_valuemax: "100",
+																					{ format!("{}%", percentage) }
+																				}
+																			}
+																		}
+																	})(choice, percentage)
+																}
 														}
 													}
 												})(choices, total)
