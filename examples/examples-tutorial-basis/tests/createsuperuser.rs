@@ -26,29 +26,16 @@
 //! `OnceLock` and could collide with other test binaries that run in the
 //! same `cargo test` invocation. The inventory is inspected read-only
 //! instead, plus `SuperuserInit::init_superuser` is exercised directly.
-
-// Native-only: the tutorial's `User` model and the `reinhardt-auth` types
-// it pulls in (sqlx, etc.) do not build for `wasm32-unknown-unknown`.
 #![cfg(native)]
-
 use examples_tutorial_basis::apps::users::models::User;
 use reinhardt::BaseUser;
 use reinhardt::reinhardt_auth::{SuperuserCreatorRegistration, SuperuserInit};
 use rstest::rstest;
-
 #[rstest]
 fn tutorial_user_auto_generates_superuser_init() {
-	// Arrange
 	let username = "alice";
 	let ignored_email = "";
-
-	// Act -- the `#[user] + #[model]` macro pair emits
-	// `impl SuperuserInit for User` since #4522.
 	let user = User::init_superuser(username, ignored_email);
-
-	// Assert -- required superuser fields are set; the absent `email` field
-	// is silently no-op'd by the generator (the tutorial's minimal User has
-	// no email column).
 	assert_eq!(
 		user.username, username,
 		"username_field must be populated by init_superuser"
@@ -62,17 +49,11 @@ fn tutorial_user_auto_generates_superuser_init() {
 		"is_active must be true on init_superuser (default-on field with setter)"
 	);
 }
-
 #[rstest]
 fn tutorial_user_init_superuser_password_hashing_works() {
-	// Arrange
 	let mut user = User::init_superuser("bob", "");
-
-	// Act
 	user.set_password("hunter2-tutorial")
 		.expect("set_password should succeed for Argon2Hasher-backed user");
-
-	// Assert
 	assert!(
 		user.password_hash().is_some(),
 		"password_hash must be populated after set_password"
@@ -83,26 +64,15 @@ fn tutorial_user_init_superuser_password_hashing_works() {
 		"the hashed password must verify against the original plaintext"
 	);
 }
-
 #[rstest]
 fn tutorial_user_is_registered_in_superuser_creator_inventory() {
-	// Arrange -- since #4522 every `#[user] + #[model]` struct submits an
-	// inventory entry, regardless of `full = true`. The tutorial's `User`
-	// must therefore appear here.
 	let registrations: Vec<&SuperuserCreatorRegistration> =
 		inventory::iter::<SuperuserCreatorRegistration>().collect();
 	let type_names: Vec<&str> = registrations.iter().map(|r| r.type_name).collect();
-
-	// Act -- look for the tutorial's User in the registered entries.
 	let target_type_name = std::any::type_name::<User>();
 	let found = registrations
 		.iter()
 		.any(|r| r.type_name == target_type_name);
-
-	// Assert -- if this fails, the macro auto-registration regressed for
-	// minimal-user models; re-check the guard in
-	// `crates/reinhardt-core/macros/src/user_attribute.rs` (around the
-	// `if has_model { ... }` block introduced by #4522).
 	assert!(
 		found,
 		"tutorial's `User` must appear in SuperuserCreatorRegistration inventory; \

@@ -16,9 +16,7 @@
 //!   mounted by `src/config/urls.rs` via `client_url_patterns()` and
 //!   discovered through the `inventory::submit!(ClientRouterRegistration)`
 //!   emitted by `#[routes(..., client_inventory)]`.
-
-#[cfg(native)]
-pub mod server_urls;
-
 #[cfg(wasm)]
 pub mod client_router;
+#[cfg(native)]
+pub mod server_urls;

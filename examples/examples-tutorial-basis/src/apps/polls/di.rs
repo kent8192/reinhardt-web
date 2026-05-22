@@ -79,7 +79,8 @@
 //! [#4645](https://github.com/kent8192/reinhardt-web/issues/4645);
 //! until it ships, the per-row authorization helper stays a plain
 //! `async fn` in `server_fn.rs`.
-
+#[cfg(native)]
+use crate::apps::users::models::User;
 #[cfg(native)]
 use reinhardt::Model;
 #[cfg(native)]
@@ -88,10 +89,6 @@ use reinhardt::di::injectable_factory;
 use reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY};
 #[cfg(native)]
 use reinhardt::pages::server_fn::ServerFnError;
-
-#[cfg(native)]
-use crate::apps::users::models::User;
-
 /// Request-scoped wrapper around the user resolved from the session,
 /// mirroring Django's `request.user`.
 ///
@@ -131,7 +128,6 @@ pub enum SessionUser {
 	/// reaches the response body) to avoid leaking schema details.
 	Unavailable(String),
 }
-
 #[cfg(native)]
 impl SessionUser {
 	/// Borrow the active authenticated user, or surface a 401/403/500
@@ -148,7 +144,6 @@ impl SessionUser {
 		}
 	}
 }
-
 /// `#[injectable_factory(scope = "request")]` registers a factory that
 /// runs **once per request** (see
 /// `crates/reinhardt-di/macros/src/utils.rs:40` `KNOWN_ARGS = &["scope"]`
@@ -169,29 +164,6 @@ async fn session_user_factory(#[inject] session: SessionData) -> SessionUser {
 	let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
 		return SessionUser::Anonymous;
 	};
-
-	// Distinguish the three outcomes explicitly:
-	//
-	// - `Ok(Some(u))` — a row exists. Authentication is meaningful;
-	//   fall through to the is_active check below.
-	// - `Ok(None)` — the session points at a user_id that no longer
-	//   exists (deleted account, GDPR purge, …). The session itself
-	//   has outlived the user, so the right behaviour is to force
-	//   re-auth → **`Anonymous` (401)**.
-	// - `Err(e)` — the lookup query itself failed (DB outage, pool
-	//   exhaustion, schema drift, etc.). This is an *availability*
-	//   problem, not an *authentication* problem, so collapsing it
-	//   into `Anonymous` would (a) hide the outage from monitoring
-	//   and (b) push callers into a misleading "log in again" loop.
-	//   Surface it as **`Unavailable` (500)** instead.
-	//
-	// `tracing::warn!` logs the underlying error for observability
-	// while `require_active()` echoes only a generic 500 message to
-	// the client, so schema details do not leak via error bodies.
-	//
-	// Ideal implementation (blocked on #4650): once `Manager::filter`
-	// accepts the typed builder, this becomes:
-	//   `.filter(User::field_id().eq(user_id))`.
 	use reinhardt::db::orm::{FilterOperator, FilterValue};
 	let user = match User::objects()
 		.filter(
@@ -206,14 +178,12 @@ async fn session_user_factory(#[inject] session: SessionData) -> SessionUser {
 		Ok(None) => return SessionUser::Anonymous,
 		Err(e) => {
 			::tracing::warn!(
-				user_id = user_id,
-				error = %e,
+				user_id = user_id, error = % e,
 				"session_user_factory: user lookup failed"
 			);
 			return SessionUser::Unavailable(e.to_string());
 		}
 	};
-
 	if user.is_active {
 		SessionUser::Authenticated(user)
 	} else {

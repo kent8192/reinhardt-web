@@ -12,18 +12,6 @@
 //! Middleware stack (server-only):
 //! 1. `SessionMiddleware` — cookie-based session management used by the
 //!    `users` app's login/logout server functions
-
-use reinhardt::UnifiedRouter;
-#[cfg(native)]
-use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
-#[cfg(native)]
-use reinhardt::pages::server_fn::ServerFnRouterExt;
-use reinhardt::routes;
-
-#[cfg(native)]
-use crate::config::admin::configure_admin;
-
-// Import server_fn marker modules (snake_case + ::marker)
 #[cfg(native)]
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
@@ -31,12 +19,18 @@ use crate::apps::polls::server_fn::{
 };
 #[cfg(native)]
 use crate::apps::users::server_fn::{current_user, login, logout, register};
-
+#[cfg(native)]
+use crate::config::admin::configure_admin;
+use reinhardt::UnifiedRouter;
+#[cfg(native)]
+use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
 #[cfg(native)]
 use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
 #[cfg(native)]
+use reinhardt::pages::server_fn::ServerFnRouterExt;
+use reinhardt::routes;
+#[cfg(native)]
 use std::time::Duration;
-
 /// Build the session middleware with a two-week TTL and Lax SameSite.
 ///
 /// Mirrors the production defaults used in `examples-twitter/src/config/middleware.rs`.
@@ -48,7 +42,6 @@ fn create_session_middleware() -> SessionMiddleware {
 		.with_path("/".to_string());
 	SessionMiddleware::new(config)
 }
-
 /// Build the top-level project router.
 ///
 /// `#[routes(standalone, client_inventory)]` opts into the new cross-target
@@ -82,12 +75,6 @@ fn create_session_middleware() -> SessionMiddleware {
 #[routes(standalone, client_inventory)]
 pub fn routes() -> UnifiedRouter {
 	let router = UnifiedRouter::new().server(|s| {
-		// On wasm the `s` parameter is a `ServerRouterStub` and every
-		// builder call inside this closure is absorbed by the stub
-		// (see `reinhardt_urls::routers::unified_router::ServerRouterStub`),
-		// so the `server_fn` markers do not need to compile on wasm. We
-		// still gate the marker references on `#[cfg(native)]` because
-		// the `server_fn` marker modules themselves are native-only.
 		#[cfg(native)]
 		{
 			s.server_fn(get_questions::marker)
@@ -111,25 +98,6 @@ pub fn routes() -> UnifiedRouter {
 			s
 		}
 	});
-
-	// Aggregate every app's client routes on wasm so the macro-emitted
-	// `ClientRouterRegistration` carries the full SPA route table.
-	//
-	// Each `client_url_patterns()` already namespaces its routes
-	// (`polls:` / `users:`) via its own `#[url_patterns(..., mode = client)]`
-	// registration. We compose them by wrapping each in a single-purpose
-	// `UnifiedRouter` and stitching with `mount_unified`, which uses
-	// `ClientRouter::merge` internally (still `pub(crate)` upstream —
-	// tracked in #4442). When #4442 ships, this collapses to
-	// `.client(|c| c.merge(polls).merge(users))`.
-	//
-	// The aggregation is `#[cfg(wasm)]` because:
-	// - The per-app `client_router` submodules are themselves wasm-only
-	//   (they import `crate::client::pages::*`, which is wasm-only).
-	// - On native, `#[routes(standalone, client_inventory)]` consumes the
-	//   server portion of the returned `UnifiedRouter` via
-	//   `UrlPatternsRegistration`; the `ClientRouter` field is unused on
-	//   the native side.
 	#[cfg(wasm)]
 	let router = router
 		.mount_unified(
@@ -142,11 +110,6 @@ pub fn routes() -> UnifiedRouter {
 			UnifiedRouter::new()
 				.client(|_| crate::apps::users::urls::client_router::client_url_patterns()),
 		);
-
-	// Mount the auto-generated admin panel at /admin/ (server-only).
-	// `admin_routes_with_di` returns both the router and a DI registration
-	// list that lazily provides `AdminDatabase` to admin handlers from the
-	// project's `DatabaseConnection`.
 	#[cfg(native)]
 	let router = {
 		let admin_site = std::sync::Arc::new(configure_admin());
@@ -156,15 +119,7 @@ pub fn routes() -> UnifiedRouter {
 			.mount("/static/admin/", admin_static_routes())
 			.with_di_registrations(admin_di)
 	};
-
-	// `SessionMiddleware` auto-registers its `Arc<SessionStore>` as a DI
-	// singleton via `Middleware::di_registrations`, so server functions that
-	// `#[inject] session: SessionData` (or `#[inject] store: SessionStoreRef`)
-	// can resolve the same store the middleware writes to without a parallel
-	// `with_di_registrations(...)` call. See #4426 (and the original #4423
-	// regression that motivated the auto-registration hook).
 	#[cfg(native)]
 	let router = router.with_middleware(create_session_middleware());
-
 	router
 }
