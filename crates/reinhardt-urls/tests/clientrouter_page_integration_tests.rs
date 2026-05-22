@@ -101,11 +101,11 @@ fn page_method_surfaces_extract_error_as_page_text() {
 	let view = router_render(&router, "/users/abc/");
 
 	// Assert — the router surfaces the error as a Page::Text. The exact
-	// formatting is part of the public contract; assert the key tokens.
+	// formatting is part of the public contract.
 	let s = page_text(&view);
-	assert!(
-		s.contains("route extraction error") && s.contains("id"),
-		"expected an extraction-error page mentioning `id`, got: {s}"
+	assert_eq!(
+		s,
+		"route extraction error on `/users/{id}/`: failed to parse `id`: invalid digit found in string",
 	);
 }
 
