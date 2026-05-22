@@ -37,7 +37,19 @@ pub struct MigrateV2Args {
 /// not a string literal, but the only "untrusted" surface here is the
 /// developer's own CLI invocation, which is an intentional capability.
 pub fn run(args: MigrateV2Args) -> anyhow::Result<()> {
-	let rules: Vec<_> = rules::all()
+	let all_rules = rules::all();
+	let known_rule_names: std::collections::BTreeSet<&'static str> =
+		all_rules.iter().map(|r| r.name()).collect();
+	let unknown: Vec<&str> = args
+		.skip
+		.iter()
+		.map(String::as_str)
+		.filter(|name| !known_rule_names.contains(name))
+		.collect();
+	if !unknown.is_empty() {
+		anyhow::bail!("unknown --skip rule(s): {}", unknown.join(", "));
+	}
+	let rules: Vec<_> = all_rules
 		.into_iter()
 		.filter(|r| !args.skip.iter().any(|s| s == r.name()))
 		.collect();
@@ -98,10 +110,15 @@ fn read_developer_file(path: &std::path::Path) -> anyhow::Result<String> {
 /// note as `read_developer_file`.
 fn write_developer_file(path: &std::path::Path, content: &str) -> anyhow::Result<()> {
 	let canonical = path.canonicalize()?;
-	let mut file = std::fs::OpenOptions::new()
-		.write(true)
-		.truncate(true)
-		.open(canonical)?;
-	std::io::Write::write_all(&mut file, content.as_bytes())?;
+	let parent = canonical
+		.parent()
+		.ok_or_else(|| anyhow::anyhow!("missing parent directory"))?;
+	let file_name = canonical
+		.file_name()
+		.and_then(|n| n.to_str())
+		.unwrap_or("rewrite");
+	let tmp = parent.join(format!(".{file_name}.tmp"));
+	std::fs::write(&tmp, content)?;
+	std::fs::rename(tmp, canonical)?;
 	Ok(())
 }

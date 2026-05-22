@@ -48,10 +48,18 @@ impl VisitMut for StructVisitor {
 		replace_derive_default_with_bon_builder(&mut s.attrs);
 
 		if let syn::Fields::Named(fields) = &mut s.fields {
-			for (idx, field) in fields.named.iter_mut().enumerate() {
+			let mut seen_first_non_option = false;
+			for field in fields.named.iter_mut() {
 				let is_option = is_option_type(&field.ty);
-				let is_first = idx == 0;
-				if !is_first || is_option {
+				let should_default = if is_option {
+					true
+				} else if !seen_first_non_option {
+					seen_first_non_option = true;
+					false
+				} else {
+					true
+				};
+				if should_default {
 					field.attrs.push(syn::parse_quote!(#[builder(default)]));
 				}
 			}
@@ -76,12 +84,39 @@ fn has_derive_default(attrs: &[syn::Attribute]) -> bool {
 	})
 }
 
-fn replace_derive_default_with_bon_builder(attrs: &mut [syn::Attribute]) {
-	for a in attrs.iter_mut() {
+fn replace_derive_default_with_bon_builder(attrs: &mut Vec<syn::Attribute>) {
+	// Collect all derives from all #[derive(...)] attributes first,
+	// so multiple derive attributes (e.g. #[derive(Clone)] #[derive(Default)])
+	// are merged into a single combined attribute.
+	let mut derives: Vec<syn::Path> = Vec::new();
+	for a in attrs.iter() {
 		if a.path().is_ident("derive") {
-			*a = syn::parse_quote!(#[derive(bon::Builder)]);
+			let _ = a.parse_nested_meta(|m| {
+				if !m.path.is_ident("Default") {
+					derives.push(m.path.clone());
+				}
+				Ok(())
+			});
 		}
 	}
+	if !derives.iter().any(|p| p.is_ident("bon::Builder")) {
+		derives.push(syn::parse_quote!(bon::Builder));
+	}
+
+	let mut new_attrs: Vec<syn::Attribute> = attrs
+		.iter()
+		.filter(|a| !a.path().is_ident("derive"))
+		.cloned()
+		.collect();
+
+	let insert_pos = attrs
+		.iter()
+		.position(|a| a.path().is_ident("derive"))
+		.unwrap_or(0)
+		.min(new_attrs.len());
+	new_attrs.insert(insert_pos, syn::parse_quote!(#[derive(#(#derives),*)]));
+
+	*attrs = new_attrs;
 }
 
 fn is_option_type(ty: &syn::Type) -> bool {

@@ -80,7 +80,10 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 		{
 			let is_followed_by_continuation = match iter.peek() {
 				Some(TokenTree::Group(g))
-					if matches!(g.delimiter(), Delimiter::Brace | Delimiter::Parenthesis) =>
+					if matches!(
+						g.delimiter(),
+						Delimiter::Brace | Delimiter::Parenthesis | Delimiter::Bracket
+					) =>
 				{
 					true
 				}

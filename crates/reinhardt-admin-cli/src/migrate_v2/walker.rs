@@ -21,6 +21,7 @@ pub fn find_rs_files(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
 			out.push(entry.into_path());
 		}
 	}
+	out.sort();
 	Ok(out)
 }
 
@@ -32,5 +33,11 @@ fn is_skipped_descendant(root: &Path, p: &Path) -> bool {
 	let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
 	// Skip the cargo target directory and any hidden directory (e.g. `.git`),
 	// but only when encountered as a descendant of `root`.
-	name == "target" || name.starts_with('.')
+	// Files in hidden directories are not skipped because `filter_entry`
+	// already prevents descent into them — we only need to filter
+	// hidden directories themselves.
+	if name == "target" {
+		return true;
+	}
+	p.is_dir() && name.starts_with('.')
 }

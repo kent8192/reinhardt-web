@@ -61,22 +61,23 @@ fn unwrap_watch(input: TokenStream) -> TokenStream {
 				out.push(tt);
 			}
 			// `#reactive` (Punct '#' then Ident "reactive") followed by a brace.
+			// Use a cloned lookahead iterator to avoid consuming the `reactive`
+			// token before confirming the brace.
 			TokenTree::Punct(p) if p.as_char() == '#' => {
-				let next = iter.peek().cloned();
-				if let Some(TokenTree::Ident(id2)) = next
-					&& id2 == "reactive"
-				{
+				let mut lookahead = iter.clone();
+				let reactive_with_brace = matches!(
+					(lookahead.next(), lookahead.next()),
+					(Some(TokenTree::Ident(id2)), Some(TokenTree::Group(g)))
+						if id2 == "reactive" && g.delimiter() == Delimiter::Brace
+				);
+				if reactive_with_brace {
 					let _ = iter.next(); // consume "reactive"
-					if let Some(TokenTree::Group(g)) = iter.peek()
-						&& g.delimiter() == Delimiter::Brace
-					{
-						let body = match iter.next() {
-							Some(TokenTree::Group(g)) => g.stream(),
-							_ => unreachable!("peek matched but next did not"),
-						};
-						out.extend(unwrap_watch(body));
-						continue;
-					}
+					let body = match iter.next() {
+						Some(TokenTree::Group(g)) => g.stream(),
+						_ => unreachable!("lookahead matched but next did not"),
+					};
+					out.extend(unwrap_watch(body));
+					continue;
 				}
 				out.push(tt);
 			}
