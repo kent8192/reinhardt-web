@@ -15,7 +15,8 @@ use rstest::rstest;
 #[derive(bon::Builder)]
 struct CardProps {
 	item: String,
-	#[builder(default)]
+	// `Option<_>` is implicitly optional under `bon::Builder`; an explicit
+	// `#[builder(default)]` would be redundant and is rejected by bon.
 	children: Option<Page>,
 }
 

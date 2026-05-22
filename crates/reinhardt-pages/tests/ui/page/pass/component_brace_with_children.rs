@@ -10,7 +10,8 @@ use reinhardt_pages::page;
 #[derive(bon::Builder)]
 struct CardProps {
 	item: String,
-	#[builder(default)]
+	// `Option<_>` is implicitly optional under `bon::Builder` — no
+	// `#[builder(default)]` needed (bon rejects it as redundant).
 	children: Option<Page>,
 }
 

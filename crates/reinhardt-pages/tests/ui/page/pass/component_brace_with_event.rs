@@ -11,7 +11,8 @@ use reinhardt_pages::page;
 #[derive(bon::Builder)]
 struct ButtonProps {
 	label: String,
-	#[builder(default)]
+	// `Option<_>` is implicitly optional under `bon::Builder` — no
+	// `#[builder(default)]` needed (bon rejects it as redundant).
 	on_click: Option<Callback<DummyEvent, ()>>,
 }
 

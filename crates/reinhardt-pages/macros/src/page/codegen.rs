@@ -665,10 +665,13 @@ fn generate_component_paren(comp: &TypedPageComponent, pages_crate: &TokenStream
 ///
 /// - `prop: value` → `.prop(value)` on the builder
 /// - `@event: handler` → `.on_event(handler)` on the builder
-/// - children arity:
-///   * 0 children → omit the `.children(...)` setter
-///   * 1 child    → `.children(Some(<child_view>))`
-///   * 2+ children → `.children(Some(Page::fragment(vec![ ... ])))`
+/// - children arity (the `children:` field on the props struct must be
+///   `Option<Page>`, which `bon::Builder` exposes as a setter taking
+///   `Page` directly — bon wraps it in `Some` internally):
+///   * 0 children → omit the `.children(...)` setter (`bon` defaults
+///                  the `Option` field to `None`)
+///   * 1 child    → `.children(<child_view>)`
+///   * 2+ children → `.children(Page::fragment(vec![ ... ]))`
 ///
 /// # Example
 ///
@@ -680,7 +683,7 @@ fn generate_component_paren(comp: &TypedPageComponent, pages_crate: &TokenStream
 /// card(CardProps::builder()
 ///     .item(x)
 ///     .on_click(h)
-///     .children(Some(<p_element_view>))
+///     .children(<p_element_view>)
 ///     .build())
 /// ```
 fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
@@ -713,11 +716,15 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 		.collect();
 
 	// children: per §3.5.3 table.
+	//
+	// `bon::Builder` synthesises an `.children(value: Page)` setter for
+	// `children: Option<Page>` (the Option is wrapped internally), so we
+	// pass the child view directly without an explicit `Some(...)`.
 	let children_setter = match &comp.children {
 		None => quote! {},
 		Some(cs) if cs.len() == 1 => {
 			let one = generate_node(&cs[0], pages_crate);
-			quote! { .children(Some(#one)) }
+			quote! { .children(#one) }
 		}
 		Some(cs) => {
 			let many: Vec<TokenStream> = cs
@@ -725,9 +732,9 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 				.map(|c| generate_node(c, pages_crate))
 				.collect();
 			quote! {
-				.children(Some(
+				.children(
 					#pages_crate::component::Page::fragment(::std::vec![ #(#many),* ])
-				))
+				)
 			}
 		}
 	};
