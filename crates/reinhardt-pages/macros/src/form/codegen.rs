@@ -202,12 +202,26 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	// Generate load_choices method if choices_loader is specified
 	let load_choices_method = generate_load_choices(macro_ast, pages_crate);
 
+	// Collect every field (including group children) and compute the
+	// struct-level where clause for generic-capable inner types. The clause
+	// is spliced into BOTH the struct definition and every `impl #struct_name`
+	// block — Rust requires consistency between the two. For forms without
+	// any generic-capable field (`HiddenField<T>` / `ChoiceField<T>` /
+	// `MultipleChoiceField<T>` / `JsonField<T>`), the helper returns an empty
+	// TokenStream, so the macro output is unchanged for such forms. See
+	// `build_typed_field_where_clause` below for the bound list and the
+	// rationale (issue #4397, Task 9).
+	let all_fields_for_bounds = collect_all_fields(&macro_ast.fields);
+	let where_clause = build_typed_field_where_clause(&all_fields_for_bounds);
+
 	quote! {
 		{
 			#use_statement
 
 			#[derive(Clone)]
-			struct #struct_name {
+			struct #struct_name
+			#where_clause
+			{
 				#field_decls
 				#state_decls
 				#watch_field_decls
@@ -216,7 +230,9 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#on_success_ref_field_decl
 			}
 
-			impl #struct_name {
+			impl #struct_name
+			#where_clause
+			{
 				fn new() -> Self {
 					Self {
 						#field_inits
@@ -3075,6 +3091,56 @@ fn choice_value_type(field_type: &TypedFieldType) -> TokenStream {
 			"choice_value_type called on a non-choice TypedFieldType variant; \
 			 this is a codegen bug",
 		),
+	}
+}
+
+/// Builds the struct-level `where` clause that asserts trait-bound
+/// satisfaction for every concrete type substituted into a generic-capable
+/// field. For monomorphic forms (where the inner type is fully resolved at
+/// macro-expansion time) this clause acts as a compile-time assertion: if
+/// the user picked a type that lacks the required impls, the error fires
+/// once at the struct definition site with a precise diagnostic.
+///
+/// Returns an empty token stream when the form has no generic-capable
+/// fields (so no where clause is emitted at all).
+///
+/// Each unique inner type is asserted once. Duplicate inner types across
+/// multiple fields contribute only one predicate (deduplicated by the
+/// stringified token sequence of the inner type).
+fn build_typed_field_where_clause(
+	all_fields: &[&TypedFormFieldDef],
+) -> TokenStream {
+	let mut bounds: Vec<TokenStream> = Vec::new();
+	let mut seen: ::std::collections::HashSet<String> = ::std::collections::HashSet::new();
+
+	for field in all_fields {
+		let inner = match &field.field_type {
+			TypedFieldType::HiddenField { inner }
+			| TypedFieldType::ChoiceField { inner }
+			| TypedFieldType::JsonField { inner }
+			| TypedFieldType::MultipleChoiceField { inner } => Some(inner.clone()),
+			_ => None,
+		};
+		if let Some(ty) = inner {
+			let key = quote!(#ty).to_string();
+			if seen.insert(key) {
+				bounds.push(quote! {
+					#ty: ::serde::Serialize
+						+ ::serde::de::DeserializeOwned
+						+ ::core::clone::Clone
+						+ ::core::fmt::Display
+						+ ::core::str::FromStr
+						+ ::core::default::Default
+						+ 'static
+				});
+			}
+		}
+	}
+
+	if bounds.is_empty() {
+		quote!()
+	} else {
+		quote!(where #(#bounds),*)
 	}
 }
 
