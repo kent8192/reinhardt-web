@@ -612,16 +612,24 @@ fn parse_field_type(ident: &syn::Ident) -> Result<TypedFieldType> {
 		"DateField" => Ok(TypedFieldType::DateField),
 		"TimeField" => Ok(TypedFieldType::TimeField),
 		"DateTimeField" => Ok(TypedFieldType::DateTimeField),
-		"ChoiceField" => Ok(TypedFieldType::ChoiceField),
-		"MultipleChoiceField" => Ok(TypedFieldType::MultipleChoiceField),
+		"ChoiceField" => Ok(TypedFieldType::ChoiceField {
+			inner: syn::parse_quote!(::std::string::String),
+		}),
+		"MultipleChoiceField" => Ok(TypedFieldType::MultipleChoiceField {
+			inner: syn::parse_quote!(::std::string::String),
+		}),
 		"FileField" => Ok(TypedFieldType::FileField),
 		"ImageField" => Ok(TypedFieldType::ImageField),
 		"UrlField" => Ok(TypedFieldType::UrlField),
 		"SlugField" => Ok(TypedFieldType::SlugField),
 		"UuidField" => Ok(TypedFieldType::UuidField),
 		"IpAddressField" => Ok(TypedFieldType::IpAddressField),
-		"JsonField" => Ok(TypedFieldType::JsonField),
-		"HiddenField" => Ok(TypedFieldType::HiddenField),
+		"JsonField" => Ok(TypedFieldType::JsonField {
+			inner: syn::parse_quote!(::serde_json::Value),
+		}),
+		"HiddenField" => Ok(TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(::std::string::String),
+		}),
 		_ => Err(Error::new(
 			ident.span(),
 			format!(

@@ -2985,8 +2985,8 @@ fn field_type_to_signal_type(
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
 		| TypedFieldType::SlugField
-		| TypedFieldType::IpAddressField
-		| TypedFieldType::JsonField => quote!(String),
+		| TypedFieldType::IpAddressField => quote!(String),
+		TypedFieldType::JsonField { .. } => quote!(String),
 
 		TypedFieldType::IntegerField => quote!(i64),
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(f64),
@@ -2996,13 +2996,13 @@ fn field_type_to_signal_type(
 		TypedFieldType::TimeField => quote!(Option<chrono::NaiveTime>),
 		TypedFieldType::DateTimeField => quote!(Option<chrono::NaiveDateTime>),
 
-		TypedFieldType::ChoiceField => quote!(String),
-		TypedFieldType::MultipleChoiceField => quote!(Vec<String>),
+		TypedFieldType::ChoiceField { .. } => quote!(String),
+		TypedFieldType::MultipleChoiceField { .. } => quote!(Vec<String>),
 
 		TypedFieldType::FileField | TypedFieldType::ImageField => quote!(Option<web_sys::File>),
 
 		TypedFieldType::UuidField => quote!(Option<uuid::Uuid>),
-		TypedFieldType::HiddenField => quote!(String),
+		TypedFieldType::HiddenField { .. } => quote!(String),
 	};
 
 	quote!(#pages_crate::reactive::Signal<#inner_type>)
@@ -3017,10 +3017,10 @@ fn field_type_default_value(field_type: &TypedFieldType) -> TokenStream {
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
 		| TypedFieldType::SlugField
-		| TypedFieldType::IpAddressField
-		| TypedFieldType::JsonField
-		| TypedFieldType::ChoiceField
-		| TypedFieldType::HiddenField => quote!(String::new()),
+		| TypedFieldType::IpAddressField => quote!(String::new()),
+		TypedFieldType::JsonField { .. }
+		| TypedFieldType::ChoiceField { .. }
+		| TypedFieldType::HiddenField { .. } => quote!(String::new()),
 
 		TypedFieldType::IntegerField => quote!(0i64),
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(0.0f64),
@@ -3033,7 +3033,7 @@ fn field_type_default_value(field_type: &TypedFieldType) -> TokenStream {
 		| TypedFieldType::ImageField
 		| TypedFieldType::UuidField => quote!(None),
 
-		TypedFieldType::MultipleChoiceField => quote!(Vec::new()),
+		TypedFieldType::MultipleChoiceField { .. } => quote!(Vec::new()),
 	}
 }
 
@@ -3051,16 +3051,16 @@ fn field_type_to_string(field_type: &TypedFieldType) -> &'static str {
 		TypedFieldType::DateField => "DateField",
 		TypedFieldType::TimeField => "TimeField",
 		TypedFieldType::DateTimeField => "DateTimeField",
-		TypedFieldType::ChoiceField => "ChoiceField",
-		TypedFieldType::MultipleChoiceField => "MultipleChoiceField",
+		TypedFieldType::ChoiceField { .. } => "ChoiceField",
+		TypedFieldType::MultipleChoiceField { .. } => "MultipleChoiceField",
 		TypedFieldType::FileField => "FileField",
 		TypedFieldType::ImageField => "ImageField",
 		TypedFieldType::UrlField => "UrlField",
 		TypedFieldType::SlugField => "SlugField",
 		TypedFieldType::UuidField => "UuidField",
 		TypedFieldType::IpAddressField => "IpAddressField",
-		TypedFieldType::JsonField => "JsonField",
-		TypedFieldType::HiddenField => "HiddenField",
+		TypedFieldType::JsonField { .. } => "JsonField",
+		TypedFieldType::HiddenField { .. } => "HiddenField",
 	}
 }
 

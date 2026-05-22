@@ -695,6 +695,12 @@ impl TypedFormFieldGroup {
 /// Each field type maps to a specific Rust type and Signal wrapper.
 /// The mapping ensures type safety between the form DSL and generated code.
 ///
+/// Generic-capable variants (`HiddenField`, `ChoiceField`, `MultipleChoiceField`,
+/// `JsonField`) carry an `inner: syn::Type` that is substituted at codegen time
+/// into the Signal wrapper. For example, `HiddenField<MyId>` becomes
+/// `Signal<MyId>`. When no generic is supplied, the validator falls back to a
+/// default inner type (`String` for most, `serde_json::Value` for `JsonField`).
+///
 /// # Field Type Mapping
 ///
 /// | Field Type | Rust Type | Signal Type |
@@ -709,27 +715,31 @@ impl TypedFormFieldGroup {
 /// | `DateField` | `Option<NaiveDate>` | `Signal<Option<NaiveDate>>` |
 /// | `TimeField` | `Option<NaiveTime>` | `Signal<Option<NaiveTime>>` |
 /// | `DateTimeField` | `Option<NaiveDateTime>` | `Signal<Option<NaiveDateTime>>` |
-/// | `ChoiceField` | `String` | `Signal<String>` |
-/// | `MultipleChoiceField` | `Vec<String>` | `Signal<Vec<String>>` |
+/// | `ChoiceField<T>` | `T` (default `String`) | `Signal<T>` |
+/// | `MultipleChoiceField<T>` | `Vec<T>` (default `T = String`) | `Signal<Vec<T>>` |
 /// | `FileField` | `Option<File>` | `Signal<Option<File>>` |
-/// | `HiddenField` | `String` | `Signal<String>` |
+/// | `HiddenField<T>` | `T` (default `String`) | `Signal<T>` |
+/// | `JsonField<T>` | `T` (default `serde_json::Value`) | `Signal<T>` |
+/// | `IpAddressField` | `Option<IpAddr>` | `Signal<Option<IpAddr>>` |
 #[derive(Debug, Clone)]
 pub enum TypedFieldType {
-	/// CharField -> `Signal<String>`
+	/// CharField -> `Signal<String>` (always String, no generic accepted)
 	CharField,
-	/// EmailField -> `Signal<String>`
+	/// EmailField -> `Signal<String>` (always String, no generic accepted)
 	EmailField,
-	/// UrlField -> `Signal<String>`
+	/// UrlField -> `Signal<String>` (always String, no generic accepted)
 	UrlField,
-	/// SlugField -> `Signal<String>`
+	/// SlugField -> `Signal<String>` (always String, no generic accepted)
 	SlugField,
-	/// TextField -> `Signal<String>`
+	/// TextField -> `Signal<String>` (always String, no generic accepted)
 	TextField,
+	/// PasswordField -> `Signal<String>` (always String, no generic accepted)
+	PasswordField,
 	/// IntegerField -> `Signal<i64>`
 	IntegerField,
 	/// FloatField -> `Signal<f64>`
 	FloatField,
-	/// DecimalField -> `Signal<String>` (for precision)
+	/// DecimalField -> `Signal<f64>` (uses f64 internally for precision tracking)
 	DecimalField,
 	/// BooleanField -> `Signal<bool>`
 	BooleanField,
@@ -739,28 +749,33 @@ pub enum TypedFieldType {
 	TimeField,
 	/// DateTimeField -> `Signal<Option<NaiveDateTime>>`
 	DateTimeField,
-	/// ChoiceField -> `Signal<String>`
-	ChoiceField,
-	/// MultipleChoiceField -> `Signal<Vec<String>>`
-	MultipleChoiceField,
 	/// FileField -> `Signal<Option<File>>`
 	FileField,
 	/// ImageField -> `Signal<Option<File>>`
 	ImageField,
-	/// HiddenField -> `Signal<String>`
-	HiddenField,
-	/// PasswordField -> `Signal<String>`
-	PasswordField,
-	/// UUIDField -> `Signal<String>`
+	/// UuidField -> `Signal<Option<Uuid>>`
 	UuidField,
-	/// JsonField -> `Signal<String>`
-	JsonField,
-	/// IpAddressField -> `Signal<String>`
+
+	/// HiddenField<T> -> `Signal<T>`. Default `T = String` when no generic.
+	HiddenField { inner: syn::Type },
+	/// ChoiceField<T> -> `Signal<T>`. Default `T = String` when no generic.
+	ChoiceField { inner: syn::Type },
+	/// MultipleChoiceField<T> -> `Signal<Vec<T>>`. Default `T = String`.
+	MultipleChoiceField { inner: syn::Type },
+	/// JsonField<T> -> `Signal<T>`. Default `T = ::serde_json::Value`.
+	JsonField { inner: syn::Type },
+
+	/// IpAddressField -> `Signal<Option<::std::net::IpAddr>>` (specialized, no generic accepted).
 	IpAddressField,
 }
 
 impl TypedFieldType {
 	/// Returns the Rust type used in the generated struct.
+	///
+	/// Diagnostic-only: returns the default-substituted type string for
+	/// generic-capable variants (e.g. `HiddenField { inner }` returns
+	/// `"String"`). Codegen does not use this method; it inspects `inner`
+	/// directly.
 	pub fn rust_type(&self) -> &'static str {
 		match self {
 			TypedFieldType::CharField
@@ -769,19 +784,19 @@ impl TypedFieldType {
 			| TypedFieldType::SlugField
 			| TypedFieldType::TextField
 			| TypedFieldType::DecimalField
-			| TypedFieldType::ChoiceField
-			| TypedFieldType::HiddenField
 			| TypedFieldType::PasswordField
-			| TypedFieldType::UuidField
-			| TypedFieldType::JsonField
-			| TypedFieldType::IpAddressField => "String",
+			| TypedFieldType::UuidField => "String",
+			TypedFieldType::HiddenField { .. } => "String",
+			TypedFieldType::ChoiceField { .. } => "String",
+			TypedFieldType::JsonField { .. } => "String",
+			TypedFieldType::IpAddressField => "Option<IpAddr>",
 			TypedFieldType::IntegerField => "i64",
 			TypedFieldType::FloatField => "f64",
 			TypedFieldType::BooleanField => "bool",
 			TypedFieldType::DateField => "Option<chrono::NaiveDate>",
 			TypedFieldType::TimeField => "Option<chrono::NaiveTime>",
 			TypedFieldType::DateTimeField => "Option<chrono::NaiveDateTime>",
-			TypedFieldType::MultipleChoiceField => "Vec<String>",
+			TypedFieldType::MultipleChoiceField { .. } => "Vec<String>",
 			TypedFieldType::FileField | TypedFieldType::ImageField => "Option<web_sys::File>",
 		}
 	}
@@ -800,7 +815,8 @@ impl TypedFieldType {
 			| TypedFieldType::IpAddressField => TypedWidget::TextInput,
 			TypedFieldType::EmailField => TypedWidget::EmailInput,
 			TypedFieldType::UrlField => TypedWidget::UrlInput,
-			TypedFieldType::TextField | TypedFieldType::JsonField => TypedWidget::Textarea,
+			TypedFieldType::TextField => TypedWidget::Textarea,
+			TypedFieldType::JsonField { .. } => TypedWidget::Textarea,
 			TypedFieldType::IntegerField
 			| TypedFieldType::FloatField
 			| TypedFieldType::DecimalField => TypedWidget::NumberInput,
@@ -808,10 +824,10 @@ impl TypedFieldType {
 			TypedFieldType::DateField => TypedWidget::DateInput,
 			TypedFieldType::TimeField => TypedWidget::TimeInput,
 			TypedFieldType::DateTimeField => TypedWidget::DateTimeInput,
-			TypedFieldType::ChoiceField => TypedWidget::Select,
-			TypedFieldType::MultipleChoiceField => TypedWidget::SelectMultiple,
+			TypedFieldType::ChoiceField { .. } => TypedWidget::Select,
+			TypedFieldType::MultipleChoiceField { .. } => TypedWidget::SelectMultiple,
 			TypedFieldType::FileField | TypedFieldType::ImageField => TypedWidget::FileInput,
-			TypedFieldType::HiddenField => TypedWidget::HiddenInput,
+			TypedFieldType::HiddenField { .. } => TypedWidget::HiddenInput,
 			TypedFieldType::PasswordField => TypedWidget::PasswordInput,
 		}
 	}
