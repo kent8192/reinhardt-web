@@ -46,7 +46,8 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 
 <!-- reinhardt-version-sync -->
 ```bash
-# Pin a specific release for reproducibility (omit --version to pull the latest stable):
+# Currently a pre-release: --version is required. Once 0.1.0 stable ships,
+# --version becomes optional (and acts as an opt-in reproducibility pin).
 cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 
 reinhardt-admin startproject my-api && cd my-api
@@ -204,9 +205,11 @@ The main Reinhardt crate is published on crates.io as `reinhardt-web`, but you i
 
 ### 1. Install Reinhardt Admin Tool
 
-Omit `--version` to pull the latest stable release; pin a specific version
-for reproducibility. The pinned literal below is auto-bumped by release-plz
-on each release.
+While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`), `cargo install`
+requires an explicit `--version` because pre-releases are not selected by
+default. Once `0.1.0` stable ships, omit `--version` to pull the latest
+stable (or keep `--version` as an opt-in reproducibility pin). The literal
+below is auto-bumped by release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash

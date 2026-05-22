@@ -4,16 +4,19 @@
 
 Reinhardt follows the three-phase lifecycle described in
 [`instructions/STABILITY_POLICY.md`](instructions/STABILITY_POLICY.md).
-Security patches are applied to the latest stable patch of the most recent
-minor release. Pre-release artifacts (`-rc.*`, `-alpha.*`) are not
-security-supported once the corresponding stable release ships — upgrade
-to the matching stable version to receive patches.
+Security patches are applied to the **latest current release** of the most
+recent minor series: while `0.1.0` stable has not yet shipped, the latest
+`0.1.0-rc.*` is that current release; once `0.1.0` ships, support shifts
+to the latest `0.1.x` stable patch and older `-rc.*` / `-alpha.*` artifacts
+become unsupported — upgrade to the matching stable version to keep
+receiving patches.
 
 | Version | Supported |
 |---------|-----------|
-| `0.1.x` (latest stable patch) | ✅ Yes |
-| Older `0.1.x` patches | ❌ No |
-| `0.1.0-rc.*` / `0.1.0-alpha.*` | ❌ No — upgrade to `0.1.x` |
+| Latest `0.1.0-rc.*` (current release, until `0.1.0` ships) | ✅ Yes |
+| `0.1.x` (latest stable patch, once `0.1.0` has shipped) | ✅ Yes |
+| Older `0.1.0-rc.*` / `0.1.0-alpha.*` | ❌ No |
+| Older `0.1.x` patches (after `0.1.0` has shipped) | ❌ No |
 | Development branches (`main`, `develop/*`) | ❌ No |
 
 ---

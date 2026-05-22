@@ -8,10 +8,12 @@ Global command-line tool for Reinhardt project management.
 
 ## Installation
 
-Install globally using cargo. During the RC phase, only release-candidate
-versions are published to crates.io, so `cargo install` requires an explicit
-`--version`. The version shown below is auto-bumped by release-plz on each
-release. After a stable release ships, the bare command will also work.
+Install globally using cargo. While Reinhardt is on a pre-release
+(`-rc.*` / `-alpha.*`), `cargo install` requires an explicit `--version`
+because pre-releases are not selected by default. Once `0.1.0` stable
+ships, omit `--version` to pull the latest stable (or keep `--version`
+as an opt-in reproducibility pin). The literal below is auto-bumped by
+release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
