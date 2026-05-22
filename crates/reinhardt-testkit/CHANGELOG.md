@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.29...reinhardt-testkit@v0.1.0-rc.30) - 2026-05-21
+
+### Maintenance
+
+- *(deps)* floor astral-tokio-tar to 0.6.2 (RUSTSEC-2026-0145)
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.28...reinhardt-testkit@v0.1.0-rc.29) - 2026-05-13
 
 ### Added
