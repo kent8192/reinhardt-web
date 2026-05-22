@@ -354,10 +354,13 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 			comp,
 			parent_tags,
 		)?)),
-		PageNode::Watch(watch_node) => Ok(TypedPageNode::Watch(transform_watch(
-			watch_node,
-			parent_tags,
-		)?)),
+		PageNode::Watch(watch_node) => Err(syn::Error::new(
+			watch_node.span,
+			"`watch { ... }` is removed in v2 — every `{expr}` and \
+			 control-flow block is now auto-wrapped. Unwrap the watch \
+			 braces: the body of `watch` can be moved out as-is \
+			 (codemod available: `cargo make migrate-manouche-v2`).",
+		)),
 	}
 }
 
