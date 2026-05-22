@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.30...reinhardt-pages-ast@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(pages-ast)* mirror on_success_ref field on pages-side AST
+- *(pages)* add autocomplete attribute support to form! macro
+
+### Changed
+
+- replace magic string with Option<Ident> for FormMacro name
+
+### Fixed
+
+- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
+- *(meta)* fix workspace inheritance and authors metadata
+- replace unreachable!() with proper syn::Error in parse_if_node
+- detect duplicate properties in form field parsing
+- add max nesting depth to page parser
+- add max nesting depth to SVG icon parser
+- return Option from FormFieldProperty::name instead of panicking
+- add reinhardt-manouche to workspace deps and address review comments
+
+### Documentation
+
+- *(pages-macros)* address Copilot + CodeRabbit review feedback
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- updated the following local packages: reinhardt-manouche
+
+### Other
+
+- Merge branch 'main' into refactor/extract-manouche-dsl
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.29...reinhardt-pages-ast@v0.1.0-rc.30) - 2026-05-21
 
 ### Added

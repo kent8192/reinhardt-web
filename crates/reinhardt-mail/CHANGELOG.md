@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.0-rc.30...reinhardt-mail@v0.1.0) - 2026-05-22
+
+### Changed
+
+- deduplicate utility functions across crates
+
+### Fixed
+
+- *(ci)* resolve format and clippy deprecated lint errors
+- *(mail)* validate pool configuration parameters
+- *(mail)* use existing BackendError variant instead of adding new enum variant
+- *(release)* use path-only dev-dep for reinhardt-test in cyclic crates
+- document semaphore-based pool concurrency and add stress test
+- validate header names against RFC 2822
+- propagate config errors even when fail_silently is enabled
+- add attachment rendering in dev backends and fix arbitrary header injection
+- pin native-tls to =0.2.14 to fix build failure
+- fix email validation and field access control (#512, #515, #517)
+- enable proper TLS hostname verification in SMTP backend
+- prevent email header injection via address validation
+- address Copilot review feedback (consolidated across 1 occurrences)
+
+### Security
+
+- add email length validation and credential zeroization
+- fix HTML escaping, rate limiting, and validation
+
+### Performance
+
+- avoid unnecessary email body clone
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- *(mail)* fix unclosed code fence, wrong thread-safety claim, and stale versions
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- *(deps)* floor lettre to 0.11.22 (RUSTSEC-2026-0141)
+- upgrade workspace dependencies to latest versions
+- *(build)* reduce tokio features and enable debug=1 profile for faster compilation
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- *(workspace)* remove unpublished reinhardt-settings-cli and fix stale references
+- updated the following local packages: reinhardt-conf
+- add explanatory comments to undocumented #[allow(...)] attributes
+- updated the following local packages: reinhardt-core, reinhardt-conf
+
+### Styling
+
+- apply rustfmt to pre-existing unformatted files
+- collapse nested if statements per clippy::collapsible_if
+- apply rustfmt formatting to workspace files
+- apply code formatting to security fix files
+
+### Other
+
+- resolve conflicts with origin/main
+- updated the following local packages: reinhardt-conf
+- updated the following local packages: reinhardt-core, reinhardt-conf
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.0-rc.29...reinhardt-mail@v0.1.0-rc.30) - 2026-05-21
 
 ### Maintenance

@@ -7,6 +7,201 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.30...reinhardt-macros@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(core)* [**breaking**] move ws_url_resolvers under urls/
+- *(urls)* [**breaking**] support async functions in #[routes] macro
+- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+- *(macros)* [**breaking**] extend #[url_patterns] for viewset/mount, add #[viewset] macro, deprecate named variants
+- *(macros)* [**breaking**] typed #[url_patterns(InstalledApp::..., mode = ...)]
+- *(apps)* [**breaking**] require explicit LABEL on AppLabel implementors
+- *(di)* [**breaking**] make DependencyRegistration const-compatible for Rust 2024 edition
+
+### Added
+
+- *(model)* add typestate Model::build() constructor alongside new()
+- *(macros)* emit fk_target_app for same-app FK targets
+- *(core-macros)* emit BaseUserManager impl from #[user(...)]
+- *(macros)* add #[shared_model] for cfg_attr(native) DTO boilerplate
+- *(macros)* add server_only / no_client_resolvers / no_ws_resolvers flags to #[routes]
+- *(macros)* generate typed urls helpers from #[url_patterns]
+- *(macros)* accept optional `basename = "..."` argument on fn-form `#[viewset]`. Issue #4549.
+- *(macros)* extend #[app_config] to declare vendor_assets via inventory
+- *(macros)* add manager argument to #[model(...)] attribute
+- *(auth)* add SuperuserInit trait and SuperuserCreator registry
+- *(auth)* auto-register SuperuserCreator via inventory for #[user(full = true)] + #[model] types
+- *(core)* set task-local resolve context in request dispatch macros
+- *(commands)* add RunserverHook for concurrent service startup and pre-listen validation
+- *(urls)* add compile-time type-safe URL resolution via extension traits
+- migrate UUID generation from v4 to v7 across entire codebase
+- *(macros)* accept typed identifier instead of string literal in `#[url_patterns]`
+- *(macros)* add #[export_endpoints] attribute for multi-file view modules
+- *(macros)* add #[websocket] proc macro with Consumer codegen and URL resolver tokens
+- *(macros)* add url_patterns mode = ws with .consumer() token scan
+- *(macros)* generate WsUrls/XxxWsUrls gateways and WebSocketUrlResolver stub in #[routes]
+- *(macros)* add ServerUrls/ClientUrls gateways and deprecate 2-level URL accessors
+- *(orm)* add Vec/Value/HashMap support to field_type_to_metadata_string
+- *(macros)* inject ManyToMany relationships in #[user] + #[model]
+- *(orm)* add #[field(skip = true)] attribute for non-DB fields
+- *(macros)* add nom v8.0.0 parser for settings composition syntax
+- *(macros)* implement #[settings] attribute macro (fragment + composition)
+- *(macros)* extend nom parser for { field: policy } override blocks
+- *(macros)* add #[setting()] attribute parsing and field_policies() generation
+- *(macros)* add composition override blocks and ComposedSettings generation
+- *(core)* auto-detect #[inject] without requiring use_inject = true
+- *(rest)* add operation-level OpenAPI route attributes
+- *(macros)* add range(min, max) support to #[derive(Validate)]
+- feat!(macros): add #[derive(Validate)] proc macro for field-level validation
+
+### Changed
+
+- *(core-macros)* single-lock manager ops, route Value via reinhardt-auth
+- *(macros)* rename #[shared_model] to #[shared_schema]
+- *(macros)* rename #[shared_schema] to #[dto]
+- *(macros)* dedupe upstream-workaround rustdoc via include_str!
+- *(macros)* share Uuid PK shape detector via pk_shape helper
+- *(conf)* extract validate() into SettingsValidation trait
+- *(di)* remove unnecessary Clone bound from Depends<T> and Injected<T>
+- *(macros)* simplify URL/routing macro internals
+- *(macros)* simplify url_patterns enum-type extraction and fix docs
+- *(macros)* require explicit CoreSettings in #[settings] macro
+- *(macros)* generate HasSettings<F> in both settings macros
+- refactor!(macros): replace external validator crate in pre_validate codegen
+
+### Deprecated
+
+- *(macros)* the bare `#[viewset]` body-token basename fallback is deprecated. Pass `basename = "..."` explicitly on fn-form `#[viewset]` (matching the impl-form contract). The `extract_basename` token-walker fallback will become a hard error in v0.2.0. Issue #4549.
+- *(core)* deprecate collect_migrations! macro in favor of FilesystemSource
+
+### Fixed
+
+- *(model)* box SetterKind::ForeignKey::related_type to satisfy clippy
+- *(model-macros)* add doc comments to generated typestate-builder setters
+- *(model-macros)* include ForeignKeyField<T> in typestate builder
+- *(model-macros)* address Copilot review on typestate builder FK
+- *(model-macros)* harden FK keyword handling in typestate builder
+- *(model-macros)* exclude `extern` from reserved-ident set
+- *(core-macros)* emit not_null and nullable for ForeignKeyField _id columns
+- *(db)* make FieldMetadata.nullable the single source of truth and harden FK metadata tests
+- *(db)* fall back to by-name FK lookup on qualified miss
+- *(db)* refuse FK resolution when target name is ambiguous
+- *(db,macros)* path-typed FK targets disambiguate ambiguous model names
+- *(macros)* source FK app label from target type's Model::app_label()
+- *(admin,core-macros)* opt admin user out of auto-manager and re-apply rustfmt
+- *(macros)* close two #[dto] derive interaction edge cases
+- *(macros)* embed basename in viewset manifest macro name (Fixes [[#4523](https://github.com/kent8192/reinhardt-web/issues/4523)](https://github.com/kent8192/reinhardt-web/issues/4523))
+- *(macros)* reject malformed #[action] value types in shared parser
+- *(macros)* derive Debug on ActionMeta for parser test expect_err calls
+- *(macros)* route viewset manifest via per-call alias to fix Issue [[#4523](https://github.com/kent8192/reinhardt-web/issues/4523)](https://github.com/kent8192/reinhardt-web/issues/4523) end-to-end
+- *(macros)* namespace installed_apps state file by CARGO_CRATE_NAME
+- *(macros)* align macro_state.rs fallback with #[routes]'s hard-fail include_bytes!
+- *(macros)* emit fully-qualified type name for SuperuserCreatorRegistration
+- *(macros)* fall back to empty client reverser when no_client_resolvers is set
+- *(macros)* address Copilot review on type_name const-ness and stale from_global() docstrings
+- *(macros)* pair typed urls::* params by binding name; tighten ClientPath pattern check
+- *(macros)* omit auto_increment for non-integer primary keys
+- *(macros)* gate #[routes] body on wasm so ResolvedUrls is reachable
+- *(core)* generate UUID primary-key setter in init_superuser to avoid nil UUID write
+- *(macros)* bring ClientUrlResolver into scope in client typed accessors
+- *(macros)* bring ClientUrlResolver into scope in resolve() fallback
+- *(macros)* emit per-app client URL accessors on wasm32
+- *(macros)* propagate unique_together into ModelMetadata
+- *(macros)* suppress null=true emission for Option<T> primary keys
+- *(conf)* maintain backward compatibility for SettingsFragment trait
+- *(di)* address Copilot review feedback on const-compatible DependencyRegistration
+- *(commands)* address Copilot review feedback on RunserverHook
+- *(urls)* address Copilot review on URL resolver macro generation
+- *(macros)* suppress unexpected_cfgs lint in macro-generated url-resolver code
+- *(macros)* remove url-resolver feature flag, gate on platform instead
+- *(macros)* use resolve_from_registry() in #[routes] for factory type compatibility
+- *(macros)* integrate standalone mode with namespaced URL resolvers
+- *(macros)* resolve merge conflict with main
+- *(macros)* move #[viewset] usage to module-level free function
+- *(macros)* address review — error propagation, WASM skip, ident validation
+- *(macros)* resolve url_patterns path resolution and nested endpoint detection
+- *(macros)* use tt repetition instead of path fragment in __for_each_url_resolver
+- *(macros)* address Copilot review — use tt+ and normalize test assertions
+- *(macros)* use tt+ pattern instead of path in for_each_url_resolver macro
+- *(urls)* add UrlResolver trait import to generated url_prelude methods
+- *(macros)* suppress unexpected_cfgs for client-router in #[routes] macro
+- *(ci)* resolve fmt and clippy violations
+- *(macros/ws)* filter #[inject] params before building WebSocketConsumer trait impl
+- *(macros/ws)* parse path attribute via syn::LitStr
+- *(macros/ws)* error on non-async handler functions
+- *(macros/url_patterns)* error on non-path consumer expressions
+- *(macros/ws)* simplify WebSocketArgs::parse with syn::parse2
+- *(macros)* move urls.ws() impl inside __namespaced_ws_resolvers to fix E0451
+- *(admin)* generate table_name() and permission methods in admin macro
+- *(macros)* allow too_many_arguments on generated Model::new function
+- *(reinhardt-core)* fork DI context per-request in route and action macros
+- suppress deprecated Settings warnings and fix unreachable pub visibility
+- *(macros)* add missing CoreSettings and HasCoreSettings imports for explicit settings
+- *(settings)* address Copilot review feedback for field policy system
+- *(settings)* use section-nested keys in #[settings] macro validation and deserialization
+- *(di)* set HTTP request on per-request InjectionContext in use_inject macro
+- *(macros)* remove feature-dependent code generation from #[routes] macro
+- *(urls)* restore semver-compatible new() and add __macro_new()
+- *(macros)* dereference extractor before validation in pre_validate
+- *(macros)* replace skeleton tests with meaningful assertions in pre_validate
+- *(macros)* add auto_increment param to field registration
+- *(macros)* infer not_null from Rust Option type in field registration
+- *(macros)* map DateTime to TimestampTz for timezone-aware columns
+- *(release)* advance version to skip yanked alpha.3 and restore publish capability for dependents
+
+### Documentation
+
+- *(macros)* require cfg_attr derive to sit below #[dto]
+- *(macros)* address CodeRabbit + Copilot review feedback on #[routes]
+- *(macros)* document urls::* helper module emitted by #[url_patterns]
+- *(macros)* drop intra-doc links to types not in reinhardt-macros deps
+- *(core/macros)* clarify pk_uuid_shape is_option independence
+- *(macros)* align pk_uuid_shape is_option doc with implementation
+- *(core)* add ws_urls migration note to routes rustdoc
+- *(macros)* update #[url_patterns] docs to the typed syntax
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+- *(macros)* use backtick for FilesystemSource in collect_migrations doc
+
+### Maintenance
+
+- *(merge)* merge main into feature/streaming-phase2
+- *(merge)* merge origin/feature/streaming-phase2 into local branch
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+
+### Testing
+
+- *(core-macros)* add missing manager_disabled_no_manager.stderr
+- *(macros)* silence unused_imports in non_uuid_pk_with_default_manager
+- *(macros)* fix trybuild stderr column spans for mutual-exclusion fixtures
+- *(macros)* refresh trybuild stderr for routes mutual-exclusion span
+- *(macros)* drop trailing unused-import warnings from non_uuid_pk_with_default_manager golden
+- *(macros)* refresh trybuild snapshot for non_uuid_pk_with_default_manager
+- *(macros)* add trybuild fail case for vendor_assets missing url
+- *(macros)* remove brittle vendor_assets fail trybuild
+- *(core)* replace integration test with pk_uuid_shape unit-test coverage
+- *(macros)* add trybuild fail tests for #[settings] proc macro
+- *(settings)* update tests for explicit CoreSettings requirement
+- *(macros)* add integration and UI tests for validate range attribute
+
+### Styling
+
+- *(macros)* apply rustfmt to routes_registration after gate refactor
+- apply rustfmt to vendor subsystem files
+- apply rustfmt formatting fixes
+- *(macros)* apply rustfmt to url_patterns tests
+- *(core)* fix formatting in reinhardt-core macros and lib
+- *(macros)* apply rustfmt formatting fixes
+- *(pages)* apply rustfmt to merged files from main
+- apply rustfmt formatting
+- apply formatting fixes for field policy changes
+
+### Other
+
+- resolve conflict with main (BUILTIN_FRAGMENTS + resolve helpers)
+- resolve conflict with main (implicit inference tests from PR [[#2860](https://github.com/kent8192/reinhardt-web/issues/2860)](https://github.com/kent8192/reinhardt-web/issues/2860))
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.29...reinhardt-macros@v0.1.0-rc.30) - 2026-05-21
 
 ### Added

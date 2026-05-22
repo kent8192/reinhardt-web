@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-routers-macros@v0.1.0-rc.30...reinhardt-routers-macros@v0.1.0) - 2026-05-22
+
+### Security
+
+- add compile-time validation for paths, SQL, and crate references
+- fix path validation for ambiguous params and wildcards
+- add input validation for route paths and SQL expressions
+
+### Documentation
+
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+
+### Maintenance
+
+- update Cargo.toml dependencies
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
+### Styling
+
+- replace never-looping for with if-let per clippy::never_loop
+- apply rustfmt formatting to workspace files
+
+### Other
+
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-routers-macros@v0.1.0-rc.15...reinhardt-routers-macros@v0.1.0-rc.16) - 2026-04-20
 
 ### Maintenance

@@ -8,6 +8,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
+## [Unreleased]
+
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.0-rc.30...reinhardt-openapi@v0.1.0) - 2026-05-22
+
+### Added
+
+- Initial release of `reinhardt-openapi` crate
+- `OpenApiRouter` wrapper for automatic OpenAPI documentation endpoints
+- Swagger UI endpoint at `/api/docs`
+- Redoc UI endpoint at `/api/redoc`
+- OpenAPI JSON endpoint at `/api/openapi.json`
+- Handler and Router trait implementations for `OpenApiRouter`
+
+### Changed
+
+- extract shared OpenAPI route handling logic
+
+### Fixed
+
+- remove map_err on non-Result OpenApiRouter::wrap return value
+- resolve clippy collapsible_if warnings after merge with main
+- add enabled flag and optional auth guard for docs endpoints
+- return Result from OpenApiRouter::wrap instead of panicking
+- Fix release-plz CI workflow compatibility by establishing a new comparison baseline
+
+### Security
+
+- add security headers to documentation endpoints
+
+### Documentation
+
+- *(http)* fix type name and API inaccuracies across HTTP crate READMEs
+- *(openapi)* place OpenApiRouter::wrap inside #[routes] function
+
+### Maintenance
+
+- update Cargo.toml dependencies
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- updated the following local packages: reinhardt-rest, reinhardt-urls
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-urls, reinhardt-http, reinhardt-rest
+
+### Testing
+
+- *(openapi)* add body content and Content-Type header validation tests
+
+### Other
+
+- updated the following local packages: reinhardt-rest, reinhardt-urls
+- updated the following local packages: reinhardt-http, reinhardt-rest, reinhardt-urls
+
+### Notes
+
+- This crate was extracted from `reinhardt-rest` to resolve circular dependency issues
+- See [Issue #23](https://github.com/kent8192/reinhardt-web/issues/23) for details
+
 ## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.0-rc.19...reinhardt-openapi@v0.1.0-rc.20) - 2026-04-23
 
 ### Documentation

@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-rc.30...reinhardt-http@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(http,di)* add Middleware::di_registrations hook and type-erased DI APIs
+- *(http)* add append_header for multi-value headers like Set-Cookie
+- *(http)* add with_header_if_absent and try_with_header_if_absent to Response
+- *(http)* add ExcludeMiddleware for declarative route exclusion
+- `extract_bearer_token()` - Extract Bearer token from Authorization header
+- `get_header()` - Get specific header value
+- `get_client_ip()` - Get client IP from X-Forwarded-For/X-Real-IP/remote_addr
+- `validate_content_type()` - Validate Content-Type header
+- `query_as<T>()` - Type-safe query parameter deserialization
+
+### Changed
+
+- *(di,urls,http)* preserve path parameter insertion order through pipeline
+- *(http)* remove dead should_stop_chain check in CCH
+- *(urls)* address Copilot review feedback
+- Version bump for publish workflow correction (no functional changes)
+
+### Fixed
+
+- *(http)* convert errors to responses within middleware chain
+- *(middleware)* convert errors to responses in cross-crate middleware
+- *(admin)* validate CSRF token against cookie and fix auth order in create
+- address Copilot review comments on security documentation and validation
+- resolve CI failures and remove sea-query dependency
+- *(di)* set HTTP request on per-request InjectionContext in use_inject macro
+- *(http)* make AuthState::from_extensions() find AuthState object directly
+- *(http)* add Error::Http and Error::Serialization to safe client error detail
+- *(http)* replace lock().unwrap() with poison-recovery pattern
+- *(http)* use char_indices for UTF-8 safe truncation in truncate_for_log
+- *(meta)* fix workspace inheritance and authors metadata
+- add session timeout for chunked uploads
+- fix streaming parser, cookie parsing, and request builder
+- recover from poisoned mutex instead of panicking
+- prevent panics from lock poisoning, query parsing, and input validation
+- add path traversal prevention with input validation
+- *(http)* move integration tests to tests crate to break circular publish chain
+
+### Security
+
+- harden header trust and authorization checks
+- use cryptographically random filenames for uploads
+- add safe error response builder to prevent info leakage
+- harden XSS, CSRF, auth, and proxy trust
+- prevent path traversal in file upload handling
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- *(http)* fix type name and API inaccuracies across HTTP crate READMEs
+- *(http)* update ResponseCookies docs to reflect shared Extensions mechanism
+- *(http)* address Copilot review on [[#3417](https://github.com/kent8192/reinhardt-web/issues/3417)](https://github.com/kent8192/reinhardt-web/issues/3417)
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+- add missing doc comments for public API modules and types
+- add security note on client-side auth state limitations
+
+### Maintenance
+
+- *(testing)* add insta snapshot testing dependency across all crates
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-core
+
+### Styling
+
+- fix pre-existing clippy warnings and apply rustfmt
+- apply rustfmt to pre-existing unformatted files
+- collapse nested if statements per clippy::collapsible_if
+- apply code formatting to security fix files
+
+### Other
+
+- updated the following local packages: reinhardt-core
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
+
+### Notes
+
+- Methods migrated from reinhardt-micro crate for better API ergonomics
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-rc.29...reinhardt-http@v0.1.0-rc.30) - 2026-05-21
 
 ### Added

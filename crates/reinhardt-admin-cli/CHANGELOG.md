@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.30...reinhardt-admin-cli@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(admin-cli)* expose --template-dir flag on startproject and startapp
+- Initial release of `reinhardt-admin` CLI tool
+- `startproject` command for scaffolding new Reinhardt projects
+- `startapp` command for generating application modules
+- `plugin` subcommands: install, remove, list, search, enable, disable, update, info
+- `fmt` command for code formatting with rustfmt integration
+- Verbose output support with `-v` flag
+
+### Changed
+
+- *(admin-cli)* drop unused SkipReason::NoPageMacro variant
+- add template_type validation and bound project root search
+
+### Fixed
+
+- *(admin-cli)* recursively format nested page! macros
+- *(admin-cli)* harden ast_formatter parser against false-positive page! spans
+- *(admin-cli)* skip page!-shaped substrings inside strings and comments
+- *(admin-cli)* reword comment so no line starts with `match`
+- *(admin-cli)* align e2e test with current local.example.toml placeholder
+- *(admin-cli)* replace --template-type with --template/--with-pages/--with-rest ArgGroup
+- *(admin-cli)* treat missing page! as no-op, not skip
+- *(deps)* consolidate colored and criterion versions to workspace dependencies
+- fix .env parsing, AST formatter, and file safety issues
+- atomic file writes, preserve permissions, cleanup backups
+- add recursion depth guard to AST formatter
+- remove unused utility functions from utils module
+- apply rustfmt formatting to utils module
+- apply clippy fixes to utils module
+- add error handling and type coercion safety
+- add missing OpenOptionsExt import for secure backup creation
+- fix key zeroing, file perms, and value redaction in admin-cli (#650, #656, #658)
+- *(release)* roll back unpublished crate versions after partial release failure
+- apply CodeRabbit auto-fixes (consolidated across 1 occurrences)
+
+### Security
+
+- fix TOCTOU, silent errors, unsafe unwrap, backup file exposure, and DoS limits
+- sanitize error messages to prevent information leakage
+- add input validation, file size limits, and TOCTOU mitigations
+
+### Documentation
+
+- *(admin-cli)* document install command for RC phase
+- add reinhardt-version-sync markers to all crate READMEs
+- *(admin-cli)* fix outdated --help reference and update README for new flags
+- fix documentation-implementation inconsistencies across website and codebase
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- updated the following local packages: reinhardt-commands
+- updated the following local packages: reinhardt-commands, reinhardt-pages, reinhardt-dentdelion
+- updated the following local packages: reinhardt-pages, reinhardt-commands
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-pages, reinhardt-dentdelion, reinhardt-commands
+
+### Testing
+
+- *(admin-cli)* use strict equality for deterministic protect_page_macros assertions
+- *(admin-cli)* update e2e tests to use --with-rest/--with-pages flags
+- *(admin-cli)* add unit tests for resolve_project_type
+- *(admin-cli)* add skip status validation to AST formatter tests
+- *(admin-cli)* extend skip status validation to remaining formatter tests
+- *(commands)* add E2E binary tests for embedded template rendering
+
+### Styling
+
+- *(admin-cli)* apply rustfmt formatting to main.rs
+- apply rustfmt and page! macro formatting
+- *(commands)* apply rustfmt to e2e_embedded_templates.rs
+- add explanatory comments to remaining #[allow(dead_code)] attributes
+- fix pre-existing clippy warnings and apply rustfmt
+- apply rustfmt to pre-existing unformatted files
+- fix clippy warnings and formatting in files merged from main
+- apply formatting to files introduced by merge from main
+- fix remaining clippy warnings across workspace
+- apply rustfmt formatting to workspace files
+
+### Other
+
+- updated the following local packages: reinhardt-commands
+- updated the following local packages: reinhardt-pages, reinhardt-dentdelion, reinhardt-commands
+- add release-plz migration markers to CHANGELOGs
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.29...reinhardt-admin-cli@v0.1.0-rc.30) - 2026-05-21
 
 ### Fixed

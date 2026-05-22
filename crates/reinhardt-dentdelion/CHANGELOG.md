@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-rc.30...reinhardt-dentdelion@v0.1.0) - 2026-05-22
+
+### Added
+
+- Initial release of the plugin system for Reinhardt framework
+- Plugin trait for defining reusable framework extensions
+- Plugin manifest and metadata support
+- Plugin loading and initialization infrastructure
+
+### Changed
+
+- share reqwest::Client across HostState instances
+- add #[non_exhaustive] to ColumnType and TsError enums
+
+### Fixed
+
+- resolve merge conflicts with main and fix CI failures
+- *(dentdelion)* harden escape_for_script against XSS vectors
+- *(dentdelion,pages)* address Copilot review feedback on XSS/injection defenses
+- *(dentdelion,pages)* address remaining Copilot review on expression validation and tests
+- acquire multiple locks simultaneously to prevent TOCTOU
+- prevent silent failures in WASM config and plugin metadata
+- replace hardcoded placeholder email in crates.io User-Agent
+- replace panicking unwrap/expect calls with safe alternatives
+- remove unsafe Send/Sync impl from TsRuntime
+- correct HostState clone and topological sort in dentdelion (#682, #683)
+- escape script tags in hydration to prevent XSS
+- add SQL validation for WASM plugin queries
+- add security controls to render_component
+- add SSRF prevention with URL validation in WASM host
+
+### Security
+
+- validate plugin names to prevent path traversal and log injection
+- add resource limits for JS execution, event subscriptions, and plugin disable
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- fix engine names, feature flags, and API inaccuracies in crate docs
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+- document validate_component_path security rationale
+- document is_valid_wasm magic byte validation scope
+
+### Maintenance
+
+- upgrade workspace dependencies to latest versions
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(deps)* downgrade wasmtime to 36.0.6 to fix security advisories
+- *(testing)* add insta snapshot testing dependency across all crates
+- updated the following local packages: reinhardt-db
+- upgrade remaining crates from edition 2021 to 2024
+
+### Styling
+
+- add explanatory comments to remaining #[allow(dead_code)] attributes
+- apply formatting to files introduced by merge from main
+- apply rustfmt to crates_io module
+- fix remaining clippy warnings across workspace
+- apply rustfmt formatting to wasm module files
+- apply code formatting to security fix files
+
+### Other
+
+- updated the following local packages: reinhardt-db
+- add release-plz migration markers to CHANGELOGs
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-rc.20...reinhardt-dentdelion@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

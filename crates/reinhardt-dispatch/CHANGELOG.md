@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.30...reinhardt-dispatch@v0.1.0) - 2026-05-22
+
+### Fixed
+
+- *(dispatch-tests)* serialize signal tests and correct middleware doc
+- fix dead code, default handler, and lost request context
+- log signal send errors instead of silently discarding
+- replace lock unwrap with poison error recovery
+
+### Security
+
+- add configurable middleware chain depth limit
+- add content-type and nosniff headers to error responses
+- prevent information disclosure in exception handler
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- *(core)* fix API inaccuracies in core infrastructure crate READMEs
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+- *(readme)* fix documentation discrepancies across crate READMEs
+
+### Maintenance
+
+- update Cargo.toml dependencies
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-urls, reinhardt-middleware, reinhardt-views
+- updated the following local packages: reinhardt-views, reinhardt-middleware, reinhardt-urls
+
+### Testing
+
+- *(dispatch)* add integration tests for routing × middleware main paths
+
+### Styling
+
+- add explanatory comments to remaining #[allow(dead_code)] attributes
+- apply rustfmt to pre-existing unformatted files
+- apply rustfmt to pre-existing formatting violations in 16 files
+
+### Other
+
+- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-middleware, reinhardt-views, reinhardt-urls
+- add release-plz migration markers to CHANGELOGs
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.28...reinhardt-dispatch@v0.1.0-rc.29) - 2026-05-13
 
 ### Fixed

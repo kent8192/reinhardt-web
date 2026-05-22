@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.30...reinhardt-testkit@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(testkit)* add DiOverrideBuilder + with_di_overrides! re-export
+- *(testkit,streaming)* module-scoped Kafka fixture + KafkaConfig.partitions
+- *(testkit)* add `DiOverrideBuilder`, `DiOverrides`, `injection_context_with_di_overrides`, and re-export the `with_di_overrides!` macro from `reinhardt-testkit-macros` for ergonomic DI mocking in tests
+- *(testkit)* add in-process test transport for APIClient via Handler trait
+- migrate UUID generation from v4 to v7 across entire codebase
+- *(testkit)* add with_test_di_context() for isolated parallel-safe test DI contexts
+- *(testkit)* add builder-based auth testing API
+- *(testkit)* add KafkaContainer fixture and producer/consumer integration test
+- add streaming feature to reinhardt facade and fix KafkaContainer API
+- *(testkit)* add postgres_with_migrations_from_dir helper using FilesystemSource
+
+### Changed
+
+- *(testkit-macros)* route generated paths through reinhardt-testkit
+- post-simplify-review cleanups for DI mock fixtures
+- *(testkit)* extract RequestSeedFn alias to satisfy clippy::type_complexity
+- *(di,urls,http)* preserve path parameter insertion order through pipeline
+
+### Deprecated
+
+- update deprecation since version from 0.2.0 to 0.1.0-rc.16
+- *(testkit)* deprecate global_registry-based migration fixtures
+
+### Fixed
+
+- *(testkit)* make request_value seed the request scope and document the round-trip
+- *(ci)* unblock release-plz rc.29 CI on three pre-existing failures
+- *(admin)* add missing SingletonScope import and fix formatting
+- *(testkit)* use random portion of UUID v7 for unique suffix
+- *(testkit)* address review feedback and CI clippy failures
+- *(testkit)* update deprecated since to 0.1.0-rc.16 and suppress internal usage warnings
+- *(docs)* use backticks for feature-gated types in testkit auth docs
+- *(testkit)* align rabbitmq image tag to pre-pulled 3-management-alpine
+- *(streaming)* address Copilot review feedback on Phase 1 PR
+- *(testkit)* update bitnami/kafka image tag from 3.7 to 3.9
+- *(pages,testkit)* add hmr feature gate to e2e tests and migrate Kafka image to apache/kafka
+- *(middleware)* propagate handler-side session ID rotation to Set-Cookie
+- *(testkit)* migrate SessionData construction to use new() to support #[non_exhaustive]
+- *(testkit)* use multi-thread runtime and install any drivers in fixture tests
+- *(testkit)* unify PostgreSQL version, add pool close, and cleanup backoff
+- *(test)* improve test infrastructure reliability and E2E fixtures
+- *(test,testkit)* address Copilot review feedback on test infrastructure
+- *(testkit)* initialize ORM global state in postgres_with_migrations_from_dir
+- resolve CI failures and remove sea-query dependency
+
+### Security
+
+- *(testkit)* remove sensitive values from cookie validation panic messages
+
+### Documentation
+
+- *(testing)* document DI mock fixtures and override patterns
+- *(mail)* fix unclosed code fence, wrong thread-safety claim, and stale versions
+- *(macros,testkit)* use backticks for cross-crate intra-doc links
+
+### Maintenance
+
+- *(deps)* floor astral-tokio-tar to 0.6.2 (RUSTSEC-2026-0145)
+- cargo fmt after di-mock-fixtures
+- upgrade workspace dependencies to latest versions
+- *(testkit)* add auth-testing feature with reinhardt-auth and reinhardt-middleware optional deps
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+
+### Testing
+
+- *(di)* register test types in global registry for Depends resolution
+- *(testkit)* add comprehensive tests for core utility modules
+- *(testkit)* add tests for fixture modules (server, testcontainers, resources, validator)
+
+### Styling
+
+- *(testkit)* fix rustfmt formatting in di.rs
+- *(testkit)* format cookie value assertion in client.rs
+- *(testkit)* apply auto-fix formatting to fixtures re-export
+- add explanatory comments to remaining #[allow(dead_code)] attributes
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.29...reinhardt-testkit@v0.1.0-rc.30) - 2026-05-21
 
 ### Maintenance

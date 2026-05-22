@@ -7,6 +7,140 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-rc.30...reinhardt-rest@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(rest)* add VersioningSettings fragment for [rest_versioning] section
+- *(core)* add AuthProtection enum and EndpointMetadata extension
+- *(rest)* integrate auth protection with OpenAPI security generation
+- migrate UUID generation from v4 to v7 across entire codebase
+- *(rest)* add operation-level OpenAPI route attributes
+- Initial release with RESTful API framework with serializers, viewsets, and browsable API interface
+
+### Changed
+
+- *(rest)* remove VersioningConfig::from_env in favor of settings fragment
+- *(rest)* address copilot review on versioning settings
+- deduplicate utility functions across crates
+- *(rest)* remove unused sea-orm dependency
+- Version bump for publish workflow correction (no functional changes)
+- Moved `OpenApiRouter` to `reinhardt-openapi` crate to resolve circular dependency
+- Re-exported `generate_openapi_schema` from `endpoints` module for backward compatibility
+
+### Removed
+
+- Removed `openapi/router_wrapper.rs` (moved to `reinhardt-openapi` crate)
+
+### Fixed
+
+- *(rest)* replace private intra-doc link in versioning
+- *(rest)* replace the dead-code `_stub` versioning hooks
+  (`extract_version_from_router_stub` /
+  `get_available_versions_from_router_stub`) with real generic
+  implementations over `reinhardt_router::VersionedRouter`, and flip
+  the two `ignore`d doc examples in `versioning.rs` to runnable.
+  Resolves the `reinhardt-urls` ↔ `reinhardt-rest` circular
+  dependency tracked in
+  [#4321](https://github.com/kent8192/reinhardt-web/issues/4321).
+- *(rest)* honor MetaConfig and run sync validators in ModelSerializer
+- *(rest)* make WritableNestedSerializer honest about prefetch contract
+- *(rest)* preserve UnwindSafe auto traits on ValidatorConfig
+- *(middleware)* convert errors to responses in cross-crate middleware
+- resolve merge conflicts with main and fix CI failures
+- suppress deprecated User trait warnings in downstream crates
+- *(rest)* add feature gates to serializers and filter modules
+- *(rest)* correct module path in versioning macro
+- *(reinhardt-rest)* enforce version prefix, reset operator state, and fix UTF-8 length in filters
+- *(reinhardt-rest)* add segment boundary to version prefix regex
+- *(rest)* preserve existing ORDER BY and WHERE clauses in filter backends
+- *(rest)* replace to_uppercase() with ASCII case-insensitive keyword scanning
+- *(rest)* use eq_ignore_ascii_case for case-insensitive comparison
+- *(test)* update search filter test expectations for LIKE ESCAPE clause
+- *(rest)* address Copilot review feedback on OpenAPI annotations
+- *(rest)* add missing EndpointMetadata fields in qualified path test
+- *(rest)* use workspace redis dependency instead of pinned rc version
+- *(meta)* fix workspace inheritance and authors metadata
+- propagate parse errors and validate min/max constraints
+- cache compiled regex in NamespaceVersioning for performance
+- replace expect() with safe get_ident() handling in attribute parsing
+- collapse nested if block in serde_attrs to satisfy clippy
+- pin CDN versions and add SRI integrity attributes
+- add database dialect support for PostgreSQL compatibility
+- handle serde attributes and improve validation
+- update filter test assertions to expect MySQL-style backtick quoting
+- use parameterized queries in SimpleSearchBackend
+- *(rest)* move tests to integration crate to break circular publish chain
+- *(release)* revert unpublished crate versions to pre-release state
+- remove reinhardt-urls from doc example to avoid circular dependency
+- break circular dependency between reinhardt-openapi-macros and reinhardt-rest
+- remove unused dev-dependencies from reinhardt-rest
+- Embed branding assets within crate for crates.io compatibility
+
+### Security
+
+- harden XSS, CSRF, auth, and proxy trust
+
+### Performance
+
+- *(rest)* reduce per-request allocations in dispatch hot path
+
+### Documentation
+
+- *(rest)* add Ideal implementation block to versioning router stubs
+- *(rest)* address Copilot review on versioning router stubs
+- *(rest)* clarify default-version fallback comments per Copilot review
+- add reinhardt-version-sync markers to all crate READMEs
+- *(http)* fix type name and API inaccuracies across HTTP crate READMEs
+- *(rest)* replace DefaultRouter with UnifiedRouter in README example
+- *(rest)* remove unused Route import from README example
+- *(rest)* remove unused routing imports from Usage example
+- *(rest)* fix Route import path — use urls::routers::Route not urls::Route
+- *(rest)* remove Router trait and Route from import example — UnifiedRouter is user-facing
+- *(rest)* fix broken intra-doc link to OpenApiSettings
+- update version references in crate READMEs to 0.1.0-rc.9
+
+### Maintenance
+
+- upgrade workspace dependencies to latest versions
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- updated the following local packages: reinhardt-db, reinhardt-db, reinhardt-auth, reinhardt-auth
+- updated the following local packages: reinhardt-query, reinhardt-core, reinhardt-core, reinhardt-http, reinhardt-db, reinhardt-db, reinhardt-auth, reinhardt-auth, reinhardt-utils
+- updated the following local packages: reinhardt-query, reinhardt-db, reinhardt-db, reinhardt-auth, reinhardt-auth
+- updated the following local packages: reinhardt-auth, reinhardt-auth
+- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-utils, reinhardt-db, reinhardt-db, reinhardt-auth, reinhardt-auth, reinhardt-http
+
+### Testing
+
+- *(rest)* rewrite versioning env tests as settings-based unit tests
+- *(rest)* cover serializer builder configuration round-trip behaviors
+- *(openapi)* add missing tests for schema registration and HTTP delivery
+
+### Styling
+
+- fix pre-existing clippy warnings and apply rustfmt
+- apply rustfmt to pre-existing unformatted files
+- apply rustfmt after clippy auto-fix
+- fix remaining clippy warnings across workspace
+- apply formatting to migrated test files and modified source files
+
+### Reverted
+
+- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
+
+### Other
+
+- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
+- release
+- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-pages, reinhardt-http, reinhardt-utils, reinhardt-server, reinhardt-db, reinhardt-db, reinhardt-auth, reinhardt-auth
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
+
+### Notes
+
+- See [Issue #23](https://github.com/kent8192/reinhardt-web/issues/23) for circular dependency resolution details
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-rc.28...reinhardt-rest@v0.1.0-rc.29) - 2026-05-13
 
 ### Added

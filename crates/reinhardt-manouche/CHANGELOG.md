@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.30...reinhardt-manouche@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(manouche)* [**breaking**] remove unused IR and codegen::IRVisitor layers
+
+### Added
+
+- *(pages/macros)* add success_url for first-class post-submit navigation
+- *(manouche)* add on_success_ref to form callbacks AST and parser
+- *(pages-macros)* add strip_arguments to form! macro
+- *(pages)* add autocomplete attribute support to form! macro
+- add SubmitButton support to form! macro fields
+- *(forms)* add ValidatorScope and ClientTrigger, remove client validator AST types
+- *(forms)* parse scope annotations; reject client_validators with migration error
+- *(forms)* add scope to TypedValidatorRule, drop typed client validator types
+- *(forms)* propagate scope in manouche transform, drop client transforms and js validator
+- *(manouche)* add IRVisitor trait and walk helpers
+- *(manouche)* add IR type definitions
+- *(manouche)* add validator module with page, form, and head validators
+- *(manouche)* add parser module with page, form, and head parsers
+- *(manouche)* add head node definitions
+- *(manouche)* migrate typed form definitions
+- *(manouche)* migrate form node definitions
+- *(manouche)* migrate typed page node definitions
+- *(manouche)* migrate page node definitions
+- *(manouche)* migrate types module from reinhardt-pages-ast
+- *(manouche)* add reactive trait definitions
+
+### Changed
+
+- *(manouche)* drop redundant <img src> empty check
+- *(manouche)* reduce duplication and improve error context
+- *(manouche)* replace magic string with Option<Ident> for FormMacro name
+
+### Fixed
+
+- *(pages/macros)* apply HiddenField initial to signal at first render
+- *(manouche)* resolve clippy errors blocking release-plz PR
+- *(manouche)* drop redundant ':' in success_url parser arm
+- *(admin-cli)* recursively format nested page! macros
+- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
+- *(manouche)* convert todo!() to unimplemented!() for stable audit
+- use workspace inheritance for authors, edition, license, and repository
+- *(manouche)* add compile-time validation for js_condition to prevent injection
+- replace panicking name() with safe error handling in FormFieldProperty ([[#578](https://github.com/kent8192/reinhardt-web/issues/578)](https://github.com/kent8192/reinhardt-web/issues/578))
+- *(reinhardt-manouche)* emit compile error for unsupported form-level validators
+- *(reinhardt-manouche)* replace debug_assert with assert in page parser
+- add reinhardt-manouche to workspace deps and address review comments
+
+### Security
+
+- *(manouche)* implement head element validation and fix attribute value extraction
+
+### Documentation
+
+- *(pages-macros)* address Copilot + CodeRabbit review feedback
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- *(manouche)* convert TODO comments to todo!() macros in IR lowering
+
+### Testing
+
+- *(manouche)* use unwrap_or_else for parse error in success_url tests
+- *(pages)* add FileField and ImageField coverage for typed form macro
+- *(forms)* add parser tests for validator scope annotations
+
+### Styling
+
+- apply auto-fix formatting
+- apply rustfmt formatting
+- *(forms)* apply rustfmt to scope_tests module
+- add explanatory comments to remaining #[allow(dead_code)] attributes
+- apply rustfmt formatting to workspace files
+- apply rustfmt to pre-existing unformatted files
+
+### Other
+
+- resolve conflicts with main (on_success_ref + on_success lift)
+- *(manouche)* add README
+- *(manouche)* add module skeleton
+- *(manouche)* create reinhardt-manouche crate structure
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.29...reinhardt-manouche@v0.1.0-rc.30) - 2026-05-21
 
 ### Added

@@ -7,6 +7,139 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-rc.30...reinhardt-middleware@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(middleware)* auto-register SessionMiddleware's Arc<SessionStore> via di_registrations
+- *(middleware)* add typed SessionValue<T> extractor + SessionAuthExt
+- *(middleware)* export SessionValue, OptionalSessionValue, SessionAuthExt, USER_ID_SESSION_KEY
+- *(middleware)* support Path-style auto-extraction and SessionValueNamed
+- *(middleware)* add OptionalSessionValueNamed<K, T> extractor
+- *(middleware)* add BrokenLinkConfig::managers field and from_settings constructor
+- *(middleware)* add JwtAuthMiddleware for stateless token-based auth
+- *(middleware)* add RemoteUserMiddleware and PersistentRemoteUserMiddleware
+- *(middleware)* add LoginRequiredMiddleware for unauthenticated redirect
+- *(middleware)* wire module declarations, re-exports, and feature flags
+- *(session)* add AsyncSessionBackend trait for pluggable async session storage ([[#3369](https://github.com/kent8192/reinhardt-web/issues/3369)](https://github.com/kent8192/reinhardt-web/issues/3369))
+- *(middleware)* add RedisSessionBackend behind session-redis feature
+- *(middleware)* add CookieSessionAuthMiddleware for cookie-based session auth
+- *(middleware)* add OriginGuardMiddleware for CSRF protection
+- migrate UUID generation from v4 to v7 across entire codebase
+- *(middleware)* add exempt_paths to CspConfig for path-based CSP bypass
+- add security middleware components (Refs #292)
+
+### Changed
+
+- *(middleware)* share TenantIdKey fixture via test_support module
+- *(middleware)* drop REINHARDT_SETTINGS env::var hot-path read from broken_link
+- *(middleware)* simplify broken_link manager fallback with Cow
+- *(middleware)* split session.rs by responsibility ([[#4312](https://github.com/kent8192/reinhardt-web/issues/4312)](https://github.com/kent8192/reinhardt-web/issues/4312))
+- *(middleware)* address Copilot review feedback on PR [[#4339](https://github.com/kent8192/reinhardt-web/issues/4339)](https://github.com/kent8192/reinhardt-web/issues/4339)
+- *(middleware)* address Copilot review on [[#3413](https://github.com/kent8192/reinhardt-web/issues/3413)](https://github.com/kent8192/reinhardt-web/issues/3413)
+
+### Fixed
+
+- *(middleware)* register session store under Arc<SessionStore> TypeId
+- *(middleware,di)* map non-auth DiError variants to ParamError::Internal
+- *(docs)* drop intra-doc links to private session submodules
+- *(http)* convert errors to responses within middleware chain
+- *(middleware)* ensure security headers on error responses from inner handlers
+- *(middleware)* convert errors to responses in security-critical middleware
+- *(middleware)* convert errors to responses in functional middleware
+- *(middleware)* resolve docs.rs build and feature gate issues
+- *(auth)* add is_staff and is_superuser fields to JWT Claims
+- *(middleware)* extract is_staff from JWT claims instead of hardcoding false
+- *(middleware)* resolve SessionData injection for unauthenticated requests
+- *(middleware)* propagate handler-side session ID rotation to Set-Cookie
+- *(session)* apply #[non_exhaustive] to SessionData to prevent source-breaking field additions
+- suppress deprecated User trait warnings in downstream crates
+- *(middleware)* inject session ID into request extensions before handler
+- address Copilot review comments on security documentation and validation
+- *(middleware)* respect handler-set CSP headers in CspMiddleware
+- *(middleware)* replace parse().unwrap() with safe alternatives for panic prevention
+- *(middleware)* correct header handling on parse failures
+- remove develop/0.2.0 content accidentally merged via PR [[#1918](https://github.com/kent8192/reinhardt-web/issues/1918)](https://github.com/kent8192/reinhardt-web/issues/1918)
+- *(release)* use path-only dev-dep for reinhardt-test in cyclic crates
+- *(middleware)* validate host header against allowed hosts in HTTPS redirect
+- *(middleware)* add missing import in HttpsRedirectMiddleware doc test
+- *(meta)* fix workspace inheritance and authors metadata
+- apply permission checks uniformly to all HTTP methods
+- remove map_err on non-Result OpenApiRouter::wrap return value
+- resolve clippy collapsible_if warnings after merge with main
+- remove duplicate rand dependency entry
+- resolve post-merge build errors from main integration
+- *(ci)* remove proptest regression files from git tracking
+- address Copilot review feedback (consolidated across 1 occurrences)
+
+### Security
+
+- *(middleware)* reject empty user_id as unauthenticated
+- keep UUID v4 for security-sensitive tokens
+- harden header trust and authorization checks
+- *(middleware)* add Vary header when wildcard origins combined with credentials
+- harden session cookie and add X-Frame-Options header
+- add lazy eviction for in-memory session store
+- add stale bucket eviction to rate limit store cleanup
+- add sliding window to circuit breaker statistics
+- fix CSP header sanitization and CSRF panic
+- harden XSS, CSRF, auth, and proxy trust
+- validate CORS origin against request per Fetch Standard
+- add trusted proxy validation for X-Forwarded-For
+- replace regex XSS sanitization with proper escaping
+- use cryptographic random for CSRF fallback secret
+- replace predictable CSP nonce with cryptographic random
+
+### Documentation
+
+- *(middleware)* document SessionValue and SessionAuthExt in README
+- *(reinhardt,middleware)* document #[inject]-free session extractors
+- *(middleware)* document from_settings as canonical broken_link entry point
+- *(middleware)* fix synthesises spelling in broken_link
+- add reinhardt-version-sync markers to all crate READMEs
+- *(http)* fix type name and API inaccuracies across HTTP crate READMEs
+- *(middleware)* fix intra-doc link errors for feature-gated types
+- fix stale doc comments in middleware, admin, apps, and core crates
+
+### Maintenance
+
+- *(testing)* add insta snapshot testing dependency across all crates
+- updated the following local packages: reinhardt-auth
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-conf, reinhardt-di, reinhardt-auth, reinhardt-mail
+- updated the following local packages: reinhardt-conf, reinhardt-auth, reinhardt-mail
+- updated the following local packages: reinhardt-conf, reinhardt-di, reinhardt-auth, reinhardt-mail
+- updated the following local packages: reinhardt-core, reinhardt-conf, reinhardt-auth, reinhardt-http, reinhardt-di, reinhardt-mail
+
+### Testing
+
+- *(middleware)* cover SessionData::inject end-to-end via InjectionContext
+- *(middleware)* cover SessionValue extractor and SessionAuthExt login/logout
+- *(middleware)* cover FromRequest path and SessionValueNamed extractor
+- *(middleware)* add integration tests for error response headers
+- *(middleware)* assert gzip Content-Encoding with a typed handler
+
+### Styling
+
+- *(middleware)* apply rustfmt to session value modules
+- *(middleware)* fix session.rs import order broken by allow(deprecated)
+- fix clippy warnings and format issues
+- *(middleware)* apply cargo make auto-fix formatting
+- fix import order in security_middleware
+- apply rustfmt after clippy auto-fix
+- fix remaining clippy warnings across workspace
+- apply rustfmt formatting to workspace files
+
+### Other
+
+- resolve conflict with main (CSRF cookie tests)
+- resolve conflict with main (criterion version)
+- updated the following local packages: reinhardt-di, reinhardt-conf, reinhardt-auth, reinhardt-mail
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-conf, reinhardt-di, reinhardt-auth, reinhardt-mail
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-rc.29...reinhardt-middleware@v0.1.0-rc.30) - 2026-05-21
 
 ### Added

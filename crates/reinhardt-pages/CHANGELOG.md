@@ -7,6 +7,320 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(pages)* [**breaking**] switch ClientLauncher render to Router::on_navigate
+- *(pages)* [**breaking**] switch on_path subscriptions to Router::on_navigate
+
+### Added
+
+- *(pages)* add select_router_source_counts helper and tests
+- *(pages)* add ClientLauncher::register_routes_from_inventory
+- *(pages)* extend launch() to 3-way mutual exclusion for inventory
+- *(macros)* make WASM client inventory submission opt-in via client_inventory flag
+- *(pages)* add use_router() hook + RouterHandle + navigate() free function
+- *(pages)* add try_with_spa_router + NavigateError::RouterNotInstalled
+- *(pages)* allow dynamic expressions for img src attribute
+- *(pages)* add `pages/nav-diag-dom` opt-in DOM navigation diagnostic
+- *(pages)* add ClientLauncher::router_client for ClientRouter routes
+- *(router)* add on_navigate explicit subscription API as escape hatch
+- *(router)* add hidden diagnostic counters for navigation observers
+- *(pages)* add hidden render-count counter on ClientLauncher
+- *(router, pages)* Hidden diagnostic counter API
+  (`Router::__diag_observer_count`, `Router::__diag_dispatch_count`,
+  `ClientLauncher::__diag_render_count` on `cfg(wasm)`). All three are
+  `#[doc(hidden)]` and intended only as an internal regression-test surface.
+  Backed by a Tier 2 (sidebar-signal) and Tier 3 (full layout shell)
+  fixture suite plus a real-Chrome `e2e_cdp` test that assert observer-system
+  invariants Inv-1 ~ Inv-4 on every navigation. Replaces the DOM-only
+  assertions whose silence allowed earlier false-positive fixes (#4075 → #4078
+  regressed, #4088 → #4102 regressed in form). Issue #4122 itself was
+  reclassified during diagnosis as a stale-wasm-bundle false positive; the
+  underlying dev-loop hazard is tracked separately as #4127 (`runserver`
+  --with-pages does not auto-rebuild WASM) and #4128 (hot-reload WASM
+  rebuild verification).
+  ([#4122](https://github.com/kent8192/reinhardt-web/issues/4122),
+  [#4127](https://github.com/kent8192/reinhardt-web/issues/4127),
+  [#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
+- *(router)* `Router::on_navigate(callback) -> NavigationSubscription`
+  explicit subscription API, inspired by React Router's
+  `router.subscribe(listener)`. The listener is invoked synchronously after
+  every successful `push`/`replace` with the new path and params, independent
+  of any Signal/Effect auto-tracking. Robust against the reactivity-tracking
+  corruption class that affected #3348, #4075, and #4088.
+  ([#4088](https://github.com/kent8192/reinhardt-web/issues/4088))
+- *(pages)* add intercept_links builder to ClientLauncher
+- *(pages)* add before_launch and after_launch lifecycle hooks
+- *(pages)* add on_path subscription hooks with PathCtx
+- *(pages)* `ClientLauncher::intercept_links(bool)` for built-in SPA link
+  interception (default: `true`). Skips external URLs, `target="_blank"`,
+  `download`, `rel="external"`, and modifier-key clicks. Closes #3994.
+- *(pages)* `ClientLauncher::before_launch` and `after_launch` lifecycle
+  hooks. `before_launch` runs after scheduler setup but before router
+  init; `after_launch` runs after the first DOM mount and receives a
+  `LaunchCtx` with borrows of `window`, `document`, and the root element.
+  Multiple hooks accumulate in registration order. Closes #3996.
+- *(pages)* `ClientLauncher::on_path` and `on_path_pattern` for
+  declarative path-driven side effects. Each registration becomes a
+  leaked reactive `Effect` that fires only on transitions into the
+  matching path (entering a match or pattern-internal parameter
+  changes); same-path re-renders do not re-fire. Callbacks receive a
+  `PathCtx` with the current `document`, path, and extracted params,
+  plus `PathCtx::ensure_portal(id, factory)` for idempotent body-level
+  mounts. Closes #3995.
+- *(pages)* add JWT token management and auth header injection for WASM SPA
+- add SubmitButton support to form! macro fields
+- *(pages)* add MockableServerFn trait and macro generation under msw feature
+- *(forms)* propagate scope in pages-macros transform, drop client transforms
+- *(forms)* filter .validate() codegen by server scope
+- *(pages)* add hot module replacement support
+- *(reinhardt-apps,reinhardt-pages)* expose test reset functions behind testing feature
+- *(http)* add append_header for multi-value headers like Set-Cookie
+
+### Changed
+
+- *(pages)* lifted `form! on_success:` closures now require `Send + Sync` (mirroring the `success_url:` lift from [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)). Unannotated closures are unaffected.
+- *(pages)* deprecate Router and related types in favor of urls::ClientRouter
+- *(pages)* extract render_and_mount helper from launcher Effect
+- *(pages)* `ClientLauncher::launch()` now installs a document-level click
+  listener by default. Apps with hand-rolled SPA link interception should
+  call `.intercept_links(false)` to opt out.
+- replace magic string with Option<Ident> for FormMacro name
+- extract duplicated form ID and action string generation
+- remove duplicate img required attribute validation
+- convert relative paths to absolute paths
+- restore single-level super:: paths preserved by convention
+- Re-release of 0.1.0-alpha.3 content after version correction
+- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
+
+### Deprecated
+
+- *(test)* mark MockFetch and mock_server_fn as deprecated in favor of MSW
+
+### Fixed
+
+- *(pages-macros)* allow form! watch handlers to capture outer locals
+- *(pages/macros)* apply HiddenField initial to signal at first render
+- *(pages-macros)* collapse nested if-let into let-chain in extract_initial_expr
+- *(pages-macros)* make form! watch handler a real closure ([[#4414](https://github.com/kent8192/reinhardt-web/issues/4414)](https://github.com/kent8192/reinhardt-web/issues/4414))
+- *(pages-macros)* let form! initial and inner watch capture outer scope
+- *(pages-macros)* lift success_url to outer scope + SPA-aware redirect
+- *(pages)* address Copilot review feedback on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
+- *(pages)* address CodeRabbit review on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
+- *(pages-macros)* hoist value-sink before on_success to avoid borrow-after-move
+- *(pages-macros)* hoist on_success_submit_invocation before navigation
+- *(pages)* lift `form! { on_success: |value: T| ... }` user closure to the outer construction block when the closure parameter carries an explicit type annotation, so the body can capture enclosing-scope locals like a `qid` route parameter (fixes [[#4624](https://github.com/kent8192/reinhardt-web/issues/4624)](https://github.com/kent8192/reinhardt-web/issues/4624), completes [[#4605](https://github.com/kent8192/reinhardt-web/issues/4605)](https://github.com/kent8192/reinhardt-web/issues/4605)). Unannotated closures (`|value|`, `|_value|`) keep the historical inline emit, so every in-tree caller continues to compile without changes.
+- *(pages)* harden SPA link interceptor (non-Element targets, push errors)
+- *(pages)* address Copilot review on link interceptor PR
+- resolve wasm-target clippy violations in pages and urls
+- *(routing)* deduplicate client_router::history module
+- *(routing)* gate wasm-only history fns to wasm targets
+- *(ci)* rephrase comment in spa_router.rs to dodge semgrep commented-out-code rule
+- *(urls, pages, ci)* address Copilot review feedback on [[#4242](https://github.com/kent8192/reinhardt-web/issues/4242)](https://github.com/kent8192/reinhardt-web/issues/4242)
+- *(pages)* silence wasm dead_code lint for unused SpaRouter trait methods
+- *(pages-macros)* reference server_fn ident on native to silence unused_imports
+- *(pages)* hoist Router signal reads out of with_router in launcher Effect
+- *(pages)* address Copilot review feedback on launcher Effect and wasm test docs
+- *(pages)* eliminate two-phase mount in ClientLauncher to fix SPA navigation
+- *(pages)* propagate initial mount error and harden e2e test setup
+- *(pages)* extract notify_observers helper from Router::navigate
+- *(pages)* invoke notify_observers from popstate listener
+- *(pages)* address Copilot review feedback on PR [[#4129](https://github.com/kent8192/reinhardt-web/issues/4129)](https://github.com/kent8192/reinhardt-web/issues/4129)
+- *(pages)* `ClientLauncher::launch` SPA navigation regression where the
+  render Effect did not re-fire on `Router::push`, leaving the boot-time
+  view rendered for every subsequent route. Eliminated the two-phase mount
+  (initial inline mount + later Effect) and consolidated into a single
+  `EffectTiming::Layout` Effect that performs both the first mount and
+  every subsequent re-render. The post-#4078 hoisted Signal clones are no
+  longer needed. Downstream report:
+  [reinhardt-cloud#514](https://github.com/kent8192/reinhardt-cloud/issues/514).
+  ([#4088](https://github.com/kent8192/reinhardt-web/issues/4088),
+  [#4075](https://github.com/kent8192/reinhardt-web/issues/4075),
+  [#3348](https://github.com/kent8192/reinhardt-web/issues/3348))
+- *(docs)* resolve broken intra-doc link and dead_code in reinhardt-pages
+- *(ci)* enable validation feature for reinhardt-pages ui trybuild tests
+- *(ci)* add Validate impl for LoginRequest in with_extractors ui fixture
+- *(ci)* scope reinhardt-di validation dev-dep to non-wasm targets
+- *(pages)* add web-sys Storage feature for sessionStorage access
+- *(pages)* resolve server_fn endpoint URL with mount prefix in WASM
+- *(docs)* resolve broken intra-doc links and incorrect test assertion
+- *(pages)* add reference to endpoint variable for gloo-net Request::post
+- *(pages-macros)* inline is_safe_url to remove reinhardt-core dependency
+- *(pages)* preserve HTTP status codes for DI auth errors in server_fn
+- *(pages)* cfg-gate @event handler compilation to wasm32 only
+- *(pages)* inline @event closure capture to fix move semantics
+- auto-pass CSRF token as server_fn argument in form! macro
+- suppress unused_variables warnings in form! macro codegen
+- resolve merge conflicts with main and fix CI failures
+- *(admin)* switch WASM SPA to mount() rendering with scheduler init
+- WASM SPA server_fn cookie credentials, absolute URL, and CSRF fallback
+- *(ci)* add CHROMEDRIVER to WASM integration tests and fix cfg assertion
+- *(server_fn)* use SharedResponseCookies for reliable cookie delivery
+- *(pages-macros)* resolve clippy len_zero and bool_assert_comparison warnings
+- *(ci)* add #[allow(deprecated)] to re-exports and tests using deprecated mock APIs
+- *(test)* address Copilot review feedback on MSW module
+- *(pages)* add compile-time guard for msw cfg and re-export export_endpoints
+- *(pages)* clarify msw guard comment wording
+- *(pages)* re-export tracing via __private to avoid forced user dependency
+- *(pages)* add cfg comment and fix indentation in __private module
+- *(pages)* remove duplicate __private module causing E0428 compile error
+- *(hmr)* broaden file watcher filter to all EventKind::Modify variants
+- *(hmr)* add backoff and tracing on accept() errors to prevent busy-loop
+- *(hmr)* handle WebSocket Close/Ping frames for deterministic teardown
+- *(hmr)* replace eprintln! with tracing macros for consistent structured logging
+- *(hmr)* derive dedup interval from config.debounce_ms instead of hardcoded 100ms
+- *(hmr)* normalize CssUpdate path to relative URL (strip watch root, forward slashes)
+- *(hmr)* select ws:// or wss:// based on window.location.protocol
+- *(pages)* use backtick for ResourceState::Loading in suspense doc comment
+- *(pages)* add feature = "hmr" cfg gate to hmr integration test file
+- *(pages,testkit)* add hmr feature gate to e2e tests and migrate Kafka image to apache/kafka
+- *(admin)* validate CSRF token against cookie and fix auth order in create
+- *(pages)* protect textarea, style, and script from minification
+- *(reinhardt-pages)* fork DI context per-request in server function macros
+- *(reinhardt-pages,reinhardt-di)* add Content-Type negotiation for server_fn and Json<T> extractor
+- *(reinhardt-di)* address Copilot review on Content-Type handling
+- *(reinhardt-pages)* add submit_form function for WASM form submission
+- *(reinhardt-pages)* use request_submit and document panic conditions in submit_form
+- *(pages)* add expression validation to prevent code injection in form validation
+- *(dentdelion,pages)* address Copilot review feedback on XSS/injection defenses
+- *(dentdelion,pages)* address remaining Copilot review on expression validation and tests
+- *(pages)* retain event handles in ElementBuilder::build()
+- *(core,pages)* escape script tag content and HTML attributes to prevent XSS
+- *(pages)* validate attr keys, fix SSR lang escaping, enhance script escape docs
+- *(pages)* use dynamic year in SelectDateWidget instead of hardcoded 2025
+- remove develop/0.2.0 content accidentally merged via PR [[#1918](https://github.com/kent8192/reinhardt-web/issues/1918)](https://github.com/kent8192/reinhardt-web/issues/1918)
+- restore non-crate develop/0.2.0 changes that are harmless or beneficial
+- *(pages)* add explanatory comments to #[allow(dead_code)]
+- correct repository URLs from reinhardt-rs to reinhardt-web
+- store WebSocket closures in handle instead of leaking via forget()
+- replace unreachable!() with proper syn::Error in parse_if_node
+- reject non-boolean values for disabled/readonly/autofocus
+- reject whitespace in server_fn endpoint paths
+- add missing input type image and form method dialog
+- detect duplicate properties in form field parsing
+- replace direct indexing with safe .first() access
+- escape field names and media paths (#594, #595)
+- escape auth data in JSON output to prevent XSS (#586)
+- validate img src URLs and wrapper tag names
+- add tag name allowlist for wrapper and icon elements
+- validate img src against dangerous URL schemes
+- add max nesting depth to page parser
+- add max nesting depth to SVG icon parser
+- emit compile error for unknown codec instead of silent fallback
+- replace expect() panics with compile errors in head.rs
+- fix link tag as_ attribute code generation
+- emit compile error for unsupported form-level validators
+- add required attributes to allowed_attrs for track, param, data
+- return Option from FormFieldProperty::name instead of panicking
+- add authentication and authorization enforcement to all endpoints
+- *(ci)* remove proptest regression files from git tracking
+- address Copilot review feedback (consolidated across 1 occurrences)
+
+### Security
+
+- replace panicking unwrap calls with proper error handling
+- replace silent Click fallback for unknown event types
+- add constant-time CSRF token verification
+- add URL scheme and path validation for forms and head
+- add input size limit to HTML minification to prevent DoS
+- prevent open redirect attacks
+- escape HTML characters in SSR state JSON to prevent XSS
+
+### Documentation
+
+- *(pages)* use backticks for cfg(wasm)-gated launch in builder docs
+- *(core,pages)* document nested watch{} !Copy Signal footgun and pin rustc diagnostic
+- *(pages, urls)* document migration path from pages::Router to ClientRouter
+- *(changelog)* note SPA navigation fix (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* document [[#4088](https://github.com/kent8192/reinhardt-web/issues/4088)](https://github.com/kent8192/reinhardt-web/issues/4088) fix and on_navigate API in CHANGELOGs
+- *(pages)* note that on_navigate fires on popstate as well
+- *(pages)* rewrite launch() pipeline doc for on_navigate-based design
+- *(pages)* add CHANGELOG entry for hidden diagnostic counters
+- *(pages)* rewrite ClientLauncher example with new builder API
+- *(pages)* use code formatting for cfg(wasm)-gated ClientLauncher::launch
+- *(http)* address Copilot review on [[#3417](https://github.com/kent8192/reinhardt-web/issues/3417)](https://github.com/kent8192/reinhardt-web/issues/3417)
+- *(forms)* update form! macro examples to unified validators syntax
+- *(pages,forms)* clarify unified validators scope and runtime status
+
+### Maintenance
+
+- *(pages, urls)* silence deprecation/clippy/fmt fallout from [[#4234](https://github.com/kent8192/reinhardt-web/issues/4234)](https://github.com/kent8192/reinhardt-web/issues/4234)
+- *(pages)* add throwaway tracing for navigation observer diagnosis
+- *(merge)* merge main into feature/pages-suspense
+- *(testing)* add insta snapshot testing dependency across all crates
+- updated the following local packages: reinhardt-middleware, reinhardt-urls
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-pages-ast, reinhardt-pages-macros, reinhardt-middleware, reinhardt-urls
+- updated the following local packages: reinhardt-pages-macros, reinhardt-middleware, reinhardt-urls
+
+### Testing
+
+- *(pages-macros)* trybuild compile_pass for [[#4420](https://github.com/kent8192/reinhardt-web/issues/4420)](https://github.com/kent8192/reinhardt-web/issues/4420) env capture
+- *(pages)* cover use_router and navigate integration paths
+- *(pages)* trybuild fixture for success_url outer-scope capture
+- *(pages)* update trybuild fixtures for relaxed img src rule
+- *(pages)* address Copilot review on nav_diag_dom_test
+- *(pages)* add link-click reproducer to nav_diag_dom suite
+- *(pages)* isolate link-click reproducer from sibling wasm tests
+- *(pages)* add wasm regression test for ClientLauncher::router_client
+- *(pages)* add native Effect+Router control test (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* add native thread-local-borrow repro for [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075) (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* add wasm regression test for ClientLauncher SPA navigation
+- *(pages)* reproduce Issue [[#4088](https://github.com/kent8192/reinhardt-web/issues/4088)](https://github.com/kent8192/reinhardt-web/issues/4088) navigation flow with diagnostic asserts
+- *(pages)* add e2e_cdp regression test for SPA link interceptor navigation
+- *(pages)* dump page state on e2e wait_for failure for diagnosis
+- *(pages)* cover popstate-driven on_navigate dispatch
+- *(pages)* cover back-to-back navigation regression class
+- *(pages)* cover on_path_pattern param diff detection
+- *(pages)* drop stale path-signal subscriber diagnostic
+- *(pages)* add Tier 2 sidebar-signal fixture and wasm-bindgen-test
+- *(pages)* add Tier 3 full-layout fixture, wasm-bindgen-test, e2e_cdp test
+- *(pages-macros)* cover strip_arguments pass and fail cases
+- *(pages-macros)* add strip_arguments fail-test stderr fixtures
+- *(pages)* add wasm-bindgen-test coverage for SuspenseBoundary render_fallback
+- add SubmitButton rendering regression tests
+- *(pages)* add FileField and ImageField coverage for typed form macro
+- *(forms)* add transform test for validator scope propagation
+- *(forms)* add trybuild fixture pinning client_validators rejection
+- *(pages/hmr)* add boundary, edge-case, and integration unit tests for HMR modules
+- *(pages/hmr)* add WebSocket integration and E2E tests for HMR server
+
+### Styling
+
+- *(pages)* apply rustfmt to navigate.rs
+- apply reinhardt-admin fmt-all across page!-using files
+- *(pages)* apply rustfmt to native repro tests (Refs [[#4075](https://github.com/kent8192/reinhardt-web/issues/4075)](https://github.com/kent8192/reinhardt-web/issues/4075))
+- *(pages)* apply rustfmt to ClientLauncher hook implementation
+- apply cargo fmt auto-fix
+- apply auto-fix formatting
+- apply rustfmt formatting via cargo make auto-fix
+- apply rustfmt formatting
+- apply cargo fmt --all
+- *(pages)* apply rustfmt to HMR source files and tests
+- *(pages)* fix formatting in renderer.rs
+- apply rustfmt formatting fixes
+- apply workspace-wide formatting fixes
+- apply formatting to files introduced by merge from main
+- fix rustfmt formatting in renderer.rs
+- fix formatting issues
+
+### Reverted
+
+- undo unintended visibility and formatting changes
+
+### Other
+
+- incorporate remote on_success lift (PR [[#4624](https://github.com/kent8192/reinhardt-web/issues/4624)](https://github.com/kent8192/reinhardt-web/issues/4624) splice point)
+- resolve conflicts with main (on_success_ref + on_success lift)
+- Change AuthState user_id from i64 to String for UUID support
+- resolve conflicts with origin/main
+- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-server, reinhardt-middleware, reinhardt-urls
+- Merge pull request #111 from kent8192/fix/issue-81-bug-reinhardt-pages-wasm-build-fails-due-to-tokiomio-server-side-dependencies
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.29...reinhardt-pages@v0.1.0-rc.30) - 2026-05-21
 
 ### Added

@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-rc.30...reinhardt-grpc@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+
+### Changed
+
+- use Cow<str> to reduce allocations and improve test messages
+
+### Fixed
+
+- *(grpc)* resolve clippy warnings in tests
+- *(grpc)* use character count instead of byte length for string validation
+- *(reinhardt-grpc)* fork DI context per-request in gRPC handler macros
+- add async validation and fix impl name collision
+- return generic errors and log details server-side
+- emit compile error for unrecognized inject attribute options
+- roll back unpublished crate versions after partial release failure
+- roll back unpublished crate versions and enable release_always
+
+### Security
+
+- add request timeout, connection limits, and tower integration docs
+- strengthen type checking in macro-generated code
+- add protobuf depth limits and sanitize error messages
+- add default message size limit
+
+### Performance
+
+- *(grpc)* use early-exit counting and clarify Unicode scalar semantics
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- fix engine names, feature flags, and API inaccuracies in crate docs
+- *(readme)* fix documentation discrepancies across crate READMEs
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- replace Japanese comments with English in proto type tests
+- *(clippy)* add deny lints for todo/unimplemented/dbg_macro
+
+### Styling
+
+- apply rustfmt to clippy-fixed files
+- fix pre-existing clippy warnings and apply rustfmt
+- apply rustfmt to pre-existing formatting violations in 16 files
+
+### Other
+
+- updated the following local packages: reinhardt-di
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-rc.20...reinhardt-grpc@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

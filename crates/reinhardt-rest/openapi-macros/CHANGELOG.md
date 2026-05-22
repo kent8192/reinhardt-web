@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi-macros@v0.1.0-rc.30...reinhardt-openapi-macros@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(rest)* add container-level OpenAPI schema attributes
+
+### Fixed
+
+- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
+- *(rest)* address Copilot review feedback on OpenAPI annotations
+- propagate parse errors and validate min/max constraints
+- replace expect() with safe get_ident() handling in attribute parsing
+- collapse nested if block in serde_attrs to satisfy clippy
+- handle serde attributes and improve validation
+- break circular dependency between reinhardt-openapi-macros and reinhardt-rest
+
+### Maintenance
+
+- update Cargo.toml dependencies
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+
+### Styling
+
+- fix pre-existing clippy warnings and apply rustfmt
+- apply rustfmt to pre-existing unformatted files
+
+### Other
+
+- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
+- release
+- updated the following local packages: reinhardt-rest
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi-macros@v0.1.0-rc.15...reinhardt-openapi-macros@v0.1.0-rc.16) - 2026-04-20
 
 ### Maintenance

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-streaming@v0.1.0-rc.30...reinhardt-streaming@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(testkit,streaming)* module-scoped Kafka fixture + KafkaConfig.partitions
+
+### Fixed
+
+- *(streaming)* tighten Kafka partition typing per Copilot review
+- *(ci)* unblock release-plz rc.29 CI on three pre-existing failures
+- *(ci)* resolve SemVer and docs.rs failures on rc.29 branch
+
+### Maintenance
+
+- *(merge)* merge main into feature/streaming-phase2
+
+### Testing
+
+- *(streaming)* expand Kafka backend error-handling coverage
+- *(streaming)* harden Kafka error-path tests against transport flakiness
+
+### Styling
+
+- *(pages)* apply rustfmt to merged files from main
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-streaming@v0.1.0-rc.28...reinhardt-streaming@v0.1.0-rc.29) - 2026-05-13
 
 ### Added

@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql-macros@v0.1.0-rc.30...reinhardt-graphql-macros@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+
+### Fixed
+
+- *(reinhardt-graphql)* fork DI context per-request in GraphQL handler macros
+- *(release)* roll back unpublished crate versions after partial release failure
+- emit errors on crate resolution failure instead of silent fallback
+- emit compile error for invalid skip_if expressions
+- propagate stream errors to GraphQL clients instead of dropping
+- replace expect() with proper error handling in subscription macro (#814)
+
+### Security
+
+- add input validation and resource limits
+
+### Documentation
+
+- fix engine names, feature flags, and API inaccuracies in crate docs
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
+### Other
+
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql-macros@v0.1.0-rc.19...reinhardt-graphql-macros@v0.1.0-rc.20) - 2026-04-23
 
 ### Documentation

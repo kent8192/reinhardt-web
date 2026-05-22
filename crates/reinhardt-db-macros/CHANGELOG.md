@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-rc.30...reinhardt-db-macros@v0.1.0) - 2026-05-22
+
+### Fixed
+
+- *(db-macros)* emit compile error for unknown field attributes
+
+### Documentation
+
+- *(db)* fix ConnectionPool API and import path inaccuracies in README
+- *(db-macros)* add warn(missing_docs) lint attribute
+
+### Maintenance
+
+- update Cargo.toml dependencies
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- Update dependencies
+
 ## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-rc.19...reinhardt-db-macros@v0.1.0-rc.20) - 2026-04-23
 
 ### Documentation

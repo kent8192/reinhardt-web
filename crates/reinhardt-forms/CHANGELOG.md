@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.30...reinhardt-forms@v0.1.0) - 2026-05-22
+
+### Added
+
+- add UrlValidator and SlugValidator for page/URL fields
+
+### Changed
+
+- Version bump for publish workflow correction (no functional changes)
+- Remove obsolete commented-out code from wizard module documentation
+- Update package version from workspace reference to explicit version
+
+### Fixed
+
+- *(forms)* replace skeleton validators with real implementations or unimplemented!()
+- *(forms)* address Copilot review feedback on PR [[#4336](https://github.com/kent8192/reinhardt-web/issues/4336)](https://github.com/kent8192/reinhardt-web/issues/4336)
+- *(forms)* add path traversal validation to file field
+- *(pages,forms)* handle case-insensitive HTML tags and formset prefix collisions
+- *(forms)* add missing Debug and Clone derives to form fields
+- *(forms)* simplify OnceLock usage and extract regex patterns to constants
+- remove develop/0.2.0 content accidentally merged via PR [[#1918](https://github.com/kent8192/reinhardt-web/issues/1918)](https://github.com/kent8192/reinhardt-web/issues/1918)
+- *(release)* use path-only dev-dep for reinhardt-test in cyclic crates
+- *(deps)* align workspace dependency versions
+- enforce file size limits in form uploads (#558)
+- replace panic with error handling in ModelForm::save (#560)
+- escape user input in Widget::render_html to prevent XSS
+- replace js-based validation with type-safe declarative rules
+- remove SVG from default image extensions to prevent stored XSS
+- address Copilot review feedback (consolidated across 1 occurrences)
+
+### Security
+
+- sanitize validator errors and prevent password plaintext storage
+- fix decimal leading zeros, IPv6 validation, and date year ambiguity
+- fix input validation and resource limits across form fields
+- fix XSS escaping, CSRF protection, and panic prevention
+
+### Performance
+
+- *(pages,forms)* address Copilot review on allocation and prefix normalization
+- *(forms)* cache URL and email regex with LazyLock
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- *(pages)* fix type name and API inaccuracies in pages crate docs
+- *(forms)* update README example to unified validators syntax
+- *(pages,forms)* clarify unified validators scope and runtime status
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(deps)* unify proptest versions to workspace dependency
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-core
+
+### Styling
+
+- apply rustfmt formatting fixes
+- apply rustfmt after clippy auto-fix
+- fix remaining clippy warnings across workspace
+- apply rustfmt formatting to workspace files
+
+### Other
+
+- resolve conflicts with origin/main
+- updated the following local packages: reinhardt-core
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.28...reinhardt-forms@v0.1.0-rc.29) - 2026-05-13
 
 ### Fixed

@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.30...reinhardt-di-macros@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(di)* [**breaking**] unify #[inject] parameter type from Arc<T> to Depends<T>
+- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+
+### Added
+
+- *(di)* auto-derive Clone in #[injectable] macro
+- *(di)* register qualified type names from macros
+
+### Changed
+
+- *(di)* remove unnecessary Clone bound from Depends<T> and Injected<T>
+
+### Fixed
+
+- *(di-macros)* route async_trait through reinhardt-core re-export
+- *(di)* resolve `#[inject]` type mismatch in `#[injectable_factory]` macro
+- *(di)* wrap injectable_factory body in cycle detection scope
+- update integration tests and docs for Depends<T> unification
+- *(di)* generate `Injectable` impl in `#[injectable_factory]` for `Depends<T>` support
+- *(di)* use resolve_from_registry() in injectable_factory macro only
+- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
+- *(meta)* fix workspace inheritance and authors metadata
+- *(release)* advance version to skip yanked alpha.2 and restore publish capability for dependents
+
+### Documentation
+
+- *(di)* replace `#[scope(...)]` with `(scope = "...")` argument form
+- *(di)* document attribute ordering requirement and add compile-fail tests
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
+### Styling
+
+- *(di)* apply auto-fix formatting
+
+### Other
+
+- resolve conflict with main in di.rs ui module registration
+- resolve conflict in registration.rs with main
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.29...reinhardt-di-macros@v0.1.0-rc.30) - 2026-05-21
 
 ### Documentation

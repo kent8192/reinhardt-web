@@ -7,6 +7,162 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.30...reinhardt-auth@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(core-macros)* emit BaseUserManager impl from #[user(...)]
+- *(core)* auto-register SuperuserCreator for any #[user] + #[model] type
+- *(auth)* add GenericOidcProvider for arbitrary OIDC IdPs
+- *(auth)* add SuperuserInit trait and SuperuserCreator registry
+- *(auth)* auto-register SuperuserCreator via inventory for #[user(full = true)] + #[model] types
+- *(auth)* add Guard<P>, Public, All, Any, Not runtime types
+- *(auth)* add guard!() proc macro with winnow parser
+- migrate UUID generation from v4 to v7 across entire codebase
+- *(auth)* add AuthIdentity trait as User trait replacement
+- *(auth)* add AuthPermission database model
+- *(auth)* extend Group struct with #[model] support
+- *(auth)* integrate GroupManager with PermissionsMixin
+- *(auth)* add AuthInfo lightweight auth extractor
+- *(auth)* add AuthUser<U> extractor with tuple struct destructuring
+- *(auth)* add validate_auth_extractors startup DI validation
+
+### Changed
+
+- *(core-macros)* single-lock manager ops, route Value via reinhardt-auth
+- *(auth)* extract GitHub userinfo fetch into dedicated method
+- *(auth)* update re-exports and suppress deprecation warnings
+- convert relative paths to absolute paths
+- restore single-level super:: paths preserved by convention
+
+### Deprecated
+
+- *(auth)* mark User trait and DefaultUser as deprecated
+
+### Fixed
+
+- *(admin,core-macros)* opt admin user out of auto-manager and re-apply rustfmt
+- *(ci)* opt #[user] integration test fixtures out of auto-manager
+- *(auth)* honor manual SuperuserCreator registration across all inventory sizes
+- *(auth)* transform GitHub /user response into StandardClaims
+- *(auth)* enforce HTTPS on GitHub UserInfo endpoint before sending bearer token
+- *(docs)* resolve broken intra-doc links and incorrect test assertion
+- *(auth)* resolve clippy needless_borrow in Guard Injectable
+- *(middleware)* convert errors to responses in security-critical middleware
+- *(auth)* use DiError::Authentication for unauthenticated user errors
+- *(auth)* add is_staff and is_superuser fields to JWT Claims
+- *(auth)* address Copilot review on OAuth/OIDC mock tests
+- fix!(auth): add JwtError enum and reject expired tokens by default
+- *(macros)* apply formatting and clippy fixes to #[user] macro
+- *(auth)* reword deprecated note to fix rustdoc intra-doc link error
+- *(auth)* require jwt/token feature for DatabaseTokenStorage re-export
+- *(auth)* use get_singleton instead of resolve for DatabaseConnection in DI
+- *(auth)* invalidate old session on login to prevent session fixation
+- address Copilot review comments on security documentation and validation
+- *(auth)* add warning log when DatabaseConnection is missing for CurrentUser injection
+- *(auth)* remove Uuid::nil() fallback on user_id parse failure
+- *(auth)* harden session cookie, token comparison, and permission checks
+- *(auth)* add missing #[rstest] annotations to 57 existing tests
+- *(auth)* remove invalid sync poison recovery test for tokio RwLock
+- *(auth)* remove async poison recovery test for tokio RwLock
+- *(auth)* move HMAC validation to config init and improve test coverage
+- remove develop/0.2.0 content accidentally merged via PR [[#1918](https://github.com/kent8192/reinhardt-web/issues/1918)](https://github.com/kent8192/reinhardt-web/issues/1918)
+- forward redis-backend and middleware features to sub-crates
+- *(auth)* validate client_id matches authorization code in OAuth2 exchange
+- *(meta)* fix workspace inheritance and authors metadata
+- *(test)* update rand 0.9 API usage in auth integration tests
+- use logging framework instead of eprintln in authentication
+- replace std Mutex with tokio Mutex to prevent async deadlocks
+- replace unwrap with safe error handling in JWT claim extraction
+- add authentication and authorization enforcement to all endpoints
+- add path traversal prevention with input validation
+- *(auth)* remove unused reinhardt-test dev-dependency
+- *(release)* revert unpublished crate versions to pre-release state
+- address Copilot review feedback (consolidated across 1 occurrences)
+
+### Security
+
+- keep UUID v4 for security-sensitive tokens
+- harden header trust and authorization checks
+- *(auth)* enforce HTTPS for OAuth2/OIDC endpoint URLs
+- *(auth)* sanitize URL error messages and improve loopback detection
+- use server secret as HMAC key material in session auth hash
+- harden XSS, CSRF, auth, and proxy trust
+- fix TOTP algorithm, proxy trust, and session cookies
+- implement constant-time comparison and argon2 password hashing
+
+### Performance
+
+- *(auth)* use SHA-256 digest index for O(1) token lookup
+
+### Documentation
+
+- *(auth)* document Clone requirement and PK uniqueness caveat for auto-manager
+- *(auth)* update #[user] auto-manager caveat to require uuid primary keys
+- add reinhardt-version-sync markers to all crate READMEs
+- *(auth)* fix critical API inaccuracies in reinhardt-auth README
+- *(auth)* update #[user] macro example to match real reinhardt-cloud pattern
+- *(auth)* add deprecation notice to standalone createsuperuser binary
+- *(auth)* use backticks instead of intra-doc links for cross-crate types
+- *(auth)* fix private intra-doc link in get_user_info
+- add security note on client-side auth state limitations
+
+### Maintenance
+
+- upgrade workspace dependencies to latest versions
+- *(auth)* add wiremock/rsa/rand_core dev-dependencies for oauth mocks
+- *(auth)* remove stale placeholder comments in oauth/oidc modules
+- updated the following local packages: reinhardt-db, reinhardt-db
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-query, reinhardt-query, reinhardt-apps, reinhardt-db, reinhardt-db
+- add SAFETY comment to unsafe block in hasher_boundary_value
+
+### Testing
+
+- *(auth)* add oauth/oidc mock integration tests
+- *(auth)* add comprehensive edge case and custom field tests for #[user] macro
+- *(auth)* add GroupManager integration and user macro tests
+- *(auth)* add tests for permission and composite auth error handling
+- *(auth)* add CacheSessionBackend direct CRUD tests
+- *(auth)* add JwtSessionBackend extended edge case tests
+- *(auth)* add LoginHandler/LogoutHandler edge case tests
+- *(auth)* add SocialAccountStorage extended coverage
+- *(auth)* add UserMapper extended coverage
+- *(auth)* add session replication gap tests
+- *(auth)* add session migration functional tests
+- *(auth)* add tenant isolation gap tests
+- *(auth)* add session rotation gap tests
+- *(auth)* add session cleanup functional tests
+- *(auth)* add permissions edge case tests (object, IP, time-based)
+- *(auth)* add serialization empty data roundtrip tests
+- *(auth)* add repository trait unit tests
+
+### Styling
+
+- apply cargo fmt
+- apply rustfmt to user_macro_integration tests
+- fix formatting in url_validation.rs
+- apply format fixes
+- *(auth)* fix trailing newline in token_storage tests
+- apply rustfmt to pre-existing unformatted files
+- apply formatting to files introduced by merge from main
+- apply rustfmt formatting to workspace files
+
+### Reverted
+
+- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
+
+### Other
+
+- resolve conflict with main in createsuperuser error message
+- resolve conflict with main (criterion version)
+- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-apps, reinhardt-db, reinhardt-db
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-utils, reinhardt-di, reinhardt-apps, reinhardt-db, reinhardt-db
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.29...reinhardt-auth@v0.1.0-rc.30) - 2026-05-21
 
 ### Added

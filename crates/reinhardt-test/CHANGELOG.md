@@ -7,6 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.30...reinhardt-test@v0.1.0) - 2026-05-22
+
+### Added
+
+- add CDP-based E2E browser testing infrastructure and WASM SPA fixes
+- *(test)* add MSW-style network interception module with core components
+- *(test)* add fantoccini E2E browser testing utility fixtures
+- standardize PostgreSQL version to 17
+
+### Changed
+
+- replace target_arch = "wasm32" with target_family/target_os best practice
+- *(reinhardt-test)* delegate to reinhardt-testkit with re-exports
+- deduplicate request() by delegating to request_with_extra_headers()
+- Re-release of 0.1.0-alpha.3 content after version correction
+- Rename feature `static` to `staticfiles` following `reinhardt-utils` module rename (#114)
+- Update imports for `reinhardt_utils::staticfiles` module rename
+
+### Deprecated
+
+- *(test)* mark MockFetch and mock_server_fn as deprecated in favor of MSW
+
+### Fixed
+
+- *(test/msw)* repair wasm32 build + expose facade msw feature
+- *(test)* make host.docker.internal resolvable in cdp_browser fixture
+- *(test)* gate native-only dependencies for wasm32 target compilation
+- *(auth)* add is_staff and is_superuser fields to JWT Claims
+- *(ci)* apply rustfmt and fix collapsible_if clippy lint after main merge
+- *(ci)* add #[allow(deprecated)] to re-exports and tests using deprecated mock APIs
+- *(test)* address Copilot review feedback on MSW module
+- *(ci)* resolve clippy errors in MSW module for native builds
+- *(ci)* use backticks instead of intra-doc links for feature-gated types
+- *(testkit)* remove auth-testing feature, make auth unconditional on native targets
+- *(docs)* escape intra-doc link in TestUser deprecated note
+- *(test)* wrap env var calls in unsafe blocks for Rust 2024 edition
+- *(test)* improve test infrastructure reliability and E2E fixtures
+- *(test,testkit)* address Copilot review feedback on test infrastructure
+- resolve CI failures and remove sea-query dependency
+- *(deps)* update reinhardt-test outdated deps
+- *(deps)* convert Vec to Bytes for tungstenite message types
+- fix TOCTOU port binding and missing sqlx pool workaround
+- replace unwrap with descriptive expect in WASM helpers and containers
+- add panic prevention and error handling for admin operations
+- use configured credentials in RabbitMQ connection_url (#859)
+- implement actual delay in DelayedHandler (#861)
+- add URL encoding to prevent injection in query parameters
+- migrate SQL utilities to SeaQuery for SQL injection prevention
+- use escape_css_selector from reinhardt-core in WASM helpers
+- use escape_html_content from reinhardt-core in DebugToolbar
+- delegate has_permission to TestUser for wildcard support
+- sync session user state when permissions change
+- use String instead of Box::leak for ModelSchemaInfo
+- store WASM closures in future struct instead of forget()
+- use per-fixture tracking and UUIDs in DCL fixtures
+- set env var before runtime in shared_postgres fixture
+- extend container lifetime in redis_cluster_client fixture (#869)
+- return Result from RequestBuilder::header instead of panicking
+- panic with descriptive message on serialization failure in MockHttpRequest
+- execute callbacks in MockTimers::run_due_callbacks and document MutationTracker limitations
+- replace `mem::zeroed()` with `Option<C>` to eliminate UB in `into_inner()`
+- address Copilot review feedback (consolidated across 1 occurrences)
+
+### Security
+
+- fix path traversal in temp_file_url and cookie header injection
+
+### Documentation
+
+- *(test)* document Docker Engine 20.10 requirement for host-gateway
+- add reinhardt-version-sync markers to all crate READMEs
+- *(mail)* fix unclosed code fence, wrong thread-safety claim, and stale versions
+- *(test)* replace callback-based container patterns with #[fixture] rstest pattern
+- add SAFETY comments to unsafe Send/Sync implementations
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+- updated the following local packages: reinhardt-pages, reinhardt-admin, reinhardt-websockets
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-query, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+- updated the following local packages: reinhardt-query, reinhardt-rest, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+- updated the following local packages: reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+- updated the following local packages: reinhardt-core, reinhardt-utils, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-http, reinhardt-di, reinhardt-server, reinhardt-rest, reinhardt-views, reinhardt-websockets
+- updated the following local packages: reinhardt-admin
+- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-admin, reinhardt-websockets, reinhardt-urls, reinhardt-pages
+
+### Testing
+
+- *(test)* add WASM integration tests, rstest fixtures, and fix URL matching
+- *(test)* add fixture output validation tests for auth and admin_panel
+- *(test)* add WASM module tests and convert existing tests to rstest
+
+### Styling
+
+- *(test/msw)* apply rustfmt to interceptor.rs (post-[[#4288](https://github.com/kent8192/reinhardt-web/issues/4288)](https://github.com/kent8192/reinhardt-web/issues/4288) follow-up)
+- apply rustfmt formatting fixes
+- fix clippy warnings and formatting in files merged from main
+
+### Other
+
+- resolve conflict with main branch version bump to rc.4
+- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-rest, reinhardt-conf, reinhardt-server, reinhardt-db, reinhardt-auth, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+- updated the following local packages: reinhardt-core, reinhardt-pages, reinhardt-http, reinhardt-utils, reinhardt-conf, reinhardt-di, reinhardt-server, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-admin, reinhardt-websockets
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.28...reinhardt-test@v0.1.0-rc.29) - 2026-05-13
 
 ### Fixed

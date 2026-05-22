@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-rc.30...reinhardt-query-macros@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(query)* add #[derive(Iden)] proc-macro crate
+
+### Fixed
+
+- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
+- *(meta)* fix workspace inheritance and authors metadata
+- *(release)* advance version to skip yanked alpha.3 and restore publish capability for dependents
+- *(macros)* proper closing delimiters and quote expansion (review [[#1](https://github.com/kent8192/reinhardt-web/issues/1)](https://github.com/kent8192/reinhardt-web/issues/1))
+- *(macros)* fix type mismatches and generate Iden trait impl in derive macro
+- *(query)* add Table variant special handling in Iden derive macro
+- *(query)* add Meta::List support to Iden derive macro attribute parsing
+- *(query)* read iden attribute from struct-level instead of first field
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
+### Styling
+
+- *(query)* format Iden derive macro code
+
 ## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-rc.14...reinhardt-query-macros@v0.1.0-rc.15) - 2026-03-29
 
 ### Maintenance

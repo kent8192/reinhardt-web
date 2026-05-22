@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-rc.30...reinhardt-i18n@v0.1.0) - 2026-05-22
+
+### Changed
+
+- deduplicate utility functions across crates
+- remove 8 unused dependencies from Cargo.toml
+- Re-publish with correct repository URL (reinhardt-web)
+
+### Fixed
+
+- *(i18n)* handle msgctxt continuation lines in PO parser
+- *(release)* move reinhardt-test to optional dep in non-cyclic crates
+- *(i18n)* remove Hungarian from no-plural language group
+- handle special float values and add format string limit
+- add input size limits to PO file parser
+- add length limit to validate_locale()
+- use try_borrow_mut in TranslationGuard::drop to prevent reentrant panic
+- add comprehensive plural rules and fix negative number formatting
+- replace mem::forget with proper guard handling (#713)
+- prevent path traversal in CatalogLoader::load (#714)
+- add plural index validation to prevent memory exhaustion
+- add path traversal prevention with input validation
+- roll back unpublished crate versions after partial release failure
+- roll back unpublished crate versions and enable release_always
+- revert unpublished crate versions to pre-release state
+- address Copilot review feedback (consolidated across 1 occurrences)
+
+### Security
+
+- apply validate_locale uniformly across all entry points
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- *(mail)* fix unclosed code fence, wrong thread-safety claim, and stale versions
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+
+### Styling
+
+- *(i18n)* format method chain in po_parser tests
+- apply rustfmt to pre-existing formatting violations in 16 files
+
+### Reverted
+
+- undo PR #219 version bumps for unpublished crates
+- undo release PR #215 version bumps
+
+### Other
+
+- updated the following local packages: reinhardt-di, reinhardt-di
+- updated the following local packages: reinhardt-di, reinhardt-di, reinhardt-test
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-rc.20...reinhardt-i18n@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

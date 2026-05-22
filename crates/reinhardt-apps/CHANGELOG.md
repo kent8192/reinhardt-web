@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.0-rc.30...reinhardt-apps@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(apps)* [**breaking**] require explicit LABEL on AppLabel implementors
+
+### Added
+
+- *(apps)* re-export AppVendorAsset from reinhardt-utils for macro use
+- *(apps)* extend AppLabel with path() method for enum-style implementors
+- *(reinhardt-apps,reinhardt-pages)* expose test reset functions behind testing feature
+
+### Changed
+
+- *(apps)* make reinhardt-apps cross-target
+- *(admin)* migrate vendor assets to inventory-based registration
+
+### Fixed
+
+- *(reinhardt-apps)* gate inventory + linkme deps behind native target
+- *(apps)* validate database url scheme at ApplicationBuilder::build
+- *(commands)* inject project_crate_name in workspace app context and update AppLabel doctest
+- suppress deprecated Settings warnings and fix unreachable pub visibility
+- *(release)* use path-only dev-dep for reinhardt-test in cyclic crates
+- *(meta)* fix workspace inheritance and authors metadata
+- fix TOCTOU race in is_installed and add test isolation support
+- detect duplicate apps in populate() instead of silently overwriting
+- replace panic with Result in register_reverse_relation
+- handle Mutex poisoning gracefully in Apps registry
+- handle lock poisoning and remove Box::leak memory leak
+
+### Security
+
+- add regex pattern length limit and fix signal lock contention
+- add path validation in AppConfig::with_path
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- *(core)* fix API inaccuracies in core infrastructure crate READMEs
+- fix stale doc comments in middleware, admin, apps, and core crates
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+
+### Maintenance
+
+- upgrade workspace dependencies to latest versions
+- *(testing)* add insta snapshot testing dependency across all crates
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- *(workspace)* remove unpublished reinhardt-settings-cli and fix stale references
+- updated the following local packages: reinhardt-conf, reinhardt-conf
+- updated the following local packages: reinhardt-conf, reinhardt-conf, reinhardt-di, reinhardt-server
+- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-conf, reinhardt-conf, reinhardt-http, reinhardt-di, reinhardt-server
+
+### Styling
+
+- apply formatting to files introduced by merge from main
+
+### Other
+
+- updated the following local packages: reinhardt-di, reinhardt-conf, reinhardt-conf, reinhardt-server
+- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-http, reinhardt-conf, reinhardt-conf, reinhardt-di, reinhardt-server
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.0-rc.28...reinhardt-apps@v0.1.0-rc.29) - 2026-05-13
 
 ### Changed

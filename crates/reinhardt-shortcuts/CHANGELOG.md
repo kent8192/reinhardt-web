@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-rc.30...reinhardt-shortcuts@v0.1.0) - 2026-05-22
+
+### Changed
+
+- deduplicate utility functions across crates
+- *(shortcuts)* remove hardcoded postgres from database feature
+- add configurable capacity limit to TemplateContext
+- add security headers helper function
+- Re-publish with correct repository URL (reinhardt-web)
+
+### Fixed
+
+- *(ci)* route escape_html through reinhardt_core in shortcuts
+- *(release)* move reinhardt-test to optional dep in non-cyclic crates
+- *(release)* roll back unpublished crate versions after partial release failure
+- use HeaderValue::from_static for hardcoded header values
+- fix data integrity in render_to_string and sanitize 404 errors
+- prevent database error message leakage in HTTP response
+- prevent URL validation bypass via From trait (#726)
+
+### Security
+
+- add XSS safety documentation and input sanitization for render_html
+- prevent open redirect attacks
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- *(pages)* fix type name and API inaccuracies in pages crate docs
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+- *(readme)* fix documentation discrepancies across crate READMEs
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- *(testing)* add insta snapshot testing dependency across all crates
+- updated the following local packages: reinhardt-db, reinhardt-views, reinhardt-urls
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-views, reinhardt-urls
+
+### Styling
+
+- apply formatting to files introduced by merge from main
+
+### Other
+
+- updated the following local packages: reinhardt-db, reinhardt-views, reinhardt-urls
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-db, reinhardt-views, reinhardt-urls, reinhardt-test
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-rc.20...reinhardt-shortcuts@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-rc.30...reinhardt-grpc-macros@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+
+### Fixed
+
+- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
+- *(reinhardt-grpc)* fork DI context per-request in gRPC handler macros
+- *(meta)* fix workspace inheritance and authors metadata
+- add async validation and fix impl name collision
+- return generic errors and log details server-side
+- emit compile error for unrecognized inject attribute options
+
+### Security
+
+- strengthen type checking in macro-generated code
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
+### Styling
+
+- fix pre-existing clippy warnings and apply rustfmt
+- apply rustfmt to pre-existing formatting violations in 16 files
+
 ## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-rc.15...reinhardt-grpc-macros@v0.1.0-rc.16) - 2026-04-20
 
 ### Added

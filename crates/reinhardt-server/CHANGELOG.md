@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.1.0-rc.30...reinhardt-server@v0.1.0) - 2026-05-22
+
+### Fixed
+
+- *(admin)* prevent static files from returning Content-Type: application/json
+- *(http)* convert errors to responses within middleware chain
+- implement sliding window rate limiting and document HTTP/2 middleware gap
+- *(server)* replace reinhardt-test with local poll_until helper
+
+### Security
+
+- *(server)* route error handler through SafeErrorResponse
+- reduce WebSocket log verbosity to prevent data exposure
+- add periodic eviction of stale rate limit entries
+- add request body size limits and decompression bomb prevention
+- add trusted proxy validation for X-Forwarded-For
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- *(http)* fix type name and API inaccuracies across HTTP crate READMEs
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+- *(readme)* fix documentation discrepancies across crate READMEs
+- address Copilot review feedback (consolidated across 1 occurrences)
+
+### Maintenance
+
+- upgrade workspace dependencies to latest versions
+- *(build)* reduce tokio features and enable debug=1 profile for faster compilation
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-di
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-di
+
+### Styling
+
+- *(server)* apply rustfmt formatting to diagnostic warning
+- add explanatory comments to remaining #[allow(dead_code)] attributes
+- apply rustfmt to pre-existing unformatted files
+
+### Reverted
+
+- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
+
+### Other
+
+- updated the following local packages: reinhardt-di
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-di
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.1.0-rc.20...reinhardt-server@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

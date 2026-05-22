@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-rc.30...reinhardt-deeplink@v0.1.0) - 2026-05-22
+
+### Added
+
+- add grpc, dispatch, deeplink module re-exports with feature flags
+
+### Fixed
+
+- *(release)* roll back unpublished crate versions after partial release failure
+
+### Documentation
+
+- *(pages)* fix type name and API inaccuracies in pages crate docs
+
+### Maintenance
+
+- update Cargo.toml dependencies
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- updated the following local packages: reinhardt-urls
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
 ## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-rc.19...reinhardt-deeplink@v0.1.0-rc.20) - 2026-04-23
 
 ### Documentation

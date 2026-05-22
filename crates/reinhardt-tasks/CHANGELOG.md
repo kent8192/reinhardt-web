@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.30...reinhardt-tasks@v0.1.0) - 2026-05-22
+
+### Added
+
+- migrate UUID generation from v4 to v7 across entire codebase
+- *(tasks)* add kafka-backend feature via reinhardt-streaming
+
+### Fixed
+
+- *(streaming)* address Copilot review feedback on Phase 1 PR
+- *(reinhardt-tasks)* atomic lock acquisition with ownership verification and DAG edge rollback
+- *(reinhardt-tasks)* address Copilot review on TTL validation and lock release handling
+- *(release)* use path-only dev-dep for reinhardt-test in cyclic crates
+- *(tasks)* implement weight-based ordering for Priority enum
+- *(deps)* align dependency versions to workspace definitions
+- replace println!/eprintln! with structured logging macros
+- fix TTL truncation and RetryStrategy multiplier validation
+- enforce concurrency limit using tokio Semaphore
+- delegate task to backend in TaskQueue::enqueue
+- prevent panic on integer underflow, zero-weight division, and duration overflow
+- update scheduler size assertion to match current struct layout
+- add SSRF protection for webhook URLs
+- use Redis MULTI/EXEC transaction for atomic enqueue
+- add async task execution and shutdown mechanism to Scheduler
+- move PriorityTaskQueue counter to instance field
+- remove SQS receipt_handle after successful message deletion
+- propagate RabbitMQ metadata update errors instead of silently discarding
+
+### Security
+
+- keep UUID v4 for security-sensitive tokens
+- add resource limits and prevent busy loops in task subsystem
+
+### Performance
+
+- eliminate redundant get_task_data call
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- fix engine names, feature flags, and API inaccuracies in crate docs
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- upgrade workspace dependencies to latest versions
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- add explanatory comments to undocumented #[allow(...)] attributes
+
+### Testing
+
+- add webhook retry sleep regression test
+- add regression tests for SQS lock scope, DAG cycle detection, and scheduler sleep
+- apply rstest and AAA pattern to existing tests
+- update scheduler integration tests for Arc API
+
+### Styling
+
+- *(reinhardt-tasks)* fix rustfmt formatting on extend method signatures
+- add explanatory comments to remaining #[allow(dead_code)] attributes
+- apply workspace-wide formatting and clippy fixes
+- apply workspace-wide formatting fixes
+- apply rustfmt to reinhardt-tasks formatting
+
+### Reverted
+
+- undo PR #219 version bumps for unpublished crates
+- undo release PR #215 version bumps
+
+### Other
+
+- resolve conflicts with origin/main
+- updated the following local packages: reinhardt-test
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.20...reinhardt-tasks@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

@@ -7,6 +7,121 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.30...reinhardt-utils@v0.1.0) - 2026-05-22
+
+### Added
+
+- *(staticfiles)* add passthrough_prefixes to StaticFilesConfig
+- *(utils)* add AppVendorAsset type with inventory wiring and path validation
+- *(utils)* add SHA-256 integrity verification for vendor assets
+- *(utils)* add async downloader for vendor assets with lazy first-request guard
+- *(utils)* add inventory query helpers for vendor assets
+- migrate UUID generation from v4 to v7 across entire codebase
+- *(staticfiles)* add WasmEntry struct and auto-inject config fields
+- *(staticfiles)* implement WASM entry point detection
+- *(staticfiles)* implement WASM script injection into HTML
+- *(staticfiles)* wire WASM auto-injection into SPA fallback
+- *(staticfiles)* add index_file field to middleware StaticFilesConfig
+- *(staticfiles)* add serve_direct_file for SPA fallback from external path
+- *(commands)* integrate --index into runserver execution and autoreload
+- add path sanitization and input validation helpers
+- add lock poisoning recovery utilities
+
+### Changed
+
+- deduplicate utility functions across crates
+- *(reinhardt-utils)* centralize RwLock poison recovery with helper functions
+- convert relative paths to absolute paths
+- restore single-level super:: paths preserved by convention
+- Re-release of 0.1.0-alpha.3 content after version correction
+- **BREAKING**: Rename `r#static` module to `staticfiles` (#114)
+  - Module renamed from `reinhardt_utils::r#static` to `reinhardt_utils::staticfiles`
+  - Feature renamed from `static` to `staticfiles`
+  - Improves developer experience by eliminating raw identifier prefix
+
+### Fixed
+
+- *(staticfiles)* disable immutable cache for bundle assets in debug builds
+- *(utils)* use object form for wasm-bindgen init() to silence deprecation
+- *(staticfiles)* reject empty passthrough_prefixes at builder time
+- *(middleware)* convert errors to responses in cross-crate middleware
+- *(docs)* replace RedisCache with InMemoryCache in hybrid cache doctests
+- *(utils)* resolve clippy warnings in staticfiles middleware
+- *(utils)* enable tokio fs feature in reinhardt-utils dependency
+- *(staticfiles)* address security and spec compliance review issues
+- *(staticfiles)* add empty wasm_entry check and fix log levels
+- *(utils)* use CacheControlConfig for static file cache headers instead of hardcoded values
+- *(utils)* address review comments for static file cache headers
+- *(utils)* remove #[non_exhaustive] from StaticFilesConfig to comply with RC semver policy
+- *(ci)* resolve docs.rs and semver CI failures
+- *(utils)* replace unwrap with safe alternatives for panic prevention
+- *(utils)* capitalize only first character in capfirst function
+- *(meta)* fix workspace inheritance and authors metadata
+- *(staticfiles)* unify manifest.json format to use "paths" key
+- prevent panic on truncation underflow and UTF-8 boundary
+- add security feature dependency for strip_tags_safe
+- escape HTML in linebreaks/linebreaksbr and fix strip_tags
+- handle DST gap in make_aware_local without panic
+- prevent UTF-8 slicing panic in repr_array and repr_object
+- escape values in format_html to prevent XSS (#748)
+- add path validation to all LocalStorage methods
+- add path traversal prevention with input validation
+- *(utils)* break circular publish dependency with reinhardt-test
+- *(utils)* use fully qualified Result type in poll_until helpers
+- *(utils)* remove unused dev-dependencies to break circular publish chain
+- address Copilot review feedback (consolidated across 2 occurrences)
+
+### Security
+
+- add cancellation mechanism for auto-cleanup tasks
+- recover from poisoned mutex/rwlock instead of panicking
+- replace blocking KEYS with non-blocking SCAN+UNLINK
+- replace recursive cleanup with bounded iterative loop
+- fix XSS in error pages and media rendering, harden cache
+
+### Documentation
+
+- *(staticfiles)* document passthrough_prefixes prefix format
+- add reinhardt-version-sync markers to all crate READMEs
+- *(core)* fix API inaccuracies in core infrastructure crate READMEs
+- *(readme)* fix documentation discrepancies across crate READMEs
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- *(utils)* add deps for vendor asset subsystem
+- upgrade workspace dependencies to latest versions
+- *(staticfiles)* fix formatting and dead code warning
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- updated the following local packages: reinhardt-core, reinhardt-http
+- add explanatory comments to undocumented #[allow(...)] attributes
+
+### Testing
+
+- *(utils)* add wiremock integration test for vendor download pipeline
+- *(staticfiles)* add comprehensive test coverage for index file separation
+- add UTF-8 multibyte truncation boundary regression tests for #762
+
+### Styling
+
+- apply rustfmt to vendor subsystem files
+- *(utils)* apply auto-fix formatting
+- *(commands)* fix formatting and clippy warnings in staticfiles changes
+- fix formatting in reinhardt-utils staticfiles
+- apply workspace-wide formatting fixes
+- apply rustfmt to pre-existing formatting violations in 16 files
+- apply rustfmt formatting to workspace files
+- apply code formatting to security fix files
+
+### Other
+
+- resolve conflict with main (criterion version)
+- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
+- release
+- updated the following local packages: reinhardt-core, reinhardt-http
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.29...reinhardt-utils@v0.1.0-rc.30) - 2026-05-21
 
 ### Added

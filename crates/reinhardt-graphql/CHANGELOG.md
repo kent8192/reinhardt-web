@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-rc.30...reinhardt-graphql@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+
+### Added
+
+- migrate UUID generation from v4 to v7 across entire codebase
+- *(graphql)* re-export async_graphql base types through reinhardt facade
+
+### Changed
+
+- *(graphql)* extract exceeds_max_chars helper with short-circuit and add multi-byte tests
+
+### Fixed
+
+- *(di)* fall back to Injectable::inject() when type is not in registry
+- *(di)* remove Injectable bound from Depends::resolve() for factory types
+- *(graphql)* use character count instead of byte length for name validation
+- resolve merge conflict keeping both escape tracking and char count tests
+- *(reinhardt-graphql)* fork DI context per-request in GraphQL handler macros
+- *(reinhardt-graphql)* evaluate field count immediately during character processing
+- *(reinhardt-graphql)* handle inline fragment type conditions and block strings in field counter
+- *(graphql)* replace rwlock unwrap with poison-recovery pattern
+- *(graphql)* centralize poison recovery with logging helpers
+- *(release)* move reinhardt-test to optional dep in non-cyclic crates
+- *(release)* roll back unpublished crate versions after partial release failure
+- emit errors on crate resolution failure instead of silent fallback
+- replace unwrap with safe error handling in context lookups
+- merge main branch QueryLimits changes with backpressure features
+- emit compile error for invalid skip_if expressions
+- propagate stream errors to GraphQL clients instead of dropping
+- replace expect() with proper error handling in subscription macro (#814)
+- roll back unpublished crate versions after partial release failure
+- roll back unpublished crate versions and enable release_always
+
+### Security
+
+- add input validation and resource limits
+- improve subscription error handling
+- add query complexity limits and access control
+- add backpressure to subscription channels
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- fix engine names, feature flags, and API inaccuracies in crate docs
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-grpc
+
+### Styling
+
+- fix remaining clippy warnings across workspace
+
+### Other
+
+- updated the following local packages: reinhardt-di, reinhardt-grpc
+- updated the following local packages: reinhardt-di, reinhardt-test, reinhardt-grpc
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-rc.20...reinhardt-graphql@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

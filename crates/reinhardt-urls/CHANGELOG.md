@@ -7,6 +7,188 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.30...reinhardt-urls@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(urls)* [**breaking**] support async functions in #[routes] macro
+- *(urls)* [**breaking**] surface radix insertion errors and add fallible reverse helpers
+
+### Added
+
+- *(commands,urls)* log registered client routes in runserver --with-pages banner
+- *(urls)* harvest middleware-contributed DI registrations in with_middleware
+- *(urls)* derive Clone for ClientRouter
+- *(urls)* add ClientRouterRegistration and collect helper
+- *(urls)* re-export ClientRouterRegistration on wasm
+- *(macros)* emit ClientRouterRegistration submit on wasm target
+- *(macros)* make WASM client inventory submission opt-in via client_inventory flag
+- *(urls)* add viewset_with_actions builder to ServerRouter and RouteGroup
+- *(urls)* add reactive navigation observation to ClientRouter
+- *(urls)* change ClientRouter::render_current() to return Page
+- *(urls)* implement Debug for UnifiedRouter and ServerRouter
+- *(urls)* add compile-time type-safe URL resolution via extension traits
+- *(macros)* add url-resolver to standard, api-only, and urls-full feature-sets
+- *(urls)* add name alias support to UrlReverser and ServerRouter
+- *(urls)* add client-side URL resolution via ClientUrlReverser
+- *(urls)* add UnifiedRouter::mount_streaming() for streaming handler registration
+- *(urls,streaming)* add StreamingTopicResolver trait
+- *(urls)* add exclude() builder method for middleware route exclusion
+- *(urls)* add middleware registry for type discovery
+- *(urls)* add WASM-compatible UnifiedRouter variant with ServerRouterStub
+
+### Changed
+
+- *(urls)* address Copilot review on PR [[#4438](https://github.com/kent8192/reinhardt-web/issues/4438)](https://github.com/kent8192/reinhardt-web/issues/4438)
+- *(urls)* split server_router.rs by responsibility ([[#4310](https://github.com/kent8192/reinhardt-web/issues/4310)](https://github.com/kent8192/reinhardt-web/issues/4310))
+- *(urls)* address Copilot review feedback on PR [[#4337](https://github.com/kent8192/reinhardt-web/issues/4337)](https://github.com/kent8192/reinhardt-web/issues/4337)
+- *(urls)* `DefaultRouter` and `SimpleRouter` now implement
+  `reinhardt_router::VersionedRouter`, which lets `reinhardt-rest`
+  versioning strategies introspect their routes without depending on
+  `reinhardt-urls` directly (issue
+  [#4321](https://github.com/kent8192/reinhardt-web/issues/4321)).
+- replace target_arch = "wasm32" with target_family/target_os best practice
+- *(urls)* extract join_prefix_path into path_utils module
+- *(urls)* extract `AsyncRouterFactoryFn` type alias to fix clippy type_complexity
+- *(urls)* address Copilot review feedback
+- remove incorrect dead_code annotations from proxy fields
+- convert relative paths to absolute paths
+- restore single-level super:: paths preserved by convention
+
+### Fixed
+
+- *(urls)* apply middleware DI to local InjectionContext when present
+- *(urls)* stage middleware DI on router to survive any builder order
+- *(urls)* propagate with_di_context into already-mounted children
+- *(urls)* drain nested children pending DI on mount
+- *(urls)* drain grouped routers' pending DI in group()
+- *(urls)* gate registration.rs native items for wasm build
+- *(macros)* namespace-aware lookup on deprecated flat ViewSet trait surface
+- *(macros)* drop blanket UrlResolverUnprefixed impl to resolve E0119
+- *(macros)* emit runtime action registration from #[viewset] impl-form
+- *(urls)* strip leading slash from action url_path in router paths
+- *(urls)* normalize viewset prefix in URL reversal to prevent triple slash
+- *(urls)* gate reverse re-exports with cfg(native)
+- *(ci)* unblock release-plz rc.29 CI on three pre-existing failures
+- *(urls)* cfg-gate ClientRouter reactive observation state for native Send+Sync
+- *(urls)* keep on_navigate / __diag_* callable on native after [[#4258](https://github.com/kent8192/reinhardt-web/issues/4258)](https://github.com/kent8192/reinhardt-web/issues/4258) cfg-gate
+- *(urls)* address Copilot review feedback on ClientRouter
+- *(urls)* stub ServerRouter builder methods on ServerRouterStub for wasm
+- resolve wasm-target clippy violations in pages and urls
+- *(routing)* deduplicate client_router::history module
+- *(routing)* gate wasm-only history fns to wasm targets
+- *(urls, pages, ci)* address Copilot review feedback on [[#4242](https://github.com/kent8192/reinhardt-web/issues/4242)](https://github.com/kent8192/reinhardt-web/issues/4242)
+- *(urls)* stub `ServerRouter` builder methods on `ServerRouterStub` so `#[url_patterns(mode = unified | server)]` closures compile on wasm (#4185)
+- *(urls)* merge child client routes in native mount_unified
+- *(urls)* panic when mount() prefix contains path parameter placeholders
+- *(urls)* route framework-level 404/405 responses through middleware chain
+- *(urls)* strip prefix from routes during compilation to prevent double-prefix matching
+- *(urls)* normalize leading slash after prefix stripping in resolve()
+- *(urls)* register routes for reverse() lookup in into_server()
+- *(urls)* accumulate prefixes in register_all_routes() and address review
+- *(urls)* make `__macro_new_async` const fn for inventory compatibility
+- *(test)* resolve CI failures and address Copilot review feedback
+- *(docs)* use backticks instead of intra-doc link for UrlResolver in module doc
+- *(macros)* remove url-resolver feature flag, gate on platform instead
+- *(urls)* address Copilot review feedback on PR [[#3530](https://github.com/kent8192/reinhardt-web/issues/3530)](https://github.com/kent8192/reinhardt-web/issues/3530)
+- *(urls)* address Copilot review feedback for client URL resolver
+- *(urls)* fix UnifiedRouter intra-doc link and url_patterns macro pattern
+- *(docs)* use backticks for ClientUrlReverser in rustdoc
+- *(urls)* propagate namespace to inner ClientRouter in UnifiedRouter
+- *(urls)* avoid redundant String clone when delegating with_namespace
+- *(streaming)* address Copilot review feedback on Phase 2 implementation
+- *(admin)* add deferred DI registration to bridge route-server scope gap
+- *(di)* apply deferred DI registrations to existing singleton scope
+- *(di)* register DatabaseConnection in user-provided DI context
+- *(reinhardt-urls)* normalize path slashes to prevent double-slash in URL joining
+- *(reinhardt-urls)* restrict join_path visibility to pub(crate)
+- *(commands)* address Copilot review feedback on introspect command
+- *(macros)* remove feature-dependent code generation from #[routes] macro
+- *(urls)* restore semver-compatible new() and add __macro_new()
+- *(urls)* replace lock/read/write().unwrap() with safe alternatives for panic prevention
+- *(urls)* resolve race condition and add poison logging
+- *(urls)* avoid holding RwLock guard across await point
+- *(urls)* suppress dead_code warning for WASM-only `merge` method
+- *(urls)* accept case-insensitive UUIDs per RFC 4122
+- *(urls)* correct UUID converter test expectations for case-insensitive validation
+- *(urls)* convert path-type parameters to matchit catch-all syntax in RadixTree mode
+- add memory-bounded eviction to LRU route cache
+- bound LRU heap growth via periodic compaction
+- prevent double substitution in UrlPattern::build_url
+- handle lock poisoning and improve error handling in router and URL resolution
+- replace Box::leak with Arc to prevent memory leak
+- add path traversal prevention with input validation
+- correct incorrect path conversions in test imports
+- address Copilot review feedback (consolidated across 2 occurrences)
+
+### Security
+
+- add compile-time validation for paths, SQL, and crate references
+- fix path validation for ambiguous params and wildcards
+- add input validation for route paths and SQL expressions
+- add ReDoS prevention and input validation
+- prevent path traversal and parameter injection
+
+### Documentation
+
+- *(urls)* correct viewset_with_actions rustdoc to reflect ctor-based bridge
+- *(pages, urls)* document migration path from pages::Router to ClientRouter
+- *(urls)* note Sync resolution in unified_router comment
+- add reinhardt-version-sync markers to all crate READMEs
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+- document client-router feature requirement for UnifiedRouter in prelude
+- document wildcard pattern cross-segment matching behavior
+
+### Maintenance
+
+- *(views,urls)* drive-by fmt + clippy fixes for clean workspace lint
+- *(urls,core-macros)* correct since version for newly deprecated ViewSet APIs
+- *(pages, urls)* silence deprecation/clippy/fmt fallout from [[#4234](https://github.com/kent8192/reinhardt-web/issues/4234)](https://github.com/kent8192/reinhardt-web/issues/4234)
+- merge main into feature/issue-3670-url-patterns-typed-app-label
+- *(merge)* merge main into feature/streaming-phase2
+- *(merge)* merge origin/feature/streaming-phase2 into local branch
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- updated the following local packages: reinhardt-db, reinhardt-middleware, reinhardt-views
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- updated the following local packages: reinhardt-middleware, reinhardt-views
+- updated the following local packages: reinhardt-di, reinhardt-db, reinhardt-views, reinhardt-middleware
+- updated the following local packages: reinhardt-db, reinhardt-views, reinhardt-middleware
+
+### Testing
+
+- *(integration)* unignore E2E coverage for Issue [[#4507](https://github.com/kent8192/reinhardt-web/issues/4507)](https://github.com/kent8192/reinhardt-web/issues/4507) and add namespace regression
+- *(urls)* add SPA navigation observer regression tests
+- *(urls)* cover native mount_unified client merge
+- *(urls)* add integration tests for router-level 404 middleware
+- *(urls)* add integration tests for client URL resolution
+- *(urls)* add coverage tests for LazyLoaded clone-based get and get_if_loaded
+
+### Styling
+
+- apply cargo fmt and clippy auto-fix
+- *(urls)* apply cargo make auto-fix formatting
+- *(urls)* fix empty_line_after_doc_comments clippy lint
+- *(macros)* apply formatting and suppress dead_code warning
+- fix formatting issues
+- *(urls)* drop unnecessary format! in route_pattern_matching tests
+- *(pages)* apply rustfmt to merged files from main
+- *(urls)* apply formatting to server_router.rs
+- *(urls)* apply project formatting to pattern module
+- apply rustfmt to pre-existing unformatted files
+- replace never-looping for with if-let per clippy::never_loop
+- apply rustfmt formatting to workspace files
+- apply code formatting to security fix files
+
+### Other
+
+- resolve conflict with main in middleware.rs
+- resolve conflict with main in labels.yml
+- updated the following local packages: reinhardt-di, reinhardt-db, reinhardt-middleware, reinhardt-views
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-di, reinhardt-db, reinhardt-middleware, reinhardt-views
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.29...reinhardt-urls@v0.1.0-rc.30) - 2026-05-21
 
 ### Added

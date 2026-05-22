@@ -7,6 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.0-rc.30...reinhardt-websockets@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+
+### Added
+
+- *(websockets)* add WebSocketEndpointInfo, WebSocketEndpointMetadata, substitute_ws_params
+- *(websockets)* add WebSocketRouter::consumer() builder and reverse() method
+- add default rate limiting for websocket connections
+
+### Changed
+
+- *(ws)* move WebSocketRoute/Router/EndpointInfo to reinhardt-core; add UnifiedRouter::websocket()
+
+### Fixed
+
+- *(ws/tests)* connect to resolved URL in e2e resolver test
+- *(ws/tests)* normalize server_url/resolved before joining
+- *(reinhardt-websockets)* resolve ABBA deadlock in group_send by reordering lock acquisition
+- *(websockets)* return registered router instead of empty one in get_or_init
+- *(websockets)* release connection slot on disconnect in RateLimitMiddleware
+- *(websockets)* add non_exhaustive to ConnectionContext
+- *(websockets)* release lock before send in Room::send_to
+- apply middleware to upgrade and add graceful shutdown
+- fix missing match arms in connection state machine
+- add match arms for BinaryPayload, HeartbeatTimeout, SlowConsumer
+- add error handling for connection, room, and consumer operations
+- resolve clippy warnings across workspace
+- implement auto-reconnect with exponential backoff
+- add connection timeout for WebSocket (#508)
+- handle partial failure in room broadcast (#511)
+- *(release)* revert unpublished crate versions to pre-release state
+
+### Security
+
+- add authentication support for Redis channel layer
+- add compression negotiation limits with size-bounded decompression
+- add configurable ping/pong keepalive intervals
+- sanitize error messages to prevent internal state leakage
+- fix concurrency races, overflow, and resource exhaustion vulnerabilities
+- enable default message size limits
+- add origin header validation
+
+### Documentation
+
+- add reinhardt-version-sync markers to all crate READMEs
+- fix engine names, feature flags, and API inaccuracies in crate docs
+- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- upgrade workspace dependencies to latest versions
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- updated the following local packages: reinhardt-auth, reinhardt-pages
+- updated the following local packages: reinhardt-pages
+- updated the following local packages: reinhardt-di, reinhardt-auth, reinhardt-pages
+- updated the following local packages: reinhardt-auth, reinhardt-pages, reinhardt-di
+- *(websockets)* remove manual CHANGELOG entries for release-plz
+
+### Testing
+
+- *(websockets)* add URL resolver integration tests for WebSocketEndpointInfo and reverse()
+- *(websockets)* add E2E tests for WebSocket URL resolver with real tcp connection
+
+### Styling
+
+- *(pages)* apply rustfmt to merged files from main
+- apply formatting to files introduced by merge from main
+- apply rustfmt to pre-existing formatting violations in 16 files
+- apply rustfmt after clippy auto-fix
+- fix remaining clippy warnings across workspace
+- apply rustfmt formatting to workspace files
+- apply rustfmt formatting to 146 files
+- apply rstest convention to new tests
+- fix rustfmt formatting in connection.rs
+
+### Reverted
+
+- undo release PR [[#215](https://github.com/kent8192/reinhardt-web/issues/215)](https://github.com/kent8192/reinhardt-web/issues/215) version bumps
+- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
+
+### Other
+
+- resolve conflicts with origin/main
+- updated the following local packages: reinhardt-di, reinhardt-pages
+- updated the following local packages: reinhardt-pages, reinhardt-di
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.0-rc.20...reinhardt-websockets@v0.1.0-rc.21) - 2026-04-23
 
 ### Documentation

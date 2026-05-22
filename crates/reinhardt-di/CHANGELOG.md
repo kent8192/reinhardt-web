@@ -7,6 +7,138 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.30...reinhardt-di@v0.1.0) - 2026-05-22
+
+### Breaking Changes
+
+- *(di)* [**breaking**] unify #[inject] parameter type from Arc<T> to Depends<T>
+- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+
+### Added
+
+- *(http,di)* add Middleware::di_registrations hook and type-erased DI APIs
+- *(di)* add ParamError::Authentication variant for 401 mapping
+- *(di)* add testing-only register_override API with OverrideGuard
+- *(di)* add testing-only `register_override` API and `OverrideGuard` for mock factory injection (feature `testing`)
+- *(di)* add DiError::Authorization variant for 403 responses
+- *(di)* auto-derive Clone in #[injectable] macro
+- *(di)* add qualified_type_names map to DependencyRegistry
+- *(di)* add is_framework_type() with 40 unit tests
+- *(di)* register qualified type names from macros
+- *(di)* add FrameworkTypeOverride validation to RegistryValidator
+- *(di)* add Validated<T> auto-validating extractor wrapper
+- *(reinhardt-di)* add protocol-agnostic `fork()` method to `InjectionContext`
+- *(di)* add Option<T> blanket Injectable impl for optional injection
+
+### Changed
+
+- *(di)* tighten register_override docs and Send/Sync invariants
+- post-simplify-review cleanups for DI mock fixtures
+- *(di,urls,http)* preserve path parameter insertion order through pipeline
+- *(di)* remove dead use_cache branch and avoid Arc rewrap in Depends
+- *(di)* remove unnecessary Clone bound from Depends<T> and Injected<T>
+- *(di)* address Copilot review feedback on orphan rule validation
+- *(reinhardt-di)* extract fork_inner helper for InjectionContext fork methods
+- extract shared parse_cookies into cookie_util module
+
+### Fixed
+
+- *(di-macros)* route async_trait through reinhardt-core re-export
+- *(middleware,di)* map non-auth DiError variants to ParamError::Internal
+- *(di)* extract Path<(T1, ...)> tuple in URL pattern declaration order
+- *(di)* add Authentication variant to DiError for proper 401 responses
+- *(di)* add #[non_exhaustive] to DiError enum
+- *(auth)* use DiError::Authentication for unauthenticated user errors
+- *(di)* resolve `#[inject]` type mismatch in `#[injectable_factory]` macro
+- *(di)* wrap injectable_factory body in cycle detection scope
+- update integration tests and docs for Depends<T> unification
+- *(di)* generate `Injectable` impl in `#[injectable_factory]` for `Depends<T>` support
+- *(di)* add scope fallback in resolve for pre-seeded types
+- *(di)* register Injectable types in global registry for Depends resolution
+- *(di)* resolve clippy warnings in tests, benchmarks, and override_registry
+- *(di)* fall back to Injectable::inject() when type is not in registry
+- *(di)* remove Injectable bound from Depends::resolve() for factory types
+- *(di)* use resolve_from_registry() in injectable_factory macro only
+- *(docs)* add Injectable impl to module-level doc example in depends.rs
+- *(di)* add #[non_exhaustive] to ParamError and fix formatting
+- *(di)* use Debug format for ValidationFailed instead of JSON serialization
+- *(admin)* add deferred DI registration to bridge route-server scope gap
+- *(di)* register HTTP request in request_scope during fork_for_request
+- *(reinhardt-pages,reinhardt-di)* add Content-Type negotiation for server_fn and Json<T> extractor
+- *(reinhardt-di)* address Copilot review on Content-Type handling
+- *(di)* set HTTP request on per-request InjectionContext in use_inject macro
+- add reset_global_registry to enable test isolation
+- return error for unregistered types instead of defaulting to Singleton
+- remove undeclared tracing dependency from injectable macro output
+- prevent Arc::try_unwrap panic and DependencyStream element consumption
+- handle RwLock poisoning gracefully in scope and override registry
+- *(di)* move unit tests to integration crate to break circular publish chain
+- *(di)* implement deep clone for InjectionContext request scope
+- remove reinhardt-di self-reference dev-dependency
+
+### Security
+
+- improve generated name hygiene, crate path diagnostics, and type path validation
+- reject unknown macro arguments and unsupported scope attribute
+- add regex pattern length limit to prevent ReDoS attacks
+- fix non-deterministic path tuple extraction order
+- add body size limits to parameter extractors
+- remove info leak and validate factory code generation
+- migrate cycle detection to task_local and remove sampling
+
+### Documentation
+
+- *(di)* replace `#[scope(...)]` with `(scope = "...")` argument form
+- *(di)* use a single attribute literal instead of pseudo `"a" | "b"` alternation
+- add reinhardt-version-sync markers to all crate READMEs
+- *(di)* document attribute ordering requirement and add compile-fail tests
+- fix outdated references in SECURITY.md, CONTRIBUTING.md, and documentation standards
+- *(readme)* fix documentation discrepancies across crate READMEs
+- add missing doc comments for public API modules and types
+
+### Maintenance
+
+- cargo fmt after di-mock-fixtures
+- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+- *(testing)* add insta snapshot testing dependency across all crates
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- remove sea-query and sea-schema from workspace dependencies
+- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-http
+
+### Testing
+
+- *(di-macros)* trybuild pass test for #[injectable] without async-trait dep
+- *(di)* add edge-case tests for injectable auto-derive Clone
+- *(di)* register test types in global registry for Depends resolution
+- *(di)* add type_name format regression tests
+- add DependencyStream::is_empty non-destructive regression tests for #453
+
+### Styling
+
+- *(di)* apply rustfmt to register_override.rs
+- *(di)* apply auto-fix formatting
+- *(di)* apply rustfmt formatting
+- apply rustfmt formatting fixes
+- apply rustfmt to clippy-fixed files
+- add explanatory comments to remaining #[allow(dead_code)] attributes
+- apply workspace-wide formatting fixes
+
+### Reverted
+
+- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
+
+### Other
+
+- resolve conflict with main in di.rs ui module registration
+- resolve conflict in registration.rs with main
+- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
+- release
+- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-http
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.29...reinhardt-di@v0.1.0-rc.30) - 2026-05-21
 
 ### Added
