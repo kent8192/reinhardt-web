@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### BREAKING CHANGES
+
+Partial removal of `0.1.0-rc.*` deprecated APIs per STABILITY_POLICY § SP-4
+(umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)).
+This PR removes the **4 items** that have no `Settings`-struct dependents
+in the workspace; the remaining 4 (`Settings` struct itself and its
+`add_app` / `with_validated_apps` methods) require coordinated migration
+of `reinhardt-apps` and `reinhardt-middleware` and are handled in a
+follow-up PR.
+
+`reinhardt-conf` removals in this PR (4 items):
+
+- **`AdvancedSettings` struct** (`src/settings/advanced.rs`, deprecated
+  since `0.1.0-rc.16`) — use the individual fragment types
+  (`CacheSettings`, `SessionSettings`, etc.) composed via
+  `ProjectSettings` instead. The fragment types themselves are
+  unchanged.
+- **`TomlFileSource::set_interpolation(bool)`** (`src/settings/sources.rs`,
+  deprecated since `0.1.0-rc.27`, refs Issue
+  [#4224](https://github.com/kent8192/reinhardt-web/issues/4224)) — use
+  `with_interpolation()` / `without_interpolation()` builder methods.
+- **`JsonFileSource` struct + `ConfigSource` impl** (`src/settings/sources.rs`,
+  deprecated since `0.1.0-rc.26`, refs Issue
+  [#4087](https://github.com/kent8192/reinhardt-web/issues/4087)) — TOML
+  is the canonical configuration format. Construct
+  [`TomlFileSource`](src/settings/sources.rs) directly.
+- **`auto_source(path)`** (`src/settings/sources.rs`, deprecated since
+  `0.1.0-rc.26`, refs Issue
+  [#4087](https://github.com/kent8192/reinhardt-web/issues/4087)) — call
+  `TomlFileSource::new(path)` directly so the configuration format is
+  explicit at the call site.
+
+In-tree call sites:
+- `crates/reinhardt-conf/tests/file_sources.rs` (whole file — JsonFileSource
+  + auto_source tests) deleted
+- `crates/reinhardt-conf/tests/source_priority.rs` (whole file — JsonFileSource
+  priority tests) deleted
+- `crates/reinhardt-conf/tests/settings_builder.rs` (whole file — deprecated
+  `Settings` tests, removed in preparation for the follow-up PR) deleted
+- `crates/reinhardt-conf/tests/profile_switching.rs` (whole file — deprecated
+  `Settings` tests, removed in preparation for the follow-up PR) deleted
+- `crates/reinhardt-conf/tests/interpolation.rs` — `deprecated_set_interpolation_still_works`
+  test removed
+
+See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-conf)
+for the migration guide.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.30...reinhardt-conf@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-conf` as part of the reinhardt-web
