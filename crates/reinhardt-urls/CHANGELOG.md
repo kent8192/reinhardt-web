@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### BREAKING CHANGES
+
+Removed 3 RC-deprecated items per STABILITY_POLICY § SP-4 (umbrella
+Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
+
+- **`reverse_with_aho_corasick(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_with_aho_corasick` (the fallible variant).
+- **`reverse_single_pass(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_single_pass`.
+- **`UrlResolverUnprefixed` trait** (`src/routers/resolver.rs`, deprecated `0.1.0-rc.29`, refs #4507 defect #2) — only supported the removed flat ViewSet trait accessors emitted by `#[viewset]`. Prefer `urls.server().<app>().<route>()`.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.30...reinhardt-urls@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-urls` as part of the reinhardt-web
