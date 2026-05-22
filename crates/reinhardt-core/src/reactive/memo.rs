@@ -41,6 +41,7 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 
+use super::deps::Deps;
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 
 /// Computation function for a Memo
@@ -63,6 +64,21 @@ thread_local! {
 // Global storage for Memo cached values
 thread_local! {
 	static MEMO_VALUES: RefCell<BTreeMap<NodeId, Box<dyn core::any::Any>>> = RefCell::new(BTreeMap::new());
+}
+
+// Global storage for Memo deps snapshots.
+//
+// Set by `new_with_deps` (React-parity `use_memo` path). Read by the runtime
+// in `notify_signal_change` to gate which signals trigger recomputation —
+// a memo is marked dirty only when the firing signal's `signal_id()` is
+// present in its snapshot. Mount-only (`()`) memos never recompute.
+thread_local! {
+	static MEMO_DEPS: RefCell<BTreeMap<NodeId, Deps>> = RefCell::new(BTreeMap::new());
+}
+
+/// Returns the deps snapshot for a memo, if it was created with explicit deps.
+pub(crate) fn get_memo_deps(memo_id: NodeId) -> Option<Deps> {
+	MEMO_DEPS.with(|storage| storage.borrow().get(&memo_id).cloned())
 }
 
 /// A memoized reactive computation that caches its result
@@ -154,6 +170,59 @@ impl<T: Clone + 'static> Memo<T> {
 		let initial_value = Self::compute_value(id);
 
 		// Store the initial value
+		MEMO_VALUES.with(|storage| {
+			let mut storage = storage.borrow_mut();
+			let state = MemoState {
+				value: initial_value,
+				dirty: false,
+			};
+			let boxed: Box<dyn core::any::Any> = Box::new(state);
+			storage.insert(id, boxed);
+		});
+
+		Self {
+			id,
+			disposed,
+			_phantom: core::marker::PhantomData,
+		}
+	}
+
+	/// Create a new Memo with an explicit deps snapshot.
+	///
+	/// Used by `reinhardt_pages::reactive::hooks::use_memo` (spec §4.2,
+	/// React parity). The memo only recomputes when one of the listed
+	/// deps fires; a mount-only memo (`Deps::is_empty()`) computes once
+	/// and never recomputes.
+	pub fn new_with_deps<F>(mut f: F, deps: Deps) -> Self
+	where
+		F: FnMut() -> T + 'static,
+	{
+		let id = NodeId::new();
+		let disposed = Rc::new(RefCell::new(false));
+
+		// Store the computation function.
+		let disposed_clone = disposed.clone();
+		MEMO_FUNCTIONS.with(|storage| {
+			let mut storage = storage.borrow_mut();
+			let boxed: Box<dyn core::any::Any> = Box::new(Box::new(move || {
+				if !*disposed_clone.borrow() {
+					f()
+				} else {
+					panic!("Attempted to compute a disposed Memo");
+				}
+			}) as MemoFn<T>);
+			storage.insert(id, boxed);
+		});
+
+		// Record the deps snapshot before the first compute so the runtime
+		// can gate subsequent recomputes.
+		MEMO_DEPS.with(|storage| {
+			storage.borrow_mut().insert(id, deps);
+		});
+
+		// Initial compute (auto-tracking still runs to register subscribers).
+		let initial_value = Self::compute_value(id);
+
 		MEMO_VALUES.with(|storage| {
 			let mut storage = storage.borrow_mut();
 			let state = MemoState {
@@ -378,6 +447,9 @@ impl<T: Clone + 'static> Memo<T> {
 			storage.borrow_mut().remove(&self.id);
 		});
 		let _ = MEMO_VALUES.try_with(|storage| {
+			storage.borrow_mut().remove(&self.id);
+		});
+		let _ = MEMO_DEPS.try_with(|storage| {
 			storage.borrow_mut().remove(&self.id);
 		});
 	}
