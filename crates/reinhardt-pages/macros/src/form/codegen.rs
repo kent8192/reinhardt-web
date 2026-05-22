@@ -287,8 +287,9 @@ fn generate_field_declarations(
 			if field.choices_config.is_some() {
 				let choices_name =
 					syn::Ident::new(&format!("{}_choices", field.name), field.name.span());
+				let choice_value_ty = choice_value_type(&field.field_type);
 				Some(quote! {
-					#choices_name: #pages_crate::reactive::Signal<Vec<(String, String)>>,
+					#choices_name: #pages_crate::reactive::Signal<Vec<(#choice_value_ty, String)>>,
 				})
 			} else {
 				None
@@ -400,9 +401,10 @@ fn generate_field_accessors(
 			if field.choices_config.is_some() {
 				let choices_name =
 					syn::Ident::new(&format!("{}_choices", field.name), field.name.span());
+				let choice_value_ty = choice_value_type(&field.field_type);
 				Some(quote! {
 					/// Returns the choices signal for dynamic choice options.
-					pub fn #choices_name(&self) -> &#pages_crate::reactive::Signal<Vec<(String, String)>> {
+					pub fn #choices_name(&self) -> &#pages_crate::reactive::Signal<Vec<(#choice_value_ty, String)>> {
 						&self.#choices_name
 					}
 				})
@@ -3055,6 +3057,24 @@ fn field_type_default_value(field_type: &TypedFieldType) -> TokenStream {
 
 		// Specialized
 		TypedFieldType::IpAddressField => quote!(::core::option::Option::None),
+	}
+}
+
+/// Returns the inner type used as the *value* in a choices store for the
+/// given field type.
+///
+/// For `ChoiceField<T>` the choices store is `Signal<Vec<(T, String)>>`
+/// (value, label). For `MultipleChoiceField<T>` the per-item value type is
+/// also `T`. This helper MUST only be called on those two field types —
+/// it panics otherwise to surface mis-routed callers.
+fn choice_value_type(field_type: &TypedFieldType) -> TokenStream {
+	match field_type {
+		TypedFieldType::ChoiceField { inner }
+		| TypedFieldType::MultipleChoiceField { inner } => quote!(#inner),
+		_ => panic!(
+			"choice_value_type called on a non-choice TypedFieldType variant; \
+			 this is a codegen bug",
+		),
 	}
 }
 
