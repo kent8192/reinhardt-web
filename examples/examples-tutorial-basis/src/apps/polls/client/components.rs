@@ -282,6 +282,13 @@ pub fn polls_detail(question_id: i64) -> Page {
 						}
 					}
 				} else if load_detail_signal.result().is_some() {
+					// Render either the voting form or an empty-state message,
+					// depending on whether the question has any choices yet
+					// (reinhardt-web#4686). The previous unconditional render
+					// of `voting_form` produced an empty `RadioSelect` group
+					// for choiceless questions, so any submit emitted
+					// `choice_id=""` and `submit_vote` rejected the request
+					// with the runtime `Invalid choice_id` application error.
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
@@ -313,7 +320,14 @@ pub fn polls_detail(question_id: i64) -> Page {
 								}
 							}
 						}
-						{ voting_form.clone().into_page() }
+						if load_detail_signal.result().map(|(_, c)| !c.is_empty()).unwrap_or(false) {
+							{ voting_form.clone().into_page() }
+						} else {
+							div {
+								class: "alert-warning",
+								"This question has no choices yet. Add one below to start voting."
+							}
+						}
 						div {
 							class: "mt-4",
 							a {
