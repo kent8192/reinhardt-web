@@ -5,305 +5,90 @@ All notable changes to `reinhardt-query` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-rc.20...reinhardt-query@v0.1.0-rc.21) - 2026-04-23
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-rc.15...reinhardt-query@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- migrate UUID generation from v4 to v7 across entire codebase
-- *(query)* add nosql-redis feature flag and module scaffold
-- *(query/nosql)* implement RespCommand, core traits, and all Redis command builders
-
-### Changed
-
-- *(query)* rename SeaRc to SharedRc, deprecate old alias
-
-### Documentation
-
-- *(query/nosql)* fix misleading GT/LT typestate marker doc comments
-
-### Fixed
-
-- *(query,core)* replace approx_constant test values to avoid clippy deny
-- *(query)* resolve clippy warnings in tests
-- *(query)* move impl blocks before test modules in backend files
-- *(query)* use as_str() to avoid ambiguous to_string() with Iden trait
-- *(query/nosql)* elide redundant explicit lifetimes per clippy
-- *(query/tests)* loop until complete RESP frame is received
-- *(query/nosql)* rename ZAddBuilder gt/lt methods to only_if_greater/only_if_less
-
-### Styling
-
-- apply rustfmt to clippy-fixed files
-- *(pages)* apply rustfmt to merged files from main
-
-### Testing
-
-- *(query/nosql)* add trybuild compile-fail tests and integration test scaffold
-- *(query/nosql)* add connection retry to Redis integration tests
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-rc.14...reinhardt-query@v0.1.0-rc.15) - 2026-03-29
-
-### Fixed
-
-- *(query)* preserve single quotes in MySQL user identifier parsing
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-rc.13...reinhardt-query@v0.1.0-rc.14) - 2026-03-24
-
-### Documentation
-
-- *(core,query)* correct lib.rs module descriptions and feature flag defaults
-
-### Fixed
-
-- *(reinhardt-query)* parameterize ValidUntil timestamp and add explicit match arms in postgres backend
-- *(reinhardt-query)* use string literal for VALID UNTIL and optimize hex encoding
-- *(query)* escape single quotes in MySQL user/role formatting
-- *(query)* escape double quotes in SqlWriter identifier examples
-- *(query,db)* address copilot review on SQL injection PR
-- *(query)* trim quotes from user part in parse_user_host
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-rc.8...reinhardt-query@v0.1.0-rc.9) - 2026-03-15
-
-### Changed
-
-- *(query)* reuse escape helpers in ATTACH/DETACH DATABASE statements
-
-### Fixed
-
-- *(query)* escape SQL identifiers and values in attach/detach database
-
-### Styling
-
-- *(query,core)* add explanatory comments to #[allow(dead_code)] attributes
-
-### Testing
-
-- *(query)* add escaping edge case tests for ATTACH/DETACH DATABASE
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-rc.1...reinhardt-query@v0.1.0-rc.2) - 2026-03-04
-
-### Maintenance
-
-- *(deps)* unify proptest versions to workspace dependency
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-alpha.3...reinhardt-query@v0.1.0-alpha.4) - 2026-02-23
-
-### Added
-
-- *(query)* add CTE (Common Table Expression) support
-- *(query)* expose maintenance statement APIs (VACUUM, ANALYZE, materialized views)
-- *(query)* add INSERT from subquery support
-
-### Documentation
-
-- *(query)* improve documentation for identifier quoting and Value enum
-
-### Fixed
-
-- *(security)* use parameterized queries and escape identifiers to prevent SQL injection
-- *(query)* preserve subquery parameter values in FROM clause
-- *(query)* implement proper handling for TableColumn, AsEnum, and Cast in MySQL/SQLite backends
-- *(reinhardt-query-macros)* replace write_str unwrap with expect documenting infallibility
-- *(reinhardt-query-macros)* emit errors for invalid #[iden] attribute arguments
-- *(query-macros)* add compile-time Debug assertion for derive(Iden)
-- *(release)* bump reinhardt-query-macros to v0.1.0-alpha.4 to skip yanked alpha.3
-
-### Security
-
-- *(query)* escape SQL identifiers in postgres backend
-- *(reinhardt-query)* escape single quotes in Value::Char SQL literal
-
-### Styling
-
-- apply code formatting to security fix files
-- fix formatting for query module changes
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-alpha.2...reinhardt-query@v0.1.0-alpha.3) - 2026-02-15
-
-### Documentation
-
-- *(dcl)* update AlterUserStatement validate() doc example for new validation rules
-
-### Fixed
-
-- [**breaking**] standardize empty string validation across DCL statements
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-alpha.1...reinhardt-query@v0.1.0-alpha.2) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query-macros
-
-## [0.1.0-alpha.1] - Unreleased
-
-### Added
-
-#### Core Types
-- `Iden` trait for SQL identifiers with `unquoted()` method
-- `IdenStatic` marker trait for compile-time identifiers
-- `Alias` for runtime-determined names
-- `DynIden` type-erased identifier (`Rc`/`Arc` based on `thread-safe` feature)
-- `ColumnRef` (simple, table-qualified, schema-qualified, asterisk)
-- `TableRef` (simple, schema-qualified, aliased, subquery)
-- `IntoIden`, `IntoColumnRef`, `IntoTableRef` conversion traits
-
-#### Value System
-- `Value` enum with 20+ variants (Bool, TinyInt, SmallInt, Int, BigInt, TinyUnsigned,
-  SmallUnsigned, Unsigned, BigUnsigned, Float, Double, String, Bytes, and optional types)
-- `IntoValue` trait for Rust type conversion
-- `ValueTuple` for tuple values (IN clauses)
-- `Values` wrapper for collected query parameters
-- `ArrayType` for typed array values
-- Optional type support via feature flags: `with-chrono`, `with-uuid`,
-  `with-json`, `with-rust_decimal`, `with-bigdecimal`
-
-#### Expression System
-- `Expr` builder with column, value, and function expressions
-- `SimpleExpr` AST for representing expression trees
-- `ExprTrait` with arithmetic (`add`, `sub`, `mul`, `div`, `modulo`),
-  comparison (`eq`, `ne`, `gt`, `gte`, `lt`, `lte`),
-  logical (`and`, `or`, `not`), and pattern matching (`like`, `not_like`,
-  `between`, `not_between`, `is_null`, `is_not_null`, `is_in`, `is_not_in`)
-- `Condition` and `Cond` for building WHERE/HAVING clauses
-- `CaseStatement` for CASE WHEN expressions
-- `Keyword` enum for SQL keywords (`CurrentTimestamp`, `Null`, `Custom`)
-- Subquery expressions (`exists`, `not_exists`, `in_subquery`, `not_in_subquery`)
-- Tuple expressions for multi-value comparisons
-
-#### Query Builders
-- `SelectStatement` with columns, FROM, WHERE, ORDER BY, LIMIT, OFFSET
-- `InsertStatement` with table, columns, values (single and multi-row)
-- `UpdateStatement` with table, SET, WHERE
-- `DeleteStatement` with table, WHERE
-- `Query` factory with methods:
-  - DML: `select()`, `insert()`, `update()`, `delete()`
-  - DCL Privileges: `grant()`, `revoke()`, `grant_role()`, `revoke_role()`
-  - DCL Roles: `create_role()`, `drop_role()`, `alter_role()`
-  - DCL Users: `create_user()`, `drop_user()`, `alter_user()`, `rename_user()`
-  - DCL Session: `set_role()`, `reset_role()`, `set_default_role()`
-
-#### DCL (Data Control Language) Builders
-
-**Privilege Management:**
-- `GrantStatement` - GRANT statement builder with fluent API for object privileges
-- `RevokeStatement` - REVOKE statement builder with fluent API for object privileges
-- `GrantRoleStatement` - GRANT role membership statement builder
-- `RevokeRoleStatement` - REVOKE role membership statement builder
-- `RoleSpecification` enum - Role specifications (RoleName, CurrentRole, CurrentUser, SessionUser)
-- `DropBehavior` enum - Drop behavior for REVOKE (Cascade, Restrict)
-- `Privilege` enum - 16 privilege types (SELECT, INSERT, UPDATE, DELETE, REFERENCES, CREATE, ALL, TRUNCATE, TRIGGER, MAINTAIN, USAGE, CONNECT, TEMPORARY, EXECUTE, SET, ALTER SYSTEM)
-  - **Breaking Change Prevention**: Added `#[non_exhaustive]` attribute to allow future extensions without breaking changes
-- `ObjectType` enum - 15 database object types (Table, Database, Schema, Sequence, Function, Procedure, Routine, Type, Domain, ForeignDataWrapper, ForeignServer, Language, LargeObject, Tablespace, Parameter)
-  - **Breaking Change Prevention**: Added `#[non_exhaustive]` attribute to allow future extensions without breaking changes
-  - **Extended PostgreSQL Support**: Added 11 PostgreSQL-specific object types (Function, Procedure, Routine, Type, Domain, ForeignDataWrapper, ForeignServer, Language, LargeObject, Tablespace, Parameter)
-  - Convenience methods: `on_function()`, `on_procedure()`, `on_routine()`, `on_type()`, `on_domain()`, `on_foreign_data_wrapper()`, `on_foreign_server()`, `on_language()`, `on_large_object()`, `on_tablespace()`, `on_parameter()` for GrantStatement
-  - Convenience methods: `from_function()`, `from_procedure()`, `from_routine()`, `from_type()`, `from_domain()`, `from_foreign_data_wrapper()`, `from_foreign_server()`, `from_language()`, `from_large_object()`, `from_tablespace()`, `from_parameter()` for RevokeStatement
-- `Grantee` enum - 6 grantee types (Role, User with host, Public, CurrentRole, CurrentUser, SessionUser)
-- Privilege-object validation logic
-- WITH GRANT OPTION support (object privileges)
-- WITH ADMIN OPTION support (role membership)
-- ADMIN OPTION FOR support (role membership revocation)
-- GRANTED BY clause support (PostgreSQL)
-- CASCADE and RESTRICT support (PostgreSQL)
-
-**Role and User Management:**
-- `CreateRoleStatement` - CREATE ROLE statement builder with fluent API
-- `DropRoleStatement` - DROP ROLE statement builder with IF EXISTS support
-- `AlterRoleStatement` - ALTER ROLE statement builder with attribute modification and RENAME TO (PostgreSQL)
-- `CreateUserStatement` - CREATE USER statement builder (PostgreSQL alias, MySQL native)
-- `DropUserStatement` - DROP USER statement builder with IF EXISTS support
-- `AlterUserStatement` - ALTER USER statement builder (PostgreSQL alias, MySQL native)
-- `RenameUserStatement` - RENAME USER statement builder (MySQL only)
-- `RoleAttribute` enum - PostgreSQL role attributes (SUPERUSER, CREATEDB, CREATEROLE, INHERIT, LOGIN, REPLICATION, BYPASSRLS, CONNECTION LIMIT, PASSWORD, VALID UNTIL, IN ROLE, ROLE, ADMIN)
-- `UserOption` enum - MySQL user options (IDENTIFIED BY, IDENTIFIED WITH, ACCOUNT LOCK/UNLOCK, PASSWORD EXPIRE, PASSWORD HISTORY, PASSWORD REUSE INTERVAL, PASSWORD REQUIRE CURRENT, FAILED_LOGIN_ATTEMPTS, PASSWORD_LOCK_TIME, COMMENT, ATTRIBUTE)
-
-**Session Management:**
-- `SetRoleStatement` - SET ROLE statement builder with support for specific roles, NONE, ALL, ALL EXCEPT (MySQL)
-- `ResetRoleStatement` - RESET ROLE statement builder (PostgreSQL only)
-- `SetDefaultRoleStatement` - SET DEFAULT ROLE statement builder (MySQL only)
-- `RoleTarget` enum - Role targets for SET ROLE (Named, None, All, AllExcept, Default)
-- `DefaultRoleSpec` enum - Default role specifications (RoleList, All, None)
-
-**Database Support:**
-- PostgreSQL and MySQL full support for all DCL operations
-- SQLite not supported (panics with descriptive error messages)
-
-#### DDL Operations
-- `CreateTableStatement` with columns, constraints, indexes, IF NOT EXISTS
-- `AlterTableStatement` with ADD/DROP/RENAME COLUMN, ADD/DROP CONSTRAINT, RENAME TABLE
-- `DropTableStatement` with multiple tables, IF EXISTS, CASCADE/RESTRICT (PostgreSQL)
-- `CreateIndexStatement` with UNIQUE, IF NOT EXISTS, WHERE clause (partial indexes), USING method
-- `DropIndexStatement` with IF EXISTS, CASCADE/RESTRICT (PostgreSQL)
-- `ColumnDef` for column definitions with type, constraints, default, check
-- `ColumnType` enum with 30+ SQL types (Integer, String, Text, JSON, Array, etc.)
-- `TableConstraint` enum (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK)
-- `IndexMethod` enum (BTree, Hash, Gist, Gin, Brin, FullText, Spatial)
-- `AlterTableOperation` enum for ALTER TABLE operations
-- `Query` factory extensions: `create_table()`, `alter_table()`, `drop_table()`, `create_index()`, `drop_index()`
-
-#### Advanced SELECT Features
-- JOIN support (INNER, LEFT, RIGHT, FULL OUTER, CROSS) with ON/USING
-- GROUP BY with multiple columns
-- HAVING clause
-- DISTINCT, DISTINCT ON (PostgreSQL), DISTINCT ROW (MySQL)
-- UNION, UNION ALL, INTERSECT, EXCEPT
-- LOCK clauses (FOR UPDATE, FOR SHARE, FOR KEY SHARE, FOR NO KEY UPDATE)
-- NULLS FIRST / NULLS LAST ordering
-- Common Table Expressions (WITH, WITH RECURSIVE)
-- Window functions (OVER, PARTITION BY, ORDER BY, frame clauses)
-- Named window definitions (WINDOW clause)
-
-#### Window Functions
-- `WindowStatement` with partition_by, order_by, and frame
-- `FrameClause` with frame_type, start, and end boundaries
-- `FrameType` enum (Range, Rows, Groups)
-- `Frame` enum (UnboundedPreceding, Preceding, CurrentRow, Following, UnboundedFollowing)
-- `Expr::over()` for inline window specifications
-- `Expr::over_named()` for named window references
-- Ranking functions: `row_number()`, `rank()`, `dense_rank()`, `ntile()`
-- Value functions: `lead()`, `lag()`, `first_value()`, `last_value()`, `nth_value()`
-
-#### Backends
-- `PostgresQueryBuilder` - double-quoted identifiers, `$N` placeholders,
-  DISTINCT ON, GROUPS frame, `||` concatenation, RETURNING, NULLS FIRST/LAST,
-  DDL with CASCADE/RESTRICT support, Full DCL support:
-  - GRANT/REVOKE with GRANTED BY and CASCADE support
-  - GRANT/REVOKE role membership with all PostgreSQL features
-  - CREATE/DROP/ALTER ROLE with all PostgreSQL role attributes
-  - CREATE/DROP/ALTER USER (aliases for ROLE operations)
-  - SET ROLE and RESET ROLE for session management
-- `MySqlQueryBuilder` - backtick-quoted identifiers, `?` placeholders,
-  DISTINCT ROW, INSERT IGNORE, DDL with table-qualified DROP INDEX, Full DCL support:
-  - GRANT/REVOKE with User@Host format
-  - GRANT/REVOKE role membership with WITH ADMIN OPTION
-  - CREATE/DROP/ALTER ROLE with MySQL-specific options
-  - CREATE/DROP/ALTER USER with user@host specification
-  - RENAME USER for user renaming
-  - SET ROLE and SET DEFAULT ROLE for session management
-- `SqliteQueryBuilder` - double-quoted identifiers, `?` placeholders,
-  NULLS FIRST/LAST, `||` concatenation, DDL support, DCL not supported (panics)
-- `SqlWriter` infrastructure for SQL string construction
-- `QueryBuilder` trait for backend-agnostic query generation (DML, DDL, and DCL)
-
-#### Operators
-- `BinOper` for binary operators (arithmetic, comparison, logical, pattern)
-- `UnOper` for unary operators (NOT, NEGATE, EXISTS)
-- `LogicalChainOper` for AND/OR chaining
-- `PgBinOper` for PostgreSQL-specific operators (concatenation, JSON, array)
-- `SubQueryOper` for subquery operators (EXISTS, IN, ALL, ANY, SOME)
-
-#### Documentation
-- Comprehensive crate-level documentation with examples
-- Module-level documentation for all public modules
-- README with usage examples for all query types
-- Doc comments on all public APIs
+## [Unreleased]
+
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-rc.30...reinhardt-query@v0.1.0) - 2026-05-22
+
+Initial stable release of `reinhardt-query` as part of the
+reinhardt-web 0.1.0 release. `reinhardt-query` is the in-house
+SQL query builder that backs `reinhardt-db`; it produces backend-
+specific SQL (PostgreSQL, MySQL, SQLite) for DML, DDL, and DCL
+statements without exposing applications to raw strings.
+
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **Typed query AST** — `Iden`, `IdenStatic`, `ColumnRef`, `TableRef`,
+  `Value`, `Expr`, `SimpleExpr`, `Condition`, and `CaseStatement`
+  form a fully typed expression algebra. The `Value` enum covers 20+
+  variants (signed and unsigned integer widths, bytes, optional types)
+  and integrates with `chrono`, `uuid`, `serde_json`, `rust_decimal`,
+  and `bigdecimal` through feature flags.
+- **DML builders** — `SelectStatement`, `InsertStatement`,
+  `UpdateStatement`, and `DeleteStatement` with JOINs (INNER / LEFT /
+  RIGHT / FULL OUTER / CROSS), GROUP BY, HAVING, DISTINCT (plus
+  `DISTINCT ON` for PostgreSQL and `DISTINCT ROW` for MySQL), set
+  operations (UNION / INTERSECT / EXCEPT), CTEs (`WITH RECURSIVE`
+  included), window functions with frame clauses, and lock clauses
+  (`FOR UPDATE`, `FOR SHARE`, …). `INSERT … FROM SELECT` is supported.
+- **DDL builders** — `CreateTableStatement`,
+  `AlterTableStatement` (ADD / DROP / RENAME COLUMN, ADD / DROP
+  CONSTRAINT, RENAME TABLE), `DropTableStatement`,
+  `CreateIndexStatement` (UNIQUE, partial `WHERE`, USING method), and
+  `DropIndexStatement`. `ColumnType` covers 30+ SQL types and
+  `IndexMethod` covers BTree / Hash / Gist / Gin / Brin / FullText /
+  Spatial.
+- **Full DCL surface** — GRANT / REVOKE for object privileges
+  (16 privilege types, 15 object types, `WITH GRANT OPTION`,
+  `GRANTED BY`, CASCADE), role membership (`WITH ADMIN OPTION`,
+  `ADMIN OPTION FOR`), CREATE / DROP / ALTER ROLE and USER, and
+  session management (`SET ROLE`, `RESET ROLE`,
+  `SET DEFAULT ROLE`). PostgreSQL and MySQL are fully supported;
+  SQLite panics with descriptive messages where DCL doesn't apply.
+- **NoSQL Redis command builder** — Optional `nosql-redis` feature
+  exposes typed builders for the Redis RESP command set, including a
+  typestate-protected `ZAddBuilder` (`only_if_greater` /
+  `only_if_less`) and a compile-fail trybuild suite to keep the API
+  honest.
+- **Pluggable backends** — `PostgresQueryBuilder`,
+  `MySqlQueryBuilder`, and `SqliteQueryBuilder` implement the
+  `QueryBuilder` trait so the same AST renders to backend-appropriate
+  SQL (placeholder syntax, identifier quoting, `||` vs `CONCAT`,
+  `NULLS FIRST/LAST` handling). All identifier emission is
+  injection-safe: identifiers and values are escaped through
+  `SqlWriter` helpers shared across statements.
+- **Derive macros** — Optional `derive` feature pulls in
+  `reinhardt-query-macros` for `#[derive(Iden)]`, accepting
+  struct-level `#[iden]` attributes and emitting per-variant
+  `Iden` impls (including the special `Table` variant).
+- **`Rc` / `Arc` switch via `thread-safe`** — The `thread-safe`
+  feature flips `DynIden` from `Rc`-based to `Arc`-based so the
+  builder can be shared across threads when required (used by
+  `reinhardt-db`).
+- **`#[non_exhaustive]` future-proofing** — `Privilege` and
+  `ObjectType` are `#[non_exhaustive]` so future variants can be
+  added without a breaking-change wave.
+
+### Notable Breaking Changes
+
+- **Empty-string validation standardised across DCL** ([0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/blob/main/crates/reinhardt-query/CHANGELOG.md))
+  — every DCL statement now rejects empty role / user / object names
+  uniformly. Callers that previously passed `""` will see an
+  `Err(...)` instead of malformed SQL.
+
+### Migration Notes
+
+- **DCL string validation**: Audit code paths that construct DCL
+  statements from user input — empty strings now produce `Err`. Wrap
+  inputs in `if name.is_empty()` guards before invoking the builder
+  if you previously relied on permissive behaviour.
+- **Renamed `SeaRc` → `SharedRc`**: The old `SeaRc` alias is
+  deprecated. Update imports to `SharedRc`; the deprecated alias is
+  kept for one release cycle.
+- **Renamed Redis builder methods**: `ZAddBuilder::gt` / `lt` were
+  renamed to `only_if_greater` / `only_if_less` for self-documenting
+  intent.

@@ -7,8 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth-macros@v0.1.0-rc.15...reinhardt-auth-macros@v0.1.0-rc.16) - 2026-04-20
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth-macros@v0.1.0-rc.30...reinhardt-auth-macros@v0.1.0) - 2026-05-22
 
-### Maintenance
+Initial stable release of `reinhardt-auth-macros` as part of the
+reinhardt-web 0.1.0 release. This crate hosts the proc macros that
+back `reinhardt-auth` — primarily the `#[user]` attribute macro
+and the `guard!()` permission-expression parser.
 
-- update Cargo.toml dependencies
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **`#[user(...)]` attribute** — annotates a `#[model]` type as
+  the project's user identity. The macro emits a
+  `BaseUserManager` impl, registers a `SuperuserCreator` via
+  `inventory` for `#[user(full = true)]` types, and routes
+  identity values through the canonical `reinhardt-auth`
+  surface using a single-lock manager path.
+- **`guard!()` proc macro** — a winnow-parsed mini-DSL that
+  compiles permission expressions (`Public`, `All`, `Any`, `Not`,
+  composition) into the `Guard<P>` runtime type from
+  `reinhardt-auth`.
+- **Test ergonomics** — opt-out attribute lets integration test
+  fixtures supply their own user manager when the auto-emitted
+  `BaseUserManager` is undesired (see [#3615](https://github.com/kent8192/reinhardt-web/discussions/3615)
+  follow-up wiring).
+
+### Notable Breaking Changes
+
+- **`#[user(...)]` requires explicit `LABEL`** — `AppLabel`
+  implementors targeted by `#[user]` must declare a `LABEL`
+  constant; the macro no longer infers one. This pairs with the
+  new `BaseUserManager` impl emission described above.
+- **Auto-emitted `BaseUserManager`** — projects that previously
+  hand-rolled `BaseUserManager` for a `#[user]` type either
+  remove their manual impl or opt the type out of the
+  auto-emitted impl in fixtures and integration tests.
+
+### Migration Notes
+
+- Add an explicit `LABEL` to each `AppLabel` impl reached by a
+  `#[user]` annotation.
+- For test fixtures that need a hand-rolled `BaseUserManager`,
+  opt out of the auto-manager emission so the two impls do not
+  collide at compile time.
+- For the workspace-wide migration narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).

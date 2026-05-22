@@ -7,61 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-rc.14...reinhardt-query-macros@v0.1.0-rc.15) - 2026-03-29
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-rc.30...reinhardt-query-macros@v0.1.0) - 2026-05-22
 
-### Maintenance
+Initial stable release of `reinhardt-query-macros` as part of the
+reinhardt-web 0.1.0 release. `reinhardt-query-macros` provides the
+`#[derive(Iden)]` procedural macro used by `reinhardt-query` to turn
+plain Rust enums / structs into SQL identifier sources.
 
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-rc.13...reinhardt-query-macros@v0.1.0-rc.14) - 2026-03-24
+### Capabilities at 0.1.0
 
-### Fixed
+- **`#[derive(Iden)]`** — Generates an `Iden` impl that the
+  `reinhardt-query` AST consumes as a table or column reference.
+  Works on both unit enums (one variant per column) and structs.
+- **Struct-level `#[iden]` attributes** — `#[iden(rename = "...")]`
+  and similar options are read from the struct level (not the first
+  field), supporting `Meta::List` syntax so the attribute parses
+  uniformly with other field-level attributes in the workspace.
+- **Special `Table` variant handling** — A `Table` variant on an
+  enum maps to the enum's own SQL identifier rather than the literal
+  string `"Table"`, matching the SeaQuery convention that
+  applications expect.
+- **Identifier validation at compile time** — Identifier names are
+  validated (and enum variants with data are rejected with a clear
+  diagnostic) so invalid SQL identifiers cannot reach runtime.
+- **Stable proc-macro toolchain** — Locked to workspace `syn` /
+  `quote` / `proc-macro2` versions and Rust 1.94.0 MSRV with
+  `heck`-driven case conversion.
 
-- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
+### Notable Breaking Changes
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-rc.1...reinhardt-query-macros@v0.1.0-rc.2) - 2026-03-04
+This release does not introduce crate-level breaking changes. See the
+[root Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for workspace-wide changes that may affect callers of derived APIs.
 
-### Fixed
+### Migration Notes
 
-- *(meta)* fix workspace inheritance and authors metadata
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-alpha.4...reinhardt-query-macros@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-alpha.3...reinhardt-query-macros@v0.1.0-alpha.4) - 2026-02-23
-
-### Fixed
-
-- *(release)* advance version to skip yanked alpha.3 and restore publish capability for dependents
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-alpha.2...reinhardt-query-macros@v0.1.0-alpha.3) - 2026-02-21 [YANKED]
-
-This release was yanked shortly after publication. Use v0.1.0-alpha.4 instead.
-
-### Fixed
-
-- add compile-time Debug assertion for derive(Iden)
-- emit errors for invalid #[iden] attribute arguments
-- replace write_str unwrap with expect documenting infallibility
-- validate identifier names and handle enum variants with data
-
-## [0.1.0-alpha.1](https://github.com/kent8192/reinhardt-web/releases/tag/reinhardt-query-macros@v0.1.0-alpha.1) - 2026-02-14
-
-### Added
-
-- *(query)* add #[derive(Iden)] proc-macro crate
-
-### Fixed
-
-- *(macros)* proper closing delimiters and quote expansion (review [[#1](https://github.com/kent8192/reinhardt-web/issues/1)](https://github.com/kent8192/reinhardt-web/issues/1))
-- *(macros)* fix type mismatches and generate Iden trait impl in derive macro
-- *(query)* add Table variant special handling in Iden derive macro
-- *(query)* add Meta::List support to Iden derive macro attribute parsing
-- *(query)* read iden attribute from struct-level instead of first field
-
-### Styling
-
-- *(query)* format Iden derive macro code
+- **Yanked `0.1.0-alpha.3`**: If your `Cargo.lock` still pins
+  `0.1.0-alpha.3` (which was yanked), update to `0.1.0` or any
+  later release. `0.1.0-alpha.4` was published specifically to
+  restore publishability for dependents.
+- **`#[iden]` attribute moved to the struct level**: If you were
+  relying on the pre-stable behaviour of reading `#[iden]` from the
+  first field, move the attribute to the struct itself. The macro
+  now emits an error for invalid attribute arguments instead of
+  silently ignoring them.
