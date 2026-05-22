@@ -24,6 +24,10 @@ Stdout (one KEY=value per line, suitable for `eval`):
     RD_HOST=localhost
     RD_PORT=6379
 
+Values are shell-quoted via `shlex.quote` so `eval "$SETTINGS"` is safe
+even if a password or hostname contains whitespace, quotes, or shell
+metacharacters.
+
 Exit codes:
     0  success
     1  parse / validation error (details on stderr)
@@ -32,8 +36,16 @@ Exit codes:
 
 from __future__ import annotations
 
+import shlex
 import sys
 import urllib.parse
+
+
+def _q(value: object) -> str:
+	# Shell-quote every emitted value so `eval "$SETTINGS"` in infra_up.sh
+	# is safe against passwords / hostnames that contain whitespace, quotes,
+	# or shell metacharacters.
+	return shlex.quote(str(value))
 
 
 def _load_toml(path: str) -> dict:
@@ -69,13 +81,13 @@ def main(argv: list[str]) -> int:
 	redis_url = data.get("redis_url", "redis://localhost:6379/0")
 	parsed = urllib.parse.urlparse(redis_url)
 
-	print(f"PG_HOST={db.get('host', 'localhost')}")
-	print(f"PG_PORT={db.get('port', 5432)}")
-	print(f"PG_DB={db.get('name', 'reinhardt')}")
-	print(f"PG_USER={db.get('user', 'reinhardt')}")
-	print(f"PG_PASS={db.get('password', 'reinhardt')}")
-	print(f"RD_HOST={parsed.hostname or 'localhost'}")
-	print(f"RD_PORT={parsed.port or 6379}")
+	print(f"PG_HOST={_q(db.get('host', 'localhost'))}")
+	print(f"PG_PORT={_q(db.get('port', 5432))}")
+	print(f"PG_DB={_q(db.get('name', 'reinhardt'))}")
+	print(f"PG_USER={_q(db.get('user', 'reinhardt'))}")
+	print(f"PG_PASS={_q(db.get('password', 'reinhardt'))}")
+	print(f"RD_HOST={_q(parsed.hostname or 'localhost')}")
+	print(f"RD_PORT={_q(parsed.port or 6379)}")
 	return 0
 
 
