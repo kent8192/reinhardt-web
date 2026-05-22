@@ -459,9 +459,9 @@ Include additional sections when relevant:
 
 ## PR Review Process
 
-### RP-1 (MUST): Pre-Review Checklist
+### RP-1 (MUST): Pre-Merge Checklist
 
-Before requesting review, ensure:
+Before **merging** (NOT before Draft → Ready conversion — see § PC-4a, which mandates immediate Ready conversion upon implementation completion), ensure:
 
 - [ ] All CI checks pass
 - [ ] All tests pass locally
@@ -810,7 +810,7 @@ docs(readme): add installation instructions
 - Follow Conventional Commits format for titles
 - Include Summary, Type of Change, Motivation and Context, How Was This Tested, Checklist sections
 - Include Labels to Apply section with appropriate type and scope labels
-- Run all checks before requesting review
+- Run all checks before **merging** (NOT before Draft → Ready conversion — § PC-4a mandates immediate Ready conversion)
 - Address all review comments
 - Ensure all CI checks pass before merge
 - Use three-dot diff (`main...branch`) for PR verification to exclude merge history noise
