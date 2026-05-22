@@ -138,10 +138,8 @@ impl ServerFnTestContext {
 	///     .with_authenticated_user(TestUser::admin())
 	///     .build();
 	/// ```
-	#[deprecated(
-		since = "0.1.0-rc.16",
-		note = "use `.auth().session(&user).done()` instead"
-	)]
+	#[cfg(any())]
+	#[deprecated(since = "0.2.0", note = "removed per Issue #4520; use `.auth().session(&user).done()`")]
 	pub fn with_authenticated_user(mut self, user: TestUser) -> Self {
 		self.test_user = Some(user.clone());
 		self.mock_session = Some(MockSession::authenticated(user));

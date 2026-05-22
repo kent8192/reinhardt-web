@@ -1704,12 +1704,7 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 /// );
 /// ```
 #[cfg(feature = "testcontainers")]
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use `postgres_with_migrations_from_dir()` instead. \
-			This fixture requires `collect_migrations!` macro registration \
-			which is being deprecated in favor of `FilesystemSource`."
-)]
+#[cfg(any())] // Removed in 0.2.0 per Issue #4520
 #[allow(deprecated)] // Suppress warnings from rstest-generated code referencing this deprecated fixture
 #[rstest::fixture]
 pub async fn postgres_with_all_migrations() -> Result<
@@ -1769,12 +1764,7 @@ pub async fn postgres_with_all_migrations() -> Result<
 /// # }
 /// ```
 #[cfg(feature = "testcontainers")]
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use `postgres_with_migrations_from_dir()` instead. \
-			This function requires `collect_migrations!` macro registration \
-			which is being deprecated in favor of `FilesystemSource`."
-)]
+#[cfg(any())] // Removed in 0.2.0 per Issue #4520
 #[allow(deprecated)] // Suppress warnings from internal usage of this deprecated function
 pub async fn postgres_with_apps_migrations(
 	app_labels: &[&str],
@@ -1916,12 +1906,7 @@ pub async fn postgres_with_migrations_from_dir(
 /// }
 /// ```
 #[cfg(feature = "testcontainers")]
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use filesystem-based migration loading instead. \
-			This fixture requires `collect_migrations!` macro registration \
-			which is being deprecated in favor of `FilesystemSource`."
-)]
+#[cfg(any())] // Removed in 0.2.0 per Issue #4520
 #[allow(deprecated)] // Suppress warnings from rstest-generated code referencing this deprecated fixture
 #[rstest::fixture]
 pub async fn mysql_with_all_migrations() -> (
@@ -1961,12 +1946,7 @@ pub async fn mysql_with_all_migrations() -> (
 ///
 /// * `app_labels` - List of app labels to include
 #[cfg(feature = "testcontainers")]
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use filesystem-based migration loading instead. \
-			This function requires `collect_migrations!` macro registration \
-			which is being deprecated in favor of `FilesystemSource`."
-)]
+#[cfg(any())] // Removed in 0.2.0 per Issue #4520
 #[allow(deprecated)] // Suppress warnings from internal usage of this deprecated function
 pub async fn mysql_with_apps_migrations(
 	app_labels: &[&str],
@@ -2027,12 +2007,7 @@ pub async fn mysql_with_apps_migrations(
 /// }
 /// ```
 #[cfg(feature = "testcontainers")]
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use filesystem-based migration loading instead. \
-			This fixture requires `collect_migrations!` macro registration \
-			which is being deprecated in favor of `FilesystemSource`."
-)]
+#[cfg(any())] // Removed in 0.2.0 per Issue #4520
 #[allow(deprecated)] // Suppress warnings from rstest-generated code referencing this deprecated fixture
 #[rstest::fixture]
 pub async fn sqlite_with_all_migrations() -> std::sync::Arc<reinhardt_db::DatabaseConnection> {
@@ -2068,12 +2043,7 @@ pub async fn sqlite_with_all_migrations() -> std::sync::Arc<reinhardt_db::Databa
 ///
 /// * `app_labels` - List of app labels to include
 #[cfg(feature = "testcontainers")]
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use filesystem-based migration loading instead. \
-			This function requires `collect_migrations!` macro registration \
-			which is being deprecated in favor of `FilesystemSource`."
-)]
+#[cfg(any())] // Removed in 0.2.0 per Issue #4520
 #[allow(deprecated)] // Suppress warnings from internal usage of this deprecated function
 pub async fn sqlite_with_apps_migrations(
 	app_labels: &[&str],

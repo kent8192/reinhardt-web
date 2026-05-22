@@ -435,10 +435,8 @@ impl APIClient {
 	/// client.force_authenticate(Some(user)).await;
 	/// # });
 	/// ```
-	#[deprecated(
-		since = "0.1.0-rc.16",
-		note = "use `client.auth().session()` or `client.auth().jwt()` instead"
-	)]
+	#[cfg(any())]
+	#[deprecated(since = "0.2.0", note = "removed per Issue #4520; use `client.auth().session()/.jwt()`")]
 	pub async fn force_authenticate(&self, user: Option<Value>) {
 		let mut current_user = self.user.write().await;
 		*current_user = user;
