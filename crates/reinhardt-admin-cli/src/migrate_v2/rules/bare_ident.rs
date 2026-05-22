@@ -47,8 +47,7 @@ impl VisitMut for PageMacroBodyVisitor {
 /// promotes any bare lowercase-leading identifier to a `{ident}` group.
 fn rewrite_page_body(input: TokenStream) -> TokenStream {
 	let mut out: Vec<TokenTree> = Vec::new();
-	let mut iter = input.into_iter();
-	while let Some(tt) = iter.next() {
+	for tt in input {
 		match tt {
 			TokenTree::Group(g) if g.delimiter() == Delimiter::Brace => {
 				let inner = rewrite_brace_body(g.stream());
@@ -103,12 +102,20 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 			}
 		}
 
-		// Recurse into any nested braced group (could be a child element body).
+		// Recurse into any nested braced group (could be a child element body) —
+		// UNLESS the group is already in v2 expression-slot shape (`{ expr }`
+		// where the inner stream is itself wrapped in a single brace group).
+		// Recursing into such a body would re-wrap the inner ident on every
+		// pass, breaking idempotency.
 		if let TokenTree::Group(g) = &tt
 			&& g.delimiter() == Delimiter::Brace
 		{
-			let inner = rewrite_brace_body(g.stream());
-			out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+			if is_already_wrapped_expression_slot(&g.stream()) {
+				out.push(tt);
+			} else {
+				let inner = rewrite_brace_body(g.stream());
+				out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+			}
 			continue;
 		}
 
@@ -116,6 +123,19 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 	}
 
 	out.into_iter().collect()
+}
+
+/// True when a brace body's entire contents are themselves a single brace
+/// group — i.e. the surrounding braces are already the v2 expression-slot
+/// wrapping (`{ {expr} }`) introduced by a prior run of this rule.
+fn is_already_wrapped_expression_slot(stream: &TokenStream) -> bool {
+	let mut iter = stream.clone().into_iter();
+	let first = iter.next();
+	let rest = iter.next();
+	match (first, rest) {
+		(Some(TokenTree::Group(g)), None) => g.delimiter() == Delimiter::Brace,
+		_ => false,
+	}
 }
 
 fn starts_lowercase(s: &str) -> bool {

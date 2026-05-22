@@ -44,3 +44,28 @@ fn rule_matches_expected_fixture(#[case] rule_name: &str) {
 		"{rule_name} did not produce expected output"
 	);
 }
+
+#[rstest]
+#[case::bare_ident("bare_ident")]
+#[case::watch_unwrap("watch_unwrap")]
+#[case::use_effect_deps("use_effect_deps")]
+#[case::component_props("component_props")]
+fn rule_is_idempotent(#[case] rule_name: &str) {
+	// Arrange
+	let expected = std::fs::read_to_string(fixture_path(rule_name, "expected.rs")).unwrap();
+	let all_rules = rules::all();
+	let rule = all_rules
+		.iter()
+		.find(|r| r.name() == rule_name)
+		.unwrap_or_else(|| panic!("rule `{rule_name}` not registered"));
+
+	// Act — apply the rule to its own output.
+	let twice = apply(&**rule, &expected);
+
+	// Assert
+	assert_eq!(
+		twice.trim(),
+		expected.trim(),
+		"{rule_name} is not idempotent: re-running changed the output"
+	);
+}
