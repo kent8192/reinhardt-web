@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.30...reinhardt-web@v0.1.0) - 2026-05-22
 
+This is the first stable release of `reinhardt-web`, the culmination of
+19 alpha and 30 rc prereleases dating back to 2026-01-23. The release
+aggregates every change recorded across all prerelease CHANGELOGs;
+individual `## [0.1.0-rc.*]` / `## [0.1.0-alpha.*]` sections are
+preserved below for tag-by-tag history.
+
+### Highlights
+
+- **Type-safe, convention-driven framework**: reinhardt-web brings
+  Django-like ergonomics to Rust with fully typed URL routing,
+  dependency injection, and form validation that fail at compile time,
+  not runtime.
+- **Full-stack WASM SPA support**: build reactive client UIs with
+  Server Functions that auto-serialize across the network boundary,
+  complete with CSRF protection and pluggable JWT / session
+  authentication.
+- **Pragmatic admin interface**: the built-in admin panel supports
+  role-based permissions, type-safe query filters, and integrated ORM
+  operations without separate admin declarations — just `#[model]` and
+  opt in.
+- **Async-first, runtime-agnostic**: every public API is async by
+  default and integrates cleanly with Tokio, with TestContainers-backed
+  integration tests for Postgres, MySQL, SQLite, and CockroachDB.
+
 ### Breaking Changes
 
 - *(di)* [**breaking**] unify #[inject] parameter type from Arc<T> to Depends<T>
@@ -17,6 +41,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(examples-rest)* [**breaking**] drop USE_VIEWSET toggle, inline aggregator, Bruno ViewSet folder
 - *(admin)* [**breaking**] mark AdminRoute as non_exhaustive and reorder Login variant
 - *(infra/repository)* [**breaking**] replace data "github_user" reviewer lookup with numeric user-ID variable
+
+### Migration Guide
+
+The 0.1.0 stable release consolidates 19 alpha and 30 rc prereleases.
+Notable breaking changes since 0.1.0-rc.1 are summarized below; the
+complete list is in the **Breaking Changes** section above and in the
+historical `## [0.1.0-rc.*]` / `## [0.1.0-alpha.*]` sections.
+
+- **Typed URL routing** ([#3770](https://github.com/kent8192/reinhardt-web/discussions/3770)):
+  replace string-based `#[url_patterns]` with
+  `#[url_patterns(InstalledApp::app_name, mode = server|client|unified)]`
+  and rename functions to `server_url_patterns()` /
+  `client_url_patterns()` / `unified_url_patterns()`.
+- **Dependency injection unification**
+  ([#3628](https://github.com/kent8192/reinhardt-web/discussions/3628)):
+  replace `#[inject] Arc<T>` with `#[inject] Depends<T>` across every
+  injection site. `Depends<T>` adds caching, circular-dependency
+  detection, and metadata that bare `Arc<T>` lacked.
+- **Deprecate `Injected<T>`**
+  ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631)):
+  migrate `Injected<T>` and `OptionalInjected<T>` to `Depends<T>` and
+  `Option<Depends<T>>`. Add an explicit `#[derive(Clone)]` if your type
+  was relying on the previous auto-Clone behaviour.
+- **`AdminUser` trait signature**
+  ([#3615](https://github.com/kent8192/reinhardt-web/discussions/3615)):
+  update `ModelAdmin` permission methods to accept `&dyn AdminUser`
+  instead of `&(dyn std::any::Any + Send + Sync)`.
+- **OAuth2 `exchange_code` redirect URI**
+  ([#3609](https://github.com/kent8192/reinhardt-web/discussions/3609)):
+  `exchange_code()` now requires a `redirect_uri` parameter; pass the
+  callback URL as the fourth argument.
+- **Typed TOML interpolation**
+  ([#4241](https://github.com/kent8192/reinhardt-web/discussions/4241)):
+  environment-variable interpolation in TOML (e.g.,
+  `${REINHARDT_DB_PORT}`) now coerces to the target type. Opt out with
+  `SettingsBuilder::with_typed_coercion(false)`.
+- **URL resolver restructuring**
+  ([#3918](https://github.com/kent8192/reinhardt-web/discussions/3918)):
+  move `src/apps/<app>/ws_urls.rs` to `src/apps/<app>/urls/ws_urls.rs`
+  and declare it in the `urls` submodule.
+- **`define_views!` replaces `#[export_endpoints]`**
+  ([#3768](https://github.com/kent8192/reinhardt-web/discussions/3768)):
+  use the `define_views!` declarative macro for multi-file view
+  modules — the attribute form was removed for stable-Rust
+  compatibility (later renamed to `flatten_imports!`).
+- **Apps relocate per-app handlers**
+  ([#4476](https://github.com/kent8192/reinhardt-web/discussions/4476)):
+  per-app `server_fn` and client UI moved from `commands/templates/...`
+  into `apps/<app>/`. Update existing apps by relocating the matching
+  source files; `reinhardt new` already emits the new layout.
+- **`ClientLauncher::on_navigate`**
+  ([#4117](https://github.com/kent8192/reinhardt-web/discussions/4117)):
+  client SPA navigation now hooks through `Router::on_navigate` rather
+  than launching a fresh router per navigation; remove any manual
+  `ClientLauncher::launch` wiring tied to the old model.
+- **`admin_routes_with_di()`**
+  ([#3626](https://github.com/kent8192/reinhardt-web/discussions/3626)):
+  use `admin_routes_with_di()` instead of the deprecated
+  `admin_routes()` so middleware-contributed DI registrations are
+  applied.
+
+For the complete per-PR change list, see the historical entries below
+and the [Release-category Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
 ### Added
 
