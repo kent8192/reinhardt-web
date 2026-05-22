@@ -175,14 +175,13 @@ Autonomously Allowed (no per-action confirmation required):
 | Convert Draft PR to **Ready for Review** | **REQUIRED (MUST) immediately once implementation is complete**. CI completion is NOT a prerequisite. See `instructions/PR_GUIDELINE.md` § PC-4a |
 | Create an Issue | `gh issue create` / MCP `issue_write`; MUST follow the appropriate issue template and apply at least one type label |
 
-**Protected Branches** (commit/push always require explicit user authorization):
+**Protected Branches** (direct commit/push NEVER allowed; changes MUST go through Pull Requests from non-protected branches):
 - `main`, `master`
 - `develop/*` (any branch starting with `develop/`)
 - `release/*` (any branch starting with `release/`)
 
 Still Requires Explicit User Authorization (no autonomy):
 
-- Direct push to any protected branch listed above
 - `git push --force`, `--force-with-lease`, or any other history-rewriting push
 - `git rebase`, `git reset --hard`, `git branch -D`, deleting tags, or any other history-destructive operation
 - Closing, merging, or deleting PRs

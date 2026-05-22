@@ -91,7 +91,7 @@
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
 - Commit without user instruction (except Plan Mode approval or the Autonomous Operation Policy for Reinhardt-family repos)
-- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — even under the Autonomous Operation Policy these require explicit user authorization
+- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — direct commits and pushes to protected branches are NEVER allowed; changes must go through Pull Requests from non-protected branches
 - Commit directly to a protected branch (`main`, `master`, `develop/*`, `release/*`) — all changes to protected branches MUST go through feature/fix/docs branches and Pull Requests
 - Force-push, rebase-and-push, or otherwise rewrite history without explicit user authorization (the Autonomous Operation Policy does NOT cover history-rewriting pushes)
 - Close, merge, or delete PRs / Issues / comments without explicit user authorization (autonomy covers creation only, not destruction)
