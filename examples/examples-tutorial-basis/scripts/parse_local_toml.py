@@ -14,8 +14,18 @@ script in sync with what `src/config/settings.rs` actually resolves at
 runtime, so a user-local `local.toml` containing only `[core]` overrides
 can still inherit the canonical `[database]` block from `base.toml`.
 
-The settings shape mirrors the example crates' top-level `[database]`
-section (see README "With Database" / `reinhardt_conf::settings::DatabaseConfig`).
+Two database schemas are accepted (in priority order):
+
+1. Top-level ``[database]`` -- the canonical shape consumed by
+   `reinhardt_conf::settings::DatabaseConfig` (examples-tutorial-basis,
+   examples-tutorial-rest).
+2. ``[core.databases.default]`` -- the Django-style multi-database
+   layout exposed through `CoreSettings` (examples-twitter).
+
+The second form is a fallback so that a `base.toml` carrying only the
+runtime-shape schema still satisfies the provisioning script when the
+caller selects `base.toml` directly (e.g., `REINHARDT_ENV=base`).
+
 Redis URL is read from a top-level `redis_url = "..."` key with a sane
 default; examples that don't actually use Redis still get an idle
 container spun up so the infra footprint is identical across examples.
@@ -87,6 +97,25 @@ def _deep_merge(base: dict, override: dict) -> dict:
 	return result
 
 
+def _resolve_database(data: dict) -> dict | None:
+	# Prefer the canonical top-level `[database]` schema. Fall back to
+	# the Django-style `[core.databases.default]` layout used by
+	# examples-twitter so that selecting `base.toml` directly still
+	# yields provisionable credentials even when only the runtime-shape
+	# schema is present.
+	candidate = data.get("database")
+	if isinstance(candidate, dict):
+		return candidate
+	nested = (
+		data.get("core", {})
+		.get("databases", {})
+		.get("default")
+	)
+	if isinstance(nested, dict):
+		return nested
+	return None
+
+
 def _load_settings(profile_path: str) -> dict:
 	# Layer the profile TOML on top of a sibling `base.toml` when one
 	# exists. When the caller asked for `base.toml` itself, or no sibling
@@ -109,11 +138,11 @@ def main(argv: list[str]) -> int:
 
 	data = _load_settings(argv[1])
 
-	try:
-		db = data["database"]
-	except KeyError:
+	db = _resolve_database(data)
+	if db is None:
 		sys.stderr.write(
-			f"Error: top-level [database] missing from {argv[1]} "
+			f"Error: neither top-level [database] nor "
+			f"[core.databases.default] found in {argv[1]} "
 			f"(and from sibling base.toml, if present)\n"
 		)
 		return 1
