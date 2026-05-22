@@ -26,7 +26,7 @@
 //! never established. Every loading branch MUST stay inside the single
 //! outer `watch{}` block.
 
-use crate::shared::types::{ChoiceInfo, QuestionInfo};
+use crate::shared::types::{ChoiceInfo, QuestionInfo, UserInfo};
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
@@ -41,6 +41,37 @@ use crate::apps::polls::server_fn::{
 	get_question_results, get_questions, submit_vote, update_choice, update_question,
 };
 use crate::apps::polls::urls::client_router::urls as links;
+// Used by `polls_detail` to gate owner-only controls (Edit / Delete / Add
+// choice) on the viewer being the question's author (issue #4703). Server-
+// side `require_question_author` checks remain in place as defense in depth.
+use crate::apps::users::server_fn::current_user;
+
+// =========================================================================
+// Error display helpers
+// =========================================================================
+
+/// Extract the human-readable message from a `ServerFnError`-shaped JSON
+/// payload so the alert banner shows prose, not raw JSON (issue #4702).
+///
+/// `ServerFnError` is serialized with serde's externally-tagged format —
+/// e.g. `{"Application":"Invalid choice_id"}` for `ServerFnError::Application`
+/// or `{"Server":{"status":403,"message":"..."}}` for `ServerFnError::Server`.
+/// This helper unwraps the variant tag for display purposes only; the
+/// wire format the server sends is intentionally unchanged.
+fn format_server_error(raw: &str) -> String {
+	if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw)
+		&& let Some(obj) = value.as_object()
+		&& let Some((_, payload)) = obj.iter().next()
+	{
+		if let Some(s) = payload.as_str() {
+			return s.to_string();
+		}
+		if let Some(msg) = payload.get("message").and_then(|v| v.as_str()) {
+			return msg.to_string();
+		}
+	}
+	raw.to_string()
+}
 
 /// Polls index page - List all polls
 ///
@@ -73,7 +104,7 @@ pub fn polls_index() -> Page {
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ load_questions_error.error().unwrap_or_default() }
+						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
 					}
 				}
 			}
@@ -138,6 +169,16 @@ pub fn polls_detail(question_id: i64) -> Page {
 		use_action(
 			|qid: i64| async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
 		);
+
+	// Resolve the viewer so the render branch can hide owner-only controls
+	// (Edit / Delete / Add choice) for non-authors and unauthenticated
+	// viewers (issue #4703). `current_user` returns `Ok(None)` when the
+	// session has no authenticated user, so any non-`Some(Some(u))` shape
+	// disables the controls. Server-side `require_question_author` still
+	// rejects unauthorized mutations as defense in depth.
+	let load_current_user =
+		use_action(|_: ()| async move { current_user().await.map_err(|e| e.to_string()) });
+	load_current_user.dispatch(());
 
 	// Voting form via the `form!` macro.
 	//
@@ -211,7 +252,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 						if let Some(e) = err.clone() {
 							div {
 								class: "alert-danger mt-3",
-								{ e }
+								{ format_server_error(&e) }
 							}
 						}
 					}
@@ -243,6 +284,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	load_detail.dispatch(qid);
 
 	let load_detail_signal = load_detail.clone();
+	let load_current_user_signal = load_current_user.clone();
 
 	// Render reactively in the canonical shape (see module-level docs):
 	// outer `div` + single `watch{}` block + the `Action<..>` signal and
@@ -256,7 +298,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// `RadioSelect` group for choiceless questions, so any submit emitted
 	// `choice_id=""` and `submit_vote` rejected the request with the
 	// runtime `Invalid choice_id` application error.
-	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
+	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user_signal: Action<Option<UserInfo>, String>, question_id: i64| {
 		div {
 			watch {
 				if load_detail_signal.is_pending() {
@@ -276,7 +318,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ load_detail_signal.error().unwrap_or_default() }
+							{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
 						}
 						a {
 							href: links::detail(question_id),
@@ -294,6 +336,17 @@ pub fn polls_detail(question_id: i64) -> Page {
 					// underlying `(QuestionInfo, Vec<ChoiceInfo>)` on every
 					// call, so reusing `q`/`choices` here avoids redundant
 					// allocations on each reactive render.
+					//
+					// Owner-only controls (Edit / Delete / Add choice) are
+					// hidden for non-authors and unauthenticated viewers
+					// (issue #4703). The `current_user` action returns
+					// `Ok(None)` when no session user is present; any
+					// non-`Some(Some(u))` shape (pending, error, or
+					// unauthenticated) leaves `is_author` as `false`.
+					let is_author = match load_current_user_signal.result() {
+						Some(Some(ref u)) => u.id == q.author_id,
+						_ => false,
+					};
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
@@ -308,15 +361,17 @@ pub fn polls_detail(question_id: i64) -> Page {
 									class: "btn-secondary",
 									"View results"
 								}
-								a {
-									href: links::question_edit(question_id),
-									class: "btn-secondary",
-									"Edit"
-								}
-								a {
-									href: links::question_delete(question_id),
-									class: "btn-danger",
-									"Delete"
+								if is_author {
+									a {
+										href: links::question_edit(question_id),
+										class: "btn-secondary",
+										"Edit"
+									}
+									a {
+										href: links::question_delete(question_id),
+										class: "btn-danger",
+										"Delete"
+									}
 								}
 							}
 						}
@@ -328,12 +383,14 @@ pub fn polls_detail(question_id: i64) -> Page {
 								"This question has no choices yet. Add one below to start voting."
 							}
 						}
-						div {
-							class: "mt-4",
-							a {
-								href: links::choice_new(question_id),
-								class: "btn-secondary",
-								"Add choice"
+						if is_author {
+							div {
+								class: "mt-4",
+								a {
+									href: links::choice_new(question_id),
+									class: "btn-secondary",
+									"Add choice"
+								}
 							}
 						}
 					}
@@ -353,13 +410,18 @@ pub fn polls_detail(question_id: i64) -> Page {
 				}
 			}
 		}
-	})(load_detail_signal, question_id)
+	})(load_detail_signal, load_current_user_signal, question_id)
 }
 
 /// Poll results page - Show voting results
 ///
 /// Displays the question with vote counts for each choice.
 /// Uses watch blocks for reactive UI updates when async data loads.
+///
+/// Owner-only controls (Edit / Delete) mirror [`polls_detail`]: the viewer
+/// is resolved via `current_user`, and the links only render when the
+/// viewer is the question's author (issue #4703). Server-side
+/// `require_question_author` checks remain in place as defense in depth.
 pub fn polls_results(question_id: i64) -> Page {
 	let load_results =
 		use_action(
@@ -367,9 +429,14 @@ pub fn polls_results(question_id: i64) -> Page {
 		);
 	load_results.dispatch(question_id);
 
-	let load_results_signal = load_results.clone();
+	let load_current_user =
+		use_action(|_: ()| async move { current_user().await.map_err(|e| e.to_string()) });
+	load_current_user.dispatch(());
 
-	page!(|load_results_signal: Action<(QuestionInfo, Vec<ChoiceInfo>, i32), String>, question_id: i64| {
+	let load_results_signal = load_results.clone();
+	let load_current_user_signal = load_current_user.clone();
+
+	page!(|load_results_signal: Action<(QuestionInfo, Vec<ChoiceInfo>, i32), String>, load_current_user_signal: Action<Option<UserInfo>, String>, question_id: i64| {
 		div {
 			watch {
 				if load_results_signal.is_pending() {
@@ -389,7 +456,7 @@ pub fn polls_results(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ load_results_signal.error().unwrap_or_default() }
+							{ format_server_error(&load_results_signal.error().unwrap_or_default()) }
 						}
 						a {
 							href: links::index(),
@@ -398,6 +465,20 @@ pub fn polls_results(question_id: i64) -> Page {
 						}
 					}
 				} else if load_results_signal.result().is_some() {
+					// Owner-only controls (Edit / Delete) are hidden for
+					// non-authors and unauthenticated viewers (issue #4703).
+					// `current_user` returns `Ok(None)` when no session user
+					// is present; any non-`Some(Some(u))` shape (pending,
+					// error, or unauthenticated) leaves `is_author` as
+					// `false`. Server-side `require_question_author` still
+					// rejects unauthorized mutations as defense in depth.
+					let is_author = match (
+						load_results_signal.result(),
+						load_current_user_signal.result(),
+					) {
+						(Some((ref q, _, _)), Some(Some(ref u))) => u.id == q.author_id,
+						_ => false,
+					};
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						h1 {
@@ -490,15 +571,17 @@ pub fn polls_results(question_id: i64) -> Page {
 								class: "btn-primary",
 								"Vote Again"
 							}
-							a {
-								href: links::question_edit(question_id),
-								class: "btn-secondary",
-								"Edit question"
-							}
-							a {
-								href: links::question_delete(question_id),
-								class: "btn-danger",
-								"Delete question"
+							if is_author {
+								a {
+									href: links::question_edit(question_id),
+									class: "btn-secondary",
+									"Edit question"
+								}
+								a {
+									href: links::question_delete(question_id),
+									class: "btn-danger",
+									"Delete question"
+								}
 							}
 							a {
 								href: links::index(),
@@ -523,7 +606,7 @@ pub fn polls_results(question_id: i64) -> Page {
 				}
 			}
 		}
-	})(load_results_signal, question_id)
+	})(load_results_signal, load_current_user_signal, question_id)
 }
 
 /// Example component demonstrating static URL resolution
@@ -558,7 +641,7 @@ pub fn polls_index_with_logo() -> Page {
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ load_questions_error.error().unwrap_or_default() }
+						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
 					}
 				}
 			}
@@ -664,7 +747,7 @@ pub fn question_new() -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
 			}
@@ -790,7 +873,7 @@ pub fn question_edit(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ load_detail_signal.error().unwrap_or_default() }
+							{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
 						}
 						a {
 							href: links::index(),
@@ -808,7 +891,7 @@ pub fn question_edit(question_id: i64) -> Page {
 						if edit_form.error().get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ edit_form.error().get().unwrap_or_default() }
+								{ format_server_error(&edit_form.error().get().unwrap_or_default()) }
 							}
 						}
 						{ edit_form.clone().into_page() }
@@ -909,7 +992,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 				} else if load_detail_signal.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ load_detail_signal.error().unwrap_or_default() }
+						{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
 					}
 				}
 			}
@@ -917,7 +1000,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mt-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
 			}
@@ -972,11 +1055,22 @@ pub fn choice_new(question_id: i64) -> Page {
 	let qid = question_id;
 	let qid_str = qid.to_string();
 
+	// `redirect_on_success` (issue #4700): without it the form submits
+	// successfully but the client stays on `/polls/{qid}/choices/new/`
+	// with no visible feedback, so the user perceives the action as a
+	// no-op. Returning to the parent detail page makes the newly added
+	// choice immediately visible.
+	//
+	// `required` on `choice_text` (issue #4701, defense in depth): the
+	// server's `create_choice` already rejects empty input, but anchoring
+	// the rule in the browser at the field level prevents blank submits
+	// from reaching the server at all.
 	let new_form = form! {
 		name: NewChoiceForm,
 		server_fn: create_choice,
 		method: Post,
 		state: { loading, error },
+		redirect_on_success: links::detail(qid),
 
 		fields: {
 			question_id: HiddenField {
@@ -985,6 +1079,7 @@ pub fn choice_new(question_id: i64) -> Page {
 			choice_text: CharField {
 				label: "Choice text",
 				placeholder: "An answer option",
+				required,
 				max_length: 200,
 				class: "form-control",
 			},
@@ -1012,7 +1107,7 @@ pub fn choice_new(question_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
 			}
@@ -1096,7 +1191,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
 			}
@@ -1178,7 +1273,7 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mt-3",
-						{ error_signal.get().unwrap_or_default() }
+						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
 			}
