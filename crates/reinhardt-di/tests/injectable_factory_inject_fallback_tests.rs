@@ -9,9 +9,17 @@
 //! `Depends::<T>::resolve`, which performs the registry-first +
 //! `T::inject` fallback used by `#[server_fn]` / `#[routes]`.
 //!
-//! Each test exercises both `#[inject] x: T` and `#[inject] x: Depends<T>`
-//! against an unregistered manually-Injectable type so the regression
-//! cannot reappear on either codegen path.
+//! The tests cover both `#[inject] x: T` and `#[inject] x: Depends<T>`:
+//!
+//! - **Variant 1** uses a manually-Injectable type that is *not* registered,
+//!   so the only way it can resolve is through the new `Injectable::inject`
+//!   fallback baked into the macro's non-`Depends` branch.
+//! - **Variant 2** uses a *factory-only* type with **no** `impl Injectable`,
+//!   registered via the global registry. This is both a runtime guard
+//!   (only `resolve_from_registry` can satisfy it) and a compile-time guard:
+//!   if the macro accidentally switches the `Depends<T>` branch to
+//!   `Depends::resolve` (which would add a `T: Injectable` bound), the
+//!   Variant 2 fixture stops compiling.
 
 #![cfg(all(feature = "macros", feature = "testing"))]
 
@@ -77,35 +85,35 @@ async fn factory_resolves_non_depends_manual_injectable_via_inject_fallback() {
 	assert_eq!(*derived, DerivedUser { user_id: 7 });
 }
 
-/// Variant 2: `Depends<T>` form. Keeps the `resolve_from_registry` path
-/// intact for factory-only types (no `Injectable` impl) while still
-/// covering the manual-Injectable case via the registry's cache hit on
-/// the second resolve. We register the manual type into the local
-/// registry view (still no `#[injectable]` macro) so the assertion is
-/// honest about which path runs.
+/// Variant 2: `Depends<T>` form against a *factory-only* type — i.e. one
+/// that deliberately has **no** `impl Injectable`. This is the regression
+/// guard the previous revision lacked: if the macro ever switches the
+/// `Depends<T>` branch back to `Depends::resolve` (which requires
+/// `T: Injectable`), `paged_request_factory` below stops compiling.
+///
+/// At the same time, the only DI surface available for `FactoryOnlyConfig`
+/// is the registry, so the runtime path exercised here is unambiguously
+/// `Depends::resolve_from_registry` — exactly the path used by
+/// factory-produced types (see
+/// `tests/integration/tests/di/ui/pass/factory_depends_in_server_fn.rs`).
 #[derive(Clone, Debug, PartialEq)]
-struct ManualClock {
-	now_ms: u64,
+struct FactoryOnlyConfig {
+	page_size: u32,
 }
 
-#[async_trait]
-impl Injectable for ManualClock {
-	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
-		Ok(ManualClock {
-			now_ms: 1_700_000_000_000,
-		})
-	}
-}
+// NOTE: no `impl Injectable for FactoryOnlyConfig` on purpose. See doc above.
 
 #[derive(Clone, Debug, PartialEq)]
-struct StampedRequest {
-	at_ms: u64,
+struct PagedRequest {
+	page_size: u32,
 }
 
 #[injectable_factory(scope = "transient")]
-async fn stamped_request_factory(#[inject] clock: Depends<ManualClock>) -> StampedRequest {
-	StampedRequest {
-		at_ms: clock.now_ms,
+async fn paged_request_factory(
+	#[inject] config: Depends<FactoryOnlyConfig>,
+) -> PagedRequest {
+	PagedRequest {
+		page_size: config.page_size,
 	}
 }
 
@@ -113,22 +121,24 @@ async fn stamped_request_factory(#[inject] clock: Depends<ManualClock>) -> Stamp
 #[serial(di_registry)]
 #[tokio::test]
 async fn factory_with_depends_factory_only_type_still_uses_registry_only_path() {
-	// Arrange — register a factory for ManualClock so resolve_from_registry hits
+	// Arrange — `FactoryOnlyConfig` has no `Injectable` impl, so the only
+	// way `Depends<FactoryOnlyConfig>` can resolve is via the registry.
+	// Register a factory for it so `resolve_from_registry` succeeds.
 	let registry = global_registry();
-	let _guard = registry.register_override::<ManualClock, _, _>(
+	let _guard = registry.register_override::<FactoryOnlyConfig, _, _>(
 		reinhardt_di::DependencyScope::Transient,
-		|_ctx| async { Ok(ManualClock { now_ms: 42 }) },
+		|_ctx| async { Ok(FactoryOnlyConfig { page_size: 25 }) },
 	);
 	let scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(scope).build();
 
 	// Act
-	let stamped = ctx
-		.resolve::<StampedRequest>()
+	let paged = ctx
+		.resolve::<PagedRequest>()
 		.await
 		.expect("Depends<T> factory parameter must resolve via the registry");
 
-	// Assert — value comes from the overridden factory, not from
-	// `ManualClock::inject` (which would yield `1_700_000_000_000`).
-	assert_eq!(*stamped, StampedRequest { at_ms: 42 });
+	// Assert — value comes from the registry override (the only DI path
+	// available for `FactoryOnlyConfig`).
+	assert_eq!(*paged, PagedRequest { page_size: 25 });
 }

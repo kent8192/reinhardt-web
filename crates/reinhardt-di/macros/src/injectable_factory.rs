@@ -100,11 +100,12 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 					let #pat: #ty = #di_crate::Depends::<#inner_ty>::resolve_from_registry(&*ctx, true).await?;
 				}
 			} else {
+				// `Depends::into_inner` consumes the `Depends<T>`, tries
+				// `Arc::try_unwrap`, and falls back to `(*arc).clone()` only when
+				// the Arc is still shared. This avoids an unconditional clone in
+				// the common single-owner path (factory body is the sole holder).
 				quote! {
-					let #pat: #ty = {
-						let __dep = #di_crate::Depends::<#ty>::resolve(&*ctx, true).await?;
-						(*__dep).clone()
-					};
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&*ctx, true).await?.into_inner();
 				}
 			}
 		})
