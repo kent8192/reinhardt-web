@@ -1270,7 +1270,6 @@ fn generate_server_handler(
 			impl #pages_crate::server_fn::MockableServerFn for marker {
 				type Args = Args;
 				type Response = #response_type;
-				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 			}
 		}
 	} else {
@@ -1317,13 +1316,16 @@ fn generate_server_handler(
 					#(pub #regular_param_names: #regular_param_types),*
 				}
 
-				impl #pages_crate::server_fn::MockableServerFn for marker {
-					type Args = Args;
-					type Response = #response_type;
+				impl #pages_crate::server_fn::ServerFnMetadata for marker {
 					const PATH: &'static str = #endpoint;
 					const NAME: &'static str = #name_str;
 					const CODEC: &'static str = #codec;
-					const INJECTED_PARAMS: &'static [&'static str] = &[];
+					const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+				}
+
+				impl #pages_crate::server_fn::MockableServerFn for marker {
+					type Args = Args;
+					type Response = #response_type;
 				}
 			}
 		}
@@ -1441,12 +1443,20 @@ fn generate_server_handler(
 			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`)")]
 			pub struct marker;
 
-			// Implement ServerFnRegistration for explicit router registration
-			impl #pages_crate::server_fn::ServerFnRegistration for marker {
+			// Cross-target metadata. ServerFnMetadata lives in reinhardt-pages
+			// and is available on both native and wasm — the constants below
+			// are inherited by ServerFnRegistration (native) and
+			// MockableServerFn (msw) via supertrait, keeping a single source
+			// of truth for PATH / NAME / CODEC across targets.
+			impl #pages_crate::server_fn::ServerFnMetadata for marker {
 				const PATH: &'static str = #endpoint;
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
+				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+			}
 
+			// Native-only handler entry point for explicit router registration.
+			impl #pages_crate::server_fn::ServerFnRegistration for marker {
 				fn handler() -> #pages_crate::server_fn::ServerFnHandler {
 					super::#static_wrapper_name
 				}
