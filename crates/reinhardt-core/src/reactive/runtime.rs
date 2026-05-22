@@ -232,6 +232,23 @@ impl Runtime {
 	/// This schedules all subscribers (Effects/Memos that depend on this Signal) for re-execution.
 	/// Layout effects are executed synchronously, while passive effects are scheduled asynchronously.
 	///
+	/// # PR5 / Issue #4195 — explicit-deps gating
+	///
+	/// Subscribers created via the React-parity `use_effect` / `use_memo`
+	/// hooks (spec §4.2) record a [`Deps`](super::deps::Deps) snapshot at
+	/// construction. This method consults that snapshot before scheduling:
+	///
+	/// - **Mount-only (`Deps::is_empty()`)**: never re-scheduled.
+	/// - **Listed dep (`deps.ids().contains(firing_id)`)**: scheduled.
+	/// - **Unlisted dep**: skipped — even though the closure read the signal
+	///   (which registered the subscription), the React-parity contract is
+	///   to ignore unlisted reads.
+	///
+	/// Legacy subscribers (the `Effect::new` / `Memo::new` auto-tracking
+	/// path that pre-dates PR5) have no snapshot and continue to fire on
+	/// every notify — that preserves backward compatibility for
+	/// `reinhardt-core`'s own internal users.
+	///
 	/// # Arguments
 	///
 	/// * `signal_id` - ID of the Signal that changed
@@ -242,7 +259,14 @@ impl Runtime {
 			let mut layout_effects = Vec::new();
 			let mut passive_effects = Vec::new();
 
+			let firing_id_u64 = signal_id.as_u64();
+
 			for &subscriber_id in &node.subscribers {
+				// PR5: gate on explicit deps snapshot if present.
+				if !should_notify_subscriber(subscriber_id, firing_id_u64) {
+					continue;
+				}
+
 				// Check if this is an effect and get its timing
 				if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
 					match timing {
@@ -442,6 +466,34 @@ where
 	F: FnOnce(&Runtime) -> R,
 {
 	RUNTIME.try_with(f).ok()
+}
+
+/// PR5 / Issue #4195 — decide whether a subscriber should be notified that
+/// `firing_id` fired, based on the subscriber's explicit deps snapshot.
+///
+/// Returns `true` iff:
+///
+/// - The subscriber has no deps snapshot (legacy auto-tracking effects /
+///   memos created via `Effect::new` / `Memo::new`).
+/// - OR the subscriber's snapshot contains `firing_id`.
+///
+/// Returns `false` for:
+///
+/// - Mount-only (`Deps::is_empty()`) subscribers — they never re-fire after
+///   the initial construction run.
+/// - Subscribers whose deps tuple does NOT contain `firing_id` — even if
+///   the closure read that signal (it became a graph edge via auto-tracking
+///   when the closure called `signal.get()`), the React-parity contract is
+///   to ignore unlisted reads.
+fn should_notify_subscriber(subscriber_id: NodeId, firing_id: u64) -> bool {
+	if let Some(deps) = super::effect::get_effect_deps(subscriber_id) {
+		return !deps.is_empty() && deps.ids().contains(&firing_id);
+	}
+	if let Some(deps) = super::memo::get_memo_deps(subscriber_id) {
+		return !deps.is_empty() && deps.ids().contains(&firing_id);
+	}
+	// Legacy subscribers without explicit deps fire on every change.
+	true
 }
 
 #[cfg(test)]
