@@ -248,6 +248,14 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// outer `div` + single `watch{}` block + the `Action<..>` signal and
 	// the route id flow into `page!` as typed parameters. The voting form
 	// is captured by the watch closure's implicit `move`.
+	//
+	// The `load_detail_signal.result().is_some()` branch renders either the
+	// voting form or an empty-state message, depending on whether the
+	// question has any choices yet (reinhardt-web#4686). The previous
+	// unconditional render of `voting_form` produced an empty
+	// `RadioSelect` group for choiceless questions, so any submit emitted
+	// `choice_id=""` and `submit_vote` rejected the request with the
+	// runtime `Invalid choice_id` application error.
 	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
 		div {
 			watch {
@@ -281,18 +289,17 @@ pub fn polls_detail(question_id: i64) -> Page {
 							"Back to Polls"
 						}
 					}
-				} else if load_detail_signal.result().is_some() {
+				} else if let Some((ref q, ref choices)) = load_detail_signal.result() {
+					// Bind the result once: `Action::result()` clones the
+					// underlying `(QuestionInfo, Vec<ChoiceInfo>)` on every
+					// call, so reusing `q`/`choices` here avoids redundant
+					// allocations on each reactive render.
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "flex justify-between items-center mb-4",
 							h1 {
-								{
-									load_detail_signal
-											.result()
-											.map(|(q, _)| q.question_text.clone())
-											.unwrap_or_default()
-								}
+								{ q.question_text.clone() }
 							}
 							div {
 								class: "flex gap-2",
@@ -313,7 +320,14 @@ pub fn polls_detail(question_id: i64) -> Page {
 								}
 							}
 						}
-						{ voting_form.clone().into_page() }
+						if !choices.is_empty() {
+							{ voting_form.clone().into_page() }
+						} else {
+							div {
+								class: "alert-warning",
+								"This question has no choices yet. Add one below to start voting."
+							}
+						}
 						div {
 							class: "mt-4",
 							a {
