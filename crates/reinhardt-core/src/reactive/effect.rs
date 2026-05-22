@@ -237,6 +237,21 @@ impl Effect {
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
+		Self::new_with_deps_internal(f, deps, EffectTiming::Passive)
+	}
+
+	/// Internal helper: constructs an Effect with deps and a specified timing,
+	/// inserting the timing entry *before* the initial execution so the first
+	/// run respects the requested timing.
+	fn new_with_deps_internal<F, C>(
+		mut f: F,
+		deps: super::deps::Deps,
+		timing: EffectTiming,
+	) -> Self
+	where
+		F: FnMut() -> Option<C> + 'static,
+		C: FnOnce() + 'static,
+	{
 		let id = NodeId::new();
 		let disposed = Rc::new(RefCell::new(false));
 		let cleanup_slot: Rc<RefCell<Option<Box<dyn FnOnce()>>>> = Rc::new(RefCell::new(None));
@@ -272,9 +287,10 @@ impl Effect {
 			storage.borrow_mut().insert(id, Box::new(wrapped));
 		});
 
-		// Default timing: Passive. Use `new_with_deps_and_timing` for Layout.
+		// Insert timing *before* initial execution so the first
+		// `execute_effect` dispatches with the requested timing.
 		EFFECT_TIMING.with(|storage| {
-			storage.borrow_mut().insert(id, EffectTiming::Passive);
+			storage.borrow_mut().insert(id, timing);
 		});
 
 		// Initial run.
@@ -302,14 +318,7 @@ impl Effect {
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
-		// new_with_deps defaults to Passive. After construction, overwrite
-		// the timing entry so the initial execute_effect dispatches correctly
-		// on subsequent runs.
-		let eff = Self::new_with_deps(f, deps);
-		EFFECT_TIMING.with(|storage| {
-			storage.borrow_mut().insert(eff.id, timing);
-		});
-		eff
+		Self::new_with_deps_internal(f, deps, timing)
 	}
 
 	/// Execute an effect by its ID
