@@ -814,7 +814,7 @@ docs(readme): add installation instructions
 - Address all review comments
 - Ensure all CI checks pass before merge
 - Use three-dot diff (`main...branch`) for PR verification to exclude merge history noise
-- Convert Draft PRs to Ready for Review autonomously once PC-4a readiness criteria are satisfied, OR upon explicit user instruction
+- **MUST** convert Draft PRs to Ready for Review **immediately** once the implementation is complete (CI completion is NOT required), OR upon explicit user instruction (see § PC-4a)
 
 ### ❌ NEVER DO
 - Write PR titles or descriptions in non-English languages
@@ -827,7 +827,8 @@ docs(readme): add installation instructions
 - Force push after review has started (unless explicitly requested)
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
 - Use two-dot diff (`main..branch`) for PR verification (includes merge history noise)
-- Convert Draft PRs to Ready for Review while PC-4a readiness criteria are unmet (incomplete implementation, failing CI/tests, dirty fmt/clippy) without explicit user override
+- Convert Draft PRs to Ready for Review while the implementation is incomplete (`todo!()` or `// TODO:` introduced by the PR still present), without explicit user override
+- Leave a PR in Draft state after the implementation is complete (MUST convert to Ready for Review immediately; CI completion is NOT a prerequisite)
 
 ---
 
