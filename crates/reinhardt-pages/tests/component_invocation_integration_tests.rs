@@ -85,3 +85,38 @@ fn brace_invocation_with_multiple_children() {
 		"render output should contain `outer`, `one`, and `two`, got: {s}"
 	);
 }
+
+#[rstest]
+fn nested_component_inside_for_loop() {
+	// Spec §3.5.4: page!-in-page! nesting via brace-form components inside a
+	// `for` loop. Each loop iteration invokes a component whose body itself
+	// is a `page!` macro.
+	//
+	// NOTE: this test depends on PR1 (#4527 — auto-wrap behavior for `for`
+	// loop bodies). If PR1 has not yet merged into develop/0.2.0, the test
+	// may fail at compile or assert time; this is documented in the PR body
+	// and will go green once PR #4727 lands.
+
+	#[derive(bon::Builder)]
+	struct ItemCardProps {
+		title: String,
+	}
+
+	fn item_card(p: ItemCardProps) -> Page {
+		page!(|p: ItemCardProps| { article { h2 { {p.title.clone()} } } })(p)
+	}
+
+	let titles = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+	let v = page!(|titles: Vec<String>| {
+		div {
+			for t in titles.iter() {
+				ItemCard { title: t.clone() }
+			}
+		}
+	})(titles);
+
+	let s = format!("{v:?}");
+	for t in ["a", "b", "c"] {
+		assert!(s.contains(t), "missing {t} in render output: {s}");
+	}
+}
