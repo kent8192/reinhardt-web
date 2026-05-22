@@ -104,7 +104,7 @@ pub fn polls_index() -> Page {
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ load_questions_error.error().unwrap_or_default() }
+						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
 					}
 				}
 			}
@@ -417,6 +417,11 @@ pub fn polls_detail(question_id: i64) -> Page {
 ///
 /// Displays the question with vote counts for each choice.
 /// Uses watch blocks for reactive UI updates when async data loads.
+///
+/// Owner-only controls (Edit / Delete) mirror [`polls_detail`]: the viewer
+/// is resolved via `current_user`, and the links only render when the
+/// viewer is the question's author (issue #4703). Server-side
+/// `require_question_author` checks remain in place as defense in depth.
 pub fn polls_results(question_id: i64) -> Page {
 	let load_results =
 		use_action(
@@ -424,9 +429,14 @@ pub fn polls_results(question_id: i64) -> Page {
 		);
 	load_results.dispatch(question_id);
 
-	let load_results_signal = load_results.clone();
+	let load_current_user =
+		use_action(|_: ()| async move { current_user().await.map_err(|e| e.to_string()) });
+	load_current_user.dispatch(());
 
-	page!(|load_results_signal: Action<(QuestionInfo, Vec<ChoiceInfo>, i32), String>, question_id: i64| {
+	let load_results_signal = load_results.clone();
+	let load_current_user_signal = load_current_user.clone();
+
+	page!(|load_results_signal: Action<(QuestionInfo, Vec<ChoiceInfo>, i32), String>, load_current_user_signal: Action<Option<UserInfo>, String>, question_id: i64| {
 		div {
 			watch {
 				if load_results_signal.is_pending() {
@@ -446,7 +456,7 @@ pub fn polls_results(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ load_results_signal.error().unwrap_or_default() }
+							{ format_server_error(&load_results_signal.error().unwrap_or_default()) }
 						}
 						a {
 							href: links::index(),
@@ -455,6 +465,20 @@ pub fn polls_results(question_id: i64) -> Page {
 						}
 					}
 				} else if load_results_signal.result().is_some() {
+					// Owner-only controls (Edit / Delete) are hidden for
+					// non-authors and unauthenticated viewers (issue #4703).
+					// `current_user` returns `Ok(None)` when no session user
+					// is present; any non-`Some(Some(u))` shape (pending,
+					// error, or unauthenticated) leaves `is_author` as
+					// `false`. Server-side `require_question_author` still
+					// rejects unauthorized mutations as defense in depth.
+					let is_author = match (
+						load_results_signal.result(),
+						load_current_user_signal.result(),
+					) {
+						(Some((ref q, _, _)), Some(Some(ref u))) => u.id == q.author_id,
+						_ => false,
+					};
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						h1 {
@@ -547,15 +571,17 @@ pub fn polls_results(question_id: i64) -> Page {
 								class: "btn-primary",
 								"Vote Again"
 							}
-							a {
-								href: links::question_edit(question_id),
-								class: "btn-secondary",
-								"Edit question"
-							}
-							a {
-								href: links::question_delete(question_id),
-								class: "btn-danger",
-								"Delete question"
+							if is_author {
+								a {
+									href: links::question_edit(question_id),
+									class: "btn-secondary",
+									"Edit question"
+								}
+								a {
+									href: links::question_delete(question_id),
+									class: "btn-danger",
+									"Delete question"
+								}
 							}
 							a {
 								href: links::index(),
@@ -580,7 +606,7 @@ pub fn polls_results(question_id: i64) -> Page {
 				}
 			}
 		}
-	})(load_results_signal, question_id)
+	})(load_results_signal, load_current_user_signal, question_id)
 }
 
 /// Example component demonstrating static URL resolution
@@ -615,7 +641,7 @@ pub fn polls_index_with_logo() -> Page {
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ load_questions_error.error().unwrap_or_default() }
+						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
 					}
 				}
 			}
@@ -865,7 +891,7 @@ pub fn question_edit(question_id: i64) -> Page {
 						if edit_form.error().get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ edit_form.error().get().unwrap_or_default() }
+								{ format_server_error(&edit_form.error().get().unwrap_or_default()) }
 							}
 						}
 						{ edit_form.clone().into_page() }
