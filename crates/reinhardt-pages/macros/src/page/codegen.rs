@@ -476,6 +476,13 @@ fn generate_event(event: &PageEvent, pages_crate: &TokenStream) -> TokenStream {
 /// are routed through `generate_node` so they pick up the
 /// `Page::reactive(move || ...)` wrap. Text and bare literals stay
 /// uninstrumented for performance.
+///
+/// Note: passing pre-built non-`Clone` `Page` values as `page!` parameters
+/// and then re-emitting them via `{ value }` will fail to compile under
+/// this rule because the inner `Page::reactive` closure must be `Fn` and
+/// `IntoPage::into_page` consumes the value. Compose such values inline
+/// from their underlying data (or pass them in via a `Clone`able wrapper
+/// once Page-Clone lands) instead.
 fn generate_child(node: &TypedPageNode, pages_crate: &TokenStream) -> TokenStream {
 	match node {
 		TypedPageNode::Text(text) => {
@@ -497,10 +504,18 @@ fn generate_text(text: &PageText, pages_crate: &TokenStream) -> TokenStream {
 }
 
 /// Generates code for an expression node.
+///
+/// The expression is cloned before conversion so the enclosing
+/// `Page::reactive(move || ...)` (spec §4.1 auto-wrap) remains `Fn` even
+/// when the captured value would otherwise be consumed by
+/// `IntoPage::into_page`. `Page` is `Clone` (cheap, Arc-backed), so this
+/// is a constant-time clone for the common case. For values that already
+/// borrow (e.g. `count.get()` returning `i32`), the redundant `.clone()`
+/// on the owned result is a no-op.
 fn generate_expression(expr: &PageExpression, pages_crate: &TokenStream) -> TokenStream {
 	let e = &expr.expr;
 	quote! {
-		#pages_crate::component::IntoPage::into_page(#e)
+		#pages_crate::component::IntoPage::into_page((#e).clone())
 	}
 }
 
