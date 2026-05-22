@@ -99,7 +99,7 @@ fn replace_derive_default_with_bon_builder(attrs: &mut Vec<syn::Attribute>) {
 			});
 		}
 	}
-	if !derives.iter().any(|p| p.is_ident("bon::Builder")) {
+	if !derives.iter().any(is_bon_builder_path) {
 		derives.push(syn::parse_quote!(bon::Builder));
 	}
 
@@ -117,6 +117,12 @@ fn replace_derive_default_with_bon_builder(attrs: &mut Vec<syn::Attribute>) {
 	new_attrs.insert(insert_pos, syn::parse_quote!(#[derive(#(#derives),*)]));
 
 	*attrs = new_attrs;
+}
+
+fn is_bon_builder_path(p: &syn::Path) -> bool {
+	p.segments.len() == 2
+		&& p.segments[0].ident == "bon"
+		&& p.segments[1].ident == "Builder"
 }
 
 fn is_option_type(ty: &syn::Type) -> bool {
