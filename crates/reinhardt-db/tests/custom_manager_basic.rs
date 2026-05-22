@@ -172,9 +172,11 @@ fn blanket_impl_delegates_filter_to_manager_inherent() {
 	// Act
 	let qs = CustomManager::filter(
 		&manager,
-		"title",
-		FilterOperator::Eq,
-		FilterValue::String("rust".into()),
+		Filter::new(
+			"title",
+			FilterOperator::Eq,
+			FilterValue::String("rust".into()),
+		),
 	);
 
 	// Assert
@@ -445,11 +447,11 @@ fn delete_queryset_sql_via_trait_matches_inherent_method() {
 fn update_queryset_sql_via_trait_matches_inherent_method() {
 	// Arrange
 	let manager = Manager::<Article>::new();
-	let qs = manager.filter(
+	let qs = manager.filter(Filter::new(
 		"is_archived",
 		FilterOperator::Eq,
 		FilterValue::Boolean(false),
-	);
+	));
 	let updates: &[(&str, &str)] = &[("title", "renamed")];
 
 	// Act
