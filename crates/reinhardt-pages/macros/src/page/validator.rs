@@ -232,6 +232,90 @@ impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
 		visit::visit_expr_let(self, l);
 		self.checker.locals_stack.pop();
 	}
+
+	fn visit_expr_if(&mut self, i: &'ast syn::ExprIf) {
+		// Handle `if let pat = expr { body }`: pattern bindings introduced by
+		// the let-condition are in scope for the then-branch (and any
+		// `else if let` chain).
+		if let syn::Expr::Let(let_expr) = &*i.cond {
+			let mut locals = HashSet::new();
+			collect_pat_idents(&let_expr.pat, &mut locals);
+			// First visit the RHS expr without the new locals — they are
+			// not in scope for the matched expression.
+			self.visit_expr(&let_expr.expr);
+			// Now push locals and visit the then-branch in their scope.
+			self.checker.locals_stack.push(locals);
+			self.visit_block(&i.then_branch);
+			self.checker.locals_stack.pop();
+			// Else branch: locals are NOT in scope.
+			if let Some((_, else_branch)) = &i.else_branch {
+				self.visit_expr(else_branch);
+			}
+		} else {
+			// Plain `if cond { ... }`
+			visit::visit_expr_if(self, i);
+		}
+	}
+
+	fn visit_arm(&mut self, a: &'ast syn::Arm) {
+		// `match expr { pat => body }`: pat bindings are in scope for body.
+		let mut locals = HashSet::new();
+		collect_pat_idents(&a.pat, &mut locals);
+		self.checker.locals_stack.push(locals);
+		if let Some((_, guard)) = &a.guard {
+			self.visit_expr(guard);
+		}
+		self.visit_expr(&a.body);
+		self.checker.locals_stack.pop();
+	}
+
+	fn visit_expr_for_loop(&mut self, f: &'ast syn::ExprForLoop) {
+		// `for pat in iter { body }`: pat bindings are in scope for body.
+		self.visit_expr(&f.expr);
+		let mut locals = HashSet::new();
+		collect_pat_idents(&f.pat, &mut locals);
+		self.checker.locals_stack.push(locals);
+		self.visit_block(&f.body);
+		self.checker.locals_stack.pop();
+	}
+
+	fn visit_block(&mut self, b: &'ast syn::Block) {
+		// Walk statements in order so each `let pat = ...;` extends scope
+		// from the next statement onward. Track how many locals scopes we
+		// pushed so we can pop them all at block end.
+		let mut pushed = 0_usize;
+		for stmt in &b.stmts {
+			match stmt {
+				syn::Stmt::Local(local) => {
+					// First visit the RHS (locals not yet in scope).
+					if let Some(init) = &local.init {
+						self.visit_expr(&init.expr);
+						if let Some((_, diverge)) = &init.diverge {
+							self.visit_expr(diverge);
+						}
+					}
+					// Then push the new bindings for subsequent stmts.
+					let mut locals = HashSet::new();
+					collect_pat_idents(&local.pat, &mut locals);
+					self.checker.locals_stack.push(locals);
+					pushed += 1;
+				}
+				syn::Stmt::Item(_) => {
+					// Items (fn, use, mod, etc.) don't introduce value
+					// bindings that we track.
+				}
+				syn::Stmt::Expr(e, _) => {
+					self.visit_expr(e);
+				}
+				syn::Stmt::Macro(m) => {
+					visit::visit_stmt_macro(self, m);
+				}
+			}
+		}
+		for _ in 0..pushed {
+			self.checker.locals_stack.pop();
+		}
+	}
 }
 
 /// Classifies an identifier as a value binding per spec §3.7.
@@ -420,6 +504,11 @@ fn transform_for(
 }
 
 /// Transforms a PageWatch node.
+///
+/// Currently unused: the validator's `transform_node` rejects watch blocks
+/// outright (Task 11 / spec §4.1 removal). Retained as a thin scaffold so
+/// the future PR3 codemod can re-use it if a deprecation window is added.
+#[allow(dead_code)] // Task 11: watch is rejected before this is reached.
 fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<TypedPageWatch> {
 	let inner = transform_node(&watch_node.expr, parent_tags)?;
 
