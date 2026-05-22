@@ -285,7 +285,7 @@ where
 		Box::pin(async move {
 			// Query user by username
 			let user: Option<U> = U::objects()
-				.filter_by(Filter::new(
+				.filter(Filter::new(
 					"username",
 					FilterOperator::Eq,
 					FilterValue::String(username.clone()),
