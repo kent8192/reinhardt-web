@@ -61,8 +61,7 @@ polls_project/
 ├── settings/
 │   ├── base.toml              # always loaded
 │   ├── ci.toml                # loaded when REINHARDT_ENV=ci or CI is set
-│   ├── local.toml             # local development settings (tracked in version control)
-│   └── local.example.toml     # reference template for available settings
+│   └── local.toml             # local development settings (tracked in version control)
 ├── src/
 │   ├── lib.rs                 # Crate root; declares apps / config / shared / client modules with cfg gates
 │   ├── apps.rs                # pub mod polls; pub mod users;
@@ -125,7 +124,7 @@ Each generated file has a specific role. Walking top-down:
 - `Cargo.toml` — declares `crate-type = ["cdylib", "rlib"]` (cdylib for WASM, rlib for the server binary), `default-run = "manage"`, and an `[[bin]] manage` whose `required-features = ["with-reinhardt"]` keep tokio + reinhardt-commands out of the WASM build. It splits dependencies between two `[target.'cfg(...)'.dependencies]` blocks: the server side enables `reinhardt` with `full + pages + conf + commands + db-sqlite + forms + client-router + auth-session`, while the WASM side only enables `pages + client-router`. Two test targets are declared explicitly: `[[test]] name = "integration", required-features = ["with-reinhardt"]` (native) and `[[test]] name = "polls_mock_test", path = "tests/wasm/polls_mock_test.rs", required-features = ["msw"]` (WASM). The crate-local `[features]` block adds `with-reinhardt` (native gate), `client-router`, and `msw` (forwarded to the facade so `#[server_fn]` emits `MockableServerFn` markers).
 - `build.rs` — uses the `cfg_aliases` crate to register two custom cfgs: `wasm` = `all(target_family = "wasm", target_os = "unknown")` and `native` = its negation. You will see these throughout the source as `#[cfg(wasm)]` / `#[cfg(native)]`. The build script also auto-detects whether the parent directory is the `reinhardt-web` workspace (subtree development) versus a standalone checkout, and unconditionally emits `cargo:rustc-cfg=with_reinhardt` in both modes so the integration test target compiles either way.
 - `index.html` — the SPA shell. It loads UnoCSS from a CDN, defines a `#root` div that the launcher mounts into, and shows a `Loading…` spinner while the WASM bundle downloads.
-- `settings/` — TOML settings files. `base.toml` is always loaded; `{profile}.toml` (resolved from `REINHARDT_ENV`, or `ci` when the `CI` env var is set, or `local` otherwise) layers on top. `local.toml` contains local development settings (tracked in version control); `local.example.toml` serves as a reference template.
+- `settings/` — TOML settings files. `base.toml` is always loaded; `{profile}.toml` (resolved from `REINHARDT_ENV`, or `ci` when the `CI` env var is set, or `local` otherwise) layers on top. `local.toml` contains local development settings (tracked in version control).
 - `src/lib.rs` — the crate root. It declares `pub mod apps;`, `pub mod config;`, `pub mod shared;`, and `#[cfg(wasm)] pub mod client;`. Server-only re-exports (`async_trait`, the `reinhardt_apps` / `reinhardt_core` / `reinhardt_di::params` / `reinhardt_http` shims) are gated on `#[cfg(native)]`.
 - `src/bin/manage.rs` — the server-side binary. It sets `REINHARDT_SETTINGS_MODULE = "examples_tutorial_basis.config.settings"` (rename to your crate name in the generated tree) and calls `reinhardt::commands::execute_from_command_line()`. The WASM build still needs a `main` symbol for `bin` crate-types, so the file also defines an empty `fn main() {}` under `#[cfg(target_arch = "wasm32")]`.
 - `src/config/`
