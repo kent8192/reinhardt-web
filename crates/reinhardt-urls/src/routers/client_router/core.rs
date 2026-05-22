@@ -1028,11 +1028,9 @@ impl ClientRouter {
 		let path = self.current_path.get();
 
 		if let Some(route_match) = self.match_path(&path) {
-			let ctx = ParamContext::new(
-				route_match.params.clone(),
-				route_match.param_values.clone(),
-			)
-			.with_query(route_match.query.clone());
+			let ctx =
+				ParamContext::new(route_match.params.clone(), route_match.param_values.clone())
+					.with_query(route_match.query.clone());
 
 			match route_match.route.handler.handle(&ctx) {
 				Ok(view) => view,

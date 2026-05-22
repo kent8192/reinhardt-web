@@ -147,9 +147,18 @@ impl<T> PathParam<T> {
 	pub fn into_inner(self) -> T {
 		self.0
 	}
+}
 
-	/// Borrows the inner value.
-	pub fn as_ref(&self) -> &T {
+impl<T> AsRef<T> for PathParam<T> {
+	fn as_ref(&self) -> &T {
+		&self.0
+	}
+}
+
+impl<T> std::ops::Deref for PathParam<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
 		&self.0
 	}
 }
@@ -187,9 +196,18 @@ impl<T> QueryParam<T> {
 	pub fn into_inner(self) -> T {
 		self.0
 	}
+}
 
-	/// Borrows the inner value.
-	pub fn as_ref(&self) -> &T {
+impl<T> AsRef<T> for QueryParam<T> {
+	fn as_ref(&self) -> &T {
+		&self.0
+	}
+}
+
+impl<T> std::ops::Deref for QueryParam<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
 		&self.0
 	}
 }

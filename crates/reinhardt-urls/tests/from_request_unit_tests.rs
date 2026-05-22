@@ -90,11 +90,7 @@ fn path_param_returns_parse_error_on_invalid() {
 #[rstest]
 fn query_param_extracts_string() {
 	// Arrange
-	let ctx = RouteContext::new(
-		"/x".to_string(),
-		HashMap::new(),
-		"tab=settings".to_string(),
-	);
+	let ctx = RouteContext::new("/x".to_string(), HashMap::new(), "tab=settings".to_string());
 
 	// Act
 	let q: QueryParam<String> = QueryParam::extract(&ctx, "tab").unwrap();
