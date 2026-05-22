@@ -35,7 +35,7 @@ fn build_request(method: Method, uri: &str, content_type: Option<&str>, body: &s
 		.uri(uri)
 		.version(Version::HTTP_11)
 		.headers(headers)
-		.body(Bytes::from(body.to_string()))
+		.body(Bytes::copy_from_slice(body.as_bytes()))
 		.build()
 		.unwrap()
 }
