@@ -768,12 +768,16 @@ pub(crate) fn extract_url_params(path: &str) -> Vec<String> {
 	params
 }
 
-/// Generate URL resolver extension trait and per-endpoint resolver module tokens.
+/// Generate per-endpoint URL resolver metadata tokens.
 ///
-/// Each endpoint gets a uniquely named `__url_resolver_<fn_name>` module to avoid
-/// name collisions when multiple routes are declared in the same Rust module.
-/// The `#[url_patterns]` macro references these modules by deriving the module name
-/// from the last segment of the endpoint path.
+/// Each endpoint gets a uniquely named `__url_resolver_<fn_name>` module that
+/// contains a metadata macro consumed by `#[url_patterns]`'s
+/// `__for_each_url_resolver!` / `__build_namespaced_resolvers!` machinery.
+/// The `#[url_patterns]` macro references these modules by deriving the module
+/// name from the last segment of the endpoint path.
+///
+/// The legacy per-route resolver trait surface was removed (refs #4520); only
+/// the metadata macro/module remains.
 ///
 /// Returns empty tokens if:
 /// - No route name is set
@@ -1216,5 +1220,19 @@ mod url_resolver_tests {
 	#[test]
 	fn extract_path_params_wildcard_skipped() {
 		assert_eq!(extract_url_params("/static/{*}"), Vec::<String>::new());
+	}
+
+	#[test]
+	fn resolver_trait_name_format() {
+		assert_eq!(to_resolver_trait_name("auth_login"), "ResolveAuthLogin");
+		assert_eq!(
+			to_resolver_trait_name("cluster_retrieve"),
+			"ResolveClusterRetrieve"
+		);
+		assert_eq!(to_resolver_trait_name("home"), "ResolveHome");
+		assert_eq!(
+			to_resolver_trait_name("deployment_logs"),
+			"ResolveDeploymentLogs"
+		);
 	}
 }

@@ -11,10 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### BREAKING CHANGES
 
-All public APIs deprecated during the `0.1.0-rc.*` cycle have been
-removed per STABILITY_POLICY § SP-4 ("APIs deprecated during RC MUST
-survive until the next major version"). Refs umbrella Issue
-[#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+All `reinhardt-core` public APIs deprecated during the `0.1.0-rc.*`
+cycle have been removed per STABILITY_POLICY § SP-4 ("APIs deprecated
+during RC MUST survive until the next major version"). Refs umbrella
+Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
 
 `reinhardt-core` removals (8 macro-emitted items):
 

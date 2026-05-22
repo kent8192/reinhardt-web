@@ -949,9 +949,10 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						);
 
 						quote! {
-							/// Per-app client URL resolver.
+							/// Per-app client URL resolver for the `#app_str` app.
 							///
-							/// Access via `ResolvedUrls::#accessor_method()`.
+							/// Access via the namespaced client gateway
+							/// (`ResolvedUrls` → `<App>ClientUrls`).
 							pub struct #client_urls_struct<'a> {
 								resolver: &'a ResolvedUrls,
 							}
