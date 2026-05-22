@@ -10,6 +10,24 @@
 //! 3. **Element Nesting**: Void elements cannot have children, interactive elements cannot nest
 //! 4. **Required Attributes**: img elements must have alt attributes (accessibility)
 //! 5. **Attribute Types**: Certain attributes must be specific types (e.g., img src must be string literal)
+//!
+//! ## Component invocation (spec §3.5.1)
+//!
+//! A component is any Rust function matching
+//! `fn <name>(props: <NameProps>) -> Page` where `<NameProps>` derives
+//! `bon::Builder`. The validator does **not** type-check this signature —
+//! instead, codegen emits a builder chain that relies on standard Rust
+//! type inference / dispatch to surface mismatches at compile time
+//! (DP #4 Fail early via E0061 / E0277).
+//!
+//! Both invocation forms reach this validator:
+//!
+//! - Paren form `Component(arg: val)` (legacy, codegen → positional call)
+//! - Brace form `Component { prop: val, @event: h, child { ... } }`
+//!   (spec §3.5, codegen → `bon::Builder` chain on `<Name>Props`)
+//!
+//! The parser sets `PageComponent::invocation_form` to record which form
+//! was used; codegen branches on that field.
 
 use proc_macro2::Span;
 use syn::{Expr, Result};
@@ -196,7 +214,9 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 
 	Ok(TypedPageComponent {
 		name: comp.name.clone(),
+		invocation_form: comp.invocation_form,
 		args: comp.args.clone(),
+		events: comp.events.clone(),
 		children: typed_children,
 		span: comp.span,
 	})
