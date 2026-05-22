@@ -13,7 +13,7 @@
 - Understand that Plan Mode approval authorizes both implementation and commits
 - Treat the Autonomous Operation Policy (Reinhardt family) as a standing exception that allows commit and push on any non-protected branch (anything other than `main`/`master`/`develop/*`/`release/*`), Draft PR creation, Draft→Ready conversion (implementation-complete only — no CI requirement), and Issue creation without further confirmation
 - When editing `CLAUDE.md` or `AGENTS.md`, mirror the change into the other file in the same commit (sync policy)
-- Convert Draft PRs to Ready for Review autonomously once the implementation is complete (CI completion is NOT required under the Autonomous Operation Policy) OR upon explicit user instruction (see instructions/PR_GUIDELINE.md § PC-4a)
+- **MUST** convert Draft PRs to Ready for Review **immediately** once the implementation is complete (CI completion is NOT required) — leaving a PR in Draft state after implementation completion is forbidden (see instructions/PR_GUIDELINE.md § PC-4a)
 - Mark placeholders with `todo!()` or `// TODO:`
 - Use `#[serial(group_name)]` for global state tests
 - Split commits by specific intent, not features
@@ -62,7 +62,6 @@
 - Use `issue-XXXX-to-YYYY` for consecutive issue ranges and `and` for multiple ranges in branch names
 - Check known CI failure patterns before deep investigation
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
-- Run `cargo make semver-check` locally and post the output as a PR comment with the `<!-- local-semver-check -->` marker before converting Draft → Ready on any PR touching public API (see instructions/PR_GUIDELINE.md § RP-1a)
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
@@ -97,6 +96,7 @@
 - Create release tags or any PR with the `release` label without explicit user authorization
 - Commit a change that touches only `CLAUDE.md` or only `AGENTS.md` without mirroring it into the other
 - Convert Draft PRs to Ready for Review when implementation is incomplete, without explicit user override
+- Leave a PR in Draft state after the implementation is complete (MUST convert to Ready for Review immediately; the agent MUST NOT wait for CI completion)
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
 - Save files to project directory (use `/tmp`)
@@ -152,8 +152,6 @@
 - Create branches without checking for name conflicts
 - Use hyphens between issue numbers for ranges in branch names (use `to` and `and` instead)
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
-- Convert a Draft PR to Ready for Review on a PR touching public API without first running `cargo make semver-check` locally and posting the result to the PR with the `<!-- local-semver-check -->` marker
-- Create duplicate `<!-- local-semver-check -->` comments on re-runs (update the existing marked comment instead)
 - Merge develop/* branches into main without `migration-approved` label and CI version validation
 - Remove `agent-suspect` label without independent verification (separate agent or human)
 - Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
