@@ -7,6 +7,7 @@
 
 use smallvec::SmallVec;
 
+use super::memo::Memo;
 use super::runtime::NodeId;
 use super::signal::Signal;
 
@@ -73,6 +74,12 @@ impl<T: 'static> Trackable for Signal<T> {
 	}
 }
 
+impl<T: Clone + 'static> Trackable for Memo<T> {
+	fn node_id(&self) -> NodeId {
+		self.id()
+	}
+}
+
 macro_rules! impl_into_deps_for_tuple {
 	($($name:ident),+) => {
 		impl<$($name: Trackable),+> IntoDeps for ($($name,)+) {
@@ -106,6 +113,7 @@ mod tests {
 	use serial_test::serial;
 
 	use super::*;
+	use crate::reactive::memo::Memo;
 	use crate::reactive::signal::Signal;
 
 	#[rstest]
@@ -154,19 +162,60 @@ mod tests {
 	fn into_deps_arity_12_compiles_and_collects() {
 		// Arrange
 		let s = [
-			Signal::new(0_i32), Signal::new(1_i32), Signal::new(2_i32), Signal::new(3_i32),
-			Signal::new(4_i32), Signal::new(5_i32), Signal::new(6_i32), Signal::new(7_i32),
-			Signal::new(8_i32), Signal::new(9_i32), Signal::new(10_i32), Signal::new(11_i32),
+			Signal::new(0_i32),
+			Signal::new(1_i32),
+			Signal::new(2_i32),
+			Signal::new(3_i32),
+			Signal::new(4_i32),
+			Signal::new(5_i32),
+			Signal::new(6_i32),
+			Signal::new(7_i32),
+			Signal::new(8_i32),
+			Signal::new(9_i32),
+			Signal::new(10_i32),
+			Signal::new(11_i32),
 		];
 
 		// Act
 		let deps = (
-			s[0].clone(), s[1].clone(), s[2].clone(), s[3].clone(),
-			s[4].clone(), s[5].clone(), s[6].clone(), s[7].clone(),
-			s[8].clone(), s[9].clone(), s[10].clone(), s[11].clone(),
-		).into_deps();
+			s[0].clone(),
+			s[1].clone(),
+			s[2].clone(),
+			s[3].clone(),
+			s[4].clone(),
+			s[5].clone(),
+			s[6].clone(),
+			s[7].clone(),
+			s[8].clone(),
+			s[9].clone(),
+			s[10].clone(),
+			s[11].clone(),
+		)
+			.into_deps();
 
 		// Assert
 		assert_eq!(deps.as_slice().len(), 12);
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn into_deps_with_memo_collects_memo_node_id() {
+		// Arrange
+		let signal = Signal::new(2_i32);
+		let signal_clone = signal.clone();
+		let memo = Memo::new(move || signal_clone.get() * 10);
+		let memo_id = memo.id();
+
+		// Act
+		let deps = (memo,).into_deps();
+
+		// Assert
+		let slice = deps.as_slice();
+		assert_eq!(
+			slice.len(),
+			1,
+			"single-element tuple of Memo must yield one NodeId"
+		);
+		assert_eq!(slice[0], memo_id, "deps element must be Memo::id()");
 	}
 }
