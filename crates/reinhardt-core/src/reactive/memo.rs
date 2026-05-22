@@ -73,7 +73,7 @@ thread_local! {
 // a memo is marked dirty only when the firing signal's `signal_id()` is
 // present in its snapshot. Mount-only (`()`) memos never recompute.
 thread_local! {
-	static MEMO_DEPS: RefCell<BTreeMap<NodeId, Deps>> = RefCell::new(BTreeMap::new());
+	static MEMO_DEPS: RefCell<BTreeMap<NodeId, Deps>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 /// Returns the deps snapshot for a memo, if it was created with explicit deps.

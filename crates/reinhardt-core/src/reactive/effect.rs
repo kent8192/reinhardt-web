@@ -64,7 +64,7 @@ thread_local! {
 // re-runs — an effect only re-runs when the firing signal's `signal_id()` is
 // present in its snapshot. Mount-only (`()`) snapshots subscribe to nothing.
 thread_local! {
-	static EFFECT_DEPS: RefCell<BTreeMap<NodeId, Deps>> = RefCell::new(BTreeMap::new());
+	static EFFECT_DEPS: RefCell<BTreeMap<NodeId, Deps>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 /// Returns the deps snapshot for an effect, if it was created with explicit
