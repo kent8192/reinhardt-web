@@ -39,12 +39,7 @@ use std::collections::HashMap;
 /// subscription handle is opaque (`Box<dyn Any>`) because each backing
 /// router crate defines its own `NavigationSubscription` type.
 ///
-/// `as_any` is provided so the public deprecated
-/// [`crate::app::with_router`] helper can downcast a stored
-/// `Box<dyn SpaRouter>` back to the concrete `Router` it was built
-/// from. Calling `with_router` after the application used the new
-/// `router_client` path will panic — that is the documented contract
-/// for the deprecation cycle.
+/// `as_any` supports downcasting for diagnostic and test use.
 #[doc(hidden)]
 pub trait SpaRouter: 'static {
 	/// Reactive subscription to the current path.

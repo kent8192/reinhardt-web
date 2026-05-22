@@ -9,7 +9,7 @@
 //! - `/admin/{model}/{id}/change/` - Edit form
 
 // (Refs #4234) Migration to reinhardt_urls::routers::ClientRouter pending separate follow-up issue.
-// `reinhardt_pages::router::Router` is `#[deprecated]` since 0.1.0-rc.27; this module
+// `reinhardt_urls::routers::ClientRouter` is the canonical SPA router; this module
 // references it pervasively (struct, `Router::new()`, `Arc<Router>`, closure params),
 // so file-scope suppression is preferred over per-usage `#[allow(deprecated)]` attribute spam.
 use crate::pages::components::features::{

@@ -435,7 +435,7 @@ impl ClientLauncher {
 	/// mounted to the root element. The callback receives a [`LaunchCtx`]
 	/// with borrows of the `window`, `document`, and root element that
 	/// `launch()` already owns. The router is fully initialised at this
-	/// point, so [`with_router`](crate::app::with_router) is safe to call.
+	/// point, so [`with_spa_router`](crate::app::with_spa_router) is safe to call.
 	///
 	/// Multiple calls accumulate in registration order.
 	pub fn after_launch<F>(mut self, hook: F) -> Self

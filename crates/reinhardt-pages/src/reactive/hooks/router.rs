@@ -1,13 +1,9 @@
 //! Imperative router hook (`use_router`).
 //!
-//! Issue #4610: until now, the only way to navigate programmatically from a
-//! component or reactive context was to either (a) hard-code
-//! `web_sys::window().unwrap().location().set_href(...)` (which triggers a
-//! full document reload and defeats the SPA router), or (b) reach into the
-//! deprecated [`crate::with_router`] helper which is in a deprecation
-//! window. Neither shape composes with the canonical
-//! [`reinhardt_urls::routers::ClientRouter`] path that `ClientLauncher::router_client`
-//! installs.
+//! Issue #4610: provides a hook-based API for programmatic SPA navigation
+//! from components and reactive contexts, dispatching through the
+//! [`reinhardt_urls::routers::ClientRouter`] installed by
+//! `ClientLauncher::router_client`.
 //!
 //! `use_router()` returns a zero-sized [`RouterHandle`] that dispatches into
 //! whichever router builder the application picked, by re-entering the

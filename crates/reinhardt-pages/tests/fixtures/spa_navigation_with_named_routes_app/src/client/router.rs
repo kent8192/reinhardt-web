@@ -10,7 +10,7 @@
 //! read.
 //!
 //! [`init_router`] is invoked once by `super::lib::main` through
-//! `ClientLauncher::router`. From any component, call [`with_router`]
+//! `ClientLauncher::router_client`. From any component, call [`with_spa_router`]
 //! (re-exported from `reinhardt-pages`) to inspect routing state at
 //! render time.
 

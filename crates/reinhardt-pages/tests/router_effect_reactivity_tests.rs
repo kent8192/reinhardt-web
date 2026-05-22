@@ -65,7 +65,7 @@ fn test_effect_refires_on_direct_signal_access() {
 
 /// Variant 2 (repro): the Effect closure reads the path Signal *through*
 /// a thread-local `RefCell::borrow()` of a Router — the exact pattern
-/// `ClientLauncher::launch` uses via `with_router`. If Task 1 passes
+/// `ClientLauncher::launch` uses via `with_spa_router`. If Task 1 passes
 /// and this fails, H1 is confirmed: `Signal::get`'s `track_dependency`
 /// fails to register the parent Effect when invoked through the
 /// thread-local borrow.
