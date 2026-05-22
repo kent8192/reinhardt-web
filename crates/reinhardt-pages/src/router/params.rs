@@ -1,4 +1,16 @@
-//! Path parameter extraction for typed route handlers.
+//! Path parameter extraction for typed route handlers (REMOVED in 0.2.0).
+//!
+//! Deprecated since 0.1.0-rc.27 (refs #4234, cloud#578) and removed
+//! per Issue #4520. Use `reinhardt_urls::routers::Path`.
+
+#![cfg(any())]
+#![allow(deprecated)]
+
+#[doc(hidden)]
+#[allow(dead_code)]
+const _ORIGINAL_DOCSTRING_FOLLOWS: () = ();
+
+//! Original docstring follows:
 //!
 //! This module provides typed parameter extraction from URL paths,
 //! similar to backend's `Path<T>` extractor.

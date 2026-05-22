@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### BREAKING CHANGES
+
+**First of two PRs** removing reinhardt-pages's 16 RC-deprecated items per
+STABILITY_POLICY § SP-4 (umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)).
+This PR removes the 8 router-relocation items (relocated to
+`reinhardt_urls::routers` since `0.1.0-rc.27`); the remaining 8
+items (App struct, launcher legacy, use_reducer migration, MSW
+migration, CSRF auto-inject) require selective Edit and ship in
+the follow-up `feat(pages)!:` PR.
+
+Removed in this PR (8 items via `#![cfg(any())]` module gating):
+
+- **`src/router/core.rs`** (6 items, all deprecated `0.1.0-rc.27`,
+  refs #4234 / cloud#578) — `PathError`, `RouterError`,
+  `ClientRouteMatch` (RouteMatch), `ClientRoute` (Route),
+  `ClientRouter` (Router), `NavigationSubscription`. All relocated
+  to `reinhardt_urls::routers`.
+- **`src/router/pattern.rs`** (1 item, `0.1.0-rc.27`) — `ClientPathPattern`
+  (PathPattern). Use `reinhardt_urls::routers::ClientPathPattern`.
+- **`src/router/params.rs`** (1 item, `0.1.0-rc.27`) — `Path` extractor.
+  Use `reinhardt_urls::routers::Path`.
+
+The three `router/*` modules are gated with `#![cfg(any())]` so they
+no longer compile; this preserves git blame readability for one
+release. A subsequent cleanup PR can delete the files outright.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages` as part of the

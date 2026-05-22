@@ -1,9 +1,10 @@
-//! Path Pattern Matching for URL routing.
+//! Path Pattern Matching for URL routing (REMOVED in 0.2.0).
 //!
-//! This module provides Django-style path pattern matching compatible
-//! with reinhardt-urls patterns.
+//! Deprecated since 0.1.0-rc.27 (refs #4234, cloud#578) and removed
+//! per Issue #4520. Use `reinhardt_urls::routers::ClientPathPattern`.
 
-#![allow(deprecated)] // (Refs #4234) Internal references to deprecated routing types are intentional during the deprecation cycle.
+#![cfg(any())]
+#![allow(deprecated)]
 
 use std::collections::HashMap;
 

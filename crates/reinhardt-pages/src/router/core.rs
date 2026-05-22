@@ -1,8 +1,12 @@
-//! Core Router Implementation.
+//! Core Router Implementation (REMOVED in 0.2.0).
 //!
-//! This module provides the main Router struct and routing logic.
+//! Router types here (`PathError`, `RouterError`, `ClientRouteMatch`,
+//! `ClientRoute`, `ClientRouter`, `NavigationSubscription`) were
+//! deprecated since 0.1.0-rc.27 (refs #4234, cloud#578) and removed
+//! per Issue #4520. They are relocated to `reinhardt_urls::routers`.
 
-#![allow(deprecated)] // (Refs #4234) Internal references to deprecated routing types are intentional during the deprecation cycle.
+#![cfg(any())]
+#![allow(deprecated)]
 
 use super::handler::{RouteHandler, no_params_handler, result_handler, with_params_handler};
 #[cfg(wasm)]
