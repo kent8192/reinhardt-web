@@ -40,7 +40,7 @@ pub enum FakerType {
 	Password,
 	/// Domain name (e.g., "example.com")
 	DomainName,
-	/// URL (e.g., "https://example.com/page")
+	/// URL (e.g., `<https://example.com/page>`)
 	Url,
 
 	// Lorem types
