@@ -3011,8 +3011,8 @@ fn field_type_to_signal_type(
 		TypedFieldType::BooleanField => quote!(bool),
 
 		// Date / Time
-		TypedFieldType::DateField     => quote!(::core::option::Option<chrono::NaiveDate>),
-		TypedFieldType::TimeField     => quote!(::core::option::Option<chrono::NaiveTime>),
+		TypedFieldType::DateField => quote!(::core::option::Option<chrono::NaiveDate>),
+		TypedFieldType::TimeField => quote!(::core::option::Option<chrono::NaiveTime>),
 		TypedFieldType::DateTimeField => quote!(::core::option::Option<chrono::NaiveDateTime>),
 
 		// File-like
@@ -3024,10 +3024,10 @@ fn field_type_to_signal_type(
 		TypedFieldType::UuidField => quote!(::core::option::Option<uuid::Uuid>),
 
 		// Generic-capable: substitute the inner type recorded by the validator
-		TypedFieldType::HiddenField         { inner } => quote!(#inner),
-		TypedFieldType::ChoiceField         { inner } => quote!(#inner),
+		TypedFieldType::HiddenField { inner } => quote!(#inner),
+		TypedFieldType::ChoiceField { inner } => quote!(#inner),
 		TypedFieldType::MultipleChoiceField { inner } => quote!(::std::vec::Vec<#inner>),
-		TypedFieldType::JsonField           { inner } => quote!(#inner),
+		TypedFieldType::JsonField { inner } => quote!(#inner),
 
 		// Specialized
 		TypedFieldType::IpAddressField => {
@@ -3064,9 +3064,9 @@ fn field_type_default_value(field_type: &TypedFieldType) -> TokenStream {
 
 		// Generic-capable: rely on T: Default (enforced by the
 		// struct-level where clause emitted in Task 9)
-		TypedFieldType::HiddenField  { inner }
+		TypedFieldType::HiddenField { inner }
 		| TypedFieldType::ChoiceField { inner }
-		| TypedFieldType::JsonField   { inner } => {
+		| TypedFieldType::JsonField { inner } => {
 			quote!(<#inner as ::core::default::Default>::default())
 		}
 		TypedFieldType::MultipleChoiceField { .. } => quote!(::std::vec::Vec::new()),
@@ -3085,8 +3085,9 @@ fn field_type_default_value(field_type: &TypedFieldType) -> TokenStream {
 /// it panics otherwise to surface mis-routed callers.
 fn choice_value_type(field_type: &TypedFieldType) -> TokenStream {
 	match field_type {
-		TypedFieldType::ChoiceField { inner }
-		| TypedFieldType::MultipleChoiceField { inner } => quote!(#inner),
+		TypedFieldType::ChoiceField { inner } | TypedFieldType::MultipleChoiceField { inner } => {
+			quote!(#inner)
+		}
 		_ => panic!(
 			"choice_value_type called on a non-choice TypedFieldType variant; \
 			 this is a codegen bug",
@@ -3107,9 +3108,7 @@ fn choice_value_type(field_type: &TypedFieldType) -> TokenStream {
 /// Each unique inner type is asserted once. Duplicate inner types across
 /// multiple fields contribute only one predicate (deduplicated by the
 /// stringified token sequence of the inner type).
-fn build_typed_field_where_clause(
-	all_fields: &[&TypedFormFieldDef],
-) -> TokenStream {
+fn build_typed_field_where_clause(all_fields: &[&TypedFormFieldDef]) -> TokenStream {
 	let mut bounds: Vec<TokenStream> = Vec::new();
 	let mut seen: ::std::collections::HashSet<String> = ::std::collections::HashSet::new();
 
@@ -5501,8 +5500,7 @@ mod tests {
 		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
 
 		// Assert
-		let expected =
-			quote::quote!(::reinhardt_pages::reactive::Signal<i64>).to_string();
+		let expected = quote::quote!(::reinhardt_pages::reactive::Signal<i64>).to_string();
 		assert_eq!(actual, expected);
 	}
 
@@ -5518,10 +5516,8 @@ mod tests {
 		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
 
 		// Assert
-		let expected = quote::quote!(
-			::reinhardt_pages::reactive::Signal<::std::string::String>
-		)
-		.to_string();
+		let expected =
+			quote::quote!(::reinhardt_pages::reactive::Signal<::std::string::String>).to_string();
 		assert_eq!(actual, expected);
 	}
 
@@ -5537,10 +5533,8 @@ mod tests {
 		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
 
 		// Assert
-		let expected = quote::quote!(
-			::reinhardt_pages::reactive::Signal<::std::vec::Vec<i64>>
-		)
-		.to_string();
+		let expected =
+			quote::quote!(::reinhardt_pages::reactive::Signal<::std::vec::Vec<i64>>).to_string();
 		assert_eq!(actual, expected);
 	}
 
@@ -5555,9 +5549,7 @@ mod tests {
 
 		// Assert
 		let expected = quote::quote!(
-			::reinhardt_pages::reactive::Signal<
-				::core::option::Option<::std::net::IpAddr>
-			>
+			::reinhardt_pages::reactive::Signal<::core::option::Option<::std::net::IpAddr>>
 		)
 		.to_string();
 		assert_eq!(actual, expected);
@@ -5575,10 +5567,8 @@ mod tests {
 		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
 
 		// Assert
-		let expected = quote::quote!(
-			::reinhardt_pages::reactive::Signal<::serde_json::Value>
-		)
-		.to_string();
+		let expected =
+			quote::quote!(::reinhardt_pages::reactive::Signal<::serde_json::Value>).to_string();
 		assert_eq!(actual, expected);
 	}
 
@@ -5593,10 +5583,7 @@ mod tests {
 		let actual = field_type_default_value(&ft).to_string();
 
 		// Assert
-		let expected = quote::quote!(
-			<i64 as ::core::default::Default>::default()
-		)
-		.to_string();
+		let expected = quote::quote!(<i64 as ::core::default::Default>::default()).to_string();
 		assert_eq!(actual, expected);
 	}
 

@@ -3733,10 +3733,7 @@ mod scope_tests {
 			.as_field()
 			.expect("question_id should be a regular field");
 		assert_eq!(field.name.to_string(), "question_id");
-		let generics = field
-			.generics
-			.as_ref()
-			.expect("generics should be Some");
+		let generics = field.generics.as_ref().expect("generics should be Some");
 		assert_eq!(generics.len(), 1);
 		let first = &generics[0];
 		let first_str = quote!(#first).to_string();

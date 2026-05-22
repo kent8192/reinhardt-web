@@ -564,7 +564,8 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	};
 
 	// Parse field type
-	let field_type = parse_field_type(&field.field_type, field.generics.as_ref()).map_err(&annotate)?;
+	let field_type =
+		parse_field_type(&field.field_type, field.generics.as_ref()).map_err(&annotate)?;
 
 	// Extract properties into categories
 	let validation = extract_validation_properties(&field.properties).map_err(&annotate)?;
