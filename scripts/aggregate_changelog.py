@@ -61,46 +61,89 @@ SKIP_PATTERNS = [
 	re.compile(r"^- `\[crate-name\]` updated to v\[version\]"),
 ]
 
-VERSION_HEADER = re.compile(
-	r"^## \[(?P<version>0\.1\.0-(?:alpha|rc)\.\d+)\](?:\([^)]+\))?\s*(?:-\s*(?P<date>\S+))?\s*$"
-)
 SUBSECTION_HEADER = re.compile(r"^### (?P<name>[A-Za-z][A-Za-z0-9 /-]*)\s*$")
-COMPARE_URL = re.compile(
-	r"compare/(?P<crate>[A-Za-z0-9_-]+)@v0\.1\.0-(?:alpha|rc)\.\d+"
-)
 BREAKING_INLINE = re.compile(r"\[\*\*breaking\*\*\]", re.IGNORECASE)
 UNRELEASED_HEADER = re.compile(r"^## \[Unreleased\]\s*$")
 
 
-def detect_crate_name(text: str, changelog_path: Path) -> str:
-	"""Auto-detect the crate name from any compare URL in the file.
+def make_version_patterns(target_version: str) -> tuple[re.Pattern, re.Pattern, re.Pattern]:
+	"""Build regexes that match the prerelease sections of a specific stable target.
 
-	Falls back to inferring from the parent directory name when the file
-	has never carried a compare URL (e.g., a brand-new crate with only
-	`## [Unreleased]` content).
+	Hardcoding `0.1.0` in the regexes would silently mismatch when the script
+	is invoked for any other `--target-version`, so we derive them from the
+	caller-supplied value (Copilot review on PR #4698).
 	"""
-	m = COMPARE_URL.search(text)
+	tv = re.escape(target_version)
+	version_header = re.compile(
+		rf"^## \[(?P<version>{tv}-(?:alpha|rc)\.\d+)\](?:\([^)]+\))?\s*(?:-\s*(?P<date>\S+))?\s*$"
+	)
+	compare_url = re.compile(
+		rf"compare/(?P<crate>[A-Za-z0-9_-]+)@v{tv}-(?:alpha|rc)\.\d+"
+	)
+	stable_header = re.compile(rf"^## \[{tv}\](?:\([^)]+\))?\s*(?:-\s*\S+)?\s*$")
+	return version_header, compare_url, stable_header
+
+
+def read_crate_name_from_cargo(changelog_path: Path) -> str | None:
+	"""Read `[package].name` from the CHANGELOG's sibling Cargo.toml.
+
+	Returns `None` if the Cargo.toml does not exist or has no `name` field.
+	This is the authoritative source for nested macros sub-crates whose
+	package name diverges from the directory name (e.g.,
+	`crates/reinhardt-core/macros` → `reinhardt-macros`,
+	`crates/reinhardt-rest/openapi-macros` → `reinhardt-openapi-macros`).
+	"""
+	cargo = changelog_path.parent / "Cargo.toml"
+	if not cargo.is_file():
+		return None
+	in_package = False
+	for line in cargo.read_text(encoding="utf-8").splitlines():
+		stripped = line.strip()
+		if stripped == "[package]":
+			in_package = True
+			continue
+		if stripped.startswith("[") and stripped.endswith("]"):
+			in_package = False
+			continue
+		if in_package:
+			m = re.match(r'^name\s*=\s*"([^"]+)"', stripped)
+			if m:
+				return m.group(1)
+	return None
+
+
+def detect_crate_name(text: str, changelog_path: Path, compare_url_re: re.Pattern) -> str:
+	"""Resolve the crate name for the file under aggregation.
+
+	Order of authority:
+	  1. Any compare URL already embedded in the file (rich CHANGELOGs).
+	  2. The `[package].name` field of the sibling Cargo.toml — required
+	     for brand-new crates whose CHANGELOG only has `[Unreleased]`,
+	     and for nested macros sub-crates whose package name diverges
+	     from the directory name.
+	  3. Root CHANGELOG.md → "reinhardt-web".
+	"""
+	m = compare_url_re.search(text)
 	if m:
 		return m.group("crate")
 
-	# Walk up from `crates/<name>/CHANGELOG.md` (or nested `crates/<parent>/<sub>/CHANGELOG.md`).
-	parts = changelog_path.resolve().parts
-	if "crates" in parts:
-		idx = parts.index("crates")
-		segments = parts[idx + 1 : -1]
-		if segments:
-			# Nested macros sub-crate: crates/reinhardt-pages/macros → reinhardt-pages-macros.
-			if len(segments) > 1:
-				return f"{segments[0]}-{segments[-1]}"
-			return segments[0]
-	if changelog_path.resolve().parent == changelog_path.resolve().parent.parent:
+	name_from_cargo = read_crate_name_from_cargo(changelog_path)
+	if name_from_cargo:
+		return name_from_cargo
+
+	# Root CHANGELOG.md (no `crates/<name>` ancestor in path) → workspace name.
+	resolved = changelog_path.resolve()
+	if "crates" not in resolved.parts:
 		return "reinhardt-web"
-	# Root CHANGELOG.md.
-	return "reinhardt-web"
+
+	raise SystemExit(
+		f"Could not resolve crate name for {changelog_path}. "
+		f"Pass --crate <name> explicitly."
+	)
 
 
-def parse_existing_sections(text: str) -> "OrderedDict[str, list[str]]":
-	"""Walk every `## [0.1.0-(alpha|rc).N]` block and collect bullet items per `### Section`.
+def parse_existing_sections(text: str, version_header_re: re.Pattern) -> "OrderedDict[str, list[str]]":
+	"""Walk every `## [<target>-(alpha|rc).N]` block and collect bullet items per `### Section`.
 
 	Returns a mapping section_name -> list of bullet lines (in encounter order),
 	with case-insensitive de-duplication preserving the first occurrence.
@@ -119,14 +162,14 @@ def parse_existing_sections(text: str) -> "OrderedDict[str, list[str]]":
 	while i < len(lines):
 		line = lines[i]
 
-		if VERSION_HEADER.match(line):
+		if version_header_re.match(line):
 			in_target = True
 			current_section = None
 			i += 1
 			continue
 
 		# Non-target version header => stop processing previous block.
-		if line.startswith("## ") and not VERSION_HEADER.match(line):
+		if line.startswith("## ") and not version_header_re.match(line):
 			in_target = False
 			current_section = None
 			i += 1
@@ -251,13 +294,30 @@ def render_block(
 	return "\n".join(out).rstrip() + "\n"
 
 
-def inject_block(text: str, block: str) -> str:
+def inject_block(
+	text: str,
+	block: str,
+	version_header_re: re.Pattern,
+	stable_header_re: re.Pattern,
+) -> str:
 	"""Insert the rendered block immediately below `## [Unreleased]`.
 
+	Idempotency: if the file already carries a `## [<target_version>]`
+	stable header, refuse to inject a duplicate. The caller is expected
+	to either re-write the existing block manually or remove it first.
+
 	If the file has no `## [Unreleased]` header, prepend one above the first
-	`## [0.1.0-*]` section so the structure is consistent across the workspace.
+	prerelease version section so the structure is consistent across the
+	workspace.
 	"""
 	lines = text.splitlines(keepends=True)
+	for line in lines:
+		if stable_header_re.match(line.rstrip("\n")):
+			raise SystemExit(
+				"File already contains a stable version header. "
+				"Refusing to insert a duplicate; remove the existing block first."
+			)
+
 	for idx, line in enumerate(lines):
 		if UNRELEASED_HEADER.match(line.rstrip("\n")):
 			insert_at = idx + 1
@@ -269,9 +329,9 @@ def inject_block(text: str, block: str) -> str:
 			return prefix + separator + block + "\n" + suffix
 
 	# Fallback: no `## [Unreleased]` header. Prepend one above the first
-	# version section.
+	# prerelease version section.
 	for idx, line in enumerate(lines):
-		if VERSION_HEADER.match(line):
+		if version_header_re.match(line):
 			prefix = "".join(lines[:idx])
 			suffix = "".join(lines[idx:])
 			separator = "" if prefix.endswith("\n\n") else ("\n" if prefix.endswith("\n") else "\n\n")
@@ -294,13 +354,28 @@ def main() -> int:
 	p.add_argument("--dry-run", action="store_true", help="Print unified diff instead of writing the file")
 	args = p.parse_args()
 
+	version_header_re, compare_url_re, stable_header_re = make_version_patterns(args.target_version)
+
 	text = args.changelog.read_text(encoding="utf-8")
-	crate = args.crate or detect_crate_name(text, args.changelog)
+
+	# Idempotency guard: refuse to operate on a file that already contains the
+	# stable `[<target_version>]` block. Running twice would either duplicate
+	# the block or no-op silently depending on prerelease history; refuse
+	# explicitly so the caller can decide how to clean up first.
+	if any(stable_header_re.match(line) for line in text.splitlines()):
+		print(
+			f"NOTE: {args.changelog} already contains a `[{args.target_version}]` "
+			f"stable header. Skipping (remove the existing block to re-aggregate).",
+			file=sys.stderr,
+		)
+		return 0
+
+	crate = args.crate or detect_crate_name(text, args.changelog, compare_url_re)
 	# Use the workspace-wide canonical previous tag rather than the file-local
 	# max; release-plz uses version_group to bump every crate together, so a
 	# crate whose CHANGELOG skipped rc.30 still has a rc.30 tag.
 	previous_tag = args.previous_tag
-	sections = parse_existing_sections(text)
+	sections = parse_existing_sections(text, version_header_re)
 	sections = split_breaking(sections)
 
 	if not any(sections.values()):
@@ -308,7 +383,7 @@ def main() -> int:
 		return 0
 
 	block = render_block(sections, crate, args.target_version, args.release_date, previous_tag)
-	new_text = inject_block(text, block)
+	new_text = inject_block(text, block, version_header_re, stable_header_re)
 
 	if args.dry_run:
 		diff = difflib.unified_diff(

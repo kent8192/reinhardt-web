@@ -39,7 +39,17 @@ for arg in "$@"; do
 	case "$arg" in
 		--strict) STRICT=1 ;;
 		-h|--help)
-			sed -n '2,24p' "$0"
+			# Print the entire leading comment block (every line that starts with `#`
+			# until the first non-comment line). Hardcoding a fixed line range here
+			# truncated the exit-status documentation; this loop keeps `--help` in
+			# sync with the doc as the comment block evolves.
+			while IFS= read -r line; do
+				case "$line" in
+					"#!"*) ;;
+					"#"*|"#") printf '%s\n' "$line" ;;
+					*) break ;;
+				esac
+			done < "$0"
 			exit 0
 			;;
 		*)
