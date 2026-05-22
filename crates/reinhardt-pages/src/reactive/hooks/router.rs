@@ -21,11 +21,10 @@ use crate::router::NavigationType;
 /// Public navigation error returned by [`RouterHandle::push`],
 /// [`RouterHandle::replace`], and [`RouterHandle::navigate`].
 ///
-/// The inner SPA router translates its concrete error (either
-/// `crate::router::RouterError` for the deprecated `Router` path or
-/// `reinhardt_urls::routers::client_router::error::RouterError` for the
-/// canonical `ClientRouter` path) into a stringly-typed message so the
-/// public API does not couple to either crate's error enum.
+/// The inner SPA router translates its concrete error
+/// (`reinhardt_urls::routers::client_router::error::RouterError`) into a
+/// stringly-typed message so the public API does not couple to the
+/// concrete error enum.
 #[derive(Debug)]
 pub enum NavigateError {
 	/// `ClientLauncher::launch()` has not installed an SPA router on the

@@ -121,7 +121,6 @@ pub struct SpaRouteMatch {
 }
 
 /// Internal error type that wraps either
-/// [`crate::router::RouterError`] or
 /// [`reinhardt_urls::routers::client_router::error::RouterError`] for
 /// launcher-internal use. Stringly-typed: the launcher only renders
 /// errors via `JsValue::from_str(...)`.
