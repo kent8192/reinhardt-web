@@ -53,133 +53,6 @@ fn extract_basename(func: &ItemFn) -> Option<String> {
 	None
 }
 
-/// Convert a basename like "snippet" to PascalCase: "Snippet".
-/// Handles underscored names: "auth_user" → "AuthUser".
-fn to_pascal_case(s: &str) -> String {
-	let mut result = String::new();
-	for segment in s.split('_') {
-		let mut chars = segment.chars();
-		if let Some(first) = chars.next() {
-			result.push(first.to_ascii_uppercase());
-			result.extend(chars);
-		}
-	}
-	result
-}
-
-/// Generate URL resolver modules for a ViewSet basename.
-///
-/// For basename "snippet", generates:
-/// - `__url_resolver_snippet_list` with trait `ResolveSnippetList`
-/// - `__url_resolver_snippet_detail` with trait `ResolveSnippetDetail`
-///
-/// These modules are emitted at the same level as the annotated function.
-/// Because `mod` items are invalid inside `impl` blocks, `#[viewset]` must
-/// be applied to a free (module-level) function, not a method.
-fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
-	let pascal = to_pascal_case(basename);
-
-	let list_mod_ident = syn::Ident::new(
-		&format!("__url_resolver_{basename}_list"),
-		Span::call_site(),
-	);
-	let detail_mod_ident = syn::Ident::new(
-		&format!("__url_resolver_{basename}_detail"),
-		Span::call_site(),
-	);
-
-	let list_trait_ident = syn::Ident::new(&format!("Resolve{pascal}List"), Span::call_site());
-	let detail_trait_ident = syn::Ident::new(&format!("Resolve{pascal}Detail"), Span::call_site());
-
-	let list_method_ident = syn::Ident::new(&format!("{basename}_list"), Span::call_site());
-	let detail_method_ident = syn::Ident::new(&format!("{basename}_detail"), Span::call_site());
-
-	let list_route_name = format!("{basename}-list");
-	let detail_route_name = format!("{basename}-detail");
-
-	let list_doc = format!("Resolve URL for route `{list_route_name}`.");
-	let detail_doc = format!("Resolve URL for route `{detail_route_name}`.");
-
-	// Deprecation notes steering callers from the flat blanket-trait surface
-	// (`urls.snippet_list()`) to the namespaced gateway accessors
-	// (`urls.server().<app>().<basename>_list()`). Refs Issue #4507 (defect #2).
-	let deprecated_note_list = format!("use `urls.server().<app>().{basename}_list()` instead");
-	let deprecated_note_detail =
-		format!("use `urls.server().<app>().{basename}_detail(id)` instead");
-
-	let reinhardt_crate = crate::crate_paths::get_reinhardt_crate();
-
-	quote! {
-		#[doc(hidden)]
-		pub mod #list_mod_ident {
-			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_list)]
-			#[doc = #list_doc]
-			pub trait #list_trait_ident: #reinhardt_crate::UrlResolverUnprefixed {
-				#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_list)]
-				#[doc = #list_doc]
-				fn #list_method_ident(&self) -> String {
-					// Supertrait `UrlResolverUnprefixed` brings the
-					// namespace-aware lookup into scope; no extra `use`
-					// statement needed. The trait is intentionally
-					// deprecated; suppress the warning for this
-					// macro-emitted call site only.
-					#[allow(deprecated)]
-					self.resolve_url_unprefixed(#list_route_name, &[])
-				}
-			}
-			// The trait is intentionally deprecated; this is the legacy
-			// compatibility surface and must opt out of the warning. The
-			// supertrait bound is `UrlResolverUnprefixed` (not `UrlResolver`)
-			// so the blanket impl does NOT collide with the
-			// `#[routes]`-emitted `impl UrlResolverUnprefixed for ResolvedUrls`
-			// (E0119 prevention). Refs Issue #4507.
-			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			#[allow(deprecated)]
-			impl<T: #reinhardt_crate::UrlResolverUnprefixed> #list_trait_ident for T {}
-		}
-		// Legacy deprecated re-export; the inner trait carries `#[deprecated]`
-		// so the glob must opt out of the warning. Refs Issue #4507.
-		#[doc(hidden)]
-		#[allow(deprecated)]
-		pub use #list_mod_ident::*;
-
-		#[doc(hidden)]
-		pub mod #detail_mod_ident {
-			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_detail)]
-			#[doc = #detail_doc]
-			pub trait #detail_trait_ident: #reinhardt_crate::UrlResolverUnprefixed {
-				#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_detail)]
-				#[doc = #detail_doc]
-				fn #detail_method_ident(&self, id: &str) -> String {
-					// Supertrait `UrlResolverUnprefixed` brings the
-					// namespace-aware lookup into scope; no extra `use`
-					// statement needed. The trait is intentionally
-					// deprecated; suppress the warning for this
-					// macro-emitted call site only.
-					#[allow(deprecated)]
-					self.resolve_url_unprefixed(#detail_route_name, &[("id", id)])
-				}
-			}
-			// The trait is intentionally deprecated; this is the legacy
-			// compatibility surface and must opt out of the warning. The
-			// supertrait bound is `UrlResolverUnprefixed` (not `UrlResolver`)
-			// so the blanket impl does NOT collide with the
-			// `#[routes]`-emitted `impl UrlResolverUnprefixed for ResolvedUrls`
-			// (E0119 prevention). Refs Issue #4507.
-			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			#[allow(deprecated)]
-			impl<T: #reinhardt_crate::UrlResolverUnprefixed> #detail_trait_ident for T {}
-		}
-		// Legacy deprecated re-export; the inner trait carries `#[deprecated]`
-		// so the glob must opt out of the warning. Refs Issue #4507.
-		#[doc(hidden)]
-		#[allow(deprecated)]
-		pub use #detail_mod_ident::*;
-	}
-}
-
 /// Emit a meta macro that dispatches the standard fan-out callback used by
 /// `__for_each_url_resolver` (see routes_registration.rs::gen_resolver_callback_arms).
 ///
@@ -412,8 +285,6 @@ fn viewset_fn_impl(args: TokenStream, func: ItemFn) -> syn::Result<TokenStream> 
 		})?,
 	};
 
-	let resolver_tokens = generate_viewset_resolver_tokens(&basename);
-
 	let list_meta = emit_meta_macro(fn_name, &basename, "list", false);
 	let detail_meta = emit_meta_macro(fn_name, &basename, "detail", true);
 	let manifest = emit_per_fn_manifest(fn_name, &basename);
@@ -422,14 +293,6 @@ fn viewset_fn_impl(args: TokenStream, func: ItemFn) -> syn::Result<TokenStream> 
 	// by function name (which it CAN see from tokens).
 	let bundle_mod_ident =
 		syn::Ident::new(&format!("__viewset_resolvers_{fn_name}"), Span::call_site());
-	let list_mod_ident = syn::Ident::new(
-		&format!("__url_resolver_{basename}_list"),
-		Span::call_site(),
-	);
-	let detail_mod_ident = syn::Ident::new(
-		&format!("__url_resolver_{basename}_detail"),
-		Span::call_site(),
-	);
 	// Issue #4523 fix: the manifest macro name embeds `<basename>` to avoid
 	// crate-root collisions between two `#[viewset] pub fn viewset()` in
 	// different modules. The consumer reaches it via the scope-respecting
@@ -455,17 +318,12 @@ fn viewset_fn_impl(args: TokenStream, func: ItemFn) -> syn::Result<TokenStream> 
 	Ok(quote! {
 		#func
 		#deprecation_marker
-		#resolver_tokens
 		#list_meta
 		#detail_meta
 		#manifest
 
 		#[doc(hidden)]
 		pub mod #bundle_mod_ident {
-			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			pub use super::#list_mod_ident::*;
-			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			pub use super::#detail_mod_ident::*;
 			// Scope-respecting alias for the manifest macro (Issue #4523).
 			// `pub use` of a `#[macro_export]`'d macro from a child module
 			// is supported in Rust 2018+ and does not trigger E0255.
@@ -893,28 +751,6 @@ mod tests {
 	}
 
 	#[test]
-	fn to_pascal_case_single() {
-		assert_eq!(to_pascal_case("snippet"), "Snippet");
-	}
-
-	#[test]
-	fn to_pascal_case_multi() {
-		assert_eq!(to_pascal_case("auth_user"), "AuthUser");
-	}
-
-	#[test]
-	fn generate_resolver_tokens_contains_expected_identifiers() {
-		let tokens = generate_viewset_resolver_tokens("snippet");
-		let output = tokens.to_string();
-		assert!(output.contains("__url_resolver_snippet_list"));
-		assert!(output.contains("__url_resolver_snippet_detail"));
-		assert!(output.contains("ResolveSnippetList"));
-		assert!(output.contains("ResolveSnippetDetail"));
-		assert!(output.contains("snippet_list"));
-		assert!(output.contains("snippet_detail"));
-	}
-
-	#[test]
 	fn fn_version_emits_list_and_detail_meta_macros() {
 		// Arrange
 		let input = quote! {
@@ -1207,29 +1043,6 @@ mod tests {
 
 	#[test]
 	fn fn_form_legacy_trait_uses_url_resolver_unprefixed_supertrait() {
-		// Arrange
-		let input = quote! {
-			pub fn viewset() -> ModelViewSet<Snippet, S> {
-				ModelViewSet::new("snippet")
-			}
-		};
-
-		// Act
-		let out_s = viewset_macro_impl(quote! {}, input).unwrap().to_string();
-
-		// Assert: the emitted trait's supertrait must be the unprefixed
-		// resolver variant (rather than the base UrlResolver) so that the
-		// blanket impl this macro emits is keyed against the same supertrait
-		// as the corresponding implementation the routes macro emits for
-		// ResolvedUrls. Mismatched supertraits would produce two overlapping
-		// blanket impls on the same target and trigger E0119 at the consumer
-		// crate root.
-		assert!(
-			out_s.contains("UrlResolverUnprefixed"),
-			"trait must reference UrlResolverUnprefixed as supertrait; got: {out_s}"
-		);
-	}
-
 	#[test]
 	fn fn_form_emits_deprecation_when_basename_arg_absent() {
 		// Arrange: bare `#[viewset]` triggers the legacy body-walker

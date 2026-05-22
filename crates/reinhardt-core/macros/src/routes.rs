@@ -723,6 +723,10 @@ fn generate_view_type(
 ///
 /// `auth_login` → `ResolveAuthLogin`
 /// `cluster_retrieve` → `ResolveClusterRetrieve`
+///
+/// Used by `#[websocket]` to generate per-route WebSocket URL resolver
+/// traits. The HTTP-route counterpart was removed alongside the
+/// deprecated flat per-route URL resolver codegen (refs #4520).
 pub(crate) fn to_resolver_trait_name(route_name: &str) -> String {
 	let mut result = String::from("Resolve");
 	for segment in route_name.split('_') {
@@ -778,7 +782,7 @@ fn generate_url_resolver_tokens(
 	route_name: &Option<String>,
 	fn_name: &str,
 	path: &str,
-	reinhardt_crate: &TokenStream,
+	_reinhardt_crate: &TokenStream,
 ) -> TokenStream {
 	let Some(name) = route_name.as_ref() else {
 		return quote! {};
@@ -801,20 +805,21 @@ fn generate_url_resolver_tokens(
 		return quote! { ::core::compile_error!(#msg); };
 	}
 
-	let trait_name_str = to_resolver_trait_name(name);
-	let trait_ident = syn::Ident::new(&trait_name_str, Span::call_site());
 	let method_ident = syn::Ident::new(name, Span::call_site());
 	let resolver_mod_ident =
 		syn::Ident::new(&format!("__url_resolver_{fn_name}"), Span::call_site());
 	let meta_macro_ident =
 		syn::Ident::new(&format!("__url_resolver_meta_{fn_name}"), Span::call_site());
 	let params = extract_url_params(path);
-	let doc_str = format!("Resolve URL for route `{}` (pattern: `{}`).", name, path);
-	let depr_note = format!("use namespaced URL resolvers instead: `urls.<app>().{name}()`");
 	let param_strs: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
 
 	// Gate with raw platform check (not `native` alias) because this code
 	// expands in consuming crates that do not have cfg_aliases.
+	//
+	// Emits only the metadata macro consumed by `__for_each_url_resolver`
+	// → `__build_namespaced_resolvers` (Issue #3526). The deprecated flat
+	// per-route resolver trait (`Resolve<Name>`) that produced
+	// `urls.<name>(...)` accessors was removed in 0.2.0 per Issue #4520.
 	if params.is_empty() {
 		quote! {
 			#[doc(hidden)]
@@ -829,29 +834,9 @@ fn generate_url_resolver_tokens(
 				}
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				pub(crate) use #meta_macro_ident;
-
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				#[deprecated(since = "0.1.0-rc.16", note = #depr_note)]
-				#[doc = #doc_str]
-				pub trait #trait_ident: #reinhardt_crate::UrlResolver {
-					#[doc = #doc_str]
-					fn #method_ident(&self) -> String {
-						self.resolve_url(#name, &[])
-					}
-				}
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				#[allow(deprecated)]
-				impl<T: #reinhardt_crate::UrlResolver> #trait_ident for T {}
 			}
-			#[doc(hidden)]
-			pub use #resolver_mod_ident::*;
 		}
 	} else {
-		let param_idents: Vec<syn::Ident> = params
-			.iter()
-			.map(|p| syn::Ident::new(p, Span::call_site()))
-			.collect();
-
 		quote! {
 			#[doc(hidden)]
 			pub mod #resolver_mod_ident {
@@ -864,22 +849,7 @@ fn generate_url_resolver_tokens(
 				}
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				pub(crate) use #meta_macro_ident;
-
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				#[deprecated(since = "0.1.0-rc.16", note = #depr_note)]
-				#[doc = #doc_str]
-				pub trait #trait_ident: #reinhardt_crate::UrlResolver {
-					#[doc = #doc_str]
-					fn #method_ident(&self, #(#param_idents: &str),*) -> String {
-						self.resolve_url(#name, &[#((#param_strs, #param_idents)),*])
-					}
-				}
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				#[allow(deprecated)]
-				impl<T: #reinhardt_crate::UrlResolver> #trait_ident for T {}
 			}
-			#[doc(hidden)]
-			pub use #resolver_mod_ident::*;
 		}
 	}
 }
@@ -1218,20 +1188,6 @@ pub(crate) fn delete_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 #[cfg(test)]
 mod url_resolver_tests {
 	use super::*;
-
-	#[test]
-	fn route_name_to_trait_name() {
-		assert_eq!(to_resolver_trait_name("auth_login"), "ResolveAuthLogin");
-		assert_eq!(
-			to_resolver_trait_name("cluster_retrieve"),
-			"ResolveClusterRetrieve"
-		);
-		assert_eq!(to_resolver_trait_name("home"), "ResolveHome");
-		assert_eq!(
-			to_resolver_trait_name("deployment_logs"),
-			"ResolveDeploymentLogs"
-		);
-	}
 
 	#[test]
 	fn extract_path_params_none() {

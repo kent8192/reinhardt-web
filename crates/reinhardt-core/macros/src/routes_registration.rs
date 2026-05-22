@@ -906,17 +906,6 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 							#gen_method_macro, #app,
 							crate::apps::#app::urls::url_resolvers
 						);
-
-						// Deprecated 2-level accessor (use urls.server().#app() instead)
-						impl ResolvedUrls {
-							#[deprecated(
-								since = "0.1.0-rc.16",
-								note = "use `urls.server().#app()` instead"
-							)]
-							pub fn #app(&self) -> #urls_struct<'_> {
-								#urls_struct { resolver: self }
-							}
-						}
 					}
 				})
 				.collect();
@@ -948,10 +937,6 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						);
 						let gen_client_method_macro = proc_macro2::Ident::new(
 							&format!("__gen_{}_client_method", app),
-							proc_macro2::Span::call_site(),
-						);
-						let accessor_method = proc_macro2::Ident::new(
-							&format!("{}_client", app),
 							proc_macro2::Span::call_site(),
 						);
 						let app_str = app.to_string();
@@ -1000,17 +985,6 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 								#gen_client_method_macro, #app,
 								crate::apps::#app::urls::client_url_resolvers
 							);
-
-							// Deprecated 2-level accessor (use urls.client().#app() instead)
-							impl ResolvedUrls {
-								#[deprecated(
-									since = "0.1.0-rc.16",
-									note = "use `urls.client().#app()` instead"
-								)]
-								pub fn #accessor_method(&self) -> #client_urls_struct<'_> {
-									#client_urls_struct { resolver: self }
-								}
-							}
 						}
 					})
 					.collect()
@@ -1338,42 +1312,6 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 						/// Access HTTP URL resolvers via `urls.server().<app>().<route>()`.
 						pub fn server(&self) -> ServerUrls<'_> {
 							ServerUrls { resolver: self }
-						}
-					}
-
-					// Override `UrlResolverUnprefixed` so the deprecated flat
-					// ViewSet trait accessors (`urls.snippet_list()` etc.)
-					// resolve against `"<app>:<name>"` instead of the bare
-					// `"<name>"`. Iterates installed apps and uses the
-					// non-panicking `try_resolve_url` on each candidate;
-					// falls back to the panicking `resolve_url` if no app
-					// owns the route (preserves the original failure mode
-					// for routes that genuinely aren't registered).
-					//
-					// Refs Issue #4507 (defect #2).
-					#[allow(deprecated)]
-					impl #reinhardt::UrlResolverUnprefixed for ResolvedUrls {
-						fn resolve_url_unprefixed(
-							&self,
-							name: &str,
-							params: &[(&str, &str)],
-						) -> ::std::string::String {
-							#(
-								{
-									let full = ::std::format!(
-										"{}:{}", stringify!(#app_idents), name
-									);
-									if let ::std::option::Option::Some(u) =
-										#reinhardt::UrlResolver::try_resolve_url(self, &full, params)
-									{
-										return u;
-									}
-								}
-							)*
-							// Fall back to the bare lookup; this preserves
-							// the original panicking behavior for genuinely
-							// unregistered routes.
-							#reinhardt::UrlResolver::resolve_url(self, name, params)
 						}
 					}
 
