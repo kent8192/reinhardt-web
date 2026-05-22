@@ -289,18 +289,17 @@ pub fn polls_detail(question_id: i64) -> Page {
 							"Back to Polls"
 						}
 					}
-				} else if load_detail_signal.result().is_some() {
+				} else if let Some((ref q, ref choices)) = load_detail_signal.result() {
+					// Bind the result once: `Action::result()` clones the
+					// underlying `(QuestionInfo, Vec<ChoiceInfo>)` on every
+					// call, so reusing `q`/`choices` here avoids redundant
+					// allocations on each reactive render.
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "flex justify-between items-center mb-4",
 							h1 {
-								{
-									load_detail_signal
-											.result()
-											.map(|(q, _)| q.question_text.clone())
-											.unwrap_or_default()
-								}
+								{ q.question_text.clone() }
 							}
 							div {
 								class: "flex gap-2",
@@ -321,7 +320,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 								}
 							}
 						}
-						if load_detail_signal.result().map(|(_, c)| ! c.is_empty()).unwrap_or(false) {
+						if !choices.is_empty() {
 							{ voting_form.clone().into_page() }
 						} else {
 							div {
