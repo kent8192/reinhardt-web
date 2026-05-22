@@ -122,30 +122,6 @@ impl ServerFnTestContext {
 		self
 	}
 
-	/// Set the authenticated user for this test.
-	///
-	/// This configures the test context to simulate an authenticated user,
-	/// allowing you to test protected endpoints.
-	///
-	/// # Arguments
-	///
-	/// * `user` - The test user to authenticate as
-	///
-	/// # Example
-	///
-	/// ```rust,ignore
-	/// let ctx = ServerFnTestContext::new(singleton)
-	///     .with_authenticated_user(TestUser::admin())
-	///     .build();
-	/// ```
-	#[cfg(any())]
-	#[deprecated(since = "0.2.0", note = "removed per Issue #4520; use `.auth().session(&user).done()`")]
-	pub fn with_authenticated_user(mut self, user: TestUser) -> Self {
-		self.test_user = Some(user.clone());
-		self.mock_session = Some(MockSession::authenticated(user));
-		self
-	}
-
 	/// Set permissions for the authenticated user.
 	///
 	/// This is a convenience method that modifies the test user's permissions.
@@ -534,18 +510,16 @@ mod tests {
 		let singleton = Arc::new(SingletonScope::new());
 		let user = TestUser::admin();
 		let ctx = ServerFnTestContext::new(singleton)
-			.with_authenticated_user(user)
+			.with_session(MockSession::authenticated(user))
 			.build();
 
-		assert!(ctx.is_authenticated());
-		assert!(ctx.test_user.is_some());
+		assert!(ctx.mock_session.as_ref().is_some_and(|s| s.user.is_some()));
 	}
 
 	#[test]
 	fn test_permissions() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = ServerFnTestContext::new(singleton)
-			.with_authenticated_user(TestUser::authenticated("alice"))
 			.with_permissions(vec!["read", "write"])
 			.build();
 
