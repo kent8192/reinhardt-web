@@ -2377,10 +2377,19 @@ fn generate_load_choices(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) 
 				let from_ident = syn::Ident::new(&config.choices_from, field.name.span());
 				let value_ident = syn::Ident::new(&config.choice_value, field.name.span());
 				let label_ident = syn::Ident::new(&config.choice_label, field.name.span());
+				// When the field carries a generic type parameter (e.g.
+				// ChoiceField<i64>), clone the value rather than
+				// stringifying so the tuple type matches the choices
+				// Signal declaration `Signal<Vec<(T, String)>>`.
+				let value_expr = if choice_inner_type_is_string(&field.field_type) {
+					quote!(item.#value_ident.to_string())
+				} else {
+					quote!(item.#value_ident.clone())
+				};
 				quote! {
 					self.#choices_signal_name.set(
 						data.#from_ident.iter().map(|item| {
-							(item.#value_ident.to_string(), item.#label_ident.clone())
+							(#value_expr, item.#label_ident.clone())
 						}).collect()
 					);
 				}
@@ -3093,6 +3102,30 @@ fn choice_value_type(field_type: &TypedFieldType) -> TokenStream {
 			 this is a codegen bug",
 		),
 	}
+}
+
+/// Returns `true` when the inner type of a `ChoiceField` or
+/// `MultipleChoiceField` is `String` (including the implicit default).
+/// When `false`, the field carries a user-supplied non-String generic
+/// and the codegen must not stringify the value in choice-loading code.
+fn choice_inner_type_is_string(field_type: &TypedFieldType) -> bool {
+	match field_type {
+		TypedFieldType::ChoiceField { inner } | TypedFieldType::MultipleChoiceField { inner } => {
+			type_is_string(inner)
+		}
+		_ => false,
+	}
+}
+
+/// Returns `true` when a `syn::Type` is the path `String`.
+fn type_is_string(ty: &syn::Type) -> bool {
+	if let syn::Type::Path(type_path) = ty
+		&& type_path.qself.is_none()
+		&& type_path.path.segments.len() == 1
+	{
+		return type_path.path.segments[0].ident == "String";
+	}
+	false
 }
 
 /// Builds the struct-level `where` clause that asserts trait-bound
@@ -5533,8 +5566,11 @@ mod tests {
 		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
 
 		// Assert
-		let expected =
-			quote::quote!(::reinhardt_pages::reactive::Signal<::std::vec::Vec<i64>>).to_string();
+		// Proc-macro token streams render nested angle brackets with a
+		// space between `>` and `>` (e.g. `Vec < i64 > >`), matching
+		// how `field_type_to_signal_type` constructs the type. The
+		// expected string uses a literal to avoid `quote!` collapsing.
+		let expected = ":: reinhardt_pages :: reactive :: Signal < :: std :: vec :: Vec < i64 > >";
 		assert_eq!(actual, expected);
 	}
 
@@ -5548,10 +5584,7 @@ mod tests {
 		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
 
 		// Assert
-		let expected = quote::quote!(
-			::reinhardt_pages::reactive::Signal<::core::option::Option<::std::net::IpAddr>>
-		)
-		.to_string();
+		let expected = ":: reinhardt_pages :: reactive :: Signal < :: core :: option :: Option < :: std :: net :: IpAddr > >";
 		assert_eq!(actual, expected);
 	}
 
