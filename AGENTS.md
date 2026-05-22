@@ -46,6 +46,7 @@ See instructions/MODULE_SYSTEM.md for comprehensive module system standards incl
 - **ALL code comments MUST be written in English** (no exceptions)
 - MINIMIZE `.to_string()` calls - prefer borrowing
 - DELETE obsolete code immediately
+- NEVER use `#[cfg(any())]` to gate deprecated code — delete deprecated APIs entirely
 - NO deletion record comments in code
 - NO relative paths beyond `../` (use absolute paths)
 - Mark ALL placeholders with `todo!()` or `// TODO:` comment

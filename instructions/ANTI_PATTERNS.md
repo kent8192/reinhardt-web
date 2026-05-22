@@ -21,6 +21,7 @@ mindmap
       Obsolete code comments
       Alternative TODO notations
       Undocumented allow attrs
+      cfg(any()) gate
     Testing
       Skeleton tests
       No Reinhardt components
@@ -321,6 +322,29 @@ pub fn send_email(to: &str, body: &str) -> Result<()> {
 ```
 
 **Why?** Unmarked placeholders can be mistaken for production code.
+
+### ❌ Using `#[cfg(any())]` as a Deletion Substitute
+
+**DON'T:**
+
+```rust
+#[cfg(any())] // Removed in 0.2.0, kept for reference
+pub fn old_api() {}
+```
+
+**DO:**
+
+```rust
+// Delete the function entirely. Git history preserves old code.
+```
+
+**Why?** `#[cfg(any())]` is always false, leaving dead code in the sourcebase
+even though no target can ever activate it. This confuses readers who may think
+there is a valid compilation target where this code exists, creates a
+maintenance burden (dead imports, type requirements, async/sync mismatches),
+and circumvents the project's delete-over-hide policy. If removal must be
+staged, use `#[deprecated]` on the API surface while keeping real callers;
+delete unconditionally when the deprecation period ends.
 
 ### ❌ Undocumented `#[allow(...)]` Attributes
 
