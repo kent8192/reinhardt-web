@@ -12,12 +12,15 @@
 //! 5. **Attribute Types**: Certain attributes must be specific types (e.g., img src must be string literal)
 
 use proc_macro2::Span;
+use std::collections::HashSet;
+use syn::visit::{self, Visit};
 use syn::{Expr, Result};
 
 use reinhardt_manouche::core::{
-	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageMacro, PageNode,
-	PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
-	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode, TypedPageWatch, types::AttrValue,
+	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
+	PageIf, PageMacro, PageNode, PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent,
+	TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode,
+	TypedPageWatch, types::AttrValue,
 };
 
 /// Check if a URL is safe (no dangerous schemes like javascript:).
@@ -72,10 +75,236 @@ pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 /// (`Vec`, `Option`), constants (`MAX_LEN`), and macro invocations
 /// (`format!`) are exempt.
 fn enforce_capture_discipline(ast: &PageMacro) -> Result<()> {
-	// Scaffold for spec §3.7 (Task 2): currently a no-op. Real checker
-	// implemented in Task 3.
-	let _ = ast;
+	let params: HashSet<String> = ast.params.iter().map(|p| p.name.to_string()).collect();
+
+	let mut checker = CaptureChecker {
+		allowed: params,
+		// `for x in iter { ... }` and `|x| ...` introduce locals for the
+		// duration of their body. Track a layered stack so nested scopes
+		// shadow correctly.
+		locals_stack: Vec::new(),
+		errors: Vec::new(),
+	};
+	checker.visit_body(&ast.body);
+
+	if let Some(err) = checker.errors.into_iter().next() {
+		return Err(err);
+	}
 	Ok(())
+}
+
+/// Walks a `PageBody` AST and records identifiers that are used but not
+/// declared as `page!` parameters or local bindings.
+struct CaptureChecker {
+	allowed: HashSet<String>,
+	locals_stack: Vec<HashSet<String>>,
+	errors: Vec<syn::Error>,
+}
+
+impl CaptureChecker {
+	fn is_known(&self, name: &str) -> bool {
+		self.allowed.contains(name) || self.locals_stack.iter().any(|s| s.contains(name))
+	}
+
+	fn visit_body(&mut self, body: &PageBody) {
+		for node in &body.nodes {
+			self.visit_node(node);
+		}
+	}
+
+	fn visit_node(&mut self, node: &PageNode) {
+		match node {
+			PageNode::Element(el) => self.visit_element(el),
+			PageNode::Text(_) => {}
+			PageNode::Expression(e) => self.visit_expression(e),
+			PageNode::If(p) => self.visit_if(p),
+			PageNode::For(p) => self.visit_for(p),
+			PageNode::Component(c) => self.visit_component(c),
+			PageNode::Watch(w) => self.visit_watch(w),
+		}
+	}
+
+	fn visit_element(&mut self, el: &PageElement) {
+		for a in &el.attrs {
+			self.visit_expr(&a.value);
+		}
+		for e in &el.events {
+			self.visit_event(e);
+		}
+		for c in &el.children {
+			self.visit_node(c);
+		}
+	}
+
+	fn visit_event(&mut self, e: &PageEvent) {
+		self.visit_expr(&e.handler);
+	}
+
+	fn visit_expression(&mut self, e: &PageExpression) {
+		self.visit_expr(&e.expr);
+	}
+
+	fn visit_if(&mut self, p: &PageIf) {
+		self.visit_expr(&p.condition);
+		for n in &p.then_branch {
+			self.visit_node(n);
+		}
+		if let Some(els) = &p.else_branch {
+			match els {
+				PageElse::Block(nodes) => {
+					for n in nodes {
+						self.visit_node(n);
+					}
+				}
+				PageElse::If(inner) => self.visit_if(inner),
+			}
+		}
+	}
+
+	fn visit_for(&mut self, p: &PageFor) {
+		self.visit_expr(&p.iter);
+		let mut locals = HashSet::new();
+		collect_pat_idents(&p.pat, &mut locals);
+		self.locals_stack.push(locals);
+		for n in &p.body {
+			self.visit_node(n);
+		}
+		self.locals_stack.pop();
+	}
+
+	fn visit_component(&mut self, c: &PageComponent) {
+		// PascalCase head is allowed (type-path classification).
+		for a in &c.args {
+			self.visit_expr(&a.value);
+		}
+		if let Some(children) = &c.children {
+			for n in children {
+				self.visit_node(n);
+			}
+		}
+	}
+
+	fn visit_watch(&mut self, w: &PageWatch) {
+		self.visit_node(&w.expr);
+	}
+
+	fn visit_expr(&mut self, e: &Expr) {
+		let mut v = ExprIdentVisitor { checker: self };
+		v.visit_expr(e);
+	}
+}
+
+/// `syn::visit::Visit` adapter that delegates identifier lookups back to the
+/// owning `CaptureChecker` while tracking closure / `let` locals.
+struct ExprIdentVisitor<'a> {
+	checker: &'a mut CaptureChecker,
+}
+
+impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
+	fn visit_expr_path(&mut self, ep: &'ast syn::ExprPath) {
+		if ep.qself.is_none() && ep.path.segments.len() == 1 {
+			let seg = &ep.path.segments[0];
+			let name = seg.ident.to_string();
+			if is_value_ident(&name) && !self.checker.is_known(&name) {
+				self.checker.errors.push(missing_param_error(&seg.ident));
+			}
+		}
+		visit::visit_expr_path(self, ep);
+	}
+
+	fn visit_expr_closure(&mut self, c: &'ast syn::ExprClosure) {
+		let mut locals = HashSet::new();
+		for input in &c.inputs {
+			collect_pat_idents(input, &mut locals);
+		}
+		self.checker.locals_stack.push(locals);
+		visit::visit_expr_closure(self, c);
+		self.checker.locals_stack.pop();
+	}
+
+	fn visit_expr_let(&mut self, l: &'ast syn::ExprLet) {
+		// `let x = ...` body introduces `x` to subsequent statements; the
+		// page! body is expression-position, so this is rare but possible
+		// inside embedded `{ ... }` blocks. Treat conservatively as a local.
+		let mut locals = HashSet::new();
+		collect_pat_idents(&l.pat, &mut locals);
+		self.checker.locals_stack.push(locals);
+		visit::visit_expr_let(self, l);
+		self.checker.locals_stack.pop();
+	}
+}
+
+/// Classifies an identifier as a value binding per spec §3.7.
+///
+/// Returns true for lowercase-leading names that are not SCREAMING_SNAKE
+/// constants. SCREAMING_SNAKE and PascalCase paths are treated as item /
+/// type paths and exempted from the capture-discipline check.
+fn is_value_ident(name: &str) -> bool {
+	// Lowercase first char ⇒ value binding.
+	// SCREAMING_SNAKE (e.g. MAX_LEN) and PascalCase (e.g. Vec) are exempt.
+	let starts_lowercase = name
+		.chars()
+		.next()
+		.map(|c| c.is_ascii_lowercase())
+		.unwrap_or(false);
+	let all_screaming = name
+		.chars()
+		.all(|c| c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit());
+	starts_lowercase && !all_screaming
+}
+
+/// Recursively collects identifier names bound by a pattern.
+fn collect_pat_idents(p: &syn::Pat, out: &mut HashSet<String>) {
+	match p {
+		syn::Pat::Ident(pi) => {
+			out.insert(pi.ident.to_string());
+		}
+		syn::Pat::Tuple(t) => {
+			for el in &t.elems {
+				collect_pat_idents(el, out);
+			}
+		}
+		syn::Pat::TupleStruct(ts) => {
+			for el in &ts.elems {
+				collect_pat_idents(el, out);
+			}
+		}
+		syn::Pat::Struct(ps) => {
+			for f in &ps.fields {
+				collect_pat_idents(&f.pat, out);
+			}
+		}
+		syn::Pat::Reference(r) => collect_pat_idents(&r.pat, out),
+		syn::Pat::Type(t) => collect_pat_idents(&t.pat, out),
+		syn::Pat::Or(o) => {
+			for case in &o.cases {
+				collect_pat_idents(case, out);
+			}
+		}
+		syn::Pat::Slice(s) => {
+			for el in &s.elems {
+				collect_pat_idents(el, out);
+			}
+		}
+		syn::Pat::Paren(p) => collect_pat_idents(&p.pat, out),
+		_ => {}
+	}
+}
+
+/// Builds the canonical §3.7 diagnostic for an undeclared identifier.
+fn missing_param_error(ident: &syn::Ident) -> syn::Error {
+	syn::Error::new(
+		ident.span(),
+		format!(
+			"identifier `{ident}` used inside `page!` is not declared as a parameter.\n\n\
+			 help: add it to the closure signature:\n\
+			         page!(|{ident}: Signal<...>| {{ ... }})\n\
+			 note: `page!` forbids implicit captures so reactive dependencies are\n\
+			       explicit (React-style props-down data flow). Item paths\n\
+			       (`module::func`), types (`Vec`, `Option`), and constants\n\
+			       (`MAX_LEN`) are unaffected."
+		),
+	)
 }
 
 /// Transforms a PageBody into a TypedPageBody.
@@ -1468,5 +1697,108 @@ mod tests {
 	#[case("JAVASCRIPT:alert(1)", false)]
 	fn test_is_safe_url(#[case] url: &str, #[case] expected: bool) {
 		assert_eq!(is_safe_url(url), expected);
+	}
+}
+
+#[cfg(test)]
+mod capture_tests {
+	use super::*;
+	use proc_macro2::TokenStream;
+	use quote::quote;
+	use rstest::rstest;
+
+	fn parse(input: TokenStream) -> PageMacro {
+		syn::parse2(input).expect("input must be a valid page! macro")
+	}
+
+	#[rstest]
+	fn rejects_implicit_lowercase_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { div { {outer_count.get()} } }
+		});
+
+		// Act
+		let result = enforce_capture_discipline(&ast);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("outer_count"));
+	}
+
+	#[rstest]
+	fn accepts_declared_param() {
+		// Arrange
+		let ast = parse(quote! {
+			|outer_count: reinhardt_pages::reactive::Signal<i32>| {
+				div { {outer_count.get()} }
+			}
+		});
+
+		// Act
+		let result = enforce_capture_discipline(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn accepts_multi_segment_path() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { div { {crate::util::truncate("x", 5)} } }
+		});
+
+		// Act
+		let result = enforce_capture_discipline(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn accepts_screaming_snake_constant() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { p { {format!("limit={}", MAX_LEN)} } }
+		});
+
+		// Act
+		let result = enforce_capture_discipline(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn accepts_pascal_case_type_or_component() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { div { {Vec::<i32>::new().len()} } }
+		});
+
+		// Act
+		let result = enforce_capture_discipline(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn accepts_for_loop_local_binding() {
+		// Arrange
+		let ast = parse(quote! {
+			|items: Vec<i32>| {
+				div {
+					for x in items.iter() { li { {x.to_string()} } }
+				}
+			}
+		});
+
+		// Act
+		let result = enforce_capture_discipline(&ast);
+
+		// Assert
+		assert!(result.is_ok());
 	}
 }
