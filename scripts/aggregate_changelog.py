@@ -72,15 +72,31 @@ BREAKING_INLINE = re.compile(r"\[\*\*breaking\*\*\]", re.IGNORECASE)
 UNRELEASED_HEADER = re.compile(r"^## \[Unreleased\]\s*$")
 
 
-def detect_crate_name(text: str) -> str:
-	"""Auto-detect the crate name from any compare URL in the file."""
+def detect_crate_name(text: str, changelog_path: Path) -> str:
+	"""Auto-detect the crate name from any compare URL in the file.
+
+	Falls back to inferring from the parent directory name when the file
+	has never carried a compare URL (e.g., a brand-new crate with only
+	`## [Unreleased]` content).
+	"""
 	m = COMPARE_URL.search(text)
-	if not m:
-		raise SystemExit(
-			"Could not auto-detect crate name from compare URLs in the file. "
-			"Pass --crate <name> explicitly."
-		)
-	return m.group("crate")
+	if m:
+		return m.group("crate")
+
+	# Walk up from `crates/<name>/CHANGELOG.md` (or nested `crates/<parent>/<sub>/CHANGELOG.md`).
+	parts = changelog_path.resolve().parts
+	if "crates" in parts:
+		idx = parts.index("crates")
+		segments = parts[idx + 1 : -1]
+		if segments:
+			# Nested macros sub-crate: crates/reinhardt-pages/macros → reinhardt-pages-macros.
+			if len(segments) > 1:
+				return f"{segments[0]}-{segments[-1]}"
+			return segments[0]
+	if changelog_path.resolve().parent == changelog_path.resolve().parent.parent:
+		return "reinhardt-web"
+	# Root CHANGELOG.md.
+	return "reinhardt-web"
 
 
 def parse_existing_sections(text: str) -> "OrderedDict[str, list[str]]":
@@ -235,29 +251,15 @@ def render_block(
 	return "\n".join(out).rstrip() + "\n"
 
 
-def latest_existing_tag(text: str) -> str:
-	"""Return the largest existing `0.1.0-(alpha|rc).N` version from the file."""
-	versions = re.findall(r"\[0\.1\.0-(?:alpha|rc)\.\d+\]", text)
-	if not versions:
-		raise SystemExit("No 0.1.0-alpha or 0.1.0-rc version headers found in file.")
-
-	def sort_key(v: str) -> tuple[int, int]:
-		# v looks like `[0.1.0-rc.30]` — sort rc > alpha, then by number.
-		stage = 1 if "-rc." in v else 0
-		n = int(re.search(r"\.(\d+)\]$", v).group(1))
-		return (stage, n)
-
-	versions.sort(key=sort_key, reverse=True)
-	# Strip surrounding brackets, prefix with `v` (tag format).
-	return "v" + versions[0].strip("[]")
-
-
 def inject_block(text: str, block: str) -> str:
-	"""Insert the rendered block immediately below `## [Unreleased]`."""
+	"""Insert the rendered block immediately below `## [Unreleased]`.
+
+	If the file has no `## [Unreleased]` header, prepend one above the first
+	`## [0.1.0-*]` section so the structure is consistent across the workspace.
+	"""
 	lines = text.splitlines(keepends=True)
 	for idx, line in enumerate(lines):
 		if UNRELEASED_HEADER.match(line.rstrip("\n")):
-			# Skip blank lines after the Unreleased header until next content.
 			insert_at = idx + 1
 			while insert_at < len(lines) and lines[insert_at].strip() == "":
 				insert_at += 1
@@ -265,7 +267,17 @@ def inject_block(text: str, block: str) -> str:
 			suffix = "".join(lines[insert_at:])
 			separator = "" if prefix.endswith("\n\n") else ("\n" if prefix.endswith("\n") else "\n\n")
 			return prefix + separator + block + "\n" + suffix
-	raise SystemExit("Could not locate `## [Unreleased]` header to insert below.")
+
+	# Fallback: no `## [Unreleased]` header. Prepend one above the first
+	# version section.
+	for idx, line in enumerate(lines):
+		if VERSION_HEADER.match(line):
+			prefix = "".join(lines[:idx])
+			suffix = "".join(lines[idx:])
+			separator = "" if prefix.endswith("\n\n") else ("\n" if prefix.endswith("\n") else "\n\n")
+			return prefix + separator + "## [Unreleased]\n\n" + block + "\n" + suffix
+
+	raise SystemExit("Could not locate `## [Unreleased]` header or first version section.")
 
 
 def main() -> int:
@@ -274,12 +286,20 @@ def main() -> int:
 	p.add_argument("--release-date", default=_dt.date.today().isoformat(), help="Release date for the new entry (default: today)")
 	p.add_argument("--target-version", default="0.1.0", help="Stable version to write (default: 0.1.0)")
 	p.add_argument("--crate", default=None, help="Crate name (auto-detected from compare URLs if omitted)")
+	p.add_argument(
+		"--previous-tag",
+		default="v0.1.0-rc.30",
+		help="Tag for the compare URL's left side (default: v0.1.0-rc.30 — the latest workspace-wide tag)",
+	)
 	p.add_argument("--dry-run", action="store_true", help="Print unified diff instead of writing the file")
 	args = p.parse_args()
 
 	text = args.changelog.read_text(encoding="utf-8")
-	crate = args.crate or detect_crate_name(text)
-	previous_tag = latest_existing_tag(text)
+	crate = args.crate or detect_crate_name(text, args.changelog)
+	# Use the workspace-wide canonical previous tag rather than the file-local
+	# max; release-plz uses version_group to bump every crate together, so a
+	# crate whose CHANGELOG skipped rc.30 still has a rc.30 tag.
+	previous_tag = args.previous_tag
 	sections = parse_existing_sections(text)
 	sections = split_breaking(sections)
 
