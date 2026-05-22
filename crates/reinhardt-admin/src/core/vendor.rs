@@ -1,16 +1,14 @@
-//! Deprecated vendor asset shim.
+//! Deprecated vendor asset shim (REMOVED in 0.2.0).
 //!
-//! This module preserves the previous public API surface
-//! (`VendorAsset`, `Verbosity`, `verify_integrity`, `download_vendor_assets`,
-//! `ensure_vendor_assets`, `admin_vendor_assets`) for backwards compatibility.
-//! All items here are deprecated and forward to
-//! `reinhardt_utils::staticfiles::vendor`, which is now the canonical home for
-//! vendor asset declaration and download. Admin's own assets are now declared
-//! via `inventory::submit!` in `reinhardt-admin/src/lib.rs`.
-//!
-//! These items will be removed in the next major version bump.
+//! The previous public API surface (`VendorAsset`, `Verbosity`,
+//! `verify_integrity`, `download_vendor_assets`, `ensure_vendor_assets`,
+//! `admin_vendor_assets`) was deprecated since 0.1.0-rc.27 and removed
+//! in 0.2.0 per Issue #4520. All items are now provided by
+//! `reinhardt_utils::staticfiles::vendor`. Admin's own assets are
+//! declared via `inventory::submit!` in `reinhardt-admin/src/lib.rs`.
 
-#![allow(deprecated, reason = "Internal implementation of deprecated shims")]
+#![cfg(any())]
+#![allow(deprecated, reason = "Internal implementation of removed shims")]
 
 #[cfg(server)]
 use std::path::Path;
