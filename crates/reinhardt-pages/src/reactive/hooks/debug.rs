@@ -145,6 +145,14 @@ where
 /// The callback provides stable identity but Signals accessed inside will
 /// still be tracked if called within an Effect context.
 #[cfg(wasm)]
+#[deprecated(
+	since = "0.2.0",
+	note = "Option A semantics make use_effect_event structurally redundant — \
+	the wrapped closure of use_effect/use_layout_effect already runs without \
+	auto-tracking. Use use_callback(f, deps) for stable identity or read \
+	the latest Signal value via .get_untracked() inside the effect. \
+	Scheduled for removal in v0.3.0 (Refs #4195)."
+)]
 pub fn use_effect_event<F>(f: F) -> Callback<EventArg, ()>
 where
 	F: Fn(EventArg) + 'static,
@@ -156,6 +164,14 @@ where
 ///
 /// See the WASM version for full documentation.
 #[cfg(native)]
+#[deprecated(
+	since = "0.2.0",
+	note = "Option A semantics make use_effect_event structurally redundant — \
+	the wrapped closure of use_effect/use_layout_effect already runs without \
+	auto-tracking. Use use_callback(f, deps) for stable identity or read \
+	the latest Signal value via .get_untracked() inside the effect. \
+	Scheduled for removal in v0.3.0 (Refs #4195)."
+)]
 pub fn use_effect_event<F>(f: F) -> Callback<EventArg, ()>
 where
 	F: Fn(EventArg) + Send + Sync + 'static,
@@ -167,6 +183,12 @@ where
 ///
 /// This is a more flexible version that allows specifying custom argument types.
 #[cfg(wasm)]
+#[deprecated(
+	since = "0.2.0",
+	note = "Option A semantics make use_effect_event_with structurally \
+	redundant. Use use_callback_with(f, deps) or .get_untracked() instead. \
+	Scheduled for removal in v0.3.0 (Refs #4195)."
+)]
 pub fn use_effect_event_with<Args, Ret, F>(f: F) -> Callback<Args, Ret>
 where
 	F: Fn(Args) -> Ret + 'static,
@@ -193,6 +215,12 @@ where
 ///
 /// A `Callback<Args, Ret>` that always calls the latest version of `f`
 #[cfg(native)]
+#[deprecated(
+	since = "0.2.0",
+	note = "Option A semantics make use_effect_event_with structurally \
+	redundant. Use use_callback_with(f, deps) or .get_untracked() instead. \
+	Scheduled for removal in v0.3.0 (Refs #4195)."
+)]
 pub fn use_effect_event_with<Args, Ret, F>(f: F) -> Callback<Args, Ret>
 where
 	F: Fn(Args) -> Ret + Send + Sync + 'static,
