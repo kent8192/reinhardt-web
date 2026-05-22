@@ -37,8 +37,8 @@ package:
 
 <!-- reinhardt-version-sync -->
 ```bash
-# During the RC phase, `cargo install` requires an explicit `--version`.
-# The version below is auto-bumped by release-plz on each release.
+# Pre-release: --version is required. Once 0.1.0 stable ships, --version
+# becomes optional. The literal below is auto-bumped by release-plz.
 cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
