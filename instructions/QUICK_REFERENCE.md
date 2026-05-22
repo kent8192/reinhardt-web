@@ -62,7 +62,6 @@
 - Use `issue-XXXX-to-YYYY` for consecutive issue ranges and `and` for multiple ranges in branch names
 - Check known CI failure patterns before deep investigation
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
-- Run `cargo make semver-check` locally and post the output as a PR comment with the `<!-- local-semver-check -->` marker before converting Draft → Ready on any PR touching public API (see instructions/PR_GUIDELINE.md § RP-1a)
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
@@ -153,8 +152,6 @@
 - Create branches without checking for name conflicts
 - Use hyphens between issue numbers for ranges in branch names (use `to` and `and` instead)
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
-- Convert a Draft PR to Ready for Review on a PR touching public API without first running `cargo make semver-check` locally and posting the result to the PR with the `<!-- local-semver-check -->` marker
-- Create duplicate `<!-- local-semver-check -->` comments on re-runs (update the existing marked comment instead)
 - Merge develop/* branches into main without `migration-approved` label and CI version validation
 - Remove `agent-suspect` label without independent verification (separate agent or human)
 - Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
