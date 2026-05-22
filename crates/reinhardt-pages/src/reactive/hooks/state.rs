@@ -118,11 +118,12 @@ pub fn use_state<T: Clone + 'static>(initial: T) -> (Signal<T>, SetState<T>) {
 ///
 /// # Reactivity semantics
 ///
-/// The reducer closure runs outside any active reactive Observer. Reading
-/// `Signal::get()`, `Memo::get()`, or `Resource::get()` inside returns the
-/// latest value WITHOUT subscribing for future changes. This matches React's
-/// experimental `useEffectEvent` semantics by construction — no separate
-/// escape-hatch hook is needed under Option A (Refs #4195).
+/// The reducer receives `&S` (the current state) and an action — it does not
+/// interact with reactive primitives directly. The surrounding `dispatch`
+/// closure calls `Signal::get()` and `Signal::set()` outside the reducer
+/// invocation, so the reducer body itself cannot create subscriptions.
+/// This aligns with React's `useReducer` semantics where the reducer is a
+/// pure function of (state, action) → state (Refs #4195).
 pub fn use_reducer<S, A, R>(reducer: R, initial: S) -> (Signal<S>, Dispatch<A>)
 where
 	S: Clone + 'static,

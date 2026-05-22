@@ -20,7 +20,7 @@ use serial_test::serial;
 /// Verifies that a Memo wired into an Effect's deps tuple re-runs the
 /// Effect when the Memo's listed deps change.
 #[test]
-#[serial]
+#[serial(hooks_deps_integration)]
 fn memo_feeding_effect_propagates_listed_dep_changes() {
 	// Arrange
 	let count = Signal::new(1_i32);
@@ -65,7 +65,7 @@ fn memo_feeding_effect_propagates_listed_dep_changes() {
 /// Verifies that reading an unlisted Signal inside an Effect does NOT
 /// subscribe — this is the Option A invariant.
 #[test]
-#[serial]
+#[serial(hooks_deps_integration)]
 fn effect_does_not_subscribe_to_unlisted_signal_read() {
 	// Arrange
 	let listed = Signal::new(0_i32);
@@ -106,7 +106,7 @@ fn effect_does_not_subscribe_to_unlisted_signal_read() {
 /// Verifies that the cleanup function returned from an effect closure
 /// runs before the next re-execution.
 #[test]
-#[serial]
+#[serial(hooks_deps_integration)]
 fn effect_cleanup_runs_before_rerun() {
 	// Arrange
 	let s = Signal::new(0_i32);
@@ -136,7 +136,7 @@ fn effect_cleanup_runs_before_rerun() {
 /// Verifies that an empty deps tuple `()` makes the effect mount-only —
 /// no re-run regardless of which signals change in the environment.
 #[test]
-#[serial]
+#[serial(hooks_deps_integration)]
 fn effect_with_empty_deps_is_mount_only() {
 	// Arrange
 	let s = Signal::new(0_i32);

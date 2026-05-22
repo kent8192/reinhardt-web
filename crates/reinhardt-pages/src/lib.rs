@@ -116,29 +116,35 @@
 //!     let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 //!
 //!     // Monitor connection state reactively
-//!     use_effect({
-//!         let ws = ws.clone();
-//!         move || {
-//!             match ws.connection_state().get() {
-//!                 ConnectionState::Open => log!("Connected to chat"),
-//!                 ConnectionState::Closed => log!("Disconnected from chat"),
-//!                 ConnectionState::Error(e) => log!("Connection error: {}", e),
-//!                 _ => {}
+//!     use_effect(
+//!         {
+//!             let ws = ws.clone();
+//!             move || {
+//!                 match ws.connection_state().get() {
+//!                     ConnectionState::Open => log!("Connected to chat"),
+//!                     ConnectionState::Closed => log!("Disconnected from chat"),
+//!                     ConnectionState::Error(e) => log!("Connection error: {}", e),
+//!                     _ => {}
+//!                 }
+//!                 None::<fn()>
 //!             }
-//!             None::<fn()>
-//!         }
-//!     });
+//!         },
+//!         (),
+//!     );
 //!
 //!     // Handle incoming messages
-//!     use_effect({
-//!         let ws = ws.clone();
-//!         move || {
-//!             if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
-//!                 log!("Received: {}", text);
+//!     use_effect(
+//!         {
+//!             let ws = ws.clone();
+//!             move || {
+//!                 if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+//!                     log!("Received: {}", text);
+//!                 }
+//!                 None::<fn()>
 //!             }
-//!             None::<fn()>
-//!         }
-//!     });
+//!         },
+//!         (),
+//!     );
 //!
 //!     page!(|| {
 //!         div {

@@ -223,6 +223,9 @@ mod tests {
 		// Change signal - layout effect should execute synchronously
 		signal.set(1);
 		execution_order.borrow_mut().push(100);
+
+		// Layout effect ran synchronously before the push(100)
+		assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
 	}
 
 	#[test]

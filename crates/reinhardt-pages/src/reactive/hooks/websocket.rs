@@ -225,8 +225,8 @@ use {
 ///
 /// # Reactivity semantics
 ///
-/// Event-callback closures inside `UseWebSocketOptions` (e.g. `on_message`,
-/// `on_open`, `on_close`, `on_error`) run outside any active reactive
+/// Event-callback closures inside `UseWebSocketOptions` (`on_open`,
+/// `on_close`, `on_error`) run outside any active reactive
 /// Observer. Reading `Signal::get()`, `Memo::get()`, or `Resource::get()`
 /// inside returns the latest value WITHOUT subscribing for future changes
 /// (Option A, Refs #4195).

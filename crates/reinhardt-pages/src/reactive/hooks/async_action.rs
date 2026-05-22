@@ -7,6 +7,7 @@
 use std::future::Future;
 use std::rc::Rc;
 
+use reinhardt_core::reactive::deps::Trackable;
 use crate::reactive::Signal;
 
 /// Represents the current phase of an async action.
@@ -167,6 +168,12 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for Action<T, E> {
 			dispatch_fn: Rc::clone(&self.dispatch_fn),
 			payload_setter: Rc::clone(&self.payload_setter),
 		}
+	}
+}
+
+impl<T: Clone + 'static, E: Clone + 'static> Trackable for Action<T, E> {
+	fn node_id(&self) -> reinhardt_core::reactive::runtime::NodeId {
+		self.state.id()
 	}
 }
 
