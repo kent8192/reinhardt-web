@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ServerFnMetadata` cross-target supertrait carrying `PATH`, `NAME`,
+  `CODEC`, and `INJECTED_PARAMS` for every `#[server_fn]`. Available
+  on both native and wasm targets without any feature flag, so a
+  `#[url_patterns(mode = unified)]` aggregator can name
+  `my_fn::marker` from a closure body that compiles on either side
+  of the cfg boundary ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+
+### Changed
+
+- `ServerFnRegistration` (native) and `MockableServerFn` (msw) now
+  extend `ServerFnMetadata` instead of declaring `PATH`, `NAME`, and
+  `CODEC` themselves. Existing consumers reach the constants through
+  supertrait inheritance with no source change required
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages` as part of the
