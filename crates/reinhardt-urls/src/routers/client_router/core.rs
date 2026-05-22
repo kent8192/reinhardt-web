@@ -4,9 +4,10 @@
 //! The router uses `Page` type for all view rendering.
 
 use super::error::{MergeError, RouterError};
+use super::from_request::FromRequest;
 use super::handler::{
-	RouteHandler, no_params_handler, result_handler, single_path_handler, three_path_handler,
-	two_path_handler, with_params_handler,
+	RouteHandler, from_request_handler, no_params_handler, result_handler, single_path_handler,
+	three_path_handler, two_path_handler, with_params_handler,
 };
 #[cfg(wasm)]
 use super::history::setup_popstate_listener;
@@ -88,6 +89,16 @@ pub struct ClientRouteMatch {
 	/// This guarantees that tuple extraction works correctly by index,
 	/// matching the order of parameters in the URL pattern.
 	pub(crate) param_values: Vec<String>,
+	/// Raw query string (without the leading `?`), captured from the
+	/// path passed to [`ClientRouter::match_path`].
+	///
+	/// Populated by `match_path` so [`ClientRouter::page`] handlers can
+	/// surface query data via [`QueryParam<T>`]. `None` when the path
+	/// had no `?` segment.
+	///
+	/// [`ClientRouter::page`]: ClientRouter::page
+	/// [`QueryParam<T>`]: super::from_request::QueryParam
+	pub query: Option<String>,
 }
 
 /// A single route definition.
@@ -453,6 +464,92 @@ impl ClientRouter {
 		self
 	}
 
+	/// Adds a route whose handler receives a single Props struct
+	/// constructed via [`FromRequest`] (Manouche DSL v2 spec §4.3).
+	///
+	/// This is the canonical v2 route-handler shape: the same Props
+	/// struct can be used both as a Component (passed via the
+	/// `Component { ... }` invocation syntax) and as a page function
+	/// (registered here). Path / query extraction errors surface as a
+	/// `Page::Text` describing the failure rather than panicking.
+	///
+	/// The `#[derive(FromRequest)]` / `#[derive(PageProps)]` proc-macros
+	/// that automate the manual `impl FromRequest` boilerplate are
+	/// deferred to spec §10.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// use reinhardt_urls::routers::ClientRouter;
+	/// use reinhardt_urls::routers::client_router::from_request::{
+	///     ExtractError, FromRequest, PathParam, RouteContext,
+	/// };
+	///
+	/// struct UserPageProps { id: PathParam<i32> }
+	///
+	/// impl FromRequest for UserPageProps {
+	///     fn from_request(ctx: &RouteContext) -> Result<Self, ExtractError> {
+	///         Ok(Self { id: PathParam::extract(ctx, "id")? })
+	///     }
+	/// }
+	///
+	/// fn user_page(props: UserPageProps) -> reinhardt_core::types::page::Page {
+	///     reinhardt_core::types::page::Page::Text(
+	///         format!("user {}", props.id.into_inner()).into(),
+	///     )
+	/// }
+	///
+	/// let router = ClientRouter::new().page("/users/{id}/", user_page);
+	/// ```
+	///
+	/// # Panics
+	///
+	/// Panics if the pattern is invalid (exceeds length/segment limits
+	/// or invalid regex). Use [`ClientPathPattern::new`] directly for
+	/// fallible construction.
+	pub fn page<F, P>(mut self, pattern: &str, handler: F) -> Self
+	where
+		F: Fn(P) -> Page + Send + Sync + 'static,
+		P: FromRequest + Send + Sync + 'static,
+	{
+		self.routes.push(ClientRoute {
+			pattern: ClientPathPattern::new(pattern)
+				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
+			name: None,
+			handler: from_request_handler(handler, pattern.to_string()),
+			guard: None,
+		});
+		self
+	}
+
+	/// Adds a named route whose handler receives a single Props struct
+	/// constructed via [`FromRequest`] (Manouche DSL v2 spec §4.3).
+	///
+	/// Named-route variant of [`ClientRouter::page`]. Enables reverse
+	/// URL lookup via the registered name.
+	///
+	/// # Panics
+	///
+	/// Panics if the pattern is invalid (exceeds length/segment limits
+	/// or invalid regex). Use [`ClientPathPattern::new`] directly for
+	/// fallible construction.
+	pub fn named_page<F, P>(mut self, name: &str, pattern: &str, handler: F) -> Self
+	where
+		F: Fn(P) -> Page + Send + Sync + 'static,
+		P: FromRequest + Send + Sync + 'static,
+	{
+		let index = self.routes.len();
+		self.routes.push(ClientRoute {
+			pattern: ClientPathPattern::new(pattern)
+				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
+			name: Some(name.to_string()),
+			handler: from_request_handler(handler, pattern.to_string()),
+			guard: None,
+		});
+		self.named_routes.insert(name.to_string(), index);
+		self
+	}
+
 	/// Adds a named route with typed path parameters that returns a Result.
 	pub fn named_route_result<F, T, E>(mut self, name: &str, pattern: &str, handler: F) -> Self
 	where
@@ -655,13 +752,27 @@ impl ClientRouter {
 	}
 
 	/// Matches a path against registered routes.
+	///
+	/// Strips an optional `?query` suffix before matching and stores
+	/// the captured query (without the leading `?`) on
+	/// [`ClientRouteMatch::query`]. Patterns therefore match against
+	/// the path portion only; the query is delivered to handlers via
+	/// the match struct (used by [`ClientRouter::page`] /
+	/// [`QueryParam`]).
+	///
+	/// [`QueryParam`]: super::from_request::QueryParam
 	pub fn match_path(&self, path: &str) -> Option<ClientRouteMatch> {
+		let (path_only, query) = match path.split_once('?') {
+			Some((p, q)) => (p, Some(q.to_string())),
+			None => (path, None),
+		};
 		for route in &self.routes {
-			if let Some((params, param_values)) = route.pattern.matches(path) {
+			if let Some((params, param_values)) = route.pattern.matches(path_only) {
 				let route_match = ClientRouteMatch {
 					route: route.clone(),
 					params,
 					param_values,
+					query: query.clone(),
 				};
 
 				// Check guard if present
@@ -918,7 +1029,8 @@ impl ClientRouter {
 
 		if let Some(route_match) = self.match_path(&path) {
 			let ctx =
-				ParamContext::new(route_match.params.clone(), route_match.param_values.clone());
+				ParamContext::new(route_match.params.clone(), route_match.param_values.clone())
+					.with_query(route_match.query.clone());
 
 			match route_match.route.handler.handle(&ctx) {
 				Ok(view) => view,
