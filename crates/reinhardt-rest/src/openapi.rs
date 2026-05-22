@@ -147,7 +147,9 @@
 //! ```
 
 pub mod auto_schema;
-pub mod config;
+// `pub mod config;` (the deprecated `OpenApiConfig` struct) was removed
+// in 0.2.0 per Issue #4520. Use `OpenApiSettings` from
+// `reinhardt_conf::settings::openapi` instead.
 pub mod endpoint_inspector;
 pub mod endpoints;
 pub mod enum_schema;
@@ -165,8 +167,8 @@ pub mod swagger;
 use thiserror::Error;
 
 pub use auto_schema::{SchemaObject, ToSchema};
-#[allow(deprecated)] // Re-export deprecated OpenApiConfig for backward compatibility
-pub use config::OpenApiConfig;
+// `pub use config::OpenApiConfig;` removed (Issue #4520) — use
+// `reinhardt_conf::settings::openapi::OpenApiSettings`.
 pub use endpoint_inspector::EndpointInspector;
 pub use endpoints::generate_openapi_schema;
 pub use enum_schema::{EnumSchemaBuilder, EnumTagging};
