@@ -75,15 +75,22 @@ thread_local! {
 	static MEMO_DIRTY: RefCell<BTreeMap<NodeId, bool>> = RefCell::new(BTreeMap::new());
 }
 
-/// Flag the Memo identified by `memo_id` as dirty without requiring `T`.
+/// Flag the Memo identified by `memo_id` as dirty without requiring `T`,
+/// and propagate the change to downstream subscribers.
 ///
 /// Called by the hidden notifier Effect created by [`Memo::new_with_deps`]
 /// whenever one of the listed deps changes. Cleared on the next
 /// [`Memo::get`] / [`Memo::get_untracked`] recompute.
+///
+/// The `notify_signal_change` call is what makes downstream `use_effect` /
+/// `use_memo` calls that take this memo as a listed dep actually re-run.
+/// Without it, the dirty flag would be set but no consumer would be
+/// woken up. Mirrors the propagation behavior of `Memo::mark_dirty`.
 pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) {
 	MEMO_DIRTY.with(|m| {
 		m.borrow_mut().insert(memo_id, true);
 	});
+	with_runtime(|rt| rt.notify_signal_change(memo_id));
 }
 
 /// Returns whether the type-agnostic dirty flag is set for `memo_id`.
