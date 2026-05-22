@@ -172,7 +172,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(hmr)* replace eprintln! with tracing macros for consistent structured logging
 - *(hmr)* derive dedup interval from config.debounce_ms instead of hardcoded 100ms
 - *(hmr)* normalize CssUpdate path to relative URL (strip watch root, forward slashes)
-- *(hmr)* select ws:// or wss:// based on window.location.protocol
+- *(hmr)* select the WebSocket scheme automatically based on window.location.protocol (uses the secure variant on HTTPS pages)
 - *(pages)* use backtick for ResourceState::Loading in suspense doc comment
 - *(pages)* add feature = "hmr" cfg gate to hmr integration test file
 - *(pages,testkit)* add hmr feature gate to e2e tests and migrate Kafka image to apache/kafka
@@ -633,7 +633,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(hmr)* replace eprintln! with tracing macros for consistent structured logging
 - *(hmr)* derive dedup interval from config.debounce_ms instead of hardcoded 100ms
 - *(hmr)* normalize CssUpdate path to relative URL (strip watch root, forward slashes)
-- *(hmr)* select ws:// or wss:// based on window.location.protocol
+- *(hmr)* select the WebSocket scheme automatically based on window.location.protocol (uses the secure variant on HTTPS pages)
 - *(pages)* use backtick for ResourceState::Loading in suspense doc comment
 - *(pages)* add feature = "hmr" cfg gate to hmr integration test file
 - *(pages,testkit)* add hmr feature gate to e2e tests and migrate Kafka image to apache/kafka
