@@ -2979,30 +2979,42 @@ fn field_type_to_signal_type(
 	pages_crate: &TokenStream,
 ) -> TokenStream {
 	let inner_type = match field_type {
+		// Inherently String-shaped (always String, no generic accepted)
 		TypedFieldType::CharField
 		| TypedFieldType::TextField
 		| TypedFieldType::EmailField
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
-		| TypedFieldType::SlugField
-		| TypedFieldType::IpAddressField => quote!(String),
-		TypedFieldType::JsonField { .. } => quote!(String),
+		| TypedFieldType::SlugField => quote!(::std::string::String),
 
+		// Primitive typed
 		TypedFieldType::IntegerField => quote!(i64),
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(f64),
 		TypedFieldType::BooleanField => quote!(bool),
 
-		TypedFieldType::DateField => quote!(Option<chrono::NaiveDate>),
-		TypedFieldType::TimeField => quote!(Option<chrono::NaiveTime>),
-		TypedFieldType::DateTimeField => quote!(Option<chrono::NaiveDateTime>),
+		// Date / Time
+		TypedFieldType::DateField     => quote!(::core::option::Option<chrono::NaiveDate>),
+		TypedFieldType::TimeField     => quote!(::core::option::Option<chrono::NaiveTime>),
+		TypedFieldType::DateTimeField => quote!(::core::option::Option<chrono::NaiveDateTime>),
 
-		TypedFieldType::ChoiceField { .. } => quote!(String),
-		TypedFieldType::MultipleChoiceField { .. } => quote!(Vec<String>),
+		// File-like
+		TypedFieldType::FileField | TypedFieldType::ImageField => {
+			quote!(::core::option::Option<web_sys::File>)
+		}
 
-		TypedFieldType::FileField | TypedFieldType::ImageField => quote!(Option<web_sys::File>),
+		// Misc
+		TypedFieldType::UuidField => quote!(::core::option::Option<uuid::Uuid>),
 
-		TypedFieldType::UuidField => quote!(Option<uuid::Uuid>),
-		TypedFieldType::HiddenField { .. } => quote!(String),
+		// Generic-capable: substitute the inner type recorded by the validator
+		TypedFieldType::HiddenField         { inner } => quote!(#inner),
+		TypedFieldType::ChoiceField         { inner } => quote!(#inner),
+		TypedFieldType::MultipleChoiceField { inner } => quote!(::std::vec::Vec<#inner>),
+		TypedFieldType::JsonField           { inner } => quote!(#inner),
+
+		// Specialized
+		TypedFieldType::IpAddressField => {
+			quote!(::core::option::Option<::std::net::IpAddr>)
+		}
 	};
 
 	quote!(#pages_crate::reactive::Signal<#inner_type>)
