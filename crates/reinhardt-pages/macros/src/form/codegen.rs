@@ -3023,29 +3023,38 @@ fn field_type_to_signal_type(
 /// Returns the default value for a field type.
 fn field_type_default_value(field_type: &TypedFieldType) -> TokenStream {
 	match field_type {
+		// Inherently String-shaped — empty string default
 		TypedFieldType::CharField
 		| TypedFieldType::TextField
 		| TypedFieldType::EmailField
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
-		| TypedFieldType::SlugField
-		| TypedFieldType::IpAddressField => quote!(String::new()),
-		TypedFieldType::JsonField { .. }
-		| TypedFieldType::ChoiceField { .. }
-		| TypedFieldType::HiddenField { .. } => quote!(String::new()),
+		| TypedFieldType::SlugField => quote!(::std::string::String::new()),
 
+		// Primitive
 		TypedFieldType::IntegerField => quote!(0i64),
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(0.0f64),
 		TypedFieldType::BooleanField => quote!(false),
 
+		// Optional-shaped — None default
 		TypedFieldType::DateField
 		| TypedFieldType::TimeField
 		| TypedFieldType::DateTimeField
 		| TypedFieldType::FileField
 		| TypedFieldType::ImageField
-		| TypedFieldType::UuidField => quote!(None),
+		| TypedFieldType::UuidField => quote!(::core::option::Option::None),
 
-		TypedFieldType::MultipleChoiceField { .. } => quote!(Vec::new()),
+		// Generic-capable: rely on T: Default (enforced by the
+		// struct-level where clause emitted in Task 9)
+		TypedFieldType::HiddenField  { inner }
+		| TypedFieldType::ChoiceField { inner }
+		| TypedFieldType::JsonField   { inner } => {
+			quote!(<#inner as ::core::default::Default>::default())
+		}
+		TypedFieldType::MultipleChoiceField { .. } => quote!(::std::vec::Vec::new()),
+
+		// Specialized
+		TypedFieldType::IpAddressField => quote!(::core::option::Option::None),
 	}
 }
 
