@@ -17,11 +17,40 @@ skip_core_tasks = true
 CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
 
 # ============================================================================
+# Infrastructure (disposable PostgreSQL + Redis containers)
+# ============================================================================
+#
+# These tasks mirror the `infra-up` / `infra-down` / `infra-reset` shape
+# from `reinhardt-cloud/dashboard/Makefile.toml` so the developer
+# experience is uniform across the Reinhardt family. The actual
+# provisioning is delegated to `scripts/infra_up.sh` (Docker required);
+# credentials are parsed from `settings/<profile>.toml`. `runserver`
+# chains `migrate` (which itself depends on `infra-up`), so a contributor
+# can bootstrap the full local stack with a single `cargo make runserver`.
+
+[tasks.infra-up]
+description = "Start disposable PostgreSQL + Redis containers (docker run --rm); credentials parsed from settings/<profile>.toml"
+command = "bash"
+args = ["scripts/infra_up.sh"]
+env = { REINHARDT_ENV = "local" }
+
+[tasks.infra-down]
+description = "Stop disposable PostgreSQL + Redis containers (data is wiped)"
+command = "bash"
+args = ["scripts/infra_down.sh"]
+env = { REINHARDT_ENV = "local" }
+
+[tasks.infra-reset]
+description = "Stop and recreate disposable infrastructure (wipes all data)"
+dependencies = ["infra-down", "infra-up"]
+
+# ============================================================================
 # Development Server
 # ============================================================================
 
 [tasks.runserver]
-description = "Start the development server"
+description = "Start the development server (auto-starts PostgreSQL/Redis via `infra-up` transitively through `migrate`)"
+dependencies = ["migrate"]
 command = "cargo"
 args = ["run", "--bin", "manage", "--", "runserver"]
 
@@ -35,7 +64,8 @@ command = "cargo"
 args = ["run", "--bin", "manage", "makemigrations"]
 
 [tasks.migrate]
-description = "Apply database migrations"
+description = "Apply database migrations (auto-starts PostgreSQL/Redis via `infra-up`)"
+dependencies = ["infra-up"]
 command = "cargo"
 args = ["run", "--bin", "manage", "migrate"]
 

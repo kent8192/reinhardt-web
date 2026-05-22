@@ -51,6 +51,7 @@ reinhardt = { workspace = true, features = [
 	"pages",
 	"conf",
 	"commands",
+	"db-postgres",
 	"db-sqlite",
 	"forms",
 	"client-router",

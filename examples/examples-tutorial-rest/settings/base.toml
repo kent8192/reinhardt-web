@@ -25,6 +25,22 @@ append_slash = true
 # Top-level [database] is the canonical schema consumed by
 # `reinhardt_db::connection::get_database_url_from_env_or_settings`.
 # See README "With Database" section and reinhardt_conf::settings::DatabaseConfig.
+#
+# The example targets the disposable PostgreSQL container provisioned by
+# `scripts/infra_up.sh` (auto-started as a `runserver` dependency via
+# `migrate`). Override the credentials in `settings/local.toml` if you
+# point this crate at an existing Postgres instance instead.
 [database]
-engine = "sqlite"
-name = "db.sqlite3"
+engine = "postgresql"
+host = "localhost"
+port = 5432
+name = "examples_tutorial_rest"
+user = "reinhardt"
+password = "reinhardt"
+
+# Redis URL consumed by `scripts/parse_local_toml.py` so the same
+# disposable infra script can provision a Redis container alongside
+# Postgres. The example itself does not yet use Redis, but the container
+# is started for parity with the wider Reinhardt-family stack
+# (reinhardt-cloud, examples-twitter).
+redis_url = "redis://localhost:6379/0"
