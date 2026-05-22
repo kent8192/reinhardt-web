@@ -552,6 +552,31 @@ git commit -m "..."
 
 **Why?** Commits should only be made with explicit user authorization.
 
+### ❌ Committing Directly to Protected Branches
+
+**DON'T:**
+
+```bash
+# ❌ Never commit directly on a protected branch
+git checkout develop/0.2.0
+# ... make changes ...
+git add .
+git commit -m "docs: update some instruction files"
+```
+
+**DO:**
+
+```bash
+# ✅ Always use a non-protected feature/fix/docs branch
+git checkout -b docs/update-instructions
+# ... make changes ...
+git add .
+git commit -m "docs: update some instruction files"
+# Then create a Pull Request from docs/update-instructions to develop/0.2.0
+```
+
+**Why?** Protected branches (`main`, `master`, `develop/*`, `release/*`) receive changes exclusively through Pull Requests. Direct commits bypass review, CI validation, and branch protection rules.
+
 ### ❌ Batch Operations Without Dry-Run
 
 **DON'T:**

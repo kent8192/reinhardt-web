@@ -142,6 +142,7 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 
 **Commit Policy:**
 - **NEVER** commit without explicit user instruction
+- **NEVER** commit directly to a protected branch (`develop/*`, `release/*`, `main`, `master`) — all changes to these branches MUST be staged on a non-protected feature/fix/docs branch and merged through a Pull Request
 - **NEVER** push without explicit user instruction
 - **EXCEPTION**: Plan Mode approval is considered explicit commit authorization
   - When user approves a plan via Exit Plan Mode, implementation and commits are both authorized
