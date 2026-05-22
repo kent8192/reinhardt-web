@@ -7,90 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.29...reinhardt-di-macros@v0.1.0-rc.30) - 2026-05-21
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.30...reinhardt-di-macros@v0.1.0) - 2026-05-22
 
-### Documentation
+Initial stable release of `reinhardt-di-macros` as part of the
+reinhardt-web 0.1.0 release. Provides the procedural macros that drive
+the DI runtime: `#[inject]`, `#[injectable]`, `#[injectable_factory]`,
+and `#[scope(...)]`.
 
-- *(di)* replace `#[scope(...)]` with `(scope = "...")` argument form
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-### Fixed
+### Capabilities at 0.1.0
 
-- *(di-macros)* route async_trait through reinhardt-core re-export
+- **`Depends<T>`-typed `#[inject]` parameters** — the macro accepts
+  `#[inject] Depends<T>` (the unified shape) and emits the right
+  resolver call; legacy `Arc<T>` parameters were removed during the
+  rc cycle.
+- **`#[injectable]` with auto-Clone** — derives `Clone` for
+  injectable types so the runtime can hand out cached copies without
+  callers spelling out the bound.
+- **`#[injectable_factory]` with `Depends<T>` support** — generates
+  an `Injectable` impl that participates in registry lookup,
+  forwards to `Injectable::inject()` for non-`Depends` params, and
+  wraps factory bodies in a cycle-detection scope.
+- **Qualified type-name registration** — emitted code registers
+  qualified names with the registry, enabling
+  `FrameworkTypeOverride` validation and richer diagnostics.
+- **Single-attribute scope argument** — `(scope = "request")` is the
+  canonical form; the older `#[scope(...)]` literal alternation is
+  documented as deprecated in the rc cycle.
+- **Compile-time hygiene** — rejects unknown macro arguments,
+  validates type paths, generates names safely, and routes
+  `async_trait` through reinhardt-core so users do not need to add
+  the dependency themselves.
 
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.15...reinhardt-di-macros@v0.1.0-rc.16) - 2026-04-20
+### Notable Breaking Changes
 
-### Added
+- **`#[inject]` parameter type unification** — see
+  [#3628](https://github.com/kent8192/reinhardt-web/discussions/3628).
+- **`Injected<T>` deprecated** — see
+  [#3631](https://github.com/kent8192/reinhardt-web/discussions/3631).
 
-- *(di)* [**breaking**] unify #[inject] parameter type from Arc<T> to Depends<T>
-- *(di)* auto-derive Clone in #[injectable] macro
-- *(di)* register qualified type names from macros
-- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+### Migration Notes
 
-### Changed
-
-- *(di)* remove unnecessary Clone bound from Depends<T> and Injected<T>
-
-### Documentation
-
-- *(di)* document attribute ordering requirement and add compile-fail tests
-
-### Fixed
-
-- *(di)* resolve `#[inject]` type mismatch in `#[injectable_factory]` macro
-- *(di)* wrap injectable_factory body in cycle detection scope
-- update integration tests and docs for Depends<T> unification
-- *(di)* generate `Injectable` impl in `#[injectable_factory]` for `Depends<T>` support
-- *(di)* use resolve_from_registry() in injectable_factory macro only
-
-### Other
-
-- resolve conflict with main in di.rs ui module registration
-- resolve conflict in registration.rs with main
-
-### Styling
-
-- *(di)* apply auto-fix formatting
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.14...reinhardt-di-macros@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.13...reinhardt-di-macros@v0.1.0-rc.14) - 2026-03-24
-
-### Fixed
-
-- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.1...reinhardt-di-macros@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(meta)* fix workspace inheritance and authors metadata
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-alpha.3...reinhardt-di-macros@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-alpha.2...reinhardt-di-macros@v0.1.0-alpha.3) - 2026-02-23
-
-### Fixed
-
-- *(release)* advance version to skip yanked alpha.2 and restore publish capability for dependents
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-alpha.1...reinhardt-di-macros@v0.1.0-alpha.2) - 2026-02-21 [YANKED]
-
-This release was yanked shortly after publication. Use v0.1.0-alpha.3 instead.
-
-### Fixed
-
-- remove undeclared tracing dependency from injectable macro output
-
-### Security
-
-- improve generated name hygiene, crate path diagnostics, and type path validation
-- reject unknown macro arguments and unsupported scope attribute
-- remove info leak and validate factory code generation
+See the [root CHANGELOG migration guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide).
+Macro-side changes are mostly mechanical (`Arc<T>` → `Depends<T>` on
+`#[inject]` parameters and on `#[injectable_factory]` arguments); the
+attribute-ordering requirement is documented in the crate's compile-fail
+tests.

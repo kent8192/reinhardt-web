@@ -7,179 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.20...reinhardt-tasks@v0.1.0-rc.21) - 2026-04-23
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.19...reinhardt-tasks@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- fix engine names, feature flags, and API inaccuracies in crate docs
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.15...reinhardt-tasks@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- migrate UUID generation from v4 to v7 across entire codebase
-- *(tasks)* add kafka-backend feature via reinhardt-streaming
-
-### Fixed
-
-- *(streaming)* address Copilot review feedback on Phase 1 PR
-
-### Maintenance
-
-- upgrade workspace dependencies to latest versions
-
-### Security
-
-- keep UUID v4 for security-sensitive tokens
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.14...reinhardt-tasks@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.13...reinhardt-tasks@v0.1.0-rc.14) - 2026-03-24
-
-### Documentation
-
-- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
-
-### Fixed
-
-- *(reinhardt-tasks)* atomic lock acquisition with ownership verification and DAG edge rollback
-- *(reinhardt-tasks)* address Copilot review on TTL validation and lock release handling
-
-### Styling
-
-- *(reinhardt-tasks)* fix rustfmt formatting on extend method signatures
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.8...reinhardt-tasks@v0.1.0-rc.9) - 2026-03-15
-
-### Styling
-
-- add explanatory comments to remaining #[allow(dead_code)] attributes
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.4...reinhardt-tasks@v0.1.0-rc.5) - 2026-03-07
-
-### Documentation
-
-- add missing doc comments for public API modules and types
-
-### Other
-
-- resolve conflicts with origin/main
-
-## [0.1.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.2...reinhardt-tasks@v0.1.0-rc.3) - 2026-03-05
-
-### Fixed
-
-- *(release)* use path-only dev-dep for reinhardt-test in cyclic crates
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.1...reinhardt-tasks@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(tasks)* implement weight-based ordering for Priority enum
-- *(deps)* align dependency versions to workspace definitions
-
-### Maintenance
-
-- *(testing)* add insta snapshot testing dependency across all crates
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-alpha.3...reinhardt-tasks@v0.1.0-rc.1) - 2026-02-21
-
-### Fixed
-
-- replace println!/eprintln! with structured logging macros
-- fix TTL truncation and RetryStrategy multiplier validation
-- enforce concurrency limit using tokio Semaphore
-- delegate task to backend in TaskQueue::enqueue
-- prevent panic on integer underflow, zero-weight division, and duration overflow
-- update scheduler size assertion to match current struct layout
-- add SSRF protection for webhook URLs
-- use Redis MULTI/EXEC transaction for atomic enqueue
-- add async task execution and shutdown mechanism to Scheduler
-- move PriorityTaskQueue counter to instance field
-- remove SQS receipt_handle after successful message deletion
-- propagate RabbitMQ metadata update errors instead of silently discarding
-
-### Security
-
-- add resource limits and prevent busy loops in task subsystem
-
-### Styling
-
-- apply workspace-wide formatting and clippy fixes
-- apply workspace-wide formatting fixes
-- apply rustfmt to reinhardt-tasks formatting
-
-### Performance
-
-- eliminate redundant get_task_data call
-
-### Testing
-
-- add webhook retry sleep regression test
-- add regression tests for SQS lock scope, DAG cycle detection, and scheduler sleep
-- apply rstest and AAA pattern to existing tests
-- update scheduler integration tests for Arc API
-
-### Maintenance
-
-- add explanatory comments to undocumented #[allow(...)] attributes
-
-### Reverted
-
-- undo PR #219 version bumps for unpublished crates
-- undo release PR #215 version bumps
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-alpha.2...reinhardt-tasks@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-test
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-alpha.1...reinhardt-tasks@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- *(package)* replace version.workspace with explicit versions
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.30...reinhardt-tasks@v0.1.0) - 2026-05-22
+
+Initial stable release of `reinhardt-tasks` as part of the
+reinhardt-web 0.1.0 release. Provides the async task framework
+underpinning background jobs, scheduled work, and webhook fan-out
+across Redis, RabbitMQ, SQS, and Kafka backends.
+
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **Pluggable backends** — Redis, RabbitMQ, SQS, and (via
+  `kafka-backend` through `reinhardt-streaming`) Kafka, all behind a
+  uniform `TaskQueue::enqueue` surface that delegates to the
+  selected backend.
+- **Atomic enqueue and lock acquisition** — Redis uses a
+  `MULTI`/`EXEC` transaction for atomic enqueue; lock acquisition
+  verifies ownership and rolls back DAG edges if the post-lock
+  validation fails.
+- **Scheduler with bounded concurrency** — the scheduler runs tasks
+  asynchronously with a tokio `Semaphore`-bounded concurrency limit,
+  supports graceful shutdown, and uses an instance-field counter to
+  avoid contention in the priority queue.
+- **Weight-based priorities** — `Priority` orders work by explicit
+  weight rather than enum-variant accident, and rejects zero-weight
+  division at enqueue time.
+- **Hardened scheduling primitives** — TTL truncation is fixed,
+  `RetryStrategy` multipliers are validated, integer underflow and
+  duration overflow paths panic-free, and the SQS adapter only
+  deletes messages after successful processing.
+- **Webhook fan-out with SSRF protection** — webhook URLs are
+  validated to prevent SSRF, retries sleep on a tested cadence, and
+  failures use structured `tracing` logging rather than ad-hoc
+  `println!` / `eprintln!`.
+- **UUID v7 for IDs (v4 for tokens)** — task IDs migrated to UUID v7
+  for time-sortable ordering; security-sensitive tokens stay on v4.
+
+### Notable Breaking Changes
+
+The task framework had no public-API breaking changes specific to
+this crate at 0.1.0. Workspace-wide DI changes
+([#3628](https://github.com/kent8192/reinhardt-web/discussions/3628),
+[#3631](https://github.com/kent8192/reinhardt-web/discussions/3631))
+affect task handlers that inject dependencies; follow the [root
+CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#breaking-changes)
+for the full list.
+
+### Migration Notes
+
+See the [root CHANGELOG migration guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide).
+Existing task definitions continue to compile; the user-visible
+runtime changes are stricter validation (zero-weight priority, TTL
+truncation, SSRF on webhook URLs) and the new `kafka-backend`
+feature flag if you want Kafka delivery.

@@ -7,186 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.28...reinhardt-forms@v0.1.0-rc.29) - 2026-05-13
-
-### Fixed
-
-- *(forms)* replace skeleton validators with real implementations or unimplemented!()
-- *(forms)* address Copilot review feedback on PR [[#4336](https://github.com/kent8192/reinhardt-web/issues/4336)](https://github.com/kent8192/reinhardt-web/issues/4336)
-
-## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.20...reinhardt-forms@v0.1.0-rc.21) - 2026-04-23
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.19...reinhardt-forms@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- *(pages)* fix type name and API inaccuracies in pages crate docs
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.15...reinhardt-forms@v0.1.0-rc.16) - 2026-04-20
-
-### Documentation
-
-- *(forms)* update README example to unified validators syntax
-- *(pages,forms)* clarify unified validators scope and runtime status
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.14...reinhardt-forms@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.13...reinhardt-forms@v0.1.0-rc.14) - 2026-03-24
-
-### Fixed
-
-- *(forms)* add path traversal validation to file field
-- address copilot review feedback and merge main
-- *(pages,forms)* handle case-insensitive HTML tags and formset prefix collisions
-
-### Performance
-
-- *(pages,forms)* address Copilot review on allocation and prefix normalization
-
-### Styling
-
-- apply rustfmt formatting fixes
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.8...reinhardt-forms@v0.1.0-rc.9) - 2026-03-15
-
-### Fixed
-
-- *(forms)* add missing Debug and Clone derives to form fields
-- *(forms)* simplify OnceLock usage and extract regex patterns to constants
-
-### Performance
-
-- *(forms)* cache URL and email regex with LazyLock
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.4...reinhardt-forms@v0.1.0-rc.5) - 2026-03-07
-
-### Documentation
-
-- add missing doc comments for public API modules and types
-
-### Fixed
-
-- remove develop/0.2.0 content accidentally merged via PR [[#1918](https://github.com/kent8192/reinhardt-web/issues/1918)](https://github.com/kent8192/reinhardt-web/issues/1918)
-
-### Other
-
-- resolve conflicts with origin/main
-
-## [0.1.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.2...reinhardt-forms@v0.1.0-rc.3) - 2026-03-05
-
-### Fixed
-
-- *(release)* use path-only dev-dep for reinhardt-test in cyclic crates
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.1...reinhardt-forms@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(deps)* align workspace dependency versions
-
-### Maintenance
-
-- *(deps)* unify proptest versions to workspace dependency
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-alpha.7...reinhardt-forms@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-alpha.6...reinhardt-forms@v0.1.0-alpha.7) - 2026-02-21
-
-### Added
-
-- add UrlValidator and SlugValidator for page/URL fields
-
-### Fixed
-
-- enforce file size limits in form uploads (#558)
-- replace panic with error handling in ModelForm::save (#560)
-- escape user input in Widget::render_html to prevent XSS
-- replace js-based validation with type-safe declarative rules
-- remove SVG from default image extensions to prevent stored XSS
-
-### Security
-
-- sanitize validator errors and prevent password plaintext storage
-- fix decimal leading zeros, IPv6 validation, and date year ambiguity
-- fix input validation and resource limits across form fields
-- fix XSS escaping, CSRF protection, and panic prevention
-
-### Styling
-
-- apply rustfmt after clippy auto-fix
-- fix remaining clippy warnings across workspace
-- apply rustfmt formatting to workspace files
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-alpha.5...reinhardt-forms@v0.1.0-alpha.6) - 2026-02-12
-
-### Maintenance
-
-- updated the following local packages: reinhardt-core
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-alpha.4...reinhardt-forms@v0.1.0-alpha.5) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-alpha.3...reinhardt-forms@v0.1.0-alpha.4) - 2026-02-03
-
-### Other
-
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.3] - 2026-01-30
-
-### Changed
-
-- Version bump for publish workflow correction (no functional changes)
-
-## [0.1.0-alpha.2] - 2026-01-29
-
-### Changed
-
-- Remove obsolete commented-out code from wizard module documentation
-- Update package version from workspace reference to explicit version
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.0-rc.30...reinhardt-forms@v0.1.0) - 2026-05-22
+
+Initial stable release of `reinhardt-forms` as part of the
+reinhardt-web 0.1.0 release. This crate provides Django-style form
+handling and validation primitives — fields, widgets, validators,
+and `ModelForm` — used by both the `form!` macro in
+`reinhardt-pages` and direct server-side consumers.
+
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **Typed form fields** — `CharField`, `TextField`, `EmailField`,
+  `IntegerField`, `DecimalField`, `BooleanField`, `DateField` /
+  date-time variants, `FileField` / `ImageField`, and `SlugField`,
+  each implementing the unified `FormFieldProperty` surface with
+  `Debug` and `Clone` derives.
+- **Widget library** — `TextInput`, `PasswordInput`, `Select`,
+  `RadioSelect`, `MultiSelect`, `Textarea`, file widgets, and a
+  `SelectDateWidget` whose year range is computed dynamically
+  (no hard-coded years).
+- **Built-in validators** — `UrlValidator`, `SlugValidator`,
+  required / min-length / max-length / pattern, with regex
+  caches behind `LazyLock` for the URL and email patterns.
+- **Security defaults** — file-size limits on uploads, path
+  traversal validation on file fields, HTML escaping in
+  `Widget::render_html`, removal of SVG from default image
+  extensions to prevent stored XSS, constant-time CSRF token
+  comparison, and password plaintext-storage prevention in
+  validator error sanitisation.
+- **`ModelForm` integration** — typed bridge between
+  `#[model]` types and form rendering / save, with explicit
+  error handling on save (no panics).
+
+### Notable Breaking Changes
+
+`reinhardt-forms` itself ships no end-user breaking changes at
+0.1.0; its surface stabilises around the `form!` macro in
+`reinhardt-pages`. For the macro-level breaking changes that
+affect form authoring (closure lifts, `Send + Sync` requirement,
+unified validators), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+and the [reinhardt-pages-macros CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/crates/reinhardt-pages/macros/CHANGELOG.md).
+
+### Migration Notes
+
+- Replace inline regex-based validation with the cached
+  `UrlValidator` / email validator constants; downstream code that
+  recompiled these patterns per call now has a no-op upgrade path.
+- For the workspace-wide migration narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
