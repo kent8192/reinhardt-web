@@ -7,9 +7,11 @@
 //!
 //! ## Installation
 //!
-//! During the RC phase, only release-candidate versions are published to
-//! crates.io, so `cargo install` requires an explicit `--version`. The
-//! version below is auto-bumped by release-plz on each release.
+//! While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`),
+//! `cargo install` requires an explicit `--version` because pre-releases
+//! are not selected by default. Once `0.1.0` stable ships, `--version`
+//! becomes optional. The literal below is auto-bumped by release-plz on
+//! each release.
 //!
 //! <!-- reinhardt-version-sync -->
 //! ```bash

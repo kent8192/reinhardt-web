@@ -73,26 +73,39 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	// Get dynamic crate path (needed by inject_resolutions below)
 	let di_crate = get_reinhardt_di_crate();
 
-	// Generate dependency resolution code.
-	// `ctx.resolve::<T>()` returns `DiResult<Arc<T>>`, so we must handle two cases:
-	// - Parameter type is `Depends<T>`: resolve via `Depends::resolve()` with caching
-	// - Parameter type is `T` (non-Depends): resolve `T`, then clone out of the `Arc`
+	// Generate dependency resolution code (kent8192/reinhardt-web#4685).
+	//
+	// Two parameter shapes are supported:
+	//
+	// - `Depends<T>` — resolved via `Depends::resolve_from_registry`. The
+	//   registry-only path has no `T: Injectable` bound, which is the whole
+	//   reason factory-produced types (deliberately without `impl Injectable`)
+	//   can be injected this way. Callers wrap such types in `Depends<T>` by
+	//   project convention (see
+	//   `tests/integration/tests/di/ui/pass/factory_depends_in_server_fn.rs`).
+	//
+	// - non-`Depends` `T` — resolved via `Depends::resolve`, which consults
+	//   the registry *first* and falls back to `T::inject(ctx)` when the type
+	//   is not registered. This matches the codegen pattern used by
+	//   `#[server_fn]` / `#[routes]` for the same shape and lets factories
+	//   accept types whose only DI surface is a manual `impl Injectable`
+	//   (e.g. `SessionData`, `ServerFnRequest`, `AuthInfo`). The fallback
+	//   requires `T: Injectable`, satisfied by every callsite that uses the
+	//   non-`Depends` form today.
 	let inject_resolutions: Vec<_> = inject_params
 		.iter()
 		.map(|(pat, ty)| {
 			if let Some(inner_ty) = extract_depends_inner_type(ty) {
-				// Parameter is Depends<T>: resolve via registry only (no Injectable bound needed).
-				// Factory-produced types may not implement Injectable.
 				quote! {
 					let #pat: #ty = #di_crate::Depends::<#inner_ty>::resolve_from_registry(&*ctx, true).await?;
 				}
 			} else {
-				// Parameter is T: resolve T, unwrap Arc<T> via clone
+				// `Depends::into_inner` consumes the `Depends<T>`, tries
+				// `Arc::try_unwrap`, and falls back to `(*arc).clone()` only when
+				// the Arc is still shared. This avoids an unconditional clone in
+				// the common single-owner path (factory body is the sole holder).
 				quote! {
-					let #pat: #ty = {
-						let __arc = ctx.resolve::<#ty>().await?;
-						(*__arc).clone()
-					};
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&*ctx, true).await?.into_inner();
 				}
 			}
 		})
