@@ -1,137 +1,193 @@
-//! Effect hooks: use_effect and use_layout_effect
+//! Effect hooks: `use_effect` and `use_layout_effect`.
 //!
-//! These hooks provide React-like side effect management built on top of Effect.
+//! React-parity hooks for side effects. Both hooks take an explicit
+//! deps tuple as the final positional argument — exact parity with
+//! React's `useEffect(fn, [deps])`. There is no auto-tracking
+//! variant (spec §4.2): missing the deps argument is a compile error
+//! (`error[E0061]`).
+//!
+//! # Deps semantics
+//!
+//! - `()` — mount-only. The effect runs once when the component mounts
+//!   and never re-runs.
+//! - `(s,)` — one dependency. The effect re-runs whenever `s` is updated
+//!   via `Signal::set` / `Memo` recompute / `Resource` state change.
+//! - `(s1, s2, .., s12)` — up to twelve dependencies. The effect re-runs
+//!   when any listed dep fires. Unlisted signals are ignored even if
+//!   they are read inside the closure.
+//!
+//! Equality is identity-based: comparing two deps tuples compares the
+//! underlying `signal_id()`s, never the values. Clones of the same
+//! `Signal<T>` share an identifier, so passing `count.clone()` works.
 
+use crate::reactive::deps::IntoDeps;
 use crate::reactive::{Effect, runtime::EffectTiming};
 
-/// Runs a side effect with automatic dependency tracking.
+/// Runs a side effect, re-running when any dependency in `deps` changes.
 ///
-/// This is the React-like equivalent of `useEffect`. The effect function runs
-/// automatically whenever its reactive dependencies change.
-///
-/// Unlike React's useEffect, dependencies are automatically tracked - you don't
-/// need to specify a dependency array. Any Signal accessed inside the effect
-/// will be tracked as a dependency.
+/// React parity: `useEffect(fn, [deps])`. The first argument is the
+/// effect closure; the second is a tuple of [`Trackable`] dependencies.
+/// Pass `()` for a mount-only effect that never re-runs.
 ///
 /// # Type Parameters
 ///
-/// * `F` - The effect function type
-/// * `C` - The optional cleanup function type
+/// - `F` — the effect closure.
+/// - `D` — the deps tuple shape (`()` or `(T1,)` .. `(T1, .., T12)`).
 ///
 /// # Arguments
 ///
-/// * `f` - A function that performs the side effect and optionally returns a cleanup function
+/// - `f` — closure executed on mount and on every re-run.
+/// - `deps` — explicit dependency tuple.
 ///
 /// # Returns
 ///
-/// The Effect handle, which can be used to manually dispose the effect
+/// An [`Effect`] handle that can be used to dispose the effect early.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_state, use_effect};
+/// use reinhardt_pages::reactive::Signal;
+/// use reinhardt_pages::reactive::hooks::use_effect;
 ///
-/// let (count, set_count) = use_state(0);
+/// let count = Signal::new(0);
 ///
-/// // Effect without cleanup
-/// use_effect({
+/// // Re-runs whenever `count` changes.
+/// let _e = use_effect({
 ///     let count = count.clone();
-///     move || {
-///         log!("Count is now: {}", count.get());
-///         None::<fn()>
-///     }
-/// });
+///     move || { let _ = count.get(); }
+/// }, (count.clone(),));
 ///
-/// // Effect with cleanup
-/// use_effect(move || {
-///     let interval_id = set_interval(|| log!("tick"), 1000);
-///     Some(move || clear_interval(interval_id))
-/// });
+/// // Mount-only: runs once, never re-runs.
+/// let _mount = use_effect(|| {
+///     // one-time setup
+/// }, ());
 /// ```
 ///
-/// # Note on Cleanup
-///
-/// The cleanup function, if provided, is called before the effect re-runs
-/// and when the effect is disposed. This is useful for cleaning up subscriptions,
-/// timers, or other resources.
-pub fn use_effect<F>(f: F) -> Effect
+/// [`Trackable`]: crate::reactive::Trackable
+pub fn use_effect<F, D>(f: F, deps: D) -> Effect
 where
 	F: FnMut() + 'static,
+	D: IntoDeps,
 {
-	Effect::new(f)
+	Effect::new_with_deps(f, deps.into_deps())
 }
 
 /// Runs a side effect synchronously before browser paint.
 ///
-/// This is the React-like equivalent of `useLayoutEffect`. It has the same
-/// signature as `use_effect` but runs synchronously after all DOM mutations
-/// but before the browser paints.
+/// React parity: `useLayoutEffect(fn, [deps])`. Identical to
+/// [`use_effect`] in API but uses [`EffectTiming::Layout`] internally so
+/// the effect runs synchronously after DOM mutations but before the
+/// browser paints.
 ///
-/// # When to Use
+/// # When to use
 ///
-/// Use `use_layout_effect` instead of `use_effect` when you need to:
-/// - Read layout from the DOM and synchronously re-render
-/// - Measure DOM elements
-/// - Apply visual updates that must be synchronous
+/// - Reading layout (e.g., `offsetWidth`, `getBoundingClientRect`).
+/// - Applying visual updates that must be synchronous.
+/// - Measuring DOM nodes and feeding the result into another signal.
 ///
 /// # Warning
 ///
-/// `use_layout_effect` blocks the browser from painting, so it should be used
-/// sparingly. Prefer `use_effect` for most use cases.
+/// Layout effects block paint. Prefer [`use_effect`] unless you need
+/// pre-paint synchrony.
 ///
 /// # Arguments
 ///
-/// * `f` - A function that performs the side effect
+/// - `f` — closure executed on mount and on every re-run.
+/// - `deps` — explicit dependency tuple (`()` for mount-only).
 ///
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_ref, use_layout_effect};
+/// use reinhardt_pages::reactive::Signal;
+/// use reinhardt_pages::reactive::hooks::{use_layout_effect, use_ref};
 ///
-/// let element_ref = use_ref(None::<Element>);
-/// let (width, set_width) = use_state(0);
+/// let element_ref = use_ref(None::<web_sys::Element>);
+/// let width = Signal::new(0);
 ///
 /// use_layout_effect({
 ///     let element_ref = element_ref.clone();
-///     let set_width = set_width.clone();
+///     let width = width.clone();
 ///     move || {
 ///         if let Some(el) = element_ref.current().as_ref() {
-///             set_width(el.offset_width());
+///             width.set(el.client_width());
 ///         }
 ///     }
-/// });
+/// }, ());
 /// ```
-///
-/// # Note
-///
-/// This implementation uses synchronous execution timing. Layout effects are
-/// executed immediately when their dependencies change, before passive effects.
-pub fn use_layout_effect<F>(f: F) -> Effect
+pub fn use_layout_effect<F, D>(f: F, deps: D) -> Effect
 where
 	F: FnMut() + 'static,
+	D: IntoDeps,
 {
-	Effect::new_with_timing(f, EffectTiming::Layout)
+	Effect::new_with_deps_and_timing(f, deps.into_deps(), EffectTiming::Layout)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::reactive::Signal;
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::cell::RefCell;
 	use std::rc::Rc;
+
+	#[rstest]
+	#[serial]
+	fn use_effect_with_explicit_deps_signature() {
+		// Arrange
+		let count = Signal::new(0_i32);
+		let runs = Rc::new(RefCell::new(0_i32));
+
+		// Act — new signature: closure first, deps second.
+		let _e = use_effect(
+			{
+				let runs = Rc::clone(&runs);
+				move || {
+					*runs.borrow_mut() += 1;
+				}
+			},
+			(count.clone(),),
+		);
+
+		// Assert — runs once on mount.
+		assert_eq!(*runs.borrow(), 1);
+	}
+
+	#[rstest]
+	#[serial]
+	fn use_effect_mount_only_unit_deps() {
+		// Arrange
+		let runs = Rc::new(RefCell::new(0_i32));
+
+		// Act
+		let _e = use_effect(
+			{
+				let runs = Rc::clone(&runs);
+				move || {
+					*runs.borrow_mut() += 1;
+				}
+			},
+			(),
+		);
+
+		// Assert
+		assert_eq!(*runs.borrow(), 1);
+	}
 
 	#[test]
 	#[serial]
 	fn test_use_effect_runs_immediately() {
 		let called = Rc::new(RefCell::new(false));
 
-		let _effect = use_effect({
-			let called = Rc::clone(&called);
-			move || {
-				*called.borrow_mut() = true;
-			}
-		});
+		let _effect = use_effect(
+			{
+				let called = Rc::clone(&called);
+				move || {
+					*called.borrow_mut() = true;
+				}
+			},
+			(),
+		);
 
 		assert!(*called.borrow());
 	}
@@ -142,14 +198,17 @@ mod tests {
 		let count = Signal::new(0);
 		let effect_count = Rc::new(RefCell::new(0));
 
-		let _effect = use_effect({
-			let count = count.clone();
-			let effect_count = Rc::clone(&effect_count);
-			move || {
-				let _ = count.get(); // Track dependency
-				*effect_count.borrow_mut() += 1;
-			}
-		});
+		let _effect = use_effect(
+			{
+				let count = count.clone();
+				let effect_count = Rc::clone(&effect_count);
+				move || {
+					let _ = count.get(); // Read the listed dep
+					*effect_count.borrow_mut() += 1;
+				}
+			},
+			(count.clone(),),
+		);
 
 		// Initial run
 		assert_eq!(*effect_count.borrow(), 1);
@@ -164,12 +223,15 @@ mod tests {
 	fn test_use_layout_effect() {
 		let called = Rc::new(RefCell::new(false));
 
-		let _effect = use_layout_effect({
-			let called = Rc::clone(&called);
-			move || {
-				*called.borrow_mut() = true;
-			}
-		});
+		let _effect = use_layout_effect(
+			{
+				let called = Rc::clone(&called);
+				move || {
+					*called.borrow_mut() = true;
+				}
+			},
+			(),
+		);
 
 		assert!(*called.borrow());
 	}
@@ -181,14 +243,17 @@ mod tests {
 		let signal = Signal::new(0);
 		let execution_order = Rc::new(RefCell::new(Vec::new()));
 
-		let _effect = use_layout_effect({
-			let signal = signal.clone();
-			let execution_order = Rc::clone(&execution_order);
-			move || {
-				let value = signal.get();
-				execution_order.borrow_mut().push(value);
-			}
-		});
+		let _effect = use_layout_effect(
+			{
+				let signal = signal.clone();
+				let execution_order = Rc::clone(&execution_order);
+				move || {
+					let value = signal.get();
+					execution_order.borrow_mut().push(value);
+				}
+			},
+			(signal.clone(),),
+		);
 
 		// Initial execution
 		assert_eq!(*execution_order.borrow(), vec![0]);
@@ -210,24 +275,30 @@ mod tests {
 		let passive_count = Rc::new(RefCell::new(0));
 
 		// Create layout effect
-		let _layout_effect = use_layout_effect({
-			let signal = signal.clone();
-			let layout_count = Rc::clone(&layout_count);
-			move || {
-				let _ = signal.get();
-				*layout_count.borrow_mut() += 1;
-			}
-		});
+		let _layout_effect = use_layout_effect(
+			{
+				let signal = signal.clone();
+				let layout_count = Rc::clone(&layout_count);
+				move || {
+					let _ = signal.get();
+					*layout_count.borrow_mut() += 1;
+				}
+			},
+			(signal.clone(),),
+		);
 
 		// Create passive effect (use_effect)
-		let _passive_effect = use_effect({
-			let signal = signal.clone();
-			let passive_count = Rc::clone(&passive_count);
-			move || {
-				let _ = signal.get();
-				*passive_count.borrow_mut() += 1;
-			}
-		});
+		let _passive_effect = use_effect(
+			{
+				let signal = signal.clone();
+				let passive_count = Rc::clone(&passive_count);
+				move || {
+					let _ = signal.get();
+					*passive_count.borrow_mut() += 1;
+				}
+			},
+			(signal.clone(),),
+		);
 
 		// Both should have run initially
 		assert_eq!(*layout_count.borrow(), 1);
@@ -249,24 +320,30 @@ mod tests {
 		let execution_order = Rc::new(RefCell::new(Vec::new()));
 
 		// Create layout effect (should execute first)
-		let _layout_effect = use_layout_effect({
-			let signal = signal.clone();
-			let execution_order = Rc::clone(&execution_order);
-			move || {
-				let value = signal.get();
-				execution_order.borrow_mut().push(("layout", value));
-			}
-		});
+		let _layout_effect = use_layout_effect(
+			{
+				let signal = signal.clone();
+				let execution_order = Rc::clone(&execution_order);
+				move || {
+					let value = signal.get();
+					execution_order.borrow_mut().push(("layout", value));
+				}
+			},
+			(signal.clone(),),
+		);
 
 		// Create passive effect
-		let _passive_effect = use_effect({
-			let signal = signal.clone();
-			let execution_order = Rc::clone(&execution_order);
-			move || {
-				let value = signal.get();
-				execution_order.borrow_mut().push(("passive", value));
-			}
-		});
+		let _passive_effect = use_effect(
+			{
+				let signal = signal.clone();
+				let execution_order = Rc::clone(&execution_order);
+				move || {
+					let value = signal.get();
+					execution_order.borrow_mut().push(("passive", value));
+				}
+			},
+			(signal.clone(),),
+		);
 
 		// Both execute initially
 		let order = execution_order.borrow();

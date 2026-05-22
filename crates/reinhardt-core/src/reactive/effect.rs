@@ -36,6 +36,7 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 
+use super::deps::Deps;
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 
 /// Type alias for effect functions
@@ -53,6 +54,23 @@ thread_local! {
 // This stores the execution timing (Layout vs Passive) for each Effect.
 thread_local! {
 	static EFFECT_TIMING: RefCell<BTreeMap<NodeId, EffectTiming>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+// Global storage for Effect deps snapshots.
+//
+// Set when an effect is created via `new_with_deps` / `new_with_deps_and_timing`
+// (React-parity hooks); absent for the legacy `new` / `new_with_timing` paths
+// that still auto-track. Read by the runtime in `notify_signal_change` to gate
+// re-runs — an effect only re-runs when the firing signal's `signal_id()` is
+// present in its snapshot. Mount-only (`()`) snapshots subscribe to nothing.
+thread_local! {
+	static EFFECT_DEPS: RefCell<BTreeMap<NodeId, Deps>> = RefCell::new(BTreeMap::new());
+}
+
+/// Returns the deps snapshot for an effect, if it was created with explicit
+/// deps. Returns `None` for legacy auto-tracking effects.
+pub(crate) fn get_effect_deps(effect_id: NodeId) -> Option<Deps> {
+	EFFECT_DEPS.with(|storage| storage.borrow().get(&effect_id).cloned())
 }
 
 /// Get the timing for an effect by its ID.
@@ -203,6 +221,69 @@ impl Effect {
 		Self { id, disposed }
 	}
 
+	/// Create an Effect that runs only when one of the listed deps fires.
+	///
+	/// Used by `reinhardt_pages::reactive::hooks::use_effect` (spec §4.2,
+	/// React parity). Equivalent to [`Effect::new`] but the deps snapshot
+	/// is recorded on the effect so the runtime can gate re-runs: the
+	/// effect re-runs iff the firing signal's `signal_id()` is present in
+	/// `deps.ids()`. Mount-only (`Deps::is_empty()`) effects never re-run.
+	///
+	/// The user closure still calls `Signal::get()` etc., and dependency
+	/// tracking still records subscribers — the gate fires later, inside
+	/// the runtime's `notify_signal_change` path.
+	pub fn new_with_deps<F>(f: F, deps: Deps) -> Self
+	where
+		F: FnMut() + 'static,
+	{
+		Self::new_internal(f, deps, EffectTiming::Passive)
+	}
+
+	/// Create an Effect with explicit deps and an explicit execution timing.
+	///
+	/// Used by `reinhardt_pages::reactive::hooks::use_layout_effect` to
+	/// combine [`EffectTiming::Layout`] with deps-based re-run gating.
+	pub fn new_with_deps_and_timing<F>(f: F, deps: Deps, timing: EffectTiming) -> Self
+	where
+		F: FnMut() + 'static,
+	{
+		Self::new_internal(f, deps, timing)
+	}
+
+	/// Common path for the deps-aware constructors.
+	fn new_internal<F>(mut f: F, deps: Deps, timing: EffectTiming) -> Self
+	where
+		F: FnMut() + 'static,
+	{
+		let id = NodeId::new();
+		let disposed = Rc::new(RefCell::new(false));
+
+		let disposed_clone = disposed.clone();
+		EFFECT_FUNCTIONS.with(|storage| {
+			storage.borrow_mut().insert(
+				id,
+				Box::new(move || {
+					if !*disposed_clone.borrow() {
+						f();
+					}
+				}),
+			);
+		});
+
+		EFFECT_TIMING.with(|storage| {
+			storage.borrow_mut().insert(id, timing);
+		});
+
+		EFFECT_DEPS.with(|storage| {
+			storage.borrow_mut().insert(id, deps);
+		});
+
+		// Initial mount run.
+		Self::execute_effect(id);
+
+		Self { id, disposed }
+	}
+
 	/// Execute an effect by its ID
 	///
 	/// This is called internally by the runtime when an effect needs to re-run.
@@ -286,6 +367,11 @@ impl Effect {
 
 		// Remove timing entry so the RAII guard in execute_effect() knows not to reinsert
 		let _ = EFFECT_TIMING.try_with(|storage| {
+			storage.borrow_mut().remove(&self.id);
+		});
+
+		// Remove deps snapshot for deps-aware effects (no-op for legacy effects)
+		let _ = EFFECT_DEPS.try_with(|storage| {
 			storage.borrow_mut().remove(&self.id);
 		});
 	}
