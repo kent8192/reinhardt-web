@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `form!` macro fields now accept optional generic type parameters
+  (`HiddenField<i64>`, `ChoiceField<bool>`, `MultipleChoiceField<String>`,
+  `JsonField<MyStruct>`) to forward typed values to `#[server_fn]` handlers
+  instead of always stringifying them (#4397)
+- `IpAddressField` is now specialized to `Option<IpAddr>` in generated code
+- Fields without a generic parameter default to `String` for backward
+  compatibility
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages` as part of the
