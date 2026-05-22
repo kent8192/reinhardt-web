@@ -244,11 +244,16 @@ fn list_view_component(model_name: String) -> Page {
 	{
 		let resource = list_resource.clone();
 		let page_signal = page_signal.clone();
-		use_effect(move || {
-			if let ResourceState::Success(ref response) = resource.get() {
-				page_signal.set(response.page);
-			}
-		});
+		let resource_for_deps = list_resource.clone();
+		use_effect(
+			move || {
+				if let ResourceState::Success(ref response) = resource.get() {
+					page_signal.set(response.page);
+				}
+				None::<fn()>
+			},
+			(resource_for_deps,),
+		);
 	}
 
 	let reactive_content = Page::reactive({

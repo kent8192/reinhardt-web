@@ -133,40 +133,49 @@ pub fn use_dm_chat(room_id: Uuid) -> DmChatHandle {
 		let set_error_for_resource = set_error.clone();
 		let resource_for_effect = initial_messages.clone();
 
-		use_effect(move || {
-			match resource_for_effect.get() {
-				reinhardt::pages::reactive::ResourceState::Loading => {
-					// Keep loading state
+		let resource_for_deps = initial_messages.clone();
+		use_effect(
+			move || {
+				match resource_for_effect.get() {
+					reinhardt::pages::reactive::ResourceState::Loading => {
+						// Keep loading state
+					}
+					reinhardt::pages::reactive::ResourceState::Success(msgs) => {
+						set_messages_for_resource(msgs);
+						set_loading_for_resource(false);
+					}
+					reinhardt::pages::reactive::ResourceState::Error(err) => {
+						set_error_for_resource(Some(err));
+						set_loading_for_resource(false);
+					}
 				}
-				reinhardt::pages::reactive::ResourceState::Success(msgs) => {
-					set_messages_for_resource(msgs);
-					set_loading_for_resource(false);
-				}
-				reinhardt::pages::reactive::ResourceState::Error(err) => {
-					set_error_for_resource(Some(err));
-					set_loading_for_resource(false);
-				}
-			}
-		});
+				None::<fn()>
+			},
+			(resource_for_deps,),
+		);
 	}
 
 	// Handle incoming WebSocket messages
 	{
 		let ws = ws.clone();
 		let messages = messages.clone();
+		let ws_latest_for_deps = ws.latest_message().clone();
 
-		use_effect(move || {
-			if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
-				// Try to parse as MessageInfo
-				if let Ok(msg) = serde_json::from_str::<MessageInfo>(&text) {
-					// Add the new message to the list
-					let mut current = messages.get();
-					current.push(msg);
-					messages.set(current);
+		use_effect(
+			move || {
+				if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+					// Try to parse as MessageInfo
+					if let Ok(msg) = serde_json::from_str::<MessageInfo>(&text) {
+						// Add the new message to the list
+						let mut current = messages.get();
+						current.push(msg);
+						messages.set(current);
+					}
 				}
-			}
-			()
-		});
+				None::<fn()>
+			},
+			(ws_latest_for_deps,),
+		);
 	}
 
 	// Create send message function
@@ -250,44 +259,53 @@ pub fn use_dm_room_list() -> DmRoomListHandle {
 		let set_error_for_resource = set_error.clone();
 		let resource_for_effect = initial_rooms.clone();
 
-		use_effect(move || {
-			match resource_for_effect.get() {
-				reinhardt::pages::reactive::ResourceState::Loading => {
-					// Keep loading state
+		let resource_for_deps = initial_rooms.clone();
+		use_effect(
+			move || {
+				match resource_for_effect.get() {
+					reinhardt::pages::reactive::ResourceState::Loading => {
+						// Keep loading state
+					}
+					reinhardt::pages::reactive::ResourceState::Success(rooms) => {
+						set_rooms_for_resource(rooms);
+						set_loading_for_resource(false);
+					}
+					reinhardt::pages::reactive::ResourceState::Error(err) => {
+						set_error_for_resource(Some(err));
+						set_loading_for_resource(false);
+					}
 				}
-				reinhardt::pages::reactive::ResourceState::Success(rooms) => {
-					set_rooms_for_resource(rooms);
-					set_loading_for_resource(false);
-				}
-				reinhardt::pages::reactive::ResourceState::Error(err) => {
-					set_error_for_resource(Some(err));
-					set_loading_for_resource(false);
-				}
-			}
-		});
+				None::<fn()>
+			},
+			(resource_for_deps,),
+		);
 	}
 
 	// Handle notification updates from WebSocket
 	{
 		let ws = ws.clone();
 		let rooms = rooms.clone();
+		let ws_latest_for_deps = ws.latest_message().clone();
 
-		use_effect(move || {
-			if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
-				// Parse notification message
-				if let Ok(notification) = serde_json::from_str::<NewMessageNotification>(&text) {
-					// Update the affected room's unread count and last message
-					let mut current = rooms.get();
-					if let Some(room) = current.iter_mut().find(|r| r.id == notification.room_id) {
-						room.last_message = Some(notification.message_preview.clone());
-						room.last_activity = Some(notification.timestamp.clone());
-						room.unread_count += 1;
+		use_effect(
+			move || {
+				if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+					// Parse notification message
+					if let Ok(notification) = serde_json::from_str::<NewMessageNotification>(&text) {
+						// Update the affected room's unread count and last message
+						let mut current = rooms.get();
+						if let Some(room) = current.iter_mut().find(|r| r.id == notification.room_id) {
+							room.last_message = Some(notification.message_preview.clone());
+							room.last_activity = Some(notification.timestamp.clone());
+							room.unread_count += 1;
+						}
+						rooms.set(current);
 					}
-					rooms.set(current);
 				}
-			}
-			()
-		});
+				None::<fn()>
+			},
+			(ws_latest_for_deps,),
+		);
 	}
 
 	DmRoomListHandle {

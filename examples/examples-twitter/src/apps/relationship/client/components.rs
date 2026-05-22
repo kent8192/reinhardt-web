@@ -56,13 +56,22 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 		{
 			let toggle_follow_for_effect = toggle_follow.clone();
 			let is_following_for_effect = is_following.clone();
-			use_effect(move || {
-				if toggle_follow_for_effect.is_success() {
-					let current = is_following_for_effect.get();
-					is_following_for_effect.set(!current);
-					toggle_follow_for_effect.reset();
-				}
-			});
+			// TODO(#4195 follow-up): once Action exposes its phase Signal,
+			// pass it as the dep so this effect re-runs on is_success()
+			// transition. For now `()` keeps the example compiling — the
+			// reset path is exercised on the very next render, not
+			// reactively (acceptable for the example surface).
+			use_effect(
+				move || {
+					if toggle_follow_for_effect.is_success() {
+						let current = is_following_for_effect.get();
+						is_following_for_effect.set(!current);
+						toggle_follow_for_effect.reset();
+					}
+					None::<fn()>
+				},
+				(),
+			);
 		}
 
 		let toggle_follow_for_error = toggle_follow.clone();
@@ -237,22 +246,29 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 		let loading_clone = loading.clone();
 		let error_clone = error.clone();
 		let resource_for_effect = resource.clone();
+		let resource_for_deps = resource.clone();
 
-		use_effect(move || match resource_for_effect.get() {
-			ResourceState::Loading => {
-				loading_clone.set(true);
-				error_clone.set(None);
-			}
-			ResourceState::Success(data) => {
-				users_clone.set(data);
-				loading_clone.set(false);
-				error_clone.set(None);
-			}
-			ResourceState::Error(err) => {
-				error_clone.set(Some(err));
-				loading_clone.set(false);
-			}
-		});
+		use_effect(
+			move || {
+				match resource_for_effect.get() {
+					ResourceState::Loading => {
+						loading_clone.set(true);
+						error_clone.set(None);
+					}
+					ResourceState::Success(data) => {
+						users_clone.set(data);
+						loading_clone.set(false);
+						error_clone.set(None);
+					}
+					ResourceState::Error(err) => {
+						error_clone.set(Some(err));
+						loading_clone.set(false);
+					}
+				}
+				None::<fn()>
+			},
+			(resource_for_deps,),
+		);
 	}
 
 	let title = match list_type {

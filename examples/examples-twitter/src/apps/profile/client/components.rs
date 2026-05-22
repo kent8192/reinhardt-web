@@ -50,22 +50,29 @@ pub fn profile_view(user_id: Uuid) -> Page {
 		let loading_setter = _set_loading.clone();
 		let error_setter = _set_error.clone();
 		let resource_for_effect = resource.clone();
+		let resource_for_deps = resource.clone();
 
-		use_effect(move || match resource_for_effect.get() {
-			ResourceState::Loading => {
-				loading_setter(true);
-				error_setter(None);
-			}
-			ResourceState::Success(data) => {
-				profile_setter(Some(data));
-				loading_setter(false);
-				error_setter(None);
-			}
-			ResourceState::Error(err) => {
-				error_setter(Some(err));
-				loading_setter(false);
-			}
-		});
+		use_effect(
+			move || {
+				match resource_for_effect.get() {
+					ResourceState::Loading => {
+						loading_setter(true);
+						error_setter(None);
+					}
+					ResourceState::Success(data) => {
+						profile_setter(Some(data));
+						loading_setter(false);
+						error_setter(None);
+					}
+					ResourceState::Error(err) => {
+						error_setter(Some(err));
+						loading_setter(false);
+					}
+				}
+				None::<fn()>
+			},
+			(resource_for_deps,),
+		);
 	}
 
 	// Clone signals for passing to page! macro
@@ -318,14 +325,22 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 		let location_signal = profile_form.location().clone();
 		let website_signal = profile_form.website().clone();
 
-		use_effect(move || {
-			if let Some(profile_data) = load_profile_for_effect.result() {
-				avatar_url_signal.set(profile_data.avatar_url.unwrap_or_default());
-				bio_signal.set(profile_data.bio.unwrap_or_default());
-				location_signal.set(profile_data.location.unwrap_or_default());
-				website_signal.set(profile_data.website.unwrap_or_default());
-			}
-		});
+		// TODO(#4195 follow-up): once Action exposes its phase Signal, pass it
+		// as the dep so this effect re-runs only on load_profile.result()
+		// transition. For the example surface, `()` is acceptable — the
+		// dispatch fires once at mount.
+		use_effect(
+			move || {
+				if let Some(profile_data) = load_profile_for_effect.result() {
+					avatar_url_signal.set(profile_data.avatar_url.unwrap_or_default());
+					bio_signal.set(profile_data.bio.unwrap_or_default());
+					location_signal.set(profile_data.location.unwrap_or_default());
+					website_signal.set(profile_data.website.unwrap_or_default());
+				}
+				None::<fn()>
+			},
+			(),
+		);
 	}
 
 	load_profile.dispatch(user_id);
