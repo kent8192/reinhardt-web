@@ -71,6 +71,11 @@ pub(super) fn parse_component_brace_node(input: ParseStream) -> Result<PageNode>
 		// Anything else is a generic child node (HTML element, nested
 		// component, text literal, braced expression, if / for, ...).
 		children.push(super::parse_node(&content)?);
+		// Optional trailing comma after a child node so that
+		// `Card { p { "x" }, q { "y" } }` parses successfully.
+		if content.peek(Token![,]) {
+			content.parse::<Token![,]>()?;
+		}
 	}
 
 	Ok(PageNode::Component(PageComponent {

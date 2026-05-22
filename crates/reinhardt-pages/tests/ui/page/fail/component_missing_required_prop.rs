@@ -10,6 +10,9 @@ use reinhardt_pages::page;
 #[derive(bon::Builder)]
 struct CardProps {
 	// `item` is required because there is no `#[builder(default)]`.
+	// This compile-fail fixture intentionally keeps `item` unused —
+	// the field exists only so bon::Builder can detect its omission
+	// in `Card { }` and reject `.build()` at compile time.
 	#[allow(dead_code)]
 	item: String,
 }
