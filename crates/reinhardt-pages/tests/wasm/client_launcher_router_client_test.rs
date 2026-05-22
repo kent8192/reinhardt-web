@@ -9,27 +9,21 @@
 //!
 //! **Run with** (from the workspace root):
 //!   `wasm-pack test --headless --chrome crates/reinhardt-pages -- --test client_launcher_router_client_test`
-
 #![cfg(wasm)]
-#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` for mutual-exclusion check.
-
+#![allow(deprecated)]
 use reinhardt_core::page::Page;
 use reinhardt_pages::app::ClientLauncher;
 use reinhardt_urls::routers::ClientRouter;
 use std::cell::Cell;
 use std::rc::Rc;
 use wasm_bindgen_test::*;
-
 wasm_bindgen_test_configure!(run_in_browser);
-
 fn home() -> Page {
 	Page::empty()
 }
-
 fn about() -> Page {
 	Page::empty()
 }
-
 /// Install a fresh `#app` root element on `document.body` so each
 /// test starts from a known DOM state. Mirrors the helper in
 /// `client_launcher_navigation_test.rs`.
@@ -43,22 +37,11 @@ fn install_app_root() -> web_sys::Element {
 	document.body().unwrap().append_child(&root).unwrap();
 	root
 }
-
 #[wasm_bindgen_test]
 fn router_client_launcher_accepts_configured_router() {
-	// Arrange: install DOM root and build a ClientRouter. The
-	// `dispatched` counter is wired up to ensure that registering an
-	// `on_navigate` listener inside the builder closure does not
-	// itself prevent `launch()` from succeeding; we do NOT assert on
-	// observer dispatch here because no navigation is triggered, and
-	// the returned subscription is dropped at the end of the builder
-	// closure (observer-survival semantics are covered by
-	// `urls/tests/wasm/`).
 	let _root = install_app_root();
 	let dispatched = Rc::new(Cell::new(0u64));
 	let dispatched_clone = dispatched.clone();
-
-	// Act
 	let launcher_result = ClientLauncher::new("#app")
 		.router_client(move || {
 			let r = ClientRouter::new()
@@ -70,28 +53,19 @@ fn router_client_launcher_accepts_configured_router() {
 			r
 		})
 		.launch();
-
-	// Assert: launcher accepts the configured ClientRouter.
 	assert!(
 		launcher_result.is_ok(),
 		"router_client launch must succeed, got: {:?}",
 		launcher_result.err()
 	);
 }
-
 #[wasm_bindgen_test]
 fn router_client_and_router_are_mutually_exclusive() {
-	// Arrange
 	let _root = install_app_root();
-
-	// Act: configure both routers; `launch()` must reject this.
-	// File-scope `#![allow(deprecated)]` covers `router(...)` and `Router::new`.
 	let result = ClientLauncher::new("#app")
 		.router(reinhardt_pages::router::Router::new)
 		.router_client(ClientRouter::new)
 		.launch();
-
-	// Assert
 	assert!(
 		result.is_err(),
 		"setting both `router(...)` and `router_client(...)` must error"

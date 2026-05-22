@@ -20,14 +20,8 @@
 //! Total: 35 tests
 //!
 //! Note: DOM rendering tests require WASM environment with WASM test infrastructure.
-
 use reinhardt_pages::{FieldMetadata, FormComponent, FormMetadata, Widget};
 use std::collections::HashMap;
-
-// ============================================================================
-// Category 1: Form Creation and Metadata (8 tests)
-// ============================================================================
-
 /// Tests creating FormComponent from minimal metadata
 #[test]
 fn test_form_creation_minimal() {
@@ -40,11 +34,9 @@ fn test_form_creation_minimal() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata.clone(), "/api/submit");
 	assert_eq!(component.metadata().fields.len(), 0);
 }
-
 /// Tests creating FormComponent with single field
 #[test]
 fn test_form_creation_single_field() {
@@ -64,12 +56,10 @@ fn test_form_creation_single_field() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(component.metadata().fields.len(), 1);
 	assert_eq!(component.metadata().fields[0].name, "username");
 }
-
 /// Tests creating FormComponent with multiple fields
 #[test]
 fn test_form_creation_multiple_fields() {
@@ -107,11 +97,9 @@ fn test_form_creation_multiple_fields() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(component.metadata().fields.len(), 3);
 }
-
 /// Tests FormComponent with field prefix
 #[test]
 fn test_form_creation_with_prefix() {
@@ -131,11 +119,9 @@ fn test_form_creation_with_prefix() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(component.metadata().prefix, "user_form");
 }
-
 /// Tests FormComponent with help text
 #[test]
 fn test_form_creation_with_help_text() {
@@ -155,14 +141,12 @@ fn test_form_creation_with_help_text() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(
 		component.metadata().fields[0].help_text,
 		Some("Must be at least 8 characters".to_string())
 	);
 }
-
 /// Tests FormComponent with bound state
 #[test]
 fn test_form_creation_bound_state() {
@@ -175,11 +159,9 @@ fn test_form_creation_bound_state() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert!(component.metadata().is_bound);
 }
-
 /// Tests FormComponent with server-side errors
 #[test]
 fn test_form_creation_with_errors() {
@@ -188,7 +170,6 @@ fn test_form_creation_with_errors() {
 		"username".to_string(),
 		vec!["This username is already taken.".to_string()],
 	);
-
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
 			name: "username".to_string(),
@@ -205,16 +186,10 @@ fn test_form_creation_with_errors() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert!(!component.metadata().errors.is_empty());
 	assert!(component.metadata().errors.contains_key("username"));
 }
-
-// ============================================================================
-// Category 2: Field Value Management (8 tests)
-// ============================================================================
-
 /// Tests getting default empty value
 #[test]
 fn test_get_value_empty_default() {
@@ -234,11 +209,9 @@ fn test_get_value_empty_default() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(component.get_value("name"), "");
 }
-
 /// Tests setting and getting field value
 #[test]
 fn test_set_and_get_value() {
@@ -258,13 +231,10 @@ fn test_set_and_get_value() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
 	component.set_value("email", "test@example.com");
 	assert_eq!(component.get_value("email"), "test@example.com");
 }
-
 /// Tests updating field value multiple times
 #[test]
 fn test_update_value_multiple_times() {
@@ -284,19 +254,14 @@ fn test_update_value_multiple_times() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
 	component.set_value("status", "draft");
 	assert_eq!(component.get_value("status"), "draft");
-
 	component.set_value("status", "published");
 	assert_eq!(component.get_value("status"), "published");
-
 	component.set_value("status", "archived");
 	assert_eq!(component.get_value("status"), "archived");
 }
-
 /// Tests getting value from non-existent field
 #[test]
 fn test_get_value_nonexistent_field() {
@@ -309,11 +274,9 @@ fn test_get_value_nonexistent_field() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(component.get_value("nonexistent"), "");
 }
-
 /// Tests setting value on non-existent field (should be no-op)
 #[test]
 fn test_set_value_nonexistent_field() {
@@ -326,19 +289,15 @@ fn test_set_value_nonexistent_field() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	component.set_value("nonexistent", "value");
-	// Should not panic, just silently ignore
 }
-
 /// Tests initial values from metadata
 #[test]
 fn test_initial_values_from_metadata() {
 	let mut initial = HashMap::new();
 	initial.insert("username".to_string(), serde_json::json!("john_doe"));
 	initial.insert("email".to_string(), serde_json::json!("john@example.com"));
-
 	let metadata = FormMetadata {
 		fields: vec![
 			FieldMetadata {
@@ -365,12 +324,10 @@ fn test_initial_values_from_metadata() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(component.get_value("username"), "john_doe");
 	assert_eq!(component.get_value("email"), "john@example.com");
 }
-
 /// Tests field-level initial value
 #[test]
 fn test_field_level_initial_value() {
@@ -390,11 +347,9 @@ fn test_field_level_initial_value() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(component.get_value("country"), "USA");
 }
-
 /// Tests managing values for multiple fields
 #[test]
 fn test_multiple_field_values() {
@@ -432,22 +387,14 @@ fn test_multiple_field_values() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
 	component.set_value("first_name", "John");
 	component.set_value("last_name", "Doe");
 	component.set_value("age", "30");
-
 	assert_eq!(component.get_value("first_name"), "John");
 	assert_eq!(component.get_value("last_name"), "Doe");
 	assert_eq!(component.get_value("age"), "30");
 }
-
-// ============================================================================
-// Category 3: Validation (12 tests)
-// ============================================================================
-
 /// Tests validation passes for valid required field
 #[test]
 fn test_validation_required_field_valid() {
@@ -467,14 +414,11 @@ fn test_validation_required_field_valid() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	component.set_value("username", "john_doe");
-
 	assert!(component.validate());
 	assert!(component.errors().is_empty());
 }
-
 /// Tests validation fails for empty required field
 #[test]
 fn test_validation_required_field_empty() {
@@ -494,16 +438,12 @@ fn test_validation_required_field_empty() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
 	assert!(!component.validate());
-
 	let errors = component.errors();
 	assert!(errors.contains_key("email"));
 	assert_eq!(errors.get("email").unwrap()[0], "This field is required.");
 }
-
 /// Tests validation passes for optional empty field
 #[test]
 fn test_validation_optional_field_empty() {
@@ -523,13 +463,10 @@ fn test_validation_optional_field_empty() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
 	assert!(component.validate());
 	assert!(component.errors().is_empty());
 }
-
 /// Tests validation with multiple required fields
 #[test]
 fn test_validation_multiple_required_fields() {
@@ -567,25 +504,17 @@ fn test_validation_multiple_required_fields() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
-	// All fields empty - should fail
 	assert!(!component.validate());
 	let errors = component.errors();
 	assert_eq!(errors.len(), 3);
-
-	// Set one field
 	component.set_value("username", "john");
 	assert!(!component.validate());
-
-	// Set all fields
 	component.set_value("password", "secret123");
 	component.set_value("email", "john@example.com");
 	assert!(component.validate());
 	assert!(component.errors().is_empty());
 }
-
 /// Tests validation error message format
 #[test]
 fn test_validation_error_message() {
@@ -605,14 +534,11 @@ fn test_validation_error_message() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	component.validate();
-
 	let errors = component.errors();
 	assert_eq!(errors.get("title").unwrap()[0], "This field is required.");
 }
-
 /// Tests validation clears previous errors
 #[test]
 fn test_validation_clears_previous_errors() {
@@ -632,19 +558,13 @@ fn test_validation_clears_previous_errors() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
-	// First validation - fails
 	assert!(!component.validate());
 	assert!(!component.errors().is_empty());
-
-	// Set value and validate again - should clear errors
 	component.set_value("name", "John");
 	assert!(component.validate());
 	assert!(component.errors().is_empty());
 }
-
 /// Tests validation with whitespace-only value
 #[test]
 fn test_validation_whitespace_only() {
@@ -664,14 +584,10 @@ fn test_validation_whitespace_only() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
-	// Whitespace-only should fail validation
 	component.set_value("description", "   ");
 	assert!(!component.validate());
 }
-
 /// Tests validation is callable multiple times
 #[test]
 fn test_validation_multiple_calls() {
@@ -691,17 +607,13 @@ fn test_validation_multiple_calls() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
 	assert!(!component.validate());
 	assert!(!component.validate());
-
 	component.set_value("field", "value");
 	assert!(component.validate());
 	assert!(component.validate());
 }
-
 /// Tests mixed required and optional fields validation
 #[test]
 fn test_validation_mixed_required_optional() {
@@ -731,18 +643,12 @@ fn test_validation_mixed_required_optional() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
-	// Only optional filled - should fail
 	component.set_value("optional_field", "value");
 	assert!(!component.validate());
-
-	// Required filled - should pass
 	component.set_value("required_field", "required_value");
 	assert!(component.validate());
 }
-
 /// Tests validation with no fields
 #[test]
 fn test_validation_empty_form() {
@@ -755,11 +661,9 @@ fn test_validation_empty_form() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert!(component.validate());
 }
-
 /// Tests validation state persists until re-validated
 #[test]
 fn test_validation_state_persistence() {
@@ -779,28 +683,14 @@ fn test_validation_state_persistence() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
-
-	// Validate - fails
 	component.validate();
 	assert!(!component.errors().is_empty());
-
-	// Set value but don't validate yet
 	component.set_value("name", "John");
-	// Errors should still be present
 	assert!(!component.errors().is_empty());
-
-	// Re-validate
 	component.validate();
-	// Now errors should be cleared
 	assert!(component.errors().is_empty());
 }
-
-// ============================================================================
-// Category 4: Widget Types (7 tests)
-// ============================================================================
-
 /// Tests form with multiple widget types
 #[test]
 fn test_multiple_widget_types() {
@@ -854,11 +744,8 @@ fn test_multiple_widget_types() {
 		validation_rules: Vec::new(),
 		non_field_errors: Vec::new(),
 	};
-
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(component.metadata().fields.len(), 5);
-
-	// Verify field names
 	assert_eq!(component.metadata().fields[0].name, "username");
 	assert_eq!(component.metadata().fields[1].name, "email");
 	assert_eq!(component.metadata().fields[2].name, "password");

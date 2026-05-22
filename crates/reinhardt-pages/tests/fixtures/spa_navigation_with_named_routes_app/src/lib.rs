@@ -25,8 +25,5 @@
 //! `server_fn`, `shared`, `bin/manage.rs`, `settings/`) were dropped
 //! because the fixture is driven directly by `wasm-pack` and the e2e
 //! harness, not by `manage runserver`.
-
-// Client-only modules (WASM). The `cfg(client)` alias is defined in
-// `build.rs` (`target_arch = "wasm32"`).
 #[cfg(client)]
 pub mod client;

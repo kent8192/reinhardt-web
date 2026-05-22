@@ -23,23 +23,17 @@
 //! tracking issues #4127 / #4128).
 //!
 //! Refs #4122.
-
 #![cfg(all(feature = "e2e-cdp-test", not(target_arch = "wasm32")))]
-
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
 use reinhardt_test::fixtures::wasm::e2e_cdp::{CdpBrowser, cdp_browser};
 use rstest::*;
-
+use std::path::{Path, PathBuf};
+use std::process::Command;
 const FIXTURE_DIR_REL: &str = "tests/fixtures/spa_navigation_with_full_layout_app";
-
 /// Locates the Tier 3 fixture crate root (relative to the test invocation cwd).
 fn fixture_dir() -> PathBuf {
 	let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set by cargo");
 	PathBuf::from(manifest).join(FIXTURE_DIR_REL)
 }
-
 /// Builds the fixture WASM bundle via `wasm-pack build --target web`.
 ///
 /// Returns `Ok(Some(pkg_dir))` on success and `Ok(None)` when `wasm-pack`
@@ -51,9 +45,9 @@ fn build_fixture_bundle() -> Result<Option<PathBuf>, String> {
 	if Command::new("wasm-pack").arg("--version").output().is_err() {
 		if std::env::var("CI").is_ok() {
 			return Err(
-				"wasm-pack not on PATH but CI=true; refusing to skip the Tier 3 e2e regression net silently"
-					.to_string(),
-			);
+                "wasm-pack not on PATH but CI=true; refusing to skip the Tier 3 e2e regression net silently"
+                    .to_string(),
+            );
 		}
 		return Ok(None);
 	}
@@ -68,19 +62,16 @@ fn build_fixture_bundle() -> Result<Option<PathBuf>, String> {
 	}
 	Ok(Some(dir.join("pkg")))
 }
-
 /// RAII guard that aborts the server task on drop, ensuring deterministic
 /// cleanup regardless of test outcome (including panics).
 struct ServerGuard {
 	abort: tokio::task::AbortHandle,
 }
-
 impl Drop for ServerGuard {
 	fn drop(&mut self) {
 		self.abort.abort();
 	}
 }
-
 /// Boots an axum server on an ephemeral port, serving the fixture index.html
 /// and the WASM bundle. Returns the bound URL and a `ServerGuard` whose Drop
 /// aborts the spawned task. Mirrors the layout used by
@@ -88,14 +79,10 @@ impl Drop for ServerGuard {
 async fn boot_test_server(fixture_dir: &Path) -> (String, ServerGuard) {
 	use axum::Router;
 	use tower_http::services::ServeDir;
-
 	let app = Router::new().nest_service(
 		"/",
 		ServeDir::new(fixture_dir).append_index_html_on_directories(true),
 	);
-
-	// Bind to 0.0.0.0 so the chromedp container can reach the listener via
-	// `host.docker.internal` on Linux CI. Refs #4111.
 	let listener = tokio::net::TcpListener::bind("0.0.0.0:0")
 		.await
 		.expect("bind ephemeral port");
@@ -108,7 +95,6 @@ async fn boot_test_server(fixture_dir: &Path) -> (String, ServerGuard) {
 	};
 	(format!("http://host.docker.internal:{port}"), guard)
 }
-
 /// Reads a `u64`-valued diagnostic counter exposed by the fixture
 /// (`__diag_dispatch_count_js` / `__diag_render_count_js`). The
 /// fixture's `index.html` wires these into `window`, so they are
@@ -133,7 +119,6 @@ async fn read_u64_counter(
 	s.parse::<u64>()
 		.unwrap_or_else(|e| panic!("expected {js_name} to parse as u64; got {s:?}: {e}"))
 }
-
 /// Reads a `usize`-valued diagnostic counter
 /// (`__diag_observer_count_js`). wasm-bindgen marshals Rust `usize`
 /// (32-bit on wasm32) as a JS `Number`, which is JSON-friendly.
@@ -149,11 +134,9 @@ async fn read_usize_counter(
 		panic!("expected {js_name} to return usize-compatible value; got {val:?}")
 	}) as usize
 }
-
 #[rstest]
 #[tokio::test]
 async fn spa_navigation_full_layout_e2e(#[future] cdp_browser: CdpBrowser) {
-	// Arrange: build the fixture bundle and boot the server.
 	let pkg_dir = match build_fixture_bundle() {
 		Ok(Some(p)) => p,
 		Ok(None) => {
@@ -174,8 +157,6 @@ async fn spa_navigation_full_layout_e2e(#[future] cdp_browser: CdpBrowser) {
 		.new_page(&base_url)
 		.await
 		.expect("open new page at fixture URL");
-
-	// Boot mount: home content section is rendered under the layout shell.
 	if let Err(e) = page.wait_for("#route-home").await {
 		let actual_url = page.url().await.ok().flatten().unwrap_or_default();
 		let html = page
@@ -189,20 +170,14 @@ async fn spa_navigation_full_layout_e2e(#[future] cdp_browser: CdpBrowser) {
 			 html:       {html}"
 		);
 	}
-
-	// Inv-1 (e2e): launch must register at least one render listener.
 	let observer_baseline = read_usize_counter(&page, "__diag_observer_count_js").await;
 	assert!(
 		observer_baseline >= 1,
 		"Inv-1 e2e: launch must register render listener; got {}",
 		observer_baseline
 	);
-
-	// Capture dispatch / render baselines after boot but before any click.
 	let dispatch_baseline = read_u64_counter(&page, "__diag_dispatch_count_js").await;
 	let render_baseline = read_u64_counter(&page, "__diag_render_count_js").await;
-
-	// Act 1: click the sidebar link to /clusters.
 	page.click("a[href='/clusters']")
 		.await
 		.expect("click sidebar /clusters link");
@@ -212,8 +187,6 @@ async fn spa_navigation_full_layout_e2e(#[future] cdp_browser: CdpBrowser) {
 	page.wait_for("#route-clusters")
 		.await
 		.expect("clusters view mounts within timeout");
-
-	// Assert (step 1): Inv-3 / Inv-4 / Inv-2 hold and DOM swapped.
 	let dispatch_after_one = read_u64_counter(&page, "__diag_dispatch_count_js").await;
 	let render_after_one = read_u64_counter(&page, "__diag_render_count_js").await;
 	let observer_after_one = read_usize_counter(&page, "__diag_observer_count_js").await;
@@ -237,8 +210,6 @@ async fn spa_navigation_full_layout_e2e(#[future] cdp_browser: CdpBrowser) {
 		observer_baseline,
 		observer_after_one
 	);
-
-	// Act 2: click the sidebar link to /login.
 	page.click("a[href='/login']")
 		.await
 		.expect("click sidebar /login link");
@@ -248,8 +219,6 @@ async fn spa_navigation_full_layout_e2e(#[future] cdp_browser: CdpBrowser) {
 	page.wait_for("#route-login")
 		.await
 		.expect("login view mounts within timeout");
-
-	// Assert (step 2): cumulative increments and DOM swap.
 	let dispatch_after_two = read_u64_counter(&page, "__diag_dispatch_count_js").await;
 	let render_after_two = read_u64_counter(&page, "__diag_render_count_js").await;
 	let observer_after_two = read_usize_counter(&page, "__diag_observer_count_js").await;
@@ -273,8 +242,6 @@ async fn spa_navigation_full_layout_e2e(#[future] cdp_browser: CdpBrowser) {
 		observer_after_one,
 		observer_after_two
 	);
-
-	// Final DOM-swap sanity check via the rendered HTML.
 	let html = page.content().await.expect("page content");
 	assert!(
 		html.contains("LOGIN VIEW"),

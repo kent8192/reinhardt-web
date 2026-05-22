@@ -2,14 +2,12 @@
 //! Combination tests for static asset URL resolution
 //!
 //! Tests combinations of multiple configuration options and input variations.
-
 #[cfg(native)]
 mod combination_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
 	use reinhardt_utils::staticfiles::TemplateStaticConfig;
 	use rstest::rstest;
 	use std::collections::HashMap;
-
 	/// Test combination: base URL with/without trailing slash × path with/without leading slash
 	#[rstest]
 	#[case("/static/", "file.css", "/static/file.css")]
@@ -33,12 +31,9 @@ mod combination_tests {
 	) {
 		let config = TemplateStaticConfig::new(base_url.to_string());
 		init_static_resolver(config);
-
 		let result = resolve_static(path);
-
 		assert_eq!(result, expected);
 	}
-
 	/// Test combination: manifest enabled × file in manifest × query string present
 	#[rstest]
 	#[case(true, true, false, "file.css", "/static/file.hash.css")]
@@ -68,13 +63,10 @@ mod combination_tests {
 		} else {
 			TemplateStaticConfig::new("/static/".to_string())
 		};
-
 		init_static_resolver(config);
 		let result = resolve_static(input);
-
 		assert_eq!(result, expected);
 	}
-
 	/// Test combination: different CDN URLs × directory depths × file extensions
 	#[rstest]
 	#[case("https://cdn1.example.com/static/", "css/style.css")]
@@ -84,13 +76,10 @@ mod combination_tests {
 	fn test_combination_cdn_depth_extension(#[case] base_url: &str, #[case] path: &str) {
 		let config = TemplateStaticConfig::new(base_url.to_string());
 		init_static_resolver(config);
-
 		let result = resolve_static(path);
-
 		assert!(result.starts_with(base_url.trim_end_matches('/')));
 		assert!(result.contains(path));
 	}
-
 	/// Test combination: manifest with multiple entries × various query strings
 	#[rstest]
 	fn test_combination_large_manifest_with_queries() {
@@ -100,20 +89,15 @@ mod combination_tests {
 			let value = format!("file{}.abc{}.css", i, i);
 			manifest.insert(key, value);
 		}
-
 		let config = TemplateStaticConfig::new("/static/".to_string()).with_manifest(manifest);
 		init_static_resolver(config);
-
-		// Test with and without query strings
 		let result1 = resolve_static("file5.css");
 		let result2 = resolve_static("file5.css?v=1.0");
 		let result3 = resolve_static("file5.css?v=1.0&debug=true");
-
 		assert_eq!(result1, "/static/file5.abc5.css");
 		assert_eq!(result2, "/static/file5.abc5.css?v=1.0");
 		assert_eq!(result3, "/static/file5.abc5.css?v=1.0&debug=true");
 	}
-
 	/// Test combination: various path formats × manifest enabled/disabled
 	#[rstest]
 	#[case("file.css", true, "/static/file.hash.css")]
@@ -137,32 +121,25 @@ mod combination_tests {
 		} else {
 			TemplateStaticConfig::new("/static/".to_string())
 		};
-
 		init_static_resolver(config);
 		let result = resolve_static(path);
-
 		assert_eq!(result, expected);
 	}
-
 	/// Test combination: dynamic path construction with various components
 	#[rstest]
 	fn test_combination_dynamic_path_construction() {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		init_static_resolver(config);
-
-		// Simulate dynamic path building
 		for theme in ["light", "dark"] {
 			for size in ["sm", "md", "lg"] {
 				let path = format!("images/themes/{}/size-{}.png", theme, size);
 				let result = resolve_static(&path);
-
 				assert!(result.contains(theme));
 				assert!(result.contains(size));
 				assert_eq!(result, format!("/static/{}", path));
 			}
 		}
 	}
-
 	/// Test combination: multiple file types with manifest
 	#[rstest]
 	fn test_combination_multiple_file_types_with_manifest() {
@@ -170,35 +147,26 @@ mod combination_tests {
 		manifest.insert("style.css".to_string(), "style.abc.css".to_string());
 		manifest.insert("script.js".to_string(), "script.def.js".to_string());
 		manifest.insert("logo.png".to_string(), "logo.ghi.png".to_string());
-
 		let config = TemplateStaticConfig::new("/static/".to_string()).with_manifest(manifest);
 		init_static_resolver(config);
-
 		let css = resolve_static("style.css");
 		let js = resolve_static("script.js");
 		let png = resolve_static("logo.png");
-
 		assert_eq!(css, "/static/style.abc.css");
 		assert_eq!(js, "/static/script.def.js");
 		assert_eq!(png, "/static/logo.ghi.png");
-
-		// Test unknown file type
 		let unknown = resolve_static("unknown.txt");
 		assert_eq!(unknown, "/static/unknown.txt");
 	}
 }
-
 #[cfg(wasm)]
 mod wasm_combination_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
 	use wasm_bindgen_test::*;
-
 	wasm_bindgen_test_configure!(run_in_browser);
-
 	#[wasm_bindgen_test]
 	fn test_wasm_combination_basic() {
 		init_static_resolver("/static/".to_string());
-
 		let files = vec!["style.css", "script.js", "image.png"];
 		for file in files {
 			let result = resolve_static(file);

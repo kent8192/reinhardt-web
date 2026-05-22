@@ -3,14 +3,12 @@
 //!
 //! Tests combinations of boolean and categorical conditions using decision tables.
 //! Uses rstest #[case] for systematic decision table coverage.
-
 #[cfg(native)]
 mod decision_table_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
 	use reinhardt_utils::staticfiles::TemplateStaticConfig;
 	use rstest::rstest;
 	use std::collections::HashMap;
-
 	/// Decision table: URL Resolution
 	/// Columns: use_manifest, path_in_manifest, query_string
 	///
@@ -22,7 +20,6 @@ mod decision_table_tests {
 	/// | Yes | Yes | Yes | Return base + hashed_path + query |
 	/// | Yes | No | No | Return base + path (fallback) |
 	/// | Yes | No | Yes | Return base + path + query (fallback) |
-
 	#[rstest]
 	#[case(false, false, false, "file.css", "/static/file.css")]
 	#[case(false, false, true, "file.css?v=1", "/static/file.css?v=1")]
@@ -46,13 +43,10 @@ mod decision_table_tests {
 		} else {
 			TemplateStaticConfig::new("/static/".to_string())
 		};
-
 		init_static_resolver(config);
 		let result = resolve_static(input);
-
 		assert_eq!(result, expected);
 	}
-
 	/// Decision table: Base URL Normalization
 	/// Columns: base_has_trailing_slash, path_has_leading_slash
 	///
@@ -62,7 +56,6 @@ mod decision_table_tests {
 	/// | Yes | Yes | 1 |
 	/// | No | No | 1 |
 	/// | No | Yes | 1 |
-
 	#[rstest]
 	#[case("/static/", "file.css", "/static/file.css")]
 	#[case("/static/", "/file.css", "/static/file.css")]
@@ -75,12 +68,9 @@ mod decision_table_tests {
 	) {
 		let config = TemplateStaticConfig::new(base_url.to_string());
 		init_static_resolver(config);
-
 		let result = resolve_static(path);
-
 		assert_eq!(result, expected);
 	}
-
 	/// Decision table: File Processing
 	/// Columns: file_exists_in_manifest, manifest_enabled, path_has_query
 	///
@@ -92,7 +82,6 @@ mod decision_table_tests {
 	/// | No | Yes | Yes | Use original path + query (not found) |
 	/// | Yes | Yes | No | Use hashed path |
 	/// | Yes | Yes | Yes | Use hashed path + query |
-
 	#[rstest]
 	#[case(
 		true,
@@ -157,13 +146,10 @@ mod decision_table_tests {
 		} else {
 			TemplateStaticConfig::new("/static/".to_string())
 		};
-
 		init_static_resolver(config);
 		let result = resolve_static(input);
-
 		assert!(result.ends_with(expected_end));
 	}
-
 	/// Decision table: Path Handling
 	/// Columns: path_type, leading_slash, trailing_slash
 	///
@@ -175,7 +161,6 @@ mod decision_table_tests {
 	/// | Directory path | Yes | No | /static/dir/file |
 	/// | Directory path | No | Yes | /static/dir/file/ |
 	/// | Directory path | Yes | Yes | /static/dir/file/ |
-
 	#[rstest]
 	#[case("file.css", false, false, "file.css")]
 	#[case("/file.css", true, false, "file.css")]
@@ -191,12 +176,9 @@ mod decision_table_tests {
 	) {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		init_static_resolver(config);
-
 		let result = resolve_static(path);
-
 		assert!(result.contains(expected_content));
 	}
-
 	/// Decision table: Content Type Resolution
 	/// Columns: file_extension, mime_type_expected
 	///
@@ -208,7 +190,6 @@ mod decision_table_tests {
 	/// | .jpg | image/jpeg | Yes |
 	/// | .woff2 | font/woff2 | Yes |
 	/// | .json | application/json | Yes |
-
 	#[rstest]
 	#[case("style.css")]
 	#[case("app.js")]
@@ -219,12 +200,9 @@ mod decision_table_tests {
 	fn test_decision_table_content_types(#[case] filename: &str) {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		init_static_resolver(config);
-
 		let result = resolve_static(filename);
-
 		assert!(result.ends_with(filename.split('.').last().unwrap()));
 	}
-
 	/// Decision table: Base URL Types
 	/// Columns: base_url_type, path, valid
 	///
@@ -234,7 +212,6 @@ mod decision_table_tests {
 	/// | Absolute HTTP | https://cdn.example.com/static/ | Yes |
 	/// | Absolute HTTPS | https://cdn.example.com/static/ | Yes |
 	/// | Protocol-relative | //cdn.example.com/static/ | Yes |
-
 	#[rstest]
 	#[case("/static/", "test.css", "/static/test.css")]
 	#[case(
@@ -254,27 +231,20 @@ mod decision_table_tests {
 	) {
 		let config = TemplateStaticConfig::new(base_url.to_string());
 		init_static_resolver(config);
-
 		let result = resolve_static(path);
-
 		assert_eq!(result, expected);
 	}
 }
-
 #[cfg(wasm)]
 mod wasm_decision_table_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
 	use wasm_bindgen_test::*;
-
 	wasm_bindgen_test_configure!(run_in_browser);
-
 	#[wasm_bindgen_test]
 	fn test_wasm_decision_table_basic() {
 		init_static_resolver("/static/".to_string());
-
 		let no_query = resolve_static("test.css");
 		let with_query = resolve_static("test.css?v=1");
-
 		assert_eq!(no_query, "/static/test.css");
 		assert_eq!(with_query, "/static/test.css?v=1");
 	}

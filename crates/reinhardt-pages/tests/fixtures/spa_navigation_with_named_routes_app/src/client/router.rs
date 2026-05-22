@@ -1,5 +1,4 @@
-#![allow(deprecated)] // (Refs #4234) Fixture exercises deprecated `pages::Router` surface.
-
+#![allow(deprecated)]
 //! Client-side router for the Tier 4 fixture.
 //!
 //! Registers four **named** routes whose names follow the
@@ -14,14 +13,9 @@
 //! `ClientLauncher::router`. From any component, call [`with_router`]
 //! (re-exported from `reinhardt-pages`) to inspect routing state at
 //! render time.
-
 use reinhardt_pages::router::Router;
-
-// Re-export so callers can `use crate::client::router::with_router`.
 pub use reinhardt_pages::with_router;
-
 use super::pages::{clusters_page, deployments_page, home_page, login_page};
-
 /// Build the Tier 4 application router.
 ///
 /// All four routes are registered with `named_route` so that
@@ -30,9 +24,9 @@ use super::pages::{clusters_page, deployments_page, home_page, login_page};
 /// `route(...)` registrations would leave that field empty and miss
 /// the regression class Tier 4 is meant to catch.
 pub fn init_router() -> Router {
-	Router::new()
-		.named_route("dashboard:home", "/", home_page)
-		.named_route("clusters:list", "/clusters", clusters_page)
-		.named_route("deployments:list", "/deployments", deployments_page)
-		.named_route("auth:login", "/login", login_page)
+    Router::new()
+        .named_route("dashboard:home", "/", home_page)
+        .named_route("clusters:list", "/clusters", clusters_page)
+        .named_route("deployments:list", "/deployments", deployments_page)
+        .named_route("auth:login", "/login", login_page)
 }
