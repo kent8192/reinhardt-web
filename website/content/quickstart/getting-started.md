@@ -25,14 +25,15 @@ Before you begin, make sure you have:
 
 ### Step 1: Install Reinhardt Admin
 
-During the RC phase, only release-candidate versions are published to
-crates.io, so `cargo install` requires an explicit `--version`. The version
-below is auto-bumped by release-plz on each release. Once a stable release
-ships, the bare `cargo install reinhardt-admin-cli` will also work.
+While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`),
+`cargo install` requires an explicit `--version` because pre-releases are
+not selected by default. Once `0.1.0` stable ships, omit `--version` to
+pull the latest stable (or keep `--version` as an opt-in reproducibility
+pin). The literal below is auto-bumped by release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.0-rc.29"
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not
