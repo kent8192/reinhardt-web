@@ -51,7 +51,7 @@ use reinhardt_manouche::core::{
 	FormMethod, TypedCustomAttr, TypedFieldType, TypedFormAction, TypedFormCallbacks,
 	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
 	TypedFormSlots, TypedFormState, TypedFormWatch, TypedIcon, TypedIconChild, TypedIconPosition,
-	TypedValidatorRule, TypedWidget, TypedWrapper,
+	TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper,
 };
 
 /// Collects all fields from field entries, flattening groups.
@@ -66,6 +66,7 @@ fn collect_all_fields(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldDef
 			TypedFormFieldEntry::Group(group) => {
 				fields.extend(group.fields.iter());
 			}
+			TypedFormFieldEntry::SubmitButton(_) => {} // Not a data field
 		}
 	}
 	fields
@@ -81,26 +82,98 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 
 	let struct_name = &macro_ast.name;
 
+	let effective_state: Option<TypedFormState> = if macro_ast.success_url.is_some() {
+		let mut s = macro_ast
+			.state
+			.clone()
+			.unwrap_or_else(|| TypedFormState::new(macro_ast.span));
+		s.success = true;
+		Some(s)
+	} else {
+		macro_ast.state.clone()
+	};
+
 	// Generate field declarations
 	let field_decls = generate_field_declarations(&macro_ast.fields, pages_crate);
 
 	// Generate state field declarations
-	let state_decls = generate_state_declarations(&macro_ast.state, pages_crate);
+	let state_decls = generate_state_declarations(&effective_state, pages_crate);
 
 	// Generate field initializers
 	let field_inits = generate_field_initializers(&macro_ast.fields, pages_crate);
 
+	// Generate outer-scope assignments for fields with `initial: <expr>` so the
+	// expression is evaluated where its captured locals are visible (#4420).
+	let initial_outer_setup = generate_initial_outer_setup(&macro_ast.fields, pages_crate);
+
 	// Generate state field initializers
-	let state_inits = generate_state_initializers(&macro_ast.state, pages_crate);
+	let state_inits = generate_state_initializers(&effective_state, pages_crate);
 
 	// Generate field accessor methods
 	let field_accessors = generate_field_accessors(&macro_ast.fields, pages_crate);
 
 	// Generate state accessor methods
-	let state_accessors = generate_state_accessors(&macro_ast.state, pages_crate);
+	let state_accessors = generate_state_accessors(&effective_state, pages_crate);
 
-	// Generate watch methods
-	let watch_methods = generate_watch_methods(&macro_ast.watch, pages_crate, struct_name);
+	// Generate watch methods + supporting struct fields, default initializers,
+	// setters, and outer-scope capture code.
+	//
+	// Watch handlers must be able to capture locals from the surrounding scope
+	// (issue #4384 / #4414). Because the watch methods are emitted on the form
+	// struct's impl block, a closure written inline inside the method body is
+	// lexically *outside* the user's enclosing function, so it cannot reference
+	// outer locals — that is what produces `E0434`. To fix this, we capture the
+	// user's closure at the macro call site (where outer locals are visible),
+	// type-erase it into an `Arc<dyn Fn(&FormName) -> Page>`, and store it on
+	// the form struct. The watch method then simply calls through the stored
+	// handler, preserving reactivity via `Page::reactive`.
+	let WatchArtifacts {
+		methods: watch_methods,
+		field_decls: watch_field_decls,
+		field_default_inits: watch_field_default_inits,
+		setter_methods: watch_setter_methods,
+		outer_setup: watch_outer_setup,
+	} = generate_watch_artifacts(&macro_ast.watch, pages_crate, struct_name);
+
+	// Lift `success_url:` (when present) to the outer block so its closure
+	// literal is expanded where enclosing-scope locals are visible. The
+	// artifacts are spliced into the struct, the `new()` initializer, the
+	// outer setup block, and the submit method body. Refs #4605 / #4612 /
+	// #4610.
+	let SuccessUrlArtifacts {
+		field_decl: success_url_field_decl,
+		field_default_init: success_url_field_default_init,
+		setter_method: success_url_setter_method,
+		outer_setup: success_url_outer_setup,
+		submit_invocation: success_url_submit_invocation,
+	} = build_success_url_artifacts(&macro_ast.success_url, pages_crate, struct_name);
+
+	// Lift `on_success:` (when the user closure carries an explicit parameter
+	// type annotation) to the outer block so it can capture enclosing-scope
+	// locals like `qid`. Closures without annotations stay inline in the
+	// generated `fn submit()` body (which is what the historical contract
+	// guarantees for `|_x|` / `|y|` shapes whose `T` cannot be inferred at
+	// outer scope). Issue #4624.
+	let OnSuccessArtifacts {
+		field_decl: on_success_field_decl,
+		field_default_init: on_success_field_default_init,
+		setter_method: on_success_setter_method,
+		outer_setup: on_success_outer_setup,
+		submit_invocation: on_success_submit_invocation,
+		lifted: on_success_lifted,
+	} = build_on_success_artifacts(&macro_ast.callbacks.on_success);
+
+	// Generate on_success_ref artifacts (#4624). When the user has not
+	// supplied `on_success_ref:`, all four TokenStreams are empty, so the
+	// macro output is unchanged for forms that don't use this feature.
+	// Takes the full `macro_ast` so the outer-scope wrapper can emit a
+	// dead-code type-safety guard against the server_fn signature.
+	let OnSuccessRefArtifacts {
+		field_decl: on_success_ref_field_decl,
+		field_default_init: on_success_ref_field_default_init,
+		setter_method: on_success_ref_setter_method,
+		outer_setup: on_success_ref_outer_setup,
+	} = generate_on_success_ref_artifacts(macro_ast, pages_crate);
 
 	// Generate derived methods
 	let derived_methods = generate_derived_methods(&macro_ast.derived, pages_crate);
@@ -112,7 +185,13 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	let into_view_impl = generate_into_page(macro_ast, pages_crate);
 
 	// Generate submit method if action is specified
-	let submit_method = generate_submit_method(macro_ast, pages_crate);
+	let submit_method = generate_submit_method(
+		macro_ast,
+		pages_crate,
+		&success_url_submit_invocation,
+		&on_success_submit_invocation,
+		on_success_lifted,
+	);
 
 	// Generate validation method
 	let validate_method = generate_validate_method(macro_ast, pages_crate);
@@ -131,6 +210,10 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 			struct #struct_name {
 				#field_decls
 				#state_decls
+				#watch_field_decls
+				#success_url_field_decl
+				#on_success_field_decl
+				#on_success_ref_field_decl
 			}
 
 			impl #struct_name {
@@ -138,12 +221,20 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 					Self {
 						#field_inits
 						#state_inits
+						#watch_field_default_inits
+						#success_url_field_default_init
+						#on_success_field_default_init
+						#on_success_ref_field_default_init
 					}
 				}
 
 				#field_accessors
 				#state_accessors
 				#watch_methods
+				#watch_setter_methods
+				#success_url_setter_method
+				#on_success_setter_method
+				#on_success_ref_setter_method
 				#derived_methods
 				#metadata_fn
 				#validate_method
@@ -153,7 +244,21 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#into_view_impl
 			}
 
-			#struct_name::new()
+			// Build the form instance and bind user-supplied watch handlers in
+			// the outer scope, where enclosing-scope locals are visible. This is
+			// what makes `watch:` handlers behave as real closures (issue #4414),
+			// what makes `initial: <expr>` capture outer locals (issue #4420),
+			// what makes `success_url:` capture outer locals like `qid`
+			// (issue #4605 / #4612), what makes `on_success:` capture outer
+			// locals when the user closure is annotated (issue #4624), and
+			// what makes `on_success_ref:` capture outer locals (issue #4624).
+			let mut __reinhardt_form = #struct_name::new();
+			#initial_outer_setup
+			#watch_outer_setup
+			#success_url_outer_setup
+			#on_success_outer_setup
+			#on_success_ref_outer_setup
+			__reinhardt_form
 		}
 	}
 }
@@ -201,13 +306,20 @@ fn generate_field_initializers(
 	pages_crate: &TokenStream,
 ) -> TokenStream {
 	let fields = collect_all_fields(entries);
+	// `new()` is a `fn` item, so any `initial: <expr>` referencing enclosing-scope
+	// locals fails to compile with `E0434: can't capture dynamic environment in
+	// a fn item` (issue #4420). To preserve closure-like capture semantics for
+	// `initial:` expressions, `new()` always seeds fields with the field type's
+	// default value here; the user-supplied `initial:` expression is evaluated
+	// later in the outer block (where its locals are visible) via
+	// `generate_initial_outer_setup`, which re-assigns the corresponding Signal.
 	let mut inits: Vec<TokenStream> = fields
 		.iter()
 		.map(|field| {
 			let name = &field.name;
-			let default_value = field_type_default_value(&field.field_type);
+			let init = field_type_default_value(&field.field_type);
 			quote! {
-				#name: #pages_crate::reactive::Signal::new(#default_value),
+				#name: #pages_crate::reactive::Signal::new(#init),
 			}
 		})
 		.collect();
@@ -230,6 +342,36 @@ fn generate_field_initializers(
 
 	inits.extend(choices_inits);
 	quote! { #(#inits)* }
+}
+
+/// Generates outer-scope assignments for fields that declared `initial: <expr>`.
+///
+/// The user's `<expr>` is emitted lexically inside the same block as the
+/// `form!` invocation (after `let mut __reinhardt_form = FormName::new();`),
+/// so it can capture enclosing-function locals like any normal closure body.
+/// Each assignment replaces the field's default-seeded Signal with one that
+/// holds the user-supplied value. Because the form was just constructed and
+/// has no subscribers yet, replacing the Signal is observably identical to
+/// constructing it with that value in `new()` — only the scope at which the
+/// expression is evaluated changes (issue #4420).
+fn generate_initial_outer_setup(
+	entries: &[TypedFormFieldEntry],
+	pages_crate: &TokenStream,
+) -> TokenStream {
+	let fields = collect_all_fields(entries);
+	let assigns: Vec<TokenStream> = fields
+		.iter()
+		.filter_map(|field| {
+			let expr = field.initial_expr.as_ref()?;
+			let name = &field.name;
+			Some(quote! {
+				__reinhardt_form.#name = #pages_crate::reactive::Signal::new(
+					::std::convert::Into::into(#expr),
+				);
+			})
+		})
+		.collect();
+	quote! { #(#assigns)* }
 }
 
 /// Generates field accessor methods.
@@ -396,72 +538,408 @@ fn generate_state_accessors(
 	quote! { #(#accessors)* }
 }
 
-/// Generates watch methods that return reactive views.
+/// Bundle of token streams produced for the watch block.
 ///
-/// Each watch item becomes a method on the form struct that returns an `impl IntoPage`.
-/// The method clones the form instance and wraps the user's closure in an `Effect::new`
-/// to create a reactive view that automatically re-renders when Signal dependencies change.
+/// The watch block needs to plug into several positions in the generated
+/// form expansion — struct fields, struct field initializers in `new()`,
+/// impl methods, internal setters, and a piece of code that runs in the
+/// outer (macro call-site) scope. Returning them together keeps the call
+/// site explicit and avoids re-walking the watch list multiple times.
+struct WatchArtifacts {
+	/// Methods to splice into `impl FormName { ... }`.
+	methods: TokenStream,
+	/// Field declarations to splice into `struct FormName { ... }`.
+	field_decls: TokenStream,
+	/// Default initializers used in `FormName::new()` — one per watch field,
+	/// each producing an `Arc` that returns an empty `Page` until the real
+	/// handler is bound from the outer scope.
+	field_default_inits: TokenStream,
+	/// Private setter methods on `FormName` used to bind the real handlers
+	/// after `new()` returns.
+	setter_methods: TokenStream,
+	/// Code emitted in the outer block, after `let mut __reinhardt_form = FormName::new();`.
+	/// This is where the user's closure literals appear lexically, so they can
+	/// capture enclosing-scope locals (`outer_local` in the issue #4414 test).
+	outer_setup: TokenStream,
+}
+
+/// Generates everything needed to wire up watch handlers.
 ///
-/// ## Generated Pattern
+/// Each watch item produces:
 ///
-/// For a watch item like:
-/// ```text
-/// error_display: |form| {
-///     if form.error().get().is_some() { ... }
-/// }
-/// ```
+/// 1. A private struct field `__watch_<name>: Arc<dyn Fn(&FormName) -> Page>`
+///    storing a type-erased handler.
+/// 2. A default initializer in `FormName::new()` returning an empty `Page`,
+///    so `new()` keeps its zero-argument signature.
+/// 3. A public method `#name(&self) -> impl IntoPage` that clones the stored
+///    handler and wraps it in `Page::reactive` for automatic re-rendering.
+/// 4. A private setter `__set_watch_<name>` used internally.
+/// 5. Outer-scope setup code that captures the user's closure literal
+///    (where enclosing-scope locals are visible), wraps it in an Arc, and
+///    calls the setter on the form instance.
 ///
-/// Generates:
-/// ```text
-/// pub fn error_display(&self) -> impl IntoPage {
-///     let form = self.clone();
-///     Effect::new(move || {
-///         let result = (|form| { ... })(&form);
-///         result
-///     })
-/// }
-/// ```
-fn generate_watch_methods(
+/// The outer-scope step is the key part of the fix for issue #4414: a
+/// previous attempt placed the user closure inline inside the watch method
+/// body, but a method body is lexically outside the enclosing function and
+/// cannot reach its locals, producing `E0434`. By capturing the closure at
+/// the macro call site instead, the handler behaves like any other Rust
+/// closure that captures from its surrounding function.
+fn generate_watch_artifacts(
 	watch: &Option<TypedFormWatch>,
 	pages_crate: &TokenStream,
 	struct_name: &syn::Ident,
-) -> TokenStream {
+) -> WatchArtifacts {
+	let empty = WatchArtifacts {
+		methods: quote! {},
+		field_decls: quote! {},
+		field_default_inits: quote! {},
+		setter_methods: quote! {},
+		outer_setup: quote! {},
+	};
+
 	let Some(watch) = watch else {
-		return quote! {};
+		return empty;
 	};
 
 	if watch.items.is_empty() {
-		return quote! {};
+		return empty;
 	}
 
-	let methods: Vec<TokenStream> = watch
-		.items
-		.iter()
-		.map(|item| {
-			let method_name = &item.name;
-			let closure = &item.closure;
+	let mut methods = Vec::new();
+	let mut field_decls = Vec::new();
+	let mut field_default_inits = Vec::new();
+	let mut setter_methods = Vec::new();
+	let mut outer_setup = Vec::new();
+
+	for item in &watch.items {
+		let method_name = &item.name;
+		let closure = &item.closure;
+		let field_ident = quote::format_ident!("__watch_{}", method_name);
+		let setter_ident = quote::format_ident!("__set_watch_{}", method_name);
+
+		// Stored handler type — type-erased so the form struct stays nameable.
+		let handler_ty = quote! {
+			::std::sync::Arc<
+				dyn ::core::ops::Fn(&#struct_name) -> #pages_crate::component::Page,
+			>
+		};
+
+		field_decls.push(quote! {
+			#field_ident: #handler_ty,
+		});
+
+		// Default no-op handler used before the real one is bound. Returns an
+		// empty fragment so an un-bound watch is harmless if ever called.
+		field_default_inits.push(quote! {
+			#field_ident: ::std::sync::Arc::new(
+				|_: &#struct_name| -> #pages_crate::component::Page {
+					#pages_crate::component::Page::Fragment(::std::vec::Vec::new())
+				},
+			),
+		});
+
+		setter_methods.push(quote! {
+			#[doc(hidden)]
+			fn #setter_ident(&mut self, __handler: #handler_ty) {
+				self.#field_ident = __handler;
+			}
+		});
+
+		methods.push(quote! {
+			/// Returns a reactive view that automatically re-renders when its Signal dependencies change.
+			///
+			/// This method wraps the watch closure (bound from the form! macro
+			/// call site) in `Page::reactive` for automatic re-rendering.
+			pub fn #method_name(&self) -> impl #pages_crate::component::IntoPage {
+				let __form = self.clone();
+				let __handler = self.#field_ident.clone();
+				#pages_crate::component::Page::reactive(move || __handler(&__form))
+			}
+		});
+
+		// Outer-scope capture. The user's `#closure` is expanded *here*, which
+		// is the same lexical scope as the `form!` macro invocation, so it can
+		// capture locals from the enclosing function (issue #4414).
+		//
+		// The user's closure is invoked *inside* an outer `move` closure that
+		// also captures the same enclosing-scope locals. This way the `Arc`'s
+		// `'static` bound is satisfied: any outer locals referenced by the
+		// user closure are moved/copied into the outer `move` closure's
+		// environment, and the user closure then borrows from those owned
+		// captures rather than from the surrounding stack frame.
+		//
+		// The user closure is funneled through a local `__coerce` identity
+		// function whose `where`-bound forces its parameter type to
+		// `&#struct_name`. Without this, the user's `|form| { form.method() }`
+		// fails with `E0282: type annotations needed` because Rust type-checks
+		// the closure body before learning the eventual call site's argument
+		// type. The local fn item can name `#struct_name` (types from the
+		// enclosing block are visible to fn items) but does not capture
+		// values, so it does not reintroduce the original `E0434` (#4420).
+		outer_setup.push(quote! {
+			{
+				let __wrapped: #handler_ty = ::std::sync::Arc::new(
+					move |__f: &#struct_name| -> #pages_crate::component::Page {
+						fn __coerce<__F, __R>(__f: __F) -> __F
+						where
+							__F: ::core::ops::Fn(&#struct_name) -> __R,
+						{
+							__f
+						}
+						let __user_watch_handler = __coerce(#closure);
+						#pages_crate::component::IntoPage::into_page(
+							__user_watch_handler(__f),
+						)
+					},
+				);
+				__reinhardt_form.#setter_ident(__wrapped);
+			}
+		});
+	}
+
+	WatchArtifacts {
+		methods: quote! { #(#methods)* },
+		field_decls: quote! { #(#field_decls)* },
+		field_default_inits: quote! { #(#field_default_inits)* },
+		setter_methods: quote! { #(#setter_methods)* },
+		outer_setup: quote! { #(#outer_setup)* },
+	}
+}
+
+/// Artifacts produced for the `on_success_ref:` callback (issue #4624).
+///
+/// `on_success_ref:` is the "lifted" sibling of `on_success:` — its user
+/// closure is expanded at the outer construction block (same lexical scope
+/// as the `form!` macro invocation), so it can capture enclosing-scope
+/// locals (e.g. a `user_id` bound earlier in the surrounding function).
+/// `on_success:` itself stays inline in `fn submit()` because it consumes
+/// the server_fn return value `T` by move, and three in-tree callers rely
+/// on that — flipping the signature to `&T` is a SemVer break deferred to
+/// `develop/0.2.0`.
+///
+/// The trick that makes this work without naming `T` anywhere in the
+/// macro output is the same `__coerce`-style identity-fn pattern used by
+/// `WatchArtifacts`, extended to three generic parameters so the user
+/// closure's `&T` value parameter can be inferred without the user having
+/// to annotate it. At the `Arc<dyn Fn(&Form, &dyn Any)>` storage boundary
+/// the inferred `T` is then type-erased; the submit-site downcast is
+/// infallible by macro construction because both sides of the type
+/// identity are produced from the same closure literal.
+struct OnSuccessRefArtifacts {
+	/// Field declaration to splice into `struct FormName { ... }`. Empty
+	/// when the user did not supply `on_success_ref:`.
+	field_decl: TokenStream,
+	/// Default initializer used in `FormName::new()`. Empty when the user
+	/// did not supply `on_success_ref:`.
+	field_default_init: TokenStream,
+	/// Private setter method on `FormName` used to bind the real handler
+	/// after `new()` returns. Empty when the user did not supply
+	/// `on_success_ref:`.
+	setter_method: TokenStream,
+	/// Code emitted in the outer block, after `let mut __reinhardt_form = FormName::new();`.
+	/// This is where the user's closure literal appears lexically, so it
+	/// can capture enclosing-scope locals.
+	outer_setup: TokenStream,
+}
+
+/// Generates the artifacts needed to wire up `on_success_ref:`.
+///
+/// When the user has not supplied `on_success_ref:`, every TokenStream in
+/// the returned artifacts is empty — the resulting macro output is
+/// indistinguishable from a form that doesn't use the feature.
+///
+/// When supplied, this produces:
+///
+/// 1. A private struct field
+///    `__on_success_ref_handler: Arc<dyn Fn(&FormName, &dyn Any)>` storing
+///    a type-erased handler.
+/// 2. A default initializer in `FormName::new()` returning a no-op closure
+///    so `new()` keeps its zero-argument signature.
+/// 3. A private setter `__set_on_success_ref_handler` used internally.
+/// 4. Outer-scope setup code that captures the user's closure literal
+///    (where enclosing-scope locals are visible), funnels it through a
+///    `__coerce_form<__F, __T, __R>` identity fn to fix the parameter
+///    shape `(&FormName, &__T) -> __R`, wraps it in an `Arc`, and calls
+///    the setter on the form instance.
+fn generate_on_success_ref_artifacts(
+	macro_ast: &TypedFormMacro,
+	pages_crate: &TokenStream,
+) -> OnSuccessRefArtifacts {
+	let _ = pages_crate; // reserved for future cross-crate refs; quiet warnings now.
+	let callbacks = &macro_ast.callbacks;
+	let struct_name = &macro_ast.name;
+
+	let empty = OnSuccessRefArtifacts {
+		field_decl: quote! {},
+		field_default_init: quote! {},
+		setter_method: quote! {},
+		outer_setup: quote! {},
+	};
+
+	let Some(closure) = &callbacks.on_success_ref else {
+		return empty;
+	};
+
+	// Compile-time type-safety guard (#4624). Forces the user closure's
+	// inferred `__T` (the second-parameter type, e.g. `&Wrong` in
+	// `on_success_ref: |_, _v: &Wrong| { ... }`) to equal the server_fn's
+	// Ok arm. Implemented as a dead-code branch that calls the server_fn
+	// (via `::core::unreachable!()` for every argument, which never-coerces
+	// to any required type) and feeds the extracted Ok value into the
+	// user closure. If the types disagree, compilation fails AT the user
+	// closure's parameter type — not at runtime in `downcast_ref().expect()`.
+	//
+	// Skipped for non-ServerFn actions: a URL form has no Future to extract
+	// `T` from, and `on_success_ref` would never actually fire there.
+	let type_check_dead_code = match &macro_ast.action {
+		TypedFormAction::ServerFn(server_fn_ident) => {
+			// Replicate `generate_submit_method`'s argument count
+			// computation (codegen.rs ~L1698-1725) so that the dead-code
+			// call below matches whatever signature the runtime call uses.
+			let all_fields = collect_all_fields(&macro_ast.fields);
+			let field_count = all_fields.len();
+			let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
+			let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
+			let strip_arg_count = macro_ast.strip_arguments.len();
+			let extra_count = if strip_arg_count > 0 {
+				strip_arg_count
+			} else if needs_csrf && !has_explicit_csrf_field {
+				1usize
+			} else {
+				0usize
+			};
+			let total_arg_count = field_count + extra_count;
+			let probe_args = (0..total_arg_count)
+				.map(|_| quote! { ::core::unreachable!() })
+				.collect::<Vec<_>>();
 
 			quote! {
-				/// Returns a reactive view that automatically re-renders when its Signal dependencies change.
-				///
-				/// This method wraps the watch closure in Page::reactive for automatic re-rendering.
-				pub fn #method_name(&self) -> impl #pages_crate::component::IntoPage {
-					let form = self.clone();
-					#pages_crate::component::Page::reactive(move || {
-						// Helper function to provide type inference for the closure parameter
-						// Uses Fn instead of FnOnce to allow multiple calls from reactive system
-						#[inline]
-						fn __call_watch<T, R>(form: &T, f: impl Fn(&T) -> R) -> R {
-							f(form)
-						}
-						__call_watch::<#struct_name, _>(&form, #closure)
-					})
+				#[allow(unreachable_code, dead_code, unused_variables, clippy::diverging_sub_expression)]
+				if false {
+					// Extract the `Ok` type `T` from the server_fn's
+					// `Future<Output = Result<T, _>>`. Generic over the
+					// future / Ok / Err types so it works regardless of
+					// the user's concrete server_fn signature.
+					fn __on_success_ref_extract_ok<__Fut, __T, __E>(_: __Fut) -> __T
+					where
+						__Fut: ::core::future::Future<
+							Output = ::core::result::Result<__T, __E>,
+						>,
+					{
+						::core::unreachable!()
+					}
+					let __probe_future = #server_fn_ident(#(#probe_args),*);
+					let __probe_ok = __on_success_ref_extract_ok(__probe_future);
+					// This call forces `__user_on_success_ref`'s second
+					// parameter type to equal `__probe_ok`'s type, which
+					// equals the server_fn's `Ok` arm. A mismatch with
+					// the user closure's annotated/inferred `__T` fails
+					// here at compile time.
+					let _ = __user_on_success_ref(__form, &__probe_ok);
 				}
 			}
-		})
-		.collect();
+		}
+		_ => quote! {},
+	};
 
-	quote! { #(#methods)* }
+	// Stored handler type — type-erased so the form struct stays nameable.
+	// The `&dyn Any` parameter is what lets the macro avoid spelling `T`:
+	// `T` is inferred from the user closure's second parameter via the
+	// `__coerce_form` identity fn below, and immediately erased here.
+	let handler_ty = quote! {
+		::std::sync::Arc<
+			dyn ::core::ops::Fn(&#struct_name, &dyn ::core::any::Any),
+		>
+	};
+
+	let field_decl = quote! {
+		__on_success_ref_handler: #handler_ty,
+	};
+
+	// Default no-op handler used before the real one is bound. Calling it
+	// is harmless: it ignores both the form ref and the erased value.
+	let field_default_init = quote! {
+		__on_success_ref_handler: ::std::sync::Arc::new(
+			|_: &#struct_name, _: &dyn ::core::any::Any| {},
+		),
+	};
+
+	let setter_method = quote! {
+		#[doc(hidden)]
+		fn __set_on_success_ref_handler(&mut self, __handler: #handler_ty) {
+			self.__on_success_ref_handler = __handler;
+		}
+	};
+
+	// Outer-scope capture. The user's `#closure` is expanded *here*,
+	// which is the same lexical scope as the `form!` macro invocation,
+	// so it can capture locals from the enclosing function (issue #4624).
+	//
+	// The closure is funneled through `__coerce_form` whose `where`-bound
+	// pins its parameter shape to `(&#struct_name, &__T) -> __R`. This
+	// gives the user's `|form, value| { ... }` enough type information
+	// to infer the value type from the body, without the user having to
+	// write `|form: &MyForm, value: &MyT|` annotations. `__T: 'static`
+	// is required because `Any::downcast_ref` only works on `'static`
+	// types — server_fn return types are owned types and naturally
+	// satisfy this.
+	//
+	// Type safety is enforced by `#type_check_dead_code`: a dead-code
+	// branch that calls the server_fn (via `unreachable!()` args) and
+	// feeds the extracted Ok value into the user closure, forcing
+	// Rust's type-checker to unify the closure's `__T` with the
+	// server_fn's Ok arm at COMPILE TIME. With that guard in place,
+	// the `downcast_ref().expect(...)` below is provably unreachable
+	// in user-facing builds — it remains as a defensive runtime
+	// invariant check in case the macro's own scaffolding ever
+	// regresses, not as a fallibility ever surfaced to users.
+	let outer_setup = quote! {
+		{
+			let __wrapped: #handler_ty = ::std::sync::Arc::new(
+				move |__form: &#struct_name, __erased: &dyn ::core::any::Any| {
+					fn __coerce_form<__F, __T, __R>(__f: __F) -> __F
+					where
+						__F: ::core::ops::Fn(&#struct_name, &__T) -> __R,
+						__T: 'static,
+					{
+						__f
+					}
+					let __user_on_success_ref = __coerce_form(#closure);
+
+					// Compile-time type assertion (#4624). The dead-code
+					// branch emitted by `#type_check_dead_code` calls the
+					// server_fn and feeds its Ok value into the user
+					// closure, so the compiler unifies `__T` with the
+					// server_fn's Ok type. If the user annotates the
+					// closure parameter with a wrong type, compilation
+					// fails AT the annotation site — never here at the
+					// runtime downcast. See the doc comment on
+					// `generate_on_success_ref_artifacts` for the full
+					// soundness argument.
+					#type_check_dead_code
+
+					let __value_ref = __erased.downcast_ref().expect(
+						"on_success_ref: internal invariant violated — \
+						 server_fn Ok value did not downcast to the user \
+						 closure's parameter type. This branch should be \
+						 unreachable because the macro emits a compile-time \
+						 type assertion that forces them to match; \
+						 reaching it indicates a macro implementation bug, \
+						 not a user error",
+					);
+					let _ = __user_on_success_ref(__form, __value_ref);
+				},
+			);
+			__reinhardt_form.__set_on_success_ref_handler(__wrapped);
+		}
+	};
+
+	OnSuccessRefArtifacts {
+		field_decl,
+		field_default_init,
+		setter_method,
+		outer_setup,
+	}
 }
 
 /// Generates derived methods that compute derived values.
@@ -522,7 +1000,8 @@ fn generate_derived_methods(
 				/// The value is computed fresh on each call, reading current signal values.
 				///
 				/// For memoization, wrap in a `Memo`:
-				/// ```ignore
+				/// ```no_run
+				/// # use reinhardt_pages::reactive::Memo;
 				/// let form = form.clone();
 				/// let memo = Memo::new(move || form.char_count());
 				/// ```
@@ -702,6 +1181,13 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 	// Determine if CSRF protection is needed (non-GET methods)
 	let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
 
+	// Check if CSRF token should be auto-injected as a server_fn argument.
+	// This is needed when: non-GET method, using server_fn, and no explicit csrf_token field.
+	let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
+	let auto_csrf_arg = needs_csrf
+		&& matches!(macro_ast.action, TypedFormAction::ServerFn(_))
+		&& !has_explicit_csrf_field;
+
 	// Generate CSRF token injection for non-GET methods
 	let csrf_injection = if needs_csrf {
 		quote! {
@@ -767,6 +1253,19 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				})
 				.collect();
 
+			// Generate server_fn call expression (with auto CSRF token if needed)
+			let server_fn_call = if auto_csrf_arg {
+				quote! {
+					{
+						let __csrf_token = #pages_crate::csrf::get_csrf_token()
+							.unwrap_or_default();
+						#server_fn_ident(#(#field_names,)* __csrf_token).await
+					}
+				}
+			} else {
+				quote! { #server_fn_ident(#(#field_names),*).await }
+			};
+
 			// Generate callbacks
 			let callbacks = &macro_ast.callbacks;
 			let state = &macro_ast.state;
@@ -795,11 +1294,22 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				quote! { #(#clones)* }
 			};
 
-			// Generate redirect code
+			// Generate redirect code. Issue #4610: prefer the SPA-aware
+			// navigation API so the redirect does not trigger a hard
+			// document reload when the application installed a client-side
+			// router. Fall back to `location.set_href` if the SPA router
+			// is not installed.
 			let redirect_code = if let Some(url) = redirect {
 				quote! {
-					if let Some(window) = web_sys::window() {
-						let _ = window.location().set_href(#url);
+					if #pages_crate::navigate(
+						::std::string::ToString::to_string(#url),
+						#pages_crate::NavigationType::Push,
+					)
+					.is_err()
+					{
+						if let ::core::option::Option::Some(window) = ::web_sys::window() {
+							let _ = window.location().set_href(#url);
+						}
 					}
 				}
 			} else {
@@ -813,9 +1323,33 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				quote! {}
 			};
 
+			// Generate on_success_ref clones + invocation if present (#4624).
+			// The `spawn_task` async block captures by move, so the lifted
+			// `Arc<dyn Fn(&Self, &dyn Any)>` handler and a form-instance
+			// clone must be hoisted into the surrounding scope first.
+			// `Form::clone()` is cheap — every field is an `Arc` or `Signal`.
+			let on_success_ref_outer_clones = if callbacks.on_success_ref.is_some() {
+				quote! {
+					let __on_success_ref_handler_clone = self.__on_success_ref_handler.clone();
+					let __form_clone_for_on_success_ref = self.clone();
+				}
+			} else {
+				quote! {}
+			};
+			let on_success_ref_invocation = if callbacks.on_success_ref.is_some() {
+				quote! {
+					__on_success_ref_handler_clone(
+						&__form_clone_for_on_success_ref,
+						&_value as &dyn ::core::any::Any,
+					);
+				}
+			} else {
+				quote! {}
+			};
+
 			// Generate on_error callback if present
 			let on_error_code = if let Some(callback) = &callbacks.on_error {
-				quote! { (#callback)(&e); }
+				quote! { (#callback)(e.clone()); }
 			} else {
 				quote! {}
 			};
@@ -853,6 +1387,11 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				// Clone state signals for onsubmit handler
 				#state_signal_clones
 
+				// Clone the lifted on_success_ref Arc + a form-instance ref
+				// for the async block (#4624). Both must live in the outer
+				// scope so `async move` can capture them.
+				#on_success_ref_outer_clones
+
 				let form_element = PageElement::new("form")
 					.attr("id", #form_id_str)
 					.attr("action", #action_str)
@@ -866,7 +1405,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 					.on(
 					#pages_crate::dom::event::EventType::Submit,
 					{
-						#[cfg(target_arch = "wasm32")]
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						{
 							::std::sync::Arc::new(move |event: web_sys::Event| {
 								// Prevent default form submission by handling it ourselves
@@ -877,64 +1416,37 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 
 								// Get field values from cloned signals - allow non_snake_case for generated variable names
 								#(
-									#[allow(non_snake_case)]
+									#[allow(non_snake_case, unused_variables)]
 									let #field_names = #field_value_getters;
 								)*
 
-								#[cfg(target_arch = "wasm32")]
-								{
-									// Clone loading/error signals for async block if they exist
-									#async_signal_clones
+								// Clone loading/error signals for async block if they exist
+								#async_signal_clones
 
-									#pages_crate::spawn::spawn_task(async move {
-										match #server_fn_ident(#(#field_names),*).await {
-											Ok(_value) => {
-												#on_success_code
-												#redirect_code
-											}
-											Err(e) => {
-												#on_error_code
-												#async_error_handling
-											}
+								#pages_crate::spawn::spawn_task(async move {
+									match #server_fn_call {
+										Ok(_value) => {
+											// Order matters: on_success_ref
+											// (borrows) runs before on_success
+											// (may consume by move). #4624.
+											#on_success_ref_invocation
+											#on_success_code
+											#redirect_code
 										}
-										#async_loading_end
-									});
-								}
+										Err(e) => {
+											#on_error_code
+											#async_error_handling
+										}
+									}
+									#async_loading_end
+								});
 							})
 						}
-						#[cfg(not(target_arch = "wasm32"))]
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 						{
 							::std::sync::Arc::new(move |event: #pages_crate::component::DummyEvent| {
-								// Prevent default form submission by handling it ourselves (no-op in non-WASM)
+								// Non-WASM: form submission is handled via HTTP, not JavaScript
 								event.prevent_default();
-
-								// Get field values from cloned signals - allow non_snake_case for generated variable names
-								#loading_start
-
-								#(
-									#[allow(non_snake_case)]
-									let #field_names = #field_value_getters;
-								)*
-
-								#[cfg(target_arch = "wasm32")]
-								{
-									// Clone loading/error signals for async block if they exist
-									#async_signal_clones
-
-									#pages_crate::spawn::spawn_task(async move {
-										match #server_fn_ident(#(#field_names),*).await {
-											Ok(_value) => {
-												#on_success_code
-												#redirect_code
-											}
-											Err(e) => {
-												#on_error_code
-												#async_error_handling
-											}
-										}
-										#async_loading_end
-									});
-								}
 							})
 						}
 					}
@@ -1013,6 +1525,38 @@ fn generate_field_entry_view(
 		TypedFormFieldEntry::Group(group) => {
 			generate_field_group_view(group, pages_crate, all_fields)
 		}
+		TypedFormFieldEntry::SubmitButton(btn) => generate_submit_button_view(btn),
+	}
+}
+
+/// Generates view code for a submit button.
+///
+/// Produces a `<button type="submit">` element with optional class, id, and disabled attributes.
+/// No wrapper div or label — just the bare button element.
+fn generate_submit_button_view(btn: &TypedSubmitButtonDef) -> TokenStream {
+	let label = &btn.label;
+
+	let class_attr = btn.class.as_deref().map(|c| {
+		quote! { .attr("class", #c) }
+	});
+
+	let id_attr = btn.id.as_deref().map(|id| {
+		quote! { .attr("id", #id) }
+	});
+
+	let disabled_attr = if btn.disabled {
+		Some(quote! { .attr("disabled", "disabled") })
+	} else {
+		None
+	};
+
+	quote! {
+		PageElement::new("button")
+			.attr("type", "submit")
+			#class_attr
+			#id_attr
+			#disabled_attr
+			.child(#label)
 	}
 }
 
@@ -1079,6 +1623,10 @@ fn generate_field_view(
 	let placeholder = field.display.placeholder.as_deref().unwrap_or("");
 	let required = field.validation.required;
 
+	let autocomplete_attr = field.display.autocomplete.as_deref().map(|val| {
+		quote! { .attr("autocomplete", #val) }
+	});
+
 	let wrapper_class = field.styling.wrapper_class();
 	let label_class = field.styling.label_class();
 	let input_class = field.styling.input_class();
@@ -1099,6 +1647,7 @@ fn generate_field_view(
 					.attr("class", #input_class)
 					.attr("placeholder", #placeholder)
 					.bool_attr("required", #required)
+					#autocomplete_attr
 					#custom_attrs
 					#event_listener
 			}
@@ -1112,6 +1661,7 @@ fn generate_field_view(
 					.attr("class", #input_class)
 					.bool_attr("required", #required)
 					.bool_attr("multiple", #multiple)
+					#autocomplete_attr
 					#custom_attrs
 					#event_listener
 			}
@@ -1150,6 +1700,7 @@ fn generate_field_view(
 					.attr("class", #input_class)
 					.attr("placeholder", #placeholder)
 					.bool_attr("required", #required)
+					#autocomplete_attr
 					#custom_attrs
 					#event_listener
 			}
@@ -1375,7 +1926,7 @@ fn generate_bind_listener(
 		.listener(#event_name, {
 			let signal = #signal_ident.clone();
 			move |event| {
-				#[cfg(target_arch = "wasm32")]
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 				{
 					use wasm_bindgen::JsCast;
 					if let Some(target) = event.target() {
@@ -1384,7 +1935,7 @@ fn generate_bind_listener(
 						}
 					}
 				}
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				{
 					let _ = event;
 					let _ = &#pages_crate::component::DummyEvent;
@@ -1394,12 +1945,15 @@ fn generate_bind_listener(
 	}
 }
 
-/// Generates the validate method.
+/// Generates the validate method (server-side).
+///
+/// Only rules whose scope includes server-side execution are emitted; rules
+/// scoped strictly to the client (`#[client(on = ...)]`) are excluded.
 fn generate_validate_method(macro_ast: &TypedFormMacro, _pages_crate: &TokenStream) -> TokenStream {
 	let validators: Vec<TokenStream> = macro_ast
 		.validators
 		.iter()
-		.flat_map(|v| generate_validator_rules(&v.field_name, &v.rules))
+		.flat_map(|v| generate_server_validator_rules(&v.field_name, &v.rules))
 		.collect();
 
 	if validators.is_empty() {
@@ -1423,13 +1977,17 @@ fn generate_validate_method(macro_ast: &TypedFormMacro, _pages_crate: &TokenStre
 	}
 }
 
-/// Generates validator rule checks.
-fn generate_validator_rules(
+/// Generates server-side validation code for rules that include server scope.
+///
+/// Rules with scope `Both`, `Server`, or `ServerAndClient { .. }` are included;
+/// rules with scope `Client { .. }` are excluded (they fire only on the client).
+fn generate_server_validator_rules(
 	field_name: &syn::Ident,
 	rules: &[TypedValidatorRule],
 ) -> Vec<TokenStream> {
 	rules
 		.iter()
+		.filter(|rule| rule.scope.includes_server())
 		.map(|rule| {
 			let condition = &rule.condition;
 			let message = &rule.message;
@@ -1453,7 +2011,13 @@ fn generate_validator_rules(
 /// - `on_loading(true/false)`: Called when loading state changes
 /// - `on_success(result)`: Called when submission succeeds
 /// - `on_error(e)`: Called when submission fails
-fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) -> TokenStream {
+fn generate_submit_method(
+	macro_ast: &TypedFormMacro,
+	pages_crate: &TokenStream,
+	success_url_submit_invocation: &TokenStream,
+	on_success_submit_invocation: &TokenStream,
+	on_success_lifted: bool,
+) -> TokenStream {
 	let callbacks = &macro_ast.callbacks;
 	let state = &macro_ast.state;
 	let redirect = &macro_ast.redirect_on_success;
@@ -1464,16 +2028,87 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 			let all_fields = collect_all_fields(&macro_ast.fields);
 			let field_names: Vec<&syn::Ident> = all_fields.iter().map(|f| &f.name).collect();
 
+			// Check if CSRF token should be auto-injected as a server_fn argument
+			let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
+			let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
+
+			// reinhardt-web#3971: Generic strip_arguments take precedence over the
+			// implicit CSRF auto-injection. When the user supplies any
+			// `strip_arguments: { ... }` entries we route exactly those values to
+			// the server_fn — no hidden additional arguments — so the call signature
+			// matches what the user wrote in their server_fn definition.
+			let strip_arg_exprs: Vec<&syn::Expr> = macro_ast
+				.strip_arguments
+				.iter()
+				.map(|arg| &arg.value)
+				.collect();
+
+			let submit_server_fn_call = if !strip_arg_exprs.is_empty() {
+				// Explicit strip_arguments path: append exactly the user-supplied
+				// expressions positionally after the form-field arguments.
+				quote! {
+					{
+						#server_fn_ident(#(self.#field_names.get(),)* #(#strip_arg_exprs),*).await
+					}
+				}
+			} else if needs_csrf && !has_explicit_csrf_field {
+				// Backward-compatible CSRF auto-injection path. Triggers a
+				// deprecation warning at compile time so users migrate to
+				// explicit `strip_arguments: { csrf_token: ... }` (reinhardt-web#3971).
+				quote! {
+					{
+						#[deprecated(
+							since = "0.1.0-rc.22",
+							note = "implicit CSRF token injection is deprecated; declare `csrf_token: String` on the server_fn and pass it via `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default() }`. See reinhardt-web#3971."
+						)]
+						const __FORM_CSRF_AUTO_INJECT_DEPRECATED: () = ();
+						let _ = __FORM_CSRF_AUTO_INJECT_DEPRECATED;
+						let __csrf_token = #pages_crate::csrf::get_csrf_token()
+							.unwrap_or_default();
+						#server_fn_ident(#(self.#field_names.get(),)* __csrf_token).await
+					}
+				}
+			} else {
+				quote! { #server_fn_ident(#(self.#field_names.get()),*).await }
+			};
+
 			// Generate callback invocations
 			let on_submit_code = generate_on_submit_callback(callbacks);
 			let on_loading_start_code = generate_on_loading_callback(callbacks, state, true);
 			let on_loading_end_code = generate_on_loading_callback(callbacks, state, false);
-			let on_success_code = generate_on_success_callback(callbacks, state);
+			let on_success_code = generate_on_success_callback(
+				callbacks,
+				state,
+				&macro_ast.success_url,
+				on_success_lifted,
+			);
 			let on_error_code = generate_on_error_callback(callbacks, state);
-			let redirect_code = generate_redirect_code(redirect);
+			let redirect_code = generate_redirect_code(redirect, pages_crate);
+
+			// Lifted `on_success_ref:` invocation (issue #4624). Pulls the
+			// stored `Arc<dyn Fn(&Self, &dyn Any)>` handler installed by
+			// the outer-scope setup and invokes it with `&value as &dyn Any`.
+			// Emitted only when the user supplied `on_success_ref:` — when
+			// they did not, the field itself is absent from the form
+			// struct (gated symmetrically in `generate_on_success_ref_artifacts`)
+			// so the invocation must be gated here too. Ordering: this
+			// runs *before* `#on_success_code` so that the by-ref handler
+			// observes `value` first and the by-move `on_success` consumes
+			// it second (ref-first, move-second contract documented on
+			// `TypedFormCallbacks::on_success_ref`).
+			let on_success_ref_invocation = if callbacks.on_success_ref.is_some() {
+				quote! {
+					{
+						let __handler = self.__on_success_ref_handler.clone();
+						__handler(self, &value as &dyn ::core::any::Any);
+					}
+				}
+			} else {
+				quote! {}
+			};
 
 			quote! {
-				#[cfg(target_arch = "wasm32")]
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 				pub async fn submit(&self) -> Result<(), #pages_crate::ServerFnError> {
 					// Call on_submit callback before submission
 					#on_submit_code
@@ -1482,7 +2117,7 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 					#on_loading_start_code
 
 					// Call the server function with individual field values as arguments
-					let result = #server_fn_ident(#(self.#field_names.get()),*).await;
+					let result = #submit_server_fn_call;
 
 					// Clear loading state
 					#on_loading_end_code
@@ -1490,8 +2125,39 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 					// Handle result with callbacks and redirect
 					match result {
 						Ok(value) => {
+							// Reference `value` so the binding is always considered
+							// used even when no `on_success` / `success_url`
+							// callback consumes it. Avoids `unused_variables`
+							// under `-D warnings`. Must precede every consumer
+							// below because the user's `on_success:` closure takes
+							// `value` by move (`callback(value)`), which would
+							// invalidate a trailing borrow for non-`Copy`
+							// server-fn outputs.
+							let _ = &value;
+							// Order matters: `on_success_ref` (lifted,
+							// borrows `value` via `&dyn Any`) runs before
+							// `on_success` (inline, may consume `value`
+							// by move). See #4624 ordering contract on
+							// `TypedFormCallbacks::on_success_ref`.
+							#on_success_ref_invocation
 							#on_success_code
+							// Issue #4624: when the user annotated their
+							// `on_success:` closure (and the lift is therefore
+							// active), this splice forwards `value` to the
+							// outer-scope-lifted handler stored on the form
+							// struct. When the lift is not active this is the
+							// empty token stream and `value` is consumed by the
+							// inline #on_success_code above instead.
+							//
+							// Must run in the same slot as `#on_success_code`
+							// — i.e. before `#redirect_code` and
+							// `#success_url_submit_invocation` — so the
+							// annotated callback is not skipped when those
+							// dispatchers fall back to `set_href()` and unload
+							// the page.
+							#on_success_submit_invocation
 							#redirect_code
+							#success_url_submit_invocation
 							Ok(())
 						}
 						Err(e) => {
@@ -1501,9 +2167,14 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 					}
 				}
 
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				pub async fn submit(&self) -> Result<(), #pages_crate::ServerFnError> {
-					// On server, submit is a no-op (form is submitted via HTTP)
+					// Reference server_fn on native so the user's `use` statement
+					// stays live and `unused_imports` does not fire under
+					// `-D warnings` (reinhardt-web#4070). The wasm branch is the
+					// only path that actually invokes it; on native the form is
+					// submitted over HTTP, so this is a pure compile-time sink.
+					let _ = &#server_fn_ident;
 					Ok(())
 				}
 			}
@@ -1514,7 +2185,7 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 			let on_submit_code = generate_on_submit_callback(callbacks);
 
 			quote! {
-				#[cfg(target_arch = "wasm32")]
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 				pub fn submit(&self) {
 					// Call on_submit callback before submission
 					#on_submit_code
@@ -1524,7 +2195,7 @@ fn generate_submit_method(macro_ast: &TypedFormMacro, pages_crate: &TokenStream)
 					#pages_crate::dom::submit_form(&self.metadata());
 				}
 
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				pub fn submit(&self) {
 					// On server, submit is a no-op
 				}
@@ -1598,13 +2269,13 @@ fn generate_load_initial_values(
 			///
 			/// Note: No fields have `initial_from` specified, so this method
 			/// only calls the loader without populating any fields.
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 			pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
 				let _data = #initial_loader().await?;
 				Ok(())
 			}
 
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
 				// On server, this is a no-op since initial values are typically
 				// loaded differently in SSR context
@@ -1617,14 +2288,14 @@ fn generate_load_initial_values(
 			///
 			/// Calls the configured initial_loader and populates fields
 			/// that have `initial_from` specified with values from the result.
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 			pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
 				let data = #initial_loader().await?;
 				#(#field_setters)*
 				Ok(())
 			}
 
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
 				// On server, this is a no-op since initial values are typically
 				// loaded differently in SSR context
@@ -1706,13 +2377,13 @@ fn generate_load_choices(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) 
 			///
 			/// Note: No fields have `choices_from` specified, so this method
 			/// only calls the loader without populating any choices.
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 			pub async fn load_choices(&self) -> Result<(), #pages_crate::ServerFnError> {
 				let _data = #choices_loader().await?;
 				Ok(())
 			}
 
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			pub async fn load_choices(&self) -> Result<(), #pages_crate::ServerFnError> {
 				// On server, this is a no-op since choices are typically
 				// loaded differently in SSR context
@@ -1725,14 +2396,14 @@ fn generate_load_choices(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) 
 			///
 			/// Calls the configured choices_loader and populates the choices signals
 			/// for fields that have `choices_from` specified.
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 			pub async fn load_choices(&self) -> Result<(), #pages_crate::ServerFnError> {
 				let data = #choices_loader().await?;
 				#(#field_setters)*
 				Ok(())
 			}
 
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			pub async fn load_choices(&self) -> Result<(), #pages_crate::ServerFnError> {
 				// On server, this is a no-op since choices are typically
 				// loaded differently in SSR context
@@ -1800,24 +2471,84 @@ fn generate_on_loading_callback(
 	quote! { #(#code)* }
 }
 
-/// Generates the on_success callback invocation and state update.
+/// Aggregated token-stream products of a `success_url:` lift.
+///
+/// Issue #4605 / #4612 / #4610: the original `generate_on_success_callback`
+/// emitted the user's `success_url:` closure literal *inside* the generated
+/// `fn submit()` method. Closures inside a `fn` item cannot capture
+/// enclosing-scope locals (Rust E0434), so a user closure that referenced
+/// outer locals like `let qid = ...;` failed to compile. This struct mirrors
+/// the [`WatchArtifacts`] shape: a single helper computes the field
+/// declaration, the outer-scope setup (where the user's closure literal is
+/// expanded — and where outer locals are still visible), and the
+/// per-submit invocation that pulls the stored handler off the form and
+/// runs it.
+///
+/// Empty defaults are produced when the user did not write `success_url:`
+/// (every splice point becomes `quote! {}`).
+pub(crate) struct SuccessUrlArtifacts {
+	/// Field declaration appended to `struct #struct_name { ... }`. Empty
+	/// when no `success_url` was supplied.
+	field_decl: TokenStream,
+	/// Default initializer appended to `Self { ... }` inside `fn new()`.
+	/// Stores `None` so the form is usable before the outer-scope setup
+	/// binds the real handler.
+	field_default_init: TokenStream,
+	/// Private setter method spliced into `impl #struct_name`. Used by the
+	/// outer-scope setup to install the type-erased handler.
+	setter_method: TokenStream,
+	/// Code spliced into the outer block (after `let mut __reinhardt_form
+	/// = ...::new();`) where the user closure literal is expanded with full
+	/// access to enclosing-scope locals like `qid`.
+	outer_setup: TokenStream,
+	/// Code spliced into the WASM-only `submit()` body after the
+	/// server_fn's `Ok(value)` arm. Pulls the stored handler off the form
+	/// and dispatches navigation through the new
+	/// [`crate::router::navigate`] API.
+	submit_invocation: TokenStream,
+}
+
+/// Generates the on_success callback invocation and state update spliced
+/// inline inside the generated `submit()` body.
+///
+/// Issue #4624: when the user's `on_success:` closure carries explicit
+/// parameter type annotations (e.g. `|value: LoginResponse|`), the lift
+/// performed by [`build_on_success_artifacts`] is active and the user
+/// closure is invoked from the outer-scope-bound handler — not inline
+/// here. In that case `on_success_lifted` is `true` and we skip emitting
+/// the inline `let callback = #on_success; callback(value);`. The
+/// `__success.set(true)` state update is still emitted because state
+/// signals live on the form struct itself and are unaffected by the lift.
+///
+/// When `on_success_lifted` is `false` (unannotated closure, or no
+/// closure at all) we preserve the historical inline emit — the closure
+/// body executes inside `fn submit()` exactly as before. This branch
+/// matches every existing in-tree caller that did not need outer-scope
+/// capture, so it remains the zero-friction default.
+///
+/// `success_url` is handled separately by [`build_success_url_artifacts`]:
+/// it IS lifted to outer scope because its target use case (URL builders
+/// like `links::poll_results(qid)`) is *intrinsically* outer-scope-capturing.
+/// The lift changes the closure signature from `|form, value|` to `|form|`
+/// (the value parameter is dropped); the form's state signals are
+/// accessible through the `form` parameter, and outer-scope locals like
+/// `qid` are now captured normally. Refs #4605 / #4612.
 fn generate_on_success_callback(
 	callbacks: &TypedFormCallbacks,
 	state: &Option<TypedFormState>,
+	success_url: &Option<syn::Expr>,
+	on_success_lifted: bool,
 ) -> TokenStream {
 	let mut code = Vec::new();
 
-	// Update success state if defined
-	if let Some(state) = state
-		&& state.success
-	{
+	let has_success_state = state.as_ref().map(|s| s.success).unwrap_or(false);
+	if has_success_state || success_url.is_some() {
 		code.push(quote! {
 			self.__success.set(true);
 		});
 	}
 
-	// Call on_success callback if defined
-	if let Some(on_success) = &callbacks.on_success {
+	if !on_success_lifted && let Some(on_success) = &callbacks.on_success {
 		code.push(quote! {
 			{
 				let callback = #on_success;
@@ -1827,6 +2558,360 @@ fn generate_on_success_callback(
 	}
 
 	quote! { #(#code)* }
+}
+
+/// Builds the [`SuccessUrlArtifacts`] for the optional `success_url:`
+/// attribute.
+///
+/// When the user supplies a closure (`success_url: |form| <expr>`), the
+/// closure literal is expanded at the outer block — capturing
+/// enclosing-scope locals normally — and stored on the form struct via the
+/// generated setter. `submit()` then invokes the stored handler and
+/// dispatches the resulting URL through the SPA-aware navigation API.
+///
+/// When the user supplies a string-literal or other non-closure expression,
+/// the macro evaluates it once at outer scope and dispatches the captured
+/// value the same way.
+fn build_success_url_artifacts(
+	success_url: &Option<syn::Expr>,
+	pages_crate: &TokenStream,
+	struct_name: &syn::Ident,
+) -> SuccessUrlArtifacts {
+	let empty = SuccessUrlArtifacts {
+		field_decl: quote! {},
+		field_default_init: quote! {},
+		setter_method: quote! {},
+		outer_setup: quote! {},
+		submit_invocation: quote! {},
+	};
+
+	let Some(url_expr) = success_url else {
+		return empty;
+	};
+
+	// Handler type — type-erased so the form struct stays nameable. The
+	// `Send + Sync` bounds mirror `WatchArtifacts` so callbacks can be
+	// stored uniformly across SSR / CSR.
+	let handler_ty = quote! {
+		::std::sync::Arc<
+			dyn ::core::ops::Fn(&#struct_name) -> ::std::string::String
+				+ ::core::marker::Send
+				+ ::core::marker::Sync,
+		>
+	};
+
+	let field_decl = quote! {
+		__success_url_handler: ::core::option::Option<#handler_ty>,
+	};
+
+	let field_default_init = quote! {
+		__success_url_handler: ::core::option::Option::None,
+	};
+
+	let setter_method = quote! {
+		#[doc(hidden)]
+		fn __set_success_url_handler(&mut self, __handler: #handler_ty) {
+			self.__success_url_handler = ::core::option::Option::Some(__handler);
+		}
+	};
+
+	// Outer-scope wrap. Mirrors the WatchArtifacts pattern: the user
+	// closure literal is expanded here, where enclosing-scope locals are
+	// visible (issues #4605 / #4612). For closure expressions we use the
+	// same `__coerce` identity-function trick that watch artifacts use so
+	// the user's `|form| ...` closure infers its parameter type to
+	// `&#struct_name` without needing an explicit annotation. For
+	// non-closure expressions (string literals, expressions), the value is
+	// evaluated once and reused on every call.
+	let outer_setup = if matches!(url_expr, syn::Expr::Closure(_)) {
+		quote! {
+			{
+				let __wrapped: #handler_ty = ::std::sync::Arc::new(
+					move |__form: &#struct_name| -> ::std::string::String {
+						fn __coerce<__F, __R>(__f: __F) -> __F
+						where
+							__F: ::core::ops::Fn(&#struct_name) -> __R,
+						{
+							__f
+						}
+						let __user_success_url = __coerce(#url_expr);
+						::std::string::ToString::to_string(&__user_success_url(__form))
+					},
+				);
+				__reinhardt_form.__set_success_url_handler(__wrapped);
+			}
+		}
+	} else {
+		quote! {
+			{
+				let __captured_url: ::std::string::String =
+					::std::string::ToString::to_string(&{ #url_expr });
+				let __wrapped: #handler_ty = ::std::sync::Arc::new(
+					move |_form: &#struct_name| -> ::std::string::String {
+						__captured_url.clone()
+					},
+				);
+				__reinhardt_form.__set_success_url_handler(__wrapped);
+			}
+		}
+	};
+
+	// Submit-time invocation: pull the handler off `self`, compute the
+	// URL, and dispatch through the SPA-aware navigation API. Wrapped in
+	// `#[cfg(all(target_family = "wasm", target_os = "unknown"))]`
+	// because the navigation primitives only exist on browser wasm — on
+	// native/SSR there is no browser history to drive.
+	let submit_invocation = quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		{
+			if let ::core::option::Option::Some(__handler) =
+				self.__success_url_handler.as_ref()
+			{
+				let __url = __handler(self);
+				// Try the SPA-aware navigation API first; fall back to a
+				// hard navigation if the router is not installed (e.g. a
+				// form rendered outside `ClientLauncher::launch`).
+				if #pages_crate::navigate(
+					__url.clone(),
+					#pages_crate::NavigationType::Push,
+				)
+				.is_err()
+				{
+					if let ::core::option::Option::Some(__window) =
+						::web_sys::window()
+					{
+						let _ = __window.location().set_href(&__url);
+					}
+				}
+			}
+		}
+	};
+
+	SuccessUrlArtifacts {
+		field_decl,
+		field_default_init,
+		setter_method,
+		outer_setup,
+		submit_invocation,
+	}
+}
+
+/// Aggregated token-stream products of an `on_success:` lift.
+///
+/// Issue #4624: companion to [`SuccessUrlArtifacts`]. When the user's
+/// `on_success:` closure carries explicit parameter type annotations
+/// (e.g. `|value: LoginResponse|`), this struct describes a lift that
+/// stores the closure in an outer-scope-bound dispatcher on the form
+/// struct, so the closure body can capture enclosing-scope locals like a
+/// `qid` route parameter. When the closure is unannotated, every field
+/// here is empty and the closure stays inline in `fn submit()` (the
+/// historical contract).
+///
+/// The dispatcher's value parameter is type-erased through
+/// `Box<dyn Any + Send>` so the form struct does not need a generic
+/// parameter for the server_fn's return type `T`. `T` is recovered from
+/// the user's annotation via a monomorphized `__coerce<T, F>` helper
+/// (the same pattern used by [`build_success_url_artifacts`] and by
+/// `WatchArtifacts`). The runtime downcast in the dispatcher is
+/// statically guaranteed to succeed because the only producer of the
+/// boxed value is `submit()`, which boxes the server_fn's `Output` (the
+/// same type the annotated closure expects).
+pub(crate) struct OnSuccessArtifacts {
+	/// Field declaration appended to `struct #struct_name { ... }`. Empty
+	/// when the closure is not lifted.
+	field_decl: TokenStream,
+	/// Default initializer appended to `Self { ... }` inside `fn new()`.
+	/// Stores `None` so the form is usable before the outer-scope setup
+	/// binds the real dispatcher.
+	field_default_init: TokenStream,
+	/// Private setter method spliced into `impl #struct_name`. Used by
+	/// the outer-scope setup to install the type-erased dispatcher.
+	setter_method: TokenStream,
+	/// Code spliced into the outer block (after `let mut __reinhardt_form
+	/// = ...::new();`) where the user closure literal is expanded with
+	/// full access to enclosing-scope locals.
+	outer_setup: TokenStream,
+	/// Code spliced into the WASM-only `submit()` body after the
+	/// server_fn's `Ok(value)` arm. Boxes `value` and forwards it to the
+	/// stored dispatcher.
+	submit_invocation: TokenStream,
+	/// `true` when the user's `on_success:` closure was eligible for the
+	/// lift (every parameter carries an explicit type annotation) and the
+	/// other fields are populated. `false` when the closure stays inline
+	/// in `fn submit()` and the other fields are empty token streams.
+	lifted: bool,
+}
+
+/// Builds the [`OnSuccessArtifacts`] for the optional `on_success:` callback.
+///
+/// The lift only activates when the user closure carries explicit type
+/// annotations on every parameter — `|value: LoginResponse|` lifts;
+/// `|value|` or `|_value|` does not. The annotation requirement exists
+/// because the macro itself never sees the server_fn's return type as a
+/// token; instead the monomorphized `__coerce<T, F>` helper recovers `T`
+/// from the closure's annotated parameter. Closures with elided
+/// parameter types leave `T` unconstrained and would fail to compile
+/// inside `__coerce`, so we keep them on the historical inline path.
+///
+/// The `TypedFormCallbacks` parser narrows `on_success` to `ExprClosure`
+/// already (see `reinhardt-manouche`), so this helper only inspects the
+/// closure's parameter list and never sees a non-closure `Expr`.
+fn build_on_success_artifacts(on_success: &Option<syn::ExprClosure>) -> OnSuccessArtifacts {
+	let empty = OnSuccessArtifacts {
+		field_decl: quote! {},
+		field_default_init: quote! {},
+		setter_method: quote! {},
+		outer_setup: quote! {},
+		submit_invocation: quote! {},
+		lifted: false,
+	};
+
+	let Some(closure) = on_success else {
+		return empty;
+	};
+
+	// Eligibility gate: only closures whose every parameter has an
+	// explicit type annotation are lifted. This guards `__coerce<T, F>`
+	// against type-inference dead ends for `|_x|` / `|y|` shapes.
+	if closure.inputs.is_empty() {
+		return empty;
+	}
+	let all_annotated = closure
+		.inputs
+		.iter()
+		.all(|pat| matches!(pat, syn::Pat::Type(_)));
+	if !all_annotated {
+		return empty;
+	}
+
+	// Type-erased dispatcher. The form struct never names `T`; `T` is
+	// recovered from the user closure's annotation via `__coerce<T, F>`
+	// at outer setup time, and re-materialized at submit time via an
+	// `Any` downcast. The `Send + Sync` bounds mirror the precedent set
+	// by [`build_success_url_artifacts`] and `WatchArtifacts` so the
+	// form struct can stay `Clone` + cross-thread.
+	let dispatcher_ty = quote! {
+		::std::sync::Arc<
+			dyn ::core::ops::Fn(::std::boxed::Box<
+				dyn ::core::any::Any + ::core::marker::Send,
+			>)
+				+ ::core::marker::Send
+				+ ::core::marker::Sync,
+		>
+	};
+
+	let field_decl = quote! {
+		__on_success_dispatcher: ::core::option::Option<#dispatcher_ty>,
+	};
+
+	let field_default_init = quote! {
+		__on_success_dispatcher: ::core::option::Option::None,
+	};
+
+	// Setter is wasm-only because [`outer_setup`] is wasm-only (see the
+	// rationale below). Keeping the setter ungated would mean dead code on
+	// server builds where the only caller (`outer_setup`) is `cfg`'d out.
+	let setter_method = quote! {
+		#[doc(hidden)]
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		fn __set_on_success_dispatcher(&mut self, __dispatcher: #dispatcher_ty) {
+			self.__on_success_dispatcher = ::core::option::Option::Some(__dispatcher);
+		}
+	};
+
+	// Force the user closure to capture by value. Without an explicit
+	// `move`, Rust captures enclosing-scope locals by reference, which
+	// leaves the resulting closure with a non-`'static` lifetime — and the
+	// `Arc<dyn Fn(...) + Send + Sync>` dispatcher field is implicitly
+	// `'static` (the trait object's default object lifetime in a struct
+	// field). Injecting `move` is strictly an improvement: outer-scope
+	// captures that wouldn't have compiled inside the historical
+	// `fn submit()` body (E0434) now succeed; captures that worked before
+	// (function paths, `'static` values) are unaffected; non-trivial
+	// captures are moved into the closure, matching the typical Rust
+	// idiom for "store this closure in a 'static container".
+	let mut moved_closure = closure.clone();
+	if moved_closure.capture.is_none() {
+		moved_closure.capture = Some(syn::Token![move](proc_macro2::Span::call_site()));
+	}
+
+	// Outer-scope wrap. The closure literal is expanded here where
+	// enclosing-scope locals are visible (issue #4624). The
+	// monomorphized `__coerce` is what makes the lift work without the
+	// macro knowing the server_fn's return type — `T` and `F` are
+	// inferred from the user's closure expression.
+	//
+	// The `#[cfg(all(target_family = "wasm", target_os = "unknown"))]`
+	// gate matches the historical inline path: pre-lift, the user
+	// closure was spliced inside the wasm-only `fn submit()` body, so
+	// any types referenced by the closure (often `cfg(client)`-gated
+	// types like `LoginResponse` in `reinhardt-admin`) only needed to
+	// be in scope on wasm builds. Lifting the closure to the outer
+	// block at the form! call site unconditionally would resurface
+	// those imports on server builds — which is exactly the bug that
+	// caused `reinhardt-admin`'s login form to stop compiling. Keep the
+	// expansion wasm-only so the historical scope contract holds. On
+	// server builds, `submit()` is a stub that does not invoke
+	// `on_success` anyway, so skipping the lift there is a true
+	// no-op.
+	let outer_setup = quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		{
+			fn __coerce<__T, __F>(__cb: __F) -> #dispatcher_ty
+			where
+				__T: 'static + ::core::marker::Send,
+				__F: ::core::ops::Fn(__T)
+					+ ::core::marker::Send
+					+ ::core::marker::Sync
+					+ 'static,
+			{
+				::std::sync::Arc::new(
+					move |__erased: ::std::boxed::Box<
+						dyn ::core::any::Any + ::core::marker::Send,
+					>| {
+						// The only producer of `__erased` is the
+						// generated `submit()` body below, which always
+						// boxes the server_fn's `Output`. The downcast
+						// therefore cannot fail at runtime; the `expect`
+						// is purely defensive and would only fire if a
+						// future codegen change broke the type-erasure
+						// invariant.
+						let __value = *__erased
+							.downcast::<__T>()
+							.expect("form! on_success: dispatcher received a value of unexpected type");
+						__cb(__value);
+					},
+				)
+			}
+			let __wrapped = __coerce(#moved_closure);
+			__reinhardt_form.__set_on_success_dispatcher(__wrapped);
+		}
+	};
+
+	// Submit-time invocation. Runs only on browser wasm because the
+	// inline `fn submit()` body is itself gated by the same `cfg`.
+	let submit_invocation = quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		{
+			if let ::core::option::Option::Some(__dispatcher) =
+				self.__on_success_dispatcher.as_ref()
+			{
+				let __erased: ::std::boxed::Box<
+					dyn ::core::any::Any + ::core::marker::Send,
+				> = ::std::boxed::Box::new(value);
+				__dispatcher(__erased);
+			}
+		}
+	};
+
+	OnSuccessArtifacts {
+		field_decl,
+		field_default_init,
+		setter_method,
+		outer_setup,
+		submit_invocation,
+		lifted: true,
+	}
 }
 
 /// Generates the on_error callback invocation and state update.
@@ -1858,16 +2943,32 @@ fn generate_on_error_callback(
 	quote! { #(#code)* }
 }
 
-/// Generates the redirect code if redirect_on_success is specified.
-fn generate_redirect_code(redirect: &Option<String>) -> TokenStream {
+/// Generates the redirect code if `redirect_on_success` is specified.
+///
+/// Issue #4610: prefer the SPA-aware navigation API
+/// (`#pages_crate::navigate`) so the redirect does not trigger a hard
+/// document reload when the application installed a client-side router.
+/// Fall back to `location.set_href` when the SPA router is not installed
+/// (e.g. forms rendered outside `ClientLauncher::launch`).
+fn generate_redirect_code(redirect: &Option<String>, pages_crate: &TokenStream) -> TokenStream {
 	let Some(url) = redirect else {
 		return quote! {};
 	};
 
 	quote! {
-		// Redirect to the specified URL on success
-		if let Some(window) = web_sys::window() {
-			let _ = window.location().set_href(#url);
+		// Redirect to the specified URL on success. SPA-aware: try the
+		// router first so registered observers fire and the matching route
+		// re-renders without a document reload; fall back to a hard
+		// navigation if no SPA router is installed.
+		if #pages_crate::navigate(
+			::std::string::ToString::to_string(#url),
+			#pages_crate::NavigationType::Push,
+		)
+		.is_err()
+		{
+			if let ::core::option::Option::Some(__window) = ::web_sys::window() {
+				let _ = __window.location().set_href(#url);
+			}
 		}
 	}
 }
@@ -2079,6 +3180,160 @@ mod tests {
 		assert!(output_str.contains("my-form"));
 		assert!(output_str.contains("email-input"));
 		assert!(output_str.contains("field-wrapper"));
+	}
+
+	#[rstest::rstest]
+	fn test_generate_on_success_ref_lift() {
+		// Arrange — issue #4624. When `on_success_ref:` is supplied, the
+		// macro must emit the lifted-handler scaffold: a private struct
+		// field, its setter, the `__coerce_form` 3-param identity fn that
+		// pins the user closure's `(&Self, &__T)` shape, and the
+		// outer-scope setup that installs the Arc.
+		let input = quote! {
+			name: OnSuccessRefForm,
+			server_fn: update_profile,
+
+			on_success_ref: |_form, _value| {
+				let _ = _value;
+			},
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert — all four artifact splice points are present.
+		assert!(
+			output_str.contains("__on_success_ref_handler"),
+			"missing field declaration"
+		);
+		assert!(
+			output_str.contains("__set_on_success_ref_handler"),
+			"missing setter method"
+		);
+		assert!(
+			output_str.contains("__coerce_form"),
+			"missing identity-fn type-coercion trick (E0282 will return)"
+		);
+		assert!(
+			output_str.contains("downcast_ref"),
+			"missing infallible type-erasure downcast"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_generate_on_success_ref_type_safety_guard() {
+		// Arrange — issue #4624 type-safety regression caught by review.
+		// The runtime `downcast_ref().expect()` is only sound if the
+		// macro *also* emits a compile-time check that the user closure's
+		// `__T` matches the server_fn's Ok type. The guard takes the form
+		// of a dead-code branch that calls the server_fn (with
+		// `unreachable!()` for every arg) and feeds the extracted Ok
+		// value into the user closure.
+		let input = quote! {
+			name: TypeSafeRefForm,
+			server_fn: update_profile,
+
+			on_success_ref: |_form, _value| {
+				let _ = _value;
+			},
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert — the dead-code typecheck infrastructure must appear:
+		// the Future-Ok extractor, the never-typed arg placeholders, and
+		// the user-closure invocation that pins `__T` to the server_fn
+		// Ok arm.
+		assert!(
+			output_str.contains("__on_success_ref_extract_ok"),
+			"missing dead-code Future<Output=Result<T,E>> Ok extractor"
+		);
+		assert!(
+			output_str.contains("unreachable"),
+			"missing never-typed arg placeholders for server_fn probe call"
+		);
+		assert!(
+			output_str.contains("__probe_ok"),
+			"missing probe-value binding that forces __T = server_fn Ok type"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_generate_on_success_ref_no_type_guard_for_url_action() {
+		// Arrange — URL action forms have no server_fn to extract a
+		// return type from, and `on_success_ref` would never actually
+		// fire there. The type-safety guard must be omitted in that case
+		// (otherwise we'd emit a dead-code call to a nonexistent
+		// `server_fn_ident`).
+		//
+		// The lifted handler scaffold is still emitted (parser/codegen
+		// don't reject the combination — it's a no-op at runtime), but
+		// without the compile-time probe.
+		let input = quote! {
+			name: UrlActionRefForm,
+			action: "/api/submit",
+
+			on_success_ref: |_form, _value| {
+				let _ = _value;
+			},
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert — scaffold present, but typecheck infrastructure absent.
+		assert!(
+			output_str.contains("__on_success_ref_handler"),
+			"scaffold should still be emitted for URL forms"
+		);
+		assert!(
+			!output_str.contains("__on_success_ref_extract_ok"),
+			"URL form must not emit the Future Ok extractor (no server_fn to probe)"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_generate_omits_on_success_ref_scaffold_when_unused() {
+		// Arrange — a form without `on_success_ref:` must NOT pay the
+		// scaffold cost: no field, no setter, no Arc allocation in `new()`.
+		let input = quote! {
+			name: NoRefForm,
+			server_fn: update_profile,
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert — the scaffold tokens are absent when the feature is unused.
+		assert!(
+			!output_str.contains("__on_success_ref_handler"),
+			"unused on_success_ref must not allocate a struct field"
+		);
+		assert!(
+			!output_str.contains("__set_on_success_ref_handler"),
+			"unused on_success_ref must not generate a setter"
+		);
 	}
 
 	#[rstest::rstest]
@@ -2971,8 +4226,15 @@ mod tests {
 		let output_str = output.to_string();
 
 		// Generated code should have cfg attributes for platform-specific code
-		assert!(output_str.contains("# [cfg (target_arch = \"wasm32\")]"));
-		assert!(output_str.contains("# [cfg (not (target_arch = \"wasm32\"))]"));
+		assert!(
+			output_str
+				.contains("# [cfg (all (target_family = \"wasm\" , target_os = \"unknown\"))]")
+		);
+		assert!(
+			output_str.contains(
+				"# [cfg (not (all (target_family = \"wasm\" , target_os = \"unknown\")))]"
+			)
+		);
 	}
 
 	// ===========================================
@@ -3094,9 +4356,16 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// Check that the form is cloned before use and __call_watch is used
-		assert!(output_str.contains("let form = self . clone ()"));
-		assert!(output_str.contains("__call_watch"));
+		// Check that the form is cloned inside the watch method and that the
+		// user's handler is captured at the macro call site as a stored
+		// `Arc<dyn Fn(&Self) -> Page>` field (issue #4414). The previous
+		// `fn __call_watch` indirection and the inline `__watch_handler` local
+		// have both been removed; the user closure is now bound from the outer
+		// scope so it can capture enclosing-scope locals.
+		assert!(output_str.contains("let __form = self . clone ()"));
+		assert!(output_str.contains("__watch_preview"));
+		assert!(output_str.contains("__user_watch_handler"));
+		assert!(!output_str.contains("__call_watch"));
 	}
 
 	#[rstest::rstest]
@@ -3951,6 +5220,165 @@ mod tests {
 		assert!(
 			output_str.contains("\"path\""),
 			"Expected path element to be generated"
+		);
+	}
+
+	// --- SubmitButton rendering regression tests (Fixes #3334) ---
+
+	#[rstest::rstest]
+	fn test_submit_button_rendered_in_url_action_form() {
+		// Arrange
+		let input = quote! {
+			name: LoginForm,
+			action: "/api/login",
+
+			fields: {
+				username: CharField { required, label: "Username" },
+				password: CharField { required, widget: PasswordInput, label: "Password" },
+				submit: SubmitButton { label: "Sign in", class: "btn-primary" },
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert
+		assert!(
+			output_str.contains("\"button\""),
+			"URL action form: codegen must emit a <button> element for SubmitButton"
+		);
+		assert!(
+			output_str.contains("\"submit\""),
+			"URL action form: codegen must set type=\"submit\" on the button"
+		);
+		assert!(
+			output_str.contains("Sign in"),
+			"URL action form: codegen must include the button label"
+		);
+		assert!(
+			output_str.contains("btn-primary"),
+			"URL action form: codegen must include the button class"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_submit_button_rendered_in_server_fn_form() {
+		// Arrange
+		let input = quote! {
+			name: LoginForm,
+			server_fn: login,
+
+			fields: {
+				username: CharField { required, label: "Username" },
+				password: CharField { required, widget: PasswordInput, label: "Password" },
+				submit: SubmitButton { label: "Sign in", class: "btn-primary" },
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert
+		assert!(
+			output_str.contains("\"button\""),
+			"server_fn form: codegen must emit a <button> element for SubmitButton"
+		);
+		assert!(
+			output_str.contains("\"submit\""),
+			"server_fn form: codegen must set type=\"submit\" on the button"
+		);
+		assert!(
+			output_str.contains("Sign in"),
+			"server_fn form: codegen must include the button label"
+		);
+		assert!(
+			output_str.contains("btn-primary"),
+			"server_fn form: codegen must include the button class"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_submit_button_with_id_and_disabled() {
+		// Arrange
+		let input = quote! {
+			name: TestForm,
+			action: "/test",
+
+			fields: {
+				name: CharField { required },
+				submit: SubmitButton { label: "Send", id: "submit-btn", disabled },
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert
+		assert!(
+			output_str.contains("\"button\""),
+			"codegen must emit a <button> element"
+		);
+		assert!(
+			output_str.contains("submit-btn"),
+			"codegen must include the button id"
+		);
+		assert!(
+			output_str.contains("\"disabled\""),
+			"codegen must include the disabled attribute"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_submit_button_with_default_label() {
+		// Arrange
+		let input = quote! {
+			name: MinimalForm,
+			action: "/test",
+
+			fields: {
+				name: CharField { required },
+				submit: SubmitButton {},
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert
+		assert!(
+			output_str.contains("\"button\""),
+			"codegen must emit a <button> element even with no explicit label"
+		);
+		assert!(
+			output_str.contains("Submit"),
+			"codegen must use default label \"Submit\" when none specified"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_no_submit_button_when_not_specified() {
+		// Arrange
+		let input = quote! {
+			name: NoButtonForm,
+			action: "/test",
+
+			fields: {
+				name: CharField { required },
+			},
+		};
+
+		// Act
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		// Assert - no button element should be generated
+		assert!(
+			!output_str.contains("\"button\""),
+			"form without SubmitButton must not generate a <button> element"
 		);
 	}
 }

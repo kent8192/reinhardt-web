@@ -1,6 +1,7 @@
 //! Template utilities for command code generation
 
 use crate::CommandResult;
+use crate::template_source::TemplateSource;
 use crate::{BaseCommand, CommandContext};
 use async_trait::async_trait;
 use serde::Serialize;
@@ -9,9 +10,14 @@ use std::collections::HashMap;
 use tera::Tera;
 
 /// Context for template rendering, holding key-value pairs passed to Tera templates.
+///
+/// Supports example overrides: when rendering `.example.` files, override values
+/// are substituted for specified keys so that example files contain safe placeholder
+/// strings while the actual settings files receive the real generated values.
 #[derive(Debug, Clone)]
 pub struct TemplateContext {
 	variables: HashMap<String, JsonValue>,
+	example_overrides: HashMap<String, JsonValue>,
 }
 
 impl From<TemplateContext> for tera::Context {
@@ -29,6 +35,7 @@ impl TemplateContext {
 	pub fn new() -> Self {
 		Self {
 			variables: HashMap::new(),
+			example_overrides: HashMap::new(),
 		}
 	}
 
@@ -41,6 +48,30 @@ impl TemplateContext {
 		let json_value = serde_json::to_value(value)?;
 		self.variables.insert(key.into(), json_value);
 		Ok(())
+	}
+
+	/// Sets an override value for `.example.` files.
+	///
+	/// When rendering `.example.` files, the override value is used instead of
+	/// the normal value for this key. This allows example files to contain safe
+	/// placeholder strings while actual settings files receive real values.
+	pub fn set_example_override<K, V>(&mut self, key: K, value: V) -> Result<(), serde_json::Error>
+	where
+		K: Into<String>,
+		V: Serialize,
+	{
+		let json_value = serde_json::to_value(value)?;
+		self.example_overrides.insert(key.into(), json_value);
+		Ok(())
+	}
+
+	/// Creates a context for rendering `.example.` files by applying overrides.
+	fn to_example_context(&self) -> Self {
+		let mut ctx = self.clone();
+		for (key, value) in &self.example_overrides {
+			ctx.variables.insert(key.clone(), value.clone());
+		}
+		ctx
 	}
 }
 
@@ -59,34 +90,25 @@ impl TemplateCommand {
 		Self
 	}
 
-	/// Processes templates from the given directory, rendering them with the provided context.
+	/// Processes templates from the given source, rendering them with the provided context.
 	pub fn handle(
 		&self,
 		name: &str,
 		target: Option<&std::path::Path>,
-		template_dir: &std::path::Path,
+		source: &dyn TemplateSource,
 		context: TemplateContext,
 		ctx: &CommandContext,
 	) -> CommandResult<()> {
 		use crate::CommandError;
 		use std::fs;
+		use std::path::Path;
 
-		// Validate template directory exists
-		if !template_dir.exists() {
-			return Err(CommandError::ExecutionError(format!(
-				"Template directory does not exist: {}",
-				template_dir.display()
-			)));
-		}
-
-		// Determine output directory
 		let output_dir = if let Some(t) = target {
 			t.to_path_buf()
 		} else {
 			std::path::PathBuf::from(name)
 		};
 
-		// Create output directory
 		if output_dir.exists() {
 			ctx.verbose(&format!(
 				"Directory '{}' already exists, will write into it",
@@ -102,57 +124,41 @@ impl TemplateCommand {
 			})?;
 		}
 
-		// Process all files in template directory recursively
-		self.process_directory(template_dir, &output_dir, template_dir, &context, ctx)?;
-
-		Ok(())
+		self.process_directory(source, Path::new(""), &output_dir, &context, ctx)
 	}
 
 	fn process_directory(
 		&self,
-		current_dir: &std::path::Path,
+		source: &dyn TemplateSource,
+		rel_dir: &std::path::Path,
 		output_base: &std::path::Path,
-		template_base: &std::path::Path,
 		context: &TemplateContext,
 		ctx: &CommandContext,
 	) -> CommandResult<()> {
 		use crate::CommandError;
 		use std::fs;
 
-		let entries = fs::read_dir(current_dir).map_err(|e| {
-			CommandError::ExecutionError(format!(
-				"Failed to read template directory '{}': {}",
-				current_dir.display(),
-				e
-			))
-		})?;
+		let entries = source.list_entries(rel_dir)?;
 
 		for entry in entries {
-			let entry = entry.map_err(|e| {
-				CommandError::ExecutionError(format!("Failed to read directory entry: {}", e))
-			})?;
+			let file_name = entry
+				.rel_path
+				.file_name()
+				.map(|s| s.to_string_lossy().into_owned())
+				.unwrap_or_default();
 
-			let path = entry.path();
-			let file_name = entry.file_name();
-			let file_name_str = file_name.to_string_lossy();
-
-			// Skip hidden files and __pycache__, but keep .gitkeep and .gitignore
-			if (file_name_str.starts_with('.')
-				&& file_name_str != ".gitkeep"
-				&& file_name_str != ".gitignore")
-				|| file_name_str == "__pycache__"
+			// Skip hidden files and __pycache__, but keep .gitkeep and .gitignore(.tpl).
+			// Strip the .tpl extension before comparing so that `.gitignore.tpl` is also
+			// recognized as the allowed dotfile `.gitignore`.
+			let base_name = file_name.strip_suffix(".tpl").unwrap_or(&file_name);
+			if (file_name.starts_with('.') && base_name != ".gitkeep" && base_name != ".gitignore")
+				|| file_name == "__pycache__"
 			{
 				continue;
 			}
 
-			// Calculate relative path from template base
-			let relative_path = path.strip_prefix(template_base).map_err(|e| {
-				CommandError::ExecutionError(format!("Failed to compute relative path: {}", e))
-			})?;
-
-			if path.is_dir() {
-				// Create corresponding directory in output
-				let output_dir = output_base.join(relative_path);
+			if entry.is_dir {
+				let output_dir = output_base.join(&entry.rel_path);
 				fs::create_dir_all(&output_dir).map_err(|e| {
 					CommandError::ExecutionError(format!(
 						"Failed to create directory '{}': {}",
@@ -160,12 +166,9 @@ impl TemplateCommand {
 						e
 					))
 				})?;
-
-				// Recursively process subdirectory
-				self.process_directory(&path, output_base, template_base, context, ctx)?;
+				self.process_directory(source, &entry.rel_path, output_base, context, ctx)?;
 			} else {
-				// Process file
-				self.process_file(&path, output_base, template_base, context, ctx)?;
+				self.process_file(source, &entry.rel_path, output_base, context, ctx)?;
 			}
 		}
 
@@ -174,9 +177,9 @@ impl TemplateCommand {
 
 	fn process_file(
 		&self,
-		template_file: &std::path::Path,
+		source: &dyn TemplateSource,
+		rel_path: &std::path::Path,
 		output_base: &std::path::Path,
-		template_base: &std::path::Path,
 		context: &TemplateContext,
 		ctx: &CommandContext,
 	) -> CommandResult<()> {
@@ -184,14 +187,7 @@ impl TemplateCommand {
 		use std::fs;
 		use std::io::Write;
 
-		// Calculate relative path from template base
-		let relative_path = template_file.strip_prefix(template_base).map_err(|e| {
-			CommandError::ExecutionError(format!("Failed to compute relative path: {}", e))
-		})?;
-
-		// Determine output file names
-		// We'll process .tpl extension and potentially create two files for .example files
-		let file_path_str = relative_path.to_str().ok_or_else(|| {
+		let file_path_str = rel_path.to_str().ok_or_else(|| {
 			CommandError::ExecutionError("Invalid UTF-8 in file path".to_string())
 		})?;
 
@@ -205,10 +201,8 @@ impl TemplateCommand {
 		// Check if this is an .example file
 		let has_example_suffix = processed_name.contains(".example.");
 
-		// Create the file with .example (original name after .tpl removal)
 		let output_path_with_example = output_base.join(&processed_name);
 
-		// Ensure parent directory exists
 		if let Some(parent) = output_path_with_example.parent() {
 			fs::create_dir_all(parent).map_err(|e| {
 				CommandError::ExecutionError(format!(
@@ -219,61 +213,55 @@ impl TemplateCommand {
 			})?;
 		}
 
-		// Read template content
-		let template_content = fs::read_to_string(template_file).map_err(|e| {
-			CommandError::ExecutionError(format!(
-				"Failed to read template file '{}': {}",
-				template_file.display(),
-				e
-			))
-		})?;
-
-		// Replace template variables
-		let rendered_content = self.render_template(&template_content, context)?;
-
-		// Write the file with .example suffix (if it has one)
-		let mut output_file = fs::File::create(&output_path_with_example).map_err(|e| {
-			CommandError::ExecutionError(format!(
-				"Failed to create output file '{}': {}",
-				output_path_with_example.display(),
-				e
-			))
-		})?;
-
-		output_file
-			.write_all(rendered_content.as_bytes())
+		// Read template content via the abstracted source
+		let raw = source.read_file(rel_path)?;
+		let template_content = std::str::from_utf8(&raw)
 			.map_err(|e| {
 				CommandError::ExecutionError(format!(
-					"Failed to write to output file '{}': {}",
+					"template '{}' is not valid UTF-8: {}",
+					rel_path.display(),
+					e
+				))
+			})?
+			.to_string();
+
+		if has_example_suffix {
+			let example_context = context.to_example_context();
+			let example_content = self.render_template(&template_content, &example_context)?;
+
+			let mut output_file = fs::File::create(&output_path_with_example).map_err(|e| {
+				CommandError::ExecutionError(format!(
+					"Failed to create output file '{}': {}",
 					output_path_with_example.display(),
 					e
 				))
 			})?;
+			output_file
+				.write_all(example_content.as_bytes())
+				.map_err(|e| {
+					CommandError::ExecutionError(format!(
+						"Failed to write to output file '{}': {}",
+						output_path_with_example.display(),
+						e
+					))
+				})?;
+			ctx.verbose(&format!(
+				"Created: {}",
+				output_path_with_example
+					.strip_prefix(output_base)
+					.unwrap_or(&output_path_with_example)
+					.display()
+			));
 
-		ctx.verbose(&format!(
-			"Created: {}",
-			output_path_with_example
-				.strip_prefix(output_base)
-				.unwrap_or(&output_path_with_example)
-				.display()
-		));
-
-		// If file has .example suffix, also create a version without it
-		if has_example_suffix {
+			let rendered_content = self.render_template(&template_content, context)?;
 			let processed_name_without_example =
 				if let Some(pos) = processed_name.rfind(".example.") {
-					format!(
-						"{}{}",
-						&processed_name[..pos],
-						&processed_name[pos + 8..] // ".example" is 8 characters
-					)
+					format!("{}{}", &processed_name[..pos], &processed_name[pos + 8..])
 				} else {
 					processed_name.clone()
 				};
 
 			let output_path_without_example = output_base.join(processed_name_without_example);
-
-			// Write the same content to the file without .example
 			let mut output_file_no_example = fs::File::create(&output_path_without_example)
 				.map_err(|e| {
 					CommandError::ExecutionError(format!(
@@ -282,7 +270,6 @@ impl TemplateCommand {
 						e
 					))
 				})?;
-
 			output_file_no_example
 				.write_all(rendered_content.as_bytes())
 				.map_err(|e| {
@@ -292,12 +279,37 @@ impl TemplateCommand {
 						e
 					))
 				})?;
-
 			ctx.verbose(&format!(
 				"Created: {}",
 				output_path_without_example
 					.strip_prefix(output_base)
 					.unwrap_or(&output_path_without_example)
+					.display()
+			));
+		} else {
+			let rendered_content = self.render_template(&template_content, context)?;
+
+			let mut output_file = fs::File::create(&output_path_with_example).map_err(|e| {
+				CommandError::ExecutionError(format!(
+					"Failed to create output file '{}': {}",
+					output_path_with_example.display(),
+					e
+				))
+			})?;
+			output_file
+				.write_all(rendered_content.as_bytes())
+				.map_err(|e| {
+					CommandError::ExecutionError(format!(
+						"Failed to write to output file '{}': {}",
+						output_path_with_example.display(),
+						e
+					))
+				})?;
+			ctx.verbose(&format!(
+				"Created: {}",
+				output_path_with_example
+					.strip_prefix(output_base)
+					.unwrap_or(&output_path_with_example)
 					.display()
 			));
 		}
@@ -340,11 +352,11 @@ impl BaseCommand for TemplateCommand {
 			)
 		})?;
 
-		let template_path = std::path::PathBuf::from(template_dir);
+		let source = crate::template_source::FilesystemSource::new(template_dir)?;
 
 		let context = TemplateContext::new();
 
-		self.handle(&name, target.as_deref(), &template_path, context, ctx)?;
+		self.handle(&name, target.as_deref(), &source, context, ctx)?;
 
 		ctx.success("Template processed successfully");
 
@@ -448,5 +460,67 @@ mod tests {
 
 		// Undefined variables cause an error in Tera
 		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_to_example_context_applies_overrides() {
+		// Arrange
+		let mut ctx = TemplateContext::new();
+		ctx.insert("secret_key", "real-key").unwrap();
+		ctx.insert("project_name", "my_project").unwrap();
+		ctx.set_example_override("secret_key", "PLACEHOLDER")
+			.unwrap();
+
+		// Act
+		let example_ctx = ctx.to_example_context();
+
+		// Assert - example context should have override applied
+		let template_cmd = TemplateCommand::new();
+		let example_result = template_cmd
+			.render_template("{{ secret_key }}", &example_ctx)
+			.unwrap();
+		assert_eq!(example_result, "PLACEHOLDER");
+
+		// Assert - original context should retain real value
+		let real_result = template_cmd
+			.render_template("{{ secret_key }}", &ctx)
+			.unwrap();
+		assert_eq!(real_result, "real-key");
+
+		// Assert - non-overridden keys should be the same in both
+		let example_name = template_cmd
+			.render_template("{{ project_name }}", &example_ctx)
+			.unwrap();
+		let real_name = template_cmd
+			.render_template("{{ project_name }}", &ctx)
+			.unwrap();
+		assert_eq!(example_name, "my_project");
+		assert_eq!(real_name, "my_project");
+	}
+
+	#[test]
+	fn test_set_example_override_returns_ok() {
+		let mut ctx = TemplateContext::new();
+		let result = ctx.set_example_override("key", "value");
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_example_context_with_no_overrides_is_identical() {
+		// Arrange
+		let mut ctx = TemplateContext::new();
+		ctx.insert("key", "value").unwrap();
+		// No overrides set
+
+		// Act
+		let example_ctx = ctx.to_example_context();
+
+		// Assert
+		let template_cmd = TemplateCommand::new();
+		let original = template_cmd.render_template("{{ key }}", &ctx).unwrap();
+		let example = template_cmd
+			.render_template("{{ key }}", &example_ctx)
+			.unwrap();
+		assert_eq!(original, example);
 	}
 }

@@ -10,18 +10,14 @@ This file defines coding standards and dependency management rules specific to t
 
 The `examples/` directory contains example projects and shared utilities in a flat structure:
 
-```
+```text
 examples/
-├── examples-hello-world/
-├── examples-rest-api/
-├── examples-database-integration/
-├── examples-tutorial-basis/
-├── examples-tutorial-rest/
-├── examples-github-issues/
-├── examples-twitter/
+├── examples-tutorial-basis/       # Polls tutorial (MTV/Pages-style)
+├── examples-tutorial-rest/        # Snippets tutorial (REST API)
+├── examples-twitter/              # End-to-end Twitter-clone demo
 ├── .cargo/
-│   └── config.local.toml  # Template for local development
-├── Cargo.toml           # Workspace configuration
+│   └── config.local.toml          # Template for local development
+├── Cargo.toml                     # Workspace configuration
 └── README.md
 ```
 
@@ -37,9 +33,10 @@ Each `examples-*` directory is an independent Cargo project demonstrating specif
 
 By default, examples use published versions from crates.io:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web", features = ["standard"] }
+reinhardt = { version = "0.1.0-rc.30", package = "reinhardt-web", features = ["standard"] }
 ```
 
 ### Local Development Mode
@@ -69,10 +66,11 @@ rm -f .cargo/config.toml
 
 #### ✅ CORRECT Pattern
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
 # ✅ Main reinhardt crate only
-reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web", features = ["core", "database"] }
+reinhardt = { version = "0.1.0-rc.30", package = "reinhardt-web", features = ["core", "database"] }
 
 # ✅ External crates are fine
 tokio = { workspace = true }
@@ -80,14 +78,15 @@ serde = { workspace = true }
 
 [dev-dependencies]
 # ✅ External test crates are fine
-rstest = "0.23"
+rstest = "0.26.1"
 ```
 
 #### ❌ INCORRECT Pattern
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web", features = ["core"] }
+reinhardt = { version = "0.1.0-rc.30", package = "reinhardt-web", features = ["core"] }
 reinhardt-http = { path = "../../../crates/reinhardt-http" }      # ❌ NEVER
 reinhardt-routers = { path = "../../../crates/reinhardt-urls/crates/routers" }  # ❌ NEVER
 reinhardt-di = { path = "../../../crates/reinhardt-di" }          # ❌ NEVER
@@ -116,10 +115,19 @@ use reinhardt::endpoint;
 use reinhardt::db::orm::Manager;
 use reinhardt::db::DatabaseConnection;
 
-// Pattern 4: External dependencies via reinhardt re-exports
-use reinhardt::core::serde::{Serialize, Deserialize};
-use reinhardt::core::serde::json::json;
-use reinhardt::core::async_trait;
+// Pattern 4: External dependencies — prefer the direct import when the
+// crate is listed in your `[dependencies]`; fall back to the reinhardt
+// re-export otherwise so you don't introduce an unlisted transitive
+// dependency.
+use serde::{Serialize, Deserialize};    // Direct (serde in [dependencies], preferred)
+use serde_json::json;                   // Direct (serde_json in [dependencies], preferred)
+use reinhardt::core::async_trait;       // Re-export (async_trait NOT in [dependencies] — required)
+//
+// If `serde` / `serde_json` were NOT in [dependencies], substitute the
+// corresponding direct lines above with the reinhardt re-exports — one
+// direction at a time, to avoid same-name imports for `json`:
+//   use reinhardt::core::serde::{Serialize, Deserialize};
+//   use reinhardt::core::serde::json::json;
 ```
 
 #### ❌ INCORRECT Import Patterns
@@ -136,10 +144,12 @@ use reinhardt_test::fixtures::postgres_container;
 // ❌ NEVER import from hyper directly (use reinhardt re-exports)
 use hyper::{Method, StatusCode};
 
-// ❌ NEVER import external dependencies directly when re-exports exist
-use serde::{Serialize, Deserialize};  // Use reinhardt::core::serde instead
-use serde_json::json;                 // Use reinhardt::core::serde::json::json instead
-use async_trait::async_trait;         // Use reinhardt::core::async_trait instead
+// Note: When serde or serde_json are direct dependencies in Cargo.toml,
+// prefer importing from the crate directly: use serde::{Serialize, Deserialize};
+// The re-export path (reinhardt::core::serde) is also valid but direct import is preferred.
+
+// ❌ NEVER import external dependencies that are NOT in your Cargo.toml
+use async_trait::async_trait;         // Use reinhardt::core::async_trait instead (unless async_trait is in [dependencies])
 ```
 
 ---
@@ -297,6 +307,24 @@ use reinhardt::Request;  // ❌ Already in prelude!
 use reinhardt_http::Response;  // ❌ Wrong crate!
 ```
 
+### CS-3 (MUST): Attribute Macro Ordering on Model Structs
+
+`#[model(...)]` MUST come before `#[derive(...)]` on model structs:
+
+```rust
+// ✅ CORRECT: #[model] before #[derive]
+#[model(app_label = "users", table_name = "users")]
+#[derive(Serialize, Deserialize)]
+pub struct User { ... }
+
+// ❌ INCORRECT: #[derive] before #[model]
+#[derive(Serialize, Deserialize)]
+#[model(app_label = "users", table_name = "users")]
+pub struct User { ... }
+```
+
+**Why:** Rust attribute macros are applied from outside to inside. `#[model]` transforms `ForeignKeyField<T>` into concrete columns and may generate trait implementations (e.g., `Clone`). If `#[derive]` runs first, it sees the untransformed struct and fails.
+
 ---
 
 ## Testing Standards
@@ -307,7 +335,7 @@ use reinhardt_http::Response;  // ❌ Wrong crate!
 
 ```toml
 [dev-dependencies]
-rstest = "0.23"
+rstest = "0.26.1"
 tokio = { workspace = true, features = ["rt", "macros"] }
 ```
 
@@ -323,6 +351,25 @@ mod tests {
 	use reinhardt::test::fixtures::test_server_guard;
 }
 ```
+
+### TS-3 (SHOULD): Direct Invocation for `#[server_fn]` Tests
+
+TS-3 is the examples-project mirror of `instructions/TESTING_STANDARDS.md`
+§ TI-7. The underlying convention is identical; TS-3 exists so examples
+contributors find the rule here without having to cross-reference the top-level
+standards doc.
+
+When testing `#[server_fn]` functions in example projects, prefer **direct
+invocation** (call the function as a regular `async fn` and pass injected
+dependencies positionally) over routing JSON requests through
+`ServerRouter::handle()`. The `#[inject]` attributes are stripped at expansion
+time, so server functions are normal Rust functions on the server side.
+
+Reserve HTTP routing for tests whose stated purpose is to verify the
+HTTP/DI/middleware pipeline itself (document the rationale in the module
+header). See `instructions/TESTING_STANDARDS.md` § TI-7 for the full
+convention and [#3826](https://github.com/kent8192/reinhardt-web/issues/3826)
+for context.
 
 ---
 
@@ -352,9 +399,10 @@ Each mistake is paired with its correct alternative:
 - ❌ `use reinhardt_macros::endpoint;`
 - ✅ `use reinhardt::endpoint;`
 
-**Mistake 4: Importing from hyper directly**
-- ❌ `use hyper::Method;`
-- ✅ `use reinhardt::Method;`
+**Mistake 4: Importing external dependencies not in your Cargo.toml**
+- ❌ `use async_trait::async_trait;` (when async_trait is not in `[dependencies]`)
+- ✅ `use reinhardt::core::async_trait;` (use re-export)
+- ✅ `use serde::{Serialize, Deserialize};` (direct import is preferred when serde is in `[dependencies]`)
 
 **Mistake 5: Including sub-crates in dependencies**
 - ❌ `reinhardt-http = { path = "..." }` in `[dependencies]`
@@ -372,6 +420,4 @@ Each mistake is paired with its correct alternative:
 ## Related Documentation
 
 - **Main Project Standards**: @../CLAUDE.md
-- **Feature Flags**: @../docs/FEATURE_FLAGS.md
-- **Getting Started Guide**: @../docs/GETTING_STARTED.md
 - **Project README**: @../README.md

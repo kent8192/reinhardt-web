@@ -1,29 +1,31 @@
-//! {{ app_name }} application module
+//! {{ app_name }} application
 //!
-//! A Reinhardt Pages application with WASM frontend and server functions
+//! A Reinhardt Pages app whose server-side and client-side code both live
+//! under this directory:
+//!
+//! - `admin` / `models` / `serializers` / `views` — server-only
+//! - `server_fn` / `urls` — bi-target (gate internally)
+//! - `client` — WASM-only (per-app UI + page wrappers)
 
+#[cfg(server)]
 use reinhardt::app_config;
 
-// Server-side modules
+#[cfg(server)]
 pub mod admin;
+#[cfg(server)]
 pub mod models;
+#[cfg(server)]
 pub mod serializers;
+#[cfg(server)]
+pub mod views;
+
+// Bi-target modules: both server and client portions live inside, gated internally.
+pub mod server_fn;
 pub mod urls;
 
-// Client-side modules
 #[cfg(client)]
 pub mod client;
 
-// Server-side modules
 #[cfg(server)]
-pub mod server;
-
-// Shared types (both WASM and server)
-pub mod shared;
-
-// Re-export commonly used types
-pub use shared::errors::*;
-pub use shared::types::*;
-
 #[app_config(name = "{{ app_name }}", label = "{{ app_name }}")]
 pub struct {{ camel_case_app_name }}Config;

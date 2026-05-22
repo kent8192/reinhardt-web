@@ -7,134 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-rc.8...reinhardt-http@v0.1.0-rc.9) - 2026-03-15
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-rc.30...reinhardt-http@v0.1.0) - 2026-05-22
 
-### Fixed
+Initial stable release of `reinhardt-http` as part of the reinhardt-web
+0.1.0 release. Provides the foundational HTTP request and response
+abstractions, the middleware-chain plumbing, and the sanitization /
+input-validation helpers used by every higher layer in the framework.
 
-- *(http)* replace lock().unwrap() with poison-recovery pattern
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-rc.4...reinhardt-http@v0.1.0-rc.5) - 2026-03-07
+### Capabilities at 0.1.0
 
-### Documentation
+- **Typed `Request` / `Response` builders** — Owning request and
+  response types with ergonomic header accessors (`append_header` for
+  multi-value `Set-Cookie`, `with_header_if_absent` /
+  `try_with_header_if_absent`), `query_as<T>()` for type-safe query
+  deserialization, and `extract_bearer_token()` / `get_client_ip()` /
+  `validate_content_type()` helpers migrated from `reinhardt-micro` for
+  a single API surface.
+- **Middleware chain with DI contribution** — `Middleware` trait
+  exposes a `di_registrations` hook plus type-erased DI APIs so that
+  middleware (sessions, auth, etc.) can register its own services into
+  the request-scoped container, and `ExcludeMiddleware` provides
+  declarative route exclusion. Errors raised inside the chain are
+  converted to responses uniformly rather than panicking.
+- **Sanitization and input-validation suite** — `validate_html_attr_name`,
+  `is_safe_url` (with anchor-link support), path-traversal prevention,
+  XSS escaping, `SafeErrorResponse` to prevent information leakage, and
+  resource-limit configuration covering body size and upload paths.
+- **Defensive runtime primitives** — Poison-recovery patterns replace
+  every `Mutex::lock().unwrap()`, `char_indices`-based truncation
+  preserves UTF-8 in log messages, and chunked uploads carry session
+  timeouts. Uploaded files use cryptographically random filenames.
+- **Cross-cutting integration points** — Per-request `InjectionContext`
+  is installed on the HTTP request so `use_inject` resolves the active
+  context; `AuthState::from_extensions()` discovers auth state
+  directly from request extensions for downstream middleware.
 
-- add missing doc comments for public API modules and types
+### Notable Breaking Changes
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-rc.1...reinhardt-http@v0.1.0-rc.2) - 2026-03-04
+This crate's public API was stabilized incrementally across the alpha
+and rc lifecycle; the workspace-wide breaking changes are catalogued
+in the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+and in the [Breaking Changes Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/breaking-changes).
 
-### Fixed
+### Migration Notes
 
-- *(http)* use char_indices for UTF-8 safe truncation in truncate_for_log
-- *(meta)* fix workspace inheritance and authors metadata
-
-### Maintenance
-
-- *(testing)* add insta snapshot testing dependency across all crates
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.8...reinhardt-http@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.7...reinhardt-http@v0.1.0-alpha.8) - 2026-02-21
-
-### Fixed
-
-- add session timeout for chunked uploads
-- fix streaming parser, cookie parsing, and request builder
-- recover from poisoned mutex instead of panicking
-- prevent panics from lock poisoning, query parsing, and input validation
-- add path traversal prevention with input validation
-
-### Security
-
-- use cryptographically random filenames for uploads
-- add safe error response builder to prevent info leakage
-- harden XSS, CSRF, auth, and proxy trust
-- prevent path traversal in file upload handling
-
-### Styling
-
-- fix pre-existing clippy warnings and apply rustfmt
-- apply rustfmt to pre-existing unformatted files
-- collapse nested if statements per clippy::collapsible_if
-- apply code formatting to security fix files
-
-### Documentation
-
-- add security note on client-side auth state limitations
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.6...reinhardt-http@v0.1.0-alpha.7) - 2026-02-12
-
-### Maintenance
-
-- updated the following local packages: reinhardt-core
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.5...reinhardt-http@v0.1.0-alpha.6) - 2026-02-08
-
-### Fixed
-
-- *(http)* move integration tests to tests crate to break circular publish chain
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.4...reinhardt-http@v0.1.0-alpha.5) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.3...reinhardt-http@v0.1.0-alpha.4) - 2026-02-03
-
-### Other
-
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.3] - 2026-01-30
-
-### Changed
-
-- Version bump for publish workflow correction (no functional changes)
-
-## [0.1.0-alpha.2] - 2026-01-29
-
-### Added
-
-- `extract_bearer_token()` - Extract Bearer token from Authorization header
-- `get_header()` - Get specific header value
-- `get_client_ip()` - Get client IP from X-Forwarded-For/X-Real-IP/remote_addr
-- `validate_content_type()` - Validate Content-Type header
-- `query_as<T>()` - Type-safe query parameter deserialization
-
-### Notes
-
-- Methods migrated from reinhardt-micro crate for better API ergonomics
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+This is the first stable release, so there is no prior stable version
+to migrate from. See the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the cross-crate migration guide.

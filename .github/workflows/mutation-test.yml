@@ -20,22 +20,33 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mutation-test-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   CARGO_TARGET_DIR: /tmp/cargo_target
   TOTAL_SHARDS: 5
+  # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
+  # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
+  # once all three upstreams ship node24 releases.
+  #
+  # Ideal implementation (without workaround):
+  #   (no env override; let runner default kick in)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   mutation-test:
-    name: "Shard ${{ matrix.shard }}/${{ env.TOTAL_SHARDS }}"
+    name: "Shard ${{ matrix.shard }}/5"
     runs-on: ubuntu-latest
-    if: inputs.shard == '0' || inputs.shard == '' || inputs.shard == matrix.shard
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.shard == '0' || github.event.inputs.shard == matrix.shard))
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: ['1', '2', '3', '4', '5']
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -44,7 +55,10 @@ jobs:
         uses: ./.github/actions/setup-rust
 
       - name: Setup Protoc
-        uses: ./.github/actions/setup-protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-mutants
         uses: taiki-e/install-action@v2

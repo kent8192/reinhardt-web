@@ -19,13 +19,14 @@ Plugin system for the Reinhardt framework - easy to create, distribute, and inst
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["dentdelion"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["dentdelion"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import dentdelion features:
@@ -41,14 +42,16 @@ use reinhardt::dentdelion::prelude::*;
 | Feature | Description |
 |---------|-------------|
 | `default` | Core plugin system only |
-| `wasm` | WebAssembly plugin support (requires wasmtime) |
+| `wasm` | WebAssembly plugin support (requires wasmtime 36.x) |
+| `ts` | TypeScript/JavaScript SSR support via boa_engine (pure-Rust ECMAScript engine); also enables `wasm` |
 | `cli` | CLI support for crates.io integration |
-| `full` | All features enabled |
+| `full` | wasm + cli (note: `ts` is NOT included in `full`) |
 
 ## Quick Start
 
 ### Creating a Static Plugin
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::dentdelion::prelude::*;
 
@@ -59,7 +62,7 @@ pub struct MyPlugin {
 impl MyPlugin {
     pub fn new() -> Self {
         Self {
-            metadata: PluginMetadata::builder("my-plugin", "1.0.0")
+            metadata: PluginMetadata::builder("my-plugin", "0.1.0-rc.30")
                 .description("My custom plugin")
                 .author("Your Name")
                 .build()
@@ -220,8 +223,9 @@ timeout_seconds = 30
 
 Dentdelion uses the WebAssembly Interface Types (WIT) standard for plugin interfaces. The complete interface is defined in `wit/dentdelion.wit`:
 
+<!-- reinhardt-version-sync -->
 ```wit
-package reinhardt:dentdelion@0.1.0;
+package reinhardt:dentdelion@0.1.0-rc.30;
 
 // Host functions available to plugins
 interface host {
@@ -373,7 +377,7 @@ flowchart TB
 - `reinhardt-commands`: CLI command integration
 - `reinhardt-di`: Dependency injection for services
 - `reinhardt-middleware`: Middleware integration
-- `reinhardt-signals`: Signal system
+- `reinhardt-core`: Signal system (signals module)
 
 ## License
 

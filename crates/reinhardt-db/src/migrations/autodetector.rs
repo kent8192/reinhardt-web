@@ -84,51 +84,7 @@ impl From<reinhardt_query::prelude::ForeignKeyAction> for ForeignKeyAction {
 /// assert_eq!(to_snake_case("User__Profile"), "user_profile");
 /// assert_eq!(to_snake_case("public.users"), "public_users");
 /// ```
-pub fn to_snake_case(name: &str) -> String {
-	if name.is_empty() {
-		return String::new();
-	}
-
-	let mut result = String::with_capacity(name.len() + 4);
-	let chars: Vec<char> = name.chars().collect();
-	let mut prev_was_separator = true; // Treat start as separator to avoid leading underscore
-
-	for i in 0..chars.len() {
-		let ch = chars[i];
-
-		// Handle separators: _, -, space, .
-		if ch == '_' || ch == '-' || ch == ' ' || ch == '.' {
-			// Only add underscore if previous char was not a separator
-			if !prev_was_separator && !result.is_empty() {
-				result.push('_');
-			}
-			prev_was_separator = true;
-		} else if ch.is_ascii_uppercase() {
-			if !prev_was_separator && i > 0 {
-				let prev = chars[i - 1];
-				let next = chars.get(i + 1);
-
-				// Add underscore if:
-				// 1. Previous char is lowercase (normal camelCase boundary)
-				// OR
-				// 2. Previous char is uppercase AND next char exists AND is lowercase
-				//    (this handles acronyms like HTTPRequest → http_request)
-				if prev.is_ascii_lowercase()
-					|| (prev.is_ascii_uppercase() && next.is_some_and(|&n| n.is_ascii_lowercase()))
-				{
-					result.push('_');
-				}
-			}
-			result.push(ch.to_ascii_lowercase());
-			prev_was_separator = false;
-		} else {
-			result.push(ch.to_ascii_lowercase());
-			prev_was_separator = false;
-		}
-	}
-
-	result
-}
+pub use crate::naming::to_snake_case;
 
 /// Convert a snake_case name to PascalCase
 ///
@@ -282,6 +238,38 @@ pub struct ForeignKeyConstraintInfo {
 	pub on_delete: ForeignKeyAction,
 	/// ON UPDATE action
 	pub on_update: ForeignKeyAction,
+}
+
+/// Returns true when `c` is a single-column UNIQUE constraint.
+///
+/// "Single-column" means exactly one entry in `fields`; `constraint_type` is
+/// compared case-insensitively against `"unique"` because the codebase has
+/// historically mixed `"unique"` (model registry / autodetector) and
+/// `"UNIQUE"` (`schema_diff::ConstraintSchema`) spellings for the same
+/// concept. The two diff codepaths converge here, so accept either.
+fn is_single_field_unique(c: &ConstraintDefinition) -> bool {
+	c.constraint_type.eq_ignore_ascii_case("unique") && c.fields.len() == 1
+}
+
+/// Extracts the single column name from a constraint SQL of the form
+/// `CONSTRAINT <name> UNIQUE (<column>)` and returns it when the body has no
+/// comma (i.e. it really is a single-column UNIQUE).
+///
+/// Used by `MigrationAutodetector::dedup_redundant_unique_add_constraints`
+/// to identify which `Operation::AddConstraint` operations are eligible for
+/// the redundant-emission check (multi-column UNIQUE / non-UNIQUE
+/// constraints are deliberately ignored).
+fn parse_single_column_unique(constraint_sql: &str) -> Option<&str> {
+	// Uppercase-only match: every emitter in this crate writes `UNIQUE` in
+	// upper case (see `operations::Constraint`'s `Display` impl and
+	// `schema_diff::constraint_schema_to_sql`).
+	let after_unique = constraint_sql.split(" UNIQUE (").nth(1)?;
+	let close = after_unique.find(')')?;
+	let body = after_unique[..close].trim();
+	if body.contains(',') || body.is_empty() {
+		return None;
+	}
+	Some(body)
 }
 
 impl ConstraintDefinition {
@@ -1012,10 +1000,12 @@ impl ProjectState {
 	///
 	/// A `ModelState` representing the intermediate table with:
 	/// - Auto-increment primary key `id`
-	/// - Foreign key to source model: `from_{source_model}_id`
-	/// - Foreign key to target model: `to_{target_model}_id`
+	/// - Foreign key to source model: `{source_table}_id` (or
+	///   `from_{source_table}_id` for self-referencing M2M)
+	/// - Foreign key to target model: `{target_table}_id` (or
+	///   `to_{target_table}_id` for self-referencing M2M)
 	/// - Foreign key constraints with CASCADE
-	/// - Unique constraint on (from_id, to_id)
+	/// - Unique constraint on (source_id, target_id)
 	fn create_intermediate_table_for_m2m(
 		&self,
 		source_app_label: &str,
@@ -1023,12 +1013,14 @@ impl ProjectState {
 		source_table_name: &str,
 		m2m: &super::model_registry::ManyToManyMetadata,
 	) -> ModelState {
-		// Generate table name: {source_table_name}_{field_name}
-		// Example: "auth_user" + "_" + "following" = "auth_user_following"
-		let table_name = m2m
-			.through
-			.clone()
-			.unwrap_or_else(|| format!("{}_{}", source_table_name, m2m.field_name));
+		// Default through-table and column names come from the canonical
+		// convention in `crate::m2m_naming` (also re-exported as
+		// `crate::migrations::naming`) so this site cannot drift from
+		// `detect_created_many_to_many` (lookup) or `ManyToManyAccessor`
+		// (runtime). See issue #4665.
+		let table_name = m2m.through.clone().unwrap_or_else(|| {
+			crate::m2m_naming::default_through_table(source_table_name, &m2m.field_name)
+		});
 
 		// Generate model name: PascalCase version of field_name
 		// Example: "following" -> "UserFollowing"
@@ -1047,16 +1039,6 @@ impl ProjectState {
 			.insert("auto_increment".to_string(), "true".to_string());
 		model_state.add_field(id_field);
 
-		// Determine source and target field names
-		let source_field_name = m2m
-			.source_field
-			.clone()
-			.unwrap_or_else(|| format!("from_{}_id", to_snake_case(source_model_name)));
-		let target_field_name = m2m
-			.target_field
-			.clone()
-			.unwrap_or_else(|| format!("to_{}_id", to_snake_case(&m2m.to_model)));
-
 		// Determine the primary key type for the source and target from the registry
 		let source_pk_type = self.get_primary_key_type(source_app_label, source_model_name);
 		// Extract target app_label from to_model (may be in "app.Model" format)
@@ -1069,7 +1051,27 @@ impl ProjectState {
 
 		let target_pk_type = self.get_primary_key_type(target_app, target_model);
 
-		// Add foreign key to source model: from_{source_model}_id
+		// Resolve the target table name from ProjectState, falling back to the
+		// `app_label`-prefixed snake_case form as a last-resort heuristic.
+		let target_table_name = self
+			.get_model(target_app, target_model)
+			.map(|m| m.table_name.clone())
+			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(target_model)));
+
+		// Default FK column names come from the canonical convention in
+		// `crate::m2m_naming::default_m2m_columns` (single source of truth,
+		// see issue #4665): `{table}_id` for non-self-referential relations,
+		// and `from_/to_` prefixes when source and target tables match.
+		// Keying off the *actual* table names (not the struct identifiers)
+		// matches the ORM accessor fallback in
+		// `crates/reinhardt-db/src/orm/many_to_many_accessor.rs` and the
+		// on-disk schema produced by initial migrations (#4659).
+		let (default_source_col, default_target_col) =
+			crate::m2m_naming::default_m2m_columns(source_table_name, &target_table_name);
+		let source_field_name = m2m.source_field.clone().unwrap_or(default_source_col);
+		let target_field_name = m2m.target_field.clone().unwrap_or(default_target_col);
+
+		// Add foreign key to source model
 		let mut from_field =
 			FieldState::new(source_field_name.clone(), source_pk_type.clone(), false);
 		from_field
@@ -1083,12 +1085,7 @@ impl ProjectState {
 		});
 		model_state.add_field(from_field);
 
-		// Add foreign key to target model: to_{target_model}_id
-		// Get target table name from ProjectState, fallback to naming convention if model not found
-		let target_table_name = self
-			.get_model(target_app, target_model)
-			.map(|m| m.table_name.clone())
-			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(target_model)));
+		// Add foreign key to target model
 		let mut to_field = FieldState::new(target_field_name.clone(), target_pk_type, false);
 		to_field
 			.params
@@ -1579,6 +1576,12 @@ pub struct DetectedChanges {
 	pub added_constraints: Vec<(String, String, ConstraintDefinition)>,
 	/// Constraints that were removed: (app_label, model_name, constraint_name)
 	pub removed_constraints: Vec<(String, String, String)>,
+	/// Composite primary keys added: (app_label, model_name, ConstraintDefinition)
+	pub added_composite_primary_keys: Vec<(String, String, ConstraintDefinition)>,
+	/// Composite primary keys removed due to modification (same name, different fields): (app_label, model_name, constraint_name)
+	pub removed_composite_primary_keys: Vec<(String, String, String)>,
+	/// Auto-increment sequence resets: (app_label, model_name, column_name, value)
+	pub auto_increment_resets: Vec<(String, String, String, i64)>,
 	/// Model dependencies for ordering operations
 	/// Maps (app_label, model_name) -> `Vec<(dependent_app, dependent_model)>`
 	/// A model depends on another if it has ForeignKey or ManyToMany fields pointing to it
@@ -2970,7 +2973,11 @@ impl InferenceEngine {
 		}
 
 		// Sort by confidence (highest first)
-		intents.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+		intents.sort_by(|a, b| {
+			b.confidence
+				.partial_cmp(&a.confidence)
+				.unwrap_or(std::cmp::Ordering::Equal)
+		});
 
 		intents
 	}
@@ -3725,6 +3732,8 @@ impl MigrationAutodetector {
 		self.detect_removed_indexes(&mut changes);
 		self.detect_added_constraints(&mut changes);
 		self.detect_removed_constraints(&mut changes);
+		self.detect_composite_pk_changes(&mut changes);
+		self.detect_auto_increment_resets(&mut changes);
 
 		// Detect ManyToMany intermediate tables
 		self.detect_created_many_to_many(&mut changes);
@@ -3751,6 +3760,11 @@ impl MigrationAutodetector {
 			.added_constraints
 			.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
 		changes.removed_constraints.sort();
+		changes
+			.added_composite_primary_keys
+			.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+		changes.removed_composite_primary_keys.sort();
+		changes.auto_increment_resets.sort();
 		changes
 			.created_many_to_many
 			.sort_by(|a, b| (&a.0, &a.1, &a.2).cmp(&(&b.0, &b.1, &b.2)));
@@ -3853,7 +3867,7 @@ impl MigrationAutodetector {
 				for (field_name, to_field) in &to_model.fields {
 					if let Some(from_field) = from_model.fields.get(field_name) {
 						// Check if field definition has changed
-						if self.has_field_changed(from_field, to_field) {
+						if self.has_field_changed(field_name, from_field, to_field) {
 							changes.altered_fields.push((
 								app_label.clone(),
 								model_name.clone(),
@@ -3866,24 +3880,52 @@ impl MigrationAutodetector {
 		}
 	}
 
-	/// Check if a field has changed
-	fn has_field_changed(&self, from_field: &FieldState, to_field: &FieldState) -> bool {
-		// Check if field type changed
+	/// Check if a field has changed.
+	///
+	/// Field type and nullability are compared directly against `FieldState`,
+	/// then the rest of the schema-affecting attributes are funneled through
+	/// `ColumnDefinition::from_field_state` so that the migration-replayed
+	/// `from_state` and the code-registry `to_state` collapse to the same
+	/// canonical `ColumnDefinition` regardless of how their `params`
+	/// HashMaps were populated.
+	///
+	/// `from_state` (built via `ProjectState::apply_migration_operations` ->
+	/// `column_def_to_field_state`) only inserts `primary_key`,
+	/// `auto_increment`, `unique`, and `default` keys when the corresponding
+	/// `ColumnDefinition` field is true / `Some`. `to_state` (built via the
+	/// `#[model]` macro and `ModelMetadata::to_model_state`) explicitly
+	/// inserts boolean strings such as `not_null = "true"`, `null = "false"`,
+	/// and `unique = "false"` for every field. A raw HashMap-key comparison
+	/// surfaces this asymmetry as a fictitious change even when the
+	/// underlying schema is identical, producing spurious `AlterColumn`
+	/// operations under offline file-based state reconstruction.
+	///
+	/// See reinhardt-web#4049 for the regression that motivated this
+	/// canonicalization.
+	fn has_field_changed(
+		&self,
+		field_name: &str,
+		from_field: &FieldState,
+		to_field: &FieldState,
+	) -> bool {
+		// Field type and nullability are compared directly because the
+		// `nullable` bit on `FieldState` carries the authoritative NOT NULL
+		// status (the `not_null` / `null` params are advisory only).
 		if from_field.field_type != to_field.field_type {
 			return true;
 		}
-
-		// Check if nullable changed
 		if from_field.nullable != to_field.nullable {
 			return true;
 		}
 
-		// Check if params changed
-		if from_field.params != to_field.params {
-			return true;
-		}
-
-		false
+		// Schema-affecting bits are compared via the canonical
+		// `ColumnDefinition` form to absorb asymmetric param populations.
+		let from_def = super::ColumnDefinition::from_field_state(field_name, from_field);
+		let to_def = super::ColumnDefinition::from_field_state(field_name, to_field);
+		from_def.primary_key != to_def.primary_key
+			|| from_def.auto_increment != to_def.auto_increment
+			|| from_def.unique != to_def.unique
+			|| from_def.default != to_def.default
 	}
 
 	/// Detect renamed models
@@ -3954,10 +3996,22 @@ impl MigrationAutodetector {
 		for (deleted_key, created_key, _similarity) in matches {
 			// Check if this is a cross-app move or same-app rename
 			if deleted_key.0 == created_key.0 {
-				// Same app: this is a rename operation
-				changes
-					.renamed_models
-					.push((deleted_key.0, deleted_key.1, created_key.1));
+				// Same app: check if table names actually differ
+				// Struct-only renames (same table name) are not schema changes
+				let old_table = self
+					.from_state
+					.get_model(&deleted_key.0, &deleted_key.1)
+					.map(|m| m.table_name.as_str());
+				let new_table = self
+					.to_state
+					.get_model(&created_key.0, &created_key.1)
+					.map(|m| m.table_name.as_str());
+
+				if old_table != new_table {
+					changes
+						.renamed_models
+						.push((deleted_key.0, deleted_key.1, created_key.1));
+				}
 			} else {
 				// Different apps: this is a move operation
 				// Determine if table needs to be renamed
@@ -4310,7 +4364,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1500-1600
 	fn detect_added_indexes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			if let Some(from_model) = self.from_state.get_model(app_label, model_name) {
+			if let Some(from_model) = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name)
+			{
 				for to_index in &to_model.indexes {
 					// Check if this index exists in from_model
 					if !from_model
@@ -4335,7 +4392,10 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1600-1700
 	fn detect_removed_indexes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
-			if let Some(to_model) = self.to_state.get_model(app_label, model_name) {
+			if let Some(to_model) = self
+				.to_state
+				.get_model_by_table_name(app_label, &from_model.table_name)
+			{
 				for from_index in &from_model.indexes {
 					// Check if this index still exists in to_model
 					if !to_model
@@ -4356,24 +4416,50 @@ impl MigrationAutodetector {
 
 	/// Detect added constraints
 	///
+	/// A single-field UNIQUE constraint on the to-side is treated as
+	/// already-present on the from-side when any of the following is true:
+	///
+	/// 1. From-state has a constraint with the same name (legacy behaviour).
+	/// 2. From-state has any single-field UNIQUE constraint covering the same
+	///    column — same semantics, different name. This handles the
+	///    DB-introspection case where SQLite auto-generates names like
+	///    `sqlite_autoindex_users_1`, which never match the to-state's
+	///    `{app}_{model}_{field}_uniq`.
+	/// 3. From-state has a `FieldState` for that column with
+	///    `params["unique"] == "true"`. This handles the file-based
+	///    reconstruction path: `apply_migration_operations` translates
+	///    `ColumnDefinition.unique = true` into an inline field param but
+	///    never synthesises a peer `ConstraintDefinition`, while
+	///    `ModelMetadata::to_model_state()` on the to-side does synthesise
+	///    one. Without this branch the autodetector keeps emitting a
+	///    redundant `AddConstraint` every time `makemigrations` runs against
+	///    a model whose `#[field(unique = true)]` column already shipped in
+	///    `0001_initial.rs` (see reinhardt-web#4448).
+	///
 	/// # Django Reference
 	/// From: django/db/migrations/autodetector.py:1700-1800
 	fn detect_added_constraints(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			if let Some(from_model) = self.from_state.get_model(app_label, model_name) {
+			if let Some(from_model) = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name)
+			{
 				for to_constraint in &to_model.constraints {
-					// Check if this constraint exists in from_model
-					if !from_model
+					if from_model
 						.constraints
 						.iter()
 						.any(|c| c.name == to_constraint.name)
 					{
-						changes.added_constraints.push((
-							app_label.clone(),
-							model_name.clone(),
-							to_constraint.clone(),
-						));
+						continue;
 					}
+					if Self::single_field_unique_already_present(to_constraint, from_model) {
+						continue;
+					}
+					changes.added_constraints.push((
+						app_label.clone(),
+						model_name.clone(),
+						to_constraint.clone(),
+					));
 				}
 			}
 		}
@@ -4381,26 +4467,252 @@ impl MigrationAutodetector {
 
 	/// Detect removed constraints
 	///
+	/// Symmetric to [`Self::detect_added_constraints`]: a from-side
+	/// single-field UNIQUE constraint is NOT reported as removed when the
+	/// to-side carries an equivalent shape — either another single-field
+	/// UNIQUE constraint over the same column, or a `FieldState` for that
+	/// column with `params["unique"] == "true"`. Without this guard the
+	/// asymmetric shape-match in `detect_added_constraints` would simply move
+	/// the redundancy from `AddConstraint` into a spurious `DropConstraint`
+	/// when the column was originally introduced as a separately-named
+	/// UNIQUE constraint but is now declared via inline `#[field(unique =
+	/// true)]` (or vice versa). See reinhardt-web#4448.
+	///
 	/// # Django Reference
 	/// From: django/db/migrations/autodetector.py:1800-1900
 	fn detect_removed_constraints(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
-			if let Some(to_model) = self.to_state.get_model(app_label, model_name) {
+			if let Some(to_model) = self
+				.to_state
+				.get_model_by_table_name(app_label, &from_model.table_name)
+			{
 				for from_constraint in &from_model.constraints {
-					// Check if this constraint still exists in to_model
-					if !to_model
+					if to_model
 						.constraints
 						.iter()
 						.any(|c| c.name == from_constraint.name)
 					{
-						changes.removed_constraints.push((
+						continue;
+					}
+					if Self::single_field_unique_already_present(from_constraint, to_model) {
+						continue;
+					}
+					changes.removed_constraints.push((
+						app_label.clone(),
+						model_name.clone(),
+						from_constraint.name.clone(),
+					));
+				}
+			}
+		}
+	}
+
+	/// Returns true when `candidate` is a single-field UNIQUE constraint and
+	/// the same column on `other_side` is already covered by either:
+	/// - any single-field UNIQUE constraint over the same column, or
+	/// - a field whose `params["unique"] == "true"`.
+	///
+	/// Used by both `detect_added_constraints` and
+	/// `detect_removed_constraints` to recognise inline `column.unique = true`
+	/// and a separately-named single-field `UNIQUE` constraint as
+	/// semantically identical, so a name mismatch alone does not trigger a
+	/// redundant `AddConstraint` / `DropConstraint` (reinhardt-web#4448).
+	fn single_field_unique_already_present(
+		candidate: &ConstraintDefinition,
+		other_side: &ModelState,
+	) -> bool {
+		if !is_single_field_unique(candidate) {
+			return false;
+		}
+		let column = &candidate.fields[0];
+		let covered_by_constraint = other_side
+			.constraints
+			.iter()
+			.any(|c| is_single_field_unique(c) && &c.fields[0] == column);
+		if covered_by_constraint {
+			return true;
+		}
+		other_side
+			.fields
+			.get(column)
+			.and_then(|f| f.params.get("unique"))
+			.map(String::as_str)
+			== Some("true")
+	}
+
+	/// Final-pass dedup: drop redundant single-column `AddConstraint UNIQUE`
+	/// operations whose column is already declared unique elsewhere in the
+	/// same migration.
+	///
+	/// This is the second of two layers that protect against the bug in
+	/// reinhardt-web#4448. The primary fix is `detect_added_constraints`'s
+	/// shape-match, which compares from-state and to-state. This pass
+	/// inspects the *generated* operation list and is the safety net for
+	/// any future codepath that produces both an `AddColumn { column.unique
+	/// = true }` and a peer `AddConstraint` for the same single column —
+	/// for example, a column being added in the same migration as the
+	/// model registry synthesises its `{app}_{model}_{field}_uniq`
+	/// constraint.
+	///
+	/// Coverage rules (per `(table, column)`):
+	/// - `Operation::CreateTable { name, columns, constraints }` —
+	///   any column with `unique = true` or any `Constraint::Unique` over a
+	///   single column counts the column as already unique.
+	/// - `Operation::AddColumn { table, column }` — `column.unique = true`
+	///   counts.
+	/// - A previously-emitted `Operation::AddConstraint` whose SQL is a
+	///   single-column UNIQUE on the same column also counts, so duplicate
+	///   `AddConstraint`s for the same column in the same op list collapse
+	///   to one.
+	///
+	/// Multi-column UNIQUE (`unique_together`) is intentionally not touched
+	/// — its semantics differ from a single-column UNIQUE.
+	fn dedup_redundant_unique_add_constraints(
+		by_app: &mut std::collections::BTreeMap<String, Vec<super::Operation>>,
+	) {
+		use std::collections::HashSet;
+
+		for operations in by_app.values_mut() {
+			// (table, column) pairs already known to be UNIQUE in this migration.
+			let mut covered: HashSet<(String, String)> = HashSet::new();
+			let mut keep = Vec::with_capacity(operations.len());
+			for op in operations.drain(..) {
+				match &op {
+					super::Operation::CreateTable {
+						name,
+						columns,
+						constraints,
+						..
+					} => {
+						for col in columns {
+							if col.unique {
+								covered.insert((name.clone(), col.name.clone()));
+							}
+						}
+						for c in constraints {
+							if let super::operations::Constraint::Unique { columns, .. } = c
+								&& columns.len() == 1
+							{
+								covered.insert((name.clone(), columns[0].clone()));
+							}
+						}
+						keep.push(op);
+					}
+					super::Operation::AddColumn { table, column, .. } => {
+						if column.unique {
+							covered.insert((table.clone(), column.name.clone()));
+						}
+						keep.push(op);
+					}
+					super::Operation::AddConstraint {
+						table,
+						constraint_sql,
+					} => {
+						if let Some(col) = parse_single_column_unique(constraint_sql) {
+							let key = (table.clone(), col.to_string());
+							if covered.contains(&key) {
+								// Redundant — drop it.
+								continue;
+							}
+							covered.insert(key);
+						}
+						keep.push(op);
+					}
+					_ => keep.push(op),
+				}
+			}
+			*operations = keep;
+		}
+	}
+
+	/// Detect added and modified composite primary keys (2+ columns).
+	///
+	/// A composite PK is represented as a `ConstraintDefinition` with
+	/// `constraint_type == "primary_key"` and `fields.len() >= 2`.
+	///
+	/// Three cases are handled:
+	/// - Added: no constraint with the same name existed in from_state → emit CreateCompositePrimaryKey
+	/// - Modified: same constraint name exists but fields differ → emit DropConstraint + CreateCompositePrimaryKey
+	/// - Unchanged: same constraint name and identical fields → no operation
+	fn detect_composite_pk_changes(&self, changes: &mut DetectedChanges) {
+		for ((app_label, model_name), to_model) in &self.to_state.models {
+			let from_model = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name);
+			for constraint in &to_model.constraints {
+				if constraint.constraint_type != "primary_key" || constraint.fields.len() < 2 {
+					continue;
+				}
+				let from_pk = from_model
+					.and_then(|m| m.constraints.iter().find(|c| c.name == constraint.name));
+				match from_pk {
+					Some(existing) if existing.fields == constraint.fields => {
+						// Unchanged — no operation needed
+					}
+					Some(_) => {
+						// Modified (same name, different fields) — drop old then create new
+						changes.removed_composite_primary_keys.push((
 							app_label.clone(),
 							model_name.clone(),
-							from_constraint.name.clone(),
+							constraint.name.clone(),
+						));
+						changes.added_composite_primary_keys.push((
+							app_label.clone(),
+							model_name.clone(),
+							constraint.clone(),
+						));
+					}
+					None => {
+						// Added — create new
+						changes.added_composite_primary_keys.push((
+							app_label.clone(),
+							model_name.clone(),
+							constraint.clone(),
 						));
 					}
 				}
 			}
+		}
+	}
+
+	/// Detect auto-increment sequence resets driven by `sequence_reset` model option.
+	///
+	/// When `ModelState.options["sequence_reset"]` is added or changed, emit a
+	/// `SetAutoIncrementValue` operation targeting the model's auto-increment column.
+	fn detect_auto_increment_resets(&self, changes: &mut DetectedChanges) {
+		for ((app_label, model_name), to_model) in &self.to_state.models {
+			let Some(value_str) = to_model.options.get("sequence_reset") else {
+				continue;
+			};
+			let from_value = self
+				.from_state
+				.get_model(app_label, model_name)
+				.and_then(|m| m.options.get("sequence_reset"))
+				.map(String::as_str);
+			if from_value == Some(value_str.as_str()) {
+				continue;
+			}
+			let Ok(value) = value_str.parse::<i64>() else {
+				eprintln!(
+					"Invalid sequence_reset value for {}.{}: {:?}. Expected an integer.",
+					app_label, model_name, value_str
+				);
+				continue;
+			};
+			let Some(column) = to_model
+				.fields
+				.iter()
+				.find(|(_, f)| f.params.get("auto_increment").is_some_and(|v| v == "true"))
+				.map(|(name, _)| name.clone())
+			else {
+				continue;
+			};
+			changes.auto_increment_resets.push((
+				app_label.clone(),
+				model_name.clone(),
+				column,
+				value,
+			));
 		}
 	}
 
@@ -4429,37 +4741,74 @@ impl MigrationAutodetector {
 		to_model: &str,
 		through_table: &Option<String>,
 	) -> Option<super::Operation> {
-		// Generate table name
+		// Resolve the source table name from to_state. The source model is
+		// guaranteed to be in to_state because this function is called from
+		// `generate_operations` while iterating `to_state.models`.
+		let source_table = self
+			.to_state
+			.get_model(app_label, model_name)
+			.map(|m| m.table_name.clone())
+			.unwrap_or_else(|| {
+				format!("{}_{}", to_snake_case(app_label), to_snake_case(model_name))
+			});
+
+		// Parse target model to get its app and table name
+		let (target_app, target_model) = self.parse_model_reference(to_model, app_label)?;
+		let target_table = self
+			.to_state
+			.get_model(&target_app, &target_model)
+			.map(|m| m.table_name.clone())
+			.or_else(|| {
+				super::model_registry::global_registry()
+					.get_models()
+					.iter()
+					.find(|m| m.app_label == target_app && m.model_name == target_model)
+					.map(|m| m.table_name.clone())
+			})
+			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(&target_model)));
+
+		// Generate through-table name: prefer explicit `through`, otherwise
+		// derive from the source table name (matches
+		// `create_intermediate_table_for_m2m` and the ORM accessor's
+		// `default_through_table`, which both lowercase the source table
+		// before composition — see #4659).
 		let table_name = if let Some(custom_name) = through_table {
 			custom_name.clone()
 		} else {
-			// Auto-generate: {app}_{model}_{field_name}
 			format!(
-				"{}_{}_{}",
-				to_snake_case(app_label),
-				to_snake_case(model_name),
+				"{}_{}",
+				source_table.to_lowercase(),
 				to_snake_case(field_name)
 			)
 		};
 
-		// Parse target model to get table name
-		let (_target_app, target_model) = self.parse_model_reference(to_model, app_label)?;
-		let target_table = to_snake_case(&target_model);
-
-		// Handle self-referential relationships
-		let (source_column, target_column) = if model_name == target_model {
-			// Self-referential: use from_{model}_id and to_{model}_id
+		// Derive column names from the resolved *table* names so the
+		// autodetector matches the ORM accessor convention
+		// (`format!("{}_id", T::table_name().to_lowercase())` in
+		// `crates/reinhardt-db/src/orm/many_to_many_accessor.rs`). Compare by
+		// table identity for self-reference (#4659 follow-up).
+		let source_table_lower = source_table.to_lowercase();
+		let target_table_lower = target_table.to_lowercase();
+		let (source_column, target_column) = if source_table_lower == target_table_lower {
 			(
-				format!("from_{}_id", to_snake_case(model_name)),
-				format!("to_{}_id", to_snake_case(model_name)),
+				format!("from_{}_id", source_table_lower),
+				format!("to_{}_id", target_table_lower),
 			)
 		} else {
-			// Regular: use {source}_id and {target}_id
 			(
-				format!("{}_id", to_snake_case(model_name)),
-				format!("{}_id", to_snake_case(&target_model)),
+				format!("{}_id", source_table_lower),
+				format!("{}_id", target_table_lower),
 			)
 		};
+
+		// Resolve real PK types on both sides so the junction table matches
+		// what `create_intermediate_table_for_m2m` / `generate_migrations`
+		// produce. Without this, FK columns would hard-code `BigInteger`
+		// even when either side uses a different PK type.
+		let source_pk_type = self.to_state.get_primary_key_type(app_label, model_name);
+		let target_pk_type = self
+			.to_state
+			.get_primary_key_type(&target_app, &target_model);
 
 		// Create columns
 		let columns = vec![
@@ -4476,7 +4825,7 @@ impl MigrationAutodetector {
 			// source_id column
 			super::ColumnDefinition {
 				name: source_column.clone(),
-				type_definition: super::FieldType::BigInteger,
+				type_definition: source_pk_type,
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -4486,7 +4835,7 @@ impl MigrationAutodetector {
 			// target_id column
 			super::ColumnDefinition {
 				name: target_column.clone(),
-				type_definition: super::FieldType::BigInteger,
+				type_definition: target_pk_type,
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -4495,8 +4844,7 @@ impl MigrationAutodetector {
 			},
 		];
 
-		// Create constraints
-		let source_table = to_snake_case(model_name);
+		// Create constraints (use the resolved table names)
 		let constraints = vec![
 			// Foreign key to source table
 			super::Constraint::ForeignKey {
@@ -4629,37 +4977,20 @@ impl MigrationAutodetector {
 	/// Performs the generate operations operation.
 	pub fn generate_operations(&self) -> Vec<super::Operation> {
 		let changes = self.detect_changes();
-		let mut operations = Vec::new();
+		let mut by_app: std::collections::BTreeMap<String, Vec<super::Operation>> =
+			std::collections::BTreeMap::new();
 
-		// Generate CreateTable operations for new models
-		for (app_label, model_name) in &changes.created_models {
-			if let Some(model) = self.to_state.get_model(app_label, model_name) {
-				let mut columns = Vec::new();
-				for (field_name, field_state) in &model.fields {
-					let col_def =
-						super::ColumnDefinition::from_field_state(field_name.clone(), field_state);
-					columns.push(col_def);
-				}
+		// Shared per-app emissions (CreateTable, column ops, constraint ops,
+		// auto-increment resets). This is the single source of truth shared
+		// with `generate_migrations()` so the two paths cannot diverge again
+		// (issue #4040).
+		self.emit_shared_per_app_operations(&changes, &mut by_app);
 
-				// Convert model constraints to operation constraints
-				let constraints: Vec<_> = model
-					.constraints
-					.iter()
-					.map(|c| c.to_constraint())
-					.collect();
-
-				operations.push(super::Operation::CreateTable {
-					name: model.table_name.clone(),
-					columns,
-					constraints,
-					without_rowid: None,
-					interleave_in_parent: None,
-					partition: None,
-				});
-			}
-		}
-
-		// Generate intermediate tables for ManyToMany fields in new models
+		// `generate_operations()`-specific extra: walk ManyToMany fields on
+		// new and added models and emit intermediate `CreateTable`s via
+		// `generate_intermediate_table`. This complements the shared
+		// emissions above. (`generate_migrations()` covers the same
+		// ground via `created_many_to_many` with PK-type-resolved logic.)
 		for (app_label, model_name) in &changes.created_models {
 			if let Some(model) = self.to_state.get_model(app_label, model_name) {
 				for (field_name, field_state) in &model.fields {
@@ -4667,26 +4998,11 @@ impl MigrationAutodetector {
 						&& let Some(operation) = self.generate_intermediate_table(
 							app_label, model_name, field_name, to, through,
 						) {
-						operations.push(operation);
+						by_app.entry(app_label.clone()).or_default().push(operation);
 					}
 				}
 			}
 		}
-
-		// Generate AddColumn operations for new fields
-		for (app_label, model_name, field_name) in &changes.added_fields {
-			if let Some(model) = self.to_state.get_model(app_label, model_name)
-				&& let Some(field) = model.get_field(field_name)
-			{
-				operations.push(super::Operation::AddColumn {
-					table: model.name.clone(),
-					column: super::ColumnDefinition::from_field_state(field_name.clone(), field),
-					mysql_options: None,
-				});
-			}
-		}
-
-		// Generate intermediate tables for ManyToMany fields being added
 		for (app_label, model_name, field_name) in &changes.added_fields {
 			if let Some(model) = self.to_state.get_model(app_label, model_name)
 				&& let Some(field) = model.get_field(field_name)
@@ -4694,54 +5010,242 @@ impl MigrationAutodetector {
 				&& let Some(operation) =
 					self.generate_intermediate_table(app_label, model_name, field_name, to, through)
 			{
-				operations.push(operation);
+				by_app.entry(app_label.clone()).or_default().push(operation);
 			}
 		}
 
-		// Generate AlterColumn operations for changed fields
+		// Note: MoveModel and RenameTable operations are intentionally only
+		// emitted by `generate_migrations()` (not here). Direct callers of
+		// `generate_operations()` historically did not see them; preserve
+		// that contract to avoid behavioral surprises.
+
+		// Second-line defence against redundant single-column `AddConstraint
+		// UNIQUE` operations. The primary fix lives in
+		// `detect_added_constraints` (shape-match), but this pass also catches
+		// cases where the column is being added in the same migration with
+		// `column.unique = true` *and* a peer `AddConstraint` is emitted for
+		// it. See reinhardt-web#4448.
+		Self::dedup_redundant_unique_add_constraints(&mut by_app);
+
+		// Flatten and sort by dependency to ensure correct execution order.
+		let operations: Vec<super::Operation> = by_app.into_values().flatten().collect();
+		self.sort_operations_by_dependency(operations)
+	}
+
+	/// Emit per-app operations shared by `generate_operations()` and
+	/// `generate_migrations()`.
+	///
+	/// This is the single source of truth for emissions that previously had
+	/// to be duplicated between the two methods. Issue #4040 was caused by
+	/// PR #3998 updating only `generate_operations()` while
+	/// `generate_migrations()` (the CLI entry point) was left silently
+	/// divergent. Centralizing the shared emissions here makes that class of
+	/// drift impossible.
+	///
+	/// Method-specific extras (M2M field-walking for `generate_operations()`;
+	/// `created_many_to_many` / `renamed_models` / `moved_models` for
+	/// `generate_migrations()`) are added by the callers after this helper
+	/// returns.
+	fn emit_shared_per_app_operations(
+		&self,
+		changes: &DetectedChanges,
+		by_app: &mut std::collections::BTreeMap<String, Vec<super::Operation>>,
+	) {
+		// CreateTable for new models.
+		for (app_label, model_name) in &changes.created_models {
+			if let Some(model) = self.to_state.get_model(app_label, model_name) {
+				let mut columns = Vec::new();
+				for (field_name, field_state) in &model.fields {
+					columns.push(super::ColumnDefinition::from_field_state(
+						field_name.clone(),
+						field_state,
+					));
+				}
+
+				let constraints: Vec<super::operations::Constraint> = model
+					.constraints
+					.iter()
+					.map(|c| c.to_constraint())
+					.collect();
+
+				by_app
+					.entry(app_label.clone())
+					.or_default()
+					.push(super::Operation::CreateTable {
+						name: model.table_name.clone(),
+						columns,
+						constraints,
+						without_rowid: None,
+						interleave_in_parent: None,
+						partition: None,
+					});
+			}
+		}
+
+		// AddColumn for new fields.
+		//
+		// Use `model.table_name` (not `model.name`) so the executor's
+		// `find_model_by_table_mut(table)` path resolves correctly. The
+		// previous `generate_operations()` body used `model.name` here, which
+		// was a latent bug that did not surface because that path was rarely
+		// exercised against table-name-keyed state.
+		for (app_label, model_name, field_name) in &changes.added_fields {
+			if let Some(model) = self.to_state.get_model(app_label, model_name)
+				&& let Some(field) = model.get_field(field_name)
+			{
+				by_app
+					.entry(app_label.clone())
+					.or_default()
+					.push(super::Operation::AddColumn {
+						table: model.table_name.clone(),
+						column: super::ColumnDefinition::from_field_state(
+							field_name.clone(),
+							field,
+						),
+						mysql_options: None,
+					});
+			}
+		}
+
+		// AlterColumn for changed fields.
 		for (app_label, model_name, field_name) in &changes.altered_fields {
 			if let Some(model) = self.to_state.get_model(app_label, model_name)
 				&& let Some(field) = model.get_field(field_name)
 			{
-				operations.push(super::Operation::AlterColumn {
-					table: model.name.clone(),
-					old_definition: None,
-					column: field_name.clone(),
-					new_definition: super::ColumnDefinition::from_field_state(
-						field_name.clone(),
-						field,
-					),
-					mysql_options: None,
-				});
+				by_app
+					.entry(app_label.clone())
+					.or_default()
+					.push(super::Operation::AlterColumn {
+						table: model.table_name.clone(),
+						old_definition: None,
+						column: field_name.clone(),
+						new_definition: super::ColumnDefinition::from_field_state(
+							field_name.clone(),
+							field,
+						),
+						mysql_options: None,
+					});
 			}
 		}
 
-		// Generate DropColumn operations for removed fields
+		// DropColumn for removed fields.
 		for (app_label, model_name, field_name) in &changes.removed_fields {
 			if let Some(model) = self.from_state.get_model(app_label, model_name) {
-				operations.push(super::Operation::DropColumn {
-					table: model.name.clone(),
-					column: field_name.clone(),
-				});
+				by_app
+					.entry(app_label.clone())
+					.or_default()
+					.push(super::Operation::DropColumn {
+						table: model.table_name.clone(),
+						column: field_name.clone(),
+					});
 			}
 		}
 
-		// Generate DropTable operations for deleted models
+		// DropTable for deleted models.
 		for (app_label, model_name) in &changes.deleted_models {
 			if let Some(model) = self.from_state.get_model(app_label, model_name) {
-				operations.push(super::Operation::DropTable {
-					name: model.table_name.clone(),
-				});
+				by_app
+					.entry(app_label.clone())
+					.or_default()
+					.push(super::Operation::DropTable {
+						name: model.table_name.clone(),
+					});
 			}
 		}
 
-		// Note: MoveModel operations for cross-app moves are detected in moved_models
-		// and handled in generate_migrations() using Operation::MoveModel variant.
-		// The MoveModel variant was added to the Operation enum to support this use case.
+		// DropConstraint for modified composite PKs (drop before recreate).
+		for (app_label, model_name, constraint_name) in &changes.removed_composite_primary_keys {
+			if let Some(model) = self.from_state.get_model(app_label, model_name) {
+				by_app.entry(app_label.clone()).or_default().push(
+					super::Operation::DropConstraint {
+						table: model.table_name.clone(),
+						constraint_name: constraint_name.clone(),
+					},
+				);
+			}
+		}
 
-		// Sort operations by dependency to ensure correct execution order
+		// CreateCompositePrimaryKey for composite PK additions.
+		for (app_label, model_name, constraint) in &changes.added_composite_primary_keys {
+			if let Some(model) = self.to_state.get_model(app_label, model_name) {
+				by_app.entry(app_label.clone()).or_default().push(
+					super::Operation::CreateCompositePrimaryKey {
+						table: model.table_name.clone(),
+						columns: constraint.fields.clone(),
+						constraint_name: Some(constraint.name.clone()),
+					},
+				);
+			}
+		}
 
-		self.sort_operations_by_dependency(operations)
+		// DropConstraint for non-PK constraints removed from existing tables.
+		//
+		// Composite primary keys (constraint_type == "primary_key" with 2+
+		// fields) are handled by `removed_composite_primary_keys` above and
+		// must be skipped here to avoid emitting a duplicate DropConstraint.
+		for (app_label, model_name, constraint_name) in &changes.removed_constraints {
+			let Some(from_model) = self.from_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			let is_composite_pk = from_model
+				.constraints
+				.iter()
+				.find(|c| &c.name == constraint_name)
+				.is_some_and(|c| c.constraint_type == "primary_key" && c.fields.len() >= 2);
+			if is_composite_pk {
+				continue;
+			}
+			by_app
+				.entry(app_label.clone())
+				.or_default()
+				.push(super::Operation::DropConstraint {
+					table: from_model.table_name.clone(),
+					constraint_name: constraint_name.clone(),
+				});
+		}
+
+		// AddConstraint for non-PK constraints added to existing tables.
+		//
+		// Covers `unique_together`, `Check`, `ForeignKey`, and `OneToOne`
+		// constraints declared on a model that already exists in
+		// `from_state`. Composite primary keys are emitted via
+		// `added_composite_primary_keys` using `CreateCompositePrimaryKey`
+		// and must be skipped here to avoid duplicate emission. The
+		// constraint SQL is rendered through the existing
+		// `ConstraintDefinition::to_constraint()` -> `Constraint: Display`
+		// path, which mirrors the SQL produced for the same constraint when
+		// emitted as part of a `CreateTable` operation, so the on-disk
+		// schema for a "create + add later" sequence stays equivalent to a
+		// "create with constraint" sequence.
+		for (app_label, model_name, constraint) in &changes.added_constraints {
+			if constraint.constraint_type == "primary_key" && constraint.fields.len() >= 2 {
+				continue;
+			}
+			let Some(to_model) = self.to_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			let constraint_sql = constraint.to_constraint().to_string();
+			by_app
+				.entry(app_label.clone())
+				.or_default()
+				.push(super::Operation::AddConstraint {
+					table: to_model.table_name.clone(),
+					constraint_sql,
+				});
+		}
+
+		// SetAutoIncrementValue for detected sequence resets.
+		for (app_label, model_name, column, value) in &changes.auto_increment_resets {
+			if let Some(model) = self.to_state.get_model(app_label, model_name) {
+				by_app.entry(app_label.clone()).or_default().push(
+					super::Operation::SetAutoIncrementValue {
+						table: model.table_name.clone(),
+						column: column.clone(),
+						value: *value,
+					},
+				);
+			}
+		}
 	}
 
 	/// Generate migrations from detected changes
@@ -4790,173 +5294,82 @@ impl MigrationAutodetector {
 		let mut migrations_by_app: std::collections::BTreeMap<String, Vec<super::Operation>> =
 			std::collections::BTreeMap::new();
 
-		// Group created models by app
-		for (app_label, model_name) in &changes.created_models {
-			if let Some(model) = self.to_state.get_model(app_label, model_name) {
-				let mut columns = Vec::new();
-				for (field_name, field_state) in &model.fields {
-					columns.push(super::ColumnDefinition::from_field_state(
-						field_name.clone(),
-						field_state,
-					));
-				}
-
-				// Convert ConstraintDefinition to operations::Constraint
-				let constraints: Vec<super::operations::Constraint> = model
-					.constraints
-					.iter()
-					.map(|c| c.to_constraint())
-					.collect();
-
-				migrations_by_app
-					.entry(app_label.clone())
-					.or_default()
-					.push(super::Operation::CreateTable {
-						name: model.table_name.clone(),
-						columns,
-						constraints,
-						without_rowid: None,
-						interleave_in_parent: None,
-						partition: None,
-					});
-			}
-		}
-
-		// Group added fields by app
-		for (app_label, model_name, field_name) in &changes.added_fields {
-			if let Some(model) = self.to_state.get_model(app_label, model_name)
-				&& let Some(field) = model.get_field(field_name)
-			{
-				migrations_by_app
-					.entry(app_label.clone())
-					.or_default()
-					.push(super::Operation::AddColumn {
-						table: model.table_name.clone(),
-						column: super::ColumnDefinition::from_field_state(
-							field_name.clone(),
-							field,
-						),
-						mysql_options: None,
-					});
-			}
-		}
-
-		// Group altered fields by app
-		for (app_label, model_name, field_name) in &changes.altered_fields {
-			if let Some(model) = self.to_state.get_model(app_label, model_name)
-				&& let Some(field) = model.get_field(field_name)
-			{
-				migrations_by_app
-					.entry(app_label.clone())
-					.or_default()
-					.push(super::Operation::AlterColumn {
-						table: model.table_name.clone(),
-						column: field_name.clone(),
-						old_definition: None,
-						new_definition: super::ColumnDefinition::from_field_state(
-							field_name.clone(),
-							field,
-						),
-						mysql_options: None,
-					});
-			}
-		}
-
-		// Group removed fields by app
-		for (app_label, model_name, field_name) in &changes.removed_fields {
-			if let Some(model) = self.from_state.get_model(app_label, model_name) {
-				migrations_by_app
-					.entry(app_label.clone())
-					.or_default()
-					.push(super::Operation::DropColumn {
-						table: model.table_name.clone(),
-						column: field_name.clone(),
-					});
-			}
-		}
-
-		// Group deleted models by app
-		for (app_label, model_name) in &changes.deleted_models {
-			if let Some(model) = self.from_state.get_model(app_label, model_name) {
-				migrations_by_app
-					.entry(app_label.clone())
-					.or_default()
-					.push(super::Operation::DropTable {
-						name: model.table_name.clone(),
-					});
-			}
-		}
+		// Shared per-app emissions (CreateTable, column ops, constraint ops,
+		// auto-increment resets). Single source of truth shared with
+		// `generate_operations()` — see `emit_shared_per_app_operations` and
+		// issue #4040.
+		self.emit_shared_per_app_operations(&changes, &mut migrations_by_app);
 
 		// Generate intermediate tables for ManyToMany relationships
 		for (app_label, model_name, through_table, m2m) in &changes.created_many_to_many {
-			// Generate column names (Django-style naming convention)
-			let source_model_lower = model_name.to_lowercase();
-			let target_model_lower = m2m.to_model.to_lowercase();
-
-			// Check for self-referencing ManyToMany (e.g., User follows User)
-			let is_self_referencing = source_model_lower == target_model_lower;
-
-			// For self-referencing ManyToMany, use from_/to_ prefixes to avoid column name collision
-			// Django uses this convention: from_{model}_id and to_{model}_id
-			let source_column = m2m.source_field.clone().unwrap_or_else(|| {
-				if is_self_referencing {
-					format!("from_{}_id", source_model_lower)
-				} else {
-					format!("{}_id", source_model_lower)
-				}
-			});
-			let target_column = m2m.target_field.clone().unwrap_or_else(|| {
-				if is_self_referencing {
-					format!("to_{}_id", target_model_lower)
-				} else {
-					format!("{}_id", target_model_lower)
-				}
-			});
-
-			// Get source table name
+			// Resolve source table name from the to_state model. The
+			// `table_name` (user-set via `#[model(table_name = "...")]` or
+			// derived by the macro) is the canonical identifier — never
+			// the `struct` identifier (see #4659).
 			let source_table = self
 				.to_state
 				.get_model(app_label, model_name)
 				.map(|m| m.table_name.clone())
-				.unwrap_or_else(|| format!("{}_{}", app_label, source_model_lower));
+				.unwrap_or_else(|| format!("{}_{}", app_label, model_name.to_lowercase()));
 
-			// Get target table name
-			// First try to_state, then fall back to global registry for cross-app references
+			// Parse the target reference up-front so qualified names like
+			// "app.Model" resolve correctly throughout the rest of this
+			// block (table lookup, PK type lookup, and the lowercase
+			// fallback). Without this, lookups would use the literal
+			// "app.Model" string as the model name, miss every
+			// to_state/registry entry, and produce defaults like
+			// "app.model_id".
+			let (parsed_target_app, parsed_target_model) = self
+				.parse_model_reference(&m2m.to_model, app_label)
+				.unwrap_or_else(|| (app_label.to_string(), m2m.to_model.clone()));
+
+			// Resolve target table name: prefer to_state, then global registry,
+			// finally fall back to the canonical `{app}_{model_lower}` form
+			// (mirroring the source-table fallback above). The fallback must
+			// include the parsed app label — emitting only the lowercased
+			// model name would lose the app prefix that `#[model]` writes
+			// into the real `table_name`, so FK constraints would point at a
+			// table that does not exist.
 			let target_table = self
-				.find_model_app(&m2m.to_model)
-				.and_then(|target_app| {
-					// Try to_state first
-					if let Some(model) = self.to_state.get_model(&target_app, &m2m.to_model) {
-						return Some(model.table_name.clone());
-					}
-					// Fall back to global registry for cross-app references
-					for model_meta in super::model_registry::global_registry().get_models() {
-						if model_meta.app_label == target_app
-							&& model_meta.model_name == m2m.to_model
-						{
-							return Some(model_meta.table_name.clone());
-						}
-					}
-					None
+				.to_state
+				.get_model(&parsed_target_app, &parsed_target_model)
+				.map(|model| model.table_name.clone())
+				.or_else(|| {
+					super::model_registry::global_registry()
+						.get_models()
+						.iter()
+						.find(|m| {
+							m.app_label == parsed_target_app && m.model_name == parsed_target_model
+						})
+						.map(|m| m.table_name.clone())
 				})
-				.unwrap_or_else(|| m2m.to_model.to_lowercase());
+				.unwrap_or_else(|| {
+					format!(
+						"{}_{}",
+						parsed_target_app,
+						parsed_target_model.to_lowercase()
+					)
+				});
+
+			// Default FK column names come from `crate::m2m_naming::default_m2m_columns`,
+			// the single source of truth shared with `create_intermediate_table_for_m2m`
+			// and the ORM accessor (issue #4665). The helper keys off the
+			// *actual* table names (not struct identifiers) and applies
+			// `from_/to_` prefixes only for self-referential M2M (#4659).
+			let (default_source_col, default_target_col) =
+				crate::m2m_naming::default_m2m_columns(&source_table, &target_table);
+			let source_column = m2m.source_field.clone().unwrap_or(default_source_col);
+			let target_column = m2m.target_field.clone().unwrap_or(default_target_col);
 
 			// Get source model's primary key type
 			let source_pk_type = self.to_state.get_primary_key_type(app_label, model_name);
 
-			// Get target model's primary key type
-			// First extract target app_label from to_model (may be in "app.Model" format)
-			let (target_app, target_model) = if m2m.to_model.contains('.') {
-				let parts: Vec<&str> = m2m.to_model.split('.').collect();
-				(parts[0].to_string(), parts[1].to_string())
-			} else {
-				// Same app reference
-				(app_label.to_string(), m2m.to_model.clone())
-			};
-
+			// Get target model's primary key type. Reuse the values parsed
+			// from `m2m.to_model` at the top of this block so the lookup
+			// agrees with how `target_table` was resolved (#4659 follow-up).
 			let target_pk_type = self
 				.to_state
-				.get_primary_key_type(&target_app, &target_model);
+				.get_primary_key_type(&parsed_target_app, &parsed_target_model);
 
 			// Create intermediate table columns
 			let columns = vec![
@@ -5039,13 +5452,16 @@ impl MigrationAutodetector {
 					.map(|m| m.table_name.clone())
 					.unwrap_or_else(|| format!("{}_{}", app_label, old_name.to_lowercase()));
 
-				migrations_by_app
-					.entry(app_label.clone())
-					.or_default()
-					.push(super::Operation::RenameTable {
-						old_name: old_table_name,
-						new_name: model.table_name.clone(),
-					});
+				// Defense-in-depth: skip no-op renames where table name is unchanged
+				if old_table_name != model.table_name {
+					migrations_by_app
+						.entry(app_label.clone())
+						.or_default()
+						.push(super::Operation::RenameTable {
+							old_name: old_table_name,
+							new_name: model.table_name.clone(),
+						});
+				}
 			}
 		}
 
@@ -5090,62 +5506,20 @@ impl MigrationAutodetector {
 			);
 		}
 
+		// Second-line defence against redundant single-column `AddConstraint
+		// UNIQUE` operations. The primary fix lives in
+		// `detect_added_constraints` (shape-match); this pass also catches
+		// cases where the column is being added in the same migration with
+		// `column.unique = true` *and* a peer `AddConstraint` is emitted for
+		// it. See reinhardt-web#4448.
+		Self::dedup_redundant_unique_add_constraints(&mut migrations_by_app);
+
 		// Create Migration objects for each app
 		let mut migrations = Vec::new();
 		for (app_label, operations) in migrations_by_app {
-			// Generate a simple migration name based on the first operation
-			let migration_name = if let Some(op) = operations.first() {
-				match op {
-					super::Operation::CreateTable { name, .. } => {
-						format!("0001_initial_{}", name.to_lowercase())
-					}
-					super::Operation::AddColumn { table, column, .. } => {
-						format!(
-							"0001_add_{}_{}",
-							column.name.to_lowercase(),
-							table.to_lowercase()
-						)
-					}
-					super::Operation::AlterColumn { table, column, .. } => format!(
-						"0001_alter_{}_{}",
-						column.to_lowercase(),
-						table.to_lowercase()
-					),
-					super::Operation::DropColumn { table, column, .. } => {
-						format!(
-							"0001_remove_{}_{}",
-							column.to_lowercase(),
-							table.to_lowercase()
-						)
-					}
-					super::Operation::DropTable { name, .. } => {
-						format!("0001_delete_{}", name.to_lowercase())
-					}
-					super::Operation::RenameTable { old_name, new_name } => {
-						format!(
-							"0001_rename_{}_to_{}",
-							old_name.to_lowercase(),
-							new_name.to_lowercase()
-						)
-					}
-					super::Operation::MoveModel {
-						model_name,
-						from_app,
-						to_app,
-						..
-					} => {
-						format!(
-							"0001_move_{}_from_{}_to_{}",
-							model_name.to_lowercase(),
-							from_app.to_lowercase(),
-							to_app.to_lowercase()
-						)
-					}
-					_ => "0001_auto".to_string(),
-				}
-			} else {
-				"0001_auto".to_string()
-			};
+			// Placeholder name; the final migration name is generated by
+			// MakeMigrationsCommand using MigrationNamer::generate_name().
+			let migration_name = "autodetected".to_string();
 
 			let mut migration = super::Migration::new(&migration_name, &app_label);
 			for operation in operations {
@@ -5202,29 +5576,44 @@ impl MigrationAutodetector {
 	fn detect_created_many_to_many(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), model_state) in &self.to_state.models {
 			for m2m in &model_state.many_to_many_fields {
-				// Check if this ManyToMany already exists in from_state
+				// Generate the canonical through-table name from the source
+				// model's actual `table_name`. Using `table_name` (not the
+				// struct identifier) is required for two reasons:
+				//   1. The ORM accessor's fallback derives the through-table
+				//      and the source column from `S::table_name()` (see
+				//      `crates/reinhardt-db/src/orm/many_to_many_accessor.rs`).
+				//      The autodetector must agree on the same naming so that
+				//      generated migrations match runtime expectations.
+				//   2. `from_state` reconstructed from on-disk migrations only
+				//      preserves `table_name`s (the original struct identifiers
+				//      are lost — see #4659), so any subsequent existence check
+				//      must use a `table_name`-derived key.
+				// Route through `crate::m2m_naming::default_through_table`
+				// so this existence-check key cannot drift from the
+				// migration-emitting site (`create_intermediate_table_for_m2m`)
+				// or the ORM accessor's fallback (#4659, #4665).
+				let through_table = m2m.through.clone().unwrap_or_else(|| {
+					crate::m2m_naming::default_through_table(
+						&model_state.table_name,
+						&m2m.field_name,
+					)
+				});
+
+				// Check whether the through-table already exists in
+				// `from_state`. The previous implementation looked at
+				// `from_state.get_model(app_label, model_name).many_to_many_fields`,
+				// but the M2M metadata is not stored in on-disk
+				// `Operation::CreateTable`, so reconstructed `from_state`
+				// always reported `many_to_many_fields.is_empty()` and
+				// `exists_in_from` was always `false`. As a result, the
+				// intermediate `CreateTable` was re-emitted on every
+				// incremental `makemigrations` run (#4659).
 				let exists_in_from = self
 					.from_state
-					.get_model(app_label, model_name)
-					.map(|from_model| {
-						from_model
-							.many_to_many_fields
-							.iter()
-							.any(|f| f.field_name == m2m.field_name)
-					})
-					.unwrap_or(false);
+					.find_model_by_table(&through_table)
+					.is_some();
 
 				if !exists_in_from {
-					// Generate through table name (Django naming convention)
-					let through_table = m2m.through.clone().unwrap_or_else(|| {
-						format!(
-							"{}_{}_{}",
-							app_label.to_lowercase(),
-							model_name.to_lowercase(),
-							m2m.field_name.to_lowercase()
-						)
-					});
-
 					// Add to created_many_to_many
 					changes.created_many_to_many.push((
 						app_label.clone(),
@@ -5928,5 +6317,1652 @@ mod tests {
 		assert!(schema.tables.contains_key("blog_post"));
 		let table = &schema.tables["blog_post"];
 		assert_eq!(table.name, "custom_posts_table");
+	}
+
+	// --- Tests for #3204: no-op migration detection ---
+
+	/// Build fields commonly used in #3204 tests
+	fn sample_fields() -> Vec<FieldState> {
+		vec![
+			FieldState::new("id", super::super::FieldType::Integer, false),
+			FieldState::new("name", super::super::FieldType::VarChar(255), false),
+		]
+	}
+
+	/// Regression test for issue #4659.
+	///
+	/// Scenario: a model struct is renamed (`Room` -> `DMRoom`) but the
+	/// `table_name` stays the same (`dm_room`), and an M2M through-table
+	/// (`dm_room_members`) already exists on disk. The state reconstructed
+	/// from on-disk migrations loses the original struct identifier (it
+	/// derives a `RoomMembers`-style approximation via
+	/// `table_name_to_model_name`) and the M2M metadata is gone — only the
+	/// raw through-table survives.
+	///
+	/// Before the fix, `detect_created_many_to_many` keyed its existence
+	/// check on `(app_label, model_name)` and inspected
+	/// `many_to_many_fields`, which is always empty on reconstructed
+	/// states, so the through-table was spuriously re-created on every
+	/// incremental `makemigrations` run.
+	#[rstest]
+	fn detect_created_many_to_many_recognises_existing_through_table_by_table_name() {
+		use super::super::model_registry::ManyToManyMetadata;
+
+		// Arrange: from_state mimics the on-disk reconstruction.
+		// `table_name_to_model_name` produces `Room` / `RoomMembers` for
+		// tables `dm_room` / `dm_room_members`. The through table appears
+		// as an ordinary model with no M2M metadata attached.
+		let from_room = build_model_state_with_table_name("dm", "Room", "dm_room", sample_fields());
+		let from_through = build_model_state_with_table_name(
+			"dm",
+			"RoomMembers",
+			"dm_room_members",
+			sample_fields(),
+		);
+		let from_state = build_project_state(vec![
+			(("dm".to_string(), "Room".to_string()), from_room),
+			(("dm".to_string(), "RoomMembers".to_string()), from_through),
+		]);
+
+		// to_state: the renamed struct (`DMRoom`) re-declares the same
+		// M2M field. The synthetic through-table model (`DMRoomMembers`)
+		// the macro emits keeps the canonical `dm_room_members` table
+		// name.
+		let mut to_room =
+			build_model_state_with_table_name("dm", "DMRoom", "dm_room", sample_fields());
+		to_room
+			.many_to_many_fields
+			.push(ManyToManyMetadata::new("members", "User"));
+		let to_through = build_model_state_with_table_name(
+			"dm",
+			"DMRoomMembers",
+			"dm_room_members",
+			sample_fields(),
+		);
+		let to_state = build_project_state(vec![
+			(("dm".to_string(), "DMRoom".to_string()), to_room),
+			(("dm".to_string(), "DMRoomMembers".to_string()), to_through),
+		]);
+
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let changes = detector.detect_changes();
+
+		// Assert: the through table is already present in from_state, so
+		// the autodetector must not re-create it (#4659).
+		assert!(
+			changes.created_many_to_many.is_empty(),
+			"M2M through table already exists in from_state; expected no \
+			 created_many_to_many, got {:?}",
+			changes.created_many_to_many
+		);
+	}
+
+	#[rstest]
+	fn detect_renamed_models_skips_struct_only_rename_with_same_table_name() {
+		// Arrange: struct name changed (Clusters -> Cluster) but table name is the same
+		let from_model =
+			build_model_state_with_table_name("myapp", "Clusters", "clusters", sample_fields());
+		let to_model =
+			build_model_state_with_table_name("myapp", "Cluster", "clusters", sample_fields());
+
+		let from_state = build_project_state(vec![(
+			("myapp".to_string(), "Clusters".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("myapp".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let changes = detector.detect_changes();
+
+		// Assert: no rename should be detected
+		assert!(
+			changes.renamed_models.is_empty(),
+			"struct-only rename with same table name should not produce renamed_models"
+		);
+	}
+
+	#[rstest]
+	fn detect_renamed_models_detects_actual_table_rename() {
+		// Arrange: struct name changed AND table name changed
+		let from_model =
+			build_model_state_with_table_name("myapp", "OldModel", "old_table", sample_fields());
+		let to_model =
+			build_model_state_with_table_name("myapp", "NewModel", "new_table", sample_fields());
+
+		let from_state = build_project_state(vec![(
+			("myapp".to_string(), "OldModel".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("myapp".to_string(), "NewModel".to_string()),
+			to_model,
+		)]);
+
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let changes = detector.detect_changes();
+
+		// Assert: rename should be detected
+		assert_eq!(
+			changes.renamed_models.len(),
+			1,
+			"actual table rename should be detected"
+		);
+		assert_eq!(changes.renamed_models[0].1, "OldModel");
+		assert_eq!(changes.renamed_models[0].2, "NewModel");
+	}
+
+	#[rstest]
+	fn has_field_changed_ignores_non_schema_params() {
+		// Arrange: same schema, but to_field has extra non-schema params
+		let from_field = FieldState {
+			name: "email".to_string(),
+			field_type: super::super::FieldType::VarChar(255),
+			nullable: false,
+			params: std::collections::HashMap::new(),
+			foreign_key: None,
+		};
+		let mut to_params = std::collections::HashMap::new();
+		to_params.insert("max_length".to_string(), "255".to_string());
+		to_params.insert("null".to_string(), "false".to_string());
+		to_params.insert("blank".to_string(), "false".to_string());
+		let to_field = FieldState {
+			name: "email".to_string(),
+			field_type: super::super::FieldType::VarChar(255),
+			nullable: false,
+			params: to_params,
+			foreign_key: None,
+		};
+
+		let detector = MigrationAutodetector::new(ProjectState::new(), ProjectState::new());
+
+		// Act
+		let changed = detector.has_field_changed("email", &from_field, &to_field);
+
+		// Assert: should NOT be detected as changed
+		assert!(
+			!changed,
+			"fields with identical schema but different non-schema params should not be detected as changed"
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_empty_for_struct_only_rename() {
+		// Arrange: struct name changed but table name and fields are the same
+		let from_model =
+			build_model_state_with_table_name("myapp", "Clusters", "clusters", sample_fields());
+		let to_model =
+			build_model_state_with_table_name("myapp", "Cluster", "clusters", sample_fields());
+
+		let from_state = build_project_state(vec![(
+			("myapp".to_string(), "Clusters".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("myapp".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert: no operations should be generated
+		assert!(
+			operations.is_empty(),
+			"struct-only rename with same table name and identical fields should produce no operations, got: {:?}",
+			operations
+		);
+	}
+
+	#[rstest]
+	fn detect_composite_pk_added_emits_create_composite_primary_key() {
+		// Arrange
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let tenant_id_field = FieldState::new("tenant_id", super::super::FieldType::Integer, false);
+
+		let from_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![id_field.clone(), tenant_id_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		let composite_pk = ConstraintDefinition {
+			name: "billing_invoice_pkey".to_string(),
+			constraint_type: "primary_key".to_string(),
+			fields: vec!["id".to_string(), "tenant_id".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![id_field, tenant_id_field],
+			Vec::new(),
+			vec![composite_pk],
+		);
+
+		let from_state = build_project_state(vec![(
+			("billing".to_string(), "Invoice".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("billing".to_string(), "Invoice".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 1);
+		assert!(
+			matches!(
+				&operations[0],
+				super::super::Operation::CreateCompositePrimaryKey {
+					table,
+					columns,
+					..
+				} if table == "billing_invoice"
+					&& columns == &["id".to_string(), "tenant_id".to_string()]
+			),
+			"expected CreateCompositePrimaryKey, got: {:?}",
+			operations
+		);
+	}
+
+	#[rstest]
+	fn detect_composite_pk_unchanged_emits_no_operations() {
+		// Arrange — same composite PK in both states should produce no operations
+		let composite_pk = ConstraintDefinition {
+			name: "billing_invoice_pkey".to_string(),
+			constraint_type: "primary_key".to_string(),
+			fields: vec!["id".to_string(), "tenant_id".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("tenant_id", super::super::FieldType::Integer, false),
+			],
+			Vec::new(),
+			vec![composite_pk.clone()],
+		);
+		let to_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("tenant_id", super::super::FieldType::Integer, false),
+			],
+			Vec::new(),
+			vec![composite_pk],
+		);
+
+		let from_state = build_project_state(vec![(
+			("billing".to_string(), "Invoice".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("billing".to_string(), "Invoice".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert!(
+			operations.is_empty(),
+			"unchanged composite PK should produce no operations, got: {:?}",
+			operations
+		);
+	}
+
+	#[rstest]
+	fn detect_composite_pk_changed_fields_emits_drop_and_create() {
+		// Arrange — same constraint name but different field set
+		let composite_pk_from = ConstraintDefinition {
+			name: "billing_invoice_pkey".to_string(),
+			constraint_type: "primary_key".to_string(),
+			fields: vec!["id".to_string(), "tenant_id".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let composite_pk_to = ConstraintDefinition {
+			name: "billing_invoice_pkey".to_string(),
+			constraint_type: "primary_key".to_string(),
+			fields: vec!["id".to_string(), "org_id".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("tenant_id", super::super::FieldType::Integer, false),
+			],
+			Vec::new(),
+			vec![composite_pk_from],
+		);
+		let to_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("org_id", super::super::FieldType::Integer, false),
+			],
+			Vec::new(),
+			vec![composite_pk_to],
+		);
+		let from_state = build_project_state(vec![(
+			("billing".to_string(), "Invoice".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("billing".to_string(), "Invoice".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — expect DropConstraint followed by CreateCompositePrimaryKey
+		let drop_op = operations.iter().find(|op| {
+			matches!(op, super::super::Operation::DropConstraint { constraint_name, .. }
+				if constraint_name == "billing_invoice_pkey")
+		});
+		let create_op = operations.iter().find(|op| {
+			matches!(op, super::super::Operation::CreateCompositePrimaryKey { columns, .. }
+				if columns == &["id".to_string(), "org_id".to_string()])
+		});
+		assert!(
+			drop_op.is_some(),
+			"expected DropConstraint for modified composite PK, got: {:?}",
+			operations
+		);
+		assert!(
+			create_op.is_some(),
+			"expected CreateCompositePrimaryKey with new fields, got: {:?}",
+			operations
+		);
+	}
+
+	#[rstest]
+	fn detect_sequence_reset_emits_set_auto_increment_value() {
+		// Arrange
+		let mut id_field = FieldState::new("id", super::super::FieldType::BigInteger, false);
+		id_field
+			.params
+			.insert("auto_increment".to_string(), "true".to_string());
+
+		let from_model = build_model_state(
+			"shop",
+			"Order",
+			vec![id_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		let mut to_model =
+			build_model_state("shop", "Order", vec![id_field], Vec::new(), Vec::new());
+		to_model
+			.options
+			.insert("sequence_reset".to_string(), "1000".to_string());
+
+		let from_state = build_project_state(vec![(
+			("shop".to_string(), "Order".to_string()),
+			from_model,
+		)]);
+		let to_state =
+			build_project_state(vec![(("shop".to_string(), "Order".to_string()), to_model)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 1);
+		assert!(
+			matches!(
+				&operations[0],
+				super::super::Operation::SetAutoIncrementValue {
+					table,
+					column,
+					value,
+				} if table == "shop_order" && column == "id" && *value == 1000
+			),
+			"expected SetAutoIncrementValue, got: {:?}",
+			operations
+		);
+	}
+
+	#[rstest]
+	fn detect_added_unique_together_emits_add_constraint() {
+		// Arrange — same model in both states, but to_state adds a UNIQUE
+		// constraint over (organization_id, name). This mirrors the
+		// `unique_together = ("organization_id", "name")` macro form.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		let from_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — exactly one AddConstraint targeting the cluster table
+		// with SQL referencing both columns of the composite UNIQUE.
+		assert_eq!(
+			operations.len(),
+			1,
+			"expected exactly one AddConstraint operation, got: {:?}",
+			operations
+		);
+		let super::super::Operation::AddConstraint {
+			table,
+			constraint_sql,
+		} = &operations[0]
+		else {
+			panic!(
+				"expected Operation::AddConstraint, got: {:?}",
+				operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert!(
+			constraint_sql.contains("UNIQUE"),
+			"constraint SQL should declare UNIQUE, got: {}",
+			constraint_sql
+		);
+		assert!(
+			constraint_sql.contains("organization_id"),
+			"constraint SQL should reference organization_id, got: {}",
+			constraint_sql
+		);
+		assert!(
+			constraint_sql.contains("name"),
+			"constraint SQL should reference name, got: {}",
+			constraint_sql
+		);
+		assert!(
+			constraint_sql.contains("clusters_cluster_organization_id_name_uniq"),
+			"constraint SQL should carry the constraint name, got: {}",
+			constraint_sql
+		);
+	}
+
+	#[rstest]
+	fn detect_removed_unique_together_emits_drop_constraint() {
+		// Arrange — symmetric reverse: from_state has the UNIQUE, to_state
+		// drops it. The autodetector must emit a DropConstraint so the DB
+		// is brought back in sync.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		let to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			Vec::new(),
+		);
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(
+			operations.len(),
+			1,
+			"expected exactly one DropConstraint operation, got: {:?}",
+			operations
+		);
+		let super::super::Operation::DropConstraint {
+			table,
+			constraint_name,
+		} = &operations[0]
+		else {
+			panic!(
+				"expected Operation::DropConstraint, got: {:?}",
+				operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert_eq!(
+			constraint_name,
+			"clusters_cluster_organization_id_name_uniq"
+		);
+	}
+
+	#[rstest]
+	fn detect_added_unique_together_via_offline_reconstructed_from_state() {
+		// Arrange — regression for issue #4032.
+		//
+		// When `makemigrations` falls back to file-based state reconstruction
+		// (no DB available), `from_state` is rebuilt from migration
+		// `Operation::CreateTable` entries and keyed by the PascalCase form
+		// of the table name (e.g. table `"clusters"` -> key `"Clusters"`),
+		// while `to_state` is keyed by the registered struct name
+		// (e.g. `"Cluster"`). Both share the same `table_name`.
+		//
+		// Constraint diffing must locate the corresponding model by
+		// `table_name` rather than by struct-name key, otherwise added
+		// `unique_together` constraints are silently dropped.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		// from_state: keyed by table-derived name "Clusters", no constraints.
+		let mut from_model = build_model_state(
+			"clusters",
+			"Clusters",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		// to_state: keyed by struct name "Cluster", carries the unique constraint.
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Clusters".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — exactly one AddConstraint, targeted at the shared table.
+		// No spurious operations (in particular no AlterColumn/RenameModel)
+		// must leak through from the model-name mismatch.
+		assert_eq!(
+			operations.len(),
+			1,
+			"expected exactly one AddConstraint operation, got: {:?}",
+			operations
+		);
+		let super::super::Operation::AddConstraint {
+			table,
+			constraint_sql,
+		} = &operations[0]
+		else {
+			panic!(
+				"expected Operation::AddConstraint, got: {:?}",
+				operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert!(
+			constraint_sql.contains("clusters_cluster_organization_id_name_uniq"),
+			"constraint SQL should carry the constraint name, got: {}",
+			constraint_sql
+		);
+	}
+
+	#[rstest]
+	fn detect_removed_unique_together_via_offline_reconstructed_from_state() {
+		// Arrange — symmetric regression for issue #4032 covering the
+		// removal direction: offline-reconstructed `from_state` retains a
+		// `unique_together` constraint, and the registered model in
+		// `to_state` no longer declares it. The diff must emit a
+		// `DropConstraint` despite the model-name key mismatch.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let mut from_model = build_model_state(
+			"clusters",
+			"Clusters",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		let to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			Vec::new(),
+		);
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Clusters".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(
+			operations.len(),
+			1,
+			"expected exactly one DropConstraint operation, got: {:?}",
+			operations
+		);
+		let super::super::Operation::DropConstraint {
+			table,
+			constraint_name,
+		} = &operations[0]
+		else {
+			panic!(
+				"expected Operation::DropConstraint, got: {:?}",
+				operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert_eq!(
+			constraint_name,
+			"clusters_cluster_organization_id_name_uniq"
+		);
+	}
+
+	#[rstest]
+	fn has_field_changed_ignores_param_population_skew() {
+		// Arrange — regression for issue #4049.
+		//
+		// `from_state` is rebuilt from migration files via
+		// `column_def_to_field_state`, which only inserts schema-affecting
+		// params (`primary_key`, `auto_increment`, `unique`, `default`) when
+		// their value is true/Some. `to_state` is rebuilt from the macro
+		// registry, which inserts explicit "true"/"false" strings for
+		// `not_null`, `null`, etc. on every field.
+		//
+		// The two `FieldState` HashMaps are therefore asymmetric even when
+		// the underlying schema is identical, and `has_field_changed` must
+		// not treat that asymmetry as a real change.
+		let mut from_params = std::collections::HashMap::new();
+		from_params.insert("primary_key".to_string(), "true".to_string());
+		from_params.insert("auto_increment".to_string(), "true".to_string());
+		let from_field = FieldState {
+			name: "id".to_string(),
+			field_type: super::super::FieldType::BigInteger,
+			nullable: false,
+			params: from_params,
+			foreign_key: None,
+		};
+
+		// to_field carries the macro-registry-style asymmetric params. In
+		// particular, schema-affecting keys like `unique` and `default` may be
+		// populated explicitly with their false/empty value on the to side
+		// while the migration-replay from side simply omits the key. The raw
+		// HashMap comparison previously surfaced this as a difference; the
+		// canonical ColumnDefinition collapses None and "false" to the same
+		// `false`, so the field is correctly seen as unchanged.
+		let mut to_params = std::collections::HashMap::new();
+		to_params.insert("primary_key".to_string(), "true".to_string());
+		to_params.insert("auto_increment".to_string(), "true".to_string());
+		to_params.insert("not_null".to_string(), "true".to_string());
+		to_params.insert("null".to_string(), "false".to_string());
+		to_params.insert("unique".to_string(), "false".to_string());
+		let to_field = FieldState {
+			name: "id".to_string(),
+			field_type: super::super::FieldType::BigInteger,
+			nullable: false,
+			params: to_params,
+			foreign_key: None,
+		};
+
+		let detector = MigrationAutodetector::new(ProjectState::new(), ProjectState::new());
+
+		// Act
+		let changed = detector.has_field_changed("id", &from_field, &to_field);
+
+		// Assert — schema is identical (BigInteger PK NOT NULL auto_increment,
+		// not unique). Asymmetric param maps must not surface as a change.
+		assert!(
+			!changed,
+			"identical schema with asymmetric param populations between migration replay and macro registry must not be detected as changed"
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_no_spurious_altercolumn_for_pk_via_offline_reconstructed_state() {
+		// Arrange — regression for issue #4049.
+		//
+		// When `makemigrations` runs offline (no live DB), `from_state` is
+		// reconstructed from migration files and keyed by the PascalCase form
+		// of the table name (e.g. table `"clusters"` -> key `"Clusters"`),
+		// while `to_state` is keyed by the registered struct name (`"Cluster"`).
+		// On top of that, the two states populate `FieldState.params`
+		// asymmetrically: migration replay only inserts schema-affecting params
+		// when their value is true/Some, whereas the macro registry inserts
+		// explicit "true"/"false" strings for `not_null`, `null`, etc.
+		//
+		// The diff must NOT emit a no-op `Operation::AlterColumn` for the
+		// unchanged `id` primary key, even though the params HashMap differs.
+		let mut from_id_params = std::collections::HashMap::new();
+		from_id_params.insert("primary_key".to_string(), "true".to_string());
+		from_id_params.insert("auto_increment".to_string(), "true".to_string());
+		let from_id_field = FieldState {
+			name: "id".to_string(),
+			field_type: super::super::FieldType::BigInteger,
+			nullable: false,
+			params: from_id_params,
+			foreign_key: None,
+		};
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		// from_state: keyed by table-derived name "Clusters", no constraints,
+		// migration-replay-style sparse params on the PK column.
+		let mut from_model = build_model_state(
+			"clusters",
+			"Clusters",
+			vec![from_id_field, org_field.clone(), name_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		// to_state: keyed by struct name "Cluster", carries an added
+		// unique_together constraint, macro-registry-style dense params on the
+		// PK column (`not_null`, `null`, `unique` explicitly populated even
+		// when their value is the default false). The from side omits these
+		// keys entirely, which previously surfaced as a fictitious
+		// difference in `has_field_changed`'s raw HashMap comparison.
+		let mut to_id_params = std::collections::HashMap::new();
+		to_id_params.insert("primary_key".to_string(), "true".to_string());
+		to_id_params.insert("auto_increment".to_string(), "true".to_string());
+		to_id_params.insert("not_null".to_string(), "true".to_string());
+		to_id_params.insert("null".to_string(), "false".to_string());
+		to_id_params.insert("unique".to_string(), "false".to_string());
+		let to_id_field = FieldState {
+			name: "id".to_string(),
+			field_type: super::super::FieldType::BigInteger,
+			nullable: false,
+			params: to_id_params,
+			foreign_key: None,
+		};
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![to_id_field, org_field, name_field],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Clusters".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — exactly one AddConstraint and no spurious AlterColumn for
+		// the unchanged PK. The asymmetric param populations must collapse to
+		// the same canonical `ColumnDefinition` and never surface as a diff.
+		assert!(
+			!operations
+				.iter()
+				.any(|op| matches!(op, super::super::Operation::AlterColumn { .. })),
+			"no AlterColumn must be emitted for unchanged PK under offline state reconstruction, got: {:?}",
+			operations
+		);
+		assert_eq!(
+			operations.len(),
+			1,
+			"expected exactly one AddConstraint operation, got: {:?}",
+			operations
+		);
+		assert!(
+			matches!(
+				&operations[0],
+				super::super::Operation::AddConstraint { .. }
+			),
+			"expected the single operation to be AddConstraint, got: {:?}",
+			operations[0]
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_no_spurious_altercolumn_for_option_pk_via_apply_migration_operations() {
+		// Arrange — regression for issue #4052 (residual after #4050).
+		//
+		// Reproduces the production CLI path that #4050's regression test
+		// missed: from_state is built by feeding a synthetic
+		// `Operation::CreateTable` (modeled on `0001_initial.rs`) through
+		// `ProjectState::apply_migration_operations`, so its `id` FieldState
+		// flows through `column_def_to_field_state`. to_state mirrors the
+		// `#[model]` macro's output for `id: Option<i64>` with
+		// `#[field(primary_key = true)]` AFTER the macro fix that suppresses
+		// `null = "true"` for primary keys (the Option<T> wrapper for PKs
+		// reflects "id is None until DB assigns it on insert", not DB-level
+		// nullability).
+		//
+		// Pre-fix, the macro emitted `null = "true"` for any Option<T>
+		// field, including PKs. `to_model_state` then set
+		// `FieldState.nullable = true` while `column_def_to_field_state`
+		// produced `nullable = false`. `has_field_changed`'s direct
+		// `nullable != nullable` short-circuit (added by #4050 to keep the
+		// authoritative NOT NULL bit on the canonical comparison path)
+		// returned true before the canonical `ColumnDefinition::from_field_state`
+		// folding could absorb the asymmetry, surfacing as a no-op
+		// `Operation::AlterColumn { old_definition: None, .. }` for the
+		// unchanged PK.
+
+		// Build to_state via the model registry layer that the macro feeds.
+		// Mirror the FIXED macro params for `id: Option<i64>` with
+		// `#[field(primary_key = true)]`: `null = "false"` (forced by the
+		// fix), `not_null = "true"`, `primary_key = "true"`,
+		// `auto_increment = "true"`. The dense param population is exactly
+		// what `ModelMetadata::to_model_state` consumes.
+		let mut id_meta =
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::BigInteger);
+		id_meta = id_meta
+			.with_param("primary_key", "true")
+			.with_param("auto_increment", "true")
+			.with_param("not_null", "true")
+			.with_param("null", "false");
+		let mut name_meta =
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::VarChar(255));
+		name_meta = name_meta
+			.with_param("max_length", "255")
+			.with_param("not_null", "true")
+			.with_param("null", "false");
+
+		let mut metadata =
+			super::super::model_registry::ModelMetadata::new("clusters", "Cluster", "clusters");
+		metadata.add_field("id".to_string(), id_meta);
+		metadata.add_field("name".to_string(), name_meta);
+
+		let to_model = metadata.to_model_state();
+		// Sanity: the FIXED macro contract must fold `null = "false"` into
+		// `FieldState.nullable = false` for the PK, matching the migration
+		// replay side.
+		let to_id = to_model.fields.get("id").expect("id field present");
+		assert!(
+			!to_id.nullable,
+			"to_state PK FieldState.nullable must be false; got nullable=true \
+			 with params={:?}. Did the #[model] macro regress to emitting \
+			 null=\"true\" for Option<T> PKs?",
+			to_id.params
+		);
+
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+
+		// Build from_state via the production CLI path: feed a CreateTable
+		// (modeled on 0001_initial.rs) through apply_migration_operations.
+		// This populates from_state via column_def_to_field_state, which
+		// derives nullability from `not_null` (sparse params).
+		let create_clusters = super::super::Operation::CreateTable {
+			name: "clusters".to_string(),
+			columns: vec![
+				super::super::ColumnDefinition {
+					name: "id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: true,
+					auto_increment: true,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "name".to_string(),
+					type_definition: super::super::FieldType::VarChar(255),
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let mut from_state = ProjectState::new();
+		from_state.apply_migration_operations(&[create_clusters], "clusters");
+
+		// Sanity: the migration-replay path must produce nullable=false for
+		// the PK.
+		let from_clusters = from_state
+			.find_model_by_table("clusters")
+			.expect("clusters model present in from_state");
+		assert!(
+			!from_clusters
+				.fields
+				.get("id")
+				.expect("id field in from_state")
+				.nullable,
+			"from_state PK FieldState.nullable must be false (column_def_to_field_state derives \
+			 from not_null); got nullable=true"
+		);
+
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act — call BOTH lower-level generate_operations() and the CLI
+		// entry generate_migrations(), since #4052's reproducer asserts
+		// against both.
+		let direct_ops = detector.generate_operations();
+		let migrations = detector.generate_migrations();
+		let migration_ops: Vec<&super::super::Operation> = migrations
+			.iter()
+			.flat_map(|m| m.operations.iter())
+			.collect();
+
+		// Assert — neither path may emit AlterColumn for the unchanged `id`
+		// PK. Pre-fix, both emitted exactly such an AlterColumn.
+		assert!(
+			!direct_ops.iter().any(|op| matches!(
+				op,
+				super::super::Operation::AlterColumn { column, .. } if column == "id"
+			)),
+			"generate_operations() emitted spurious AlterColumn for unchanged `id` PK \
+			 under apply_migration_operations from_state. ops={:?}",
+			direct_ops
+		);
+		assert!(
+			!migration_ops.iter().any(|op| matches!(
+				op,
+				super::super::Operation::AlterColumn { column, .. } if column == "id"
+			)),
+			"generate_migrations() emitted spurious AlterColumn for unchanged `id` PK \
+			 under apply_migration_operations from_state. ops={:?}",
+			migration_ops
+		);
+	}
+
+	#[rstest]
+	fn generate_migrations_emits_add_constraint_for_added_unique_together() {
+		// Arrange — regression for issue #4040.
+		//
+		// `generate_migrations()` is the entry point used by the
+		// `makemigrations` CLI, in contrast to `generate_operations()`
+		// which is used by tests / direct callers. PR #3998 added
+		// `added_constraints` handling to `generate_operations()` but the
+		// symmetric loop was missing from `generate_migrations()`, so the
+		// CLI silently dropped `Operation::AddConstraint` for non-PK
+		// constraints (e.g. `unique_together`) added to existing models.
+		//
+		// This test exercises the CLI path directly and asserts the
+		// migration carries an `Operation::AddConstraint`.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		// from_state mirrors the CLI's offline-reconstructed state with no
+		// constraints declared on the existing model (matching what the
+		// `0001_initial` migration produces before the constraint is added).
+		let mut from_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		// to_state carries the unique_together constraint declared via the
+		// macro on the registered struct.
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let mut to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		to_model.table_name = "clusters_cluster".to_string();
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let migrations = detector.generate_migrations();
+
+		// Assert — exactly one Migration for app "clusters" with exactly
+		// one AddConstraint operation, targeted at the shared table.
+		assert_eq!(
+			migrations.len(),
+			1,
+			"expected exactly one Migration, got: {:?}",
+			migrations
+		);
+		assert_eq!(migrations[0].app_label, "clusters");
+		assert_eq!(
+			migrations[0].operations.len(),
+			1,
+			"expected exactly one operation in the migration, got: {:?}",
+			migrations[0].operations
+		);
+		let super::super::Operation::AddConstraint {
+			table,
+			constraint_sql,
+		} = &migrations[0].operations[0]
+		else {
+			panic!(
+				"expected Operation::AddConstraint, got: {:?}",
+				migrations[0].operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert!(
+			constraint_sql.contains("clusters_cluster_organization_id_name_uniq"),
+			"constraint SQL should carry the constraint name, got: {}",
+			constraint_sql
+		);
+	}
+
+	#[rstest]
+	fn generate_migrations_emits_drop_constraint_for_removed_unique_together() {
+		// Arrange — symmetric regression for issue #4040 covering the
+		// removal direction: the existing model declares a
+		// `unique_together` constraint, the new struct has dropped it, and
+		// the CLI path must emit `Operation::DropConstraint`.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let mut from_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		let mut to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field],
+			Vec::new(),
+			Vec::new(),
+		);
+		to_model.table_name = "clusters_cluster".to_string();
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let migrations = detector.generate_migrations();
+
+		// Assert
+		assert_eq!(
+			migrations.len(),
+			1,
+			"expected exactly one Migration, got: {:?}",
+			migrations
+		);
+		assert_eq!(migrations[0].app_label, "clusters");
+		assert_eq!(
+			migrations[0].operations.len(),
+			1,
+			"expected exactly one operation in the migration, got: {:?}",
+			migrations[0].operations
+		);
+		let super::super::Operation::DropConstraint {
+			table,
+			constraint_name,
+		} = &migrations[0].operations[0]
+		else {
+			panic!(
+				"expected Operation::DropConstraint, got: {:?}",
+				migrations[0].operations[0]
+			);
+		};
+		assert_eq!(table, "clusters_cluster");
+		assert_eq!(
+			constraint_name,
+			"clusters_cluster_organization_id_name_uniq"
+		);
+	}
+
+	#[rstest]
+	fn shared_per_app_emissions_are_consistent_between_generate_paths() {
+		// Arrange — regression for issue #4040 (structural).
+		//
+		// Issue #4040 was caused by `generate_operations()` and
+		// `generate_migrations()` carrying parallel-but-divergent
+		// per-change-set emission loops; PR #3998 updated only the former.
+		// After the structural fix both methods route through
+		// `emit_shared_per_app_operations()`, so the shared subset of ops
+		// (CreateTable / column ops / constraint ops / auto-increment
+		// resets) MUST always agree.
+		//
+		// This test exercises a representative scenario: an existing model
+		// gains a unique constraint AND a new column. Both emissions must
+		// appear identically in both methods. M2M / rename / move
+		// divergences are intentionally not exercised here because they
+		// remain method-specific by design.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
+		let name_field = FieldState::new("name", super::super::FieldType::VarChar(255), false);
+		let new_col = FieldState::new("region", super::super::FieldType::VarChar(64), false);
+
+		let mut from_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field.clone(), org_field.clone(), name_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		from_model.table_name = "clusters_cluster".to_string();
+
+		let unique_constraint = ConstraintDefinition {
+			name: "clusters_cluster_organization_id_name_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["organization_id".to_string(), "name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let mut to_model = build_model_state(
+			"clusters",
+			"Cluster",
+			vec![id_field, org_field, name_field, new_col],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		to_model.table_name = "clusters_cluster".to_string();
+
+		let from_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("clusters".to_string(), "Cluster".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let ops = detector.generate_operations();
+		let migrations = detector.generate_migrations();
+
+		// Assert — flatten migrations into the same shape as `ops` and
+		// compare as multisets (order is determined by per-app dependency
+		// sort, which is the same algorithm but called with a different
+		// scope, so we compare unordered).
+		let mig_ops: Vec<&super::super::Operation> = migrations
+			.iter()
+			.flat_map(|m| m.operations.iter())
+			.collect();
+
+		assert_eq!(
+			ops.len(),
+			mig_ops.len(),
+			"shared per-app emissions diverged between generate_operations() ({:?}) and generate_migrations() ({:?})",
+			ops,
+			mig_ops
+		);
+		// Every op produced by generate_operations() must also appear in
+		// generate_migrations() output.
+		for op in &ops {
+			assert!(
+				mig_ops.iter().any(|m| *m == op),
+				"generate_operations() produced {:?} but generate_migrations() did not",
+				op
+			);
+		}
+		// And vice versa.
+		for op in &mig_ops {
+			assert!(
+				ops.iter().any(|o| o == *op),
+				"generate_migrations() produced {:?} but generate_operations() did not",
+				op
+			);
+		}
+	}
+
+	#[rstest]
+	fn detect_added_composite_pk_does_not_double_emit_add_constraint() {
+		// Arrange — adding a composite PK should be emitted by the
+		// `CreateCompositePrimaryKey` path only. The new
+		// `added_constraints` emitter must skip composite PKs to avoid
+		// emitting a redundant AddConstraint alongside it.
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let tenant_field = FieldState::new("tenant_id", super::super::FieldType::Integer, false);
+
+		let from_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![id_field.clone(), tenant_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+		let composite_pk = ConstraintDefinition {
+			name: "billing_invoice_pkey".to_string(),
+			constraint_type: "primary_key".to_string(),
+			fields: vec!["id".to_string(), "tenant_id".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![id_field, tenant_field],
+			Vec::new(),
+			vec![composite_pk],
+		);
+		let from_state = build_project_state(vec![(
+			("billing".to_string(), "Invoice".to_string()),
+			from_model,
+		)]);
+		let to_state = build_project_state(vec![(
+			("billing".to_string(), "Invoice".to_string()),
+			to_model,
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — exactly one operation, and it must be the composite PK
+		// path, not a duplicate AddConstraint.
+		assert_eq!(operations.len(), 1, "got: {:?}", operations);
+		assert!(
+			matches!(
+				&operations[0],
+				super::super::Operation::CreateCompositePrimaryKey { columns, .. }
+					if columns == &["id".to_string(), "tenant_id".to_string()]
+			),
+			"expected only CreateCompositePrimaryKey, got: {:?}",
+			operations
+		);
+	}
+
+	/// Reproduces reinhardt-web#4448: when the file-based `from_state`
+	/// reconstruction stores a column's uniqueness as `params["unique"] =
+	/// "true"` (the path through `ProjectState::apply_migration_operations`
+	/// → `column_def_to_field_state`), and the live model registry's
+	/// `to_state` materialises the same column as a synthesised
+	/// single-field `ConstraintDefinition`, the autodetector must NOT emit
+	/// an `Operation::AddConstraint` for the redundant UNIQUE.
+	#[rstest]
+	fn inline_unique_param_on_from_side_does_not_emit_redundant_add_constraint() {
+		// Arrange — `from_state` mimics what `apply_migration_operations`
+		// produces for `0001_initial.rs`: the `username` column carries
+		// `params["unique"] = "true"` and the model has NO peer constraint.
+		let mut username_field =
+			FieldState::new("username", super::super::FieldType::VarChar(150), false);
+		username_field
+			.params
+			.insert("unique".to_string(), "true".to_string());
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let from_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field.clone(), username_field.clone()],
+			Vec::new(),
+			Vec::new(),
+		);
+
+		// `to_state` mimics what `ModelMetadata::to_model_state()` produces:
+		// the same inline-unique param PLUS a synthesised single-field
+		// UNIQUE `ConstraintDefinition` named per the
+		// `{app}_{model.to_lowercase()}_{field}_uniq` convention.
+		let synthesised = ConstraintDefinition {
+			name: "users_user_username_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["username".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field, username_field],
+			Vec::new(),
+			vec![synthesised],
+		);
+
+		let from_state = build_project_state(vec![(
+			("users".to_string(), "User".to_string()),
+			from_model,
+		)]);
+		let to_state =
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — no AddConstraint is emitted, because the column is
+		// already covered by inline `params["unique"]` in `from_state`.
+		assert!(
+			operations
+				.iter()
+				.all(|op| !matches!(op, super::super::Operation::AddConstraint { .. })),
+			"expected NO Operation::AddConstraint, got: {:?}",
+			operations
+		);
+	}
+
+	/// Reproduces the DB-introspection variant of reinhardt-web#4448:
+	/// `from_state` carries a single-field UNIQUE constraint with a
+	/// dialect-specific auto-name (e.g. SQLite's
+	/// `sqlite_autoindex_users_1`), and `to_state` declares the same
+	/// column's UNIQUE with the model-derived name
+	/// (`users_user_username_uniq`). The names differ but the semantics
+	/// are identical — no `AddConstraint` must be emitted.
+	#[rstest]
+	fn single_field_unique_constraint_renames_do_not_emit_redundant_add_constraint() {
+		// Arrange
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let username_field =
+			FieldState::new("username", super::super::FieldType::VarChar(150), false);
+		let auto_named = ConstraintDefinition {
+			name: "sqlite_autoindex_users_1".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["username".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let model_named = ConstraintDefinition {
+			name: "users_user_username_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["username".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field.clone(), username_field.clone()],
+			Vec::new(),
+			vec![auto_named],
+		);
+		let to_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field, username_field],
+			Vec::new(),
+			vec![model_named],
+		);
+		let from_state = build_project_state(vec![(
+			("users".to_string(), "User".to_string()),
+			from_model,
+		)]);
+		let to_state =
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — neither AddConstraint nor DropConstraint is emitted.
+		// A pure rename of an internal constraint name on a single-column
+		// UNIQUE is treated as a no-op; emitting either would be invalid on
+		// SQLite (no ALTER TABLE ADD CONSTRAINT) and would leave duplicate
+		// constraints on dialects that recreate the table.
+		let constraint_ops: Vec<_> = operations
+			.iter()
+			.filter(|op| {
+				matches!(
+					op,
+					super::super::Operation::AddConstraint { .. }
+						| super::super::Operation::DropConstraint { .. }
+				)
+			})
+			.collect();
+		assert!(
+			constraint_ops.is_empty(),
+			"expected no Add/DropConstraint ops, got: {:?}",
+			constraint_ops
+		);
+	}
+
+	/// Symmetric guard for reinhardt-web#4448: when `from_state` has a
+	/// single-field UNIQUE constraint and `to_state` represents the same
+	/// uniqueness inline via `params["unique"] = "true"` only, no
+	/// `DropConstraint` must be emitted. Without the symmetric check in
+	/// `detect_removed_constraints` the fix would shift the redundancy
+	/// from `AddConstraint` into `DropConstraint`.
+	#[rstest]
+	fn from_side_unique_constraint_matched_by_inline_unique_on_to_side_emits_no_drop() {
+		// Arrange
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let mut username_field =
+			FieldState::new("username", super::super::FieldType::VarChar(150), false);
+		username_field
+			.params
+			.insert("unique".to_string(), "true".to_string());
+		let unique_constraint = ConstraintDefinition {
+			name: "users_user_username_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["username".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		// from_state: constraint present, field has NO inline unique param.
+		let bare_username =
+			FieldState::new("username", super::super::FieldType::VarChar(150), false);
+		let from_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field.clone(), bare_username],
+			Vec::new(),
+			vec![unique_constraint],
+		);
+		// to_state: no peer constraint, inline param only.
+		let to_model = build_model_state(
+			"users",
+			"User",
+			vec![id_field, username_field],
+			Vec::new(),
+			Vec::new(),
+		);
+		let from_state = build_project_state(vec![(
+			("users".to_string(), "User".to_string()),
+			from_model,
+		)]);
+		let to_state =
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert — no DropConstraint emitted; the inline `params["unique"]`
+		// on the to-side already covers the column.
+		assert!(
+			operations
+				.iter()
+				.all(|op| !matches!(op, super::super::Operation::DropConstraint { .. })),
+			"expected NO Operation::DropConstraint, got: {:?}",
+			operations
+		);
+	}
+
+	/// Direct unit test for the dedup pass
+	/// `MigrationAutodetector::dedup_redundant_unique_add_constraints`.
+	/// Manually constructs a per-app operation list where an
+	/// `Operation::AddColumn { column.unique = true }` is followed by a
+	/// peer `Operation::AddConstraint` that ascribes a UNIQUE to the same
+	/// column. The dedup pass must drop the redundant `AddConstraint`,
+	/// regardless of how it got there. Second safety net for
+	/// reinhardt-web#4448.
+	#[rstest]
+	fn dedup_pass_drops_add_constraint_redundant_with_unique_add_column() {
+		// Arrange
+		let ops = vec![
+			super::super::Operation::AddColumn {
+				table: "users".to_string(),
+				column: super::super::ColumnDefinition {
+					name: "username".to_string(),
+					type_definition: super::super::FieldType::VarChar(150),
+					not_null: true,
+					unique: true,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+				mysql_options: None,
+			},
+			super::super::Operation::AddConstraint {
+				table: "users".to_string(),
+				constraint_sql: "CONSTRAINT users_user_username_uniq UNIQUE (username)".to_string(),
+			},
+		];
+		let mut by_app: std::collections::BTreeMap<String, Vec<super::super::Operation>> =
+			std::collections::BTreeMap::new();
+		by_app.insert("users".to_string(), ops);
+
+		// Act
+		MigrationAutodetector::dedup_redundant_unique_add_constraints(&mut by_app);
+
+		// Assert — only AddColumn survives; the AddConstraint is dropped.
+		let remaining = &by_app["users"];
+		assert_eq!(
+			remaining.len(),
+			1,
+			"expected one operation after dedup, got: {:?}",
+			remaining
+		);
+		assert!(
+			matches!(remaining[0], super::super::Operation::AddColumn { .. }),
+			"expected the surviving op to be AddColumn, got: {:?}",
+			remaining[0]
+		);
 	}
 }

@@ -1,8 +1,9 @@
 
 [package]
 name = "reinhardt-di"
-version = "0.1.0-rc.11"
+version = "0.2.0-rc.1"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
@@ -56,6 +57,7 @@ multi-value-arrays = []
 multipart = ["multer", "futures-util"]
 uuid = ["dep:uuid"]
 full = ["validation", "multi-value-arrays", "multipart", "uuid"]
+testing = []
 
 [dev-dependencies]
 insta = { workspace = true }
@@ -69,6 +71,7 @@ reinhardt-macros = { workspace = true }
 serde = { workspace = true }
 proptest = { workspace = true }
 rstest = { workspace = true }
+trybuild = { workspace = true }
 criterion = { workspace = true, features = ["async_tokio"] }
 [[bench]]
 name = "cache_performance"

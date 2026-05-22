@@ -10,20 +10,21 @@ WebSocket protocol support for real-time bidirectional communication. Includes c
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["websockets"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["websockets"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import WebSocket features:
 
 ```rust
 use reinhardt::websockets::{WebSocketConnection, WebSocketHandler, Message};
-use reinhardt::websockets::{RoomManager, WebSocketMessage};
+use reinhardt_websockets::message::WebSocketMessage;
 ```
 
 **Note:** WebSocket features are included in the `standard` and `full` feature presets.

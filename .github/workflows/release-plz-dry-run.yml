@@ -12,11 +12,20 @@ on:
         type: string
         default: "1"
 
+env:
+  # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
+  # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
+  # once all three upstreams ship node24 releases.
+  #
+  # Ideal implementation (without workaround):
+  #   (no env override; let runner default kick in)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   release-dry-run:
     name: Release Dry-Run Check
     runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
-    timeout-minutes: 30
+    timeout-minutes: 360
     steps:
       - name: Free Disk Space
         if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
@@ -44,24 +53,22 @@ jobs:
         uses: ./.github/actions/setup-rust
 
       - name: Setup protoc
-        uses: ./.github/actions/setup-protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install GitHub CLI (required by release-plz action)
         if: ${{ contains(inputs.runner || '', 'self-hosted') }}
         run: |
           if ! command -v gh &>/dev/null; then
-            # Wait for unattended-upgrades or other apt processes to finish
-            while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-              echo "Waiting for dpkg lock to be released..."
-              sleep 5
-            done
             curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
               | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
             sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
               | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt-get update -qq
-            sudo apt-get install -y gh
+            sudo -E apt-get -o DPkg::Lock::Timeout=120 update -qq
+            sudo -E apt-get -o DPkg::Lock::Timeout=120 install -y gh
           fi
 
       - name: Run release-plz release (dry-run)

@@ -33,11 +33,9 @@
 //!         username: [
 //!             |v| !v.trim().is_empty() => "Username cannot be empty",
 //!         ],
-//!     },
-//!
-//!     client_validators: {
 //!         password: [
-//!             "value.length >= 8" => "Password must be at least 8 characters",
+//!             #[client(on = input)]
+//!             |v| v.len() >= 8 => "Password must be at least 8 characters",
 //!         ],
 //!     },
 //! }
@@ -77,6 +75,11 @@ pub struct FormMacro {
 	/// Supports static paths (`"/profile"`) or dynamic paths with parameter expansion (`"/profile/{id}"`).
 	/// The redirect is triggered after `on_success` callback (if any) completes.
 	pub redirect_on_success: Option<LitStr>,
+	/// Redirect URL expression on successful form submission
+	///
+	/// Accepts an arbitrary Rust expression (e.g. a function call returning a `String`)
+	/// for dynamic redirect targets that cannot be expressed as a static `LitStr`.
+	pub success_url: Option<Expr>,
 	/// Initial value loader server_fn
 	///
 	/// When specified, the form will call this server_fn to load initial values
@@ -93,10 +96,18 @@ pub struct FormMacro {
 	pub slots: Option<FormSlots>,
 	/// Field definitions (can include field groups)
 	pub fields: Vec<FormFieldEntry>,
-	/// Server-side validators
+	/// Unified validators. Each rule carries an optional scope annotation
+	/// (`#[server]` / `#[client(on = ...)]`) that controls where it executes.
 	pub validators: Vec<FormValidator>,
-	/// Client-side validators (JavaScript expressions)
-	pub client_validators: Vec<ClientValidator>,
+	/// Arguments appended positionally to the server_fn call but never exposed
+	/// as user-facing form fields. Each entry maps a server_fn argument name to
+	/// the expression evaluated at submit time.
+	///
+	/// Order in the source matches the order in which arguments are appended
+	/// after the regular form-field arguments.
+	///
+	/// See `StripArgument` for details. Tracked under reinhardt-web#3971.
+	pub strip_arguments: Vec<StripArgument>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -126,6 +137,8 @@ pub enum FormFieldEntry {
 	Field(FormFieldDef),
 	/// A group of related fields
 	Group(FormFieldGroup),
+	/// A submit button (not a data field — generates no Signal)
+	SubmitButton(FormSubmitButtonDef),
 }
 
 impl FormFieldEntry {
@@ -139,11 +152,17 @@ impl FormFieldEntry {
 		matches!(self, FormFieldEntry::Field(_))
 	}
 
+	/// Returns true if this is a submit button.
+	pub fn is_submit_button(&self) -> bool {
+		matches!(self, FormFieldEntry::SubmitButton(_))
+	}
+
 	/// Returns the name of the entry (field name or group name).
 	pub fn name(&self) -> &Ident {
 		match self {
 			FormFieldEntry::Field(f) => &f.name,
 			FormFieldEntry::Group(g) => &g.name,
+			FormFieldEntry::SubmitButton(b) => &b.name,
 		}
 	}
 
@@ -152,6 +171,7 @@ impl FormFieldEntry {
 		match self {
 			FormFieldEntry::Field(f) => f.span,
 			FormFieldEntry::Group(g) => g.span,
+			FormFieldEntry::SubmitButton(b) => b.span,
 		}
 	}
 
@@ -159,15 +179,23 @@ impl FormFieldEntry {
 	pub fn as_field(&self) -> Option<&FormFieldDef> {
 		match self {
 			FormFieldEntry::Field(f) => Some(f),
-			FormFieldEntry::Group(_) => None,
+			_ => None,
 		}
 	}
 
 	/// Returns a reference to the inner group if this is a Group variant.
 	pub fn as_group(&self) -> Option<&FormFieldGroup> {
 		match self {
-			FormFieldEntry::Field(_) => None,
 			FormFieldEntry::Group(g) => Some(g),
+			_ => None,
+		}
+	}
+
+	/// Returns a reference to the inner submit button if this is a SubmitButton variant.
+	pub fn as_submit_button(&self) -> Option<&FormSubmitButtonDef> {
+		match self {
+			FormFieldEntry::SubmitButton(b) => Some(b),
+			_ => None,
 		}
 	}
 }
@@ -191,6 +219,25 @@ pub struct FormFieldDef {
 	/// Field type identifier (e.g., CharField, EmailField)
 	pub field_type: Ident,
 	/// Field properties (validation and styling)
+	pub properties: Vec<FormFieldProperty>,
+	/// Span for error reporting
+	pub span: Span,
+}
+
+/// A submit button definition in the form macro.
+///
+/// Example:
+/// ```text
+/// submit: SubmitButton {
+///     label: "Sign in",
+///     class: "btn-primary",
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct FormSubmitButtonDef {
+	/// Button name identifier
+	pub name: Ident,
+	/// Button properties (label, class, id, disabled)
 	pub properties: Vec<FormFieldProperty>,
 	/// Span for error reporting
 	pub span: Span,
@@ -592,7 +639,64 @@ impl FormFieldProperty {
 	}
 }
 
-/// Server-side validator definition.
+/// Client-side validation trigger event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClientTrigger {
+	/// Fire on form submit (default for `Both` scope).
+	Submit,
+	/// Fire on input event (real-time as user types).
+	Input,
+	/// Fire on blur event (when field loses focus).
+	Blur,
+}
+
+/// Validator execution scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidatorScope {
+	/// Runs on both server (`.validate()`) and client (submit). Default.
+	Both,
+	/// Server-side only (`.validate()`).
+	Server,
+	/// Client-side only, with specified trigger.
+	Client {
+		/// Client-side trigger event.
+		trigger: ClientTrigger,
+	},
+	/// Both server and client, with specified client trigger.
+	ServerAndClient {
+		/// Client-side trigger event.
+		trigger: ClientTrigger,
+	},
+}
+
+impl ValidatorScope {
+	/// Returns `true` if this scope includes server-side execution.
+	pub fn includes_server(&self) -> bool {
+		matches!(
+			self,
+			Self::Both | Self::Server | Self::ServerAndClient { .. }
+		)
+	}
+
+	/// Returns `true` if this scope includes client-side execution.
+	pub fn includes_client(&self) -> bool {
+		matches!(
+			self,
+			Self::Both | Self::Client { .. } | Self::ServerAndClient { .. }
+		)
+	}
+
+	/// Returns the client trigger, if any.
+	pub fn client_trigger(&self) -> Option<&ClientTrigger> {
+		match self {
+			Self::Both => Some(&ClientTrigger::Submit),
+			Self::Client { trigger } | Self::ServerAndClient { trigger } => Some(trigger),
+			Self::Server => None,
+		}
+	}
+}
+
+/// Validator definition (unified server+client with scope annotations).
 #[derive(Debug, Clone)]
 pub enum FormValidator {
 	/// Field-level validator: `username: [|v| ... => "error"]`
@@ -613,9 +717,11 @@ pub enum FormValidator {
 	},
 }
 
-/// A single validation rule with closure and error message.
+/// A single validation rule with closure, error message, and execution scope.
 #[derive(Debug, Clone)]
 pub struct ValidatorRule {
+	/// Execution scope (default: `Both`). See `ValidatorScope`.
+	pub scope: ValidatorScope,
 	/// Validation closure expression
 	pub expr: ExprClosure,
 	/// Error message when validation fails
@@ -624,25 +730,50 @@ pub struct ValidatorRule {
 	pub span: Span,
 }
 
-/// Client-side validator definition (JavaScript expressions).
+/// Argument stripped from the surface form fields and instead passed directly
+/// to the underlying server_fn at submit time.
+///
+/// Useful for values like CSRF tokens or other ambient context that should not
+/// be exposed as user-editable form fields, but must appear in the server_fn
+/// signature.
+///
+/// ## Behavior
+///
+/// - The expression is evaluated **on the client side at submit time** and
+///   appended positionally to the server_fn call after all regular form-field
+///   arguments.
+/// - The argument **does not** appear in the form struct, the rendered HTML,
+///   or the validation pipeline.
+/// - The corresponding server_fn argument **must** exist in the server_fn
+///   signature; otherwise the build fails with a standard arity mismatch.
+///
+/// ## Relationship to CSRF auto-injection
+///
+/// Prior to reinhardt-web#3971 the `form!` macro silently appended a
+/// `__csrf_token: String` argument to every `method != Get` server_fn call.
+/// `strip_arguments` makes that injection explicit and generalizes it to any
+/// argument the user wants to supply outside the form's field surface.
+///
+/// ## Example DSL
+///
+/// ```ignore
+/// form! {
+///     server_fn: submit_vote,
+///     method: Post,
+///     strip_arguments: {
+///         csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+///             .unwrap_or_default(),
+///     },
+///     fields: { ... }
+/// }
+/// ```
 #[derive(Debug, Clone)]
-pub struct ClientValidator {
-	/// Field name to validate
-	pub field_name: Ident,
-	/// Validation rules
-	pub rules: Vec<ClientValidatorRule>,
-	/// Span for error reporting
-	pub span: Span,
-}
-
-/// A single client-side validation rule.
-#[derive(Debug, Clone)]
-pub struct ClientValidatorRule {
-	/// JavaScript expression for validation
-	pub js_expr: LitStr,
-	/// Error message when validation fails
-	pub message: LitStr,
-	/// Span for error reporting
+pub struct StripArgument {
+	/// Argument name as it appears in the server_fn signature.
+	pub name: Ident,
+	/// Expression evaluated at submit time to supply the argument's value.
+	pub value: Expr,
+	/// Span for error reporting.
 	pub span: Span,
 }
 
@@ -686,6 +817,23 @@ pub struct FormCallbacks {
 	/// Receives the server_fn return value.
 	/// Signature: `|result: T| { ... }`
 	pub on_success: Option<ExprClosure>,
+	/// Lifted variant of `on_success` that captures outer-scope locals.
+	///
+	/// Unlike `on_success` (which is expanded inside the generated `fn submit()`
+	/// body and therefore cannot see enclosing-scope locals like `user_id`),
+	/// `on_success_ref` is expanded at the outer construction block. This lets
+	/// the user closure capture locals from the surrounding function scope.
+	///
+	/// The closure receives the server_fn return value by reference (`&T`)
+	/// instead of by move (`T`); for callbacks that must *consume* the value
+	/// (e.g., `set_current_user(Some(value))`), keep using `on_success`.
+	///
+	/// Both may be supplied together. Execution order: `on_success_ref` runs
+	/// first (receives `&value`), then `on_success` runs (receives `value` by
+	/// move).
+	///
+	/// Signature: `|form: &Self, result: &T| { ... }`
+	pub on_success_ref: Option<ExprClosure>,
 	/// Callback called when submission fails.
 	/// Signature: `|error: ServerFnError| { ... }`
 	pub on_error: Option<ExprClosure>,
@@ -706,6 +854,7 @@ impl FormCallbacks {
 	pub fn has_any(&self) -> bool {
 		self.on_submit.is_some()
 			|| self.on_success.is_some()
+			|| self.on_success_ref.is_some()
 			|| self.on_error.is_some()
 			|| self.on_loading.is_some()
 	}
@@ -972,12 +1121,13 @@ impl FormMacro {
 			watch: None,
 			derived: None,
 			redirect_on_success: None,
+			success_url: None,
 			initial_loader: None,
 			choices_loader: None,
 			slots: None,
 			fields: Vec::new(),
 			validators: Vec::new(),
-			client_validators: Vec::new(),
+			strip_arguments: Vec::new(),
 			span,
 		}
 	}

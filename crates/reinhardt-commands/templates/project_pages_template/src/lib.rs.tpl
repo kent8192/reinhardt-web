@@ -1,18 +1,38 @@
 //! {{ project_name }} library
 //!
-//! This is the main library crate for {{ project_name }}.
+//! Top-level crate for {{ project_name }}. The module layout follows the
+//! Reinhardt basics tutorial:
+//! - `apps`         — application code (each app has server-side routes and client-side pages)
+//! - `client`       — WASM-only frontend (mounted by `bin/manage.rs`)
+//! - `config`       — project configuration (settings, urls, apps, wasm)
+//! - `shared`       — types shared between WASM and server
 
-// Server-side modules
+// Server-only re-exports for macro-generated code.
+//
+// Server-side macros (`#[routes]`, `#[server_fn]`, etc.) reference framework
+// crates by their internal paths (`reinhardt_apps`, `reinhardt_core`, ...).
+// Re-export them under `crate::*` so the generated code resolves regardless
+// of feature combination.
 #[cfg(server)]
+mod server_only {
+	pub use reinhardt::core::async_trait;
+	pub use reinhardt::reinhardt_apps;
+	pub use reinhardt::reinhardt_core;
+	pub use reinhardt::reinhardt_di::params;
+	pub use reinhardt::reinhardt_http;
+}
+#[cfg(server)]
+pub use server_only::*;
+
+// Application modules
 pub mod apps;
-#[cfg(server)]
 pub mod config;
 
-// Client-side modules
+// Client-only modules (WASM)
 #[cfg(client)]
 pub mod client;
 
-// Shared types (both WASM and server)
+// Modules shared between WASM and server
 pub mod shared;
 
 // Re-export commonly used items

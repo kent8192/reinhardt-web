@@ -206,41 +206,16 @@ impl VersioningConfig {
 	}
 }
 
-impl VersioningConfig {
-	/// Create a new versioning configuration from environment variables
-	pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
-		// Try to load from environment variables
-		let default_version = std::env::var("REINHARDT_VERSIONING_DEFAULT_VERSION")
-			.unwrap_or_else(|_| "1.0".to_string());
-
-		let allowed_versions = std::env::var("REINHARDT_VERSIONING_ALLOWED_VERSIONS")
-			.map(|v| v.split(',').map(|s| s.trim().to_string()).collect())
-			.unwrap_or_default();
-
-		let strategy = std::env::var("REINHARDT_VERSIONING_STRATEGY")
-			.unwrap_or_else(|_| "accept_header".to_string());
-
-		let strategy = match strategy.to_lowercase().as_str() {
-			"accept_header" => VersioningStrategy::AcceptHeader,
-			"url_path" => VersioningStrategy::URLPath { pattern: None },
-			"query_parameter" => VersioningStrategy::QueryParameter { param_name: None },
-			"hostname" => VersioningStrategy::HostName { patterns: None },
-			"namespace" => VersioningStrategy::Namespace { pattern: None },
-			_ => VersioningStrategy::AcceptHeader,
-		};
-
-		let strict_mode = std::env::var("REINHARDT_VERSIONING_STRICT_MODE")
-			.map(|v| v.to_lowercase() == "true")
-			.unwrap_or(true);
-
-		Ok(VersioningConfig {
-			default_version,
-			allowed_versions,
-			strategy,
-			strict_mode,
-			version_param: None,
-			hostname_patterns: None,
-		})
+impl From<super::settings::VersioningSettings> for VersioningConfig {
+	fn from(settings: super::settings::VersioningSettings) -> Self {
+		Self {
+			default_version: settings.default_version,
+			allowed_versions: settings.allowed_versions,
+			strategy: settings.strategy,
+			strict_mode: settings.strict_mode,
+			version_param: settings.version_param,
+			hostname_patterns: settings.hostname_patterns,
+		}
 	}
 }
 
@@ -295,24 +270,8 @@ impl Default for VersioningManager {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use serial_test::serial;
+	use crate::versioning::settings::VersioningSettings;
 	use std::collections::HashMap;
-	use std::env;
-
-	/// Clear all versioning-related environment variables
-	///
-	/// # Safety
-	/// This function modifies environment variables. It should only be called
-	/// in single-threaded test contexts with `#[serial]` attribute.
-	unsafe fn clear_versioning_env_vars() {
-		// SAFETY: This is inside an unsafe fn and the caller ensures serial execution
-		unsafe {
-			env::remove_var("REINHARDT_VERSIONING_DEFAULT_VERSION");
-			env::remove_var("REINHARDT_VERSIONING_ALLOWED_VERSIONS");
-			env::remove_var("REINHARDT_VERSIONING_STRATEGY");
-			env::remove_var("REINHARDT_VERSIONING_STRICT_MODE");
-		}
-	}
 
 	#[test]
 	fn test_versioning_config_default() {
@@ -390,195 +349,178 @@ mod tests {
 		);
 	}
 
+	// --------------------------------------------------------------------
+	// Settings-based construction tests (replaces the prior `from_env`
+	// tests, which exercised env-var parsing that no longer exists).
+	// --------------------------------------------------------------------
+
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_default_values() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-		}
+	fn test_from_settings_default_values() {
+		// Arrange
+		let settings = VersioningSettings::default();
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
 
+		// Assert
 		assert_eq!(config.default_version, "1.0");
 		assert!(config.allowed_versions.is_empty());
 		assert!(matches!(config.strategy, VersioningStrategy::AcceptHeader));
 		assert!(config.strict_mode);
+		assert!(config.version_param.is_none());
+		assert!(config.hostname_patterns.is_none());
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_custom_default_version() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_DEFAULT_VERSION", "2.0");
-		}
+	fn test_from_settings_custom_default_version() {
+		// Arrange
+		let settings = VersioningSettings {
+			default_version: "2.0".to_string(),
+			..VersioningSettings::default()
+		};
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
 		assert_eq!(config.default_version, "2.0");
-
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_allowed_versions_parsing() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_ALLOWED_VERSIONS", "1.0, 2.0, 3.0");
-		}
+	fn test_from_settings_allowed_versions() {
+		// Arrange
+		let settings = VersioningSettings {
+			allowed_versions: vec!["1.0".to_string(), "2.0".to_string(), "3.0".to_string()],
+			..VersioningSettings::default()
+		};
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
 		assert_eq!(config.allowed_versions.len(), 3);
 		assert!(config.allowed_versions.contains(&"1.0".to_string()));
 		assert!(config.allowed_versions.contains(&"2.0".to_string()));
 		assert!(config.allowed_versions.contains(&"3.0".to_string()));
-
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_strategy_url_path() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_STRATEGY", "url_path");
-		}
+	fn test_from_settings_strategy_url_path() {
+		// Arrange
+		let settings = VersioningSettings {
+			strategy: VersioningStrategy::URLPath { pattern: None },
+			..VersioningSettings::default()
+		};
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
 		assert!(matches!(
 			config.strategy,
 			VersioningStrategy::URLPath { .. }
 		));
-
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_strategy_query_parameter() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_STRATEGY", "query_parameter");
-		}
+	fn test_from_settings_strategy_query_parameter() {
+		// Arrange
+		let settings = VersioningSettings {
+			strategy: VersioningStrategy::QueryParameter { param_name: None },
+			..VersioningSettings::default()
+		};
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
 		assert!(matches!(
 			config.strategy,
 			VersioningStrategy::QueryParameter { .. }
 		));
-
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_strategy_hostname() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_STRATEGY", "hostname");
-		}
+	fn test_from_settings_strategy_hostname() {
+		// Arrange
+		let settings = VersioningSettings {
+			strategy: VersioningStrategy::HostName { patterns: None },
+			..VersioningSettings::default()
+		};
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
 		assert!(matches!(
 			config.strategy,
 			VersioningStrategy::HostName { .. }
 		));
-
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_strategy_namespace() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_STRATEGY", "namespace");
-		}
+	fn test_from_settings_strategy_namespace() {
+		// Arrange
+		let settings = VersioningSettings {
+			strategy: VersioningStrategy::Namespace { pattern: None },
+			..VersioningSettings::default()
+		};
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
 		assert!(matches!(
 			config.strategy,
 			VersioningStrategy::Namespace { .. }
 		));
-
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_strict_mode_false() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_STRICT_MODE", "false");
-		}
+	fn test_from_settings_strict_mode_false() {
+		// Arrange
+		let settings = VersioningSettings {
+			strict_mode: false,
+			..VersioningSettings::default()
+		};
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
 		assert!(!config.strict_mode);
-
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_strict_mode_true_explicit() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_STRICT_MODE", "true");
-		}
+	fn test_from_settings_strict_mode_true_explicit() {
+		// Arrange
+		let settings = VersioningSettings {
+			strict_mode: true,
+			..VersioningSettings::default()
+		};
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
 		assert!(config.strict_mode);
-
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_combined_settings() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_DEFAULT_VERSION", "3.0");
-			env::set_var("REINHARDT_VERSIONING_ALLOWED_VERSIONS", "2.0,3.0,4.0");
-			env::set_var("REINHARDT_VERSIONING_STRATEGY", "url_path");
-			env::set_var("REINHARDT_VERSIONING_STRICT_MODE", "false");
-		}
+	fn test_from_settings_combined() {
+		// Arrange
+		let settings = VersioningSettings {
+			default_version: "3.0".to_string(),
+			allowed_versions: vec!["2.0".to_string(), "3.0".to_string(), "4.0".to_string()],
+			strategy: VersioningStrategy::URLPath { pattern: None },
+			strict_mode: false,
+			..VersioningSettings::default()
+		};
 
-		let config = VersioningConfig::from_env().unwrap();
+		// Act
+		let config = VersioningConfig::from(settings);
 
+		// Assert
 		assert_eq!(config.default_version, "3.0");
 		assert_eq!(config.allowed_versions.len(), 3);
 		assert!(matches!(
@@ -586,28 +528,26 @@ mod tests {
 			VersioningStrategy::URLPath { .. }
 		));
 		assert!(!config.strict_mode);
-
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
 	}
 
 	#[test]
-	#[serial(versioning_env)]
-	fn test_from_env_unknown_strategy_defaults_to_accept_header() {
-		// SAFETY: This test runs serially with #[serial] attribute
-		unsafe {
-			clear_versioning_env_vars();
-			env::set_var("REINHARDT_VERSIONING_STRATEGY", "unknown_strategy");
-		}
+	fn test_from_settings_preserves_optional_fields() {
+		// Arrange — exercise the path that previously was not covered by
+		// the env-based tests (which always left these as None).
+		let mut hostname_patterns = HashMap::new();
+		hostname_patterns.insert("v1".to_string(), "v1.example.com".to_string());
 
-		let config = VersioningConfig::from_env().unwrap();
-		assert!(matches!(config.strategy, VersioningStrategy::AcceptHeader));
+		let settings = VersioningSettings {
+			version_param: Some("v".to_string()),
+			hostname_patterns: Some(hostname_patterns.clone()),
+			..VersioningSettings::default()
+		};
 
-		// SAFETY: Cleanup after test
-		unsafe {
-			clear_versioning_env_vars();
-		}
+		// Act
+		let config = VersioningConfig::from(settings);
+
+		// Assert
+		assert_eq!(config.version_param.as_deref(), Some("v"));
+		assert_eq!(config.hostname_patterns.as_ref().map(|p| p.len()), Some(1));
 	}
 }

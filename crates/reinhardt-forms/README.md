@@ -12,16 +12,16 @@ This crate is designed to be **WASM-compatible**, providing a pure form processi
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["forms"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["forms"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 
-# Enable the form! macro:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["forms", "form-macros"] }
+# Forms is included in the standard preset
 ```
 
 Then import form features:
@@ -234,10 +234,12 @@ let mut form = form! {
             |v: &serde_json::Value| v.as_str().map_or(false, |s| s.len() >= 3)
                 => "Username must be at least 3 characters",
         ],
-    },
-    client_validators: {
         password: [
-            "value.length >= 8" => "Password must be at least 8 characters",
+            // Unscoped rule: executed by server-side `form.is_valid()`.
+            // Add `#[client(on = input)]` on a separate rule to also run
+            // the check in the browser (see reinhardt-pages docs).
+            |v: &serde_json::Value| v.as_str().map_or(false, |s| s.len() >= 8)
+                => "Password must be at least 8 characters",
         ],
     },
 };

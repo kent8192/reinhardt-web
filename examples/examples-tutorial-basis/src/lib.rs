@@ -10,7 +10,7 @@
 //! - Admin panel customization
 
 // Server-only re-exports for macro-generated code
-#[cfg(server)]
+#[cfg(native)]
 mod server_only {
 	pub use reinhardt::core::async_trait;
 	pub use reinhardt::reinhardt_apps;
@@ -18,24 +18,27 @@ mod server_only {
 	pub use reinhardt::reinhardt_di::params;
 	pub use reinhardt::reinhardt_http;
 }
-#[cfg(server)]
+#[cfg(native)]
 pub use server_only::*;
 
-// Applications (server-only, polls uses ServerRouter)
-#[cfg(server)]
+// Applications (declared on both targets; submodules cfg-gate themselves)
 pub mod apps;
 
 // Configuration (urls unconditional, rest server-only)
 pub mod config;
 
 // Client-only modules (WASM)
-#[cfg(client)]
+#[cfg(wasm)]
 pub mod client;
 
 // Shared modules (both WASM and server)
-pub mod server_fn;
+//
+// Server functions are now scoped under each app — they live alongside
+// the app's models / views / urls in `apps::<app>::server_fn`, which
+// keeps related code together and removes the top-level `server_fn`
+// module that previously had to mirror the app list.
 pub mod shared;
 
 // Re-exports
-#[cfg(server)]
+#[cfg(native)]
 pub use config::settings::get_settings;

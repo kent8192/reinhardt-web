@@ -7,152 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-rc.8...reinhardt-dentdelion@v0.1.0-rc.9) - 2026-03-15
-
-### Styling
-
-- add explanatory comments to remaining #[allow(dead_code)] attributes
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-rc.4...reinhardt-dentdelion@v0.1.0-rc.5) - 2026-03-07
-
-### Maintenance
-
-- *(deps)* downgrade wasmtime to 36.0.6 to fix security advisories
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-rc.1...reinhardt-dentdelion@v0.1.0-rc.2) - 2026-03-04
-
-### Maintenance
-
-- *(testing)* add insta snapshot testing dependency across all crates
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.14...reinhardt-dentdelion@v0.1.0-rc.1) - 2026-02-24
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.13...reinhardt-dentdelion@v0.1.0-alpha.14) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.12...reinhardt-dentdelion@v0.1.0-alpha.13) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.11...reinhardt-dentdelion@v0.1.0-alpha.12) - 2026-02-21
-
-### Fixed
-
-- acquire multiple locks simultaneously to prevent TOCTOU
-- prevent silent failures in WASM config and plugin metadata
-- replace hardcoded placeholder email in crates.io User-Agent
-- replace panicking unwrap/expect calls with safe alternatives
-- remove unsafe Send/Sync impl from TsRuntime
-- correct HostState clone and topological sort in dentdelion (#682, #683)
-- escape script tags in hydration to prevent XSS
-- add SQL validation for WASM plugin queries
-- add security controls to render_component
-- add SSRF prevention with URL validation in WASM host
-
-### Security
-
-- validate plugin names to prevent path traversal and log injection
-- add resource limits for JS execution, event subscriptions, and plugin disable
-
-### Changed
-
-- share reqwest::Client across HostState instances
-- add #[non_exhaustive] to ColumnType and TsError enums
-
-### Styling
-
-- apply formatting to files introduced by merge from main
-- apply rustfmt to crates_io module
-- fix remaining clippy warnings across workspace
-- apply rustfmt formatting to wasm module files
-- apply code formatting to security fix files
-
-### Documentation
-
-- document validate_component_path security rationale
-- document is_valid_wasm magic byte validation scope
-
-### Maintenance
-
-- upgrade remaining crates from edition 2021 to 2024
-
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.10...reinhardt-dentdelion@v0.1.0-alpha.11) - 2026-02-16
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.9...reinhardt-dentdelion@v0.1.0-alpha.10) - 2026-02-15
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.8...reinhardt-dentdelion@v0.1.0-alpha.9) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.7...reinhardt-dentdelion@v0.1.0-alpha.8) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.6...reinhardt-dentdelion@v0.1.0-alpha.7) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.5...reinhardt-dentdelion@v0.1.0-alpha.6) - 2026-02-12
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.4...reinhardt-dentdelion@v0.1.0-alpha.5) - 2026-02-10
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.3...reinhardt-dentdelion@v0.1.0-alpha.4) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.2...reinhardt-dentdelion@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-db
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.1...reinhardt-dentdelion@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial release of the plugin system for Reinhardt framework
-- Plugin trait for defining reusable framework extensions
-- Plugin manifest and metadata support
-- Plugin loading and initialization infrastructure
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-rc.30...reinhardt-dentdelion@v0.1.0) - 2026-05-22
+
+Initial stable release of `reinhardt-dentdelion` (Delion) as part of
+the reinhardt-web 0.1.0 release. Provides the plugin system that
+loads, sandboxes, and runs framework extensions — including a WASM
+component runtime built on `wasmtime`.
+
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **`Plugin` trait + manifest** — A first-class plugin contract with
+  TOML manifest metadata, deterministic loading, and topologically
+  sorted initialization, so plugins can declare dependencies on one
+  another without ordering bugs.
+- **WASM Component Model sandbox** — Behind the `wasm` feature, plugins
+  run inside a `wasmtime` Component Model sandbox with a 128 MiB
+  default memory limit, 30 s execution timeout, and per-plugin
+  configuration. The models capability is intentionally excluded from
+  WASM (compile-time integration only).
+- **Defense-in-depth security controls** — Plugin names are validated
+  against path-traversal and log-injection vectors, SSRF guards filter
+  outbound URLs from WASM hosts, SQL queries from WASM plugins go
+  through a `sqlparser` allowlist, and script-tag escaping in
+  hydration blocks XSS in rendered output.
+- **Optional JavaScript SSR** — The `ts` feature enables a pure-Rust
+  `boa_engine` JavaScript runtime for React/Preact SSR, with
+  `scraper`-based CSS/meta extraction for the rendered output.
+- **`crates_io` integration** — The `cli` feature surfaces helpers for
+  publishing and pulling Delion plugins from crates.io, with a proper
+  User-Agent and `reqwest::Client` shared across `HostState`
+  instances.
+
+### Notable Breaking Changes
+
+- **`ColumnType` and `TsError` are `#[non_exhaustive]`** — Match arms
+  on these enums must include a wildcard fallback.
+
+Workspace-level breaking changes are tracked at the
+[Breaking Changes Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/breaking-changes)
+and summarized in the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+
+### Migration Notes
+
+See the workspace-level [Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the full upgrade flow. Crate-specific notes:
+
+- Add a `_ => …` fallback to existing `match` expressions on
+  `ColumnType` and `TsError`.
+- `wasmtime` is pinned at `36.0.6` for the lifetime of 0.1.x to clear
+  the security advisories that motivated the downgrade; align your
+  workspace overrides accordingly.
+- The `unsafe impl Send/Sync for TsRuntime` was removed; if you held a
+  `TsRuntime` across `.await` points, restructure to keep it
+  task-local.

@@ -41,13 +41,23 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub mod proxy;
 pub mod routers;
 
-#[cfg(all(feature = "routers-macros", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "routers-macros", native))]
 #[cfg_attr(docsrs, doc(cfg(feature = "routers-macros")))]
 pub use reinhardt_routers_macros as routers_macros;
+
+// Re-export the `inventory` crate on the WASM target so the facade can
+// expose `reinhardt::inventory` to the `#[routes]` macro's WASM emission
+// (parallel to the native `reinhardt::inventory` re-export). The macro
+// submits a `ClientRouterRegistration` via `inventory::submit!`, and the
+// macro-emitted path is resolved in the consumer crate's namespace, which
+// only sees the facade re-export. Refs #4453.
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[doc(hidden)]
+pub use inventory;
 
 // Re-export commonly used types from routers (server-only)
 /// Commonly used types re-exported for convenience.
@@ -72,7 +82,7 @@ pub use reinhardt_routers_macros as routers_macros;
 ///   [dependencies]
 ///   reinhardt-urls = { version = "...", features = ["full"] }
 ///   ```
-#[cfg(all(feature = "routers", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "routers", native))]
 #[cfg_attr(docsrs, doc(cfg(feature = "routers")))]
 pub mod prelude {
 	pub use crate::routers::{

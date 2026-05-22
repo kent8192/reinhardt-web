@@ -1,12 +1,13 @@
 [package]
 name = "reinhardt-middleware"
-version = "0.1.0-rc.11"
+version = "0.2.0-rc.1"
 description = "Middleware system for request/response processing pipeline"
 keywords = ["middleware", "web", "cors", "security", "http"]
 categories = ["web-programming", "web-programming::http-server"]
 readme = "README.md"
 documentation = "https://docs.rs/reinhardt-middleware"
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -20,12 +21,22 @@ compression = []
 security = []
 rate-limit = []
 sessions = []
+auth-jwt = ["reinhardt-auth/jwt"]
 
 # Database support for certain middleware
 sqlx = ["dep:sqlx"]
 
+# Redis-backed session storage
+session-redis = ["sessions", "dep:redis"]
+
 # Aggregate all middleware features
-full = ["cors", "compression", "security", "rate-limit", "sessions", "sqlx"]
+full = ["cors", "compression", "security", "rate-limit", "sessions", "auth-jwt", "sqlx", "session-redis"]
+
+# Test-only fixtures shared between the in-crate unit tests and external
+# integration tests (Issue #4462). Enabled implicitly when `cargo make test`
+# runs the workspace with `--all-features`; integration tests that depend on
+# these fixtures declare it via `[[test]] required-features` below.
+test-support = []
 
 [dependencies]
 reinhardt-core = { workspace = true, features = [
@@ -51,6 +62,7 @@ rand = { workspace = true }
 httpdate = "1.0"
 bytes = { workspace = true }
 sqlx = { workspace = true, optional = true }
+redis = { version = "0.27", features = ["aio", "tokio-comp", "connection-manager"], optional = true }
 regex = "1.10"
 ipnet = "2.10"
 log = "0.4"
@@ -58,12 +70,16 @@ thiserror = { workspace = true }
 url = "2.5"
 uuid = { workspace = true }
 tokio = { workspace = true }
-colored = "3.0"
+colored = { workspace = true }
 base64 = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
+# Workaround for KI-2 (rust-lang/cargo#4242, rust-lang/cargo#15151):
+# Path-only dev-dep (no version) is stripped from published manifest by cargo,
+# avoiding dev-dependency version resolution failure during `cargo publish`.
+# When upstream cargo resolves these issues, replace with `workspace = true`.
 reinhardt-test = { path = "../reinhardt-test" }
 tokio-test = "0.4"
 tokio = { workspace = true }
@@ -72,3 +88,12 @@ rstest = { workspace = true }
 proptest = { workspace = true }
 trybuild = "1.0"
 http = { workspace = true }
+
+# Integration tests for the typed session-value `FromRequest` path import
+# the shared `TenantIdKey` fixture from `session::test_support`, so this
+# binary is only built when the `test-support` feature is enabled (which
+# `cargo make test`'s `--all-features` already does in CI).
+[[test]]
+name = "session_value_from_request"
+path = "tests/session_value_from_request.rs"
+required-features = ["sessions", "test-support"]

@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-payment-mocks"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 authors = ["Reinhardt Contributors"]
 edition = "2024"
 description = "Mock implementations for reinhardt-payment testing"

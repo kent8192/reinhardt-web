@@ -8,7 +8,7 @@
 //!
 //! - **Static Plugins**: Rust crates compiled with your application
 //! - **WASM Plugins**: Dynamic plugins loaded at runtime (with `wasm` feature)
-//! - **TypeScript Plugins**: TypeScript/JavaScript plugins via deno_core (with `ts` feature)
+//! - **TypeScript Plugins**: TypeScript/JavaScript plugins via boa_engine (pure-Rust ECMAScript engine) (with `ts` feature)
 //! - **Capability System**: Fine-grained control over what plugins can do
 //! - **CLI Management**: Install and manage plugins via `reinhardt plugin` commands
 //! - **Multi-Runtime**: Unified interface for Static, WASM, and TypeScript runtimes
@@ -24,7 +24,7 @@
 //!
 //! ## Creating a Plugin
 //!
-//! ```ignore
+//! ```rust
 //! use reinhardt_dentdelion::prelude::*;
 //! use std::sync::Arc;
 //!
@@ -60,9 +60,23 @@
 //!
 //! ## Using the Registry
 //!
-//! ```ignore
+//! ```rust
 //! use reinhardt_dentdelion::prelude::*;
+//! use std::sync::Arc;
 //!
+//! # struct MyPlugin { metadata: PluginMetadata }
+//! # impl MyPlugin {
+//! #     fn new() -> Self {
+//! #         Self {
+//! #             metadata: PluginMetadata::builder("my-delion", "1.0.0")
+//! #                 .build().unwrap(),
+//! #         }
+//! #     }
+//! # }
+//! # impl Plugin for MyPlugin {
+//! #     fn metadata(&self) -> &PluginMetadata { &self.metadata }
+//! #     fn capabilities(&self) -> &[Capability] { &[] }
+//! # }
 //! let registry = PluginRegistry::new();
 //!
 //! // Register plugins
@@ -95,10 +109,10 @@
 //! # Feature Flags
 //!
 //! - `default` - Core plugin system only
-//! - `wasm` - WASM plugin support with Component Model (requires wasmtime 39.x)
-//! - `ts` - TypeScript plugin support via deno_core (V8 engine)
+//! - `wasm` - WASM plugin support with Component Model (requires wasmtime 36.x)
+//! - `ts` - TypeScript/JavaScript SSR support via boa_engine (pure-Rust ECMAScript engine)
 //! - `cli` - CLI support for crates.io integration
-//! - `full` - All features enabled (wasm + ts + cli)
+//! - `full` - All features enabled (wasm + cli); note: `ts` is NOT included in `full`
 //!
 //! # WASM Plugin Support
 //!

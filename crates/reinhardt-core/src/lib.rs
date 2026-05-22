@@ -61,45 +61,68 @@
 //! | `signals` | enabled | Async signal/slot system |
 //! | `macros` | enabled | Procedural macros re-export |
 //! | `security` | enabled | Password hashing and security utilities |
+//! | `validators` | enabled | Comprehensive input validation |
 //! | `serializers` | enabled | Data serialization framework |
-//! | `parsers` | enabled | Request body parsers |
-//! | `pagination` | enabled | Pagination strategies |
+//! | `parsers` | disabled | Request body parsers |
+//! | `pagination` | disabled | Pagination strategies |
+//! | `negotiation` | disabled | HTTP content negotiation |
 //! | `messages` | disabled | Flash message storage |
 //! | `page` | disabled | Server-side page rendering types |
+//! | `reactive` | disabled | Reactive state management |
+//! | `serde` | disabled | Serde serialization support |
+//! | `json` | disabled | JSON serialization support |
+//! | `xml` | disabled | XML serialization support |
+//! | `yaml` | disabled | YAML serialization support |
+//! | `parallel` | disabled | Parallel processing with Rayon |
+//! | `i18n` | disabled | Internationalization with Fluent |
 
 pub mod apply_update;
 pub use apply_update::ApplyUpdate;
 /// HTTP endpoint routing and handler registration.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub mod endpoint;
 /// Error types and exception handling.
+#[cfg(feature = "exception")]
 pub mod exception;
 /// Flash message storage framework.
+#[cfg(feature = "messages")]
 pub mod messages;
 /// Content negotiation for request/response formats.
+#[cfg(feature = "negotiation")]
 pub mod negotiation;
 /// Pagination strategies (page-based, cursor, limit-offset).
+#[cfg(feature = "pagination")]
 pub mod pagination;
 /// Request body parsers (JSON, form, multipart, etc.).
+#[cfg(feature = "parsers")]
 pub mod parsers;
 /// Rate limiting strategies.
 pub mod rate_limit;
 /// Reactive state management primitives.
+#[cfg(feature = "reactive")]
 pub mod reactive;
 /// Security utilities (password hashing, CSRF, etc.).
+#[cfg(feature = "security")]
 pub mod security;
 /// Data serialization framework.
+#[cfg(feature = "serializers")]
 pub mod serializers;
 /// Signal/event dispatch system.
+#[cfg(feature = "signals")]
 pub mod signals;
 /// Core type definitions.
+#[cfg(feature = "types")]
 pub mod types;
 /// Field and data validators.
+#[cfg(feature = "validators")]
 pub mod validators;
+/// WebSocket routing primitives shared across reinhardt crates.
+#[cfg(native)]
+pub mod ws;
 
 // Re-export Page types when page feature is enabled
 // This provides Page, PageElement, IntoPage, Head, EventType, etc.
-#[cfg(feature = "page")]
+#[cfg(all(feature = "types", feature = "page"))]
 pub use crate::types::page;
 
 #[cfg(feature = "macros")]
@@ -112,7 +135,7 @@ pub use crate::rate_limit::RateLimitStrategy;
 pub use async_trait::async_trait;
 
 // Re-export tokio only on non-WASM targets
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub use tokio;
 
 /// Re-export of serde serialization types and serde_json.

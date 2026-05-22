@@ -11,6 +11,10 @@ on:
         description: "Parallel cargo build jobs"
         type: string
         default: "1"
+      has-breaking-change-label:
+        description: "Whether the PR has the breaking-change label (SP-3 approved breaking change)"
+        type: string
+        default: 'false'
   workflow_dispatch:
 
 env:
@@ -18,12 +22,213 @@ env:
   CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
 
 jobs:
-  semver-checks:
-    name: SemVer Compatibility Check
+  # Discover publishable workspace crates and resolve the release context
+  # (pre-release phase, baseline-rev, release-type) once, then fan out to a
+  # per-crate matrix below. Centralising the context resolution prevents the
+  # per-crate shards from each re-detecting alpha/rc/stable and recomputing
+  # baseline-rev (which on workflow_dispatch must also be pinned to a SHA so
+  # that shards on different runners do not race main).
+  discover:
+    name: Discover crates and context
+    # Honor the reusable workflow's inputs.runner contract so callers passing a
+    # self-hosted label do not silently fall back to GitHub-hosted capacity for
+    # this helper job (CodeRabbit review feedback). The matrix shards on line
+    # ~192 and the summary job below use the same expression.
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
+    timeout-minutes: 15
+    outputs:
+      crates: ${{ steps.list-crates.outputs.crates }}
+      crate-count: ${{ steps.list-crates.outputs.crate-count }}
+      phase: ${{ steps.list-crates.outputs.phase }}
+      release-type: ${{ steps.context.outputs.release-type }}
+      is-release-pr: ${{ steps.context.outputs.is-release-pr }}
+      baseline-rev: ${{ steps.context.outputs.baseline-rev }}
+      should-run: ${{ steps.context.outputs.should-run }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # fetch-depth: 0 is required so that the per-crate matrix shards can
+          # later access the full git history when cargo-semver-checks needs to
+          # checkout and build the baseline commit. We checkout here too so the
+          # discover job can resolve HEAD~1 to a concrete SHA (see context step)
+          # and run cargo metadata against the same tree.
+          fetch-depth: 0
+
+      - name: Install Rust toolchain (for cargo metadata)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: List publishable crates and detect phase
+        id: list-crates
+        env:
+          WORKSPACE_PATH: ${{ github.workspace }}
+        run: |
+          # Run cargo metadata once and reuse for both crate enumeration and
+          # phase detection.
+          METADATA=$(cargo metadata --format-version 1 --no-deps)
+
+          # Publishable crate set: intersect with .workspace_members so that
+          # future path-dependencies outside the workspace cannot leak into the
+          # matrix (Copilot review feedback), then drop unpublished crates and
+          # crates without any analyzable library-shaped target
+          # (lib/rlib/cdylib/dylib). cargo-semver-checks only operates on
+          # library API surfaces and exits 1 when handed a binary-only crate
+          # (Issue #4575) or a proc-macro-only crate (Issue #4597) — proc-macro
+          # crates declare `[lib] proc-macro = true` but expose no analyzable
+          # library target surface, so they are dropped here too rather than
+          # producing one failing matrix shard per crate. The two members
+          # reinhardt-web and reinhardt-pages do expose library targets but
+          # are intentionally opted out of SemVer enforcement, so they remain
+          # on a hard-coded exclusion list. Single source of truth for both
+          # the matrix and phase detection so an excluded/private crate
+          # cannot diverge phase from the crates actually under check
+          # (CodeRabbit review feedback). Emit name+version+manifest_path; the
+          # manifest path is forwarded to the matrix shards so they can detect
+          # newly-introduced crates whose Cargo.toml does not exist at the
+          # baseline rev (Copilot review feedback) without re-running cargo
+          # metadata per shard.
+          PUBLISHABLE=$(echo "$METADATA" | jq -c --arg ws "$WORKSPACE_PATH" '
+            (.workspace_members) as $wm |
+            [.packages[]
+             | select(.id as $id | $wm | index($id))
+             | select(.publish == null or (.publish | length > 0))
+             | select(.targets | any(.kind | any(
+                 . == "lib" or . == "rlib" or
+                 . == "cdylib" or . == "dylib")))
+             | {name: .name,
+                version: .version,
+                manifest_path: (.manifest_path | sub("^" + $ws + "/"; ""))}]
+            | map(select(.name == "reinhardt-web" or .name == "reinhardt-pages" | not))
+            | sort_by(.name)')
+
+          # CRATES projects to name+manifest_path for the matrix payload.
+          # version is dropped here because the matrix shards do not consume it
+          # (they re-read Cargo.toml in their own checkout).
+          CRATES=$(echo "$PUBLISHABLE" | jq -c '[.[] | {name, manifest_path}]')
+          COUNT=$(echo "$CRATES" | jq 'length')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No publishable workspace crates detected. Discover step cannot fan out to an empty matrix."
+            exit 1
+          fi
+
+          # Use heredoc form for the JSON crates output so that future edits
+          # which inadvertently drop -c (and reintroduce newlines) do not
+          # silently truncate the value at the first newline (Copilot review
+          # feedback). crate-count and phase are single-token primitives, so
+          # the key=value form remains safe for them.
+          {
+            echo "crates<<EOF_CRATES"
+            echo "$CRATES"
+            echo "EOF_CRATES"
+          } >> "$GITHUB_OUTPUT"
+          echo "crate-count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "::notice::Publishable crates ($COUNT): $(echo "$CRATES" | jq -c 'map(.name)')"
+
+          # Phase: derive from PUBLISHABLE — the same crate set the matrix
+          # iterates over — so a private/excluded crate (e.g. a benchmark
+          # member at -alpha.1 or a path-dep gated out of the matrix) cannot
+          # silently flip should-run/release-type for the crates actually
+          # under check (CodeRabbit review feedback). Alpha pre-releases
+          # disable semver-check; rc and stable both enforce it with different
+          # release-type defaults handled by the context step.
+          PHASE=$(echo "$PUBLISHABLE" | jq -r '
+            [.[].version] as $vs |
+            if   ($vs | any(test("-alpha"))) then "alpha"
+            elif ($vs | any(test("-rc")))    then "rc"
+            else "stable"
+            end')
+          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
+          case "$PHASE" in
+            alpha)  echo "::notice::Alpha version detected. Skipping semver-check (no API stability guarantee during alpha)." ;;
+            rc)     echo "::notice::RC version detected. Enforcing semver-check (no breaking changes permitted during RC phase)." ;;
+            stable) echo "::notice::Stable version detected. Enforcing semver-check (full SemVer guarantees)." ;;
+          esac
+
+      - name: Resolve release context
+        id: context
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          HAS_BREAKING_CHANGE: ${{ inputs.has-breaking-change-label }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PHASE: ${{ steps.list-crates.outputs.phase }}
+        run: |
+          # is-release-pr: release-plz Release PRs are detected by branch prefix.
+          # On those, release-plz bumps versions in Cargo.toml so cargo-semver-checks
+          # can auto-detect the intended release type without --release-type.
+          IS_RELEASE_PR="false"
+          if [[ "$HEAD_REF" == release-plz-* ]]; then
+            IS_RELEASE_PR="true"
+          fi
+          echo "is-release-pr=$IS_RELEASE_PR" >> "$GITHUB_OUTPUT"
+
+          # should-run: release-plz Release PRs always run (they validate
+          # release readiness regardless of phase); otherwise alpha skips.
+          if [[ "$IS_RELEASE_PR" == "true" ]]; then
+            SHOULD_RUN="true"
+          elif [[ "$PHASE" == "alpha" ]]; then
+            SHOULD_RUN="false"
+          else
+            SHOULD_RUN="true"
+          fi
+          echo "should-run=$SHOULD_RUN" >> "$GITHUB_OUTPUT"
+
+          # release-type:
+          # - release-plz PR: empty (cargo-semver-checks auto-detects from
+          #   Cargo.toml version bumps)
+          # - RC + breaking-change label: --release-type major (SP-3 approved)
+          # - RC + no label: --release-type minor (block breaking changes)
+          # - stable: --release-type minor (block breaking changes)
+          if [[ "$IS_RELEASE_PR" == "true" ]]; then
+            RELEASE_TYPE=""
+          elif [[ "$PHASE" == "rc" && "$HAS_BREAKING_CHANGE" == "true" ]]; then
+            RELEASE_TYPE="major"
+            echo "::notice::SP-3 approved breaking change detected (breaking-change label). Using --release-type major."
+          else
+            RELEASE_TYPE="minor"
+          fi
+          echo "release-type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
+
+          # baseline-rev: prefer the PR base SHA (works for both release-plz and
+          # normal PRs since crates may not yet be on crates.io). For
+          # workflow_dispatch we resolve HEAD~1 to a concrete SHA *here* so
+          # that all matrix shards baseline against the same commit even if
+          # main advances between discover and shard start, or if shards
+          # queue behind each other on a busy self-hosted Spot fleet (Copilot
+          # review feedback). Without this pin, each shard would re-resolve
+          # HEAD~1 against its own independent checkout.
+          if [[ -n "$PR_BASE_SHA" ]]; then
+            BASELINE_REV="$PR_BASE_SHA"
+          else
+            BASELINE_REV=$(git rev-parse HEAD~1)
+          fi
+          echo "baseline-rev=$BASELINE_REV" >> "$GITHUB_OUTPUT"
+
+  # Per-crate matrix. Each shard checks SemVer compatibility for a single
+  # publishable crate, amortising the previous 1.5–2 h workspace-wide
+  # invocation. Each shard builds only its own crate's baseline + current rev;
+  # the shared dependency tree (tokio, serde, ...) is cached across shards via
+  # the setup-test-env composite action's rust-cache integration with
+  # rust-cache-key="semver-check".
+  semver-check:
+    name: SemVer (${{ matrix.crate.name }})
+    needs: discover
+    if: needs.discover.outputs.should-run == 'true'
     runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
     timeout-minutes: 90
+    env:
+      # Single source of truth for the cargo-semver-checks version.
+      # Referenced by both the cache key and the installer script below so
+      # future version bumps stay in sync (Copilot review feedback, PR #4574).
+      CARGO_SEMVER_CHECKS_VERSION: v0.47.0
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJSON(needs.discover.outputs.crates) }}
     steps:
       - name: Free Disk Space (Ubuntu)
+        # Skipped on self-hosted runners — they have ample disk and the
+        # 47-shard concurrent disk-cleanup spike on the Spot fleet would
+        # otherwise be wasteful (Copilot review feedback acknowledged).
         if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -38,104 +243,135 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          # fetch-depth: 0 is required for --baseline-rev to access the full git history.
-          # cargo-semver-checks needs to checkout and build the baseline commit, which
-          # is not possible with a shallow clone (fetch-depth: 1, the default).
+          # fetch-depth: 0 is required for --baseline-rev to access the full git
+          # history. cargo-semver-checks needs to checkout and build the
+          # baseline commit, which is not possible with a shallow clone
+          # (fetch-depth: 1, the default).
           fetch-depth: 0
 
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
+      - name: Setup test environment (Rust + protoc)
+        uses: ./.github/actions/setup-test-env
+        with:
+          # Per-crate matrix shards share the workspace dependency cache via
+          # rust-cache-key="semver-check"; rust-cache restores from main's
+          # saved entry on PR branches (save-if=false) and only saves on main
+          # to avoid PR cache pollution (Issue #2879).
+          rust-cache-key: "semver-check"
+          rust-save-if: ${{ github.ref == 'refs/heads/main' }}
+          protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup protoc
-        uses: ./.github/actions/setup-protoc
+      # Cache the cargo-semver-checks binary across matrix shards and runs.
+      # The cache key embeds env.CARGO_SEMVER_CHECKS_VERSION so bumping the
+      # job-level env value automatically invalidates the cache and forces a
+      # fresh download with SHA-256 verification. Cache footprint is ~10 MB
+      # per OS+arch entry. Issue #4535.
+      - name: Restore cargo-semver-checks binary cache
+        id: cache-csc
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/cargo-semver-checks
+          key: cargo-semver-checks-${{ env.CARGO_SEMVER_CHECKS_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Install cargo-semver-checks
-        env:
-          GH_TOKEN: ${{ github.token }}
+        if: steps.cache-csc.outputs.cache-hit != 'true'
         run: |
-          # Get latest release tag via GitHub API (no gh CLI dependency)
-          LATEST_TAG=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
-            "https://api.github.com/repos/obi1kenobi/cargo-semver-checks/releases/latest" \
-            | jq -r '.tag_name')
-          # Auto-detect architecture for correct binary
+          VERSION="${CARGO_SEMVER_CHECKS_VERSION}"
           ARCH=$(uname -m)
           if [ "$ARCH" = "aarch64" ]; then
             TARGET="aarch64-unknown-linux-musl"
+            EXPECTED_SHA256="ba8efb38ec41cbbd88c5972d5ac62a4478493fe37e79390b94fd1196ce8fbd52"
           else
             TARGET="x86_64-unknown-linux-musl"
+            EXPECTED_SHA256="daea6dfdebf9b15ce902a8af2fc6b9c2e86ddd49af17a9c5a656939289588f68"
           fi
           curl -fsSL -o /tmp/cargo-semver-checks.tar.gz \
-            "https://github.com/obi1kenobi/cargo-semver-checks/releases/download/${LATEST_TAG}/cargo-semver-checks-${TARGET}.tar.gz"
+            "https://github.com/obi1kenobi/cargo-semver-checks/releases/download/${VERSION}/cargo-semver-checks-${TARGET}.tar.gz"
+          ACTUAL_SHA256=$(sha256sum /tmp/cargo-semver-checks.tar.gz | awk '{print $1}')
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::SHA256 mismatch for cargo-semver-checks ${VERSION} (${TARGET})"
+            echo "  Expected: ${EXPECTED_SHA256}"
+            echo "  Actual:   ${ACTUAL_SHA256}"
+            exit 1
+          fi
           mkdir -p /tmp/csc
           tar xzf /tmp/cargo-semver-checks.tar.gz -C /tmp/csc/
           mv /tmp/csc/cargo-semver-checks ~/.cargo/bin/
           rm -rf /tmp/csc /tmp/cargo-semver-checks.tar.gz
 
-      # On release-plz Release PRs, run the full semver-check using version numbers
-      # from Cargo.toml to validate the complete release (major/minor/patch).
-      # release-plz bumps versions in Cargo.toml, so cargo-semver-checks can auto-detect
-      # the intended release type and verify compliance.
-      - name: Run cargo-semver-checks (release PR - full version check)
-        if: ${{ startsWith(github.head_ref || github.ref_name, 'release-plz-') }}
+      - name: Run cargo-semver-checks for ${{ matrix.crate.name }}
         env:
-          # Use the PR base branch SHA as the baseline since crates are not yet published
-          # to crates.io. This compares SemVer compatibility against the main branch state.
-          # github.event.pull_request.base.sha is a git commit SHA (hex string), safe to use.
-          BASELINE_REV: ${{ github.event.pull_request.base.sha }}
+          CRATE_NAME: ${{ matrix.crate.name }}
+          CRATE_MANIFEST: ${{ matrix.crate.manifest_path }}
+          BASELINE_REV: ${{ needs.discover.outputs.baseline-rev }}
+          RELEASE_TYPE: ${{ needs.discover.outputs.release-type }}
         run: |
-          cargo semver-checks check-release \
-            --workspace \
-            --exclude reinhardt-web \
-            --exclude reinhardt-pages \
-            --all-features \
-            --baseline-rev "${BASELINE_REV:-HEAD~1}"
-
-      # Detect pre-release phase to determine the appropriate semver-check behavior:
-      # - Alpha (0.x.y-alpha.N): No API stability guarantees → skip semver-check
-      # - RC (0.x.y-rc.N): No breaking changes permitted, approved additions allowed → enforce semver-check
-      # - Stable (0.x.y): Full SemVer guarantees → enforce semver-check
-      - name: Detect pre-release phase
-        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release-plz-') }}
-        id: detect-prerelease
-        run: |
-          if grep -rqP '^version\s*=\s*"[^"]*-alpha' crates/*/Cargo.toml; then
-            echo "phase=alpha" >> "$GITHUB_OUTPUT"
-            echo "::notice::Alpha version detected. Skipping semver-check (no API stability guarantee during alpha)."
-          elif grep -rqP '^version\s*=\s*"[^"]*-rc' crates/*/Cargo.toml; then
-            echo "phase=rc" >> "$GITHUB_OUTPUT"
-            echo "::notice::RC version detected. Enforcing semver-check (no breaking changes permitted during RC phase)."
-          else
-            echo "phase=stable" >> "$GITHUB_OUTPUT"
-            echo "::notice::Stable version detected. Enforcing semver-check (full SemVer guarantees)."
+          # Skip newly-introduced crates whose Cargo.toml does not exist at
+          # BASELINE_REV. The previous workspace-wide invocation tolerated this
+          # for added members (cargo-semver-checks silently skipped them); the
+          # per-crate --package invocation errors instead, so we replicate the
+          # old behaviour here (Copilot review feedback).
+          if ! git cat-file -e "$BASELINE_REV:$CRATE_MANIFEST" 2>/dev/null; then
+            echo "::notice::Crate $CRATE_NAME ($CRATE_MANIFEST) has no manifest at baseline $BASELINE_REV — newly introduced in this PR. Skipping (no baseline API to compare against)."
+            exit 0
           fi
 
-      # On normal PRs with RC versions, enforce minor release type to block breaking
-      # breaking changes. Per stability policy (SP-1), the API surface is frozen
-      # during RC -- only bug fixes and deprecation-alias renames are permitted.
-      - name: Run cargo-semver-checks (normal PR - RC versions)
-        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release-plz-') && steps.detect-prerelease.outputs.phase == 'rc' }}
-        env:
-          BASELINE_REV: ${{ github.event.pull_request.base.sha }}
-        run: |
-          cargo semver-checks check-release \
-            --workspace \
-            --exclude reinhardt-web \
-            --exclude reinhardt-pages \
-            --all-features \
-            --release-type minor \
-            --baseline-rev "${BASELINE_REV:-HEAD~1}"
+          ARGS=(
+            check-release
+            --package "$CRATE_NAME"
+            --all-features
+            --baseline-rev "$BASELINE_REV"
+          )
+          if [ -n "$RELEASE_TYPE" ]; then
+            ARGS+=(--release-type "$RELEASE_TYPE")
+          fi
+          echo "::notice::cargo semver-checks ${ARGS[*]}"
+          cargo semver-checks "${ARGS[@]}"
 
-      # On normal PRs with stable versions, enforce minor release type to block
-      # breaking changes from being merged into main.
-      - name: Run cargo-semver-checks (normal PR - stable versions)
-        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release-plz-') && steps.detect-prerelease.outputs.phase == 'stable' }}
+  # Aggregator job so downstream branch protection / required-check gates can
+  # depend on a single status instead of pinning every matrix shard. Treats
+  # the skipped-on-alpha case as success to match the previous workflow's
+  # behaviour.
+  #
+  # NOTE FOR ADMINS: this job's check-run name is "SemVer Check Summary"
+  # (workflow name "SemVer Check" + job name "SemVer Check Summary"). Any
+  # branch-protection rule previously pinned to the old single-job name
+  # "SemVer Compatibility Check" must be repointed here before this PR
+  # merges, otherwise the gate effectively disappears.
+  semver-check-summary:
+    name: SemVer Check Summary
+    needs: [discover, semver-check]
+    if: always()
+    # Honor the reusable workflow's inputs.runner contract (CodeRabbit review
+    # feedback). See discover job above for rationale.
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate matrix result
         env:
-          BASELINE_REV: ${{ github.event.pull_request.base.sha }}
+          DISCOVER_RESULT: ${{ needs.discover.result }}
+          SHOULD_RUN: ${{ needs.discover.outputs.should-run }}
+          CRATE_COUNT: ${{ needs.discover.outputs.crate-count }}
+          SEMVER_RESULT: ${{ needs.semver-check.result }}
         run: |
-          cargo semver-checks check-release \
-            --workspace \
-            --exclude reinhardt-web \
-            --exclude reinhardt-pages \
-            --all-features \
-            --release-type minor \
-            --baseline-rev "${BASELINE_REV:-HEAD~1}"
+          if [[ "$DISCOVER_RESULT" != "success" ]]; then
+            echo "::error::discover job failed with result: $DISCOVER_RESULT"
+            exit 1
+          fi
+          case "$SEMVER_RESULT" in
+            success)
+              echo "::notice::All $CRATE_COUNT semver-check matrix shards passed"
+              exit 0
+              ;;
+            skipped)
+              if [[ "$SHOULD_RUN" != "true" ]]; then
+                echo "::notice::semver-check skipped (alpha phase) — treating as success"
+                exit 0
+              fi
+              echo "::error::semver-check matrix unexpectedly skipped (should-run=true)"
+              exit 1
+              ;;
+            *)
+              echo "::error::semver-check matrix result: $SEMVER_RESULT"
+              exit 1
+              ;;
+          esac

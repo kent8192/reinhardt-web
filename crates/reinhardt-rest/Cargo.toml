@@ -1,12 +1,13 @@
 [package]
 name = "reinhardt-rest"
-version = "0.1.0-rc.11"
+version = "0.2.0-rc.1"
 description = "REST API framework aggregator for Reinhardt"
 keywords = ["rest", "api", "web", "framework", "django"]
 categories = ["web-programming", "web-programming::http-server"]
 readme = "README.md"
 documentation = "https://docs.rs/reinhardt-rest"
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -52,7 +53,8 @@ geo-limiting = ["reinhardt-throttling/geo-limiting"]
 
 [dependencies]
 # Core dependencies
-reinhardt-core = { workspace = true, features = ["exception", "negotiation", "pagination", "parsers", "serializers", "types"] }
+reinhardt-core = { workspace = true, features = ["exception", "macros", "negotiation", "pagination", "parsers", "serializers", "types"] }
+reinhardt-conf = { workspace = true, features = ["settings"] }
 reinhardt-db = { workspace = true, optional = true, features = ["backends", "orm", "pool"] }
 
 # Authentication (required for auth types re-export)
@@ -63,6 +65,9 @@ reinhardt-throttling = { workspace = true }
 
 # HTTP framework
 reinhardt-http = { workspace = true }
+
+# Shared router trait surface (issue #4321 — breaks the urls↔rest cycle)
+reinhardt-router = { workspace = true }
 
 # Internal crates (now part of reinhardt-rest)
 
@@ -130,7 +135,7 @@ maxminddb = { version = "0.27.0", optional = true }
 insta = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"]}
 tokio-test = "0.4"
-uuid = { version = "1.0", features = ["v4"] }
+uuid = { version = "1.7", features = ["v4", "v7"] }
 hyper = { workspace = true }
 bytes = { workspace = true }
 rstest = { workspace = true }
@@ -141,5 +146,4 @@ env_logger = "0.11"
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-core = { workspace = true, features = ["exception"] }
 reinhardt-auth = { workspace = true, features = ["argon2-hasher"] }
-reqwest = { version = "0.12", features = ["json"] }
-serial_test = { workspace = true }
+reqwest = { workspace = true }

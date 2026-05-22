@@ -13,7 +13,8 @@
 //! 5. Swagger UI / Redoc UI HTML Verification
 //! 6. End-to-End Integration Verification
 
-use reinhardt_core::endpoint::EndpointMetadata;
+use reinhardt_core::endpoint::{AuthProtection, EndpointMetadata};
+use reinhardt_macros::model;
 use reinhardt_openapi_macros::Schema as DeriveSchema;
 use reinhardt_rest::openapi::param_metadata::{
 	CookieParam, HeaderParam, ParameterMetadata, PathParam, QueryParam,
@@ -35,10 +36,15 @@ use utoipa::openapi::{PathsBuilder, Required};
 // ============================================================================
 
 /// Dummy model for ViewSet-based tests
+#[allow(dead_code)]
+#[model(table_name = "users")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TestUser {
+	#[field(primary_key = true)]
 	id: i64,
+	#[field(max_length = 255)]
 	username: String,
+	#[field(max_length = 255)]
 	email: String,
 	is_active: bool,
 }
@@ -434,6 +440,11 @@ fn test_endpoint_metadata_supports_form_content_type() {
 		module_path: "auth::views",
 		request_body_type: Some("LoginForm"),
 		request_content_type: Some("application/x-www-form-urlencoded"),
+		responses: &[],
+		headers: &[],
+		security: &[],
+		auth_protection: AuthProtection::None,
+		guard_description: None,
 	};
 
 	// Act & Assert

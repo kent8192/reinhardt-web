@@ -1,7 +1,8 @@
 [package]
 name = "reinhardt-web"
-version = "0.1.0-rc.11"
+version = "0.2.0-rc.1"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "A full-stack API framework for Rust, inspired by Django and Django REST Framework"
 repository.workspace = true
@@ -64,28 +65,45 @@ database = [
   "reinhardt-query",
   "linkme",
   "ctor",
+  "reinhardt-auth?/database",
+  "reinhardt-shortcuts?/database",
 ]
 api = [
   "reinhardt-rest",
   "reinhardt-rest/serializers",
   "reinhardt-views/viewsets",
 ]
-auth = ["reinhardt-auth"]
+auth = ["reinhardt-auth", "reinhardt-commands?/auth"]
 argon2-hasher = ["auth", "reinhardt-auth/argon2-hasher"]
 admin = [
+  "pages",
   "reinhardt-admin",
   "reinhardt-admin/adapters",
   "reinhardt-admin/server",
   "reinhardt-admin/pages",
   "reinhardt-forms",
   "reinhardt-pages",
+  "reinhardt-commands/admin",
 ]
 forms = ["reinhardt-forms"]
 graphql = ["reinhardt-graphql"]
-pages = ["reinhardt-pages"]
+# `pages` implies `client-router` because `ClientLauncher::register_routes_from_inventory()`
+# (added in #4453) drives the macro to emit `reinhardt::ClientRouterRegistration` /
+# `reinhardt::ClientRouter` paths, both of which are facade re-exports gated on
+# `client-router`. Without this implication a pages-only WASM consumer using
+# `#[routes(client_inventory)]` would hit unresolved-path errors. Refs Copilot
+# review on PR #4477.
+pages = ["reinhardt-pages", "reinhardt-commands/pages", "client-router"]
 templates = ["reinhardt-pages"]
 # pages + web-sys full features for WASM applications
 pages-web-sys-full = ["pages", "reinhardt-pages/web-sys-full"]
+# Opt-in DOM-based navigation diagnostic for SPA navigation regression
+# debugging. When enabled, the framework writes the most recent SPA
+# navigation site to `document.body.dataset.reinhardtNavSite`, bypassing
+# `console.debug` capture, the wasm-bindgen import-shim, and the cargo
+# profile's `debug_assertions` setting. Off by default — production
+# builds incur zero overhead. Refs #4221.
+pages-nav-diag-dom = ["pages", "reinhardt-pages/nav-diag-dom"]
 uuid = ["reinhardt-pages/uuid"]
 chrono = ["reinhardt-pages/chrono"]
 websockets = ["reinhardt-websockets"]
@@ -94,7 +112,8 @@ cache = ["reinhardt-utils/cache"]
 redis-backend = ["cache", "reinhardt-utils/redis-backend"]
 i18n = ["reinhardt-i18n"]
 mail = ["reinhardt-mail"]
-sessions = ["reinhardt-auth"]
+sessions = ["reinhardt-auth", "reinhardt-auth/sessions"]
+session-redis = ["sessions", "middleware", "reinhardt-middleware/session-redis"]
 middleware = [
   "reinhardt-middleware",
   "reinhardt-middleware/sessions",
@@ -105,22 +124,28 @@ static-files = ["reinhardt-utils/staticfiles"]
 storage = ["reinhardt-utils/storage"]
 shortcuts = ["reinhardt-shortcuts"]
 tasks = ["reinhardt-tasks"]
+streaming = ["dep:reinhardt-streaming", "reinhardt-streaming/kafka"]
 server = ["reinhardt-server"]
 commands = ["reinhardt-commands", "reinhardt-commands/migrations"]
+introspect = ["reinhardt-commands/introspect"]
 
 # Parent crate features (new module structure)
 conf = ["reinhardt-conf"]
-core = ["reinhardt-core", "reinhardt-apps", "inventory"]
+core = ["reinhardt-core", "reinhardt-apps", "dep:inventory"]
 rest = ["reinhardt-rest"]
 messages = ["reinhardt-core/messages"]
 # DI feature: Uses reinhardt-core/di which internally enables reinhardt-di/params
 # Also directly enables reinhardt-di/params for macro support (extern crate reinhardt_di)
 # reinhardt-db/di enables Injectable implementation for DatabaseConnection
-di = ["reinhardt-di", "reinhardt-di/params", "reinhardt-db?/di"]
+di = ["reinhardt-di", "reinhardt-di/params", "reinhardt-di/macros", "reinhardt-db?/di"]
 test = ["reinhardt-test"]
 testcontainers = ["test", "reinhardt-test/testcontainers"]
 server-fn-test = ["test", "reinhardt-test/server-fn-test"]
-openapi = ["reinhardt-rest", "reinhardt-rest/openapi"]
+# MSW (Mock Service Worker) for WASM testing — exposes
+# `reinhardt::test::msw::MockServiceWorker` and triggers `MockableServerFn`
+# impl generation for `#[server_fn]` in downstream crates.
+msw = ["test", "pages", "reinhardt-test/msw", "reinhardt-pages/msw"]
+openapi = ["reinhardt-rest", "reinhardt-rest/openapi", "rest", "dep:inventory"]
 openapi-router = ["reinhardt-openapi", "openapi", "reinhardt-commands/openapi-router"]
 reinhardt-browsable-api = ["reinhardt-rest", "reinhardt-rest/browsable-api"]
 browsable-api = ["reinhardt-browsable-api"]
@@ -251,25 +276,35 @@ middleware-rate-limit = [
   "reinhardt-middleware",
   "reinhardt-middleware/rate-limit",
 ]
+middleware-auth-jwt = [
+  "reinhardt-middleware",
+  "reinhardt-middleware/auth-jwt",
+  "auth-jwt",
+]
 
 [dependencies]
 # WASM-compatible dependencies (always included)
 reinhardt-pages = { workspace = true, optional = true }
 reinhardt-urls = { workspace = true }
 
-# Server-side dependencies (NOT for WASM)
 reinhardt-core = {workspace = true, features = ["types"]}
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+
+# Proc-macro crate: runs host-side at compile time, safe on every target
+# (re-exported as `reinhardt::routes` / `reinhardt::url_patterns` for cross-target consumers)
+reinhardt-macros = { workspace = true }
+
+# Server-side dependencies (NOT for WASM)
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 # Core dependencies
 reinhardt-utils = { workspace = true }
 reinhardt-views = { workspace = true }
 reinhardt-http = { workspace = true }
-reinhardt-macros = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }
 linkme = { workspace = true, optional = true }
 ctor = { workspace = true, optional = true }
+paste = "1.0"
 
 # Parent crate dependencies (new module structure)
 reinhardt-apps = { workspace = true, optional = true }
@@ -291,6 +326,7 @@ reinhardt-forms = { workspace = true, optional = true }
 reinhardt-middleware = { workspace = true, optional = true }
 reinhardt-shortcuts = { workspace = true, optional = true }
 reinhardt-tasks = { workspace = true, optional = true }
+reinhardt-streaming = { workspace = true, optional = true }
 reinhardt-server = { workspace = true, optional = true }
 reinhardt-i18n = { workspace = true, optional = true }
 reinhardt-mail = { workspace = true, optional = true }
@@ -307,7 +343,10 @@ reinhardt-query = { workspace = true, optional = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.build-dependencies]
+[build-dependencies]
+cfg_aliases = "0.2"
+
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.build-dependencies]
 tonic-prost-build = { workspace = true }
 
 [workspace]
@@ -327,19 +366,23 @@ members = [
   "crates/reinhardt-views",
   "crates/reinhardt-urls",
   "crates/reinhardt-urls/routers-macros",
+  "crates/reinhardt-router",                            # Shared router trait (issue #4321)
   "crates/reinhardt-middleware",
   "crates/reinhardt-pages",                             # WASM frontend framework
   "crates/reinhardt-pages/macros",              # WASM frontend macros
   "crates/reinhardt-pages/ast",                        # WASM frontend AST
   "crates/reinhardt-manouche",                         # DSL definitions for pages macros
   "crates/reinhardt-testkit",
+  "crates/reinhardt-testkit-macros",
   "crates/reinhardt-test",
   "crates/reinhardt-tasks",
+  "crates/reinhardt-streaming",
   "crates/reinhardt-utils",
   "crates/reinhardt-rest",
   "crates/reinhardt-rest/openapi-macros",
   "crates/reinhardt-throttling",
   "crates/reinhardt-auth",
+  "crates/reinhardt-auth/macros",
   "crates/reinhardt-admin",                            # Admin panel functionality
   "crates/reinhardt-admin-cli",                        # Admin CLI tool
   "crates/reinhardt-grpc",
@@ -375,7 +418,13 @@ members = [
 ]
 
 # Exclude examples (independent workspace with own dependency management)
-exclude = ["examples"]
+exclude = [
+	"examples",
+	"crates/reinhardt-pages/tests/fixtures/spa_navigation_app",
+	"crates/reinhardt-pages/tests/fixtures/spa_navigation_with_sidebar_signal_app",
+	"crates/reinhardt-pages/tests/fixtures/spa_navigation_with_full_layout_app",
+	"crates/reinhardt-pages/tests/fixtures/spa_navigation_with_named_routes_app",
+]
 
 default-members = [
   "crates/reinhardt-views",
@@ -387,8 +436,9 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.1.0-rc.1"
+version = "0.2.0-rc.1"
 edition = "2024"
+rust-version = "1.94.0"
 license = "BSD-3-Clause"
 repository = "https://github.com/kent8192/reinhardt-web"
 homepage = "https://github.com/kent8192/reinhardt-web"
@@ -404,92 +454,101 @@ module_name_repetitions = "allow"
 
 [workspace.dependencies]
 # Main facade crate (for workspace members that need to reference the root crate)
-reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-rc.11" }
+reinhardt = { path = ".", package = "reinhardt-web", version = "0.2.0-rc.1" }
 
 # Internal crates
-reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.0-rc.11" }
-reinhardt-conf = { path = "crates/reinhardt-conf", version = "0.1.0-rc.11" }
-reinhardt-core = { path = "crates/reinhardt-core", version = "0.1.0-rc.11" }
-reinhardt-di = { path = "crates/reinhardt-di", version = "0.1.0-rc.11" }
-reinhardt-http = { path = "crates/reinhardt-http", version = "0.1.0-rc.11" }
-reinhardt-server = { path = "crates/reinhardt-server", version = "0.1.0-rc.11" }
-reinhardt-views = { path = "crates/reinhardt-views", version = "0.1.0-rc.11" }
-reinhardt-urls = { path = "crates/reinhardt-urls", version = "0.1.0-rc.11" }
-reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.1.0-rc.11" }
-reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.1.0-rc.11" }
-reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.1.0-rc.11" }
-reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-rc.11" }
-reinhardt-manouche = { path = "crates/reinhardt-manouche", version = "0.1.0-rc.11" }
-reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-rc.11" }
-reinhardt-testkit = { path = "crates/reinhardt-testkit", version = "0.1.0-rc.11" }
-reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-rc.11" }
-reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.1.0-rc.11" }
-reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-rc.11" }
-reinhardt-rest = { path = "crates/reinhardt-rest", version = "0.1.0-rc.11" }
-reinhardt-throttling = { path = "crates/reinhardt-throttling", version = "0.1.0-rc.11" }
-reinhardt-auth = { path = "crates/reinhardt-auth", version = "0.1.0-rc.11" }
-reinhardt-admin = { path = "crates/reinhardt-admin", version = "0.1.0-rc.11" }
-reinhardt-admin-cli = { path = "crates/reinhardt-admin-cli", version = "0.1.0-rc.11" }
-reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.1.0-rc.11" }
-reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/macros", version = "0.1.0-rc.11" }
-reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/macros", version = "0.1.0-rc.11" }
-reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-rc.11" }
-reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-rc.11" }
-reinhardt-db-macros = { path = "crates/reinhardt-db-macros", version = "0.1.0-rc.11" }
-reinhardt-query = { path = "crates/reinhardt-query", version = "0.1.0-rc.11" }
-reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-rc.11" }
-reinhardt-dispatch = { path = "crates/reinhardt-dispatch", version = "0.1.0-rc.11" }
-reinhardt-i18n = { path = "crates/reinhardt-i18n", version = "0.1.0-rc.11" }
-reinhardt-mail = { path = "crates/reinhardt-mail", version = "0.1.0-rc.11" }
-reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-rc.11" }
-reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-rc.11" }
-reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-rc.11" }
-reinhardt-deeplink = { path = "crates/reinhardt-deeplink", version = "0.1.0-rc.11" }
-reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-rc.11" }
+reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.2.0-rc.1" }
+reinhardt-conf = { path = "crates/reinhardt-conf", version = "0.2.0-rc.1" }
+reinhardt-core = { path = "crates/reinhardt-core", version = "0.2.0-rc.1" }
+reinhardt-di = { path = "crates/reinhardt-di", version = "0.2.0-rc.1" }
+reinhardt-http = { path = "crates/reinhardt-http", version = "0.2.0-rc.1" }
+reinhardt-server = { path = "crates/reinhardt-server", version = "0.2.0-rc.1" }
+reinhardt-views = { path = "crates/reinhardt-views", version = "0.2.0-rc.1" }
+reinhardt-urls = { path = "crates/reinhardt-urls", version = "0.2.0-rc.1" }
+reinhardt-router = { path = "crates/reinhardt-router", version = "0.2.0-rc.1" }
+reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.2.0-rc.1" }
+reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.2.0-rc.1" }
+reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.2.0-rc.1" }
+reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.2.0-rc.1" }
+reinhardt-manouche = { path = "crates/reinhardt-manouche", version = "0.2.0-rc.1" }
+reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.2.0-rc.1" }
+reinhardt-testkit = { path = "crates/reinhardt-testkit", version = "0.2.0-rc.1" }
+reinhardt-testkit-macros = { path = "crates/reinhardt-testkit-macros", version = "0.2.0-rc.1" }
+reinhardt-test = { path = "crates/reinhardt-test", version = "0.2.0-rc.1" }
+reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.2.0-rc.1" }
+reinhardt-streaming = { path = "crates/reinhardt-streaming", version = "0.2.0-rc.1" }
+reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.2.0-rc.1" }
+reinhardt-rest = { path = "crates/reinhardt-rest", version = "0.2.0-rc.1" }
+reinhardt-throttling = { path = "crates/reinhardt-throttling", version = "0.2.0-rc.1" }
+reinhardt-auth = { path = "crates/reinhardt-auth", version = "0.2.0-rc.1" }
+reinhardt-auth-macros = { path = "crates/reinhardt-auth/macros", version = "0.2.0-rc.1" }
+reinhardt-admin = { path = "crates/reinhardt-admin", version = "0.2.0-rc.1" }
+reinhardt-admin-cli = { path = "crates/reinhardt-admin-cli", version = "0.2.0-rc.1" }
+reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.2.0-rc.1" }
+reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/macros", version = "0.2.0-rc.1" }
+reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/macros", version = "0.2.0-rc.1" }
+reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.2.0-rc.1" }
+reinhardt-db = { path = "crates/reinhardt-db", version = "0.2.0-rc.1" }
+reinhardt-db-macros = { path = "crates/reinhardt-db-macros", version = "0.2.0-rc.1" }
+reinhardt-query = { path = "crates/reinhardt-query", version = "0.2.0-rc.1" }
+reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.2.0-rc.1" }
+reinhardt-dispatch = { path = "crates/reinhardt-dispatch", version = "0.2.0-rc.1" }
+reinhardt-i18n = { path = "crates/reinhardt-i18n", version = "0.2.0-rc.1" }
+reinhardt-mail = { path = "crates/reinhardt-mail", version = "0.2.0-rc.1" }
+reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.2.0-rc.1" }
+reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.2.0-rc.1" }
+reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.2.0-rc.1" }
+reinhardt-deeplink = { path = "crates/reinhardt-deeplink", version = "0.2.0-rc.1" }
+reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.2.0-rc.1" }
 
 # Feature crates (develop/0.2.0)
-reinhardt-debug-toolbar = { path = "crates/reinhardt-debug-toolbar", version = "0.1.0-alpha.1" }
-reinhardt-payment = { path = "crates/reinhardt-payment", version = "0.1.0" }
-reinhardt-payment-mocks = { path = "crates/reinhardt-payment-mocks", version = "0.1.0" }
-reinhardt-pages-components = { path = "crates/reinhardt-pages-components", version = "0.1.0" }
-reinhardt-pages-components-macros = { path = "crates/reinhardt-pages-components-macros", version = "0.1.0-alpha.1" }
+reinhardt-debug-toolbar = { path = "crates/reinhardt-debug-toolbar", version = "0.2.0-rc.1" }
+reinhardt-payment = { path = "crates/reinhardt-payment", version = "0.2.0-rc.1" }
+reinhardt-payment-mocks = { path = "crates/reinhardt-payment-mocks", version = "0.2.0-rc.1" }
+reinhardt-pages-components = { path = "crates/reinhardt-pages-components", version = "0.2.0-rc.1" }
+reinhardt-pages-components-macros = { path = "crates/reinhardt-pages-components-macros", version = "0.2.0-rc.1" }
 reinhardt-seeding = { path = "crates/reinhardt-seeding" }
-reinhardt-storages = { path = "crates/reinhardt-storages", version = "0.1.0" }
-reinhardt-deploy = { path = "crates/reinhardt-deploy", version = "0.1.0-alpha.1" }
+reinhardt-storages = { path = "crates/reinhardt-storages", version = "0.2.0-rc.1" }
+reinhardt-deploy = { path = "crates/reinhardt-deploy", version = "0.2.0-rc.1" }
 
 # Query subcrates
-reinhardt-query-macros = { path = "crates/reinhardt-query/macros", version = "0.1.0-rc.11" }
+reinhardt-query-macros = { path = "crates/reinhardt-query/macros", version = "0.2.0-rc.1" }
 
 # Core subcrates
-reinhardt-macros = { path = "crates/reinhardt-core/macros", version = "0.1.0-rc.11" }
+reinhardt-macros = { path = "crates/reinhardt-core/macros", version = "0.2.0-rc.1" }
 
 # DI subcrates
-reinhardt-di-macros = { path = "crates/reinhardt-di/macros", version = "0.1.0-rc.11" }
+reinhardt-di-macros = { path = "crates/reinhardt-di/macros", version = "0.2.0-rc.1" }
 
 # REST subcrates
-reinhardt-openapi-macros = { path = "crates/reinhardt-rest/openapi-macros", version = "0.1.0-rc.11" }
+reinhardt-openapi-macros = { path = "crates/reinhardt-rest/openapi-macros", version = "0.2.0-rc.1" }
 
 # REST subcrates (continued)
-reinhardt-routers-macros = { path = "crates/reinhardt-urls/routers-macros", version = "0.1.0-rc.11" }
+reinhardt-routers-macros = { path = "crates/reinhardt-urls/routers-macros", version = "0.2.0-rc.1" }
+
+# Streaming
+rskafka = { version = "0.5" }
+time = { version = "0.3" }
 
 # Web framework
-tokio = { version = "1.48.0", features = ["full"] }
-tokio-stream = "0.1.17"
-futures = "0.3.31"
-futures-util = "0.3.31"
-hyper = { version = "1.8.1", features = ["full"] }
-hyper-util = { version = "0.1.17", features = ["full"] }
+tokio = { version = "1.51.0", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util"] }
+tokio-stream = "0.1.18"
+futures = "0.3.32"
+futures-util = "0.3.32"
+hyper = { version = "1.9.0", features = ["full"] }
+hyper-util = { version = "0.1.20", features = ["full"] }
 http = "1.4.0"
 http-body-util = "0.1.3"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13.2", features = ["json", "form"] }
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
+serde_json = "1.0.149"
 serde_bytes = "0.11"
 serde_yaml = "0.9"
+cargo_metadata = "0.23.1"
 serde_urlencoded = "0.7.1"
-csv = "1.3"
+csv = "1.4.0"
 
 # Database
 sqlx = { version = "0.8", features = [
@@ -504,48 +563,48 @@ sqlx = { version = "0.8", features = [
   "rust_decimal",
 ] }
 
-# TLS
-# Pin to avoid build failure in native-tls 0.2.17 (non-exhaustive pattern in openssl.rs)
-native-tls = "=0.2.14"
+# TLS — lower-bound avoids 0.2.17 build failure (non-exhaustive pattern in openssl.rs)
+native-tls = ">=0.2.18, <0.3"
 
 # Authentication & Security
 argon2 = { version = "0.5", features = ["std"] }
 password-hash = "0.5"
 rand = "0.9"
 getrandom = { version = "0.3", features = ["wasm_js"] }  # WASM support with wasm_js feature
-jsonwebtoken = { version = "10.2.0", features = ["aws_lc_rs"] }
-uuid = { version = "1.18.1", features = ["v4", "v5", "serde"] }
+jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
+uuid = { version = "1.23.0", features = ["v4", "v5", "v7", "serde"] }
 
 # GraphQL
-async-graphql = "7.0"
-async-graphql-warp = "7.0"
+async-graphql = "7.2.1"
+async-graphql-warp = "7.2.1"
 
 # Async traits
 async-trait = "0.1.89"
 
 # Error handling
-thiserror = "2.0.17"
-anyhow = "1.0.100"
+thiserror = "2.0.18"
+anyhow = "1.0.102"
 
 # Routing
-regex = "1.12.2"
+regex = "1.12.3"
 nom = "8.0.0"
+winnow = "1.0.1"
 
 # Utilities
-chrono = { version = "0.4.42", features = ["serde"] }
+chrono = { version = "0.4.44", features = ["serde"] }
 inventory = "0.3"
 linkme = "0.3"
-ctor = "0.6.1"
+ctor = "0.8.0"
 chrono-tz = "0.10.4"
-bytes = "1.10.1"
-once_cell = "1.21.3"
-tracing = "0.1.41"
+bytes = "1.11.1"
+once_cell = "1.21.4"
+tracing = "0.1.44"
 parking_lot = "0.12"
 base64 = "0.22"
 
 # Template engine & syntax highlighting
-tera = { version = "1.20" }
-syntect = "5.2"
+tera = { version = "1.20.1" }
+syntect = "5.3.0"
 
 # Proc macro dependencies
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits"] }
@@ -559,72 +618,69 @@ hmac = "0.12"
 subtle = "2.6"
 
 # Image Processing
-image = "0.25.8"
+image = "0.25.10"
 
 # Compression
-flate2 = "1.1.5"
+flate2 = "1.1.9"
 brotli = "8.0.2"
 
 # Phone Number Validation
-phonenumber = "0.3.7"
+phonenumber = "0.3.9"
 
 # Serialization formats
-toml = "0.9.8"
-rmp-serde = "1.3.0"
-prost = "0.14.1"
-prost-build = "0.14.1"
+toml = "1.1.2"
+rmp-serde = "1.3.1"
+prost = "0.14.3"
+prost-build = "0.14.3"
 
 # gRPC
-tonic = "0.14.2"
-tonic-build = "0.14.2"
-tonic-prost-build = "0.14.2"
+tonic = "0.14.5"
+tonic-build = "0.14.5"
+tonic-prost-build = "0.14.5"
 
 # Redis (for sessions)
-# Temporarily downgraded to 0.32 due to deadpool-redis compatibility
-# TODO: Upgrade to redis 1.0 when deadpool-redis supports it
-redis = { version = "0.32", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "1.2.0", features = ["tokio-comp", "connection-manager"] }
 
 # Connection pooling & migrations
 refinery = { version = "0.9.0", features = ["tokio-postgres"] }
-rust_decimal = "1.37"
+rust_decimal = "1.41.0"
+
+# E2E browser testing
+fantoccini = "0.22.1"
+chromiumoxide = { version = "0.9.1", default-features = false }
 
 # Testing
-testcontainers = { version = "0.26.3", features = ["blocking"] }
-testcontainers-modules = { version = "0.14.0", features = [
+testcontainers = { version = "0.27.2", features = ["blocking"] }
+testcontainers-modules = { version = "0.15.0", features = [
   "postgres",
   "mysql",
   "redis",
 ] }
-proptest = "1.8.0"
+# Direct floor for the transitive dep of testcontainers-modules. Clears
+# RUSTSEC-2026-0145 (PAX header desynchronization in astral-tokio-tar; fixed
+# in 0.6.2). Referenced from reinhardt-testkit as an optional dep so the
+# minimum-version constraint reaches the resolver only when the
+# `testcontainers` feature is on.
+astral-tokio-tar = "0.6.2"
+proptest = "1.11.0"
 arbitrary = { version = "1.4", features = ["derive"] }
-tokio-test = "0.4.4"
-serial_test = "3.2.0"
+tokio-test = "0.4.5"
+serial_test = "3.4.0"
 rstest = "0.26.1"
+clap = { version = "4.6.0", features = ["derive", "cargo"] }
 mockall = "0.14.0"
 assert-json-diff = "2.0.2"
-predicates = "3.1"
+predicates = "3.1.4"
 scopeguard = "1.2.0"
-tempfile = "3.15.0"
-trybuild = "1.0.114"
-url = "2.5.4"
+tempfile = "3.27.0"
+trybuild = "1.0.116"
+url = "2.5.8"
+colored = "3.1.1"
 criterion = { version = "0.8", features = ["html_reports"] }
-insta = { version = "1.41", features = ["json", "toml"] }
-
-# SQL Query Builder
-sea-query = { version = "1.0.0-rc.29", features = [
-  "with-json",
-  "with-chrono",
-  "with-rust_decimal",
-  "with-uuid",
-  "postgres-array",
-  "sqlx-utils",
-  "backend-postgres",
-  "backend-mysql",
-  "backend-sqlite",
-] }
+insta = { version = "1.47.2", features = ["json", "toml"] }
 
 # Documentation
-aquamarine = "0.5"
+aquamarine = "0.6.0"
 
 # TODO: Monitor and upgrade when upstream fixes num-bigint-dig v0.8.x future incompatibility
 # Issue: https://github.com/rust-lang/rust/issues/120192
@@ -632,3 +688,9 @@ aquamarine = "0.5"
 # Fixed in: num-bigint-dig v0.9.0+
 # Action: Upgrade when rsa or sqlx upgrades their dependencies
 # (private vec macro issue, see https://github.com/rust-lang/rust/issues/120192)
+
+[profile.dev]
+debug = 1
+
+[profile.test]
+debug = 1

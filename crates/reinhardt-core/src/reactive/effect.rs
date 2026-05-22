@@ -13,15 +13,16 @@
 //!
 //! ## Example
 //!
-//! ```ignore
+//! ```rust
 //! use reinhardt_core::reactive::{Signal, Effect};
 //!
 //! let count = Signal::new(0);
 //!
 //! // Create an effect that logs the count
+//! let count_for_effect = count.clone();
 //! let _effect = Effect::new(move || {
 //!     // This get() call automatically creates a dependency
-//!     println!("Count is: {}", count.get());
+//!     println!("Count is: {}", count_for_effect.get());
 //! });
 //!
 //! // This will trigger the effect to re-run
@@ -73,19 +74,21 @@ pub(crate) fn get_effect_timing(effect_id: NodeId) -> Option<EffectTiming> {
 ///
 /// ## Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_core::reactive::{Signal, Effect};
 ///
 /// let count = Signal::new(0);
 /// let doubled = Signal::new(0);
 ///
 /// // Effect that keeps doubled in sync with count
+/// let count_clone = count.clone();
+/// let doubled_clone = doubled.clone();
 /// Effect::new(move || {
-///     doubled.set(count.get() * 2);
+///     doubled_clone.set(count_clone.get() * 2);
 /// });
 ///
+/// // After async update, doubled would be 10
 /// count.set(5);
-/// assert_eq!(doubled.get(), 10);
 /// ```
 pub struct Effect {
 	/// Unique identifier for this effect
@@ -106,11 +109,14 @@ impl Effect {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```rust
+	/// use reinhardt_core::reactive::{Signal, Effect};
+	///
 	/// let count = Signal::new(0);
 	///
+	/// let count_clone = count.clone();
 	/// Effect::new(move || {
-	///     println!("Count: {}", count.get());
+	///     println!("Count: {}", count_clone.get());
 	/// });
 	/// ```
 	pub fn new<F>(mut f: F) -> Self
@@ -156,11 +162,14 @@ impl Effect {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```rust
+	/// use reinhardt_core::reactive::{Signal, Effect, EffectTiming};
+	///
 	/// let count = Signal::new(0);
 	///
+	/// let count_clone = count.clone();
 	/// Effect::new_with_timing(move || {
-	///     println!("Count: {}", count.get());
+	///     println!("Count: {}", count_clone.get());
 	/// }, EffectTiming::Layout);
 	/// ```
 	pub fn new_with_timing<F>(mut f: F, timing: EffectTiming) -> Self
@@ -220,12 +229,35 @@ impl Effect {
 			});
 		});
 
-		// Execute the effect function
-		EFFECT_FUNCTIONS.with(|storage| {
-			if let Some(effect_fn) = storage.borrow_mut().get_mut(&effect_id) {
-				effect_fn();
+		// Execute the effect function using Remove-Execute-Reinsert pattern
+		// to avoid RefCell reentrant borrow panics when the closure creates nested effects.
+		// An RAII guard ensures the closure is reinserted even if the user closure panics,
+		// and skips reinsertion if the effect was disposed during execution.
+		struct EffectFnGuard {
+			effect_id: NodeId,
+			effect_fn: Option<EffectFn>,
+		}
+
+		impl Drop for EffectFnGuard {
+			fn drop(&mut self) {
+				// Only reinsert if the effect is still registered (not disposed during execution)
+				let still_alive =
+					EFFECT_TIMING.with(|storage| storage.borrow().contains_key(&self.effect_id));
+				if still_alive && let Some(f) = self.effect_fn.take() {
+					EFFECT_FUNCTIONS.with(|storage| {
+						storage.borrow_mut().insert(self.effect_id, f);
+					});
+				}
 			}
-		});
+		}
+
+		let mut guard = EffectFnGuard {
+			effect_id,
+			effect_fn: EFFECT_FUNCTIONS.with(|storage| storage.borrow_mut().remove(&effect_id)),
+		};
+		if let Some(ref mut f) = guard.effect_fn {
+			f();
+		}
 
 		// Pop observer from stack
 		with_runtime(|rt| {
@@ -251,6 +283,11 @@ impl Effect {
 		let _ = EFFECT_FUNCTIONS.try_with(|storage| {
 			storage.borrow_mut().remove(&self.id);
 		});
+
+		// Remove timing entry so the RAII guard in execute_effect() knows not to reinsert
+		let _ = EFFECT_TIMING.try_with(|storage| {
+			storage.borrow_mut().remove(&self.id);
+		});
 	}
 }
 
@@ -271,18 +308,23 @@ impl super::runtime::Runtime {
 		Effect::execute_effect(effect_id);
 	}
 
-	/// Flush all pending updates (enhanced version)
+	/// Flush all pending updates
 	///
 	/// This executes all Effects that have been scheduled for update.
-	pub fn flush_updates_enhanced(&self) {
+	/// Skips effects that were disposed between scheduling and execution.
+	pub fn flush_updates(&self) {
 		*self.update_scheduled.borrow_mut() = false;
 
 		// Take all pending updates
 		let pending = core::mem::take(&mut *self.pending_updates.borrow_mut());
 
-		// Execute each pending effect
+		// Execute each pending effect (skip disposed ones)
 		for node_id in pending {
-			self.execute_scheduled_effect(node_id);
+			let still_registered =
+				EFFECT_TIMING.with(|storage| storage.borrow().contains_key(&node_id));
+			if still_registered {
+				self.execute_scheduled_effect(node_id);
+			}
 		}
 	}
 }
@@ -347,12 +389,12 @@ mod tests {
 
 		// Change signal and flush updates
 		signal.set(10);
-		with_runtime(|rt| rt.flush_updates_enhanced());
+		with_runtime(|rt| rt.flush_updates());
 		assert_eq!(*values.borrow(), alloc::vec![0, 10]);
 
 		// Change again
 		signal.set(20);
-		with_runtime(|rt| rt.flush_updates_enhanced());
+		with_runtime(|rt| rt.flush_updates());
 		assert_eq!(*values.borrow(), alloc::vec![0, 10, 20]);
 	}
 
@@ -375,12 +417,12 @@ mod tests {
 
 		// Change first signal
 		signal1.set(10);
-		with_runtime(|rt| rt.flush_updates_enhanced());
+		with_runtime(|rt| rt.flush_updates());
 		assert_eq!(*sum.borrow(), 12);
 
 		// Change second signal
 		signal2.set(20);
-		with_runtime(|rt| rt.flush_updates_enhanced());
+		with_runtime(|rt| rt.flush_updates());
 		assert_eq!(*sum.borrow(), 30);
 	}
 
@@ -404,7 +446,7 @@ mod tests {
 
 		// Signal change should not trigger the effect
 		signal.set(10);
-		with_runtime(|rt| rt.flush_updates_enhanced());
+		with_runtime(|rt| rt.flush_updates());
 		assert_eq!(*run_count.borrow(), 1); // Still 1, not 2
 	}
 
@@ -427,12 +469,153 @@ mod tests {
 
 		// Signal change should not trigger the dropped effect
 		signal.set(10);
-		with_runtime(|rt| rt.flush_updates_enhanced());
+		with_runtime(|rt| rt.flush_updates());
 		assert_eq!(*run_count.borrow(), 1); // Still 1
 	}
 
-	// Note: Nested effects test removed due to Drop ordering issues with thread-local storage.
-	// Nested effects (Effect created inside Effect) are generally considered an anti-pattern
-	// and should be avoided in production code. The reactive system is designed for
-	// flat dependency graphs, not deeply nested structures.
+	// Nested effect creation is supported via the Remove-Execute-Reinsert pattern in
+	// execute_effect(). The closure is temporarily removed from EFFECT_FUNCTIONS storage
+	// before execution, preventing RefCell reentrant borrow panics when nested Effects
+	// are created inside the closure.
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_nested_effect_creation() {
+		// Arrange
+		let outer_ran = Rc::new(RefCell::new(false));
+		let inner_ran = Rc::new(RefCell::new(false));
+		let outer_ran_clone = outer_ran.clone();
+		let inner_ran_clone = inner_ran.clone();
+
+		// Act - create an effect whose closure creates another effect
+		let _outer = Effect::new(move || {
+			*outer_ran_clone.borrow_mut() = true;
+			let inner_ran_inner = inner_ran_clone.clone();
+			let _inner = Effect::new(move || {
+				*inner_ran_inner.borrow_mut() = true;
+			});
+		});
+
+		// Assert - both effects should have executed without panic
+		assert!(*outer_ran.borrow());
+		assert!(*inner_ran.borrow());
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_effect_creates_signal_and_effect() {
+		// Arrange
+		let outer_ran = Rc::new(RefCell::new(false));
+		let inner_value = Rc::new(RefCell::new(0));
+		let outer_ran_clone = outer_ran.clone();
+		let inner_value_clone = inner_value.clone();
+
+		// Act - create an effect whose closure creates a signal and another effect
+		let _outer = Effect::new(move || {
+			*outer_ran_clone.borrow_mut() = true;
+			let new_signal = Signal::new(42);
+			let signal_for_inner = new_signal.clone();
+			let value_capture = inner_value_clone.clone();
+			let _inner = Effect::new(move || {
+				*value_capture.borrow_mut() = signal_for_inner.get();
+			});
+		});
+
+		// Assert - outer ran and inner captured the signal value
+		assert!(*outer_ran.borrow());
+		assert_eq!(*inner_value.borrow(), 42);
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_effect_dispose_during_execution() {
+		// Arrange
+		let signal = Signal::new(0);
+		let run_count = Rc::new(RefCell::new(0));
+		let run_count_clone = run_count.clone();
+		let effect_holder: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
+		let holder_clone = effect_holder.clone();
+		let signal_clone = signal.clone();
+
+		// Act - create an effect that reads a signal and disposes itself on re-execution
+		let effect = Effect::new(move || {
+			let _val = signal_clone.get(); // Track signal dependency
+			*run_count_clone.borrow_mut() += 1;
+			// On re-execution, the holder has the effect so dispose is called
+			if let Some(e) = holder_clone.borrow().as_ref() {
+				e.dispose();
+			}
+		});
+
+		// Store the effect so it can be disposed during next execution
+		*effect_holder.borrow_mut() = Some(effect);
+
+		// Assert - effect ran once during creation
+		assert_eq!(*run_count.borrow(), 1);
+
+		// Act - trigger re-execution via signal change; effect disposes itself
+		signal.set(1);
+		with_runtime(|rt| rt.flush_updates());
+
+		// Assert - effect ran a second time (during which it disposed itself)
+		assert_eq!(*run_count.borrow(), 2);
+
+		// Act - trigger another change; disposed effect should NOT run
+		signal.set(2);
+		with_runtime(|rt| rt.flush_updates());
+
+		// Assert - still 2, effect did not run again
+		assert_eq!(*run_count.borrow(), 2);
+	}
+
+	/// Verify that `flush_updates()` actually executes pending passive effects.
+	///
+	/// This is a regression test for the bug where `flush_updates()` dropped
+	/// pending updates without executing them (Fixes #3348).
+	#[test]
+	#[serial]
+	fn test_flush_updates_executes_pending_effects() {
+		use crate::reactive::runtime::set_scheduler;
+		use std::sync::{Arc, Mutex};
+
+		// Collect tasks scheduled via set_scheduler
+		type ScheduledTasks = Arc<Mutex<Vec<Box<dyn FnOnce() + Send>>>>;
+		let scheduled_tasks: ScheduledTasks = Arc::new(Mutex::new(Vec::new()));
+		let tasks_clone = scheduled_tasks.clone();
+
+		// Install a scheduler that captures tasks instead of executing them
+		// Note: OnceLock means this only works once per process, but serial
+		// test ordering ensures no conflict
+		set_scheduler(move |task| {
+			tasks_clone.lock().unwrap().push(task);
+		});
+
+		let signal = Signal::new(0);
+		let values = Rc::new(RefCell::new(alloc::vec::Vec::new()));
+		let values_clone = values.clone();
+
+		let signal_clone = signal.clone();
+		// Default timing is Passive, so signal changes go through scheduler
+		let _effect = Effect::new(move || {
+			values_clone.borrow_mut().push(signal_clone.get());
+		});
+
+		// Effect ran once immediately during creation
+		assert_eq!(*values.borrow(), alloc::vec![0]);
+
+		// Change signal — passive effect should be scheduled, not executed immediately
+		signal.set(42);
+
+		// The scheduler captured the flush task
+		let tasks = std::mem::take(&mut *scheduled_tasks.lock().unwrap());
+		assert!(!tasks.is_empty(), "scheduler should have captured a task");
+
+		// Execute the captured tasks (simulating what spawn_local would do)
+		for task in tasks {
+			task();
+		}
+
+		// Effect should have re-executed with the new value
+		assert_eq!(*values.borrow(), alloc::vec![0, 42]);
+	}
 }

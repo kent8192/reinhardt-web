@@ -37,7 +37,13 @@ prefix = "reinhardt-ci"
 # Organizations module variable (for terraform-plan CI)
 organizations_account_email = "<your-email+reinhardt-ci@example.com>"
 
-# Cancel runner (always-on, for event-driven cancel workflows)
+# Hotpath runner (always-on, for lightweight CI control jobs)
 # Set to true after initial CI setup is confirmed working.
-enable_cancel_runner        = true
-cancel_runner_instance_type = "t4g.nano"
+enable_hotpath_runner        = true
+hotpath_runner_instance_type = "t4g.micro"
+
+# Orphan detector (republishes stuck workflow_job events). See Issue #4253.
+# Defaults are tuned to recover within ~10 min when GitHub omits a queued event.
+# Override only if false-positive republishes occur on healthy provisioning.
+# orphan_detector_staleness_min       = 5
+# orphan_detector_schedule_expression = "rate(5 minutes)"

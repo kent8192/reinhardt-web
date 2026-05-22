@@ -13,15 +13,9 @@ skip_core_tasks = true
 # ============================================================================
 
 [tasks.runserver]
-description = "Start the development server"
+description = "Start the development server (auto-reloads on changes)"
 command = "cargo"
 args = ["run", "--bin", "manage", "runserver"]
-
-[tasks.runserver-watch]
-description = "Start the development server with auto-reload (requires bacon)"
-command = "bacon"
-args = ["runserver"]
-dependencies = ["install-bacon"]
 
 # ============================================================================
 # Database Migrations
@@ -92,12 +86,6 @@ command = "cargo"
 args = ["nextest", "run", "--test", "*", "--all-features"]
 dependencies = ["install-nextest"]
 
-[tasks.test-watch]
-description = "Run tests with auto-reload (requires bacon)"
-command = "bacon"
-args = ["test"]
-dependencies = ["install-bacon", "install-nextest"]
-
 # ============================================================================
 # Code Quality
 # ============================================================================
@@ -165,33 +153,17 @@ else
 fi
 '''
 
-[tasks.install-bacon]
-description = "Install bacon if not already installed"
-script = '''
-if ! command -v bacon &> /dev/null
-then
-	echo "Installing bacon..."
-	cargo install --locked bacon
-else
-	echo "bacon is already installed"
-fi
-'''
-
 [tasks.install-tools]
 description = "Install all required development tools"
-dependencies = ["install-nextest", "install-bacon"]
+dependencies = ["install-nextest"]
 
 # ============================================================================
 # Development Workflow
 # ============================================================================
 
 [tasks.dev]
-description = "Start development environment (checks, builds, runs server)"
+description = "Start development environment (checks, builds, runs server with auto-reload)"
 dependencies = ["quality", "build", "runserver"]
-
-[tasks.dev-watch]
-description = "Start development with auto-reload"
-dependencies = ["quality", "build", "runserver-watch"]
 
 # ============================================================================
 # CI/CD Workflow
@@ -229,10 +201,8 @@ description = "Show available tasks"
 script = '''
 echo "Available tasks:"
 echo "  Development:"
-echo "    runserver          - Start the development server"
-echo "    runserver-watch    - Start server with auto-reload"
-echo "    dev                - Run checks + build + start server"
-echo "    dev-watch          - Development with auto-reload"
+echo "    runserver          - Start the development server (auto-reloads on changes)"
+echo "    dev                - Run checks + build + start server (auto-reloads)"
 echo ""
 echo "  Database:"
 echo "    makemigrations     - Create new migrations"
@@ -251,7 +221,6 @@ echo "  Testing:"
 echo "    test               - Run all tests"
 echo "    test-unit          - Run unit tests"
 echo "    test-integration   - Run integration tests"
-echo "    test-watch         - Tests with auto-reload"
 echo ""
 echo "  Code Quality:"
 echo "    fmt-check          - Check formatting"

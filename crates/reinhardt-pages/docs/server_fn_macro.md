@@ -26,7 +26,7 @@ Use `#[inject]` attribute to inject dependencies on the server side:
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use reinhardt::DatabaseConnection;
 
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn get_data(
     id: i64,
     #[inject] db: DatabaseConnection,
@@ -66,7 +66,7 @@ async fn fetch_data() {
 
 **Input:**
 ```rust
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn create_user(
     username: String,
     email: String,
@@ -104,9 +104,9 @@ pub async fn create_user(
     let args = CreateUserArgs { username, email };
     let body = serde_json::to_string(&args)?;
 
-    let response = gloo_net::http::Request::post(endpoint)
+    let response = reqwest::Client::new().post(endpoint)
         .header("Content-Type", "application/json")
-        .body(body)?
+        .body(body)
         .send()
         .await?;
 
@@ -140,7 +140,7 @@ Previously, you had to manually define the function twice:
 ```rust
 // Server-side
 #[cfg(not(target_arch = "wasm32"))]
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn get_questions(
     #[inject] _db: DatabaseConnection,
 ) -> Result<Vec<QuestionInfo>, ServerFnError> {
@@ -161,7 +161,7 @@ Now you only need a single definition:
 
 ```rust
 // Single definition works for both environments
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn get_questions(
     #[inject] _db: DatabaseConnection,
 ) -> Result<Vec<QuestionInfo>, ServerFnError> {
@@ -187,12 +187,12 @@ pub async fn simple_function() -> Result<String, ServerFnError> {
 }
 ```
 
-### `#[server_fn(use_inject = true)]`
+### `#[server_fn]` with `#[inject]`
 
-Enable dependency injection:
+`#[inject]` parameters are auto-detected. No additional options are needed:
 
 ```rust
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn with_di(
     #[inject] db: DatabaseConnection,
 ) -> Result<(), ServerFnError> {
@@ -226,7 +226,7 @@ pub async fn public_endpoint() -> Result<String, ServerFnError> {
 ### 1. Use `#[inject]` for Server-Only Dependencies
 
 ```rust
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn get_user(
     user_id: i64,
     #[inject] db: DatabaseConnection,
@@ -272,10 +272,10 @@ pub struct PostInfo {
     pub title: String,
 }
 
-// src/server_fn/posts.rs
+// src/apps/posts/server_fn.rs
 use crate::shared::types::{CreatePostRequest, PostInfo};
 
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn create_post(
     request: CreatePostRequest,
     #[inject] db: DatabaseConnection,
@@ -287,7 +287,7 @@ pub async fn create_post(
 ### 4. Handle Errors Properly
 
 ```rust
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn safe_operation(
     #[inject] db: DatabaseConnection,
 ) -> Result<Data, ServerFnError> {
@@ -323,7 +323,7 @@ use {
 use crate::shared::types::UserInfo;
 ```
 
-### Issue: "failed to resolve: could not find `gloo_net`"
+### Issue: "failed to resolve: could not find `reqwest`"
 
 **Cause**: Missing WASM dependency.
 
@@ -331,7 +331,7 @@ use crate::shared::types::UserInfo;
 
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-gloo-net = "0.6"
+reqwest = { version = "0.12", features = ["json"] }
 ```
 
 ### Issue: Function signature mismatch between server and client
@@ -349,7 +349,7 @@ pub async fn my_function() -> Result<(), ServerFnError> {
 }
 
 // ✅ Keep only this
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn my_function(
     #[inject] db: DatabaseConnection,
 ) -> Result<(), ServerFnError> {
@@ -400,6 +400,14 @@ quote! {
 ```
 
 ## Version History
+
+### Upcoming
+
+**Deprecation**: `use_inject = true` is deprecated
+
+- **Changed**: `#[inject]` parameters are now auto-detected unconditionally, matching route macro behavior
+- **Deprecated**: `use_inject = true` option (emits deprecation warning)
+- **Migration**: Remove `use_inject = true` from `#[server_fn(...)]` attributes
 
 ### v0.1.0-alpha.2 (2026-01-09)
 

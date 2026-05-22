@@ -42,6 +42,7 @@ pub struct DatabaseConfig {
 	pub port: Option<u16>,
 
 	/// Additional options
+	#[serde(default)]
 	pub options: HashMap<String, String>,
 }
 
@@ -341,7 +342,7 @@ impl Default for DatabaseConfig {
 }
 
 /// Recognized database URL schemes for connection validation.
-pub(crate) const VALID_DATABASE_SCHEMES: &[&str] = &[
+pub const VALID_DATABASE_SCHEMES: &[&str] = &[
 	"postgres://",
 	"postgresql://",
 	"sqlite://",
@@ -354,7 +355,7 @@ pub(crate) const VALID_DATABASE_SCHEMES: &[&str] = &[
 ///
 /// Returns `Ok(())` if the URL starts with one of the supported schemes,
 /// or `Err` with a descriptive message listing the accepted schemes.
-pub(crate) fn validate_database_url_scheme(url: &str) -> Result<(), String> {
+pub fn validate_database_url_scheme(url: &str) -> Result<(), String> {
 	if VALID_DATABASE_SCHEMES.iter().any(|s| url.starts_with(s)) {
 		Ok(())
 	} else {

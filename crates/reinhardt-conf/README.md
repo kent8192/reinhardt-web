@@ -26,13 +26,14 @@ This crate provides the following modules:
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["conf"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["conf"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import configuration features:
@@ -48,28 +49,29 @@ use reinhardt::conf::settings::sources::ConfigSource;
 
 Enable specific features based on your needs:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 # With async support
-reinhardt = { version = "0.1.0-alpha.1", features = ["conf", "conf-settings-async"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["conf", "async"] }
 
 # With encryption
-reinhardt = { version = "0.1.0-alpha.1", features = ["conf", "conf-settings-encryption"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["conf", "encryption"] }
 
 # With Vault integration
-reinhardt = { version = "0.1.0-alpha.1", features = ["conf", "conf-settings-vault"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["conf", "vault"] }
 ```
 
 Available features:
 
-- `conf-settings` (default): Core settings functionality
-- `conf-settings-async`: Asynchronous settings operations
-- `conf-settings-dynamic-redis`: Redis-backed dynamic settings
-- `conf-settings-dynamic-database`: Database-backed dynamic settings
-- `conf-settings-vault`: HashiCorp Vault integration
-- `conf-settings-aws-secrets`: AWS Secrets Manager integration
-- `conf-settings-azure-keyvault`: Azure Key Vault integration
-- `conf-settings-secret-rotation`: Automatic secret rotation
-- `conf-settings-encryption`: Built-in encryption for sensitive settings
+- `settings` (default): Core settings functionality
+- `async`: Asynchronous settings operations
+- `dynamic-redis`: Redis-backed dynamic settings
+- `dynamic-database`: Database-backed dynamic settings
+- `vault`: HashiCorp Vault integration
+- `aws-secrets`: AWS Secrets Manager integration
+- `azure-keyvault`: Azure Key Vault integration
+- `secret-rotation`: Automatic secret rotation
+- `encryption`: Built-in encryption for sensitive settings
 
 ## Usage
 
@@ -86,6 +88,95 @@ let settings = SettingsBuilder::new()
 // Access settings
 let database_url = settings.get::<String>("DATABASE_URL")?;
 ```
+
+## Configuration Sources
+
+### TOML Interpolation
+
+Opt-in `${VAR}` substitution for TOML string values.
+
+| Token              | Behavior                                           |
+|--------------------|----------------------------------------------------|
+| `${VAR}`           | required — fails if `VAR` is unset OR empty        |
+| `${VAR:-default}`  | substitutes `default` if `VAR` is unset OR empty   |
+| `${VAR:-}`         | explicit empty fallback (special case of `:-`)     |
+| `${VAR:?message}`  | fails with `message` if `VAR` is unset OR empty    |
+| `$$`               | escape — emits a literal `$`                       |
+
+Variable names follow POSIX conventions: `[A-Za-z_][A-Za-z0-9_]*`.
+
+Interpolation is **enabled by default** since `0.1.0-rc.27`. Call
+`.without_interpolation()` if you need raw `${...}` strings to survive
+the load (for example, when the TOML is itself a template that
+downstream code expands).
+
+```rust,ignore
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::sources::TomlFileSource;
+
+let settings = SettingsBuilder::new()
+    // Interpolation is on by default — no builder method required.
+    .add_source(TomlFileSource::new("settings/local.toml"))
+    .build()?;
+
+// Opt out when literal `${...}` must survive:
+// .add_source(TomlFileSource::new("settings/template.toml").without_interpolation())
+```
+
+Example TOML:
+
+```toml
+[database]
+host = "${REINHARDT_DB_HOST:-localhost}"
+port = "${REINHARDT_DB_PORT:-5432}"
+
+[secrets]
+db_password = "${DB_PASSWORD:?Set DB_PASSWORD via direnv or 1Password CLI}"
+```
+
+#### Behavior Notes
+
+- **Strict empty handling**: an empty environment-variable value is treated identically
+  to "unset". This catches typos like `export REINHARDT_DB_HOST=` early. To allow an
+  explicit empty fallback, write `${VAR:-}`.
+- **Single-pass**: resolved values are not re-expanded, so `${OUTER}` whose value
+  happens to contain `${INNER}` resolves to literally `${INNER}`.
+- **String-only scope**: only `toml::Value::String` is rewritten, but every string
+  in the TOML tree is scanned — strings inside nested tables and arrays are
+  interpolated as well. Numeric, boolean, and datetime values pass through
+  untouched. To inject a typed override use `HighPriorityEnvSource`
+  (priority 60 — beats interpolated TOML at priority 50).
+- **Composition**: interpolation runs at `TomlFileSource::load()` time. The resolved
+  value participates in the normal source-priority merge; later sources at higher
+  priority still override.
+- **Typed coercion** (since 0.1.0-rc.27, default ON): a resolved string value whose
+  destination Rust type is non-`String` is coerced into the target at deserialize
+  time. Supported destinations:
+
+  | Target                          | Source string format                              |
+  |---------------------------------|---------------------------------------------------|
+  | `bool`, integers, floats, `char`| `FromStr`-parseable text                          |
+  | enum unit variant               | variant name (matched via serde's normal rules)   |
+  | `Option<T>`                     | empty string -> `None`, otherwise recurse into `T`|
+  | `Vec<T>`                        | JSON array literal: `"[1, 2, 3]"`                 |
+  | `HashMap<K, V>` / `BTreeMap`    | JSON object literal: `"{\"a\": 1}"`               |
+  | `Vec<u8>`                       | base64 (STANDARD)                                 |
+
+  Coercion failures abort `SettingsBuilder::build_composed()` with
+  `BuildError::Coercion`, naming the TOML key path, target type, original value,
+  and parser cause.
+
+  Disable with `SettingsBuilder::with_typed_coercion(false)` to fall back to the
+  legacy serde-json passthrough.
+
+- **Nested struct from a single string is rejected** with
+  `CoercionError::UnsupportedShape`. Use per-field interpolation instead:
+
+  ```toml
+  [endpoint]
+  host = "${HOST:-localhost}"
+  port = "${PORT:-5432}"
+  ```
 
 ## Field Status
 

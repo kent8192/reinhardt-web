@@ -12,20 +12,21 @@ with domain-specific implementations left to users.
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["grpc"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["grpc"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import gRPC features:
 
 ```rust
-use reinhardt::grpc::{Empty, Timestamp, Error, PageInfo};
-use reinhardt::grpc::adapter::{GrpcServiceAdapter, ServiceContext};
+use reinhardt::grpc::{GrpcServiceAdapter, GrpcSubscriptionAdapter};
+use reinhardt::grpc::proto::common::{Empty, Timestamp, PageInfo};
 ```
 
 **Note:** gRPC features are included in the `standard` and `full` feature presets.
@@ -156,9 +157,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 3. Add dependencies to `Cargo.toml`
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-grpc = "0.1.0-alpha.1"
+reinhardt-grpc = "0.1.0-rc.30"
 tonic = "0.12"
 prost = "0.13"
 
@@ -188,10 +190,11 @@ use reinhardt::grpc::proto::common::{Empty, Timestamp, PageInfo};
 
 Enable the `di` feature to use dependency injection in gRPC handlers:
 
+<!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt-grpc = { version = "0.1", features = ["di"] }
-reinhardt-di = "0.1"
+reinhardt-grpc = { version = "0.1.0-rc.30", features = ["di"] }
+reinhardt-di = "0.1.0-rc.30"
 ```
 
 #### Basic Usage

@@ -9,13 +9,18 @@ This document defines the stability guarantees and versioning policies for the R
 ## Table of Contents
 
 - [Version Lifecycle](#version-lifecycle)
+- [API Categories](#api-categories)
 - [Alpha Phase](#alpha-phase)
 - [RC Phase](#rc-phase)
 - [Develop Branch Strategy](#develop-branch-strategy)
 - [Stable Phase](#stable-phase)
+- [Breaking Change Policy](#breaking-change-policy)
+- [Migration Guide Requirements](#migration-guide-requirements)
 - [RC to Stable Criteria](#rc-to-stable-criteria)
 - [Version Bump Rules During RC](#version-bump-rules-during-rc)
+- [Continuous SemVer Verification](#continuous-semver-verification)
 - [Quick Reference](#quick-reference)
+- [References](#references)
 
 ---
 
@@ -59,6 +64,47 @@ stateDiagram-v2
     note right of RC: API frozen\nBug fixes only (SP-2)\nNon-breaking additions need SP-6
     note right of Stable: Full SemVer compliance\nBreaking = MAJOR bump
 ```
+
+---
+
+## API Categories
+
+Reinhardt classifies every exported item into one of three stability tiers. The tier determines what kind of changes are permitted between releases.
+
+### Stable API
+
+Public items that are NOT marked with `#[doc(hidden)]` and are NOT documented as experimental are considered **stable**:
+
+- All items in the primary re-exports of each crate's `lib.rs`
+- Trait definitions and their required methods
+- Public struct field accessibility
+- Public enum variant names
+
+**Guarantee**: No breaking changes without a MAJOR version bump (see [Breaking Change Policy](#breaking-change-policy)).
+
+### Experimental API
+
+Items explicitly documented as experimental are **experimental** and may change in MINOR releases:
+
+- New traits under active development
+- Extension points that may be redesigned
+- Performance-sensitive APIs pending benchmarking
+
+**Guarantee**: Breaking changes require documenting migration paths in the affected crate's CHANGELOG.
+
+> **Note**: There is currently no `unstable` feature flag in the codebase. Experimental items are identified by documentation annotations rather than feature-gating.
+>
+> **Enforcement mechanism**: Because experimental items are still part of the public API surface, `cargo-semver-checks` (run on every PR by `.github/workflows/semver-check.yml`) will flag breaking changes to them just like changes to stable APIs. Permission to break an experimental API in a MINOR release is granted at review time via the `breaking-change` label combined with a CHANGELOG migration note — not through any automated SemVer exemption. Maintainers MUST verify, before applying the label, that the affected item is documented as experimental.
+
+### Internal API
+
+Items marked with `#[doc(hidden)]`, items whose name starts with `__`, and items that are not publicly accessible (`pub(crate)` / `pub(super)`) are **internal** and provide no stability guarantees:
+
+- Macro implementation helpers
+- Proc-macro infrastructure
+- Crate-private utilities
+
+**Guarantee**: None. May change in any release without notice.
 
 ---
 
@@ -124,8 +170,8 @@ flowchart TD
     B -->|No| D{Non-breaking API addition?}
     D -->|Yes| E["SP-6: Issue + rc-addition label<br/>+ maintainer approval"]
     D -->|No| F{Breaking change?}
-    F -->|Yes| G{Critical bug / Security / Soundness?}
-    G -->|Yes| H["SP-3: API Change Proposal<br/>+ maintainer approval<br/>+ migration guide"]
+    F -->|Yes| G{"SP-3 condition met?<br/>(Critical / Security / Soundness<br/>/ Non-functional / Blocks feature)"}
+    G -->|Yes| H["SP-3: API Change Proposal<br/>+ maintainer approval<br/>+ migration guide<br/>+ SP-7 Discussion announcement"]
     G -->|No| I["NOT PERMITTED<br/>Direct to develop branch"]
     F -->|No| I
 ```
@@ -161,20 +207,34 @@ Breaking changes during RC are **strongly discouraged** and only permitted for:
 1. **Critical bugs** that cannot be fixed without an API change (e.g., data corruption, panics)
 2. **Security vulnerabilities** that require API modification (e.g., unsafe API surface)
 3. **Soundness issues** that make the existing API unsafe (e.g., memory safety violations)
+4. **Non-functional API** — the existing API does not behave as documented or expected, making it effectively unusable regardless of how it is called
+5. **API blocks new feature** — the current API design makes it impossible or unreasonably complex to add a required feature without restructuring the API
 
 A breaking change during RC triggers:
 - A new RC version (`rc.N+1`)
 - A stability timer reset (per SC-2)
 - A mandatory migration guide
+- An automatic announcement posted to the GitHub Discussion breaking change category (per SP-7)
 
 **Approval Process:**
 
 1. Create a GitHub issue using the API Change Proposal template (`.github/ISSUE_TEMPLATE/8-api_change.yml`)
-2. Label with `critical` and `rc-migration`
+2. Label with `breaking-change` and `rc-migration`
 3. Document the technical justification for why a non-breaking fix is impossible
 4. Obtain explicit maintainer approval before implementing
 5. Update all affected documentation and migration guides
 6. Include a migration guide in the PR description
+
+### SP-7 (MUST): Breaking Change Announcement
+
+When a pull request labeled `breaking-change` is merged into `main`, an announcement is automatically posted to the GitHub Discussion breaking change category.
+
+- **Trigger**: PR merge with the `breaking-change` label
+- **Destination**: GitHub Discussion — breaking change category
+- **Content**: PR title, migration summary, and link to the merged PR
+- **Who posts**: Automated (GitHub Actions workflow); no manual announcement required
+
+This ensures all breaking changes — including those permitted during RC under SP-3 — are visible to downstream users without relying on manual communication. The `breaking-change` label MUST be applied to every PR that introduces a breaking change, regardless of lifecycle phase.
 
 ### SP-4 (MUST): Deprecation Policy
 
@@ -351,14 +411,37 @@ git push origin --delete develop/0.2.0
 
 ### DB-6 (MUST): release-plz Interaction
 
-release-plz is configured to monitor `main` only:
+release-plz monitors both `main` and `develop/**`. Each branch follows the
+Cargo.toml version it currently carries, with no branch-specific
+configuration in `release-plz.toml`:
 
-- The develop branch is **NOT** monitored by release-plz
-- No Release PRs, publishing, or tag creation occurs for the develop branch
-- `Cargo.toml` versions in the develop branch do NOT need manual management
-- After the develop branch is merged into `main`, release-plz will detect the changes and generate appropriate Release PRs for the next version cycle
+| Branch | Cargo.toml version | Release PR output |
+|---|---|---|
+| `main` | `x.y.z` (stable) | Stable Release PR (`x.y.z` → `x.y.(z+1)` or `x.(y+1).0`) |
+| `develop/m.n.l` (alpha phase) | `m.n.l-alpha.N` | Prerelease Release PR (`alpha.N` → `alpha.(N+1)`) |
+| `develop/m.n.l` (rc phase) | `m.n.l-rc.N` | Prerelease Release PR (`rc.N` → `rc.(N+1)`) |
 
-**No changes to `release-plz.toml` are required** for the develop branch workflow.
+**Version management on the develop branch** is operator-controlled at three
+explicit gates (see `instructions/RELEASE_PROCESS.md` § "Develop Branch
+Release Workflow" for the operator commands):
+
+| Gate | Trigger | Script / workflow | Effect |
+|---|---|---|---|
+| DBR-1 Initialize | After `develop/m.n.l` branch creation from `main` | `scripts/init-develop-branch.sh m.n.l` | Cargo.toml from main's stable → `m.n.l-alpha.1` |
+| DBR-2 Freeze | API freeze decision | `scripts/freeze-develop-to-rc.sh` | Cargo.toml from `m.n.l-alpha.N` → `m.n.l-rc.1` |
+| DBR-3 Promote | After `develop/m.n.l` merges to `main` | `gh workflow run release-plz-promote.yml -f develop_branch=develop/m.n.l` | Cargo.toml on main from `m.n.l-rc.N` → `m.n.l` |
+
+Subsequent bumps within each phase (alpha.N → alpha.N+1, rc.N → rc.N+1) are
+handled automatically by release-plz on every push to `develop/**`.
+
+**Crates.io publication**: Prerelease versions are published to crates.io
+the same way as stable versions. KI-6 (crates.io rate limit) applies to
+prerelease publishes; the existing 3-attempt retry in `release-plz.yml`
+absorbs the additional throughput.
+
+**Announcements**: GitHub Discussion announcements fire only for stable
+tags. Prerelease tags (`vX.Y.Z-alpha.N` / `vX.Y.Z-rc.N`) are intentionally
+excluded by a stable-tag regex filter in `release-plz.yml`.
 
 ### DB-7 (SHOULD): CI Coverage
 
@@ -381,6 +464,102 @@ Once a crate reaches stable (`0.1.0`), it follows [Semantic Versioning 2.0.0](ht
 - **PATCH** (`0.1.0` → `0.1.1`): Bug fixes only
 
 **Note:** Per SemVer, versions with major version `0` (e.g., `0.1.0`) have relaxed stability rules -- the MINOR version may contain breaking changes. Reinhardt treats `0.1.0` as its first stable release within the `0.x` series and follows the spirit of SemVer for patch releases.
+
+---
+
+## Breaking Change Policy
+
+This section applies once a crate reaches stable (`0.1.0` or later). During the RC phase, the stricter rules in [RC Phase](#rc-phase) (SP-1 〜 SP-7) take precedence.
+
+### BC-1 (MUST): Definition
+
+A breaking change is any modification that causes downstream code compiled against the previous version to fail compilation or to exhibit different runtime behavior when recompiled against the new version.
+
+### BC-2 (MUST): Common Breaking Changes
+
+The following are categorically breaking and require a MAJOR version bump:
+
+- Removing or renaming a public item
+- Changing function signatures (parameters, return types)
+- Adding required methods to a public trait
+- Changing enum variants without `#[non_exhaustive]`
+- Adding fields to non-`#[non_exhaustive]` structs
+- Narrowing trait bounds on public functions
+
+### BC-3 (MUST): Breaking Change Approval Process
+
+For stable crates, breaking changes follow this workflow:
+
+1. Open an RFC issue using the [API Change Proposal template](../.github/ISSUE_TEMPLATE/8-api_change.yml) (repo-root path: `.github/ISSUE_TEMPLATE/8-api_change.yml`) with the title `[RFC]: <description>` and label it `enhancement`
+2. Final Comment Period (FCP) of at least 7 days for community feedback
+3. Breaking changes require MAJOR version bump
+4. A migration guide MUST be provided (see [Migration Guide Requirements](#migration-guide-requirements))
+5. The `breaking-change` label MUST be applied to the implementing PR (triggers SP-7 Discussion announcement)
+
+### BC-4 (SHOULD): `#[non_exhaustive]` as a Preventative Measure
+
+All new public error enums and configuration structs SHOULD be marked `#[non_exhaustive]` to allow adding new variants/fields in MINOR releases without breaking downstream exhaustive matches or struct literal initializations. Existing public error enums and configuration structs SHOULD be retrofitted with `#[non_exhaustive]` opportunistically as part of the next breaking change touching them.
+
+This means downstream users MUST:
+
+- Include a `_ =>` wildcard arm when `match`ing on error enums
+- Use `..Default::default()` or builder methods when constructing config structs
+
+**Example for error enums:**
+
+```rust
+match error {
+    MyError::NotFound => handle_not_found(),
+    MyError::PermissionDenied => handle_denied(),
+    _ => handle_unknown(), // Required for #[non_exhaustive] enums
+}
+```
+
+**Example for config structs:**
+
+```rust
+// Use builder methods (preferred):
+let config = MyConfig::new()
+    .with_timeout(Duration::from_secs(30));
+
+// Or use struct update syntax:
+let config = MyConfig {
+    timeout: Duration::from_secs(30),
+    ..MyConfig::default()
+};
+```
+
+### BC-5 (MUST): Deprecation Attribute Format
+
+When marking a public item as deprecated, the `#[deprecated]` attribute MUST include both `since` and `note` fields:
+
+```rust
+#[deprecated(
+    since = "0.3.0",
+    note = "Use `new_function` instead. This function will be removed in 1.0.0."
+)]
+pub fn old_function() { /* ... */ }
+```
+
+Requirements:
+
+- `since`: version when deprecation was introduced
+- `note`: specific replacement and removal timeline
+
+For the full deprecation policy (timing, mandatory survival across versions), see SP-4 above.
+
+---
+
+## Migration Guide Requirements
+
+Every breaking change (MAJOR release) and every significant deprecation MUST ship with a migration guide that contains:
+
+1. **What changed**: Clear description of the old vs. new behavior
+2. **Why it changed**: Technical rationale for the breaking change
+3. **How to migrate**: Step-by-step migration instructions with code examples
+4. **Timeline**: When the old behavior will be fully removed (if applicable)
+
+Migration guides are placed in the affected crate's `CHANGELOG.md` and in release notes. For RC-phase breaking changes (per SP-3), the same requirements apply — the migration guide is included in the PR description and the affected crate's CHANGELOG.
 
 ---
 
@@ -520,6 +699,16 @@ During the RC phase:
 
 ---
 
+## Continuous SemVer Verification
+
+Automated SemVer checking is performed on every pull request targeting `main` using [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks).
+
+- **CI workflow**: `.github/workflows/semver-check.yml` reports any detected SemVer violations before code is merged.
+- **Local mirror**: `cargo make semver-check` mirrors the CI workflow and MUST be run before converting a Draft PR to Ready for Review on any PR touching public API (see `instructions/PR_GUIDELINE.md` § RP-1a).
+- **Audit trail**: A full breaking change audit is maintained at `docs/breaking-change-audit.md`.
+
+---
+
 ## Quick Reference
 
 ### MUST DO
@@ -528,6 +717,7 @@ During the RC phase:
 - Apply bug-fix-only policy during RC phase
 - Preserve backward compatibility when renaming APIs during RC (deprecation alias required)
 - Obtain explicit maintainer approval for any breaking change during RC
+- Apply `breaking-change` label to every PR that introduces a breaking change (triggers SP-7 Discussion announcement)
 - Use `#[deprecated]` with `since` and `note` fields for all deprecations
 - Keep APIs deprecated during RC until the next major version
 - Reset the 2-week stability timer on each new RC release
@@ -542,6 +732,9 @@ During the RC phase:
 - Apply RC bug fixes to `main` first, then forward-merge to develop (DB-3)
 - Forward-merge `main` into develop branch regularly (DB-4)
 - Merge develop branch into `main` after stable release using merge commit (DB-5)
+- Initialize a freshly-created develop branch with `scripts/init-develop-branch.sh m.n.l` so release-plz on `develop/**` produces alpha Release PRs (DBR-1)
+- Run `scripts/freeze-develop-to-rc.sh` at API freeze to transition the develop branch from `alpha.N` to `rc.1` (DBR-2)
+- Trigger `release-plz-promote.yml` (`workflow_dispatch`) after merging `develop/m.n.l` into `main` to graduate the prerelease suffix to stable (DBR-3)
 
 ### NEVER DO
 - Regress from RC back to alpha
@@ -549,7 +742,9 @@ During the RC phase:
 - Add unapproved `feat:` commits during the RC phase (SP-6-approved additions may use `feat:`)
 - Rename public APIs during RC without a backward-compatible deprecation alias
 - Remove APIs deprecated during RC before the next major version
-- Apply breaking changes during RC without explicit maintainer approval
+- Apply breaking changes during RC without explicit maintainer approval (SP-3)
+- Apply breaking changes during RC for reasons other than SP-3 approved conditions (critical / security / soundness / non-functional / blocks feature)
+- Merge a breaking change PR without applying the `breaking-change` label (SP-7)
 - Transition to stable without meeting ALL SC-1 criteria
 - Skip the 2-week stability period
 - Publish stable release with open critical or high severity bugs
@@ -558,7 +753,8 @@ During the RC phase:
 - Count `agent-suspect` labeled issues toward stability timer reset
 - Merge next-version features or breaking changes directly into `main` during RC (use `develop/0.x+1.0`)
 - Apply bug fixes only to the develop branch without fixing on `main` first (DB-3)
-- Configure release-plz to monitor the develop branch (DB-6)
+- Push to `develop/m.n.l` before running `scripts/init-develop-branch.sh m.n.l` (release-plz would otherwise publish a stable `m.n.l` immediately, bypassing the alpha phase) (DBR-1)
+- Graduate prerelease identifiers manually (e.g., editing Cargo.toml by hand instead of running `scripts/freeze-develop-to-rc.sh` or `release-plz-promote.yml`) — the scripts are the single source of truth (DBR-2, DBR-3)
 - Delete the develop branch before merging into `main` (DB-5)
 - Squash-merge the develop branch into `main` (DB-5)
 
@@ -570,6 +766,16 @@ During the RC phase:
 - **Commit Guidelines**: instructions/COMMIT_GUIDELINE.md
 - **PR Guidelines**: instructions/PR_GUIDELINE.md
 - **Issue Guidelines**: instructions/ISSUE_GUIDELINES.md
+
+---
+
+## References
+
+- [Semantic Versioning 2.0.0](https://semver.org/)
+- [RFC 1105: API Evolution](https://rust-lang.github.io/rfcs/1105-api-evolution.html)
+- [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
+- [Breaking Change Audit](../docs/breaking-change-audit.md)
+- [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks)
 
 ---
 

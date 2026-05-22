@@ -1,0 +1,15 @@
+meta {
+  name: Verify Deletion (404)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/snippets/{{snippetId}}/
+}
+
+tests {
+  test("Status code is 404", function() {
+    expect(res.status).to.equal(404);
+  });
+}

@@ -3,6 +3,8 @@
 //! This module provides Django-style path pattern matching compatible
 //! with reinhardt-urls patterns.
 
+#![allow(deprecated)] // (Refs #4234) Internal references to deprecated routing types are intentional during the deprecation cycle.
+
 use std::collections::HashMap;
 
 /// A path parameter extracted from a URL.
@@ -22,6 +24,10 @@ pub struct PathParam {
 /// - `/users/{id}/posts/{post_id}/` - Multiple parameters
 /// - `/static/{path:*}/` - Wildcard matching (rest of path)
 #[derive(Debug, Clone)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::ClientPathPattern` instead. Refs #4234, cloud#578."
+)]
 pub struct PathPattern {
 	/// The original pattern string.
 	pattern: String,

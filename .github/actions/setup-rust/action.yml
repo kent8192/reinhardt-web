@@ -13,13 +13,23 @@ inputs:
     description: 'Additional cache key suffix to differentiate caches between parallel jobs (e.g. check target type). Issue #1845'
     required: false
     default: ''
+  save-if:
+    description: 'Condition for saving cache. Set to false for PR branches to avoid cache pollution. Issue #2879'
+    required: false
+    default: 'true'
 runs:
   using: composite
   steps:
-    - name: Install Rust 1.91.1
-      uses: dtolnay/rust-toolchain@1.91.1
+    - name: Install Rust 1.94.1
+      uses: dtolnay/rust-toolchain@1.94.1
       with:
         components: ${{ inputs.components }}
+
+    - name: Setup sccache
+      if: inputs.cache == 'true'
+      uses: mozilla-actions/sccache-action@v0.0.10
+      with:
+        version: "v0.10.0"
 
     # Issue #1831: Detect the actual CARGO_TARGET_DIR from the calling workflow's
     # environment. Workflows set CARGO_TARGET_DIR to an absolute path (e.g.
@@ -54,3 +64,9 @@ runs:
         # Optional suffix to differentiate cache entries between parallel jobs
         # that check different target types (e.g. lib vs tests). Issue #1845
         key: ${{ inputs.cache-key }}
+        # Issue #2879: Only save cache on main branch to avoid PR cache pollution.
+        # PR branches restore from main's cache via prefix matching but don't
+        # save their own entries. This improves hit rates by keeping a single
+        # authoritative cache per workflow type. Workflow-type suffix (cache-key)
+        # is preserved to avoid cross-profile contamination (check vs test).
+        save-if: ${{ inputs.save-if }}

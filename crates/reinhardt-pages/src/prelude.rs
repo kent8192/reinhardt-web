@@ -7,9 +7,9 @@
 //!
 //! ```rust,ignore
 //! // Instead of multiple imports with cfg guards:
-//! // #[cfg(target_arch = "wasm32")]
+//! // #[cfg(wasm)]
 //! // use reinhardt_pages::{Signal, Page, use_state, ...};
-//! // #[cfg(not(target_arch = "wasm32"))]
+//! // #[cfg(native)]
 //! // use reinhardt::pages::{Signal, Page, use_state, ...};
 //!
 //! // Use the unified prelude:
@@ -84,7 +84,7 @@ pub use crate::reactive::{
 };
 
 // WASM-only resource creation functions
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub use crate::reactive::{create_resource, create_resource_with_deps};
 
 // ============================================================================
@@ -93,7 +93,7 @@ pub use crate::reactive::{create_resource, create_resource_with_deps};
 
 pub use crate::component::{
 	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, PageEventHandler, PageExt,
-	Props, ScriptTag, StyleTag,
+	Props, ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
 };
 
 // ============================================================================
@@ -115,7 +115,12 @@ pub use crate::dom::{Document, Element, EventHandle, EventType, document};
 // Routing
 // ============================================================================
 
-pub use crate::router::{Link, PathPattern, Route, Router, RouterOutlet};
+// Non-deprecated rendering primitives.
+pub use crate::router::{Link, RouterOutlet};
+// Deprecated routing types (Refs #4234). Re-exported for backward
+// compatibility; new code should prefer `reinhardt_urls::routers::*`.
+#[allow(deprecated)] // (Refs #4234) Prelude re-exports deprecated routing surface.
+pub use crate::router::{PathPattern, Route, Router};
 
 // ============================================================================
 // API and Server Functions
@@ -140,7 +145,7 @@ pub use crate::hydration::{
 	on_hydration_complete,
 };
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub use crate::hydration::mark_hydration_complete;
 pub use crate::ssr::{SsrOptions, SsrRenderer, SsrState};
 
@@ -154,10 +159,10 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 // Forms (native only)
 // ============================================================================
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub use crate::form::{FormBinding, FormComponent};
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub use reinhardt_forms::{
 	Widget,
 	wasm_compat::{FieldMetadata, FormMetadata},
@@ -178,5 +183,5 @@ pub use crate::page;
 /// Spawn a local async task (WASM only).
 ///
 /// This is a convenience re-export from `wasm_bindgen_futures`.
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub use wasm_bindgen_futures::spawn_local;

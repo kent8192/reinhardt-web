@@ -9,8 +9,14 @@ use std::collections::HashMap;
 pub struct DashboardResponse {
 	/// Site name
 	pub site_name: String,
+	/// Header text shown in admin navigation bar
+	pub site_header: String,
 	/// URL prefix
 	pub url_prefix: String,
+	/// Login page URL for authentication redirects
+	pub login_url: String,
+	/// Logout page URL for sign-out redirects
+	pub logout_url: String,
 	/// Registered models with their metadata
 	pub models: Vec<ModelInfo>,
 	/// CSRF token for mutation requests (POST, PUT, DELETE)
@@ -98,6 +104,7 @@ pub struct ImportResponse {
 
 /// Response for export endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ExportResponse {
 	/// Exported data (binary)
 	#[serde(with = "serde_bytes")]
@@ -106,6 +113,26 @@ pub struct ExportResponse {
 	pub filename: String,
 	/// Content type (e.g., "application/json", "text/csv")
 	pub content_type: String,
+	/// Whether the export was truncated due to exceeding the maximum record limit
+	pub truncated: bool,
+	/// Total number of records in the table (before truncation)
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub total_count: Option<u64>,
+}
+
+/// Response for admin login endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginResponse {
+	/// JWT token for subsequent authenticated requests
+	pub token: String,
+	/// Authenticated username
+	pub username: String,
+	/// User's primary key as string
+	pub user_id: String,
+	/// Whether the user is staff
+	pub is_staff: bool,
+	/// Whether the user is a superuser
+	pub is_superuser: bool,
 }
 
 /// Response for fields endpoint

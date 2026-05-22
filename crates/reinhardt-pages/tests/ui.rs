@@ -1,3 +1,4 @@
+#![cfg(not(target_arch = "wasm32"))]
 //! Compile-time tests for page! and form! macros using trybuild
 //!
 //! This test suite validates that:
@@ -37,4 +38,8 @@ fn test_server_fn_macro_ui() {
 	// Codec tests
 	t.pass("tests/ui/server_fn/codec_json.rs");
 	t.pass("tests/ui/server_fn/codec_url.rs");
+	// Fixes #3666: verify server_fn compiles without msw feature (no check-cfg errors)
+	t.pass("tests/ui/server_fn/no_msw_feature.rs");
+	// Issue #3858: verify FromRequest extractor params work in #[server_fn]
+	t.pass("tests/ui/server_fn/with_extractors.rs");
 }

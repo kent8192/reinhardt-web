@@ -4,7 +4,7 @@
 
 This file contains project-specific instructions for the Reinhardt project. These rules ensure code quality, maintainability, and consistent practices across the Rust codebase.
 
-For detailed standards, see documentation in `docs/` directory.
+For detailed standards, see documentation in `instructions/` directory.
 
 ---
 
@@ -14,13 +14,15 @@ See README.md for project details.
 
 **Repository URL**: https://github.com/kent8192/reinhardt-web
 
+@instructions/DESIGN_PHILOSOPHY.md
+
 ---
 
 ## Tech Stack
 
 - **Language**: Rust 2024 Edition
 - **Module System**: MUST use 2024 edition (NO `mod.rs`)
-- **Database**: SeaQuery v1.0.0-rc for building SQL queries
+- **Database**: `reinhardt-query` for building SQL queries (in-house wrapper, replaces direct SeaQuery usage)
 - **Testing**: Rust's built-in framework + TestContainers for infrastructure
 - **Build**: Cargo workspace with multiple crates
 
@@ -64,6 +66,20 @@ See instructions/MODULE_SYSTEM.md for comprehensive module system standards incl
 - `cargo make clippy-todo-check` enforces `clippy::todo`, `clippy::unimplemented`, and `clippy::dbg_macro` as deny lints
 - Local pre-check: `semgrep scan --config .semgrep/ --error --metrics off`
 
+**Workaround Comments:**
+- When introducing workaround code, MUST include the ideal implementation (the correct code without the workaround) as a comment
+- This is in addition to the UR-4 format (issue reference + removal condition) in instructions/UPSTREAM_ISSUE_REPORTING.md
+- The ideal implementation comment enables future developers to remove the workaround without re-investigating the intended design
+
+**Comment template:**
+```rust
+// Workaround for upstream-repo#42 (tracked in reinhardt-web#15)
+// Remove this workaround when the upstream issue is resolved.
+//
+// Ideal implementation (without workaround):
+//   pool.health_check().await?;
+```
+
 See instructions/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 
 ### Testing
@@ -84,7 +100,7 @@ See instructions/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 See instructions/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Testing philosophy (TP-1, TP-2)
 - Test organization (TO-1, TO-2)
-- Test implementation (TI-1 ~ TI-6)
+- Test implementation (TI-1 ~ TI-7)
 - Infrastructure testing (IT-1)
 
 ### File Management
@@ -100,7 +116,7 @@ See instructions/TESTING_STANDARDS.md for comprehensive testing standards includ
 
 **Update Requirements:**
 - **ALWAYS** update docs when code changes (same workflow)
-- Update all relevant: README.md, crate README, docs/, lib.rs
+- Update all relevant: README.md, crate README, instructions/, lib.rs
 - Planned features go in `lib.rs` header, NOT in README.md
 - Test all code examples
 - Verify all links are valid
@@ -111,6 +127,16 @@ See instructions/TESTING_STANDARDS.md for comprehensive testing standards includ
 
 See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 
+**CLAUDE.md ↔ AGENTS.md Sync Policy:**
+- `CLAUDE.md` (Claude Code) and `AGENTS.md` (Codex) are deliberate mirror copies kept in sync
+- The two files MUST differ only on a small set of mechanical substitutions:
+  - `CLAUDE.md` ↔ `AGENTS.md` (title, references)
+  - `CLAUDE.local.md` ↔ `AGENTS.local.md`
+  - `Claude Code attribution` ↔ `Codex attribution`
+- **MUST**: Any edit to one file MUST be mirrored into the other in the same commit
+- **MUST**: After editing, run `diff CLAUDE.md AGENTS.md` and confirm only the documented substitutions remain
+- **NEVER**: Commit a change that touches only one of the two files
+
 ### Git Workflow
 
 **Commit Policy:**
@@ -120,20 +146,65 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
   - When user approves a plan via Exit Plan Mode, implementation and commits are both authorized
   - Upon successful implementation, all planned commits are created automatically without additional confirmation
   - If implementation fails or tests fail, NO commits are created (report to user instead)
+- **EXCEPTION (Reinhardt family)**: When operating inside `reinhardt-web` / `reinhardt-cloud` / `awesome-delions` / `reinhardt-cc`, the **Autonomous Operation Policy** below authorizes commit and push on any non-protected branch (plus Draft PR / Issue creation) without further confirmation — see the next subsection
 - Split commits by specific intent (NOT feature-level goals)
 - Each commit MUST be small enough to explain in one line
 - Use `git apply <patchfile name>.patch` for partial file commits
 - **NEVER** execute batch commits without user confirmation
 
+**Autonomous Operation Policy (Reinhardt Family):**
+
+This is an explicit, named exception to "NEVER commit/push without explicit user instruction" in the Commit Policy above. Comment-posting authorization (`instructions/GITHUB_INTERACTION.md` PP-1) is unchanged — see "Still Requires Explicit User Authorization" below.
+
+Scope (applies only when the working directory is inside one of these four repositories):
+
+- `kent8192/reinhardt-web`
+- `kent8192/reinhardt-cloud`
+- `kent8192/awesome-delions`
+- `kent8192/reinhardt-cc`
+
+Autonomously Allowed (no per-action confirmation required):
+
+| Operation | Constraint |
+|-----------|------------|
+| `git commit` | On any non-protected branch |
+| `git push` | On any non-protected branch (`feature/...`, `fix/...`, `refactor/...`, `docs/...`, `chore/...`, `test/...`, `perf/...`, `debug/...`, etc.); **never** on `main`, `master`, `develop/*`, or `release/*` |
+| Create a **Draft** Pull Request | `gh pr create --draft` / MCP `create_pull_request` with `draft=true`; body MUST follow `.github/PULL_REQUEST_TEMPLATE.md` |
+| Convert Draft PR to **Ready for Review** | **CI completion is not required** — this overrides any "CI green / tests pass" criterion in `instructions/`. All other PC-4a readiness criteria (implementation complete, PR description follows template, fmt/clippy clean, docs updated) still apply — see `instructions/PR_GUIDELINE.md` § PC-4a |
+| Create an Issue | `gh issue create` / MCP `issue_write`; MUST follow the appropriate issue template and apply at least one type label |
+
+**Protected Branches** (commit/push always require explicit user authorization):
+- `main`, `master`
+- `develop/*` (any branch starting with `develop/`)
+- `release/*` (any branch starting with `release/`)
+
+Still Requires Explicit User Authorization (no autonomy):
+
+- Direct push to any protected branch listed above
+- `git push --force`, `--force-with-lease`, or any other history-rewriting push
+- `git rebase`, `git reset --hard`, `git branch -D`, deleting tags, or any other history-destructive operation
+- Closing, merging, or deleting PRs
+- Closing or deleting Issues, comments, or review threads
+- Creating release tags or any PR carrying the `release` label
+- Posting comments / replies / reviews on PRs/Issues — the comment-posting authorization model in `instructions/GITHUB_INTERACTION.md` PP-1 is unchanged; the autonomous policy covers only the **creation** of commits, pushes, Draft PRs, and Issues, not commenting
+
+Unchanged Quality Guardrails (apply equally to autonomous operations):
+
+- PR title and body MUST follow Conventional Commits and `.github/PULL_REQUEST_TEMPLATE.md`
+- Issue body MUST follow `.github/ISSUE_TEMPLATE/*.yml`
+- Branch naming, commit message format, Claude Code attribution footer, English-only policy, and all other rules in this document remain in force
+
 **Draft PR Policy:**
-- **NEVER** convert a Draft PR to Ready for Review without explicit user instruction
-- **NO EXCEPTIONS**: Plan Mode approval does NOT authorize Draft PR conversion (unlike commits/pushes)
-- Before converting, ensure all CI checks pass and tests pass locally
-- Use `gh pr ready <number>` for conversion
+- The agent MAY convert a Draft PR to Ready for Review autonomously once the PC-4a readiness criteria are met. CI completion is **not** required (the Autonomous Operation Policy overrides the previous "CI green / tests pass" prerequisite); fmt/clippy cleanliness and the other PC-4a criteria are still required
+- Explicit user instruction also authorizes conversion at any time (overrides readiness check)
+- The agent MUST NOT convert when any PC-4a readiness criterion (other than CI completion) is unmet, unless the user explicitly overrides
+- Use `gh pr ready <number>` (or GitHub MCP equivalent) for conversion
+- See instructions/PR_GUIDELINE.md § PC-4a for full details
 
 **Branch Operations:**
 - When merging branches and resolving conflicts, execute immediately without entering Plan Mode
 - Before creating branches, verify names don't conflict with existing ones using `git worktree list` and `git branch -a`
+- Issue-linked branches: `<type>/issue-XXXX-to-YYYY-<desc>` (range), `<type>/issue-XXXX-to-YYYY-and-WWWW-to-ZZZZ-<desc>` (multiple ranges)
 
 **PR Conflict Resolution:**
 - **MUST** use worktree-based merge strategy for resolving PR conflicts (NOT rebase or force-push)
@@ -148,17 +219,18 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - This preserves commit history and avoids force-push risks
 
 **GitHub Integration:**
-- **MUST** use GitHub CLI (`gh`) for all GitHub operations
-- Use `gh pr create` for creating pull requests
-- Use `gh pr view` for viewing PR details
-- Use `gh issue create` for creating issues
-- Use `gh issue view` for viewing issue details
-- Use `gh api` for accessing GitHub API
-- Use `gh discussion list` for viewing discussions
-- Use `gh discussion create` for creating discussions
+- **DEFAULT**: Use GitHub MCP tools for all GitHub operations (PR, issues, discussions, releases)
+- **FALLBACK**: Use GitHub CLI (`gh`) **only** when GitHub MCP is unavailable, errors out (e.g., 404), or lacks the required capability
+- When GitHub MCP returns an error, immediately fall back to `gh` CLI without retrying the MCP call
+- **NEVER** use raw `curl` or web browser for GitHub operations
 - For usage questions, prefer GitHub Discussions over Issues
-- **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
-- When GitHub MCP tools return errors (e.g., 404), immediately fall back to `gh` CLI instead of retrying
+- Common operations and their MCP/CLI equivalents:
+  - PR create: MCP `create_pull_request` / CLI `gh pr create`
+  - PR view: MCP `pull_request_read` / CLI `gh pr view`
+  - PR update: MCP `update_pull_request` / CLI `gh pr edit`
+  - Issue create: MCP `issue_write` / CLI `gh issue create`
+  - Issue view: MCP `issue_read` / CLI `gh issue view`
+  - Raw API: CLI `gh api` (use only when no MCP equivalent)
 
 **GitHub Comments & Interactions:**
 - **NEVER** post comments on PRs or Issues without authorization
@@ -167,10 +239,12 @@ See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation stan
 - ALL comments MUST be in English and include Claude Code attribution footer
 - Comments MUST reference specific code locations with repository-relative paths
 - Comments MUST NOT contain user requests, AI interactions, or absolute local paths
+- **Reinhardt family scope note**: The Autonomous Operation Policy authorizes *creation* of Draft PRs and Issues without further confirmation in the four Reinhardt-family repos, but *commenting* on PRs/Issues remains fully subject to the rules above
 
 See instructions/GITHUB_INTERACTION.md for comprehensive GitHub interaction guidelines including:
 - Posting authorization policy (PP-1 ~ PP-3)
 - PR review response format (RR-1 ~ RR-3)
+- Copilot review handling (CR-1 ~ CR-5)
 - Issue discussion guidelines (ID-1 ~ ID-2)
 - Agent context provision (AC-1 ~ AC-2)
 
@@ -218,7 +292,7 @@ This project uses [release-plz](https://release-plz.ieni.dev/) for automated rel
 
 **Tagging Strategy (Per-Crate Tagging):**
 - Format: `[crate-name]@v[version]`
-  - Examples: `reinhardt-core@v0.2.0`, `reinhardt-orm@v0.1.1`
+  - Examples: `reinhardt-core@v0.2.0`, `reinhardt-db@v0.1.1`
 - Tags are created automatically by release-plz upon Release PR merge
 - **NEVER** create release tags manually
 
@@ -274,6 +348,17 @@ See instructions/ISSUE_HANDLING.md for comprehensive issue handling principles i
 - Work unit principles (WU-1 ~ WU-3)
 - Workflow examples
 
+**Upstream Issue Reporting:**
+- When an upstream dependency issue is discovered during reinhardt-web development, **immediately** create an issue in the upstream repository (UR-1)
+- Use `gh issue create -R [owner]/[repo]` for upstream issue creation (UR-2)
+- Create a tracking issue in reinhardt-web with `upstream-tracking` label for every upstream issue (UR-4)
+- **NEVER** implement workarounds without creating an upstream issue first (WP-2)
+
+See instructions/UPSTREAM_ISSUE_REPORTING.md for upstream dependency issue reporting policy including:
+- Reporting policy (UR-1 ~ UR-5)
+- Issue categories (IC-1, IC-2)
+- Workaround policy (WP-1 ~ WP-3)
+
 ---
 
 ## Common Commands
@@ -282,17 +367,18 @@ See instructions/ISSUE_HANDLING.md for comprehensive issue handling principles i
 ```bash
 cargo check --workspace --all --all-features
 cargo build --workspace --all --all-features
+cargo make feature-check  # Check representative feature combinations (27 patterns)
 ```
 
 **Testing:**
 ```bash
-cargo test --workspace --all --all-features
+cargo nextest run --workspace --all-features
 cargo test --doc  # Documentation tests
 ```
 
 **Code Quality:**
 ```bash
-cargo make fmt-check   # Cheeck format rules of the code
+cargo make fmt-check   # Check format rules of the code
 cargo make clippy-check  # Check lint rules of the code
 cargo make fmt-fix   # Automatically fix code based on formatting rules
 cargo make clippy-fix  # Automatically fix code based on lint rules
@@ -315,6 +401,32 @@ docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/
 cargo make audit  # Check for known vulnerabilities in dependencies
 ```
 
+**SemVer Check (Local, mirrors CI):**
+```bash
+# Run the same cargo-semver-checks command as CI semver-check.yml (normal PR path).
+# Capture output ONCE — semver-check is slow (typically 1.5–2 h) and running it twice
+# can also yield inconsistent results if `main` advances between invocations.
+OUT=$(cargo make semver-check 2>&1) || true
+
+# Post the result to the PR (required by PR_GUIDELINE.md RP-1a).
+# Use the <!-- local-semver-check --> marker. On re-runs, UPDATE the existing marked
+# comment via `gh api ... -X PATCH` instead of creating a new one.
+PR=<PR number>
+OWNER=<owner>
+REPO=<repo>
+BODY=$(printf '<!-- local-semver-check -->\n## Local SemVer Check Result\n\n````text\n%s\n````\n\n*Generated locally via `cargo make semver-check` (mirrors CI semver-check.yml).*' "$OUT")
+
+# Look up an existing marked comment, then PATCH it; otherwise create a new one.
+EXISTING=$(gh api "repos/$OWNER/$REPO/issues/$PR/comments" --paginate \
+  --jq '.[] | select(.body | startswith("<!-- local-semver-check -->")) | .id' \
+  | head -n1)
+if [ -n "$EXISTING" ]; then
+  gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$EXISTING" -f body="$BODY" >/dev/null
+else
+  gh api -X POST "repos/$OWNER/$REPO/issues/$PR/comments" -f body="$BODY" >/dev/null
+fi
+```
+
 **Placeholder Check (formatter artifact detection):**
 ```bash
 # Check for __reinhardt_placeholder__! left in source files after page! macro formatting
@@ -326,6 +438,30 @@ cargo make placeholder-check
 # Database tests use TestContainers automatically (no external database needed)
 cargo nextest run --package reinhardt-integration-tests
 ```
+
+**Orphan Detector (CI Infrastructure, Issue #3903):**
+```bash
+# Unit tests (requires Node.js 20+)
+cd infra/github-runners/lambda-src/orphan-detector
+npm ci
+npm test                     # 55 unit tests (vitest)
+npm run test:coverage        # with coverage thresholds (90% line, 85% branch)
+
+# Build Lambda bundle locally
+npm run build                # bundles src/index.ts -> dist/index.mjs
+
+# Dry-run invoke against CI sub-account (after deploy)
+aws lambda invoke \
+  --function-name reinhardt-ci-orphan-detector \
+  --payload '{"dryRun":true}' \
+  /tmp/resp.json
+
+# Tail CloudWatch logs
+aws logs tail /aws/lambda/reinhardt-ci-orphan-detector --follow
+```
+
+See `infra/github-runners/README.md` for architecture, configuration
+reference, and runbook.
 
 **Container Runtime:**
 ```bash
@@ -405,8 +541,8 @@ cat .testcontainers.properties
 ## Database Operations
 
 **Layer Selection:**
-- **Basic CRUD**: Use `reinhardt-orm` for table-level operations
-- **Low-Level**: Use `reinhardt-database` for schema management, raw queries, DB-specific operations
+- **Basic CRUD**: Use `reinhardt-db` for table-level operations
+- **Low-Level**: Use `reinhardt-db` for schema management, raw queries, DB-specific operations
 
 ---
 
@@ -439,6 +575,7 @@ Before submitting code:
    - [ ] Git commit policy (@instructions/COMMIT_GUIDELINE.md)
    - [ ] GitHub interaction policy (@instructions/GITHUB_INTERACTION.md)
    - [ ] Issue handling principles (@instructions/ISSUE_HANDLING.md)
+   - [ ] Upstream issues reported (@instructions/UPSTREAM_ISSUE_REPORTING.md)
    - [ ] No unresolved TODO/FIXME comments in new code (TODO Check CI)
 
 ---
@@ -451,164 +588,8 @@ Before submitting code:
 
 ---
 
-## Quick Reference
+@instructions/QUICK_REFERENCE.md
 
-### ✅ MUST DO
-- Write ALL code comments in English (no exceptions)
-- Use `module.rs` + `module/` directory (NO `mod.rs`)
-- Update docs with code changes (same workflow)
-- Clean up ALL test artifacts
-- Delete temp files from `/tmp` immediately
-- Wait for explicit user instruction before commits
-- Understand that Plan Mode approval authorizes both implementation and commits
-- Wait for explicit user instruction before converting Draft PRs to Ready for Review (Plan Mode approval does NOT authorize conversion)
-- Mark placeholders with `todo!()` or `// TODO:`
-- Use `#[serial(group_name)]` for global state tests
-- Split commits by specific intent, not features
-- Follow Conventional Commits v1.0.0 format: `<type>[scope]: <description>`
-- Start commit description with lowercase letter (e.g., `feat: add feature`)
-- Use `!` notation for breaking changes (e.g., `feat!:` or `feat(scope)!:`)
-- Use conventional commit format for proper version detection by release-plz
-- Write commit descriptions as standalone CHANGELOG entries (meaningful without additional context)
-- Use `security` type for security vulnerability fixes (dedicated CHANGELOG section)
-- Use `deprecated` type for marking features/APIs as deprecated (dedicated CHANGELOG section)
-- Review Release PRs created by release-plz before merging
-- Verify no circular dev-dependency chains exist before publishing (functional crates must not dev-depend on other Reinhardt crates)
-- Include `version` field in `reinhardt-test` workspace dependency (published crate, same as others)
-- Follow RP-1 procedure in instructions/RELEASE_PROCESS.md for partial release failures
-- Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
-- Search existing issues before creating new ones
-- Use appropriate issue templates for all issues
-- Apply at least one type label to every issue
-- Report security vulnerabilities privately via GitHub Security Advisories
-- Use `.github/labels.yml` as source of truth for label definitions
-- Follow PR/Issue template structure when creating via `gh` CLI
-- Use 1 PR = 1 crate x 1 fix pattern as the basic work unit for batch issue handling
-- Create preceding PRs for cross-crate shared changes before per-crate fix PRs
-- Organize batch work into phases by severity and parallelize across independent crates
-- Use `rstest` for ALL test cases (no plain `#[test]`)
-- Follow Arrange-Act-Assert (AAA) pattern with `// Arrange`, `// Act`, `// Assert` comments for test structure
-- Use `reinhardt-test` fixtures for test setup/teardown
-- Create specialized fixtures wrapping generic `reinhardt-test` fixtures for test data injection
-- Use SeaQuery (not raw SQL) for SQL construction in tests
-- Wrap generic types in backticks in doc comments: `` `Result<T>` ``, NOT `Result<T>`
-- Wrap macro attributes in backticks: `` `#[inject]` ``, NOT `#[inject]`
-- Wrap URLs in angle brackets or backticks: `<https://...>` or `` `https://...` ``
-- Specify language for code blocks: ` ```rust `, NOT ` ``` `
-- Wrap bracket patterns in backticks: `` `array[0]` ``, NOT `array[0]`
-- Use backticks (not intra-doc links) for feature-gated types: `` `FeatureType` ``, NOT `` [`FeatureType`] ``
-- Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
-- Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
-- Resolve all `todo!()` and `// TODO:` before merging PR (enforced by TODO Check CI)
-- Preview and get user confirmation before posting self-initiated GitHub comments
-- Include Claude Code attribution footer on all GitHub comments
-- Use repository-relative paths (not absolute) in GitHub comments
-- Provide structured agent context using AC-2 template format
-- Fall back to `gh` CLI when GitHub MCP tools return errors
-- Verify branch name uniqueness before creation (`git worktree list` and `git branch -a`)
-- Check known CI failure patterns before deep investigation
-- Run `cargo doc --no-deps` locally before pushing doc-related fixes
-- Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
-- Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
-- Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
-- Apply `agent-suspect` label to all agent-detected bug Issues
-- Verify agent-detected bugs independently before removing `agent-suspect` label
-- Create `develop/0.x+1.0` branch when version group enters RC phase (DB-1)
-- Direct next-version features and breaking changes to `develop/0.x+1.0` during RC (DB-2)
-- Apply RC bug fixes to `main` first, then forward-merge to develop (DB-3)
-- Forward-merge `main` into develop branch regularly (DB-4)
-- Merge develop branch into `main` after stable release using merge commit, not squash (DB-5)
-- Use independent context (separate agent session) for agent re-evaluation of `agent-suspect` Issues
-- Obtain SP-6 approval before adding non-breaking APIs during RC phase (`enhancement` + `rc-addition` labels + maintainer approval)
-- Use three-dot diff (`main...branch`) for PR diff verification to exclude merge history noise
-
-### ❌ NEVER DO
-- Use `mod.rs` files (deprecated pattern)
-- Commit without user instruction (except Plan Mode approval)
-- Convert Draft PRs to Ready for Review without explicit user instruction (Plan Mode approval does NOT count)
-- Leave docs outdated after code changes
-- Document user requests or AI interactions in project documentation
-- Save files to project directory (use `/tmp`)
-- Leave backup files (`.bak`, `.backup`, `.old`, `~`)
-- Create skeleton tests (tests without assertions)
-- Use loose assertions (`contains`) without justification
-- Use glob imports (`use module::*`)
-- Create circular dependencies
-- Leave unmarked placeholder implementations
-- Use `#[allow(...)]` without explanatory comments
-- Use alternative TODO notations (`FIXME:`, `NOTE:` for unimplemented features)
-- Create batch commits without user confirmation
-- Use relative paths beyond `../`
-- Manually bump versions in feature branches (let release-plz handle it)
-- Create release tags manually (release-plz creates them automatically)
-- Skip reviewing Release PRs before merging
-- Use `reinhardt-test = { workspace = true }` in functional crate `[dev-dependencies]` (workspace deps include version, causing publish failures; use optional dep or path-only dev-dep instead)
-- Omit `version` field from `reinhardt-test` workspace dependency (causes publish failure for dependents)
-- Change `pr_branch_prefix` from `"release-plz-"` (breaks two-step release workflow)
-- Merge Release PR without rolling back unpublished crate versions after partial release failure
-- Write vague commit descriptions that are unclear as CHANGELOG entries (e.g., "fix issue", "update code")
-- Start commit description with uppercase letter
-- End commit description with a period
-- Omit `!` or `BREAKING CHANGE:` for API-breaking changes
-- Create issues without appropriate labels
-- Create public issues for security vulnerabilities
-- Create duplicate issues without searching first
-- Skip issue templates when creating issues
-- Use non-English in issue titles or descriptions
-- Apply `release` label to issues (only for PRs)
-- Mix changes to unrelated crates in a single issue-fix PR
-- Mix unrelated fix patterns in a single PR
-- Skip preceding PRs for cross-crate shared utilities
-- Use plain `#[test]` instead of `#[rstest]`
-- Use non-standard phase labels in tests (`// Setup`, `// Execute`, `// Verify` -- use `// Arrange`, `// Act`, `// Assert`)
-- Write raw SQL strings in tests (use SeaQuery instead)
-- Duplicate infrastructure setup code (use `reinhardt-test` fixtures)
-- Write generic types without backticks in doc comments (causes HTML tag warnings)
-- Write macro attributes without backticks in doc comments (causes unresolved link warnings)
-- Write bare URLs in doc comments (causes bare URL warnings)
-- Use intra-doc links for feature-gated items (causes unresolved link warnings)
-- Create new ASCII art diagrams in doc comments (use Mermaid instead)
-- Mix warnings and errors in trybuild `.stderr` files
-- Merge PR with unresolved `todo!()` or `// TODO:` comments (blocked by TODO Check CI)
-- Post GitHub comments without authorization (explicit instruction or Plan Mode approval)
-- Include absolute local paths in GitHub comments (`/Users/...`, `/home/...`)
-- Post vague or non-actionable GitHub comments
-- Skip Claude Code attribution footer on GitHub comments
-- Create PRs/Issues without following template structure
-- Enter Plan Mode for merge operations, branch deletion, or worktree cleanup
-- Retry GitHub MCP tools after errors instead of falling back to `gh` CLI
-- Create branches without checking for name conflicts
-- Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
-- Merge develop/* branches into main without `migration-approved` label and CI version validation
-- Remove `agent-suspect` label without independent verification (separate agent or human)
-- Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
-- Merge next-version features or breaking changes directly into `main` during RC (use `develop/0.x+1.0`)
-- Apply bug fixes only to the develop branch without fixing on `main` first (DB-3)
-- Configure release-plz to monitor the develop branch (DB-6)
-- Delete the develop branch before merging into `main` (DB-5)
-- Squash-merge the develop branch into `main` (DB-5)
-- Use the same agent context for both detection and verification of a bug
-- Use two-dot diff (`main..branch`) for PR verification (includes merge history noise)
-
-### 📚 Detailed Standards
-
-For comprehensive guidelines, see:
-- **Module System**: instructions/MODULE_SYSTEM.md
-- **Testing**: instructions/TESTING_STANDARDS.md
-- **Anti-Patterns**: instructions/ANTI_PATTERNS.md
-- **Documentation**: instructions/DOCUMENTATION_STANDARDS.md
-- **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
-- **Release Process**: instructions/RELEASE_PROCESS.md
-- **Stability Policy**: instructions/STABILITY_POLICY.md (includes DB-1 ~ DB-7 develop branch strategy)
-- **Agent Bug Discovery**: instructions/STABILITY_POLICY.md (SC-2a)
-- **Issues**: instructions/ISSUE_GUIDELINES.md
-- **Issue Handling**: instructions/ISSUE_HANDLING.md
-- **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
-- **GitHub Discussions**: https://github.com/kent8192/reinhardt-web/discussions
-- **Security Policy**: SECURITY.md
-- **Code of Conduct**: CODE_OF_CONDUCT.md
-- **Label Definitions**: .github/labels.yml
-- **Project Overview**: README.md
 
 ---
 

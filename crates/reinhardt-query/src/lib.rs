@@ -49,7 +49,8 @@
 //! - [`backend`]: Database backend implementations
 //!   ([`PostgresQueryBuilder`],
 //!   [`MySqlQueryBuilder`],
-//!   [`SqliteQueryBuilder`])
+//!   [`SqliteQueryBuilder`],
+//!   [`CockroachDBQueryBuilder`])
 //!
 //! ## Quick Start
 //!
@@ -311,6 +312,9 @@
 //!
 //! ## Feature Flags
 //!
+//! All features are disabled by default.
+//!
+//! - `derive`: Enable `#[derive(Iden)]` procedural macro
 //! - `thread-safe`: Use `Arc` instead of `Rc` for `DynIden` (enables thread-safe identifiers)
 //! - `with-chrono`: Enable chrono date/time types in `Value`
 //! - `with-uuid`: Enable UUID type in `Value`
@@ -335,6 +339,10 @@ pub mod dcl;
 // Backend implementations
 pub mod backend;
 
+/// NoSQL command builders (Redis, etc.).
+#[cfg(feature = "nosql-redis")]
+pub mod nosql;
+
 /// Prelude module for convenient imports.
 ///
 /// Import everything from this module to get started quickly:
@@ -345,7 +353,8 @@ pub mod backend;
 pub mod prelude {
 	// Backend builders
 	pub use crate::backend::{
-		MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqlWriter, SqliteQueryBuilder,
+		CockroachDBQueryBuilder, MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqlWriter,
+		SqliteQueryBuilder,
 	};
 	// DCL statements
 	pub use crate::dcl::{

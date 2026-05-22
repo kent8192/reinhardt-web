@@ -7,175 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.8...reinhardt-utils@v0.1.0-rc.9) - 2026-03-15
-
-### Changed
-
-- *(reinhardt-utils)* centralize RwLock poison recovery with helper functions
-
-### Fixed
-
-- *(utils)* replace unwrap with safe alternatives for panic prevention
-
-### Styling
-
-- fix formatting in reinhardt-utils staticfiles
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.4...reinhardt-utils@v0.1.0-rc.5) - 2026-03-07
-
-### Documentation
-
-- add missing doc comments for public API modules and types
-
-### Fixed
-
-- *(utils)* capitalize only first character in capfirst function
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.1...reinhardt-utils@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(meta)* fix workspace inheritance and authors metadata
-- *(staticfiles)* unify manifest.json format to use "paths" key
-
-### Other
-
-- resolve conflict with main (criterion version)
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-alpha.10...reinhardt-utils@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-core, reinhardt-http
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-alpha.9...reinhardt-utils@v0.1.0-alpha.10) - 2026-02-21
-
-### Added
-
-- add path sanitization and input validation helpers
-- add lock poisoning recovery utilities
-
-### Fixed
-
-- prevent panic on truncation underflow and UTF-8 boundary
-- add security feature dependency for strip_tags_safe
-- escape HTML in linebreaks/linebreaksbr and fix strip_tags
-- handle DST gap in make_aware_local without panic
-- prevent UTF-8 slicing panic in repr_array and repr_object
-- escape values in format_html to prevent XSS (#748)
-- add path validation to all LocalStorage methods
-- add path traversal prevention with input validation
-
-### Security
-
-- add cancellation mechanism for auto-cleanup tasks
-- recover from poisoned mutex/rwlock instead of panicking
-- replace blocking KEYS with non-blocking SCAN+UNLINK
-- replace recursive cleanup with bounded iterative loop
-- fix XSS in error pages and media rendering, harden cache
-
-### Styling
-
-- apply workspace-wide formatting fixes
-- apply rustfmt to pre-existing formatting violations in 16 files
-- apply rustfmt formatting to workspace files
-- apply code formatting to security fix files
-
-### Testing
-
-- add UTF-8 multibyte truncation boundary regression tests for #762
-
-### Maintenance
-
-- add explanatory comments to undocumented #[allow(...)] attributes
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-alpha.8...reinhardt-utils@v0.1.0-alpha.9) - 2026-02-12
-
-### Changed
-
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-alpha.7...reinhardt-utils@v0.1.0-alpha.8) - 2026-02-08
-
-### Fixed
-
-- *(utils)* break circular publish dependency with reinhardt-test
-- *(utils)* use fully qualified Result type in poll_until helpers
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-alpha.6...reinhardt-utils@v0.1.0-alpha.7) - 2026-02-06
-
-### Fixed
-
-- *(utils)* remove unused dev-dependencies to break circular publish chain
-
-### Other
-
-- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
-- release
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-alpha.5...reinhardt-utils@v0.1.0-alpha.6) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core, reinhardt-http
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-alpha.4...reinhardt-utils@v0.1.0-alpha.5) - 2026-02-03
-
-### Other
-
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.4] - 2026-01-30
-
-### Changed
-
-- Re-release of 0.1.0-alpha.3 content after version correction
-- **BREAKING**: Rename `r#static` module to `staticfiles` (#114)
-  - Module renamed from `reinhardt_utils::r#static` to `reinhardt_utils::staticfiles`
-  - Feature renamed from `static` to `staticfiles`
-  - Improves developer experience by eliminating raw identifier prefix
-
-
-## [0.1.0-alpha.3] - 2026-01-29 [YANKED]
-
-**Note:** This version was yanked due to version skipping in the main crate (`reinhardt-web`). Use the latest available version instead.
-
-### Changed
-
-- **BREAKING**: Rename `r#static` module to `staticfiles` (#114)
-  - Module renamed from `reinhardt_utils::r#static` to `reinhardt_utils::staticfiles`
-  - Feature renamed from `static` to `staticfiles`
-  - Improves developer experience by eliminating raw identifier prefix
-
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.30...reinhardt-utils@v0.1.0) - 2026-05-22
+
+Initial stable release of `reinhardt-utils` as part of the
+reinhardt-web 0.1.0 release. This crate is the workspace's shared
+utility surface: the `staticfiles` subsystem, the `AppVendorAsset`
+type that drives CDN-style vendor delivery, path / HTML sanitization
+helpers consumed by every other Reinhardt crate, and lock-poisoning
+recovery wrappers that replace `unwrap()` on `Mutex` / `RwLock` guards.
+
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **`staticfiles` subsystem with WASM auto-injection** — `StaticFilesConfig`
+  collects per-app static directories under `STATIC_ROOT`, detects
+  WASM entry points (`WasmEntry`), and auto-injects the SPA bootstrap
+  script into the served HTML so applications using `reinhardt-pages`
+  do not need to hand-write `<script>` tags. Bundle assets disable
+  immutable cache headers in debug builds so HMR can replace them.
+- **`passthrough_prefixes` and `index_file`** — `StaticFilesConfig`
+  exposes `passthrough_prefixes` (validated as non-empty at builder
+  time) and `index_file` so the runserver / collectstatic CLIs can
+  serve SPA-style fallback files from external paths via
+  `serve_direct_file`.
+- **`AppVendorAsset` vendor delivery** — apps register CDN assets
+  with SHA-256 integrity, path validation, and an async downloader
+  that uses a lazy first-request guard. `inventory`-based query
+  helpers let the admin crate enumerate every registered asset for
+  `collectstatic`.
+- **Path / URL / HTML sanitization helpers** — `is_safe_url`
+  (with anchor-link support), path-traversal prevention on
+  `LocalStorage`, redirect-URL validators, XSS-safe `format_html`,
+  `linebreaks` / `linebreaksbr` / `strip_tags_safe` HTML escapers,
+  and UTF-8-safe truncation that never panics on a multibyte
+  boundary.
+- **Numeric & lock-safety utilities** — checked arithmetic helpers
+  for cursor encoding (preventing arithmetic underflow), DST-gap
+  handling in `make_aware_local` without panic, bounded iterative
+  cleanup replacing recursive variants, and `poll_until` helpers
+  used in lieu of `reinhardt-test` from inside `reinhardt-utils` to
+  avoid a circular publish chain.
+- **Lock-poisoning recovery wrappers** — `RwLock` / `Mutex`
+  helpers in `reinhardt-utils` centralize poison recovery (replace
+  blocking `KEYS` with non-blocking `SCAN+UNLINK`, recover from
+  poisoned guards instead of panicking) and back the same patterns
+  that `reinhardt-core` and `reinhardt-conf` expose.
+- **UUID v7 throughout** — every UUID generated inside Reinhardt
+  flows through helpers in this crate and is emitted as UUID v7 for
+  monotonic ordering.
+
+### Notable Breaking Changes
+
+- **`r#static` module renamed to `staticfiles`** (#114) — the
+  module rename removes the raw-identifier prefix from
+  `reinhardt_utils::r#static`; the feature flag is also renamed
+  from `static` to `staticfiles`.
+
+### Migration Notes
+
+See the [root Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide)
+for project-wide guidance. The only utility-specific move is to
+update imports:
+
+- Replace `reinhardt_utils::r#static::*` with
+  `reinhardt_utils::staticfiles::*`, and switch the feature flag
+  from `static` to `staticfiles`.

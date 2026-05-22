@@ -7,10 +7,10 @@ use crate::component::Component;
 use crate::ssr::SsrState;
 use std::collections::HashMap;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 use crate::dom::{Element, document};
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 use crate::ssr::HYDRATION_ATTR_ID;
 
 /// Errors that can occur during hydration.
@@ -99,26 +99,27 @@ impl HydrationContext {
 		}
 	}
 
-	/// Restores state from the window's SSR state object.
-	#[cfg(target_arch = "wasm32")]
+	/// Restores state from the `<script id="ssr-state">` element's JSON content.
+	#[cfg(wasm)]
 	pub fn from_window() -> Result<Self, HydrationError> {
 		let window = web_sys::window()
 			.ok_or_else(|| HydrationError::StateParseError("Window not available".to_string()))?;
 
-		let global = window
-			.get("__REINHARDT_SSR_STATE__")
-			.ok_or_else(|| HydrationError::StateParseError("SSR state not found".to_string()))?;
+		let document = window
+			.document()
+			.ok_or_else(|| HydrationError::StateParseError("Document not available".to_string()))?;
 
-		if global.is_undefined() || global.is_null() {
+		let element = document.get_element_by_id("ssr-state").ok_or_else(|| {
+			HydrationError::StateParseError("SSR state element not found".to_string())
+		})?;
+
+		let json = element.text_content().ok_or_else(|| {
+			HydrationError::StateParseError("SSR state element is empty".to_string())
+		})?;
+
+		if json.trim().is_empty() {
 			return Ok(Self::new());
 		}
-
-		let json = js_sys::JSON::stringify(&global)
-			.map_err(|_| HydrationError::StateParseError("Failed to stringify state".to_string()))?
-			.as_string()
-			.ok_or_else(|| {
-				HydrationError::StateParseError("Failed to convert state to string".to_string())
-			})?;
 
 		let state = SsrState::from_json(&json)
 			.map_err(|e| HydrationError::StateParseError(e.to_string()))?;
@@ -127,7 +128,7 @@ impl HydrationContext {
 	}
 
 	/// Non-WASM version that returns an empty context.
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(native)]
 	pub fn from_window() -> Result<Self, HydrationError> {
 		Ok(Self::new())
 	}
@@ -154,7 +155,7 @@ impl HydrationContext {
 }
 
 /// Hydrates a component into the specified root element.
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), HydrationError> {
 	use super::events::EventRegistry;
 	use super::reconcile::reconcile;
@@ -187,13 +188,13 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 }
 
 /// Non-WASM version for testing.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub fn hydrate<C: Component>(_component: &C, _root: &str) -> Result<(), HydrationError> {
 	Ok(())
 }
 
 /// Hydrates a component at the default root element (#app).
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub fn hydrate_root<C: Component + Default>() -> Result<(), HydrationError> {
 	let component = C::default();
 	let doc = document();
@@ -206,7 +207,7 @@ pub fn hydrate_root<C: Component + Default>() -> Result<(), HydrationError> {
 }
 
 /// Non-WASM version for testing.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub fn hydrate_root<C: Component + Default>() -> Result<(), HydrationError> {
 	Ok(())
 }
@@ -230,7 +231,7 @@ pub fn hydrate_root<C: Component + Default>() -> Result<(), HydrationError> {
 /// // Attach event handlers
 /// attach_events_to_mounted_view(&root, &view)?;
 /// ```
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub fn attach_events_to_mounted_view(
 	element: &Element,
 	view: &crate::component::Page,
@@ -251,7 +252,7 @@ pub fn attach_events_to_mounted_view(
 ///
 /// This function can be used for both SSR+Hydration and CSR (client-side rendering only) scenarios.
 /// For CSR, call this after mounting a view to attach event handlers.
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub(crate) fn attach_events_recursive(
 	element: &Element,
 	view: &crate::component::Page,
@@ -327,7 +328,7 @@ pub(crate) fn attach_events_recursive(
 }
 
 /// Finds all elements with hydration markers in the given root.
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 // Allow dead_code: WASM hydration helper reserved for future hydration runtime
 #[allow(dead_code)]
 pub(super) fn find_hydration_markers(root: &Element) -> Vec<(String, Element)> {
@@ -336,7 +337,7 @@ pub(super) fn find_hydration_markers(root: &Element) -> Vec<(String, Element)> {
 	markers
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 fn find_markers_recursive(element: &Element, markers: &mut Vec<(String, Element)>) {
 	if let Some(id) = element.get_attribute(HYDRATION_ATTR_ID) {
 		markers.push((id, element.clone()));
@@ -348,7 +349,7 @@ fn find_markers_recursive(element: &Element, markers: &mut Vec<(String, Element)
 }
 
 /// Non-WASM version for testing.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 // Allow dead_code: non-WASM stub for hydration marker scanning
 #[allow(dead_code)]
 pub(super) fn find_hydration_markers(_root: &str) -> Vec<(String, String)> {
@@ -387,7 +388,7 @@ where
 }
 
 /// Mark hydration as complete and notify all listeners (internal)
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 fn mark_hydration_complete_internal() {
 	HYDRATION_COMPLETE.with(|state| {
 		*state.borrow_mut() = true;
@@ -405,7 +406,7 @@ fn mark_hydration_complete_internal() {
 ///
 /// This function can be called explicitly to mark hydration as complete
 /// when not using the automatic hydration process (e.g., when using mount() instead of hydrate()).
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub fn mark_hydration_complete() {
 	mark_hydration_complete_internal();
 }

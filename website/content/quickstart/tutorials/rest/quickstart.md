@@ -12,10 +12,16 @@ Create a simple API for administrators to view and edit users and groups in the 
 
 ## Project Setup
 
-First, install the global tool:
+First, install the global tool. While Reinhardt is on a pre-release
+(`-rc.*` / `-alpha.*`), `cargo install` requires an explicit `--version`
+because pre-releases are not selected by default. Once `0.1.0` stable
+ships, omit `--version` to pull the latest stable (or keep `--version`
+as an opt-in reproducibility pin). The literal below is auto-bumped by
+release-plz on each release.
 
+<!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not `reinhardt-admin-cli`.
@@ -24,7 +30,7 @@ Create a new Reinhardt project called tutorial:
 
 ```bash
 # Create RESTful API project
-reinhardt-admin startproject tutorial --template-type restful
+reinhardt-admin startproject tutorial --template rest
 cd tutorial
 ```
 
@@ -34,21 +40,21 @@ This generates a complete project structure:
 tutorial/
 ├── Cargo.toml
 ├── README.md
+├── Makefile.toml
+├── settings/
+│   ├── base.toml
+│   ├── local.toml
+│   ├── staging.toml
+│   └── production.toml
 └── src/
-    ├── main.rs
+    ├── lib.rs
     ├── config.rs
     ├── apps.rs
     ├── config/
     │   ├── settings.rs
-    │   ├── settings/
-    │   │   ├── base.rs
-    │   │   ├── local.rs
-    │   │   ├── staging.rs
-    │   │   └── production.rs
     │   ├── urls.rs
     │   └── apps.rs
     └── bin/
-        ├── runserver.rs
         └── manage.rs
 ```
 
@@ -86,8 +92,7 @@ This example uses simple data structures. In real applications, you can implemen
 Implement API endpoints using HTTP method decorators. Add to `users/views.rs`:
 
 ```rust
-use json::json;
-use reinhardt::core::serde::json;
+use serde_json::{self as json, json};
 use reinhardt::ViewResult;
 use reinhardt::{get, post, Json, Response, StatusCode};
 use crate::models::User;
@@ -95,7 +100,7 @@ use crate::serializers::UserSerializer;
 
 #[get("/users", name = "list_users")]
 pub async fn list_users() -> ViewResult<Response> {
-    let users = User::objects().all().all().await?;
+    let users = User::objects().all().await?;
     let serialized: Vec<UserSerializer> = users.into_iter()
         .map(|u| UserSerializer::from(u))
         .collect();
@@ -137,7 +142,7 @@ pub async fn create_user(
 First, create a users app:
 
 ```bash
-reinhardt-admin startapp users --template-type restful
+reinhardt-admin startapp users --template rest
 ```
 
 ### Define Models and Serializers
@@ -173,8 +178,7 @@ pub struct UserSerializer {
 Edit `users/views.rs` to implement full CRUD operations:
 
 ```rust
-use json::json;
-use reinhardt::core::serde::json;
+use serde_json::{self as json, json};
 use reinhardt::ViewResult;
 use reinhardt::{get, post, Json, Path, Response, StatusCode};
 use crate::models::User;
@@ -182,7 +186,7 @@ use crate::serializers::UserSerializer;
 
 #[get("/users", name = "list_users")]
 pub async fn list_users() -> ViewResult<Response> {
-    let users = User::objects().all().all().await?;
+    let users = User::objects().all().await?;
     let serialized: Vec<UserSerializer> = users.into_iter()
         .map(|u| UserSerializer::from(u))
         .collect();
@@ -257,6 +261,7 @@ Edit `src/config/urls.rs`:
 use reinhardt::prelude::*;
 use reinhardt::routes;
 
+// Note: UnifiedRouter requires the `client-router` feature flag
 #[routes]
 pub fn routes() -> UnifiedRouter {
     UnifiedRouter::new()

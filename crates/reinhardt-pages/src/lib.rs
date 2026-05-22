@@ -38,7 +38,7 @@
 //!
 //! ### Basic Component
 //!
-//! ```ignore
+//! ```no_run
 //! use reinhardt_pages::{Signal, Page, page};
 //!
 //! fn counter() -> Page {
@@ -163,7 +163,7 @@ pub mod csrf;
 pub mod form_generated;
 // FormComponent requires reinhardt-forms which is not WASM-compatible yet
 // For now, client-side forms should use PageElement
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub mod form;
 
 // API and communication
@@ -179,6 +179,9 @@ pub mod hydration;
 // Client-side routing
 pub mod router;
 
+// WASM application launcher
+pub mod app;
+
 // Integration modules (runtime support for special macros)
 pub mod integ;
 
@@ -190,6 +193,10 @@ pub mod testing;
 
 // Static file URL resolver
 pub mod static_resolver;
+
+// Hot Module Replacement (server-side only, feature-gated)
+#[cfg(all(not(target_arch = "wasm32"), feature = "hmr"))]
+pub mod hmr;
 
 // Table utilities (django-tables2 equivalent)
 pub mod tables;
@@ -204,27 +211,32 @@ pub use builder::{
 	},
 };
 pub use callback::{Callback, IntoEventHandler, event_handler, into_event_handler};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub use component::DummyEvent;
+#[cfg(wasm)]
+pub use component::cleanup_reactive_nodes;
 pub use component::{
-	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props, ScriptTag,
-	StyleTag,
+	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props,
+	ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{Document, Element, EventHandle, EventType, document};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use reactive::{Effect, Memo, Resource, ResourceState, Signal};
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub use reactive::{create_resource, create_resource_with_deps};
 // Re-export Context system
 pub use reactive::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
 };
 // Re-export Hooks API
+#[allow(deprecated)]
+// (Refs #4234) Re-exporting deprecated `with_router` and `PathParams` for backward compatibility.
+pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams, with_router};
 pub use reactive::{Action, ActionPhase, use_action};
 #[allow(deprecated)] // Intentional: re-exporting deprecated items for backward compatibility
 pub use reactive::{
@@ -234,12 +246,19 @@ pub use reactive::{
 	use_optimistic, use_reducer, use_ref, use_shared_state, use_state, use_sync_external_store,
 	use_transition,
 };
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub use reinhardt_forms::{
 	Widget,
 	wasm_compat::{FieldMetadata, FormMetadata},
 };
+#[allow(deprecated)]
+// (Refs #4234) Re-exporting deprecated `PathPattern`, `Route`, `Router` for backward compatibility.
 pub use router::{Link, PathPattern, Route, Router, RouterOutlet};
+// Imperative SPA navigation API (Issue #4610). `navigate` is the free
+// function; `use_router` returns a `RouterHandle` for use inside hooks /
+// components. `NavigateError` is the public error returned by both paths.
+pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
+pub use router::{NavigationType, navigate};
 pub use server_fn::{ServerFn, ServerFnError};
 pub use ssr::{SsrOptions, SsrRenderer, SsrState};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
@@ -248,6 +267,23 @@ pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::page;
+
+// Private re-exports used by macro-generated code. Not part of the public API.
+#[doc(hidden)]
+pub mod __private {
+	// `reqwest` is enabled for all wasm32 targets (including WASI, wasm32-unknown-unknown, etc.)
+	// because the HTTP client is needed on any wasm32 platform.
+	#[cfg(target_arch = "wasm32")]
+	pub use reqwest;
+
+	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
+	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.
+	// The cfg condition `not(all(target_family = "wasm", target_os = "unknown"))` precisely
+	// targets browser wasm, which reports target_family = "wasm" and target_os = "unknown".
+	// This is intentionally different from the `reqwest` cfg above.
+	#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+	pub use tracing;
+}
 
 // Logging macros are automatically exported via #[macro_export]
 // Users can access them as: reinhardt_pages::debug_log!, reinhardt_pages::info_log!, etc.

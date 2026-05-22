@@ -20,7 +20,7 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     name: Plan (${{ matrix.module }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -28,9 +28,12 @@ jobs:
           - module: github-runners
             dir: infra/github-runners
             backend: s3
-          - module: bootstrap
-            dir: infra/github-runners/bootstrap
-            backend: local
+          # Note: `bootstrap` (infra/github-runners/bootstrap) is intentionally
+          # excluded from CI. It uses a local backend that does not persist
+          # across runs, so every CI run would re-plan the S3 state bucket
+          # as a new resource and fail apply with `BucketAlreadyExists`.
+          # Bootstrap is run-once and must be applied manually with state in
+          # hand. See reinhardt-web#4145.
           - module: website
             dir: infra/website
             backend: local
@@ -48,6 +51,7 @@ jobs:
         uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Init (S3 backend)
+        id: init-s3
         if: matrix.backend == 's3'
         working-directory: ${{ matrix.dir }}
         env:
@@ -64,15 +68,23 @@ jobs:
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ matrix.module }}/terraform.tfstate" \
             -backend-config="region=${{ secrets.TF_AWS_REGION }}" \
+            -backend-config="assume_role={role_arn=\"arn:aws:iam::${{ secrets.TF_AWS_ACCOUNT_ID }}:role/OrganizationAccountAccessRole\"}" \
             -input=false
         continue-on-error: true
 
       - name: Terraform Init (local backend)
+        id: init-local
         if: matrix.backend == 'local'
         working-directory: ${{ matrix.dir }}
         run: |
           terraform init -input=false
         continue-on-error: true
+
+      - name: Check terraform init outcome
+        if: steps.init-s3.outcome == 'failure' || steps.init-local.outcome == 'failure'
+        run: |
+          echo "::error::Terraform init failed for ${{ matrix.module }}"
+          exit 1
 
       - name: Check required variables
         if: env.SKIP_PLAN != 'true'
@@ -82,7 +94,7 @@ jobs:
           TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
         run: |
           case "${{ matrix.module }}" in
-            bootstrap|github-runners)
+            github-runners)
               [ -z "$TF_VAR_aws_account_id" ] && SKIP=true ;;
             organizations)
               [ -z "$TF_VAR_account_email" ] && SKIP=true ;;
@@ -122,10 +134,29 @@ jobs:
           echo "Downloading Lambda zips for v${MODULE_VERSION}..."
           mkdir -p lambdas
           BASE_URL="https://github.com/github-aws-runners/terraform-aws-github-runner/releases/download/v${MODULE_VERSION}"
-          for name in webhook runners runner-binaries-syncer; do
+          for name in webhook runners runner-binaries-syncer termination-watcher ami-housekeeper; do
             curl -fsSL -o "lambdas/${name}.zip" "${BASE_URL}/${name}.zip"
             echo "  Downloaded ${name}.zip"
           done
+
+      # Issue #3903: project-owned orphan-detector Lambda.
+      # Terraform's archive_file requires dist/ to exist, so build the TS
+      # bundle here before `terraform plan`.
+      - name: Setup Node.js (for orphan-detector Lambda)
+        if: env.SKIP_PLAN != 'true' && matrix.module == 'github-runners'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: infra/github-runners/lambda-src/orphan-detector/package-lock.json
+
+      - name: Build orphan-detector Lambda
+        if: env.SKIP_PLAN != 'true' && matrix.module == 'github-runners'
+        working-directory: infra/github-runners/lambda-src/orphan-detector
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          test -f dist/index.mjs || { echo "dist/index.mjs missing"; exit 1; }
 
       - name: Terraform Plan
         if: env.SKIP_PLAN != 'true'
@@ -159,7 +190,7 @@ jobs:
           TF_VAR_tf_plan_aws_access_key_id: ${{ secrets.TF_AWS_ACCESS_KEY_ID }}
           TF_VAR_tf_plan_aws_secret_access_key: ${{ secrets.TF_AWS_SECRET_ACCESS_KEY }}
           TF_VAR_organizations_account_email: ${{ secrets.TF_ACCOUNT_EMAIL }}
-          TF_VAR_environment_reviewer: ${{ secrets.TF_ENVIRONMENT_REVIEWER }}
+          TF_VAR_environment_reviewer_user_id: ${{ secrets.TF_ENVIRONMENT_REVIEWER_USER_ID }}
         run: |
           terraform plan -no-color -input=false 2>&1 | tee plan-output.txt
           echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"

@@ -19,7 +19,7 @@
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
-use reinhardt_core::endpoint::EndpointMetadata;
+use reinhardt_core::endpoint::{AuthProtection, EndpointMetadata};
 use reinhardt_rest::openapi::{EndpointInspector, Schema as OpenApiSchema, ToSchema};
 
 /// Test model with Schema derivation
@@ -213,6 +213,11 @@ fn test_endpoint_inspector_uses_registered_schema() {
 		module_path: "users::views",
 		request_body_type: Some("CreateUserRequest"),
 		request_content_type: Some("application/json"),
+		responses: &[],
+		headers: &[],
+		security: &[],
+		auth_protection: AuthProtection::None,
+		guard_description: None,
 	};
 
 	assert_eq!(metadata.request_body_type, Some("CreateUserRequest"));
@@ -237,6 +242,11 @@ fn test_request_body_with_registered_schema() {
 		module_path: "users::views",
 		request_body_type: Some("CreateUserRequest"),
 		request_content_type: Some("application/json"),
+		responses: &[],
+		headers: &[],
+		security: &[],
+		auth_protection: AuthProtection::None,
+		guard_description: None,
 	};
 
 	// Verify POST should have request body
@@ -254,6 +264,11 @@ fn test_request_body_with_registered_schema() {
 		module_path: "users::views",
 		request_body_type: None,
 		request_content_type: None,
+		responses: &[],
+		headers: &[],
+		security: &[],
+		auth_protection: AuthProtection::None,
+		guard_description: None,
 	};
 
 	// Verify GET should not have request body

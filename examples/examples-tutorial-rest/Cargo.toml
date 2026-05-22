@@ -1,14 +1,13 @@
 [package]
 name = "examples-tutorial-rest"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 edition = "2024"
 publish = false
 description = "Reinhardt REST tutorial example - Code snippet management API"
-default-run = "examples-tutorial-rest"
+default-run = "manage"
 
-[[bin]]
-name = "examples-tutorial-rest"
-path = "src/bin/manage.rs"
+# The `manage` binary is auto-discovered from src/bin/manage.rs, matching the
+# canonical `cargo run --bin manage -- runserver` form documented in README.
 
 [dependencies]
 reinhardt = { workspace = true, features = [
@@ -16,6 +15,7 @@ reinhardt = { workspace = true, features = [
     "core",
     "conf",
     "database",
+    "db-postgres",
     "db-sqlite",
     "commands",
     "di",
@@ -37,8 +37,15 @@ reinhardt = { workspace = true, features = [
     "testcontainers",
 ] }
 rstest = { version = "0.26", default-features = false }
+# Required for `#[serial(routes_global)]` on tests that mutate process-global
+# router state via `register_router` / `register_client_reverser` — see
+# `tests/urls_typed_accessors.rs` for the canonical example.
+serial_test = "3.2"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tempfile = "3.15"
+
+[build-dependencies]
+cfg_aliases = "0.2"
 
 [features]
 default = ["with-reinhardt", "client-router"]
@@ -49,3 +56,10 @@ with-reinhardt = []
 [[test]]
 name = "integration"
 required-features = ["with-reinhardt"]
+
+[[test]]
+name = "urls_typed_accessors"
+required-features = ["with-reinhardt"]
+
+[lints]
+workspace = true

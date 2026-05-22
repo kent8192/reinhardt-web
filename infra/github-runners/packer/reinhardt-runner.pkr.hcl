@@ -58,7 +58,10 @@ variable "ami_prefix" {
 
 locals {
 	source_ami_filter = var.runner_arch == "arm64" ? "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-arm64-server-*" : "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
-	build_instance_type = var.runner_arch == "arm64" ? "t4g.small" : "t3.medium"
+	# arm64 uses t4g.medium (4 GB RAM) instead of t4g.small (2 GB) so the
+	# cargo-make prebake (full LTO + codegen-units=1) does not get OOM-killed
+	# during rustc's link step. See reinhardt-web#4137.
+	build_instance_type = var.runner_arch == "arm64" ? "t4g.medium" : "t3.medium"
 	protoc_arch         = var.runner_arch == "arm64" ? "linux-aarch_64" : "linux-x86_64"
 	awscli_arch         = var.runner_arch == "arm64" ? "aarch64" : "x86_64"
 	cloudwatch_arch     = var.runner_arch == "arm64" ? "arm64" : "amd64"
@@ -75,6 +78,11 @@ source "amazon-ebs" "runner" {
 	vpc_id        = var.vpc_id
 	subnet_id     = var.subnet_id
 	ssh_username  = "ubuntu"
+
+	# Ubuntu 22.04 AMIs from 2026-03 onwards require ed25519 keys for SSH.
+	# RSA keys are rejected by the updated OpenSSH default configuration.
+	temporary_key_pair_type = "ed25519"
+	ssh_timeout             = "5m"
 
 	source_ami_filter {
 		filters = {
@@ -104,7 +112,17 @@ build {
 	# -- System packages -----------------------------------------------------
 	provisioner "shell" {
 		execute_command = "sudo sh -c '{{ .Vars }} {{ .Path }}'"
+		# Disable the `command-not-found` post-invoke hook globally for the
+		# duration of the AMI build. On arm64 Ubuntu jammy, `apt-get update`
+		# (including transitive calls from `add-apt-repository`) can omit
+		# `*_cnf_Commands-arm64` index files; `cnf-update-db` then fails to
+		# read them and aborts apt with exit 100, even though the update
+		# itself succeeded. The per-call `-o` flag is insufficient because
+		# `add-apt-repository -y universe` invokes `apt-get update`
+		# internally without inheriting it. The runner AMI does not need
+		# this DB. Tracked in reinhardt-web#4140.
 		inline = [
+			"echo 'APT::Update::Post-Invoke-Success \"\";' > /etc/apt/apt.conf.d/99-disable-cnf-hook",
 			"DEBIAN_FRONTEND=noninteractive apt-get update -qq",
 			"DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends software-properties-common",
 			"add-apt-repository -y universe",
@@ -151,6 +169,47 @@ build {
 			"unzip -o /tmp/protoc.zip -d /usr/local bin/protoc",
 			"chmod +x /usr/local/bin/protoc",
 			"rm -f /tmp/protoc.zip",
+		]
+	}
+
+	# -- cargo-make (aarch64-only prebake; workaround for missing upstream artifact) ---
+	#
+	# Workaround for sagiegurari/cargo-make#1327 (tracked in reinhardt-web#4133).
+	# `taiki-e/install-action` has no `aarch64_linux` entry for cargo-make in its
+	# manifest because upstream does not publish an aarch64-linux prebuilt binary,
+	# so it falls back to `cargo binstall` and emits a `::warning::` on every job.
+	# Prebaking cargo-make into the AMI avoids that runtime install entirely on
+	# self-hosted aarch64 runners; CI workflows skip the install-action step when
+	# `cargo-make` is already on PATH (separate Stage B PR).
+	#
+	# Remove this provisioner once cargo-make publishes aarch64-linux artifacts
+	# AND `taiki-e/install-action`'s manifest covers `aarch64_linux`.
+	#
+	# Ideal implementation (without workaround):
+	#   (no provisioner; let `taiki-e/install-action` install cargo-make at job time)
+	provisioner "shell" {
+		execute_command = "sudo sh -c '{{ .Vars }} {{ .Path }}'"
+		environment_vars = [
+			"RUNNER_ARCH=${var.runner_arch}",
+		]
+		inline = [
+			"if [ \"$${RUNNER_ARCH}\" != \"arm64\" ]; then",
+			"  echo \"Skipping cargo-make prebake on x64 (install-action has prebuilt for x86_64-linux)\"",
+			"  exit 0",
+			"fi",
+			"CARGO_MAKE_VERSION=0.37.24",
+			# Install rustup + stable toolchain temporarily (minimal profile, no docs/components)
+			"su - ubuntu -c 'curl --proto =https --tlsv1.2 -sSfL https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal'",
+			"su - ubuntu -c \"~/.cargo/bin/cargo install --locked cargo-make@$${CARGO_MAKE_VERSION}\"",
+			"cp /home/ubuntu/.cargo/bin/cargo-make /usr/local/bin/cargo-make",
+			"cp /home/ubuntu/.cargo/bin/makers /usr/local/bin/makers",
+			"chmod 0755 /usr/local/bin/cargo-make /usr/local/bin/makers",
+			# Verify installation succeeded before AMI snapshot.
+			# Use the `makers` alias rather than bare `cargo-make --version`:
+			# cargo-make enforces invocation as a cargo subcommand and its
+			# internal `cliparser` raises `InvalidCommandLine` on bare argv.
+			# See reinhardt-web#4162.
+			"/usr/local/bin/makers --version",
 		]
 	}
 

@@ -12,13 +12,14 @@
 //!
 //! ## Example
 //!
-//! ```ignore
+//! ```no_run
 //! use reinhardt_core::reactive::{Signal, Memo};
 //!
 //! let count = Signal::new(5);
 //!
 //! // Create a memo that computes count * 2
-//! let doubled = Memo::new(move || count.get() * 2);
+//! let count_for_memo = count.clone();
+//! let doubled = Memo::new(move || count_for_memo.get() * 2);
 //!
 //! // First access computes the value
 //! assert_eq!(doubled.get(), 10);
@@ -77,20 +78,23 @@ thread_local! {
 ///
 /// ## Example
 ///
-/// ```ignore
+/// ```rust
 /// use reinhardt_core::reactive::{Signal, Memo, Effect};
 ///
 /// let first_name = Signal::new("John".to_string());
 /// let last_name = Signal::new("Doe".to_string());
 ///
 /// // Memo caches the full name computation
+/// let first_clone = first_name.clone();
+/// let last_clone = last_name.clone();
 /// let full_name = Memo::new(move || {
-///     format!("{} {}", first_name.get(), last_name.get())
+///     format!("{} {}", first_clone.get(), last_clone.get())
 /// });
 ///
 /// // Effect uses the memo
+/// let full_name_clone = full_name.clone();
 /// Effect::new(move || {
-///     println!("Full name: {}", full_name.get());
+///     println!("Full name: {}", full_name_clone.get());
 /// });
 /// ```
 #[derive(Clone)]
@@ -116,9 +120,12 @@ impl<T: Clone + 'static> Memo<T> {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```rust
+	/// use reinhardt_core::reactive::{Signal, Memo};
+	///
 	/// let count = Signal::new(5);
-	/// let doubled = Memo::new(move || count.get() * 2);
+	/// let count_clone = count.clone();
+	/// let doubled = Memo::new(move || count_clone.get() * 2);
 	/// assert_eq!(doubled.get(), 10);
 	/// ```
 	pub fn new<F>(mut f: F) -> Self
@@ -181,16 +188,36 @@ impl<T: Clone + 'static> Memo<T> {
 			});
 		});
 
-		// Execute the computation function
-		let result = MEMO_FUNCTIONS.with(|storage| {
-			let mut storage = storage.borrow_mut();
-			if let Some(boxed) = storage.get_mut(&memo_id)
-				&& let Some(memo_fn) = boxed.downcast_mut::<MemoFn<T>>()
-			{
-				return memo_fn();
+		// Execute the computation function using Remove-Execute-Reinsert pattern
+		// to avoid RefCell reentrant borrow panics when the closure creates nested effects or memos.
+		// An RAII guard ensures the function is reinserted even if the computation panics.
+		struct MemoFnGuard {
+			memo_id: NodeId,
+			memo_fn_box: Option<Box<dyn core::any::Any>>,
+		}
+
+		impl Drop for MemoFnGuard {
+			fn drop(&mut self) {
+				if let Some(f) = self.memo_fn_box.take() {
+					MEMO_FUNCTIONS.with(|storage| {
+						storage.borrow_mut().insert(self.memo_id, f);
+					});
+				}
 			}
-			panic!("Memo function not found - this should never happen");
-		});
+		}
+
+		let mut guard = MemoFnGuard {
+			memo_id,
+			memo_fn_box: MEMO_FUNCTIONS.with(|storage| storage.borrow_mut().remove(&memo_id)),
+		};
+
+		let result = if let Some(ref mut boxed) = guard.memo_fn_box
+			&& let Some(memo_fn) = boxed.downcast_mut::<MemoFn<T>>()
+		{
+			memo_fn()
+		} else {
+			panic!("Memo function not found - this should never happen")
+		};
 
 		// Pop observer from stack
 		with_runtime(|rt| {
@@ -207,9 +234,12 @@ impl<T: Clone + 'static> Memo<T> {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// use reinhardt_core::reactive::{Signal, Memo};
+	///
 	/// let count = Signal::new(5);
-	/// let doubled = Memo::new(move || count.get() * 2);
+	/// let count_clone = count.clone();
+	/// let doubled = Memo::new(move || count_clone.get() * 2);
 	///
 	/// assert_eq!(doubled.get(), 10);
 	///
@@ -455,6 +485,28 @@ mod tests {
 	// While chained memos are a valid pattern, the test creates Drop ordering complexities
 	// with TLS. In production code, memo chains work correctly during normal execution;
 	// the issue only manifests during test cleanup.
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_memo_creates_effect_during_computation() {
+		// Arrange
+		let effect_ran = Rc::new(RefCell::new(false));
+		let effect_ran_clone = effect_ran.clone();
+
+		// Act - create a memo whose computation creates an effect
+		let memo = Memo::new(move || {
+			use crate::reactive::Effect;
+			let ran = effect_ran_clone.clone();
+			let _effect = Effect::new(move || {
+				*ran.borrow_mut() = true;
+			});
+			42
+		});
+
+		// Assert - memo returns the correct value and nested effect executed
+		assert_eq!(memo.get(), 42);
+		assert!(*effect_ran.borrow());
+	}
 
 	#[test]
 	#[serial]

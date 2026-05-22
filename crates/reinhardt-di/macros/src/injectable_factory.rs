@@ -1,9 +1,9 @@
 //! Implementation of the `#[injectable_factory]` macro
 
 use crate::crate_paths::get_reinhardt_di_crate;
-use crate::utils::{extract_scope_from_args, is_inject_attr};
+use crate::utils::{extract_depends_inner_type, extract_scope_from_args, is_inject_attr};
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{FnArg, ItemFn, Pat, PatType, Result};
 
 /// Implementation of the `#[injectable_factory]` attribute macro
@@ -70,12 +70,43 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		));
 	}
 
-	// Generate dependency resolution code
+	// Get dynamic crate path (needed by inject_resolutions below)
+	let di_crate = get_reinhardt_di_crate();
+
+	// Generate dependency resolution code (kent8192/reinhardt-web#4685).
+	//
+	// Two parameter shapes are supported:
+	//
+	// - `Depends<T>` — resolved via `Depends::resolve_from_registry`. The
+	//   registry-only path has no `T: Injectable` bound, which is the whole
+	//   reason factory-produced types (deliberately without `impl Injectable`)
+	//   can be injected this way. Callers wrap such types in `Depends<T>` by
+	//   project convention (see
+	//   `tests/integration/tests/di/ui/pass/factory_depends_in_server_fn.rs`).
+	//
+	// - non-`Depends` `T` — resolved via `Depends::resolve`, which consults
+	//   the registry *first* and falls back to `T::inject(ctx)` when the type
+	//   is not registered. This matches the codegen pattern used by
+	//   `#[server_fn]` / `#[routes]` for the same shape and lets factories
+	//   accept types whose only DI surface is a manual `impl Injectable`
+	//   (e.g. `SessionData`, `ServerFnRequest`, `AuthInfo`). The fallback
+	//   requires `T: Injectable`, satisfied by every callsite that uses the
+	//   non-`Depends` form today.
 	let inject_resolutions: Vec<_> = inject_params
 		.iter()
 		.map(|(pat, ty)| {
-			quote! {
-				let #pat: #ty = ctx.resolve::<#ty>().await?;
+			if let Some(inner_ty) = extract_depends_inner_type(ty) {
+				quote! {
+					let #pat: #ty = #di_crate::Depends::<#inner_ty>::resolve_from_registry(&*ctx, true).await?;
+				}
+			} else {
+				// `Depends::into_inner` consumes the `Depends<T>`, tries
+				// `Arc::try_unwrap`, and falls back to `(*arc).clone()` only when
+				// the Arc is still shared. This avoids an unconditional clone in
+				// the common single-owner path (factory body is the sole holder).
+				quote! {
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&*ctx, true).await?.into_inner();
+				}
 			}
 		})
 		.collect();
@@ -116,11 +147,11 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		.map(|(pat, ty)| quote! { #pat: #ty })
 		.collect();
 
-	// Get dynamic crate path
-	let di_crate = get_reinhardt_di_crate();
-
 	// Generate type name for registration
 	let type_name = quote! { #return_type }.to_string();
+
+	// Generate registration function name for const-safe inventory submission
+	let register_fn_name = format_ident!("__reinhardt_register_{}", fn_name);
 
 	// Generate the expanded code
 	let expanded = quote! {
@@ -134,22 +165,52 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		#fn_vis async fn #fn_name(
 			ctx: ::std::sync::Arc<#di_crate::InjectionContext>,
 		) -> #di_crate::DiResult<#return_type> {
-			// Resolve #[inject] dependencies
-			#(#inject_resolutions)*
+			#di_crate::with_cycle_detection_scope(async {
+				// Set task-local resolve context before resolving dependencies.
+				// Inherit root from outer scope (for nested factory calls),
+				// or default to ctx itself at the top level.
+				// This must be established first so that Depends::resolve() and
+				// any Injectable::inject() impl can use get_di_context().
+				let __resolve_ctx = #di_crate::resolve_context::ResolveContext {
+					root: #di_crate::resolve_context::RESOLVE_CTX
+						.try_with(|__outer| ::std::sync::Arc::clone(&__outer.root))
+						.unwrap_or_else(|_| ::std::sync::Arc::clone(&ctx)),
+					current: ::std::sync::Arc::clone(&ctx),
+				};
 
-			// Call the original function
-			let result = #original_fn_name(#(#inject_param_names,)* #(#regular_param_names),*).await;
-			Ok(result)
+				let result = #di_crate::resolve_context::RESOLVE_CTX
+					.scope(__resolve_ctx, async {
+						// Resolve #[inject] dependencies
+						#(#inject_resolutions)*
+
+						Ok(#original_fn_name(#(#inject_param_names,)* #(#regular_param_names),*).await)
+					})
+					.await?;
+				Ok(result)
+			}).await
 		}
 
-		// Register with inventory
+		// Registration function for const-safe inventory::submit
+		fn #register_fn_name(registry: &#di_crate::DependencyRegistry) {
+			registry.register_async::<#return_type, _, _>(#scope_tokens, #fn_name);
+			registry.register_type_name(
+				::std::any::TypeId::of::<#return_type>(),
+				#type_name,
+			);
+			registry.register_qualified_type_name(
+				::std::any::TypeId::of::<#return_type>(),
+				::std::any::type_name::<#return_type>(),
+			);
+		}
+
 		#di_crate::inventory::submit! {
-			#di_crate::DependencyRegistration::new::<#return_type, _, _>(
+			#di_crate::DependencyRegistration::new::<#return_type>(
 				#type_name,
 				#scope_tokens,
-				#fn_name
+				#register_fn_name
 			)
 		}
+
 	};
 
 	Ok(expanded)

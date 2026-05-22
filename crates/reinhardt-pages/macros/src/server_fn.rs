@@ -23,6 +23,27 @@ use crate::crate_paths::{
 	get_reinhardt_pages_crate, get_reinhardt_pages_crate_info,
 };
 
+/// Extract the inner type `T` from `Depends<T>`.
+///
+/// Returns `Some(T)` if the type is `Depends<T>`, `None` otherwise.
+/// Mirrors the helper in `crates/reinhardt-core/macros/src/routes_registration.rs`.
+/// Keep this implementation in sync with that file; the two proc-macro crates
+/// cannot share code directly without introducing a new non-proc-macro helper
+/// crate, and the helper is small enough that duplication is preferred.
+fn extract_depends_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+	if let syn::Type::Path(type_path) = ty {
+		let last_segment = type_path.path.segments.last()?;
+		if last_segment.ident == "Depends"
+			&& let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+			&& args.args.len() == 1
+			&& let syn::GenericArgument::Type(inner) = args.args.first()?
+		{
+			return Some(inner);
+		}
+	}
+	None
+}
+
 /// Convert snake_case identifier to UpperCamelCase for struct naming
 ///
 /// # Examples
@@ -50,22 +71,28 @@ fn to_pascal_case_ident(ident: &proc_macro2::Ident) -> proc_macro2::Ident {
 #[derive(Debug, Clone, FromMeta)]
 #[darling(default)]
 pub(crate) struct ServerFnOptions {
-	/// Enable DI functionality with `use_inject = true`
+	/// **Deprecated**: `#[inject]` parameters are now auto-detected.
 	///
-	/// When enabled, parameters marked with `#[inject]` will be resolved
-	/// via dependency injection on the server side.
+	/// Previously required `use_inject = true` to enable DI parameter detection.
+	/// Now `#[inject]` attributes are detected unconditionally, matching the
+	/// behavior of route macros (`#[get]`, `#[post]`, etc.).
 	///
-	/// # Example
+	/// # Migration
 	///
 	/// ```ignore
+	/// // Before (deprecated):
 	/// #[server_fn(use_inject = true)]
 	/// async fn get_user(
 	///     id: u32,
 	///     #[inject] db: Database,
-	/// ) -> Result<User, ServerFnError> {
-	///     // db is injected automatically
-	///     User::find_by_id(&db, id).await
-	/// }
+	/// ) -> Result<User, ServerFnError> { /* ... */ }
+	///
+	/// // After (recommended):
+	/// #[server_fn]
+	/// async fn get_user(
+	///     id: u32,
+	///     #[inject] db: Database,
+	/// ) -> Result<User, ServerFnError> { /* ... */ }
 	/// ```
 	pub use_inject: bool,
 
@@ -158,6 +185,97 @@ struct InjectInfo {
 	pat: Box<syn::Pat>,
 	/// Parameter type (e.g., `Database`, `AuthContext`)
 	ty: Box<syn::Type>,
+}
+
+/// Information about `FromRequest` extractor parameters
+///
+/// This struct holds metadata about parameters that should be resolved
+/// via `FromRequest::from_request(&req, &ctx)` on the server side.
+/// These are excluded from the Args struct (like `#[inject]` params).
+#[derive(Debug, Clone)]
+struct ExtractorInfo {
+	/// Parameter pattern (e.g., `form`, `header`)
+	pat: Box<syn::Pat>,
+	/// Parameter type (e.g., `Validated<Form<LoginRequest>>`, `Header<String>`)
+	ty: Box<syn::Type>,
+}
+
+/// Known `FromRequest` extractor type names.
+///
+/// When a parameter's outermost type matches one of these names, it is
+/// treated as an extractor and resolved via `FromRequest::from_request`.
+const KNOWN_EXTRACTOR_TYPES: &[&str] = &[
+	"Validated",
+	"Json",
+	"Form",
+	"Header",
+	"HeaderNamed",
+	"HeaderStruct",
+	"Cookie",
+	"CookieNamed",
+	"CookieStruct",
+	"Path",
+	"PathStruct",
+	"Query",
+	"Body",
+	"Multipart",
+	"Authorization",
+	"ContentType",
+	"SessionId",
+	"CsrfToken",
+];
+
+/// Check if a type is a known `FromRequest` extractor.
+///
+/// Returns `true` if the outermost type segment matches one of the
+/// known extractor names from `reinhardt_di::params`.
+fn is_extractor_type(ty: &syn::Type) -> bool {
+	if let syn::Type::Path(type_path) = ty
+		&& let Some(last_seg) = type_path.path.segments.last()
+	{
+		let name = last_seg.ident.to_string();
+		return KNOWN_EXTRACTOR_TYPES.contains(&name.as_str());
+	}
+	false
+}
+
+/// Detect parameters that implement `FromRequest` (extractors).
+///
+/// Scans function parameters and identifies those whose type matches a known
+/// extractor. These parameters are excluded from the Args struct on the client
+/// side and resolved via `FromRequest::from_request` on the server side.
+///
+/// # Examples
+///
+/// ```ignore
+/// async fn handler(
+///     name: String,                             // Regular (Args)
+///     form: Validated<Form<LoginRequest>>,      // Extractor
+///     auth: Header<String>,                     // Extractor
+///     #[inject] db: Database,                   // DI (handled separately)
+/// ) -> Result<(), ServerFnError>
+/// ```
+fn detect_extractor_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<ExtractorInfo> {
+	let mut extractor_params = Vec::new();
+
+	for input in inputs {
+		if let FnArg::Typed(pat_type) = input {
+			// Skip #[inject] params — those are handled by DI, not FromRequest
+			let has_inject_attr = pat_type.attrs.iter().any(is_inject_attr);
+			if has_inject_attr {
+				continue;
+			}
+
+			if is_extractor_type(&pat_type.ty) {
+				extractor_params.push(ExtractorInfo {
+					pat: pat_type.pat.clone(),
+					ty: pat_type.ty.clone(),
+				});
+			}
+		}
+	}
+
+	extractor_params
 }
 
 /// Check if an attribute is `#[inject]` or #[reinhardt::inject]
@@ -308,8 +426,8 @@ impl ServerFnInfo {
 		&self.options.codec
 	}
 
-	/// Check if DI is enabled
-	fn use_inject(&self) -> bool {
+	/// Check if the deprecated `use_inject` option is enabled (for deprecation warning)
+	fn use_inject_enabled(&self) -> bool {
 		self.options.use_inject
 	}
 }
@@ -386,36 +504,60 @@ pub(crate) fn server_fn_impl(args: TokenStream, input: TokenStream) -> TokenStre
 /// Generate server function code
 ///
 /// This generates both client and server code with conditional compilation.
+/// `#[inject]` parameters are always auto-detected, matching the behavior of
+/// route macros (`#[get]`, `#[post]`, etc.).
 fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 	let func = &info.func;
 
-	// Detect #[inject] parameters if use_inject is enabled
-	let inject_params = if info.use_inject() {
-		detect_inject_params(&func.sig.inputs)
-	} else {
-		Vec::new()
-	};
+	// Auto-detect #[inject] parameters unconditionally
+	let inject_params = detect_inject_params(&func.sig.inputs);
+
+	// Auto-detect FromRequest extractor parameters
+	let extractor_params = detect_extractor_params(&func.sig.inputs);
 
 	// Remove #[inject] attributes from original function
 	// This ensures the server-side code compiles without unknown attributes
-	let clean_func = if info.use_inject() && !inject_params.is_empty() {
+	let clean_func = if !inject_params.is_empty() {
 		remove_inject_attrs(func)
 	} else {
 		func.clone()
 	};
 
+	// Emit deprecation warning if use_inject = true is enabled
+	let deprecation_warning = if info.use_inject_enabled() {
+		quote! {
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			const _: () = {
+				#[deprecated(
+					note = "use_inject = true is deprecated. #[inject] parameters are now auto-detected. Remove `use_inject = true` from #[server_fn] attribute."
+				)]
+				#[allow(non_upper_case_globals, dead_code)]
+				const __use_inject_deprecated: () = ();
+
+				#[allow(dead_code)]
+				const _trigger: () = __use_inject_deprecated;
+			};
+		}
+	} else {
+		quote! {}
+	};
+
 	// Dynamically resolve reinhardt_pages crate path for client stub
 	let pages_crate_info = get_reinhardt_pages_crate_info();
 
-	// Generate client stub (with DI parameter filtering)
-	let client_stub = generate_client_stub(info, &inject_params, &pages_crate_info);
+	// Generate client stub (with DI and extractor parameter filtering)
+	let client_stub =
+		generate_client_stub(info, &inject_params, &extractor_params, &pages_crate_info);
 
-	// Generate server handler (with DI resolution)
-	let server_handler = generate_server_handler(info, &inject_params);
+	// Generate server handler (with DI and extractor resolution)
+	let server_handler = generate_server_handler(info, &inject_params, &extractor_params);
 
 	quote! {
+		// Deprecation warning for use_inject = true (if specified)
+		#deprecation_warning
+
 		// Server-side: Original function (with #[inject] attributes removed)
-		#[cfg(not(target_arch = "wasm32"))]
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#clean_func
 
 		// Client-side: HTTP request stub
@@ -446,8 +588,8 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 ///
 ///     let url = "/api/server_fn/get_user";
 ///     let args = Args { id };
-///     let response = gloo_net::http::Request::post(url)
-///         .json(&args)?
+///     let response = reqwest::Client::new().post(url)
+///         .json(&args)
 ///         .send()
 ///         .await?;
 ///     response.json().await
@@ -456,6 +598,7 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 fn generate_client_stub(
 	info: &ServerFnInfo,
 	_inject_params: &[InjectInfo],
+	_extractor_params: &[ExtractorInfo],
 	pages_crate_info: &CratePathInfo,
 ) -> proc_macro2::TokenStream {
 	// Extract crate path info components
@@ -468,8 +611,8 @@ fn generate_client_stub(
 	let func = &info.func;
 	let sig = &func.sig;
 
-	// Extract function parameters, excluding #[inject] parameters
-	// Client-side doesn't need DI parameters - they're resolved on the server
+	// Extract function parameters, excluding #[inject] and extractor parameters.
+	// Client-side doesn't need DI or extractor parameters - they're resolved on the server.
 	let params: Vec<_> = sig
 		.inputs
 		.iter()
@@ -477,7 +620,14 @@ fn generate_client_stub(
 			if let syn::FnArg::Typed(pat_type) = arg {
 				// Skip #[inject] parameters
 				let has_inject = pat_type.attrs.iter().any(is_inject_attr);
-				if !has_inject { Some(pat_type) } else { None }
+				if has_inject {
+					return None;
+				}
+				// Skip FromRequest extractor parameters
+				if is_extractor_type(&pat_type.ty) {
+					return None;
+				}
+				Some(pat_type)
 			} else {
 				None
 			}
@@ -519,6 +669,18 @@ fn generate_client_stub(
 			if let Some((__csrf_header_name, __csrf_header_value)) = csrf_headers() {
 				__request_builder = __request_builder.header(__csrf_header_name, &__csrf_header_value);
 			}
+		}
+	};
+
+	// Generate JWT auth header injection code (always enabled).
+	// If a JWT token exists in sessionStorage, it is attached as
+	// an Authorization: Bearer header. When no token is stored, this
+	// is a no-op — backward compatible with unauthenticated calls.
+	let auth_injection_code = quote! {
+		// Inject Authorization header if JWT token is available
+		use #pages_crate::auth::auth_headers;
+		if let Some((__auth_header_name, __auth_header_value)) = auth_headers() {
+			__request_builder = __request_builder.header(__auth_header_name, &__auth_header_value);
 		}
 	};
 
@@ -578,7 +740,7 @@ fn generate_client_stub(
 	};
 
 	quote! {
-		#[cfg(target_arch = "wasm32")]
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		#vis #client_sig {
 			use ::serde::{Serialize, Deserialize};
 
@@ -591,7 +753,7 @@ fn generate_client_stub(
 				#(#param_names: #param_types),*
 			}
 
-			let __endpoint = #endpoint;
+			let __endpoint = #pages_crate::server_fn::resolve_endpoint(#endpoint);
 			let __args = #args_struct_name {
 				#(#param_names),*
 			};
@@ -599,23 +761,36 @@ fn generate_client_stub(
 			// Serialize arguments based on codec
 			#serialize_code
 
-			// Build HTTP POST request with headers
-			let mut __request_builder = ::gloo_net::http::Request::post(__endpoint)
+			// Build HTTP client and POST request.
+			// WASM: fetch_credentials_include() sends browser cookies via
+			// the Fetch API's credentials: "include" mode, which is
+			// required for CSRF double-submit cookie validation.
+			let __client = #pages_crate::__private::reqwest::Client::builder()
+				.build()
+				.expect("Failed to build reqwest client");
+
+			let mut __request_builder = __client.post(&__endpoint)
 				.header("Content-Type", #content_type);
 
+			// WASM: include browser cookies (CSRF, auth session) via Fetch API
+			#[cfg(target_arch = "wasm32")]
+			{
+				__request_builder = __request_builder.fetch_credentials_include();
+			}
+
 			#csrf_injection_code
+			#auth_injection_code
 
 			// Send request
 			let __response = __request_builder
 				.body(__body)
-				.map_err(|e| #pages_crate::server_fn::ServerFnError::network(e.to_string()))?
 				.send()
 				.await
 				.map_err(|e| #pages_crate::server_fn::ServerFnError::network(e.to_string()))?;
 
 			// Check HTTP status
-			if !__response.ok() {
-				let __status = __response.status();
+			if !__response.status().is_success() {
+				let __status = __response.status().as_u16();
 				let __message = __response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
 				return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message));
 			}
@@ -662,6 +837,7 @@ fn generate_client_stub(
 fn generate_server_handler(
 	info: &ServerFnInfo,
 	inject_params: &[InjectInfo],
+	extractor_params: &[ExtractorInfo],
 ) -> proc_macro2::TokenStream {
 	let name = info.name();
 	let endpoint = info.endpoint();
@@ -670,14 +846,24 @@ fn generate_server_handler(
 	let func = &info.func;
 	let sig = &func.sig;
 
-	// Extract function parameters, separating regular and #[inject] parameters
+	// Extract function parameters, separating regular, #[inject], and extractor parameters.
+	// Regular params go into the Args deserialization struct.
+	// #[inject] params are resolved via DI.
+	// Extractor params are resolved via FromRequest::from_request.
 	let regular_params: Vec<_> = sig
 		.inputs
 		.iter()
 		.filter_map(|arg| {
 			if let syn::FnArg::Typed(pat_type) = arg {
 				let has_inject = pat_type.attrs.iter().any(is_inject_attr);
-				if !has_inject { Some(pat_type) } else { None }
+				if has_inject {
+					return None;
+				}
+				// Extractor params are excluded from Args struct
+				if is_extractor_type(&pat_type.ty) {
+					return None;
+				}
+				Some(pat_type)
 			} else {
 				None
 			}
@@ -687,9 +873,11 @@ fn generate_server_handler(
 	let regular_param_names: Vec<_> = regular_params.iter().map(|p| &p.pat).collect();
 	let regular_param_types: Vec<_> = regular_params.iter().map(|p| &p.ty).collect();
 
-	// Extract inject parameter names and types
+	// Extract inject parameter names (types handled per-param in di_resolution below)
 	let inject_param_names: Vec<_> = inject_params.iter().map(|p| &p.pat).collect();
-	let inject_param_types: Vec<_> = inject_params.iter().map(|p| &p.ty).collect();
+
+	// Extract extractor parameter names
+	let extractor_param_names: Vec<_> = extractor_params.iter().map(|p| &p.pat).collect();
 
 	// Generate unique names to avoid conflicts
 	let handler_name = quote::format_ident!("__server_fn_handler_{}", name);
@@ -711,38 +899,160 @@ fn generate_server_handler(
 	};
 
 	// Generate DI resolution code
-	// Pattern copied from reinhardt-core/crates/macros/src/use_inject.rs
+	//
+	// For `Depends<T>` parameters we resolve via `resolve_from_registry()`, which
+	// has no `T: Injectable` trait bound. This allows factory-produced types
+	// (registered via `#[injectable_factory]`) to be injected without manually
+	// implementing `Injectable`. This mirrors the fix applied to `#[routes]` in
+	// commit `98adb15b9`.
 	let di_resolution = if !inject_params.is_empty() {
 		// Dynamically resolve crate paths
 		let di_crate = get_reinhardt_di_crate();
+		let pages_crate_for_di = get_reinhardt_pages_crate();
+
+		let param_resolutions: Vec<_> = inject_params
+			.iter()
+			.map(|p| {
+				let pat = &p.pat;
+				let ty = &p.ty;
+				if let Some(inner_ty) = extract_depends_inner_type(&p.ty) {
+					quote! {
+						let #pat: #ty =
+							#di_crate::Depends::<#inner_ty>::resolve_from_registry(&__di_ctx, true)
+								.await
+								.map_err(|e| {
+									// Auth errors (401/403) expose framework-provided user-facing
+									// messages. Any other DI failure is treated as an internal
+									// error: the detailed cause is logged server-side, and the
+									// client receives a generic message to avoid leaking internals.
+									let (status, msg) = match &e {
+										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
+										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
+										other => {
+											#pages_crate_for_di::__private::tracing::error!(
+												error = ?other,
+												param = stringify!(#ty),
+												"Dependency injection failed",
+											);
+											(500u16, "Internal server error".to_string())
+										}
+									};
+									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
+									::serde_json::to_string(&server_err)
+										.unwrap_or_else(|_| "Internal server error".to_string())
+								})?;
+					}
+				} else {
+					quote! {
+						let #pat: #ty =
+							#di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
+								.await
+								.map_err(|e| {
+									// Auth errors (401/403) expose framework-provided user-facing
+									// messages. Any other DI failure is treated as an internal
+									// error: the detailed cause is logged server-side, and the
+									// client receives a generic message to avoid leaking internals.
+									let (status, msg) = match &e {
+										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
+										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
+										other => {
+											#pages_crate_for_di::__private::tracing::error!(
+												error = ?other,
+												param = stringify!(#ty),
+												"Dependency injection failed",
+											);
+											(500u16, "Internal server error".to_string())
+										}
+									};
+									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
+									::serde_json::to_string(&server_err)
+										.unwrap_or_else(|_| "Internal server error".to_string())
+								})?
+								.into_inner();
+					}
+				}
+			})
+			.collect();
 
 		quote! {
-			// Get DI context from request
-			let __di_ctx = __req.get_di_context::<::std::sync::Arc<#di_crate::InjectionContext>>()
-				.ok_or_else(|| "DI context not set. Ensure the router is configured with .with_di_context()".to_string())?;
+			// Get DI context from request and fork for per-request isolation
+			let __di_ctx = {
+				let __shared_ctx = __req.get_di_context::<::std::sync::Arc<#di_crate::InjectionContext>>()
+					.ok_or_else(|| "DI context not set. Ensure the router is configured with .with_di_context()".to_string())?;
+				let __di_request = __req.clone_for_di();
+				::std::sync::Arc::new((*__shared_ctx).fork_for_request(__di_request))
+			};
 
-			// Resolve each #[inject] parameter using reinhardt_di::Injected<T>
-			#(
-				let #inject_param_names: #inject_param_types =
-					#di_crate::Injected::<#inject_param_types>::resolve(&__di_ctx)
-						.await
-						.map_err(|e| format!("Dependency injection failed for {}: {:?}", stringify!(#inject_param_types), e))?
-						.into_inner();
-			)*
+			// Resolve each #[inject] parameter
+			#(#param_resolutions)*
 		}
 	} else {
 		quote! {}
 	};
 
-	// Build function call with both regular and inject parameters
-	let function_call_params = if inject_params.is_empty() {
+	// Generate FromRequest extractor resolution code.
+	//
+	// For server functions that have extractor params, we need access to the
+	// request object (__req). The handler signature already uses Request when
+	// inject_params is non-empty; when only extractor_params are present, we
+	// still need to ensure the handler receives a Request.
+	let extractor_resolution = if !extractor_params.is_empty() {
+		let di_crate = get_reinhardt_di_crate();
+		let pages_crate_for_ext = get_reinhardt_pages_crate();
+
+		let ext_resolutions: Vec<_> = extractor_params
+			.iter()
+			.map(|p| {
+				let pat = &p.pat;
+				let ty = &p.ty;
+				quote! {
+					let #pat: #ty = <#ty as #di_crate::params::FromRequest>::from_request(&__req, &__param_ctx)
+						.await
+						.map_err(|e| {
+							#pages_crate_for_ext::__private::tracing::error!(
+								error = ?e,
+								param = stringify!(#ty),
+								"FromRequest extractor failed",
+							);
+							let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
+								400u16,
+								format!("Parameter extraction failed: {}", e),
+							);
+							::serde_json::to_string(&server_err)
+								.unwrap_or_else(|_| "Parameter extraction failed".to_string())
+						})?;
+				}
+			})
+			.collect();
+
+		quote! {
+			// Build an empty ParamContext for extractor resolution
+			let __param_ctx = #di_crate::params::ParamContext::new();
+
+			// Resolve each FromRequest extractor parameter
+			#(#ext_resolutions)*
+		}
+	} else {
+		quote! {}
+	};
+
+	// Build function call with regular, inject, and extractor parameters
+	let has_inject_or_extractor = !inject_params.is_empty() || !extractor_params.is_empty();
+	let function_call_params = if !has_inject_or_extractor {
 		quote! {
 			#(args.#regular_param_names),*
+		}
+	} else if regular_params.is_empty() {
+		// No regular params from Args
+		quote! {
+			#(#inject_param_names,)*
+			#(#extractor_param_names),*
 		}
 	} else {
 		quote! {
 			#(args.#regular_param_names,)*
-			#(#inject_param_names),*
+			#(#inject_param_names,)*
+			#(#extractor_param_names),*
 		}
 	};
 
@@ -772,6 +1082,17 @@ fn generate_server_handler(
 			);
 			return quote! { compile_error!(#msg); };
 		}
+	};
+
+	// When there are no regular params (all params are extractors), skip deserialization.
+	// The Args struct will still be emitted (empty) but we don't need to deserialize it.
+	let deserialize_code = if regular_params.is_empty() {
+		quote! {
+			// No regular params — skip Args deserialization; all params are extractors or injected.
+			let args = #args_struct_name {};
+		}
+	} else {
+		deserialize_code
 	};
 
 	// Generate pre_validate validation code
@@ -813,46 +1134,61 @@ fn generate_server_handler(
 		}
 	};
 
-	// Generate handler signature based on whether DI is needed
+	// Dynamically resolve crate paths for body extraction and registration
+	let pages_crate = get_reinhardt_pages_crate();
+
+	// Generate handler signature based on whether DI or extractors are needed.
+	// Both DI (#[inject]) and FromRequest extractor params require access to the
+	// raw Request object, so the handler signature uses Request in both cases.
+	let needs_request = !inject_params.is_empty() || !extractor_params.is_empty();
 	let (handler_signature, handler_body_extraction, wrapper_body_extraction, wrapper_call_args) =
-		if !inject_params.is_empty() {
+		if needs_request {
 			// Dynamically resolve reinhardt_http crate path
 			let http_crate = get_reinhardt_http_crate();
 
-			// When we have inject params, handler receives Request to extract DI context
-			(
+			// When we have inject or extractor params, handler receives Request.
+			// Body reading is only needed when regular (Args-deserialized) params exist.
+			// If all params are extractors, the extractors themselves read the body.
+			let body_extraction = if !regular_params.is_empty() {
 				quote! {
-					pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
-				},
-				// Handler body extraction (from __req parameter)
-				quote! {
-					// Extract body from request
+					let __content_type = __req.get_header("content-type").unwrap_or_default();
 					let body = __req.read_body()
 						.map_err(|e| format!("Failed to read body: {}", e))?;
 					let body = ::std::string::String::from_utf8(body.to_vec())
 						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+					let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
+				}
+			} else {
+				quote! {}
+			};
+
+			(
+				quote! {
+					pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
 				},
-				// Wrapper doesn't extract body when DI is enabled; passes Request directly
+				body_extraction,
+				// Wrapper doesn't extract body when DI/extractors are enabled; passes Request directly
 				quote! {
 					// Pass Request directly to handler (which will read the body)
 				},
 				vec![quote! { req }],
 			)
 		} else {
-			// No DI needed, handler receives body directly
+			// No DI or extractors needed, handler receives body directly
 			(
 				quote! {
 					pub async fn #handler_name(body: ::std::string::String) -> ::std::result::Result<::std::string::String, ::std::string::String>
 				},
 				// Handler doesn't need body extraction (body is already a parameter)
 				quote! {},
-				// Wrapper needs to extract body from req
+				// Wrapper needs to extract body from req with Content-Type negotiation
 				quote! {
-					// Extract body from request
+					let __content_type = req.get_header("content-type").unwrap_or_default();
 					let body = req.read_body()
 						.map_err(|e| format!("Failed to read body: {}", e))?;
 					let body = ::std::string::String::from_utf8(body.to_vec())
 						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+					let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
 				},
 				vec![quote! { body }],
 			)
@@ -862,9 +1198,8 @@ fn generate_server_handler(
 	let static_wrapper_name = quote::format_ident!("__server_fn_static_wrapper_{}", name);
 	let name_str = name.to_string();
 
-	// Dynamically resolve crate paths for all external dependencies
-	let pages_crate = get_reinhardt_pages_crate();
-	// Note: http_crate is already resolved above when inject_params is not empty,
+	// Note: pages_crate is already resolved above for body extraction.
+	// http_crate is resolved above when inject_params is not empty,
 	// but we need it for the static wrapper regardless
 	let http_crate_for_wrapper = get_reinhardt_http_crate();
 
@@ -883,8 +1218,121 @@ fn generate_server_handler(
 	// and a `use` item with the same name in the same module.
 	let marker_module_name = name.clone();
 
+	// MSW: Generate MockableServerFn impl when the macro crate was compiled
+	// with `msw` feature.
+	//
+	// (Fixes #4290) Previously this also checked
+	// `std::env::var("CARGO_FEATURE_MSW").is_ok()` as a "consuming-crate has msw"
+	// guard, but per Cargo's documented behavior `CARGO_FEATURE_*` env vars are
+	// only set for build.rs invocations — NOT for proc-macro expansion. The env
+	// var check was therefore guaranteed to evaluate to `false` for every
+	// consumer in every configuration, so the WASM `marker` module emitted by
+	// the conditional block below was never actually produced. Removing the
+	// always-false clause restores the intended behavior.
+	//
+	// Cargo's transitive feature unification already guarantees that when any
+	// node in the dependency graph activates `reinhardt-pages-macros/msw`, this
+	// proc-macro is compiled with the feature on; the consuming crate must
+	// independently enable the matching feature on `reinhardt-pages` (via
+	// `reinhardt-web/msw`) so that `MockableServerFn` is in scope.
+	let msw_enabled = cfg!(feature = "msw");
+
+	// MSW: Extract the Ok type from Result<T, ServerFnError> for MockableServerFn::Response
+	let response_type = extract_result_ok_type(return_type);
+
+	// Convert inject param names to string literals for INJECTED_PARAMS const
+	let inject_param_name_strs: Vec<String> = inject_params
+		.iter()
+		.map(|p| {
+			if let syn::Pat::Ident(pat_ident) = &*p.pat {
+				pat_ident.ident.to_string()
+			} else {
+				"_".to_string()
+			}
+		})
+		.collect();
+
+	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
+	let msw_server_tokens = if msw_enabled {
+		quote! {
+			mod __msw {
+				use ::serde::{Serialize, Deserialize};
+
+				/// Public Args struct for MSW type-safe mocking.
+				#[derive(Serialize, Deserialize)]
+				pub struct Args {
+					#(pub #regular_param_names: #regular_param_types),*
+				}
+			}
+
+			pub use __msw::Args;
+
+			impl #pages_crate::server_fn::MockableServerFn for marker {
+				type Args = Args;
+				type Response = #response_type;
+				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+			}
+		}
+	} else {
+		quote! {}
+	};
+
+	// MSW: Generate WASM-side marker module only when msw feature is enabled.
+	//
+	// (Copilot review on PR #4293) The generated `#[cfg(feature = "msw")]`
+	// also gates the module at the *consumer* compile site so that consumers
+	// who never activate `reinhardt-pages/msw` (e.g. mixed-feature workspace
+	// builds where another package activates `reinhardt-pages-macros/msw` and
+	// Cargo reuses that proc-macro artifact) never see the
+	// `MockableServerFn` impl whose trait wouldn't be in scope for them. The
+	// `#[allow(unexpected_cfgs)]` keeps the generated `cfg` quiet in consumer
+	// crates that don't themselves declare an `msw` feature, restoring the
+	// original Issue #3673 / #3700 intent without re-introducing the
+	// always-false env-var guard that caused #4290.
+	let msw_wasm_tokens = if msw_enabled {
+		quote! {
+			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+			#[cfg(feature = "msw")]
+			#[allow(unexpected_cfgs)]
+			#vis mod #marker_module_name {
+				// (Fixes #4290) Bring in the parent scope's imports so the
+				// `Args` struct field types and the `#response_type` (which
+				// can be a tuple of user types like `(QuestionInfo, Vec<ChoiceInfo>)`)
+				// resolve. Mirrors the native marker module further below.
+				//
+				// `#[allow(unused_imports)]` silences the warning when the
+				// server_fn signature uses only primitive / fully-qualified
+				// types and `use super::*;` ends up importing nothing the
+				// generated body references. (Copilot review on PR #4293.)
+				#[allow(unused_imports)]
+				use super::*;
+				use ::serde::{Serialize, Deserialize};
+
+				#[doc = concat!("Marker struct for server function `", #name_str, "` (WASM MSW mock target)")]
+				pub struct marker;
+
+				/// Public Args struct for MSW type-safe mocking.
+				#[derive(Serialize, Deserialize)]
+				pub struct Args {
+					#(pub #regular_param_names: #regular_param_types),*
+				}
+
+				impl #pages_crate::server_fn::MockableServerFn for marker {
+					type Args = Args;
+					type Response = #response_type;
+					const PATH: &'static str = #endpoint;
+					const NAME: &'static str = #name_str;
+					const CODEC: &'static str = #codec;
+					const INJECTED_PARAMS: &'static [&'static str] = &[];
+				}
+			}
+		}
+	} else {
+		quote! {}
+	};
+
 	quote! {
-		#[cfg(not(target_arch = "wasm32"))]
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		/// Server-side handler function
 		///
 		/// This function is called by the router when the endpoint receives a request.
@@ -898,10 +1346,12 @@ fn generate_server_handler(
 				#(#regular_param_names: #regular_param_types),*
 			}
 
-			// Extract body if needed (when using DI)
+			// Extract body and deserialize Args only when there are regular (non-extractor) params.
+			// When all params are extractors, skip body reading to avoid consuming the body
+			// before extractor resolution.
 			#handler_body_extraction
 
-			// Deserialize request body based on codec
+			// Deserialize request body based on codec (skipped when no regular params)
 			#deserialize_code
 
 			// Validate deserialized arguments (when pre_validate = true)
@@ -910,7 +1360,10 @@ fn generate_server_handler(
 			// Resolve #[inject] parameters via DI
 			#di_resolution
 
-			// Call the original server function with both regular and injected parameters
+			// Resolve FromRequest extractor parameters
+			#extractor_resolution
+
+			// Call the original server function with regular, injected, and extractor parameters
 			let result: #return_type = #name(#function_call_params).await;
 
 			// Handle Result and serialize
@@ -927,7 +1380,7 @@ fn generate_server_handler(
 			}
 		}
 
-		#[cfg(not(target_arch = "wasm32"))]
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		/// Register this server function with a router
 		///
 		/// This function should be called during application startup to register
@@ -935,11 +1388,12 @@ fn generate_server_handler(
 		///
 		/// # Example
 		///
-		/// ```ignore
-		/// use axum::{Router, routing::post};
+		/// ```text
+		/// use reinhardt_pages::server_fn::ServerFnRouterExt;
+		/// use reinhardt_urls::routers::ServerRouter;
 		///
-		/// let app = Router::new()
-		///     .route("/api/server_fn/get_user", post(register_server_fn_get_user));
+		/// let router = ServerRouter::new()
+		///     .server_fn(get_user);
 		/// ```
 		pub fn #register_fn_name() -> &'static str {
 			#endpoint
@@ -947,7 +1401,7 @@ fn generate_server_handler(
 
 		// Static wrapper function for explicit registration
 		// This is used by ServerFnRegistration::handler() to provide a function pointer.
-		#[cfg(not(target_arch = "wasm32"))]
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		fn #static_wrapper_name(
 			req: #http_crate_for_wrapper::Request
 		) -> ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ::std::result::Result<::std::string::String, ::std::string::String>> + ::std::marker::Send>> {
@@ -980,8 +1434,10 @@ fn generate_server_handler(
 		// use crate::server_fn::auth::login;  // Function (snake_case)
 		// login(email, password).await;
 		// ```
-		#[cfg(not(target_arch = "wasm32"))]
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#vis mod #marker_module_name {
+			use super::*;
+
 			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`)")]
 			pub struct marker;
 
@@ -989,13 +1445,37 @@ fn generate_server_handler(
 			impl #pages_crate::server_fn::ServerFnRegistration for marker {
 				const PATH: &'static str = #endpoint;
 				const NAME: &'static str = #name_str;
+				const CODEC: &'static str = #codec;
 
 				fn handler() -> #pages_crate::server_fn::ServerFnHandler {
 					super::#static_wrapper_name
 				}
 			}
+
+			// MSW: server-side MockableServerFn (conditionally generated; Issue #3673)
+			#msw_server_tokens
 		}
+
+		// MSW: WASM-side marker module (conditionally generated; Issue #3673)
+		#msw_wasm_tokens
 	}
+}
+
+/// Extracts the first generic argument `T` from `Result<T, E>`.
+///
+/// Given `Result<User, ServerFnError>`, returns the token stream for `User`.
+/// Falls back to the full return type if it cannot be parsed as `Result<T, E>`.
+fn extract_result_ok_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
+	if let syn::Type::Path(type_path) = return_type
+		&& let Some(segment) = type_path.path.segments.last()
+		&& segment.ident == "Result"
+		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+		&& let Some(syn::GenericArgument::Type(ok_type)) = args.args.first()
+	{
+		return quote! { #ok_type };
+	}
+	// Fallback: use the full type
+	quote! { #return_type }
 }
 
 #[cfg(test)]
@@ -1005,7 +1485,7 @@ mod tests {
 	#[test]
 	fn test_server_fn_options_default() {
 		let options = ServerFnOptions::default();
-		assert_eq!(options.use_inject, false);
+		assert!(!options.use_inject);
 		assert_eq!(options.endpoint, None);
 		assert_eq!(options.codec, "json");
 	}
@@ -1016,6 +1496,27 @@ mod tests {
 		use darling::ast::NestedMeta;
 		use syn::parse_quote;
 
+		// Test with endpoint only (use_inject is no longer needed)
+		let attr: syn::Attribute = parse_quote!(#[server_fn(endpoint = "/custom")]);
+		let meta_list = attr.meta.require_list().unwrap();
+		let nested: Vec<NestedMeta> = NestedMeta::parse_meta_list(meta_list.tokens.clone())
+			.unwrap()
+			.into_iter()
+			.collect();
+		let options = ServerFnOptions::from_list(&nested).unwrap();
+
+		assert!(!options.use_inject);
+		assert_eq!(options.endpoint, Some("/custom".to_string()));
+		assert_eq!(options.codec, "json");
+	}
+
+	#[test]
+	fn test_server_fn_options_parse_deprecated_use_inject() {
+		use darling::FromMeta;
+		use darling::ast::NestedMeta;
+		use syn::parse_quote;
+
+		// use_inject = true is still accepted (deprecated but functional)
 		let attr: syn::Attribute =
 			parse_quote!(#[server_fn(use_inject = true, endpoint = "/custom")]);
 		let meta_list = attr.meta.require_list().unwrap();
@@ -1025,7 +1526,7 @@ mod tests {
 			.collect();
 		let options = ServerFnOptions::from_list(&nested).unwrap();
 
-		assert_eq!(options.use_inject, true);
+		assert!(options.use_inject);
 		assert_eq!(options.endpoint, Some("/custom".to_string()));
 		assert_eq!(options.codec, "json");
 	}
@@ -1078,5 +1579,128 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err().to_string();
 		assert!(err.contains("fragment identifiers"));
+	}
+
+	/// Tests for `is_extractor_type` — verifies known extractor type detection.
+	#[test]
+	fn test_is_extractor_type_known_types() {
+		use syn::parse_quote;
+
+		// Known extractor types should return true
+		let ty: syn::Type = parse_quote!(Validated<Form<LoginRequest>>);
+		assert!(is_extractor_type(&ty), "Validated should be an extractor");
+
+		let ty: syn::Type = parse_quote!(Header<String>);
+		assert!(is_extractor_type(&ty), "Header should be an extractor");
+
+		let ty: syn::Type = parse_quote!(Json<UserRequest>);
+		assert!(is_extractor_type(&ty), "Json should be an extractor");
+
+		let ty: syn::Type = parse_quote!(Form<CreateUser>);
+		assert!(is_extractor_type(&ty), "Form should be an extractor");
+
+		let ty: syn::Type = parse_quote!(Query<PaginationParams>);
+		assert!(is_extractor_type(&ty), "Query should be an extractor");
+
+		let ty: syn::Type = parse_quote!(Path<u32>);
+		assert!(is_extractor_type(&ty), "Path should be an extractor");
+
+		let ty: syn::Type = parse_quote!(Cookie<String>);
+		assert!(is_extractor_type(&ty), "Cookie should be an extractor");
+
+		let ty: syn::Type = parse_quote!(Body);
+		assert!(is_extractor_type(&ty), "Body should be an extractor");
+	}
+
+	/// Tests for `is_extractor_type` — verifies that non-extractor types return false.
+	#[test]
+	fn test_is_extractor_type_non_extractors() {
+		use syn::parse_quote;
+
+		let ty: syn::Type = parse_quote!(u32);
+		assert!(!is_extractor_type(&ty), "u32 should not be an extractor");
+
+		let ty: syn::Type = parse_quote!(String);
+		assert!(!is_extractor_type(&ty), "String should not be an extractor");
+
+		let ty: syn::Type = parse_quote!(Database);
+		assert!(
+			!is_extractor_type(&ty),
+			"Database should not be an extractor"
+		);
+
+		let ty: syn::Type = parse_quote!(Arc<Database>);
+		assert!(
+			!is_extractor_type(&ty),
+			"Arc<Database> should not be an extractor"
+		);
+
+		let ty: syn::Type = parse_quote!(Vec<String>);
+		assert!(
+			!is_extractor_type(&ty),
+			"Vec<String> should not be an extractor"
+		);
+	}
+
+	/// Tests that `detect_extractor_params` correctly identifies extractor parameters
+	/// and skips #[inject] params.
+	#[test]
+	fn test_detect_extractor_params_basic() {
+		use syn::parse_quote;
+
+		// Parse a function with mixed param types
+		let func: syn::ItemFn = parse_quote! {
+			async fn login(
+				form: Validated<Form<LoginRequest>>,
+				auth_header: Header<String>,
+				name: String,
+				#[reinhardt::inject] db: Database,
+			) -> Result<(), ServerFnError> {}
+		};
+
+		let extractor_params = detect_extractor_params(&func.sig.inputs);
+
+		// Should detect 2 extractor params (form + auth_header), not name or db
+		assert_eq!(
+			extractor_params.len(),
+			2,
+			"Expected 2 extractor params, got: {:#?}",
+			extractor_params
+				.iter()
+				.map(|p| format!("{:?}", p.pat))
+				.collect::<Vec<_>>()
+		);
+	}
+
+	/// Tests that extractor params are not included in regular params
+	#[test]
+	fn test_extractor_params_excluded_from_regular() {
+		use syn::parse_quote;
+
+		// All params are extractors
+		let func: syn::ItemFn = parse_quote! {
+			async fn handler(
+				form: Form<CreateUser>,
+				hdr: Header<String>,
+			) -> Result<(), ServerFnError> {}
+		};
+
+		let extractor_params = detect_extractor_params(&func.sig.inputs);
+		assert_eq!(extractor_params.len(), 2);
+
+		// No regular params should remain (simulating generate_server_handler logic)
+		let regular_count = func
+			.sig
+			.inputs
+			.iter()
+			.filter(|arg| {
+				if let syn::FnArg::Typed(pt) = arg {
+					!is_extractor_type(&pt.ty)
+				} else {
+					false
+				}
+			})
+			.count();
+		assert_eq!(regular_count, 0, "All params should be extractors");
 	}
 }

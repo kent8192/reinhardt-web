@@ -34,7 +34,7 @@ jobs:
   unit-coverage:
     name: Unit Test Coverage
     runs-on: ${{ fromJSON(inputs.runner) }}
-    timeout-minutes: 60
+    timeout-minutes: 360
     env:
       CARGO_TARGET_DIR: /tmp/cargo_target_unit_cov
     permissions:
@@ -62,11 +62,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
-
-      - name: Setup protoc
-        uses: ./.github/actions/setup-protoc
+      - name: Setup test environment (Rust + protoc)
+        uses: ./.github/actions/setup-test-env
+        with:
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries, so
+          # parallel coverage jobs do not compete to write the same key and
+          # only the main-branch authoritative cache is updated.
+          rust-save-if: ${{ github.ref == 'refs/heads/main' }}
+          protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-make
         uses: taiki-e/install-action@v2
@@ -80,6 +84,7 @@ jobs:
 
       - name: Install mold linker and build dependencies
         run: |
+          sudo systemctl stop unattended-upgrades || true
           sudo apt-get update -o DPkg::Lock::Timeout=120
           sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
           sudo apt-get clean
@@ -112,7 +117,7 @@ jobs:
           cargo llvm-cov clean --workspace
           rm -rf "${CARGO_TARGET_DIR}/llvm-cov-target"
 
-      - name: Configure cargo for coverage
+      - name: Configure mold linker for coverage
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
@@ -121,17 +126,14 @@ jobs:
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)
           if [ "$ARCH" = "aarch64" ]; then
-            TARGET="aarch64-unknown-linux-gnu"
+            ENV_KEY="CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"
           elif [ "$ARCH" = "x86_64" ]; then
-            TARGET="x86_64-unknown-linux-gnu"
+            ENV_KEY="CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+          else
+            echo "Unsupported architecture for mold linker configuration: $ARCH" >&2
+            exit 1
           fi
-          cat > .cargo/config.toml << EOF
-          [env]
-          RUST_ANALYZER_CARGO_FEATURES = "all"
-
-          [target.${TARGET}]
-          linker = "/tmp/clang-mold-wrapper"
-          EOF
+          echo "${ENV_KEY}=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
 
       - name: Run unit tests with coverage
         env:
@@ -181,7 +183,7 @@ jobs:
   intra-crate-integration-coverage:
     name: Intra-Crate Integration Coverage
     runs-on: ${{ fromJSON(inputs.runner) }}
-    timeout-minutes: 120
+    timeout-minutes: 360
     env:
       CARGO_TARGET_DIR: /tmp/cargo_target_intra_cov
     permissions:
@@ -209,14 +211,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
-
-      - name: Setup protoc
-        uses: ./.github/actions/setup-protoc
+      - name: Setup test environment (Rust + protoc)
+        uses: ./.github/actions/setup-test-env
+        with:
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries, so
+          # parallel coverage jobs do not compete to write the same key and
+          # only the main-branch authoritative cache is updated.
+          rust-save-if: ${{ github.ref == 'refs/heads/main' }}
+          protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install mold linker and build dependencies
         run: |
+          sudo systemctl stop unattended-upgrades || true
           sudo apt-get update -o DPkg::Lock::Timeout=120
           sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
           sudo apt-get clean
@@ -237,6 +244,11 @@ jobs:
         with:
           tool: cargo-llvm-cov
 
+      - name: Pull Docker images
+        uses: ./.github/actions/pull-docker-images
+        with:
+          images-file: .github/docker-images-intra-crate.txt
+
       - name: Additional disk cleanup before tests
         if: ${{ !contains(inputs.runner, 'self-hosted') }}
         run: |
@@ -244,7 +256,8 @@ jobs:
           df -h
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/* || true
-          docker system prune -af --volumes || true
+          # Use -f (not -af) to preserve pre-pulled Docker images
+          docker system prune -f --volumes || true
           docker builder prune -af || true
           rm -rf ~/.cache/pip || true
           rm -rf ~/.npm || true
@@ -256,12 +269,7 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
-      - name: Pull Docker images
-        uses: ./.github/actions/pull-docker-images
-        with:
-          images-file: .github/docker-images-intra-crate.txt
-
-      - name: Configure cargo for coverage
+      - name: Configure mold linker for coverage
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
@@ -270,17 +278,14 @@ jobs:
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)
           if [ "$ARCH" = "aarch64" ]; then
-            TARGET="aarch64-unknown-linux-gnu"
+            ENV_KEY="CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"
           elif [ "$ARCH" = "x86_64" ]; then
-            TARGET="x86_64-unknown-linux-gnu"
+            ENV_KEY="CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+          else
+            echo "Unsupported architecture for mold linker configuration: $ARCH" >&2
+            exit 1
           fi
-          cat > .cargo/config.toml << EOF
-          [env]
-          RUST_ANALYZER_CARGO_FEATURES = "all"
-
-          [target.${TARGET}]
-          linker = "/tmp/clang-mold-wrapper"
-          EOF
+          echo "${ENV_KEY}=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
 
       - name: Clean coverage artifacts
         run: |
@@ -337,7 +342,7 @@ jobs:
   cross-crate-integration-coverage:
     name: Cross-Crate Integration Coverage
     runs-on: ${{ fromJSON(inputs.runner) }}
-    timeout-minutes: 60
+    timeout-minutes: 360
     env:
       CARGO_TARGET_DIR: /tmp/cargo_target_cross_cov
     permissions:
@@ -365,14 +370,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
-
-      - name: Setup protoc
-        uses: ./.github/actions/setup-protoc
+      - name: Setup test environment (Rust + protoc)
+        uses: ./.github/actions/setup-test-env
+        with:
+          # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
+          # restore from main's cache but do not save their own entries, so
+          # parallel coverage jobs do not compete to write the same key and
+          # only the main-branch authoritative cache is updated.
+          rust-save-if: ${{ github.ref == 'refs/heads/main' }}
+          protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install mold linker and build dependencies
         run: |
+          sudo systemctl stop unattended-upgrades || true
           sudo apt-get update -o DPkg::Lock::Timeout=120
           sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
           sudo apt-get clean
@@ -393,6 +403,11 @@ jobs:
         with:
           tool: cargo-llvm-cov
 
+      - name: Pull Docker images
+        uses: ./.github/actions/pull-docker-images
+        with:
+          images-file: .github/docker-images-cross-crate.txt
+
       - name: Additional disk cleanup before tests
         if: ${{ !contains(inputs.runner, 'self-hosted') }}
         run: |
@@ -400,7 +415,8 @@ jobs:
           df -h
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/* || true
-          docker system prune -af --volumes || true
+          # Use -f (not -af) to preserve pre-pulled Docker images
+          docker system prune -f --volumes || true
           docker builder prune -af || true
           rm -rf ~/.cache/pip || true
           rm -rf ~/.npm || true
@@ -412,12 +428,7 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
-      - name: Pull Docker images
-        uses: ./.github/actions/pull-docker-images
-        with:
-          images-file: .github/docker-images-cross-crate.txt
-
-      - name: Configure cargo for coverage
+      - name: Configure mold linker for coverage
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
@@ -426,17 +437,14 @@ jobs:
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)
           if [ "$ARCH" = "aarch64" ]; then
-            TARGET="aarch64-unknown-linux-gnu"
+            ENV_KEY="CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"
           elif [ "$ARCH" = "x86_64" ]; then
-            TARGET="x86_64-unknown-linux-gnu"
+            ENV_KEY="CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+          else
+            echo "Unsupported architecture for mold linker configuration: $ARCH" >&2
+            exit 1
           fi
-          cat > .cargo/config.toml << EOF
-          [env]
-          RUST_ANALYZER_CARGO_FEATURES = "all"
-
-          [target.${TARGET}]
-          linker = "/tmp/clang-mold-wrapper"
-          EOF
+          echo "${ENV_KEY}=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
 
       - name: Clean coverage artifacts
         run: |

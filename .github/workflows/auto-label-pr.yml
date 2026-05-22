@@ -4,6 +4,13 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened, edited]
 
+# Use github.event.pull_request.number because pull_request_target sets
+# github.ref to the base branch (e.g., refs/heads/main), which would collide
+# across all PRs targeting the same base. The PR number gives a per-PR group.
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number }}"
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
@@ -11,7 +18,9 @@ permissions:
 jobs:
   label-by-path:
     name: Label by changed files
-    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # See infra/github-runners/hotpath-runner-userdata.sh for the canonical hotpath runner labels.
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     steps:
       - uses: actions/labeler@v6
         with:
@@ -21,7 +30,8 @@ jobs:
 
   label-by-title:
     name: Label by PR title
-    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     steps:
       - uses: actions/github-script@v8
         with:

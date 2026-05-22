@@ -17,14 +17,14 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use reinhardt_manouche::core::{
-	ClientValidator, ClientValidatorRule, FormAction, FormCallbacks, FormDerived, FormFieldDef,
-	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
-	FormValidator, FormWatch, IconPosition, TypedChoicesConfig, TypedClientValidator,
-	TypedClientValidatorRule, TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay,
-	TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction, TypedFormCallbacks,
-	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
-	TypedFormSlots, TypedFormState, TypedFormStyling, TypedFormValidator, TypedFormWatch,
-	TypedFormWatchItem, TypedIcon, TypedIconAttr, TypedIconChild, TypedIconPosition,
+	FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry, FormFieldGroup,
+	FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState, FormSubmitButtonDef,
+	FormValidator, FormWatch, IconPosition, StripArgument, TypedChoicesConfig, TypedCustomAttr,
+	TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType, TypedFieldValidation,
+	TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
+	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormStyling,
+	TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon, TypedIconAttr,
+	TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
 	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
 
@@ -146,6 +146,24 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 	// Transform redirect configuration
 	let redirect_on_success = transform_redirect(&ast.redirect_on_success)?;
 
+	let success_url = ast.success_url.clone();
+
+	// Reject simultaneous `redirect_on_success` + `success_url`: both
+	// generate `navigate()` calls in the same `submit()` body, which
+	// would push two history entries and fire two observer cycles for a
+	// single successful submit (Refs #4610 codegen review). Force the
+	// user to pick one — `redirect_on_success` for a static URL, or
+	// `success_url` for a dynamically-computed one.
+	if let (Some(_), Some(url_expr)) = (ast.redirect_on_success.as_ref(), success_url.as_ref()) {
+		return Err(Error::new_spanned(
+			url_expr,
+			"form! cannot specify both `redirect_on_success` and `success_url`: each generates an \
+			 SPA navigation on successful submit, so combining them would push two history \
+			 entries and fire two observer cycles. Use `redirect_on_success` for a static URL or \
+			 `success_url` for a dynamically-computed one, not both.",
+		));
+	}
+
 	// Transform initial_loader (pass through the Path)
 	let initial_loader = ast.initial_loader.clone();
 
@@ -158,11 +176,11 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 	// Transform fields
 	let fields = transform_fields(&ast.fields)?;
 
-	// Transform server-side validators
+	// Transform unified validators (scope filtering happens at codegen)
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
 
-	// Transform client-side validators
-	let client_validators = transform_client_validators(&ast.client_validators, &ast.fields)?;
+	// Transform stripped server_fn arguments (reinhardt-web#3971).
+	let strip_arguments = transform_strip_arguments(&ast.strip_arguments, &ast.fields)?;
 
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
@@ -180,12 +198,13 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 		watch,
 		derived,
 		redirect_on_success,
+		success_url,
 		initial_loader,
 		choices_loader,
 		slots,
 		fields,
 		validators,
-		client_validators,
+		strip_arguments,
 		span: ast.span,
 	})
 }
@@ -227,6 +246,15 @@ fn validate_unique_field_names(entries: &[FormFieldEntry]) -> Result<()> {
 							),
 						));
 					}
+				}
+			}
+			FormFieldEntry::SubmitButton(btn) => {
+				let name = btn.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						btn.name.span(),
+						format!("duplicate field/button name: '{}'", name),
+					));
 				}
 			}
 		}
@@ -318,6 +346,7 @@ fn transform_callbacks(callbacks: &FormCallbacks) -> Result<TypedFormCallbacks> 
 	Ok(TypedFormCallbacks {
 		on_submit: callbacks.on_submit.clone(),
 		on_success: callbacks.on_success.clone(),
+		on_success_ref: callbacks.on_success_ref.clone(),
 		on_error: callbacks.on_error.clone(),
 		on_loading: callbacks.on_loading.clone(),
 		span: callbacks.span,
@@ -476,6 +505,10 @@ fn transform_field_entry(entry: &FormFieldEntry) -> Result<TypedFormFieldEntry> 
 			let typed_group = transform_field_group(group)?;
 			Ok(TypedFormFieldEntry::Group(typed_group))
 		}
+		FormFieldEntry::SubmitButton(btn) => {
+			let typed_btn = transform_submit_button(btn)?;
+			Ok(TypedFormFieldEntry::SubmitButton(typed_btn))
+		}
 	}
 }
 
@@ -497,6 +530,99 @@ fn transform_field_group(group: &FormFieldGroup) -> Result<TypedFormFieldGroup> 
 	})
 }
 
+/// Transforms a submit button definition into a typed submit button.
+const ALLOWED_SUBMIT_BUTTON_PROPERTIES: &[&str] = &["label", "class", "id", "disabled"];
+
+fn transform_submit_button(btn: &FormSubmitButtonDef) -> Result<TypedSubmitButtonDef> {
+	let mut label = None;
+	let mut class = None;
+	let mut id = None;
+	let mut disabled = false;
+
+	for prop in &btn.properties {
+		match prop {
+			FormFieldProperty::Named { name, value, span } => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"label" => {
+						if let syn::Expr::Lit(syn::ExprLit {
+							lit: syn::Lit::Str(s),
+							..
+						}) = value
+						{
+							label = Some(s.value());
+						} else {
+							return Err(Error::new(*span, "label must be a string literal"));
+						}
+					}
+					"class" => {
+						if let syn::Expr::Lit(syn::ExprLit {
+							lit: syn::Lit::Str(s),
+							..
+						}) = value
+						{
+							class = Some(s.value());
+						} else {
+							return Err(Error::new(*span, "class must be a string literal"));
+						}
+					}
+					"id" => {
+						if let syn::Expr::Lit(syn::ExprLit {
+							lit: syn::Lit::Str(s),
+							..
+						}) = value
+						{
+							id = Some(s.value());
+						} else {
+							return Err(Error::new(*span, "id must be a string literal"));
+						}
+					}
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!(
+								"unknown SubmitButton property: '{}'. Allowed: {}",
+								prop_name,
+								ALLOWED_SUBMIT_BUTTON_PROPERTIES.join(", ")
+							),
+						));
+					}
+				}
+			}
+			FormFieldProperty::Flag { name, span } => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"disabled" => disabled = true,
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!(
+								"unknown SubmitButton flag: '{}'. Allowed flags: disabled",
+								prop_name
+							),
+						));
+					}
+				}
+			}
+			_ => {
+				return Err(Error::new(
+					btn.span,
+					"SubmitButton only supports: label, class, id, disabled",
+				));
+			}
+		}
+	}
+
+	Ok(TypedSubmitButtonDef {
+		name: btn.name.clone(),
+		label: label.unwrap_or_else(|| "Submit".to_string()),
+		class,
+		id,
+		disabled,
+		span: btn.span,
+	})
+}
+
 /// Transforms a single field definition.
 fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	// Parse field type
@@ -512,6 +638,7 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	let custom_attrs = extract_custom_attrs(&field.properties)?;
 	let bind = extract_bind(&field.properties);
 	let initial_from = extract_initial_from(&field.properties);
+	let initial_expr = extract_initial_expr(&field.properties);
 	let choices_config = extract_choices_config(&field.properties);
 
 	Ok(TypedFormFieldDef {
@@ -526,6 +653,7 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 		custom_attrs,
 		bind,
 		initial_from,
+		initial_expr,
 		choices_config,
 		span: field.span,
 	})
@@ -652,6 +780,7 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 	let mut disabled = false;
 	let mut readonly = false;
 	let mut autofocus = false;
+	let mut autocomplete = None;
 
 	for prop in properties {
 		match prop {
@@ -677,6 +806,13 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 					"help_text" => {
 						help_text =
 							Some(extract_string_value_from_expr(value, "help_text", *span)?);
+					}
+					"autocomplete" => {
+						autocomplete = Some(extract_string_value_from_expr(
+							value,
+							"autocomplete",
+							*span,
+						)?);
 					}
 					"disabled" => {
 						if let syn::Expr::Lit(lit) = value
@@ -737,6 +873,7 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 		disabled,
 		readonly,
 		autofocus,
+		autocomplete,
 	})
 }
 
@@ -1086,6 +1223,22 @@ fn extract_initial_from(properties: &[FormFieldProperty]) -> Option<String> {
 	None
 }
 
+/// Extracts the initial signal value expression from field properties.
+///
+/// When `initial: <expr>` is specified on a field, the expression is used as
+/// the initial value for the field's `Signal::new(...)` instead of the type
+/// default (issue #4386).
+fn extract_initial_expr(properties: &[FormFieldProperty]) -> Option<syn::Expr> {
+	for prop in properties {
+		if let FormFieldProperty::Named { name, value, .. } = prop
+			&& name == "initial"
+		{
+			return Some(value.clone());
+		}
+	}
+	None
+}
+
 /// Extracts dynamic choices configuration from field properties.
 ///
 /// For `ChoiceField` with dynamic options loaded from a `choices_loader` server_fn.
@@ -1126,6 +1279,51 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 	})
 }
 
+/// Transforms `strip_arguments` entries into their typed form.
+///
+/// Validates two constraints:
+/// 1. No duplicate argument names (each server_fn parameter may only be supplied once).
+/// 2. No collision with declared form field names (would shadow a real input).
+///
+/// Tracked under reinhardt-web#3971.
+fn transform_strip_arguments(
+	args: &[StripArgument],
+	fields: &[FormFieldEntry],
+) -> Result<Vec<TypedStripArgument>> {
+	let mut seen = HashSet::new();
+	let mut typed = Vec::with_capacity(args.len());
+
+	for arg in args {
+		let name_str = arg.name.to_string();
+
+		if !seen.insert(name_str.clone()) {
+			return Err(Error::new(
+				arg.span,
+				format!(
+					"duplicate strip_arguments entry '{name_str}': each server_fn argument may only appear once"
+				),
+			));
+		}
+
+		if field_exists(fields, &arg.name) {
+			return Err(Error::new(
+				arg.span,
+				format!(
+					"strip_arguments key '{name_str}' collides with a declared form field; either rename the field or remove this strip entry"
+				),
+			));
+		}
+
+		typed.push(TypedStripArgument {
+			name: arg.name.clone(),
+			value: arg.value.clone(),
+			span: arg.span,
+		});
+	}
+
+	Ok(typed)
+}
+
 /// Checks if a field with the given name exists in the field entries.
 ///
 /// This checks both top-level fields and fields within groups.
@@ -1142,6 +1340,7 @@ fn field_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
 					return true;
 				}
 			}
+			FormFieldEntry::SubmitButton(_) => {}
 		}
 	}
 	false
@@ -1194,7 +1393,7 @@ fn transform_validators(
 	Ok(result)
 }
 
-/// Transforms a validator rule.
+/// Transforms a validator rule, propagating its execution scope.
 ///
 /// Converts the closure expression to a regular expression for code generation.
 fn transform_validator_rule(rule: &ValidatorRule) -> Result<TypedValidatorRule> {
@@ -1202,56 +1401,8 @@ fn transform_validator_rule(rule: &ValidatorRule) -> Result<TypedValidatorRule> 
 	let condition: syn::Expr = (*rule.expr.body).clone();
 
 	Ok(TypedValidatorRule {
+		scope: rule.scope.clone(),
 		condition,
-		message: rule.message.value(),
-		span: rule.span,
-	})
-}
-
-/// Transforms client-side validators.
-fn transform_client_validators(
-	validators: &[ClientValidator],
-	fields: &[FormFieldEntry],
-) -> Result<Vec<TypedClientValidator>> {
-	validators
-		.iter()
-		.map(|v| transform_client_validator(v, fields))
-		.collect()
-}
-
-/// Transforms a single client-side validator.
-fn transform_client_validator(
-	validator: &ClientValidator,
-	fields: &[FormFieldEntry],
-) -> Result<TypedClientValidator> {
-	// Validate that field exists (including in groups)
-	if !field_exists(fields, &validator.field_name) {
-		return Err(Error::new(
-			validator.field_name.span(),
-			format!(
-				"client validator references unknown field: '{}'",
-				validator.field_name
-			),
-		));
-	}
-
-	let rules = validator
-		.rules
-		.iter()
-		.map(transform_client_validator_rule)
-		.collect::<Result<Vec<_>>>()?;
-
-	Ok(TypedClientValidator {
-		field_name: validator.field_name.clone(),
-		rules,
-		span: validator.span,
-	})
-}
-
-/// Transforms a client validator rule.
-fn transform_client_validator_rule(rule: &ClientValidatorRule) -> Result<TypedClientValidatorRule> {
-	Ok(TypedClientValidatorRule {
-		js_condition: rule.js_expr.value(),
 		message: rule.message.value(),
 		span: rule.span,
 	})
@@ -2292,7 +2443,7 @@ mod tests {
 		assert!(typed.initial_loader.is_some());
 		let loader = typed.initial_loader.as_ref().unwrap();
 		// Check that the path contains the expected identifier
-		assert!(loader.segments.len() > 0);
+		assert!(!loader.segments.is_empty());
 		assert_eq!(
 			loader.segments.last().unwrap().ident.to_string(),
 			"get_profile_data"
@@ -3607,5 +3758,210 @@ mod tests {
 		let result = transform_redirect(&None);
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap(), None);
+	}
+
+	#[rstest::rstest]
+	fn test_reject_simultaneous_redirect_on_success_and_success_url() {
+		// Arrange — both navigation hooks specified at once. The generated
+		// `submit()` would otherwise call `navigate()` twice for a single
+		// successful submit (Refs #4610 codegen review).
+		//
+		// The `success_url:` token cannot be exercised through the
+		// untyped parser today because of upstream issue #4604 / #4611
+		// (the `reinhardt-manouche` `success_url:` parser arm consumes a
+		// redundant `:`). To still test the validator's mutual-exclusion
+		// branch *now*, parse the redirect-only form and graft a
+		// hand-built `success_url` expression onto the AST, then invoke
+		// `validate` directly.
+		//
+		// Ideal implementation after #4604 / #4611:
+		//
+		//     let input = quote! {
+		//         name: VoteForm,
+		//         action: "/api/vote",
+		//         redirect_on_success: "/thanks",
+		//         success_url: |_form| String::from("/thanks-too"),
+		//         fields: { choice_id: IntegerField { required } },
+		//     };
+		//     let err = parse_and_validate(input)
+		//         .expect_err("must reject both attributes together");
+		//
+		// — i.e. parse `success_url:` directly through the untyped parser
+		// and reuse `parse_and_validate` instead of grafting onto the AST.
+		let input = quote! {
+			name: VoteForm,
+			action: "/api/vote",
+			redirect_on_success: "/thanks",
+
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+		let mut ast: FormMacro = syn::parse2(input).expect("redirect-only form must parse");
+		ast.success_url = Some(
+			syn::parse_str::<syn::Expr>("|_form| String::from(\"/thanks-too\")")
+				.expect("success_url expression must parse"),
+		);
+
+		// Act
+		let result = validate(&ast);
+
+		// Assert — strict equality on the full diagnostic so any wording
+		// change forces an intentional test update (CLAUDE.md: prefer
+		// `assert_eq!` over loose `contains`).
+		let err = result.expect_err("must reject both attributes together");
+		let msg = err.to_string();
+		assert_eq!(
+			msg,
+			"form! cannot specify both `redirect_on_success` and `success_url`: each generates an \
+			 SPA navigation on successful submit, so combining them would push two history \
+			 entries and fire two observer cycles. Use `redirect_on_success` for a static URL or \
+			 `success_url` for a dynamically-computed one, not both."
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_redirect_on_success_alone_is_accepted() {
+		// Arrange — only `redirect_on_success`, no `success_url`. Must
+		// still validate cleanly (regression guard for the mutual-exclusion
+		// check above).
+		let input = quote! {
+			name: VoteForm,
+			action: "/api/vote",
+			redirect_on_success: "/thanks",
+
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(
+			result.is_ok(),
+			"single-attribute case must pass: {result:?}"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_validate_file_field() {
+		// Arrange
+		let input = quote! {
+			name: UploadForm,
+			action: "/api/upload",
+
+			fields: {
+				document: FileField {},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(typed.fields.len(), 1);
+		let field = typed.fields[0].as_field().unwrap();
+		assert!(matches!(field.field_type, TypedFieldType::FileField));
+		assert!(matches!(field.widget, TypedWidget::FileInput));
+	}
+
+	#[rstest::rstest]
+	fn test_validate_image_field() {
+		// Arrange
+		let input = quote! {
+			name: AvatarForm,
+			action: "/api/avatar",
+
+			fields: {
+				photo: ImageField {},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(typed.fields.len(), 1);
+		let field = typed.fields[0].as_field().unwrap();
+		assert!(matches!(field.field_type, TypedFieldType::ImageField));
+		assert!(matches!(field.widget, TypedWidget::FileInput));
+	}
+
+	#[rstest::rstest]
+	fn test_validate_form_with_mixed_file_and_text_fields() {
+		// Arrange
+		let input = quote! {
+			name: ProfileForm,
+			action: "/api/profile",
+
+			fields: {
+				name: CharField { required },
+				avatar: ImageField {},
+				resume: FileField {},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(typed.fields.len(), 3);
+		assert!(matches!(
+			typed.fields[0].as_field().unwrap().field_type,
+			TypedFieldType::CharField
+		));
+		assert!(matches!(
+			typed.fields[1].as_field().unwrap().field_type,
+			TypedFieldType::ImageField
+		));
+		assert!(matches!(
+			typed.fields[2].as_field().unwrap().field_type,
+			TypedFieldType::FileField
+		));
+	}
+}
+
+#[cfg(test)]
+mod scope_transform_tests {
+	use super::*;
+	use reinhardt_manouche::core::{ClientTrigger, ValidatorRule, ValidatorScope};
+	use rstest::*;
+
+	fn make_rule(scope: ValidatorScope) -> ValidatorRule {
+		ValidatorRule {
+			scope,
+			expr: syn::parse_str("|v| v.len() > 0").unwrap(),
+			message: syn::parse_str("\"error\"").unwrap(),
+			span: proc_macro2::Span::call_site(),
+		}
+	}
+
+	#[rstest]
+	#[case(ValidatorScope::Both)]
+	#[case(ValidatorScope::Server)]
+	#[case(ValidatorScope::Client {
+		trigger: ClientTrigger::Input,
+	})]
+	#[case(ValidatorScope::ServerAndClient {
+		trigger: ClientTrigger::Blur,
+	})]
+	fn test_scope_propagated_through_transform(#[case] scope: ValidatorScope) {
+		// Arrange
+		let rule = make_rule(scope.clone());
+
+		// Act
+		let typed = transform_validator_rule(&rule).unwrap();
+
+		// Assert
+		assert_eq!(typed.scope, scope);
+		assert_eq!(typed.message, "error");
 	}
 }

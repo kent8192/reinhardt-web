@@ -1,40 +1,24 @@
-//! WASM entry point
+//! WASM SPA entry point.
 //!
-//! This is the main entry point for the WASM application.
+//! The `#[routes]`-annotated function in
+//! [`crate::config::urls::routes`] aggregates every app's
+//! `client_url_patterns()` through `UnifiedRouter::mount_unified` and the
+//! macro submits the resulting `ClientRouter` into `inventory` at compile
+//! time as a `ClientRouterRegistration`.
+//!
+//! [`ClientLauncher::register_routes_from_inventory`] consumes those
+//! registrations at launch time, merges them into a single SPA route
+//! table, registers the project-level client reverser so
+//! `ResolvedUrls::from_global()` lookups resolve in components and the
+//! nav bar, and installs the router as the SPA mount on `#root`. Refs
+//! #4453.
 
-use reinhardt::pages::PageExt;
-use reinhardt::pages::dom::Element;
+use reinhardt::pages::ClientLauncher;
 use wasm_bindgen::prelude::*;
-
-// Use modules from parent `client` module via super::
-use super::router;
-
-pub use router::{init_global_router, with_router};
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
-	// Set panic hook for better error messages in browser console
-	console_error_panic_hook::set_once();
-
-	// Initialize router
-	router::init_global_router();
-
-	// Get the root element
-	let window = web_sys::window().expect("no global `window` exists");
-	let document = window.document().expect("should have a document on window");
-	let root = document
-		.get_element_by_id("root")
-		.expect("should have #root element");
-
-	// Clear loading spinner
-	root.set_inner_html("");
-
-	// Mount the router's current view
-	router::with_router(|router| {
-		let view = router.render_current();
-		let root_element = Element::new(root.clone());
-		let _ = view.mount(&root_element);
-	});
-
-	Ok(())
+	ClientLauncher::new("#root")
+		.register_routes_from_inventory()
+		.launch()
 }

@@ -16,7 +16,7 @@ project and build a simple REST API.
 
 Before you begin, make sure you have:
 
-- **Rust** 1.91.1 or later (2024 Edition required)
+- **Rust** 1.94.1 or later (2024 Edition required)
   ([Install Rust](https://www.rust-lang.org/tools/install))
 - **PostgreSQL** (included in `standard` and `full` bundles; optional for custom setups)
 - Basic familiarity with Rust and async programming
@@ -25,8 +25,15 @@ Before you begin, make sure you have:
 
 ### Step 1: Install Reinhardt Admin
 
+While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`),
+`cargo install` requires an explicit `--version` because pre-releases are
+not selected by default. Once `0.1.0` stable ships, omit `--version` to
+pull the latest stable (or keep `--version` as an opt-in reproducibility
+pin). The literal below is auto-bumped by release-plz on each release.
+
+<!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not
@@ -47,7 +54,6 @@ my-api/
 ├── .gitignore
 ├── Cargo.toml
 ├── Makefile.toml
-├── bacon.toml
 ├── settings/
 │   ├── base.toml
 │   ├── local.toml
@@ -72,11 +78,8 @@ For a modern WASM-based frontend with SSR:
 
 ```bash
 # Create a reinhardt-pages project
-reinhardt-admin startproject my-app --with-pages
+reinhardt-admin startproject my-app --template pages
 cd my-app
-
-# Install WASM build tools (first time only)
-cargo make install-wasm-tools
 
 # Build WASM and start development server
 cargo make dev
@@ -89,7 +92,6 @@ my-app/
 ├── .gitignore
 ├── Cargo.toml
 ├── Makefile.toml
-├── bacon.toml
 ├── build.rs
 ├── index.html
 ├── settings/
@@ -125,7 +127,7 @@ Visit `http://127.0.0.1:8000/` in your browser.
 **Available commands:**
 - `cargo make dev` - Build WASM and start development server
 - `cargo make dev-watch` - Watch mode with auto-rebuild
-- `cargo make dev-release` - Production build with optimized WASM
+- `cargo make build-release` - Production binary build
 - `cargo make wasm-build-dev` - Build WASM only (debug)
 - `cargo make wasm-build-release` - Build WASM only (release, with wasm-opt)
 
@@ -135,9 +137,9 @@ See [examples/examples-twitter](https://github.com/kent8192/reinhardt-web/tree/m
 
 Reinhardt comes in three flavors. Choose the one that fits your needs:
 
-#### Option A: Full (Everything Included) - Default ⚠️ New Default
+#### Option A: Standard (Balanced) - Default
 
-All features enabled, best for learning and rapid prototyping:
+Balanced setup for most production projects:
 
 {% versioned_code(lang="toml") %}
 [dependencies]
@@ -147,21 +149,19 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 {% end %}
 
-**Includes:** Database, Auth, REST API, Admin, GraphQL, WebSockets, Cache, i18n,
-Mail, Sessions, Static Files, Storage
+**Includes:** Core, Database (PostgreSQL), REST API, Auth, Middleware, Templates
 
-#### Option B: Standard (Balanced)
-
-Balanced setup for most production projects:
+#### Option B: Full (Everything Included)
 
 {% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", default-features = false, features = ["standard"] }
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 {% end %}
 
-**Includes:** Core, Database (PostgreSQL), REST API, Auth, Middleware, Templates
+**Includes:** Database, Auth, REST API, Admin, GraphQL, WebSockets, Cache, i18n,
+Mail, Sessions, Static Files, Storage
 
 #### Option C: Minimal (Lightweight)
 
@@ -176,10 +176,10 @@ serde = { version = "1.0", features = ["derive"] }
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
 
-For this guide, we'll use the **Full** flavor (default).
+For this guide, we'll use the **Standard** flavor (default).
 
 **💡 Want more control?** See the [Feature Flags Guide](/docs/feature-flags/) for
-detailed information on 70+ individual feature flags to fine-tune your build.
+detailed information on 60+ individual feature flags to fine-tune your build.
 
 The project template already includes all necessary dependencies in
 `Cargo.toml`.
@@ -203,7 +203,7 @@ message.
 Create an app and add a simple endpoint:
 
 ```bash
-reinhardt-admin startapp hello --template-type restful
+reinhardt-admin startapp hello --template rest
 ```
 
 Edit `hello/views.rs`:
@@ -223,8 +223,8 @@ pub async fn hello_world() -> ViewResult<Response> {
     let response_data = HelloResponse {
         message: "Hello, Reinhardt!".to_string(),
     };
-    Response::ok()
-        .with_json(&response_data)
+    Ok(Response::ok()
+        .with_json(&response_data)?)
 }
 ```
 
@@ -238,7 +238,7 @@ Test: `curl http://127.0.0.1:8000/hello`
 Create a CRUD API using ViewSets:
 
 ```bash
-reinhardt-admin startapp todos --template-type restful
+reinhardt-admin startapp todos --template rest
 ```
 
 Define model (`todos/models.rs`), serializer (`todos/serializers.rs`), and
@@ -246,7 +246,7 @@ ViewSet (`todos/views.rs`):
 
 ```rust
 // todos/views.rs
-use reinhardt::viewsets::ModelViewSet;
+use reinhardt::ModelViewSet;
 use crate::models::Todo;
 use crate::serializers::TodoSerializer;
 
@@ -258,13 +258,12 @@ pub fn todo_viewset() -> ModelViewSet<Todo, TodoSerializer> {
 Register in `todos/urls.rs`:
 
 ```rust
-use reinhardt::routers::DefaultRouter;
-use std::sync::Arc;
+use reinhardt::ServerRouter;
 use crate::views::todo_viewset;
 
-pub fn url_patterns() -> DefaultRouter {
-    DefaultRouter::new()
-        .register_viewset("/todos", Arc::new(todo_viewset()))
+pub fn url_patterns() -> ServerRouter {
+    ServerRouter::new()
+        .viewset("/todos", todo_viewset())
 }
 ```
 
@@ -272,11 +271,13 @@ Then wire it up in `config/urls.rs`:
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt::UnifiedRouter;
 use reinhardt::routes;
 
+// Note: UnifiedRouter requires the `client-router` feature flag.
 #[routes]
-pub fn routes() -> DefaultRouter {
-    DefaultRouter::new()
+pub fn routes() -> UnifiedRouter {
+    UnifiedRouter::new()
         .mount("/api/", todos::urls::url_patterns())
 }
 ```
@@ -304,7 +305,7 @@ commands.
 
 ```bash
 # Create a new app
-reinhardt-admin startapp myapp --template-type restful
+reinhardt-admin startapp myapp --template rest
 
 # Development server
 cargo make runserver
@@ -392,7 +393,7 @@ Check out the [ORM documentation](/docs/api/) for more details.
 
 **Port Already in Use**: Change the port in `serve()` function
 
-**Compilation Errors**: Ensure Rust 1.91.1+ (`rustc --version`)
+**Compilation Errors**: Ensure Rust 1.94.1+ (`rustc --version`)
 
 **Async Runtime**: Add `#[tokio::main]` to your main function
 

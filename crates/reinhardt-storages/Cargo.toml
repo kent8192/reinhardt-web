@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-storages"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 edition = "2024"
 authors = ["Reinhardt Contributors"]
 license = "MIT OR Apache-2.0"
@@ -27,7 +27,7 @@ azure_storage_blobs = { version = "0.20", optional = true }
 azure_core = { version = "0.20", optional = true }
 
 [dev-dependencies]
-testcontainers = "0.26"
+testcontainers = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"
 rstest = "0.23"

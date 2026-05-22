@@ -14,7 +14,7 @@ use uuid::Uuid;
 /// use uuid::Uuid;
 ///
 /// let user = SimpleUser {
-///     id: Uuid::new_v4(),
+///     id: Uuid::now_v7(),
 ///     username: "alice".to_string(),
 ///     email: "alice@example.com".to_string(),
 ///     is_active: true,
@@ -27,6 +27,10 @@ use uuid::Uuid;
 /// assert!(user.is_active());
 /// assert_eq!(user.username(), "alice");
 /// ```
+#[deprecated(
+	since = "0.1.0-rc.15",
+	note = "Use AuthIdentity + BaseUser/FullUser + PermissionsMixin instead"
+)]
 pub trait User: Send + Sync {
 	/// Returns the unique identifier for this user
 	fn id(&self) -> String;
@@ -79,7 +83,7 @@ pub trait User: Send + Sync {
 /// use uuid::Uuid;
 ///
 /// let user = SimpleUser {
-///     id: Uuid::new_v4(),
+///     id: Uuid::now_v7(),
 ///     username: "bob".to_string(),
 ///     email: "bob@example.com".to_string(),
 ///     is_active: true,
@@ -110,6 +114,7 @@ pub struct SimpleUser {
 	pub is_superuser: bool,
 }
 
+#[allow(deprecated)] // Implementing deprecated User trait for backward compatibility
 impl User for SimpleUser {
 	fn id(&self) -> String {
 		self.id.to_string()
@@ -161,6 +166,7 @@ impl User for SimpleUser {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnonymousUser;
 
+#[allow(deprecated)] // Implementing deprecated User trait for backward compatibility
 impl User for AnonymousUser {
 	fn id(&self) -> String {
 		String::new()

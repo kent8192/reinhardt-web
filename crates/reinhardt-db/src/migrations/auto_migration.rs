@@ -278,7 +278,9 @@ impl AutoMigrationGenerator {
 				| Operation::CreateSchema { .. }
 				| Operation::DropSchema { .. }
 				| Operation::CreateExtension { .. }
-				| Operation::BulkLoad { .. } => None, // Cannot rollback - data loading is not reversible
+				| Operation::BulkLoad { .. }
+				| Operation::SetAutoIncrementValue { .. }
+				| Operation::CreateCompositePrimaryKey { .. } => None, // Cannot rollback - data loading / counter / constraint ops are not auto-reversible
 			})
 			.collect()
 	}
@@ -363,6 +365,17 @@ pub enum AutoMigrationError {
 	)]
 	/// DuplicateMigration variant.
 	DuplicateMigration,
+
+	#[error(
+		"Conflicting migrations detected for '{app_label}': {formatted_migrations}. Run makemigrations --merge to resolve."
+	)]
+	/// ConflictingMigrations variant.
+	ConflictingMigrations {
+		/// The app label with conflicting migrations.
+		app_label: String,
+		/// The conflicting migration names (comma-separated for display).
+		formatted_migrations: String,
+	},
 }
 
 impl From<std::io::Error> for AutoMigrationError {

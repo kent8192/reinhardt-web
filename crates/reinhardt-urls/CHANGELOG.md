@@ -7,213 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.9...reinhardt-urls@v0.1.0-rc.10) - 2026-03-15
-
-### Fixed
-
-- *(macros)* remove feature-dependent code generation from #[routes] macro
-- *(urls)* restore semver-compatible new() and add __macro_new()
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.8...reinhardt-urls@v0.1.0-rc.9) - 2026-03-15
-
-### Fixed
-
-- *(urls)* replace lock/read/write().unwrap() with safe alternatives for panic prevention
-- *(urls)* resolve race condition and add poison logging
-- *(urls)* avoid holding RwLock guard across await point
-
-## [0.1.0-rc.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.7...reinhardt-urls@v0.1.0-rc.8) - 2026-03-12
-
-### Documentation
-
-- document client-router feature requirement for UnifiedRouter in prelude
-
-## [0.1.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.6...reinhardt-urls@v0.1.0-rc.7) - 2026-03-11
-
-### Added
-
-- *(urls)* add WASM-compatible UnifiedRouter variant with ServerRouterStub
-
-### Fixed
-
-- *(urls)* suppress dead_code warning for WASM-only `merge` method
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.4...reinhardt-urls@v0.1.0-rc.5) - 2026-03-07
-
-### Fixed
-
-- *(urls)* accept case-insensitive UUIDs per RFC 4122
-- *(urls)* correct UUID converter test expectations for case-insensitive validation
-
-### Other
-
-- resolve conflict with main in labels.yml
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.1...reinhardt-urls@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(urls)* convert path-type parameters to matchit catch-all syntax in RadixTree mode
-
-### Styling
-
-- *(urls)* apply project formatting to pattern module
-
-### Testing
-
-- *(urls)* add coverage tests for LazyLoaded clone-based get and get_if_loaded
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.15...reinhardt-urls@v0.1.0-rc.1) - 2026-02-24
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.14...reinhardt-urls@v0.1.0-alpha.15) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.13...reinhardt-urls@v0.1.0-alpha.14) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.12...reinhardt-urls@v0.1.0-alpha.13) - 2026-02-21
-
-### Fixed
-
-- add memory-bounded eviction to LRU route cache
-- bound LRU heap growth via periodic compaction
-- prevent double substitution in UrlPattern::build_url
-- handle lock poisoning and improve error handling in router and URL resolution
-- replace Box::leak with Arc to prevent memory leak
-- add path traversal prevention with input validation
-
-### Security
-
-- add compile-time validation for paths, SQL, and crate references
-- fix path validation for ambiguous params and wildcards
-- add input validation for route paths and SQL expressions
-- add ReDoS prevention and input validation
-- prevent path traversal and parameter injection
-
-### Changed
-
-- remove incorrect dead_code annotations from proxy fields
-
-### Styling
-
-- apply rustfmt to pre-existing unformatted files
-- replace never-looping for with if-let per clippy::never_loop
-- apply rustfmt formatting to workspace files
-- apply code formatting to security fix files
-
-### Documentation
-
-- document wildcard pattern cross-segment matching behavior
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.11...reinhardt-urls@v0.1.0-alpha.12) - 2026-02-16
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.10...reinhardt-urls@v0.1.0-alpha.11) - 2026-02-15
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.9...reinhardt-urls@v0.1.0-alpha.10) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.8...reinhardt-urls@v0.1.0-alpha.9) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.7...reinhardt-urls@v0.1.0-alpha.8) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.6...reinhardt-urls@v0.1.0-alpha.7) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-di, reinhardt-db, reinhardt-views, reinhardt-middleware
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.5...reinhardt-urls@v0.1.0-alpha.6) - 2026-02-12
-
-### Changed
-
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-
-### Fixed
-
-- correct incorrect path conversions in test imports
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.4...reinhardt-urls@v0.1.0-alpha.5) - 2026-02-10
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-views, reinhardt-middleware
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.3...reinhardt-urls@v0.1.0-alpha.4) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-di, reinhardt-db, reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.2...reinhardt-urls@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-di, reinhardt-db, reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.1...reinhardt-urls@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.30...reinhardt-urls@v0.1.0) - 2026-05-22
+
+Initial stable release of `reinhardt-urls` as part of the reinhardt-web
+0.1.0 release. Provides the URL routing core: the `#[url_patterns]`
+consumer, `ServerRouter` / `ClientRouter` / `UnifiedRouter` builders,
+typed reverse resolution, and the radix-based path matcher shared with
+client-side WASM.
+
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **Server, client, and unified routers** — `ServerRouter`,
+  `ClientRouter`, and `UnifiedRouter` cover native, WASM, and hybrid
+  setups; `Debug` is implemented for both server-side variants, and
+  `UnifiedRouter` carries a WASM-friendly `ServerRouterStub` so
+  `#[url_patterns(mode = unified | server)]` closures compile on WASM.
+  Native `mount_unified` correctly merges child client routes.
+- **Typed URL resolution** — Compile-time type-safe URL resolution via
+  extension traits, name-alias support on `UrlReverser` and
+  `ServerRouter`, and a client-side `ClientUrlReverser`. The
+  `url-resolver` capability is part of the standard, `api-only`, and
+  `urls-full` feature sets.
+- **Async-capable `#[routes]`** — `#[routes]` accepts async handlers,
+  and the radix-based pattern matcher surfaces insertion errors and
+  exposes fallible reverse helpers. Route registration accumulates
+  prefixes correctly, strips leading slashes on action `url_path`, and
+  normalizes ViewSet prefixes to prevent triple slashes.
+- **Reactive client navigation** — `ClientRouter` carries reactive
+  navigation observation, `render_current()` returns a `Page`, and
+  `Clone` is derived so route resolution composes inside reactive
+  scopes. `pages::router::history` is the single source of truth (the
+  duplicate `client_router::history` module was removed).
+- **Middleware-aware route assembly** — `with_middleware` harvests
+  middleware-contributed DI registrations, `group()` drains pending
+  DI on grouped routers, and child routers receive `with_di_context`
+  propagation. `exclude()` provides declarative route exclusion on the
+  builder side.
+- **Streaming and viewset integration** — `UnifiedRouter::mount_streaming()`
+  registers streaming handlers, `StreamingTopicResolver` resolves
+  topics from URL patterns, and `viewset_with_actions` bridges
+  `#[viewset]` actions through `ServerRouter` / `RouteGroup` builders.
+- **Defensive runtime** — Lock poisoning is recovered (no `unwrap()` on
+  `RwLock` guards), `RwLock` guards are never held across `.await`
+  points, the LRU route cache enforces memory-bounded eviction with
+  periodic compaction, and path validation rejects traversal, ambiguous
+  parameters, ReDoS-prone patterns, and parameter injection at compile
+  time.
+
+### Notable Breaking Changes
+
+- **Typed `#[url_patterns]`** ([Discussion #3770](https://github.com/kent8192/reinhardt-web/discussions/3770))
+  — Accepts `InstalledApp::*` identifiers with `mode = server | client
+  | unified`; pattern functions are renamed accordingly.
+- **`urls/` directory layout** ([Discussion #3918](https://github.com/kent8192/reinhardt-web/discussions/3918))
+  — `ws_urls.rs` and friends move under `src/apps/<app>/urls/`.
+- **`client_router::history` dedup** ([Discussion #4219](https://github.com/kent8192/reinhardt-web/discussions/4219))
+  — The duplicate `history` module under `client_router` is removed;
+  consume `pages::router::history` instead.
+- **Apps relocation** ([Discussion #4476](https://github.com/kent8192/reinhardt-web/discussions/4476))
+  — Per-app handlers move into `apps/<app>/`, which affects how URL
+  patterns are declared and mounted.
+- **Async `#[routes]`** — Route handler signatures may be `async fn`;
+  sync ABIs remain supported but are no longer the canonical shape.
+- **Radix insertion errors surface** — `#[routes]` no longer panics on
+  pattern conflicts; fallible reverse helpers return `Result` values
+  callers must handle.
+
+### Migration Notes
+
+See the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the consolidated migration guide. The most disruptive moves are
+covered in Discussions [#3770](https://github.com/kent8192/reinhardt-web/discussions/3770),
+[#3918](https://github.com/kent8192/reinhardt-web/discussions/3918),
+[#4219](https://github.com/kent8192/reinhardt-web/discussions/4219),
+and [#4476](https://github.com/kent8192/reinhardt-web/discussions/4476).

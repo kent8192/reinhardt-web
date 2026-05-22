@@ -152,32 +152,36 @@ Advanced features for specific use cases:
 
 Add this to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = "0.1.0-alpha.1"
+reinhardt-db = "0.1.0-rc.30"
 ```
 
 ### Optional Features
 
 Enable specific features based on your needs:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.1.0-alpha.1", features = ["postgres", "orm", "migrations"] }
+reinhardt-db = { version = "0.1.0-rc.30", features = ["postgres", "orm", "migrations"] }
 ```
 
 Available features:
 
-- `database` (default): Low-level database layer
 - `backends` (default): Backend implementations
 - `pool` (default): Connection pooling
+- `postgres` (default): PostgreSQL support
 - `orm` (default): ORM functionality
 - `migrations` (default): Migration system
 - `hybrid` (default): Multi-database support
 - `associations` (default): Relationship management
-- `postgres`: PostgreSQL support
 - `sqlite`: SQLite support
 - `mysql`: MySQL support
+- `nosql`: NoSQL database support (MongoDB)
+- `di`: DI integration for `DatabaseConnection`
+- `contenttypes`: Generic relations support
 - `all-databases`: All database backends
 
 ## Usage
@@ -185,7 +189,7 @@ Available features:
 ### Define Models
 
 ```rust
-use reinhardt::prelude::*;
+use reinhardt_db::prelude::*;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 
@@ -227,7 +231,7 @@ pub struct User {
 - `#[field(default = value)]` - Default value
 - `#[field(foreign_key = "ModelType")]` - Foreign key relationship
 
-For a complete list of field attributes, see the [Field Attributes Guide](../../docs/field_attributes.md).
+For a complete list of field attributes, see the `#[field(...)]` macro documentation in `reinhardt-db-macros`.
 
 **Note**: The `#[model(...)]` attribute macro automatically generates:
 - `Model` trait implementation
@@ -238,7 +242,7 @@ For a complete list of field attributes, see the [Field Attributes Guide](../../
 ### Query with QuerySet
 
 ```rust
-use reinhardt::db::{QuerySet, Model};
+use reinhardt_db::orm::{QuerySet, Model};
 
 // Get all users
 let users = User::objects().all().await?;
@@ -260,7 +264,7 @@ let user = User::objects()
 ### Create Migrations
 
 ```rust
-use reinhardt::db::{Migration, CreateModel, AddField};
+use reinhardt_db::migrations::{Migration, CreateModel, AddField};
 
 // Create a new migration
 let migration = Migration::new("0001_initial")
@@ -280,17 +284,95 @@ migration.apply(db).await?;
 ### Connection Pooling
 
 ```rust
-use reinhardt::db::Pool;
+use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 
 // Create a connection pool
-let pool = Pool::new("postgres://user:pass@localhost/db")
-    .max_connections(10)
-    .build()
-    .await?;
+let config = PoolConfig {
+    max_connections: 10,
+    ..PoolConfig::default()
+};
+let pool = ConnectionPool::new_postgres("postgres://user:pass@localhost/db", config).await?;
 
-// Get a connection
-let conn = pool.get().await?;
+// Acquire a connection
+let conn = pool.acquire().await?;
 ```
+
+## Custom Object Managers
+
+Reinhardt supports Django-style customizable object managers via the
+`CustomManager` and `HasCustomManager` traits (see `orm::custom_manager`).
+Use them when you want to inject default filters, audit hooks, or access
+control before queries reach the database — without touching the existing
+`Model::objects()` API.
+
+The blanket `impl<M: Model> CustomManager for Manager<M>` ensures every
+existing manager already satisfies the trait, so adopting custom managers
+is fully opt-in and backward compatible.
+
+```rust,ignore
+use reinhardt_db::orm::custom_manager::CustomManager;
+use reinhardt_core::exception::Result;
+
+#[derive(Default)]
+struct ActiveUserManager;
+
+impl CustomManager for ActiveUserManager {
+    type Model = User;
+    fn new() -> Self { Self }
+
+    // Default filter: only return active users by default.
+    fn all(&self) -> reinhardt_db::orm::query::QuerySet<User> {
+        use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue};
+        reinhardt_db::orm::manager::Manager::<User>::new()
+            .all()
+            .filter(Filter::new(
+                "is_active".to_string(),
+                FilterOperator::Eq,
+                FilterValue::Boolean(true),
+            ))
+    }
+
+    // Veto saves with empty usernames.
+    fn before_save(&self, user: &mut User) -> Result<()> {
+        if user.username.is_empty() {
+            return Err(reinhardt_core::exception::Error::Database(
+                "username must not be empty".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[reinhardt_macros::model(table_name = "users", manager = ActiveUserManager)]
+struct User {
+    #[field]
+    pub id: Option<i64>,
+    #[field]
+    pub username: String,
+    #[field]
+    pub is_active: bool,
+}
+
+// Use the configured manager:
+let active_users = User::custom_manager().all().fetch().await?;
+
+// The original API is unchanged:
+let all_users = User::objects().all().fetch().await?;
+```
+
+### Available Hooks
+
+| Hook | Trigger | Purpose |
+|------|---------|---------|
+| `before_save` | `create` / `update` | Validate / mutate model before insert |
+| `before_delete` | `delete` | Block destructive operations |
+| `before_bulk_update` | `bulk_update` | Validate / rewrite a batch |
+
+Each hook returns `Result<()>`; returning `Err(_)` vetoes the operation.
+
+See `crates/reinhardt-db/src/orm/custom_manager.rs` for the full trait
+surface and the related issue at
+<https://github.com/kent8192/reinhardt-web/issues/3980>.
 
 ## Module Organization
 
@@ -314,9 +396,9 @@ let conn = pool.get().await?;
 ### Using Modules
 
 ```rust
-use reinhardt::db::orm::{Model, QuerySet};
-use reinhardt::db::migrations::Migration;
-use reinhardt::db::pool::ConnectionPool;
+use reinhardt_db::orm::{Model, QuerySet};
+use reinhardt_db::migrations::Migration;
+use reinhardt_db::pool::ConnectionPool;
 ```
 
 ## Supported Databases
@@ -354,12 +436,8 @@ If both Docker and Podman are installed:
 # Run all database tests (requires Docker)
 cargo test --package reinhardt-db --all-features
 
-# Run tests for specific module
-cargo test --package reinhardt-orm --all-features
-cargo test --package reinhardt-migrations --all-features
-
 # Run with PostgreSQL container (TestContainers automatically starts PostgreSQL)
-cargo test --package reinhardt-orm --test orm_integration_tests
+cargo test --package reinhardt-db --test orm_integration_tests
 ```
 
 ### TestContainers Integration
@@ -372,7 +450,7 @@ Database tests automatically use TestContainers to:
 **Standard Fixtures** from `reinhardt-test` are available:
 
 ```rust
-use reinhardt::test::fixtures::postgres_container;
+use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 
 #[rstest]
@@ -391,7 +469,7 @@ async fn test_with_database(
 ```
 
 For comprehensive testing standards, see:
-- [Testing Standards](../../docs/TESTING_STANDARDS.md)
+- [Testing Standards](../../instructions/TESTING_STANDARDS.md)
 - [Examples Database Integration](../../examples/examples-database-integration/README.md)
 
 ### Troubleshooting
@@ -750,8 +828,8 @@ Optimize how related objects are loaded:
 
 - **Database Backend Support**
   - SQLite support via sqlx
-  - PostgreSQL support via reinhardt-backends
-  - MySQL support via reinhardt-backends
+  - PostgreSQL support via sqlx
+  - MySQL support via sqlx
   - SQL dialect abstraction for cross-database compatibility
 
 - **Dependency Injection Integration**

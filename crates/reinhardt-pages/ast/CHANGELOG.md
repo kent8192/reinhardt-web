@@ -7,56 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.4...reinhardt-pages-ast@v0.1.0-rc.5) - 2026-03-07
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.30...reinhardt-pages-ast@v0.1.0) - 2026-05-22
 
-### Documentation
+Initial stable release of `reinhardt-pages-ast` as part of the
+reinhardt-web 0.1.0 release. This crate hosts the shared AST
+definitions for the `page!` / `head!` / `form!` macro DSLs,
+consumed by both the procedural macros in `reinhardt-pages-macros`
+and out-of-tree tooling (notably the `reinhardt-admin` CLI
+formatter).
 
-- add missing doc comments for public API modules and types
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.1...reinhardt-pages-ast@v0.1.0-rc.2) - 2026-03-04
+### Capabilities at 0.1.0
 
-### Fixed
+- **Page / element AST** — `syn`-based parser for the `page!`
+  DSL with bounded recursion depth, strict allowlists for tag
+  names (including wrapper / icon elements), and rejection of
+  unsafe `img src` URL schemes at parse time.
+- **Form AST** — `FormMacro`, `FormField`, `FormFieldProperty`,
+  and supporting types model field declarations, widgets,
+  validators, and the `autocomplete` attribute; duplicate-property
+  detection runs in the parser.
+- **`on_success_ref` mirror field** — pages-side AST mirrors the
+  manouche-side `on_success_ref` field so the closure-lift
+  pipeline in `reinhardt-pages-macros` can route through a shared
+  surface without re-parsing.
+- **Hardened error paths** — `parse_if_node` returns `syn::Error`
+  rather than `unreachable!()`, `FormFieldProperty::name` returns
+  `Option` instead of panicking, and the SVG icon parser has a
+  bounded nesting depth.
+- **Re-exports from `reinhardt-manouche`** — the canonical macro
+  IR primitives live in `reinhardt-manouche` and are re-exported
+  here so downstream proc-macro and formatter crates depend on a
+  single AST surface.
 
-- *(meta)* fix workspace inheritance and authors metadata
+### Notable Breaking Changes
 
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-alpha.5...reinhardt-pages-ast@v0.1.0-rc.1) - 2026-02-23
+`reinhardt-pages-ast` is primarily an internal AST surface
+consumed by `reinhardt-pages-macros` and the `reinhardt-admin`
+CLI. Breaking changes that affect end-users surface through those
+crates; see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the workspace-wide list.
 
-### Maintenance
+### Migration Notes
 
-- updated the following local packages: reinhardt-manouche
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-alpha.4...reinhardt-pages-ast@v0.1.0-alpha.5) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-manouche
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-alpha.3...reinhardt-pages-ast@v0.1.0-alpha.4) - 2026-02-21
-
-### Fixed
-
-- replace unreachable!() with proper syn::Error in parse_if_node
-- detect duplicate properties in form field parsing
-- add max nesting depth to page parser
-- add max nesting depth to SVG icon parser
-- return Option from FormFieldProperty::name instead of panicking
-
-### Changed
-
-- replace magic string with Option<Ident> for FormMacro name
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-alpha.2...reinhardt-pages-ast@v0.1.0-alpha.3) - 2026-02-05
-
-### Fixed
-
-- add reinhardt-manouche to workspace deps and address review comments
-
-### Other
-
-- Merge branch 'main' into refactor/extract-manouche-dsl
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-alpha.1...reinhardt-pages-ast@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- *(package)* replace version.workspace with explicit versions
+End-users do not normally depend on `reinhardt-pages-ast`
+directly. Tooling authors should follow the [root migration guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+and pin against the canonical `reinhardt-manouche` IR exposed
+through this crate.

@@ -11,6 +11,10 @@ use super::{
 #[cfg(feature = "postgres")]
 use super::dialect::PostgresBackend;
 
+/// SQLSTATE code for "invalid_catalog_name" (database does not exist)
+#[cfg(feature = "postgres")]
+const SQLSTATE_INVALID_CATALOG_NAME: &str = "3D000";
+
 #[cfg(feature = "sqlite")]
 use super::dialect::SqliteBackend;
 
@@ -21,6 +25,15 @@ use super::dialect::MySqlBackend;
 #[derive(Clone)]
 pub struct DatabaseConnection {
 	backend: Arc<dyn DatabaseBackend>,
+	/// True when the underlying server is CockroachDB rather than real PostgreSQL.
+	///
+	/// CockroachDB is PostgreSQL wire-compatible and shares the `PostgresBackend`,
+	/// so `database_type()` returns `DatabaseType::Postgres` for both. A few
+	/// migration paths (notably the schema-bootstrap lock — `pg_advisory_lock`
+	/// is not implemented on CockroachDB, see issue #4642) need to behave
+	/// differently. This flag is set at connection time via a `SELECT version()`
+	/// probe and is `false` for any non-Postgres backend.
+	is_cockroachdb: bool,
 }
 
 /// Injectable implementation for DatabaseConnection
@@ -84,8 +97,26 @@ impl reinhardt_di::Injectable for DatabaseConnection {
 
 impl DatabaseConnection {
 	/// Creates a new instance.
+	///
+	/// Defaults to `is_cockroachdb = false`, which is the correct choice when
+	/// the caller has not (or cannot) probe the server. If the supplied backend
+	/// is known to be CockroachDB, use [`Self::new_with_flavor`] instead so the
+	/// migration recorder routes through the sentinel-row lock path rather than
+	/// `pg_advisory_lock` (issue #4642).
 	pub fn new(backend: Arc<dyn DatabaseBackend>) -> Self {
-		Self { backend }
+		Self::new_with_flavor(backend, false)
+	}
+
+	/// Creates a new instance with an explicit CockroachDB flavor flag.
+	///
+	/// Use this when wrapping an externally constructed Postgres backend whose
+	/// flavor is already known — e.g. tests that mount a CockroachDB pool, or
+	/// adapters that pre-probe `SELECT version()` themselves.
+	pub fn new_with_flavor(backend: Arc<dyn DatabaseBackend>, is_cockroachdb: bool) -> Self {
+		Self {
+			backend,
+			is_cockroachdb,
+		}
 	}
 
 	#[cfg(feature = "postgres")]
@@ -100,30 +131,35 @@ impl DatabaseConnection {
 		url: &str,
 		pool_size: Option<u32>,
 	) -> Result<Self> {
-		use sqlx::postgres::PgPoolOptions;
-		use std::time::Duration;
-
-		// Priority: explicit argument > environment variable > default
-		let max_connections = pool_size
-			.or_else(|| {
-				std::env::var("DATABASE_POOL_MAX_CONNECTIONS")
-					.ok()
-					.and_then(|v| v.parse::<u32>().ok())
-			})
-			.unwrap_or(20); // Increased default from 10 to 20 for better concurrency
-
-		let pool = PgPoolOptions::new()
-			.max_connections(max_connections)
-			.min_connections(1) // Maintain at least 1 connection
-			.acquire_timeout(Duration::from_secs(10)) // Increased from 3s to 10s for busy pools
-			.idle_timeout(Some(Duration::from_secs(10))) // Close idle connections after 10s
-			.max_lifetime(Some(Duration::from_secs(30 * 60))) // Close connections after 30 minutes
-			.connect(url)
-			.await?;
+		let pool = Self::build_postgres_pool(url, pool_size).await?;
+		let is_cockroachdb = Self::probe_cockroachdb(&pool).await;
 
 		Ok(Self {
 			backend: Arc::new(PostgresBackend::new(pool)),
+			is_cockroachdb,
 		})
+	}
+
+	/// Probe whether the connected PostgreSQL-protocol server is CockroachDB.
+	///
+	/// CockroachDB's `SELECT version()` response always begins with the literal
+	/// string `CockroachDB` (e.g. `CockroachDB CCL v23.1.0 ...`), while
+	/// PostgreSQL's begins with `PostgreSQL`. The probe is best-effort: any
+	/// failure (network blip, RBAC denying `version()`) is treated as
+	/// "not CockroachDB" so the regular PostgreSQL path stays the default.
+	///
+	/// The comparison is pushed into SQL (`LIKE 'CockroachDB%'`) so the server
+	/// returns a single `bool` instead of streaming the full version string —
+	/// no allocation and no client-side sensitivity to whitespace or casing.
+	///
+	/// Used to drive the migration-lock dispatch in `MigrationRecorder`
+	/// (issue #4642: CockroachDB does not implement `pg_advisory_lock`).
+	#[cfg(feature = "postgres")]
+	async fn probe_cockroachdb(pool: &sqlx::PgPool) -> bool {
+		sqlx::query_scalar::<_, bool>("SELECT version() LIKE 'CockroachDB%'")
+			.fetch_one(pool)
+			.await
+			.unwrap_or(false)
 	}
 
 	/// Connect to PostgreSQL with automatic database creation if it doesn't exist.
@@ -156,6 +192,37 @@ impl DatabaseConnection {
 		Self::connect_postgres_or_create_with_pool_size(url, None).await
 	}
 
+	/// Build a PostgreSQL pool with the given URL and pool size.
+	///
+	/// Returns the raw `sqlx::Error` on failure so callers can inspect
+	/// SQLSTATE codes before converting to `DatabaseError`.
+	#[cfg(feature = "postgres")]
+	async fn build_postgres_pool(
+		url: &str,
+		pool_size: Option<u32>,
+	) -> std::result::Result<sqlx::PgPool, sqlx::Error> {
+		use sqlx::postgres::PgPoolOptions;
+		use std::time::Duration;
+
+		// Priority: explicit argument > environment variable > default
+		let max_connections = pool_size
+			.or_else(|| {
+				std::env::var("DATABASE_POOL_MAX_CONNECTIONS")
+					.ok()
+					.and_then(|v| v.parse::<u32>().ok())
+			})
+			.unwrap_or(20); // Increased default from 10 to 20 for better concurrency
+
+		PgPoolOptions::new()
+			.max_connections(max_connections)
+			.min_connections(1) // Maintain at least 1 connection
+			.acquire_timeout(Duration::from_secs(10)) // Increased from 3s to 10s for busy pools
+			.idle_timeout(Some(Duration::from_secs(10))) // Close idle connections after 10s
+			.max_lifetime(Some(Duration::from_secs(30 * 60))) // Close connections after 30 minutes
+			.connect(url)
+			.await
+	}
+
 	/// Connect to PostgreSQL with automatic database creation and custom pool size.
 	///
 	/// See [`Self::connect_postgres_or_create`] for details on automatic database creation.
@@ -164,18 +231,25 @@ impl DatabaseConnection {
 		url: &str,
 		pool_size: Option<u32>,
 	) -> Result<Self> {
-		// First try normal connection
-		match Self::connect_postgres_with_pool_size(url, pool_size).await {
-			Ok(conn) => return Ok(conn),
+		// First try normal connection, keeping the raw sqlx::Error
+		// so we can check the SQLSTATE code
+		match Self::build_postgres_pool(url, pool_size).await {
+			Ok(pool) => {
+				let is_cockroachdb = Self::probe_cockroachdb(&pool).await;
+				return Ok(Self {
+					backend: Arc::new(PostgresBackend::new(pool)),
+					is_cockroachdb,
+				});
+			}
 			Err(e) => {
-				// Check if error indicates database doesn't exist
-				let error_str = format!("{:?}", e);
-				if !error_str.contains("does not exist")
-					&& !error_str.contains("database")
-					&& !error_str.contains("3D000")
-				{
-					// Not a "database doesn't exist" error, propagate it
-					return Err(e);
+				// Check if the error is SQLSTATE 3D000 (invalid_catalog_name),
+				// which indicates the database does not exist
+				let is_db_not_found = matches!(
+					&e,
+					sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some(SQLSTATE_INVALID_CATALOG_NAME)
+				);
+				if !is_db_not_found {
+					return Err(e.into());
 				}
 				// Database doesn't exist, try to create it
 			}
@@ -279,6 +353,7 @@ impl DatabaseConnection {
 			let pool = SqlitePool::connect(url).await?;
 			return Ok(Self {
 				backend: Arc::new(SqliteBackend::new(pool)),
+				is_cockroachdb: false,
 			});
 		}
 
@@ -379,6 +454,7 @@ impl DatabaseConnection {
 
 		Ok(Self {
 			backend: Arc::new(SqliteBackend::new(pool)),
+			is_cockroachdb: false,
 		})
 	}
 
@@ -387,6 +463,7 @@ impl DatabaseConnection {
 	pub fn from_sqlite_pool(pool: sqlx::SqlitePool) -> Self {
 		Self {
 			backend: Arc::new(SqliteBackend::new(pool)),
+			is_cockroachdb: false,
 		}
 	}
 
@@ -397,6 +474,7 @@ impl DatabaseConnection {
 		let pool = MySqlPool::connect(url).await?;
 		Ok(Self {
 			backend: Arc::new(MySqlBackend::new(pool)),
+			is_cockroachdb: false,
 		})
 	}
 
@@ -408,6 +486,20 @@ impl DatabaseConnection {
 	/// Get the database type
 	pub fn database_type(&self) -> super::types::DatabaseType {
 		self.backend.database_type()
+	}
+
+	/// Returns true when the underlying server is CockroachDB.
+	///
+	/// CockroachDB is wire-compatible with PostgreSQL and uses the same
+	/// `PostgresBackend`, so `database_type()` returns `DatabaseType::Postgres`
+	/// for both. Callers that must dispatch on the *server flavour* (e.g. the
+	/// migration-lock path, which cannot use `pg_advisory_lock` on CockroachDB —
+	/// see issue #4642) should check this flag first.
+	///
+	/// The flag is determined at connection time via a single `SELECT version()`
+	/// probe and is `false` for any non-Postgres backend.
+	pub fn is_cockroachdb(&self) -> bool {
+		self.is_cockroachdb
 	}
 
 	/// Performs the insert operation.
@@ -430,6 +522,65 @@ impl DatabaseConnection {
 		DeleteBuilder::new(self.backend.clone(), table)
 	}
 
+	/// Resolve a database URL from an already-built composed settings value.
+	///
+	/// This is the preferred entry point for callers that already hold a
+	/// `ProjectSettings` (or any type that implements
+	/// [`reinhardt_conf::HasCoreSettings`]). It reads the `default` entry of
+	/// `CoreSettings::databases` and converts it to a URL via
+	/// [`DatabaseConfig::to_url`](reinhardt_conf::DatabaseConfig::to_url).
+	///
+	/// The optional `env_override` argument is honored first: if it is
+	/// `Some(url)`, that URL is returned verbatim. Pass `None` to skip the
+	/// override entirely. To opt into the env-var short circuit, bind the
+	/// result of `std::env::var` first so the temporary `String` outlives
+	/// the borrow:
+	///
+	/// ```ignore
+	/// let database_url_env = std::env::var("DATABASE_URL").ok();
+	/// let url = DatabaseConnection::database_url_from(
+	///     settings,
+	///     database_url_env.as_deref(),
+	/// )?;
+	/// ```
+	///
+	/// # Errors
+	///
+	/// Returns a `ConnectionError` if the `core.databases.default` entry is
+	/// missing from the composed settings. `DatabaseConfig::to_url` itself
+	/// is infallible, so a successfully resolved `default` entry always
+	/// yields `Ok(_)`.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
+	/// # fn doc<S: reinhardt_conf::HasCoreSettings>(settings: &S) {
+	/// let url = DatabaseConnection::database_url_from(settings, None)
+	///     .expect("database url");
+	/// # let _ = url;
+	/// # }
+	/// ```
+	#[cfg(feature = "settings")]
+	pub fn database_url_from<S>(settings: &S, env_override: Option<&str>) -> Result<String>
+	where
+		S: reinhardt_conf::HasCoreSettings + ?Sized,
+	{
+		if let Some(url) = env_override {
+			return Ok(url.to_string());
+		}
+
+		let core = settings.core();
+		let db_config = core.databases.get("default").ok_or_else(|| {
+			super::error::DatabaseError::ConnectionError(
+				"Database configuration `core.databases.default` not found in settings."
+					.to_string(),
+			)
+		})?;
+
+		Ok(db_config.to_url())
+	}
+
 	/// Get database URL from environment variable or settings files
 	///
 	/// This function first checks the `DATABASE_URL` environment variable.
@@ -445,18 +596,31 @@ impl DatabaseConnection {
 	/// Returns the database URL string, or an error if neither environment variable
 	/// nor settings configuration is found.
 	///
+	/// # Deprecated
+	///
+	/// This function reloads `settings/<profile>.toml` from disk every time it
+	/// is invoked, which is wasteful and duplicates settings-loading logic. Use
+	/// [`Self::database_url_from`] with an already-built `ProjectSettings`
+	/// instead.
+	///
 	/// # Example
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// # #[allow(deprecated)]
 	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	///
+	/// # #[allow(deprecated)]
 	/// let url = DatabaseConnection::get_database_url_from_env_or_settings(None)?;
 	/// let conn = DatabaseConnection::connect_sqlite(&url).await?;
 	/// # Ok(())
 	/// # }
 	/// ```
 	#[cfg(feature = "settings")]
+	#[deprecated(
+		since = "0.1.0-rc.29",
+		note = "use `DatabaseConnection::database_url_from` with a pre-built ProjectSettings instead"
+	)]
 	pub fn get_database_url_from_env_or_settings(
 		base_dir: Option<std::path::PathBuf>,
 	) -> Result<String> {
@@ -492,12 +656,22 @@ impl DatabaseConnection {
 				reinhardt_conf::settings::sources::LowPriorityEnvSource::new()
 					.with_prefix("REINHARDT_"),
 			)
-			.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-				settings_dir.join("base.toml"),
-			))
-			.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-				settings_dir.join(format!("{}.toml", profile_str)),
-			))
+			// Explicitly opt in to ${VAR:-default} interpolation so that
+			// `[database].host = "${RC_DB_HOST:-localhost}"` style entries
+			// expand at load time. This avoids relying on the
+			// `TomlFileSource::new()` default, which is currently `true`
+			// but may flip again or be overridden by future builder changes
+			// (issue #4235).
+			.add_source(
+				reinhardt_conf::settings::sources::TomlFileSource::new(settings_dir.join("base.toml"))
+					.with_interpolation(),
+			)
+			.add_source(
+				reinhardt_conf::settings::sources::TomlFileSource::new(
+					settings_dir.join(format!("{}.toml", profile_str)),
+				)
+				.with_interpolation(),
+			)
 			.build()
 			.map_err(|e| {
 				super::error::DatabaseError::ConnectionError(format!(

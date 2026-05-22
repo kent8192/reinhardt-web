@@ -25,6 +25,7 @@ Key principles from the specification:
 - **NEVER** push commits without explicit user instruction
 - Always wait for user confirmation before committing changes
 - Prepare changes and inform the user, but let them decide when to commit
+- **EXCEPTION (Reinhardt family)**: When operating inside `reinhardt-web` / `reinhardt-cloud` / `awesome-delions` / `reinhardt-cc`, the **Autonomous Operation Policy** in `CLAUDE.md` / `AGENTS.md` (see the "Autonomous Operation Policy (Reinhardt Family)" subsection of `### Git Workflow`) authorizes commit and push on any non-protected branch without further confirmation. Protected branches (`main`, `master`, `develop/*`, `release/*`) and history-rewriting pushes (force-push, rebase-push) still require explicit user instruction.
 
 The following diagram summarizes the commit authorization decision flow:
 
@@ -136,6 +137,18 @@ git apply --cached /tmp/changes.patch
 - Verify staged files before committing
 - Use `git status` to confirm no ignored files are included
 
+### CE-4a (MUST): Excluded Tooling Artifacts
+
+The following categories of files MUST NOT be committed, even if not in `.gitignore`:
+
+- **Superpowers skill documentation**: Any documentation, prompts, or reference material from the `superpowers` skill family or its sub-skills.
+  - Why: These are agent-runtime artifacts and are not part of the project's source of truth.
+  - How to apply: If `git status` shows files under paths like `superpowers/`, `.superpowers/`, or skill prompt dumps, exclude them from staging. If you find them already tracked, remove them in a dedicated `chore:` commit.
+- **Claude/agent runtime caches and tool-result spills**: Files under `.claude/projects/.../tool-results/`, `.claude/projects/.../memory/`, or similar runtime locations.
+  - Why: Per-machine, per-session, and may contain sensitive context.
+
+If unsure whether an artifact qualifies, default to excluding it and ask the user.
+
 ### CE-5: Automated Releases with release-plz
 
 **Overview:**
@@ -192,7 +205,7 @@ sequenceDiagram
 
 **For Detailed Information:**
 
-See [docs/RELEASE_PROCESS.md](RELEASE_PROCESS.md) for complete release workflow documentation
+See [instructions/RELEASE_PROCESS.md](RELEASE_PROCESS.md) for complete release workflow documentation
 
 ---
 

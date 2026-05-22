@@ -11,8 +11,15 @@ Get up and running with Reinhardt in 5 minutes.
 
 ## 1. Install Reinhardt Admin CLI
 
+While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`),
+`cargo install` requires an explicit `--version` because pre-releases are
+not selected by default. Once `0.1.0` stable ships, omit `--version` to
+pull the latest stable (or keep `--version` as an opt-in reproducibility
+pin). The literal below is auto-bumped by release-plz on each release.
+
+<!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
 ## 2. Create your project
@@ -25,7 +32,7 @@ cd my-api
 ## 3. Create your first app
 
 ```bash
-reinhardt-admin startapp hello --template-type restful
+reinhardt-admin startapp hello --template rest
 ```
 
 Edit `hello/views.rs`:

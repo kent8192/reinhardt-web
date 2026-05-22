@@ -32,7 +32,7 @@ Reinhardt uses **release-plz** for fully automated release management:
 - **Automated CHANGELOGs**: Generated from commit messages
 - **Release PRs**: Automatically created when changes are detected
 - **Git Tags**: Format `[crate-name]@v[version]`
-- **GitHub Releases**: Created automatically upon merge
+- **GitHub Releases**: Created for `reinhardt-web` only (other crates are disabled at workspace level)
 
 ### Key Principles
 
@@ -43,31 +43,114 @@ Reinhardt uses **release-plz** for fully automated release management:
 
 ### Develop Branch Lifecycle
 
-During the RC phase, a `develop/0.x+1.0` branch exists for next-version development (see instructions/STABILITY_POLICY.md § DB-1 ~ DB-7). This branch interacts with the release workflow as follows:
+A `develop/m.n.l` branch exists for next-version development from RC phase
+onward (see `instructions/STABILITY_POLICY.md` § DB-1 ~ DB-7). release-plz
+participates in this lifecycle as a first-class branch alongside `main`:
 
-- **During RC**: release-plz monitors `main` only. The develop branch is not affected by release-plz operations. No configuration changes are needed.
-- **After stable release**: Merging the develop branch into `main` introduces new features and breaking changes. release-plz detects these changes on the next push and generates Release PRs for the new version cycle (e.g., `0.2.0-alpha.1`).
-- **No manual version management**: `Cargo.toml` versions in the develop branch do not need manual updates. release-plz handles versioning after the branch is merged into `main`.
+| Phase | Branch | Cargo.toml version | release-plz output on push |
+|---|---|---|---|
+| Alpha | `develop/m.n.l` | `m.n.l-alpha.N` | Prerelease Release PR `m.n.l-alpha.(N+1)` |
+| RC | `develop/m.n.l` (post-freeze) | `m.n.l-rc.N` | Prerelease Release PR `m.n.l-rc.(N+1)` |
+| Stable | `main` (post-promote) | `m.n.l` | Stable Release PR `m.n.l` |
 
-The following diagram illustrates the develop branch lifecycle and its interaction with the release workflow:
+The current Cargo.toml value drives the bump — release-plz does not need
+to know which branch it's running on. The three explicit operator-controlled
+transitions (DBR-1 Initialize, DBR-2 Freeze, DBR-3 Promote) are described
+in the "Develop Branch Release Workflow" section below.
+
+The following diagram illustrates the develop branch lifecycle with the
+release-plz activity on each branch:
 
 ```mermaid
 gitGraph
     commit id: "v0.1.0-rc.1"
     branch "develop/0.2.0"
-    commit id: "feat: breaking change"
+    commit id: "DBR-1 init at 0.2.0-alpha.1" tag: "v0.2.0-alpha.1"
+    commit id: "feat: breaking change" tag: "v0.2.0-alpha.2"
     checkout main
     commit id: "fix: rc bug" tag: "v0.1.0-rc.2"
     checkout "develop/0.2.0"
-    merge main id: "forward-merge"
-    commit id: "feat: new feature"
+    merge main id: "DB-4 forward-merge"
+    commit id: "DBR-2 freeze at 0.2.0-rc.1" tag: "v0.2.0-rc.1"
     checkout main
     commit id: "stable" tag: "v0.1.0"
     checkout "develop/0.2.0"
     merge main id: "final forward-merge"
     checkout main
-    merge "develop/0.2.0" id: "merge develop into main"
+    merge "develop/0.2.0" id: "DB-5 merge develop"
+    commit id: "DBR-3 promote (workflow_dispatch)" tag: "v0.2.0"
 ```
+
+### Develop Branch Release Workflow
+
+Three operator-controlled gates drive the alpha → rc → stable lifecycle on
+`develop/m.n.l`. Within each phase, release-plz handles the counter bumps
+automatically on every push; the gates exist where release-plz cannot
+self-graduate (alpha → rc, rc → stable).
+
+#### DBR-1 (MUST): Initialize develop branch
+
+After creating `develop/m.n.l` from `main`, the operator MUST bump every
+Cargo.toml from main's stable version to `m.n.l-alpha.1` before pushing.
+Without this initial bump, release-plz would publish a stable `m.n.l`
+release on the first push — bypassing the alpha phase entirely.
+
+```bash
+git checkout -b develop/0.2.0 origin/main
+./scripts/init-develop-branch.sh 0.2.0
+git commit -am "chore(release): initialize develop/0.2.0 at 0.2.0-alpha.1"
+git push -u origin develop/0.2.0
+```
+
+After this initial commit lands, every subsequent push to `develop/0.2.0`
+triggers release-plz, which creates Release PRs bumping the alpha counter
+(`alpha.1 → alpha.2 → alpha.3 → ...`).
+
+#### DBR-2 (MUST): Freeze alpha → rc
+
+When the API is considered stable enough for RC validation, the operator
+MUST run the freeze script to transition all Cargo.toml versions from
+`m.n.l-alpha.N` to `m.n.l-rc.1`. release-plz cannot graduate prerelease
+identifiers automatically — this is the human gate.
+
+```bash
+# While on develop/0.2.0 with version 0.2.0-alpha.N
+./scripts/freeze-develop-to-rc.sh
+git commit -am "chore(release): freeze develop/0.2.0 at 0.2.0-rc.1"
+git push origin develop/0.2.0
+```
+
+After freeze, pushes trigger `rc.1 → rc.2 → ...` bumps. Per
+`instructions/STABILITY_POLICY.md` SP-2, only bug fixes are permitted from
+this point.
+
+#### DBR-3 (MUST): Promote develop to stable
+
+After `develop/m.n.l` is merged into `main` (via approved PR; see DB-5),
+main's Cargo.toml contains the latest prerelease (e.g., `0.2.0-rc.5`). The
+operator MUST manually trigger the promote workflow:
+
+```bash
+gh workflow run release-plz-promote.yml -f develop_branch=develop/0.2.0
+```
+
+The workflow:
+
+1. Verifies `develop/0.2.0` is merged into main via
+   `git merge-base --is-ancestor`.
+2. Confirms main's root Cargo.toml is currently a prerelease of the target.
+3. Runs `scripts/strip-prerelease-suffix.sh 0.2.0` to drop the suffix from
+   every Cargo.toml in the workspace.
+4. Pushes the result via GraphQL `createCommitOnBranch` so the committer is
+   `web-flow` (a plain `git push` from the runner would keep the `[bot]`
+   committer and suppress `pull_request: synchronize`; see PR #4042 in
+   release-plz.yml for the same trap).
+5. The new commit on main triggers existing `release-plz.yml` which creates
+   the stable Release PR.
+
+The promote step is intentionally manual: stable cuts go through a human
+gate so the operator can time the release relative to documentation,
+announcements, and downstream coordination.
 
 ---
 
@@ -129,7 +212,7 @@ CHANGELOGs are generated from commit messages and categorized into sections base
 - Breaking changes are always included, even from otherwise-skipped commits
 - Commits are sorted in chronological order (oldest first)
 
-For detailed guidelines on writing CHANGELOG-friendly commit messages, see [docs/COMMIT_GUIDELINE.md](COMMIT_GUIDELINE.md) § CG: CHANGELOG Generation Guidelines.
+For detailed guidelines on writing CHANGELOG-friendly commit messages, see [instructions/COMMIT_GUIDELINE.md](COMMIT_GUIDELINE.md) § CG: CHANGELOG Generation Guidelines.
 
 ---
 
@@ -181,7 +264,7 @@ Upon merge, release-plz:
    - Automatically skips already-published versions
    - Handles workspace dependency ordering correctly
 2. Creates Git tags (`[crate-name]@v[version]`)
-3. Creates GitHub Releases
+3. Creates GitHub Releases (for `reinhardt-web` only; `git_release_enable` is `false` at workspace level)
 
 **Note**: The `release-plz release` command handles publishing gracefully:
 - Already-published crate versions are skipped automatically (no errors on retry)
@@ -238,15 +321,20 @@ changelog_update = true
 pr_branch_prefix = "release-plz-"
 pr_labels = ["release", "automated"]
 pr_name = "chore: release"
-git_release_enable = true
+git_release_enable = false
 git_tag_enable = true
 git_tag_name = "{{ package }}@v{{ version }}"
 git_release_type = "auto"
-semver_check = false
+semver_check = true
 publish_timeout = "10m"
 dependencies_update = true
 release_always = true
 publish_no_verify = true
+
+# Only reinhardt-web gets GitHub Releases
+[[package]]
+name = "reinhardt-web"
+git_release_enable = true
 
 # Exclude packages from release
 [[package]]

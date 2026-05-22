@@ -12,13 +12,14 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["utils"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["utils"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import utility features:
@@ -117,7 +118,7 @@ use reinhardt::utils::core::html::{escape, unescape};
 - **Timezone Conversion**
   - `to_local()`: UTC to local timezone conversion
   - `to_utc()`: Local to UTC conversion
-  - `to_timezone()`: Timezone conversion by IANA name (currently UTC only)
+  - `to_timezone()`: Timezone conversion by full IANA name (e.g., `America/New_York`, `Asia/Tokyo`) via `chrono-tz`
 - **Naive/Aware Conversion**
   - `make_aware_utc()`: Convert naive datetime to UTC timezone-aware
   - `make_aware_local()`: Convert naive datetime to local timezone-aware
@@ -305,6 +306,7 @@ use reinhardt::utils::core::html::{escape, unescape};
 
 **Usage Example**:
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::utils::logging::security::{SecurityLogger, SecurityError};
 
@@ -321,7 +323,7 @@ logger.log_security_error(&SecurityError::CsrfViolation);  // ERROR level
 logger.log_csrf_violation("http://evil.com");
 
 // Log rate limit exceeded
-logger.log_rate_limit_exceeded("192.168.1.1", 100);
+logger.log_rate_limit_exceeded("0.1.0-rc.30", 100);
 
 // Log suspicious file operations
 logger.log_suspicious_file_operation("delete", Path::new("/etc/passwd"));
@@ -454,7 +456,7 @@ logger.log_disallowed_host("malicious.com");
   - ✓ Copy files to STATIC_ROOT with optional processing
   - ✓ Integration with deployment workflows
   - ✓ Progress reporting and verbose output
-  - See [reinhardt-commands](../../commands/README.md) for details
+  - See [reinhardt-commands](../reinhardt-commands/README.md) for details
 
 - **GZip Compression** (implemented in `reinhardt-middleware`)
   - ✓ Response compression for bandwidth optimization
@@ -463,7 +465,7 @@ logger.log_disallowed_host("malicious.com");
   - ✓ Content-type filtering (text/\*, application/json, etc.)
   - ✓ Automatic Accept-Encoding detection
   - ✓ Compression only when beneficial (size check)
-  - See [reinhardt-middleware](../../../reinhardt-middleware/README.md) for details
+  - See [reinhardt-middleware](../reinhardt-middleware/README.md) for details
 
 - **Brotli Compression** (implemented in `reinhardt-middleware`)
   - ✓ Advanced compression with better ratios than gzip
@@ -472,7 +474,7 @@ logger.log_disallowed_host("malicious.com");
   - ✓ Content-type filtering
   - ✓ Automatic Accept-Encoding: br detection
   - ✓ Intelligent compression (only when beneficial)
-  - See [reinhardt-middleware](../../../reinhardt-middleware/README.md) for details
+  - See [reinhardt-middleware](../reinhardt-middleware/README.md) for details
 
 - **Cache-Control Header Management**
   - ✓ Configurable cache policies per file type

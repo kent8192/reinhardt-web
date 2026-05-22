@@ -7,8 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.8...reinhardt-testkit@v0.1.0-rc.9) - 2026-03-15
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.30...reinhardt-testkit@v0.1.0) - 2026-05-22
 
-### Styling
+Initial stable release of `reinhardt-testkit` as part of the
+reinhardt-web 0.1.0 release. `reinhardt-testkit` is the lower-level
+test infrastructure crate that `reinhardt-test` builds on; it owns
+the DI override machinery, the TestContainers fixtures, and the
+in-process HTTP transport used to exercise handlers without a real
+network socket.
 
-- add explanatory comments to remaining #[allow(dead_code)] attributes
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **`with_di_overrides!` & `DiOverrideBuilder`** — A typed builder
+  plus a macro re-exported from `reinhardt-testkit-macros` lets a
+  test swap a `Depends<T>` registration for a mock in one call. The
+  generated context is isolated per test via
+  `with_test_di_context()` so parallel `cargo nextest` runs do not
+  share DI state.
+- **TestContainers fixtures** — `rstest`-friendly fixtures for
+  Postgres (unified version pin, pool close, cleanup backoff),
+  Kafka (`apache/kafka` image, module-scoped, configurable
+  partitions), Redis (single + cluster), RabbitMQ, and friends.
+  `postgres_with_migrations_from_dir` loads migrations through
+  `FilesystemSource` and initialises ORM global state so a fresh
+  schema is ready before the first `await`.
+- **In-process APIClient transport** — `APIClient` can run against
+  any `Handler` directly, bypassing the network. Path parameter
+  insertion order is preserved through the DI / URLs / HTTP
+  pipeline so route matching is byte-identical to the production
+  router.
+- **Auth & session fixtures** — Builder-based auth API with JWT
+  session handling; SessionData migrated to a `new()` constructor
+  for `#[non_exhaustive]` compatibility, and handler-side session
+  rotation is reflected back in `Set-Cookie`.
+- **Cross-feature gating** — Feature flags (`testcontainers`,
+  `websockets`, `graphql`, `viewsets`, `messages`, `admin`,
+  `property-based`, `static`) keep heavy optional deps out of
+  default builds; `full` turns them all on.
+- **Security-hardened diagnostics** — Cookie validation panic
+  messages were stripped of sensitive values; floor pins on
+  `astral-tokio-tar` clear RUSTSEC-2026-0145; explanatory comments
+  document every remaining `#[allow(dead_code)]`.
+
+### Notable Breaking Changes
+
+- **`global_registry`-based migration fixtures deprecated** — They
+  remain available but emit `#[deprecated(since = "0.1.0-rc.16")]`.
+  New code should call `postgres_with_migrations_from_dir(...)`.
+
+### Migration Notes
+
+- **Adopt `with_di_overrides!`**: For DI mocking, replace
+  hand-rolled `InjectionContext` construction with
+  `with_di_overrides! { MyTrait => Arc::new(mock) }` (or the
+  builder form). This routes through
+  `injection_context_with_di_overrides`, which keeps the override
+  table isolated per test.
+- **Migrate migration fixtures**: Replace the deprecated
+  `global_registry`-based migration helpers with
+  `postgres_with_migrations_from_dir(path)`. The new helper accepts
+  a workspace-relative `CARGO_MANIFEST_DIR`-based path and avoids
+  the global-state leakage of the legacy registry.
+- **Reuse the in-process transport**: If your tests currently
+  spawn a real listener to exercise handlers, consider switching
+  to the `APIClient` in-process transport via the `Handler` trait —
+  it's faster and avoids port-binding races on CI.

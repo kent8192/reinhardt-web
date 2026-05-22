@@ -44,6 +44,8 @@ fn safe_client_error_detail(error: &crate::Error) -> Option<String> {
 	use crate::Error;
 	match error {
 		Error::Validation(msg) => Some(msg.clone()),
+		Error::Http(msg) => Some(msg.clone()),
+		Error::Serialization(msg) => Some(msg.clone()),
 		Error::ParseError(_) => Some("Invalid request format".to_string()),
 		Error::BodyAlreadyConsumed => Some("Request body has already been consumed".to_string()),
 		Error::MissingContentType => Some("Missing Content-Type header".to_string()),
@@ -51,6 +53,7 @@ fn safe_client_error_detail(error: &crate::Error) -> Option<String> {
 		Error::InvalidCursor(_) => Some("Invalid cursor value".to_string()),
 		Error::InvalidLimit(msg) => Some(format!("Invalid limit: {}", msg)),
 		Error::MissingParameter(name) => Some(format!("Missing parameter: {}", name)),
+		Error::Conflict(msg) => Some(msg.clone()),
 		Error::ParamValidation(ctx) => {
 			Some(format!("{} parameter extraction failed", ctx.param_type))
 		}
@@ -474,10 +477,122 @@ impl Response {
 		Ok(self)
 	}
 
+	/// Add a custom header to the response only if it is not already present.
+	///
+	/// If the header already exists, the existing value is preserved.
+	/// Invalid header names or values are silently ignored.
+	/// Use [`try_with_header_if_absent`](Self::try_with_header_if_absent) if you need error
+	/// reporting.
+	///
+	/// This is useful in middleware that should not overwrite headers already set
+	/// by handlers (e.g., handler-specific CSP headers should survive middleware processing).
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	///
+	/// // Inserts the header when it is not already present
+	/// let response = Response::ok().with_header_if_absent("X-Custom", "first");
+	/// assert_eq!(
+	///     response.headers.get("X-Custom").unwrap().to_str().unwrap(),
+	///     "first"
+	/// );
+	/// ```
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	///
+	/// // Preserves the existing header value
+	/// let response = Response::ok()
+	///     .with_header("X-Custom", "original")
+	///     .with_header_if_absent("X-Custom", "overwrite-attempt");
+	/// assert_eq!(
+	///     response.headers.get("X-Custom").unwrap().to_str().unwrap(),
+	///     "original"
+	/// );
+	/// ```
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	///
+	/// // Invalid header names are silently ignored (no panic)
+	/// let response = Response::ok().with_header_if_absent("Invalid Header", "value");
+	/// assert!(response.headers.is_empty());
+	/// ```
+	pub fn with_header_if_absent(mut self, name: &str, value: &str) -> Self {
+		if let Ok(header_name) = hyper::header::HeaderName::from_bytes(name.as_bytes())
+			&& !self.headers.contains_key(&header_name)
+			&& let Ok(header_value) = hyper::header::HeaderValue::from_str(value)
+		{
+			self.headers.insert(header_name, header_value);
+		}
+		self
+	}
+
+	/// Add a custom header to the response only if it is not already present,
+	/// returning an error for invalid header names or values.
+	///
+	/// If the header already exists, the existing value is preserved and `Ok(self)`
+	/// is returned without modification.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the header name or value is invalid.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	///
+	/// // Inserts when absent
+	/// let response = Response::ok()
+	///     .try_with_header_if_absent("X-Custom", "value")
+	///     .unwrap();
+	/// assert_eq!(
+	///     response.headers.get("X-Custom").unwrap().to_str().unwrap(),
+	///     "value"
+	/// );
+	/// ```
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	///
+	/// // Preserves existing header value
+	/// let response = Response::ok()
+	///     .try_with_header("X-Custom", "original")
+	///     .unwrap()
+	///     .try_with_header_if_absent("X-Custom", "overwrite-attempt")
+	///     .unwrap();
+	/// assert_eq!(
+	///     response.headers.get("X-Custom").unwrap().to_str().unwrap(),
+	///     "original"
+	/// );
+	/// ```
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	///
+	/// // Invalid header names return an error
+	/// let result = Response::ok().try_with_header_if_absent("Invalid Header", "value");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn try_with_header_if_absent(mut self, name: &str, value: &str) -> crate::Result<Self> {
+		let header_name = hyper::header::HeaderName::from_bytes(name.as_bytes())
+			.map_err(|e| crate::Error::Http(format!("Invalid header name '{}': {}", name, e)))?;
+		if !self.headers.contains_key(&header_name) {
+			let header_value = hyper::header::HeaderValue::from_str(value).map_err(|e| {
+				crate::Error::Http(format!("Invalid header value for '{}': {}", name, e))
+			})?;
+			self.headers.insert(header_name, header_value);
+		}
+		Ok(self)
+	}
+
 	/// Add a custom header to the response.
 	///
 	/// Invalid header names or values are silently ignored.
-	/// Use `try_with_header` if you need error reporting.
+	/// Use [`try_with_header`](Self::try_with_header) if you need error reporting.
 	///
 	/// # Examples
 	///
@@ -506,6 +621,34 @@ impl Response {
 		}
 		self
 	}
+
+	/// Append a header value without replacing existing values.
+	///
+	/// Unlike [`with_header`](Self::with_header) which replaces any existing value
+	/// for the same header name, this method adds the value alongside existing ones.
+	/// Required for headers like `Set-Cookie` where multiple values must coexist
+	/// as separate header lines (RFC 6265 Section 4.1).
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	///
+	/// let response = Response::ok()
+	///     .append_header("Set-Cookie", "a=1; Path=/")
+	///     .append_header("Set-Cookie", "b=2; Path=/");
+	/// let cookies: Vec<_> = response.headers.get_all("set-cookie").iter().collect();
+	/// assert_eq!(cookies.len(), 2);
+	/// ```
+	pub fn append_header(mut self, name: &str, value: &str) -> Self {
+		if let Ok(header_name) = hyper::header::HeaderName::from_bytes(name.as_bytes())
+			&& let Ok(header_value) = hyper::header::HeaderValue::from_str(value)
+		{
+			self.headers.append(header_name, header_value);
+		}
+		self
+	}
+
 	/// Add a Location header to the response (typically used for redirects)
 	///
 	/// # Examples
@@ -1227,5 +1370,31 @@ mod tests {
 			response.headers.get("X-Custom").unwrap().to_str().unwrap(),
 			"valid-value"
 		);
+	}
+
+	#[rstest]
+	fn test_append_header_adds_multiple_values() {
+		// Arrange & Act
+		let response = Response::ok()
+			.append_header("Set-Cookie", "a=1; Path=/")
+			.append_header("Set-Cookie", "b=2; Path=/");
+
+		// Assert
+		let cookies: Vec<_> = response.headers.get_all("set-cookie").iter().collect();
+		assert_eq!(cookies.len(), 2);
+		assert_eq!(cookies[0].to_str().unwrap(), "a=1; Path=/");
+		assert_eq!(cookies[1].to_str().unwrap(), "b=2; Path=/");
+	}
+
+	#[rstest]
+	fn test_append_header_coexists_with_with_header() {
+		// Arrange & Act
+		let response = Response::ok()
+			.with_header("Set-Cookie", "a=1; Path=/")
+			.append_header("Set-Cookie", "b=2; Path=/");
+
+		// Assert
+		let cookies: Vec<_> = response.headers.get_all("set-cookie").iter().collect();
+		assert_eq!(cookies.len(), 2);
 	}
 }

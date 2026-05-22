@@ -2,18 +2,23 @@
 //!
 //! Provides update operations for admin models.
 
+#[cfg(server)]
+use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite};
-use crate::types::{MutationRequest, MutationResponse};
-use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest, server_fn};
-use std::sync::Arc;
+use crate::types::MutationResponse;
+#[cfg(server)]
+use reinhardt_di::Depends;
+#[cfg(server)]
+use reinhardt_pages::server_fn::ServerFnRequest;
+use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::audit;
-#[cfg(not(target_arch = "wasm32"))]
-use super::error::{AdminAuth, MapServerFnError};
-#[cfg(not(target_arch = "wasm32"))]
-use super::security::sanitize_mutation_values;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
+use super::error::{AdminAuth, MapServerFnError, ModelPermission};
+#[cfg(server)]
+use super::security::{require_csrf_token, sanitize_mutation_values};
+#[cfg(server)]
 use super::validation::validate_mutation_data;
 
 /// Update an existing model instance
@@ -41,24 +46,29 @@ use super::validation::validate_mutation_data;
 /// let mut data = HashMap::new();
 /// data.insert("email".to_string(), serde_json::json!("alice.new@example.com"));
 ///
-/// let request = MutationRequest { data };
+/// let request = MutationRequest { csrf_token: "token".to_string(), data };
 /// let response = update_record("User".to_string(), "42".to_string(), request).await?;
 /// println!("Updated: {}", response.message);
 /// ```
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn update_record(
 	model_name: String,
 	id: String,
-	request: MutationRequest,
-	#[inject] site: Arc<AdminSite>,
-	#[inject] db: Arc<AdminDatabase>,
+	request: crate::types::MutationRequest,
+	#[inject] site: Depends<AdminSite>,
+	#[inject] db: Depends<AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
-) -> Result<MutationResponse, ServerFnError> {
+	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
+) -> Result<crate::types::MutationResponse, ServerFnError> {
+	// CSRF token validation (double-submit cookie pattern)
+	require_csrf_token(&request.csrf_token, &http_request.inner().headers)?;
+
 	// Authentication and authorization check
 	let auth = AdminAuth::from_request(&http_request);
-	auth.require_change_permission(&model_name)?;
-
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
+	auth.require_model_permission(model_admin.as_ref(), user.as_ref(), ModelPermission::Change)
+		.await?;
+
 	let table_name = model_admin.table_name();
 	let pk_field = model_admin.pk_field();
 
@@ -69,6 +79,9 @@ pub async fn update_record(
 	let mut sanitized_data = request.data;
 	sanitize_mutation_values(&mut sanitized_data);
 
+	// Inject current timestamp for auto_now fields (updated on every save)
+	super::create::inject_auto_now_timestamps(&mut sanitized_data, table_name);
+
 	let user_id = auth.user_id().unwrap_or("unknown").to_string();
 
 	let result = db
@@ -76,10 +89,26 @@ pub async fn update_record(
 		.await
 		.map_server_fn_error();
 
-	let success = result.is_ok();
-	audit::log_update(&user_id, &model_name, &id, &sanitized_data, success);
+	// Check for database errors first, logging failure before returning
+	let affected = match result {
+		Err(e) => {
+			audit::log_update(&user_id, &model_name, &id, &sanitized_data, false);
+			return Err(e);
+		}
+		Ok(n) => n,
+	};
 
-	let affected = result?;
+	// Return 404 error when no record was found with the given ID.
+	// Only log success=true after confirming the record was actually updated.
+	if affected == 0 {
+		audit::log_update(&user_id, &model_name, &id, &sanitized_data, false);
+		return Err(ServerFnError::server(
+			404,
+			format!("{} not found", model_name),
+		));
+	}
+
+	audit::log_update(&user_id, &model_name, &id, &sanitized_data, true);
 
 	Ok(MutationResponse {
 		success: true,

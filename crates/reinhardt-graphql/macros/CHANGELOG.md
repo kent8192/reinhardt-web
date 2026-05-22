@@ -7,53 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql-macros@v0.1.0-alpha.3...reinhardt-graphql-macros@v0.1.0-rc.1) - 2026-02-24
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql-macros@v0.1.0-rc.30...reinhardt-graphql-macros@v0.1.0) - 2026-05-22
 
-### Fixed
+Initial stable release of `reinhardt-graphql-macros` as part of the
+reinhardt-web 0.1.0 release. Provides the procedural macros that bind
+GraphQL handlers and subscriptions to the framework's DI runtime.
 
-- *(release)* roll back unpublished crate versions after partial release failure
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-### Maintenance
+### Capabilities at 0.1.0
 
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+- **Per-request DI context** — handler macros fork the
+  `InjectionContext` on each request, so resolvers see a clean
+  request scope without sharing mutable state between concurrent
+  requests.
+- **Compile-time `skip_if` validation** — invalid `skip_if`
+  expressions produce a proper compile error instead of expanding to
+  code that fails at runtime.
+- **Resilient subscription codegen** — the subscription macro
+  propagates stream errors to clients rather than dropping them, and
+  uses proper error handling in place of `expect()`.
+- **Strict input validation** — macro-generated code applies the
+  same resource limits the runtime enforces, surfaces clear errors
+  on crate-resolution failures, and hardens generated names.
 
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql-macros@v0.1.0-alpha.2...reinhardt-graphql-macros@v0.1.0-alpha.3) - 2026-02-21
+### Notable Breaking Changes
 
-### Fixed
+- **`Injected<T>` deprecated** ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631))
+  — resolver attributes accept `Depends<T>` rather than the
+  deprecated extractor.
 
-- emit errors on crate resolution failure instead of silent fallback
-- emit compile error for invalid skip_if expressions
-- propagate stream errors to GraphQL clients instead of dropping
-- replace expect() with proper error handling in subscription macro (#814)
+### Migration Notes
 
-### Security
-
-- add input validation and resource limits
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql-macros@v0.1.0-alpha.1...reinhardt-graphql-macros@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(package)* replace version.workspace with explicit versions
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
+See the [root CHANGELOG migration guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide).
+Move resolver injection sites from `Injected<T>` to `Depends<T>`; no
+other macro syntax change is required.

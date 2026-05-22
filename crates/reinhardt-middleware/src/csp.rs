@@ -8,9 +8,9 @@
 
 use async_trait::async_trait;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// Type wrapper for CSP nonce stored in Request extensions
 #[derive(Debug, Clone)]
@@ -38,6 +38,15 @@ pub struct CspConfig {
 	pub report_only: bool,
 	/// Generate nonce for inline scripts/styles
 	pub include_nonce: bool,
+	/// Paths exempt from CSP header insertion.
+	///
+	/// When a request path matches an exempt prefix (with path-segment boundary
+	/// checking), the middleware skips CSP header insertion entirely, allowing
+	/// the handler's own CSP to take effect without interference.
+	///
+	/// This is useful when certain routes (e.g., admin panel) set their own
+	/// CSP headers that differ from the application-wide policy.
+	pub exempt_paths: HashSet<String>,
 }
 
 impl Default for CspConfig {
@@ -49,6 +58,7 @@ impl Default for CspConfig {
 			directives,
 			report_only: false,
 			include_nonce: false,
+			exempt_paths: HashSet::new(),
 		}
 	}
 }
@@ -87,7 +97,35 @@ impl CspConfig {
 			directives,
 			report_only: false,
 			include_nonce: false,
+			exempt_paths: HashSet::new(),
 		}
+	}
+
+	/// Add a path prefix exempt from CSP header insertion.
+	///
+	/// Requests whose path matches this prefix (with path-segment boundary
+	/// checking) will not have CSP headers set by this middleware, allowing
+	/// handler-set CSP to take effect without interference.
+	///
+	/// Uses the same boundary matching as `CsrfMiddlewareConfig::add_exempt_path`:
+	/// exempting `"/admin"` matches `"/admin"` and `"/admin/dashboard"` but
+	/// NOT `"/administrator"`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::CspConfig;
+	///
+	/// let config = CspConfig::strict()
+	///     .add_exempt_path("/admin".to_string())
+	///     .add_exempt_path("/static/admin".to_string());
+	///
+	/// assert!(config.exempt_paths.contains("/admin"));
+	/// assert!(config.exempt_paths.contains("/static/admin"));
+	/// ```
+	pub fn add_exempt_path(mut self, path: String) -> Self {
+		self.exempt_paths.insert(path);
+		self
 	}
 }
 
@@ -302,6 +340,26 @@ impl Default for CspMiddleware {
 #[async_trait]
 impl Middleware for CspMiddleware {
 	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
+		// Check if path is exempt from CSP insertion.
+		// Uses path-segment boundary matching: exempt "/admin" matches "/admin"
+		// and "/admin/dashboard" but NOT "/administrator".
+		let path = request.uri.path();
+		if self
+			.config
+			.exempt_paths
+			.iter()
+			.any(|exempt| path == exempt.as_str() || path.starts_with(&format!("{}/", exempt)))
+		{
+			debug!(
+				path = path,
+				"Path is CSP-exempt, skipping CSP header insertion"
+			);
+			return match handler.handle(request).await {
+				Ok(resp) => Ok(resp),
+				Err(e) => Ok(Response::from(e)),
+			};
+		}
+
 		// Generate nonce if enabled
 		let nonce = if self.config.include_nonce {
 			let generated_nonce = self.generate_nonce();
@@ -313,19 +371,32 @@ impl Middleware for CspMiddleware {
 		};
 
 		// Call handler
-		let mut response = handler.handle(request).await?;
+		// Convert errors to responses so post-processing (e.g., security headers)
+		// always runs, even when invoked outside MiddlewareChain. (#3244)
+		let mut response = match handler.handle(request).await {
+			Ok(resp) => resp,
+			Err(e) => Response::from(e),
+		};
 
-		// Add CSP header
-		let csp_value = self.build_csp_header(nonce.as_deref());
-		match csp_value.parse() {
-			Ok(value) => {
-				response.headers.insert(self.get_header_name(), value);
-			}
-			Err(e) => {
-				warn!(
-					error = %e,
-					"Failed to parse CSP header value, skipping header insertion"
-				);
+		// Add CSP header only if handler has not already set one
+		let header_name = self.get_header_name();
+		if response.headers.contains_key(header_name) {
+			debug!(
+				header = header_name,
+				"CSP header already present in response, skipping middleware insertion"
+			);
+		} else {
+			let csp_value = self.build_csp_header(nonce.as_deref());
+			match csp_value.parse() {
+				Ok(value) => {
+					response.headers.insert(header_name, value);
+				}
+				Err(e) => {
+					warn!(
+						error = %e,
+						"Failed to parse CSP header value, skipping header insertion"
+					);
+				}
 			}
 		}
 
@@ -383,6 +454,7 @@ mod tests {
 			directives,
 			report_only: false,
 			include_nonce: false,
+			exempt_paths: HashSet::new(),
 		};
 		let middleware = CspMiddleware::with_config(config);
 		let handler = Arc::new(TestHandler);
@@ -418,6 +490,7 @@ mod tests {
 			},
 			report_only: true,
 			include_nonce: false,
+			exempt_paths: HashSet::new(),
 		};
 		let middleware = CspMiddleware::with_config(config);
 		let handler = Arc::new(TestHandler);
@@ -451,6 +524,7 @@ mod tests {
 			},
 			report_only: false,
 			include_nonce: true,
+			exempt_paths: HashSet::new(),
 		};
 		let middleware = CspMiddleware::with_config(config);
 		let handler = Arc::new(TestHandler);
@@ -520,6 +594,7 @@ mod tests {
 			directives,
 			report_only: false,
 			include_nonce: false,
+			exempt_paths: HashSet::new(),
 		};
 		let middleware = CspMiddleware::with_config(config);
 		let handler = Arc::new(TestHandler);
@@ -555,6 +630,7 @@ mod tests {
 			directives,
 			report_only: false,
 			include_nonce: true,
+			exempt_paths: HashSet::new(),
 		};
 		let middleware = CspMiddleware::with_config(config);
 		let handler = Arc::new(TestHandler);
@@ -588,6 +664,7 @@ mod tests {
 			directives: HashMap::new(),
 			report_only: false,
 			include_nonce: false,
+			exempt_paths: HashSet::new(),
 		};
 		let middleware = CspMiddleware::with_config(config);
 		let handler = Arc::new(TestHandler);
@@ -619,6 +696,7 @@ mod tests {
 			directives,
 			report_only: false,
 			include_nonce: false,
+			exempt_paths: HashSet::new(),
 		};
 		let middleware = CspMiddleware::with_config(config);
 		let handler = Arc::new(TestHandler);
@@ -653,6 +731,7 @@ mod tests {
 			},
 			report_only: false,
 			include_nonce: true,
+			exempt_paths: HashSet::new(),
 		};
 		let middleware = CspMiddleware::with_config(config);
 		let handler = Arc::new(TestHandler);
@@ -809,6 +888,7 @@ mod tests {
 			directives,
 			report_only: false,
 			include_nonce: true,
+			exempt_paths: HashSet::new(),
 		};
 		let middleware = CspMiddleware::with_config(config);
 
@@ -840,5 +920,328 @@ mod tests {
 			100,
 			"All 100 nonces should be unique (statistical randomness)"
 		);
+	}
+
+	#[tokio::test]
+	async fn test_does_not_override_existing_csp_header() {
+		// Arrange
+		struct HandlerWithCsp;
+
+		#[async_trait]
+		impl Handler for HandlerWithCsp {
+			async fn handle(&self, _request: Request) -> Result<Response> {
+				Ok(Response::new(StatusCode::OK).with_header(
+					"Content-Security-Policy",
+					"default-src 'self'; style-src 'self' 'unsafe-inline'",
+				))
+			}
+		}
+
+		let middleware = CspMiddleware::strict();
+		let handler = Arc::new(HandlerWithCsp);
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/admin/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert - handler's CSP should be preserved, not overwritten by middleware
+		let csp = response
+			.headers
+			.get("Content-Security-Policy")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		assert!(
+			csp.contains("'unsafe-inline'"),
+			"Handler-set CSP should be preserved, got: {}",
+			csp
+		);
+	}
+
+	#[tokio::test]
+	async fn test_does_not_override_existing_csp_report_only_header() {
+		// Arrange
+		struct HandlerWithReportOnlyCsp;
+
+		#[async_trait]
+		impl Handler for HandlerWithReportOnlyCsp {
+			async fn handle(&self, _request: Request) -> Result<Response> {
+				Ok(Response::new(StatusCode::OK)
+					.with_header("Content-Security-Policy-Report-Only", "default-src 'none'"))
+			}
+		}
+
+		let config = CspConfig {
+			directives: {
+				let mut d = HashMap::new();
+				d.insert("default-src".to_string(), vec!["'self'".to_string()]);
+				d
+			},
+			report_only: true,
+			include_nonce: false,
+			exempt_paths: HashSet::new(),
+		};
+		let middleware = CspMiddleware::with_config(config);
+		let handler = Arc::new(HandlerWithReportOnlyCsp);
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert - handler's report-only CSP should be preserved
+		let csp = response
+			.headers
+			.get("Content-Security-Policy-Report-Only")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		assert_eq!(
+			csp, "default-src 'none'",
+			"Handler-set report-only CSP should be preserved"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_exempt_path_skips_csp() {
+		// Arrange
+		let config = CspConfig::strict().add_exempt_path("/admin".to_string());
+		let middleware = CspMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/admin/dashboard")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert - CSP should not be set for exempt path
+		assert!(
+			!response.headers.contains_key("Content-Security-Policy"),
+			"CSP should not be set for exempt path"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_exempt_path_exact_match() {
+		// Arrange
+		let config = CspConfig::strict().add_exempt_path("/admin".to_string());
+		let middleware = CspMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/admin")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert - exact match should also be exempt
+		assert!(
+			!response.headers.contains_key("Content-Security-Policy"),
+			"CSP should not be set for exact exempt path match"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_non_exempt_path_gets_csp() {
+		// Arrange
+		let config = CspConfig::strict().add_exempt_path("/admin".to_string());
+		let middleware = CspMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/api/data")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert - non-exempt path should still get CSP
+		assert!(
+			response.headers.contains_key("Content-Security-Policy"),
+			"CSP should be set for non-exempt path"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_exempt_path_boundary_prevents_false_match() {
+		// Arrange - exempt "/admin" should NOT exempt "/administrator"
+		let config = CspConfig::strict().add_exempt_path("/admin".to_string());
+		let middleware = CspMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/administrator/panel")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert - /administrator should NOT be exempt
+		assert!(
+			response.headers.contains_key("Content-Security-Policy"),
+			"/administrator should NOT be exempt when only /admin is in exempt_paths"
+		);
+	}
+
+	#[rstest]
+	fn test_csp_config_add_exempt_path() {
+		// Arrange & Act
+		let config = CspConfig::default()
+			.add_exempt_path("/admin".to_string())
+			.add_exempt_path("/static/admin".to_string());
+
+		// Assert
+		assert!(config.exempt_paths.contains("/admin"));
+		assert!(config.exempt_paths.contains("/static/admin"));
+		assert_eq!(config.exempt_paths.len(), 2);
+	}
+
+	/// Handler that always returns an error to simulate inner handler failure.
+	struct ErrorHandler;
+
+	#[async_trait]
+	impl Handler for ErrorHandler {
+		async fn handle(&self, _request: Request) -> Result<Response> {
+			Err(reinhardt_http::Error::Http("handler error".to_string()))
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_csp_header_applied_on_handler_error() {
+		// Arrange
+		let config = CspConfig {
+			directives: {
+				let mut d = HashMap::new();
+				d.insert("default-src".to_string(), vec!["'none'".to_string()]);
+				d
+			},
+			report_only: false,
+			include_nonce: false,
+			exempt_paths: HashSet::new(),
+		};
+		let middleware = CspMiddleware::with_config(config);
+		let handler: Arc<dyn Handler> = Arc::new(ErrorHandler);
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert — error is converted to response with CSP header applied
+		assert!(response.status.is_client_error() || response.status.is_server_error());
+		assert!(
+			response.headers.contains_key("Content-Security-Policy"),
+			"CSP header should be applied even when handler returns an error"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_csp_exempt_path_error_converted_to_response() {
+		// Arrange
+		let config = CspConfig::strict().add_exempt_path("/exempt".to_string());
+		let middleware = CspMiddleware::with_config(config);
+		let handler: Arc<dyn Handler> = Arc::new(ErrorHandler);
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/exempt/resource")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act — should return Ok even though handler errors, because errors are
+		// converted to responses
+		let result = middleware.process(request, handler).await;
+
+		// Assert
+		assert!(
+			result.is_ok(),
+			"Handler error should be converted to response for exempt path"
+		);
+		let response = result.unwrap();
+		assert!(response.status.is_client_error() || response.status.is_server_error());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_multiple_exempt_paths() {
+		// Arrange
+		let config = CspConfig::strict()
+			.add_exempt_path("/admin".to_string())
+			.add_exempt_path("/static/admin".to_string());
+		let middleware = CspMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
+
+		// Act & Assert - both paths should be exempt
+		for uri in ["/admin/dashboard", "/static/admin/style.css"] {
+			let request = Request::builder()
+				.method(Method::GET)
+				.uri(uri)
+				.version(Version::HTTP_11)
+				.headers(HeaderMap::new())
+				.body(Bytes::new())
+				.build()
+				.unwrap();
+
+			let response = middleware.process(request, handler.clone()).await.unwrap();
+			assert!(
+				!response.headers.contains_key("Content-Security-Policy"),
+				"Path {} should be exempt from CSP",
+				uri
+			);
+		}
 	}
 }

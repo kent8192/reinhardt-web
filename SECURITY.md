@@ -2,14 +2,22 @@
 
 ## Supported Versions
 
-Currently, only the latest development version is supported. Stable releases are not yet available.
+Reinhardt follows the three-phase lifecycle described in
+[`instructions/STABILITY_POLICY.md`](instructions/STABILITY_POLICY.md).
+Security patches are applied to the **latest current release** of the most
+recent minor series: while `0.1.0` stable has not yet shipped, the latest
+`0.1.0-rc.*` is that current release; once `0.1.0` ships, support shifts
+to the latest `0.1.x` stable patch and older `-rc.*` / `-alpha.*` artifacts
+become unsupported — upgrade to the matching stable version to keep
+receiving patches.
 
 | Version | Supported |
 |---------|-----------|
-| Latest development branch | ✅ Yes |
-| Other branches | ❌ No |
-
-**Note:** This project is in active development and has not yet released a stable version.
+| Latest `0.1.0-rc.*` (current release, until `0.1.0` ships) | ✅ Yes |
+| `0.1.x` (latest stable patch, once `0.1.0` has shipped) | ✅ Yes |
+| Older `0.1.0-rc.*` / `0.1.0-alpha.*` | ❌ No |
+| Older `0.1.x` patches (after `0.1.0` has shipped) | ❌ No |
+| Development branches (`main`, `develop/*`) | ❌ No |
 
 ---
 
@@ -271,7 +279,7 @@ Enable Dependabot alerts in your fork to receive automatic vulnerability notific
 
 ## Security-Related Resources
 
-- **Issue Guidelines**: docs/ISSUE_GUIDELINES.md (see Security Issues section)
+- **Issue Guidelines**: instructions/ISSUE_GUIDELINES.md (see Security Issues section)
 - **Contributing Guide**: CONTRIBUTING.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md
 

@@ -78,6 +78,14 @@ impl Parse for FormMacro {
 					form.callbacks.on_success = Some(closure);
 					parse_optional_comma(input)?;
 				}
+				"on_success_ref" => {
+					let closure: ExprClosure = input.parse()?;
+					if form.callbacks.span.is_none() {
+						form.callbacks.span = Some(key.span());
+					}
+					form.callbacks.on_success_ref = Some(closure);
+					parse_optional_comma(input)?;
+				}
 				"on_error" => {
 					let closure: ExprClosure = input.parse()?;
 					if form.callbacks.span.is_none() {
@@ -147,7 +155,7 @@ impl Parse for FormMacro {
 					return Err(syn::Error::new(
 						key.span(),
 						format!(
-							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_error, on_loading, watch, redirect_on_success, initial_loader, choices_loader, slots, fields, validators, client_validators",
+							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, initial_loader, choices_loader, slots, fields, validators, client_validators, derived",
 							key
 						),
 					));

@@ -324,28 +324,43 @@ impl MigrationGraph {
 		}
 
 		// Find all nodes with in-degree 0 (no dependencies within the graph)
-		let mut queue: VecDeque<MigrationKey> = in_degree
+		// Sort deterministically by (app_label, name) to ensure consistent ordering
+		let mut zero_degree: Vec<MigrationKey> = in_degree
 			.iter()
 			.filter(|&(_, &degree)| degree == 0)
 			.map(|(key, _)| key.clone())
 			.collect();
+		zero_degree.sort_by(|a, b| {
+			a.app_label
+				.cmp(&b.app_label)
+				.then_with(|| a.name.cmp(&b.name))
+		});
+		let mut queue: VecDeque<MigrationKey> = zero_degree.into_iter().collect();
 
 		let mut result = Vec::new();
 
 		while let Some(key) = queue.pop_front() {
 			result.push(key.clone());
 
-			// Reduce in-degree for all dependents
+			// Reduce in-degree for all dependents and collect newly freed nodes
+			let mut newly_freed = Vec::new();
 			for (other_key, node) in &self.nodes {
 				if node.dependencies.contains(&key)
 					&& let Some(degree) = in_degree.get_mut(other_key)
 				{
 					*degree -= 1;
 					if *degree == 0 {
-						queue.push_back(other_key.clone());
+						newly_freed.push(other_key.clone());
 					}
 				}
 			}
+			// Sort newly freed nodes for deterministic BFS order
+			newly_freed.sort_by(|a, b| {
+				a.app_label
+					.cmp(&b.app_label)
+					.then_with(|| a.name.cmp(&b.name))
+			});
+			queue.extend(newly_freed);
 		}
 
 		// Check for circular dependencies
@@ -389,6 +404,89 @@ impl MigrationGraph {
 			.keys()
 			.filter(|key| self.get_dependents(key).is_empty())
 			.collect()
+	}
+
+	/// Get leaf nodes for a specific app
+	///
+	/// Returns all leaf nodes (migrations with no dependents within the graph)
+	/// that belong to the specified app label.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
+	///
+	/// let mut graph = MigrationGraph::new();
+	///
+	/// let key1 = MigrationKey::new("auth", "0001_initial");
+	/// let key2 = MigrationKey::new("auth", "0002_add_field");
+	/// let key3 = MigrationKey::new("users", "0001_initial");
+	///
+	/// graph.add_migration(key1.clone(), vec![]);
+	/// graph.add_migration(key2.clone(), vec![key1.clone()]);
+	/// graph.add_migration(key3.clone(), vec![]);
+	///
+	/// let auth_leaves = graph.get_leaf_nodes_for_app("auth");
+	/// assert_eq!(auth_leaves.len(), 1);
+	/// assert_eq!(auth_leaves[0], &key2);
+	/// ```
+	pub fn get_leaf_nodes_for_app(&self, app_label: &str) -> Vec<&MigrationKey> {
+		let mut leaves: Vec<&MigrationKey> = self
+			.get_leaf_nodes()
+			.into_iter()
+			.filter(|key| key.app_label == app_label)
+			.collect();
+		leaves.sort_by(|a, b| a.name.cmp(&b.name));
+		leaves
+	}
+
+	/// Detect migration conflicts (apps with multiple leaf nodes)
+	///
+	/// Returns a map of app labels to their conflicting leaf nodes.
+	/// Only apps with 2 or more leaf nodes are included.
+	/// Results are sorted by leaf name for deterministic output.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
+	///
+	/// let mut graph = MigrationGraph::new();
+	///
+	/// let key1 = MigrationKey::new("auth", "0001_initial");
+	/// let key2a = MigrationKey::new("auth", "0002_add_field");
+	/// let key2b = MigrationKey::new("auth", "0002_add_index");
+	///
+	/// graph.add_migration(key1.clone(), vec![]);
+	/// graph.add_migration(key2a.clone(), vec![key1.clone()]);
+	/// graph.add_migration(key2b.clone(), vec![key1.clone()]);
+	///
+	/// let conflicts = graph.detect_conflicts();
+	/// assert_eq!(conflicts.len(), 1);
+	/// assert!(conflicts.contains_key("auth"));
+	/// assert_eq!(conflicts["auth"].len(), 2);
+	/// ```
+	pub fn detect_conflicts(&self) -> HashMap<String, Vec<&MigrationKey>> {
+		let leaves = self.get_leaf_nodes();
+		let mut app_leaves: HashMap<String, Vec<&MigrationKey>> = HashMap::new();
+
+		for leaf in leaves {
+			app_leaves
+				.entry(leaf.app_label.clone())
+				.or_default()
+				.push(leaf);
+		}
+
+		// Sort leaves by name for deterministic output and filter to conflicts only
+		let mut conflicts: HashMap<String, Vec<&MigrationKey>> = HashMap::new();
+		for (app, mut leaves) in app_leaves {
+			if leaves.len() >= 2 {
+				leaves.sort_by(|a, b| a.name.cmp(&b.name));
+				conflicts.insert(app, leaves);
+			}
+		}
+
+		conflicts
 	}
 
 	/// Get root nodes (migrations with no dependencies)
@@ -989,6 +1087,7 @@ impl Default for MigrationGraph {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[test]
 	fn test_migration_key_creation() {
@@ -1513,5 +1612,230 @@ mod tests {
 		assert!(path.len() >= 3);
 		assert_eq!(path[0], a);
 		assert_eq!(path[path.len() - 1], f);
+	}
+
+	#[rstest]
+	fn test_get_leaf_nodes_for_app_single_leaf() {
+		// Arrange
+		let mut graph = MigrationGraph::new();
+		let key1 = MigrationKey::new("auth", "0001_initial");
+		let key2 = MigrationKey::new("auth", "0002_add_field");
+		graph.add_migration(key1.clone(), vec![]);
+		graph.add_migration(key2.clone(), vec![key1]);
+
+		// Act
+		let leaves = graph.get_leaf_nodes_for_app("auth");
+
+		// Assert
+		assert_eq!(leaves.len(), 1);
+		assert_eq!(leaves[0], &key2);
+	}
+
+	#[rstest]
+	fn test_get_leaf_nodes_for_app_two_branches() {
+		// Arrange
+		let mut graph = MigrationGraph::new();
+		let key1 = MigrationKey::new("auth", "0001_initial");
+		let key2a = MigrationKey::new("auth", "0002_add_field");
+		let key2b = MigrationKey::new("auth", "0002_add_index");
+		graph.add_migration(key1.clone(), vec![]);
+		graph.add_migration(key2a.clone(), vec![key1.clone()]);
+		graph.add_migration(key2b.clone(), vec![key1]);
+
+		// Act
+		let leaves = graph.get_leaf_nodes_for_app("auth");
+
+		// Assert
+		assert_eq!(leaves.len(), 2);
+		assert_eq!(leaves[0].name, "0002_add_field");
+		assert_eq!(leaves[1].name, "0002_add_index");
+	}
+
+	#[rstest]
+	fn test_get_leaf_nodes_for_app_three_branches() {
+		// Arrange
+		let mut graph = MigrationGraph::new();
+		let key1 = MigrationKey::new("auth", "0001_initial");
+		let key2a = MigrationKey::new("auth", "0002_a");
+		let key2b = MigrationKey::new("auth", "0002_b");
+		let key2c = MigrationKey::new("auth", "0002_c");
+		graph.add_migration(key1.clone(), vec![]);
+		graph.add_migration(key2a.clone(), vec![key1.clone()]);
+		graph.add_migration(key2b.clone(), vec![key1.clone()]);
+		graph.add_migration(key2c.clone(), vec![key1]);
+
+		// Act
+		let leaves = graph.get_leaf_nodes_for_app("auth");
+
+		// Assert
+		assert_eq!(leaves.len(), 3);
+	}
+
+	#[rstest]
+	fn test_get_leaf_nodes_for_app_nonexistent() {
+		// Arrange
+		let mut graph = MigrationGraph::new();
+		graph.add_migration(MigrationKey::new("auth", "0001_initial"), vec![]);
+
+		// Act
+		let leaves = graph.get_leaf_nodes_for_app("nonexistent");
+
+		// Assert
+		assert!(leaves.is_empty());
+	}
+
+	#[rstest]
+	fn test_get_leaf_nodes_for_app_empty_graph() {
+		// Arrange
+		let graph = MigrationGraph::new();
+
+		// Act
+		let leaves = graph.get_leaf_nodes_for_app("auth");
+
+		// Assert
+		assert!(leaves.is_empty());
+	}
+
+	#[rstest]
+	fn test_detect_conflicts_no_conflicts() {
+		// Arrange
+		let mut graph = MigrationGraph::new();
+		let key1 = MigrationKey::new("auth", "0001_initial");
+		let key2 = MigrationKey::new("auth", "0002_add_field");
+		graph.add_migration(key1.clone(), vec![]);
+		graph.add_migration(key2.clone(), vec![key1]);
+
+		// Act
+		let conflicts = graph.detect_conflicts();
+
+		// Assert
+		assert!(conflicts.is_empty());
+	}
+
+	#[rstest]
+	fn test_detect_conflicts_single_app() {
+		// Arrange
+		let mut graph = MigrationGraph::new();
+		let key1 = MigrationKey::new("auth", "0001_initial");
+		let key2a = MigrationKey::new("auth", "0002_add_field");
+		let key2b = MigrationKey::new("auth", "0002_add_index");
+		graph.add_migration(key1.clone(), vec![]);
+		graph.add_migration(key2a.clone(), vec![key1.clone()]);
+		graph.add_migration(key2b.clone(), vec![key1]);
+
+		// Act
+		let conflicts = graph.detect_conflicts();
+
+		// Assert
+		assert_eq!(conflicts.len(), 1);
+		assert!(conflicts.contains_key("auth"));
+		assert_eq!(conflicts["auth"].len(), 2);
+	}
+
+	#[rstest]
+	fn test_detect_conflicts_multiple_apps() {
+		// Arrange
+		let mut graph = MigrationGraph::new();
+		let auth1 = MigrationKey::new("auth", "0001_initial");
+		let auth2a = MigrationKey::new("auth", "0002_a");
+		let auth2b = MigrationKey::new("auth", "0002_b");
+		let users1 = MigrationKey::new("users", "0001_initial");
+		let users2a = MigrationKey::new("users", "0002_a");
+		let users2b = MigrationKey::new("users", "0002_b");
+		graph.add_migration(auth1.clone(), vec![]);
+		graph.add_migration(auth2a.clone(), vec![auth1.clone()]);
+		graph.add_migration(auth2b.clone(), vec![auth1]);
+		graph.add_migration(users1.clone(), vec![]);
+		graph.add_migration(users2a.clone(), vec![users1.clone()]);
+		graph.add_migration(users2b.clone(), vec![users1]);
+
+		// Act
+		let conflicts = graph.detect_conflicts();
+
+		// Assert
+		assert_eq!(conflicts.len(), 2);
+		assert!(conflicts.contains_key("auth"));
+		assert!(conflicts.contains_key("users"));
+	}
+
+	#[rstest]
+	fn test_detect_conflicts_mixed() {
+		// Arrange: auth has conflict, users does not
+		let mut graph = MigrationGraph::new();
+		let auth1 = MigrationKey::new("auth", "0001_initial");
+		let auth2a = MigrationKey::new("auth", "0002_a");
+		let auth2b = MigrationKey::new("auth", "0002_b");
+		let users1 = MigrationKey::new("users", "0001_initial");
+		let users2 = MigrationKey::new("users", "0002_add_field");
+		graph.add_migration(auth1.clone(), vec![]);
+		graph.add_migration(auth2a.clone(), vec![auth1.clone()]);
+		graph.add_migration(auth2b.clone(), vec![auth1]);
+		graph.add_migration(users1.clone(), vec![]);
+		graph.add_migration(users2.clone(), vec![users1]);
+
+		// Act
+		let conflicts = graph.detect_conflicts();
+
+		// Assert
+		assert_eq!(conflicts.len(), 1);
+		assert!(conflicts.contains_key("auth"));
+		assert!(!conflicts.contains_key("users"));
+	}
+
+	#[rstest]
+	fn test_detect_conflicts_empty_graph() {
+		// Arrange
+		let graph = MigrationGraph::new();
+
+		// Act
+		let conflicts = graph.detect_conflicts();
+
+		// Assert
+		assert!(conflicts.is_empty());
+	}
+
+	#[rstest]
+	fn test_detect_conflicts_cross_app_deps() {
+		// Arrange: auth branches with cross-app dependency on users
+		let mut graph = MigrationGraph::new();
+		let users1 = MigrationKey::new("users", "0001_initial");
+		let auth1 = MigrationKey::new("auth", "0001_initial");
+		let auth2a = MigrationKey::new("auth", "0002_add_field");
+		let auth2b = MigrationKey::new("auth", "0002_add_fk");
+		graph.add_migration(users1.clone(), vec![]);
+		graph.add_migration(auth1.clone(), vec![]);
+		graph.add_migration(auth2a.clone(), vec![auth1.clone()]);
+		graph.add_migration(auth2b.clone(), vec![auth1, users1]);
+
+		// Act
+		let conflicts = graph.detect_conflicts();
+
+		// Assert
+		assert_eq!(conflicts.len(), 1);
+		assert!(conflicts.contains_key("auth"));
+		assert_eq!(conflicts["auth"].len(), 2);
+	}
+
+	#[rstest]
+	fn test_detect_conflicts_sorted_output() {
+		// Arrange
+		let mut graph = MigrationGraph::new();
+		let key1 = MigrationKey::new("auth", "0001_initial");
+		let key2c = MigrationKey::new("auth", "0002_c_zebra");
+		let key2a = MigrationKey::new("auth", "0002_a_alpha");
+		let key2b = MigrationKey::new("auth", "0002_b_beta");
+		graph.add_migration(key1.clone(), vec![]);
+		graph.add_migration(key2c.clone(), vec![key1.clone()]);
+		graph.add_migration(key2a.clone(), vec![key1.clone()]);
+		graph.add_migration(key2b.clone(), vec![key1]);
+
+		// Act
+		let conflicts = graph.detect_conflicts();
+
+		// Assert
+		let auth_conflicts = &conflicts["auth"];
+		assert_eq!(auth_conflicts[0].name, "0002_a_alpha");
+		assert_eq!(auth_conflicts[1].name, "0002_b_beta");
+		assert_eq!(auth_conflicts[2].name, "0002_c_zebra");
 	}
 }

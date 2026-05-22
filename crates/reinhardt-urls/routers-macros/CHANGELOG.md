@@ -7,27 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-routers-macros@v0.1.0-alpha.3...reinhardt-routers-macros@v0.1.0-rc.1) - 2026-02-23
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-routers-macros@v0.1.0-rc.30...reinhardt-routers-macros@v0.1.0) - 2026-05-22
 
-### Maintenance
+Initial stable release of `reinhardt-routers-macros` as part of the
+reinhardt-web 0.1.0 release. Procedural-macro companion to
+`reinhardt-urls` that performs compile-time validation of route paths
+and emits the typed URL helpers consumed by `#[routes]` and
+`#[url_patterns]`.
 
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-routers-macros@v0.1.0-alpha.2...reinhardt-routers-macros@v0.1.0-alpha.3) - 2026-02-21
+### Capabilities at 0.1.0
 
-### Security
+- **Compile-time path validation** — Route paths, SQL fragments, and
+  crate references are validated when the macro expands, so a
+  malformed `#[routes]` path is a compile error rather than a runtime
+  panic.
+- **Wildcard and parameter safety** — Path validation rejects
+  ambiguous parameters and unsafe wildcard patterns; route paths and
+  SQL expressions go through the same input-validation pipeline.
+- **Clippy- and rustfmt-clean expansion** — Generated code replaces
+  never-looping `for` constructs with `if let` (per
+  `clippy::never_loop`) and is formatted via `rustfmt` so consumers
+  see clean diagnostics in their own crates.
 
-- add compile-time validation for paths, SQL, and crate references
-- fix path validation for ambiguous params and wildcards
-- add input validation for route paths and SQL expressions
+### Notable Breaking Changes
 
-### Styling
+This is a proc-macro crate consumed exclusively by `reinhardt-urls`;
+breaking changes flow through that crate. See the [Breaking Changes
+Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/breaking-changes).
 
-- replace never-looping for with if-let per clippy::never_loop
-- apply rustfmt formatting to workspace files
+### Migration Notes
 
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-routers-macros@v0.1.0-alpha.1...reinhardt-routers-macros@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- *(package)* replace version.workspace with explicit versions
+This is the first stable release, so there is no prior stable version
+to migrate from. See the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the cross-crate migration guide.

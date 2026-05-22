@@ -10,13 +10,14 @@ Framework for translating applications into multiple languages with Django-style
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["i18n"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["i18n"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import i18n features:
@@ -62,7 +63,7 @@ use reinhardt::i18n::{activate, deactivate, MessageCatalog};
 - **Locale activation** (`activate`): Set active locale with associated catalog
 - **Locale deactivation** (`deactivate`): Revert to default English locale
 - **Locale query** (`get_locale`): Retrieve currently active locale
-- **Thread-safe state**: Global translation state with RwLock synchronization
+- **Thread-local state**: Per-thread translation state using `thread_local!` with `RefCell` (not a global `RwLock`; each OS thread maintains its own active locale independently)
 
 #### Lazy Evaluation
 

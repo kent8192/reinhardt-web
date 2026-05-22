@@ -445,3 +445,178 @@ async fn test_mysql_multiple_ddl_statements(
 			.expect("Failed to cleanup");
 	}
 }
+
+// ============================================================================
+// Regression: Issue #4585 — MySQL FK-dependent rollback lock leak
+// ============================================================================
+
+/// Regression test for issue #4585: MySQL FK-dependent rollback timeout.
+///
+/// **Test Intent**: Verify that an executor reused across multiple
+/// `apply_migrations` and `rollback_migrations` calls does not leak the
+/// MySQL `GET_LOCK('reinhardt_migrations', ...)` advisory lock between
+/// calls. Each call to `ensure_schema_table` must release the lock on the
+/// same session that acquired it; otherwise the second call blocks until
+/// the 10-second lock timeout.
+///
+/// **Integration Point**: `DatabaseMigrationRecorder::ensure_schema_table`
+/// → `MySqlBackend` pool → `GET_LOCK` / `RELEASE_LOCK` session affinity.
+///
+/// **Reproduction Steps**:
+/// 1. Apply migration A (CREATE TABLE users).
+/// 2. Apply migration B (CREATE TABLE orders + FK to users).
+/// 3. Rollback migration B (DROP TABLE orders).
+///
+/// **Expected Behaviour**: All three calls complete well below the 10s
+/// advisory-lock timeout because the lock is acquired and released on the
+/// same pool connection inside each `ensure_schema_table` invocation.
+///
+/// **Bug Behaviour (pre-fix)**: Step 3 (and sometimes step 2) blocks the
+/// full 10 seconds because the `GET_LOCK` from step 1 was acquired on
+/// pool session A, but `RELEASE_LOCK` ran on session B (no-op). The lock
+/// is leaked into session A which is then returned to the pool while
+/// still holding the named lock.
+#[rstest]
+#[tokio::test]
+async fn test_rollback_with_fk_does_not_leak_migration_lock(
+	#[future] mysql_container: (
+		ContainerAsync<GenericImage>,
+		Arc<sqlx::MySqlPool>,
+		u16,
+		String,
+	),
+) {
+	// Arrange
+	let (_container, pool, _port, url) = mysql_container.await;
+
+	let connection = DatabaseConnection::connect_mysql(&url)
+		.await
+		.expect("Failed to connect to MySQL");
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+
+	let migration_a = create_test_migration(
+		"testapp",
+		"0001_create_users",
+		vec![Operation::CreateTable {
+			name: "users".to_string(),
+			columns: vec![create_column_with_constraints(
+				"id",
+				FieldType::Integer,
+				true,
+				true,
+			)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		}],
+	);
+
+	let mut migration_b = create_test_migration(
+		"testapp",
+		"0002_create_orders",
+		vec![
+			Operation::CreateTable {
+				name: "orders".to_string(),
+				columns: vec![
+					create_column_with_constraints("id", FieldType::Integer, true, true),
+					create_column_with_constraints("user_id", FieldType::Integer, true, false),
+				],
+				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+			Operation::AddConstraint {
+				table: "orders".to_string(),
+				constraint_sql: "CONSTRAINT fk_orders_user_id FOREIGN KEY (user_id) \
+				                 REFERENCES users(id) ON DELETE CASCADE ON UPDATE NO ACTION"
+					.to_string(),
+			},
+		],
+	);
+	migration_b.dependencies = vec![("testapp".to_string(), "0001_create_users".to_string())];
+
+	// Wrap the whole apply + rollback sequence in a tight per-call deadline.
+	// The advisory lock timeout is 10 seconds, so any single call exceeding
+	// 8 seconds is a strong signal that the lock leaked from a prior call.
+	let per_call_deadline = std::time::Duration::from_secs(8);
+
+	// Act: apply A
+	tokio::time::timeout(
+		per_call_deadline,
+		executor.apply_migrations(std::slice::from_ref(&migration_a)),
+	)
+	.await
+	.expect("apply_migrations(A) must complete well before the 10s lock timeout")
+	.expect("apply_migrations(A) must succeed");
+
+	// Act: apply B (FK depends on A) — also exercises a fresh
+	// ensure_schema_table call on the same executor / same pool.
+	tokio::time::timeout(
+		per_call_deadline,
+		executor.apply_migrations(std::slice::from_ref(&migration_b)),
+	)
+	.await
+	.expect("apply_migrations(B) must complete well before the 10s lock timeout")
+	.expect("apply_migrations(B) must succeed");
+
+	// Act: rollback B — this is the call that times out pre-fix.
+	tokio::time::timeout(
+		per_call_deadline,
+		executor.rollback_migrations(std::slice::from_ref(&migration_b)),
+	)
+	.await
+	.expect(
+		"rollback_migrations(B) must complete well before the 10s lock timeout \
+		 (regression for issue #4585)",
+	)
+	.expect("rollback_migrations(B) must succeed");
+
+	// Assert: orders table is gone, users table still present.
+	let orders_count: i64 = sqlx::query_scalar(
+		"SELECT COUNT(*) FROM information_schema.tables \
+		 WHERE table_schema = DATABASE() AND table_name = 'orders'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to count orders table");
+	assert_eq!(
+		orders_count, 0,
+		"orders table should not exist after rollback of migration B"
+	);
+
+	let users_count: i64 = sqlx::query_scalar(
+		"SELECT COUNT(*) FROM information_schema.tables \
+		 WHERE table_schema = DATABASE() AND table_name = 'users'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to count users table");
+	assert_eq!(
+		users_count, 1,
+		"users table should still exist after rollback of migration B only"
+	);
+
+	// Also rollback A and verify both are gone. This proves the lock is
+	// not leaked even across three consecutive ensure_schema_table calls.
+	tokio::time::timeout(
+		per_call_deadline,
+		executor.rollback_migrations(std::slice::from_ref(&migration_a)),
+	)
+	.await
+	.expect("rollback_migrations(A) must complete well before the 10s lock timeout")
+	.expect("rollback_migrations(A) must succeed");
+
+	let users_count_after: i64 = sqlx::query_scalar(
+		"SELECT COUNT(*) FROM information_schema.tables \
+		 WHERE table_schema = DATABASE() AND table_name = 'users'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to count users table after rollback A");
+	assert_eq!(
+		users_count_after, 0,
+		"users table should not exist after rollback of migration A"
+	);
+}

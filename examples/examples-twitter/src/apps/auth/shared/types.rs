@@ -4,16 +4,12 @@
 //! These types are serializable and can be sent between the WASM client
 //! and the Rust server via server functions.
 
-use reinhardt::Validate;
-use reinhardt::core::serde::{Deserialize, Serialize};
+use reinhardt::dto;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// OpenAPI schema generation (server-side only)
-#[cfg(server)]
-use reinhardt::rest::openapi::{Schema, ToSchema};
-
 /// User information (shared between client and server)
-#[cfg_attr(server, derive(Schema))]
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
 	pub id: Uuid,
@@ -23,21 +19,21 @@ pub struct UserInfo {
 }
 
 /// Conversion from server-side User model to shared UserInfo
-#[cfg(server)]
+#[cfg(native)]
 impl From<crate::apps::auth::models::User> for UserInfo {
 	fn from(user: crate::apps::auth::models::User) -> Self {
 		UserInfo {
-			id: user.id(),
-			username: user.username().to_string(),
-			email: user.email().to_string(),
-			is_active: user.is_active(),
+			id: user.id,
+			username: user.username,
+			email: user.email,
+			is_active: user.is_active,
 		}
 	}
 }
 
 /// Login request
-#[cfg_attr(server, derive(Schema))]
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[dto]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
 	#[validate(email(message = "Invalid email address"))]
 	pub email: String,
@@ -47,8 +43,8 @@ pub struct LoginRequest {
 }
 
 /// Register request
-#[cfg_attr(server, derive(Schema))]
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[dto]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRequest {
 	#[validate(length(
 		min = 3,
@@ -84,7 +80,7 @@ impl RegisterRequest {
 ///
 /// Used for both client-side authentication state and server-side
 /// session validation in tests.
-#[cfg_attr(server, derive(Schema))]
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionData {
 	/// The authenticated user's ID

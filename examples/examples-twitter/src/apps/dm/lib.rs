@@ -2,25 +2,30 @@
 //!
 //! Direct message models for examples-twitter
 
-#[cfg(server)]
+#[cfg(native)]
 use reinhardt::app_config;
 
-#[cfg(server)]
+#[cfg(native)]
 pub mod admin;
-#[cfg(server)]
+#[cfg(native)]
 pub mod models;
 pub mod shared;
 pub mod urls;
 
-#[cfg(client)]
+#[cfg(wasm)]
 pub mod client;
 
-#[cfg(server)]
+#[cfg(native)]
 pub mod server;
 
 #[cfg(test)]
 pub mod tests;
 
-#[cfg(server)]
+// DM WebSocket routes are intentionally NOT registered via a `urls/ws_urls.rs`
+// submodule (kent8192/reinhardt-web#3918). The DM app uses `DMHandler`, a
+// `WebSocketConsumer` wired through middleware in `src/config/middleware.rs`.
+// This shows an alternative WS integration path that bypasses the URL system.
+
+#[cfg(native)]
 #[app_config(name = "dm", label = "dm", verbose_name = "Direct Messages")]
 pub struct DmConfig;

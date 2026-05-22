@@ -1,0 +1,80 @@
+From: ci-fixture <ci@local>
+Subject: [PATCH] Augment generated wasm-consumer fixture for #4161 regression coverage
+
+The default `--with-pages` scaffold already exercises three of the four
+re-exports that #4161 ungated (`app_config`, `urls` macro, `AppLabel`
+via `InstalledApp::demo`) through the `mode = server` / `mode = client`
+routers it generates. This patch adds two new `#[cfg(client)]` modules
+that exercise the remaining macro modes at a wasm SPA call site:
+
+  - `apps/demo/urls/unified_urls.rs` — `mode = unified` against
+    `reinhardt::UnifiedRouter` (covers the `ServerRouterStub` /
+    `ClientRouter` builder-closure surface).
+  - `apps/demo/urls/ws_urls.rs` — `mode = ws` against
+    `reinhardt::WebSocketRouter` (covers the wasm-side stub's
+    `with_namespace` / `consumer` signature compatibility).
+
+The patch is additive: it does not edit any template-generated content
+beyond appending two `pub mod` declarations to `apps/demo/urls.rs`, so
+it remains stable across cosmetic template refreshes.
+
+Tracks: kent8192/reinhardt-web#4161
+---
+diff --git a/src/apps/demo/urls.rs b/src/apps/demo/urls.rs
+--- a/src/apps/demo/urls.rs
++++ b/src/apps/demo/urls.rs
+@@ -13,3 +13,9 @@
+
+ #[cfg(client)]
+ pub mod client_router;
++
++#[cfg(client)]
++pub mod unified_urls;
++
++#[cfg(client)]
++pub mod ws_urls;
+diff --git a/src/apps/demo/urls/unified_urls.rs b/src/apps/demo/urls/unified_urls.rs
+new file mode 100644
+--- /dev/null
++++ b/src/apps/demo/urls/unified_urls.rs
+@@ -0,0 +1,17 @@
++// Augmented for Issue #4161 regression coverage (mode = unified variant).
++// Exercises `reinhardt::UnifiedRouter` against macro expansion produced by
++// `#[url_patterns(... mode = unified)]` at a wasm SPA call site, so the
++// re-export of `UnifiedRouter` (and its `ServerRouterStub` / `ClientRouter`
++// builder closures) stays compatible with the macro output.
++use reinhardt::UnifiedRouter;
++use reinhardt::url_patterns;
++
++use crate::config::apps::InstalledApp;
++
++#[url_patterns(InstalledApp::demo, mode = unified)]
++pub fn unified_url_patterns() -> UnifiedRouter {
++	UnifiedRouter::new()
++	// Endpoints registered through `.server(|_| _)` / `.client(|_| _)`
++	// closures would land here; the empty form is sufficient for the
++	// macro-expansion gate.
++}
+diff --git a/src/apps/demo/urls/ws_urls.rs b/src/apps/demo/urls/ws_urls.rs
+new file mode 100644
+--- /dev/null
++++ b/src/apps/demo/urls/ws_urls.rs
+@@ -0,0 +1,18 @@
++// Augmented for Issue #4161 regression coverage (mode = ws variant).
++// Exercises the wasm-side stub of `WebSocketRouter` against macro
++// expansion produced by `#[url_patterns(... mode = ws)]`, including the
++// `.with_namespace(...)` and `.consumer(...)` builder calls that the
++// shim must keep compatible with the native router's signature.
++use reinhardt::WebSocketRouter;
++use reinhardt::url_patterns;
++
++use crate::config::apps::InstalledApp;
++
++fn make_consumer() {}
++
++#[url_patterns(InstalledApp::demo, mode = ws)]
++pub fn ws_url_patterns() -> WebSocketRouter {
++	WebSocketRouter::new()
++		.with_namespace("demo")
++		.consumer(make_consumer)
++}

@@ -70,10 +70,42 @@
 //! [`UnifiedRouter`]: crate::routers::UnifiedRouter
 //! [`ServerRouter`]: crate::routers::ServerRouter
 
-#[cfg(feature = "client-router")]
+#[cfg(all(native, feature = "client-router"))]
 use crate::routers::client_router::ClientRouter;
+#[cfg(native)]
 use crate::routers::server_router::ServerRouter;
+#[cfg(native)]
+use std::future::Future;
+#[cfg(native)]
+use std::pin::Pin;
+#[cfg(native)]
 use std::sync::Arc;
+
+/// Function pointer type for async router factories.
+///
+/// Returns a pinned, boxed future that produces a server router or an error.
+/// Used by `RouterFactory::Async` and `UrlPatternsRegistration::__macro_new_async`.
+#[cfg(native)]
+pub type AsyncRouterFactoryFn = fn() -> Pin<
+	Box<
+		dyn Future<Output = Result<Arc<ServerRouter>, Box<dyn std::error::Error + Send + Sync>>>
+			+ Send,
+	>,
+>;
+
+/// Factory for creating server routers, supporting both sync and async creation.
+///
+/// The sync variant is used by existing `#[routes]` functions that return
+/// `UnifiedRouter` synchronously. The async variant is used when `#[routes]`
+/// is applied to an `async fn`, enabling DI resolution via `#[inject]` parameters.
+#[cfg(native)]
+#[derive(Clone)]
+pub enum RouterFactory {
+	/// Synchronous factory (existing behavior for `fn routes() -> UnifiedRouter`)
+	Sync(fn() -> Arc<ServerRouter>),
+	/// Async factory for `async fn routes()` with optional `#[inject]` DI resolution
+	Async(AsyncRouterFactoryFn),
+}
 
 /// URL patterns registration for compile-time discovery
 ///
@@ -84,7 +116,7 @@ use std::sync::Arc;
 ///
 /// # Fields
 ///
-/// * `get_server_router` - Function pointer to get the server router
+/// * `factory` - Router factory (sync or async) to create the server router
 /// * `get_client_router` - Optional function pointer to get the client router (when `client-router` feature is enabled)
 ///
 /// # Implementation Details
@@ -99,16 +131,18 @@ use std::sync::Arc;
 ///
 /// You typically don't create this struct directly. Instead, use the `#[routes]`
 /// attribute macro which generates the registration code automatically.
+#[cfg(native)]
 #[derive(Clone)]
 pub struct UrlPatternsRegistration {
-	/// Function to get the server router
+	/// Router factory (sync or async)
 	///
-	/// This function returns an `Arc<ServerRouter>` with all server-side routes.
 	/// The `#[routes]` macro extracts the server router from [`UnifiedRouter`]
 	/// using `into_server()` and wraps it in `Arc::new()` automatically.
+	/// Sync factories are used for `fn routes()`, async factories for
+	/// `async fn routes()` (with optional `#[inject]` DI parameters).
 	///
 	/// [`UnifiedRouter`]: crate::routers::UnifiedRouter
-	pub get_server_router: fn() -> Arc<ServerRouter>,
+	pub factory: RouterFactory,
 
 	/// Optional function to get the client router
 	///
@@ -122,6 +156,7 @@ pub struct UrlPatternsRegistration {
 	pub get_client_router: Option<fn() -> Arc<ClientRouter>>,
 }
 
+#[cfg(native)]
 impl UrlPatternsRegistration {
 	/// Create a new registration with the router factory functions
 	///
@@ -146,7 +181,7 @@ impl UrlPatternsRegistration {
 		get_client_router: Option<fn() -> Arc<ClientRouter>>,
 	) -> Self {
 		Self {
-			get_server_router,
+			factory: RouterFactory::Sync(get_server_router),
 			get_client_router,
 		}
 	}
@@ -158,10 +193,12 @@ impl UrlPatternsRegistration {
 	/// You typically don't call this directly. Use the `#[routes]` macro instead.
 	#[cfg(not(feature = "client-router"))]
 	pub const fn new(get_server_router: fn() -> Arc<ServerRouter>) -> Self {
-		Self { get_server_router }
+		Self {
+			factory: RouterFactory::Sync(get_server_router),
+		}
 	}
 
-	/// Internal constructor used by the `#[routes]` macro.
+	/// Internal constructor used by the `#[routes]` macro for sync routes.
 	///
 	/// Always takes a single argument regardless of feature flags, ensuring
 	/// the macro output is feature-independent. This avoids feature context
@@ -169,7 +206,20 @@ impl UrlPatternsRegistration {
 	#[doc(hidden)]
 	pub const fn __macro_new(get_server_router: fn() -> Arc<ServerRouter>) -> Self {
 		Self {
-			get_server_router,
+			factory: RouterFactory::Sync(get_server_router),
+			#[cfg(feature = "client-router")]
+			get_client_router: None,
+		}
+	}
+
+	/// Internal constructor used by the `#[routes]` macro for async routes.
+	///
+	/// Used when `#[routes]` is applied to an `async fn`, enabling DI
+	/// resolution via `#[inject]` parameters.
+	#[doc(hidden)]
+	pub const fn __macro_new_async(factory: AsyncRouterFactoryFn) -> Self {
+		Self {
+			factory: RouterFactory::Async(factory),
 			#[cfg(feature = "client-router")]
 			get_client_router: None,
 		}
@@ -194,9 +244,31 @@ impl UrlPatternsRegistration {
 		self
 	}
 
-	/// Get the server router from the registration
+	/// Get the server router from the registration (sync only).
+	///
+	/// # Panics
+	///
+	/// Panics if the factory is async. Use `server_router_async()` instead.
 	pub fn server_router(&self) -> Arc<ServerRouter> {
-		(self.get_server_router)()
+		match &self.factory {
+			RouterFactory::Sync(f) => f(),
+			RouterFactory::Async(_) => {
+				panic!(
+					"Cannot call server_router() on an async #[routes] registration. \
+					 Use server_router_async() instead."
+				)
+			}
+		}
+	}
+
+	/// Get the server router from the registration, supporting both sync and async factories.
+	pub async fn server_router_async(
+		&self,
+	) -> Result<Arc<ServerRouter>, Box<dyn std::error::Error + Send + Sync>> {
+		match &self.factory {
+			RouterFactory::Sync(f) => Ok(f()),
+			RouterFactory::Async(f) => f().await,
+		}
 	}
 
 	/// Get the client router from the registration, if available
@@ -207,4 +279,110 @@ impl UrlPatternsRegistration {
 }
 
 // Collect registrations for runtime iteration
+#[cfg(native)]
 inventory::collect!(UrlPatternsRegistration);
+
+/// Returns an iterator over all registered [`UrlPatternsRegistration`] entries.
+///
+/// Each registration corresponds to one `#[routes]`-annotated function in the
+/// application. Useful for diagnostic commands (e.g., `runserver` startup banner)
+/// that enumerate registered routers without executing them.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_urls::routers::registration::iter_registered_url_patterns;
+///
+/// let count = iter_registered_url_patterns().count();
+/// println!("registered routers: {count}");
+/// ```
+#[cfg(native)]
+pub fn iter_registered_url_patterns() -> impl Iterator<Item = &'static UrlPatternsRegistration> {
+	inventory::iter::<UrlPatternsRegistration>()
+}
+
+/// Client-router inventory registration (WASM target).
+///
+/// This module is the WASM-side counterpart of `UrlPatternsRegistration`.
+/// The `#[routes]` macro submits one [`ClientRouterRegistration`] per
+/// annotated function on `wasm32-unknown-unknown`, and the launcher
+/// consumes them via [`collect_client_router_from_inventory`].
+///
+/// Also gated on the `client-router` feature because the module references
+/// `crate::routers::client_router::ClientRouter`, which is itself behind
+/// `#[cfg(feature = "client-router")]`. Without this guard, a WASM build
+/// of `reinhardt-urls` without `client-router` enabled would fail to
+/// resolve the import. Refs #4453, Codex review feedback.
+#[cfg(all(
+	target_family = "wasm",
+	target_os = "unknown",
+	feature = "client-router"
+))]
+mod client_registration {
+	use crate::routers::client_router::ClientRouter;
+	use std::sync::Arc;
+
+	/// WASM-side counterpart of [`UrlPatternsRegistration`].
+	///
+	/// Submitted by the `#[routes]` macro on `wasm32-unknown-unknown`.
+	///
+	/// [`UrlPatternsRegistration`]: super::UrlPatternsRegistration
+	#[derive(Clone)]
+	pub struct ClientRouterRegistration {
+		get_client_router: fn() -> Arc<ClientRouter>,
+	}
+
+	impl ClientRouterRegistration {
+		/// Internal constructor used by the `#[routes]` macro.
+		///
+		/// Not part of the public API; do not call directly.
+		#[doc(hidden)]
+		pub const fn __macro_new(get_client_router: fn() -> Arc<ClientRouter>) -> Self {
+			Self { get_client_router }
+		}
+
+		/// Materialize the `ClientRouter` from this registration.
+		pub fn client_router(&self) -> Arc<ClientRouter> {
+			(self.get_client_router)()
+		}
+	}
+
+	inventory::collect!(ClientRouterRegistration);
+
+	/// Iterate over all `#[routes]`-registered client routers.
+	pub fn iter_registered_client_routers()
+	-> impl Iterator<Item = &'static ClientRouterRegistration> {
+		inventory::iter::<ClientRouterRegistration>()
+	}
+
+	/// Iterate inventory, merge every registered `ClientRouter`, register
+	/// the resulting `ClientUrlReverser` globally, and return the merged
+	/// router (or `None` if no entries are registered).
+	///
+	/// `ClientRouter::merge` is `pub(crate)`; this helper lives in the
+	/// same crate so the visibility holds. Refs #4442, #4453.
+	pub fn collect_client_router_from_inventory() -> Option<ClientRouter> {
+		let mut merged: Option<ClientRouter> = None;
+		for reg in iter_registered_client_routers() {
+			let arc = reg.client_router();
+			let r = Arc::try_unwrap(arc).unwrap_or_else(|a| (*a).clone());
+			merged = Some(match merged.take() {
+				None => r,
+				Some(acc) => acc.merge(r),
+			});
+		}
+		if let Some(ref router) = merged {
+			crate::routers::client_router::register_client_reverser(router.to_reverser());
+		}
+		merged
+	}
+}
+
+#[cfg(all(
+	target_family = "wasm",
+	target_os = "unknown",
+	feature = "client-router"
+))]
+pub use client_registration::{
+	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
+};

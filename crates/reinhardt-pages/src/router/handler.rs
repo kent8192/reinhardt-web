@@ -4,6 +4,8 @@
 //! for different handler signatures, enabling type-safe path parameter
 //! extraction in route definitions.
 
+#![allow(deprecated)] // (Refs #4234) Internal references to deprecated routing types are intentional during the deprecation cycle.
+
 use super::core::RouterError;
 use super::params::{FromPath, ParamContext, PathParams};
 use crate::component::Page;

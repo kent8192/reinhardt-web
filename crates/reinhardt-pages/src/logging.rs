@@ -41,7 +41,7 @@
 /// debug_log!("Debug value: {:?}", value);
 /// ```
 #[macro_export]
-#[cfg(all(debug_assertions, feature = "debug-hooks", target_arch = "wasm32"))]
+#[cfg(all(debug_assertions, feature = "debug-hooks", wasm))]
 macro_rules! debug_log {
 	($($arg:tt)*) => {{
 		web_sys::console::debug_1(&format!($($arg)*).into());
@@ -50,7 +50,7 @@ macro_rules! debug_log {
 
 /// Logs a debug message (requires `debug-hooks` feature + `debug_assertions`)
 #[macro_export]
-#[cfg(all(debug_assertions, feature = "debug-hooks", not(target_arch = "wasm32")))]
+#[cfg(all(debug_assertions, feature = "debug-hooks", native))]
 macro_rules! debug_log {
 	($($arg:tt)*) => {{
 		eprintln!("[DEBUG] {}", format!($($arg)*));
@@ -75,11 +75,11 @@ macro_rules! debug_log {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// info_log!("Form submitted successfully");
 /// ```
 #[macro_export]
-#[cfg(all(debug_assertions, target_arch = "wasm32"))]
+#[cfg(all(debug_assertions, wasm))]
 macro_rules! info_log {
 	($($arg:tt)*) => {{
 		web_sys::console::info_1(&format!($($arg)*).into());
@@ -88,7 +88,7 @@ macro_rules! info_log {
 
 /// Logs an info message (requires `debug_assertions`)
 #[macro_export]
-#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+#[cfg(all(debug_assertions, native))]
 macro_rules! info_log {
 	($($arg:tt)*) => {{
 		eprintln!("[INFO] {}", format!($($arg)*));
@@ -113,11 +113,11 @@ macro_rules! info_log {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// warn_log!("Performance warning: slow render");
 /// ```
 #[macro_export]
-#[cfg(all(debug_assertions, target_arch = "wasm32"))]
+#[cfg(all(debug_assertions, wasm))]
 macro_rules! warn_log {
 	($($arg:tt)*) => {{
 		web_sys::console::warn_1(&format!($($arg)*).into());
@@ -126,7 +126,7 @@ macro_rules! warn_log {
 
 /// Logs a warning message (requires `debug_assertions`)
 #[macro_export]
-#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+#[cfg(all(debug_assertions, native))]
 macro_rules! warn_log {
 	($($arg:tt)*) => {{
 		eprintln!("[WARN] {}", format!($($arg)*));
@@ -155,7 +155,7 @@ macro_rules! warn_log {
 /// error_log!("Submit failed: {:?}", error);
 /// ```
 #[macro_export]
-#[cfg(all(debug_assertions, target_arch = "wasm32"))]
+#[cfg(all(debug_assertions, wasm))]
 macro_rules! error_log {
 	($($arg:tt)*) => {{
 		web_sys::console::error_1(&format!($($arg)*).into());
@@ -164,7 +164,7 @@ macro_rules! error_log {
 
 /// Logs an error message (requires `debug_assertions`)
 #[macro_export]
-#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+#[cfg(all(debug_assertions, native))]
 macro_rules! error_log {
 	($($arg:tt)*) => {{
 		eprintln!("[ERROR] {}", format!($($arg)*));
@@ -178,10 +178,86 @@ macro_rules! error_log {
 	($($arg:tt)*) => {{}};
 }
 
+/// Diagnostic trace for the SPA navigation pipeline.
+///
+/// Emits a single `console.debug` line in WASM dev builds; no-op
+/// everywhere else (including native and release WASM). Used to
+/// reproduce and classify the SPA navigation regression class
+/// (#4075 / #4088 / #4122 / #4203) by reading the browser DevTools
+/// console without rebuilding for a tracing subscriber.
+///
+/// Always emit a `site=...` field first so log filters can group by
+/// trace point (`store_router`, `register_render_listener`,
+/// `link_interceptor`, `navigate`, `notify_observers`, `popstate`).
+#[macro_export]
+#[cfg(all(debug_assertions, wasm))]
+macro_rules! nav_diag {
+	($($arg:tt)*) => {{
+		::web_sys::console::debug_1(
+			&format!("reinhardt-pages/nav-diag {}", format_args!($($arg)*)).into(),
+		);
+	}};
+}
+
+/// No-op `nav_diag` outside WASM dev builds.
+#[macro_export]
+#[cfg(not(all(debug_assertions, wasm)))]
+macro_rules! nav_diag {
+	($($arg:tt)*) => {{}};
+}
+
+/// Opt-in DOM-based navigation diagnostic. Writes the given site name to
+/// `document.body.dataset.reinhardtNavSite` so external observers (Playwright
+/// `getAttribute('data-reinhardt-nav-site')`, plain DOM inspection) can see
+/// which SPA navigation code path executed without depending on `console.debug`
+/// capture, the wasm-bindgen import-shim, or the cargo profile's
+/// `debug_assertions` setting.
+///
+/// Last-write-wins: each call overwrites the attribute. After a single SPA
+/// click the attribute holds the *last* site name in the call chain (typically
+/// `notify_observers`). To prove that an earlier site (e.g. `link_interceptor`)
+/// ran, snapshot the attribute synchronously from a Playwright hook between
+/// expected sites, or look for the *transition* `link_interceptor` →
+/// `navigate` → `notify_observers` over multiple synchronous reads.
+///
+/// Activated by:
+///
+/// ```text
+/// reinhardt = { features = [..., "client-router", "pages-nav-diag-dom"] }
+/// ```
+///
+/// Off by default — production builds incur zero overhead. Designed as a
+/// temporary debugging aid for the SPA navigation regression class
+/// (#4075 / #4088 / #4122 / #4203 / #4213 / #4217 / #4221) when the existing
+/// `nav_diag!` console traces are obscured by JS-side console capture
+/// quirks.
+#[macro_export]
+#[cfg(all(feature = "nav-diag-dom", wasm))]
+macro_rules! nav_diag_dom {
+	($site:expr) => {{
+		if let Some(window) = ::web_sys::window() {
+			if let Some(document) = window.document() {
+				if let Some(body) = document.body() {
+					let _ = body.set_attribute("data-reinhardt-nav-site", $site);
+				}
+			}
+		}
+	}};
+}
+
+/// No-op `nav_diag_dom` when the `nav-diag-dom` feature is disabled or on
+/// non-WASM targets.
+#[macro_export]
+#[cfg(not(all(feature = "nav-diag-dom", wasm)))]
+macro_rules! nav_diag_dom {
+	($site:expr) => {{}};
+}
+
 #[cfg(test)]
 mod tests {
 	// Import macros from crate root
-	use crate::{debug_log, error_log, info_log, warn_log};
+	#[allow(unused_imports)]
+	use crate::{debug_log, error_log, info_log, nav_diag, warn_log};
 
 	#[test]
 	fn test_logging_macros_compile() {
@@ -190,6 +266,7 @@ mod tests {
 		info_log!("Info message: {}", "test");
 		warn_log!("Warning message: {:?}", vec![1, 2, 3]);
 		error_log!("Error message: {}", "error");
+		nav_diag!("site=test_compile router_id={} flag={}", 42_usize, true);
 	}
 
 	#[test]
@@ -199,5 +276,6 @@ mod tests {
 		info_log!("Simple info");
 		warn_log!("Simple warning");
 		error_log!("Simple error");
+		nav_diag!("site=test_no_args");
 	}
 }

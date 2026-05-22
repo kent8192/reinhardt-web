@@ -1,0 +1,102 @@
+name: WASM Check (Standalone)
+
+# Re-exposes wasm-check.yml on push to main so the WASM regression suite runs
+# after a PR merges. ci.yml already invokes wasm-check.yml on pull_request, so
+# this wrapper is push-to-main only to avoid duplicate runs (Fixes #4093).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wasm-check-standalone-${{ github.ref }}
+  # Use false to prevent the long-running wasm-test (~10 min headless Chrome)
+  # from being cancelled by a follow-up push. With false, a new run queues
+  # behind the current one, ensuring at least one run always completes per
+  # main-branch state. Matches semver-check-standalone.yml /
+  # examples-test-standalone.yml.
+  cancel-in-progress: false
+
+jobs:
+  # Seed the shared rust-cache for wasm-feature-check so downstream consumers
+  # restore from a populated cache. Runs ONE wasm32 cargo check per arch
+  # against the largest representative feature preset; downstream matrix
+  # entries reuse the resulting registry/build/dep artifacts (CARGO_INCREMENTAL=0
+  # disables incremental compilation, so this is non-incremental dependency
+  # caching only).
+  #
+  # Seeds BOTH amd64 (ubuntu-latest) AND arm64 (self-hosted) because
+  # wasm-feature-check runs on every PR and consumers span both architectures:
+  #   - regular PRs / standalone wasm-check inline:    ubuntu-latest (amd64)
+  #   - release-plz PRs / owner checkbox-opted PRs:    arm64 self-hosted
+  # Swatinem/rust-cache@v2 auto-keys by runner OS+arch, so the single
+  # shared-key "wasm-feature-check" produces two independent cache entries
+  # (linux-x64 and linux-arm64); each consumer restores the matching one
+  # without any change required on the consumer side. (Fixes #4207)
+  cache-seed:
+    name: Cache Seed (wasm-feature-check, ${{ matrix.arch.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - name: amd64
+            labels: '"ubuntu-latest"'
+          - name: arm64
+            labels: '["self-hosted","linux","arm64","reinhardt-ci"]'
+    runs-on: ${{ fromJSON(matrix.arch.labels) }}
+    timeout-minutes: 360
+    env:
+      CARGO_TARGET_DIR: /tmp/cargo_target
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        if: ${{ matrix.arch.name == 'amd64' }}
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          cache: 'false'
+
+      - name: Cache Rust dependencies (shared)
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "wasm-feature-check"
+          cache-targets: "false"
+          cache-directories: /tmp/cargo_target
+          cache-on-failure: "true"
+
+      - name: Install wasm32-unknown-unknown target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Seed cache with wasm-app feature set
+        run: |
+          cargo check \
+            --target wasm32-unknown-unknown \
+            -p reinhardt-web \
+            --no-default-features \
+            --features pages,client-router,pages-web-sys-full,di \
+            --quiet
+
+  wasm-check:
+    name: WASM Check
+    needs: [cache-seed]
+    uses: ./.github/workflows/wasm-check.yml
+    with:
+      runner: '"ubuntu-latest"'
+      cargo-build-jobs: '1'

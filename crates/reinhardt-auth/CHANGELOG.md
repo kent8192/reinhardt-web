@@ -7,228 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.8...reinhardt-auth@v0.1.0-rc.9) - 2026-03-15
-
-### Documentation
-
-- *(auth)* fix private intra-doc link in get_user_info
-
-### Fixed
-
-- *(auth)* harden session cookie, token comparison, and permission checks
-
-### Performance
-
-- *(auth)* use SHA-256 digest index for O(1) token lookup
-
-### Security
-
-- *(auth)* enforce HTTPS for OAuth2/OIDC endpoint URLs
-- *(auth)* sanitize URL error messages and improve loopback detection
-
-### Styling
-
-- fix formatting in url_validation.rs
-
-### Testing
-
-- *(auth)* add tests for permission and composite auth error handling
-
-## [0.1.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.6...reinhardt-auth@v0.1.0-rc.7) - 2026-03-11
-
-### Fixed
-
-- *(auth)* add missing #[rstest] annotations to 57 existing tests
-
-### Styling
-
-- apply format fixes
-
-### Testing
-
-- *(auth)* add CacheSessionBackend direct CRUD tests
-- *(auth)* add JwtSessionBackend extended edge case tests
-- *(auth)* add LoginHandler/LogoutHandler edge case tests
-- *(auth)* add SocialAccountStorage extended coverage
-- *(auth)* add UserMapper extended coverage
-- *(auth)* add session replication gap tests
-- *(auth)* add session migration functional tests
-- *(auth)* add tenant isolation gap tests
-- *(auth)* add session rotation gap tests
-- *(auth)* add session cleanup functional tests
-- *(auth)* add permissions edge case tests (object, IP, time-based)
-- *(auth)* add serialization empty data roundtrip tests
-- *(auth)* add repository trait unit tests
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.4...reinhardt-auth@v0.1.0-rc.5) - 2026-03-07
-
-### Fixed
-
-- *(auth)* remove invalid sync poison recovery test for tokio RwLock
-- *(auth)* remove async poison recovery test for tokio RwLock
-- *(auth)* move HMAC validation to config init and improve test coverage
-- remove develop/0.2.0 content accidentally merged via PR [[#1918](https://github.com/kent8192/reinhardt-web/issues/1918)](https://github.com/kent8192/reinhardt-web/issues/1918)
-
-### Styling
-
-- *(auth)* fix trailing newline in token_storage tests
-
-## [0.1.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.3...reinhardt-auth@v0.1.0-rc.4) - 2026-03-05
-
-### Fixed
-
-- forward redis-backend and middleware features to sub-crates
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.1...reinhardt-auth@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(auth)* validate client_id matches authorization code in OAuth2 exchange
-- *(meta)* fix workspace inheritance and authors metadata
-- *(test)* update rand 0.9 API usage in auth integration tests
-
-### Other
-
-- resolve conflict with main (criterion version)
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.15...reinhardt-auth@v0.1.0-rc.1) - 2026-02-24
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-db
-
-## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.14...reinhardt-auth@v0.1.0-alpha.15) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.13...reinhardt-auth@v0.1.0-alpha.14) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-query, reinhardt-apps, reinhardt-db, reinhardt-db
-
-## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.12...reinhardt-auth@v0.1.0-alpha.13) - 2026-02-21
-
-### Fixed
-
-- use logging framework instead of eprintln in authentication
-- replace std Mutex with tokio Mutex to prevent async deadlocks
-- replace unwrap with safe error handling in JWT claim extraction
-- add authentication and authorization enforcement to all endpoints
-- add path traversal prevention with input validation
-
-### Security
-
-- use server secret as HMAC key material in session auth hash
-- harden XSS, CSRF, auth, and proxy trust
-- fix TOTP algorithm, proxy trust, and session cookies
-- implement constant-time comparison and argon2 password hashing
-
-### Styling
-
-- apply rustfmt to pre-existing unformatted files
-- apply formatting to files introduced by merge from main
-- apply rustfmt formatting to workspace files
-
-### Documentation
-
-- add security note on client-side auth state limitations
-
-### Maintenance
-
-- add SAFETY comment to unsafe block in hasher_boundary_value
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.11...reinhardt-auth@v0.1.0-alpha.12) - 2026-02-16
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-db
-
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.10...reinhardt-auth@v0.1.0-alpha.11) - 2026-02-15
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-query, reinhardt-apps, reinhardt-db, reinhardt-db
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.8...reinhardt-auth@v0.1.0-alpha.9) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-query, reinhardt-apps, reinhardt-db, reinhardt-db
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.7...reinhardt-auth@v0.1.0-alpha.8) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-query, reinhardt-apps, reinhardt-db, reinhardt-db
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.5...reinhardt-auth@v0.1.0-alpha.6) - 2026-02-12
-
-### Changed
-
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.4...reinhardt-auth@v0.1.0-alpha.5) - 2026-02-10
-
-### Fixed
-
-- *(auth)* remove unused reinhardt-test dev-dependency
-- *(release)* revert unpublished crate versions to pre-release state
-
-### Reverted
-
-- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.3...reinhardt-auth@v0.1.0-alpha.4) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-apps, reinhardt-db, reinhardt-db
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.2...reinhardt-auth@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-utils, reinhardt-di, reinhardt-apps, reinhardt-db, reinhardt-db
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.1...reinhardt-auth@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- *(package)* replace version.workspace with explicit versions
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.30...reinhardt-auth@v0.1.0) - 2026-05-22
+
+Initial stable release of `reinhardt-auth` as part of the
+reinhardt-web 0.1.0 release. This crate ships the
+authentication / authorization surface — JWT, cookie sessions,
+OAuth2 / OIDC, pluggable user managers, and Django-style
+permission guards — that powers both `reinhardt-admin` and
+end-user apps.
+
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **JWT, sessions, and storage backends** — `JwtSessionBackend`
+  with a `JwtError` enum that rejects expired tokens by default,
+  cookie session backend with HMAC signed via the server secret,
+  `CacheSessionBackend`, a database token storage with an O(1)
+  SHA-256 digest index, and pluggable session storage
+  (file / cookie / `redis-sessions`).
+- **OAuth2 and OIDC** — `GenericOidcProvider` for arbitrary OIDC
+  IdPs (in addition to GitHub / Google / etc.), HTTPS enforced
+  on every OAuth2 / OIDC endpoint URL, `client_id` validated
+  against the authorization code on exchange, and a GitHub
+  `/user` transform that normalises responses into
+  `StandardClaims`.
+- **User and superuser management** — `AuthIdentity` trait
+  (replaces the deprecated `User` trait), `Group` and
+  `AuthPermission` ORM models, `GroupManager` integrated with
+  `PermissionsMixin`, `SuperuserInit` trait + `SuperuserCreator`
+  registry with `inventory` auto-registration for
+  `#[user(full = true)]` + `#[model]` types.
+- **Extractors and DI** — `AuthInfo` lightweight extractor,
+  `AuthUser<U>` tuple-struct extractor, `CurrentUser` DI binding,
+  and a `validate_auth_extractors` startup validation pass that
+  fails closed when a route declares `AuthUser<U>` without a
+  matching DI binding.
+- **Permission guards** — `Guard<P>` runtime type with `Public`,
+  `All`, `Any`, `Not` combinators, plus a `guard!()` proc macro
+  whose winnow-based parser compiles permission expressions at
+  attribute-expansion time.
+- **Hardened defaults** — argon2 password hashing, constant-time
+  comparison everywhere a token meets a secret, session
+  rotation on login to defeat session fixation, and TOTP
+  algorithm / proxy trust hardening for SSO flows.
+
+### Notable Breaking Changes
+
+- **OAuth2 `exchange_code` redirect URI** ([#3609](https://github.com/kent8192/reinhardt-web/discussions/3609)) — `exchange_code()` now requires the callback URL as its fourth argument, so the IdP-side `redirect_uri` is verified server-side.
+- **`User` trait deprecated** in favour of `AuthIdentity`; `DefaultUser` carries the same deprecation. Update extractors and ORM bindings to the new trait.
+- **JWT default rejects expired tokens** — the `JwtError` enum surfaces `Expired` distinctly from `Invalid`; callers that previously swallowed expiry must update their error matching.
+- **`#[user(...)]` macro contract change** — the macro now emits a `BaseUserManager` impl and requires an explicit `LABEL` on the `AppLabel` implementor; fixtures and integration tests that need to supply their own manager must opt out via the macro attribute.
+- **`Mutex` migration** — internal `std::Mutex` replaced with `tokio::Mutex` to prevent async deadlocks; downstream code that held the lock across an `.await` should re-verify boundaries.
+
+### Migration Notes
+
+- Pass the `redirect_uri` as the fourth argument to every
+  `OAuth2Provider::exchange_code` call (covered in
+  [#3609](https://github.com/kent8192/reinhardt-web/discussions/3609)).
+- Migrate `#[user]`-annotated types to declare an explicit
+  `LABEL` constant on their `AppLabel` impl; integration test
+  fixtures that previously relied on a manual manager should
+  opt out of the auto-emitted `BaseUserManager` impl.
+- Replace `Injected<T>` / `OptionalInjected<T>` in auth wiring
+  with `Depends<T>` / `Option<Depends<T>>` per [#3631](https://github.com/kent8192/reinhardt-web/discussions/3631).
+- For the workspace-wide migration narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).

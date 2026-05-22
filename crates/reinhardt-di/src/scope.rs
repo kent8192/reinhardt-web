@@ -210,6 +210,18 @@ impl SingletonScope {
 		let type_id = TypeId::of::<T>();
 		cache.insert(type_id, value);
 	}
+
+	/// Inserts a pre-erased `Arc<dyn Any + Send + Sync>` keyed by an explicit
+	/// `TypeId`.
+	///
+	/// This is the type-erased counterpart of [`set_arc`](Self::set_arc) and
+	/// is intended for callers (such as the `Middleware::di_registrations`
+	/// bridge in `reinhardt-urls`) that have already type-erased the value to
+	/// avoid a circular crate dependency on `reinhardt-di`.
+	pub fn set_arc_any(&self, type_id: TypeId, value: Arc<dyn Any + Send + Sync>) {
+		let mut cache = self.cache.write().unwrap_or_else(PoisonError::into_inner);
+		cache.insert(type_id, value);
+	}
 }
 
 impl Default for SingletonScope {

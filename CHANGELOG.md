@@ -7,727 +7,310 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.10...reinhardt-web@v0.1.0-rc.11) - 2026-03-16
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.30...reinhardt-web@v0.1.0) - 2026-05-22
 
-### Fixed
+First stable release of `reinhardt-web`, after 19 alpha and 30 rc
+prereleases dating back to 2026-01-23. The entry below is a curated
+feature-level summary; per-prerelease commit history is available in
+the [Release-category Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-- *(examples)* add missing feature flags for examples CI
-- *(examples)* add missing feature flags for github-issues and rest-api examples
+### Highlights
 
-### Other
+- **Type-safe, convention-driven framework**: reinhardt-web brings
+  Django-like ergonomics to Rust with fully typed URL routing,
+  dependency injection, and form validation that fail at compile time,
+  not runtime.
+- **Full-stack WASM SPA support**: build reactive client UIs with
+  Server Functions that auto-serialize across the network boundary,
+  complete with CSRF protection and pluggable JWT / session
+  authentication.
+- **Pragmatic admin interface**: the built-in admin panel supports
+  role-based permissions, type-safe query filters, and integrated ORM
+  operations without separate admin declarations — just `#[model]` and
+  opt in.
+- **Async-first, runtime-agnostic**: every public API is async by
+  default and integrates cleanly with Tokio, with TestContainers-backed
+  integration tests for PostgreSQL, MySQL, SQLite, and CockroachDB.
 
-- resolve conflict with main for examples-database-integration
+### Breaking Changes
 
-## [0.1.0-rc.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.9...reinhardt-web@v0.1.0-rc.10) - 2026-03-15
+The list below names every breaking change introduced across the
+alpha / rc lifecycle. Each entry links to its announcement in the
+[Breaking Changes Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/breaking-changes);
+follow the **Migration Guide** below for the most disruptive moves.
 
-### Changed
+- **Dependency injection unifies on `Depends<T>`** ([#3628](https://github.com/kent8192/reinhardt-web/discussions/3628)) — `#[inject]` no longer accepts `Arc<T>` directly; use `Depends<T>` so the framework can cache resolution, detect cycles, and surface DI metadata.
+- **`Injected<T>` deprecated** ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631)) — replaced by `Depends<T>`; the auto-`Clone` bound is removed.
+- **`#[url_patterns]` becomes typed** ([#3770](https://github.com/kent8192/reinhardt-web/discussions/3770)) — accepts `InstalledApp::*` identifiers with `mode = server|client|unified`; pattern functions are renamed accordingly.
+- **`#[viewset]` macro and route mounting** ([#4476](https://github.com/kent8192/reinhardt-web/discussions/4476)) — per-app `server_fn` and client UI now live under `apps/<app>/`; `commands/templates/...` no longer carries handler code.
+- **URL resolver directory layout** ([#3918](https://github.com/kent8192/reinhardt-web/discussions/3918)) — `ws_urls.rs` and friends move under `src/apps/<app>/urls/`.
+- **`AdminUser` trait signature** ([#3615](https://github.com/kent8192/reinhardt-web/discussions/3615)) — `ModelAdmin` permission methods accept `&dyn AdminUser` instead of `&(dyn Any + Send + Sync)`.
+- **`admin_routes_with_di()`** ([#3626](https://github.com/kent8192/reinhardt-web/discussions/3626)) — the new entry point applies middleware-contributed DI registrations; legacy `admin_routes()` is removed.
+- **`AdminRoute` is `#[non_exhaustive]`** — match arms must include a default fallback; the `Login` variant moved position.
+- **OAuth2 `exchange_code` redirect URI** ([#3609](https://github.com/kent8192/reinhardt-web/discussions/3609)) — fourth argument is the callback URL.
+- **Typed TOML interpolation** ([#4241](https://github.com/kent8192/reinhardt-web/discussions/4241), [#4229](https://github.com/kent8192/reinhardt-web/discussions/4229)) — `${VAR}` placeholders in TOML coerce to the destination type; opt out with `SettingsBuilder::with_typed_coercion(false)`.
+- **`ProjectSettings` replaces `env::var`** in commands/db ([#4295](https://github.com/kent8192/reinhardt-web/discussions/4295)) and `VersioningSettings` in rest ([#4294](https://github.com/kent8192/reinhardt-web/discussions/4294)).
+- **`ClientLauncher::on_navigate`** ([#4117](https://github.com/kent8192/reinhardt-web/discussions/4117)) — SPA navigation routes through `Router::on_navigate` instead of relaunching the client per navigation.
+- **`client_router::history` dedup** ([#4219](https://github.com/kent8192/reinhardt-web/discussions/4219)) — the duplicate `history` module under `client_router` is removed; consume `pages::router::history` instead.
+- **`#[routes]` is async-capable** — route handler signatures may be `async fn`; sync handler ABIs remain supported but no longer represent the canonical shape.
+- **`define_views!` → `flatten_imports!`** ([#3783](https://github.com/kent8192/reinhardt-web/discussions/3783)) — multi-file view modules use the renamed declarative macro; `#[export_endpoints]` is removed.
+- **`JsonFileSource` / `auto_source` deprecated** ([#4120](https://github.com/kent8192/reinhardt-web/discussions/4120)) — prefer `TomlFileSource` (default interpolation enabled).
+- **`#[user(...)]` requires explicit `LABEL`** on `AppLabel` implementors, and emits a `BaseUserManager` impl in 0.1.0.
+- **`unique_together` propagates into `ModelMetadata`** ([#4027](https://github.com/kent8192/reinhardt-web/discussions/4027)) — autodetector consumes it; existing migrations regenerate.
+- **Admin form widget HTML elements** ([#3771](https://github.com/kent8192/reinhardt-web/discussions/3771)) — `TextArea`, `Select`, and `MultiSelect` render as their semantic HTML elements rather than `<input>`.
+- **`manouche` IR / IRVisitor removed** ([#3900](https://github.com/kent8192/reinhardt-web/discussions/3900)) — internal codegen path no longer exposes the IR layer.
+- **`examples-rest` layout** ([#4476](https://github.com/kent8192/reinhardt-web/discussions/4476)) — `standalone` flag and `USE_VIEWSET` toggle dropped; `urls/` restructured for `ResolvedUrls`; Bruno collection split per ViewSet.
+- **`infra/repository` reviewer lookup** ([#4152](https://github.com/kent8192/reinhardt-web/discussions/4152)) — Terraform module replaces the `data "github_user"` lookup with a numeric user-ID variable.
 
-- *(examples)* use reinhardt re-exports for serde and async_trait
+### Migration Guide
 
-### Documentation
+The 0.1.0 stable release consolidates 19 alpha and 30 rc prereleases.
+Notable breaking changes since 0.1.0-rc.1 are summarized below; the
+complete list is in the **Breaking Changes** section above.
 
-- *(readme)* update version references to 0.1.0-rc.9
-- *(examples)* update version references in CLAUDE.md to 0.1.0-rc.9
-- *(website)* update reinhardt_version to 0.1.0-rc.9
-- *(readme)* fix dispatch crate label and add missing components
-- *(examples)* add new module re-exports to available re-exports
-- update version references in crate READMEs to 0.1.0-rc.9
-- *(instructions)* update outdated version references to 0.1.0-rc.9
+- **Typed URL routing** ([#3770](https://github.com/kent8192/reinhardt-web/discussions/3770)):
+  replace string-based `#[url_patterns]` with
+  `#[url_patterns(InstalledApp::app_name, mode = server|client|unified)]`
+  and rename functions to `server_url_patterns()` /
+  `client_url_patterns()` / `unified_url_patterns()`.
+- **Dependency injection unification**
+  ([#3628](https://github.com/kent8192/reinhardt-web/discussions/3628)):
+  replace `#[inject] Arc<T>` with `#[inject] Depends<T>` across every
+  injection site. `Depends<T>` adds caching, circular-dependency
+  detection, and metadata that bare `Arc<T>` lacked.
+- **Deprecate `Injected<T>`**
+  ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631)):
+  migrate `Injected<T>` and `OptionalInjected<T>` to `Depends<T>` and
+  `Option<Depends<T>>`. Add an explicit `#[derive(Clone)]` if your type
+  was relying on the previous auto-Clone behaviour.
+- **`AdminUser` trait signature**
+  ([#3615](https://github.com/kent8192/reinhardt-web/discussions/3615)):
+  update `ModelAdmin` permission methods to accept `&dyn AdminUser`
+  instead of `&(dyn std::any::Any + Send + Sync)`.
+- **OAuth2 `exchange_code` redirect URI**
+  ([#3609](https://github.com/kent8192/reinhardt-web/discussions/3609)):
+  `exchange_code()` now requires a `redirect_uri` parameter; pass the
+  callback URL as the fourth argument.
+- **Typed TOML interpolation**
+  ([#4241](https://github.com/kent8192/reinhardt-web/discussions/4241)):
+  environment-variable interpolation in TOML (e.g.,
+  `${REINHARDT_DB_PORT}`) now coerces to the target type. Opt out with
+  `SettingsBuilder::with_typed_coercion(false)`.
+- **URL resolver restructuring**
+  ([#3918](https://github.com/kent8192/reinhardt-web/discussions/3918)):
+  move `src/apps/<app>/ws_urls.rs` to `src/apps/<app>/urls/ws_urls.rs`
+  and declare it in the `urls` submodule.
+- **`define_views!` replaces `#[export_endpoints]`**
+  ([#3768](https://github.com/kent8192/reinhardt-web/discussions/3768)):
+  use the `define_views!` declarative macro for multi-file view
+  modules — the attribute form was removed for stable-Rust
+  compatibility (later renamed to `flatten_imports!`).
+- **Apps relocate per-app handlers**
+  ([#4476](https://github.com/kent8192/reinhardt-web/discussions/4476)):
+  per-app `server_fn` and client UI moved from `commands/templates/...`
+  into `apps/<app>/`. Update existing apps by relocating the matching
+  source files; `reinhardt new` already emits the new layout.
+- **`ClientLauncher::on_navigate`**
+  ([#4117](https://github.com/kent8192/reinhardt-web/discussions/4117)):
+  client SPA navigation now hooks through `Router::on_navigate` rather
+  than launching a fresh router per navigation; remove any manual
+  `ClientLauncher::launch` wiring tied to the old model.
+- **`admin_routes_with_di()`**
+  ([#3626](https://github.com/kent8192/reinhardt-web/discussions/3626)):
+  use `admin_routes_with_di()` instead of the deprecated
+  `admin_routes()` so middleware-contributed DI registrations are
+  applied.
 
-### Fixed
-
-- *(commands)* propagate openapi-router feature to reinhardt-commands
-- *(commands)* gate docs banner on openapi-router feature
-
-### Maintenance
-
-- *(examples)* update workspace dependency to 0.1.0-rc.9
-
-### Styling
-
-- *(examples)* apply import order formatting for rc.9 compatibility
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.8...reinhardt-web@v0.1.0-rc.9) - 2026-03-15
-
-### Added
-
-- *(infra)* add repository Terraform module for GitHub settings
-- *(ci)* add infrastructure label and labeler mapping
-- *(ci)* guard terraform-plan against fork PRs and add repository module
-- *(ci)* add tfprovidercheck provider allowlist
-- *(ci)* add semgrep terraform security rules
-- *(ci)* add terraform-validate-fork workflow (Stage 1)
-- *(ci)* add terraform-plan-privileged workflow (Stage 2)
-- *(ci)* add terraform-apply workflow for post-merge automation
-- expose reinhardt-query as reinhardt::query via database feature
-- expose graphql, i18n, mail modules from reinhardt-web facade
-- add grpc, dispatch, deeplink module re-exports with feature flags
-
-### Changed
-
-- *(ci)* migrate housekeeping runner to cancel-runner
-
-### Documentation
-
-- *(readme)* fix outdated versions and incorrect install command
-- *(readme)* restructure sections for better first impression
-- *(readme)* improve copywriting for broader audience appeal
-- *(readme)* improve quick navigation and table readability
-- *(auth)* fix private intra-doc link in get_user_info
-
-### Fixed
-
-- *(throttling)* use per-key state in leaky bucket throttle
-- *(throttling)* use lazy initialization for per-key bucket state
-- *(throttling)* prevent capacity overflow and add per-key isolation tests
-- *(ci)* correct workflow configuration issues
-- *(ci)* revert create-github-app-token to v2
-- *(ci)* change auto-label-pr to pull_request_target for fork PR support
-- *(ci)* address review findings in terraform security workflows
-- *(ci)* add missing TF_VAR mappings for terraform plan workflows
-- *(ci)* use secrets instead of vars for TF_GITHUB_OWNER and TF_GITHUB_REPOSITORY
-- *(infra)* install aws cli in housekeeping runner userdata
-- *(infra)* remove user_data from ignore_changes in housekeeping runner
-- *(infra)* enable unattended-upgrades on housekeeping runner
-- *(infra)* upgrade housekeeping runner from t4g.nano to t4g.micro
-- *(ci)* add missing organizations_account_email to terraform plan workflows
-- *(ci)* download lambda zip files before terraform plan
-- *(ci)* download lambda zip files before terraform apply plan step
-- *(ci)* downgrade upload-artifact from v7 to v4 in mutation-test workflow
-
-### Maintenance
-
-- *(ci)* exclude test code from CodeQL analysis
-- add infra ownership to CODEOWNERS
-- add docs/superpowers to .gitignore
-
-### Other
-
-- resolve conflicts with main in README.md
-- resolve conflicts with main branch
-- incorporate CI fix from fix/housekeeping-runner-instance-type
-
-## [0.1.0-rc.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.7...reinhardt-web@v0.1.0-rc.8) - 2026-03-12
-
-### Fixed
-
-- *(ci)* prevent guard workflow cancellations from non-migration label events
-- collapse nested if statements in start_commands to fix clippy lint
-- *(commands)* update startapp test assertions for Rust 2024 module paths
-
-### Maintenance
-
-- update serena project.yml with new config options
-
-## [0.1.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.6...reinhardt-web@v0.1.0-rc.7) - 2026-03-11
-
-### Documentation
-
-- *(website)* update basis tutorial models to match examples
-- *(website)* update basis tutorial server functions and components
-- *(website)* update basis tutorial forms, testing, and static files
-- *(website)* update rest tutorials to match examples
-
-### Fixed
-
-- *(urls)* suppress dead_code warning for WASM-only `merge` method
-- *(prelude)* add feature gate for `UnifiedRouter` re-export
-- *(ci)* add --no-tests=warn to ui-test nextest run
-- *(ci)* handle nextest exit code 4 in coverage workflows
-- *(ci)* move msrv-test to selectively-skippable in ci-success gate
-
-### Maintenance
-
-- *(nextest)* add --no-tests=warn to prevent empty partition failures
-
-### Styling
-
-- apply format fixes to src/lib.rs
-- *(examples)* format examples-twitter common.rs
-- *(examples)* format examples-twitter relationship components
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.4...reinhardt-web@v0.1.0-rc.5) - 2026-03-07
+For the complete per-PR change list, see the
+[Release-category Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
 ### Added
 
-- *(examples)* introduce Injected<T> usage in di-showcase
+#### ORM & Database
 
-### Documentation
+- `#[model]` derives Django-style model traits, including
+  `Model::build()` typestate constructor, `ForeignKey<T>` and
+  `ManyToMany<T>` relations, and `#[field(skip = true)]` for non-DB
+  fields.
+- Multi-backend support: PostgreSQL, MySQL, SQLite, and CockroachDB
+  via TestContainers in tests; per-backend `ALTER COLUMN` dispatch and
+  CockroachDB sentinel-row locks replace generic advisory-lock paths.
+- Schema autodetection covers unique constraints, M2M relations, and
+  qualified `to_model = "app::Model"` references; M2M autodetection
+  keys on `table_name` and snake-cases through-tables consistently.
+- `reinhardt-query`: in-house SQL builder wrapping SeaQuery, used in
+  place of raw SQL across the workspace.
+- Prefetch and `filter_by_target` honour canonical M2M naming rules.
 
-- *(stability)* relax SP-1 API freeze and add SP-6 non-breaking addition review
-- *(claude)* add SP-6 non-breaking addition policy to quick reference
-- *(pr)* add three-dot diff rule for PR verification (RP-5)
-- *(pr)* replace Japanese text with English in RP-5
+#### URL Routing & Apps
 
-### Fixed
+- `#[url_patterns]` macro generates typed `urls::*` helpers per app
+  with compile-time path verification; `#[routes]` consumes them.
+- `#[viewset]` macro for REST-style endpoint groups; named, mount,
+  and unified routing modes.
+- `VersionedRouter` trait and `RouteVersionInfo` value type share a
+  router abstraction between `reinhardt-urls` and `reinhardt-rest`
+  without circular crate dependencies (introduced via
+  `reinhardt-router`).
+- Middleware DI registrations propagate through `with_middleware`,
+  `group()`, and `pending_di` queues so the router rebuilds DI no
+  matter the builder order.
 
-- *(ci)* enforce semver-check during RC phase instead of skipping
-- *(ci)* remove non-existent paths from CODEOWNERS
-- *(macros)* replace skeleton tests with meaningful assertions in pre_validate
-- *(examples)* add force-link for library crate in di-showcase manage.rs
-- *(ci)* prevent UI Tests from running when Phase 1 checks fail
-- *(ci)* add missing validator dependency to reinhardt-test-support
+#### Dependency Injection
 
-### Maintenance
+- `Depends<T>` smart wrapper with caching, cycle detection, and
+  metadata; `#[inject]` parameters express dependencies declaratively.
+- `Middleware::di_registrations` hook + type-erased DI APIs allow
+  middleware to contribute its own dependencies (e.g., `SessionStore`
+  auto-registered by `SessionMiddleware`).
+- `DependencyRegistration` is const-compatible for Rust 2024 edition.
+- Testing helpers: `register_override` with `OverrideGuard`, and the
+  `with_di_overrides!` macro shipped from `reinhardt-testkit-macros`.
 
-- *(labels)* add rc-addition label for SP-6 non-breaking additions
-- *(semver)* update comments to reflect SP-1 relaxation policy
-- *(serena)* clean up project.yml formatting
-- *(template)* add self-hosted runner checkbox to PR template
-- require PR checkbox opt-in for self-hosted runner selection
+#### Pages, WASM, and Server Functions
 
-### Testing
+- `page!` declarative DSL for component bodies (70+ HTML elements
+  validated at compile time) with `if`/`else`, `for`, `watch`, and
+  reactive `Signal<T>` bindings.
+- `head!` macro for SSR head metadata.
+- `form!` macro: typed form fields, widgets, validators (client &
+  server), CSRF protection, two-way Signal binding, computed values,
+  field groups, slots, and dynamic `choices_loader`.
+- `#[server_fn]` macro generates the WASM client stub and the
+  server-side handler; codec selection (`json`, `url`, `msgpack`).
+- `use_router()` hook, `RouterHandle`, `navigate()` free function,
+  and `try_with_spa_router` for graceful SPA fallback.
+- HMR (`reinhardt-pages` feature flag): WebSocket-driven CSS / DOM
+  patching, scheme selected automatically based on
+  `window.location.protocol`.
 
-- *(db)* add field mapping and migrations integration tests
+#### HTTP, REST, and Middleware
 
-## [0.1.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.3...reinhardt-web@v0.1.0-rc.4) - 2026-03-05
+- `reinhardt-http` request / response abstractions; sanitization
+  helpers (`validate_html_attr_name`, `is_safe_url`, anchor-link
+  support, XSS prevention) and resource-limit configuration.
+- `reinhardt-rest`: ViewSets with operation-level OpenAPI attributes,
+  versioning via `VersioningSettings`, OpenAPI macros under
+  `reinhardt-openapi-macros`.
+- `reinhardt-middleware`: session middleware, CORS, gzip, etc.
 
-### Documentation
+#### Authentication & Authorization
 
-- *(website)* update admin customization tutorial to use separate admin struct pattern
+- JWT + session-cookie auth, OAuth2 (`GenericOidcProvider` for
+  arbitrary OIDC IdPs), and pluggable user managers.
+- `SuperuserInit` trait and `SuperuserCreator` registry; auto-register
+  via `inventory` for `#[user(full = true)]` + `#[model]` types.
+- `AuthProtection` enum + `EndpointMetadata` propagate auth
+  requirements; route macros detect auth parameters and produce the
+  metadata automatically.
 
-### Fixed
+#### Admin Interface
 
-- *(core)* add wasm32 platform gate to parallel and jsonschema validator modules
+- `#[model]`-driven admin pages with role-based permissions,
+  type-safe query filters, and form-based CRUD.
+- `reinhardt-admin-cli`: CLI for scaffolding admin pages,
+  `cargo install --path crates/reinhardt-admin-cli` ships with the
+  workspace.
+- `admin_routes_with_di()` entry point + `AdminRoute` (now
+  `#[non_exhaustive]`).
 
-## [0.1.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.2...reinhardt-web@v0.1.0-rc.3) - 2026-03-04
+#### Configuration & Settings
 
-### Fixed
+- `SettingsBuilder` layered configuration with `TomlFileSource`,
+  `EnvFileSource`, and typed interpolation enabled by default.
+- `#[settings(...)]` macro requires explicit `CoreSettings` and emits
+  `HasSettings<F>` impls for composed settings; `#[setting(...)]`
+  attribute drives `field_policies()` generation.
 
-- *(commands)* correct project template compilation errors
-- *(commands)* correct app template compilation errors
+#### Testing
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.1...reinhardt-web@v0.1.0-rc.2) - 2026-03-04
+- `reinhardt-test` fixtures for TestContainers-backed Postgres, MySQL,
+  SQLite, CockroachDB, Redis, and Kafka instances.
+- Module-scoped Kafka fixture with `KafkaConfig.partitions`.
+- `reinhardt-testkit` and `reinhardt-testkit-macros` provide
+  `with_di_overrides!` and `DiOverrideBuilder` for testing-only DI
+  overrides.
 
-### Changed
+#### Other Integrations
 
-- *(ci)* remove redundant flags from cargo check task
+- GraphQL handler via `reinhardt-graphql` (+ macros).
+- gRPC handler via `reinhardt-grpc` (+ macros).
+- WebSocket router via `reinhardt-websockets`.
+- Mail delivery via `reinhardt-mail` (pluggable transports).
+- i18n via `reinhardt-i18n` (fluent-style messages).
+- Throttling via `reinhardt-throttling`.
+- Streaming integration via `reinhardt-streaming` (Kafka).
+- Deep-link helpers via `reinhardt-deeplink`.
+- Keyboard shortcuts via `reinhardt-shortcuts`.
 
-### Documentation
+#### Tooling & Examples
 
-- add agent-detected bug verification policy (SC-2a, IL-3)
-- *(rest)* align REST tutorial docs with actual API
-- *(basis)* align basis tutorial docs with actual API
-- align cookbook and quickstart docs with actual API
-
-### Fixed
-
-- *(ci)* change runner selection to opt-in for self-hosted runners
-- *(ci)* add 5-minute grace period for JIT runner scale-down
-- *(ci)* increase JIT runner minimum running time to 15 minutes
-- *(ci)* use ubuntu user for runner userdata and run_as configuration
-- *(ci)* add Ubuntu userdata template to replace Amazon Linux default
-- *(ci)* remove nounset flag from userdata to fix unbound variable error
-- *(ci)* use correct root device name for Ubuntu AMI (/dev/sda1)
-- *(ci)* install protoc v28 instead of system v3.12 for proto3 optional
-- *(ci)* add unzip to userdata package list for protoc installation
-- *(ci)* use .cargo/config.toml instead of RUSTFLAGS for mold in coverage
-- *(ci)* remove mold linker from coverage jobs to fix profraw generation
-- *(ci)* enable job_retry to prevent ephemeral runner scaling deadlock
-- *(ci)* add missing rust setup and gh cli for self-hosted runners
-- *(middleware)* validate host header against allowed hosts in HTTPS redirect
-- *(middleware)* add missing import in HttpsRedirectMiddleware doc test
-- *(auth)* use deterministic UUID for RemoteUserAuthentication
-- *(urls)* convert path-type parameters to matchit catch-all syntax in RadixTree mode
-- *(test)* update rand 0.9 API usage in csrf integration tests
-- *(ci)* allow publish-check to be skipped on release-plz branches
-- *(ci)* handle cargo metadata failure and jq errors in detect-affected-packages.sh
-- *(ci)* use git log to detect changed files in PR branches that contain main
-- *(ci)* use origin/HEAD_REF instead of HEAD to detect changed files in PRs
-- *(ci)* resolve permanent cache miss in setup-rust action
-- *(ci)* remove shell quoting bug in nextest filter expression passing
-
-### Maintenance
-
-- migrate remaining workflows to support self-hosted runners
-- phase test jobs to prevent spot vCPU quota exhaustion
-- skip CI for out-of-date PR branches
-- add branch status check to test-examples workflow
-- add agent-suspect and stable-migration labels to labels.yml
-- add RC stability timer monitoring workflow
-- *(semver)* auto-detect breaking changes from commit messages
-- increase semver-check timeout from 30 to 45 minutes
-- add Tachyon Inc. copyright notices
-- remove out-of-date branch skip from CI workflows
-- add run-examples output to detect-affected-packages workflow
-- fix BASE_REF fallback in detect-examples step
-- skip examples-test when no examples changes on non-release PRs
-- skip test-examples matrix when no examples changes on non-release PRs
-- switch detect-affected-packages from git log to git diff
-- use GitHub PR Files API to detect changed files in PR context
-- add pull-requests: read permission to CI workflow
-- fail explicitly on gh api errors instead of silently swallowing them
-
-### Other
-
-- resolve fields.rs conflict with main
-
-### Styling
-
-- *(urls)* apply project formatting to pattern module
-
-## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
-
-### Documentation
-
-- add official website link to Quick Navigation
-- update internal documentation links to official website URLs
-- remove repository-hosted documentation migrated to reinhardt-web.dev
-
-### Fixed
-
-- *(website)* set cloudflare pages production branch to main before deploy
-- *(website)* add workflow_dispatch trigger for manual deployment
-- *(website)* add DNS records for custom domain resolution
-- *(infra)* add import blocks for existing Cloudflare resources
-- *(db)* gate sqlite-dependent tests with feature flag
-- *(db)* replace float test values to avoid clippy approx_constant lint
-
-### Testing
-
-- *(db)* add warning log test for .sql file detection
-
-## [0.1.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.17...reinhardt-web@v0.1.0-alpha.18) - 2026-02-24
-
-### Added
-
-- *(website)* add favicon generated from logo
-- *(website)* add WASM frontend and multiplatform cards to Why Reinhardt section
-- *(website)* add 6 additional feature cards to Why Reinhardt section
-- *(website)* expand color palette and add web font variables
-- *(website)* replace Zola inline syntax highlighting with highlight.js
-- *(website)* add sidebar navigation to standalone pages
+- `reinhardt new` scaffold emits the per-app layout matching
+  [#4476](https://github.com/kent8192/reinhardt-web/discussions/4476).
+- `examples-tutorial-basis` (Django-tutorial parity), `examples-rest`
+  (REST-API tutorial with Bruno collections), and additional samples
+  cover the most common entry points.
 
 ### Changed
 
-- *(website)* reorder header nav and implement unified weight-based sidebar
-- *(website)* move onboarding content into quickstart section
-- *(website)* switch docs to weight-based ordering for reference material
+- Cross-cutting refactor of the URL/routing macro internals for a
+  smaller, easier-to-read generated TokenStream.
+- ORM accessors and autodetector consolidate on a single
+  `crate::naming::to_snake_case` source.
+- Setting-related `glob` imports replaced with explicit `pub use`
+  re-exports; explicit `rayon` trait imports.
+- WASM compilation: client URL accessors namespaced per app on
+  `wasm32`, with `#[cfg]` gating in generated tokens to avoid stale
+  symbols.
+- Migrations now dispatch `ALTER COLUMN TYPE` per backend (MySQL
+  `MODIFY`, SQLite recreate, PostgreSQL / CockroachDB direct ALTER).
 
-### Documentation
+### Deprecated
 
-- *(website)* add sidebar_weight to tutorial pages
-- *(website)* add tutorials index page with card-based navigation
-- *(website)* audit and fix errors across docs pages
-
-### Fixed
-
-- *(website)* prevent visited link color from overriding button text
-- correct repository URLs from reinhardt-rs to reinhardt-web
-- *(website)* add security headers, SRI, FOUC prevention, accessibility, and optimize assets
-- *(website)* fix content links, fabricated APIs, and import paths
-- *(ci)* add branch flag and preview cleanup to deploy-website workflow
-- *(website)* replace cargo run commands with cargo make task equivalents
-- *(website)* unify sidebar navigation across quickstart and docs sections
-- *(website)* add package = "reinhardt-web" and update version to 0.1.0-alpha.18 in all examples
-- *(website)* correct docs.rs links to reinhardt-web crate
-- *(website)* update getting-started examples to use decorator and viewset patterns
-- *(website)* correct API patterns in serialization and rest quickstart tutorials
-- *(website)* restructure viewsets tutorial to use urls.rs pattern
-- *(website)* simplify server_fn definitions and use server_fn pattern in form macros
-- *(website)* add deepwiki reference to site configuration
-- *(website)* center standalone pages like changelog and security
-- *(website)* adjust logo size and spacing in navbar and hero section
-- *(website)* replace fn main() patterns with cargo make runserver convention across docs
-- *(website)* use root-relative paths instead of absolute permalinks in sidebar links
-
-### Maintenance
-
-- *(website)* update license references from MIT/Apache-2.0 to BSD-3-Clause
-- *(website)* add Cloudflare Pages deployment workflow
-- add terraform patterns to gitignore
-- *(infra)* add terraform configuration for cloudflare pages and github secrets
-- *(infra)* rename terraform template to conventional .example.tfvars format
-
-### Styling
-
-- *(website)* redesign visual components with modern aesthetics
-
-## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.15...reinhardt-web@v0.1.0-alpha.16) - 2026-02-21
+- `Injected<T>` and `OptionalInjected<T>` — use `Depends<T>` /
+  `Option<Depends<T>>` ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631)).
+- `admin_routes()` — use `admin_routes_with_di()` ([#3626](https://github.com/kent8192/reinhardt-web/discussions/3626)).
+- `JsonFileSource`, `auto_source` — use `TomlFileSource` ([#4120](https://github.com/kent8192/reinhardt-web/discussions/4120)).
+- `define_views!` — renamed to `flatten_imports!` ([#3783](https://github.com/kent8192/reinhardt-web/discussions/3783)).
+- `#[export_endpoints]` — removed in favour of `define_views!` /
+  `flatten_imports!` ([#3768](https://github.com/kent8192/reinhardt-web/discussions/3768)).
 
 ### Fixed
 
-- add panic prevention and error handling for admin operations
-
-### Documentation
-
-- remove non-existent feature flags from lib.rs documentation
-
-### Maintenance
-
-- add explanatory comments to undocumented #[allow(...)] attributes
-
-## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.14...reinhardt-web@v0.1.0-alpha.15) - 2026-02-16
-
-### Added
-
-- *(examples)* add settings files for all examples
-- *(examples)* add ci.toml and auto-detect CI environment
-- *(examples)* add docker-compose.yml for PostgreSQL examples
-- *(examples)* add docker-up dependency to runserver for PostgreSQL examples
-
-### Changed
-
-- *(examples)* remove reinhardt-examples references and adopt monorepo-only strategy
-- *(examples)* remove stale staging/production settings templates
-- *(examples)* simplify settings.rs to consistent pattern
-- *(examples)* move docker-compose.yml into each PostgreSQL example
-
-### Documentation
-
-- *(examples)* add quick start instructions to README.md
-
-### Fixed
-
-- *(examples)* update Docker build context and COPY paths for flattened structure
-- *(gitignore)* update stale examples/local path to flattened structure
-- *(ci)* remove stale example package overrides from release-plz.toml
-- *(ci)* remove stale test-common-crates job from test-examples.yml
-- *(examples)* restore required default settings values for Settings deserialization
-
-### Maintenance
-
-- *(examples)* remove stale examples/local settings files
-- *(examples)* remove stale configuration files from old repository
-- *(examples)* remove unused example-common and example-test-macros crates
-- *(examples)* update stale remote-examples-test task in Makefile.toml
-- *(examples)* remove stale help tasks from all example Makefile.toml
-- *(examples)* remove stale availability test referencing deleted example_common crate
-- *(examples)* remove stale settings from example base.toml files
-
-### Other
-
-- Squashed 'examples/' changes from 3a2c7662..77534e4c
-
-### Styling
-
-- format twitter example common component
-
-## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.13...reinhardt-web@v0.1.0-alpha.14) - 2026-02-15
-
-### Fixed
-
-- resolve Test Examples CI failures
-
-### Maintenance
-
-- add setup-protoc step to test-examples workflow
-- remove pull_request trigger from test-examples.yml
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.11...reinhardt-web@v0.1.0-alpha.12) - 2026-02-14
-
-### Maintenance
-
-- add copilot setup steps workflow
-
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.10...reinhardt-web@v0.1.0-alpha.11) - 2026-02-14
-
-### Changed
-
-- *(query)* replace super::super:: with crate:: absolute paths in query submodules
-- *(query)* replace super::super:: with crate:: absolute paths in dcl tests
-- *(db)* replace super::super:: with crate:: absolute paths in migrations
-- *(rest)* remove unused sea-orm dependency
-- *(query)* remove unused backend imports in drop role and drop user tests
-- *(db)* fix unused variable assignments in migration operation tests
-- *(query)* move DML integration tests to integration test crate
-
-### Fixed
-
-- *(query)* add missing DropBehavior import in revoke statement tests
-- *(query)* add Table variant special handling in Iden derive macro
-- *(query)* add missing code fence markers in alter_type doc example
-- *(ci)* migrate publish check to cargo publish --workspace
-- *(query)* add explicit path attributes to DML test module declarations
-- *(query)* add Meta::List support to Iden derive macro attribute parsing
-- *(query)* read iden attribute from struct-level instead of first field
-- *(db)* bind insert values in many-to-many manager instead of discarding
-- *(query)* reject whitespace-only names in CreateUser and GrantRole validation
-- *(commands)* remove unused reinhardt-i18n dev-dependency
-- *(release)* roll back unpublished crate versions after partial release failure
-
-### Maintenance
-
-- increase test partition counts for faster CI execution
-
-### Styling
-
-- *(query)* format Iden derive macro code
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.9...reinhardt-web@v0.1.0-alpha.10) - 2026-02-12
-
-### Changed
-
-- convert relative paths to absolute paths
-- *(db)* convert relative paths to absolute paths in orm execution
-- restore single-level super:: paths preserved by convention
-
-### Fixed
-
-- correct incorrect path conversions in test imports
-- *(release)* roll back unpublished crate versions and enable release_always
-
-### Maintenance
-
-- *(todo-check)* add clippy todo lint job to TODO Check workflow
-
-### Reverted
-
-- undo unintended visibility and formatting changes
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.8...reinhardt-web@v0.1.0-alpha.9) - 2026-02-11
-
-### Fixed
-
-- *(dentdelion)* correct doctest import path to use prelude module
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.7...reinhardt-web@v0.1.0-alpha.8) - 2026-02-10
-
-### Documentation
-
-- update TODO policy with CI enforcement
-- rewrite CLAUDE.md TODO check sections in English
-
-### Maintenance
-
-- *(todo-check)* add semgrep rules for TODO/FIXME comment detection
-- *(todo-check)* add reusable workflow for unresolved TODO scanning
-- integrate TODO check into CI pipeline
-- *(todo-check)* switch from semgrep scan to semgrep ci
-- *(clippy)* add deny lints for todo/unimplemented/dbg_macro
-- *(todo-check)* remove redundant todo macro rule and fix block comment pattern
-- *(todo-check)* separate clippy todo lints into dedicated task
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.6...reinhardt-web@v0.1.0-alpha.7) - 2026-02-10
-
-### Fixed
-
-- *(db)* remove unused reinhardt-test dev-dependency
-- *(auth)* remove unused reinhardt-test dev-dependency
-- *(core)* replace reinhardt-test with local poll_until helper
-- *(server)* replace reinhardt-test with local poll_until helper
-- *(utils)* break circular publish dependency with reinhardt-test
-- *(rest)* move tests to integration crate to break circular publish chain
-- *(views)* move tests to integration crate to break circular publish chain
-- *(di)* move unit tests to integration crate to break circular publish chain
-- *(http)* move integration tests to tests crate to break circular publish chain
-- *(admin)* move database tests to integration crate to break circular publish chain
-- *(utils)* use fully qualified Result type in poll_until helpers
-- *(utils)* fix integration test imports and remove private field access
-- *(di)* fix compilation errors in migrated unit tests
-- *(admin)* fix User model id type to Option<i64> for impl_test_model macro
-- *(di)* implement deep clone for InjectionContext request scope
-- *(ci)* remove version from reinhardt-test workspace dep to avoid cargo 1.84+ resolution failure
-- *(ci)* add gix workaround and manual dispatch support for release-plz
-- *(ci)* broaden publish-check skip condition for release-plz fix branches
-- *(ci)* use startsWith instead of contains for publish-check skip condition
-- *(release)* revert unpublished crate versions to pre-release state
-
-### Maintenance
-
-- *(websockets)* remove manual CHANGELOG entries for release-plz
-
-### Reverted
-
-- undo release PR [[#215](https://github.com/kent8192/reinhardt-web/issues/215)](https://github.com/kent8192/reinhardt-web/issues/215) version bumps
-- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
-
-### Styling
-
-- apply formatting to migrated test files and modified source files
-- apply formatting to di and utils integration tests
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.5...reinhardt-web@v0.1.0-alpha.6) - 2026-02-07
-
-### Other
-
-- Merge pull request #129 from kent8192/fix/issue-128-bug-runserver-uses-settingsdefault-instead-of-loading-from-settings-directory
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.4...reinhardt-web@v0.1.0-alpha.5) - 2026-02-07
-
-### Fixed
-
-- add version to reinhardt-test workspace dependency for crates.io publishing
-- *(utils)* remove unused dev-dependencies to break circular publish chain
-- *(ci)* improve publish-check filter for non-publishable crates
-- remove reinhardt-urls from doc example to avoid circular dependency
-- break circular dependency between reinhardt-openapi-macros and reinhardt-rest
-- remove unused dev-dependencies from reinhardt-rest
-- remove reinhardt-di self-reference dev-dependency
-
-### Other
-
-- undo unpublished reinhardt-web v0.1.0-alpha.5 version bump and CHANGELOG entry
-- release
-- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
-- release
-- skip publish-check for release-plz branches
-- add secrets inherit to reusable workflows
-- install protoc for reinhardt-grpc build
-- add publish dry-run check to detect circular dev-dependencies
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.3...reinhardt-web@v0.1.0-alpha.4) - 2026-02-03
-
-### Other
-
-- Merge pull request #111 from kent8192/fix/issue-81-bug-reinhardt-pages-wasm-build-fails-due-to-tokiomio-server-side-dependencies
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.2...reinhardt-web@v0.1.0-alpha.3) - 2026-02-03
-
-### Fixed
-
-- *(ci)* use GitHub App token for release-plz to trigger CI workflows
-- add publish = false to example packages
-- *(ci)* add missing example packages to release-plz exclusion list
-- *(ci)* use registry-manifest-path to avoid workspace member errors
-- *(ci)* run release-plz only on push to main
-- *(ci)* use release-plz update for PR validation
-- *(ci)* use release --dry-run for PR validation
-- *(ci)* remove WASM build artifacts from git tracking
-- *(examples)* standardize settings file pattern with .example.toml
-- *(ci)* remove proptest regression files from git tracking
-- *(ci)* use jlumbroso/free-disk-space for ui-test workflow
-- *(ci)* use jlumbroso/free-disk-space for examples tests
-- *(ci)* use jlumbroso/free-disk-space for integration tests
-- *(ci)* add disk cleanup step to integration test workflows
-- *(ci)* increase root-reserve-mb from 4GB to 8GB
-- *(ci)* move docker pull after rust setup to avoid disk space issues
-- *(ci)* replace docker save/load with pull-only approach
-- *(ci)* delete tar files after docker load to save disk space
-- *(ci)* split docker image lists by workflow to avoid disk space issues
-
-### Other
-
-- Merge pull request #167 from kent8192/fix/release-plz-cargo-metadata-warn
-- *(release-plz)* use prebuilt binary for dry-run testing
-- *(release-plz)* add --dry-run flag for debugging
-- *(openapi)* bump version to 0.1.0-alpha.2 for release-plz fix
-- add docker image caching to avoid rate limits
-- Merge pull request #110 from kent8192/fix/issue-83-docs-improve-getting-started-experience-and-ecosystem-documentation
-- change release PR branch prefix to release/
-- merge main into chore/release-plz-migration
-- update release label description for release-plz
-- add release-plz migration markers to CHANGELOGs
-- remove cargo-workspaces configuration from Cargo.toml
-- update CLAUDE.md for release-plz migration
-- simplify release commits section for release-plz
-- rewrite release process documentation for release-plz
-- remove Version Cascade Policy
-- remove cargo-workspaces publish workflows
-- add release-plz GitHub Actions workflow
-- add release-plz configuration
-
-### Sub-Crate Updates
-
-<!-- Add sub-crate updates here following the format:
-- `[crate-name]` updated to v[version] ([CHANGELOG](crates/[crate-name]/CHANGELOG.md#[anchor]))
-  - Brief summary of key changes
--->
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.2] - 2026-01-29
-
-### Changed
-
-- **BREAKING**: Update `static-files` feature to use `reinhardt-utils/staticfiles` (#114)
-
-### Sub-Crate Updates
-
-- `reinhardt-utils` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-utils/CHANGELOG.md#010-alpha4---2026-01-30))
-  - Re-release after version correction
-- `reinhardt-conf` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-conf/CHANGELOG.md#010-alpha4---2026-01-30))
-  - Re-release after version correction
-- `reinhardt-pages` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-pages/CHANGELOG.md#010-alpha4---2026-01-30))
-  - Re-release after version correction
-- `reinhardt-test` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-test/CHANGELOG.md#010-alpha4---2026-01-30))
-  - Re-release after version correction
-- `reinhardt-commands` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-commands/CHANGELOG.md#010-alpha4---2026-01-30))
-  - Version bump for publish workflow correction
-- `reinhardt-rest` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-rest/CHANGELOG.md#010-alpha4---2026-01-30))
-  - Version bump for publish workflow correction
-- `reinhardt-http` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-http/CHANGELOG.md#010-alpha3---2026-01-30))
-  - Version bump for publish workflow correction
-- `reinhardt-db` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-db/CHANGELOG.md#010-alpha3---2026-01-30))
-  - Version bump for publish workflow correction
-- `reinhardt-forms` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-forms/CHANGELOG.md#010-alpha3---2026-01-30))
-  - Version bump for publish workflow correction
-- `reinhardt-pages-macros` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-pages/macros/CHANGELOG.md#010-alpha3---2026-01-30))
-  - Version bump for publish workflow correction
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Sub-Crate Updates
-
-- `reinhardt-shortcuts` updated to v0.1.0-alpha.2 ([CHANGELOG](crates/reinhardt-shortcuts/CHANGELOG.md#010-alpha2---2026-01-23))
-  - Initial release with keyboard shortcut support
-- `reinhardt-i18n` updated to v0.1.0-alpha.2 ([CHANGELOG](crates/reinhardt-i18n/CHANGELOG.md#010-alpha2---2026-01-23))
-  - Initial release with internationalization support
-
-### Added
-
-- Initial release of the full-stack API framework facade crate
-- Feature presets: minimal, standard, full, api-only, graphql-server, websocket-server, cli-tools, test-utils
-- Fine-grained feature flags for authentication, database backends, middleware, and more
-- WASM target support via conditional compilation
-- Re-exports of all Reinhardt sub-crates through a unified API
-
----
-
-## Sub-Crate CHANGELOGs
-
-For detailed changes in individual sub-crates, refer to their respective CHANGELOG files:
-
-### Core & Foundation
-- [reinhardt-core](crates/reinhardt-core/CHANGELOG.md) - Core framework types and traits
-- [reinhardt-utils](crates/reinhardt-utils/CHANGELOG.md) - Utility functions and macros
-- [reinhardt-conf](crates/reinhardt-conf/CHANGELOG.md) - Configuration management
-
-### Database & ORM
-- [reinhardt-db](crates/reinhardt-db/CHANGELOG.md) - Database connection and query building
-
-### Dependency Injection
-- [reinhardt-di](crates/reinhardt-di/CHANGELOG.md) - Dependency injection container
-- [reinhardt-dentdelion](crates/reinhardt-dentdelion/CHANGELOG.md) - DI macros and utilities
-
-### HTTP & REST
-- [reinhardt-http](crates/reinhardt-http/CHANGELOG.md) - HTTP server and request handling
-- [reinhardt-rest](crates/reinhardt-rest/CHANGELOG.md) - REST API framework
-- [reinhardt-middleware](crates/reinhardt-middleware/CHANGELOG.md) - HTTP middleware
-- [reinhardt-server](crates/reinhardt-server/CHANGELOG.md) - Server runtime
-
-### GraphQL & gRPC
-- [reinhardt-graphql](crates/reinhardt-graphql/CHANGELOG.md) - GraphQL server implementation
-- [reinhardt-graphql-macros](crates/reinhardt-graphql/macros/CHANGELOG.md) - GraphQL procedural macros
-- [reinhardt-grpc](crates/reinhardt-grpc/CHANGELOG.md) - gRPC server implementation
-
-### WebSockets & Real-time
-- [reinhardt-websockets](crates/reinhardt-websockets/CHANGELOG.md) - WebSocket support
-
-### Authentication & Authorization
-- [reinhardt-auth](crates/reinhardt-auth/CHANGELOG.md) - Authentication and authorization
-
-### Views & Forms
-- [reinhardt-views](crates/reinhardt-views/CHANGELOG.md) - View rendering and templates
-- [reinhardt-forms](crates/reinhardt-forms/CHANGELOG.md) - Form handling and validation
-
-### Routing & Dispatch
-- [reinhardt-urls](crates/reinhardt-urls/CHANGELOG.md) - URL routing
-- [reinhardt-dispatch](crates/reinhardt-dispatch/CHANGELOG.md) - Request dispatcher
-- [reinhardt-commands](crates/reinhardt-commands/CHANGELOG.md) - Command pattern implementation
-
-### Background Tasks & Messaging
-- [reinhardt-tasks](crates/reinhardt-tasks/CHANGELOG.md) - Background task queue
-- [reinhardt-mail](crates/reinhardt-mail/CHANGELOG.md) - Email sending
-
-### Internationalization & Shortcuts
-- [reinhardt-i18n](crates/reinhardt-i18n/CHANGELOG.md) - Internationalization support
-- [reinhardt-shortcuts](crates/reinhardt-shortcuts/CHANGELOG.md) - Keyboard shortcuts
-
-### Admin & CLI
-- [reinhardt-admin](crates/reinhardt-admin/CHANGELOG.md) - Admin interface
-- [reinhardt-admin-cli](crates/reinhardt-admin-cli/CHANGELOG.md) - Admin CLI tools
-
-### Testing
-- [reinhardt-test](crates/reinhardt-test/CHANGELOG.md) - Testing utilities and fixtures
+- WASM compatibility for the reactive runtime: `Signal<T>` is `Sync`
+  on native via `Arc<RwLock<T>>`; `flush_updates` unifies pending
+  effects.
+- `#[routes]` no longer panics on `extern` identifiers; reserved-ident
+  set excludes `extern`.
+- `form!` macro: `on_success` and `success_url` correctly hoist
+  before navigation; `watch` and `initial` capture outer scope.
+- `#[user]` integration tests opt out of auto-manager when the
+  fixture supplies one.
+- Migrations: split multi-statement reverse SQL; emit `ALTER COLUMN`
+  reverse as a single comma-separated statement.
+- Static-files handler disables immutable caching for bundle assets
+  in debug builds so HMR can replace them.
+- Per-app `installed_apps` state file is namespaced by
+  `CARGO_CRATE_NAME` so concurrent macro expansion does not race.
+- Type-erased proc-macro closures use an `if false { ... }`
+  dead-code branch with `unreachable!()` arguments to unify the
+  user-supplied generic at compile time (#4624 / #4627).
+
+### Security
+
+- HTML attribute / URL sanitization helpers shipped to prevent the
+  most common XSS sinks.
+- CSRF protection wired into `form!` for non-GET methods.
+- OAuth2 `exchange_code` requires an explicit `redirect_uri` so
+  attacker-controlled callbacks cannot be substituted post-issue.
+
+### Performance
+
+- Single-lock manager operations in core-macros generated code.
+- Per-app endpoint inventory keyed on `CARGO_CRATE_NAME` removes a
+  contention point during macro expansion.
+
+For per-prerelease detail, see the
+[Release-category Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release)
+(rc.1 through rc.30 plus the alpha.7 / alpha.8 / alpha.9 announcement
+posts).

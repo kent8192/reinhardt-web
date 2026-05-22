@@ -1,11 +1,16 @@
 //! Configuration module for examples-twitter
 
-#[cfg(server)]
+#[cfg(native)]
 pub mod admin;
-#[cfg(server)]
+// `installed_apps!` macro is server-only (the facade re-exports it under
+// `cfg(all(feature = "core", native))` and WASM builds disable `core`).
+// See #3825.
+#[cfg(native)]
+pub mod apps;
+#[cfg(native)]
 pub mod middleware;
-#[cfg(server)]
+#[cfg(native)]
 pub mod settings;
 pub mod urls;
-#[cfg(server)]
+#[cfg(native)]
 pub mod wasm;

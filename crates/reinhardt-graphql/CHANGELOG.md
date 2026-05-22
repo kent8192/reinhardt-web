@@ -7,124 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-rc.9...reinhardt-graphql@v0.1.0-rc.10) - 2026-03-15
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-rc.30...reinhardt-graphql@v0.1.0) - 2026-05-22
 
-### Added
+Initial stable release of `reinhardt-graphql` as part of the
+reinhardt-web 0.1.0 release. Wires an async-graphql-based server into
+reinhardt-web's routing, dependency injection, and per-request scope
+model.
 
-- *(graphql)* re-export async_graphql base types through reinhardt facade
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-rc.8...reinhardt-graphql@v0.1.0-rc.9) - 2026-03-15
+### Capabilities at 0.1.0
 
-### Fixed
+- **GraphQL handlers with DI** — handler macros fork the
+  `InjectionContext` per request, so resolvers can declare
+  `Depends<T>` parameters and obtain request-scoped services without
+  smuggling state through `async_graphql::Context`.
+- **Query complexity & depth limits** — `QueryLimits` enforces field
+  counts (with inline-fragment and block-string awareness),
+  validates names by Unicode scalar count, and exits counting paths
+  early on multi-byte input.
+- **Subscription backpressure** — subscriptions propagate stream
+  errors to GraphQL clients instead of silently dropping them, and
+  carry backpressure on subscription channels.
+- **Resilient runtime locks** — `RwLock` use was migrated off raw
+  `unwrap()` to a poison-recovery pattern centralised in a logging
+  helper, so a single panicked task no longer poisons the server.
+- **Reinhardt facade re-exports** — base async-graphql types are
+  re-exported through the reinhardt facade, so user crates can take
+  a single workspace dependency.
+- **UUID v7 by default** — generated identifiers in graphql-touching
+  paths follow the workspace-wide migration to UUID v7 (with v4
+  retained for security-sensitive tokens).
 
-- *(graphql)* replace rwlock unwrap with poison-recovery pattern
-- *(graphql)* centralize poison recovery with logging helpers
+### Notable Breaking Changes
 
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-rc.4...reinhardt-graphql@v0.1.0-rc.5) - 2026-03-07
+- **`Injected<T>` deprecated** ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631))
+  — resolver injection sites move to `Depends<T>` and lose the
+  implicit `Clone` bound.
 
-### Documentation
+### Migration Notes
 
-- add missing doc comments for public API modules and types
-
-## [0.1.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-rc.2...reinhardt-graphql@v0.1.0-rc.3) - 2026-03-05
-
-### Fixed
-
-- *(release)* move reinhardt-test to optional dep in non-cyclic crates
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-rc.1...reinhardt-graphql@v0.1.0-rc.2) - 2026-03-04
-
-### Maintenance
-
-- *(testing)* add insta snapshot testing dependency across all crates
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-alpha.6...reinhardt-graphql@v0.1.0-rc.1) - 2026-02-24
-
-### Fixed
-
-- *(release)* roll back unpublished crate versions after partial release failure
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-alpha.5...reinhardt-graphql@v0.1.0-alpha.6) - 2026-02-21
-
-### Fixed
-
-- emit errors on crate resolution failure instead of silent fallback
-- replace unwrap with safe error handling in context lookups
-- merge main branch QueryLimits changes with backpressure features
-- emit compile error for invalid skip_if expressions
-- propagate stream errors to GraphQL clients instead of dropping
-- replace expect() with proper error handling in subscription macro (#814)
-- roll back unpublished crate versions after partial release failure
-- roll back unpublished crate versions and enable release_always
-
-### Security
-
-- add input validation and resource limits
-- improve subscription error handling
-- add query complexity limits and access control
-- add backpressure to subscription channels
-
-### Styling
-
-- fix remaining clippy warnings across workspace
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-alpha.4...reinhardt-graphql@v0.1.0-alpha.5) - 2026-02-10
-
-### Maintenance
-
-- updated the following local packages: reinhardt-grpc
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-alpha.3...reinhardt-graphql@v0.1.0-alpha.4) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-di, reinhardt-grpc
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-alpha.2...reinhardt-graphql@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-di, reinhardt-test, reinhardt-grpc
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-alpha.1...reinhardt-graphql@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- *(package)* replace version.workspace with explicit versions
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+See the [root CHANGELOG migration guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide)
+for the DI changes. GraphQL-specific resolvers require no further
+rewrite: existing async-graphql schemas continue to work; only
+`Injected<T>` → `Depends<T>` at resolver entry points needs to
+be applied.

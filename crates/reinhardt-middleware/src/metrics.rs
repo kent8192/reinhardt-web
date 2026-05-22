@@ -109,7 +109,7 @@ impl MetricsStore {
 
 				// Calculate percentiles
 				let mut sorted_times = times.clone();
-				sorted_times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+				sorted_times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 				let p50 = sorted_times[count / 2];
 				let p95 = sorted_times[(count * 95) / 100];
 				let p99 = sorted_times[(count * 99) / 100];
@@ -468,8 +468,12 @@ impl Middleware for MetricsMiddleware {
 		// Start timing
 		let start = Instant::now();
 
-		// Call handler
-		let response = handler.handle(request).await?;
+		// Convert errors to responses so post-processing always runs,
+		// even when invoked outside MiddlewareChain. (#3244)
+		let response = match handler.handle(request).await {
+			Ok(resp) => resp,
+			Err(e) => Response::from(e),
+		};
 
 		// Record response time
 		if self.config.track_response_time {

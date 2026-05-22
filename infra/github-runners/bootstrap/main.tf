@@ -1,6 +1,12 @@
 # Bootstrap: Creates S3 state bucket for the main github-runners Terraform config.
 # Uses LOCAL state (run once, state file stored locally in this directory).
 # After applying, use the outputs to configure backend.tfvars in the parent directory.
+#
+# IMPORTANT: This module is excluded from CI (terraform-plan.yml,
+# terraform-apply.yml, terraform-plan-privileged.yml). The local backend cannot
+# survive across CI runs, so any CI re-apply would re-plan the bucket as a new
+# resource and fail with `BucketAlreadyExists`. Apply this module manually with
+# the local state preserved. See reinhardt-web#4145.
 
 terraform {
   required_version = ">= 1.10"
@@ -16,6 +22,12 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+
+  # Deploy state bucket into the CI sub-account via OrganizationAccountAccessRole.
+  # Requires non-root credentials in the management account (root cannot assume roles).
+  assume_role {
+    role_arn = "arn:aws:iam::${var.aws_account_id}:role/OrganizationAccountAccessRole"
+  }
 
   default_tags {
     tags = {

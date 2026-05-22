@@ -1,0 +1,21 @@
+[package]
+name = "reinhardt-router"
+version = "0.2.0-rc.1"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Shared router trait surface for Reinhardt — breaks the circular dependency between reinhardt-urls and reinhardt-rest by exposing a minimal `VersionedRouter` abstraction"
+keywords = ["router", "versioning", "reinhardt"]
+categories = ["web-programming", "api-bindings"]
+readme = "README.md"
+documentation = "https://docs.rs/reinhardt-router"
+repository.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+rstest = { workspace = true }
+
+[lints]
+workspace = true

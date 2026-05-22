@@ -1,0 +1,7 @@
+error: #[viewset] on impl block requires basename = "...". Example: #[viewset(basename = "snippet")]
+  --> tests/ui/viewset/fail/impl_missing_basename.rs:10:1
+   |
+10 | #[viewset]
+   | ^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `viewset` (in Nightly builds, run with -Z macro-backtrace for more info)

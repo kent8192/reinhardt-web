@@ -91,6 +91,8 @@ pub mod extensions;
 pub mod messages_middleware;
 /// Middleware trait and handler chain.
 pub mod middleware;
+/// Ordered path parameter storage (`PathParams`).
+pub mod path_params;
 /// HTTP request type and builder.
 pub mod request;
 /// HTTP response type and builder.
@@ -98,16 +100,23 @@ pub mod response;
 /// File upload handling and validation.
 pub mod upload;
 
+/// Response cookies for server functions to set via request extensions.
+pub mod response_cookies;
+
 pub use auth_state::AuthState;
 pub use chunked_upload::{
 	ChunkedUploadError, ChunkedUploadManager, ChunkedUploadSession, UploadProgress,
 };
-pub use extensions::Extensions;
+pub use extensions::{Extensions, IsActive, IsAdmin, IsAuthenticated};
 #[cfg(feature = "messages")]
 pub use messages_middleware::MessagesMiddleware;
-pub use middleware::{Handler, Middleware, MiddlewareChain};
+pub use middleware::{
+	ExcludeMiddleware, Handler, Middleware, MiddlewareChain, MiddlewareDiRegistration,
+};
+pub use path_params::PathParams;
 pub use request::{Request, RequestBuilder, TrustedProxies};
 pub use response::{Response, SafeErrorResponse, StreamBody, StreamingResponse};
+pub use response_cookies::{ResponseCookies, SharedResponseCookies};
 pub use upload::{FileUploadError, FileUploadHandler, MemoryFileUpload, TemporaryFileUpload};
 
 // Re-export error types from reinhardt-exception for consistency across the framework

@@ -2,8 +2,10 @@
 //!
 //! This module provides the main Router struct and routing logic.
 
+#![allow(deprecated)] // (Refs #4234) Internal references to deprecated routing types are intentional during the deprecation cycle.
+
 use super::handler::{RouteHandler, no_params_handler, result_handler, with_params_handler};
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 use super::history::setup_popstate_listener;
 use super::history::{HistoryState, NavigationType, current_path, push_state, replace_state};
 use super::params::{FromPath, ParamContext, PathParams};
@@ -18,6 +20,10 @@ pub(super) type RouteGuard = Arc<dyn Fn(&RouteMatch) -> bool + Send + Sync>;
 
 /// Error type for path parameter extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::PathError` instead. Refs #4234, cloud#578."
+)]
 pub enum PathError {
 	/// Failed to parse a parameter value.
 	ParseError {
@@ -80,6 +86,10 @@ impl std::error::Error for PathError {}
 
 /// Error type for router operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::RouterError` instead. Refs #4234, cloud#578."
+)]
 pub enum RouterError {
 	/// Route not found.
 	NotFound(String),
@@ -109,6 +119,10 @@ impl std::error::Error for RouterError {}
 
 /// A matched route with extracted parameters.
 #[derive(Debug, Clone)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::ClientRouteMatch` instead. Refs #4234, cloud#578."
+)]
 pub struct RouteMatch {
 	/// The matched route.
 	pub route: Route,
@@ -123,6 +137,10 @@ pub struct RouteMatch {
 
 /// A single route definition.
 #[derive(Clone)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::ClientRoute` instead. Refs #4234, cloud#578."
+)]
 pub struct Route {
 	/// The path pattern.
 	pattern: PathPattern,
@@ -197,6 +215,10 @@ impl Route {
 }
 
 /// The main router.
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::ClientRouter` instead. Refs #4234, cloud#578."
+)]
 pub struct Router {
 	/// Registered routes.
 	routes: Vec<Route>,
@@ -210,6 +232,41 @@ pub struct Router {
 	current_route_name: Signal<Option<String>>,
 	/// Not found handler.
 	not_found: Option<Arc<dyn Fn() -> Page + Send + Sync>>,
+	/// Navigation observers registered via `on_navigate`.
+	///
+	/// Inspired by React Router's `router.subscribe(listener)` design:
+	/// listeners are registered explicitly and notified on every successful
+	/// navigation, independent of any reactive Effect / Signal tracking.
+	/// Refs #4088, #4075, #3348.
+	navigation_observers: NavigationObservers,
+	/// Cumulative count of `notify_observers` invocations since this Router
+	/// was constructed. Hidden diagnostic counter used by tests to assert
+	/// invariants that DOM-only assertions cannot reach (Refs #4122).
+	dispatch_count: std::rc::Rc<std::cell::Cell<u64>>,
+}
+
+/// Type alias for the navigation observer storage.
+///
+/// `Rc<RefCell<...>>` because Routers are not `Send` on wasm32 anyway,
+/// and the borrow is released before listeners run (see `navigate`).
+type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<NavigationListener>>>>;
+
+/// Boxed closure stored behind a `Weak<...>` so a dropped `NavigationSubscription`
+/// drops its strong `Rc`, after which `navigate` filters out the dead `Weak`.
+type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
+
+/// RAII handle returned by [`Router::on_navigate`].
+///
+/// While alive, the registered listener fires on every [`Router::push`] /
+/// [`Router::replace`]. Dropping this handle removes the listener (no
+/// explicit `unsubscribe` call needed).
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::NavigationSubscription` instead. Refs #4234, cloud#578."
+)]
+pub struct NavigationSubscription {
+	#[allow(dead_code)] // Dropped automatically; presence keeps the Weak alive.
+	listener: std::rc::Rc<NavigationListener>,
 }
 
 impl std::fmt::Debug for Router {
@@ -242,6 +299,8 @@ impl Router {
 			current_params: Signal::new(HashMap::new()),
 			current_route_name: Signal::new(None),
 			not_found: None,
+			navigation_observers: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+			dispatch_count: std::rc::Rc::new(std::cell::Cell::new(0)),
 		}
 	}
 
@@ -377,12 +436,26 @@ impl Router {
 		self
 	}
 
-	/// Returns the current path signal.
+	/// Returns a reactive subscription to the current path.
+	///
+	/// This [`Signal`] is the subscription point for **downstream
+	/// reactive DOM consumers** (for example `ReactiveIfNode`,
+	/// `ReactiveNode`) that want to react to navigation changes
+	/// through the reactive runtime.
+	///
+	/// `ClientLauncher` itself no longer subscribes to this Signal;
+	/// it drives re-renders through [`Router::on_navigate`] (Refs
+	/// #4101).
 	pub fn current_path(&self) -> &Signal<String> {
 		&self.current_path
 	}
 
-	/// Returns the current params signal.
+	/// Returns a reactive subscription to the current route's path
+	/// parameters.
+	///
+	/// As with [`Router::current_path`], this Signal is intended for
+	/// downstream reactive DOM consumers; the launcher uses
+	/// [`Router::on_navigate`] for re-renders.
 	pub fn current_params(&self) -> &Signal<HashMap<String, String>> {
 		&self.current_params
 	}
@@ -421,9 +494,96 @@ impl Router {
 		self.navigate(path, NavigationType::Replace)
 	}
 
+	/// Subscribe to navigation events.
+	///
+	/// The listener fires on every successful navigation, including:
+	///
+	/// - `Router::push` and `Router::replace` (programmatic navigation).
+	/// - Browser back / forward (popstate). This is dispatched by
+	///   `setup_history_listener` after it updates the `current_path` /
+	///   `current_params` / `current_route_name` Signals.
+	///
+	/// Returns a [`NavigationSubscription`] handle. Drop the handle to
+	/// unregister the listener. The router itself does not retain a strong
+	/// reference; if all subscriptions are dropped, the listener is freed
+	/// at the next `navigate` call (see `navigate` body which prunes dead
+	/// `Weak` references on every invocation).
+	///
+	/// Robust against nested reactive nodes spawned during view rendering
+	/// because this subscription is independent of the `Effect` / `Signal`
+	/// auto-tracking system.
+	///
+	/// Refs #4088, #4108.
+	pub fn on_navigate<F>(&self, listener: F) -> NavigationSubscription
+	where
+		F: Fn(&str, &HashMap<String, String>) + 'static,
+	{
+		let listener: std::rc::Rc<NavigationListener> = std::rc::Rc::new(listener);
+		self.navigation_observers
+			.borrow_mut()
+			.push(std::rc::Rc::downgrade(&listener));
+		NavigationSubscription { listener }
+	}
+
+	/// Dispatch the registered `on_navigate` listeners with the given path
+	/// and params.
+	///
+	/// Both `Router::navigate` (after a programmatic push/replace) and the
+	/// popstate listener (after a browser-driven back/forward) call this
+	/// method after the `Signal` updates so listeners always see the new
+	/// state when they read `Signal::get` from inside their closure.
+	///
+	/// The helper takes a snapshot of strong references to listeners
+	/// before invoking them. The `RefCell` borrow is released before any
+	/// user-supplied closure runs, which lets listeners call
+	/// `Router::push` / `Router::replace` reentrantly, register new
+	/// listeners via `on_navigate`, or drop existing
+	/// `NavigationSubscription` handles without panicking on `RefCell`
+	/// reentry. Dropped subscriptions are pruned on every dispatch.
+	///
+	/// The popstate listener inlines the same snapshot pattern (it does
+	/// not have access to `&self`); keep both call sites in sync if this
+	/// helper changes.
+	///
+	/// Refs #4088, #4108.
+	fn notify_observers(&self, path: &str, params: &HashMap<String, String>) {
+		self.dispatch_count.set(self.dispatch_count.get() + 1);
+		let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
+			let mut observers = self.navigation_observers.borrow_mut();
+			observers.retain(|w| w.strong_count() > 0);
+			observers.iter().filter_map(|w| w.upgrade()).collect()
+		};
+		crate::nav_diag!(
+			"site=notify_observers router_id={} path={} dispatch_count={} listeners_alive={}",
+			self.__diag_router_id(),
+			path,
+			self.dispatch_count.get(),
+			listeners_snapshot.len()
+		);
+		// Opt-in DOM diagnostic; off by default. Refs #4221.
+		crate::nav_diag_dom!("notify_observers");
+		for listener in listeners_snapshot {
+			listener(path, params);
+		}
+	}
+
 	/// Internal navigation implementation.
 	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
 		let route_match = self.match_path(path);
+
+		crate::nav_diag!(
+			"site=navigate router_id={} path={} nav_type={:?} match_some={} match_name={}",
+			self.__diag_router_id(),
+			path,
+			nav_type,
+			route_match.is_some(),
+			route_match
+				.as_ref()
+				.and_then(|m| m.route.name())
+				.unwrap_or("")
+		);
+		// Opt-in DOM diagnostic; off by default. Refs #4221.
+		crate::nav_diag_dom!("navigate");
 
 		let state = HistoryState::new(path)
 			.with_params(
@@ -460,6 +620,15 @@ impl Router {
 				.as_ref()
 				.and_then(|m| m.route.name().map(|s| s.to_string())),
 		);
+
+		// Invoke registered navigation observers AFTER signal updates so
+		// listeners reading `Signal::get` from inside their closure see the
+		// new state. Refs #4088.
+		let params_for_observers = route_match
+			.as_ref()
+			.map(|m| m.params.clone())
+			.unwrap_or_default();
+		self.notify_observers(path, &params_for_observers);
 
 		Ok(())
 	}
@@ -512,6 +681,55 @@ impl Router {
 		self.named_routes.contains_key(name)
 	}
 
+	/// Diagnostic counter: number of currently-alive navigation observers.
+	///
+	/// Returns the count of `Weak<NavigationListener>` entries in
+	/// `navigation_observers` whose `strong_count() > 0`. Used by tests in
+	/// `tests/wasm/spa_navigation_diag_test.rs` to assert Inv-1 / Inv-2.
+	///
+	/// Hidden API for testing only — `#[doc(hidden)]` keeps it out of the
+	/// rendered documentation and out of the SemVer surface. Refs #4122.
+	#[doc(hidden)]
+	pub fn __diag_observer_count(&self) -> usize {
+		self.navigation_observers
+			.borrow()
+			.iter()
+			.filter(|w| w.strong_count() > 0)
+			.count()
+	}
+
+	/// Diagnostic counter: cumulative `notify_observers` invocation count.
+	///
+	/// Includes invocations from `Router::push`, `Router::replace`, and the
+	/// popstate listener. Used by tests in
+	/// `tests/wasm/spa_navigation_diag_test.rs` to assert Inv-3.
+	///
+	/// Hidden API for testing only. Refs #4122.
+	#[doc(hidden)]
+	pub fn __diag_dispatch_count(&self) -> u64 {
+		self.dispatch_count.get()
+	}
+
+	/// Stable per-instance router id for diagnostic correlation.
+	///
+	/// Returns the pointer of the `Rc` backing `navigation_observers`.
+	/// Two `Router` values share an id iff they share the same observer
+	/// list, which only happens within the same logical instance: the
+	/// `Rc` is constructed fresh in `Router::new` and never reseated.
+	///
+	/// Used by Tier 4 diag tests (Inv-6) and `nav_diag!` traces to
+	/// confirm that the link interceptor's `Router::push`, the launcher's
+	/// render listener, and the popstate handler all observe the same
+	/// router instance. A divergence between the id at registration and
+	/// the id at click time falsifies the orphan-listener hypothesis
+	/// (Refs #4203 H4).
+	///
+	/// Hidden API for testing only.
+	#[doc(hidden)]
+	pub fn __diag_router_id(&self) -> usize {
+		std::rc::Rc::as_ptr(&self.navigation_observers) as usize
+	}
+
 	/// Sets up a popstate event listener for browser back/forward navigation.
 	///
 	/// This method registers a listener for the browser's `popstate` event,
@@ -526,7 +744,7 @@ impl Router {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let router = Router::new()
 	///     .route("/", home_page)
 	///     .route("/users/{id}/", user_detail);
@@ -540,24 +758,58 @@ impl Router {
 	/// The listener closure is kept alive using `.forget()`, meaning it will
 	/// persist for the lifetime of the page. This is intentional for SPA
 	/// navigation handling.
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(wasm)]
 	pub fn setup_history_listener(&self) {
 		let path_signal = self.current_path.clone();
 		let params_signal = self.current_params.clone();
 		let route_name_signal = self.current_route_name.clone();
+		let navigation_observers = self.navigation_observers.clone();
+		let dispatch_count = self.dispatch_count.clone();
+		let router_id_for_diag = self.__diag_router_id();
 
 		let closure = setup_popstate_listener(move |path, state| {
-			// Update path signal
-			path_signal.set(path);
+			// Update Signals first, then notify observers, so listeners that
+			// read `Signal::get` from inside their closure see the new
+			// state. Mirrors `Router::navigate`. Refs #4088, #4108.
+			path_signal.set(path.clone());
 
-			// Update params and route name from history state if available
-			if let Some(hist_state) = state {
+			let params_for_observers = if let Some(hist_state) = state {
+				let params = hist_state.params.clone();
 				params_signal.set(hist_state.params);
 				route_name_signal.set(hist_state.route_name);
+				params
 			} else {
-				// Clear params when no state is available
+				// Clear params when no state is available.
 				params_signal.set(HashMap::new());
 				route_name_signal.set(None);
+				HashMap::new()
+			};
+
+			// Bump the diagnostic counter to mirror `Router::notify_observers`,
+			// so tests can assert that popstate-driven dispatches are
+			// counted identically to push/replace-driven ones (Refs #4122).
+			dispatch_count.set(dispatch_count.get() + 1);
+
+			// Dispatch on_navigate observers using the same snapshot-then-
+			// iterate pattern as Router::notify_observers. Inlined here
+			// because this closure does not have access to `&self`.
+			// Keep in sync with Router::notify_observers.
+			let listeners_snapshot: Vec<std::rc::Rc<NavigationListener>> = {
+				let mut observers = navigation_observers.borrow_mut();
+				observers.retain(|w| w.strong_count() > 0);
+				observers.iter().filter_map(|w| w.upgrade()).collect()
+			};
+			crate::nav_diag!(
+				"site=popstate router_id={} path={} dispatch_count={} listeners_alive={}",
+				router_id_for_diag,
+				path,
+				dispatch_count.get(),
+				listeners_snapshot.len()
+			);
+			// Opt-in DOM diagnostic; off by default. Refs #4221.
+			crate::nav_diag_dom!("popstate");
+			for listener in listeners_snapshot {
+				listener(&path, &params_for_observers);
 			}
 		});
 
@@ -568,7 +820,7 @@ impl Router {
 	}
 
 	/// Non-WASM version of `setup_history_listener`.
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(native)]
 	pub fn setup_history_listener(&self) {
 		// No-op on non-WASM targets
 	}
@@ -577,6 +829,7 @@ impl Router {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn test_view() -> Page {
 		Page::text("Test")
@@ -723,5 +976,162 @@ mod tests {
 
 		// Non-WASM replace should succeed
 		assert!(router.replace("/").is_ok());
+	}
+
+	use std::cell::RefCell;
+	use std::rc::Rc;
+
+	#[rstest]
+	fn notify_observers_dispatches_to_registered_listener() {
+		// Arrange
+		let router = Router::new();
+		let observed_calls: std::rc::Rc<
+			std::cell::RefCell<Vec<(String, HashMap<String, String>)>>,
+		> = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+		let observed_calls_inner = observed_calls.clone();
+		let _subscription = router.on_navigate(move |path, params| {
+			observed_calls_inner
+				.borrow_mut()
+				.push((path.to_string(), params.clone()));
+		});
+		let mut params = HashMap::new();
+		params.insert("id".to_string(), "42".to_string());
+
+		// Act
+		router.notify_observers("/users/42/", &params);
+
+		// Assert
+		let calls = observed_calls.borrow();
+		assert_eq!(calls.len(), 1, "listener must fire exactly once");
+		assert_eq!(calls[0].0, "/users/42/");
+		assert_eq!(calls[0].1, params);
+	}
+
+	#[test]
+	#[serial_test::serial]
+	fn on_navigate_fires_listener_after_router_push() {
+		// Arrange
+		let calls: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+		let calls_clone = calls.clone();
+		let router = Router::new().route("/", home_view).route("/foo", user_view);
+		let _sub = router.on_navigate(
+			move |path: &str, _params: &std::collections::HashMap<String, String>| {
+				calls_clone.borrow_mut().push(path.to_string());
+			},
+		);
+
+		// Act
+		router.push("/foo").expect("push /foo");
+
+		// Assert
+		assert_eq!(*calls.borrow(), vec!["/foo".to_string()]);
+	}
+
+	#[test]
+	#[serial_test::serial]
+	fn on_navigate_subscription_drop_unregisters_listener() {
+		// Arrange
+		let calls = Rc::new(RefCell::new(0_usize));
+		let calls_clone = calls.clone();
+		let router = Router::new().route("/", home_view).route("/foo", user_view);
+		let sub = router.on_navigate(move |_p, _ps| {
+			*calls_clone.borrow_mut() += 1;
+		});
+
+		// Act
+		router.push("/foo").expect("push /foo");
+		drop(sub);
+		router.push("/").expect("push /");
+
+		// Assert: listener fired exactly once (before drop), not twice
+		assert_eq!(*calls.borrow(), 1);
+	}
+
+	#[rstest]
+	fn diag_dispatch_count_starts_at_zero_and_increments_on_navigate() {
+		// Arrange
+		let router = Router::new()
+			.route("/a", || Page::text("A"))
+			.route("/b", || Page::text("B"));
+		assert_eq!(router.__diag_dispatch_count(), 0);
+
+		// Act
+		router.push("/a").expect("push /a");
+
+		// Assert
+		assert_eq!(router.__diag_dispatch_count(), 1);
+
+		// Act 2: a second navigation
+		router.push("/b").expect("push /b");
+
+		// Assert 2
+		assert_eq!(router.__diag_dispatch_count(), 2);
+	}
+
+	#[rstest]
+	fn diag_router_id_is_stable_within_instance_and_distinct_across_instances() {
+		// Arrange
+		let r1 = Router::new();
+		let r2 = Router::new();
+
+		// Act
+		let id1_first = r1.__diag_router_id();
+		let id1_second = r1.__diag_router_id();
+		let id2 = r2.__diag_router_id();
+
+		// Assert
+		assert_eq!(
+			id1_first, id1_second,
+			"router id must be stable across calls on the same instance"
+		);
+		assert_ne!(
+			id1_first, id2,
+			"router ids must differ across freshly-constructed instances"
+		);
+	}
+
+	#[rstest]
+	fn diag_router_id_unaffected_by_navigation() {
+		// Arrange
+		let router = Router::new()
+			.named_route("home", "/", home_view)
+			.named_route("user", "/users/{id}/", user_view);
+		let id_before = router.__diag_router_id();
+
+		// Act
+		router.push("/users/42/").expect("push");
+
+		// Assert
+		assert_eq!(
+			router.__diag_router_id(),
+			id_before,
+			"router id must not change after Router::push"
+		);
+	}
+
+	#[rstest]
+	fn diag_observer_count_reflects_alive_subscriptions() {
+		// Arrange
+		let router = Router::new();
+		assert_eq!(router.__diag_observer_count(), 0);
+
+		// Act
+		let sub1 = router.on_navigate(|_path, _params| {});
+		let sub2 = router.on_navigate(|_path, _params| {});
+
+		// Assert
+		assert_eq!(router.__diag_observer_count(), 2);
+
+		// Act 2: drop one
+		drop(sub1);
+
+		// Assert 2
+		assert_eq!(router.__diag_observer_count(), 1);
+
+		// Act 3: drop the other
+		drop(sub2);
+
+		// Assert 3
+		assert_eq!(router.__diag_observer_count(), 0);
 	}
 }

@@ -1,5 +1,5 @@
-error: Element <img> 'src' attribute must be a string literal
-  --> tests/ui/page/fail/macro_unknown.rs:11:4
+error: cannot find macro `unknown_macro` in this scope
+  --> tests/ui/page/fail/macro_unknown.rs:11:9
    |
 11 |             src: unknown_macro!("test.png"),
-   |             ^^^
+   |                  ^^^^^^^^^^^^^

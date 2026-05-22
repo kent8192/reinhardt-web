@@ -119,7 +119,18 @@ impl super::router::Router for SimpleRouter {
 			.clone()
 			.unwrap_or_else(|| format!("route_{}", self.routes.len()));
 
-		self.matcher.add_pattern(pattern, handler_id);
+		// Linear mode is the only mode used by `SimpleRouter`, so insertion
+		// cannot fail today; log and skip on the off chance a future radix
+		// upgrade is wired in here. The trait-level `add_route` signature is
+		// infallible, so we surface failures via tracing instead of bubbling.
+		if let Err(e) = self.matcher.add_pattern(pattern, handler_id) {
+			tracing::warn!(
+				"SimpleRouter: failed to register pattern for path '{}': {}",
+				route.path,
+				e
+			);
+			return;
+		}
 		self.routes.push(route);
 	}
 

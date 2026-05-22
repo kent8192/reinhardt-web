@@ -41,19 +41,20 @@ This crate provides the following features:
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:5 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["server"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["server"] }
 
 # For WebSocket support:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["server", "server-websocket"] }
+# reinhardt = { version = "0.1.0-rc.30", features = ["server", "websocket"] }
 
 # For GraphQL support:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["server", "server-graphql"] }
+# reinhardt = { version = "0.1.0-rc.30", features = ["server", "graphql"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import server features:
@@ -70,6 +71,7 @@ use reinhardt::server::graphql_handler;  // GraphQL
 
 ### Basic HTTP Server
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::{serve, HttpServer};
 use reinhardt::http::{Request, Response};
@@ -77,23 +79,23 @@ use reinhardt::core::exception::Error;
 use std::sync::Arc;
 
 async fn my_handler(req: Request) -> Result<Response, Error> {
-    Response::ok().with_body("Hello, world!")
+    Ok(Response::ok().with_body("Hello, world!"))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = Arc::new(my_handler);
-    serve("127.0.0.1:8000", handler).await?;
+    serve("0.1.0-rc.30:8000", handler).await?;
     Ok(())
 }
 ```
 
 ### HTTP Server with Middleware
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::HttpServer;
-use reinhardt::core::types::{Handler, Middleware};
-use reinhardt::http::{Request, Response};
+use reinhardt::http::{Handler, Middleware, Request, Response};
 use reinhardt::core::exception::Error;
 use std::sync::Arc;
 
@@ -126,13 +128,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server = HttpServer::new(handler)
         .with_middleware(middleware);
 
-    server.listen("127.0.0.1:8000".parse()?).await?;
+    server.listen("0.1.0-rc.30:8000".parse()?).await?;
     Ok(())
 }
 ```
 
 ### WebSocket Server
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::{WebSocketServer, WebSocketHandler};
 use std::sync::Arc;
@@ -158,13 +161,14 @@ impl WebSocketHandler for EchoHandler {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = Arc::new(EchoHandler);
     let server = WebSocketServer::new(handler);
-    server.listen("127.0.0.1:9001".parse()?).await?;
+    server.listen("0.1.0-rc.30:9001".parse()?).await?;
     Ok(())
 }
 ```
 
 ### WebSocket Server with Broadcast
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::{WebSocketServer, WebSocketHandler};
 use std::sync::Arc;
@@ -195,13 +199,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    server.listen("127.0.0.1:9001".parse()?).await?;
+    server.listen("0.1.0-rc.30:9001".parse()?).await?;
     Ok(())
 }
 ```
 
 ### GraphQL Server
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::graphql_handler;
 use async_graphql::{Object, Schema, EmptyMutation, EmptySubscription};
@@ -221,7 +226,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .finish();
 
     let handler = graphql_handler(schema);
-    serve("127.0.0.1:8000", handler).await?;
+    serve("0.1.0-rc.30:8000", handler).await?;
     Ok(())
 }
 ```

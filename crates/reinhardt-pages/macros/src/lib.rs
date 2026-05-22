@@ -73,7 +73,7 @@ mod server_fn;
 ///
 /// ## Options
 ///
-/// - `use_inject = true` - Enable dependency injection
+/// - `use_inject = true` - (**Deprecated**) No longer needed; kept for backwards compatibility (emits warning)
 /// - `endpoint = "/custom/path"` - Custom endpoint path
 /// - `codec = "json"` - Serialization codec (json, url, msgpack)
 ///
@@ -840,17 +840,19 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///         },
 ///     },
 ///
-///     validators: {               // Optional server-side validators
+///     validators: {               // Optional unified validation rules
 ///         field_name: [
-///             |v| !v.is_empty() => "Error message",
+///             |v| !v.is_empty() => "Error message",                  // both (default)
+///             #[server]
+///             |v| !is_reserved(v) => "Reserved value",                // server only
+///             #[client(on = input)]
+///             |v| v.len() <= 100 => "Too long",                       // client only (on input)
 ///         ],
 ///     },
-///
-///     client_validators: {        // Optional client-side validators
-///         field_name: [
-///             "value.length > 0" => "Error message",
-///         ],
-///     },
+///     // NOTE: `.validate()` currently executes only rules scoped to the
+///     // server (the default `[server, client]` scope and `#[server]`).
+///     // `#[client(...)]`-only rules are parsed and validated at compile
+///     // time but are not emitted to client-side code yet.
 /// }
 /// ```
 ///
@@ -1133,7 +1135,10 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// ## Client-Side Validators
 ///
-/// Client-side validators run in the browser using JavaScript expressions.
+/// Client-side validators are written as Rust closures annotated with
+/// `#[client(on = input)]` or `#[client(on = blur)]`. They share the same
+/// `validators:` block as server-side rules; the `#[client(...)]` attribute
+/// marks the rule as intended to run in the browser on the given DOM event.
 ///
 /// ```ignore
 /// form! {
@@ -1141,14 +1146,22 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///     action: "/api/submit",
 ///     fields: { email: EmailField { required } },
 ///
-///     client_validators: {
+///     validators: {
 ///         email: [
-///             "value.length > 0" => "Email is required",
-///             "value.includes('@')" => "Invalid email format",
+///             #[client(on = input)]
+///             |v| !v.is_empty() => "Email is required",
+///             #[client(on = blur)]
+///             |v| v.contains('@') => "Invalid email format",
 ///         ],
 ///     },
 /// }
 /// ```
+///
+/// **Current runtime behavior (0.1.0-rc series):** `#[client(...)]`-only
+/// rules are parsed and checked at compile time but are not yet executed
+/// in the browser. The server-side `.validate()` entry point intentionally
+/// filters them out so that client-only rules do not silently run on the
+/// server. Browser-side emission will land in a follow-up.
 ///
 /// # Examples
 ///
@@ -1186,11 +1199,9 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///         username: [
 ///             |v| !v.trim().is_empty() => "Username is required",
 ///         ],
-///     },
-///
-///     client_validators: {
 ///         password: [
-///             "value.length >= 8" => "Password must be at least 8 characters",
+///             // Unscoped rule: runs on both server and client.
+///             |v| v.len() >= 8 => "Password must be at least 8 characters",
 ///         ],
 ///     },
 /// };
@@ -1733,10 +1744,26 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// | Callback | Signature | When Called |
 /// |----------|-----------|-------------|
-/// | `on_submit` | `\|&Form\|` | Before submission starts |
-/// | `on_loading` | `\|bool\|` | When loading state changes |
-/// | `on_success` | `\|Result\|` | After successful submission |
-/// | `on_error` | `\|ServerFnError\|` | After submission error |
+/// | `on_submit` | `\|form: &Self\|` | Before submission starts |
+/// | `on_loading` | `\|loading: bool\|` | When loading state changes |
+/// | `on_success` | `\|result: T\|` | After successful submission (consumes `T` by move) |
+/// | `on_success_ref` | `\|form: &Self, result: &T\|` | After successful submission (borrows `&T`, can capture outer-scope locals) |
+/// | `on_error` | `\|err: ServerFnError\|` | After submission error |
+///
+/// ### Choosing between `on_success` and `on_success_ref`
+///
+/// Use `on_success_ref:` when the callback needs to reference locals
+/// from the surrounding function — the closure is expanded at the
+/// `form!` call site rather than inside the generated `submit()` body,
+/// so enclosing-scope captures work naturally (issue #4624).
+///
+/// Use `on_success:` when the callback needs to *consume* the server_fn
+/// return value (`T`) by move — for example to call a function that
+/// takes `T` by value.
+///
+/// Both may be supplied together; `on_success_ref` runs first
+/// (receives `&value`), then `on_success` runs (receives `value` by
+/// move).
 ///
 /// ### Example
 ///
@@ -1761,6 +1788,25 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///     fields: {
 ///         message: TextField { required },
 ///     },
+/// };
+/// ```
+///
+/// ### Example: outer-scope capture with `on_success_ref`
+///
+/// ```ignore
+/// let user_id: i64 = 42;
+/// let form = form! {
+///     name: ProfileForm,
+///     server_fn: update_profile,
+///
+///     // The closure can reference `user_id` from the surrounding
+///     // function. `on_success: |_v| { let _ = user_id; }` would
+///     // fail with E0434.
+///     on_success_ref: |_form, _updated: &ProfileUpdate| {
+///         navigate(&format!("/users/{user_id}/"), NavigationType::Push);
+///     },
+///
+///     fields: { /* ... */ },
 /// };
 /// ```
 ///
@@ -1944,7 +1990,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// };
 ///
 /// // Fetch data externally and populate the Signal
-/// #[cfg(target_arch = "wasm32")]
+/// #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 /// {
 ///     let form_clone = voting_form.clone();
 ///     spawn_local(async move {
@@ -1990,7 +2036,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// };
 ///
 /// // Server function must accept individual String parameters
-/// #[server_fn(use_inject = true)]
+/// #[server_fn]
 /// pub async fn submit_vote(
 ///     question_id: String,   // From HiddenField
 ///     choice_id: String,     // From ChoiceField
@@ -2019,7 +2065,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// }
 ///
 /// // Wrapper for form! compatibility
-/// #[server_fn(use_inject = true)]
+/// #[server_fn]
 /// pub async fn submit_vote(
 ///     question_id: String,
 ///     choice_id: String,
@@ -2040,9 +2086,14 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// ### Real-World Example
 ///
-/// See `examples/examples-tutorial-basis` for a complete voting form implementation:
-/// - Client: `src/client/components/polls.rs` - `polls_detail` function
-/// - Server: `src/server_fn/polls.rs` - `submit_vote` wrapper function
+/// See `examples/examples-tutorial-basis` for a complete voting form
+/// implementation. The paths below reflect the new per-app layout
+/// scaffolded by `reinhardt-admin startapp --with-pages`. The example
+/// itself will be migrated to this layout in a follow-up PR; until then,
+/// the corresponding files in `examples-tutorial-basis` live one level up
+/// (under `src/apps/polls/views.rs` and `src/apps/polls/urls/`).
+/// - Client: `src/apps/polls/client/components.rs` - `polls_detail` function
+/// - Server: `src/apps/polls/server_fn.rs` - `submit_vote` wrapper function
 ///
 /// ## CSRF Protection
 ///

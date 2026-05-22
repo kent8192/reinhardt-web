@@ -23,15 +23,11 @@ WASM_BINDGEN_VERSION = "0.2.100"
 # ============================================================================
 
 [tasks.runserver]
-description = "Start the development server with static files"
+description = "Start the development server with static files (auto-reloads)"
 command = "cargo"
-args = ["run", "--bin", "manage", "runserver", "--with-pages"]
+# `wasm-build-dev` already produced fresh artifacts; skip runserver's own rebuild.
+args = ["run", "--bin", "manage", "runserver", "--with-pages", "--no-override-wasm"]
 dependencies = ["wasm-build-dev"]
-
-[tasks.runserver-watch]
-description = "Start the development server with auto-reload (requires bacon)"
-command = "bacon"
-args = ["runserver"]
 
 # ============================================================================
 # WASM Build
@@ -63,9 +59,8 @@ fi
 dependencies = ["collectstatic-wasm"]
 
 [tasks.wasm-finalize-dev]
-description = "Finalize WASM build (copy index.html)"
+description = "Finalize WASM build"
 script = '''
-[ -f index.html ] && cp index.html dist/
 echo "✓ WASM build completed: dist/"
 '''
 dependencies = ["wasm-bindgen-dev"]
@@ -94,10 +89,8 @@ fi
 dependencies = ["collectstatic-wasm"]
 
 [tasks.wasm-finalize-release]
-description = "Finalize WASM build (copy index.html, optimize with wasm-opt)"
+description = "Finalize WASM build (optimize with wasm-opt)"
 script = '''
-[ -f index.html ] && cp index.html dist/
-
 # Optimize with wasm-opt if available
 if command -v wasm-opt &> /dev/null; then
 	echo "Running wasm-opt..."
@@ -222,11 +215,6 @@ description = "Run integration tests only"
 command = "cargo"
 args = ["nextest", "run", "--test", "*", "--all-features"]
 
-[tasks.test-watch]
-description = "Run tests with auto-reload (requires bacon)"
-command = "bacon"
-args = ["test"]
-
 # ============================================================================
 # Code Quality
 # ============================================================================
@@ -283,12 +271,8 @@ args = ["clean"]
 # ============================================================================
 
 [tasks.dev]
-description = "Start development environment (checks, builds WASM, runs server)"
+description = "Start development environment (checks, builds WASM, runs server with auto-reload)"
 dependencies = ["clean-cache", "quality", "wasm-build-dev", "runserver"]
-
-[tasks.dev-watch]
-description = "Start development with auto-reload"
-dependencies = ["clean-cache", "quality", "wasm-build-dev", "runserver-watch"]
 
 # ============================================================================
 # CI/CD Workflow
@@ -326,10 +310,8 @@ description = "Show available tasks"
 script = '''
 echo "Available tasks:"
 echo "  Development:"
-echo "    runserver          - Start the development server (with WASM)"
-echo "    runserver-watch    - Start server with auto-reload"
-echo "    dev                - Run checks + build WASM + start server"
-echo "    dev-watch          - Development with auto-reload"
+echo "    runserver          - Start the development server (with WASM); auto-reloads on changes"
+echo "    dev                - Run checks + build WASM + start server (auto-reloads)"
 echo ""
 echo "  WASM Build:"
 echo "    wasm-build-dev     - Build WASM (debug mode)"
@@ -354,7 +336,6 @@ echo "  Testing:"
 echo "    test               - Run all tests"
 echo "    test-unit          - Run unit tests"
 echo "    test-integration   - Run integration tests"
-echo "    test-watch         - Tests with auto-reload"
 echo ""
 echo "  Code Quality:"
 echo "    fmt-check          - Check formatting"

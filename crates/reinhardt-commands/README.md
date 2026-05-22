@@ -12,19 +12,20 @@ migrations, static file collection, development server, and more.
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["commands"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["commands"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import command features:
 
 ```rust
-use reinhardt::commands::{Command, CommandRegistry, execute_from_command_line};
+use reinhardt::commands::{BaseCommand, CommandRegistry};
 ```
 
 **Note:** Command features are included in the `standard` and `full` feature presets.
@@ -34,8 +35,11 @@ use reinhardt::commands::{Command, CommandRegistry, execute_from_command_line};
 For creating new projects and apps, use the separate `reinhardt-admin-cli`
 package:
 
+<!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli
+# Pre-release: --version is required. Once 0.1.0 stable ships, --version
+# becomes optional. The literal below is auto-bumped by release-plz.
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
 This installs the `reinhardt-admin` command:
@@ -64,8 +68,8 @@ details.
 ### Feature Flags
 
 - `migrations` - Enable migration-related commands (requires
-  `reinhardt-migrations`)
-- `routers` - Enable URL-related commands (requires `reinhardt-routers`)
+  `reinhardt-db`)
+- `routers` - Enable URL-related commands (requires `reinhardt-urls`)
 
 ## Template System
 
@@ -118,12 +122,13 @@ When rendering templates, the following variables are available:
 
 You can pass custom variables to templates programmatically:
 
+<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::commands::TemplateContext;
 
 let mut context = TemplateContext::new();
 context.insert("project_name", "my_project");
-context.insert("version", "1.0.0");
+context.insert("version", "0.1.0-rc.30");
 context.insert("features", vec!["auth", "admin"]);  // Any Serialize type
 ```
 
@@ -225,9 +230,10 @@ for compile-time distributed slice registration.
 
 Projects using `collect_migrations!` must add `linkme` as a dependency:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.10", features = ["standard"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }
 linkme = "0.3"
 ```
 
@@ -379,13 +385,13 @@ impl BaseCommand for PluginInstallCommand {
 - **RESTful** - API-first applications
 
 ```bash
-reinhardt-admin startproject myproject --template-type restful
+reinhardt-admin startproject myproject --template rest
 ```
 
 ### App Templates
 
 ```bash
-reinhardt-admin startapp myapp --template-type restful
+reinhardt-admin startapp myapp --template rest
 ```
 
 Templates are embedded in the binary using `rust-embed` for fast,
@@ -399,6 +405,54 @@ dependency-free project generation.
 - **Composable** - Commands can be combined and extended
 - **Feature-gated** - Optional dependencies reduce compile times
 - **Django-compatible** - Familiar interface for Django developers
+
+## Customizing Templates
+
+`reinhardt-commands` ships its scaffolding templates embedded in the binary via
+`rust-embed`, so `cargo install reinhardt-commands` produces a self-contained
+executable without any external template files.
+
+Two override mechanisms are available:
+
+### Full replacement: `--template <PATH>`
+
+Pass `--template <PATH>` to `startproject` or `startapp` to use `<PATH>` as the
+complete template tree. No fallback to embedded assets is performed. Use this
+when you maintain a fully custom project template from scratch.
+
+```bash
+reinhardt-admin startproject myproject --template /path/to/my-template
+```
+
+### Partial override: `--template-dir <ROOT>`
+
+Pass `--template-dir <ROOT>` (or set the `REINHARDT_TEMPLATE_DIR` environment
+variable) to point at a directory that contains one or more template
+subdirectories matching the built-in names:
+
+- `project_pages_template`
+- `project_restful_template`
+- `app_pages_template`
+- `app_restful_template`
+- `app_pages_workspace_template`
+- `app_restful_workspace_template`
+
+Any file present in your override directory wins; any file absent falls back to
+the embedded copy. This lets you customise a single file without vendoring the
+entire template tree.
+
+```bash
+# Only override the Cargo.toml template; everything else stays embedded
+mkdir -p ~/my-templates/project_restful_template
+cp ... ~/my-templates/project_restful_template/Cargo.toml.tpl
+reinhardt-admin startproject myproject --template-dir ~/my-templates
+
+# Or use the environment variable
+export REINHARDT_TEMPLATE_DIR=~/my-templates
+reinhardt-admin startproject myproject
+```
+
+**Precedence:** `--template` > `--template-dir` CLI flag > `REINHARDT_TEMPLATE_DIR` env > embedded defaults.
 
 ## License
 

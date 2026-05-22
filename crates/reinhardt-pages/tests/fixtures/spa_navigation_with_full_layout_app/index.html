@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tier 3 — Full Layout Fixture</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import init, * as api from "./pkg/spa_navigation_with_full_layout_app.js";
+      await init();
+      window.__diag_observer_count_js = api.__diag_observer_count_js;
+      window.__diag_dispatch_count_js = api.__diag_dispatch_count_js;
+      window.__diag_render_count_js = api.__diag_render_count_js;
+    </script>
+  </body>
+</html>

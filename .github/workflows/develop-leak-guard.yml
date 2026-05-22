@@ -20,10 +20,12 @@ concurrency:
 jobs:
   develop-leak-guard:
     name: Develop Leak Guard
+    timeout-minutes: 15
     if: >-
       github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
       github.event.label.name == 'migration-approved'
-    runs-on: ubuntu-latest
+    # See infra/github-runners/hotpath-runner-userdata.sh for the canonical hotpath runner labels.
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     steps:
       - name: Check if migration-approved
         id: label-check

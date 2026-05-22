@@ -1,0 +1,41 @@
+meta {
+  name: Create Snippet
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/snippets/
+  body: json
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "title": "Hello World",
+    "code": "fn main() {\n    println!(\"Hello, World!\");\n}",
+    "language": "rust"
+  }
+}
+
+script:post-response {
+  const snippet = res.body && res.body.snippet ? res.body.snippet : res.body;
+  if (snippet && snippet.id !== undefined) {
+    bru.setEnvVar("snippetId", String(snippet.id));
+  }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.status).to.equal(201);
+  });
+
+  test("Snippet created with correct data", function() {
+    const snippet = res.body && res.body.snippet ? res.body.snippet : res.body;
+    expect(snippet.title).to.equal("Hello World");
+    expect(snippet.language).to.equal("rust");
+  });
+}

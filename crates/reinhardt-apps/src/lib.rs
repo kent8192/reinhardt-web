@@ -29,11 +29,11 @@
 //! ## Quick Start
 //!
 //! ```rust,ignore
-//! use reinhardt_apps::{ApplicationBuilder, AppConfig, Settings};
+//! use reinhardt_apps::{ApplicationBuilder, AppConfig};
 //!
 //! // Build an application with multiple apps
 //! let app = ApplicationBuilder::new()
-//!     .settings(Settings::default())
+//!     .add_setting("DEBUG", "true")
 //!     .add_app(AppConfig::new("users", "myproject.users"))
 //!     .add_app(AppConfig::new("blog", "myproject.blog"))
 //!     .build()
@@ -75,52 +75,84 @@
 //!
 //! - From `reinhardt-http`: [`Request`], [`Response`], [`StreamBody`]
 //! - From `reinhardt-conf`: [`Settings`], [`DatabaseConfig`], [`MiddlewareConfig`]
-//! - From `reinhardt-exception`: [`Error`], [`Result`]
+//! - From `reinhardt-core::exception`: [`Error`], [`Result`]
 //! - From `reinhardt-server`: [`HttpServer`], [`serve`]
-//! - From `reinhardt-types`: [`Handler`], [`Middleware`], [`MiddlewareChain`]
+//! - From `reinhardt-http`: [`Handler`], [`Middleware`], [`MiddlewareChain`]
 
 #![warn(missing_docs)]
 
+// Cross-target modules. These define the pure trait/data core (`AppLabel`,
+// `AppConfig`, lifecycle signals) that must be reachable from
+// `wasm32-unknown-unknown` callers (e.g., client-side code that names an
+// `AppLabel` impl without pulling in the server runtime).
 pub mod apps;
-pub mod builder;
-pub mod discovery;
-pub mod hooks;
-pub mod registry;
 pub mod signals;
+
+// Native-only modules.
+//
+// - `registry` uses `linkme::distributed_slice`, whose link-section
+//   constructors are not supported on `wasm32-unknown-unknown`.
+// - `builder`, `discovery`, `hooks`, `validation` depend on
+//   `reinhardt-server`, `reinhardt-conf`, `reinhardt-utils`, or
+//   `reinhardt-di`, none of which compile on wasm32 today (they pull in
+//   tokio's `net` feature → mio).
+#[cfg(native)]
+pub mod builder;
+#[cfg(native)]
+pub mod discovery;
+#[cfg(native)]
+pub mod hooks;
+#[cfg(native)]
+pub mod registry;
+#[cfg(native)]
 pub mod validation;
 
-// Re-export from reinhardt-http
+// Re-export from reinhardt-http (cross-target).
 pub use reinhardt_http::{Request, Response, StreamBody, StreamingResponse};
 
-// Re-export from reinhardt-conf
+// Re-export from reinhardt-conf (native-only: pulls in tokio runtime).
+#[cfg(native)]
+#[allow(deprecated)]
 pub use reinhardt_conf::settings::{DatabaseConfig, MiddlewareConfig, Settings, TemplateConfig};
 
-// Re-export from reinhardt-exception
+// Re-export from reinhardt-core::exception (cross-target).
 pub use reinhardt_core::exception::{Error, Result};
 
-// Re-export from reinhardt-server
+// Re-export from reinhardt-server (native-only).
+#[cfg(native)]
 pub use reinhardt_server::{HttpServer, serve};
 
-// Re-export from reinhardt-types
+// Re-export from reinhardt-http (cross-target).
 pub use reinhardt_http::{Handler, Middleware, MiddlewareChain};
 
-// Re-export inventory for macro usage
+// Re-export inventory for macro usage (native-only; inventory relies on
+// link-section constructors not portable to `wasm32-unknown-unknown`).
+#[cfg(native)]
 pub use inventory;
 
-// Re-export from apps module
+// Re-export from apps module. Cross-target items (`AppLabel`, `AppConfig`, and
+// the trait providers) are unconditional; the `AppVendorAsset` re-export and
+// the `get_app_*` collector helpers depend on `reinhardt-utils` and remain
+// native-only.
+#[cfg(native)]
 pub use apps::{
-	AppCommandConfig, AppConfig, AppError, AppLocaleConfig, AppMediaConfig, AppResult,
-	AppStaticFilesConfig, Apps, BaseCommand, LocaleProvider, MediaProvider, StaticFilesProvider,
-	get_app_commands, get_app_locales, get_app_media, get_app_static_files,
+	AppCommandConfig, AppLocaleConfig, AppMediaConfig, AppStaticFilesConfig, AppVendorAsset,
+	BaseCommand, get_app_commands, get_app_locales, get_app_media, get_app_static_files,
+};
+pub use apps::{
+	AppConfig, AppError, AppLabel, AppResult, Apps, LocaleProvider, MediaProvider,
+	StaticFilesProvider,
 };
 
-// Re-export from builder module
+// Re-export from builder module (native-only).
+#[cfg(native)]
 pub use builder::{
 	Application, ApplicationBuilder, ApplicationDatabaseConfig, BuildError, BuildResult,
 	RouteConfig,
 };
 
-// Re-export from registry module
+// Re-export from registry module (native-only).
+#[cfg(native)]
 pub use registry::{
 	MODELS, ModelMetadata, RELATIONSHIPS, RelationshipMetadata, RelationshipType,
 	ReverseRelationMetadata, ReverseRelationType, finalize_reverse_relations, find_model,
@@ -129,13 +161,15 @@ pub use registry::{
 	register_reverse_relation,
 };
 
-// Re-export from discovery module
+// Re-export from discovery module (native-only).
+#[cfg(native)]
 pub use discovery::{
 	MigrationMetadata, RelationMetadata, RelationType, build_reverse_relations,
 	create_reverse_relation, discover_all_models, discover_migrations, discover_models,
 };
 
-// Re-export from validation module
+// Re-export from validation module (native-only).
+#[cfg(native)]
 pub use validation::{
 	ValidationError, ValidationResult, check_circular_relationships, check_duplicate_model_names,
 	check_duplicate_table_names, validate_registry,

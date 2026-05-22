@@ -338,6 +338,12 @@ impl SqliteQueryBuilder {
 				// so we render only the inner expression.
 				self.write_simple_expr(writer, expr);
 			}
+			SimpleExpr::ExprAlias(expr, alias) => {
+				self.write_simple_expr(writer, expr);
+				writer.push_keyword("AS");
+				writer.push_space();
+				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
+			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr(writer, expr);
@@ -1935,6 +1941,16 @@ impl SqliteQueryBuilder {
 			SetDefault => "SET DEFAULT",
 			NoAction => "NO ACTION",
 		}
+	}
+}
+
+impl crate::query::QueryBuilderTrait for SqliteQueryBuilder {
+	fn placeholder(&self) -> (&str, bool) {
+		("?", false)
+	}
+
+	fn quote_char(&self) -> char {
+		'"'
 	}
 }
 
@@ -5390,15 +5406,5 @@ mod tests {
 		// Assert
 		assert!(sql.contains("\"orders\".\"status\""));
 		assert!(sql.contains("WHERE"));
-	}
-}
-
-impl crate::query::QueryBuilderTrait for SqliteQueryBuilder {
-	fn placeholder(&self) -> (&str, bool) {
-		("?", false)
-	}
-
-	fn quote_char(&self) -> char {
-		'"'
 	}
 }
