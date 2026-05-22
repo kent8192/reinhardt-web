@@ -1042,8 +1042,6 @@ mod tests {
 	}
 
 	#[test]
-	fn fn_form_legacy_trait_uses_url_resolver_unprefixed_supertrait() {
-	#[test]
 	fn fn_form_emits_deprecation_when_basename_arg_absent() {
 		// Arrange: bare `#[viewset]` triggers the legacy body-walker
 		// fallback path that the Issue #4549 deprecation flow targets.
