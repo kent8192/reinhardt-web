@@ -203,9 +203,4 @@ mod tests {
 			"/api/snippets-viewset/42/"
 		);
 	}
-
-	// The deprecated flat `urls.snippet_list()` accessor (emitted by
-	// `#[viewset]` until `0.1.0-rc.29`) was removed in 0.2.0 per Issue
-	// #4520. The typed accessor demonstrated above is the only
-	// supported surface.
 }
