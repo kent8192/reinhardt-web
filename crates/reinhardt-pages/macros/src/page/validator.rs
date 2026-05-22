@@ -54,6 +54,7 @@ fn is_safe_url(url: &str) -> bool {
 ///
 /// A `TypedPageMacro` with validated and type-safe attribute values.
 pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
+	enforce_capture_discipline(ast)?;
 	let typed_body = transform_body(&ast.body, &[])?;
 
 	Ok(TypedPageMacro {
@@ -62,6 +63,19 @@ pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 		body: typed_body,
 		span: ast.span,
 	})
+}
+
+/// Verifies that no body identifier is an implicit capture.
+///
+/// Per spec §3.7, every value identifier inside the body must appear in the
+/// `params` list. Item paths (`crate::util::fmt`), type identifiers
+/// (`Vec`, `Option`), constants (`MAX_LEN`), and macro invocations
+/// (`format!`) are exempt.
+fn enforce_capture_discipline(ast: &PageMacro) -> Result<()> {
+	// Scaffold for spec §3.7 (Task 2): currently a no-op. Real checker
+	// implemented in Task 3.
+	let _ = ast;
+	Ok(())
 }
 
 /// Transforms a PageBody into a TypedPageBody.
