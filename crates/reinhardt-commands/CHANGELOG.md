@@ -7,652 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.29...reinhardt-commands@v0.1.0-rc.30) - 2026-05-21
-
-### Added
-
-- *(commands/templates)* add per-app server_fn.rs.tpl
-- *(commands/templates)* add per-app client.rs.tpl aggregator
-- *(commands/templates)* add per-app client/components.rs.tpl
-- *(commands/templates)* add per-app client/pages.rs.tpl
-- *(runserver)* auto-mount project static/ at /static/ with opt-out
-- *(core)* auto-register SuperuserCreator for any #[user] + #[model] type
-
-### Changed
-
-- refactor!(commands/templates): gate per-app aggregator by target
-- *(commands/templates)* empty server_urls.rs.tpl body
-- *(commands/templates)* empty client_router.rs.tpl body
-- *(commands/templates)* update project lib.rs.tpl
-- *(commands/templates)* delete project server_fn.rs.tpl
-- *(commands/templates)* update project client.rs.tpl
-- *(commands/templates)* wire client lib.rs.tpl to router_client
-- *(commands/templates)* delete project router.rs.tpl
-- *(commands/templates)* delete project pages.rs.tpl
-- *(commands/templates)* update project components.rs.tpl
-- *(commands/templates)* create project nav.rs.tpl
-- *(commands/templates)* update project urls.rs.tpl with server function notes
-
-### Documentation
-
-- *(commands/templates)* correct project urls.rs comment on url_patterns behavior
-- *(commands/templates)* correct server_urls.rs comment on auto-mount behavior
-- *(commands/templates)* correct client_router.rs comment on launcher wiring
-- *(runserver)* clarify MiddlewareChain order reverses at handle time
-
-### Fixed
-
-- *(staticfiles)* disable immutable cache for bundle assets in debug builds
-- address Copilot review feedback
-- *(commands)* gate startproject manage.rs template off wasm32 target
-- *(commands/templates)* correct project-wide pages template content
-- *(commands/templates)* switch project routes to standalone mode
-- *(commands)* make per-app templates compile under wasm32
-- *(commands/templates)* install default empty ClientRouter in Pages WASM entry
-- *(commands)* only gate apps.rs Config re-export with cfg(server) for Pages
-
-### Styling
-
-- *(commands)* apply rustfmt to e2e_pages.rs
-
-### Testing
-
-- *(commands)* assert per-app pages layout in e2e_pages (RED)
-- *(commands)* renumber urls.rs assertion block to section 5
-- *(commands)* scope server/client_url assertions to function body
-
-## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.28...reinhardt-commands@v0.1.0-rc.29) - 2026-05-13
-
-### Changed
-
-- *(commands)* promote CommandContext.settings to Arc<dyn HasCommonSettings>
-- *(commands)* consume ProjectSettings in CheckCommand instead of env::var
-- *(commands)* rename unused ctx param to _ctx in resolve_static_root_configured
-
-### Documentation
-
-- *(commands/templates)* document TOML interpolation and server_fn cross-target stub
-- *(commands/templates)* surface ClientLauncher lifecycle hooks and Depends/guard DI patterns
-- *(commands/templates)* clarify TOML interpolation wording for runtime vs build-time
-- *(commands)* expand client_router scaffold with canonical registration hints
-
-### Fixed
-
-- *(commands)* scaffold urls/ submodule layout for app_pages templates
-- *(commands)* address Copilot review on PR [[#4357](https://github.com/kent8192/reinhardt-web/issues/4357)](https://github.com/kent8192/reinhardt-web/issues/4357)
-
-### Styling
-
-- apply rustfmt to PR-A files
-- *(commands)* collapse nested if in CheckCommand::resolve_database_url
-
-### Testing
-
-- *(commands)* migrate sendtestemail tests to HasCommonSettings stub
-
-## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.26...reinhardt-commands@v0.1.0-rc.27) - 2026-05-09
-
-### Added
-
-- *(commands)* add SourceRoots derived from cargo metadata
-- *(commands)* add WasmRebuildPipeline with structured log lines
-- *(commands)* add ServerRebuildPipeline with cargo build + swap
-- *(commands)* add --no-wasm-rebuild flag to runserver
-- *(commands)* make runserver rebuild WASM by default; add --no-override-wasm opt-out
-- *(commands)* support REINHARDT_SUPERUSER_PASSWORD env var for noninteractive createsuperuser
-
-### Documentation
-
-- document built-in runserver hot-reload, drop bacon mentions
-- *(changelog)* record hot-reload fix and bacon removal
-- *(commands)* note runserver WASM rebuild default flip in CHANGELOG
-- *(commands)* document Cargo.lock subscription in watcher rustdoc
-
-### Fixed
-
-- *(commands)* rebuild wasm bundle on hot-reload file change
-- *(commands)* run wasm + server rebuild pipelines in parallel
-- *(commands)* drop unused WasmBuildError::Other variant to keep RC enum exhaustive
-- *(commands)* include Cargo.lock in hot-reload watcher
-- *(commands)* address Copilot review feedback on autoreload diagnostics
-- *(commands)* redact spawn_diagnostics non-debug output ([[#4250](https://github.com/kent8192/reinhardt-web/issues/4250)](https://github.com/kent8192/reinhardt-web/issues/4250))
-
-### Maintenance
-
-- *(commands)* expose cargo_metadata under autoreload feature
-- *(build)* remove bacon-based watch tasks
-- *(templates,examples)* pin --no-override-wasm in pre-built runserver tasks
-- *(commands)* add autoreload spawn diagnostics for [[#4236](https://github.com/kent8192/reinhardt-web/issues/4236)](https://github.com/kent8192/reinhardt-web/issues/4236)
-- *(commands)* expose get_database_url_from_settings as pub(crate)
-
-### Testing
-
-- *(commands)* add HR-1..HR-6 hot-reload integration tests
-- *(commands)* add run_watcher integration test for OL-1 resilience
-- *(commands)* cover Cargo.lock detection in source_roots and watcher filter
-- *(commands)* update runserver_hot_reload fixtures for SourceRoots.lockfile
-- *(commands)* address Copilot feedback on createsuperuser tests
-- *(db,commands)* cover DATABASE_URL loaders against interpolation default
-- *(db,commands)* preserve prior env values in EnvGuard, fix doc
-- *(commands)* assert redacted vs full spawn_diagnostics output ([[#4250](https://github.com/kent8192/reinhardt-web/issues/4250)](https://github.com/kent8192/reinhardt-web/issues/4250))
-
-### Fixed
-- `runserver --with-pages` (without `--noreload`) now rebuilds the WASM bundle and the server binary on file changes. Previously the watcher restarted the server process without rebuilding either artefact, so source edits had no effect on the running app. Pipeline failures no longer terminate the watcher: a fresh save retriggers the failed pipeline. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
-
-### Added
-- `runserver --no-wasm-rebuild` opts out of the in-process WASM rebuild while keeping server hot-reload, for users who manage the wasm build externally. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
-- `runserver --no-override-wasm` reuses existing WASM artifacts in `dist/` when present/up-to-date, for callers that explicitly opt out of rebuilds (e.g. cargo-make tasks that pre-run `wasm-build-dev`). ([#4205](https://github.com/kent8192/reinhardt-web/issues/4205))
-- `createsuperuser --noinput` now reads the password from the `REINHARDT_SUPERUSER_PASSWORD` environment variable, unblocking automated provisioning flows (CI, devcontainers, agent-driven setup). Combining `--no-password` with the env var is rejected as mutually exclusive, and env-var passwords below 8 characters are rejected with the same length rule the interactive prompt enforces. ([#4233](https://github.com/kent8192/reinhardt-web/issues/4233))
-
-### Changed
-- `cargo make watch`, `watch-test`, `watch-clippy`, `runserver-watch`, `dev-watch`, and `install-bacon` were removed from the workspace, the project templates, and the bundled examples. The built-in runserver hot-reload supersedes them; users who relied on `bacon` for unrelated workflows can invoke `bacon` directly. ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128))
-- `runserver --with-pages` now rebuilds the Pages/Admin WASM bundle by default at startup and on every hot-reload restart. The previous "skip if artifacts exist / up-to-date" behavior is now opt-in via `--no-override-wasm`, preventing stale `dist/` content from being served after edits to client-side Rust code. ([#4205](https://github.com/kent8192/reinhardt-web/issues/4205))
-
-### Deprecated
-- `runserver --force-wasm` is now redundant (rebuild is the default) and emits a deprecation warning when invoked. To be removed in a future major release. ([#4205](https://github.com/kent8192/reinhardt-web/issues/4205))
-
-## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.25...reinhardt-commands@v0.1.0-rc.26) - 2026-05-05
-
-### Added
-
-- *(commands)* add wasm staleness detection helpers
-
-### Fixed
-
-- *(commands)* rebuild stale wasm bundle in runserver
-
-## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.24...reinhardt-commands@v0.1.0-rc.25) - 2026-04-30
-
-### Added
-
-- *(commands)* make auto_register_router public for non-CLI entrypoints
-- *(commands)* add start_server helper for container entrypoints
-
-### Fixed
-
-- *(commands)* remove redundant explicit link targets in cli.rs
-
-### Testing
-
-- *(commands)* cover non-CLI server entrypoint public API
-
-## [0.1.0-rc.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.21...reinhardt-commands@v0.1.0-rc.22) - 2026-04-25
-
-### Changed
-
-- *(commands)* restore ClientLauncher in --with-pages templates
-
-### Fixed
-
-- *(commands)* align startapp --with-pages with basis tutorial structure
-
-## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.20...reinhardt-commands@v0.1.0-rc.21) - 2026-04-23
-
-### Fixed
-
-- *(commands)* remove stray `pub mod ws_urls` from app-root template
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.19...reinhardt-commands@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- *(core)* fix API inaccuracies in core infrastructure crate READMEs
-
-## [0.1.0-rc.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.18...reinhardt-commands@v0.1.0-rc.19) - 2026-04-22
-
-### Added
-
-- *(commands)* add urls/server_urls.rs.tpl to pages templates
-- *(commands)* add urls/client_urls.rs.tpl to pages templates
-- *(commands)* rewrite urls.rs.tpl as mount + unified entry
-
-### Changed
-
-- *(commands)* move ws_urls.rs.tpl under urls/ (both pages templates)
-
-### Fixed
-
-- *(commands)* return WebSocketRouter from ws_urls scaffold template
-
-## [0.1.0-rc.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.17...reinhardt-commands@v0.1.0-rc.18) - 2026-04-22
-
-### Added
-
-- *(commands)* add bootstrap.rs.tpl, fix client.rs.tpl, update router.rs.tpl for ClientLauncher
-
-### Fixed
-
-- *(commands)* allow .gitignore.tpl to pass hidden-file filter in template processor
-- *(docs)* replace non-existent --template-type flag with --template
-
-### Styling
-
-- apply cargo fmt and clippy auto-fix
-
-## [0.1.0-rc.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.16...reinhardt-commands@v0.1.0-rc.17) - 2026-04-20
-
-### Changed
-
-- *(commands)* use typed TokenQuery struct instead of HashMap for Query extractor
-
-### Documentation
-
-- *(commands)* note auto-detection of #[inject] in server_fn.rs.tpl files
-- *(commands)* clarify WASM auto-injection in index.html.tpl
-- *(commands)* add JwtError handling example to views.rs.tpl
-
-### Fixed
-
-- *(commands)* update templates to reflect rc.13-rc.15 API changes
-- *(commands)* correct #[user] macro usage in all models.rs.tpl variants
-- *(commands)* add missing #[field] attributes to #[user] model examples
-- *(commands)* correct JwtError example in views.rs.tpl
-- *(commands)* use AuthUser<U> extractor in views.rs.tpl example
-- *(commands)* remove unnecessary #[use_inject] from views.rs.tpl example
-- *(commands)* add correct #[field] constraints to user model example in templates
-- *(commands)* replace include_in_new with auto_now_add in user model template example
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.15...reinhardt-commands@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- *(commands)* add createsuperuser as built-in management command
-- *(commands)* add requires_database() and auto-init ORM dispatch
-- *(auth)* auto-register SuperuserCreator via inventory for #[user(full = true)] + #[model] types
-- *(commands)* auto-build WASM when runserver --with-pages is used
-- *(urls)* [**breaking**] support async functions in #[routes] macro
-- *(commands)* add RunserverHook for concurrent service startup and pre-listen validation
-- *(commands)* reject reinhardt_ prefixed project and app names
-- *(macros)* [**breaking**] extend #[url_patterns] for viewset/mount, add #[viewset] macro, deprecate named variants
-- *(macros)* add #[export_endpoints] attribute for multi-file view modules
-- *(commands)* startapp appends entry to installed_apps! block
-- *(commands)* introduce TemplateSource trait with Embedded/Filesystem/Merged impls
-- *(commands)* add --template-dir flag and REINHARDT_TEMPLATE_DIR env to startproject/startapp
-
-### Changed
-
-- *(commands)* extract initialize_orm_database() shared function
-- *(commands)* simplify run_server() ORM block to DI-only
-- *(commands)* switch TemplateCommand::handle to TemplateSource
-
-### Deprecated
-
-- *(macros)* rename define_views! to flatten_imports! and deprecate old name
-- *(macros)* fix comment and add flatten_imports! example to templates
-
-### Documentation
-
-- *(commands)* document --template-dir and REINHARDT_TEMPLATE_DIR overrides
-
-### Fixed
-
-- *(commands)* remove bare DB connect from createsuperuser
-- *(commands)* integrate file-based fallback into makemigrations
-- *(admin)* resolve CI failures blocking release-plz PR [[#3236](https://github.com/kent8192/reinhardt-web/issues/3236)](https://github.com/kent8192/reinhardt-web/issues/3236)
-- *(test)* use recursive file count in collectstatic tests
-- *(test)* skip hidden files in collectstatic test helper
-- *(commands)* exit with error when --with-pages WASM build fails
-- *(commands)* ensure admin vendor assets are collected to STATIC_ROOT
-- *(commands)* resolve WASM artifact path relative to workspace root
-- *(tests)* fix makemigrations and admin create test regressions
-- *(commands)* address Copilot review feedback on RunserverHook
-- *(macros)* [**breaking**] replace `#[export_endpoints]` with `define_views!` for stable Rust support
-- *(ci)* resolve fmt and clippy violations
-- *(commands)* inject project_crate_name in workspace app context and update AppLabel doctest
-- *(commands)* address Copilot review feedback on template source
-
-### Maintenance
-
-- upgrade workspace dependencies to latest versions
-- *(templates)* update scaffold to typed #[url_patterns]
-
-### Other
-
-- resolve conflict with main (deduplicate tests)
-- resolve conflict with main in createsuperuser error message
-- Detect workspace target_dir via cargo metadata in WASM builder
-- Validate project directory before running makemigrations
-
-### Styling
-
-- *(commands)* fix formatting in createsuperuser deprecation warning
-- apply cargo make auto-fix (clippy + fmt)
-
-### Testing
-
-- *(commands)* cover startproject generation from embedded templates
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.14...reinhardt-commands@v0.1.0-rc.15) - 2026-03-29
-
-### Added
-
-- *(examples)* remove manual WASM scripts for auto-injection
-
-### Documentation
-
-- update rust version references from 1.91.1 to 1.94.1
-
-### Fixed
-
-- *(admin)* add deferred DI registration to bridge route-server scope gap
-- *(di)* register DatabaseConnection in user-provided DI context
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.13...reinhardt-commands@v0.1.0-rc.14) - 2026-03-24
-
-### Added
-
-- *(commands)* add --index CLI option to runserver command
-- *(commands)* integrate --index into runserver execution and autoreload
-- *(commands)* add --index option to collectstatic for index.html source
-
-### Changed
-
-- *(commands)* update project templates to use ProjectSettings
-- *(templates)* remove index.html copy from wasm-finalize tasks
-
-### Fixed
-
-- *(deps)* consolidate colored and criterion versions to workspace dependencies
-- *(middleware)* update Settings field access for CoreSettings restructuring
-- suppress deprecated Settings warnings and fix unreachable pub visibility
-- address Copilot review feedback
-- *(ci)* resolve docs.rs and semver CI failures
-- address Copilot review feedback for PR [[#2874](https://github.com/kent8192/reinhardt-web/issues/2874)](https://github.com/kent8192/reinhardt-web/issues/2874)
-- *(commands)* use CLI parsing for non-exhaustive enum variants in integration tests
-- *(commands)* use helper function to construct non_exhaustive Collectstatic in tests
-- *(test)* account for auto-discovered app static files in backward compatibility test
-
-### Other
-
-- resolve conflict with main in middleware.rs
-
-### Styling
-
-- *(commands)* fix formatting and clippy warnings in staticfiles changes
-
-### Testing
-
-- *(staticfiles)* add comprehensive test coverage for index file separation
-
-## [0.1.0-rc.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.12...reinhardt-commands@v0.1.0-rc.13) - 2026-03-18
-
-### Added
-
-- *(commands)* extend InfraSignals with gRPC, storage, mail, session, graphql, admin, i18n detection
-
-### Fixed
-
-- *(commands)* align mail and session detection with workspace feature names
-
-## [0.1.0-rc.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.11...reinhardt-commands@v0.1.0-rc.12) - 2026-03-18
-
-### Added
-
-- *(commands)* add --merge option to makemigrations command
-- *(commands)* add introspect management command
-
-### Deprecated
-
-- *(conf)* mark Settings.installed_apps and related methods as deprecated
-
-### Fixed
-
-- *(commands)* address Copilot review feedback on introspect command
-
-### Testing
-
-- add tests for makemigrations --merge option
-
-## [0.1.0-rc.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.10...reinhardt-commands@v0.1.0-rc.11) - 2026-03-16
-
-### Documentation
-
-- *(reinhardt-commands)* document --force-empty-state flag and linkme dependency
-
-### Fixed
-
-- *(reinhardt-commands)* add mysql branch to migrate command connection logic
-
-## [0.1.0-rc.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.9...reinhardt-commands@v0.1.0-rc.10) - 2026-03-15
-
-### Fixed
-
-- *(commands)* propagate openapi-router feature to reinhardt-commands
-- *(commands)* gate docs banner on openapi-router feature
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.8...reinhardt-commands@v0.1.0-rc.9) - 2026-03-15
-
-### Fixed
-
-- *(commands)* add features section and fix router types in templates
-- *(commands)* remove redundant features section from restful template
-
-### Styling
-
-- add explanatory comments to remaining #[allow(dead_code)] attributes
-
-## [0.1.0-rc.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.7...reinhardt-commands@v0.1.0-rc.8) - 2026-03-12
-
-### Fixed
-
-- *(commands)* generate app module as {name}.rs per Rust 2024 Edition convention
-- *(commands)* only rename lib.rs for default app location, not custom targets
-- collapse nested if statements in start_commands to fix clippy lint
-- *(commands)* update startapp test assertions for Rust 2024 module paths
-
-## [0.1.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.6...reinhardt-commands@v0.1.0-rc.7) - 2026-03-11
-
-### Changed
-
-- *(commands)* rename template cfg attrs to cfg_aliases and add missing module roots
-
-### Fixed
-
-- *(commands)* add missing middleware, root_urlconf, media_root defaults to runserver and collectstatic
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.4...reinhardt-commands@v0.1.0-rc.5) - 2026-03-07
-
-### Documentation
-
-- add missing doc comments for public API modules and types
-
-## [0.1.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.2...reinhardt-commands@v0.1.0-rc.3) - 2026-03-04
-
-### Fixed
-
-- *(commands)* correct project template compilation errors
-- *(commands)* correct app template compilation errors
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.1...reinhardt-commands@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(deps)* align dependency versions to workspace definitions
-- *(staticfiles)* unify manifest.json format to use "paths" key
-- *(staticfiles)* use STATIC_URL in HTML template processing
-
-## [0.1.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.20...reinhardt-commands@v0.1.0-alpha.21) - 2026-02-24
-
-### Maintenance
-
-- updated the following local packages: reinhardt-pages, reinhardt-test
-
-## [0.1.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.19...reinhardt-commands@v0.1.0-alpha.20) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.18...reinhardt-commands@v0.1.0-alpha.19) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-conf, reinhardt-apps, reinhardt-db, reinhardt-mail, reinhardt-middleware, reinhardt-rest, reinhardt-urls, reinhardt-pages, reinhardt-test, reinhardt-dentdelion, reinhardt-openapi
-
-## [0.1.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.17...reinhardt-commands@v0.1.0-alpha.18) - 2026-02-21
-
-### Fixed
-
-- return Result instead of process::exit in library code
-- propagate serialization errors from TemplateContext::insert
-- add panic prevention for command registry and argument parsing
-- remove map_err on non-Result OpenApiRouter::wrap return value
-- return Result from OpenApiRouter::wrap instead of panicking
-- prevent email header injection via address validation
-
-### Security
-
-- escape PO format characters and add checked arithmetic for MO offsets
-- replace hardcoded default secret key with random generation
-- redact sensitive values in error messages and env validation
-- strengthen path traversal protection in runserver
-
-### Changed
-
-- remove unused media_root field from Settings
-- replace unsafe pointer manipulation with Option pattern
-- remove unused `middleware` string list from Settings
-- remove unused `root_urlconf` field from Settings
-
-### Styling
-
-- apply formatting to files introduced by merge from main
-- apply rustfmt to pre-existing formatting violations in 16 files
-- apply rustfmt formatting to workspace files
-
-## [0.1.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.16...reinhardt-commands@v0.1.0-alpha.17) - 2026-02-16
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-middleware, reinhardt-rest, reinhardt-urls, reinhardt-pages, reinhardt-test, reinhardt-dentdelion, reinhardt-openapi
-
-## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.15...reinhardt-commands@v0.1.0-alpha.16) - 2026-02-15
-
-### Maintenance
-
-- updated the following local packages: reinhardt-rest, reinhardt-conf, reinhardt-apps, reinhardt-db, reinhardt-mail, reinhardt-middleware, reinhardt-urls, reinhardt-pages, reinhardt-test, reinhardt-dentdelion, reinhardt-openapi
-
-## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.14...reinhardt-commands@v0.1.0-alpha.15) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-middleware, reinhardt-rest, reinhardt-urls, reinhardt-pages, reinhardt-test, reinhardt-openapi
-
-## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.13...reinhardt-commands@v0.1.0-alpha.14) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-conf, reinhardt-apps, reinhardt-db, reinhardt-mail, reinhardt-middleware, reinhardt-rest, reinhardt-urls, reinhardt-pages, reinhardt-test, reinhardt-dentdelion, reinhardt-openapi
-
-## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.12...reinhardt-commands@v0.1.0-alpha.13) - 2026-02-14
-
-### Fixed
-
-- *(commands)* remove unused reinhardt-i18n dev-dependency
-- *(release)* roll back unpublished crate versions after partial release failure
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.11...reinhardt-commands@v0.1.0-alpha.12) - 2026-02-12
-
-### Fixed
-
-- *(release)* roll back unpublished crate versions and enable release_always
-
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.10...reinhardt-commands@v0.1.0-alpha.11) - 2026-02-10
-
-### Maintenance
-
-- updated the following local packages: reinhardt-test
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.9...reinhardt-commands@v0.1.0-alpha.10) - 2026-02-10
-
-### Fixed
-
-- *(ci)* remove version from reinhardt-test workspace dep to avoid cargo 1.84+ resolution failure
-- *(release)* revert unpublished crate versions to pre-release state
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.8...reinhardt-commands@v0.1.0-alpha.9) - 2026-02-07
-
-### Other
-
-- Merge pull request #129 from kent8192/fix/issue-128-bug-runserver-uses-settingsdefault-instead-of-loading-from-settings-directory
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.7...reinhardt-commands@v0.1.0-alpha.8) - 2026-02-07
-
-### Fixed
-
-- add version to reinhardt-test workspace dependency for crates.io publishing
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.6...reinhardt-commands@v0.1.0-alpha.7) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-rest, reinhardt-conf, reinhardt-server, reinhardt-apps, reinhardt-db, reinhardt-mail, reinhardt-middleware, reinhardt-urls, reinhardt-pages, reinhardt-test, reinhardt-dentdelion, reinhardt-openapi
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.5...reinhardt-commands@v0.1.0-alpha.6) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-pages, reinhardt-http, reinhardt-utils, reinhardt-conf, reinhardt-di, reinhardt-server, reinhardt-apps, reinhardt-db, reinhardt-mail, reinhardt-middleware, reinhardt-rest, reinhardt-urls, reinhardt-test, reinhardt-dentdelion, reinhardt-openapi
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.4...reinhardt-commands@v0.1.0-alpha.5) - 2026-02-03
-
-### Other
-
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.4] - 2026-01-30
-
-### Changed
-
-- Version bump for publish workflow correction (no functional changes)
-
-## [0.1.0-alpha.3] - 2026-01-29
-
-### Changed
-
-- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
-
-## [0.1.0-alpha.2] - 2026-01-28
-
-### Changed
-- Migrated welcome page rendering from Tera to reinhardt-pages SSR
-- Added reinhardt-pages dependency
-
-### Removed
-- Removed welcome.tpl template (replaced by WelcomePage component)
-
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.30...reinhardt-commands@v0.1.0) - 2026-05-22
+
+Initial stable release of `reinhardt-commands` as part of the
+reinhardt-web 0.1.0 release. This crate is Reinhardt's Django-style
+management command framework: it ships the built-in commands
+(`runserver`, `migrate`, `makemigrations`, `collectstatic`,
+`createsuperuser`, `startproject`, `startapp`, `check`, `introspect`),
+the `TemplateSource` trait that backs scaffolding, the hot-reload
+WASM / server rebuild pipelines, and the per-app file templates that
+`reinhardt new` emits.
+
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **`runserver` with built-in hot reload** — watches the workspace
+  via `notify` and runs `WasmRebuildPipeline` + `ServerRebuildPipeline`
+  in parallel on file change, restarting the server only after both
+  artefacts are produced. Pipeline failures do not terminate the
+  watcher: a fresh save retriggers the failed pipeline ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128)).
+  `--no-wasm-rebuild` opts out of the in-process WASM rebuild;
+  `--no-override-wasm` reuses existing `dist/` artefacts when up to
+  date ([#4205](https://github.com/kent8192/reinhardt-web/issues/4205)).
+  Project `static/` is auto-mounted at `/static/`.
+- **`createsuperuser` powered by `SuperuserCreator`** — works
+  against any user type marked `#[user(full = true)]` + `#[model]`
+  via the inventory-backed `SuperuserCreator` registry.
+  `--noinput` reads the password from
+  `REINHARDT_SUPERUSER_PASSWORD`, with the same minimum-length rule
+  the interactive prompt enforces and an explicit mutually-exclusive
+  check against `--no-password` ([#4233](https://github.com/kent8192/reinhardt-web/issues/4233)).
+- **`startproject` / `startapp` with pluggable templates** — the
+  `TemplateSource` trait has `Embedded`, `Filesystem`, and `Merged`
+  implementations. `--template-dir` (or `REINHARDT_TEMPLATE_DIR`)
+  switches templates per invocation. `startapp` appends the new app
+  to the `installed_apps!` block automatically, and the
+  Rust-2024-style `{name}.rs` module path is used (only `lib.rs` is
+  renamed for default locations, not custom targets). Apps and
+  projects with the `reinhardt_` prefix are rejected to prevent
+  collisions with framework crates.
+- **Per-app templates aligned with the [#4476](https://github.com/kent8192/reinhardt-web/discussions/4476) layout** —
+  `apps/<app>/server_fn.rs.tpl`, `client.rs.tpl`,
+  `client/components.rs.tpl`, `client/pages.rs.tpl`, plus the
+  `urls/server_urls.rs.tpl` / `urls/client_urls.rs.tpl` /
+  `urls/ws_urls.rs.tpl` triple. The project-level templates wire
+  the client through `ClientRouter` and the `bootstrap.rs.tpl`
+  entry point.
+- **`makemigrations --merge`** — produces merge migrations for
+  diverged branches without manual hand-editing. The `migrate`
+  command auto-initializes the ORM dispatch and propagates the
+  MySQL branch.
+- **`introspect` and `check`** — `check` consumes
+  `ProjectSettings` (no `env::var` reads) for typed access to
+  configuration. `introspect` exposes `InfraSignals` with gRPC,
+  storage, mail, session, graphql, admin, and i18n detection so
+  CI / agent tooling can answer "which features are wired up".
+- **`RunserverHook` for concurrent service startup** — registered
+  via inventory; runs in parallel with the HTTP listener and is
+  awaited before the listener accepts connections, replacing the
+  ad-hoc startup-order coupling some integrations relied on.
+
+### Notable Breaking Changes
+
+- **Per-app handlers move to `apps/<app>/`** ([#4476](https://github.com/kent8192/reinhardt-web/discussions/4476))
+  — `commands/templates/...` no longer carries handler code;
+  existing projects must relocate matching source files.
+  `reinhardt new` already emits the new layout.
+- **`ProjectSettings` replaces `env::var`** ([#4295](https://github.com/kent8192/reinhardt-web/discussions/4295))
+  — commands read configuration through `ProjectSettings` /
+  `CommandContext::settings: Arc<dyn HasCommonSettings>` instead
+  of touching `std::env`.
+- **`runserver --with-pages` rebuilds WASM by default** ([#4205](https://github.com/kent8192/reinhardt-web/issues/4205))
+  — the previous "skip if artefacts exist" behaviour is now opt-in
+  via `--no-override-wasm`. `--force-wasm` is now redundant and
+  emits a deprecation warning.
+- **`cargo make watch` and friends removed** — the built-in
+  hot-reload supersedes `bacon`-driven watch tasks ([#4128](https://github.com/kent8192/reinhardt-web/issues/4128)).
+
+### Migration Notes
+
+See the [root Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide)
+for project-wide guidance. Command-specific moves:
+
+- Move per-app `server_fn` and client UI from
+  `commands/templates/<app>/` into `apps/<app>/` per [#4476](https://github.com/kent8192/reinhardt-web/discussions/4476).
+- Replace `std::env::var("REINHARDT_...")` calls in custom
+  commands with reads from `CommandContext::settings`.
+- Drop `--force-wasm` from `runserver` invocations and use
+  `--no-override-wasm` if you intentionally pre-built WASM.
