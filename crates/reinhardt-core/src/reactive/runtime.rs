@@ -49,6 +49,15 @@ impl NodeId {
 		static COUNTER: AtomicUsize = AtomicUsize::new(0);
 		Self(COUNTER.fetch_add(1, Ordering::Relaxed))
 	}
+
+	/// Returns the underlying counter value as a `u64`.
+	///
+	/// The widening from `usize` to `u64` is always lossless on
+	/// supported targets (32-bit and 64-bit). Used by
+	/// `Trackable::signal_id()` so hook deps are portable.
+	pub fn as_u64(self) -> u64 {
+		self.0 as u64
+	}
 }
 
 impl Default for NodeId {

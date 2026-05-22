@@ -123,6 +123,15 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 		self.state.get()
 	}
 
+	/// Returns this resource's stable identifier.
+	///
+	/// Reuses the inner state `Signal`'s identifier so a hook deps tuple
+	/// that lists the `Resource` reacts to the same updates as one that
+	/// lists the inner `Signal` directly.
+	pub fn id(&self) -> reinhardt_core::reactive::NodeId {
+		self.state.id()
+	}
+
 	/// Update the resource state
 	///
 	/// This is typically used internally by the fetcher function.
@@ -152,6 +161,20 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	/// Returns `true` if the resource failed to load
 	pub fn is_error(&self) -> bool {
 		self.state.with_untracked(|s| s.is_error())
+	}
+}
+
+// Implementing `Trackable` lets a `Resource<T, E>` appear directly inside
+// the deps tuple passed to `use_effect`, `use_memo`, etc. (spec §4.2).
+//
+// The identifier is forwarded to the inner state `Signal`, so a hook that
+// lists the resource reacts to the same set of updates as one that lists
+// the resource's underlying state signal.
+impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::Trackable
+	for Resource<T, E>
+{
+	fn signal_id(&self) -> u64 {
+		self.id().as_u64()
 	}
 }
 
