@@ -426,11 +426,11 @@ fn get_or_create_sql_parity_with_defaults() {
 fn delete_queryset_sql_via_trait_matches_inherent_method() {
 	// Arrange
 	let manager = Manager::<Article>::new();
-	let qs = manager.filter(
+	let qs = manager.filter(Filter::new(
 		"is_archived",
 		FilterOperator::Eq,
 		FilterValue::Boolean(true),
-	);
+	));
 
 	// Act
 	let (inherent_sql, inherent_params) = manager.delete_queryset(&qs);
