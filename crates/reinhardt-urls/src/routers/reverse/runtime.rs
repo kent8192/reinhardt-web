@@ -121,7 +121,7 @@ pub fn extract_param_names(pattern: &str) -> Vec<String> {
 // was removed in 0.2.0 per Issue #4520. Use `try_reverse_single_pass` —
 // the fallible variant — instead.
 
-/// Fallible variant of [`reverse_with_aho_corasick`].
+/// Fallible URL parameter substitution using Aho-Corasick algorithm.
 ///
 /// Returns `Err(ReverseError::Validation(..))` instead of panicking when any
 /// parameter value is rejected by `validate_reverse_param` (path separators,
