@@ -2,18 +2,14 @@ error[E0061]: this function takes 2 arguments but 1 argument was supplied
  --> tests/ui/hooks/fail/missing_deps_use_effect.rs:9:10
   |
 9 |     let _ = use_effect(|| {});
-  |             ^^^^^^^^^^------- argument #2 of type `_` is missing
+  |             ^^^^^^^^^^------- argument #2 is missing
   |
 note: function defined here
- --> $WORKSPACE/crates/reinhardt-pages/src/reactive/hooks/effect.rs
+ --> src/reactive/hooks/effect.rs
   |
   | pub fn use_effect<F, D>(f: F, deps: D) -> Effect
   |        ^^^^^^^^^^
 help: provide the argument
   |
 9 |     let _ = use_effect(|| {}, /* deps */);
-  |                            +++++++++++++
-
-For more information about this error, try `rustc --explain E0061`.
-
-error: aborting due to 1 previous error
+  |                             ++++++++++++
