@@ -93,36 +93,11 @@ fn default_constructor_interpolates_var() {
 	assert_eq!(host, "default-on-host");
 }
 
-#[rstest]
-#[serial(env)]
-#[allow(deprecated)] // exercising the deprecated set_interpolation path on purpose
-fn deprecated_set_interpolation_still_works() {
-	// Arrange — set_interpolation(bool) is deprecated since 0.1.0-rc.27
-	// but must remain functional until removal in 0.2.0 (issue #4224).
-	let _guard = EnvGuard(vec!["IT_DEPRECATED_HOST"]);
-	// SAFETY: serial-protected.
-	unsafe { env::set_var("IT_DEPRECATED_HOST", "legacy-host") };
-	let (_dir, path) = write_toml_file(r#"host = "${IT_DEPRECATED_HOST}""#);
-	let (_dir2, path2) = write_toml_file(r#"host = "${IT_DEPRECATED_HOST}""#);
-
-	// Act — true keeps interpolation on; false opts out and preserves literal
-	let on: String = SettingsBuilder::new()
-		.add_source(TomlFileSource::new(&path).set_interpolation(true))
-		.build()
-		.unwrap()
-		.get("host")
-		.unwrap();
-	let off: String = SettingsBuilder::new()
-		.add_source(TomlFileSource::new(&path2).set_interpolation(false))
-		.build()
-		.unwrap()
-		.get("host")
-		.unwrap();
-
-	// Assert
-	assert_eq!(on, "legacy-host");
-	assert_eq!(off, "${IT_DEPRECATED_HOST}");
-}
+// `TomlFileSource::set_interpolation(bool)` (deprecated since
+// 0.1.0-rc.27) was removed in 0.2.0 per Issue #4520. The matching test
+// was removed alongside the API; the surviving `with_interpolation()` /
+// `without_interpolation()` builder methods are covered by the tests
+// above and below.
 
 #[rstest]
 #[serial(env)]

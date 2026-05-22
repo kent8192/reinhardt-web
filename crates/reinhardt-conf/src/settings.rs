@@ -113,11 +113,11 @@ impl Contact {
 	}
 }
 
-// Re-export from advanced module
-#[allow(deprecated)]
+// Re-export from advanced module (AdvancedSettings was removed in 0.2.0
+// per Issue #4520; the individual fragment types remain.)
 pub use advanced::{
-	AdvancedSettings, CacheSettings, CorsSettings, DatabaseSettings as AdvancedDatabaseSettings,
-	EmailSettings, LoggingSettings, MediaSettings, SessionSettings, SettingsError, StaticSettings,
+	CacheSettings, CorsSettings, DatabaseSettings as AdvancedDatabaseSettings, EmailSettings,
+	LoggingSettings, MediaSettings, SessionSettings, SettingsError, StaticSettings,
 };
 
 /// Main settings structure for a Reinhardt project
