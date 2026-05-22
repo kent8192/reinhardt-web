@@ -13,7 +13,7 @@
 - Understand that Plan Mode approval authorizes both implementation and commits
 - Treat the Autonomous Operation Policy (Reinhardt family) as a standing exception that allows commit and push on any non-protected branch (anything other than `main`/`master`/`develop/*`/`release/*`), Draft PR creation, Draft→Ready conversion (implementation-complete only — no CI requirement), and Issue creation without further confirmation
 - When editing `CLAUDE.md` or `AGENTS.md`, mirror the change into the other file in the same commit (sync policy)
-- Convert Draft PRs to Ready for Review autonomously once the implementation is complete (CI completion is NOT required under the Autonomous Operation Policy) OR upon explicit user instruction (see instructions/PR_GUIDELINE.md § PC-4a)
+- **MUST** convert Draft PRs to Ready for Review **immediately** once the implementation is complete (CI completion is NOT required) — leaving a PR in Draft state after implementation completion is forbidden (see instructions/PR_GUIDELINE.md § PC-4a)
 - Mark placeholders with `todo!()` or `// TODO:`
 - Use `#[serial(group_name)]` for global state tests
 - Split commits by specific intent, not features
@@ -97,6 +97,7 @@
 - Create release tags or any PR with the `release` label without explicit user authorization
 - Commit a change that touches only `CLAUDE.md` or only `AGENTS.md` without mirroring it into the other
 - Convert Draft PRs to Ready for Review when implementation is incomplete, without explicit user override
+- Leave a PR in Draft state after the implementation is complete (MUST convert to Ready for Review immediately; the agent MUST NOT wait for CI completion)
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
 - Save files to project directory (use `/tmp`)
