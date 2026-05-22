@@ -242,6 +242,7 @@ fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 			entries.push(FormFieldEntry::Field(FormFieldDef {
 				name,
 				field_type,
+				generics: None,
 				properties,
 				span,
 			}));
@@ -330,6 +331,7 @@ fn parse_group_fields(input: ParseStream) -> Result<Vec<FormFieldDef>> {
 		fields.push(FormFieldDef {
 			name,
 			field_type,
+			generics: None,
 			properties,
 			span,
 		});
