@@ -65,21 +65,33 @@ docker run --rm -d \
 	redis:7-alpine >/dev/null
 
 echo "Waiting for PostgreSQL..."
+pg_ready=false
 for _ in $(seq 1 30); do
 	if docker exec "$PG_NAME" pg_isready -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; then
 		echo "  PostgreSQL ready"
+		pg_ready=true
 		break
 	fi
 	sleep 1
 done
+if [ "$pg_ready" != "true" ]; then
+	echo "Error: PostgreSQL ($PG_NAME) did not become ready after 30s" >&2
+	exit 1
+fi
 
 echo "Waiting for Redis..."
+rd_ready=false
 for _ in $(seq 1 30); do
 	if docker exec "$RD_NAME" redis-cli ping 2>/dev/null | grep -q PONG; then
 		echo "  Redis ready"
+		rd_ready=true
 		break
 	fi
 	sleep 1
 done
+if [ "$rd_ready" != "true" ]; then
+	echo "Error: Redis ($RD_NAME) did not become ready after 30s" >&2
+	exit 1
+fi
 
 echo "Infrastructure ready. Run 'cargo make infra-down' to stop."
