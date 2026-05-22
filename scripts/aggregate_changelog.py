@@ -69,9 +69,9 @@ UNRELEASED_HEADER = re.compile(r"^## \[Unreleased\]\s*$")
 def make_version_patterns(target_version: str) -> tuple[re.Pattern, re.Pattern, re.Pattern]:
 	"""Build regexes that match the prerelease sections of a specific stable target.
 
-	Hardcoding `0.1.0` in the regexes would silently mismatch when the script
+	Hardcoding a version in the regexes would silently mismatch when the script
 	is invoked for any other `--target-version`, so we derive them from the
-	caller-supplied value (Copilot review on PR #4698).
+	caller-supplied value.
 	"""
 	tv = re.escape(target_version)
 	version_header = re.compile(
