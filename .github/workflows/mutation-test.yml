@@ -41,7 +41,7 @@ jobs:
   mutation-test:
     name: "Shard ${{ matrix.shard }}/5"
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.shard == '0' || github.event.inputs.shard == matrix.shard))
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -71,11 +71,12 @@ jobs:
           tool: nextest
 
       - name: Run mutation testing
+        if: github.event_name == 'schedule' || inputs.shard == '0' || inputs.shard == matrix.shard
         continue-on-error: true
         run: cargo mutants --shard ${{ matrix.shard }}/${{ env.TOTAL_SHARDS }} --test-tool nextest --timeout-multiplier 2 --jobs 1 --output /tmp/mutants-shard-${{ matrix.shard }}
 
       - name: Summary
-        if: always()
+        if: (!cancelled()) && (github.event_name == 'schedule' || inputs.shard == '0' || inputs.shard == matrix.shard)
         run: |
           echo "## Mutation Testing Results - Shard ${{ matrix.shard }}/${{ env.TOTAL_SHARDS }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -93,7 +94,7 @@ jobs:
           fi
 
       - name: Upload artifacts
-        if: always()
+        if: (!cancelled()) && (github.event_name == 'schedule' || inputs.shard == '0' || inputs.shard == matrix.shard)
         uses: actions/upload-artifact@v4
         with:
           name: mutants-shard-${{ matrix.shard }}
