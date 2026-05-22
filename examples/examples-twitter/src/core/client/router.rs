@@ -70,10 +70,13 @@ pub fn timeline_page_view() -> Page {
 	use crate::apps::tweet::client::components::{tweet_form, tweet_list};
 	let form_view = tweet_form();
 	let list_view = tweet_list(None);
-	page!(
-		| form_view : Page, list_view : Page | { div { class : "flex flex-col gap-4", { {
-		form_view } } { { list_view } } } }
-	)(form_view, list_view)
+	page!(|form_view: Page, list_view: Page| {
+		div {
+			class: "flex flex-col gap-4",
+			{ { form_view } }
+			{ { list_view } }
+		}
+	})(form_view, list_view)
 }
 /// DM chat page view
 pub fn dm_chat_page_view(room_id: String) -> Page {
@@ -82,9 +85,17 @@ pub fn dm_chat_page_view(room_id: String) -> Page {
 }
 /// Not found page view
 pub fn not_found_page_view() -> Page {
-	page!(
-		|| { div { class : "flex flex-col items-center justify-center min-h-50vh gap-4",
-		h1 { class : "text-4xl font-bold", "404" } p { class :
-		"text-lg text-content-secondary", "Page not found" } } }
-	)()
+	page!(|| {
+		div {
+			class: "flex flex-col items-center justify-center min-h-50vh gap-4",
+			h1 {
+				class: "text-4xl font-bold",
+				"404"
+			}
+			p {
+				class: "text-lg text-content-secondary",
+				"Page not found"
+			}
+		}
+	})()
 }

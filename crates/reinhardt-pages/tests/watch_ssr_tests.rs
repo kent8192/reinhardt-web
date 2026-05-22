@@ -56,10 +56,14 @@ fn counter_signal() -> Signal<i32> {
 #[serial(reactive)]
 fn test_watch_ssr_basic_render(string_signal: Signal<String>) {
 	let signal = string_signal.clone();
-	let view = page!(
-		| signal : Signal < String >| { div { class : "container", span { { signal.get()
-		} } } }
-	)(signal.clone());
+	let view = page!(|signal: Signal<String>| {
+		div {
+			class: "container",
+			span {
+				{ signal.get() }
+			}
+		}
+	})(signal.clone());
 	let html = view.render_to_string();
 	assert!(
 		html.contains("class=\"container\""),
@@ -76,10 +80,15 @@ fn test_watch_ssr_basic_render(string_signal: Signal<String>) {
 #[serial(reactive)]
 fn test_watch_ssr_condition_true(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
-	let view = page!(
-		| signal : Signal < bool >| { div { if signal.get() { span { "Visible content" }
-		} } }
-	)(signal.clone());
+	let view = page!(|signal: Signal<bool>| {
+		div {
+			if signal.get() {
+				span {
+					"Visible content"
+				}
+			}
+		}
+	})(signal.clone());
 	let html = view.render_to_string();
 	assert!(
 		html.contains("<span>"),
@@ -94,10 +103,15 @@ fn test_watch_ssr_condition_true(bool_signal_true: Signal<bool>) {
 #[serial(reactive)]
 fn test_watch_ssr_condition_false(bool_signal_false: Signal<bool>) {
 	let signal = bool_signal_false.clone();
-	let view = page!(
-		| signal : Signal < bool >| { div { if signal.get() { span { "Should not appear"
-		} } } }
-	)(signal.clone());
+	let view = page!(|signal: Signal<bool>| {
+		div {
+			if signal.get() {
+				span {
+					"Should not appear"
+				}
+			}
+		}
+	})(signal.clone());
 	let html = view.render_to_string();
 	assert!(
 		!html.contains("Should not appear"),
@@ -110,10 +124,19 @@ fn test_watch_ssr_condition_false(bool_signal_false: Signal<bool>) {
 #[serial(reactive)]
 fn test_watch_ssr_if_else_true_branch(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
-	let view = page!(
-		| signal : Signal < bool >| { div { if signal.get() { span { "True branch" } }
-		else { span { "False branch" } } } }
-	)(signal.clone());
+	let view = page!(|signal: Signal<bool>| {
+		div {
+			if signal.get() {
+				span {
+					"True branch"
+				}
+			} else {
+				span {
+					"False branch"
+				}
+			}
+		}
+	})(signal.clone());
 	let html = view.render_to_string();
 	assert!(html.contains("True branch"), "Should render true branch");
 	assert!(
@@ -125,10 +148,19 @@ fn test_watch_ssr_if_else_true_branch(bool_signal_true: Signal<bool>) {
 #[serial(reactive)]
 fn test_watch_ssr_if_else_false_branch(bool_signal_false: Signal<bool>) {
 	let signal = bool_signal_false.clone();
-	let view = page!(
-		| signal : Signal < bool >| { div { if signal.get() { span { "True branch" } }
-		else { span { "False branch" } } } }
-	)(signal.clone());
+	let view = page!(|signal: Signal<bool>| {
+		div {
+			if signal.get() {
+				span {
+					"True branch"
+				}
+			} else {
+				span {
+					"False branch"
+				}
+			}
+		}
+	})(signal.clone());
 	let html = view.render_to_string();
 	assert!(
 		!html.contains("True branch"),
@@ -140,11 +172,22 @@ fn test_watch_ssr_if_else_false_branch(bool_signal_false: Signal<bool>) {
 #[serial(reactive)]
 fn test_watch_ssr_nested_elements(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
-	let view = page!(
-		| signal : Signal < bool >| { div { class : "outer", if signal.get() { section {
-		class : "section", article { class : "article", p { "Nested paragraph" } } } } }
+	let view = page!(|signal: Signal<bool>| {
+		div {
+			class: "outer",
+			if signal.get() {
+				section {
+					class: "section",
+					article {
+						class: "article",
+						p {
+							"Nested paragraph"
+						}
+					}
+				}
+			}
 		}
-	)(signal.clone());
+	})(signal.clone());
 	let html = view.render_to_string();
 	assert!(html.contains("class=\"outer\""), "Should have outer class");
 	assert!(html.contains("<section"), "Should have section element");
@@ -163,9 +206,11 @@ fn test_watch_ssr_nested_elements(bool_signal_true: Signal<bool>) {
 #[serial(reactive)]
 fn test_watch_ssr_content_escaping() {
 	let xss_content = Signal::new("<script>alert('xss')</script>".to_string());
-	let view = page!(
-		| xss_content : Signal < String >| { div { { xss_content.get() } } }
-	)(xss_content.clone());
+	let view = page!(|xss_content: Signal<String>| {
+		div {
+			{ xss_content.get() }
+		}
+	})(xss_content.clone());
 	let html = view.render_to_string();
 	assert!(
 		!html.contains("<script>"),
@@ -205,9 +250,11 @@ fn test_watch_ssr_for_loop(list_signal: Signal<Vec<String>>) {
 #[serial(reactive)]
 fn test_watch_ssr_expression(counter_signal: Signal<i32>) {
 	let counter = counter_signal.clone();
-	let view = page!(
-		| counter : Signal < i32 >| { div { { format!("Count: {}", counter.get()) } } }
-	)(counter.clone());
+	let view = page!(|counter: Signal<i32>| {
+		div {
+			{ format!("Count: {}", counter.get()) }
+		}
+	})(counter.clone());
 	let html = view.render_to_string();
 	assert!(
 		html.contains("Count: 42"),
@@ -222,11 +269,22 @@ fn test_watch_ssr_multiple_blocks(
 ) {
 	let loading = bool_signal_true.clone();
 	let error = error_signal.clone();
-	let view = page!(
-		| loading : Signal < bool >, error : Signal < Option < String >>| { div { if
-		loading.get() { div { class : "loading", "Loading..." } } if error.get()
-		.is_some() { div { class : "error", { error.get().unwrap_or_default() } } } } }
-	)(loading.clone(), error.clone());
+	let view = page!(|loading: Signal<bool>, error: Signal<Option<String>>| {
+		div {
+			if loading.get() {
+				div {
+					class: "loading",
+					"Loading..."
+				}
+			}
+			if error.get().is_some() {
+				div {
+					class: "error",
+					{ error.get().unwrap_or_default() }
+				}
+			}
+		}
+	})(loading.clone(), error.clone());
 	let html = view.render_to_string();
 	assert!(html.contains("Loading..."), "Should render loading block");
 	assert!(
@@ -356,11 +414,22 @@ fn test_watch_ssr_state_matrix(
 ) {
 	let loading = Signal::new(loading_state);
 	let error = Signal::new(error_state.clone());
-	let view = page!(
-		| loading : Signal < bool >, error : Signal < Option < String >>| { div { if
-		loading.get() { div { class : "loading", "Loading..." } } if error.get()
-		.is_some() { div { class : "error", { error.get().unwrap_or_default() } } } } }
-	)(loading.clone(), error.clone());
+	let view = page!(|loading: Signal<bool>, error: Signal<Option<String>>| {
+		div {
+			if loading.get() {
+				div {
+					class: "loading",
+					"Loading..."
+				}
+			}
+			if error.get().is_some() {
+				div {
+					class: "error",
+					{ error.get().unwrap_or_default() }
+				}
+			}
+		}
+	})(loading.clone(), error.clone());
 	let html = view.render_to_string();
 	if expect_loading {
 		assert!(
@@ -389,9 +458,14 @@ fn test_watch_ssr_state_matrix(
 #[serial(reactive)]
 fn test_watch_ssr_special_chars_in_attrs() {
 	let title = Signal::new("Title with \"quotes\" & ampersand".to_string());
-	let view = page!(
-		| title : Signal < String >| { div { span { title : title.get(), "Content" } } }
-	)(title.clone());
+	let view = page!(|title: Signal<String>| {
+		div {
+			span {
+				title: title.get(),
+				"Content"
+			}
+		}
+	})(title.clone());
 	let html = view.render_to_string();
 	assert!(html.contains("title="), "Should have title attribute");
 	assert!(html.contains("Content"), "Should contain content");
@@ -400,10 +474,18 @@ fn test_watch_ssr_special_chars_in_attrs() {
 #[serial(reactive)]
 fn test_watch_ssr_void_elements(bool_signal_true: Signal<bool>) {
 	let show = bool_signal_true.clone();
-	let view = page!(
-		| show : Signal < bool >| { div { if show.get() { br {} hr {} img { src :
-		"/image.png", alt : "Test image", } } } }
-	)(show.clone());
+	let view = page!(|show: Signal<bool>| {
+		div {
+			if show.get() {
+				br {}
+				hr {}
+				img {
+					src: "/image.png",
+					alt: "Test image",
+				}
+			}
+		}
+	})(show.clone());
 	let html = view.render_to_string();
 	assert!(html.contains("<br />"), "Should have self-closing br");
 	assert!(html.contains("<hr />"), "Should have self-closing hr");

@@ -67,9 +67,18 @@ pub fn client_url_patterns() -> ClientRouter {
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
 	let home_href = urls::index();
-	page!(
-		| message : String, home_href : String | { div { class : "layout-page", div {
-		class : "alert-danger mb-4", { { message } } } a { href : home_href, class :
-		"btn-primary", "Back to Home" } } }
-	)(message, home_href)
+	page!(|message: String, home_href: String| {
+		div {
+			class: "layout-page",
+			div {
+				class: "alert-danger mb-4",
+				{ { message } }
+			}
+			a {
+				href: home_href,
+				class: "btn-primary",
+				"Back to Home"
+			}
+		}
+	})(message, home_href)
 }

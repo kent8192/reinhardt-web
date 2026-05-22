@@ -173,13 +173,28 @@ pub fn tweet_form() -> Page {
 		Some(window) = web_sys::window() { let _ = window.location().reload(); } } },
 	};
 	let form_view = tweet_form_instance.into_page();
-	page!(
-		| form_view : Page | { div { class : "card mb-4", div { class : "card-body", div
-		{ class : "flex gap-3", div { class : "flex-shrink-0 hidden sm:block", div {
-		class :
-		"tweet-avatar bg-brand/20 flex items-center justify-center text-brand font-semibold",
-		"✏️" } } div { class : "flex-1", { { form_view } } } } } } }
-	)(form_view)
+	page!(|form_view: Page| {
+		div {
+			class: "card mb-4",
+			div {
+				class: "card-body",
+				div {
+					class: "flex gap-3",
+					div {
+						class: "flex-shrink-0 hidden sm:block",
+						div {
+							class: "tweet-avatar bg-brand/20 flex items-center justify-center text-brand font-semibold",
+							"✏️"
+						}
+					}
+					div {
+						class: "flex-1",
+						{ { form_view } }
+					}
+				}
+			}
+		}
+	})(form_view)
 }
 /// Tweet list component using hooks
 ///
@@ -221,21 +236,61 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 	let tweets_signal = tweets.clone();
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
-	page!(
-		| tweets_signal : Signal < Vec < TweetInfo >>, loading_signal : Signal < bool >,
-		error_signal : Signal < Option < String >>| { div { if loading_signal.get() { div
-		{ class : "flex flex-col items-center justify-center py-12", div { class :
-		"spinner-lg mb-4", } p { class : "text-content-secondary text-sm",
-		"Loading tweets..." } } } else if error_signal.get().is_some() { div { class :
-		"alert-danger", role : "alert", div { class : "flex items-center gap-2", {
-		icons::error_circle_icon() } span { { error_signal.get().unwrap_or_default() } }
-		} } } else if tweets_signal.get().is_empty() { div { class :
-		"flex flex-col items-center justify-center py-16 text-center", div { class :
-		"w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-		{ icons::chat_bubble_icon_lg() } } h3 { class :
-		"text-lg font-semibold text-content-primary mb-1", "No tweets yet" } p { class :
-		"text-content-secondary", "Be the first to share something!" } } } else { div {
-		class : "card overflow-hidden", { Page::Fragment(tweets_signal.get().iter().map(|
-		t | tweet_card(t, false)).collect::< Vec < _ >> (),) } } } } }
-	)(tweets_signal, loading_signal, error_signal)
+	page!(|tweets_signal: Signal<Vec<TweetInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
+		div {
+			if loading_signal.get() {
+				div {
+					class: "flex flex-col items-center justify-center py-12",
+					div {
+						class: "spinner-lg mb-4",
+					}
+					p {
+						class: "text-content-secondary text-sm",
+						"Loading tweets..."
+					}
+				}
+			} else if error_signal.get().is_some() {
+				div {
+					class: "alert-danger",
+					role: "alert",
+					div {
+						class: "flex items-center gap-2",
+						{ icons::error_circle_icon() }
+						span {
+							{ error_signal.get().unwrap_or_default() }
+						}
+					}
+				}
+			} else if tweets_signal.get().is_empty() {
+				div {
+					class: "flex flex-col items-center justify-center py-16 text-center",
+					div {
+						class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+						{ icons::chat_bubble_icon_lg() }
+					}
+					h3 {
+						class: "text-lg font-semibold text-content-primary mb-1",
+						"No tweets yet"
+					}
+					p {
+						class: "text-content-secondary",
+						"Be the first to share something!"
+					}
+				}
+			} else {
+				div {
+					class: "card overflow-hidden",
+					{
+						Page::Fragment(
+								tweets_signal
+									.get()
+									.iter()
+									.map(|t| tweet_card(t, false))
+									.collect::<Vec<_>>(),
+							)
+					}
+				}
+			}
+		}
+	})(tweets_signal, loading_signal, error_signal)
 }

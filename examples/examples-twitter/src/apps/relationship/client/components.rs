@@ -95,10 +95,15 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 		} else {
 			"Follow"
 		};
-		page!(
-			| btn_class : & str, btn_text : & str | { div { button { type : "button",
-			class : btn_class, { { btn_text } } } } }
-		)(btn_class, btn_text)
+		page!(|btn_class: &str, btn_text: &str| {
+			div {
+				button {
+					type: "button",
+					class: btn_class,
+					{ { btn_text } }
+				}
+			}
+		})(btn_class, btn_text)
 	}
 }
 /// User card component
@@ -117,16 +122,31 @@ fn user_card(user: &UserInfo) -> Page {
 		.unwrap_or('U')
 		.to_uppercase()
 		.to_string();
-	page!(
-		| username : String, display_username : String, _email : String, profile_url :
-		String, avatar_initial : String | { a { href : profile_url.clone(), class :
-		"user-card block", div { class : "flex items-center gap-3", div { class :
-		"user-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold flex-shrink-0",
-		{ { avatar_initial } } } div { class : "flex-1 min-w-0", div { class :
-		"font-semibold text-content-primary truncate", { { username } } } div { class :
-		"text-content-secondary text-sm truncate", { { display_username } } } } {
-		icons::chevron_right_icon() } } } }
-	)(
+	page!(|username: String, display_username: String, _email: String, profile_url: String, avatar_initial: String| {
+		a {
+			href: profile_url.clone(),
+			class: "user-card block",
+			div {
+				class: "flex items-center gap-3",
+				div {
+					class: "user-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold flex-shrink-0",
+					{ { avatar_initial } }
+				}
+				div {
+					class: "flex-1 min-w-0",
+					div {
+						class: "font-semibold text-content-primary truncate",
+						{ { username } }
+					}
+					div {
+						class: "text-content-secondary text-sm truncate",
+						{ { display_username } }
+					}
+				}
+				{ icons::chevron_right_icon() }
+			}
+		}
+	})(
 		username,
 		display_username,
 		email,
@@ -197,28 +217,83 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 	let users_signal = users.clone();
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
-	page!(
-		| title : String, empty_message : String, empty_icon : String, users_signal :
-		Signal < Vec < UserInfo >>, loading_signal : Signal < bool >, error_signal :
-		Signal < Option < String >>| { div { class : "animate-fade-in", div { class :
-		"flex items-center gap-3 mb-4", a { href : "/", class : "btn-icon", aria_label :
-		"Go back home", { icons::arrow_left_icon() } } h2 { class :
-		"text-xl font-bold text-content-primary", { { title } } } } if loading_signal
-		.get() { div { class : "flex flex-col items-center justify-center py-12", div {
-		class : "spinner-lg mb-4", } p { class : "text-content-secondary text-sm",
-		"Loading..." } } } else if error_signal.get().is_some() { div { class :
-		"alert-danger", div { class : "flex items-center gap-2", {
-		icons::error_circle_icon() } span { { error_signal.get().unwrap_or_default() } }
-		} } } else if users_signal.get().is_empty() { div { class :
-		"flex flex-col items-center justify-center py-16 text-center", div { class :
-		"w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-		svg { class : "w-8 h-8 text-content-tertiary", fill : "none", stroke :
-		"currentColor", viewBox : "0 0 24 24", path { stroke_linecap : "round",
-		stroke_linejoin : "round", stroke_width : "1.5", d : empty_icon.clone(), } } } p
-		{ class : "text-content-secondary", { empty_message.clone() } } } } else { div {
-		class : "card overflow-hidden", { Page::Fragment(users_signal.get().iter().map(|
-		u | user_card(u)).collect::< Vec < _ >> (),) } } } } }
-	)(
+	page!(|title: String, empty_message: String, empty_icon: String, users_signal: Signal<Vec<UserInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
+		div {
+			class: "animate-fade-in",
+			div {
+				class: "flex items-center gap-3 mb-4",
+				a {
+					href: "/",
+					class: "btn-icon",
+					aria_label: "Go back home",
+					{ icons::arrow_left_icon() }
+				}
+				h2 {
+					class: "text-xl font-bold text-content-primary",
+					{ { title } }
+				}
+			}
+			if loading_signal.get() {
+				div {
+					class: "flex flex-col items-center justify-center py-12",
+					div {
+						class: "spinner-lg mb-4",
+					}
+					p {
+						class: "text-content-secondary text-sm",
+						"Loading..."
+					}
+				}
+			} else if error_signal.get().is_some() {
+				div {
+					class: "alert-danger",
+					div {
+						class: "flex items-center gap-2",
+						{ icons::error_circle_icon() }
+						span {
+							{ error_signal.get().unwrap_or_default() }
+						}
+					}
+				}
+			} else if users_signal.get().is_empty() {
+				div {
+					class: "flex flex-col items-center justify-center py-16 text-center",
+					div {
+						class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+						svg {
+							class: "w-8 h-8 text-content-tertiary",
+							fill: "none",
+							stroke: "currentColor",
+							viewBox: "0 0 24 24",
+							path {
+								stroke_linecap: "round",
+								stroke_linejoin: "round",
+								stroke_width: "1.5",
+								d: empty_icon.clone(),
+							}
+						}
+					}
+					p {
+						class: "text-content-secondary",
+						{ empty_message.clone() }
+					}
+				}
+			} else {
+				div {
+					class: "card overflow-hidden",
+					{
+						Page::Fragment(
+								users_signal
+									.get()
+									.iter()
+									.map(|u| user_card(u))
+									.collect::<Vec<_>>(),
+							)
+					}
+				}
+			}
+		}
+	})(
 		title,
 		empty_message,
 		empty_icon,
