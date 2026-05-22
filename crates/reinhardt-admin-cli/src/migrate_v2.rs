@@ -46,10 +46,7 @@ pub fn run(args: MigrateV2Args) -> anyhow::Result<()> {
 	let mut changed = 0_usize;
 
 	for path in files {
-		let src = match read_developer_file(&path) {
-			Ok(s) => s,
-			Err(e) => return Err(e),
-		};
+		let src = read_developer_file(&path)?;
 		let parsed: syn::File = match syn::parse_file(&src) {
 			Ok(f) => f,
 			// Skip files we cannot parse (e.g. build scripts with cfg-gated items).
@@ -75,7 +72,11 @@ pub fn run(args: MigrateV2Args) -> anyhow::Result<()> {
 	println!(
 		"\nDone. {} file(s) {}.",
 		changed,
-		if args.dry_run { "would change" } else { "changed" }
+		if args.dry_run {
+			"would change"
+		} else {
+			"changed"
+		}
 	);
 	Ok(())
 }

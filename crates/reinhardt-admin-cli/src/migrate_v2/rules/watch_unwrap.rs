@@ -28,8 +28,7 @@ struct PageMacroBodyVisitor;
 
 impl VisitMut for PageMacroBodyVisitor {
 	fn visit_macro_mut(&mut self, m: &mut syn::Macro) {
-		if m
-			.path
+		if m.path
 			.segments
 			.last()
 			.map(|s| s.ident == "page")

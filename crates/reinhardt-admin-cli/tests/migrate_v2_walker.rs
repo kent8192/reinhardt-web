@@ -15,8 +15,7 @@ fn walker_finds_rs_files_recursively_and_skips_target() {
 	fs::write(dir.path().join("target/c.rs"), "fn c() {}").unwrap();
 
 	// Act
-	let mut files =
-		reinhardt_admin_cli::migrate_v2::walker::find_rs_files(dir.path()).unwrap();
+	let mut files = reinhardt_admin_cli::migrate_v2::walker::find_rs_files(dir.path()).unwrap();
 	files.sort();
 
 	// Assert

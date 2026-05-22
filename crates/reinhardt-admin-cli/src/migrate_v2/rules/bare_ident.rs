@@ -30,8 +30,7 @@ struct PageMacroBodyVisitor;
 impl VisitMut for PageMacroBodyVisitor {
 	fn visit_macro_mut(&mut self, m: &mut syn::Macro) {
 		// Only target the `page!` macro (and any qualified path ending in `page`).
-		if m
-			.path
+		if m.path
 			.segments
 			.last()
 			.map(|s| s.ident == "page")
@@ -85,11 +84,7 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 				{
 					true
 				}
-				Some(TokenTree::Punct(p))
-					if matches!(p.as_char(), ':' | '!' | '.' | ',') =>
-				{
-					true
-				}
+				Some(TokenTree::Punct(p)) if matches!(p.as_char(), ':' | '!' | '.' | ',') => true,
 				_ => false,
 			};
 
@@ -152,41 +147,24 @@ fn is_reserved_keyword(s: &str) -> bool {
 	matches!(
 		s,
 		"if" | "else"
-			| "match"
-			| "for"
-			| "while"
-			| "loop"
-			| "let"
-			| "return"
-			| "break"
-			| "continue"
-			| "move"
-			| "ref"
-			| "mut"
-			| "async"
-			| "await"
-			| "yield"
-			| "do"
-			| "in"
-			| "as"
-			| "where"
-			| "use"
-			| "fn"
-			| "true"
-			| "false"
-			| "self"
-			| "Self"
-			| "super"
-			| "crate"
-			| "impl"
-			| "trait"
+			| "match" | "for"
+			| "while" | "loop"
+			| "let" | "return"
+			| "break" | "continue"
+			| "move" | "ref"
+			| "mut" | "async"
+			| "await" | "yield"
+			| "do" | "in"
+			| "as" | "where"
+			| "use" | "fn"
+			| "true" | "false"
+			| "self" | "Self"
+			| "super" | "crate"
+			| "impl" | "trait"
 			| "struct"
-			| "enum"
-			| "type"
-			| "const"
-			| "static"
-			| "pub"
-			| "mod"
+			| "enum" | "type"
+			| "const" | "static"
+			| "pub" | "mod"
 			| "unsafe"
 			| "extern"
 	)

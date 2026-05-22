@@ -52,9 +52,7 @@ impl VisitMut for StructVisitor {
 				let is_option = is_option_type(&field.ty);
 				let is_first = idx == 0;
 				if !is_first || is_option {
-					field
-						.attrs
-						.push(syn::parse_quote!(#[builder(default)]));
+					field.attrs.push(syn::parse_quote!(#[builder(default)]));
 				}
 			}
 		}
@@ -78,7 +76,7 @@ fn has_derive_default(attrs: &[syn::Attribute]) -> bool {
 	})
 }
 
-fn replace_derive_default_with_bon_builder(attrs: &mut Vec<syn::Attribute>) {
+fn replace_derive_default_with_bon_builder(attrs: &mut [syn::Attribute]) {
 	for a in attrs.iter_mut() {
 		if a.path().is_ident("derive") {
 			*a = syn::parse_quote!(#[derive(bon::Builder)]);
