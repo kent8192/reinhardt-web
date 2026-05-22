@@ -223,6 +223,14 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for Action<T, E> {
 ///     ActionPhase::Error(err) => { /* show error */ }
 /// }
 /// ```
+///
+/// # Reactivity semantics
+///
+/// The action closure runs outside any active reactive Observer. Reading
+/// `Signal::get()`, `Memo::get()`, or `Resource::get()` inside returns the
+/// latest value WITHOUT subscribing for future changes (Option A, Refs
+/// #4195). The async action body further crosses an await boundary; no
+/// Observer would survive that regardless of the surrounding context.
 pub fn use_action<P, T, E, F, Fut>(action_fn: F) -> Action<T, E>
 where
 	P: 'static,

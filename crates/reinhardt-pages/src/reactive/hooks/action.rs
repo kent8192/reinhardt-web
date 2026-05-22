@@ -114,6 +114,13 @@ impl<S: Clone + 'static, P> Clone for ActionState<S, P> {
 ///     // ... show error message
 /// }
 /// ```
+///
+/// # Reactivity semantics
+///
+/// The action closure runs outside any active reactive Observer. Reading
+/// `Signal::get()`, `Memo::get()`, or `Resource::get()` inside returns the
+/// latest value WITHOUT subscribing for future changes (Option A, Refs
+/// #4195). Note this hook is itself deprecated — prefer `use_reducer`.
 #[deprecated(
 	since = "0.1.0-rc.16",
 	note = "use `use_reducer` from `reinhardt_pages::reactive::hooks::state` instead"

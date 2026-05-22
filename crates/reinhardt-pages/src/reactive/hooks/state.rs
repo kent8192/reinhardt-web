@@ -115,6 +115,14 @@ pub fn use_state<T: Clone + 'static>(initial: T) -> (Signal<T>, SetState<T>) {
 /// dispatch(Action::Increment);
 /// assert_eq!(state.get().count, 2);
 /// ```
+///
+/// # Reactivity semantics
+///
+/// The reducer closure runs outside any active reactive Observer. Reading
+/// `Signal::get()`, `Memo::get()`, or `Resource::get()` inside returns the
+/// latest value WITHOUT subscribing for future changes. This matches React's
+/// experimental `useEffectEvent` semantics by construction — no separate
+/// escape-hatch hook is needed under Option A (Refs #4195).
 pub fn use_reducer<S, A, R>(reducer: R, initial: S) -> (Signal<S>, Dispatch<A>)
 where
 	S: Clone + 'static,

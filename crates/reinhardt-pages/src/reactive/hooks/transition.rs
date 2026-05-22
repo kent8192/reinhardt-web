@@ -80,6 +80,14 @@ impl TransitionState {
 /// # Note
 ///
 /// On WASM, transitions run asynchronously via spawn_local. On native, they run synchronously.
+///
+/// # Reactivity semantics
+///
+/// The closure passed to `start_transition` runs outside any active reactive
+/// Observer. Reading `Signal::get()`, `Memo::get()`, or `Resource::get()`
+/// inside returns the latest value WITHOUT subscribing for future changes
+/// (Option A, Refs #4195). The closure runs in `spawn_task` (WASM) or
+/// synchronously (native); no Observer is active when it runs.
 pub fn use_transition() -> TransitionState {
 	let is_pending = Signal::new(false);
 

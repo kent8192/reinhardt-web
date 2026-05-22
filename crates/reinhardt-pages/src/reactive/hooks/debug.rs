@@ -75,6 +75,13 @@ pub fn use_debug_value<T: std::fmt::Debug>(_value: T) {
 ///     format!("Items: {} total", items.len())
 /// });
 /// ```
+///
+/// # Reactivity semantics
+///
+/// The `_format` closure runs outside any active reactive Observer.
+/// Reading `Signal::get()`, `Memo::get()`, or `Resource::get()` inside
+/// returns the latest value WITHOUT subscribing for future changes
+/// (Option A, Refs #4195).
 pub fn use_debug_value_with<T, F, R>(_value: T, _format: F)
 where
 	F: FnOnce(T) -> R,
