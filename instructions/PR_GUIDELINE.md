@@ -33,18 +33,20 @@ This file defines the pull request (PR) policy for the Reinhardt project. These 
 - MCP and CLI both ensure consistency and can be automated
 - **Autonomy (Reinhardt family)**: Creating a **Draft** PR is authorized without further user confirmation in `reinhardt-web` / `reinhardt-cloud` / `awesome-delions` / `reinhardt-cc` (see Autonomous Operation Policy in `CLAUDE.md` / `AGENTS.md`); the Draft PR body MUST still follow `.github/PULL_REQUEST_TEMPLATE.md` and `--draft` MUST be passed. Marking a PR as Ready for Review is **REQUIRED** (MUST) immediately once the implementation is complete; CI completion is **not** a prerequisite. See § PC-4a.
 
-The following diagram summarizes the PR creation flow:
+The following diagram summarizes the PR creation flow. Ready-for-Review conversion is governed separately by § PC-4a (MUST immediately upon implementation completion — CI completion is NOT a prerequisite):
 
 ```mermaid
 flowchart TD
-    A[Create new PR] --> B{GitHub MCP available?}
-    B -->|Yes| C[Use create_pull_request MCP tool]
-    B -->|No| D[Use gh pr create CLI]
+    A[Create new PR as Draft] --> B{GitHub MCP available?}
+    B -->|Yes| C[create_pull_request with draft=true]
+    B -->|No| D[gh pr create --draft]
     C --> E[Follow PR template structure]
     D --> E
     E --> F[Add appropriate labels]
-    F --> G[Run pre-review checks]
-    G --> H[Request review]
+    F --> G[PR created as Draft]
+    G --> H["Implementation complete?<br/>see § PC-4a"]
+    H -->|Yes - MUST| I[Mark Ready immediately<br/>gh pr ready]
+    H -->|No| G
 ```
 
 **PR Template Location:** `.github/PULL_REQUEST_TEMPLATE.md`
