@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/releases/tag/reinhardt-payment@v0.2.0-rc.1) - 2026-05-22
+
+### Added
+
+- *(reinhardt-payment)* add crate scaffold and documentation
+- *(reinhardt-payment)* add payment domain types
+- *(reinhardt-payment)* add PaymentProvider trait and Stripe integration
+- *(reinhardt-payment)* add TokenVault trait and BasisTheory integration
+- *(reinhardt-payment)* add webhook event handling and signature verification
+- *(reinhardt-payment)* add idempotency and retry utilities
+
+### Changed
+
+- *(reinhardt-payment)* move integration tests to tests crate
+- *(payment)* remove duplicate VaultError definition from vault.rs
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(payment)* update README examples with correct type references
+
+### Fixed
+
+- *(payment)* use ignore marker for doc example to avoid dev-dependency violation
+- remove develop/0.2.0 content accidentally merged via PR [[#1918](https://github.com/kent8192/reinhardt-web/issues/1918)](https://github.com/kent8192/reinhardt-web/issues/1918)
+
+### Styling
+
+- *(reinhardt-payment)* apply rustfmt formatting to tests
+
+### Testing
+
+- *(reinhardt-payment)* add payment provider integration tests
+
 ### Added
 
 - Initial implementation of `reinhardt-payment` crate
