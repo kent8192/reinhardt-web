@@ -109,9 +109,7 @@ struct PagedRequest {
 }
 
 #[injectable_factory(scope = "transient")]
-async fn paged_request_factory(
-	#[inject] config: Depends<FactoryOnlyConfig>,
-) -> PagedRequest {
+async fn paged_request_factory(#[inject] config: Depends<FactoryOnlyConfig>) -> PagedRequest {
 	PagedRequest {
 		page_size: config.page_size,
 	}
