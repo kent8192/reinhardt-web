@@ -109,18 +109,47 @@ if [[ -f "CHANGELOG.md" ]]; then
 	check_one "CHANGELOG.md" "." "reinhardt-web@"
 fi
 
+# Resolve the authoritative crate name from the sub-crate's Cargo.toml.
+# The directory-pair heuristic (`parent-leaf`) gets ~7 of 10 nested macros
+# crates right but breaks for irregular names like crates/reinhardt-core/macros
+# → reinhardt-macros, crates/reinhardt-rest/openapi-macros →
+# reinhardt-openapi-macros, crates/reinhardt-urls/routers-macros →
+# reinhardt-routers-macros.
+resolve_crate_name() {
+	local crate_dir="$1"
+	local cargo_toml="${crate_dir}/Cargo.toml"
+	if [[ -f "$cargo_toml" ]]; then
+		# First `name = "..."` line under `[package]` (or before any other table).
+		awk '
+			/^\[package\]/ { in_pkg = 1; next }
+			/^\[/          { in_pkg = 0 }
+			in_pkg && /^name = "/ {
+				sub(/^name = "/, ""); sub(/".*/, "")
+				print; exit
+			}
+		' "$cargo_toml"
+		return
+	fi
+	# Fallback: same parent-leaf heuristic; primarily for safety if Cargo.toml
+	# is missing during partial worktree states.
+	local rel_segments="${crate_dir#crates/}"
+	local parent="${rel_segments%%/*}"
+	local leaf="${rel_segments##*/}"
+	if [[ "$parent" == "$leaf" ]]; then
+		echo "$parent"
+	else
+		echo "${parent}-${leaf}"
+	fi
+}
+
 # Per-crate CHANGELOGs (including nested macros sub-crates).
 while IFS= read -r changelog; do
 	[[ -f "$changelog" ]] || continue
 	crate_dir="$(dirname "$changelog")"
-	rel_segments="${crate_dir#crates/}"
-	parent="${rel_segments%%/*}"
-	leaf="${rel_segments##*/}"
-	if [[ "$parent" == "$leaf" ]]; then
-		crate_name="$parent"
-	else
-		# Nested macros sub-crate: crates/reinhardt-pages/macros → reinhardt-pages-macros.
-		crate_name="${parent}-${leaf}"
+	crate_name="$(resolve_crate_name "$crate_dir")"
+	if [[ -z "$crate_name" ]]; then
+		printf "SKIP  %-50s could not resolve crate name from Cargo.toml\n" "$crate_dir"
+		continue
 	fi
 	check_one "$changelog" "$crate_dir" "${crate_name}@"
 done < <(find crates -name CHANGELOG.md -type f | sort)
