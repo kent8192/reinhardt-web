@@ -3,8 +3,13 @@
 //! This crate provides the `page!` and `form!` macros for declarative UI construction.
 
 use proc_macro::TokenStream;
+use quote::quote;
 
-/// Placeholder for page! macro
+/// Placeholder for `page!` macro.
+///
+/// The implementation is not yet available; invoking this macro emits a
+/// `compile_error!` so user code fails to compile cleanly rather than
+/// triggering a procedural-macro panic.
 ///
 /// # Examples
 ///
@@ -19,10 +24,17 @@ use proc_macro::TokenStream;
 /// ```
 #[proc_macro]
 pub fn page(_input: TokenStream) -> TokenStream {
-	todo!("page! macro implementation")
+	quote! {
+		::core::compile_error!("page! macro is not yet implemented");
+	}
+	.into()
 }
 
-/// Placeholder for form! macro
+/// Placeholder for `form!` macro.
+///
+/// The implementation is not yet available; invoking this macro emits a
+/// `compile_error!` so user code fails to compile cleanly rather than
+/// triggering a procedural-macro panic.
 ///
 /// # Examples
 ///
@@ -38,5 +50,8 @@ pub fn page(_input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn form(_input: TokenStream) -> TokenStream {
-	todo!("form! macro implementation")
+	quote! {
+		::core::compile_error!("form! macro is not yet implemented");
+	}
+	.into()
 }
