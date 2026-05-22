@@ -408,6 +408,7 @@ members = [
   "crates/reinhardt-pages-components",
   "crates/reinhardt-pages-components-macros",
   "crates/reinhardt-seeding",
+  "crates/reinhardt-seeding/macros",
   "crates/reinhardt-storages",
   "crates/reinhardt-deploy",
   # Integration tests
@@ -507,7 +508,8 @@ reinhardt-payment = { path = "crates/reinhardt-payment", version = "0.2.0-rc.1" 
 reinhardt-payment-mocks = { path = "crates/reinhardt-payment-mocks", version = "0.2.0-rc.1" }
 reinhardt-pages-components = { path = "crates/reinhardt-pages-components", version = "0.2.0-rc.1" }
 reinhardt-pages-components-macros = { path = "crates/reinhardt-pages-components-macros", version = "0.2.0-rc.1" }
-reinhardt-seeding = { path = "crates/reinhardt-seeding" }
+reinhardt-seeding = { path = "crates/reinhardt-seeding", version = "0.2.0-rc.1" }
+reinhardt-seeding-macros = { path = "crates/reinhardt-seeding/macros", version = "0.2.0-rc.1" }
 reinhardt-storages = { path = "crates/reinhardt-storages", version = "0.2.0-rc.1" }
 reinhardt-deploy = { path = "crates/reinhardt-deploy", version = "0.2.0-rc.1" }
 
