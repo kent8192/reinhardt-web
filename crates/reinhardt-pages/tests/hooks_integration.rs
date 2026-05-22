@@ -77,10 +77,13 @@ fn test_hooks_use_effect_dependency_tracking(
 	let counter_clone = counter_signal.clone();
 	let effect_counter_clone = effect_counter.clone();
 
-	use_effect(move || {
-		let _value = counter_clone.get();
-		*effect_counter_clone.borrow_mut() += 1;
-	});
+	use_effect(
+		move || {
+			let _value = counter_clone.get();
+			*effect_counter_clone.borrow_mut() += 1;
+		},
+		(counter_signal.clone(),),
+	);
 
 	// Effect should run at least once
 	let initial_count = *effect_counter.borrow();
@@ -99,10 +102,13 @@ fn test_hooks_use_memo_caching(counter_signal: Signal<i32>) {
 	let computation_count_clone = computation_count.clone();
 	let counter_clone = counter_signal.clone();
 
-	let memoized = use_memo(move || {
-		*computation_count_clone.borrow_mut() += 1;
-		counter_clone.get() * 2
-	});
+	let memoized = use_memo(
+		move || {
+			*computation_count_clone.borrow_mut() += 1;
+			counter_clone.get() * 2
+		},
+		(counter_signal.clone(),),
+	);
 
 	let _value1 = memoized.get();
 	let count_after_first = *computation_count.borrow();
@@ -127,10 +133,13 @@ fn test_hooks_circular_dependency_detection() {
 	let signal_b_clone = signal_b.clone();
 
 	// This test ensures that circular dependencies are handled gracefully
-	use_effect(move || {
-		let a = signal_a_clone.get();
-		signal_b_clone.set(a + 1);
-	});
+	use_effect(
+		move || {
+			let a = signal_a_clone.get();
+			signal_b_clone.set(a + 1);
+		},
+		(signal_a.clone(),),
+	);
 
 	// If circular dependencies are properly handled, this should not hang
 	assert!(true);
@@ -143,15 +152,18 @@ fn test_hooks_infinite_loop_protection(effect_counter: Rc<RefCell<usize>>) {
 	let signal_clone = signal.clone();
 	let effect_counter_clone = effect_counter.clone();
 
-	use_effect(move || {
-		let current = signal_clone.get();
-		*effect_counter_clone.borrow_mut() += 1;
+	use_effect(
+		move || {
+			let current = signal_clone.get();
+			*effect_counter_clone.borrow_mut() += 1;
 
-		// This would cause infinite loop without protection
-		if current < 1000 {
-			signal_clone.set(current + 1);
-		}
-	});
+			// This would cause infinite loop without protection
+			if current < 1000 {
+				signal_clone.set(current + 1);
+			}
+		},
+		(signal.clone(),),
+	);
 
 	// Effect should have run but stopped before reaching 1000 iterations
 	assert!(*effect_counter.borrow() < 1000);
@@ -167,9 +179,12 @@ fn test_hooks_effect_empty_dependencies(effect_counter: Rc<RefCell<usize>>) {
 	let effect_counter_clone = effect_counter.clone();
 
 	// Effect with no dependencies should run only once
-	use_effect(move || {
-		*effect_counter_clone.borrow_mut() += 1;
-	});
+	use_effect(
+		move || {
+			*effect_counter_clone.borrow_mut() += 1;
+		},
+		(),
+	);
 
 	let initial_count = *effect_counter.borrow();
 
@@ -193,12 +208,15 @@ fn test_hooks_all_dependencies(effect_counter: Rc<RefCell<usize>>) {
 	let signal3_clone = signal3.clone();
 	let effect_counter_clone = effect_counter.clone();
 
-	use_effect(move || {
-		let _a = signal1_clone.get();
-		let _b = signal2_clone.get();
-		let _c = signal3_clone.get();
-		*effect_counter_clone.borrow_mut() += 1;
-	});
+	use_effect(
+		move || {
+			let _a = signal1_clone.get();
+			let _b = signal2_clone.get();
+			let _c = signal3_clone.get();
+			*effect_counter_clone.borrow_mut() += 1;
+		},
+		(signal1.clone(), signal2.clone(), signal3.clone()),
+	);
 
 	// Effect should track all three signals
 	assert!(*effect_counter.borrow() >= 1);
@@ -212,12 +230,15 @@ fn test_hooks_memo_expensive_computation() {
 	let computation_count = Rc::new(RefCell::new(0));
 	let computation_count_clone = computation_count.clone();
 
-	let memoized = use_memo(move || {
-		*computation_count_clone.borrow_mut() += 1;
-		// Simulate expensive computation
-		let value = signal_clone.get();
-		(1..=value).product::<i32>()
-	});
+	let memoized = use_memo(
+		move || {
+			*computation_count_clone.borrow_mut() += 1;
+			// Simulate expensive computation
+			let value = signal_clone.get();
+			(1..=value).product::<i32>()
+		},
+		(signal.clone(),),
+	);
 
 	let result = memoized.get();
 	assert_eq!(result, 3628800); // 10!
@@ -239,10 +260,13 @@ fn test_hooks_state_update_triggers_effect(effect_counter: Rc<RefCell<usize>>) {
 	let signal_clone = signal.clone();
 	let effect_counter_clone = effect_counter.clone();
 
-	use_effect(move || {
-		let _value = signal_clone.get();
-		*effect_counter_clone.borrow_mut() += 1;
-	});
+	use_effect(
+		move || {
+			let _value = signal_clone.get();
+			*effect_counter_clone.borrow_mut() += 1;
+		},
+		(signal.clone(),),
+	);
 
 	let initial_count = *effect_counter.borrow();
 	assert!(initial_count >= 1);
@@ -264,14 +288,17 @@ fn test_hooks_cleanup_on_unmount() {
 	let component_ref = use_ref(true);
 
 	let component_ref_clone = component_ref.clone();
-	use_effect(move || {
-		let is_mounted = *component_ref_clone.current();
+	use_effect(
+		move || {
+			let is_mounted = *component_ref_clone.current();
 
-		// Cleanup function would be called here
-		if !is_mounted {
-			*cleanup_called_clone.borrow_mut() = true;
-		}
-	});
+			// Cleanup function would be called here
+			if !is_mounted {
+				*cleanup_called_clone.borrow_mut() = true;
+			}
+		},
+		(),
+	);
 
 	// Simulate unmount
 	component_ref.set(false);
@@ -315,10 +342,13 @@ fn test_hooks_use_case_form_validation() {
 	let (email, set_email) = use_state(String::new());
 
 	let email_clone = email.clone();
-	let is_valid_email = use_memo(move || {
-		let email_value = email_clone.get();
-		email_value.contains('@') && email_value.contains('.')
-	});
+	let is_valid_email = use_memo(
+		move || {
+			let email_value = email_clone.get();
+			email_value.contains('@') && email_value.contains('.')
+		},
+		(email.clone(),),
+	);
 
 	set_email("invalid".to_string());
 	// Memo may not have recomputed yet
@@ -344,9 +374,12 @@ fn test_hooks_property_memo_deterministic() {
 		let signal = Signal::new(input);
 		let signal_clone = signal.clone();
 
-		let memoized = use_memo(move || {
-			signal_clone.get() * 2
-		});
+		let memoized = use_memo(
+			move || {
+				signal_clone.get() * 2
+			},
+			(signal.clone(),),
+		);
 
 		let result1 = memoized.get();
 		let result2 = memoized.get();
@@ -369,10 +402,13 @@ fn test_hooks_combination_effect_state(effect_counter: Rc<RefCell<usize>>) {
 	let count_clone = count.clone();
 	let effect_counter_clone = effect_counter.clone();
 
-	use_effect(move || {
-		let _value = count_clone.get();
-		*effect_counter_clone.borrow_mut() += 1;
-	});
+	use_effect(
+		move || {
+			let _value = count_clone.get();
+			*effect_counter_clone.borrow_mut() += 1;
+		},
+		(count.clone(),),
+	);
 
 	let initial_count = *effect_counter.borrow();
 	assert!(initial_count >= 1);
@@ -390,7 +426,7 @@ fn test_hooks_combination_memo_state() {
 	let (count, set_count) = use_state(5);
 
 	let count_clone = count.clone();
-	let doubled = use_memo(move || count_clone.get() * 2);
+	let doubled = use_memo(move || count_clone.get() * 2, (count.clone(),));
 
 	let first_value = doubled.get();
 	assert_eq!(first_value, 10);
@@ -416,8 +452,8 @@ fn test_hooks_sanity() {
 	let ref_val = use_ref(100);
 	assert_eq!(*ref_val.current(), 100);
 
-	// use_memo
-	let memoized = use_memo(|| 2 + 2);
+	// use_memo (no signal deps -> mount-only)
+	let memoized = use_memo(|| 2 + 2, ());
 	assert_eq!(memoized.get(), 4);
 
 	// All hooks work independently
@@ -467,9 +503,12 @@ fn test_hooks_partition_hook_types_ref() {
 fn test_hooks_partition_hook_types_effect(effect_counter: Rc<RefCell<usize>>) {
 	let effect_counter_clone = effect_counter.clone();
 
-	use_effect(move || {
-		*effect_counter_clone.borrow_mut() += 1;
-	});
+	use_effect(
+		move || {
+			*effect_counter_clone.borrow_mut() += 1;
+		},
+		(),
+	);
 
 	assert!(*effect_counter.borrow() >= 1);
 }
@@ -492,12 +531,20 @@ fn test_hooks_boundary_dependency_array_size(
 	let signals_clone = signals.clone();
 	let effect_counter_clone = effect_counter.clone();
 
-	use_effect(move || {
-		for signal in &signals_clone {
-			let _value = signal.get();
-		}
-		*effect_counter_clone.borrow_mut() += 1;
-	});
+	// Note: PR5 React-parity hooks require a static deps tuple shape. This
+	// boundary test parametrizes over a *runtime* count of signals, so the
+	// closure simply reads them all and the deps tuple is `()` (mount-only).
+	// The mount-only path still runs the closure once, which is all the
+	// "runs at least once" assertion below requires.
+	use_effect(
+		move || {
+			for signal in &signals_clone {
+				let _value = signal.get();
+			}
+			*effect_counter_clone.borrow_mut() += 1;
+		},
+		(),
+	);
 
 	assert!(*effect_counter.borrow() >= 1);
 }
@@ -529,9 +576,12 @@ fn test_hooks_decision_table_case2_state_with_change() {
 fn test_hooks_decision_table_case3_effect_runs_once(effect_counter: Rc<RefCell<usize>>) {
 	let effect_counter_clone = effect_counter.clone();
 
-	use_effect(move || {
-		*effect_counter_clone.borrow_mut() += 1;
-	});
+	use_effect(
+		move || {
+			*effect_counter_clone.borrow_mut() += 1;
+		},
+		(),
+	);
 
 	assert_eq!(*effect_counter.borrow(), 1);
 }
@@ -544,10 +594,13 @@ fn test_hooks_decision_table_case4_memo_no_recompute() {
 	let computation_count = Rc::new(RefCell::new(0));
 	let computation_count_clone = computation_count.clone();
 
-	let memoized = use_memo(move || {
-		*computation_count_clone.borrow_mut() += 1;
-		signal_clone.get() * 2
-	});
+	let memoized = use_memo(
+		move || {
+			*computation_count_clone.borrow_mut() += 1;
+			signal_clone.get() * 2
+		},
+		(signal.clone(),),
+	);
 
 	let _value1 = memoized.get();
 	let _value2 = memoized.get();
@@ -564,10 +617,13 @@ fn test_hooks_decision_table_case5_memo_with_recompute() {
 	let computation_count = Rc::new(RefCell::new(0));
 	let computation_count_clone = computation_count.clone();
 
-	let memoized = use_memo(move || {
-		*computation_count_clone.borrow_mut() += 1;
-		signal_clone.get() * 2
-	});
+	let memoized = use_memo(
+		move || {
+			*computation_count_clone.borrow_mut() += 1;
+			signal_clone.get() * 2
+		},
+		(signal.clone(),),
+	);
 
 	let count_before = *computation_count.borrow();
 	let _value1 = memoized.get();
