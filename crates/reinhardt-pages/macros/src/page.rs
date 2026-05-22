@@ -3,6 +3,19 @@
 //! This module provides the `page!` procedural macro for creating anonymous
 //! WASM components with a concise, ergonomic DSL.
 //!
+//! ## v2 Grammar Note: Bare-Identifier Shorthand Removed
+//!
+//! As of Manouche v2 (spec §3.6), bare identifiers in element bodies are no
+//! longer accepted. The shorthand `div { foo }` was ambiguous with the
+//! element form `div { foo { ... } }`, so the validator now requires the
+//! explicit braced form for every expression child:
+//!
+//! - Before (v1): `` `div { name }` ``
+//! - After (v2):  `` `div { {name} }` ``
+//!
+//! The codemod `cargo make migrate-manouche-v2` (PR3) rewrites existing
+//! sources mechanically; see the `reinhardt-pages` CHANGELOG for details.
+//!
 //! ## Example
 //!
 //! ```ignore
@@ -13,7 +26,7 @@
 //!     div {
 //!         class: "counter",
 //!         h1 { "Counter" }
-//!         span { format!("Count: {}", initial) }
+//!         span { {format!("Count: {}", initial)} }
 //!         button {
 //!             @click: |_| { /* increment logic */ },
 //!             "+"
@@ -82,8 +95,8 @@ mod tests {
 		let input = quote!(|name: String, count: i32| {
 			div {
 				class: "greeting",
-				span { name }
-				span { count.to_string() }
+				span { {name} }
+				span { {count.to_string()} }
 			}
 		});
 		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
