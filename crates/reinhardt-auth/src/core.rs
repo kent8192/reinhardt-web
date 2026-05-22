@@ -145,9 +145,9 @@ pub mod permissions_mixin;
 /// Superuser creation support for management commands.
 #[path = "core/superuser_creator.rs"]
 pub mod superuser_creator;
-/// Core user types (SimpleUser, AnonymousUser).
-#[path = "core/user.rs"]
-pub mod user;
+// `pub mod user;` (the deprecated `User` trait + `SimpleUser` +
+// `AnonymousUser`) was removed in 0.2.0 per Issue #4520. Use
+// `AuthIdentity` + `BaseUser` / `FullUser` + `PermissionsMixin` instead.
 
 // Re-export main types
 pub use auth_identity::AuthIdentity;
@@ -165,7 +165,7 @@ pub use superuser_creator::{
 	auto_register_superuser_creator, get_superuser_creator, register_superuser_creator,
 	superuser_creator_for,
 };
-pub use user::{AnonymousUser, SimpleUser, User};
+// `pub use user::{AnonymousUser, SimpleUser, User};` removed (Issue #4520).
 
 // Re-export Argon2Hasher when feature is enabled
 #[cfg(feature = "argon2-hasher")]

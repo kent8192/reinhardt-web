@@ -65,10 +65,13 @@ pub mod sessions;
 // Core authentication types and traits (migrated from reinhardt-core-auth)
 pub mod core;
 
-// CurrentUser injectable for dependency injection
-pub mod current_user;
-#[allow(deprecated)]
-pub use current_user::CurrentUser;
+// `CurrentUser` (struct) and the `current_user` module were removed in
+// 0.2.0 per Issue #4520 (closes #4652). The wrapper coexisted with the
+// canonical `AuthUser<U>` extractor during the RC cycle; use `AuthUser<U>`
+// directly. `CurrentUser` could not be retained as a type alias because
+// its on-the-wire shape (`Option<U>` + `Option<Uuid>`) differs from
+// `AuthUser`'s tuple-struct shape — a type alias would break pattern-
+// matching call sites.
 
 // AuthInfo lightweight auth extractor
 pub mod auth_info;
@@ -96,12 +99,15 @@ pub use auth_extractors::validate_auth_extractors;
 pub(crate) const USER_ID_NAMESPACE: uuid::Uuid =
 	uuid::uuid!("c7a85537-073f-5092-8d10-774e109477c9");
 
-// Re-export core authentication types
+// Re-export core authentication types. The deprecated `User` trait,
+// `SimpleUser`, and `AnonymousUser` (which lived in `core::user`) were
+// removed in 0.2.0 per Issue #4520 — use `AuthIdentity` + `BaseUser` /
+// `FullUser` + `PermissionsMixin` instead.
 pub use core::{
-	AllowAny, AnonymousUser, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser,
+	AllowAny, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser,
 	IsActiveUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher,
-	Permission, PermissionContext, PermissionsMixin, SimpleUser, SuperuserCreator,
-	SuperuserCreatorRegistration, SuperuserInit, TypedSuperuserCreator, User,
+	Permission, PermissionContext, PermissionsMixin, SuperuserCreator,
+	SuperuserCreatorRegistration, SuperuserInit, TypedSuperuserCreator,
 	auto_register_superuser_creator, get_superuser_creator, register_superuser_creator,
 	superuser_creator_for,
 };
@@ -122,7 +128,8 @@ pub mod base_user_manager;
 /// HTTP Basic authentication backend.
 pub mod basic;
 /// Default user model with Argon2 password hashing.
-pub mod default_user;
+// `default_user` (`DefaultUser` struct) was removed in 0.2.0 per Issue
+// #4520. Define your own user type with the `#[user]` attribute macro.
 /// Default user manager implementation.
 pub mod default_user_manager;
 /// Group management (create, delete, assign users).
@@ -178,7 +185,7 @@ pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, Rol
 pub use base_user_manager::BaseUserManager;
 pub use basic::BasicAuthentication as HttpBasicAuth;
 #[cfg(feature = "argon2-hasher")]
-pub use default_user::DefaultUser;
+// `DefaultUser` re-export removed (Issue #4520).
 #[cfg(feature = "argon2-hasher")]
 pub use default_user_manager::DefaultUserManager;
 pub use group_management::{
