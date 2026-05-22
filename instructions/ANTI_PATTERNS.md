@@ -228,6 +228,39 @@ pub fn new_implementation() {  // ✅ Old code deleted
 
 **Why?** Git history preserves old code. Commented code creates clutter.
 
+### ❌ Conditional Compilation Gates for Deprecated API Removal
+
+**DON'T:**
+
+```rust
+// ❌ Using #[cfg(any())] to "soft-delete" a deprecated API
+#[cfg(any())]
+pub fn legacy_function() {
+    // dead code preserved in the tree
+}
+
+#[cfg(any())]
+pub struct LegacyType {
+    // dead code preserved in the tree
+}
+```
+
+```rust
+// ❌ Gating an entire module file behind cfg(any())
+// File: src/legacy/module.rs
+#![cfg(any())]  // NEVER do this — delete the file and its `pub mod` declaration
+```
+
+**DO:**
+
+```rust
+// ✅ Delete the file and the `pub mod` declaration from its parent module.
+// ✅ Update all callers (in-crate and cross-crate) in the same commit.
+// ✅ Use `git blame <deletion-commit>^` to inspect the code as it existed before deletion.
+```
+
+**Why?** `#[cfg(any())]` is always-false conditional compilation — semantically equivalent to deletion but leaves dead code in the tree. Dead code accumulates technical debt: it confuses readers, bloats IDE search results, masks compilation errors in callers, and misleads future refactoring. The "git blame readability" argument is invalid because `git blame <commit>^` can inspect past state.
+
 ### ❌ Deletion Record Comments
 
 **DON'T:**
