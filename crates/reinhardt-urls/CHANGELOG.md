@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **[breaking]** Collapse `ClientRouter::route_pathN` / `named_route_pathN`
+  into a single arity-generic `route_path` / `named_route_path` driven by
+  a sealed `Handler<Args>` trait. The arity is inferred from the closure
+  signature (1..=8 `Path<T>` extractors supported). Migration is a
+  mechanical rename: drop the numeric suffix on every call site. Refs
+  [#4637](https://github.com/kent8192/reinhardt-web/issues/4637).
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.30...reinhardt-urls@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-urls` as part of the reinhardt-web
