@@ -704,7 +704,6 @@ During the RC phase:
 Automated SemVer checking is performed on every pull request targeting `main` using [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks).
 
 - **CI workflow**: `.github/workflows/semver-check.yml` reports any detected SemVer violations before code is merged.
-- **Local mirror**: `cargo make semver-check` mirrors the CI workflow and MUST be run before converting a Draft PR to Ready for Review on any PR touching public API (see `instructions/PR_GUIDELINE.md` § RP-1a).
 - **Audit trail**: A full breaking change audit is maintained at `docs/breaking-change-audit.md`.
 
 ---
