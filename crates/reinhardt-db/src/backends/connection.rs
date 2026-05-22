@@ -581,48 +581,16 @@ impl DatabaseConnection {
 		Ok(db_config.to_url())
 	}
 
-	/// Get database URL from environment variable or settings files
-	///
-	/// This function first checks the `DATABASE_URL` environment variable.
-	/// If not found, it attempts to load database configuration from settings files
-	/// in the `settings/` directory.
-	///
-	/// # Arguments
-	///
-	/// * `base_dir` - Base directory for the project (defaults to current directory if None)
-	///
-	/// # Returns
-	///
-	/// Returns the database URL string, or an error if neither environment variable
-	/// nor settings configuration is found.
-	///
-	/// # Deprecated
-	///
-	/// This function reloads `settings/<profile>.toml` from disk every time it
-	/// is invoked, which is wasteful and duplicates settings-loading logic. Use
-	/// [`Self::database_url_from`] with an already-built `ProjectSettings`
-	/// instead.
-	///
-	/// # Example
-	///
-	/// ```no_run
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # #[allow(deprecated)]
-	/// use reinhardt_db::backends::connection::DatabaseConnection;
-	///
-	/// # #[allow(deprecated)]
-	/// let url = DatabaseConnection::get_database_url_from_env_or_settings(None)?;
-	/// let conn = DatabaseConnection::connect_sqlite(&url).await?;
-	/// # Ok(())
-	/// # }
-	/// ```
-	#[cfg(feature = "settings")]
-	#[deprecated(
-		since = "0.1.0-rc.29",
-		note = "use `DatabaseConnection::database_url_from` with a pre-built ProjectSettings instead"
-	)]
-	pub fn get_database_url_from_env_or_settings(
-		base_dir: Option<std::path::PathBuf>,
+	// `get_database_url_from_env_or_settings(base_dir)` (deprecated since
+	// 0.1.0-rc.29) was removed in 0.2.0 per Issue #4520. It reloaded
+	// `settings/<profile>.toml` from disk on every call, which duplicated
+	// the framework's settings-loading logic. Use `database_url_from` above
+	// with an already-built `ProjectSettings` instead.
+
+	#[cfg(any())]
+	#[deprecated(since = "0.2.0", note = "removed in 0.2.0 per #4520")]
+	fn _removed_get_database_url_from_env_or_settings(
+		_base_dir: Option<std::path::PathBuf>,
 	) -> Result<String> {
 		use std::env;
 
