@@ -29,12 +29,21 @@
 //! - [`use_reducer`] - State with reducer logic
 //!
 //! ### Effect Hooks
-//! - [`use_effect`] - Side effects with automatic dependency tracking
-//! - [`use_layout_effect`] - Effects that run before paint
+//!
+//! React parity (spec §4.2 / Issue #4195): side-effect and memoization
+//! hooks take an explicit deps tuple as the final positional argument —
+//! `use_effect(fn, (s1, s2, ..))`. Mount-only is `()`. Missing the deps
+//! argument is a hard compile error (E0061-style), not silent auto-tracking.
+//!
+//! - [`use_effect`] - Side effects, re-runs when a listed dep fires
+//! - [`use_layout_effect`] - Same as `use_effect`, runs before paint
 //!
 //! ### Memoization Hooks
-//! - [`use_memo`] - Memoize expensive calculations
-//! - [`use_callback`] - Stabilize function references
+//!
+//! Same explicit-deps contract as the effect hooks.
+//!
+//! - [`use_memo`] - Memoize expensive calculations, recompute on dep change
+//! - [`use_callback`] - Stabilize function references with explicit deps
 //!
 //! ### Ref Hooks
 //! - [`use_ref`] - Hold non-reactive mutable values
@@ -66,18 +75,24 @@
 //! fn counter() -> Page {
 //!     let (count, set_count) = use_state(0);
 //!
-//!     let increment = use_callback({
-//!         let set_count = set_count.clone();
-//!         move |_| set_count(count.get() + 1)
-//!     });
+//!     let increment = use_callback(
+//!         {
+//!             let set_count = set_count.clone();
+//!             let count = count.clone();
+//!             move |_| set_count(count.get() + 1)
+//!         },
+//!         (count.clone(),),
+//!     );
 //!
-//!     use_effect({
-//!         let count = count.clone();
-//!         move || {
-//!             log!("Count changed to: {}", count.get());
-//!             None::<fn()>
-//!         }
-//!     });
+//!     use_effect(
+//!         {
+//!             let count = count.clone();
+//!             move || {
+//!                 log!("Count changed to: {}", count.get());
+//!             }
+//!         },
+//!         (count.clone(),),
+//!     );
 //!
 //!     page!(|| {
 //!         div {

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New `reactive::Deps`, `reactive::IntoDeps`, and `reactive::Trackable`
+  public types that back the React-parity explicit-deps surface on
+  `reinhardt-pages` hooks (spec §4.2 / #4195). `Trackable` is implemented
+  for `Signal<T>` and `Memo<T>` (plus a blanket `impl<T> Trackable for &T`);
+  `IntoDeps` is implemented for `()` and every tuple arity from 1 to 12.
+- `Effect::new_with_deps`, `Effect::new_with_deps_and_timing`, and
+  `Memo::new_with_deps` constructors that record a `Deps` snapshot so the
+  runtime can gate re-runs on the firing signal's identity (no value clone
+  required).
+- `NodeId::as_u64()` accessor for portable, lossless ID widening across
+  32-bit and 64-bit targets.
+
+### Changed
+
+- `Runtime::notify_signal_change` now consults the deps snapshot for
+  subscribers created via the new constructors above: mount-only
+  subscribers (`Deps::is_empty()`) never re-fire, and subscribers with
+  non-empty deps re-fire only when the firing signal's `signal_id()` is
+  listed. Legacy `Effect::new` / `Memo::new` subscribers (no snapshot)
+  continue to fire on every change for backward compatibility. Refs #4195.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.30...reinhardt-core@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-core` as part of the reinhardt-web

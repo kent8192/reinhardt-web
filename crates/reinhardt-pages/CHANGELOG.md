@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`,
+  and `use_callback_with` now require an explicit deps tuple as the final
+  positional argument — exact React parity with `useEffect(fn, [deps])` etc.
+  Mount-only is `()`. Missing deps becomes a hard compile error (E0061-style).
+  Identity-based equality on `signal_id()` means no `T: Clone` requirement on
+  the underlying signal value. The runtime gates re-runs so a closure that
+  reads an unlisted signal does not re-execute when that signal changes.
+  Spec §4.2. Migration via `cargo make migrate-manouche-v2` (PR3 codemod).
+  Refs #4195.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages` as part of the
