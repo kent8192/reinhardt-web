@@ -170,7 +170,7 @@ Autonomously Allowed (no per-action confirmation required):
 | `git commit` | On any non-protected branch |
 | `git push` | On any non-protected branch (`feature/...`, `fix/...`, `refactor/...`, `docs/...`, `chore/...`, `test/...`, `perf/...`, `debug/...`, etc.); **never** on `main`, `master`, `develop/*`, or `release/*` |
 | Create a **Draft** Pull Request | `gh pr create --draft` / MCP `create_pull_request` with `draft=true`; body MUST follow `.github/PULL_REQUEST_TEMPLATE.md` |
-| Convert Draft PR to **Ready for Review** | **CI completion is not required** — this overrides any "CI green / tests pass" criterion in `instructions/`. All other PC-4a readiness criteria (implementation complete, PR description follows template, fmt/clippy clean, docs updated) still apply — see `instructions/PR_GUIDELINE.md` § PC-4a |
+| Convert Draft PR to **Ready for Review** | **REQUIRED (MUST) immediately once implementation is complete**. CI completion is NOT a prerequisite. See `instructions/PR_GUIDELINE.md` § PC-4a |
 | Create an Issue | `gh issue create` / MCP `issue_write`; MUST follow the appropriate issue template and apply at least one type label |
 
 **Protected Branches** (commit/push always require explicit user authorization):
@@ -195,9 +195,9 @@ Unchanged Quality Guardrails (apply equally to autonomous operations):
 - Branch naming, commit message format, Claude Code attribution footer, English-only policy, and all other rules in this document remain in force
 
 **Draft PR Policy:**
-- The agent MAY convert a Draft PR to Ready for Review autonomously once the PC-4a readiness criteria are met. CI completion is **not** required (the Autonomous Operation Policy overrides the previous "CI green / tests pass" prerequisite); fmt/clippy cleanliness and the other PC-4a criteria are still required
-- Explicit user instruction also authorizes conversion at any time (overrides readiness check)
-- The agent MUST NOT convert when any PC-4a readiness criterion (other than CI completion) is unmet, unless the user explicitly overrides
+- The agent **MUST** convert a Draft PR to Ready for Review **immediately once the implementation is complete**. "Implementation complete" means no remaining `todo!()` / `// TODO:` introduced by this PR. CI completion is **not** a prerequisite — the Autonomous Operation Policy explicitly waives "wait for CI green / tests to pass"
+- The agent **MUST NOT** leave a PR in Draft state after the implementation is complete
+- Explicit user instruction also authorizes (and requires) conversion at any time
 - Use `gh pr ready <number>` (or GitHub MCP equivalent) for conversion
 - See instructions/PR_GUIDELINE.md § PC-4a for full details
 
@@ -399,32 +399,6 @@ docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/
 **Security Audit:**
 ```bash
 cargo make audit  # Check for known vulnerabilities in dependencies
-```
-
-**SemVer Check (Local, mirrors CI):**
-```bash
-# Run the same cargo-semver-checks command as CI semver-check.yml (normal PR path).
-# Capture output ONCE — semver-check is slow (typically 1.5–2 h) and running it twice
-# can also yield inconsistent results if `main` advances between invocations.
-OUT=$(cargo make semver-check 2>&1) || true
-
-# Post the result to the PR (required by PR_GUIDELINE.md RP-1a).
-# Use the <!-- local-semver-check --> marker. On re-runs, UPDATE the existing marked
-# comment via `gh api ... -X PATCH` instead of creating a new one.
-PR=<PR number>
-OWNER=<owner>
-REPO=<repo>
-BODY=$(printf '<!-- local-semver-check -->\n## Local SemVer Check Result\n\n````text\n%s\n````\n\n*Generated locally via `cargo make semver-check` (mirrors CI semver-check.yml).*' "$OUT")
-
-# Look up an existing marked comment, then PATCH it; otherwise create a new one.
-EXISTING=$(gh api "repos/$OWNER/$REPO/issues/$PR/comments" --paginate \
-  --jq '.[] | select(.body | startswith("<!-- local-semver-check -->")) | .id' \
-  | head -n1)
-if [ -n "$EXISTING" ]; then
-  gh api -X PATCH "repos/$OWNER/$REPO/issues/comments/$EXISTING" -f body="$BODY" >/dev/null
-else
-  gh api -X POST "repos/$OWNER/$REPO/issues/$PR/comments" -f body="$BODY" >/dev/null
-fi
 ```
 
 **Placeholder Check (formatter artifact detection):**
