@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
+  `use_callback_with` now take an explicit dependency tuple as the second
+  argument, aligning with React.js semantics (#4195, Manouche v2 Layer ②).
+  The closure type for `use_effect` / `use_layout_effect` is now
+  `FnMut() -> Option<C>` so cleanup functions can be returned, matching
+  React `useEffect(() => () => cleanup())`. Pass `()` for mount-only.
+- Hook closures now run with no active reactive Observer ("Option A"),
+  so `Signal::get` inside the closure does NOT auto-subscribe.
+  Subscriptions derive exclusively from the deps tuple.
+- `impl Trackable for Resource<T, E>` lets `Resource` participate in
+  hook deps tuples alongside `Signal` and `Memo`.
+
+### Added
+
+- `callback_with_deps` internal helper backing `use_callback` /
+  `use_callback_with`. Maintains stable `Arc<dyn Fn>` identity across
+  re-entries at the same call site while listed deps are unchanged,
+  matching React `useCallback`.
+- "Reactivity semantics" rustdoc section on 8 closure-taking hooks
+  (`use_reducer`, `use_action`, `use_action_state`,
+  `use_sync_external_store{,_with_server}`, `use_transition`,
+  `use_debug_value_with`, `use_websocket`) documenting that their
+  closures run outside any active Observer by construction.
+- Cross-hook integration test suite at
+  `tests/hooks_deps_integration.rs` covering Memo→Effect propagation,
+  unlisted-Signal isolation, cleanup ordering, and empty-deps
+  mount-only behavior.
+- Scaffolded `page!` macro pre-codegen pass `hook_deps_validator` (in
+  the `macros` crate). Full Signal-read detection against Manouche's
+  `PageBody` AST is deferred to a follow-up issue; the runtime contract
+  is already enforced by the `*::new_with_deps` constructors.
+
+### Deprecated
+
+- `use_effect_event` and `use_effect_event_with` are deprecated.
+  Option A semantics make them structurally redundant — the wrapped
+  closure of `use_effect`/`use_layout_effect` already runs without
+  auto-tracking. Use `use_callback(f, deps)` for stable identity, or
+  read latest values via `.get_untracked()` inside the closure.
+  Scheduled for removal in v0.3.0.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages` as part of the

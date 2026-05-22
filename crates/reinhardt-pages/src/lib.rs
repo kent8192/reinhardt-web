@@ -5,9 +5,33 @@
 //!
 //! ## Features
 //!
-//! - **Fine-grained Reactivity**: Leptos/Solid.js-style Signal system with automatic dependency tracking
+//! - **Fine-grained Reactivity**: Leptos/Solid.js-style Signal system with React-aligned hooks
 //! - **Hybrid Rendering**: SSR + Client-side Hydration for optimal performance and SEO
 //! - **Django-like API**: Familiar patterns for Reinhardt developers
+//!
+//! ## React-aligned hook signatures (v0.2, Refs #4195)
+//!
+//! `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
+//! `use_callback_with` take an explicit dependency tuple as the second
+//! argument:
+//!
+//! ```ignore
+//! use reinhardt_pages::prelude::*;
+//!
+//! let count = Signal::new(0_i32);
+//! let count_for_effect = count.clone();
+//! let _eff = use_effect(
+//!     move || {
+//!         println!("count = {}", count_for_effect.get());
+//!         None::<fn()>
+//!     },
+//!     (count.clone(),),
+//! );
+//! ```
+//!
+//! Closures run with no active reactive Observer ("Option A"), so
+//! `Signal::get` inside does NOT auto-subscribe — subscriptions derive
+//! exclusively from the deps tuple. Pass `()` for mount-only effects.
 //! - **Low-level Only**: Built on wasm-bindgen, web-sys, and js-sys (no high-level framework dependencies)
 //! - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 //!
