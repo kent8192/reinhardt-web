@@ -6,6 +6,14 @@ configuration in a single source of truth. Despite the historical name,
 this script accepts any settings profile (`local.toml`, `ci.toml`, ...);
 the caller picks the file based on `REINHARDT_ENV`.
 
+The script mirrors the layered settings loader in `reinhardt_conf`: when
+a sibling `base.toml` exists next to the requested profile, it is loaded
+first as the default layer and the profile is deep-merged on top (the
+profile wins on key conflicts). This keeps the container provisioning
+script in sync with what `src/config/settings.rs` actually resolves at
+runtime, so a user-local `local.toml` containing only `[core]` overrides
+can still inherit the canonical `[database]` block from `base.toml`.
+
 The settings shape mirrors the example crates' top-level `[database]`
 section (see README "With Database" / `reinhardt_conf::settings::DatabaseConfig`).
 Redis URL is read from a top-level `redis_url = "..."` key with a sane
@@ -36,6 +44,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import os.path
 import shlex
 import sys
 import urllib.parse
@@ -63,18 +72,49 @@ def _load_toml(path: str) -> dict:
 		raise SystemExit(1)
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+	# Recursively merge `override` into `base`. Nested dicts are merged
+	# key-by-key; scalars and lists in `override` replace the entry in
+	# `base`. Mirrors `reinhardt_conf`'s layered TOML loader so the
+	# provisioning script sees the same resolved values as the runtime.
+	result = dict(base)
+	for key, value in override.items():
+		existing = result.get(key)
+		if isinstance(existing, dict) and isinstance(value, dict):
+			result[key] = _deep_merge(existing, value)
+		else:
+			result[key] = value
+	return result
+
+
+def _load_settings(profile_path: str) -> dict:
+	# Layer the profile TOML on top of a sibling `base.toml` when one
+	# exists. When the caller asked for `base.toml` itself, or no sibling
+	# base is present, fall back to the profile as the sole source.
+	profile_data = _load_toml(profile_path)
+	settings_dir = os.path.dirname(profile_path) or "."
+	base_path = os.path.join(settings_dir, "base.toml")
+	if os.path.abspath(profile_path) == os.path.abspath(base_path):
+		return profile_data
+	if not os.path.isfile(base_path):
+		return profile_data
+	base_data = _load_toml(base_path)
+	return _deep_merge(base_data, profile_data)
+
+
 def main(argv: list[str]) -> int:
 	if len(argv) != 2:
 		sys.stderr.write("Usage: parse_local_toml.py <settings.toml>\n")
 		return 2
 
-	data = _load_toml(argv[1])
+	data = _load_settings(argv[1])
 
 	try:
 		db = data["database"]
 	except KeyError:
 		sys.stderr.write(
-			f"Error: top-level [database] missing from {argv[1]}\n"
+			f"Error: top-level [database] missing from {argv[1]} "
+			f"(and from sibling base.toml, if present)\n"
 		)
 		return 1
 
