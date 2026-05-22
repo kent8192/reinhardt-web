@@ -197,8 +197,14 @@ If you prefer to set up manually, or the quickstart script doesn't work for your
 # From project root
 cd examples/examples-twitter
 
-# Copy local settings
-cp settings/local.example.toml settings/local.toml
+# Create local settings file (edit with your local database/redis ports)
+cat > settings/local.toml << 'TOML'
+redis_url = "redis://localhost:6379/0"
+
+[core]
+debug = true
+secret_key = "local-development-secret-key"
+TOML
 
 # Build WASM frontend and start development server.
 # `cargo make dev` chains `migrate` → `infra-up`, which starts the
