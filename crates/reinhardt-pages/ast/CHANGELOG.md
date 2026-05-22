@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.29...reinhardt-pages-ast@v0.1.0-rc.30) - 2026-05-21
+
+### Added
+
+- *(pages-ast)* mirror on_success_ref field on pages-side AST
+
+### Documentation
+
+- *(pages-macros)* address Copilot + CodeRabbit review feedback
+
 ## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.15...reinhardt-pages-ast@v0.1.0-rc.16) - 2026-04-20
 
 ### Added

@@ -402,10 +402,12 @@ jobs:
 
   release-announcement-pr:
     name: Create Release Announcement PR
-    # Stable-release announcements only. Pre-release tags from develop/** push
-    # are intentionally skipped at two layers: (1) this branch guard skips the
-    # entire job on develop pushes, (2) the tag-filter step below restricts
-    # workflow_dispatch backfill to stable tags. See issue #4541.
+    # Announcements are produced only for releases originating from main.
+    # Pre-release tags from develop/** push are skipped by the branch guard
+    # below (github.ref == 'refs/heads/main'). The previous stable-only tag
+    # filter was removed in #4692 because the branch guard already enforces
+    # the intent of #4541, and the regex also prevented legitimate RC
+    # releases on main (e.g. v0.1.0-rc.30) from receiving announcements.
     if: |
       always() &&
       (
@@ -413,7 +415,7 @@ jobs:
         (github.event_name == 'workflow_dispatch')
       )
     needs: [release-plz-release]
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 60
     steps:
       - name: Generate GitHub token
@@ -429,6 +431,16 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.generate-token.outputs.token }}
 
+      # The AWS Packer AMI (infra/github-runners/packer/reinhardt-runner.pkr.hcl)
+      # bakes in gh / jq / git / curl / docker / protoc / cargo-make but NOT
+      # Node.js. The runner agent's bundled Node is only used to execute JS
+      # actions and is not on PATH for shell steps, so `npm install -g` below
+      # would fail without an explicit Node setup. Issue #4694.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code
 
@@ -437,17 +449,28 @@ jobs:
         env:
           BACKFILL_MODE: ${{ inputs.mode }}
         run: |
-          # Stable-tag filter: reinhardt-web@vX.Y.Z (no prerelease suffix).
-          # Without this filter, semver sorts 0.2.0-rc.1 between 0.1.x and
-          # 0.2.0, so `head -1` of all tags could pick up a prerelease tag
-          # and emit an announcement for it. Issue #4541.
-          STABLE_TAG_RE='^reinhardt-web@v[0-9]+\.[0-9]+\.[0-9]+$'
+          # Scope tag selection to the checked-out HEAD's history via
+          # `--merged HEAD`. Tags are a global namespace, so without this
+          # constraint a higher semver tag from develop/** (e.g.
+          # v0.2.0-alpha.5) can shadow a newly pushed main release tag
+          # (e.g. v0.1.0-rc.31) and cause the wrong tag to be processed.
+          # With --merged HEAD:
+          #   - push to main: only main-reachable tags are considered, so
+          #     the new main release tag is correctly selected.
+          #   - workflow_dispatch from main: same scope; develop/** tags
+          #     are excluded automatically.
+          #   - workflow_dispatch from develop/**: tags reachable from the
+          #     develop HEAD (including the develop branch's own prerelease
+          #     tags) are considered, allowing alpha/rc announcements to
+          #     be backfilled from the matching develop checkout.
+          # See #4692 (regression fix) and CodeRabbit review on PR #4693.
+          # Duplicate generation for tags that already have announcements
+          # or Discussions is prevented by the file-exists and
+          # Discussion-exists checks further down in this job.
           if [ "$BACKFILL_MODE" = "backfill" ]; then
-            TAGS=$(git tag --list 'reinhardt-web@v*' --sort=version:refname \
-              | grep -E "$STABLE_TAG_RE" | tr '\n' ' ')
+            TAGS=$(git tag --merged HEAD --list 'reinhardt-web@v*' --sort=version:refname | tr '\n' ' ')
           else
-            TAGS=$(git tag --list 'reinhardt-web@v*' --sort=-version:refname \
-              | grep -E "$STABLE_TAG_RE" | head -1)
+            TAGS=$(git tag --merged HEAD --list 'reinhardt-web@v*' --sort=-version:refname | head -1)
           fi
 
           if [ -z "$TAGS" ]; then
@@ -651,7 +674,7 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
       contains(github.event.pull_request.labels.*.name, 'announcement')
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 10
     steps:
       - name: Generate GitHub token

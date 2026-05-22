@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.29...reinhardt-db@v0.1.0-rc.30) - 2026-05-21
+
+### Changed
+
+- *(db-migrations)* add nullable field to FieldMetadata
+- *(db)* extract to_snake_case into feature-flag-agnostic naming module
+
+### Documentation
+
+- *(db)* correct rationale comment in from_field_state
+- *(db)* wrap `struct` in backticks to satisfy semgrep commented-out-code rule
+- *(db)* clarify pg_escape::quote_identifier semantics in test comment
+
+### Fixed
+
+- *(db-migrations)* resolve foreign-key column type from target model PK
+- *(db)* make FieldMetadata.nullable the single source of truth and harden FK metadata tests
+- *(db-migrations)* store FieldMetadata nullability in params to keep SemVer clean
+- *(db)* fall back to by-name FK lookup on qualified miss
+- *(db)* refuse FK resolution when target name is ambiguous
+- *(db,macros)* path-typed FK targets disambiguate ambiguous model names
+- *(macros)* source FK app label from target type's Model::app_label()
+- *(reinhardt-db)* skip redundant AddConstraint for already-unique columns
+- *(migrations)* dispatch ALTER COLUMN TYPE per backend (MySQL MODIFY, SQLite recreate)
+- apply CodeRabbit auto-fixes
+- *(db)* derive NOT NULL from FieldState.nullable in autodetector
+- *(db)* split multi-statement reverse SQL and harden MySQL test helper
+- *(db)* emit ALTER COLUMN reverse as a single comma-separated statement
+- *(db)* separate CockroachDB ALTER COLUMN reverse from PostgreSQL path
+- *(db)* use sentinel-row lock on CockroachDB instead of pg_advisory_lock
+- *(db)* address Copilot review on CockroachDB probe and test helper
+- *(db)* address CodeRabbit review on flavor-aware ctor and sentinel-row assertion
+- *(db)* key M2M autodetection on table_name and align column convention with ORM accessor
+- *(db)* align ORM M2M accessor default through_table with autodetector
+- *(db)* normalize source/through table casing in M2M autodetection
+- *(db)* normalize remaining M2M through-table sites per Codex review
+- *(db)* propagate canonical M2M naming rule to runtime accessor + prefetch
+- *(db)* apply M2M metadata-aware path to filter_by_target + snake_case in default_through_table
+- *(db)* apply canonical M2M naming to runtime accessor + prefetch (correction)
+- *(db)* consolidate to_snake_case on single crate::naming source
+- *(db)* resolve real PK types and parse qualified to_model in M2M autodetection
+- *(db)* keep app label in qualified to_model fallback for target_table
+- *(db)* restore main's M2M autodetector fixes lost in prior merge
+
+### Maintenance
+
+- *(db)* drop orphan m2m_naming module
+
+### Performance
+
+- *(db)* add direct lookup APIs to ModelRegistry
+- *(db)* migrate resolve_foreign_key_column_type to direct lookup
+
+### Styling
+
+- *(db)* apply rustfmt to many_to_many_accessor import order
+- apply reinhardt-admin fmt-all output
+
+### Testing
+
+- *(reinhardt-db)* cover rollback orchestration with in-crate sqlite tests
+- *(reinhardt-db)* reword rollback-test comments per Copilot review
+- *(db)* fix CockroachDB pinned-form assertion to match pg_escape semantics
+
 ## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.28...reinhardt-db@v0.1.0-rc.29) - 2026-05-13
 
 ### Added
