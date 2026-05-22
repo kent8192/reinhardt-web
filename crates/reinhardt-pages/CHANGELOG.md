@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: `page!` no longer accepts bare-identifier shorthand in
+  element bodies (`div { name }`). Always use the explicit braced form:
+  `div { {name} }`. Spec §3.6. Migration: codemod `cargo make
+  migrate-manouche-v2` (PR3) handles this mechanically.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages` as part of the
