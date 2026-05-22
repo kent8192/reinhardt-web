@@ -5488,4 +5488,130 @@ mod tests {
 			"form without SubmitButton must not generate a <button> element"
 		);
 	}
+
+	#[test]
+	fn hidden_field_with_generic_emits_typed_signal() {
+		// Arrange
+		let ft = TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(i64),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected =
+			quote::quote!(::reinhardt_pages::reactive::Signal<i64>).to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn hidden_field_default_string_when_no_generic_specified() {
+		// Arrange — validator substitutes String when the user omits generics
+		let ft = TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(::std::string::String),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected = quote::quote!(
+			::reinhardt_pages::reactive::Signal<::std::string::String>
+		)
+		.to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn multiple_choice_emits_vec_of_inner() {
+		// Arrange
+		let ft = TypedFieldType::MultipleChoiceField {
+			inner: syn::parse_quote!(i64),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected = quote::quote!(
+			::reinhardt_pages::reactive::Signal<::std::vec::Vec<i64>>
+		)
+		.to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn ip_address_field_is_specialized_to_option_ipaddr() {
+		// Arrange
+		let ft = TypedFieldType::IpAddressField;
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected = quote::quote!(
+			::reinhardt_pages::reactive::Signal<
+				::core::option::Option<::std::net::IpAddr>
+			>
+		)
+		.to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn json_field_default_is_serde_json_value() {
+		// Arrange
+		let ft = TypedFieldType::JsonField {
+			inner: syn::parse_quote!(::serde_json::Value),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected = quote::quote!(
+			::reinhardt_pages::reactive::Signal<::serde_json::Value>
+		)
+		.to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn hidden_field_default_value_is_t_default() {
+		// Arrange
+		let ft = TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(i64),
+		};
+
+		// Act
+		let actual = field_type_default_value(&ft).to_string();
+
+		// Assert
+		let expected = quote::quote!(
+			<i64 as ::core::default::Default>::default()
+		)
+		.to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn multiple_choice_default_value_is_vec_new() {
+		// Arrange
+		let ft = TypedFieldType::MultipleChoiceField {
+			inner: syn::parse_quote!(i64),
+		};
+
+		// Act
+		let actual = field_type_default_value(&ft).to_string();
+
+		// Assert
+		let expected = quote::quote!(::std::vec::Vec::new()).to_string();
+		assert_eq!(actual, expected);
+	}
 }
