@@ -52,6 +52,17 @@ impl Deps {
 	pub(crate) fn empty() -> Self {
 		Deps(SmallVec::new())
 	}
+
+	/// Construct a `Deps` directly from a slice of `NodeId`s.
+	///
+	/// Crate-internal convenience used by tests and by hook helpers that
+	/// already hold raw `NodeId`s rather than `Trackable` values.
+	#[allow(dead_code)]
+	pub(crate) fn from_signals(ids: &[NodeId]) -> Self {
+		let mut sv = SmallVec::new();
+		sv.extend_from_slice(ids);
+		Deps(sv)
+	}
 }
 
 /// Conversion from a tuple of `Trackable`s (or `()`) into `Deps`. Implemented
