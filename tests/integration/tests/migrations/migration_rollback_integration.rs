@@ -448,6 +448,56 @@ async fn column_data_type(
 	}
 }
 
+/// Fetch the nullability flag of a column from `information_schema.columns`.
+///
+/// Returns `Some(true)` if the column is nullable, `Some(false)` if NOT NULL,
+/// or `None` if the column does not exist (or for SQLite, which does not
+/// expose `information_schema.columns`). Used to verify that `AlterColumn`
+/// rollback restores the pre-migration nullability (issue#4640).
+async fn column_is_nullable(
+	connection: &DatabaseConnection,
+	table_name: &str,
+	column_name: &str,
+) -> Option<bool> {
+	match connection.database_type() {
+		DatabaseType::Postgres => {
+			let pool = connection
+				.into_postgres()
+				.expect("postgres pool unavailable");
+			let raw = sqlx::query_scalar::<_, String>(
+				"SELECT is_nullable FROM information_schema.columns \
+				 WHERE table_name = $1 AND column_name = $2",
+			)
+			.bind(table_name)
+			.bind(column_name)
+			.fetch_optional(&pool)
+			.await
+			.ok()
+			.flatten()?;
+			Some(raw.eq_ignore_ascii_case("YES"))
+		}
+		DatabaseType::Mysql => {
+			let pool = connection.into_mysql().expect("mysql pool unavailable");
+			// Mirror the case-folding + CAST conventions used by `column_data_type`
+			// above (issues #4630, #4649, #4675).
+			let raw = sqlx::query_scalar::<_, String>(
+				"SELECT CAST(is_nullable AS CHAR) FROM information_schema.columns \
+				 WHERE LOWER(table_schema) = LOWER(DATABASE()) \
+				 AND LOWER(table_name) = LOWER(?) \
+				 AND LOWER(column_name) = LOWER(?)",
+			)
+			.bind(table_name)
+			.bind(column_name)
+			.fetch_optional(&pool)
+			.await
+			.ok()
+			.flatten()?;
+			Some(raw.eq_ignore_ascii_case("YES"))
+		}
+		DatabaseType::Sqlite => None,
+	}
+}
+
 // ============================================================================
 // Basic Rollback Tests (Normal Cases)
 // ============================================================================
@@ -577,19 +627,31 @@ async fn test_add_column_rollback(#[case] backend: DatabaseType) {
 	);
 }
 
-/// Test ALTER COLUMN rollback (should revert to original type).
+/// Test ALTER COLUMN rollback (should revert to original type AND nullability).
 ///
-/// **Test Intent**: Verify that ALTER COLUMN TYPE can be rolled back. SQLite
-/// implements ALTER COLUMN via table recreation under the hood — the same
-/// rollback path should still leave the column with the original type from
-/// the user's point of view.
+/// **Test Intent**: Verify that ALTER COLUMN can be rolled back end-to-end:
+/// both the column type AND its nullability flag must revert to the
+/// pre-migration state. SQLite implements ALTER COLUMN via table recreation
+/// under the hood — the same rollback path should still leave the column
+/// with the original type from the user's point of view.
+///
+/// **NOT NULL fidelity** (issue#4640): the initial column is created with
+/// `NOT NULL`; the forward migration changes both the type (VARCHAR → TEXT)
+/// and the nullability (NOT NULL → nullable). After rollback, the column
+/// must be `NOT NULL VARCHAR(50)` again. Before #4640, the rollback path
+/// on PostgreSQL emitted a comma-combined `ALTER TABLE ... ALTER COLUMN c
+/// TYPE T, ALTER COLUMN c SET NOT NULL` payload that worked on Postgres
+/// but broke on CockroachDB (which rejects the form). The fix returns
+/// `Vec<String>` from `Operation::to_reverse_sql` so the type reversion
+/// and the nullability restoration are dispatched as two independent
+/// statements, each accepted by sqlx Extended Query.
 #[rstest]
 #[case::postgres(DatabaseType::Postgres)]
 #[case::mysql(DatabaseType::Mysql)]
 #[case::sqlite(DatabaseType::Sqlite)]
 #[tokio::test]
 async fn test_alter_column_type_rollback(#[case] backend: DatabaseType) {
-	// Arrange
+	// Arrange: initial schema has `name` as NOT NULL VARCHAR(50).
 	let (_handle, connection) = setup_backend(backend).await;
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
@@ -600,7 +662,7 @@ async fn test_alter_column_type_rollback(#[case] backend: DatabaseType) {
 			name: leak_str("products").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
-				create_basic_column("name", FieldType::VarChar(50)),
+				create_not_null_column("name", FieldType::VarChar(50)),
 			],
 			constraints: vec![],
 			without_rowid: None,
@@ -613,13 +675,16 @@ async fn test_alter_column_type_rollback(#[case] backend: DatabaseType) {
 		.await
 		.expect("Failed to create table");
 
+	// Forward migration: NOT NULL VARCHAR(50) → nullable TEXT. The
+	// `old_definition` carries the pre-migration shape so `to_reverse_sql`
+	// can emit a faithful rollback without depending on ProjectState.
 	let alter_column_migration = create_test_migration(
 		"testapp",
 		"0002_alter_name_type",
 		vec![Operation::AlterColumn {
 			table: leak_str("products").to_string(),
 			column: leak_str("name").to_string(),
-			old_definition: Some(create_basic_column("name", FieldType::VarChar(50))),
+			old_definition: Some(create_not_null_column("name", FieldType::VarChar(50))),
 			new_definition: create_basic_column("name", FieldType::Text),
 			mysql_options: None,
 		}],
@@ -638,9 +703,9 @@ async fn test_alter_column_type_rollback(#[case] backend: DatabaseType) {
 	);
 
 	// Backend-conditional: on Postgres and MySQL, `information_schema` reports
-	// the post-ALTER type as `text`. Skip the check on SQLite, which records
-	// declared types as opaque strings in `sqlite_master` and does not expose
-	// `information_schema.columns`.
+	// the post-ALTER type as `text` and the nullability as `YES`. Skip the
+	// check on SQLite, which records declared types as opaque strings in
+	// `sqlite_master` and does not expose `information_schema.columns`.
 	if matches!(backend, DatabaseType::Postgres | DatabaseType::Mysql) {
 		let after_alter = column_data_type(&connection, "products", "name")
 			.await
@@ -649,6 +714,14 @@ async fn test_alter_column_type_rollback(#[case] backend: DatabaseType) {
 			after_alter.to_lowercase(),
 			"text",
 			"[{backend:?}] column type should be TEXT after ALTER",
+		);
+		let nullable_after_alter = column_is_nullable(&connection, "products", "name")
+			.await
+			.expect("is_nullable should be available for Postgres/MySQL");
+		assert!(
+			nullable_after_alter,
+			"[{backend:?}] column should be nullable after ALTER (forward changes \
+			 NOT NULL VARCHAR(50) → nullable TEXT)",
 		);
 	}
 
@@ -676,6 +749,21 @@ async fn test_alter_column_type_rollback(#[case] backend: DatabaseType) {
 			lower == "character varying" || lower == "varchar",
 			"[{backend:?}] column type should revert to VARCHAR after rollback, \
 			 got {after_rollback:?}",
+		);
+
+		// NOT NULL fidelity assertion (issue#4640): the column must be
+		// NOT NULL again after rollback. Before #4640 this was deferred on
+		// CockroachDB (stop-gap only emitted the type-reversion statement
+		// and dropped the nullability clause). The Vec<String> API plus
+		// the executor's per-statement dispatch now restores fidelity for
+		// every backend that supports ALTER COLUMN via `to_reverse_sql`.
+		let nullable_after_rollback = column_is_nullable(&connection, "products", "name")
+			.await
+			.expect("is_nullable should be available for Postgres/MySQL");
+		assert!(
+			!nullable_after_rollback,
+			"[{backend:?}] column should be NOT NULL after rollback (rollback must \
+			 restore the pre-migration nullability)",
 		);
 	}
 }
