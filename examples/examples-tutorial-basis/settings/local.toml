@@ -1,5 +1,4 @@
-# Local development settings
-# Copy to local.toml: cp local.example.toml local.toml
+# Local development settings — tracked in version control.
 #
 # CoreSettings is registered as `#[settings(section = "core")]`, so its
 # fields must live under `[core]` to override values from base.toml.
