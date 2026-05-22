@@ -37,13 +37,10 @@
 //! is ambiguous`. The framework currently supports at most one
 //! `#[url_patterns(..., mode = server)]` per app, so we keep the macro
 //! here and inline the endpoint/viewset registrations.
-
-use reinhardt::ServerRouter;
-use reinhardt::url_patterns;
-
 use super::views;
 use crate::config::apps::InstalledApp;
-
+use reinhardt::ServerRouter;
+use reinhardt::url_patterns;
 /// Register every snippets-app URL on a single `ServerRouter`.
 ///
 /// Function-based endpoints (Tutorial 1-5) and the `ModelViewSet`
@@ -55,23 +52,10 @@ use crate::config::apps::InstalledApp;
 #[url_patterns(InstalledApp::snippets, mode = server)]
 pub fn url_patterns() -> ServerRouter {
 	ServerRouter::new()
-		// Function-based endpoints (Tutorial 1-5)
-		// - GET    /snippets/        — views::list
-		// - POST   /snippets/        — views::create
-		// - GET    /snippets/{id}/   — views::retrieve
-		// - PUT    /snippets/{id}/   — views::update
-		// - DELETE /snippets/{id}/   — views::delete
 		.endpoint(views::list)
 		.endpoint(views::create)
 		.endpoint(views::retrieve)
 		.endpoint(views::update)
 		.endpoint(views::delete)
-		// ViewSet endpoints (Tutorial 6, rc.23+ real CRUD)
-		// - GET    /snippets-viewset/         — list (pagination/filter/order)
-		// - POST   /snippets-viewset/         — create
-		// - GET    /snippets-viewset/{id}/    — retrieve
-		// - PUT    /snippets-viewset/{id}/    — update
-		// - PATCH  /snippets-viewset/{id}/    — partial update
-		// - DELETE /snippets-viewset/{id}/    — delete
 		.viewset("/snippets-viewset", views::viewset())
 }

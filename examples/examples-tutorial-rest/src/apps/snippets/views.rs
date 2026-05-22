@@ -1,3 +1,5 @@
+use super::models::Snippet;
+use super::serializers::{SnippetResponse, SnippetSerializer};
 use chrono::Utc;
 use json::json;
 use reinhardt::Validate;
@@ -5,77 +7,35 @@ use reinhardt::core::serde::json;
 use reinhardt::http::ViewResult;
 use reinhardt::{Json, Path, Response, StatusCode};
 use reinhardt::{delete, get, post, put};
-
-// `pre_validate = true` is the preferred declarative validation form (rc.5+).
-// It is applied below on `create` — which has a single `Json<SnippetSerializer>`
-// extractor — and skipped on `update`, which mixes `Path<i64>` and
-// `Json<SnippetSerializer>`.
-//
-// The current route macro validates *every* extractor on the handler when
-// `pre_validate = true`, calling `Validate::validate(&*tmp)` on each
-// dereferenced extractor (see `reinhardt-core/macros/src/routes.rs` around
-// line 493). `Path<i64>` derefs to `i64`, and `i64` does not implement
-// `Validate`, so enabling `pre_validate` on `update` would fail to compile
-// (`the trait Validate is not implemented for i64`). Until the macro grows
-// per-parameter opt-in (e.g. `#[validate]` on individual extractor params
-// or a Validate blanket impl for primitives), `update` keeps the manual
-// `serializer.validate()?` call below — hence the `use reinhardt::Validate`
-// import above is intentional.
-
-use super::models::Snippet;
-use super::serializers::{SnippetResponse, SnippetSerializer};
-
 /// Helper function to get sample snippets for demonstration
 fn get_sample_snippets() -> Vec<Snippet> {
 	vec![
-		Snippet {
-			id: 1,
-			title: "Hello World".to_string(),
-			code: "fn main() {\n    println!(\"Hello, World!\");\n}".to_string(),
-			language: "rust".to_string(),
-			created_at: Utc::now(),
-		},
-		Snippet {
-			id: 2,
-			title: "Fibonacci".to_string(),
-			code: "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)".to_string(),
-			language: "python".to_string(),
-			created_at: Utc::now(),
-		},
-		Snippet {
-			id: 3,
-			title: "Quick Sort".to_string(),
-			code: "function quickSort(arr) {\n  if (arr.length <= 1) return arr;\n  const pivot = arr[0];\n  const left = arr.slice(1).filter(x => x < pivot);\n  const right = arr.slice(1).filter(x => x >= pivot);\n  return [...quickSort(left), pivot, ...quickSort(right)];\n}".to_string(),
-			language: "javascript".to_string(),
-			created_at: Utc::now(),
-		},
-	]
+        Snippet { id : 1, title : "Hello World".to_string(), code :
+        "fn main() {\n    println!(\"Hello, World!\");\n}".to_string(), language : "rust"
+        .to_string(), created_at : Utc::now(), }, Snippet { id : 2, title : "Fibonacci"
+        .to_string(), code :
+        "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)"
+        .to_string(), language : "python".to_string(), created_at : Utc::now(), },
+        Snippet { id : 3, title : "Quick Sort".to_string(), code :
+        "function quickSort(arr) {\n  if (arr.length <= 1) return arr;\n  const pivot = arr[0];\n  const left = arr.slice(1).filter(x => x < pivot);\n  const right = arr.slice(1).filter(x => x >= pivot);\n  return [...quickSort(left), pivot, ...quickSort(right)];\n}"
+        .to_string(), language : "javascript".to_string(), created_at : Utc::now(), },
+    ]
 }
-
 /// List all snippets
 ///
 /// GET /snippets/
 /// Success response: 200 OK with array of snippets
 #[get("/snippets/", name = "snippets_list")]
 pub async fn list() -> ViewResult<Response> {
-	// Production ORM usage:
-	// let snippets = Manager::<Snippet>::new().all().await?;
-
-	// Demo mode: Use sample data
 	let snippets = get_sample_snippets();
 	let snippet_responses: Vec<SnippetResponse> =
 		snippets.iter().map(SnippetResponse::from_model).collect();
-
-	let response_data = json!({
-		"snippets": snippet_responses
-	});
-
+	let response_data = json!({ "snippets" : snippet_responses });
 	let json = json::to_string(&response_data)?;
 	Ok(Response::new(StatusCode::OK)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))
 }
-
 /// Create a new snippet
 ///
 /// POST /snippets/
@@ -87,39 +47,20 @@ pub async fn list() -> ViewResult<Response> {
 ///   before this function body runs)
 #[post("/snippets/", name = "snippets_create", pre_validate = true)]
 pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
-	// `pre_validate = true` on the route macro extracts `Json<SnippetSerializer>`
-	// into a temporary, calls `Validate::validate(&__tmp)`, then re-destructures
-	// into the original `Json(serializer)` binding. No manual `serializer.validate()?`
-	// is needed (the previous explicit call was redundant once `pre_validate`
-	// was introduced in rc.5).
-
-	// Production ORM usage:
-	// let snippet = Manager::<Snippet>::new().create(Snippet {
-	//     id: 0, // Auto-generated
-	//     title: serializer.title.clone(),
-	//     code: serializer.code.clone(),
-	//     language: serializer.language.clone(),
-	//     created_at: Utc::now(),
-	// }).await?;
-
-	// Demo mode: construct a mock snippet via the macro-generated constructor.
 	let snippet = Snippet::new(
 		serializer.title.clone(),
 		serializer.code.clone(),
 		serializer.language.clone(),
 	);
-
-	let response_data = json!({
-		"message": "Snippet created",
-		"snippet": SnippetResponse::from_model(&snippet)
-	});
-
+	let response_data = json!(
+		{ "message" : "Snippet created", "snippet" : SnippetResponse::from_model(&
+		snippet) }
+	);
 	let json = json::to_string(&response_data)?;
 	Ok(Response::new(StatusCode::CREATED)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))
 }
-
 /// Retrieve a specific snippet
 ///
 /// GET /snippets/{id}/
@@ -128,31 +69,22 @@ pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Res
 /// - 404 Not Found: Snippet not found
 #[get("/snippets/{id}/", name = "snippets_retrieve")]
 pub async fn retrieve(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
-	// Production ORM usage:
-	// let snippet = Manager::<Snippet>::new().get(snippet_id).await?;
-
-	// Demo mode: Find in sample data
 	let snippets = get_sample_snippets();
 	let snippet = match snippets.iter().find(|s| s.id == snippet_id) {
 		Some(snippet) => snippet,
 		None => {
-			let error = json::to_string(&json!({"error": "Snippet not found"}))?;
+			let error = json::to_string(&json!({ "error" : "Snippet not found" }))?;
 			return Ok(Response::new(StatusCode::NOT_FOUND)
 				.with_header("Content-Type", "application/json")
 				.with_body(error));
 		}
 	};
-
-	let response_data = json!({
-		"snippet": SnippetResponse::from_model(snippet)
-	});
-
+	let response_data = json!({ "snippet" : SnippetResponse::from_model(snippet) });
 	let json = json::to_string(&response_data)?;
 	Ok(Response::new(StatusCode::OK)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))
 }
-
 /// Update a snippet
 ///
 /// PUT /snippets/{id}/
@@ -169,32 +101,17 @@ pub async fn update(
 	Path(snippet_id): Path<i64>,
 	Json(serializer): Json<SnippetSerializer>,
 ) -> ViewResult<Response> {
-	// Manual validation — see module-level comment on why `pre_validate = true`
-	// is not used here.
 	serializer.validate()?;
-
-	// Production ORM usage:
-	// let snippet = Manager::<Snippet>::new().update(snippet_id, |s| {
-	//     s.title = serializer.title.clone();
-	//     s.code = serializer.code.clone();
-	//     s.language = serializer.language.clone();
-	// }).await?;
-
-	// Demo mode: Verify snippet exists and return updated version
 	let snippets = get_sample_snippets();
 	let existing = match snippets.iter().find(|s| s.id == snippet_id) {
 		Some(snippet) => snippet,
 		None => {
-			let error = json::to_string(&json!({"error": "Snippet not found"}))?;
+			let error = json::to_string(&json!({ "error" : "Snippet not found" }))?;
 			return Ok(Response::new(StatusCode::NOT_FOUND)
 				.with_header("Content-Type", "application/json")
 				.with_body(error));
 		}
 	};
-
-	// Build the updated snippet via the macro-generated constructor, then
-	// preserve the original identifier and creation timestamp so the mock
-	// response remains consistent with the stored record.
 	let mut updated_snippet = Snippet::new(
 		serializer.title.clone(),
 		serializer.code.clone(),
@@ -202,18 +119,15 @@ pub async fn update(
 	);
 	updated_snippet.id = existing.id;
 	updated_snippet.created_at = existing.created_at;
-
-	let response_data = json!({
-		"message": "Snippet updated",
-		"snippet": SnippetResponse::from_model(&updated_snippet)
-	});
-
+	let response_data = json!(
+		{ "message" : "Snippet updated", "snippet" : SnippetResponse::from_model(&
+		updated_snippet) }
+	);
 	let json = json::to_string(&response_data)?;
 	Ok(Response::new(StatusCode::OK)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))
 }
-
 /// Delete a snippet
 ///
 /// DELETE /snippets/{id}/
@@ -222,26 +136,15 @@ pub async fn update(
 /// - 404 Not Found: Snippet not found
 #[delete("/snippets/{id}/", name = "snippets_delete")]
 pub async fn delete(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
-	// Production ORM usage:
-	// Manager::<Snippet>::new().delete(snippet_id).await?;
-
-	// Demo mode: Verify snippet exists
 	let snippets = get_sample_snippets();
 	if !snippets.iter().any(|s| s.id == snippet_id) {
-		let error = json::to_string(&json!({"error": "Snippet not found"}))?;
+		let error = json::to_string(&json!({ "error" : "Snippet not found" }))?;
 		return Ok(Response::new(StatusCode::NOT_FOUND)
 			.with_header("Content-Type", "application/json")
 			.with_body(error));
 	}
-
-	// Return 204 No Content for successful deletion
 	Ok(Response::new(StatusCode::NO_CONTENT))
 }
-
-// ============================================================================
-// ViewSet Implementation (Tutorial 6)
-// ============================================================================
-
 /// ViewSet-based approach for managing snippets (Tutorial 6)
 ///
 /// This demonstrates the ViewSet pattern from Tutorial 6, which provides:
@@ -285,7 +188,6 @@ pub async fn delete(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 pub fn viewset() -> reinhardt::ModelViewSet<Snippet, SnippetSerializer> {
 	use reinhardt::ModelViewSet;
 	use reinhardt::views::viewsets::{FilterConfig, OrderingConfig, PaginationConfig};
-
 	ModelViewSet::new("snippet")
 		.with_pagination(PaginationConfig::page_number(10, Some(100)))
 		.with_filters(

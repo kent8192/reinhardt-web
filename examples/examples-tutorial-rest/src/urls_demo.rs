@@ -43,34 +43,19 @@
 //!
 //! For a fully worked end-to-end test that registers routes and exercises
 //! every helper below, see `tests/urls_typed_accessors.rs`.
-
 use crate::config::urls::ResolvedUrls;
-
-// ----------------------------------------------------------------------------
-// Function-based endpoints (Tutorial 1-5)
-//
-// Routes registered via `#[get] / #[post] / #[put] / #[delete]` in
-// `apps::snippets::views` with `name = "snippets_<verb>"`. The route names
-// become methods on the `SnippetsUrls<'_>` accessor returned by
-// `urls.server().snippets()` (the route name suffix `_list`, `_create`,
-// etc. is preserved verbatim — only the `"snippets:"` namespace is added
-// transparently).
-// ----------------------------------------------------------------------------
-
 /// Resolve `GET /api/snippets/` (list endpoint).
 ///
 /// Replaces the deprecated `urls.snippets_list()` flat accessor.
 pub fn snippets_list(urls: &ResolvedUrls) -> String {
 	urls.server().snippets().snippets_list()
 }
-
 /// Resolve `POST /api/snippets/` (create endpoint).
 ///
 /// Replaces the deprecated `urls.snippets_create()` flat accessor.
 pub fn snippets_create(urls: &ResolvedUrls) -> String {
 	urls.server().snippets().snippets_create()
 }
-
 /// Resolve `GET /api/snippets/{id}/` (retrieve endpoint).
 ///
 /// The typed accessor takes the path parameter as a `&str`. Convert any
@@ -80,35 +65,18 @@ pub fn snippets_create(urls: &ResolvedUrls) -> String {
 pub fn snippets_retrieve(urls: &ResolvedUrls, id: i64) -> String {
 	urls.server().snippets().snippets_retrieve(&id.to_string())
 }
-
 /// Resolve `PUT /api/snippets/{id}/` (update endpoint).
 pub fn snippets_update(urls: &ResolvedUrls, id: i64) -> String {
 	urls.server().snippets().snippets_update(&id.to_string())
 }
-
 /// Resolve `DELETE /api/snippets/{id}/` (delete endpoint).
 pub fn snippets_delete(urls: &ResolvedUrls, id: i64) -> String {
 	urls.server().snippets().snippets_delete(&id.to_string())
 }
-
-// ----------------------------------------------------------------------------
-// ViewSet endpoints (Tutorial 6)
-//
-// Registered via `.viewset("/snippets-viewset", views::viewset())` in
-// `apps::snippets::urls` against a `ModelViewSet::new("snippet")`. The
-// viewset basename `"snippet"` (singular — chosen to make the typed names
-// idiomatic) drives the generated route names: `snippet_list`,
-// `snippet_detail`, `snippet_create`, `snippet_update`, `snippet_partial_update`,
-// `snippet_destroy`. Compare with the function-based endpoints above whose
-// names start with the plural `snippets_` because they were registered
-// individually by `#[get(name = "snippets_list")]` etc.
-// ----------------------------------------------------------------------------
-
 /// Resolve `GET /api/snippets-viewset/` (viewset list endpoint).
 pub fn viewset_list(urls: &ResolvedUrls) -> String {
 	urls.server().snippets().snippet_list()
 }
-
 /// Resolve `GET /api/snippets-viewset/{id}/` (viewset retrieve endpoint).
 pub fn viewset_detail(urls: &ResolvedUrls, id: i64) -> String {
 	urls.server().snippets().snippet_detail(&id.to_string())
