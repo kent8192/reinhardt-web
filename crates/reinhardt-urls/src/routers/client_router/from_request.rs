@@ -234,23 +234,36 @@ fn parse_query(query: &str, key: &str) -> Option<String> {
 /// the `percent-encoding` crate if more robust handling becomes
 /// necessary.
 fn url_decode(s: &str) -> String {
-	let mut out = String::with_capacity(s.len());
-	let mut bytes = s.bytes();
-	while let Some(b) = bytes.next() {
-		match b {
-			b'+' => out.push(' '),
-			b'%' => {
-				let hi = bytes.next();
-				let lo = bytes.next();
-				if let (Some(h), Some(l)) = (hi, lo)
-					&& let (Some(h), Some(l)) = (hex_digit(h), hex_digit(l))
-				{
-					out.push((h * 16 + l) as char);
-					continue;
-				}
-				out.push('%');
+	let bytes = s.as_bytes();
+	let mut out = String::with_capacity(bytes.len());
+	let mut i = 0;
+	while i < bytes.len() {
+		match bytes[i] {
+			b'+' => {
+				out.push(' ');
+				i += 1;
 			}
-			_ => out.push(b as char),
+			b'%' if i + 2 < bytes.len() => {
+				if let (Some(h), Some(l)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
+					out.push((h * 16 + l) as char);
+					i += 3;
+				} else {
+					// Invalid escape — emit the `%` and continue scanning
+					// from the next byte so trailing characters are
+					// preserved literally.
+					out.push('%');
+					i += 1;
+				}
+			}
+			b'%' => {
+				// Trailing `%` with fewer than 2 hex digits — emit literal.
+				out.push('%');
+				i += 1;
+			}
+			b => {
+				out.push(b as char);
+				i += 1;
+			}
 		}
 	}
 	out
