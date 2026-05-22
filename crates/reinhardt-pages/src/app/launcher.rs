@@ -1,8 +1,6 @@
 //! `ClientLauncher` builder, lifecycle contexts, and the `launch()` pipeline.
 
-#[allow(deprecated)]
-// (Refs #4234) Importing deprecated routing types intentionally during the deprecation cycle.
-use crate::router::{PathPattern, Router};
+use reinhardt_urls::routers::ClientPathPattern;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -64,15 +62,13 @@ thread_local! {
 ///         .launch()
 /// }
 /// ```
-#[allow(deprecated)] // (Refs #4234) `router_init` field stores a closure producing the deprecated `Router`.
 pub struct ClientLauncher {
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pub(super) root_selector: &'static str,
-	pub(super) router_init: Option<Box<dyn FnOnce() -> Router>>,
 	/// Optional `ClientRouter` initialiser registered via
 	/// [`ClientLauncher::router_client`]. Mutually exclusive with
-	/// `router_init`; `launch()` rejects the launcher if both are set
-	/// or both are `None`. (Refs #4234)
+	/// `launch()` rejects the launcher if neither source is set.
+	/// (Refs #4234, #4453)
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pub(super) client_router_init:
 		Option<Box<dyn FnOnce() -> reinhardt_urls::routers::ClientRouter>>,
@@ -85,7 +81,7 @@ pub struct ClientLauncher {
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pub(super) path_subscriptions: Vec<PathSubscription>,
 	/// (Refs #4453) `true` when `register_routes_from_inventory()` has been
-	/// called. Mutually exclusive with `router_init` and `client_router_init`.
+	/// called. Mutually exclusive with `client_router_init`.
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pub(super) use_inventory: bool,
 }
@@ -220,10 +216,9 @@ impl<'a> PathCtx<'a> {
 /// `last_params` tracks the previous match state so the `on_navigate`
 /// listener can detect transitions (entering a match, or a parameter-set
 /// change inside the same pattern) without re-firing on every navigation.
-#[allow(deprecated)] // (Refs #4234) `pattern` field stores the deprecated `PathPattern`.
 pub(super) struct PathSubscription {
 	#[cfg_attr(not(wasm), allow(dead_code))]
-	pub(super) pattern: PathPattern,
+	pub(super) pattern: ClientPathPattern,
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pub(super) callback: Box<dyn Fn(&PathCtx<'_>) + 'static>,
 	#[cfg_attr(not(wasm), allow(dead_code))]
@@ -249,10 +244,9 @@ pub(super) struct PathSubscription {
 /// implementation; the same helper is invoked once at registration to
 /// deliver the bootstrap route and again from each `Router::on_navigate`
 /// dispatch (Refs #4101).
-#[cfg_attr(not(any(wasm, test)), allow(dead_code))]
-#[allow(deprecated)] // (Refs #4234) Operates on the deprecated `PathPattern` by design.
+#[allow(dead_code)]
 fn next_path_subscription_match(
-	pattern: &PathPattern,
+	pattern: &ClientPathPattern,
 	path: &str,
 	last_params: &RefCell<Option<HashMap<String, String>>>,
 ) -> Option<HashMap<String, String>> {
@@ -282,8 +276,6 @@ fn next_path_subscription_match(
 #[cfg_attr(not(wasm), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RouterSourceChoice {
-	/// `router(...)` was the only source set.
-	Legacy,
 	/// `router_client(...)` was the only source set.
 	Client,
 	/// `register_routes_from_inventory()` was the only source set.
@@ -302,24 +294,21 @@ enum RouterSourceChoice {
 ///
 /// Refs #4453.
 #[cfg_attr(not(wasm), allow(dead_code))]
-fn select_router_source_counts(legacy: bool, client: bool, inventory: bool) -> RouterSourceChoice {
-	match (legacy as u8) + (client as u8) + (inventory as u8) {
+fn select_router_source_counts(client: bool, inventory: bool) -> RouterSourceChoice {
+	match (client as u8) + (inventory as u8) {
 		0 => RouterSourceChoice::None,
-		1 if legacy => RouterSourceChoice::Legacy,
 		1 if client => RouterSourceChoice::Client,
 		1 if inventory => RouterSourceChoice::Inventory,
 		_ => RouterSourceChoice::Conflict,
 	}
 }
 
-#[allow(deprecated)] // (Refs #4234) Builder consumes the deprecated `Router` via `router(...)`.
 impl ClientLauncher {
 	/// Create a new launcher targeting the given CSS selector (e.g. `"#root"`).
 	pub fn new(root_selector: &'static str) -> Self {
 		Self {
 			root_selector,
-			router_init: None,
-			client_router_init: None,
+				client_router_init: None,
 			intercept_links: true,
 			before_launch_hooks: Vec::new(),
 			after_launch_hooks: Vec::new(),
@@ -328,47 +317,7 @@ impl ClientLauncher {
 		}
 	}
 
-	/// Register the router initializer function.
-	///
-	/// The function is called once during `launch()` before the first render.
-	///
-	/// # Conflict
-	///
-	/// Mutually exclusive with [`Self::router_client`] and
-	/// [`Self::register_routes_from_inventory`]. Calling more than one of
-	/// the three on the same launcher causes `launch()` to return
-	/// an error. (Refs #4453)
-	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
-	#[deprecated(
-		since = "0.1.0-rc.27",
-		note = "Use `ClientLauncher::router_client` with `urls::ClientRouter` instead. \
-				Refs cloud#578 Phase E."
-	)]
-	pub fn router<F: FnOnce() -> Router + 'static>(mut self, f: F) -> Self {
-		self.router_init = Some(Box::new(f));
-		self
-	}
-
-	/// Use a [`reinhardt_urls::routers::ClientRouter`] as the SPA route
-	/// table.
-	///
-	/// Recommended over [`ClientLauncher::router`] for new code; the
-	/// latter is `#[deprecated]` and consumes the deprecated
-	/// `pages::Router`. (Refs #4234, cloud#578 Phase E)
-	///
-	/// For projects already using `#[routes]` on a top-level `routes()`
-	/// function, prefer [`Self::register_routes_from_inventory`] — it
-	/// collapses the WASM entry point to three lines and removes the
-	/// need to hand-aggregate per-app `client_url_patterns()` outputs.
-	/// (Refs #4453)
-	///
-	/// # Conflict
-	///
-	/// Mutually exclusive with [`Self::router`] (deprecated) and
-	/// [`Self::register_routes_from_inventory`]. Calling more than one
-	/// of the three on the same launcher causes `launch()` to
-	/// return an error. (Refs #4234, #4453)
-	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
+	/// Register a [`reinhardt_urls::routers::ClientRouter`] factory function.
 	pub fn router_client<F>(mut self, f: F) -> Self
 	where
 		F: FnOnce() -> reinhardt_urls::routers::ClientRouter + 'static,
@@ -426,10 +375,9 @@ impl ClientLauncher {
 	///
 	/// # Conflict
 	///
-	/// Mutually exclusive with [`Self::router`] (deprecated) and
-	/// [`Self::router_client`]. Calling more than one of the three on
-	/// the same launcher causes `launch()` to return an error.
-	/// Calling none of them also returns an error.
+	/// Mutually exclusive with [`Self::router_client`]. Calling more
+	/// than one on the same launcher causes `launch()` to return
+	/// an error. Calling none of them also returns an error.
 	/// (`launch` is `#[cfg(wasm)]`, so it cannot be linked from native docs.)
 	///
 	/// `launch()` returns an error if no `#[routes(..., client_inventory)]`
@@ -515,7 +463,7 @@ impl ClientLauncher {
 		F: Fn(&PathCtx<'_>) + 'static,
 	{
 		self.path_subscriptions.push(PathSubscription {
-			pattern: PathPattern::new(path),
+			pattern: ClientPathPattern::new(path).expect("valid path pattern"),
 			callback: Box::new(callback),
 			last_params: RefCell::new(None),
 		});
@@ -538,7 +486,7 @@ impl ClientLauncher {
 		F: Fn(&PathCtx<'_>) + 'static,
 	{
 		self.path_subscriptions.push(PathSubscription {
-			pattern: PathPattern::new(pattern),
+			pattern: ClientPathPattern::new(pattern).expect("valid path pattern"),
 			callback: Box::new(callback),
 			last_params: RefCell::new(None),
 		});
@@ -547,7 +495,6 @@ impl ClientLauncher {
 }
 
 #[cfg(wasm)]
-#[allow(deprecated)] // (Refs #4234) Launch path bridges deprecated `Router` and new `ClientRouter`.
 impl ClientLauncher {
 	/// Render the current route into the given root element.
 	///
@@ -624,10 +571,9 @@ impl ClientLauncher {
 	///
 	/// # Router Source Selection
 	///
-	/// Exactly one of the three router-source builders must be called
+	/// Exactly one of the two router-source builders must be called
 	/// before `launch()`:
 	///
-	/// - [`Self::router`] (deprecated; consumes the legacy `pages::Router`)
 	/// - [`Self::router_client`] (closure producing a `ClientRouter`)
 	/// - [`Self::register_routes_from_inventory`] (pulls a `ClientRouter`
 	///   from `inventory`-registered `#[routes]` functions)
@@ -635,7 +581,7 @@ impl ClientLauncher {
 	/// Calling none of them or more than one returns `Err`. The
 	/// `register_routes_from_inventory` path additionally returns `Err`
 	/// when no `#[routes]` registrations are found at runtime.
-	/// (Refs #4234, #4453)
+	/// (Refs #4453)
 	pub fn launch(mut self) -> Result<(), wasm_bindgen::JsValue> {
 		#[cfg(feature = "console_error_panic_hook")]
 		console_error_panic_hook::set_once();
@@ -649,27 +595,19 @@ impl ClientLauncher {
 			hook();
 		}
 
-		// (Refs #4234, #4453) Pick exactly one router source. The
-		// deprecated `router(...)` builder produces a `Router`; the
+		// (Refs #4453) Pick exactly one router source. The
 		// `router_client(...)` builder produces a `ClientRouter` from
 		// a user-supplied closure; `register_routes_from_inventory()`
 		// pulls a `ClientRouter` from `inventory`-registered
 		// `#[routes]` functions at module load time.
-		let legacy_init = self.router_init.take();
 		let client_init = self.client_router_init.take();
 		let use_inventory = self.use_inventory;
 
 		let spa_router: Box<dyn super::SpaRouter> = match select_router_source_counts(
-			legacy_init.is_some(),
 			client_init.is_some(),
 			use_inventory,
 		) {
-			RouterSourceChoice::Legacy => {
-				// (Refs #4234) `Router` is deprecated as of rc.27; the parent
-				// `impl ClientLauncher` block carries `#[allow(deprecated)]` so
-				// this arm continues to build.
-				Box::new((legacy_init.expect("Legacy variant guarantees Some"))())
-			}
+
 			RouterSourceChoice::Client => {
 				Box::new((client_init.expect("Client variant guarantees Some"))())
 			}
@@ -691,14 +629,14 @@ impl ClientLauncher {
 			}
 			RouterSourceChoice::None => {
 				return Err(wasm_bindgen::JsValue::from_str(
-					"ClientLauncher: `router(...)`, `router_client(...)`, or \
+					"ClientLauncher: `router_client(...)`, or \
 					 `register_routes_from_inventory()` must be called before \
 					 `launch()`.",
 				));
 			}
 			RouterSourceChoice::Conflict => {
 				return Err(wasm_bindgen::JsValue::from_str(
-					"ClientLauncher: `router(...)`, `router_client(...)`, and \
+					"ClientLauncher: `router_client(...)`, and \
 					 `register_routes_from_inventory()` are mutually exclusive; \
 					 configure exactly one.",
 				));
@@ -808,7 +746,7 @@ impl ClientLauncher {
 				callback,
 				last_params,
 			} = sub;
-			let pattern: std::rc::Rc<PathPattern> = std::rc::Rc::new(pattern);
+			let pattern: std::rc::Rc<ClientPathPattern> = std::rc::Rc::new(pattern);
 			let callback: std::rc::Rc<dyn Fn(&PathCtx<'_>) + 'static> = std::rc::Rc::from(callback);
 			let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
 				std::rc::Rc::new(last_params);
@@ -853,7 +791,6 @@ impl ClientLauncher {
 }
 
 #[cfg(test)]
-#[allow(deprecated)] // (Refs #4234) Tests exercise deprecated `pages::Router` / `PathPattern` directly.
 mod tests {
 	use super::*;
 	use rstest::*;
@@ -863,20 +800,9 @@ mod tests {
 		let launcher = ClientLauncher::new("#root");
 
 		assert_eq!(launcher.root_selector, "#root");
-		assert!(launcher.router_init.is_none());
 		assert!(launcher.client_router_init.is_none());
 	}
 
-	// (Refs #4234) Exercises the deprecated `router(...)` builder; the
-	// module-level `#[allow(deprecated)]` on `mod tests` covers this test.
-	#[rstest]
-	fn test_client_launcher_router_stores_init_fn() {
-		let launcher = ClientLauncher::new("#root");
-
-		let launcher = launcher.router(Router::new);
-
-		assert!(launcher.router_init.is_some());
-	}
 
 	// (Refs #4234) Mirrors `test_client_launcher_router_stores_init_fn`
 	// for the new `router_client(...)` builder.
@@ -1068,177 +994,9 @@ mod tests {
 	///
 	/// Returns the `NavigationSubscription` so the test can `mem::forget`
 	/// it (matching the launcher) or drop it to unregister.
-	fn register_path_subscription_for_test<F>(
-		router: &Router,
-		pattern: PathPattern,
-		last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>>,
-		on_match: F,
-	) -> crate::router::NavigationSubscription
-	where
-		F: Fn(&str, &HashMap<String, String>) + 'static,
-	{
-		let on_match = std::rc::Rc::new(on_match);
-		let pattern = std::rc::Rc::new(pattern);
 
-		let on_match_listener = on_match.clone();
-		let pattern_listener = pattern.clone();
-		let last_params_listener = last_params.clone();
-		let subscription = router.on_navigate(move |path, _params_from_router| {
-			if let Some(params) =
-				next_path_subscription_match(&pattern_listener, path, &last_params_listener)
-			{
-				on_match_listener(path, &params);
-			}
-		});
 
-		let initial_path = router.current_path().get();
-		if let Some(params) = next_path_subscription_match(&pattern, &initial_path, &last_params) {
-			on_match(&initial_path, &params);
-		}
 
-		subscription
-	}
-
-	/// Initial-route delivery: a subscription whose pattern matches the
-	/// router's current path at registration time MUST fire the user
-	/// callback once with the bootstrap params.
-	///
-	/// The previous Effect-based implementation got this for free
-	/// because Effects run their closure once at creation; the
-	/// on_navigate-based implementation only fires on subsequent
-	/// navigations, so the launcher restores the initial evaluation
-	/// explicitly. Removing that explicit step would break this test.
-	///
-	/// Refs #4101.
-	#[rstest]
-	fn path_subscription_delivers_initial_route() {
-		use crate::component::Page;
-
-		// Arrange
-		let router = Router::new()
-			.route("/users/{id}/", || Page::text("user"))
-			.route("/about/", || Page::text("about"));
-		router.push("/users/1/").expect("push /users/1/");
-
-		let observed: std::rc::Rc<RefCell<Vec<HashMap<String, String>>>> =
-			std::rc::Rc::new(RefCell::new(Vec::new()));
-		let observed_inner = observed.clone();
-		let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
-			std::rc::Rc::new(RefCell::new(None));
-
-		// Act: register subscription AFTER the router has been navigated.
-		let _sub = register_path_subscription_for_test(
-			&router,
-			PathPattern::new("/users/{id}/"),
-			last_params,
-			move |_path, params| {
-				observed_inner.borrow_mut().push(params.clone());
-			},
-		);
-
-		// Assert: callback fired once for the bootstrap route.
-		let calls = observed.borrow();
-		assert_eq!(
-			calls.len(),
-			1,
-			"expected initial-route delivery; got: {:?}",
-			calls
-		);
-		assert_eq!(calls[0].get("id").map(String::as_str), Some("1"));
-	}
-
-	/// End-to-end sequence covering initial-route delivery plus the
-	/// transition state machine, exercised through the launcher's
-	/// registration algorithm rather than the diff helper alone.
-	///
-	/// Refs #4101.
-	#[rstest]
-	fn path_subscription_initial_then_navigation_sequence() {
-		use crate::component::Page;
-
-		// Arrange
-		let router = Router::new()
-			.route("/users/{id}/", || Page::text("user"))
-			.route("/about/", || Page::text("about"));
-		router.push("/users/1/").expect("push /users/1/");
-
-		let observed: std::rc::Rc<RefCell<Vec<HashMap<String, String>>>> =
-			std::rc::Rc::new(RefCell::new(Vec::new()));
-		let observed_inner = observed.clone();
-		let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
-			std::rc::Rc::new(RefCell::new(None));
-
-		// Act
-		let _sub = register_path_subscription_for_test(
-			&router,
-			PathPattern::new("/users/{id}/"),
-			last_params,
-			move |_path, params| {
-				observed_inner.borrow_mut().push(params.clone());
-			},
-		);
-		// Initial delivery already happened; following sequence exercises
-		// the diff state machine through the on_navigate listener.
-		router.push("/users/1/").expect("re-push /users/1/"); // no fire (Some -> Some same)
-		router.push("/users/2/").expect("push /users/2/"); // fire (Some(a) -> Some(b), a != b)
-		router.push("/about/").expect("push /about/"); // no fire (Some -> None)
-		router
-			.push("/users/3/")
-			.expect("push /users/3/ after /about/"); // fire (None -> Some)
-
-		// Assert
-		let calls = observed.borrow();
-		assert_eq!(
-			calls.len(),
-			3,
-			"expected initial + 2 transitions; got: {:?}",
-			calls
-		);
-		assert_eq!(calls[0].get("id").map(String::as_str), Some("1"));
-		assert_eq!(calls[1].get("id").map(String::as_str), Some("2"));
-		assert_eq!(calls[2].get("id").map(String::as_str), Some("3"));
-	}
-
-	/// Non-matching bootstrap route: a subscription whose pattern does
-	/// not match the router's current path at registration MUST NOT
-	/// fire at registration. Locks in the `None -> None` branch of the
-	/// diff state machine for the initial-eval path.
-	///
-	/// Refs #4101.
-	#[rstest]
-	fn path_subscription_does_not_fire_when_initial_route_does_not_match() {
-		use crate::component::Page;
-
-		// Arrange
-		let router = Router::new()
-			.route("/users/{id}/", || Page::text("user"))
-			.route("/about/", || Page::text("about"));
-		router.push("/about/").expect("push /about/");
-
-		let observed: std::rc::Rc<RefCell<Vec<HashMap<String, String>>>> =
-			std::rc::Rc::new(RefCell::new(Vec::new()));
-		let observed_inner = observed.clone();
-		let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
-			std::rc::Rc::new(RefCell::new(None));
-
-		// Act
-		let _sub = register_path_subscription_for_test(
-			&router,
-			PathPattern::new("/users/{id}/"),
-			last_params,
-			move |_path, params| {
-				observed_inner.borrow_mut().push(params.clone());
-			},
-		);
-
-		// Assert: callback did not fire because the bootstrap route does
-		// not match the pattern.
-		assert!(
-			observed.borrow().is_empty(),
-			"expected no firing; got: {:?}",
-			observed.borrow()
-		);
-	}
 
 	#[rstest]
 	fn test_lifecycle_hooks_observe_registration_order() {
@@ -1274,27 +1032,19 @@ mod select_router_source_tests {
 	#[rstest::rstest]
 	fn returns_none_when_no_source_set() {
 		// Arrange
-		let legacy = false;
 		let client = false;
 		let inventory = false;
 		// Act
-		let result = select_router_source_counts(legacy, client, inventory);
+		let result = select_router_source_counts(client, inventory);
 		// Assert
 		assert_eq!(result, RouterSourceChoice::None);
 	}
 
-	#[rstest::rstest]
-	fn returns_legacy_when_only_legacy_set() {
-		// Arrange + Act
-		let result = select_router_source_counts(true, false, false);
-		// Assert
-		assert_eq!(result, RouterSourceChoice::Legacy);
-	}
 
 	#[rstest::rstest]
 	fn returns_client_when_only_client_set() {
 		// Arrange + Act
-		let result = select_router_source_counts(false, true, false);
+		let result = select_router_source_counts(true, false);
 		// Assert
 		assert_eq!(result, RouterSourceChoice::Client);
 	}
@@ -1302,23 +1052,19 @@ mod select_router_source_tests {
 	#[rstest::rstest]
 	fn returns_inventory_when_only_inventory_set() {
 		// Arrange + Act
-		let result = select_router_source_counts(false, false, true);
+		let result = select_router_source_counts(false, true);
 		// Assert
 		assert_eq!(result, RouterSourceChoice::Inventory);
 	}
 
 	#[rstest::rstest]
-	#[case(true, true, false)]
-	#[case(true, false, true)]
-	#[case(false, true, true)]
-	#[case(true, true, true)]
+	#[case(true, true)]
 	fn returns_conflict_when_multiple_sources_set(
-		#[case] legacy: bool,
 		#[case] client: bool,
 		#[case] inventory: bool,
 	) {
 		// Arrange + Act
-		let result = select_router_source_counts(legacy, client, inventory);
+		let result = select_router_source_counts(client, inventory);
 		// Assert
 		assert_eq!(result, RouterSourceChoice::Conflict);
 	}

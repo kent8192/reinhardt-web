@@ -12,8 +12,6 @@
 // `reinhardt_pages::router::Router` is `#[deprecated]` since 0.1.0-rc.27; this module
 // references it pervasively (struct, `Router::new()`, `Arc<Router>`, closure params),
 // so file-scope suppression is preferred over per-usage `#[allow(deprecated)]` attribute spam.
-#![allow(deprecated)]
-
 use crate::pages::components::features::{
 	Column, FormField, ListViewData, dashboard, detail_view, list_view, model_form,
 };
@@ -26,7 +24,8 @@ use crate::types::ModelInfo;
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::page;
-use reinhardt_pages::router::{Link, Router};
+use reinhardt_pages::router::Link;
+use reinhardt_urls::routers::ClientRouter;
 #[cfg(client)]
 use reinhardt_pages::{ResourceState, create_resource};
 use std::cell::RefCell;
@@ -71,7 +70,7 @@ pub enum AdminRoute {
 // Global Router instance
 // Initialized by init_global_router() and accessed via with_router()
 thread_local! {
-	static ROUTER: RefCell<Option<Router>> = const { RefCell::new(None) };
+	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
 }
 
 /// Admin URL configuration loaded from server at runtime.
@@ -139,7 +138,7 @@ pub fn init_global_router() {
 /// ```
 pub fn try_with_router<F, R>(f: F) -> Option<R>
 where
-	F: FnOnce(&Router) -> R,
+	F: FnOnce(&ClientRouter) -> R,
 {
 	ROUTER.with(|r| r.borrow().as_ref().map(f))
 }
@@ -163,7 +162,7 @@ where
 /// ```
 pub fn with_router<F, R>(f: F) -> R
 where
-	F: FnOnce(&Router) -> R,
+	F: FnOnce(&ClientRouter) -> R,
 {
 	try_with_router(f).expect("Router not initialized. Call init_global_router() first.")
 }
@@ -676,11 +675,11 @@ fn error_view(message: &str) -> Page {
 ///
 /// let router = init_router();
 /// ```
-pub fn init_router() -> Router {
+pub fn init_router() -> ClientRouter {
 	// IMPORTANT: Route registration order matters. See doc comment above.
 	// Login route must be registered before dynamic routes to prevent
 	// /admin/login/ from matching the list route with model="login".
-	Router::new()
+	ClientRouter::new()
 		.named_route("login", "/admin/login/", login::login_view)
 		.named_route("dashboard", "/admin/", dashboard_view)
 		.named_route("create", "/admin/{model}/add/", || {

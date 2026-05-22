@@ -18,12 +18,11 @@
 //!        --features wasm-diag-test -- --test history_state_shape_test`
 
 #![cfg(wasm)]
-#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::Page;
 use reinhardt_pages::page;
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
@@ -58,8 +57,8 @@ fn install_app_root() -> web_sys::Element {
 	root
 }
 
-fn build_router() -> Router {
-	Router::new()
+fn build_router() -> ClientRouter {
+	ClientRouter::new()
 		.named_route("dashboard:home", "/", home_page)
 		.named_route("clusters:list", "/clusters", clusters_page)
 }
@@ -109,13 +108,13 @@ async fn history_state_is_object_after_router_push() {
 	let _root = install_app_root();
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 
 	// Drive a programmatic navigation, mirroring the link-interceptor's
-	// `with_router(|r| r.push(href))` call site exactly.
-	with_router(|r| r.push("/clusters")).expect("push /clusters");
+	// `with_spa_router(|r| r.push(href))` call site exactly.
+	with_spa_router(|r| r.push("/clusters")).expect("push /clusters");
 
 	// Yield once so any async observers / scheduler tasks settle before
 	// we read `history.state`. The state assertions below are independent
@@ -178,11 +177,11 @@ async fn history_state_is_object_after_router_replace() {
 	let _root = install_app_root();
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 
-	with_router(|r| r.replace("/clusters")).expect("replace /clusters");
+	with_spa_router(|r| r.replace("/clusters")).expect("replace /clusters");
 
 	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
 	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
