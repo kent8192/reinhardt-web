@@ -22,6 +22,7 @@ fn fixture_path(rule: &str, name: &str) -> PathBuf {
 #[rstest]
 #[case::bare_ident("bare_ident")]
 #[case::watch_unwrap("watch_unwrap")]
+#[case::use_effect_deps("use_effect_deps")]
 fn rule_matches_expected_fixture(#[case] rule_name: &str) {
 	// Arrange
 	let input = std::fs::read_to_string(fixture_path(rule_name, "input.rs")).unwrap();
