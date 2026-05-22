@@ -89,14 +89,20 @@ ok "Docker is running"
 info "Setting up local configuration..."
 
 if [ ! -f settings/local.toml ]; then
-    cp settings/local.example.toml settings/local.toml
-    # Update DB name to match docker-compose.yml
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' 's/examples-twitter_dev/examples-twitter_db/' settings/local.toml
-    else
-        sed -i 's/examples-twitter_dev/examples-twitter_db/' settings/local.toml
+    cat > settings/local.toml << 'TOML'
+# Local development settings.
+# WARNING: Do NOT put real secrets in this file if you plan to commit it.
+redis_url = "redis://localhost:6379/0"
+
+[core]
+debug = true
+secret_key = "local-development-secret-key"
+
+[database]
+name = "examples-twitter_db"
+TOML
     fi
-    ok "Created settings/local.toml from template"
+    ok "Created settings/local.toml"
 else
     ok "settings/local.toml already exists"
 fi
