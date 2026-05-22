@@ -2,15 +2,19 @@
 
 ## Supported Versions
 
-This project is currently in Release Candidate (RC) phase. Only the latest RC version is supported with security patches.
+Reinhardt follows the three-phase lifecycle described in
+[`instructions/STABILITY_POLICY.md`](instructions/STABILITY_POLICY.md).
+Security patches are applied to the latest stable patch of the most recent
+minor release. Pre-release artifacts (`-rc.*`, `-alpha.*`) are not
+security-supported once the corresponding stable release ships — upgrade
+to the matching stable version to receive patches.
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.0-rc.x (latest) | ✅ Yes |
-| Older RC versions | ❌ No |
-| Development branches | ❌ No |
-
-**Note:** This project has not yet reached a stable 1.0 release. Security patches are applied to the latest RC version only.
+| `0.1.x` (latest stable patch) | ✅ Yes |
+| Older `0.1.x` patches | ❌ No |
+| `0.1.0-rc.*` / `0.1.0-alpha.*` | ❌ No — upgrade to `0.1.x` |
+| Development branches (`main`, `develop/*`) | ❌ No |
 
 ---
 

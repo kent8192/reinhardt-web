@@ -46,9 +46,7 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 
 <!-- reinhardt-version-sync -->
 ```bash
-# During the RC phase, `cargo install` requires an explicit `--version`
-# because pre-releases are not selected by default. Once a stable release
-# ships, `cargo install reinhardt-admin-cli` (no flag) will also work.
+# Pin a specific release for reproducibility (omit --version to pull the latest stable):
 cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 
 reinhardt-admin startproject my-api && cd my-api
@@ -104,24 +102,14 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current status:** Reinhardt is at `0.1.0-rc.30` (Release Candidate). Most
-crates track this version; a small number lag by one or more patch numbers
-when no conventional-commit changes have touched them since their previous
-release-plz tag (release-plz correctly skips a bump in that case). At
-`rc.29` this applies to:
+**Current status:** Reinhardt is at `0.1.0-rc.30`. From `0.1.0` onward, all
+public APIs follow SemVer 2.0; breaking changes ship in a future
+`0.2.0-rc.N` series coordinated through the `develop/0.2.0` branch.
 
-- `reinhardt-testkit-macros` — remains at `0.1.0-rc.28` (no changes since
-  its rc.28 tag; re-exported through `reinhardt-testkit`, so depending on
-  `reinhardt-testkit` alone gives you a compatible pair).
-
-**What this means for you:**
-- Public APIs will only change to fix critical bugs -- no new features or additions
-- If a critical fix requires an API change, a migration guide is provided
-- Naming improvements use deprecation aliases (your existing code keeps compiling)
-- Bug fixes are shipped as `rc.2`, `rc.3`, etc.
-- Stable `0.1.0` will be released after a 2-week stability period with no critical issues
-
-For the full stability policy, see [Stability Policy](instructions/STABILITY_POLICY.md).
+For per-release detail (changelog summary, upgrade notes, known issues),
+see the [Release category in GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+The full lifecycle policy lives in
+[Stability Policy](instructions/STABILITY_POLICY.md).
 
 ## Installation
 
@@ -216,10 +204,9 @@ The main Reinhardt crate is published on crates.io as `reinhardt-web`, but you i
 
 ### 1. Install Reinhardt Admin Tool
 
-During the RC phase, only release-candidate versions are published to
-crates.io, so `cargo install` requires an explicit `--version`. The version
-shown below is auto-bumped by release-plz on each release. After a stable
-release ships, `cargo install reinhardt-admin-cli` (no flag) will also work.
+Omit `--version` to pull the latest stable release; pin a specific version
+for reproducibility. The pinned literal below is auto-bumped by release-plz
+on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
