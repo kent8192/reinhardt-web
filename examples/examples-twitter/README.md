@@ -200,16 +200,11 @@ cd examples/examples-twitter
 # Copy local settings
 cp settings/local.example.toml settings/local.toml
 
-# Start PostgreSQL
-docker compose up -d
-
-# Build the project
-cargo build
-
-# Run migrations
-cargo run --bin examples-twitter migrate
-
-# Build WASM frontend and start development server
+# Build WASM frontend and start development server.
+# `cargo make dev` chains `migrate` → `infra-up`, which starts the
+# disposable PostgreSQL + Redis containers (via `scripts/infra_up.sh`)
+# and runs migrations automatically. Stop the infra later with
+# `cargo make infra-down`.
 cargo make dev
 ```
 
