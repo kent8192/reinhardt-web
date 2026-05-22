@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### BREAKING CHANGES
+
+All public APIs deprecated during the `0.1.0-rc.*` cycle have been
+removed per STABILITY_POLICY § SP-4. Refs umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+
+`reinhardt-di` removals (2 items):
+
+- **`Injected<T>` struct** (`src/injected.rs`, deprecated since
+  `0.1.0-rc.16`) — the FastAPI-inspired wrapper that previously coexisted
+  with [`Depends<T>`](src/depends.rs). All injection codegen now goes
+  through `Depends<T>` exclusively.
+- **`OptionalInjected<T>` type alias** (`src/injected.rs`, deprecated
+  since `0.1.0-rc.16`) — use `Option<Depends<T>>` instead.
+
+#### Macro behavior change
+
+`#[injectable]` no longer accepts `Injected<T>` / `OptionalInjected<T>`
+fields. The error message reads:
+
+```text
+#[inject] field must have type Depends<T> or Option<Depends<T>>
+```
+
+`InjectionMetadata` and `DependencyScope` (the supporting metadata
+types that previously co-resided with `Injected<T>`) remain in
+`crates/reinhardt-di/src/injected.rs` because they are still used by
+`Depends<T>`. The module's `Injected<T>`/`OptionalInjected<T>`
+content is gone but the file name (`injected.rs`) is preserved this
+release to keep the diff focused on RC-deprecated removals — a rename
+is a candidate for a follow-up PR.
+
+See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-di)
+for the migration guide.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.30...reinhardt-di@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-di` as part of the reinhardt-web
