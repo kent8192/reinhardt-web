@@ -57,6 +57,8 @@ SKIP_PATTERNS = [
 	re.compile(r"^- Work in progress features\b", re.IGNORECASE),
 	re.compile(r"^- Initial crates\.io release\s*$", re.IGNORECASE),
 	re.compile(r"^- Initial release\s*$", re.IGNORECASE),
+	# Sub-Crate Updates template placeholder (literal documentation artifact).
+	re.compile(r"^- `\[crate-name\]` updated to v\[version\]"),
 ]
 
 VERSION_HEADER = re.compile(
