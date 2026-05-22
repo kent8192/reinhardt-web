@@ -108,7 +108,11 @@ fn use_effect_mount_only_does_not_rerun_on_any_change() {
 		(),
 	);
 
-	assert_eq!(*runs.borrow(), 1, "mount-only effect must run once on mount");
+	assert_eq!(
+		*runs.borrow(),
+		1,
+		"mount-only effect must run once on mount"
+	);
 
 	// Act — change the signal a few times.
 	signal.set(1);
