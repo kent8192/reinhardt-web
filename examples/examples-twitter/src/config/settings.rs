@@ -31,7 +31,6 @@
 //!
 //! `build_composed()` uses `MergeStrategy::Deep` by default starting in
 //! rc.28 (#4264), which merges nested tables key-by-key across sources.
-
 use reinhardt::conf::settings::builder::SettingsBuilder;
 use reinhardt::conf::settings::profile::Profile;
 use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
@@ -39,10 +38,8 @@ use reinhardt::core::serde::json;
 use reinhardt::settings;
 use std::env;
 use std::path::PathBuf;
-
-#[settings(core: CoreSettings)]
+#[settings(core:CoreSettings)]
 pub struct ProjectSettings;
-
 /// Get the active environment profile name.
 fn profile_name() -> String {
 	env::var("REINHARDT_ENV").unwrap_or_else(|_| {
@@ -53,12 +50,10 @@ fn profile_name() -> String {
 		}
 	})
 }
-
 /// Resolve the settings directory path.
 fn resolve_settings_dir() -> PathBuf {
 	PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("settings")
 }
-
 /// Get settings based on environment variable
 ///
 /// Reads the REINHARDT_ENV environment variable to determine which settings to load.
@@ -83,7 +78,6 @@ pub fn get_settings() -> ProjectSettings {
 	let profile_str = profile_name();
 	let settings_dir = resolve_settings_dir();
 	let base_dir = env::current_dir().expect("Failed to get current directory");
-
 	SettingsBuilder::new()
 		.profile(Profile::parse(&profile_str))
 		.add_source(DefaultSource::new().with_value(
@@ -98,12 +92,10 @@ pub fn get_settings() -> ProjectSettings {
 		.build_composed()
 		.expect("Failed to build settings")
 }
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use rstest::rstest;
-
 	#[rstest]
 	fn test_get_settings() {
 		let settings = get_settings();

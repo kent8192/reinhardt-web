@@ -1,12 +1,9 @@
 //! DM server functions module
 //!
 //! This module contains server functions for direct messaging operations.
-
 use crate::apps::dm::shared::types::{MessageInfo, RoomInfo};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use uuid::Uuid;
-
-// Server-only imports
 #[cfg(native)]
 use {
 	crate::apps::auth::models::User,
@@ -15,7 +12,6 @@ use {
 	reinhardt::db::orm::{Filter, FilterOperator, FilterValue, ManyToManyAccessor, Model},
 	std::collections::{HashMap, HashSet},
 };
-
 /// Helper to check if user is a member of a room
 #[cfg(native)]
 async fn is_room_member(
@@ -28,10 +24,8 @@ async fn is_room_member(
 		.all()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
 	Ok(members.iter().any(|m| m.id() == user.id()))
 }
-
 /// Create a new DM room
 #[server_fn]
 pub async fn create_room(
@@ -42,24 +36,17 @@ pub async fn create_room(
 		crate::apps::auth::models::User,
 	>,
 ) -> std::result::Result<RoomInfo, ServerFnError> {
-	// Validate participants
 	if participant_ids.is_empty() {
 		return Err(ServerFnError::application(
 			"At least one participant is required".to_string(),
 		));
 	}
-
-	// Determine if group chat (more than 2 total members including current user)
 	let is_group = participant_ids.len() > 1;
-
-	// Verify all participants exist
 	let mut participants = vec![current_user.clone()];
 	for pid in &participant_ids {
-		// Skip if participant is the current user
 		if *pid == current_user.id() {
 			continue;
 		}
-
 		let user = User::objects()
 			.filter(
 				User::field_id(),
@@ -72,50 +59,36 @@ pub async fn create_room(
 			.ok_or_else(|| ServerFnError::application(format!("User not found: {}", pid)))?;
 		participants.push(user);
 	}
-
-	// For 1:1 chats, check if room already exists with same members
 	if !is_group && participants.len() == 2 {
-		// Get rooms for current user
 		let user_rooms_accessor =
 			ManyToManyAccessor::<User, DMRoom>::new(&current_user, "rooms", db.clone());
 		let current_user_rooms = user_rooms_accessor
 			.all()
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
-		// Check each room
 		for room in current_user_rooms {
 			if room.is_group() {
 				continue;
 			}
-
-			// Get members of this room
 			let room_members_accessor =
 				ManyToManyAccessor::<DMRoom, User>::new(&room, "members", db.clone());
 			let members = room_members_accessor
 				.all()
 				.await
 				.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
-			// Check if this is a 1:1 room with the same participants
 			if members.len() == 2 {
 				let member_ids: Vec<Uuid> = members.iter().map(|m| m.id()).collect();
 				let participant_ids_set: Vec<Uuid> = participants.iter().map(|p| p.id()).collect();
-
 				if member_ids.iter().all(|id| participant_ids_set.contains(id)) {
-					// Room already exists, return it
 					return build_room_info(&room, &members, &current_user, db).await;
 				}
 			}
 		}
 	}
-
-	// Create new room
 	let room_name = name.unwrap_or_else(|| {
 		if is_group {
 			"Group Chat".to_string()
 		} else {
-			// Use the other participant's username for 1:1 chats
 			participants
 				.iter()
 				.find(|p| p.id() != current_user.id())
@@ -123,16 +96,11 @@ pub async fn create_room(
 				.unwrap_or_else(|| "Chat".to_string())
 		}
 	});
-
 	let room = DMRoom::new(Some(room_name), is_group);
-
-	// Save room to database
 	DMRoom::objects()
 		.create_with_conn(&db, &room)
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
-	// Reload room to get the saved version
 	let saved_room = DMRoom::objects()
 		.filter(
 			DMRoom::field_id(),
@@ -143,8 +111,6 @@ pub async fn create_room(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(500, "Failed to create room"))?;
-
-	// Add all participants as members
 	let members_accessor =
 		ManyToManyAccessor::<DMRoom, User>::new(&saved_room, "members", db.clone());
 	for participant in &participants {
@@ -153,10 +119,8 @@ pub async fn create_room(
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Failed to add member: {}", e)))?;
 	}
-
 	build_room_info(&saved_room, &participants, &current_user, db).await
 }
-
 /// List all DM rooms for the current user
 #[server_fn]
 pub async fn list_rooms(
@@ -165,22 +129,16 @@ pub async fn list_rooms(
 		crate::apps::auth::models::User,
 	>,
 ) -> std::result::Result<Vec<RoomInfo>, ServerFnError> {
-	// Get rooms the user is a member of
 	let rooms_accessor =
 		ManyToManyAccessor::<User, DMRoom>::new(&current_user, "rooms", db.clone());
 	let rooms = rooms_accessor
 		.all()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
 	if rooms.is_empty() {
 		return Ok(Vec::new());
 	}
-
-	// Batch fetch last messages and unread counts for all rooms
 	let room_ids: Vec<String> = rooms.iter().map(|r| r.id().to_string()).collect();
-
-	// Fetch all messages for these rooms in one query, ordered by created_at desc
 	let all_messages = DMMessage::objects()
 		.filter(
 			"room_id",
@@ -191,33 +149,25 @@ pub async fn list_rooms(
 		.all()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
-	// Build per-room last message map
 	let mut last_message_map: HashMap<Uuid, &DMMessage> = HashMap::new();
 	for msg in &all_messages {
 		last_message_map.entry(*msg.room_id()).or_insert(msg);
 	}
-
-	// Build per-room unread count map
 	let mut unread_count_map: HashMap<Uuid, i32> = HashMap::new();
 	for msg in &all_messages {
 		if !msg.is_read() && *msg.sender_id() != current_user.id() {
 			*unread_count_map.entry(*msg.room_id()).or_insert(0) += 1;
 		}
 	}
-
 	let mut room_infos = Vec::new();
 	for room in &rooms {
-		// Get members for each room (M2M requires per-room query)
 		let members_accessor = ManyToManyAccessor::<DMRoom, User>::new(room, "members", db.clone());
 		let members = members_accessor
 			.all()
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
 		let last_msg = last_message_map.get(&room.id()).copied();
 		let unread = unread_count_map.get(&room.id()).copied().unwrap_or(0);
-
 		room_infos.push(build_room_info_with_prefetched(
 			room,
 			&members,
@@ -226,13 +176,9 @@ pub async fn list_rooms(
 			unread,
 		));
 	}
-
-	// Sort by last_activity (most recent first)
 	room_infos.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
-
 	Ok(room_infos)
 }
-
 /// Get details of a specific DM room
 #[server_fn]
 pub async fn get_room(
@@ -242,7 +188,6 @@ pub async fn get_room(
 		crate::apps::auth::models::User,
 	>,
 ) -> std::result::Result<RoomInfo, ServerFnError> {
-	// Find the room
 	let room = DMRoom::objects()
 		.filter(
 			DMRoom::field_id(),
@@ -253,22 +198,16 @@ pub async fn get_room(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Room not found"))?;
-
-	// Check if user is a member
 	if !is_room_member(&room, &current_user, db.clone()).await? {
 		return Err(ServerFnError::server(403, "Access denied"));
 	}
-
-	// Get members
 	let members_accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", db.clone());
 	let members = members_accessor
 		.all()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
 	build_room_info(&room, &members, &current_user, db).await
 }
-
 /// Send a message to a DM room
 #[server_fn]
 pub async fn send_message(
@@ -279,20 +218,16 @@ pub async fn send_message(
 		crate::apps::auth::models::User,
 	>,
 ) -> std::result::Result<MessageInfo, ServerFnError> {
-	// Validate content
 	if content.trim().is_empty() {
 		return Err(ServerFnError::application(
 			"Message content cannot be empty".to_string(),
 		));
 	}
-
 	if content.len() > 1000 {
 		return Err(ServerFnError::application(
 			"Message content exceeds 1000 characters".to_string(),
 		));
 	}
-
-	// Find the room
 	let room = DMRoom::objects()
 		.filter(
 			DMRoom::field_id(),
@@ -303,24 +238,14 @@ pub async fn send_message(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Room not found"))?;
-
-	// Check if user is a member
 	if !is_room_member(&room, &current_user, db.clone()).await? {
 		return Err(ServerFnError::server(403, "Access denied"));
 	}
-
-	// Create message
-	// Note: DMMessage::new arguments order is (content, room_id, sender_id)
-	// ForeignKeyField parameters come after non-FK fields
 	let message = DMMessage::new(content.trim().to_string(), room_id, current_user.id());
-
-	// Save message
 	DMMessage::objects()
 		.create_with_conn(&db, &message)
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
-	// Reload to get the saved version with timestamps
 	let saved_message = DMMessage::objects()
 		.filter(
 			DMMessage::field_id(),
@@ -331,10 +256,8 @@ pub async fn send_message(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(500, "Failed to save message"))?;
-
 	Ok(build_message_info(&saved_message, &current_user))
 }
-
 /// List messages in a DM room with pagination
 #[server_fn]
 pub async fn list_messages(
@@ -346,7 +269,6 @@ pub async fn list_messages(
 		crate::apps::auth::models::User,
 	>,
 ) -> std::result::Result<Vec<MessageInfo>, ServerFnError> {
-	// Find the room
 	let room = DMRoom::objects()
 		.filter(
 			DMRoom::field_id(),
@@ -357,20 +279,14 @@ pub async fn list_messages(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Room not found"))?;
-
-	// Check if user is a member
 	if !is_room_member(&room, &current_user, db.clone()).await? {
 		return Err(ServerFnError::server(403, "Access denied"));
 	}
-
-	// Build query for messages
 	let mut query = DMMessage::objects().filter(
 		DMMessage::field_room(),
 		FilterOperator::Eq,
 		FilterValue::String(room_id.to_string()),
 	);
-
-	// Apply before cursor if provided
 	if let Some(before_id) = before {
 		let before_msg = DMMessage::objects()
 			.filter(
@@ -381,7 +297,6 @@ pub async fn list_messages(
 			.first()
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
 		if let Some(msg) = before_msg {
 			query = query.filter(Filter::new(
 				"created_at",
@@ -390,8 +305,6 @@ pub async fn list_messages(
 			));
 		}
 	}
-
-	// Get messages with limit
 	let actual_limit = limit.unwrap_or(50).min(100) as usize;
 	let messages = query
 		.order_by(&["-created_at"])
@@ -399,15 +312,12 @@ pub async fn list_messages(
 		.all()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
-	// Batch fetch all unique senders in one query
 	let sender_ids: Vec<String> = messages
 		.iter()
 		.map(|m| m.sender_id().to_string())
 		.collect::<HashSet<_>>()
 		.into_iter()
 		.collect();
-
 	let senders = if sender_ids.is_empty() {
 		Vec::new()
 	} else {
@@ -417,23 +327,16 @@ pub async fn list_messages(
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 	};
-
 	let sender_map: HashMap<Uuid, &User> = senders.iter().map(|u| (u.id(), u)).collect();
-
-	// Build message infos using pre-fetched sender map
 	let mut message_infos = Vec::new();
 	for msg in &messages {
 		if let Some(sender_user) = sender_map.get(msg.sender_id()) {
 			message_infos.push(build_message_info(msg, sender_user));
 		}
 	}
-
-	// Reverse to get chronological order (oldest first)
 	message_infos.reverse();
-
 	Ok(message_infos)
 }
-
 /// Mark all messages in a room as read for the current user
 #[server_fn]
 pub async fn mark_as_read(
@@ -443,7 +346,6 @@ pub async fn mark_as_read(
 		crate::apps::auth::models::User,
 	>,
 ) -> std::result::Result<(), ServerFnError> {
-	// Find the room
 	let room = DMRoom::objects()
 		.filter(
 			DMRoom::field_id(),
@@ -454,13 +356,9 @@ pub async fn mark_as_read(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Room not found"))?;
-
-	// Check if user is a member
 	if !is_room_member(&room, &current_user, db.clone()).await? {
 		return Err(ServerFnError::server(403, "Access denied"));
 	}
-
-	// Get all unread messages in this room that weren't sent by the current user
 	let unread_messages = DMMessage::objects()
 		.filter(
 			DMMessage::field_room(),
@@ -480,8 +378,6 @@ pub async fn mark_as_read(
 		.all()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
-	// Update each message to mark as read
 	for mut msg in unread_messages {
 		msg.set_is_read(true);
 		DMMessage::objects()
@@ -489,10 +385,8 @@ pub async fn mark_as_read(
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
 	}
-
 	Ok(())
 }
-
 /// Helper to build RoomInfo from DMRoom and members
 #[cfg(native)]
 async fn build_room_info(
@@ -501,7 +395,6 @@ async fn build_room_info(
 	current_user: &User,
 	_db: DatabaseConnection,
 ) -> Result<RoomInfo, ServerFnError> {
-	// Get last message
 	let last_message = DMMessage::objects()
 		.filter(
 			DMMessage::field_room(),
@@ -512,8 +405,6 @@ async fn build_room_info(
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
-	// Count unread messages (messages not sent by current user and not read)
 	let unread_messages = DMMessage::objects()
 		.filter(
 			DMMessage::field_room(),
@@ -533,8 +424,6 @@ async fn build_room_info(
 		.all()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
-	// Build display name (for 1:1 chats, use the other person's name)
 	let display_name = if room.is_group() {
 		room.name()
 			.clone()
@@ -546,7 +435,6 @@ async fn build_room_info(
 			.map(|m| m.username().to_string())
 			.unwrap_or_else(|| room.name().clone().unwrap_or_else(|| "Chat".to_string()))
 	};
-
 	Ok(RoomInfo {
 		id: room.id(),
 		name: display_name,
@@ -559,7 +447,6 @@ async fn build_room_info(
 		unread_count: unread_messages.len() as i32,
 	})
 }
-
 /// Helper to build RoomInfo using pre-fetched last message and unread count
 #[cfg(native)]
 fn build_room_info_with_prefetched(
@@ -580,7 +467,6 @@ fn build_room_info_with_prefetched(
 			.map(|m| m.username().to_string())
 			.unwrap_or_else(|| room.name().clone().unwrap_or_else(|| "Chat".to_string()))
 	};
-
 	RoomInfo {
 		id: room.id(),
 		name: display_name,
@@ -591,7 +477,6 @@ fn build_room_info_with_prefetched(
 		unread_count,
 	}
 }
-
 /// Helper to build MessageInfo from DMMessage and sender
 #[cfg(native)]
 fn build_message_info(message: &DMMessage, sender: &User) -> MessageInfo {
@@ -605,14 +490,12 @@ fn build_message_info(message: &DMMessage, sender: &User) -> MessageInfo {
 		is_read: message.is_read(),
 	}
 }
-
 /// Helper to truncate message for preview
 #[cfg(native)]
 fn truncate_message(content: &str, max_len: usize) -> String {
 	if content.len() <= max_len {
 		content.to_string()
 	} else {
-		// Find a valid UTF-8 char boundary at or before max_len
 		let end = content
 			.char_indices()
 			.map(|(i, _)| i)

@@ -1,12 +1,9 @@
 //! Profile server functions
 //!
 //! Server functions for user profile management.
-
 use crate::apps::profile::shared::types::{ProfileResponse, UpdateProfileRequest};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use uuid::Uuid;
-
-// Server-only imports
 #[cfg(native)]
 use {
 	crate::apps::auth::models::User,
@@ -16,7 +13,6 @@ use {
 	reinhardt::Validate,
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
 };
-
 /// Internal helper for profile update logic
 #[cfg(native)]
 async fn update_profile_internal(
@@ -24,12 +20,9 @@ async fn update_profile_internal(
 	db: &DatabaseConnection,
 	user: &User,
 ) -> std::result::Result<Profile, ServerFnError> {
-	// Validate request
 	request
 		.validate()
 		.map_err(|e| ServerFnError::server(400, format!("Validation failed: {}", e)))?;
-
-	// Find existing profile
 	let mut profile = Profile::objects()
 		.filter(
 			Profile::field_user_id(),
@@ -40,8 +33,6 @@ async fn update_profile_internal(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Profile not found"))?;
-
-	// Update fields
 	if let Some(ref bio) = request.bio {
 		profile.set_bio(bio.clone());
 	}
@@ -54,16 +45,12 @@ async fn update_profile_internal(
 	if let Some(ref website) = request.website {
 		profile.set_website(Some(website.clone()));
 	}
-
-	// Save to database
 	Profile::objects()
 		.update_with_conn(db, &profile)
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
 	Ok(profile)
 }
-
 /// Fetch user profile
 #[server_fn]
 pub async fn fetch_profile(
@@ -80,10 +67,8 @@ pub async fn fetch_profile(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Profile not found"))?;
-
 	Ok(ProfileResponse::from(profile))
 }
-
 /// Update user profile
 #[server_fn]
 pub async fn update_profile(
@@ -94,7 +79,6 @@ pub async fn update_profile(
 	let profile = update_profile_internal(&request, &db, &user).await?;
 	Ok(ProfileResponse::from(profile))
 }
-
 /// Form-compatible wrapper for update_profile
 ///
 /// This wrapper accepts individual field arguments from form! macro's server_fn integration
@@ -132,7 +116,6 @@ pub async fn update_profile_form(
 			Some(website)
 		},
 	};
-
 	update_profile_internal(&request, &db, &user).await?;
 	Ok(())
 }

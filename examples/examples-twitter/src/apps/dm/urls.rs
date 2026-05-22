@@ -1,27 +1,21 @@
 //! URL configuration for dm application
 //!
 //! Defines unified routes for direct messaging with both server and client routing.
-
-use reinhardt::UnifiedRouter;
-
-#[cfg(native)]
-use reinhardt::pages::server_fn::ServerFnRouterExt;
-
 #[cfg(native)]
 use crate::apps::dm::shared::server_fn::{
 	create_room, get_room, list_messages, list_rooms, mark_as_read, send_message,
 };
-
+use reinhardt::UnifiedRouter;
+#[cfg(native)]
+use reinhardt::pages::server_fn::ServerFnRouterExt;
 #[cfg(wasm)]
 use {crate::core::client::pages::dm_chat_page, reinhardt::ClientPath};
-
 /// Unified routes for dm application (client + server)
 ///
 /// Server functions handle REST API access.
 /// WebSocket handlers are registered separately through the WebSocket middleware.
 pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new()
-		// Server-side routes (server functions)
 		.server(|s| {
 			#[cfg(native)]
 			{
@@ -35,7 +29,6 @@ pub fn routes() -> UnifiedRouter {
 			#[cfg(wasm)]
 			s
 		})
-		// Client-side routes (SPA)
 		.client(|c| {
 			#[cfg(wasm)]
 			{

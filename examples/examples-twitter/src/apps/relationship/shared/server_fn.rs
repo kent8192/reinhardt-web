@@ -1,12 +1,9 @@
 //! Relationship server functions
 //!
 //! Server functions for user follow/unfollow and follower management.
-
 use crate::apps::auth::shared::types::UserInfo;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use uuid::Uuid;
-
-// Server-only imports
 #[cfg(native)]
 use {
 	crate::apps::auth::models::User,
@@ -14,7 +11,6 @@ use {
 	reinhardt::DatabaseConnection,
 	reinhardt::db::orm::{FilterOperator, FilterValue, ManyToManyAccessor, Model},
 };
-
 /// Follow a user
 #[server_fn]
 pub async fn follow_user(
@@ -22,7 +18,6 @@ pub async fn follow_user(
 	#[inject] db: DatabaseConnection,
 	#[inject] AuthUser(follower): AuthUser<User>,
 ) -> std::result::Result<(), ServerFnError> {
-	// Load target user
 	let target_user = User::objects()
 		.filter(
 			User::field_id(),
@@ -33,17 +28,13 @@ pub async fn follow_user(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Target user not found"))?;
-
-	// Add follow relationship
 	let accessor = ManyToManyAccessor::<User, User>::new(&follower, "following", db.clone());
 	accessor
 		.add(&target_user)
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Failed to follow user: {}", e)))?;
-
 	Ok(())
 }
-
 /// Unfollow a user
 #[server_fn]
 pub async fn unfollow_user(
@@ -51,7 +42,6 @@ pub async fn unfollow_user(
 	#[inject] db: DatabaseConnection,
 	#[inject] AuthUser(follower): AuthUser<User>,
 ) -> std::result::Result<(), ServerFnError> {
-	// Load target user
 	let target_user = User::objects()
 		.filter(
 			User::field_id(),
@@ -62,17 +52,13 @@ pub async fn unfollow_user(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Target user not found"))?;
-
-	// Remove follow relationship
 	let accessor = ManyToManyAccessor::<User, User>::new(&follower, "following", db.clone());
 	accessor
 		.remove(&target_user)
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Failed to unfollow user: {}", e)))?;
-
 	Ok(())
 }
-
 /// Fetch followers of a user
 #[server_fn]
 pub async fn fetch_followers(
@@ -89,7 +75,6 @@ pub async fn fetch_followers(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "User not found"))?;
-
 	let followers = ManyToManyAccessor::<User, User>::filter_by_target(
 		&User::objects(),
 		"following",
@@ -98,17 +83,14 @@ pub async fn fetch_followers(
 	)
 	.await
 	.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
 	Ok(followers.into_iter().map(UserInfo::from).collect())
 }
-
 /// Fetch users that the specified user is following
 #[server_fn]
 pub async fn fetch_following(
 	user_id: Uuid,
 	#[inject] db: DatabaseConnection,
 ) -> std::result::Result<Vec<UserInfo>, ServerFnError> {
-	// Load target user
 	let user = User::objects()
 		.filter(
 			User::field_id(),
@@ -119,13 +101,10 @@ pub async fn fetch_following(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "User not found"))?;
-
-	// Get following users
 	let accessor = ManyToManyAccessor::<User, User>::new(&user, "following", db.clone());
 	let following = accessor
 		.all()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
-
 	Ok(following.into_iter().map(UserInfo::from).collect())
 }

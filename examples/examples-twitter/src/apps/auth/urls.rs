@@ -1,22 +1,16 @@
 //! URL configuration for auth application
 //!
 //! Defines unified routes for authentication with both server and client routing.
-
-use reinhardt::UnifiedRouter;
-
-#[cfg(native)]
-use reinhardt::pages::server_fn::ServerFnRouterExt;
-
-#[cfg(native)]
-use crate::apps::auth::shared::server_fn::{current_user, login, logout, register};
-
 #[cfg(wasm)]
 use crate::apps::auth::client::components::{login_form, register_form};
-
+#[cfg(native)]
+use crate::apps::auth::shared::server_fn::{current_user, login, logout, register};
+use reinhardt::UnifiedRouter;
+#[cfg(native)]
+use reinhardt::pages::server_fn::ServerFnRouterExt;
 /// Unified routes for auth application (client + server)
 pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new()
-		// Server-side routes (server functions)
 		.server(|s| {
 			#[cfg(native)]
 			{
@@ -28,7 +22,6 @@ pub fn routes() -> UnifiedRouter {
 			#[cfg(wasm)]
 			s
 		})
-		// Client-side routes (SPA)
 		.client(|c| {
 			#[cfg(wasm)]
 			{

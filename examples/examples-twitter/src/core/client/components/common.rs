@@ -16,15 +16,12 @@
 //! These components use the `page!` macro for JSX-like syntax.
 //! Interactive components with event handlers are hydrated on the client side.
 //! UnoCSS shortcuts are defined in index.html for consistent styling.
-
 use crate::core::client::components::icons;
 use reinhardt::pages::Signal;
 use reinhardt::pages::component::{IntoPage, Page, PageElement};
 use reinhardt::pages::page;
-
 #[cfg(wasm)]
 use wasm_bindgen::JsCast;
-
 /// Button variant styles
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonVariant {
@@ -45,7 +42,6 @@ pub enum ButtonVariant {
 	/// Ghost button (transparent with hover)
 	Ghost,
 }
-
 impl ButtonVariant {
 	/// Get UnoCSS shortcut class for this variant
 	pub fn class(&self) -> &'static str {
@@ -65,7 +61,6 @@ impl ButtonVariant {
 		}
 	}
 }
-
 /// Button size variants
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ButtonSize {
@@ -77,7 +72,6 @@ pub enum ButtonSize {
 	/// Large button
 	Large,
 }
-
 impl ButtonSize {
 	/// Get UnoCSS class for this size
 	pub fn class(&self) -> &'static str {
@@ -88,7 +82,6 @@ impl ButtonSize {
 		}
 	}
 }
-
 /// Button component
 ///
 /// Displays a styled button with various variants.
@@ -103,7 +96,6 @@ impl ButtonSize {
 pub fn button(text: &str, variant: ButtonVariant, disabled: bool, on_click: Signal<bool>) -> Page {
 	button_with_size(text, variant, ButtonSize::Medium, disabled, on_click)
 }
-
 /// Button component with size option
 pub fn button_with_size(
 	text: &str,
@@ -118,78 +110,45 @@ pub fn button_with_size(
 		format!("{} {}", variant.class(), size.class())
 	};
 	let text = text.to_string();
-
 	#[cfg(wasm)]
 	{
 		let on_click_clone = on_click.clone();
-		page!(|class: String, text: String, disabled: bool| {
-			button {
-				class: class,
-				type: "button",
-				disabled: disabled,
-				@click: {
-							let on_click = on_click_clone.clone();
-							move |_event| {
-								on_click.set(true);
-							}
-						},
-				{ text }
-			}
-		})(class, text, disabled)
+		page!(
+			| class : String, text : String, disabled : bool | { button { class : class,
+			type : "button", disabled : disabled, @ click : { let { on_click } =
+			on_click_clone.clone(); move | _event | { on_click.set(true); } }, { { text }
+			} } }
+		)(class, text, disabled)
 	}
-
 	#[cfg(native)]
 	{
-		let _ = on_click; // Suppress unused warning
-		page!(|class: String, text: String, disabled: bool| {
-			button {
-				class: { class },
-				type: "button",
-				disabled: disabled,
-				data_reactive: "true",
-				{ text }
-			}
-		})(class, text, disabled)
+		let _ = on_click;
+		page!(
+			| class : String, text : String, disabled : bool | { button { class : { {
+			class } }, type : "button", disabled : disabled, data_reactive : "true", { {
+			text } } } }
+		)(class, text, disabled)
 	}
 }
-
 /// Loading spinner component
 ///
 /// Displays a modern spinner animation while content is loading.
 pub fn loading_spinner() -> Page {
-	page!(|| {
-		div {
-			class: "flex items-center justify-center py-8",
-			div {
-				class: "spinner-md",
-				role: "status",
-				span {
-					class: "sr-only",
-					"Loading..."
-				}
-			}
-		}
-	})()
+	page!(
+		|| { div { class : "flex items-center justify-center py-8", div { class :
+		"spinner-md", role : "status", span { class : "sr-only", "Loading..." } } } }
+	)()
 }
-
 /// Large loading spinner with text
 pub fn loading_spinner_large(message: &str) -> Page {
 	let message = message.to_string();
-	page!(|message: String| {
-		div {
-			class: "flex flex-col items-center justify-center py-12 gap-4",
-			div {
-				class: "spinner-lg",
-				role: "status",
-			}
-			p {
-				class: "text-content-secondary text-sm",
-				{ message }
-			}
-		}
-	})(message)
+	page!(
+		| message : String | { div { class :
+		"flex flex-col items-center justify-center py-12 gap-4", div { class :
+		"spinner-lg", role : "status", } p { class : "text-content-secondary text-sm", {
+		{ message } } } } }
+	)(message)
 }
-
 /// Error alert component
 ///
 /// Displays an error message in a styled alert box.
@@ -201,43 +160,23 @@ pub fn loading_spinner_large(message: &str) -> Page {
 pub fn error_alert(message: &str, dismissible: bool) -> Page {
 	let message = message.to_string();
 	if dismissible {
-		page!(|message: String| {
-			div {
-				class: "alert-danger animate-fade-in",
-				role: "alert",
-				div {
-					class: "flex items-start gap-3",
-					{ icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") }
-					span {
-						class: "flex-1",
-						{ message }
-					}
-					button {
-						type: "button",
-						class: "btn-icon text-danger hover:bg-red-100 dark:hover:bg-red-900/30 -mr-2 -mt-1",
-						aria_label: "Close",
-						{ icons::close_icon() }
-					}
-				}
-			}
-		})(message)
+		page!(
+			| message : String | { div { class : "alert-danger animate-fade-in", role :
+			"alert", div { class : "flex items-start gap-3", {
+			icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") } span {
+			class : "flex-1", { { message } } } button { type : "button", class :
+			"btn-icon text-danger hover:bg-red-100 dark:hover:bg-red-900/30 -mr-2 -mt-1",
+			aria_label : "Close", { icons::close_icon() } } } } }
+		)(message)
 	} else {
-		page!(|message: String| {
-			div {
-				class: "alert-danger animate-fade-in",
-				role: "alert",
-				div {
-					class: "flex items-start gap-3",
-					{ icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") }
-					span {
-						{ message }
-					}
-				}
-			}
-		})(message)
+		page!(
+			| message : String | { div { class : "alert-danger animate-fade-in", role :
+			"alert", div { class : "flex items-start gap-3", {
+			icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") } span {
+			{ message } } } } }
+		)(message)
 	}
 }
-
 /// Success alert component
 ///
 /// Displays a success message in a styled alert box.
@@ -247,39 +186,21 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 /// * `message` - Success message to display
 pub fn success_alert(message: &str) -> Page {
 	let message = message.to_string();
-	page!(|message: String| {
-		div {
-			class: "alert-success animate-fade-in",
-			role: "alert",
-			div {
-				class: "flex items-start gap-3",
-				{ icons::success_check_icon() }
-				span {
-					{ message }
-				}
-			}
-		}
-	})(message)
+	page!(
+		| message : String | { div { class : "alert-success animate-fade-in", role :
+		"alert", div { class : "flex items-start gap-3", { icons::success_check_icon() }
+		span { { message } } } } }
+	)(message)
 }
-
 /// Warning alert component
 pub fn warning_alert(message: &str) -> Page {
 	let message = message.to_string();
-	page!(|message: String| {
-		div {
-			class: "alert-warning animate-fade-in",
-			role: "alert",
-			div {
-				class: "flex items-start gap-3",
-				{ icons::warning_icon() }
-				span {
-					{ message }
-				}
-			}
-		}
-	})(message)
+	page!(
+		| message : String | { div { class : "alert-warning animate-fade-in", role :
+		"alert", div { class : "flex items-start gap-3", { icons::warning_icon() } span {
+		{ message } } } } }
+	)(message)
 }
-
 /// Text input component
 ///
 /// Displays a labeled text input field.
@@ -304,44 +225,22 @@ pub fn text_input(
 	let placeholder_owned = placeholder.to_string();
 	let input_type_owned = input_type.to_string();
 	let label_owned = label.to_string();
-
-	// Clone Signal for passing to page! macro (NOT extracting values)
 	let value_signal = value.clone();
-
 	#[cfg(wasm)]
 	{
 		let value_clone = value.clone();
-		page!(|id_owned: String, label_owned: String, input_type_owned: String, placeholder_owned: String, value_signal: Signal<String>, required: bool| {
-			div {
-				class: "mb-4",
-				label {
-					for: id_owned.clone(),
-					class: "form-label",
-					{ label_owned }
-				}
-				watch {
-					input {
-						type: input_type_owned.clone(),
-						class: "form-input",
-						id: id_owned.clone(),
-						name: id_owned.clone(),
-						placeholder: placeholder_owned.clone(),
-						value: value_signal.get(),
-						required: required,
-						@input: {
-									let value = value_clone.clone();
-									move |event: web_sys::Event| {
-										if let Some(target) = event.target() {
-											if let Ok(input_el) = target.dyn_into::<web_sys::HtmlInputElement>() {
-												value.set(input_el.value());
-											}
-										}
-									}
-								},
-					}
-				}
-			}
-		})(
+		page!(
+			| id_owned : String, label_owned : String, input_type_owned : String,
+			placeholder_owned : String, value_signal : Signal < String >, required : bool
+			| { div { class : "mb-4", label { for : id_owned.clone(), class :
+			"form-label", { { label_owned } } } input { type : input_type_owned.clone(),
+			class : "form-input", id : id_owned.clone(), name : id_owned.clone(),
+			placeholder : placeholder_owned.clone(), value : value_signal.get(), required
+			: required, @ input : { let { value } = value_clone.clone(); move | event :
+			web_sys::Event | { if let Some(target) = event.target() { if let Ok(input_el)
+			= target.dyn_into::< web_sys::HtmlInputElement > () { value.set(input_el
+			.value()); } } } }, } } }
+		)(
 			id_owned,
 			label_owned,
 			input_type_owned,
@@ -350,31 +249,17 @@ pub fn text_input(
 			required,
 		)
 	}
-
 	#[cfg(native)]
 	{
-		page!(|id_owned: String, label_owned: String, input_type_owned: String, placeholder_owned: String, value_signal: Signal<String>, required: bool| {
-			div {
-				class: "mb-4",
-				label {
-					for: { id_owned.clone() },
-					class: "form-label",
-					{ label_owned }
-				}
-				watch {
-					input {
-						type: { input_type_owned.clone() },
-						class: "form-input",
-						id: { id_owned.clone() },
-						name: { id_owned.clone() },
-						placeholder: { placeholder_owned.clone() },
-						value: { value_signal.get() },
-						required: required,
-						data_reactive: "true",
-					}
-				}
-			}
-		})(
+		page!(
+			| id_owned : String, label_owned : String, input_type_owned : String,
+			placeholder_owned : String, value_signal : Signal < String >, required : bool
+			| { div { class : "mb-4", label { for : { id_owned.clone() }, class :
+			"form-label", { { label_owned } } } input { type : { input_type_owned.clone()
+			}, class : "form-input", id : { id_owned.clone() }, name : { id_owned.clone()
+			}, placeholder : { placeholder_owned.clone() }, value : { value_signal.get()
+			}, required : required, data_reactive : "true", } } }
+		)(
 			id_owned,
 			label_owned,
 			input_type_owned,
@@ -384,7 +269,6 @@ pub fn text_input(
 		)
 	}
 }
-
 /// Textarea component with character count
 ///
 /// Displays a labeled textarea with optional character limit display.
@@ -415,57 +299,29 @@ pub fn textarea(
 		String::new()
 	};
 	let show_count = max_length > 0;
-
-	// Clone Signal for passing to page! macro (NOT extracting values)
-	// Two clones needed because each watch block captures the signal by move
 	let value_signal = value.clone();
 	let value_signal_for_count = value.clone();
-
 	#[cfg(wasm)]
 	{
 		let value_clone = value.clone();
-		page!(|id_owned: String, label_owned: String, rows_str: String, placeholder_owned: String, value_signal: Signal<String>, value_signal_for_count: Signal<String>, maxlength_attr: String, show_count: bool, max_length: usize| {
-			div {
-				class: "mb-4",
-				label {
-					for: id_owned.clone(),
-					class: "form-label",
-					{ label_owned }
-				}
-				watch {
-					textarea {
-						class: "form-textarea",
-						id: id_owned.clone(),
-						name: id_owned.clone(),
-						rows: rows_str.clone(),
-						placeholder: placeholder_owned.clone(),
-						maxlength: maxlength_attr.clone(),
-						@input: {
-									let value = value_clone.clone();
-									move |event: web_sys::Event| {
-										if let Some(target) = event.target() {
-											if let Ok(textarea_el) = target.dyn_into::<web_sys::HtmlTextAreaElement>() {
-												value.set(textarea_el.value());
-											}
-										}
-									}
-								},
-						{ value_signal.get() }
-					}
-				}
-				watch {
-					if show_count {
-						div {
-							class: "flex justify-end mt-1",
-							span {
-								class: if value_signal_for_count.get().len()> max_length { "text-danger font-medium" } else if value_signal_for_count.get().len()> max_length * 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" },
-								{ format!("{}/{}", value_signal_for_count.get().len(), max_length) }
-							}
-						}
-					}
-				}
-			}
-		})(
+		page!(
+			| id_owned : String, label_owned : String, rows_str : String,
+			placeholder_owned : String, value_signal : Signal < String >,
+			value_signal_for_count : Signal < String >, maxlength_attr : String,
+			show_count : bool, max_length : usize | { div { class : "mb-4", label { for :
+			id_owned.clone(), class : "form-label", { { label_owned } } } textarea {
+			class : "form-textarea", id : id_owned.clone(), name : id_owned.clone(), rows
+			: rows_str.clone(), placeholder : placeholder_owned.clone(), maxlength :
+			maxlength_attr.clone(), @ input : { let { value } = value_clone.clone(); move
+			| event : web_sys::Event | { if let Some(target) = event.target() { if let
+			Ok(textarea_el) = target.dyn_into::< web_sys::HtmlTextAreaElement > () {
+			value.set(textarea_el.value()); } } } }, { value_signal.get() } } if
+			show_count { div { class : "flex justify-end mt-1", span { class : if
+			value_signal_for_count.get().len() > max_length { "text-danger font-medium" }
+			else if value_signal_for_count.get().len() > { max_length } * 9 / 10 {
+			"text-warning font-medium" } else { "text-content-tertiary" }, {
+			format!("{}/{}", value_signal_for_count.get().len(), max_length) } } } } } }
+		)(
 			id_owned,
 			label_owned,
 			rows_str,
@@ -477,51 +333,24 @@ pub fn textarea(
 			max_length,
 		)
 	}
-
 	#[cfg(native)]
 	{
-		page!(|id_owned: String, label_owned: String, rows_str: String, placeholder_owned: String, value_signal: Signal<String>, maxlength_attr: String, show_count: bool, max_length: usize| {
-			div {
-				class: "mb-4",
-				label {
-					for: { id_owned.clone() },
-					class: "form-label",
-					{ label_owned }
-				}
-				watch {
-					textarea {
-						class: "form-textarea",
-						id: { id_owned.clone() },
-						name: { id_owned.clone() },
-						rows: { rows_str.clone() },
-						placeholder: { placeholder_owned.clone() },
-						maxlength: { maxlength_attr.clone() },
-						data_reactive: "true",
-						{ value_signal.get() }
-					}
-				}
-				watch {
-					if show_count {
-						let char_count = value_signal.get().len();
-						let count_class = if char_count > max_length {
-							"text-danger font-medium"
-						} else if char_count > max_length * 9 / 10 {
-							"text-warning font-medium"
-						} else {
-							"text-content-tertiary"
-						};
-						let count_text = format!("{}/{}", char_count, max_length);
-						div {
-							class: "flex justify-end mt-1",
-							span {
-								class: { count_class },
-								{ count_text }
-							}
-						}
-					}
-				}
-			}
-		})(
+		page!(
+			| id_owned : String, label_owned : String, rows_str : String,
+			placeholder_owned : String, value_signal : Signal < String >, maxlength_attr
+			: String, show_count : bool, max_length : usize | { div { class : "mb-4",
+			label { for : { id_owned.clone() }, class : "form-label", { { label_owned } }
+			} textarea { class : "form-textarea", id : { id_owned.clone() }, name : {
+			id_owned.clone() }, rows : { rows_str.clone() }, placeholder : {
+			placeholder_owned.clone() }, maxlength : { maxlength_attr.clone() },
+			data_reactive : "true", { value_signal.get() } } if show_count { let {
+			char_count } = value_signal.get().len(); let { count_class } = if {
+			char_count } > max_length { "text-danger font-medium" } else if { char_count
+			} > { max_length } * 9 / 10 { "text-warning font-medium" } else {
+			"text-content-tertiary" }; let { count_text } = format!("{}/{}", char_count,
+			max_length); div { class : "flex justify-end mt-1", span { class : { {
+			count_class } }, { { count_text } } } } } } }
+		)(
 			id_owned,
 			label_owned,
 			rows_str,
@@ -533,7 +362,6 @@ pub fn textarea(
 		)
 	}
 }
-
 /// Avatar size variants
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AvatarSize {
@@ -547,7 +375,6 @@ pub enum AvatarSize {
 	/// Extra large avatar (96px)
 	ExtraLarge,
 }
-
 impl AvatarSize {
 	/// Get UnoCSS class for this size
 	pub fn class(&self) -> &'static str {
@@ -558,7 +385,6 @@ impl AvatarSize {
 			AvatarSize::ExtraLarge => "avatar-xl",
 		}
 	}
-
 	/// Get size in pixels
 	pub fn pixels(&self) -> u32 {
 		match self {
@@ -569,7 +395,6 @@ impl AvatarSize {
 		}
 	}
 }
-
 /// Avatar component
 ///
 /// Displays a user avatar image with fallback.
@@ -585,8 +410,6 @@ pub fn avatar(url: Option<&str>, alt: &str, size: u32) -> Page {
 		.unwrap_or_else(|| "https://via.placeholder.com/150?text=User".to_string());
 	let alt_owned = alt.to_string();
 	let size_str = format!("{}px", size);
-
-	// Use PageElement instead of page! macro for dynamic src attribute
 	PageElement::new("img")
 		.attr("src", src)
 		.attr("alt", alt_owned)
@@ -595,55 +418,39 @@ pub fn avatar(url: Option<&str>, alt: &str, size: u32) -> Page {
 		.attr("height", size_str)
 		.into_page()
 }
-
 /// Avatar component with size enum
 pub fn avatar_sized(url: Option<&str>, alt: &str, size: AvatarSize) -> Page {
 	let src = url
 		.map(|s| s.to_string())
 		.unwrap_or_else(|| "https://via.placeholder.com/150?text=User".to_string());
 	let alt_owned = alt.to_string();
-
 	PageElement::new("img")
 		.attr("src", src)
 		.attr("alt", alt_owned)
 		.attr("class", format!("{} bg-surface-tertiary", size.class()))
 		.into_page()
 }
-
 /// Theme toggle button component
 ///
 /// Displays a button to toggle between light and dark mode.
 /// Uses JavaScript to toggle the theme and persist to localStorage.
 /// The click event is attached via JavaScript in index.html.
 pub fn theme_toggle() -> Page {
-	page!(|| {
-		button {
-			class: "theme-toggle",
-			type: "button",
-			id: "theme-toggle-btn",
-			aria_label: "Toggle theme",
-			{ icons::sun_icon() }
-			{ icons::moon_icon() }
-		}
-	})()
+	page!(
+		|| { button { class : "theme-toggle", type : "button", id : "theme-toggle-btn",
+		aria_label : "Toggle theme", { icons::sun_icon() } { icons::moon_icon() } } }
+	)()
 }
-
 /// Empty placeholder component
 ///
 /// Displays an empty div (useful for conditional rendering).
 pub fn empty() -> Page {
 	page!(|| { div {} })()
 }
-
 /// Divider component
 pub fn divider() -> Page {
-	page!(|| {
-		div {
-			class: "divider",
-		}
-	})()
+	page!(|| { div { class: "divider" } })()
 }
-
 /// Badge component
 pub fn badge(text: &str, primary: bool) -> Page {
 	let text = text.to_string();
@@ -653,11 +460,7 @@ pub fn badge(text: &str, primary: bool) -> Page {
 		"badge-secondary"
 	}
 	.to_string();
-
-	page!(|text: String, class: String| {
-		span {
-			class: class,
-			{ text }
-		}
-	})(text, class)
+	page!(
+		| text : String, class : String | { span { class : class, { { text } } } }
+	)(text, class)
 }

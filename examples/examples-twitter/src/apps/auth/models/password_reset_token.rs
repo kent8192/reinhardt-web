@@ -2,19 +2,13 @@
 //!
 //! Stores password reset tokens with expiration and usage tracking.
 //! Uses ForeignKey relationship to User model.
-
+#[allow(unused_imports)]
+use super::user::User;
 use chrono::{DateTime, Utc};
 use reinhardt::core::serde::{Deserialize, Serialize};
 use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::prelude::*;
 use uuid::Uuid;
-
-// Used by #[model] macro for type inference in ForeignKeyField<User> relationship field.
-// The macro requires this type to be in scope for generating the correct foreign key column
-// and relationship metadata, even though it appears unused to the compiler.
-#[allow(unused_imports)]
-use super::user::User;
-
 /// Password reset token for user authentication recovery
 ///
 /// Represents a password reset token with expiration.
@@ -24,22 +18,17 @@ use super::user::User;
 pub struct PasswordResetToken {
 	#[field(primary_key = true)]
 	pub id: Uuid,
-
 	/// User who requested password reset (generates user_id column)
 	#[rel(foreign_key, related_name = "password_reset_tokens", on_delete = Cascade)]
 	pub user: ForeignKeyField<User>,
-
 	/// Reset token value (UUID v4 string)
 	#[field(max_length = 255, unique = true)]
 	pub token: String,
-
 	/// Token expiration timestamp
 	pub expires_at: DateTime<Utc>,
-
 	/// Token creation timestamp
 	#[field(auto_now_add = true)]
 	pub created_at: DateTime<Utc>,
-
 	/// Whether this token has been used
 	#[field(default = false)]
 	pub is_used: bool,
