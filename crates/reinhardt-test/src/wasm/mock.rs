@@ -305,10 +305,7 @@ impl MockCookies {
 ///
 /// // Later, when code calls fetch("/api/users"), it will receive the mocked response
 /// ```
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use `MockServiceWorker` from `reinhardt_test::msw` instead. See issue #3283."
-)]
+#[cfg(any())] // Removed in 0.2.0 per Issue #4520; use `MockServiceWorker` from `reinhardt_test::msw` (refs #3283)
 #[derive(Debug, Clone, Default)]
 pub struct MockFetch {
 	responses: Rc<RefCell<HashMap<String, MockFetchResponse>>>,

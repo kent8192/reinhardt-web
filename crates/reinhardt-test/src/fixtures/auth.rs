@@ -28,10 +28,7 @@ pub use reinhardt_auth::{
 ///     assert_eq!(test_user.username, "testuser");
 /// }
 /// ```
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "define your own user type with `#[user]` macro and use `ForceLoginUser` trait"
-)]
+#[cfg(any())] // Removed in 0.2.0 per Issue #4520; define your own user type with `#[user]` + `ForceLoginUser`
 #[derive(Clone, Debug)]
 pub struct TestUser {
 	/// Unique identifier for the test user.
