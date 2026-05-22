@@ -7,180 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.8...reinhardt-conf@v0.1.0-rc.9) - 2026-03-15
-
-### Fixed
-
-- redact sensitive fields in DatabaseUrl debug output and remove unused variable
-- avoid password field access in DatabaseUrl debug impl
-
-## [0.1.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.6...reinhardt-conf@v0.1.0-rc.7) - 2026-03-11
-
-### Testing
-
-- *(conf)* add integration tests for file sources and cross-priority merging
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.1...reinhardt-conf@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(conf)* replace parking_lot::Mutex with tokio::sync::Mutex in DynamicSettings hot-reload
-- *(deps)* align workspace dependency versions
-
-### Other
-
-- resolve conflict with main (criterion version)
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.14...reinhardt-conf@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-- *(workspace)* remove unpublished reinhardt-settings-cli and fix stale references
-
-## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.13...reinhardt-conf@v0.1.0-alpha.14) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query
-
-## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.12...reinhardt-conf@v0.1.0-alpha.13) - 2026-02-21
-
-### Fixed
-
-- add database URL scheme validation before connection attempts
-- fix .env parsing, AST formatter, and file safety issues
-- document thread-safety invariant for env::set_var usage
-- add missing media_root field in Settings::new
-- fix key zeroing, file perms, and value redaction in admin-cli (#650, #656, #658)
-- execute validation in validate command
-- prevent encryption key exposure via CLI arguments
-- prevent secret exposure in serialization
-- use ManuallyDrop in into_inner to preserve ZeroizeOnDrop safety
-
-### Security
-
-- prevent duration underflow in rotation check and handle lock poisoning
-- add input validation, file size limits, and TOCTOU mitigations
-- redact sensitive values in error messages and env validation
-- protect DatabaseConfig password and encode credentials in URLs
-
-### Changed
-
-- remove unnecessary async, glob imports, and strengthen validation
-- extract secret types to always-available module
-- change installed_apps and middleware defaults to empty vectors
-- remove unused media_root field from Settings
-- remove unused `middleware` string list from Settings
-- remove unused `root_urlconf` field from Settings
-
-### Styling
-
-- fix pre-existing clippy warnings and apply rustfmt
-- apply rustfmt to pre-existing unformatted files
-- fix formatting after merge
-
-### Documentation
-
-- document planned-but-unimplemented settings fields
-- wrap bare URL in backticks in azure provider doc comment
-
-### Maintenance
-
-- add SAFETY comments to unsafe blocks in secrets/providers/env.rs
-- add SAFETY comments to unsafe blocks in sources.rs
-- add SAFETY comments to unsafe blocks in profile.rs
-- add SAFETY comments to unsafe blocks in env_loader.rs
-- add SAFETY comments to unsafe blocks in testing.rs
-- add SAFETY comments to unsafe blocks in env.rs
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.11...reinhardt-conf@v0.1.0-alpha.12) - 2026-02-15
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query
-
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.10...reinhardt-conf@v0.1.0-alpha.11) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.9...reinhardt-conf@v0.1.0-alpha.10) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.7...reinhardt-conf@v0.1.0-alpha.8) - 2026-02-12
-
-### Changed
-
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.6...reinhardt-conf@v0.1.0-alpha.7) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-utils
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.5...reinhardt-conf@v0.1.0-alpha.6) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core, reinhardt-utils
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.4...reinhardt-conf@v0.1.0-alpha.5) - 2026-02-03
-
-### Other
-
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-
-### Breaking Changes
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.4] - 2026-01-30
-
-### Changed
-
-- Re-release of 0.1.0-alpha.3 content after version correction
-- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
-
-
-## [0.1.0-alpha.3] - 2026-01-29 [YANKED]
-
-**Note:** This version was yanked due to version skipping in the main crate (`reinhardt-web`). Use the latest available version instead.
-
-### Changed
-
-- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.30...reinhardt-conf@v0.1.0) - 2026-05-22
+
+Initial stable release of `reinhardt-conf` as part of the reinhardt-web
+0.1.0 release. This crate is Reinhardt's Django-inspired settings
+framework: it owns the `SettingsBuilder` layered configuration model,
+the composable fragment system (`CoreSettings`, `SecuritySettings`,
+`I18nSettings`, ...), the TOML / env source priority stack, and the
+secrets / encryption primitives that protect sensitive values in
+memory.
+
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **Composable settings fragments** — `SettingsFragment` is the
+  trait every fragment implements, with a `type Accessor` projection
+  and a `field_policies()` hook. The crate ships `CoreSettings` as
+  the required base plus Django-compat fragments (`I18nSettings`,
+  `TemplateSettings`, `ContactSettings`, `OpenApiSettings`, ...).
+  `ComposedSettings`, `HasSettings<F>`, and `HasCommonSettings`
+  expose composition to user code.
+- **Layered `SettingsBuilder` with priority sources** — the
+  builder merges `TomlFileSource`, `EnvFileSource`,
+  `DefaultSource`, `HighPriorityEnvSource`, and user-supplied
+  sources by priority. `MergeStrategy::Deep` is the default
+  (`build_composed`), and per-test override sources let
+  TestContainers integration tests inject configuration without
+  touching real files.
+- **Typed TOML interpolation** ([#4241](https://github.com/kent8192/reinhardt-web/discussions/4241),
+  [#4229](https://github.com/kent8192/reinhardt-web/discussions/4229))
+  — TOML strings support `${VAR}`, `${VAR:-default}`, `${VAR:-}`
+  (explicit empty), and `${VAR:?message}` placeholders. The
+  interpolator walks the full TOML AST (including strings nested in
+  tables and arrays), and placeholders coerce to the destination
+  field's type (e.g., `${REINHARDT_DB_PORT}` becomes a `u16`). Opt
+  out of coercion with `SettingsBuilder::with_typed_coercion(false)`
+  or disable interpolation entirely with `without_interpolation()`.
+- **Field policies via `#[setting(...)]`** — the
+  `FieldRequirement` / `FieldPolicy` types drive
+  `BuildError::MissingRequiredField` and feed `build_composed()` so
+  required-field errors surface at boot rather than as `None`
+  values mid-request.
+- **Secrets & encryption primitives** — `DatabaseUrl` redacts
+  passwords in `Debug` output, the secrets module uses
+  `ZeroizeOnDrop` with `ManuallyDrop` to preserve drop safety
+  through `into_inner`, and credentials are URL-encoded when
+  reassembled. Encryption-key exposure via CLI arguments is
+  prevented, and hot-reload uses `tokio::sync::Mutex` to keep async
+  reload paths free of `parking_lot` blocking.
+- **Database-URL scheme validation as public API** — consumers
+  (notably `reinhardt-apps::ApplicationBuilder::build`) reuse the
+  same validator that the crate uses internally.
+
+### Notable Breaking Changes
+
+- **TOML interpolation is on by default** — `TomlFileSource::new(path)`
+  now enables `${VAR}` interpolation; the previous opt-in behavior
+  caused silent failures when a literal `${DB_PASSWORD}` landed in
+  the merged tree. `with_interpolation()` is a no-arg explicitness
+  marker; `without_interpolation()` opts out (issue #4224).
+- **`set_interpolation(bool)` is deprecated** — use
+  `with_interpolation()` / `without_interpolation()` instead; the
+  boolean setter will be removed in 0.2.0.
+- **`JsonFileSource` and `auto_source` are deprecated** ([#4120](https://github.com/kent8192/reinhardt-web/discussions/4120))
+  — TOML is the canonical Reinhardt configuration format. Migrate
+  `.json` configuration files to `.toml` or implement
+  `ConfigSource` against `serde_json` to keep JSON support
+  out-of-tree.
+- **`Settings.installed_apps` is deprecated** — installed apps
+  flow through the `reinhardt-apps` registry; the legacy
+  `Settings`-level field remains as a serde-flattened bridge but
+  emits a deprecation warning.
+- **Built-in fragments extracted from `AdvancedSettings`** —
+  `AdvancedSettings` is deprecated in favour of explicit fragments
+  (`SecuritySettings`, `I18nSettings`, `TemplateSettings`,
+  `ContactSettings`, `OpenApiSettings`, `CoreSettings`).
+
+### Migration Notes
+
+See the [root Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide)
+for project-wide guidance. Settings-specific moves:
+
+- If you relied on literal `${...}` strings in TOML, append
+  `.without_interpolation()` to your `TomlFileSource` constructor.
+- Replace `JsonFileSource::new(...)` / `auto_source(...)` with
+  `TomlFileSource::new(...)` against a `.toml` file.
+- Migrate from `AdvancedSettings` to the matching fragments
+  (`SecuritySettings`, `I18nSettings`, ...) and add an explicit
+  `CoreSettings` fragment to every composed-settings declaration.

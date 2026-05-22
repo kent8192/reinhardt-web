@@ -106,11 +106,34 @@ module "github_runner" {
   # Without this, queued jobs can deadlock when the initial SQS message is
   # consumed but the runner terminates before the job starts (e.g. when
   # runners_maximum_count is reached or spot interruption occurs).
+  #
+  # max_attempts=10 covers ~2.5h of retry at 15-min intervals. Raised from
+  # 5 after 8 jobs were stranded on PR #3901 when retries exhausted in
+  # ~75min while JIT runners silently failed to pick up assignments.
+  # See kent8192/reinhardt-web#3902.
   job_retry = {
     enable           = true
     delay_in_seconds = 120
-    max_attempts     = 3
+    max_attempts     = 10
   }
+
+  # Spot termination watcher: cancel and re-queue GitHub jobs on EC2 Spot
+  # interruption notices (2-minute warning from instance metadata). Without
+  # this, an interrupted runner leaves the GitHub job in a "lost" state that
+  # must be manually re-run. Combined with job_retry above, interrupted jobs
+  # are automatically re-queued and picked up by a fresh runner.
+  instance_termination_watcher = {
+    enable = true
+    zip    = "${path.module}/lambdas/termination-watcher.zip"
+    features = {
+      enable_spot_termination_handler              = true
+      enable_spot_termination_notification_watcher = true
+    }
+  }
+
+  # On-demand failover: when no Spot capacity is available (InsufficientInstanceCapacity),
+  # fall back to on-demand instances to prevent job queue stalls.
+  enable_runner_on_demand_failover_for_errors = ["InsufficientInstanceCapacity"]
 }
 
 # Supplemental IAM policy: grant ssm:GetParameter (singular) for AMI SSM parameter.

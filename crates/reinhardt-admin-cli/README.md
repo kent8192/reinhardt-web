@@ -8,10 +8,16 @@ Global command-line tool for Reinhardt project management.
 
 ## Installation
 
-Install globally using cargo:
+Install globally using cargo. While Reinhardt is on a pre-release
+(`-rc.*` / `-alpha.*`), `cargo install` requires an explicit `--version`
+because pre-releases are not selected by default. Once `0.1.0` stable
+ships, omit `--version` to pull the latest stable (or keep `--version`
+as an opt-in reproducibility pin). The literal below is auto-bumped by
+release-plz on each release.
 
+<!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
 This installs the `reinhardt-admin` command.
@@ -21,37 +27,92 @@ This installs the `reinhardt-admin` command.
 ### Create a New Project
 
 ```bash
-# Create a RESTful API project (default)
-reinhardt-admin startproject myproject
+# Create a RESTful API project
+reinhardt-admin startproject myproject --with-rest
 
-# Create an MTV-style project
-reinhardt-admin startproject myproject --template-type mtv
+# Create a Pages (WASM + SSR) project
+reinhardt-admin startproject myproject --with-pages
+
+# Using --template flag (equivalent)
+reinhardt-admin startproject myproject --template rest
+reinhardt-admin startproject myproject --template pages
 
 # Create project in a specific directory
-reinhardt-admin startproject myproject /path/to/directory
+reinhardt-admin startproject myproject --with-rest /path/to/directory
 ```
 
 ### Create a New App
 
 ```bash
-# Create a RESTful app (default)
-reinhardt-admin startapp myapp
+# Create a RESTful API app
+reinhardt-admin startapp myapp --with-rest
 
-# Create an MTV-style app
-reinhardt-admin startapp myapp --template-type mtv
+# Create a Pages (WASM + SSR) app
+reinhardt-admin startapp myapp --with-pages
+
+# Using --template flag (equivalent)
+reinhardt-admin startapp myapp --template rest
+reinhardt-admin startapp myapp --template pages
 
 # Create app in a specific directory
-reinhardt-admin startapp myapp /path/to/directory
+reinhardt-admin startapp myapp --with-rest /path/to/directory
 ```
 
 ### Other Commands
 
 ```bash
 # Display help
-reinhardt-admin help
+reinhardt-admin --help
 
 # Display version
 reinhardt-admin --version
+```
+
+### Manage Plugins
+
+Manage Reinhardt plugins (Dentdelion):
+
+<!-- reinhardt-version-sync -->
+```bash
+# List installed plugins
+reinhardt-admin plugin list
+reinhardt-admin plugin list --verbose
+reinhardt-admin plugin list --enabled
+reinhardt-admin plugin list --disabled
+
+# Show plugin information
+reinhardt-admin plugin info auth-delion
+reinhardt-admin plugin info auth-delion --remote
+
+# Install a plugin
+reinhardt-admin plugin install auth-delion
+reinhardt-admin plugin install auth-delion --version 0.1.0-rc.30
+
+# Remove a plugin
+reinhardt-admin plugin remove auth-delion
+
+# Enable / disable a plugin
+reinhardt-admin plugin enable auth-delion
+reinhardt-admin plugin disable auth-delion
+
+# Search for plugins on crates.io
+reinhardt-admin plugin search auth
+
+# Update plugin(s)
+reinhardt-admin plugin update auth-delion
+reinhardt-admin plugin update --all
+```
+
+### Format All Code
+
+Format all Rust files in the project (Rust + `page!` DSL):
+
+```bash
+# Format all files in the project
+reinhardt-admin fmt-all
+
+# Check formatting without modifying files
+reinhardt-admin fmt-all --check
 ```
 
 ### Format page! Macro DSL
@@ -165,8 +226,8 @@ Summary: 2 formatted, 45 unchanged, 1 errors
 
 `reinhardt-admin-cli` includes two project templates:
 
-- **RESTful** (default): API-focused applications
-- **MTV**: Traditional server-rendered web applications (Model-Template-View)
+- **rest**: RESTful API project (use `--with-rest` or `--template rest`)
+- **pages**: WASM + SSR project with reinhardt-pages (use `--with-pages` or `--template pages`)
 
 ## App Templates
 

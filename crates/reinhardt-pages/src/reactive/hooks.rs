@@ -100,6 +100,7 @@ pub mod effect;
 pub mod id;
 pub mod memo;
 pub mod refs;
+pub mod router;
 pub mod state;
 pub mod sync;
 pub mod transition;
@@ -115,6 +116,7 @@ pub use effect::{use_effect, use_layout_effect};
 pub use id::use_id;
 pub use memo::{use_callback, use_memo};
 pub use refs::{Ref, use_ref};
+pub use router::{NavigateError, RouterHandle, use_router};
 pub use state::{
 	Dispatch, SetState, SharedSetState, SharedSignal, use_reducer, use_shared_state, use_state,
 };

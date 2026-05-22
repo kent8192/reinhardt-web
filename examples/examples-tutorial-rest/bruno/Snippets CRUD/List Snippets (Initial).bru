@@ -1,0 +1,19 @@
+meta {
+  name: List Snippets (Initial)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/snippets/
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("Response is JSON", function() {
+    expect(res.headers["content-type"] || "").to.match(/json/i);
+  });
+}

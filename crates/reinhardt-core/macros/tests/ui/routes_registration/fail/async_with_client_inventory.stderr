@@ -1,0 +1,5 @@
+error: `#[routes(client_inventory)]` is not supported on async `routes()` functions. The WASM `ClientRouterRegistration::submit!` factory must be a sync `fn() -> Arc<ClientRouter>`, but the annotated function is async. Either make `routes()` sync, or drop `client_inventory` and keep the async server-only behavior. Refs #4453.
+  --> tests/ui/routes_registration/fail/async_with_client_inventory.rs:11:5
+   |
+11 | pub async fn routes() -> UnifiedRouter {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

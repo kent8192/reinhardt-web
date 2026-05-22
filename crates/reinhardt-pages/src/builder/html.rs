@@ -318,13 +318,16 @@ impl ElementBuilder {
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{div};
 	/// let element = div().class("container").build();
 	/// ```
 	pub fn build(self) -> Element {
-		// Event handles are dropped here, but they're owned by the element
-		// through the closure's captured state. This is safe.
-		self.element
+		let mut element = self.element;
+		// Transfer event handle ownership to the Element so listeners
+		// remain active for the lifetime of the Element.
+		element.store_event_handles(self.event_handles);
+		element
 	}
 }
 
@@ -373,7 +376,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{div, p};
 	/// let container = div()
 	///     .class("container")
 	///     .child(p().text("Content").build())
@@ -387,7 +391,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{span};
 	/// let label = span().text("Label").class("badge").build();
 	/// ```
 	span, "span"
@@ -398,7 +403,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{p};
 	/// let paragraph = p().text("This is a paragraph.").build();
 	/// ```
 	p, "p"
@@ -438,7 +444,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{textarea};
 	/// let textarea = textarea()
 	///     .attr("rows", "5")
 	///     .attr("placeholder", "Enter long text...")
@@ -452,7 +459,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{option, select};
 	/// let select = select()
 	///     .child(option().attr("value", "1").text("Option 1").build())
 	///     .child(option().attr("value", "2").text("Option 2").build())
@@ -466,7 +474,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{option};
 	/// let option = option()
 	///     .attr("value", "1")
 	///     .text("Option 1")
@@ -495,7 +504,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{a};
 	/// let link = a()
 	///     .attr("href", "https://example.com")
 	///     .text("Visit Example")
@@ -509,7 +519,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{img};
 	/// let image = img()
 	///     .attr("src", "/images/logo.png")
 	///     .attr("alt", "Logo")
@@ -523,7 +534,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{h1};
 	/// let heading = h1().text("Page Title").build();
 	/// ```
 	h1, "h1"
@@ -544,7 +556,8 @@ define_element!(
 	///
 	/// ## Example
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_pages::builder::html::{li, ul};
 	/// let list = ul()
 	///     .child(li().text("Item 1").build())
 	///     .child(li().text("Item 2").build())
@@ -1001,3 +1014,29 @@ define_element!(
 	/// JavaScript.
 	template, "template"
 );
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use wasm_bindgen_test::*;
+
+	wasm_bindgen_test_configure!(run_in_browser);
+
+	#[wasm_bindgen_test]
+	fn test_build_retains_event_handles() {
+		// Arrange
+		let element = button().on_click(|| {}).on_click(|| {}).build();
+
+		// Assert: event handles should be transferred to the Element
+		assert_eq!(element.event_handle_count(), 2);
+	}
+
+	#[wasm_bindgen_test]
+	fn test_build_without_events_has_zero_handles() {
+		// Arrange & Act
+		let element = div().class("container").build();
+
+		// Assert
+		assert_eq!(element.event_handle_count(), 0);
+	}
+}

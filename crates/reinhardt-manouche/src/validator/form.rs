@@ -17,16 +17,15 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use crate::core::{
-	ClientValidator, ClientValidatorRule, FormAction, FormCallbacks, FormDerived, FormFieldDef,
-	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
-	FormValidator, FormWatch, IconAttr, IconChild, IconPosition, TypedChoicesConfig,
-	TypedClientValidator, TypedClientValidatorRule, TypedCustomAttr, TypedDerivedItem,
-	TypedFieldDisplay, TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction,
-	TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
-	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormStyling,
-	TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon, TypedIconAttr,
-	TypedIconChild, TypedIconPosition, TypedValidatorRule, TypedWidget, TypedWrapper,
-	TypedWrapperAttr, ValidatorRule,
+	FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry, FormFieldGroup,
+	FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState, FormSubmitButtonDef,
+	FormValidator, FormWatch, IconAttr, IconChild, IconPosition, StripArgument, TypedChoicesConfig,
+	TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType,
+	TypedFieldValidation, TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef,
+	TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState,
+	TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon,
+	TypedIconAttr, TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
+	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
 
 /// Validates and transforms the FormMacro AST into a typed AST.
@@ -64,6 +63,8 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	// Transform redirect configuration
 	let redirect_on_success = transform_redirect(&ast.redirect_on_success)?;
 
+	let success_url = ast.success_url.clone();
+
 	// Transform initial_loader (pass through the Path)
 	let initial_loader = ast.initial_loader.clone();
 
@@ -76,11 +77,11 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	// Transform fields
 	let fields = transform_fields(&ast.fields)?;
 
-	// Transform server-side validators
+	// Transform unified validators (scope filtering happens at codegen)
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
 
-	// Transform client-side validators
-	let client_validators = transform_client_validators(&ast.client_validators, &ast.fields)?;
+	// Transform stripped server_fn arguments (reinhardt-web#3971).
+	let strip_arguments = transform_strip_arguments(&ast.strip_arguments, &ast.fields)?;
 
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
@@ -98,12 +99,13 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 		watch,
 		derived,
 		redirect_on_success,
+		success_url,
 		initial_loader,
 		choices_loader,
 		slots,
 		fields,
 		validators,
-		client_validators,
+		strip_arguments,
 		span: ast.span,
 	})
 }
@@ -145,6 +147,15 @@ fn validate_unique_field_names(entries: &[FormFieldEntry]) -> Result<()> {
 							),
 						));
 					}
+				}
+			}
+			FormFieldEntry::SubmitButton(btn) => {
+				let name = btn.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						btn.name.span(),
+						format!("duplicate field/button name: '{}'", name),
+					));
 				}
 			}
 		}
@@ -236,6 +247,7 @@ fn transform_callbacks(callbacks: &FormCallbacks) -> Result<TypedFormCallbacks> 
 	Ok(TypedFormCallbacks {
 		on_submit: callbacks.on_submit.clone(),
 		on_success: callbacks.on_success.clone(),
+		on_success_ref: callbacks.on_success_ref.clone(),
 		on_error: callbacks.on_error.clone(),
 		on_loading: callbacks.on_loading.clone(),
 		span: callbacks.span,
@@ -415,6 +427,10 @@ fn transform_field_entry(entry: &FormFieldEntry) -> Result<TypedFormFieldEntry> 
 			let typed_group = transform_field_group(group)?;
 			Ok(TypedFormFieldEntry::Group(typed_group))
 		}
+		FormFieldEntry::SubmitButton(btn) => {
+			let typed_btn = transform_submit_button(btn)?;
+			Ok(TypedFormFieldEntry::SubmitButton(typed_btn))
+		}
 	}
 }
 
@@ -433,6 +449,102 @@ fn transform_field_group(group: &FormFieldGroup) -> Result<TypedFormFieldGroup> 
 		class: group.class.as_ref().map(|c| c.value()),
 		fields: typed_fields,
 		span: group.span,
+	})
+}
+
+/// Transforms a submit button definition into a typed submit button.
+///
+/// Extracts `label`, `class`, `id`, and `disabled` from properties.
+/// Rejects properties that are not applicable to submit buttons.
+const ALLOWED_SUBMIT_BUTTON_PROPERTIES: &[&str] = &["label", "class", "id", "disabled"];
+
+fn transform_submit_button(btn: &FormSubmitButtonDef) -> Result<TypedSubmitButtonDef> {
+	let mut label = None;
+	let mut class = None;
+	let mut id = None;
+	let mut disabled = false;
+
+	for prop in &btn.properties {
+		match prop {
+			FormFieldProperty::Named { name, value, span } => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"label" => {
+						if let syn::Expr::Lit(syn::ExprLit {
+							lit: syn::Lit::Str(s),
+							..
+						}) = value
+						{
+							label = Some(s.value());
+						} else {
+							return Err(Error::new(*span, "label must be a string literal"));
+						}
+					}
+					"class" => {
+						if let syn::Expr::Lit(syn::ExprLit {
+							lit: syn::Lit::Str(s),
+							..
+						}) = value
+						{
+							class = Some(s.value());
+						} else {
+							return Err(Error::new(*span, "class must be a string literal"));
+						}
+					}
+					"id" => {
+						if let syn::Expr::Lit(syn::ExprLit {
+							lit: syn::Lit::Str(s),
+							..
+						}) = value
+						{
+							id = Some(s.value());
+						} else {
+							return Err(Error::new(*span, "id must be a string literal"));
+						}
+					}
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!(
+								"unknown SubmitButton property: '{}'. Allowed: {}",
+								prop_name,
+								ALLOWED_SUBMIT_BUTTON_PROPERTIES.join(", ")
+							),
+						));
+					}
+				}
+			}
+			FormFieldProperty::Flag { name, span } => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"disabled" => disabled = true,
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!(
+								"unknown SubmitButton flag: '{}'. Allowed flags: disabled",
+								prop_name
+							),
+						));
+					}
+				}
+			}
+			_ => {
+				return Err(Error::new(
+					btn.span,
+					"SubmitButton only supports: label, class, id, disabled",
+				));
+			}
+		}
+	}
+
+	Ok(TypedSubmitButtonDef {
+		name: btn.name.clone(),
+		label: label.unwrap_or_else(|| "Submit".to_string()),
+		class,
+		id,
+		disabled,
+		span: btn.span,
 	})
 }
 
@@ -464,6 +576,7 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	let custom_attrs = extract_custom_attrs(&field.properties).map_err(&annotate)?;
 	let bind = extract_bind(&field.properties);
 	let initial_from = extract_initial_from(&field.properties);
+	let initial_expr = extract_initial_expr(&field.properties);
 	let choices_config = extract_choices_config(&field.properties);
 
 	Ok(TypedFormFieldDef {
@@ -478,6 +591,7 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 		custom_attrs,
 		bind,
 		initial_from,
+		initial_expr,
 		choices_config,
 		span: field.span,
 	})
@@ -604,6 +718,7 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 	let mut disabled = false;
 	let mut readonly = false;
 	let mut autofocus = false;
+	let mut autocomplete = None;
 
 	for prop in properties {
 		match prop {
@@ -629,6 +744,13 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 					"help_text" => {
 						help_text =
 							Some(extract_string_value_from_expr(value, "help_text", *span)?);
+					}
+					"autocomplete" => {
+						autocomplete = Some(extract_string_value_from_expr(
+							value,
+							"autocomplete",
+							*span,
+						)?);
 					}
 					"disabled" => {
 						if let syn::Expr::Lit(lit) = value
@@ -674,6 +796,7 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 		disabled,
 		readonly,
 		autofocus,
+		autocomplete,
 	})
 }
 
@@ -1023,6 +1146,22 @@ fn extract_initial_from(properties: &[FormFieldProperty]) -> Option<String> {
 /// choices_from: "choices"
 /// choice_value: "id"
 /// choice_label: "choice_text"
+/// Extracts the initial signal value expression from field properties.
+///
+/// When `initial: <expr>` is specified on a field, the expression is used as
+/// the initial value for the field's `Signal::new(...)` instead of the type
+/// default (issue #4386).
+fn extract_initial_expr(properties: &[FormFieldProperty]) -> Option<syn::Expr> {
+	for prop in properties {
+		if let FormFieldProperty::Named { name, value, .. } = prop
+			&& name == "initial"
+		{
+			return Some(value.clone());
+		}
+	}
+	None
+}
+
 /// ```
 fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoicesConfig> {
 	let mut choices_from: Option<(String, Span)> = None;
@@ -1055,6 +1194,51 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 	})
 }
 
+/// Transforms `strip_arguments` entries into their typed form.
+///
+/// Validates two constraints:
+/// 1. No duplicate argument names (each server_fn parameter may only be supplied once).
+/// 2. No collision with declared form field names (would shadow a real input).
+///
+/// Tracked under reinhardt-web#3971.
+fn transform_strip_arguments(
+	args: &[StripArgument],
+	fields: &[FormFieldEntry],
+) -> Result<Vec<TypedStripArgument>> {
+	let mut seen = HashSet::new();
+	let mut typed = Vec::with_capacity(args.len());
+
+	for arg in args {
+		let name_str = arg.name.to_string();
+
+		if !seen.insert(name_str.clone()) {
+			return Err(Error::new(
+				arg.span,
+				format!(
+					"duplicate strip_arguments entry '{name_str}': each server_fn argument may only appear once"
+				),
+			));
+		}
+
+		if field_exists(fields, &arg.name) {
+			return Err(Error::new(
+				arg.span,
+				format!(
+					"strip_arguments key '{name_str}' collides with a declared form field; either rename the field or remove this strip entry"
+				),
+			));
+		}
+
+		typed.push(TypedStripArgument {
+			name: arg.name.clone(),
+			value: arg.value.clone(),
+			span: arg.span,
+		});
+	}
+
+	Ok(typed)
+}
+
 /// Checks if a field with the given name exists in the field entries.
 ///
 /// This checks both top-level fields and fields within groups.
@@ -1071,6 +1255,7 @@ fn field_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
 					return true;
 				}
 			}
+			FormFieldEntry::SubmitButton(_) => {}
 		}
 	}
 	false
@@ -1123,7 +1308,7 @@ fn transform_validators(
 	Ok(result)
 }
 
-/// Transforms a validator rule.
+/// Transforms a validator rule, propagating its execution scope.
 ///
 /// Converts the closure expression to a regular expression for code generation.
 fn transform_validator_rule(rule: &ValidatorRule) -> Result<TypedValidatorRule> {
@@ -1131,140 +1316,11 @@ fn transform_validator_rule(rule: &ValidatorRule) -> Result<TypedValidatorRule> 
 	let condition: syn::Expr = (*rule.expr.body).clone();
 
 	Ok(TypedValidatorRule {
+		scope: rule.scope.clone(),
 		condition,
 		message: rule.message.value(),
 		span: rule.span,
 	})
-}
-
-/// Transforms client-side validators.
-fn transform_client_validators(
-	validators: &[ClientValidator],
-	fields: &[FormFieldEntry],
-) -> Result<Vec<TypedClientValidator>> {
-	validators
-		.iter()
-		.map(|v| transform_client_validator(v, fields))
-		.collect()
-}
-
-/// Transforms a single client-side validator.
-fn transform_client_validator(
-	validator: &ClientValidator,
-	fields: &[FormFieldEntry],
-) -> Result<TypedClientValidator> {
-	// Validate that field exists (including in groups)
-	if !field_exists(fields, &validator.field_name) {
-		return Err(Error::new(
-			validator.field_name.span(),
-			format!(
-				"client validator references unknown field: '{}'",
-				validator.field_name
-			),
-		));
-	}
-
-	let rules = validator
-		.rules
-		.iter()
-		.map(transform_client_validator_rule)
-		.collect::<Result<Vec<_>>>()?;
-
-	Ok(TypedClientValidator {
-		field_name: validator.field_name.clone(),
-		rules,
-		span: validator.span,
-	})
-}
-
-/// Transforms a client validator rule.
-fn transform_client_validator_rule(rule: &ClientValidatorRule) -> Result<TypedClientValidatorRule> {
-	let js_condition = rule.js_expr.value();
-	validate_js_condition(&js_condition, rule.span)?;
-
-	Ok(TypedClientValidatorRule {
-		js_condition,
-		message: rule.message.value(),
-		span: rule.span,
-	})
-}
-
-/// Validates a JavaScript condition string for potential injection attacks.
-///
-/// This function checks for dangerous patterns that could be used for XSS attacks
-/// or arbitrary code execution when the condition is embedded in client-side code.
-///
-/// # Security Checks
-///
-/// - Dangerous global objects: `window`, `document`, `globalThis`
-/// - Code execution functions: code evaluation via `Function` constructor, timers
-/// - Network functions: `fetch`, `XMLHttpRequest`, `WebSocket`
-/// - Module system: `import`, `require`
-/// - Event handlers: `onerror`, `onload`, `onclick` (when used as property assignment)
-/// - Script injection: `<script>`, `javascript:` protocol
-fn validate_js_condition(js_condition: &str, span: Span) -> Result<()> {
-	/// Dangerous patterns that could lead to XSS or code injection
-	const DANGEROUS_PATTERNS: &[(&str, &str)] = &[
-		// Global objects that provide access to DOM or sensitive APIs
-		("window", "access to window object"),
-		("document", "access to document object"),
-		("globalThis", "access to global object"),
-		("self.", "access to self/global scope"),
-		// Code execution functions
-		("eval", "code evaluation"),
-		("Function", "dynamic function creation"),
-		("setTimeout", "delayed code execution"),
-		("setInterval", "repeated code execution"),
-		("requestAnimationFrame", "animation frame callback"),
-		// Network and I/O
-		("fetch", "network request"),
-		("XMLHttpRequest", "HTTP request"),
-		("WebSocket", "WebSocket connection"),
-		// Module system
-		("import", "module import"),
-		("require", "module require"),
-		// Storage APIs
-		("localStorage", "local storage access"),
-		("sessionStorage", "session storage access"),
-		("indexedDB", "indexedDB access"),
-		// Cookie access
-		("cookie", "cookie access"),
-		// Script injection patterns
-		("<script", "script tag injection"),
-		("javascript:", "javascript protocol"),
-		// Sensitive attributes
-		("onerror", "event handler"),
-		("onload", "event handler"),
-		("onclick", "event handler"),
-		// Prototype manipulation
-		("__proto__", "prototype manipulation"),
-		("prototype", "prototype manipulation"),
-		// Constructor access
-		("constructor", "constructor access"),
-	];
-
-	let js_lower = js_condition.to_lowercase();
-
-	for (pattern, description) in DANGEROUS_PATTERNS {
-		let pattern_str = if pattern.contains(' ') {
-			// Join split patterns
-			pattern.replace(' ', "")
-		} else {
-			pattern.to_string()
-		};
-		if js_lower.contains(&pattern_str) {
-			return Err(Error::new(
-				span,
-				format!(
-					"js_condition contains forbidden pattern '{}': {}. \
-					 Use simple value comparisons like 'value.length > 0' instead.",
-					pattern_str, description
-				),
-			));
-		}
-	}
-
-	Ok(())
 }
 
 /// Extracts an integer value from an expression.

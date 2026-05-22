@@ -1,0 +1,19 @@
+[package]
+name = "spa-navigation-with-sidebar-signal-app"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Detached from the parent Cargo workspace so wasm-pack can build this
+# crate independently. The parent workspace's `exclude` array also lists
+# this path. Refs #4122.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+reinhardt-pages = { path = "../../../" }
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement"] }
+console_error_panic_hook = "0.1"

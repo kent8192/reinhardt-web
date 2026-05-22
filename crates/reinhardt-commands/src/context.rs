@@ -1,13 +1,18 @@
 //! Command execution context
 
+use reinhardt_conf::HasCommonSettings;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Execution context passed to management commands.
 ///
 /// Contains command arguments, options, verbosity level, and optional
-/// application settings needed during command execution.
-#[derive(Debug, Clone)]
+/// application settings needed during command execution. When present,
+/// `settings` is an erased handle (`Arc<dyn HasCommonSettings>`) over a
+/// fully-built `ProjectSettings`-style value, so commands can read the
+/// same fragments (`core`, `contacts`) the application uses at runtime
+/// without re-parsing TOML.
+#[derive(Clone)]
 pub struct CommandContext {
 	/// Positional arguments passed to the command.
 	pub args: Vec<String>,
@@ -15,8 +20,20 @@ pub struct CommandContext {
 	pub options: HashMap<String, Vec<String>>,
 	/// Verbosity level (0 = quiet, higher = more output).
 	pub verbosity: u8,
-	/// Optional reference to application settings
-	pub settings: Option<Arc<reinhardt_conf::settings::Settings>>,
+	/// Optional reference to the already-composed application settings.
+	pub settings: Option<Arc<dyn HasCommonSettings>>,
+}
+
+impl std::fmt::Debug for CommandContext {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		// `dyn HasCommonSettings` is not Debug, so render its presence only.
+		f.debug_struct("CommandContext")
+			.field("args", &self.args)
+			.field("options", &self.options)
+			.field("verbosity", &self.verbosity)
+			.field("settings", &self.settings.as_ref().map(|_| "<settings>"))
+			.finish()
+	}
 }
 
 impl CommandContext {
@@ -42,8 +59,12 @@ impl CommandContext {
 		self
 	}
 
-	/// Set the application settings reference
-	pub fn with_settings(mut self, settings: Arc<reinhardt_conf::settings::Settings>) -> Self {
+	/// Attach an already-composed settings handle to the context.
+	///
+	/// `settings` is any type that satisfies [`HasCommonSettings`] (in
+	/// practice, a `ProjectSettings` struct composed via
+	/// `#[settings(core: CoreSettings, contacts: ContactSettings)]`).
+	pub fn with_settings(mut self, settings: Arc<dyn HasCommonSettings>) -> Self {
 		self.settings = Some(settings);
 		self
 	}

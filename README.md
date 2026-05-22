@@ -28,6 +28,7 @@
 - [Installation](#installation)
 - [Getting Started Guide](#getting-started-guide)
 - [Available Components](#available-components)
+- [Ecosystem](#ecosystem)
 - [API Stability](#api-stability)
 
 ## Who is Reinhardt For?
@@ -43,8 +44,12 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 
 ## Quick Start
 
+<!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli
+# Currently a pre-release: --version is required. Once 0.1.0 stable ships,
+# --version becomes optional (and acts as an opt-in reproducibility pin).
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
+
 reinhardt-admin startproject my-api && cd my-api
 cargo run --bin manage runserver  # Visit http://127.0.0.1:8000
 ```
@@ -97,37 +102,37 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **RC** (`0.x.0-rc.N`) | API frozen. Bug fixes only. Safe to build against. |
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
-**Current status:** All crates are at `0.1.0-rc.9` (Release Candidate).
+<!-- reinhardt-version-sync -->
+**Current status:** Reinhardt is at `0.1.0-rc.30`. From `0.1.0` onward, all
+public APIs follow SemVer 2.0; breaking changes ship in a future
+`0.2.0-rc.N` series coordinated through the `develop/0.2.0` branch.
 
-**What this means for you:**
-- Public APIs will only change to fix critical bugs -- no new features or additions
-- If a critical fix requires an API change, a migration guide is provided
-- Naming improvements use deprecation aliases (your existing code keeps compiling)
-- Bug fixes are shipped as `rc.2`, `rc.3`, etc.
-- Stable `0.1.0` will be released after a 2-week stability period with no critical issues
-
-For the full stability policy, see [API Stability Policy](docs/API_STABILITY.md).
+For per-release detail (changelog summary, upgrade notes, known issues),
+see the [Release category in GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+The full lifecycle policy lives in
+[Stability Policy](instructions/STABILITY_POLICY.md).
 
 ## Installation
 
 Reinhardt is a modular framework. Choose your starting point:
 
-> **New here?** Start with the default full-featured setup unless you specifically want a smaller build.
+> **New here?** Start with the default standard setup. Use `full` if you need all features, or `minimal` for lightweight APIs.
 
-### Default: Full-Featured (Batteries Included) ⚠️ New Default
+### Default: Standard Setup (Balanced) ⚠️ Default Preset
 
-Get all features with zero configuration:
+Get a well-balanced feature set with zero configuration:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
-# Default enables ALL features (full bundle)
-reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web" }
+# Default enables the "standard" preset (balanced feature set)
+reinhardt = { version = "0.1.0-rc.30", package = "reinhardt-web" }
 ```
 
-**Includes:** Database, Auth, REST API, Admin, GraphQL, WebSockets, Cache, i18n, Mail, Sessions, Static Files, Storage
+**Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
 
-**Binary**: ~50+ MB | **Compile**: Slower, but everything works out of the box
+**Binary**: ~20-30 MB | **Compile**: Medium
 
 Then use in your code:
 ```rust
@@ -135,26 +140,28 @@ use reinhardt::prelude::*;
 use reinhardt::{Request, Response, StatusCode};
 ```
 
-### Option 1: Standard Setup (Balanced)
+### Option 1: Full-Featured (All Batteries Included)
 
-For most projects that don't need all features:
+For projects that need every available component:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web", default-features = false, features = ["standard"] }
+reinhardt = { version = "0.1.0-rc.30", package = "reinhardt-web", default-features = false, features = ["full"] }
 ```
 
-**Includes:** Core, Database (PostgreSQL), REST API, Auth, Middleware, Pages (WASM Frontend with SSR)
+**Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
 
-**Binary**: ~20-30 MB | **Compile**: Medium
+**Binary**: ~50+ MB | **Compile**: Slower, but everything works out of the box
 
 ### Option 2: Microservices (Minimal Setup)
 
 Lightweight and fast, perfect for simple APIs:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.1.0-rc.30", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
@@ -165,27 +172,28 @@ reinhardt = { version = "0.1.0-rc.9", package = "reinhardt-web", default-feature
 
 Install only the components you need:
 
+<!-- reinhardt-version-sync:8 -->
 ```toml
 [dependencies]
 # Core components
-reinhardt-http = "0.1.0-rc.9"
-reinhardt-urls = "0.1.0-rc.9"
+reinhardt-http = "0.1.0-rc.30"
+reinhardt-urls = "0.1.0-rc.30"
 
 # Optional: Database
-reinhardt-db = "0.1.0-rc.9"
+reinhardt-db = "0.1.0-rc.30"
 
 # Optional: Authentication
-reinhardt-auth = "0.1.0-rc.9"
+reinhardt-auth = "0.1.0-rc.30"
 
 # Optional: REST API features
-reinhardt-rest = "0.1.0-rc.9"
+reinhardt-rest = "0.1.0-rc.30"
 
 # Optional: Admin panel
-reinhardt-admin = "0.1.0-rc.9"
+reinhardt-admin = "0.1.0-rc.30"
 
 # Optional: Advanced features
-reinhardt-graphql = "0.1.0-rc.9"
-reinhardt-websockets = "0.1.0-rc.9"
+reinhardt-graphql = "0.1.0-rc.30"
+reinhardt-websockets = "0.1.0-rc.30"
 ```
 
 **Note on Crate Naming:**
@@ -197,8 +205,15 @@ The main Reinhardt crate is published on crates.io as `reinhardt-web`, but you i
 
 ### 1. Install Reinhardt Admin Tool
 
+While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`), `cargo install`
+requires an explicit `--version` because pre-releases are not selected by
+default. Once `0.1.0` stable ships, omit `--version` to pull the latest
+stable (or keep `--version` as an opt-in reproducibility pin). The literal
+below is auto-bumped by release-plz on each release.
+
+<!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli
+cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 ```
 
 ### 2. Create a New Project
@@ -238,7 +253,7 @@ For a modern WASM-based frontend with SSR:
 
 ```bash
 # Create a pages project
-reinhardt-admin startproject my-app --with-pages
+reinhardt-admin startproject my-app --template pages
 cd my-app
 
 # Install WASM build tools (first time only)
@@ -260,36 +275,33 @@ cargo run --bin manage runserver
 
 **Auto-Reload Support:**
 
-For automatic reloading on code changes (requires bacon):
+The development server reloads automatically on file changes:
 
 ```bash
-# Install bacon
-cargo install --locked bacon
-
-# Run with auto-reload
-bacon runserver
-
-# Or use cargo make
-cargo make watch
-
-# For tests
-bacon test
+cargo run --bin manage -- runserver --with-pages
 ```
+
+Edit any Rust source file (server-side or wasm-side) and the bundle
+plus the server are rebuilt in place. Pass `--noreload` to disable
+auto-reload entirely, or `--no-wasm-rebuild` to keep server reload
+but manage the wasm build yourself.
 
 ### 4. Create Your First App
 
 ```bash
 # Create a RESTful API app (default)
-cargo run --bin manage startapp users
+reinhardt-admin startapp users
 
 # Or explicitly specify type
-cargo run --bin manage startapp users --restful
+reinhardt-admin startapp users --with-rest
 
 # Create a Pages app (WASM + SSR)
-cargo run --bin manage startapp dashboard --with-pages
+reinhardt-admin startapp dashboard --with-pages
 ```
 
-This creates an app structure:
+This creates an app structure — the layout depends on the template:
+
+**RESTful app** (`--with-rest`, default):
 
 ```
 users/
@@ -301,27 +313,97 @@ users/
 ├── serializers.rs
 ├── serializers/
 ├── admin.rs
+├── admin/
 ├── urls.rs
-└── tests.rs
+├── tests.rs
+└── tests/
+```
+
+**Pages app** (`--with-pages`, WASM + SSR):
+
+Each app owns its server-side and client-side code under `src/apps/<app>/`.
+Per Rust 2024 edition module conventions, the entry point for an app is a
+sibling `<app>.rs` file next to the `<app>/` directory — there is no inner
+`lib.rs`. The same pattern applies to nested aggregators (`client.rs` is
+the sibling of `client/`, `urls.rs` is the sibling of `urls/`).
+
+```
+src/
+├── apps.rs                       # aggregator: pub mod polls; #[cfg(server)] pub use polls::PollsConfig;
+├── apps/
+│   ├── polls.rs                  # per-app entry (sibling of polls/)
+│   └── polls/
+│       ├── admin.rs              # #[cfg(server)] admin registration
+│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components; pub mod pages;
+│       ├── client/
+│       │   ├── components.rs     # per-app UI (placeholder() returning Page)
+│       │   └── pages.rs          # per-app pages (placeholder_page wraps with_nav)
+│       ├── models.rs             # #[cfg(server)] models
+│       ├── models/               # (.gitkeep — user adds submodules here)
+│       ├── serializers.rs        # #[cfg(server)] serializers
+│       ├── serializers/          # (.gitkeep)
+│       ├── server_fn.rs          # bi-target #[server_fn] handlers (placeholder)
+│       ├── tests/                # (.gitkeep)
+│       ├── urls.rs               # urls aggregator (cfg-gated submodules)
+│       ├── urls/
+│       │   ├── server_urls.rs    # #[url_patterns(InstalledApp::polls, mode = server)]
+│       │   └── client_router.rs  # #[url_patterns(InstalledApp::polls, mode = client)]
+│       └── views.rs              # #[cfg(server)] views
+├── bin/
+│   └── manage.rs                 # native-only management CLI entry
+├── client.rs                     # #[cfg(client)] aggregator: pub mod lib; pub mod components;
+├── client/
+│   ├── components.rs             # cross-app shell: pub mod nav;
+│   ├── components/
+│   │   └── nav.rs                # with_nav(body: Page) -> Page helper
+│   └── lib.rs                    # #[wasm_bindgen(start)] -> ClientLauncher::router_client(...)
+├── config.rs                     # cfg-gated config aggregator
+├── config/
+│   ├── apps.rs                   # installed_apps! { polls: "polls" }
+│   ├── settings.rs               # #[cfg(server)] settings
+│   ├── urls.rs                   # #[routes(standalone)] entry
+│   └── wasm.rs                   # #[cfg(server)] wasm tooling config
+├── lib.rs                        # crate root (`pub mod apps;` is un-gated)
+├── shared.rs                     # bi-target shared module
+└── shared/
+    ├── forms.rs                  # shared form definitions
+    └── types.rs                  # DTOs exchanged between WASM and server
 ```
 
 ### 5. Register Routes
 
-Edit your app's `urls.rs`:
+Edit your app's `urls.rs`. **`urls.rs` plays two roles**: it **declares the URL
+submodules** of the app (via `pub mod ...;`) and **aggregates** them into a
+single `url_patterns` (or `server_url_patterns` / `unified_url_patterns`) entry
+point that `src/config/urls.rs` mounts:
 
 ```rust
 // users/urls.rs
+//
+// 1. Module declarations for sub-URL files (optional, for larger apps):
+pub mod api;
+pub mod views;
+
+// 2. Aggregator — the single entry point mounted from src/config/urls.rs.
+use reinhardt::url_patterns;
 use reinhardt::ServerRouter;
 
-use super::views;
+use crate::config::apps::InstalledApp;
 
-pub fn url_patterns() -> ServerRouter {
+#[url_patterns(InstalledApp::users, mode = server)]
+pub fn server_url_patterns() -> ServerRouter {
 	ServerRouter::new()
 		.endpoint(views::list_users)
 		.endpoint(views::get_user)
 		.endpoint(views::create_user)
+		.mount("/api/v1/", api::routes())
 }
 ```
+
+The `#[url_patterns]` attribute registers this router with the framework for
+automatic discovery. For Pages apps, use `mode = unified` and return
+`UnifiedRouter` instead (see the generated `urls/{server,client,ws}_urls.rs`
+submodules).
 
 Include in `src/config/urls.rs`:
 
@@ -350,7 +432,7 @@ framework for discovery via the `inventory` crate.
 **Feature-Dependent:**
 - **`core` feature**: `Request`, `Response`, `Handler`, `Middleware`, Signals (`post_save`, `pre_save`, etc.)
 - **`database` feature**: `Model`, `DatabaseConnection`, `F`, `Q`, `Transaction`, `atomic`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
-- **`auth` feature**: `User`, `UserManager`, `GroupManager`, `Permission`, `ObjectPermission`
+- **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
 - **`minimal`, `standard`, or `di` features**: `Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`
 - **`rest` feature**: Serializers, Parsers, Pagination, Throttling, Versioning
 - **`admin` feature**: Admin panel components
@@ -384,126 +466,84 @@ Settings are automatically loaded in `src/config/settings.rs`:
 
 ```rust
 // src/config/settings.rs
-use reinhardt::conf::settings::builder::SettingsBuilder;
-use reinhardt::conf::settings::profile::Profile;
-use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
-use reinhardt::core::Settings;
-use std::env;
-use std::path::PathBuf;
-use std::str::FromStr;
+use reinhardt::prelude::*;
 
-pub fn get_settings() -> Settings {
-	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
-	let profile = Profile::from_str(&profile_str).unwrap_or(Profile::Development);
-
-	let base_dir = env::current_dir().expect("Failed to get current directory");
-	let settings_dir = base_dir.join("settings");
-
-	let merged = SettingsBuilder::new()
-		.profile(profile)
-		.add_source(
-			DefaultSource::new()
-				.with_value("debug", serde_json::Value::Bool(false))
-				.with_value("language_code", serde_json::Value::String("en-us".to_string()))
-				.with_value("time_zone", serde_json::Value::String("UTC".to_string()))
-		)
-		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
-		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
-		.add_source(TomlFileSource::new(settings_dir.join(format!("{}.toml", profile_str))))
-		.build()
-		.expect("Failed to build settings");
-
-	merged.into_typed().expect("Failed to convert settings to Settings struct")
-}
+// Compose built-in settings fragments with | — field names are inferred from type names
+// (e.g., CoreSettings → core, AuthSettings → auth, DatabaseSettings → database)
+#[settings(CoreSettings | AuthSettings | DatabaseSettings)]
+pub struct ProjectSettings;
 ```
 
-**Environment Variable Sources:**
+The `|` syntax composes settings fragments into `ProjectSettings`. Each type must be a `#[settings(fragment = true, ...)]` struct. Built-in fragments:
+- **`CoreSettings`** — `debug`, `secret_key`, `language_code`, `time_zone`, `allowed_hosts`
+- **`AuthSettings`** — `jwt_secret`, `token_expiry`, `password_hashers`
+- **`DatabaseSettings`** — `engine`, `host`, `port`, `name`, `user`, `password`
 
-Reinhardt provides two types of environment variable sources with different priorities:
+Add project-specific fragments with explicit field names using `key: Type` syntax:
 
-- **`EnvSource`** (priority: 100) - High priority environment variables that override TOML files
-  ```rust
-  .add_source(EnvSource::new().with_prefix("REINHARDT_"))
-  ```
-
-- **`LowPriorityEnvSource`** (priority: 40) - Low priority environment variables that fall back to TOML files
-  ```rust
-  .add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
-  ```
-
-**Priority Order**:
-- Using `EnvSource`: Environment Variables > `{profile}.toml` > `base.toml` > Defaults
-- Using `LowPriorityEnvSource` (shown above): `{profile}.toml` > `base.toml` > Environment Variables > Defaults
-
-Choose `EnvSource` when environment variables should always take precedence (e.g., production deployments).
-Choose `LowPriorityEnvSource` when TOML files should be the primary configuration source (e.g., development).
+```rust
+#[settings(CoreSettings | AuthSettings | DatabaseSettings | mail: MailSettings)]
+pub struct ProjectSettings;
+```
 
 See [Settings Documentation](https://reinhardt-web.dev/docs/settings/) for more details.
 
-**Using the Built-in DefaultUser:**
+**Defining a User Model:**
 
-Reinhardt provides a ready-to-use `DefaultUser` implementation (requires `argon2-hasher` feature):
-
-```rust
-// users/models.rs
-use reinhardt::prelude::*;
-use reinhardt::DefaultUser;
-
-// Re-export DefaultUser as User for your app
-pub type User = DefaultUser;
-
-// DefaultUser includes:
-// - id: Uuid (primary key)
-// - username: String
-// - email: String
-// - password_hash: Option<String>
-// - first_name: String
-// - last_name: String
-// - is_active: bool
-// - is_staff: bool
-// - is_superuser: bool
-// - last_login: Option<DateTime<Utc>>
-// - date_joined: DateTime<Utc>
-
-// DefaultUser implements:
-// - BaseUser trait (authentication methods)
-// - FullUser trait (full user information)
-// - PermissionsMixin trait (permission management)
-// - Model trait (database operations)
-```
-
-**Defining Custom User Models:**
-
-If you need custom fields, define your own model:
+Define your own user model with `#[user(...)]` + `#[model(...)]`. These two
+attribute macros cooperate: `#[user]` implements the auth traits (`BaseUser`,
+`PermissionsMixin`, `AuthIdentity`, and optionally `FullUser`) on top of a
+normal Reinhardt model:
 
 ```rust
 // users/models.rs
 use reinhardt::prelude::*;
-use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
+use reinhardt::auth::Argon2Hasher;
 
+#[user(hasher = Argon2Hasher, username_field = "username", full = true)]
 #[model(app_label = "users", table_name = "users")]
-pub struct CustomUser {
+pub struct User {
 	#[field(primary_key = true)]
-	pub id: i64,
-
-	#[field(max_length = 255)]
-	pub email: String,
+	pub id: Uuid,
 
 	#[field(max_length = 100)]
 	pub username: String,
 
+	#[field(max_length = 255)]
+	pub email: String,
+
+	pub password_hash: Option<String>,
+
+	#[field(max_length = 150)]
+	pub first_name: String,
+
+	#[field(max_length = 150)]
+	pub last_name: String,
+
 	#[field(default = true)]
 	pub is_active: bool,
 
-	#[field(auto_now_add = true)]
-	pub created_at: DateTime<Utc>,
+	#[field(default = false)]
+	pub is_staff: bool,
 
-	// Add custom fields
+	#[field(default = false)]
+	pub is_superuser: bool,
+
+	pub last_login: Option<DateTime<Utc>>,
+
+	#[field(auto_now_add = true)]
+	pub date_joined: DateTime<Utc>,
+
+	// Add custom fields as needed:
 	#[field(max_length = 50, null = true)]
 	pub phone_number: Option<String>,
 }
 ```
+
+`#[user]` arguments:
+- `hasher` (required) — password hasher type (e.g., `Argon2Hasher`)
+- `username_field` (required) — name of the field used as the username
+- `full = true` (optional) — also implement `FullUser` (email, first_name, last_name, is_staff, date_joined)
 
 **Model Attribute Macro:**
 
@@ -530,14 +570,14 @@ For a complete list of field attributes, see the [Field Attributes Guide](https:
 The generated field accessors enable type-safe field references in queries:
 
 ```rust
-// Generated by #[model(...)] for DefaultUser
-impl DefaultUser {
-	pub const fn field_id() -> FieldRef<DefaultUser, Uuid> { FieldRef::new("id") }
-	pub const fn field_username() -> FieldRef<DefaultUser, String> { FieldRef::new("username") }
-	pub const fn field_email() -> FieldRef<DefaultUser, String> { FieldRef::new("email") }
-	pub const fn field_is_active() -> FieldRef<DefaultUser, bool> { FieldRef::new("is_active") }
-	pub const fn field_is_staff() -> FieldRef<DefaultUser, bool> { FieldRef::new("is_staff") }
-	pub const fn field_date_joined() -> FieldRef<DefaultUser, DateTime<Utc>> { FieldRef::new("date_joined") }
+// Generated by #[model(...)] for the User struct above:
+impl User {
+	pub const fn field_id() -> FieldRef<User, Uuid> { FieldRef::new("id") }
+	pub const fn field_username() -> FieldRef<User, String> { FieldRef::new("username") }
+	pub const fn field_email() -> FieldRef<User, String> { FieldRef::new("email") }
+	pub const fn field_is_active() -> FieldRef<User, bool> { FieldRef::new("is_active") }
+	pub const fn field_is_staff() -> FieldRef<User, bool> { FieldRef::new("is_staff") }
+	pub const fn field_date_joined() -> FieldRef<User, DateTime<Utc>> { FieldRef::new("date_joined") }
 	// ... other fields
 }
 ```
@@ -546,31 +586,30 @@ impl DefaultUser {
 
 ```rust
 use reinhardt::prelude::*;
-use reinhardt::DefaultUser;
+use crate::models::User;
 
 // Django-style F/Q object queries with type-safe field references
-async fn complex_user_query() -> Result<Vec<DefaultUser>, Box<dyn std::error::Error>> {
-	// Q objects with type-safe field references (using generated field accessors)
-	let active_query = Q::new()
-		.field("is_active").eq(true)
-		.and(Q::new().field("date_joined").gte(Now::new()));
+async fn complex_user_query() -> Result<Vec<User>, Box<dyn std::error::Error>> {
+	// Q objects for building complex conditions
+	let active_query = Q::new("is_active", "=", "true")
+		.and(Q::new("date_joined", ">=", "NOW()"));
 
 	// Database functions with type-safe field references
-	let email_lower = Lower::new(DefaultUser::field_email().into());
-	let username_upper = Upper::new(DefaultUser::field_username().into());
+	let email_lower = Lower::new(User::field_email().into());
+	let username_upper = Upper::new(User::field_username().into());
 
 	// Aggregations using field accessors
-	let user_count = Aggregate::count(DefaultUser::field_id().into());
-	let latest_joined = Aggregate::max(DefaultUser::field_date_joined().into());
+	let user_count = Aggregate::count(User::field_id().into());
+	let latest_joined = Aggregate::max(User::field_date_joined().into());
 
 	// Window functions for ranking
 	let rank_by_join_date = Window::new()
-		.partition_by(vec![DefaultUser::field_is_active().into()])
-		.order_by(vec![(DefaultUser::field_date_joined().into(), "DESC")])
+		.partition_by(vec![User::field_is_active().into()])
+		.order_by(vec![(User::field_date_joined().into(), "DESC")])
 		.function(RowNumber::new());
 
 	// Build and execute the query using QuerySet
-	let users = DefaultUser::objects()
+	let users = User::objects()
 		.filter(active_query)
 		.annotate("email_lower", email_lower)
 		.annotate("username_upper", username_upper)
@@ -632,182 +671,258 @@ pub fn get_installed_apps() -> Vec<String> {
 
 ### With Authentication
 
-Reinhardt provides Django-style user models with `BaseUser` and `FullUser` traits, along with comprehensive user management through `UserManager`.
+Reinhardt provides Django-style user models and permission primitives. You
+bring your own user struct (defined with `#[user(...)]` + `#[model(...)]` as
+shown in the previous section); the framework layers auth traits, a
+password-management workflow, groups, and object-level permissions on top.
 
-**Note:** Reinhardt includes a built-in `DefaultUser` implementation. You can use it directly or define your own user model as shown below.
+**Two entry points for user data:**
 
-**User Management Example:**
+| Need | Use |
+|------|-----|
+| ORM queries on users (filter/annotate/aggregate) | `User::objects()` (from `#[model]`) |
+| User lifecycle: create/password-hashing/superuser | A `BaseUserManager<User>` implementation |
+| Groups | `GroupManager` |
+| Object-level permissions | `ObjectPermissionManager` |
+
+> `User::objects()` is *not* a shortcut to a manager — it is the `QuerySet`
+> entry point from the `Model` trait. Manager types
+> (`BaseUserManager<User>` for the user lifecycle, `GroupManager`,
+> `ObjectPermissionManager`) are constructed directly via `::new()`.
+
+**User lifecycle example:**
+
+For a custom user, implement `BaseUserManager<User>` (see
+`reinhardt::auth::BaseUserManager`). The signature required is:
 
 ```rust
+use std::collections::HashMap;
+use async_trait::async_trait;
+use reinhardt::auth::{BaseUserManager, Argon2Hasher, PasswordHasher};
 use reinhardt::prelude::*;
+use serde_json::Value;
+use crate::models::User;
 
-// Create and manage users with UserManager
-async fn manage_users() -> Result<(), Box<dyn std::error::Error>> {
-	let hasher = Argon2Hasher::new();
-	let user_manager = UserManager::new(hasher);
+pub struct UserManager {
+	hasher: Argon2Hasher,
+}
 
-	// Create a new user
-	let user = user_manager.create_user(CreateUserData {
-		username: "alice".to_string(),
-		email: "alice@example.com".to_string(),
-		password: "secure_password".to_string(),
-		is_active: true,
-		is_admin: false,
-	}).await?;
+impl UserManager {
+	pub fn new() -> Self {
+		Self { hasher: Argon2Hasher::new() }
+	}
+}
 
-	// Update user information
-	user_manager.update_user(&user.id.to_string(), UpdateUserData {
-		email: Some("alice.smith@example.com".to_string()),
-		is_active: Some(true),
-		..Default::default()
-	}).await?;
-
-	// Manage groups and permissions
-	let group_manager = GroupManager::new();
-	let editors = group_manager.create_group(CreateGroupData {
-		name: "editors".to_string(),
-	}).await?;
-
-	// Assign object-level permissions
-	let mut perm_manager = ObjectPermissionManager::new();
-	perm_manager.grant_permission("alice", "article:123", "edit");
-	let perm = ObjectPermission::new(perm_manager, "article:123", "edit");
-	// Use perm with the permission system to check access
-
-	Ok(())
+#[async_trait]
+impl BaseUserManager<User> for UserManager {
+	async fn create_user(
+		&mut self,
+		username: &str,
+		password: Option<&str>,
+		extra: HashMap<String, Value>,
+	) -> Result<User, reinhardt::Error> {
+		let mut user = User::new(username.to_string(), /* email */ String::new());
+		if let Some(pw) = password {
+			user.set_password(pw)?;
+		}
+		// Apply extra fields (email, first_name, …) as needed …
+		user.save().await?;
+		Ok(user)
+	}
 }
 ```
 
-Use the built-in `DefaultUser` in `users/models.rs`:
+Then:
 
 ```rust
-// users/models.rs
-use reinhardt::DefaultUser;
-
-// Re-export DefaultUser as your User type
-pub type User = DefaultUser;
-
-// DefaultUser already implements:
-// - BaseUser trait (authentication methods)
-// - FullUser trait (username, email, first_name, last_name, etc.)
-// - PermissionsMixin trait (permission management)
-// - Model trait (database operations)
+let mut users = UserManager::new();
+let alice = users
+	.create_user(
+		"alice",
+		Some("secure_password"),
+		HashMap::from([("email".into(), serde_json::json!("alice@example.com"))]),
+	)
+	.await?;
 ```
 
-**For Custom User Models:**
+**Groups and object-level permissions:**
 
-If you need additional fields beyond DefaultUser, define your own:
+`GroupManager` and `ObjectPermissionManager` are always available and are
+instantiated directly:
 
 ```rust
-// users/models.rs
-use reinhardt::auth::{BaseUser, FullUser, PermissionsMixin, Argon2Hasher};
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use reinhardt::auth::{GroupManager, CreateGroupData, ObjectPermissionManager};
 
-#[model(app_label = "users", table_name = "users")]
-pub struct CustomUser {
-	#[field(primary_key = true)]
-	pub id: Uuid,
+let mut groups = GroupManager::new();
+let editors = groups
+	.create_group(CreateGroupData { name: "editors".to_string() })
+	.await?;
 
-	#[field(max_length = 150)]
-	pub username: String,
-
-	#[field(max_length = 255)]
-	pub email: String,
-
-	pub password_hash: Option<String>,
-
-	#[field(max_length = 150)]
-	pub first_name: String,
-
-	#[field(max_length = 150)]
-	pub last_name: String,
-
-	#[field(default = true)]
-	pub is_active: bool,
-
-	#[field(default = false)]
-	pub is_staff: bool,
-
-	#[field(default = false)]
-	pub is_superuser: bool,
-
-	pub last_login: Option<DateTime<Utc>>,
-
-	#[field(auto_now_add = true)]
-	pub date_joined: DateTime<Utc>,
-
-	// Custom fields
-	#[field(max_length = 20, null = true)]
-	pub phone_number: Option<String>,
-}
-
-impl BaseUser for CustomUser {
-	type PrimaryKey = Uuid;
-	type Hasher = Argon2Hasher;
-
-	fn get_username_field() -> &'static str { "username" }
-	fn get_username(&self) -> &str { &self.username }
-	fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
-	fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
-	fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-	fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
-	fn is_active(&self) -> bool { self.is_active }
-}
-
-impl FullUser for CustomUser {
-	fn username(&self) -> &str { &self.username }
-	fn email(&self) -> &str { &self.email }
-	fn first_name(&self) -> &str { &self.first_name }
-	fn last_name(&self) -> &str { &self.last_name }
-	fn is_staff(&self) -> bool { self.is_staff }
-	fn is_superuser(&self) -> bool { self.is_superuser }
-	fn date_joined(&self) -> DateTime<Utc> { self.date_joined }
-}
+let mut perms = ObjectPermissionManager::new();
+perms.grant_permission("alice", "article:123", "edit").await;
 ```
 
 Use JWT authentication in your app's `views/profile.rs`:
 
 ```rust
 // users/views/profile.rs
-use reinhardt::auth::{JwtAuth, BaseUser};
-use reinhardt::{Request, Response, StatusCode, ViewResult, get};
-use reinhardt::db::DatabaseConnection;
-use std::sync::Arc;
+use reinhardt::{Response, StatusCode, ViewResult, get};
+use reinhardt::auth::AuthUser;
 use crate::models::User;
 
+// JwtAuthMiddleware must be registered in urls.rs to populate AuthState in request extensions
 #[get("/profile", name = "get_profile")]
 pub async fn get_profile(
-	req: Request,
-	#[inject] db: Arc<DatabaseConnection>,
+	#[inject] AuthUser(user): AuthUser<User>,
 ) -> ViewResult<Response> {
-	// Extract JWT token from Authorization header
-	let auth_header = req.headers.get("authorization")
-		.and_then(|h| h.to_str().ok())
-		.ok_or("Missing Authorization header")?;
-
-	let token = auth_header.strip_prefix("Bearer ")
-		.ok_or("Invalid Authorization header format")?;
-
-	// Verify token and get user ID
-	let jwt_auth = JwtAuth::new(b"your-secret-key");
-	let claims = jwt_auth.verify_token(token)?;
-
-	// Load user from database using claims.user_id
-	let user = User::find_by_id(&db, &claims.user_id).await?;
-
-	// Check if user is active
+	// AuthUser<U> loads the full user model from the database using the AuthState
+	// set by authentication middleware. Returns an injection error if unauthenticated.
 	if !user.is_active() {
 		return Err("User account is inactive".into());
 	}
 
-	// Return user profile as JSON
 	let json = serde_json::to_string(&user)?;
-	Ok(Response::new(StatusCode::OK)
-		.with_body(json))
+	Ok(Response::new(StatusCode::OK).with_body(json))
 }
 ```
+
+### Dependency Injection
+
+Reinhardt ships a FastAPI-inspired, async-first dependency injection (DI)
+system in the `reinhardt-di` crate. It is type-safe, scope-aware (`singleton` /
+`request` / `transient`), composable (dependencies can depend on other
+dependencies), and registered at compile time via the
+[`inventory`](https://crates.io/crates/inventory) crate so that there is no
+runtime reflection or startup discovery cost.
+
+Three primitives drive everyday use:
+
+1. **`#[injectable]`** — turn a struct into an injectable service.
+2. **`#[injectable_factory]`** — register an async function as a factory for
+   types you *cannot* annotate yourself (foreign types, trait objects,
+   connection handles built from settings).
+3. **`#[inject]`** with **`Depends<T>`** — receive dependencies in a handler
+   (or another injectable) without wiring anything by hand.
+
+#### 1. `#[injectable]` — struct-level injection
+
+Apply `#[injectable]` to any struct whose fields are themselves injectable.
+Non-injected fields are marked with `#[no_inject]` and must implement
+`Default` (or be supplied via the generated builder):
+
+```rust
+use reinhardt::di::injectable;
+
+// `scope` is passed as a macro argument; accepted values are
+// "singleton", "request", or "transient" (one literal, not an alternation).
+// When omitted, `#[injectable]` defaults to `request` and
+// `#[injectable_factory]` defaults to `singleton`. `Config` is registered
+// as a singleton here so it matches the singleton-scoped
+// `database_connection` factory below: mixing a longer-lived dependent
+// with a shorter-lived dependency is not rejected by the registry, but it
+// captures whichever request-scoped instance was live at first resolution
+// and reuses it for the singleton's lifetime — almost never what you want.
+#[injectable(scope = "singleton")]
+#[derive(Clone)]
+pub struct Config {
+    #[no_inject]
+    pub database_url: String,
+}
+```
+
+`#[injectable]` generates an `impl Injectable for Config` and a compile-time
+registration entry (via `inventory::submit!`) so the type resolves from
+`InjectionContext` automatically.
+
+#### 2. `#[injectable_factory]` — the pseudo orphan rule
+
+Rust's orphan rule forbids `impl Injectable for SomeForeignType`. For those
+cases — database connections, `Arc<dyn Trait>`, third-party handles — Reinhardt
+offers `#[injectable_factory]`. You write an async function whose return type
+is the type to register; the macro wraps it, submits an `inventory` entry, and
+hands the returned value to the DI container:
+
+```rust
+use reinhardt::db::DatabaseConnection;
+use reinhardt::di::{Depends, injectable_factory};
+
+#[injectable_factory(scope = "singleton")]
+async fn database_connection(
+    #[inject] config: Depends<Config>,
+) -> DatabaseConnection {
+    DatabaseConnection::connect(&config.database_url)
+        .await
+        .expect("failed to open database connection")
+}
+```
+
+**Every parameter of an `#[injectable_factory]` function must be annotated
+with `#[inject]`.** There is no way to pass runtime arguments; factories only
+compose over other injectables.
+
+**The pseudo orphan rule.** To prevent user factories from silently shadowing
+framework-owned types (e.g., `reinhardt_di::InjectionContext`, routers,
+middleware bindings), Reinhardt validates every registered factory at startup.
+If the return type's fully-qualified name begins with a
+framework-reserved crate prefix (`reinhardt::`, `reinhardt_di::`, `reinhardt_http::`,
+… 37 prefixes total), registration is rejected unless the factory itself lives
+inside that crate. This emulates the orphan rule across the DI boundary: foreign
+types are fair game, framework types are not. The validator lives in
+[`crates/reinhardt-di/src/validation.rs`](crates/reinhardt-di/src/validation.rs)
+(`check_framework_type_override`, lines 51–129).
+
+#### 3. `#[inject]` + `Depends<T>` in handlers
+
+Use `#[inject]` on a handler parameter to have the DI container resolve it
+before the handler runs. Wrap the requested type in `Depends<T>` so that
+caching and scope are honoured:
+
+```rust
+use reinhardt::{get, Response, StatusCode, ViewResult};
+use reinhardt::di::Depends;
+use reinhardt::db::DatabaseConnection;
+use reinhardt::extractors::Path;
+use crate::models::User;
+
+#[get("/users/{id}/", name = "get_user")]
+pub async fn get_user(
+    Path(id): Path<i64>,
+    #[inject] db: Depends<DatabaseConnection>,
+) -> ViewResult<Response> {
+    let user = User::objects().filter(User::field_id().eq(id)).get().await?;
+    let body = serde_json::to_string(&user)?;
+    Ok(Response::new(StatusCode::OK).with_body(body))
+}
+```
+
+**Caching.** Within a scope boundary, resolving the same `Depends<T>` twice
+returns the *same* instance. Opt out per-call with `#[inject(cache = false)]`:
+
+```rust
+pub async fn uncached_handler(
+    #[inject(cache = false)] db: Depends<DatabaseConnection>,
+) -> ViewResult<Response> { /* always a fresh resolution within the scope */ }
+```
+
+#### Manual `impl Injectable`
+
+When neither macro fits (generic bounds the macro cannot infer, hand-written
+builders, conditional registration), implement `Injectable` directly:
+
+```rust
+use async_trait::async_trait;
+use reinhardt::di::{Injectable, InjectionContext, DiResult};
+
+#[async_trait]
+impl Injectable for MyService {
+    async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+        Ok(MyService::new())
+    }
+}
+```
+
+For the full DI reference, see the [`reinhardt-di` crate
+documentation](https://docs.rs/reinhardt-di).
 
 ### Endpoint Definition
 
@@ -818,16 +933,16 @@ Reinhardt uses HTTP method decorators to define endpoints:
 Use `#[get]`, `#[post]`, `#[put]`, `#[delete]` to define routes:
 
 ```rust
-use reinhardt::{get, post, Request, Response, ViewResult};
+use reinhardt::{get, post, Response, ViewResult};
 use serde_json::json;
 
 #[get("/")]
-pub async fn hello(_req: Request) -> ViewResult<Response> {
+pub async fn hello() -> ViewResult<Response> {
 	Ok(Response::ok().with_body("Hello, World!"))
 }
 
 #[post("/users")]
-pub async fn create_user(_req: Request) -> ViewResult<Response> {
+pub async fn create_user() -> ViewResult<Response> {
 	let body = json!({"status": "created"});
 	Response::ok().with_json(&body).map_err(Into::into)
 }
@@ -844,28 +959,25 @@ pub async fn create_user(_req: Request) -> ViewResult<Response> {
 Combine HTTP method decorators with `#[inject]` for automatic dependency injection:
 
 ```rust
-use reinhardt::{get, Request, Response, StatusCode, ViewResult};
+use reinhardt::{get, Response, StatusCode, ViewResult};
+use reinhardt::extractors::Path;
+use reinhardt::di::Depends;
 use reinhardt::db::DatabaseConnection;
-use std::sync::Arc;
+use crate::models::User;
 
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
-	req: Request,
-	#[inject] db: Arc<DatabaseConnection>,  // Automatically injected
+	Path(id): Path<i64>,
+	#[inject] db: Depends<DatabaseConnection>,
 ) -> ViewResult<Response> {
-	let id = req.path_params.get("id")
-		.ok_or("Missing id")?
-		.parse::<i64>()?;
-
-	// Use injected database connection
-	let user = db.query("SELECT * FROM users WHERE id = $1")
-		.bind(id)
-		.fetch_one()
+	// Path extractor parses and validates the {id} segment automatically
+	let user = User::objects()
+		.filter(User::field_id().eq(id))
+		.get()
 		.await?;
 
 	let json = serde_json::to_string(&user)?;
-	Ok(Response::new(StatusCode::OK)
-		.with_body(json))
+	Ok(Response::new(StatusCode::OK).with_body(json))
 }
 ```
 
@@ -889,39 +1001,35 @@ In your app's `views/user.rs`:
 
 ```rust
 // users/views/user.rs
-use reinhardt::{Request, Response, StatusCode, ViewResult, get};
+use reinhardt::{Response, StatusCode, ViewResult, get};
+use reinhardt::extractors::{Path, Query};
+use reinhardt::di::Depends;
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
-use std::sync::Arc;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct GetUserParams {
+	pub include_inactive: Option<bool>,
+}
 
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
-	req: Request,
-	#[inject] db: Arc<DatabaseConnection>,
+	Path(id): Path<i64>,
+	Query(params): Query<GetUserParams>,
+	#[inject] db: Depends<DatabaseConnection>,
 ) -> ViewResult<Response> {
-	// Extract path parameter from request
-	let id = req.path_params.get("id")
-		.ok_or("Missing id parameter")?
-		.parse::<i64>()
-		.map_err(|_| "Invalid id format")?;
+	let user = User::objects()
+		.filter(User::field_id().eq(id))
+		.get()
+		.await?;
 
-	// Extract query parameters (e.g., ?include_inactive=true)
-	let include_inactive = req.query_params.get("include_inactive")
-		.and_then(|v| v.parse::<bool>().ok())
-		.unwrap_or(false);
-
-	// Fetch user from database using injected connection
-	let user = User::find_by_id(&db, id).await?;
-
-	// Check active status if needed
-	if !include_inactive && !user.is_active {
+	if !params.include_inactive.unwrap_or(false) && !user.is_active {
 		return Err("User is inactive".into());
 	}
 
-	// Return as JSON
 	let json = serde_json::to_string(&user)?;
-	Ok(Response::new(StatusCode::OK)
-		.with_body(json))
+	Ok(Response::new(StatusCode::OK).with_body(json))
 }
 ```
 
@@ -982,47 +1090,35 @@ In your app's `views/user.rs`:
 
 ```rust
 // users/views/user.rs
-use reinhardt::{Request, Response, StatusCode, ViewResult, post};
+use reinhardt::{Response, StatusCode, ViewResult, post};
+use reinhardt::extractors::Json;
+use reinhardt::validation::Validated;
+use reinhardt::di::Depends;
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
 use crate::serializers::{CreateUserRequest, UserResponse};
-use reinhardt::Validate;
-use std::sync::Arc;
 
 #[post("/users", name = "create_user")]
 pub async fn create_user(
-	mut req: Request,
-	#[inject] db: Arc<DatabaseConnection>,
+	Json(body): Json<CreateUserRequest>,
+	Validated(create_req): Validated<CreateUserRequest>,
+	#[inject] db: Depends<DatabaseConnection>,
 ) -> ViewResult<Response> {
-	// Parse request body
-	let body_bytes = std::mem::take(&mut req.body);
-	let create_req: CreateUserRequest = serde_json::from_slice(&body_bytes)?;
+	// Json<T> deserializes the body; Validated<T> runs #[validate] rules and yields the validated value
 
-	// Validate request
-	create_req.validate()?;
+	// Create user using the auto-generated new() function from #[user] + #[model]
+	let mut user = User::new(create_req.username, create_req.email);
 
-	// Create user
-	let mut user = User {
-		id: 0, // Will be set by database
-		username: create_req.username,
-		email: create_req.email,
-		password_hash: None,
-		is_active: true,
-		created_at: Utc::now(),
-	};
-
-	// Hash password using BaseUser trait
+	// Hash and set password using BaseUser trait
 	user.set_password(&create_req.password)?;
 
-	// Save to database using injected connection
+	// Save to database
 	user.save(&db).await?;
 
-	// Convert to response
 	let response_data = UserResponse::from(user);
 	let json = serde_json::to_string(&response_data)?;
 
-	Ok(Response::new(StatusCode::CREATED)
-		.with_body(json))
+	Ok(Response::new(StatusCode::CREATED).with_body(json))
 }
 ```
 
@@ -1074,8 +1170,19 @@ Reinhardt offers modular components you can mix and match:
 | Middleware          | `reinhardt-middleware`    | HTTP middleware components, CORS, security  |
 | **Testing**         |                           |                                             |
 | Test Utilities      | `reinhardt-test`          | Testing helpers, fixtures, TestContainers   |
+| Test Kit            | `reinhardt-testkit`       | Higher-level test abstractions and utilities|
 
 **For detailed feature flags within each crate, see the [Feature Flags Guide](https://reinhardt-web.dev/docs/feature-flags/).**
+
+---
+
+## Ecosystem
+
+| Project | Status | Description |
+|---------|--------|-------------|
+| [reinhardt-cloud](https://github.com/kent8192/reinhardt-cloud) | WIP | Kubernetes operator & CLI for deploying Reinhardt apps |
+
+> **Dog-fooding in progress:** We are actively developing reinhardt-cloud as the deployment infrastructure for Reinhardt applications, and using it to deploy reinhardt-web itself. As a work-in-progress project, APIs and features may change significantly.
 
 ---
 

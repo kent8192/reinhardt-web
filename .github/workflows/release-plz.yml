@@ -3,12 +3,56 @@ name: Release-plz
 permissions:
   contents: write
   pull-requests: write
+  discussions: write
 
 on:
   push:
     branches:
       - main
+      # Pre-release lifecycle (alpha/rc) is driven by Cargo.toml's current
+      # version suffix on the develop branch. release-plz creates a Release
+      # PR that increments the prerelease counter (e.g., m.n.0-rc.1 -> rc.2).
+      # See instructions/RELEASE_PROCESS.md "Develop Branch Release Workflow".
+      - 'develop/**'
+    paths-ignore:
+      - 'announcements/**'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode: release (normal) or backfill (generate announcements for all past releases)"
+        type: choice
+        options:
+          - release
+          - backfill
+        default: release
+  pull_request:
+    types: [closed]
+    paths: ['announcements/**']
+
+# Serialize per-base-branch but never cancel an in-flight release-plz run;
+# Release PRs (Cargo.toml + CHANGELOG.md updates) must complete to keep the
+# release branch in a consistent state.
+#
+# `github.ref` resolves differently per trigger: it is `refs/heads/main` (or
+# `refs/heads/develop/<v>`) for push/workflow_dispatch but `refs/pull/<n>/merge`
+# for the `pull_request: closed` trigger on `announcements/**`. Keying off
+# `github.ref` alone would let a PR-closed run race against a push-to-main run
+# even though both mutate the same release state. Use the PR base branch when
+# the trigger is `pull_request`, and `github.ref_name` (e.g., `main`,
+# `develop/0.2.0`) otherwise, so all triggers that target the same branch land
+# in the same group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.base.ref || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
+  # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
+  # once all three upstreams ship node24 releases.
+  #
+  # Ideal implementation (without workaround):
+  #   (no env override; let runner default kick in)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # Native two-step release workflow:
@@ -26,10 +70,17 @@ jobs:
     name: Release PR
     if: github.event_name == 'push'
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
-    timeout-minutes: 30
+    timeout-minutes: 360
     concurrency:
+      # Cancel any in-flight Release PR regeneration when a newer push lands
+      # on the same ref. release-plz rebuilds the release-plz-* branch from
+      # the latest Cargo.toml each run, so older runs are stale the moment
+      # a newer commit appears. Safe because this job only writes to the
+      # release-plz-* branch (idempotent regeneration), not to crates.io.
+      # The publish job (release-plz-release) intentionally keeps
+      # cancel-in-progress: false to avoid mid-publish interruption.
       group: release-plz-${{ github.ref }}
-      cancel-in-progress: false
+      cancel-in-progress: true
     steps:
       - name: Generate GitHub token
         uses: actions/create-github-app-token@v2
@@ -47,9 +98,13 @@ jobs:
         uses: ./.github/actions/setup-rust
 
       - name: Setup protoc
-        uses: ./.github/actions/setup-protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run release-plz release-pr
+        id: release-plz-pr
         uses: release-plz/action@v0.5
         with:
           command: release-pr
@@ -57,11 +112,151 @@ jobs:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+      - name: Update version references in release branch
+        # Guard against no-op release-pr runs: when release-plz/action@v0.5
+        # finds nothing to release it sets outputs.pr to "{}" (not empty),
+        # which makes `outputs.pr != ''` truthy. Without the extra checks,
+        # fromJson('{}').head_branch becomes null -> HEAD_BRANCH empty ->
+        # `git fetch origin ""` fails with exit 128. See run 24864402077.
+        #
+        # Use GraphQL createCommitOnBranch (NOT git push) so the new commit's
+        # committer is `web-flow`, the only identity that reliably triggers
+        # `pull_request: synchronize`. Pushing via `git push` from a workflow
+        # runner preserves the workflow-configured `[bot]` committer, which
+        # GitHub treats as bot-origin and suppresses the synchronize event,
+        # leaving the Release PR head SHA without any Actions check-runs.
+        # See #4042 (this fix), #4029, #4031 (incomplete fix).
+        if: >-
+          steps.release-plz-pr.outputs.pr != ''
+          && steps.release-plz-pr.outputs.pr != '{}'
+          && fromJson(steps.release-plz-pr.outputs.pr).head_branch != null
+        env:
+          HEAD_BRANCH: ${{ fromJson(steps.release-plz-pr.outputs.pr).head_branch }}
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "$HEAD_BRANCH" ]; then
+            echo "No release PR created (HEAD_BRANCH is empty); skipping."
+            exit 0
+          fi
+
+          # Sync the working tree to the release branch HEAD (created by
+          # release-plz/action) so update-version-refs.sh edits the right
+          # snapshot. We do NOT need a local commit -- the GraphQL mutation
+          # below creates the remote commit directly.
+          git fetch origin "$HEAD_BRANCH"
+          git checkout "$HEAD_BRANCH"
+          HEAD_OID=$(git rev-parse HEAD)
+
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | \
+                    sed 's/version = "\(.*\)"/\1/')
+
+          ./scripts/update-version-refs.sh "$VERSION"
+
+          if git diff --quiet; then
+            echo "update-version-refs.sh produced no changes; skipping commit."
+            exit 0
+          fi
+
+          # Build additions/deletions arrays for the GraphQL mutation.
+          # Stream entries to NDJSON files so each `jq` invocation has a
+          # tiny argv -- accumulating the JSON via `--argjson` would exceed
+          # the kernel's ARG_MAX once base64-encoded contents pile up.
+          # See #4045.
+          ADDITIONS_FILE=$(mktemp)
+          DELETIONS_FILE=$(mktemp)
+          trap 'rm -f "$ADDITIONS_FILE" "$DELETIONS_FILE"' EXIT
+          while IFS=$'\t' read -r status path; do
+            case "$status" in
+              M|A)
+                base64 -w0 < "$path" \
+                  | jq -ncR --arg p "$path" '{path: $p, contents: input}' \
+                  >> "$ADDITIONS_FILE"
+                ;;
+              D)
+                jq -nc --arg p "$path" '{path: $p}' >> "$DELETIONS_FILE"
+                ;;
+              *)
+                echo "::warning::Unsupported diff status '$status' for path '$path'; skipping."
+                ;;
+            esac
+          done < <(git diff --name-status HEAD)
+
+          # `--slurpfile` reads each file as an array of its JSON values, so
+          # the large base64 payload never crosses the command line.
+          PAYLOAD_FILE=$(mktemp)
+          jq -n \
+            --arg query 'mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url oid } } }' \
+            --arg repo "$REPO" \
+            --arg branch "$HEAD_BRANCH" \
+            --arg msg "docs: update version references to v${VERSION}" \
+            --arg oid "$HEAD_OID" \
+            --slurpfile adds "$ADDITIONS_FILE" \
+            --slurpfile dels "$DELETIONS_FILE" \
+            '{
+              query: $query,
+              variables: {
+                input: {
+                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                  message: { headline: $msg },
+                  expectedHeadOid: $oid,
+                  fileChanges: { additions: $adds, deletions: $dels }
+                }
+              }
+            }' > "$PAYLOAD_FILE"
+
+          # `gh api graphql --input` posts the assembled body. Authentication
+          # uses GITHUB_TOKEN (the release-plz App installation token); this
+          # works because GraphQL accepts the same App token that already had
+          # contents:write permission for the previous git push path.
+          RESPONSE=$(gh api graphql --input "$PAYLOAD_FILE")
+          rm -f "$PAYLOAD_FILE"
+
+          NEW_OID=$(jq -r '.data.createCommitOnBranch.commit.oid' <<< "$RESPONSE")
+          NEW_URL=$(jq -r '.data.createCommitOnBranch.commit.url' <<< "$RESPONSE")
+          if [ -z "$NEW_OID" ] || [ "$NEW_OID" = "null" ]; then
+            echo "::error::createCommitOnBranch did not return a commit oid"
+            echo "$RESPONSE"
+            exit 1
+          fi
+          echo "Created version-refs commit $NEW_OID via GraphQL: $NEW_URL"
+
   release-plz-release:
     name: Release
-    if: github.event_name == 'push'
+    # On main, always run on push — the existing two-stage workflow with
+    # release_always=true (KI-5 phantom-version-bump fix) means release-plz
+    # itself decides whether to publish based on Cargo.toml vs crates.io.
+    #
+    # On develop/**, gate the job on Release-PR-merge commits to avoid
+    # spinning up a self-hosted runner + cargo registry sync for every
+    # routine feat/fix push (where Cargo.toml is unchanged and publish would
+    # always skip). Two commit-message shapes are accepted to cover both
+    # GitHub merge strategies:
+    #
+    #   - squash-merge → `chore: release ...` (release-plz's `pr_name`)
+    #   - regular merge → `Merge pull request #N from .../release-plz-...`
+    #     (release-plz's `pr_branch_prefix = "release-plz-"`)
+    #
+    # `startsWith()` is used for the squash-merge form so we don't false-match
+    # arbitrary commits that happen to contain the substring `chore: release`
+    # in their body (e.g. `feat: add release-plz-compatible versioning`).
+    # `contains()` is retained for the merge-commit form because the GitHub
+    # default subject is `Merge pull request #N from <repo>/release-plz-...`,
+    # which doesn't start with the release-plz marker.
+    #
+    # release-plz-pr (above) still runs on every develop/** push, so the
+    # next Release PR is always kept up to date.
+    if: |
+      github.event_name == 'push' && (
+        github.ref == 'refs/heads/main' ||
+        startsWith(github.event.head_commit.message, 'chore: release') ||
+        contains(github.event.head_commit.message, 'release-plz-')
+      )
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
-    timeout-minutes: 30
+    timeout-minutes: 360
+    outputs:
+      released: ${{ steps.check-release.outputs.released }}
     concurrency:
       group: release-plz-release-${{ github.ref }}
       cancel-in-progress: false
@@ -82,7 +277,10 @@ jobs:
         uses: ./.github/actions/setup-rust
 
       - name: Setup protoc
-        uses: ./.github/actions/setup-protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install GitHub CLI (self-hosted)
         run: |
@@ -100,6 +298,15 @@ jobs:
       - name: Clear cargo registry git index cache
         run: rm -rf ~/.cargo/registry/index/github.com-*
 
+      - name: Snapshot tags before release
+        id: tags-before
+        run: |
+          TAGS_BEFORE_FILE="${RUNNER_TEMP}/tags-before-${GITHUB_RUN_ID}.txt"
+          git tag --list 'reinhardt-web@v*' --sort=version:refname > "$TAGS_BEFORE_FILE"
+          echo "tags_file=$TAGS_BEFORE_FILE" >> "$GITHUB_OUTPUT"
+          echo "Tags before release:"
+          cat "$TAGS_BEFORE_FILE"
+
       - name: Publish to crates.io and create releases (attempt 1/3)
         id: release-attempt-1
         continue-on-error: true
@@ -113,8 +320,11 @@ jobs:
       - name: Wait for crates.io rate limit reset (attempt 1)
         if: steps.release-attempt-1.outcome == 'failure'
         run: |
-          echo "First publish attempt failed. Waiting 120s for crates.io rate limit reset..."
-          sleep 120
+          # crates.io PublishUpdate: burst 30, 1 token / 60s.
+          # Workspace has 47 publishable crates -> overflow = 47 - 30 = 17 tokens.
+          # Wait 1200s (20min) to refill the overflow with margin before retrying.
+          echo "First publish attempt failed. Waiting 1200s (20min) to refill PublishUpdate overflow (47 - 30 = 17 tokens, with margin)..."
+          sleep 1200
 
       - name: Clear registry index for retry (attempt 1)
         if: steps.release-attempt-1.outcome == 'failure'
@@ -134,8 +344,10 @@ jobs:
       - name: Wait for crates.io rate limit reset (attempt 2)
         if: steps.release-attempt-1.outcome == 'failure' && steps.release-attempt-2.outcome == 'failure'
         run: |
-          echo "Second publish attempt failed. Waiting 120s for crates.io rate limit reset..."
-          sleep 120
+          # crates.io PublishUpdate: burst 30, 1 token / 60s.
+          # Wait 30 * 60 = 1800s (30min) to fully refill the burst (covers all 47 crates).
+          echo "Second publish attempt failed. Waiting 1800s (30min) to fully refill PublishUpdate burst (30 tokens)..."
+          sleep 1800
 
       - name: Clear registry index for retry (attempt 2)
         if: steps.release-attempt-1.outcome == 'failure' && steps.release-attempt-2.outcome == 'failure'
@@ -149,3 +361,359 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Check if release was made
+        id: check-release
+        if: always()
+        env:
+          TAGS_BEFORE_FILE: ${{ steps.tags-before.outputs.tags_file }}
+        run: |
+          TAGS_AFTER_FILE="${RUNNER_TEMP}/tags-after-${GITHUB_RUN_ID}.txt"
+
+          git fetch --tags --force
+          git tag --list 'reinhardt-web@v*' --sort=version:refname > "$TAGS_AFTER_FILE"
+          echo "Tags after release:"
+          cat "$TAGS_AFTER_FILE"
+
+          if [ ! -f "$TAGS_BEFORE_FILE" ]; then
+            echo "::warning::Missing tag snapshot: $TAGS_BEFORE_FILE"
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! NEW_TAGS=$(comm -13 "$TAGS_BEFORE_FILE" "$TAGS_AFTER_FILE"); then
+            echo "::warning::Failed to compare tag snapshots"
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -n "$NEW_TAGS" ]; then
+            echo "New tags detected:"
+            echo "$NEW_TAGS"
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No new tags detected"
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # --- Release Announcement Automation ---
+  # Job 3: Generate announcement content and create PR for human review
+  # Job 4: Post approved announcement to GitHub Discussions
+
+  release-announcement-pr:
+    name: Create Release Announcement PR
+    # Announcements are produced only for releases originating from main.
+    # Pre-release tags from develop/** push are skipped by the branch guard
+    # below (github.ref == 'refs/heads/main'). The previous stable-only tag
+    # filter was removed in #4692 because the branch guard already enforces
+    # the intent of #4541, and the regex also prevented legitimate RC
+    # releases on main (e.g. v0.1.0-rc.30) from receiving announcements.
+    if: |
+      always() &&
+      (
+        (github.event_name == 'push' && needs.release-plz-release.outputs.released == 'true' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch')
+      )
+    needs: [release-plz-release]
+    runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
+    timeout-minutes: 60
+    steps:
+      - name: Generate GitHub token
+        uses: actions/create-github-app-token@v2
+        id: generate-token
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ steps.generate-token.outputs.token }}
+
+      # The AWS Packer AMI (infra/github-runners/packer/reinhardt-runner.pkr.hcl)
+      # bakes in gh / jq / git / curl / docker / protoc / cargo-make but NOT
+      # Node.js. The runner agent's bundled Node is only used to execute JS
+      # actions and is not on PATH for shell steps, so `npm install -g` below
+      # would fail without an explicit Node setup. Issue #4694.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Determine tags to process
+        id: tags
+        env:
+          BACKFILL_MODE: ${{ inputs.mode }}
+        run: |
+          # Scope tag selection to the checked-out HEAD's history via
+          # `--merged HEAD`. Tags are a global namespace, so without this
+          # constraint a higher semver tag from develop/** (e.g.
+          # v0.2.0-alpha.5) can shadow a newly pushed main release tag
+          # (e.g. v0.1.0-rc.31) and cause the wrong tag to be processed.
+          # With --merged HEAD:
+          #   - push to main: only main-reachable tags are considered, so
+          #     the new main release tag is correctly selected.
+          #   - workflow_dispatch from main: same scope; develop/** tags
+          #     are excluded automatically.
+          #   - workflow_dispatch from develop/**: tags reachable from the
+          #     develop HEAD (including the develop branch's own prerelease
+          #     tags) are considered, allowing alpha/rc announcements to
+          #     be backfilled from the matching develop checkout.
+          # See #4692 (regression fix) and CodeRabbit review on PR #4693.
+          # Duplicate generation for tags that already have announcements
+          # or Discussions is prevented by the file-exists and
+          # Discussion-exists checks further down in this job.
+          if [ "$BACKFILL_MODE" = "backfill" ]; then
+            TAGS=$(git tag --merged HEAD --list 'reinhardt-web@v*' --sort=version:refname | tr '\n' ' ')
+          else
+            TAGS=$(git tag --merged HEAD --list 'reinhardt-web@v*' --sort=-version:refname | head -1)
+          fi
+
+          if [ -z "$TAGS" ]; then
+            echo "::notice::No reinhardt-web tags found. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Processing tags: $TAGS"
+          fi
+
+      - name: Collect data and generate announcements
+        if: steps.tags.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BACKFILL_MODE: ${{ inputs.mode }}
+          TAGS_TO_PROCESS: ${{ steps.tags.outputs.tags }}
+        run: |
+          FAILED_TAGS=""
+
+          for TAG in $TAGS_TO_PROCESS; do
+            VERSION="${TAG#reinhardt-web@v}"
+
+            # Validate VERSION to prevent path traversal in temp file paths
+            if [[ "$VERSION" =~ [^a-zA-Z0-9._-] ]]; then
+              echo "::warning::Skipping $TAG: invalid version format '$VERSION'"
+              continue
+            fi
+
+            ANNOUNCEMENT_FILE="announcements/v${VERSION}.md"
+
+            echo "=== Processing $TAG ==="
+
+            # Skip if announcement file already exists
+            if [ -f "$ANNOUNCEMENT_FILE" ]; then
+              echo "Skipping $TAG: announcement file already exists"
+              continue
+            fi
+
+            # Skip if Discussion already exists
+            EXISTING=$(gh api graphql -f query='
+              query($owner: String!, $repo: String!, $categoryId: ID!) {
+                repository(owner: $owner, name: $repo) {
+                  discussions(first: 100, categoryId: $categoryId) {
+                    nodes { title }
+                  }
+                }
+              }' \
+              -f owner=kent8192 -f repo=reinhardt-web \
+              -f categoryId=DIC_kwDOP9Jw0c4C2aMg \
+              --jq ".data.repository.discussions.nodes[] | select(.title == \"reinhardt-web v${VERSION}\") | .title" \
+              2>/dev/null || true)
+
+            if [ -n "$EXISTING" ]; then
+              echo "Skipping $TAG: Discussion already exists"
+              continue
+            fi
+
+            # Stage 1: Collect release data
+            if ! ./scripts/collect-release-data.sh "$TAG" --output "/tmp/release-data-${VERSION}.json"; then
+              echo "::warning::Failed to collect data for $TAG"
+              FAILED_TAGS="$FAILED_TAGS $TAG"
+              continue
+            fi
+
+            # Stage 2: Generate announcement with Claude CLI
+            # Redirect stdin from file (not command arg) to avoid ARG_MAX
+            SYSTEM_PROMPT=$(cat scripts/prompts/announcement-system.md)
+
+            # Estimate input tokens and select context window (Fixes #3534)
+            # Rough estimate: 1 token ≈ 4 characters for English text
+            INPUT_CHARS=$(wc -c < "/tmp/release-data-${VERSION}.json")
+            SYSTEM_CHARS=${#SYSTEM_PROMPT}
+            ESTIMATED_TOKENS=$(( (INPUT_CHARS + SYSTEM_CHARS) / 4 ))
+            echo "Estimated input tokens: $ESTIMATED_TOKENS (input: $INPUT_CHARS chars, system: $SYSTEM_CHARS chars)"
+
+            CLAUDE_BETAS=""
+            if [ "$ESTIMATED_TOKENS" -gt 200000 ]; then
+              CLAUDE_BETAS="--betas context-1m-2025-08-07"
+              echo "Using 1M context window for large input (>200K tokens)"
+            fi
+
+            # Retry with exponential backoff (Fixes #3534)
+            CLAUDE_SUCCESS=false
+            for ATTEMPT in 1 2 3; do
+              echo "Claude CLI attempt $ATTEMPT/3..."
+              # shellcheck disable=SC2086
+              if claude --print \
+                --bare \
+                --model sonnet \
+                $CLAUDE_BETAS \
+                --system-prompt "$SYSTEM_PROMPT" \
+                --tools "" \
+                < "/tmp/release-data-${VERSION}.json" \
+                > "$ANNOUNCEMENT_FILE" 2>"/tmp/claude-stderr-${VERSION}.log"; then
+                CLAUDE_SUCCESS=true
+                break
+              else
+                CLAUDE_EXIT=$?
+                # Sanitize stderr to prevent log injection via workflow commands
+                CLAUDE_STDERR=$(tr -d '\n\r' < "/tmp/claude-stderr-${VERSION}.log" 2>/dev/null | head -c 200 || true)
+                echo "::warning::Claude CLI attempt $ATTEMPT failed (exit=$CLAUDE_EXIT): $CLAUDE_STDERR"
+                if [ "$ATTEMPT" -lt 3 ]; then
+                  BACKOFF=$((5 * ATTEMPT * ATTEMPT))
+                  echo "Retrying in ${BACKOFF}s..."
+                  sleep "$BACKOFF"
+                fi
+              fi
+            done
+
+            if $CLAUDE_SUCCESS; then
+              echo "Generated announcement for $TAG"
+            else
+              # Fallback: template with CHANGELOG only
+              echo "::warning::Claude CLI failed for $TAG after 3 attempts, using fallback template"
+              CHANGELOG_SECTION=$(jq -r '.changelog_section' "/tmp/release-data-${VERSION}.json")
+              PRS_TABLE=$(jq -r '.pull_requests[] | "| [#\(.number)](\(.url)) | \(.title) | @\(.author) |"' \
+                "/tmp/release-data-${VERSION}.json" || true)
+
+              cat > "$ANNOUNCEMENT_FILE" <<FALLBACK_EOF
+          # reinhardt-web v${VERSION}
+
+          ## Highlights
+
+          (Auto-generated summary unavailable — see CHANGELOG below)
+
+          ## Breaking Changes
+
+          No breaking changes in this release.
+
+          ## Related PRs
+
+          | PR | Title | Author |
+          |----|-------|--------|
+          ${PRS_TABLE}
+
+          <details><summary>Full CHANGELOG</summary>
+
+          ${CHANGELOG_SECTION}
+
+          </details>
+          FALLBACK_EOF
+              echo "Created fallback announcement for $TAG"
+            fi
+
+            # Rate limiting for backfill
+            if [ "$BACKFILL_MODE" = "backfill" ]; then
+              sleep 5
+            fi
+          done
+
+          # Check if any announcements were generated
+          GENERATED=$(find announcements -name '*.md' ! -name '.gitkeep' | wc -l)
+
+          if [ -n "$FAILED_TAGS" ]; then
+            echo "::error::Failed to process tags: $FAILED_TAGS"
+            if [ "$GENERATED" -eq 0 ]; then
+              echo "::error::All tags failed — no announcements generated"
+              exit 1
+            fi
+            # Some tags failed but others succeeded — continue with partial results
+            echo "::warning::Partial failure — $GENERATED announcement(s) generated, but some tags failed"
+          fi
+
+          if [ "$GENERATED" -eq 0 ]; then
+            echo "::notice::No new announcements to create (all tags already have announcements or Discussions)"
+            echo "no_announcements=true" >> "$GITHUB_ENV"
+          else
+            echo "Generated $GENERATED announcement(s)"
+            echo "no_announcements=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Create Announcement PR
+        if: steps.tags.outputs.skip != 'true' && env.no_announcements != 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          commit-message: "docs: add release announcement(s)"
+          branch: announcement/batch-${{ github.run_id }}
+          title: "docs: release announcement(s) for review"
+          labels: announcement,automated
+          body: |
+            ## Summary
+
+            Auto-generated release announcement(s) for human review.
+            Edit the files in `announcements/` before merging.
+            Merging this PR will automatically post the announcement(s) to GitHub Discussions.
+
+            ## Preview
+
+            See the changed files for announcement content.
+
+            ---
+
+            Generated by release-announcement-pr job in [release-plz workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+  post-announcement:
+    name: Post Announcement to Discussions
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'announcement')
+    runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
+    timeout-minutes: 10
+    steps:
+      - name: Generate GitHub token
+        uses: actions/create-github-app-token@v2
+        id: generate-token
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Post announcements to Discussions
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          POSTED=0
+          FAILED=0
+
+          for FILE in announcements/v*.md; do
+            [ -f "$FILE" ] || continue
+
+            echo "=== Posting $FILE ==="
+
+            if ./scripts/post-release-discussion.sh "$FILE"; then
+              POSTED=$((POSTED + 1))
+            else
+              FAILED=$((FAILED + 1))
+              echo "::warning::Failed to post $FILE"
+            fi
+
+            sleep 2
+          done
+
+          echo "Posted: $POSTED, Failed: $FAILED"
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::$FAILED announcement(s) failed to post"
+            exit 1
+          fi

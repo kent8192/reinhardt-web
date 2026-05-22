@@ -7,31 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-rc.1...reinhardt-grpc-macros@v0.1.0-rc.2) - 2026-03-04
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-rc.30...reinhardt-grpc-macros@v0.1.0) - 2026-05-22
 
-### Fixed
+Initial stable release of `reinhardt-grpc-macros` as part of the
+reinhardt-web 0.1.0 release. Provides the procedural macros that wire
+tonic-generated gRPC services to the framework's DI runtime.
 
-- *(meta)* fix workspace inheritance and authors metadata
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-alpha.2...reinhardt-grpc-macros@v0.1.0-rc.1) - 2026-02-23
+### Capabilities at 0.1.0
 
-### Maintenance
+- **Per-request DI context** — gRPC handler macros fork the
+  `InjectionContext` per request, so each call obtains an isolated
+  request scope rather than sharing the service-level scope.
+- **Strict attribute validation** — unknown `inject` attribute
+  options surface as compile errors; trait-impl name collisions in
+  generated code were resolved during the alpha cycle.
+- **Async-aware validation codegen** — generated input validators
+  participate in the async control flow so service implementations
+  can `.await` validation without resorting to ad-hoc spawning.
+- **Hardened generated types** — macro-emitted code applies
+  workspace-uniform native-tls pinning and workspace-version
+  alignment, and tightens type-checks against malicious input.
 
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+### Notable Breaking Changes
 
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-alpha.1...reinhardt-grpc-macros@v0.1.0-alpha.2) - 2026-02-21
+- **`Injected<T>` deprecated** ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631))
+  — generated handler wrappers expose `Depends<T>` injection sites.
 
-### Fixed
+### Migration Notes
 
-- add async validation and fix impl name collision
-- return generic errors and log details server-side
-- emit compile error for unrecognized inject attribute options
-
-### Security
-
-- strengthen type checking in macro-generated code
-
-### Styling
-
-- fix pre-existing clippy warnings and apply rustfmt
-- apply rustfmt to pre-existing formatting violations in 16 files
+See the [root CHANGELOG migration guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide).
+Macro-side migration is mechanical: existing `#[inject]` parameters
+move from `Injected<T>` / `Arc<T>` to `Depends<T>`.

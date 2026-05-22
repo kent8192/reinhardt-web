@@ -21,19 +21,18 @@ use web_sys::{Document, Element, HtmlDocument, HtmlInputElement, window};
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::testing::wasm::setup_csrf_cookie;
 ///
 /// setup_csrf_cookie("test_token_abc123");
 /// ```
 pub fn setup_csrf_cookie(token: &str) {
-	if let Some(window) = window() {
-		if let Some(document) = window.document() {
-			if let Some(html_doc) = document.dyn_ref::<HtmlDocument>() {
-				let cookie = format!("csrftoken={}", token);
-				let _ = html_doc.set_cookie(&cookie);
-			}
-		}
+	if let Some(window) = window()
+		&& let Some(document) = window.document()
+		&& let Some(html_doc) = document.dyn_ref::<HtmlDocument>()
+	{
+		let cookie = format!("csrftoken={}", token);
+		let _ = html_doc.set_cookie(&cookie);
 	}
 }
 
@@ -48,32 +47,32 @@ pub fn setup_csrf_cookie(token: &str) {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::testing::wasm::setup_csrf_meta_tag;
 ///
 /// setup_csrf_meta_tag("test_token_abc123");
 /// ```
 pub fn setup_csrf_meta_tag(token: &str) {
-	if let Some(window) = window() {
-		if let Some(document) = window.document() {
-			// Remove existing meta tag if present
-			if let Ok(Some(existing)) = document.query_selector("meta[name=\"csrf-token\"]") {
-				if let Some(parent) = existing.parent_node() {
-					let _ = parent.remove_child(&existing);
-				}
-			}
+	if let Some(window) = window()
+		&& let Some(document) = window.document()
+	{
+		// Remove existing meta tag if present
+		if let Ok(Some(existing)) = document.query_selector("meta[name=\"csrf-token\"]")
+			&& let Some(parent) = existing.parent_node()
+		{
+			let _ = parent.remove_child(&existing);
+		}
 
-			// Create new meta tag
-			if let Ok(meta) = document.create_element("meta") {
-				let _ = meta.set_attribute("name", "csrf-token");
-				let _ = meta.set_attribute("content", token);
+		// Create new meta tag
+		if let Ok(meta) = document.create_element("meta") {
+			let _ = meta.set_attribute("name", "csrf-token");
+			let _ = meta.set_attribute("content", token);
 
-				// Append to head (or body if head doesn't exist)
-				if let Some(head) = document.head() {
-					let _ = head.append_child(&meta);
-				} else if let Some(body) = document.body() {
-					let _ = body.append_child(&meta);
-				}
+			// Append to head (or body if head doesn't exist)
+			if let Some(head) = document.head() {
+				let _ = head.append_child(&meta);
+			} else if let Some(body) = document.body() {
+				let _ = body.append_child(&meta);
 			}
 		}
 	}
@@ -90,35 +89,33 @@ pub fn setup_csrf_meta_tag(token: &str) {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::testing::wasm::setup_csrf_input;
 ///
 /// setup_csrf_input("test_token_abc123");
 /// ```
 pub fn setup_csrf_input(token: &str) {
-	if let Some(window) = window() {
-		if let Some(document) = window.document() {
-			// Remove existing input if present
-			if let Ok(Some(existing)) =
-				document.query_selector("input[name=\"csrfmiddlewaretoken\"]")
-			{
-				if let Some(parent) = existing.parent_node() {
-					let _ = parent.remove_child(&existing);
-				}
+	if let Some(window) = window()
+		&& let Some(document) = window.document()
+	{
+		// Remove existing input if present
+		if let Ok(Some(existing)) = document.query_selector("input[name=\"csrfmiddlewaretoken\"]")
+			&& let Some(parent) = existing.parent_node()
+		{
+			let _ = parent.remove_child(&existing);
+		}
+
+		// Create new hidden input
+		if let Ok(input) = document.create_element("input") {
+			if let Some(input_elem) = input.dyn_ref::<HtmlInputElement>() {
+				input_elem.set_type("hidden");
+				input_elem.set_name("csrfmiddlewaretoken");
+				input_elem.set_value(token);
 			}
 
-			// Create new hidden input
-			if let Ok(input) = document.create_element("input") {
-				if let Some(input_elem) = input.dyn_ref::<HtmlInputElement>() {
-					input_elem.set_type("hidden");
-					input_elem.set_name("csrfmiddlewaretoken");
-					input_elem.set_value(token);
-				}
-
-				// Append to body
-				if let Some(body) = document.body() {
-					let _ = body.append_child(&input);
-				}
+			// Append to body
+			if let Some(body) = document.body() {
+				let _ = body.append_child(&input);
 			}
 		}
 	}
@@ -135,7 +132,7 @@ pub fn setup_csrf_input(token: &str) {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::testing::wasm::{setup_csrf_cookie, cleanup_csrf_fixtures};
 ///
 /// setup_csrf_cookie("test_token");
@@ -143,28 +140,27 @@ pub fn setup_csrf_input(token: &str) {
 /// cleanup_csrf_fixtures();
 /// ```
 pub fn cleanup_csrf_fixtures() {
-	if let Some(window) = window() {
-		if let Some(document) = window.document() {
-			// Clear cookie by setting expiry to past
-			if let Some(html_doc) = document.dyn_ref::<HtmlDocument>() {
-				let _ = html_doc
-					.set_cookie("csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/");
-			}
+	if let Some(window) = window()
+		&& let Some(document) = window.document()
+	{
+		// Clear cookie by setting expiry to past
+		if let Some(html_doc) = document.dyn_ref::<HtmlDocument>() {
+			let _ =
+				html_doc.set_cookie("csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/");
+		}
 
-			// Remove meta tag
-			if let Ok(Some(meta)) = document.query_selector("meta[name=\"csrf-token\"]") {
-				if let Some(parent) = meta.parent_node() {
-					let _ = parent.remove_child(&meta);
-				}
-			}
+		// Remove meta tag
+		if let Ok(Some(meta)) = document.query_selector("meta[name=\"csrf-token\"]")
+			&& let Some(parent) = meta.parent_node()
+		{
+			let _ = parent.remove_child(&meta);
+		}
 
-			// Remove hidden input
-			if let Ok(Some(input)) = document.query_selector("input[name=\"csrfmiddlewaretoken\"]")
-			{
-				if let Some(parent) = input.parent_node() {
-					let _ = parent.remove_child(&input);
-				}
-			}
+		// Remove hidden input
+		if let Ok(Some(input)) = document.query_selector("input[name=\"csrfmiddlewaretoken\"]")
+			&& let Some(parent) = input.parent_node()
+		{
+			let _ = parent.remove_child(&input);
 		}
 	}
 }
@@ -196,10 +192,10 @@ pub fn create_test_element(document: &Document, tag_name: &str, id: &str) -> Opt
 /// * `document` - The DOM document containing the element
 /// * `id` - The ID of the element to remove
 pub fn remove_test_element(document: &Document, id: &str) {
-	if let Some(element) = document.get_element_by_id(id) {
-		if let Some(parent) = element.parent_node() {
-			let _ = parent.remove_child(&element);
-		}
+	if let Some(element) = document.get_element_by_id(id)
+		&& let Some(parent) = element.parent_node()
+	{
+		let _ = parent.remove_child(&element);
 	}
 }
 
@@ -211,16 +207,15 @@ pub fn cleanup_all_test_fixtures() {
 	cleanup_csrf_fixtures();
 
 	// Clean up any elements with "test-" prefix IDs
-	if let Some(window) = window() {
-		if let Some(document) = window.document() {
-			if let Ok(elements) = document.query_selector_all("[id^=\"test-\"]") {
-				for i in 0..elements.length() {
-					if let Some(element) = elements.get(i) {
-						if let Some(parent) = element.parent_node() {
-							let _ = parent.remove_child(&element);
-						}
-					}
-				}
+	if let Some(window) = window()
+		&& let Some(document) = window.document()
+		&& let Ok(elements) = document.query_selector_all("[id^=\"test-\"]")
+	{
+		for i in 0..elements.length() {
+			if let Some(element) = elements.get(i)
+				&& let Some(parent) = element.parent_node()
+			{
+				let _ = parent.remove_child(&element);
 			}
 		}
 	}

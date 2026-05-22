@@ -288,12 +288,15 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 	// Generate DI extraction code
 	// Fixes #820: Return generic error message, log details server-side
 	let di_context_extraction = quote! {
-		let __di_ctx = #request_pat
-			.get_di_context::<::std::sync::Arc<#di_crate::InjectionContext>>()
-			.ok_or_else(|| {
-				::tracing::error!("DI context not found in request extensions");
-				::tonic::Status::internal("Internal server error")
-			})?;
+		let __di_ctx = {
+			let __shared_ctx = #request_pat
+				.get_di_context::<::std::sync::Arc<#di_crate::InjectionContext>>()
+				.ok_or_else(|| {
+					::tracing::error!("DI context not found in request extensions");
+					::tonic::Status::internal("Internal server error")
+				})?;
+			::std::sync::Arc::new((*__shared_ctx).fork())
+		};
 	};
 
 	// Generate compile-time type assertions for injected types
@@ -331,7 +334,7 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 
 			if use_cache {
 				quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
 						.await
 						.map_err(|e| {
 							::tracing::error!("DI resolution failed for {}: {:?}", stringify!(#ty), e);
@@ -341,7 +344,7 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 				}
 			} else {
 				quote! {
-					let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
+					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
 						.await
 						.map_err(|e| {
 							::tracing::error!("DI resolution failed for {}: {:?}", stringify!(#ty), e);

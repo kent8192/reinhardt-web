@@ -1,0 +1,42 @@
+{
+  "packages": [
+    {
+      "name": "single_crate",
+      "version": "0.1.0",
+      "id": "path+file:///fixtures/single_crate#0.1.0",
+      "license": null,
+      "license_file": null,
+      "description": null,
+      "source": null,
+      "dependencies": [],
+      "targets": [],
+      "features": {},
+      "manifest_path": "/fixtures/single_crate/Cargo.toml",
+      "metadata": null,
+      "publish": null,
+      "authors": [],
+      "categories": [],
+      "keywords": [],
+      "readme": null,
+      "repository": null,
+      "homepage": null,
+      "documentation": null,
+      "edition": "2024",
+      "links": null,
+      "default_run": null,
+      "rust_version": null
+    }
+  ],
+  "workspace_members": [
+    "path+file:///fixtures/single_crate#0.1.0"
+  ],
+  "workspace_default_members": [
+    "path+file:///fixtures/single_crate#0.1.0"
+  ],
+  "resolve": null,
+  "target_directory": "/Volumes/cache/cargo-target/a616fa68c7b27f6410f6326d9d2e2848e2eec406197a4baedc8d01ca4624890b",
+  "build_directory": "/Volumes/cache/cargo-target/a616fa68c7b27f6410f6326d9d2e2848e2eec406197a4baedc8d01ca4624890b",
+  "version": 1,
+  "workspace_root": "/fixtures/single_crate",
+  "metadata": null
+}

@@ -10,13 +10,14 @@ HTTP request dispatching and handler system for the Reinhardt framework.
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["dispatch"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["dispatch"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import dispatch features:
@@ -62,22 +63,23 @@ async fn handle_request(request: Request) -> Result<Response, DispatchError> {
 
 ```rust
 use reinhardt::dispatch::{BaseHandler, MiddlewareChain};
-use reinhardt::core::types::{Handler, Middleware};
+use reinhardt_http::{Handler, Middleware};
 use std::sync::Arc;
 
-async fn setup_handler() -> Arc<dyn Handler> {
+async fn setup_handler() -> Result<Arc<dyn Handler>, Box<dyn std::error::Error>> {
     let handler = Arc::new(BaseHandler::new());
 
-    MiddlewareChain::new(handler)
-        .add_middleware(Arc::new(LoggingMiddleware))
-        .add_middleware(Arc::new(AuthMiddleware))
-        .build()
+    let chain = MiddlewareChain::new(handler)
+        .add_middleware(Arc::new(LoggingMiddleware))?
+        .add_middleware(Arc::new(AuthMiddleware))?
+        .build();
+    Ok(chain)
 }
 ```
 
 ### Exception Handling
 
-The `DefaultExceptionHandler` automatically converts errors into HTTP responses:
+The exception handler automatically converts errors into HTTP responses:
 
 - `DispatchError::View` → 500 Internal Server Error
 - `DispatchError::UrlResolution` → 404 Not Found
@@ -102,8 +104,8 @@ Composes multiple middleware components into a processing pipeline:
 
 ```rust
 let chain = MiddlewareChain::new(handler)
-    .add_middleware(middleware1)
-    .add_middleware(middleware2)
+    .add_middleware(middleware1)?
+    .add_middleware(middleware2)?
     .build();
 ```
 
@@ -125,7 +127,6 @@ let response = dispatcher.dispatch(request).await?;
 The exception module provides:
 
 - `ExceptionHandler` trait for custom exception handling
-- `DefaultExceptionHandler` for standard error responses
 - `convert_exception_to_response` helper function
 - `IntoResponse` trait for converting types to HTTP responses
 
@@ -141,7 +142,7 @@ The exception module provides:
 
 ## Implementation Notes
 
-This crate focuses on HTTP request dispatching, while signal dispatching is handled by the separate `reinhardt-signals` crate. This separation provides:
+This crate focuses on HTTP request dispatching, while signal dispatching is handled by `reinhardt-core`'s signals module. This separation provides:
 
 - Clear responsibility boundaries
 - Independent signal system that can be used outside HTTP context

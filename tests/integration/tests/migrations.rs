@@ -4,6 +4,10 @@
 #[path = "migrations/composite_pk_db_execution.rs"]
 mod composite_pk_db_execution;
 
+// Foreign-key column metadata resolution (issues #4430, #4431)
+#[path = "migrations/fk_column_metadata_resolution.rs"]
+mod fk_column_metadata_resolution;
+
 #[path = "migrations/state_loader_integration.rs"]
 mod state_loader_integration;
 
@@ -70,3 +74,31 @@ mod field_mapping_integration;
 // Makemigrations E2E Integration Tests
 #[path = "migrations/makemigrations_e2e_integration.rs"]
 mod makemigrations_e2e_integration;
+
+// Merge Migration Tests
+#[path = "migrations/merge_migration_integration.rs"]
+mod merge_migration_integration;
+
+// Migration Overwrite Prevention Tests
+#[path = "migrations/migration_overwrite_prevention_test.rs"]
+mod migration_overwrite_prevention_test;
+
+// Macro `unique_together` propagation regression tests (reinhardt-web#4022)
+#[path = "migrations/macro_unique_together_integration.rs"]
+mod macro_unique_together_integration;
+
+// SQLite AddColumn atomic-history regression tests (reinhardt-web#4447)
+#[path = "migrations/sqlite_add_column_atomic.rs"]
+mod sqlite_add_column_atomic;
+
+// #[field(default = ...)] propagation regression tests (reinhardt-web#4447)
+#[path = "migrations/field_default_propagation.rs"]
+mod field_default_propagation;
+
+// SQLite string-default preservation regression tests (reinhardt-web#4454)
+#[path = "migrations/sqlite_default_value_preservation.rs"]
+mod sqlite_default_value_preservation;
+
+// CockroachDB migration lock regression tests (reinhardt-web#4642)
+#[path = "migrations/cockroachdb_migration_lock.rs"]
+mod cockroachdb_migration_lock;

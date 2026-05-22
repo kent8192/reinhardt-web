@@ -174,7 +174,7 @@ impl FormFieldEntry {
 /// A single field definition in the form macro.
 ///
 /// Example:
-/// ```ignore
+/// ```no_run
 /// username: CharField {
 ///     required,
 ///     max_length: 100,
@@ -202,7 +202,7 @@ pub struct FormFieldDef {
 ///
 /// ## Example DSL
 ///
-/// ```ignore
+/// ```no_run
 /// address_group: FieldGroup {
 ///     label: "Address",
 ///     class: "address-section",
@@ -302,7 +302,7 @@ pub enum FormFieldProperty {
 ///
 /// ## Example DSL
 ///
-/// ```ignore
+/// ```no_run
 /// attrs: {
 ///     aria_label: "Email address",
 ///     aria_required: "true",
@@ -326,7 +326,7 @@ pub struct CustomAttr {
 ///
 /// ## Example DSL
 ///
-/// ```ignore
+/// ```no_run
 /// wrapper: div {
 ///     class: "relative flex items-center",
 /// }
@@ -359,7 +359,7 @@ pub struct WrapperAttr {
 ///
 /// ## Example DSL
 ///
-/// ```ignore
+/// ```no_run
 /// icon: svg {
 ///     class: "w-5 h-5 text-gray-400",
 ///     viewBox: "0 0 24 24",
@@ -622,6 +622,23 @@ pub struct FormCallbacks {
 	/// Receives the server_fn return value.
 	/// Signature: `|result: T| { ... }`
 	pub on_success: Option<ExprClosure>,
+	/// Lifted variant of `on_success` that captures outer-scope locals.
+	///
+	/// Unlike `on_success` (which is expanded inside the generated `fn submit()`
+	/// body and therefore cannot see enclosing-scope locals like `user_id`),
+	/// `on_success_ref` is expanded at the outer construction block. This lets
+	/// the user closure capture locals from the surrounding function scope.
+	///
+	/// The closure receives the server_fn return value by reference (`&T`)
+	/// instead of by move (`T`); for callbacks that must *consume* the value
+	/// (e.g., `set_current_user(Some(value))`), keep using `on_success`.
+	///
+	/// Both may be supplied together. Execution order: `on_success_ref` runs
+	/// first (receives `&value`), then `on_success` runs (receives `value` by
+	/// move).
+	///
+	/// Signature: `|form: &Self, result: &T| { ... }`
+	pub on_success_ref: Option<ExprClosure>,
 	/// Callback called when submission fails.
 	/// Signature: `|error: ServerFnError| { ... }`
 	pub on_error: Option<ExprClosure>,
@@ -642,6 +659,7 @@ impl FormCallbacks {
 	pub fn has_any(&self) -> bool {
 		self.on_submit.is_some()
 			|| self.on_success.is_some()
+			|| self.on_success_ref.is_some()
 			|| self.on_error.is_some()
 			|| self.on_loading.is_some()
 	}
@@ -654,7 +672,7 @@ impl FormCallbacks {
 ///
 /// ## Example DSL
 ///
-/// ```ignore
+/// ```no_run
 /// state: { loading, error, success },
 /// ```
 ///
@@ -786,7 +804,7 @@ pub struct FormWatchItem {
 ///
 /// ## Example DSL
 ///
-/// ```ignore
+/// ```no_run
 /// derived: {
 ///     char_count: |form| form.content().get().len(),
 ///     is_over_limit: |form| form.char_count().get() > 280,
@@ -798,7 +816,8 @@ pub struct FormWatchItem {
 ///
 /// Each derived item generates a `Memo<T>` accessor on the form struct:
 ///
-/// ```ignore
+/// ```no_run
+/// # use reinhardt_pages::reactive::Memo;
 /// impl MyForm {
 ///     pub fn char_count(&self) -> Memo<usize> {
 ///         Memo::new(move || self.content().get().len())

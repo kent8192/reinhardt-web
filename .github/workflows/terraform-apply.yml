@@ -11,14 +11,14 @@ permissions:
   id-token: write
 
 concurrency:
-  group: terraform-apply-${{ github.sha }}
+  group: terraform-apply-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   plan:
     name: Plan (${{ matrix.module }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -26,9 +26,9 @@ jobs:
           - module: github-runners
             dir: infra/github-runners
             backend: s3
-          - module: bootstrap
-            dir: infra/github-runners/bootstrap
-            backend: local
+          # Note: `bootstrap` is intentionally excluded — its local backend
+          # does not persist across CI runs, so apply would always fail with
+          # `BucketAlreadyExists`. Apply manually. See reinhardt-web#4145.
           - module: website
             dir: infra/website
             backend: local
@@ -62,6 +62,7 @@ jobs:
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ matrix.module }}/terraform.tfstate" \
             -backend-config="region=${{ secrets.TF_AWS_REGION }}" \
+            -backend-config="assume_role={role_arn=\"arn:aws:iam::${{ secrets.TF_AWS_ACCOUNT_ID }}:role/OrganizationAccountAccessRole\"}" \
             -input=false
 
       - name: Terraform Init (local backend)
@@ -98,10 +99,27 @@ jobs:
           echo "Downloading Lambda zips for v${MODULE_VERSION}..."
           mkdir -p lambdas
           BASE_URL="https://github.com/github-aws-runners/terraform-aws-github-runner/releases/download/v${MODULE_VERSION}"
-          for name in webhook runners runner-binaries-syncer; do
+          for name in webhook runners runner-binaries-syncer termination-watcher ami-housekeeper; do
             curl -fsSL -o "lambdas/${name}.zip" "${BASE_URL}/${name}.zip"
             echo "  Downloaded ${name}.zip"
           done
+
+      # Issue #3903: orphan-detector Lambda build (required by archive_file).
+      - name: Setup Node.js (for orphan-detector Lambda)
+        if: env.SKIP_MODULE != 'true' && matrix.module == 'github-runners'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: infra/github-runners/lambda-src/orphan-detector/package-lock.json
+
+      - name: Build orphan-detector Lambda
+        if: env.SKIP_MODULE != 'true' && matrix.module == 'github-runners'
+        working-directory: infra/github-runners/lambda-src/orphan-detector
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          test -f dist/index.mjs || { echo "dist/index.mjs missing"; exit 1; }
 
       - name: Terraform Plan
         if: env.SKIP_MODULE != 'true'
@@ -134,7 +152,7 @@ jobs:
           TF_VAR_dns_record_www_id: ${{ secrets.TF_DNS_RECORD_WWW_ID }}
           TF_VAR_dns_record_google_verification_id: ${{ secrets.TF_DNS_RECORD_GOOGLE_VERIFICATION_ID }}
           TF_VAR_account_email: ${{ secrets.TF_ACCOUNT_EMAIL }}
-          TF_VAR_environment_reviewer: ${{ secrets.TF_ENVIRONMENT_REVIEWER }}
+          TF_VAR_environment_reviewer_user_id: ${{ secrets.TF_ENVIRONMENT_REVIEWER_USER_ID }}
         run: |
           terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan-output.txt
           echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
@@ -154,7 +172,8 @@ jobs:
     name: Apply (${{ matrix.module }})
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 360
+    environment: production
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -163,9 +182,7 @@ jobs:
           - module: github-runners
             dir: infra/github-runners
             backend: s3
-          - module: bootstrap
-            dir: infra/github-runners/bootstrap
-            backend: local
+          # Note: `bootstrap` is intentionally excluded. See reinhardt-web#4145.
           - module: website
             dir: infra/website
             backend: local
@@ -208,6 +225,7 @@ jobs:
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ matrix.module }}/terraform.tfstate" \
             -backend-config="region=${{ secrets.TF_AWS_REGION }}" \
+            -backend-config="assume_role={role_arn=\"arn:aws:iam::${{ secrets.TF_AWS_ACCOUNT_ID }}:role/OrganizationAccountAccessRole\"}" \
             -input=false
 
       - name: Terraform Init (local backend)
@@ -246,6 +264,6 @@ jobs:
           TF_VAR_dns_record_www_id: ${{ secrets.TF_DNS_RECORD_WWW_ID }}
           TF_VAR_dns_record_google_verification_id: ${{ secrets.TF_DNS_RECORD_GOOGLE_VERIFICATION_ID }}
           TF_VAR_account_email: ${{ secrets.TF_ACCOUNT_EMAIL }}
-          TF_VAR_environment_reviewer: ${{ secrets.TF_ENVIRONMENT_REVIEWER }}
+          TF_VAR_environment_reviewer_user_id: ${{ secrets.TF_ENVIRONMENT_REVIEWER_USER_ID }}
         run: |
           terraform apply -no-color -input=false tfplan

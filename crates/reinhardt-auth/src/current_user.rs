@@ -19,6 +19,8 @@ use crate::AuthenticationError;
 use crate::BaseUser;
 use async_trait::async_trait;
 use reinhardt_db::orm::{DatabaseConnection, Model};
+#[cfg(not(feature = "params"))]
+use reinhardt_di::DiError;
 use reinhardt_di::{DiResult, Injectable, InjectionContext};
 use reinhardt_http::AuthState;
 use std::sync::Arc;
@@ -48,11 +50,16 @@ use uuid::Uuid;
 ///     Ok(Response::ok())
 /// }
 /// ```
+#[deprecated(
+	since = "0.1.0-rc.12",
+	note = "Use `AuthUser<U>` instead. `CurrentUser<U>` will become a type alias for `AuthUser<U>` in 0.2.0."
+)]
 pub struct CurrentUser<U: BaseUser + Clone> {
 	user: Option<U>,
 	user_id: Option<Uuid>,
 }
 
+#[allow(deprecated)] // Implementing Clone for deprecated CurrentUser
 impl<U: BaseUser + Clone> Clone for CurrentUser<U> {
 	fn clone(&self) -> Self {
 		Self {
@@ -62,6 +69,7 @@ impl<U: BaseUser + Clone> Clone for CurrentUser<U> {
 	}
 }
 
+#[allow(deprecated)] // Methods for deprecated CurrentUser
 impl<U: BaseUser + Clone> CurrentUser<U> {
 	/// Creates a new authenticated CurrentUser.
 	///
@@ -137,6 +145,7 @@ impl<U: BaseUser + Clone> CurrentUser<U> {
 	}
 }
 
+#[allow(deprecated)] // Injectable impl for deprecated CurrentUser
 #[async_trait]
 impl<U> Injectable for CurrentUser<U>
 where
@@ -155,7 +164,9 @@ where
 		};
 
 		#[cfg(not(feature = "params"))]
-		return Ok(Self::anonymous());
+		return Err(DiError::NotFound(
+			"CurrentUser requires the 'params' feature to be enabled".to_string(),
+		));
 
 		// 2. Get AuthState from request extensions
 		#[cfg(feature = "params")]
@@ -182,10 +193,24 @@ where
 		let model_pk: <U as Model>::PrimaryKey = base_pk.into();
 
 		// 5. Get DatabaseConnection from DI context
+		// Resolve DatabaseConnection from DI (singleton-first, request-scope fallback)
+		// Uses get_singleton/get_request directly instead of ctx.resolve() because
+		// DatabaseConnection is pre-seeded into the singleton scope at server startup,
+		// not registered in the global DependencyRegistry.
 		#[cfg(feature = "params")]
-		let db: Arc<DatabaseConnection> = match ctx.resolve::<DatabaseConnection>().await {
-			Ok(conn) => conn,
-			Err(_) => return Ok(Self::anonymous()),
+		let db: Arc<DatabaseConnection> = match ctx
+			.get_singleton::<DatabaseConnection>()
+			.or_else(|| ctx.get_request::<DatabaseConnection>())
+		{
+			Some(conn) => conn,
+			None => {
+				::tracing::warn!(
+					"DatabaseConnection not registered in DI context. \
+					 CurrentUser will be anonymous. \
+					 Hint: Register DatabaseConnection as a singleton in InjectionContext."
+				);
+				return Ok(Self::anonymous());
+			}
 		};
 
 		// 6. Load user from database using Model::objects() (Django-style ORM)
@@ -199,7 +224,14 @@ where
 		#[cfg(feature = "params")]
 		let user_id = match Uuid::parse_str(auth_state.user_id()) {
 			Ok(id) => id,
-			Err(_) => Uuid::nil(),
+			Err(e) => {
+				::tracing::warn!(
+					user_id = %auth_state.user_id(),
+					error = ?e,
+					"CurrentUser: failed to parse user_id as UUID"
+				);
+				return Ok(Self::anonymous());
+			}
 		};
 
 		#[cfg(feature = "params")]
@@ -207,6 +239,7 @@ where
 	}
 }
 
+#[allow(deprecated)] // Tests for deprecated CurrentUser
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -271,7 +304,7 @@ mod tests {
 
 	#[test]
 	fn test_authenticated_user() {
-		let user_id = Uuid::new_v4();
+		let user_id = Uuid::now_v7();
 		let user = TestUser {
 			id: user_id,
 			username: "testuser".to_string(),
@@ -296,7 +329,7 @@ mod tests {
 
 	#[test]
 	fn test_into_user_authenticated() {
-		let user_id = Uuid::new_v4();
+		let user_id = Uuid::now_v7();
 		let user = TestUser {
 			id: user_id,
 			username: "testuser".to_string(),

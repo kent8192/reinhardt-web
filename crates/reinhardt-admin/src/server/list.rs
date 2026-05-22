@@ -2,28 +2,31 @@
 //!
 //! Provides list view operations for admin models.
 
+#[cfg(server)]
+use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{
-	AdminDatabase, AdminRecord, AdminSite, ColumnInfo, FilterInfo, FilterType, ListQueryParams,
-	ListResponse, ModelAdmin,
+	AdminDatabase, AdminRecord, AdminSite, ColumnInfo, FilterInfo, FilterType, ListResponse,
+	ModelAdmin,
 };
-use reinhardt_auth::{CurrentUser, DefaultUser};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
+#[cfg(server)]
+use reinhardt_di::Depends;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::sync::Arc;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::error::MapServerFnError;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use super::limits::MAX_PAGE_SIZE;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use crate::server::type_inference::{
 	get_field_metadata, infer_admin_field_type, infer_filter_type,
 };
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 use reinhardt_utils::utils_core::text::humanize_field_name;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 fn build_filters(model_admin: &Arc<dyn ModelAdmin>) -> Vec<FilterInfo> {
 	let table_name = model_admin.table_name();
 	model_admin
@@ -48,7 +51,7 @@ fn build_filters(model_admin: &Arc<dyn ModelAdmin>) -> Vec<FilterInfo> {
 		.collect()
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(server)]
 fn build_columns(model_admin: &Arc<dyn ModelAdmin>) -> Vec<ColumnInfo> {
 	model_admin
 		.list_display()
@@ -94,25 +97,17 @@ fn build_columns(model_admin: &Arc<dyn ModelAdmin>) -> Vec<ColumnInfo> {
 /// let response = get_list("User".to_string(), params).await?;
 /// println!("Found {} users", response.count);
 /// ```
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn get_list(
 	model_name: String,
-	params: ListQueryParams,
-	#[inject] site: Arc<AdminSite>,
-	#[inject] db: Arc<AdminDatabase>,
-	#[inject] current_user: CurrentUser<DefaultUser>,
-) -> Result<ListResponse, ServerFnError> {
-	// Authentication check
-	let user = current_user
-		.user()
-		.map_err(|_| ServerFnError::server(401, "Authentication required"))?;
-
+	params: crate::adapters::ListQueryParams,
+	#[inject] site: Depends<AdminSite>,
+	#[inject] db: Depends<AdminDatabase>,
+	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
+) -> Result<crate::adapters::ListResponse, ServerFnError> {
 	// Get model admin and check permission
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
-	if !model_admin
-		.has_view_permission(user as &(dyn std::any::Any + Send + Sync))
-		.await
-	{
+	if !model_admin.has_view_permission(user.as_ref()).await {
 		return Err(ServerFnError::server(403, "Permission denied"));
 	}
 
@@ -165,11 +160,31 @@ pub async fn get_list(
 		.as_deref()
 		.or_else(|| model_admin.ordering().first().copied());
 
+	// Validate sort_by against allowed fields to prevent arbitrary column access
+	if let Some(sort_field) = sort_by {
+		let raw_field = sort_field.strip_prefix('-').unwrap_or(sort_field);
+		let allowed_sort_fields = model_admin.list_display();
+		if !allowed_sort_fields.contains(&raw_field) {
+			return Err(ServerFnError::server(
+				400,
+				format!(
+					"Unknown sort field '{}'. Allowed sort fields: {:?}",
+					raw_field, allowed_sort_fields
+				),
+			));
+		}
+	}
+
 	// Calculate pagination with upper bound enforcement
 	let page = params.page.unwrap_or(1).max(1); // Ensure page is at least 1
 	let page_size = params
 		.page_size
-		.unwrap_or_else(|| model_admin.list_per_page().unwrap_or(25) as u64)
+		.unwrap_or_else(|| {
+			let admin_settings = crate::settings::get_admin_settings();
+			model_admin
+				.list_per_page()
+				.unwrap_or(admin_settings.list_per_page) as u64
+		})
 		.min(MAX_PAGE_SIZE); // Enforce maximum page size to prevent memory exhaustion
 	let offset = (page - 1) * page_size;
 

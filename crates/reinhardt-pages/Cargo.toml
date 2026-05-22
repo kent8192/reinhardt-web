@@ -1,7 +1,8 @@
 [package]
 name = "reinhardt-pages"
-version = "0.1.0-rc.11"
+version = "0.2.0-rc.1"
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 description = "WASM-based frontend framework for Reinhardt with Django-like API"
@@ -11,7 +12,11 @@ categories = ["wasm", "web-programming"]
 
 [features]
 default = []
+console_error_panic_hook = ["dep:console_error_panic_hook"]
 msgpack = ["dep:rmp-serde"]
+testing = []
+# Exposes MockableServerFn trait for MSW-style testing
+msw = ["reinhardt-pages-macros/msw"]
 pages-full = ["msgpack", "web-sys-full"]
 static = []
 urls = []
@@ -19,6 +24,33 @@ debug-hooks = []
 uuid = ["dep:uuid"]
 chrono = ["dep:chrono"]
 ast = []
+# Enables the `tests/integration/spa_navigation_e2e_test.rs` integration
+# test (Refs #4088). This is a marker feature: the actual test deps
+# (`reinhardt-test`, `axum`, `tower-http`) live as native-only path
+# dev-dependencies (see `[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]`).
+# Per CLAUDE.md KI-2, `reinhardt-test` is a path-only dev-dep here to avoid
+# both cyclic publishable dependencies and release-plz publish ordering
+# breakage. Cargo dev-dependencies cannot be optional, so feature gating
+# is achieved via `#![cfg(feature = "e2e-cdp-test")]` and `required-features`.
+e2e-cdp-test = []
+# Marker feature for wasm-bindgen-test diagnostic suite that asserts
+# observer-system invariants Inv-1 ~ Inv-4 against the Tier 2 / Tier 3
+# fixtures. Activated by:
+#   wasm-pack test --chrome --headless --features wasm-diag-test
+# Refs #4122.
+wasm-diag-test = []
+# Opt-in DOM-based navigation diagnostic. When enabled, the framework writes
+# the most recent SPA navigation site (`store_router`, `link_interceptor`,
+# `navigate`, `notify_observers`, `popstate`) to
+# `document.body.dataset.reinhardtNavSite`, bypassing `console.debug` /
+# wasm-bindgen import-shim subtleties. Use this when downstream debugging
+# the SPA navigation regression class (#4075/#4088/#4122/#4203/#4213/
+# #4217/#4221) needs a runtime trace that survives release builds, JS-side
+# console wrapping, and Playwright filter quirks.
+#
+# OFF by default: production builds incur zero overhead.
+nav-diag-dom = []
+hmr = ["dep:notify", "dep:tokio-tungstenite", "dep:futures-util"]
 # web-sys features for WASM applications
 # Applications should use this feature to get all required web-sys features
 web-sys-full = [
@@ -84,6 +116,11 @@ js-sys = "0.3.83"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_urlencoded = "0.7"
+# serde-wasm-bindgen: serialize HistoryState directly to a JS object so
+# `history.state.field` works for external consumers. Replaces the
+# JSON-string-in-JsValue convention that surfaced as the SPA navigation
+# regression class (#4075 / #4088 / #4122 / #4203).
+serde-wasm-bindgen = "0.6"
 rmp-serde = { version = "1.3", optional = true }
 urlencoding = "2.1"
 
@@ -92,6 +129,9 @@ thiserror = { workspace = true }
 
 # Router pattern matching
 regex = "1.11"
+
+# Optional panic hook for readable WASM console errors (used by ClientLauncher)
+console_error_panic_hook = { version = "0.1", optional = true }
 
 # Optional type support for path parameters
 uuid = { version = "1.0", optional = true, features = ["std"] }
@@ -130,9 +170,12 @@ web-sys = { version = "0.3.83", features = [
 	"HtmlCollection",
 	"NodeList",
 	"HtmlDocument",
+	"HtmlHeadElement",
 	# History API (for router)
 	"History",
 	"Location",
+	# Storage API (for JWT token management)
+	"Storage",
 	# WebSocket API
 	"WebSocket",
 	"MessageEvent",
@@ -146,25 +189,36 @@ reinhardt-core = {workspace = true, features = ["reactive", "page"]}
 syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
 quote = "1.0"
 proc-macro2 = "1.0"
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
-gloo-net = "0.6"
+reqwest = { workspace = true }
 getrandom = { version = "0.3", features = ["wasm_js"] }
-uuid = { version = "1.0", features = ["js"] }
+uuid = { version = "1.7", features = ["v7", "js"] }
+# Issue #4217: depend on reinhardt-urls on wasm to consume the canonical
+# `client_router::history` primitives (deduplicates with the server-side
+# dep below). Server-only deps inside reinhardt-urls are gated by the
+# wasm target, so the default features are safe on wasm.
+reinhardt-urls = { workspace = true, features = ["client-router"] }
 
 # Server-side only dependencies (DI, HTTP, Forms, Server Function Registry)
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 reinhardt-forms = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-middleware = { workspace = true }
-reinhardt-urls = { workspace = true, features = ["routers"] }
+reinhardt-urls = { workspace = true, features = ["routers", "client-router"] }
 reinhardt-server = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["staticfiles"] }
 hyper = { workspace = true }
 async-trait = "0.1"
-uuid = { version = "1.0", features = ["v4"] }
+uuid = { version = "1.7", features = ["v4", "v7"] }
 tokio = { workspace = true }
+tracing = { workspace = true }
+
+# HMR dependencies (server-side only, feature-gated)
+notify = { version = "8.2.0", optional = true }
+tokio-tungstenite = { version = "0.26", optional = true }
+futures-util = { version = "0.3", optional = true }
 
 [build-dependencies]
 cfg_aliases = "0.2"
@@ -175,10 +229,36 @@ reinhardt-forms = { workspace = true }
 wasm-bindgen-test = "0.3.56"
 serial_test = "3"
 trybuild = "1.0"
-criterion = "0.5"
 rstest = { workspace = true }
-proptest = { workspace = true }
 tempfile = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+# Used by tests/wasm/client_launcher_navigation_test.rs (Refs #4075) to
+# yield to the reactive scheduler between `Router::push` calls.
+gloo-timers = { version = "0.3", features = ["futures"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+# Enable `validation` feature for trybuild UI tests that exercise
+# `Validated<Form<T>>` extractors in `tests/ui/server_fn/with_extractors.rs`
+# (Issue #3858). Scoped to non-wasm targets because `validation` pulls in
+# `reinhardt-core/validators`, which transitively drags in `tokio/net` and
+# cannot build for `wasm32-unknown-unknown`. The trybuild harness itself is
+# already gated with `#![cfg(not(target_arch = "wasm32"))]`.
+reinhardt-di = { workspace = true, features = ["validation"] }
+# E2E CDP regression test (`tests/integration/spa_navigation_e2e_test.rs`,
+# Refs #4088). Path-only per CLAUDE.md KI-2: avoids both release-plz publish
+# ordering breakage and cyclic publish dependencies. Test compilation is
+# gated by `[[test]] required-features = ["e2e-cdp-test"]`.
+reinhardt-test = { path = "../reinhardt-test", default-features = false, features = ["e2e-cdp"] }
+axum = "0.7"
+tower-http = { version = "0.5", features = ["fs"] }
 
 [lib]
 crate-type = ["rlib"]
@@ -196,3 +276,58 @@ required-features = []
 name = "server_fn_wasm_test"
 path = "tests/wasm/server_fn_wasm_test.rs"
 required-features = []
+
+[[test]]
+name = "suspense_boundary_wasm_test"
+path = "tests/wasm/suspense_boundary_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "client_launcher_navigation_test"
+path = "tests/wasm/client_launcher_navigation_test.rs"
+required-features = []
+
+[[test]]
+name = "client_launcher_router_client_test"
+path = "tests/wasm/client_launcher_router_client_test.rs"
+required-features = []
+
+[[test]]
+name = "spa_navigation_e2e_test"
+path = "tests/integration/spa_navigation_e2e_test.rs"
+required-features = ["e2e-cdp-test"]
+
+[[test]]
+name = "spa_navigation_diag_test"
+path = "tests/wasm/spa_navigation_diag_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "spa_navigation_diag_tier3_test"
+path = "tests/wasm/spa_navigation_diag_tier3_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "spa_navigation_diag_named_test"
+path = "tests/wasm/spa_navigation_diag_named_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "nav_diag_dom_test"
+path = "tests/wasm/nav_diag_dom_test.rs"
+required-features = ["wasm-diag-test", "nav-diag-dom"]
+
+[[test]]
+name = "history_state_shape_test"
+path = "tests/wasm/history_state_shape_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "wasm_bindgen_abi_pin_test"
+path = "tests/wasm/wasm_bindgen_abi_pin_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "spa_navigation_full_layout_e2e_test"
+path = "tests/integration/spa_navigation_full_layout_e2e_test.rs"
+required-features = ["e2e-cdp-test"]

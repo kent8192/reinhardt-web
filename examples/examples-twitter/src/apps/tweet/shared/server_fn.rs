@@ -7,12 +7,12 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use uuid::Uuid;
 
 // Server-only imports
-#[cfg(server)]
+#[cfg(native)]
 use {
 	crate::apps::auth::models::User,
 	crate::apps::tweet::models::Tweet,
 	crate::apps::tweet::shared::types::CreateTweetRequest,
-	reinhardt::CurrentUser,
+	reinhardt::AuthUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
 	reinhardt::db::orm::{Filter, FilterOperator, FilterValue, Model},
@@ -22,11 +22,14 @@ use {
 ///
 /// Accepts `content` as a String parameter (form! macro passes individual field values).
 /// Internally constructs CreateTweetRequest for validation.
-#[server_fn(use_inject = true)]
+/// `_csrf_token` is auto-appended by the `form!` macro for non-GET forms;
+/// CSRF is enforced by middleware. See #3825.
+#[server_fn]
 pub async fn create_tweet(
 	content: String,
+	_csrf_token: String,
 	#[inject] db: DatabaseConnection,
-	#[inject] current_user: CurrentUser<User>,
+	#[inject] AuthUser(user): AuthUser<User>,
 ) -> std::result::Result<TweetInfo, ServerFnError> {
 	// Construct request for validation
 	let request = CreateTweetRequest {
@@ -38,14 +41,8 @@ pub async fn create_tweet(
 		.validate()
 		.map_err(|e| ServerFnError::application(format!("Validation failed: {}", e)))?;
 
-	// Get current user (already loaded by CurrentUser<User> Injectable)
-	let user = current_user
-		.user()
-		.map_err(|_| ServerFnError::server(401, "Not authenticated"))?;
-
-	let user_id = current_user
-		.id()
-		.map_err(|_| ServerFnError::server(401, "Not authenticated"))?;
+	// AuthUser(user) destructuring guarantees authenticated user
+	let user_id = user.id();
 
 	// Create Tweet model using new() method
 	let tweet = Tweet::new(
@@ -74,7 +71,7 @@ pub async fn create_tweet(
 }
 
 /// List tweets
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn list_tweets(
 	user_id: Option<Uuid>,
 	page: u32,
@@ -152,16 +149,14 @@ pub async fn list_tweets(
 }
 
 /// Delete a tweet
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn delete_tweet(
 	tweet_id: Uuid,
 	#[inject] db: DatabaseConnection,
-	#[inject] current_user: CurrentUser<User>,
+	#[inject] AuthUser(user): AuthUser<User>,
 ) -> std::result::Result<(), ServerFnError> {
-	// Get current user
-	let user_id = current_user
-		.id()
-		.map_err(|_| ServerFnError::server(401, "Not authenticated"))?;
+	// AuthUser(user) destructuring guarantees authenticated user
+	let user_id = user.id();
 
 	// Fetch the tweet
 	let tweet = Tweet::objects()

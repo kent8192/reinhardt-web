@@ -7,135 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.8...reinhardt-di@v0.1.0-rc.9) - 2026-03-15
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.30...reinhardt-di@v0.1.0) - 2026-05-22
 
-### Styling
+Initial stable release of `reinhardt-di` as part of the reinhardt-web
+0.1.0 release. Provides the framework's dependency-injection runtime:
+the `Depends<T>` extractor, the `#[inject]` parameter attribute, and the
+global `DependencyRegistry` that powers DI across HTTP handlers, server
+functions, GraphQL/gRPC, and WebSocket consumers.
 
-- add explanatory comments to remaining #[allow(dead_code)] attributes
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.4...reinhardt-di@v0.1.0-rc.5) - 2026-03-07
+### Capabilities at 0.1.0
 
-### Documentation
+- **Unified `Depends<T>` extractor** — every `#[inject]` parameter is
+  typed as `Depends<T>`; the framework caches resolution per request,
+  detects cycles via a task-local guard, and surfaces typed metadata
+  the legacy `Arc<T>` shape could not carry.
+- **Scope-aware `InjectionContext`** — context forking for per-request
+  scopes, a deep-cloned `request_scope`, a fallback path for
+  pre-seeded types, and a protocol-agnostic `fork()` shared across
+  HTTP, GraphQL, gRPC, and WebSocket entry points.
+- **Middleware-contributed DI** — `Middleware::di_registrations()`
+  lets middleware (admin, auth, session) attach DI bindings that the
+  framework picks up at route-server construction time, removing a
+  long-standing route-vs-server scope gap.
+- **Typed errors with HTTP mapping** — `DiError::Authentication` /
+  `Authorization` map to 401 / 403 responses through
+  `ParamError::Authentication`; both enums are `#[non_exhaustive]`.
+- **Optional and validated extraction** — blanket `Injectable` for
+  `Option<T>` enables optional dependencies; `Validated<T>`
+  auto-validates extracted payloads before handler dispatch.
+- **Per-request and per-test isolation** — the `testing` feature
+  exposes `register_override` and the RAII `OverrideGuard` so mocks
+  can be installed for a single test without leaking into other
+  threads.
+- **Hardened proc-macro output** — the `#[injectable]` and
+  `#[injectable_factory]` expansions auto-derive `Clone`, register
+  qualified type names, route `async_trait` through reinhardt-core,
+  enforce attribute ordering, and reject unknown arguments at compile
+  time.
+- **Security-hardened registry** — `RegistryValidator`'s
+  `FrameworkTypeOverride` check rejects accidental shadowing of
+  framework types; ReDoS-safe pattern length limits and body-size
+  caps were added to parameter extractors during the alpha cycle.
 
-- add missing doc comments for public API modules and types
+### Notable Breaking Changes
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.1...reinhardt-di@v0.1.0-rc.2) - 2026-03-04
+- **`Arc<T>` → `Depends<T>` on `#[inject]`** — see
+  [#3628](https://github.com/kent8192/reinhardt-web/discussions/3628).
+- **`Injected<T>` deprecated** — replaced by `Depends<T>`; the
+  auto-`Clone` bound is removed (see
+  [#3631](https://github.com/kent8192/reinhardt-web/discussions/3631)).
+- **`Middleware::di_registrations()` hook** introduced; non-auth
+  `DiError` variants now map to `ParamError::Internal` so 500s are
+  not silently relabeled.
+- **`DiError` and `ParamError` are `#[non_exhaustive]`** — match arms
+  on these enums must include a default fallback.
 
-### Maintenance
+### Migration Notes
 
-- *(testing)* add insta snapshot testing dependency across all crates
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.8...reinhardt-di@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.7...reinhardt-di@v0.1.0-alpha.8) - 2026-02-21
-
-### Fixed
-
-- add reset_global_registry to enable test isolation
-- return error for unregistered types instead of defaulting to Singleton
-- remove undeclared tracing dependency from injectable macro output
-- prevent Arc::try_unwrap panic and DependencyStream element consumption
-- handle RwLock poisoning gracefully in scope and override registry
-
-### Security
-
-- improve generated name hygiene, crate path diagnostics, and type path validation
-- reject unknown macro arguments and unsupported scope attribute
-- add regex pattern length limit to prevent ReDoS attacks
-- fix non-deterministic path tuple extraction order
-- add body size limits to parameter extractors
-- remove info leak and validate factory code generation
-- migrate cycle detection to task_local and remove sampling
-
-### Changed
-
-- extract shared parse_cookies into cookie_util module
-
-### Styling
-
-- apply workspace-wide formatting fixes
-
-### Testing
-
-- add DependencyStream::is_empty non-destructive regression tests for #453
-
-### Maintenance
-
-- remove sea-query and sea-schema from workspace dependencies
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.5...reinhardt-di@v0.1.0-alpha.6) - 2026-02-12
-
-### Maintenance
-
-- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-http
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.4...reinhardt-di@v0.1.0-alpha.5) - 2026-02-09
-
-### Fixed
-
-- *(di)* move unit tests to integration crate to break circular publish chain
-- *(di)* implement deep clone for InjectionContext request scope
-
-### Reverted
-
-- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.3...reinhardt-di@v0.1.0-alpha.4) - 2026-02-06
-
-### Fixed
-
-- remove reinhardt-di self-reference dev-dependency
-
-### Other
-
-- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
-- release
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.2...reinhardt-di@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-http
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.1...reinhardt-di@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- *(package)* replace version.workspace with explicit versions
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+See the workspace-wide migration guide in the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide)
+for `Arc<T>` → `Depends<T>` and `Injected<T>` → `Depends<T>`
+walkthroughs. The key per-site change is mechanical: replace
+`#[inject] Arc<T>` with `#[inject] Depends<T>` and add an explicit
+`#[derive(Clone)]` if your concrete type was relying on the previous
+auto-`Clone` behaviour.

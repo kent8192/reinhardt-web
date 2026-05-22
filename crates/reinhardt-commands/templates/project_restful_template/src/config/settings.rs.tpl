@@ -26,12 +26,30 @@
 //! - `production` → loads `production.toml`
 //!
 //! If `REINHARDT_ENV` is not set, it defaults to `local`.
+//!
+//! ## Environment Variable Interpolation
+//!
+//! `TomlFileSource` interpolates `${VAR}` syntax inside TOML string values
+//! by default (since reinhardt-web v0.1.0-rc.27). The `${...}` syntax is
+//! not valid in non-string TOML literals. Supported forms:
+//!
+//! - `${VAR}` — required; settings load fails if `VAR` is unset
+//! - `${VAR:-default}` — falls back to `default` when `VAR` is unset
+//! - `${VAR:?message}` — settings load fails with `message` when `VAR` is unset
+//!
+//! Interpolated strings are typed-coerced at deserialization time, so
+//! `pool_size = "${DB_POOL_SIZE:-10}"` resolves directly to the field's
+//! declared Rust type (e.g. `u16`) without manual parsing.
 
 use reinhardt::conf::settings::builder::SettingsBuilder;
 use reinhardt::conf::settings::profile::Profile;
 use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
-use reinhardt::Settings;
+use reinhardt::settings;
 use std::env;
+
+// Add fragments to extend settings: e.g. `#[settings(core: CoreSettings | cache: CacheSettings)]`
+#[settings(core: CoreSettings)]
+pub struct ProjectSettings;
 
 /// Get settings based on environment variable
 ///
@@ -44,7 +62,6 @@ use std::env;
 /// use {{ crate_name }}::config::settings::get_settings;
 ///
 /// let settings = get_settings();
-/// println!("Debug mode: {}", settings.debug);
 /// ```
 ///
 /// # Panics
@@ -53,67 +70,47 @@ use std::env;
 /// - Settings files cannot be read
 /// - Settings cannot be deserialized
 /// - Required settings are missing
-pub fn get_settings() -> Settings {
-    let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
-    let profile = Profile::parse(&profile_str);
+pub fn get_settings() -> ProjectSettings {
+	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
+	let profile = Profile::parse(&profile_str);
 
-    // Get the project root directory (parent of src/)
-    let base_dir = env::current_dir().expect("Failed to get current directory");
-    let settings_dir = base_dir.join("settings");
+	// Get the project root directory (parent of src/)
+	let base_dir = env::current_dir().expect("Failed to get current directory");
+	let settings_dir = base_dir.join("settings");
 
-    // Build settings by merging sources in priority order
-    let merged = SettingsBuilder::new()
-        .profile(profile)
-        // Lowest priority: Default values
-        .add_source(
-            DefaultSource::new()
-                .with_value(
-                    "base_dir",
-                    serde_json::Value::String(
-                        env::var("CARGO_MANIFEST_DIR")
-                            .unwrap_or_else(|_| ".".to_string()),
-                    ),
-                )
-                .with_value("debug", serde_json::Value::Bool(false))
-                .with_value(
-                    "language_code",
-                    serde_json::Value::String("en-us".to_string()),
-                )
-                .with_value("time_zone", serde_json::Value::String("UTC".to_string()))
-                .with_value("use_i18n", serde_json::Value::Bool(true))
-                .with_value("use_tz", serde_json::Value::Bool(true))
-                .with_value("append_slash", serde_json::Value::Bool(true))
-                .with_value(
-                    "default_auto_field",
-                    serde_json::Value::String("BigAutoField".to_string()),
-                ),
-        )
-        // Low priority: Environment variables (for container overrides)
-        .add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
-        // Medium priority: Base TOML file
-        .add_source(TomlFileSource::new(settings_dir.join("base.toml")))
-        // Highest priority: Environment-specific TOML file
-        .add_source(TomlFileSource::new(
-            settings_dir.join(format!("{}.toml", profile_str)),
-        ))
-        .build()
-        .expect("Failed to build settings");
-
-    // Convert MergedSettings to reinhardt_core::Settings
-    merged
-        .into_typed()
-        .expect("Failed to convert settings to Settings struct")
+	// Build settings by merging sources in priority order.
+	// `build_composed::<T>()` uses `MergeStrategy::Deep` by default, so a
+	// single key in `production.toml` overrides only that key — sibling
+	// entries inside the same nested table inherit from `base.toml`.
+	SettingsBuilder::new()
+		.profile(profile)
+		// Lowest priority: Default values
+		.add_source(DefaultSource::new())
+		// Low priority: Environment variables (for container overrides)
+		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
+		// Medium priority: Base TOML file
+		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
+		// Highest priority: Environment-specific TOML file
+		.add_source(TomlFileSource::new(
+			settings_dir.join(format!("{}.toml", profile_str)),
+		))
+		.build_composed::<ProjectSettings>()
+		.unwrap_or_else(|err| {
+			panic!("Failed to build/compose settings for profile `{profile_str}`: {err}")
+		})
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_get_settings() {
-        // This test requires settings files to exist
-        // In a real project, you would set up test fixtures
-        let settings = get_settings();
-        assert!(!settings.secret_key.is_empty());
-    }
+	#[test]
+	fn test_get_settings() {
+		// Smoke test: ensures settings load without panic and required fields are present
+		let settings = get_settings();
+		assert!(
+			!settings.core.secret_key.is_empty(),
+			"secret_key should be populated from settings sources"
+		);
+	}
 }

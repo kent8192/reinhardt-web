@@ -17,19 +17,21 @@ pub struct TestTwitterUser {
 	pub email: String,
 	pub password: String,
 	pub is_active: bool,
+	pub is_superuser: bool,
 	pub bio: Option<String>,
 }
 
 impl TestTwitterUser {
 	/// Create a new test user with the given username.
 	pub fn new(username: &str) -> Self {
-		let id = Uuid::new_v4();
+		let id = Uuid::now_v7();
 		Self {
 			id,
 			username: username.to_string(),
 			email: format!("{}@example.com", username),
 			password: "password123".to_string(),
 			is_active: true,
+			is_superuser: false,
 			bio: None,
 		}
 	}
@@ -55,6 +57,12 @@ impl TestTwitterUser {
 	/// Set the user's active status.
 	pub fn with_active(mut self, is_active: bool) -> Self {
 		self.is_active = is_active;
+		self
+	}
+
+	/// Set the user's superuser status.
+	pub fn with_superuser(mut self, is_superuser: bool) -> Self {
+		self.is_superuser = is_superuser;
 		self
 	}
 

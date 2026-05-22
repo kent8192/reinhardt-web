@@ -37,8 +37,6 @@ use syn::{ExprMacro, Macro, parse_file};
 pub(crate) enum SkipReason {
 	/// File-wide ignore-all marker detected
 	FileWideMarker,
-	/// No page! macro found in file
-	NoPageMacro,
 	/// All page! macros were individually ignored
 	AllMacrosIgnored,
 }
@@ -47,7 +45,6 @@ impl std::fmt::Display for SkipReason {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			SkipReason::FileWideMarker => write!(f, "file-wide ignore marker"),
-			SkipReason::NoPageMacro => write!(f, "no page! macro"),
 			SkipReason::AllMacrosIgnored => write!(f, "all macros ignored"),
 		}
 	}
@@ -170,10 +167,21 @@ impl<'a> PageMacroVisitor<'a> {
 	}
 
 	/// Find the page! macro in source and return its position info.
-	fn find_macro_in_source(&self, _tokens_content: &str) -> Option<MacroInfo> {
-		// This is a simplified approach - we search for "page!(" patterns
-		// and verify by comparing token content
-		let pattern = "page!(";
+	///
+	/// Accepts both the human-authored form `page!(...)` and the
+	/// `proc_macro2::TokenStream` Display form `page ! ( ... )`, which
+	/// appears when the formatter recurses via wrapper code built from
+	/// `expr.to_token_stream()` (it inserts whitespace between tokens).
+	/// Without the lenient match, nested `page!` macros inside such
+	/// wrapper code would be invisible to `protect_page_macros`.
+	///
+	/// `tokens_content` is the `TokenStream` Display form of the macro
+	/// being located (i.e. `mac.tokens.to_string()` from syn). It is
+	/// used to disambiguate when a `page!(...)`-shaped substring also
+	/// appears in a preceding string literal or comment: the parsed
+	/// candidate's `to_string()` must match `tokens_content` to be
+	/// accepted.
+	fn find_macro_in_source(&self, tokens_content: &str) -> Option<MacroInfo> {
 		let mut search_start = 0;
 
 		// Skip already found macros
@@ -183,16 +191,21 @@ impl<'a> PageMacroVisitor<'a> {
 			}
 		}
 
-		while let Some(pos) = self.source[search_start..].find(pattern) {
-			let abs_start = search_start + pos;
-			let content_start = abs_start + pattern.len();
+		while let Some(hit) = find_page_bang_paren(&self.source[search_start..]) {
+			let abs_start = search_start + hit.start;
+			let content_start = search_start + hit.paren_open + 1;
 
 			// Find matching closing paren
 			if let Some(end_pos) = find_matching_paren(self.source, content_start) {
 				let macro_content = &self.source[content_start..end_pos];
 
-				// Parse the content to get tokens
-				if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content) {
+				// Parse the content to get tokens, and verify it matches the
+				// AST node we're locating. Without this check, a `page!(...)`
+				// substring inside a preceding string literal or `//` comment
+				// could be mistaken for the real macro invocation.
+				if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content)
+					&& tokens.to_string() == tokens_content
+				{
 					return Some(MacroInfo {
 						start: abs_start,
 						end: end_pos + 1, // Include closing paren
@@ -219,6 +232,158 @@ impl<'ast, 'a> Visit<'ast> for PageMacroVisitor<'a> {
 		self.extract_macro_info(mac);
 		syn::visit::visit_macro(self, mac);
 	}
+}
+
+/// Result of locating a `page!(` invocation (with possible whitespace).
+struct PageBangParen {
+	/// Byte offset of the leading `p` of `page`.
+	start: usize,
+	/// Byte offset of the opening `(`.
+	paren_open: usize,
+}
+
+/// Find the next `page <ws>* ! <ws>* (` occurrence in `s`, ensuring the
+/// `page` token is at a word boundary (not part of a larger identifier
+/// like `mypage`). Skips matches that appear inside line comments
+/// (`// ...`), block comments (`/* ... */`, nested), regular string
+/// literals (`"..."`), raw string literals (`r"..."`, `r#"..."#`, ...),
+/// and char literals (`'x'`), so a `page!(...)` substring embedded in
+/// such content cannot be mistaken for a real macro invocation.
+/// Returns `None` if none found. Accepts the canonical `page!(` form
+/// authored by users as well as the `page ! (` form emitted by
+/// `proc_macro2::TokenStream`'s `Display`.
+fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
+	let bytes = s.as_bytes();
+	let mut i = 0;
+	while i + "page".len() <= bytes.len() {
+		let b = bytes[i];
+
+		// Line comment: skip to end of line.
+		if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+			i += 2;
+			while i < bytes.len() && bytes[i] != b'\n' {
+				i += 1;
+			}
+			continue;
+		}
+
+		// Block comment (Rust allows nesting): skip to matching `*/`.
+		if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+			i += 2;
+			let mut depth: usize = 1;
+			while i + 1 < bytes.len() && depth > 0 {
+				if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+					depth += 1;
+					i += 2;
+				} else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+					depth -= 1;
+					i += 2;
+				} else {
+					i += 1;
+				}
+			}
+			continue;
+		}
+
+		// String literal — handle both raw (`r"..."`, `r#"..."#`, `br#"..."#`...)
+		// and regular forms. `detect_raw_string_start` walks backwards from
+		// the `"` to find a leading `r` or `br` (plus optional `#`s) at a word
+		// boundary.
+		if b == b'"' {
+			if let Some(hash_count) = detect_raw_string_start(s, i)
+				&& let Some(end) = skip_raw_string(s, i + 1, hash_count)
+			{
+				i = end;
+				continue;
+			}
+			i += 1;
+			while i < bytes.len() {
+				match bytes[i] {
+					b'\\' if i + 1 < bytes.len() => i += 2,
+					b'"' => {
+						i += 1;
+						break;
+					}
+					_ => i += 1,
+				}
+			}
+			continue;
+		}
+
+		// Char literal vs lifetime. A char literal closes its apostrophe
+		// within a few bytes (`'x'`, `'\n'`, `'\u{1F600}'`); a lifetime
+		// (`'a`, `'static`) does not. Look ahead with a small budget and
+		// only skip when a closing quote is found.
+		if b == b'\'' {
+			let mut j = i + 1;
+			let limit = (i + 10).min(bytes.len());
+			let mut closed = None;
+			while j < limit {
+				match bytes[j] {
+					b'\\' if j + 1 < bytes.len() => j += 2,
+					b'\'' => {
+						closed = Some(j);
+						break;
+					}
+					_ => j += 1,
+				}
+			}
+			if let Some(close) = closed {
+				i = close + 1;
+				continue;
+			}
+			// Treat as lifetime — step past the apostrophe only.
+			i += 1;
+			continue;
+		}
+
+		// Not in a comment or literal — look for the `page` keyword.
+		if &bytes[i..i + "page".len()] != b"page" {
+			i += 1;
+			continue;
+		}
+		let start = i;
+		// Reject if preceded by an identifier-continuation byte.
+		if start > 0 {
+			let prev = bytes[start - 1];
+			if prev.is_ascii_alphanumeric() || prev == b'_' {
+				i = start + 1;
+				continue;
+			}
+		}
+		let after = start + "page".len();
+		// Reject if followed by an identifier-continuation byte (excluding `!`).
+		if after < bytes.len() {
+			let nx = bytes[after];
+			if nx.is_ascii_alphanumeric() || nx == b'_' {
+				i = start + 1;
+				continue;
+			}
+		}
+		// Skip whitespace between `page` and `!`.
+		let mut j = after;
+		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+			j += 1;
+		}
+		if j >= bytes.len() || bytes[j] != b'!' {
+			i = start + 1;
+			continue;
+		}
+		j += 1;
+		// Skip whitespace between `!` and `(`.
+		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+			j += 1;
+		}
+		if j >= bytes.len() || bytes[j] != b'(' {
+			i = start + 1;
+			continue;
+		}
+		return Some(PageBangParen {
+			start,
+			paren_open: j,
+		});
+	}
+	None
 }
 
 /// Find the matching closing parenthesis, handling strings and nested parens.
@@ -307,14 +472,22 @@ fn find_matching_paren(source: &str, start: usize) -> Option<usize> {
 /// Detect if a '"' at the given offset is the start of a raw string.
 /// Returns Some(hash_count) if so (0 for r"...", 1 for r#"..."#, etc.).
 fn detect_raw_string_start(s: &str, quote_offset: usize) -> Option<usize> {
-	// Walk backwards from the quote to find r followed by optional #s
+	// Walk backwards from the quote to find r (or br) followed by optional #s
 	let before = &s[..quote_offset];
 	let trimmed = before.trim_end_matches('#');
 	let hash_count = before.len() - trimmed.len();
+
+	// Check for raw string (r"..." or r#"..."#) or raw byte string (br"..." or br#"..."#)
 	if trimmed.ends_with('r') {
 		// Verify the 'r' is not part of an identifier
 		let r_pos = trimmed.len() - 1;
 		if r_pos == 0 || !before.as_bytes()[r_pos - 1].is_ascii_alphanumeric() {
+			return Some(hash_count);
+		}
+	} else if trimmed.len() >= 2 && trimmed.ends_with("br") {
+		// Check for raw byte string: br"..." or br#"..."#
+		let br_pos = trimmed.len() - 2;
+		if br_pos == 0 || !before.as_bytes()[br_pos - 1].is_ascii_alphanumeric() {
 			return Some(hash_count);
 		}
 	}
@@ -437,12 +610,16 @@ impl AstPageFormatter {
 	/// Uses AST parsing for accurate macro detection. Falls back to returning
 	/// the original content if parsing fails.
 	pub(crate) fn format(&self, content: &str) -> Result<FormatResult, String> {
-		// Safety check FIRST: If no page! pattern exists, return unchanged
-		if !content.contains("page!(") {
+		// Safety check FIRST: If no page! pattern exists, return unchanged.
+		// This is a successful no-op, not an intentional skip — skipped stays None.
+		// Match both compact `page!(` and the TokenStream Display form `page ! (`
+		// so recursive formatting (which wraps via `to_token_stream()`) still
+		// sees nested macros at every depth.
+		if find_page_bang_paren(content).is_none() {
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
-				skipped: Some(SkipReason::NoPageMacro),
+				skipped: None,
 			});
 		}
 
@@ -459,11 +636,12 @@ impl AstPageFormatter {
 		let macros = self.find_page_macros(content)?;
 
 		if macros.is_empty() {
-			// Safety check passed but no actual macros found (e.g., in comments)
+			// Substring matched but AST found no real invocation (e.g., inside
+			// a comment or string literal). Successful no-op, not a skip.
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
-				skipped: Some(SkipReason::NoPageMacro),
+				skipped: None,
 			});
 		}
 
@@ -545,13 +723,16 @@ impl AstPageFormatter {
 	}
 
 	/// Text-based fallback for finding page! macros.
+	///
+	/// Accepts both the compact `page!(` form and the TokenStream Display
+	/// form `page ! (` (see `find_page_bang_paren`).
 	fn find_page_macros_text_based(&self, content: &str) -> Result<Vec<MacroInfo>, String> {
 		let mut macros = Vec::new();
-		let pattern = "page!(";
 		let mut search_start = 0;
 
-		while let Some(pos) = content[search_start..].find(pattern) {
-			let abs_start = search_start + pos;
+		while let Some(hit) = find_page_bang_paren(&content[search_start..]) {
+			let abs_start = search_start + hit.start;
+			let abs_open = search_start + hit.paren_open;
 
 			// Check if we're in a comment or string
 			if self.is_in_comment_or_string(content, abs_start) {
@@ -559,7 +740,7 @@ impl AstPageFormatter {
 				continue;
 			}
 
-			let content_start = abs_start + pattern.len();
+			let content_start = abs_open + 1;
 
 			if let Some(end_pos) = find_matching_paren(content, content_start) {
 				let macro_content = &content[content_start..end_pos];
@@ -1119,8 +1300,11 @@ impl AstPageFormatter {
 		let prettyplease_output = prettyplease::unparse(&file);
 		let formatted = self.format_with_rustfmt(&prettyplease_output);
 
-		// Restore nested page! macros
-		let restored = Self::restore_page_macros(&formatted, &protect_result.backups);
+		// Restore nested page! macros, recursively re-formatting each one so
+		// that nested page!() invocations are pretty-printed instead of being
+		// re-inserted as the compact TokenStream stringification captured at
+		// protect time.
+		let restored = self.restore_page_macros_recursive(&formatted, &protect_result.backups);
 
 		// Extract the expression from the wrapper
 		let Some(expr_str) = Self::extract_handler_from_wrapper(&restored) else {
@@ -1509,11 +1693,11 @@ impl AstPageFormatter {
 	/// let view = page!(|| { div { "hello" } })(props);
 	///
 	/// // After:
-	/// let view = __reinhardt_placeholder__!(/*0*/)(props);
+	/// let view = __reinhardt_placeholder_0__!()(props);
 	/// ```
 	pub(crate) fn protect_page_macros(&self, content: &str) -> ProtectResult {
-		// Quick check: if no page! pattern exists, return unchanged
-		if !content.contains("page!(") {
+		// Quick check: accept both `page!(` and `page ! (` (see `find_page_bang_paren`).
+		if find_page_bang_paren(content).is_none() {
 			return ProtectResult {
 				protected_content: content.to_string(),
 				backups: Vec::new(),
@@ -1556,7 +1740,7 @@ impl AstPageFormatter {
 			backups.push(PageMacroBackup { id, original });
 
 			// Insert placeholder (macro format so rustfmt doesn't touch it)
-			result.push_str(&format!("__reinhardt_placeholder__!(/*{}*/)", id));
+			result.push_str(&format!("__reinhardt_placeholder_{}__!()", id));
 
 			last_end = macro_info.end;
 		}
@@ -1583,11 +1767,76 @@ impl AstPageFormatter {
 
 		// Replace placeholders in reverse order to maintain correct positions
 		for backup in backups.iter().rev() {
-			let placeholder = format!("__reinhardt_placeholder__!(/*{}*/)", backup.id);
+			let placeholder = format!("__reinhardt_placeholder_{}__!()", backup.id);
 			result = result.replace(&placeholder, &backup.original);
 		}
 
 		result
+	}
+
+	/// Restore page! macros from placeholders, re-formatting each one so
+	/// nested page! invocations get the same pretty-printing as top-level
+	/// ones. The base indent for the recursive format pass is computed from
+	/// the column where the placeholder appears in `content`.
+	pub(crate) fn restore_page_macros_recursive(
+		&self,
+		content: &str,
+		backups: &[PageMacroBackup],
+	) -> String {
+		if backups.is_empty() {
+			return content.to_string();
+		}
+
+		let mut result = content.to_string();
+
+		for backup in backups.iter().rev() {
+			let placeholder = format!("__reinhardt_placeholder_{}__!()", backup.id);
+			let replacement = self
+				.format_inner_page_macro(&backup.original, &result, &placeholder)
+				.unwrap_or_else(|| backup.original.clone());
+			result = result.replace(&placeholder, &replacement);
+		}
+
+		result
+	}
+
+	/// Reformat a single backed-up `page!(...)` string with `format_macro_tokens`,
+	/// using the indentation of the placeholder's line as the base indent.
+	/// Returns `None` if parsing or re-formatting fails, in which case the
+	/// caller falls back to the original (unformatted) backup text.
+	fn format_inner_page_macro(
+		&self,
+		original: &str,
+		surrounding: &str,
+		placeholder: &str,
+	) -> Option<String> {
+		// Extract `<inner>` from `page!(<inner>)` (or the equivalent
+		// TokenStream Display form `page ! ( <inner> )`).
+		// Use the string-aware `find_matching_paren` rather than
+		// `rfind(')')` so a `)` inside a string literal or nested group
+		// in the macro body never gets confused with the closing paren.
+		let hit = find_page_bang_paren(original)?;
+		let head = hit.paren_open + 1;
+		let tail = find_matching_paren(original, head)?;
+		if tail <= head {
+			return None;
+		}
+		let inner = &original[head..tail];
+
+		// Reparse so the recursive formatter receives a real TokenStream.
+		let tokens = syn::parse_str::<proc_macro2::TokenStream>(inner).ok()?;
+
+		// Compute base indent from the placeholder's column (tabs only — the
+		// file uses hard tabs per rustfmt.toml `hard_tabs = true`).
+		let pos = surrounding.find(placeholder)?;
+		let line_start = surrounding[..pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
+		let base_indent = surrounding[line_start..pos]
+			.chars()
+			.filter(|c| *c == '\t')
+			.count();
+
+		let formatted = self.format_macro_tokens(&tokens, base_indent).ok()?;
+		Some(format!("page!({})", formatted))
 	}
 }
 
@@ -1606,6 +1855,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("div {"));
 		assert!(result.content.contains("\"hello\""));
 		assert!(result.contains_page_macro);
@@ -1621,6 +1871,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("div"));
 		assert!(result.content.contains("class"));
 		assert!(result.contains_page_macro);
@@ -1636,6 +1887,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(input, result.content);
 		assert!(!result.contains_page_macro);
 	}
@@ -1650,6 +1902,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("page!(|| { div { } })"));
 		assert!(!result.contains_page_macro);
 	}
@@ -1665,6 +1918,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("// page!(|| { div { } })"));
 		assert!(!result.contains_page_macro);
 	}
@@ -1679,6 +1933,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("name: String"));
 		assert!(result.contains_page_macro);
 	}
@@ -1693,6 +1948,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("div {"));
 		assert!(result.content.contains("p {"));
 		assert!(result.contains_page_macro);
@@ -1708,6 +1964,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("@if"));
 		assert!(result.contains_page_macro);
 	}
@@ -1722,6 +1979,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("@for"));
 		assert!(result.contains_page_macro);
 	}
@@ -1736,6 +1994,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("<MyComponent"));
 		assert!(result.content.contains("/>"));
 		assert!(result.contains_page_macro);
@@ -1751,6 +2010,7 @@ fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("@click"));
 		assert!(result.contains_page_macro);
 	}
@@ -1794,6 +2054,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(input, result.content);
 		assert!(!result.contains_page_macro);
 	}
@@ -1812,6 +2073,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("items: Vec<String>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1826,6 +2088,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("value: Option<i32>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1840,6 +2103,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("res: Result<String, Error>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1854,6 +2118,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("items: Vec<Option<String>>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1868,6 +2133,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("map: HashMap<String, i32>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1882,6 +2148,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("s: &str"));
 		assert!(result.contains_page_macro);
 	}
@@ -1896,6 +2163,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("arr: [i32; 5]"));
 		assert!(result.contains_page_macro);
 	}
@@ -1910,6 +2178,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("t: (String, i32)"));
 		assert!(result.contains_page_macro);
 	}
@@ -1924,6 +2193,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("v: std::vec::Vec<String>"));
 		assert!(result.contains_page_macro);
 	}
@@ -1938,6 +2208,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(
 			result
 				.content
@@ -1958,6 +2229,7 @@ mod tests {
 		let result2 = formatter.format(&result.content).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, result2.content);
 		assert!(result2.contains_page_macro);
 	}
@@ -1974,6 +2246,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("format!"));
 		assert!(result.contains_page_macro);
 	}
@@ -1990,6 +2263,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("get_message()"));
 		assert!(result.contains_page_macro);
 	}
@@ -2006,6 +2280,7 @@ mod tests {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("user.get_name()"));
 		assert!(result.contains_page_macro);
 	}
@@ -2030,6 +2305,7 @@ mod tests {
 		let result2 = formatter.format(&result.content).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.content.contains("button"));
 		assert!(result.content.contains("@click"));
 		assert!(result.content.contains("|event|"));
@@ -2057,6 +2333,7 @@ mod tests {
 		let result2 = formatter.format(&result.content).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, result2.content);
 		assert!(result2.contains_page_macro);
 	}
@@ -2119,6 +2396,7 @@ div{badly}
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.contains_page_macro);
 		assert!(result.content.contains("div {"));
 		assert!(result.content.contains("badly"));
@@ -2258,6 +2536,7 @@ page!(|| { div{ignored} })"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.contains_page_macro);
 		assert!(result.content.contains("div {"));
 		assert!(result.content.contains("ignored"));
@@ -2368,6 +2647,7 @@ page!(|| { div{ignored} })"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(result.contains_page_macro);
 	}
 
@@ -2381,6 +2661,7 @@ page!(|| { div{ignored} })"#;
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert!(!result.contains_page_macro);
 	}
 
@@ -2440,12 +2721,10 @@ fn main() {}"#;
 		let result = formatter.protect_page_macros(input);
 
 		// Assert
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder__!(/*0*/)")
+		assert_eq!(
+			result.protected_content,
+			r#"let view = __reinhardt_placeholder_0__!();"#
 		);
-		assert!(!result.protected_content.contains("page!("));
 		assert_eq!(result.backups.len(), 1);
 		assert_eq!(result.backups[0].id, 0);
 		assert!(result.backups[0].original.starts_with("page!("));
@@ -2464,17 +2743,10 @@ let view2 = page!(|| { div { "second" } });
 		let result = formatter.protect_page_macros(input);
 
 		// Assert
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder__!(/*0*/)")
+		assert_eq!(
+			result.protected_content,
+			"\nlet view1 = __reinhardt_placeholder_0__!();\nlet view2 = __reinhardt_placeholder_1__!();\n"
 		);
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder__!(/*1*/)")
-		);
-		assert!(!result.protected_content.contains("page!("));
 		assert_eq!(result.backups.len(), 2);
 	}
 
@@ -2494,13 +2766,15 @@ fn main() {}"#;
 		let result = formatter.protect_page_macros(input);
 
 		// Assert
-		assert!(result.protected_content.contains("use foo::bar;"));
-		assert!(result.protected_content.contains("fn render() -> View"));
-		assert!(result.protected_content.contains("fn main() {}"));
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder__!(/*0*/)")
+		assert_eq!(
+			result.protected_content,
+			r#"use foo::bar;
+
+fn render() -> View {
+    __reinhardt_placeholder_0__!()
+}
+
+fn main() {}"#
 		);
 	}
 
@@ -2602,13 +2876,165 @@ fn main() {
 			AstPageFormatter::restore_page_macros(&result.protected_content, &result.backups);
 
 		// Assert
-		assert!(
-			result
-				.protected_content
-				.contains("__reinhardt_placeholder__!(/*0*/)(props)")
+		assert_eq!(
+			result.protected_content,
+			r#"let view = __reinhardt_placeholder_0__!()(props);"#
 		);
 		assert_eq!(result.backups.len(), 1);
 		assert_eq!(restored, input);
+	}
+
+	// Regression: a `page!(...)`-shaped substring inside a preceding
+	// `//` comment with the same token sequence as the real macro must
+	// not be mistaken for the real invocation. Previously the source
+	// scanner would lock onto the comment substring and leave the real
+	// macro unprotected.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_line_comment() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "// page!(|| { div { \"hi\" } })\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert_eq!(
+			result.protected_content,
+			"// page!(|| { div { \"hi\" } })\nlet view = __reinhardt_placeholder_0__!();"
+		);
+	}
+
+	// Regression: same as the line-comment case but with a block comment
+	// preceding the real macro.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_block_comment() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "/* page!(|| { div { \"hi\" } }) */\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert_eq!(
+			result.protected_content,
+			"/* page!(|| { div { \"hi\" } }) */\nlet view = __reinhardt_placeholder_0__!();"
+		);
+	}
+
+	// Regression: a `page!(...)` literal inside a regular string literal
+	// must not be picked up as a macro invocation, even when those tokens
+	// happen to match the real macro byte-for-byte.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_string_literal() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "let s = \"page!(|| { div { \\\"hi\\\" } })\";\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		// The string literal must be left intact and only the real
+		// macro on the second line should be replaced with a placeholder.
+		assert!(
+			result
+				.protected_content
+				.contains("\"page!(|| { div { \\\"hi\\\" } })\"")
+		);
+		assert!(
+			result
+				.protected_content
+				.contains("__reinhardt_placeholder_0__!()")
+		);
+	}
+
+	// Regression: same as the string-literal case but using a raw string
+	// (`r#"..."#`), which the scanner must traverse without descending
+	// into its body.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_raw_string() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "let s = r#\"page!(|| { div { \"hi\" } })\"#;\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert!(
+			result
+				.protected_content
+				.contains("r#\"page!(|| { div { \"hi\" } })\"#")
+		);
+		assert!(
+			result
+				.protected_content
+				.contains("__reinhardt_placeholder_0__!()")
+		);
+	}
+
+	// Regression: same as the raw string test but using raw byte strings
+	// (`br#"..."#`), which the scanner must also traverse without descending
+	// into the body.
+	#[rstest]
+	fn test_protect_skips_lookalike_in_raw_byte_string() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "let s = br#\"page!(|| { div { \"hi\" } })\"#;\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert_eq!(
+			result
+				.protected_content
+				.matches("br#\"page!(|| { div { \"hi\" } })\"#")
+				.count(),
+			1
+		);
+		assert_eq!(
+			result
+				.protected_content
+				.matches("__reinhardt_placeholder_0__!()")
+				.count(),
+			1
+		);
+	}
+
+	// Regression: raw byte string with multiple hashes (`br##"..."##`).
+	#[rstest]
+	fn test_protect_skips_lookalike_in_raw_byte_string_multi_hash() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "let s = br##\"page!(|| { div { \"#hi#\" } })\"##;\nlet view = page!(|| { div { \"hi\" } });";
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert_eq!(
+			result
+				.protected_content
+				.matches("br##\"page!(|| { div { \"#hi#\" } })\"##")
+				.count(),
+			1
+		);
+		assert_eq!(
+			result
+				.protected_content
+				.matches("__reinhardt_placeholder_0__!()")
+				.count(),
+			1
+		);
 	}
 
 	// ==================== Unicode Character Tests ====================
@@ -2696,10 +3122,9 @@ fn main() {
 
 		// Assert
 		assert_eq!(protected.backups.len(), 1);
-		assert!(
-			protected
-				.protected_content
-				.contains("__reinhardt_placeholder__")
+		assert_eq!(
+			protected.protected_content,
+			r#"let view = __reinhardt_placeholder_0__!();"#
 		);
 		assert_eq!(restored, original);
 	}
@@ -2719,6 +3144,7 @@ fn main() {
 		let result = formatter.format(r#"page!(|| { { some_value } })"#).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, "page!(|| {\n\t{ some_value }\n})");
 	}
 
@@ -2731,6 +3157,7 @@ fn main() {
 		let result = formatter.format(r#"page!(|| { some_value })"#).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, "page!(|| {\n\tsome_value\n})");
 	}
 
@@ -2745,6 +3172,7 @@ fn main() {
 			.unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, "page!(|| {\n\t{ items.len() }\n})");
 	}
 
@@ -2759,6 +3187,7 @@ fn main() {
 			.unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, "page!(|| {\n\t{ \"hello world\" }\n})");
 	}
 
@@ -2771,6 +3200,7 @@ fn main() {
 		let result = formatter.format(r#"page!(|| { { () } })"#).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, "page!(|| {\n\t{ () }\n})");
 	}
 
@@ -2783,6 +3213,7 @@ fn main() {
 		let result = formatter.format(r#"page!(|| { { 42 } })"#).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, "page!(|| {\n\t{ 42 }\n})");
 	}
 
@@ -2795,6 +3226,7 @@ fn main() {
 		let result = formatter.format(r#"page!(|| { { true } })"#).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, "page!(|| {\n\t{ true }\n})");
 	}
 
@@ -2807,6 +3239,7 @@ fn main() {
 		let result = formatter.format(r#"page!(|| { { x + y } })"#).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(result.content, "page!(|| {\n\t{ x + y }\n})");
 	}
 
@@ -2823,6 +3256,7 @@ fn main() {
 			.unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
 			"page!(|| {\n\t{ items.iter().map(|item| item.render()).collect::<Vec<_>>() }\n})"
@@ -2840,6 +3274,7 @@ fn main() {
 			.unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
 			"page!(|| {\n\tif condition {\n\t\t{ short_val }\n\t}\n})"
@@ -2875,6 +3310,7 @@ fn main() {
 		let result = formatter.format(&input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
 			"page!(|| {\n\t{\n\t\tView::fragment(\n\t\t\t\tsignal\n\t\t\t\t\t.result()\n\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t.iter()\n\t\t\t\t\t.map(|item| View::text(item.clone()))\n\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t)\n\t}\n})"
@@ -2894,6 +3330,7 @@ fn main() {
 		let result = formatter.format(&input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
 			"page!(|| {\n\t{\n\t\tdata\n\t\t\t\t.iter()\n\t\t\t\t.filter(|x| x.is_active())\n\t\t\t\t.map(|x| x.name.clone())\n\t\t\t\t.collect::<Vec<String>>()\n\t\t\t\t.join(\", \")\n\t}\n})"
@@ -2913,6 +3350,7 @@ fn main() {
 		let result = formatter.format(&input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
 			"page!(|| {\n\t{\n\t\tformat!(\n\t\t\t\t\"User: {} ({})\",\n\t\t\t\tuser.display_name().unwrap_or_default(),\n\t\t\t\tuser.email().unwrap_or(\"no email\".to_string())\n\t\t\t)\n\t}\n})"
@@ -2932,6 +3370,7 @@ fn main() {
 		let result = formatter.format(&input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
 			"page!(|| {\n\tdiv {\n\t\tspan {\n\t\t\t{\n\t\t\t\tView::fragment(\n\t\t\t\t\t\tsignal\n\t\t\t\t\t\t\t.result()\n\t\t\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t\t\t.iter()\n\t\t\t\t\t\t\t.map(|item| View::text(item.clone()))\n\t\t\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t\t\t)\n\t\t\t}\n\t\t}\n\t}\n})"
@@ -2952,6 +3391,7 @@ fn main() {
 		let result = formatter.format(&input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
 			"page!(|| {\n\t{ count }\n\t{\n\t\tView::fragment(\n\t\t\t\tsignal\n\t\t\t\t\t.result()\n\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t.iter()\n\t\t\t\t\t.map(|item| View::text(item.clone()))\n\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t)\n\t}\n})"
@@ -2974,9 +3414,10 @@ fn main() {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
-			"page!(|signal: Action<Vec<Item>, String>| {\n\tdiv {\n\t\t{\n\t\t\tView::fragment(\n\t\t\t\t\tsignal\n\t\t\t\t\t\t.result()\n\t\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t\t.iter()\n\t\t\t\t\t\t.map(|item| {\n\t\t\t\t\t\t\tlet text = item.text.clone();\n\t\t\t\t\t\t\tpage!(| text : String | { span { { text } } })(text)\n\t\t\t\t\t\t})\n\t\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t\t)\n\t\t}\n\t}\n})(signal)"
+			"page!(|signal: Action<Vec<Item>, String>| {\n\tdiv {\n\t\t{\n\t\t\tView::fragment(\n\t\t\t\t\tsignal\n\t\t\t\t\t\t.result()\n\t\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t\t.iter()\n\t\t\t\t\t\t.map(|item| {\n\t\t\t\t\t\t\tlet text = item.text.clone();\n\t\t\t\t\t\t\tpage!(|text: String| {\n\t\t\t\t\t\t\t\tspan {\n\t\t\t\t\t\t\t\t\t{ text }\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t})(text)\n\t\t\t\t\t\t})\n\t\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t\t)\n\t\t}\n\t}\n})(signal)"
 		);
 	}
 
@@ -2998,9 +3439,10 @@ fn main() {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
-			"page!(|signal: Action<Vec<Item>, String>| {\n\tdiv {\n\t\tif signal.result().is_some() {\n\t\t\t{\n\t\t\t\tView::fragment(\n\t\t\t\t\t\tsignal\n\t\t\t\t\t\t\t.result()\n\t\t\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t\t\t.iter()\n\t\t\t\t\t\t\t.map(|item| {\n\t\t\t\t\t\t\t\tlet text = item.text.clone();\n\t\t\t\t\t\t\t\tpage!(| text : String | { div class = \"item\" { { text } } })(text)\n\t\t\t\t\t\t\t})\n\t\t\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t\t\t)\n\t\t\t}\n\t\t} else {\n\t\t\tp {\n\t\t\t\t\"Loading...\"\n\t\t\t}\n\t\t}\n\t}\n})(signal)"
+			"page!(|signal: Action<Vec<Item>, String>| {\n\tdiv {\n\t\tif signal.result().is_some() {\n\t\t\t{\n\t\t\t\tView::fragment(\n\t\t\t\t\t\tsignal\n\t\t\t\t\t\t\t.result()\n\t\t\t\t\t\t\t.unwrap_or_default()\n\t\t\t\t\t\t\t.iter()\n\t\t\t\t\t\t\t.map(|item| {\n\t\t\t\t\t\t\t\tlet text = item.text.clone();\n\t\t\t\t\t\t\t\tpage!(|text: String| {\n\t\t\t\t\t\t\t\t\tdiv\n\t\t\t\t\t\t\t\t\tclass = \"item\"\n\t\t\t\t\t\t\t\t\t{ { text } }\n\t\t\t\t\t\t\t\t})(text)\n\t\t\t\t\t\t\t})\n\t\t\t\t\t\t\t.collect::<Vec<_>>(),\n\t\t\t\t\t)\n\t\t\t}\n\t\t} else {\n\t\t\tp {\n\t\t\t\t\"Loading...\"\n\t\t\t}\n\t\t}\n\t}\n})(signal)"
 		);
 	}
 
@@ -3022,6 +3464,7 @@ fn main() {
 		let result = formatter.format(input).unwrap();
 
 		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
 		assert_eq!(
 			result.content,
 			"page!(|items: Vec<Item>| {\n\tdiv class=\"list\" {\n\t\tfor item in items {\n\t\t\tdiv class=\"card\" {\n\t\t\t\t{ View::fragment(item.tags.iter().map(|tag| { let t = tag.clone(); page!(|t: String| { span class=\"tag\" { { t } } })(t) }).collect::<Vec<_>>()) }\n\t\t\t}\n\t\t}\n\t}\n})(items)"

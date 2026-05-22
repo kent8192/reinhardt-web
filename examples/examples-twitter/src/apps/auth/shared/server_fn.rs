@@ -6,22 +6,29 @@ use crate::apps::auth::shared::types::UserInfo;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 // Server-only imports
-#[cfg(server)]
+#[cfg(native)]
 use {
 	crate::apps::auth::models::User,
 	crate::apps::auth::shared::types::{LoginRequest, RegisterRequest},
 	reinhardt::Validate,
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
-	reinhardt::middleware::session::{SessionData, SessionStoreRef},
+	reinhardt::middleware::session::{
+		SessionAuthExt, SessionData, SessionStoreRef, USER_ID_SESSION_KEY,
+	},
 	reinhardt::{BaseUser, DatabaseConnection},
 	uuid::Uuid,
 };
 
 /// Login user, persist session, and return user info
-#[server_fn(use_inject = true)]
+///
+/// `_csrf_token` is auto-appended by the `form!` macro for non-GET forms
+/// (commit 0fd5bf1e1 / #3337). CSRF is enforced by middleware, so we accept
+/// and ignore it here. See #3825.
+#[server_fn]
 pub async fn login(
 	email: String,
 	password: String,
+	_csrf_token: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
 	#[inject] store: SessionStoreRef,
@@ -63,29 +70,28 @@ pub async fn login(
 		return Err(ServerFnError::server(403, "User account is inactive"));
 	}
 
-	// Session fixation prevention: regenerate session ID
-	let old_id = session.id.clone();
-	session.id = Uuid::new_v4().to_string();
-
-	// Persist user ID in session
+	// Session fixation prevention: `SessionAuthExt::login` rotates the
+	// session ID (keeping the middleware's `Set-Cookie` header in sync via
+	// the request-scoped `ActiveSessionId` holder, see #3827), writes the
+	// user's primary key under `USER_ID_SESSION_KEY`, deletes the old store
+	// entry, and persists the rotated session in one step. See #4446.
 	session
-		.set("user_id".to_string(), user.id())
+		.login(&store, user.id())
 		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
-
-	// Delete old session and save new one
-	store.inner().delete(&old_id);
-	store.inner().save(session);
 
 	Ok(UserInfo::from(user))
 }
 
 /// Register new user
-#[server_fn(use_inject = true)]
+///
+/// `_csrf_token` is auto-appended by the `form!` macro; see [`login`] for details.
+#[server_fn]
 pub async fn register(
 	username: String,
 	email: String,
 	password: String,
 	password_confirmation: String,
+	_csrf_token: String,
 	#[inject] db: DatabaseConnection,
 ) -> std::result::Result<(), ServerFnError> {
 	// Construct request from parameters
@@ -127,9 +133,10 @@ pub async fn register(
 	let mut new_user = User::new(
 		request.username.trim().to_string(),
 		request.email.trim().to_string(),
-		None,
-		true,
-		None,
+		None,  // password_hash (set below)
+		true,  // is_active
+		false, // is_superuser
+		None,  // bio
 	);
 
 	// Set password
@@ -147,24 +154,26 @@ pub async fn register(
 }
 
 /// Logout user
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn logout(
 	#[inject] session: SessionData,
 	#[inject] store: SessionStoreRef,
 ) -> std::result::Result<(), ServerFnError> {
-	// Delete session from store
-	store.inner().delete(&session.id);
+	let mut session = session;
+	// Rotate the session id, drop the user-id key, and persist the rotated
+	// session in one step — see `SessionAuthExt` for the design rationale.
+	session.logout(&store);
 	Ok(())
 }
 
 /// Get current logged-in user
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn current_user(
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
 ) -> std::result::Result<Option<UserInfo>, ServerFnError> {
 	// Get user ID from session
-	let user_id = match session.get::<Uuid>("user_id") {
+	let user_id = match session.get::<Uuid>(USER_ID_SESSION_KEY) {
 		Some(id) => id,
 		None => return Ok(None),
 	};

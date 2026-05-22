@@ -14,12 +14,32 @@
 use proc_macro2::Span;
 use syn::{Expr, Result};
 
-use reinhardt_core::security::xss::is_safe_url;
 use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageMacro, PageNode,
 	PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
 	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode, TypedPageWatch, types::AttrValue,
 };
+
+/// Check if a URL is safe (no dangerous schemes like javascript:).
+///
+/// Inlined from `reinhardt_core::security::xss::is_safe_url` to avoid
+/// pulling the full reinhardt-core dependency chain (hyper/tokio/mio)
+/// into this proc-macro crate, which breaks WASM builds. (Fixes #3226)
+fn is_safe_url(url: &str) -> bool {
+	let url_lower = url.to_lowercase();
+
+	// Allow relative URLs and anchor links (but NOT parent traversal)
+	if url.starts_with('/') || url.starts_with("./") || url.starts_with('#') {
+		return true;
+	}
+
+	// Allow only safe protocols
+	let safe_protocols = ["http://", "https://", "mailto:", "ftp://", "ftps://"];
+
+	safe_protocols
+		.iter()
+		.any(|protocol| url_lower.starts_with(protocol))
+}
 
 /// Validates and transforms the entire PageMacro AST into a typed AST.
 ///
@@ -426,7 +446,9 @@ fn validate_accessibility(
 /// - Numeric attributes must have integer literals or dynamic expressions (no strings/floats/booleans)
 /// - URL attributes are checked for dangerous schemes (javascript:, data:, vbscript:) for XSS prevention
 /// - Enumerated attributes are validated against allowed values (`input[type]`, `button[type]`, etc.)
-/// - `img` element `src` attribute must be a string literal and non-empty
+/// - `img` element `src` attribute: when given as a string literal it must be non-empty
+///   and use a safe URL scheme; dynamic expressions (e.g. `resolve_static(...)`) are
+///   accepted and deferred to runtime
 ///
 /// Future phases will add accessibility checks.
 fn validate_attr_type(
@@ -437,25 +459,32 @@ fn validate_attr_type(
 ) -> Result<()> {
 	// Boolean attributes validation - must use dynamic expressions only
 	const BOOLEAN_ATTRS: &[&str] = &[
-		"disabled",
-		"required",
-		"readonly",
-		"checked",
-		"selected",
+		"allowfullscreen",
+		"async",
 		"autofocus",
 		"autoplay",
+		"checked",
 		"controls",
-		"loop",
-		"muted",
 		"default",
 		"defer",
+		"disabled",
 		"formnovalidate",
 		"hidden",
+		"inert",
 		"ismap",
+		"itemscope",
+		"loop",
 		"multiple",
+		"muted",
+		"nomodule",
 		"novalidate",
 		"open",
+		"playsinline",
+		"readonly",
+		"required",
 		"reversed",
+		"selected",
+		"truespeed",
 	];
 
 	// Numeric attributes that must have integer literal or dynamic values
@@ -502,21 +531,23 @@ fn validate_attr_type(
 			));
 		}
 
-		// 2. Boolean literals are prohibited
-		if value.is_bool_literal() {
+		// 2. Boolean literal `false` is prohibited (omit the attribute instead).
+		//    `true` is allowed to support standalone syntax (e.g., `required`
+		//    which the parser desugars to `required: true`).
+		if let AttrValue::BoolLit(lit) = value
+			&& !lit.value()
+		{
 			return Err(syn::Error::new(
 				span,
 				format!(
-					"Boolean attribute '{}' cannot have a boolean literal value.\n\
-					HTML boolean attributes represent true/false by their presence/absence:\n\
-					  - Attribute present = true\n\
-					  - Attribute absent = false\n\n\
-					Use a variable or expression for dynamic boolean values:\n\
-					  Correct:   {}: is_disabled\n\
-					  Correct:   {}: state.is_active()\n\
-					  Incorrect: {}: true\n\
-					  Incorrect: {}: false",
-					attr_name, attr_name, attr_name, attr_name, attr_name
+					"Boolean attribute '{}' cannot be set to `false`.\n\
+						To disable a boolean attribute, omit it entirely:\n\
+						  - Attribute present = true (e.g., `{0}` or `{0}: true`)\n\
+						  - Attribute absent = false (just remove `{0}`)\n\n\
+						Use a variable or expression for dynamic boolean values:\n\
+						  Correct:   {0}: is_disabled\n\
+						  Correct:   {0}: state.is_active()",
+					attr_name
 				),
 			));
 		}
@@ -629,16 +660,12 @@ fn validate_attr_type(
 
 	// img element src attribute validation
 	// Fixes #849
+	//
+	// String literals are checked here for emptiness and dangerous URL schemes.
+	// Dynamic expressions (e.g. `resolve_static(...)`, variable references) are
+	// accepted and deferred to runtime validation.
 	if element_tag == "img" && attr_name == "src" {
-		// Must be a string literal
-		if !value.is_string_literal() {
-			return Err(syn::Error::new(
-				span,
-				"Element <img> 'src' attribute must be a string literal",
-			));
-		}
-
-		// Must not be empty
+		// Must not be empty (only checkable on string literals)
 		if let Some(src_value) = value.as_string() {
 			if src_value.trim().is_empty() {
 				return Err(syn::Error::new(
@@ -809,6 +836,7 @@ fn validate_element_nesting(elem: &PageElement, parent_tags: &[String]) -> Resul
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use syn::parse_quote;
 
 	#[test]
@@ -954,15 +982,11 @@ mod tests {
 
 	#[test]
 	fn test_validate_attr_type_img_src_dynamic() {
-		let value = AttrValue::from_expr(parse_quote!(image_url));
+		// Dynamic expressions (function calls, identifiers) are accepted —
+		// their value can only be validated at runtime.
+		let value = AttrValue::from_expr(parse_quote!(resolve_static("images/poll.svg")));
 		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
-		assert!(result.is_err());
-		assert!(
-			result
-				.unwrap_err()
-				.to_string()
-				.contains("must be a string literal")
-		);
+		assert!(result.is_ok());
 	}
 
 	#[test]
@@ -1006,10 +1030,7 @@ mod tests {
 		let value = AttrValue::from_expr(parse_quote!(true));
 		let result =
 			validate_attr_type("disabled", &value, "button", proc_macro2::Span::call_site());
-		assert!(result.is_err());
-		let err_msg = result.unwrap_err().to_string();
-		assert!(err_msg.contains("Boolean attribute"));
-		assert!(err_msg.contains("cannot have a boolean literal value"));
+		assert!(result.is_ok());
 	}
 
 	#[test]
@@ -1018,8 +1039,7 @@ mod tests {
 		let result = validate_attr_type("checked", &value, "input", proc_macro2::Span::call_site());
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
-		assert!(err_msg.contains("Boolean attribute"));
-		assert!(err_msg.contains("cannot have a boolean literal value"));
+		assert!(err_msg.contains("cannot be set to `false`"));
 	}
 
 	#[test]
@@ -1417,5 +1437,22 @@ mod tests {
 		let result =
 			validate_button_accessibility(&attrs, &children, proc_macro2::Span::call_site());
 		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	#[case("https://example.com", true)]
+	#[case("http://example.com", true)]
+	#[case("mailto:user@example.com", true)]
+	#[case("ftp://files.example.com", true)]
+	#[case("ftps://files.example.com", true)]
+	#[case("/relative/path", true)]
+	#[case("./local/path", true)]
+	#[case("#anchor", true)]
+	#[case("javascript:alert(1)", false)]
+	#[case("data:text/html,<script>alert(1)</script>", false)]
+	#[case("vbscript:msgbox", false)]
+	#[case("JAVASCRIPT:alert(1)", false)]
+	fn test_is_safe_url(#[case] url: &str, #[case] expected: bool) {
+		assert_eq!(is_safe_url(url), expected);
 	}
 }

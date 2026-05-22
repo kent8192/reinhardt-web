@@ -392,12 +392,20 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				request.set_di_context(ctx);
 			}
 
-			// Handle request
-			let response = handler.handle(request).await.unwrap_or_else(|err| {
-				// Convert error to appropriate HTTP response based on status code
-				let status_code = StatusCode::from_u16(err.status_code())
-					.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-				Response::new(status_code).with_body(err.to_string())
+			// Handle request.
+			// The middleware chain converts handler errors to responses internally
+			// (in ConditionalComposedHandler) so that middleware post-processing
+			// always runs. This unwrap_or_else is a safety net for errors that
+			// escape the chain (e.g., middleware-internal failures without a chain).
+			let request_path = request.uri.path().to_string();
+			let response = handler.handle(request).await.unwrap_or_else(|e| {
+				if request_path.contains('.') && !request_path.ends_with(".json") {
+					eprintln!(
+						"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",
+						request_path, e
+					);
+				}
+				Response::from(e)
 			});
 
 			// Convert to hyper response
@@ -497,6 +505,7 @@ pub async fn serve_with_shutdown<H: Handler + 'static>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -627,5 +636,60 @@ mod tests {
 
 		// Middlewares should be applied in order: First -> Second -> Handler
 		assert_eq!(body, "First:Second:Hello, World!");
+	}
+
+	/// Handler that returns a database error containing sensitive internal details
+	struct ErrorHandler {
+		error_message: String,
+	}
+
+	#[async_trait::async_trait]
+	impl Handler for ErrorHandler {
+		async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
+			Err(reinhardt_core::exception::Error::Database(
+				self.error_message.clone(),
+			))
+		}
+	}
+
+	#[rstest]
+	#[case::database_connection_string(
+		"postgres://admin:s3cret@10.0.0.5/prod_db: connection refused",
+		"postgres"
+	)]
+	#[case::internal_file_path("/opt/app/config/secrets.yml: file not found", "/opt/app")]
+	#[case::sql_query_details(
+		"SELECT * FROM users WHERE password = 'hash123': syntax error",
+		"SELECT"
+	)]
+	#[tokio::test]
+	async fn test_error_handler_does_not_leak_internal_details(
+		#[case] sensitive_message: &str,
+		#[case] leaked_fragment: &str,
+	) {
+		// Arrange
+		let server = HttpServer::new(ErrorHandler {
+			error_message: sensitive_message.to_string(),
+		});
+		let handler = server.build_handler();
+		let request = Request::builder()
+			.method(hyper::Method::GET)
+			.uri("/")
+			.version(hyper::Version::HTTP_11)
+			.headers(hyper::HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap_or_else(Response::from);
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+		assert!(
+			!body.contains(leaked_fragment),
+			"Response body must not contain internal details '{leaked_fragment}', but got: {body}"
+		);
 	}
 }

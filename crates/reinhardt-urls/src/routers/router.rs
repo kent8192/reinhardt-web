@@ -191,11 +191,20 @@ impl DefaultRouter {
 		// Register custom actions from ViewSet
 		let extra_actions = viewset.get_extra_actions();
 		for action in extra_actions {
-			let action_url_path = if let Some(ref url_path) = action.url_path {
-				url_path.clone()
-			} else {
-				action.name.clone()
-			};
+			// `#[action]` enforces that `url_path` starts with `/`
+			// (see `crates/reinhardt-core/macros/src/action.rs`). When this
+			// value flows into the `format!("/{}/.../{}/")` template below,
+			// a stored `/children` would yield `.../{id}//children/` (double
+			// slash). Strip the leading `/` so the segment join is uniform
+			// regardless of whether the value came from
+			// `#[action(url_path = "/...")]` or the `action.name` fallback
+			// (which has no slash).
+			let action_url_path = action
+				.url_path
+				.as_deref()
+				.unwrap_or(action.name.as_str())
+				.trim_start_matches('/')
+				.to_string();
 
 			let action_path = if action.detail {
 				// Detail action: /prefix/{lookup_field}/action_name/
@@ -443,11 +452,24 @@ impl Router for DefaultRouter {
 			.or_else(|| route.name.clone())
 			.unwrap_or_else(|| format!("route_{}", self.routes.len()));
 
-		self.matcher.add_pattern(pattern, handler_id.clone());
+		// The `Router::add_route` trait signature is infallible, so surface
+		// pattern-insertion failures via tracing rather than panicking. If
+		// insertion fails we skip recording the route to keep the matcher's
+		// linear/radix views consistent with the registered route list.
+		if let Err(e) = self.matcher.add_pattern(pattern, handler_id.clone()) {
+			tracing::warn!(
+				"DefaultRouter: failed to register pattern for path '{}': {}",
+				route.path,
+				e
+			);
+			return;
+		}
 
 		// Register route for reverse lookup if it has a name
-		if route.full_name().is_some() || route.name.is_some() {
-			self.reverser.register(route.clone());
+		if (route.full_name().is_some() || route.name.is_some())
+			&& let Err(e) = self.reverser.register(route.clone())
+		{
+			tracing::warn!("{}", e);
 		}
 
 		self.routes.push(route);

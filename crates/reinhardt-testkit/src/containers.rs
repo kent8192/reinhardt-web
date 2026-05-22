@@ -161,7 +161,7 @@ impl PostgresContainer {
 		use testcontainers::core::IntoContainerPort;
 
 		// Use GenericImage to ensure port is properly exposed
-		let image = GenericImage::new("postgres", "16-alpine")
+		let image = GenericImage::new("postgres", "17-alpine")
 			.with_exposed_port(5432.tcp())
 			.with_wait_for(WaitFor::message_on_stderr(
 				"database system is ready to accept connections",
@@ -630,7 +630,7 @@ impl RabbitMQContainer {
 	pub async fn with_credentials(username: &str, password: &str) -> Self {
 		use testcontainers::core::IntoContainerPort;
 
-		let image = GenericImage::new("rabbitmq", "3.12-management-alpine")
+		let image = GenericImage::new("rabbitmq", "3-management-alpine")
 			.with_exposed_port(5672.tcp())      // AMQP port
 			.with_exposed_port(15672.tcp())     // Management UI port
 			.with_wait_for(WaitFor::message_on_stdout("Server startup complete"))
@@ -1078,4 +1078,115 @@ mod tests {
 		// Act
 		sqlite::temp_file_url(name);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// KafkaContainer
+// ---------------------------------------------------------------------------
+
+/// A single-broker Kafka container using `apache/kafka:3.8.1` in KRaft mode.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use reinhardt_testkit::containers::KafkaContainer;
+///
+/// # #[tokio::main]
+/// # async fn main() {
+/// let container = KafkaContainer::new().await;
+/// let brokers = container.brokers();
+/// # }
+/// ```
+pub struct KafkaContainer {
+	#[allow(dead_code)] // must be held to prevent automatic cleanup
+	container: ContainerAsync<GenericImage>,
+	host: String,
+	port: u16,
+}
+
+/// Start a Kafka container and return it with its broker list.
+pub async fn start_kafka() -> (KafkaContainer, Vec<String>) {
+	let container = KafkaContainer::new().await;
+	let brokers = container.brokers();
+	(container, brokers)
+}
+
+impl KafkaContainer {
+	/// Start a new Kafka container.
+	///
+	/// The broker is configured with `KAFKA_CFG_ADVERTISED_LISTENERS` pointing to
+	/// the mapped host port so that Kafka clients (including `rskafka`) receive
+	/// a reachable bootstrap address in their metadata response.
+	///
+	/// Because testcontainers assigns the host port dynamically *after* the
+	/// container is created, we pre-pick a free ephemeral port on the host and
+	/// publish 9092 to that fixed port via `with_mapped_port`. The broker then
+	/// starts with `KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://<host>:<port>`
+	/// already set to the correct value — no post-start reconfiguration needed.
+	pub async fn new() -> Self {
+		use testcontainers::core::IntoContainerPort;
+
+		let host_port = reserve_free_port();
+
+		let image = GenericImage::new("apache/kafka", "3.8.1")
+			.with_exposed_port(9092.tcp())
+			.with_wait_for(WaitFor::message_on_stdout("Kafka Server started"))
+			.with_env_var("KAFKA_NODE_ID", "0")
+			.with_env_var("KAFKA_PROCESS_ROLES", "controller,broker")
+			.with_env_var(
+				"KAFKA_LISTENERS",
+				"PLAINTEXT://:9092,CONTROLLER://:9093",
+			)
+			.with_env_var(
+				"KAFKA_LISTENER_SECURITY_PROTOCOL_MAP",
+				"CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT",
+			)
+			.with_env_var("KAFKA_CONTROLLER_QUORUM_VOTERS", "0@localhost:9093")
+			.with_env_var("KAFKA_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
+			.with_env_var("KAFKA_INTER_BROKER_LISTENER_NAME", "PLAINTEXT")
+			// Advertise the externally reachable host:port so clients connect to
+			// the mapped host port (not the container-internal 9092).
+			.with_env_var(
+				"KAFKA_ADVERTISED_LISTENERS",
+				format!("PLAINTEXT://localhost:{host_port}"),
+			)
+			.with_mapped_port(host_port, 9092.tcp());
+
+		let container = AsyncRunner::start(image)
+			.await
+			.expect("Failed to start Kafka container");
+
+		let host = container
+			.get_host()
+			.await
+			.expect("Failed to get Kafka host")
+			.to_string();
+
+		Self {
+			container,
+			host,
+			port: host_port,
+		}
+	}
+
+	/// Returns broker addresses as `vec!["host:port"]`.
+	pub fn brokers(&self) -> Vec<String> {
+		vec![format!("{}:{}", self.host, self.port)]
+	}
+}
+
+/// Pick a free TCP port on the loopback interface.
+///
+/// Binds to port 0, reads the assigned port, and drops the socket. There is an
+/// inherent race window between the socket close and the Docker port binding,
+/// but it is small enough in practice for local integration testing. Used to
+/// pre-wire `KAFKA_CFG_ADVERTISED_LISTENERS` with the same port that Docker
+/// will publish the broker on.
+fn reserve_free_port() -> u16 {
+	use std::net::TcpListener;
+	TcpListener::bind("127.0.0.1:0")
+		.expect("Failed to bind ephemeral port for Kafka")
+		.local_addr()
+		.expect("Failed to read local_addr")
+		.port()
 }

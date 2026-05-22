@@ -3,18 +3,12 @@
 //! These types are serializable and can be sent between the WASM client
 //! and the Rust server via server functions.
 
-use reinhardt::Validate;
-use reinhardt::core::serde::{Deserialize, Serialize};
+use reinhardt::dto;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// OpenAPI schema generation (server-side only)
-#[cfg(server)]
-use reinhardt::rest::ToSchema;
-#[cfg(server)]
-use reinhardt::rest::openapi::Schema;
-
 /// Tweet information
-#[cfg_attr(server, derive(Schema))]
+#[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweetInfo {
 	pub id: Uuid,
@@ -50,7 +44,7 @@ impl TweetInfo {
 }
 
 /// Conversion from server-side Tweet model to shared TweetInfo
-#[cfg(server)]
+#[cfg(native)]
 impl From<crate::apps::tweet::models::Tweet> for TweetInfo {
 	fn from(tweet: crate::apps::tweet::models::Tweet) -> Self {
 		TweetInfo {
@@ -66,8 +60,8 @@ impl From<crate::apps::tweet::models::Tweet> for TweetInfo {
 }
 
 /// Create tweet request
-#[cfg_attr(server, derive(Schema))]
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[dto]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTweetRequest {
 	#[validate(length(
 		min = 1,

@@ -135,7 +135,7 @@ async fn contact(Form(form): Form<ContactForm>) -> reinhardt::Response {
 Extracts `multipart/form-data` (used for file uploads).
 
 ```rust
-use reinhardt_di::params::Body;
+use reinhardt_di::params::Multipart;
 use multer::Field;
 
 async fn upload_file(mut multipart: Multipart) -> reinhardt::Response {
@@ -256,12 +256,12 @@ async fn create_user(Json(user): Json<User>) -> reinhardt::Response {
 ```rust
 use reinhardt_di::params::Json;
 use reinhardt::{Request, Response};
-use reinhardt::RequestContext;
+use reinhardt_di::params::ParamContext;
 
 async fn create_user_manual(req: Request) -> reinhardt::Result<Response> {
     use reinhardt_di::params::FromRequest;
 
-    let ctx = RequestContext::new();
+    let ctx = ParamContext::default();
 
     match Json::<User>::from_request(&req, &ctx).await {
         Ok(Json(user)) => {

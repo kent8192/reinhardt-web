@@ -60,20 +60,40 @@
 //! ```
 //!
 //! [`Page`]: reinhardt_core::page::Page
+//!
+//! # Reactive navigation observation
+//!
+//! `ClientRouter` exposes [`ClientRouter::on_navigate`] returning a
+//! [`NavigationSubscription`] handle, plus diagnostic counters
+//! (`__diag_observer_count`, `__diag_dispatch_count`,
+//! `__diag_router_id`). These were ported from `pages::Router` in
+//! `0.1.0-rc.27`; behaviour matches the pages-side invariants
+//! Inv-1 ~ Inv-6 documented in `pages::router::core`.
+//! See `kent8192/reinhardt-web#4234`.
 
 mod core;
 mod error;
+mod global;
 mod handler;
-mod history;
+// Issue #4217: `history` is exposed publicly so reinhardt-pages can
+// re-export the canonical primitives. The functions inside remain
+// callable cross-crate, but the more ergonomic re-exports at this
+// module level are intentionally limited (see below).
+pub mod history;
 mod params;
 mod pattern;
+mod reverser;
 
 // Public re-exports
-pub use core::{ClientRoute, ClientRouteMatch, ClientRouter};
-pub use error::{PathError, RouterError};
+pub use core::{ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription};
+pub use error::{MergeError, PathError, RouterError};
+pub use global::{clear_client_reverser, get_client_reverser, register_client_reverser};
 pub use handler::RouteHandler;
-pub use history::{
-	HistoryState, NavigationType, current_path, go_back, go_forward, push_state, replace_state,
-};
+// Issue #4217: drop helper-function re-exports from this module's
+// public surface. Callers should use `Router::push()` / `ClientRouter::push()`
+// instead. The functions remain `pub` at `history::*` so reinhardt-pages
+// can re-export them across the crate boundary.
+pub use history::{HistoryState, NavigationType};
 pub use params::{FromPath, ParamContext, Path, SingleFromPath};
 pub use pattern::ClientPathPattern;
+pub use reverser::ClientUrlReverser;

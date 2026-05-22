@@ -10,40 +10,40 @@ pub use reinhardt_core::types::page::{
 };
 
 // DummyEvent is only available on non-WASM targets
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub use reinhardt_core::types::page::DummyEvent;
 // Re-export boolean attribute utilities (used in WASM mount)
 // Note: EventType is re-exported from dom::event module
-#[cfg(target_arch = "wasm32")]
-pub use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
+#[cfg(wasm)]
+pub(super) use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 use crate::component::reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 use crate::dom::Element;
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 use wasm_bindgen::closure::Closure;
 
 /// Extension trait for mounting Page to DOM (WASM only).
 ///
 /// This trait provides the `mount()` method for `Page` which is only available
 /// in WASM environments where actual DOM manipulation is possible.
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub trait PageExt {
 	/// Mounts the view to a DOM element (client-side only).
 	fn mount(self, parent: &Element) -> Result<(), MountError>;
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 impl PageExt for Page {
 	fn mount(self, parent: &Element) -> Result<(), MountError> {
 		mount_inner(self, parent)
 	}
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 	use crate::dom::document;
 
@@ -141,12 +141,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			// Create a ReactiveIfNode that manages DOM updates reactively.
 			// The node uses an Effect to monitor condition changes and swaps
 			// DOM nodes when the condition value changes.
-			let node = ReactiveIfNode::new(
-				parent,
-				move || condition(),
-				move || then_view(),
-				move || else_view(),
-			);
+			let node = ReactiveIfNode::new(parent, condition, then_view, else_view);
 			// Store the node to keep it alive for the lifetime of the DOM element
 			store_reactive_node(node);
 		}
@@ -157,7 +152,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			// Create a ReactiveNode that manages DOM updates reactively.
 			// The node uses an Effect to monitor dependency changes and
 			// re-renders when they change.
-			let node = ReactiveNode::new(parent, move || render());
+			let node = ReactiveNode::new(parent, render);
 			// Store the node to keep it alive for the lifetime of the DOM element
 			store_reactive_node(node);
 		}
@@ -169,7 +164,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 /// Extension trait for mounting Page (non-WASM stub).
 ///
 /// In non-WASM environments, this trait provides a no-op stub for API compatibility.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub trait PageExt {
 	/// Mounts the view (non-WASM stub).
 	///
@@ -178,7 +173,7 @@ pub trait PageExt {
 	fn mount<T>(self, _parent: &T) -> Result<(), MountError>;
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 impl PageExt for Page {
 	fn mount<T>(self, _parent: &T) -> Result<(), MountError> {
 		Ok(())

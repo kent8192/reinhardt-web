@@ -12,7 +12,7 @@
 //! - **Interactive Mode**: Support for interactive prompts
 //! - **Colored Output**: Rich terminal output
 //! - **AST-Based Code Generation**: Robust code generation using Abstract Syntax Trees
-//! - **Auto-Reload**: Development server auto-reload with bacon integration
+//! - **Auto-Reload**: Built-in hot-reload for the development server (server + wasm)
 //! - **Tera Template Engine**: Powerful template rendering for project/app generation
 //!
 //! ## Example
@@ -104,39 +104,20 @@
 //!
 //! ## Auto-Reload for Development Server
 //!
-//! The `runserver` command supports automatic reloading when code changes are detected,
-//! using bacon for complete rebuild and restart functionality.
+//! The `runserver` command reloads automatically on file changes. No external
+//! tool (such as `cargo-watch` or `bacon`) is required — the watcher is built
+//! into the `autoreload` feature.
 //!
-//! ### Using bacon
-//!
-//! Install bacon:
-//!
-//! ```bash
-//! cargo install --locked bacon
+//! ```text
+//! cargo run --bin manage -- runserver --with-pages
 //! ```
 //!
-//! Run the development server with auto-reload:
+//! Edit any Rust source file (server-side or wasm-side) and the bundle plus
+//! the server are rebuilt in place. Pass `--noreload` to disable auto-reload
+//! entirely, or `--no-wasm-rebuild` to keep server reload but manage the wasm
+//! build yourself.
 //!
-//! ```bash
-//! # Using bacon directly
-//! bacon runserver
-//!
-//! # Or using cargo make
-//! cargo make watch
-//! ```
-//!
-//! ### How It Works
-//!
-//! Bacon provides a background code checker that:
-//! 1. Detects file changes in `src/`, `Cargo.toml`, and other watched paths
-//! 2. Automatically runs the configured job (check, clippy, test, runserver, etc.)
-//! 3. Displays build output and errors in real-time
-//! 4. Supports keyboard shortcuts for switching between different jobs
-//!
-//! ### Configuration
-//!
-//! Bacon can be configured via `bacon.toml` in the project root. See the bacon
-//! documentation for more details: <https://dystroy.org/bacon/>
+//! See [`runserver_hooks`] for the full hot-reload runbook and failure modes.
 
 /// Base command trait and argument/option definitions.
 pub mod base;
@@ -148,12 +129,22 @@ pub mod cli;
 pub mod collectstatic;
 /// Command execution context (settings, output, verbosity).
 pub mod context;
+/// Superuser creation command.
+#[cfg(feature = "auth")]
+pub(crate) mod createsuperuser;
+/// Debounced file-system watcher for hot-reload (replaces inline watcher).
+#[cfg(feature = "autoreload")]
+#[doc(hidden)]
+pub mod debounced_watcher;
 /// Embedded Tera templates for project/app scaffolding.
 pub mod embedded_templates;
 /// Code formatting utilities for generated code.
 pub mod formatter;
 /// Internationalization commands (makemessages, compilemessages).
 pub mod i18n_commands;
+/// Project introspection command for platform metadata discovery.
+#[cfg(feature = "introspect")]
+pub mod introspect;
 /// Email testing command.
 pub mod mail_commands;
 /// Terminal output wrapper with styling support.
@@ -163,14 +154,59 @@ pub mod output;
 pub mod plugin_commands;
 /// Command registry for discovery and dispatch.
 pub mod registry;
+/// Runserver lifecycle hooks for concurrent services and pre-listen validation.
+#[cfg(feature = "server")]
+pub mod runserver_hooks;
+/// Hot-reload server rebuild pipeline (cargo build + child process swap).
+#[cfg(feature = "autoreload")]
+#[doc(hidden)]
+pub mod server_rebuild_pipeline;
+/// Source-tree enumeration for hot-reload watch targets.
+#[cfg(feature = "autoreload")]
+#[doc(hidden)]
+pub mod source_roots;
 /// Project and app scaffolding commands (startproject, startapp).
 pub mod start_commands;
 /// Template-based code generation utilities.
 pub mod template;
+/// Template source abstraction over embedded and filesystem assets.
+pub mod template_source;
 /// WASM build tooling for client-side compilation.
 pub mod wasm_builder;
+/// Hot-reload WASM rebuild pipeline (timing + structured logging wrapper).
+#[cfg(all(feature = "autoreload", feature = "pages"))]
+#[doc(hidden)]
+pub mod wasm_rebuild_pipeline;
 /// Development server welcome page.
 pub mod welcome_page;
+
+/// Internal test surface for the hot-reload integration tests.
+///
+/// This module is intentionally `#[doc(hidden)]` and re-exports the otherwise
+/// crate-private hot-reload pieces so that integration tests living under
+/// `tests/` (a separate crate target) can drive them end-to-end. It is not
+/// part of the public API and may change without notice.
+#[cfg(feature = "autoreload")]
+#[doc(hidden)]
+pub mod __hot_reload_test_api {
+	pub use crate::debounced_watcher::{
+		DEBOUNCE_WINDOW, WatcherConfig, debounce_next, is_relevant_change, run_watcher,
+	};
+	pub use crate::server_rebuild_pipeline::{ServerRebuildOutcome, ServerRebuildPipeline};
+	pub use crate::source_roots::SourceRoots;
+	#[cfg(feature = "pages")]
+	pub use crate::wasm_rebuild_pipeline::{WasmRebuildOutcome, WasmRebuildPipeline};
+
+	/// HR-8 regression entry point (#4244): exercise only the
+	/// autoreload-parent validation step. Wraps the crate-private
+	/// `RunServerCommand::validate_hooks_only_for_tests` so the surface stays
+	/// inside `__hot_reload_test_api` instead of widening
+	/// `RunServerCommand`'s public API.
+	#[cfg(feature = "server")]
+	pub async fn validate_hooks_only(ctx: &crate::CommandContext) -> crate::CommandResult<()> {
+		crate::RunServerCommand::validate_hooks_only_for_tests(ctx).await
+	}
+}
 
 use thiserror::Error;
 
@@ -180,17 +216,28 @@ pub use builtin::MakeMigrationsCommand;
 #[cfg(feature = "routers")]
 pub use builtin::ShowUrlsCommand;
 pub use builtin::{CheckCommand, CheckDiCommand, MigrateCommand, RunServerCommand, ShellCommand};
-pub use cli::{Cli, Commands, execute_from_command_line, run_command};
+#[cfg(feature = "server")]
+pub use cli::start_server;
+pub use cli::{
+	Cli, Commands, auto_register_router, execute_from_command_line,
+	execute_from_command_line_with_registry, run_command, run_command_with_registry,
+};
 pub use collectstatic::{CollectStaticCommand, CollectStaticOptions, CollectStaticStats};
 pub use context::CommandContext;
 pub use i18n_commands::{CompileMessagesCommand, MakeMessagesCommand};
+#[cfg(feature = "introspect")]
+pub use introspect::IntrospectCommand;
 pub use mail_commands::SendTestEmailCommand;
 pub use output::OutputWrapper;
 pub use registry::CommandRegistry;
+#[cfg(feature = "server")]
+pub use runserver_hooks::{RunserverContext, RunserverHook, RunserverHookRegistration};
 pub use start_commands::{StartAppCommand, StartProjectCommand};
 pub use template::{TemplateCommand, TemplateContext, generate_secret_key, to_camel_case};
 pub use wasm_builder::{
 	WasmBuildConfig, WasmBuildError, WasmBuildOutput, WasmBuilder, check_wasm_tools_installed,
+	detect_cdylib_in_cargo_toml, detect_cdylib_in_cargo_toml_content, is_wasm_stale,
+	latest_source_mtime,
 };
 pub use welcome_page::WelcomePage;
 

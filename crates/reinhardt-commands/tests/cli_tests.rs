@@ -23,20 +23,12 @@ fn empty_context() -> CommandContext {
 // Test Helper Functions for Runserver Command
 // ============================================================================
 
-/// Creates runserver command with default settings
+/// Creates runserver command with default settings via CLI parsing
 fn create_runserver_default() -> Commands {
-	Commands::Runserver {
-		address: "127.0.0.1:8000".to_string(),
-		noreload: false,
-		insecure: false,
-		no_docs: false,
-		with_pages: false,
-		static_dir: "dist".to_string(),
-		no_spa: false,
-	}
+	Cli::parse_from(["manage", "runserver"]).command
 }
 
-/// Creates runserver command with custom settings
+/// Creates runserver command with custom settings via CLI parsing
 #[allow(clippy::too_many_arguments)]
 fn create_runserver_with_options(
 	address: &str,
@@ -47,15 +39,59 @@ fn create_runserver_with_options(
 	static_dir: &str,
 	no_spa: bool,
 ) -> Commands {
-	Commands::Runserver {
-		address: address.to_string(),
-		noreload,
-		insecure,
-		no_docs,
-		with_pages,
-		static_dir: static_dir.to_string(),
-		no_spa,
+	let mut args: Vec<String> = vec!["manage".into(), "runserver".into()];
+	if noreload {
+		args.push("--noreload".into());
 	}
+	if insecure {
+		args.push("--insecure".into());
+	}
+	if no_docs {
+		args.push("--no-docs".into());
+	}
+	if with_pages {
+		args.push("--with-pages".into());
+	}
+	args.push("--static-dir".into());
+	args.push(static_dir.into());
+	if no_spa {
+		args.push("--no-spa".into());
+	}
+	args.push(address.into());
+	Cli::parse_from(args).command
+}
+
+/// Creates collectstatic command via CLI parsing
+fn create_collectstatic(
+	clear: bool,
+	no_input: bool,
+	dry_run: bool,
+	link: bool,
+	ignore: &[&str],
+	index: Option<&str>,
+) -> Commands {
+	let mut args: Vec<String> = vec!["manage".into(), "collectstatic".into()];
+	if clear {
+		args.push("--clear".into());
+	}
+	if no_input {
+		args.push("--no-input".into());
+	}
+	if dry_run {
+		args.push("--dry-run".into());
+	}
+	if link {
+		args.push("--link".into());
+	}
+	for pattern in ignore {
+		args.push("--ignore".into());
+		args.push((*pattern).into());
+	}
+	if let Some(idx) = index {
+		args.push("--index".into());
+		args.push(idx.into());
+	}
+	Cli::parse_from(args).command
 }
 
 // ============================================================================
@@ -155,6 +191,7 @@ fn test_commands_makemigrations_parse_app_labels() {
 		name: None,
 		check: false,
 		empty: false,
+		merge: false,
 		force_empty_state: false,
 		migration_dir: PathBuf::from("./migrations"),
 	};
@@ -320,13 +357,7 @@ fn test_commands_check_with_app_label() {
 /// Verifies that all collectstatic options are correctly parsed.
 #[rstest]
 fn test_commands_collectstatic_all_options() {
-	let cmd = Commands::Collectstatic {
-		clear: true,
-		no_input: true,
-		dry_run: true,
-		link: true,
-		ignore: vec!["*.map".to_string(), "*.log".to_string()],
-	};
+	let cmd = create_collectstatic(true, true, true, true, &["*.map", "*.log"], None);
 
 	match cmd {
 		Commands::Collectstatic {
@@ -335,6 +366,7 @@ fn test_commands_collectstatic_all_options() {
 			dry_run,
 			link,
 			ignore,
+			..
 		} => {
 			assert!(clear, "clear should be true");
 			assert!(no_input, "no_input should be true");
@@ -355,13 +387,7 @@ fn test_commands_collectstatic_all_options() {
 /// Verifies that default values are correctly set.
 #[rstest]
 fn test_commands_collectstatic_defaults() {
-	let cmd = Commands::Collectstatic {
-		clear: false,
-		no_input: false,
-		dry_run: false,
-		link: false,
-		ignore: vec![],
-	};
+	let cmd = create_collectstatic(false, false, false, false, &[], None);
 
 	match cmd {
 		Commands::Collectstatic {
@@ -370,6 +396,7 @@ fn test_commands_collectstatic_defaults() {
 			dry_run,
 			link,
 			ignore,
+			..
 		} => {
 			assert!(!clear, "clear should be false by default");
 			assert!(!no_input, "no_input should be false by default");
@@ -540,6 +567,7 @@ fn test_empty_app_labels() {
 		name: None,
 		check: false,
 		empty: false,
+		merge: false,
 		force_empty_state: false,
 		migration_dir: PathBuf::from("./migrations"),
 	};
@@ -568,6 +596,7 @@ fn test_special_characters_in_paths() {
 		name: None,
 		check: false,
 		empty: false,
+		merge: false,
 		force_empty_state: false,
 		migration_dir: special_path.clone(),
 	};
@@ -735,13 +764,7 @@ fn test_collectstatic_decision_flag_combinations(
 	#[case] dry_run: bool,
 	#[case] description: &str,
 ) {
-	let cmd = Commands::Collectstatic {
-		clear,
-		no_input: false,
-		dry_run,
-		link,
-		ignore: vec![],
-	};
+	let cmd = create_collectstatic(clear, false, dry_run, link, &[], None);
 
 	match cmd {
 		Commands::Collectstatic {
@@ -777,13 +800,8 @@ fn test_collectstatic_multiple_ignore_patterns() {
 		".git/**".to_string(),
 	];
 
-	let cmd = Commands::Collectstatic {
-		clear: false,
-		no_input: false,
-		dry_run: false,
-		link: false,
-		ignore: patterns.clone(),
-	};
+	let pattern_strs: Vec<&str> = patterns.iter().map(|s| s.as_str()).collect();
+	let cmd = create_collectstatic(false, false, false, false, &pattern_strs, None);
 
 	match cmd {
 		Commands::Collectstatic { ignore, .. } => {
@@ -823,13 +841,7 @@ fn test_cli_commands_sanity() {
 			app_label: None,
 			deploy: false,
 		},
-		Commands::Collectstatic {
-			clear: false,
-			no_input: false,
-			dry_run: false,
-			link: false,
-			ignore: vec![],
-		},
+		create_collectstatic(false, false, false, false, &[], None),
 		Commands::Showurls { names: false },
 	];
 
@@ -1236,13 +1248,7 @@ fn test_all_command_variants_creatable() {
 		deploy: true,
 	};
 
-	let collectstatic = Commands::Collectstatic {
-		clear: true,
-		no_input: true,
-		dry_run: true,
-		link: true,
-		ignore: vec!["*.txt".to_string()],
-	};
+	let collectstatic = create_collectstatic(true, true, true, true, &["*.txt"], None);
 
 	let showurls = Commands::Showurls { names: true };
 
@@ -1362,5 +1368,55 @@ fn test_runserver_pages_integration() {
 		assert!(no_spa, "no_spa should be true");
 	} else {
 		panic!("Expected Runserver command");
+	}
+}
+
+// ============================================================================
+// Makemigrations --merge Flag Tests
+// ============================================================================
+
+/// Test: Parse Makemigrations command with --merge flag
+///
+/// Category: Happy Path
+/// Verifies that --merge flag is correctly parsed.
+#[cfg(feature = "migrations")]
+#[rstest]
+fn test_makemigrations_merge_flag_parsed() {
+	// Arrange
+	let cli = Cli::try_parse_from(["manage", "makemigrations", "--merge"]).unwrap();
+
+	// Act & Assert
+	match cli.command {
+		Commands::Makemigrations { merge, .. } => {
+			assert!(merge, "--merge flag should be true");
+		}
+		_ => panic!("Expected Makemigrations command"),
+	}
+}
+
+/// Test: Parse Makemigrations command with --merge and --name
+///
+/// Category: Happy Path
+/// Verifies that --merge and --name flags work together.
+#[cfg(feature = "migrations")]
+#[rstest]
+fn test_makemigrations_merge_with_name() {
+	// Arrange
+	let cli = Cli::try_parse_from([
+		"manage",
+		"makemigrations",
+		"--merge",
+		"--name",
+		"resolve_conflicts",
+	])
+	.unwrap();
+
+	// Act & Assert
+	match cli.command {
+		Commands::Makemigrations { merge, name, .. } => {
+			assert!(merge, "--merge flag should be true");
+			assert_eq!(name, Some("resolve_conflicts".to_string()));
+		}
+		_ => panic!("Expected Makemigrations command"),
 	}
 }

@@ -7,39 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi-macros@v0.1.0-alpha.4...reinhardt-openapi-macros@v0.1.0-rc.1) - 2026-02-21
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi-macros@v0.1.0-rc.30...reinhardt-openapi-macros@v0.1.0) - 2026-05-22
 
-### Fixed
+Initial stable release of `reinhardt-openapi-macros` as part of the
+reinhardt-web 0.1.0 release. Procedural-macro companion to
+`reinhardt-rest` that emits operation- and container-level OpenAPI
+metadata directly from ViewSet attributes.
 
-- propagate parse errors and validate min/max constraints
-- replace expect() with safe get_ident() handling in attribute parsing
-- collapse nested if block in serde_attrs to satisfy clippy
-- handle serde attributes and improve validation
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-### Styling
+### Capabilities at 0.1.0
 
-- fix pre-existing clippy warnings and apply rustfmt
-- apply rustfmt to pre-existing unformatted files
+- **Container-level OpenAPI attributes** — Attribute macros annotate
+  ViewSet containers with OpenAPI schema metadata so the generated
+  spec carries grouping, tagging, and documentation context.
+- **Safe attribute parsing** — Parse errors propagate as proper
+  `compile_error!` diagnostics instead of panicking; min/max
+  constraints validate at expansion time; `get_ident()` replaces
+  unchecked `expect()`.
+- **Serde-aware validation** — Serde attribute handling and validation
+  are normalized so OpenAPI output stays consistent with the runtime
+  serialization shape.
+- **Workspace-version pinning** — Proc-macro dependencies (including
+  `native-tls`) align with workspace versions to keep the published
+  graph reproducible.
 
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi-macros@v0.1.0-alpha.3...reinhardt-openapi-macros@v0.1.0-alpha.4) - 2026-02-06
+### Notable Breaking Changes
 
-### Fixed
+This is a proc-macro crate consumed exclusively by `reinhardt-rest`;
+breaking changes flow through that crate. See the [Breaking Changes
+Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/breaking-changes).
 
-- break circular dependency between reinhardt-openapi-macros and reinhardt-rest
+### Migration Notes
 
-### Other
-
-- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
-- release
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi-macros@v0.1.0-alpha.2...reinhardt-openapi-macros@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-rest
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi-macros@v0.1.0-alpha.1...reinhardt-openapi-macros@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- *(package)* replace version.workspace with explicit versions
+This is the first stable release, so there is no prior stable version
+to migrate from. See the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the cross-crate migration guide.

@@ -49,7 +49,7 @@ pub trait FormModel: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// # use reinhardt_forms::model_form::FieldType;
 	/// fn field_type(name: &str) -> Option<FieldType> {
 	///     match name {
@@ -73,7 +73,20 @@ pub trait FormModel: Send + Sync {
 	/// Save the model to the database
 	fn save(&mut self) -> Result<(), String>;
 
-	/// Validate the model
+	/// Run model-level (cross-field) validation hook.
+	///
+	/// This is an opt-in extension point invoked by [`ModelForm::is_valid`]
+	/// *after* per-field validation has already succeeded. The default
+	/// implementation intentionally performs no extra validation and returns
+	/// `Ok(())`; per-field validation is fully handled by the form's
+	/// [`crate::Form::is_valid`] pipeline.
+	///
+	/// Implementers SHOULD override this method when they need cross-field
+	/// invariants (e.g. "end_date must be after start_date") that cannot be
+	/// expressed at the individual field level.
+	///
+	/// Returns `Ok(())` when the model passes all cross-field invariants, or
+	/// `Err(messages)` with one or more human-readable error messages.
 	fn validate(&self) -> Result<(), Vec<String>> {
 		Ok(())
 	}
@@ -85,7 +98,7 @@ pub trait FormModel: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// # struct Example { id: i32, name: String }
 	/// # impl Example {
 	/// fn to_choice_label(&self) -> String {
@@ -110,7 +123,7 @@ pub trait FormModel: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// # struct Example { id: i32 }
 	/// # impl Example {
 	/// fn to_choice_value(&self) -> String {
@@ -386,10 +399,25 @@ impl<T: FormModel> ModelForm<T> {
 	/// let is_valid = form.is_valid();
 	/// ```
 	pub fn is_valid(&mut self) -> bool {
-		// Validate the model if instance exists
+		// Step 1: per-field validation via the underlying `Form` pipeline.
+		// This runs `clean`, custom field-clean callbacks, CSRF checks, and
+		// populates `cleaned_data()`. Without this call, ModelForm would
+		// accept any bound data unconditionally (skeleton always-Ok).
+		if !self.form.is_valid() {
+			return false;
+		}
+
+		// Step 2: optional cross-field validation hook on the model.
+		// Capture the messages returned by `FormModel::validate` into the
+		// underlying `Form`'s non-field error bucket (keyed by `ALL_FIELDS_KEY`)
+		// so callers can retrieve them through `form().errors()` instead of
+		// only learning that validation failed.
 		if let Some(ref instance) = self.instance
-			&& let Err(_errors) = instance.validate()
+			&& let Err(messages) = instance.validate()
 		{
+			for message in messages {
+				self.form.add_error(crate::form::ALL_FIELDS_KEY, message);
+			}
 			return false;
 		}
 
@@ -410,11 +438,19 @@ impl<T: FormModel> ModelForm<T> {
 	/// assert!(form.save().is_err());
 	/// ```
 	pub fn save(&mut self) -> Result<T, FormError> {
+		// Surface the missing-instance error first so callers can distinguish
+		// "no model to save into" from "data failed validation".
+		if self.instance.is_none() {
+			return Err(FormError::NoInstance);
+		}
+
 		if !self.is_valid() {
 			return Err(FormError::Validation("Form is not valid".to_string()));
 		}
 
-		// Get existing instance or return error
+		// Keep this path non-panicking even though presence was checked above:
+		// if a future refactor breaks the invariant, surface a typed error
+		// rather than aborting the process.
 		let mut instance = self.instance.take().ok_or(FormError::NoInstance)?;
 
 		// Set field values from form's cleaned_data
@@ -640,6 +676,130 @@ mod tests {
 		assert_eq!(
 			fields,
 			vec!["id".to_string(), "name".to_string(), "email".to_string()]
+		);
+	}
+
+	// Model that always fails the cross-field validation hook, used to prove
+	// that `ModelForm::is_valid` actually consults `FormModel::validate`.
+	#[derive(Debug)]
+	struct AlwaysInvalidModel;
+
+	impl FormModel for AlwaysInvalidModel {
+		fn field_names() -> Vec<String> {
+			vec![]
+		}
+
+		fn get_field(&self, _name: &str) -> Option<Value> {
+			None
+		}
+
+		fn set_field(&mut self, _name: &str, _value: Value) -> Result<(), String> {
+			Ok(())
+		}
+
+		fn save(&mut self) -> Result<(), String> {
+			Ok(())
+		}
+
+		fn validate(&self) -> Result<(), Vec<String>> {
+			Err(vec!["cross-field invariant violated".to_string()])
+		}
+	}
+
+	#[rstest]
+	fn test_is_valid_rejects_unbound_form() {
+		// Arrange: an empty form has no bound data, so the underlying
+		// `Form::is_valid` must return false. Previously `ModelForm::is_valid`
+		// was a skeleton that returned `true` unconditionally for unbound
+		// forms — this test guards against regression.
+		let mut form = ModelForm::<TestModel>::empty(ModelFormConfig::new());
+
+		// Act
+		let actual = form.is_valid();
+
+		// Assert
+		assert!(!actual, "Unbound ModelForm must not be valid");
+	}
+
+	#[rstest]
+	fn test_is_valid_rejects_invalid_email_field() {
+		// Arrange: bind syntactically invalid data to a field-typed form.
+		let instance = TestModel {
+			id: 1,
+			name: "John".to_string(),
+			email: "john@example.com".to_string(),
+		};
+		let mut form = ModelForm::new(Some(instance), ModelFormConfig::new());
+		let mut data = HashMap::new();
+		data.insert("id".to_string(), Value::Number(1.into()));
+		data.insert("name".to_string(), Value::String("John".to_string()));
+		data.insert(
+			"email".to_string(),
+			Value::String("not-an-email".to_string()),
+		);
+		form.bind(data);
+
+		// Act
+		let actual = form.is_valid();
+
+		// Assert
+		assert!(
+			!actual,
+			"ModelForm::is_valid must reject malformed email values"
+		);
+	}
+
+	#[rstest]
+	fn test_is_valid_accepts_valid_bound_data() {
+		// Arrange
+		let instance = TestModel {
+			id: 1,
+			name: "John".to_string(),
+			email: "john@example.com".to_string(),
+		};
+		let mut form = ModelForm::new(Some(instance), ModelFormConfig::new());
+		let mut data = HashMap::new();
+		data.insert("id".to_string(), Value::Number(2.into()));
+		data.insert("name".to_string(), Value::String("Jane".to_string()));
+		data.insert(
+			"email".to_string(),
+			Value::String("jane@example.com".to_string()),
+		);
+		form.bind(data);
+
+		// Act
+		let actual = form.is_valid();
+
+		// Assert
+		assert!(actual, "Valid bound data must pass validation");
+	}
+
+	#[rstest]
+	fn test_is_valid_consults_model_validate_hook() {
+		// Arrange: a model whose cross-field validator always fails.
+		// The underlying Form has no fields, so per-field validation
+		// trivially passes once we bind empty data — meaning the only
+		// way the form can be invalid is via the model-level hook.
+		let mut form = ModelForm::new(Some(AlwaysInvalidModel), ModelFormConfig::new());
+		form.bind(HashMap::new());
+
+		// Act
+		let actual = form.is_valid();
+
+		// Assert
+		assert!(
+			!actual,
+			"ModelForm::is_valid must propagate FormModel::validate errors"
+		);
+		let non_field_errors = form
+			.form()
+			.errors()
+			.get(crate::form::ALL_FIELDS_KEY)
+			.expect("model validate errors must be captured under ALL_FIELDS_KEY");
+		assert_eq!(
+			non_field_errors,
+			&vec!["cross-field invariant violated".to_string()],
+			"FormModel::validate messages must be attached to the form's non-field error bucket"
 		);
 	}
 

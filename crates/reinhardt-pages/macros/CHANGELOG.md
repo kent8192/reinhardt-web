@@ -7,152 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.8...reinhardt-pages-macros@v0.1.0-rc.9) - 2026-03-15
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.30...reinhardt-pages-macros@v0.1.0) - 2026-05-22
 
-### Fixed
+Initial stable release of `reinhardt-pages-macros` as part of the
+reinhardt-web 0.1.0 release. This crate provides the procedural
+macros that back `reinhardt-pages`: the `page!`, `head!`, and
+`form!` declarative DSLs, plus the `#[server_fn]` attribute macro
+that emits matched WASM client stubs and server-side handlers.
 
-- redact sensitive fields in DatabaseUrl debug output and remove unused variable
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.6...reinhardt-pages-macros@v0.1.0-rc.7) - 2026-03-11
+### Capabilities at 0.1.0
 
-### Fixed
+- **`page!` macro** — anonymous component DSL with closure-style
+  props, 70+ HTML elements validated at compile time, `@event:
+  handler` syntax, `if`/`else`/`for` control flow, `watch` blocks
+  for `Signal<T>`-driven re-rendering, dynamic expressions for
+  `img src`, and accessibility / XSS validation at expansion time.
+- **`head!` macro** — title, meta, link, script, and style
+  elements for SSR head metadata injection.
+- **`form!` macro** — typed form fields (`CharField`, `EmailField`,
+  `IntegerField`, `FileField`, `ImageField`, `SubmitButton`, …),
+  widget customization, server / client validators, `derived`
+  computed values, `FieldGroup`, custom wrapper and SVG icon
+  elements, slots, two-way `Signal` binding, CSRF protection,
+  `initial_loader`, dynamic `choices_loader`, `autocomplete`
+  attribute, and `strip_arguments` for downstream `server_fn`
+  shaping.
+- **`#[server_fn]` attribute macro** — WASM client stub plus
+  server-side handler, custom endpoint paths, codec selection
+  (`json` / `url` / `msgpack`), `#[reinhardt::inject]` parameter
+  auto-detection, `FromRequest` extractor support, per-request DI
+  context forking, and DI error → HTTP status mapping (with
+  redacted 500 bodies).
+- **MSW-style mocking (`msw` feature)** — generates a
+  `MockableServerFn` trait per `#[server_fn]` so tests can stub
+  RPC endpoints with the same typed surface they see in
+  production.
+- **Closure-lift pipeline** — `form! { on_success: |value: T|
+  ... }` closures with explicit type annotations lift to the
+  outer scope so the body can capture enclosing locals (e.g., a
+  `qid` route parameter); `success_url:` and inner `watch`
+  closures observe the same lift semantics. Unannotated closures
+  keep the historical inline emit.
 
-- *(pages)* remove block scope around form field value bindings in codegen
+### Notable Breaking Changes
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.1...reinhardt-pages-macros@v0.1.0-rc.2) - 2026-03-04
+- **`form! on_success:` lift requires `Send + Sync`** ([#4623](https://github.com/kent8192/reinhardt-web/issues/4623), [#4624](https://github.com/kent8192/reinhardt-web/issues/4624)) — type-annotated `on_success: |value: T| ...` closures are now lifted to the outer construction block and therefore must be `Send + Sync`; unannotated closures (`|value|`, `|_value|`) are unaffected.
+- **`#[export_endpoints]` removed in favour of `define_views!` / `flatten_imports!`** ([#3768](https://github.com/kent8192/reinhardt-web/discussions/3768), [#3783](https://github.com/kent8192/reinhardt-web/discussions/3783)) — multi-file view modules use the renamed declarative macro for stable-Rust compatibility.
+- **`is_safe_url` inlined into `pages-macros`** — the macro no longer pulls in `reinhardt-core` as a dependency; downstream code that imported the helper through this crate should source it from `reinhardt-core` directly.
 
-### Fixed
+### Migration Notes
 
-- *(meta)* fix workspace inheritance and authors metadata
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.9...reinhardt-pages-macros@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.8...reinhardt-pages-macros@v0.1.0-alpha.9) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-manouche
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.7...reinhardt-pages-macros@v0.1.0-alpha.8) - 2026-02-21
-
-### Fixed
-
-- reject non-boolean values for disabled/readonly/autofocus
-- reject whitespace in server_fn endpoint paths
-- add missing input type image and form method dialog
-- replace direct indexing with safe .first() access
-- validate img src URLs and wrapper tag names
-- add tag name allowlist for wrapper and icon elements
-- validate img src against dangerous URL schemes
-- emit compile error for unknown codec instead of silent fallback
-- replace expect() panics with compile errors in head.rs
-- fix link tag as_ attribute code generation
-- emit compile error for unsupported form-level validators
-- add required attributes to allowed_attrs for track, param, data
-
-### Security
-
-- add URL scheme and path validation for forms and head
-
-### Changed
-
-- replace magic string with Option<Ident> for FormMacro name
-- extract duplicated form ID and action string generation
-- remove duplicate img required attribute validation
-
-### Styling
-
-- apply rustfmt to pre-existing unformatted files
-- apply formatting to files introduced by merge from main
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.6...reinhardt-pages-macros@v0.1.0-alpha.7) - 2026-02-16
-
-### Changed
-
-- update references for flattened examples structure
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.5...reinhardt-pages-macros@v0.1.0-alpha.6) - 2026-02-12
-
-### Changed
-
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-
-### Reverted
-
-- undo unintended visibility and formatting changes
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.4...reinhardt-pages-macros@v0.1.0-alpha.5) - 2026-02-05
-
-### Fixed
-
-- add reinhardt-manouche to workspace deps and address review comments
-
-### Other
-
-- Merge branch 'main' into refactor/extract-manouche-dsl
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.3...reinhardt-pages-macros@v0.1.0-alpha.4) - 2026-02-03
-
-### Other
-
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.3] - 2026-01-30
-
-### Changed
-
-- Version bump for publish workflow correction (no functional changes)
-
-
-## [0.1.0-alpha.2] - 2026-01-29
-
-### Changed
-
-- Internal updates (changelog entry backfilled)
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial release of `reinhardt-pages-macros` crate
-- `page!` macro for anonymous component DSL with closure-style props
-  - Support for 70+ HTML elements with compile-time validation
-  - Event handlers using `@event: handler` syntax
-  - Conditional rendering with `if`/`else` and list rendering with `for` loops
-  - Reactive features with `watch` blocks for Signal-dependent rendering
-  - Component calls with named arguments
-  - Accessibility validation (img alt, button labels)
-  - Security validation (XSS prevention for URL attributes)
-- `head!` macro for HTML head section DSL
-  - Support for title, meta, link, script, and style elements
-  - SSR metadata injection support
-- `form!` macro for type-safe forms with reactive bindings
-  - Multiple field types: CharField, TextField, EmailField, IntegerField, etc.
-  - Widget customization: TextInput, PasswordInput, Select, RadioSelect, etc.
-  - Built-in validation (required, min/max length, pattern)
-  - Server-side and client-side validators
-  - UI state management (loading, error, success)
-  - Two-way Signal binding
-  - Computed values with `derived` block
-  - Field groups with `FieldGroup`
-  - Custom wrapper elements and SVG icon support
-  - Slots for custom content injection
-  - CSRF protection for non-GET methods
-  - Initial value loading with `initial_loader`
-  - Dynamic choice loading with `choices_loader`
-- `#[server_fn]` attribute macro for Server Functions (RPC)
-  - WASM client stub generation
-  - Server-side handler generation
-  - Custom endpoint paths
-  - Codec selection (json, url, msgpack)
-  - Dependency injection support with `#[reinhardt::inject]`
-
+- Annotate `on_success` closure parameters with explicit types
+  (`|value: T| ...`) when you need to capture enclosing-scope
+  locals from `form!` bodies; ensure captured types are `Send +
+  Sync`.
+- Replace any `#[export_endpoints]` attribute usage with the
+  `define_views!` / `flatten_imports!` declarative macro from
+  `reinhardt-pages`.
+- For the workspace-wide migration narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).

@@ -1,4 +1,4 @@
-#![cfg(not(target_arch = "wasm32"))]
+#![cfg(native)]
 
 //! Distributed Signals - Cross-service signal dispatch via message brokers
 //!
@@ -90,7 +90,7 @@ impl<T> DistributedEvent<T> {
 
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.unwrap()
+			.unwrap_or_default()
 			.as_millis() as u64;
 
 		Self {
@@ -98,7 +98,7 @@ impl<T> DistributedEvent<T> {
 			payload,
 			source_service: source_service.into(),
 			timestamp,
-			event_id: uuid::Uuid::new_v4().to_string(),
+			event_id: uuid::Uuid::now_v7().to_string(),
 		}
 	}
 }

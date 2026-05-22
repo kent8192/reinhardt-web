@@ -12,13 +12,14 @@ password hashing with Argon2.
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["auth"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["auth"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import authentication features:
@@ -48,7 +49,7 @@ use reinhardt::auth::jwt::{JwtAuth, Claims};
 use chrono::Duration;
 
 let jwt_auth = JwtAuth::new(b"my-secret-key");
-let token = jwt_auth.generate_token("user123".to_string(), "john_doe".to_string()).unwrap();
+let token = jwt_auth.generate_token("user123".to_string(), "john_doe".to_string(), false, false).unwrap();
 let claims = jwt_auth.verify_token(&token).unwrap();
 ```
 
@@ -72,12 +73,17 @@ let result = auth.authenticate(&request).unwrap();
 
 ### User Management
 
-#### User Trait
+#### User Trait (Deprecated)
+
+> **Deprecated since `0.1.0-rc.15`**: The `User` trait is deprecated. Use
+> `AuthIdentity` + `BaseUser`/`FullUser` + `PermissionsMixin` instead.
+> The trait remains available for backward compatibility but will be removed
+> in a future release.
 
 - **Core User Interface**: Unified trait for authenticated and anonymous users
 - **User Identification**: `id()`, `username()`, `get_username()` methods
-- **Authentication Status**: `is_authenticated()`, `is_active()`, `is_admin()`
-  checks
+- **Authentication Status**: `is_authenticated()`, `is_active()`, `is_admin()`,
+  `is_staff()`, `is_superuser()` checks
 - **Django Compatibility**: Methods compatible with Django's user interface
 
 #### User Implementations
@@ -97,6 +103,8 @@ let user = SimpleUser {
     email: "john@example.com".to_string(),
     is_active: true,
     is_admin: false,
+    is_staff: false,
+    is_superuser: false,
 };
 
 assert!(user.is_authenticated());
@@ -302,6 +310,133 @@ assert!(admin.is_superuser);
 - **Demonstration Purpose**: For testing and prototyping (use ORM-based manager
   in production)
 
+#### `#[user]` Macro
+
+The `#[user]` attribute macro generates the full user model implementation from
+a plain struct definition. It is the recommended approach for defining custom
+user models in reinhardt-web applications.
+
+**Parameters:**
+
+- `hasher`: Password hasher type (e.g., `Argon2Hasher`)
+- `username_field`: Name of the field used as the login identifier (e.g.,
+  `"username"`, `"email"`)
+- `full`: When `true`, generates the complete user interface including
+  `FullUser` and `PermissionsMixin` implementations
+- `manager` (default `true`): When `true`, also emits a `<Name>Manager` struct
+  that implements `BaseUserManager<Name>`. Pass `manager = false` to opt out.
+- `manager_name` (optional): Override the generated manager type name. Defaults
+  to `<Name>Manager` (e.g., `UserManager`).
+
+**Auto-generated user manager**
+
+By default `#[user]` also generates an in-memory user manager so that the
+common case "I just need a `BaseUserManager` for my user type" requires zero
+boilerplate. The generated manager is backed by `Mutex<HashMap<PK, User>>` and
+provides:
+
+- `pub fn new() -> Self` (also `Default`)
+- `BaseUserManager<Name>::create_user(username, password, extra)` — builds the
+  user from `<Name>::default()`, re-seeds Uuid primary keys with `Uuid::now_v7`,
+  applies known `extra` keys (`email`, `first_name`, `last_name`, `is_active`)
+  when the corresponding `#[user_field]` is present, and calls
+  `set_password` when a password is provided.
+- `BaseUserManager<Name>::create_superuser(...)` — same as `create_user` plus
+  `is_superuser = true` (and `is_staff = true` under `full = true`).
+
+The user struct MUST implement the following traits for the generator to work:
+
+- `Default` (e.g., via `#[derive(Default)]`) — the generator constructs the user
+  from `<User as Default>::default()` before applying field values. This also
+  matches the requirement for `SuperuserInit` under `full = true`.
+- `Clone` (e.g., via `#[derive(Clone)]`) — the generated `HashMap`-backed store
+  clones both the user (`user.clone()`) and the primary-key value
+  (`user.<pk_field>.clone()`) on insertion. Non-`Clone` user types must opt out
+  via `manager = false`.
+
+**Primary-key restriction (Uuid-only).** Auto-manager (`manager = true`, the
+default) only supports `Uuid` (or `Option<Uuid>`) primary keys. The generator
+re-seeds the PK with `Uuid::now_v7()` on every `create_user`, so collisions are
+not possible in practice. For any other PK type (e.g. `i64`, `String`) the
+generator emits a compile-time error pointing at the PK field: either change
+the primary key to `Uuid` / `Option<Uuid>`, or set `manager = false` and
+provide your own `BaseUserManager` implementation. This restriction prevents
+silent map-overwrite bugs in the in-memory store, where repeated `create_user`
+calls would otherwise collide on the `<User as Default>::default()` PK value.
+See [reinhardt-web#4455](https://github.com/kent8192/reinhardt-web/issues/4455)
+for the rationale.
+
+**When to opt out (`manager = false`)**
+
+Opt out and hand-write the implementation when you need any of:
+
+- Database-backed persistence with custom queries
+- Custom uniqueness checks (e.g., case-insensitive email collision detection
+  with a precise error type)
+- Multi-step user creation (welcome email, audit log, MFA enrollment, etc.)
+- Integration with `reinhardt-di` `#[injectable]` for DI-driven lifetime
+
+```rust
+// Opt out and provide a DB-backed manager yourself.
+#[user(hasher = Argon2Hasher, username_field = "email", manager = false)]
+#[derive(Default, Serialize, Deserialize)]
+pub struct User { /* ... */ }
+
+pub struct UserManager { /* DI-injected db handle */ }
+
+#[async_trait::async_trait]
+impl reinhardt_auth::BaseUserManager<User> for UserManager {
+    // your DB-backed create_user / create_superuser
+}
+```
+
+**Notes:**
+
+- `#[user]` does NOT auto-derive `Serialize` or `Deserialize`; add
+  `#[derive(...)]` explicitly for those traits. `Default` is now required
+  whenever the auto-manager is enabled (the default).
+- `#[model]` is still required for database integration; `app_label` and
+  `table_name` are configured there
+- Each field uses `#[field(...)]` attributes to declare constraints such as
+  `primary_key`, `unique`, `max_length`, `default`, and `include_in_new`
+
+```rust
+use reinhardt::Argon2Hasher;
+use reinhardt::macros::user;
+use reinhardt::prelude::*;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[user(hasher = Argon2Hasher, username_field = "username", full = true)]
+#[derive(Default, Serialize, Deserialize)]
+#[model(app_label = "auth", table_name = "users")]
+pub struct User {
+	// `#[user]` also auto-generates `UserManager` with an in-memory
+	// `BaseUserManager<User>` impl. Construct it via `UserManager::new()`.
+	// Opt out with `manager = false` or rename via `manager_name = MyMgr`.
+	#[field(primary_key = true, include_in_new = false)]
+	pub id: Uuid,
+
+	#[field(max_length = 150, unique = true)]
+	pub username: String,
+
+	#[field(max_length = 254, unique = true)]
+	pub email: String,
+
+	#[field(max_length = 512)]
+	pub password_hash: Option<String>,
+
+	#[field(default = true)]
+	pub is_active: bool,
+
+	#[field(default = false)]
+	pub is_staff: bool,
+
+	#[field(default = false)]
+	pub is_superuser: bool,
+}
+```
+
 ### Password Security
 
 #### Password Hashing
@@ -406,9 +541,11 @@ assert!(permission.has_permission(&context).await);
 - **Cookie Integration**: Secure session cookie handling
 
 ```rust
-use reinhardt::auth::{SessionAuthentication, Authentication};
+use reinhardt::auth::{SessionAuthentication, AuthenticationBackend};
 use reinhardt::auth::sessions::backends::InMemorySessionBackend;
 
+// SessionAuthentication is generic over B: SessionBackend.
+// Pass the backend to new(), or use Default when B: Default.
 let session_backend = InMemorySessionBackend::new();
 let auth = SessionAuthentication::new(session_backend);
 
@@ -464,18 +601,19 @@ assert!(mfa.verify_code("alice", code).await?);
 - **InMemoryTokenStore**: Built-in in-memory token storage
 
 ```rust
-use reinhardt::auth::{OAuth2Authentication, GrantType, InMemoryOAuth2Store};
+use reinhardt::auth::{OAuth2Authentication, OAuth2Application, GrantType};
 
-let store = InMemoryOAuth2Store::new();
-let oauth2 = OAuth2Authentication::new(store);
+// OAuth2Authentication::new() takes no arguments; use ::with_repository() for custom storage.
+let oauth2 = OAuth2Authentication::new();
 
-// Register OAuth2 application
-oauth2.register_application(
-    "client123",
-    "secret456",
-    "https://example.com/callback",
-    vec![GrantType::AuthorizationCode]
-).await?;
+// Register an OAuth2 application by passing an OAuth2Application struct.
+let app = OAuth2Application {
+    client_id: "client123".to_string(),
+    client_secret: "secret456".to_string(),
+    redirect_uris: vec!["https://example.com/callback".to_string()],
+    grant_types: vec![GrantType::AuthorizationCode],
+};
+oauth2.register_application(app).await;
 
 // Authorization code flow
 let code = oauth2.generate_authorization_code("client123", "user123", vec!["read", "write"]).await?;
@@ -495,7 +633,7 @@ let claims = oauth2.verify_token(&token.access_token).await?;
   - `Compromised`: Security incident
   - `ManualRevoke`: Admin revocation
   - `Rotated`: Automatic token rotation
-- **InMemoryBlacklist**: Built-in in-memory blacklist storage
+- **InMemoryTokenBlacklist**: Built-in in-memory blacklist storage
 - **Cleanup**: Automatic removal of expired blacklist entries
 - **Statistics**: Usage tracking and monitoring
 
@@ -505,23 +643,23 @@ let claims = oauth2.verify_token(&token.access_token).await?;
 - **RefreshTokenStore Trait**: Persistent refresh token storage
 - **Rotation Flow**: Invalidate old token when issuing new one
 - **Security**: Prevents refresh token reuse attacks
-- **InMemoryRefreshStore**: Built-in in-memory refresh token storage
+- **InMemoryRefreshTokenStore**: Built-in in-memory refresh token storage
 
 ```rust
 use reinhardt::auth::{
-    TokenBlacklist, InMemoryBlacklist, BlacklistReason,
-    TokenRotationManager, InMemoryRefreshStore
+    TokenBlacklist, InMemoryTokenBlacklist, BlacklistReason,
+    TokenRotationManager, InMemoryRefreshTokenStore
 };
 
 // Token blacklist
-let blacklist = InMemoryBlacklist::new();
+let blacklist = InMemoryTokenBlacklist::new();
 use chrono::{Utc, Duration};
 let expires_at = Utc::now() + Duration::hours(24);
 blacklist.blacklist("old_token", expires_at, BlacklistReason::Logout).await?;
 assert!(blacklist.is_blacklisted("old_token").await?);
 
 // Token rotation
-let refresh_store = InMemoryRefreshStore::new();
+let refresh_store = InMemoryRefreshTokenStore::new();
 let rotation_manager = TokenRotationManager::new(blacklist, refresh_store);
 
 let new_token = rotation_manager.rotate_token("old_refresh_token", "user123").await?;
@@ -574,7 +712,9 @@ basic_auth.add_user("alice", "password123");
 let user = basic_auth.authenticate(&request).unwrap().unwrap();
 let token = jwt_auth.generate_token(
     user.id(),
-    user.username().to_string()
+    user.username().to_string(),
+    false,
+    false,
 ).unwrap();
 
 // 4. Verify token on subsequent requests

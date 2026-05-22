@@ -42,6 +42,7 @@ pub mod cookie_named;
 pub(crate) mod cookie_util;
 pub mod extract;
 pub mod form;
+pub mod has_inner;
 pub mod header;
 pub mod header_named;
 pub mod json;
@@ -70,6 +71,7 @@ pub use cookie::{Cookie, CookieStruct};
 pub use cookie_named::{CookieName, CookieNamed, CsrfToken, SessionId};
 pub use extract::FromRequest;
 pub use form::Form;
+pub use has_inner::HasInner;
 pub use header::{Header, HeaderStruct};
 pub use header_named::{Authorization, ContentType, HeaderName, HeaderNamed};
 pub use json::Json;
@@ -87,6 +89,7 @@ pub use validation::{
 // ParamErrorContext contains multiple String fields which make the enum large
 /// Errors that can occur during parameter extraction from HTTP requests.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ParamError {
 	/// A required parameter was not provided.
 	#[error("Missing required parameter: {0}")]
@@ -116,10 +119,36 @@ pub enum ParamError {
 	#[error("Payload too large: {0}")]
 	PayloadTooLarge(String),
 
+	/// The request lacks valid authentication for an extractor that
+	/// requires it. Maps to `CoreError::Authentication` and therefore to
+	/// HTTP 401 once propagated through the handler macro. Use this when
+	/// an authenticated session, token, or identity is missing rather
+	/// than when a request parameter is malformed (see #4446).
+	#[error("Authentication required: {0}")]
+	Authentication(String),
+
+	/// The extractor failed for a reason that is neither a malformed
+	/// request nor a missing identity (e.g. a misconfigured DI scope, a
+	/// broken provider, or another infrastructure-level failure). Maps
+	/// to `CoreError::Internal` so the handler returns HTTP 500 rather
+	/// than masking the failure as a 4xx response.
+	#[error("Internal extractor error: {0}")]
+	Internal(String),
+
 	/// The parameter failed validation constraints.
 	#[cfg(feature = "validation")]
 	#[error("{}", .0.format_error())]
 	ValidationError(Box<ParamErrorContext>),
+
+	/// Struct-level validation failed after successful extraction.
+	///
+	/// Contains structured per-field errors from `Validate::validate()`.
+	/// Unlike `ValidationError` (which uses `ParamErrorContext` for single-field
+	/// constraint violations), this variant carries a full `ValidationErrors`
+	/// map for multi-field struct validation.
+	#[cfg(feature = "validation")]
+	#[error("Validation failed: {0:?}")]
+	ValidationFailed(Box<reinhardt_core::validators::ValidationErrors>),
 }
 
 impl ParamError {
@@ -205,6 +234,17 @@ impl ParamError {
 
 impl From<ParamError> for CoreError {
 	fn from(err: ParamError) -> Self {
+		// Preserve authentication semantics: `Authentication` MUST surface
+		// as `CoreError::Authentication` so the handler returns HTTP 401
+		// rather than the 400 implied by `Validation`/`ParamValidation`.
+		// `Internal` similarly MUST surface as `CoreError::Internal` so a
+		// genuine misconfiguration (e.g. a corrupted DI scope) is not
+		// masked as a 4xx response. See #4446.
+		let err = match err {
+			ParamError::Authentication(msg) => return CoreError::Authentication(msg),
+			ParamError::Internal(msg) => return CoreError::Internal(msg),
+			other => other,
+		};
 		// Use structured context if available, otherwise fall back to generic validation error
 		match err.context() {
 			Some(ctx) => CoreError::ParamValidation(Box::new(ctx.clone())),
@@ -218,8 +258,12 @@ pub type ParamResult<T> = std::result::Result<T, ParamError>;
 
 /// Context for parameter extraction
 pub struct ParamContext {
-	/// Path parameters extracted from the URL
-	pub path_params: std::collections::HashMap<String, String>,
+	/// Path parameters extracted from the URL.
+	///
+	/// Stored in URL pattern declaration order so that tuple extractors such
+	/// as `Path<(T1, T2)>` can rely on positional ordering matching the URL
+	/// pattern. See issue #4013.
+	pub path_params: reinhardt_http::PathParams,
 	/// Header name registry keyed by value type
 	header_names: HashMap<TypeId, &'static str>,
 	/// Cookie name registry keyed by value type
@@ -239,30 +283,36 @@ impl ParamContext {
 	/// ```
 	pub fn new() -> Self {
 		Self {
-			path_params: std::collections::HashMap::new(),
+			path_params: reinhardt_http::PathParams::new(),
 			header_names: HashMap::new(),
 			cookie_names: HashMap::new(),
 		}
 	}
-	/// Create a ParamContext with pre-populated path parameters
+	/// Create a ParamContext with pre-populated path parameters.
+	///
+	/// Accepts anything convertible into [`reinhardt_http::PathParams`],
+	/// including a `HashMap<String, String>` (note: converting from a
+	/// `HashMap` does not preserve ordering — supply a
+	/// `Vec<(String, String)>` or a `PathParams` directly when ordering
+	/// matters, as it does for tuple extractors). See issue #4013.
 	///
 	/// # Examples
 	///
 	/// ```
 	/// use reinhardt_di::params::ParamContext;
-	/// use std::collections::HashMap;
+	/// use reinhardt_http::PathParams;
 	///
-	/// let mut params = HashMap::new();
-	/// params.insert("id".to_string(), "42".to_string());
-	/// params.insert("name".to_string(), "test".to_string());
+	/// let mut params = PathParams::new();
+	/// params.insert("id", "42");
+	/// params.insert("name", "test");
 	///
 	/// let ctx = ParamContext::with_path_params(params);
 	/// assert_eq!(ctx.get_path_param("id"), Some("42"));
 	/// assert_eq!(ctx.get_path_param("name"), Some("test"));
 	/// ```
-	pub fn with_path_params(path_params: std::collections::HashMap<String, String>) -> Self {
+	pub fn with_path_params(path_params: impl Into<reinhardt_http::PathParams>) -> Self {
 		Self {
-			path_params,
+			path_params: path_params.into(),
 			header_names: HashMap::new(),
 			cookie_names: HashMap::new(),
 		}

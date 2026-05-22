@@ -15,6 +15,20 @@ on:
     workflows: ["Terraform Validate (Fork PR)"]
     types: [completed]
 
+# Stage 2 is gated by maintainer approval via the fork-review environment, so
+# concurrent runs are already rare. cancel-in-progress: false guards against a
+# rapid Stage 1 retry overwriting an in-flight privileged plan.
+#
+# For `on: workflow_run`, `github.ref` is the base-branch ref (always `main`
+# for this workflow), so keying off it would serialize *all* privileged plan
+# runs across unrelated fork PRs into one global queue. Key off the upstream
+# run's head SHA instead so the lock scope matches what we actually want to
+# protect — a specific Stage 1 target — while still letting unrelated PRs run
+# in parallel.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   pull-requests: write
@@ -60,7 +74,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.is_fork == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -68,9 +82,8 @@ jobs:
           - module: github-runners
             dir: infra/github-runners
             backend: s3
-          - module: bootstrap
-            dir: infra/github-runners/bootstrap
-            backend: local
+          # Note: `bootstrap` is intentionally excluded — its local backend
+          # cannot survive CI re-runs. See reinhardt-web#4145.
           - module: website
             dir: infra/website
             backend: local
@@ -111,9 +124,9 @@ jobs:
       - name: Install and run tfprovidercheck
         working-directory: ${{ matrix.dir }}
         run: |
-          go install github.com/suzuki-shunsuke/tfprovidercheck@v1.0.7
+          go install github.com/suzuki-shunsuke/tfprovidercheck/cmd/tfprovidercheck@v1.0.7
           if [ -f .terraform.lock.hcl ]; then
-            tfprovidercheck
+            terraform version -json | tfprovidercheck -c "$GITHUB_WORKSPACE/.tfprovidercheck.yml"
           else
             echo "No .terraform.lock.hcl found — skipping provider check"
           fi
@@ -138,7 +151,7 @@ jobs:
     needs: [gate, validate]
     if: needs.gate.outputs.is_fork == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 360
     environment: fork-review
     strategy:
       fail-fast: false
@@ -147,9 +160,7 @@ jobs:
           - module: github-runners
             dir: infra/github-runners
             backend: s3
-          - module: bootstrap
-            dir: infra/github-runners/bootstrap
-            backend: local
+          # Note: `bootstrap` is intentionally excluded. See reinhardt-web#4145.
           - module: website
             dir: infra/website
             backend: local
@@ -186,6 +197,7 @@ jobs:
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ matrix.module }}/terraform.tfstate" \
             -backend-config="region=${{ secrets.TF_AWS_REGION }}" \
+            -backend-config="assume_role={role_arn=\"arn:aws:iam::${{ secrets.TF_AWS_ACCOUNT_ID }}:role/OrganizationAccountAccessRole\"}" \
             -input=false
 
       - name: Terraform Init (local backend)
@@ -222,10 +234,27 @@ jobs:
           echo "Downloading Lambda zips for v${MODULE_VERSION}..."
           mkdir -p lambdas
           BASE_URL="https://github.com/github-aws-runners/terraform-aws-github-runner/releases/download/v${MODULE_VERSION}"
-          for name in webhook runners runner-binaries-syncer; do
+          for name in webhook runners runner-binaries-syncer termination-watcher ami-housekeeper; do
             curl -fsSL -o "lambdas/${name}.zip" "${BASE_URL}/${name}.zip"
             echo "  Downloaded ${name}.zip"
           done
+
+      # Issue #3903: orphan-detector Lambda build (required by archive_file).
+      - name: Setup Node.js (for orphan-detector Lambda)
+        if: env.SKIP_PLAN != 'true' && matrix.module == 'github-runners'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: infra/github-runners/lambda-src/orphan-detector/package-lock.json
+
+      - name: Build orphan-detector Lambda
+        if: env.SKIP_PLAN != 'true' && matrix.module == 'github-runners'
+        working-directory: infra/github-runners/lambda-src/orphan-detector
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          test -f dist/index.mjs || { echo "dist/index.mjs missing"; exit 1; }
 
       - name: Terraform Plan
         if: env.SKIP_PLAN != 'true'
@@ -259,7 +288,7 @@ jobs:
           TF_VAR_dns_record_google_verification_id: ${{ secrets.TF_DNS_RECORD_GOOGLE_VERIFICATION_ID }}
           TF_VAR_account_email: ${{ secrets.TF_ACCOUNT_EMAIL }}
           TF_VAR_organizations_account_email: ${{ secrets.TF_ACCOUNT_EMAIL }}
-          TF_VAR_environment_reviewer: ${{ secrets.TF_ENVIRONMENT_REVIEWER }}
+          TF_VAR_environment_reviewer_user_id: ${{ secrets.TF_ENVIRONMENT_REVIEWER_USER_ID }}
         run: |
           terraform plan -detailed-exitcode -no-color -input=false 2>&1 | tee plan-output.txt
           echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"

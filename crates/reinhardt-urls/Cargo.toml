@@ -1,7 +1,8 @@
 [package]
 name = "reinhardt-urls"
-version = "0.1.0-rc.11"
+version = "0.2.0-rc.1"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
@@ -19,13 +20,21 @@ once_cell = "1.20"
 matchit = "0.9.0"
 
 # WASM-specific dependencies (for client-router)
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Event", "History", "Location", "PopStateEvent", "Url", "Window"] }
 js-sys = "0.3"
+# serde-wasm-bindgen: serialize HistoryState directly to a JS object so
+# `history.state.field` works for external consumers. Replaces the
+# JSON-string-in-JsValue convention that surfaced as the SPA navigation
+# regression class (#4075 / #4088 / #4122 / #4203 / #4217).
+serde-wasm-bindgen = "0.6"
+# inventory: compile-time discovery for WASM-side `ClientRouterRegistration`
+# emitted by the `#[routes]` macro. Refs #4453.
+inventory = "0.3"
 
 # Server-only dependencies (not available on WASM)
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 reinhardt-db = { workspace = true, features = ["orm"] }
 async-trait = { workspace = true }
 futures = { workspace = true }
@@ -34,12 +43,16 @@ reinhardt-views = { workspace = true, features = ["viewsets"] }
 reinhardt-middleware = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-di = { workspace = true }
+reinhardt-router = { workspace = true }
 nom = { workspace = true }
 hyper = { workspace = true }
 chrono = { workspace = true }
 serde_yaml = "0.9"
 aho-corasick = "1.1"
 inventory = "0.3"
+
+# Streaming support (optional)
+reinhardt-streaming = { workspace = true, optional = true }
 
 [features]
 default = ["routers", "routers-macros", "proxy"]
@@ -50,13 +63,53 @@ routers-macros = ["dep:reinhardt-routers-macros"]
 proxy = []
 database = []
 client-router = ["reinhardt-core/reactive", "routers"]
+streaming = ["dep:reinhardt-streaming"]
 urls-full = ["routers", "routers-macros", "proxy"]
 full = ["database", "unified-router"]
 unified-router = []
+# Marker feature for wasm-bindgen-test diagnostic suite that asserts
+# observer-system invariants (Inv-1, Inv-2, Inv-4, Inv-5, Inv-6) on
+# `ClientRouter`. Mirrors the `wasm-diag-test` feature on
+# `reinhardt-pages`. Activated by:
+#   wasm-pack test --chrome --headless --features wasm-diag-test
+#     crates/reinhardt-urls
+# (Refs #4234)
+wasm-diag-test = ["client-router"]
+
+[build-dependencies]
+cfg_aliases = "0.2"
 
 [dev-dependencies]
 insta = { workspace = true }
+rstest = { workspace = true }
+serial_test = { workspace = true }
+
+# Native-only dev dependencies. These pull in heavy non-wasm crates
+# (`reinhardt-testkit` -> sqlx, `tokio`, `hyper`) and must not appear
+# on the wasm32 dev-dep graph or wasm-pack test will fail to build
+# `getrandom@0.2` (which lacks a wasm32-unknown-unknown backend).
+# (Refs #4234)
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 tokio = { version = "1.41", features = ["full"] }
 bytes = { workspace = true }
 hyper = { workspace = true }
-rstest = { workspace = true }
+reinhardt-testkit = { path = "../reinhardt-testkit" }
+
+# WASM-only dev dependencies (used by tests/wasm/*).
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test = "0.3.56"
+
+[[test]]
+name = "client_router_observer_dispatch_test"
+path = "tests/wasm/client_router_observer_dispatch_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "client_router_subscription_drop_test"
+path = "tests/wasm/client_router_subscription_drop_test.rs"
+required-features = ["wasm-diag-test"]
+
+[[test]]
+name = "client_router_listener_panic_isolation_test"
+path = "tests/wasm/client_router_listener_panic_isolation_test.rs"
+required-features = ["wasm-diag-test"]

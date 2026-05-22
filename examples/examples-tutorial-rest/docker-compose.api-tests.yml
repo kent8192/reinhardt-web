@@ -1,4 +1,4 @@
-# Docker Compose for Newman API Tests - examples-tutorial-rest
+# Docker Compose for Bruno API Tests - examples-tutorial-rest
 # Run: docker-compose -f docker-compose.api-tests.yml up --build
 version: '3.8'
 
@@ -15,21 +15,44 @@ services:
     networks:
       - api-test-network
 
-  newman:
-    image: postman/newman:alpine
+  bruno:
+    build:
+      context: .
+      dockerfile: Dockerfile.bruno
     depends_on:
       app:
         condition: service_healthy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    working_dir: /etc/bruno
+    # Run as host UID/GID so the `./bruno/reports` bind mount stays writable
+    # on Linux CI runners whose checkout is not owned by UID 1000 (the default
+    # UID of the `node` user in the node:24-alpine base image used by
+    # Dockerfile.bruno). Defaults to 1000:1000 for local macOS development
+    # where the host UID is typically 501 but Docker Desktop transparently
+    # maps file ownership.
+    #
+    # Use `BRUNO_UID`/`BRUNO_GID` rather than bash's `$UID`/`$GID`: the bash
+    # built-ins are not exported by default, so Compose interpolation would
+    # otherwise silently fall back to 1000 even on Linux CI. The `api-test`
+    # task in `Makefile.toml` exports these via `id -u`/`id -g`.
+    user: "${BRUNO_UID:-1000}:${BRUNO_GID:-1000}"
     volumes:
-      - ./postman:/etc/newman:ro
-      - ./postman/reports:/etc/newman/reports
-    command: >
-      run /etc/newman/collection.json
-      --environment /etc/newman/environment.json
-      --env-var "baseUrl=http://app:8000"
-      --reporters cli,junit,html
-      --reporter-junit-export /etc/newman/reports/junit.xml
-      --reporter-html-export /etc/newman/reports/report.html
+      - ./bruno:/etc/bruno:ro
+      - ./bruno/reports:/etc/bruno/reports
+    command:
+      - run
+      - --env
+      - local
+      - --env-var
+      - baseUrl=http://app:8000
+      - --reporter-junit
+      - /etc/bruno/reports/junit.xml
+      - --reporter-html
+      - /etc/bruno/reports/report.html
     networks:
       - api-test-network
 

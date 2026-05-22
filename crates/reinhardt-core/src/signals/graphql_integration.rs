@@ -1,4 +1,4 @@
-#![cfg(not(target_arch = "wasm32"))]
+#![cfg(native)]
 
 //! GraphQL Subscriptions - Signal-based GraphQL subscription support
 //!
@@ -80,7 +80,7 @@ impl<T> SubscriptionEvent<T> {
 
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.unwrap()
+			.unwrap_or_default()
 			.as_millis() as u64;
 
 		Self {

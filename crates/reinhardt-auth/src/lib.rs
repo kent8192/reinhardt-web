@@ -1,4 +1,6 @@
 #![warn(missing_docs)]
+// Re-exports of deprecated User trait and DefaultUser struct are intentional for backward compatibility.
+#![allow(deprecated)]
 //! # Reinhardt Auth
 //!
 //! Authentication and authorization system for Reinhardt framework.
@@ -65,7 +67,28 @@ pub mod core;
 
 // CurrentUser injectable for dependency injection
 pub mod current_user;
+#[allow(deprecated)]
 pub use current_user::CurrentUser;
+
+// AuthInfo lightweight auth extractor
+pub mod auth_info;
+pub use auth_info::AuthInfo;
+
+// Guard types for permission-based DI resolution
+/// Permission guard types and combinators for DI-based authorization.
+pub mod guard;
+pub use guard::{All, Any, Guard, Not, Public};
+
+// Re-export guard!() macro from reinhardt-auth-macros
+pub use reinhardt_auth_macros::guard;
+
+// AuthUser authenticated user extractor
+pub mod auth_user;
+pub use auth_user::AuthUser;
+
+// Startup validation for auth extractors
+pub mod auth_extractors;
+pub use auth_extractors::validate_auth_extractors;
 
 /// Project-specific UUID namespace for deterministic user ID generation.
 ///
@@ -75,9 +98,12 @@ pub(crate) const USER_ID_NAMESPACE: uuid::Uuid =
 
 // Re-export core authentication types
 pub use core::{
-	AllowAny, AnonymousUser, AuthBackend, BaseUser, CompositeAuthBackend, FullUser, IsActiveUser,
-	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher, Permission,
-	PermissionContext, PermissionsMixin, SimpleUser, User,
+	AllowAny, AnonymousUser, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser,
+	IsActiveUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher,
+	Permission, PermissionContext, PermissionsMixin, SimpleUser, SuperuserCreator,
+	SuperuserCreatorRegistration, SuperuserInit, TypedSuperuserCreator, User,
+	auto_register_superuser_creator, get_superuser_creator, register_superuser_creator,
+	superuser_creator_for,
 };
 
 #[cfg(feature = "argon2-hasher")]
@@ -118,6 +144,9 @@ pub mod model_permissions;
 pub mod oauth2;
 /// Object-level permission checking.
 pub mod object_permissions;
+/// Database-backed permission model.
+#[cfg(feature = "database")]
+pub mod permission;
 /// Rate-limiting permission class.
 #[cfg(feature = "rate-limit")]
 pub mod rate_limit_permission;
@@ -154,12 +183,13 @@ pub use default_user::DefaultUser;
 pub use default_user_manager::DefaultUserManager;
 pub use group_management::{
 	CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,
+	get_group_manager, register_group_manager,
 };
 #[cfg(feature = "sessions")]
 pub use handlers::{LoginCredentials, LoginHandler, LogoutHandler, SESSION_COOKIE_NAME};
 pub use ip_permission::{CidrRange, IpBlacklistPermission, IpWhitelistPermission};
 #[cfg(feature = "jwt")]
-pub use jwt::{Claims, JwtAuth};
+pub use jwt::{Claims, JwtAuth, JwtError};
 pub use mfa::MFAAuthentication as MfaManager;
 pub use model_permissions::{
 	DjangoModelPermissions, DjangoModelPermissionsOrAnonReadOnly, ModelPermission,
@@ -170,12 +200,26 @@ pub use oauth2::{
 	OAuth2Authentication, OAuth2TokenStore,
 };
 pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPermissionManager};
+#[cfg(feature = "database")]
+pub use permission::AuthPermission;
 pub use permission_operators::{AndPermission, NotPermission, OrPermission};
+// Re-export the error type used by `BaseUserManager` so downstream code (and the
+// `#[user]` macro's auto-generated manager impl) can reference it without
+// taking a direct dependency on `reinhardt-core`.
+pub use reinhardt_core::exception::Error as BaseUserManagerError;
+
+/// Re-export of [`serde_json::Value`] for use in `BaseUserManager` method
+/// signatures emitted by the `#[user(...)]` auto-manager generator.
+///
+/// Consumers of the auto-generated manager get this re-export "for free" via
+/// `reinhardt_auth::JsonValue`, so they do not need to add a direct
+/// `serde_json` dependency just to satisfy the trait signature.
+pub use serde_json::Value as JsonValue;
 #[cfg(feature = "social")]
 pub use social::{
-	AppleProvider, GitHubProvider, GoogleProvider, IdToken, MicrosoftProvider, OAuthProvider,
-	OAuthToken, PkceFlow, ProviderConfig, SocialAuthBackend, SocialAuthError, StandardClaims,
-	StateStore, TokenResponse,
+	AppleProvider, GenericOidcConfig, GenericOidcProvider, GitHubProvider, GoogleProvider, IdToken,
+	MicrosoftProvider, OAuthProvider, OAuthToken, PkceFlow, ProviderConfig, SocialAuthBackend,
+	SocialAuthError, StandardClaims, StateStore, TokenResponse, UserInfoMapper,
 };
 
 #[cfg(feature = "rate-limit")]
@@ -195,7 +239,7 @@ pub use token_blacklist::{
 };
 #[cfg(any(feature = "jwt", feature = "token"))]
 pub use token_rotation::{AutoTokenRotationManager, TokenRotationConfig, TokenRotationRecord};
-#[cfg(feature = "database")]
+#[cfg(all(feature = "database", any(feature = "jwt", feature = "token")))]
 pub use token_storage::DatabaseTokenStorage;
 #[cfg(any(feature = "jwt", feature = "token"))]
 pub use token_storage::{
@@ -217,6 +261,8 @@ pub enum AuthenticationError {
 	SessionExpired,
 	/// The provided authentication token is invalid or malformed.
 	InvalidToken,
+	/// The JWT token has expired.
+	TokenExpired,
 	/// The request lacks valid authentication credentials.
 	NotAuthenticated,
 	/// A database error occurred during authentication.
@@ -232,6 +278,7 @@ impl std::fmt::Display for AuthenticationError {
 			AuthenticationError::UserNotFound => write!(f, "User not found"),
 			AuthenticationError::SessionExpired => write!(f, "Session expired"),
 			AuthenticationError::InvalidToken => write!(f, "Invalid token"),
+			AuthenticationError::TokenExpired => write!(f, "Token expired"),
 			AuthenticationError::NotAuthenticated => write!(f, "User is not authenticated"),
 			AuthenticationError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
 			AuthenticationError::Unknown(msg) => write!(f, "Authentication error: {}", msg),
@@ -240,6 +287,19 @@ impl std::fmt::Display for AuthenticationError {
 }
 
 impl std::error::Error for AuthenticationError {}
+
+#[cfg(feature = "jwt")]
+impl From<JwtError> for AuthenticationError {
+	fn from(err: JwtError) -> Self {
+		match err {
+			JwtError::TokenExpired => AuthenticationError::TokenExpired,
+			JwtError::InvalidSignature(_) | JwtError::InvalidToken(_) => {
+				AuthenticationError::InvalidToken
+			}
+			JwtError::EncodingError(msg) => AuthenticationError::Unknown(msg),
+		}
+	}
+}
 
 /// Authentication backend trait
 ///
@@ -289,7 +349,9 @@ mod tests {
 		let user_id = "user123".to_string();
 		let username = "testuser".to_string();
 
-		let token = jwt_auth.generate_token(user_id, username).unwrap();
+		let token = jwt_auth
+			.generate_token(user_id, username, false, false)
+			.unwrap();
 
 		assert!(!token.is_empty());
 	}
@@ -502,7 +564,7 @@ mod tests {
 	#[test]
 	fn test_simple_user_implementation() {
 		let user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),
 			is_active: true,

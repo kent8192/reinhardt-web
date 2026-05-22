@@ -31,7 +31,7 @@
 //!
 //! ## Example (Submodule Access)
 //!
-//! ```ignore
+//! ```no_run
 //! // Server-side (non-wasm32):
 //! use reinhardt::admin::adapters::AdminSite;
 //! use reinhardt::admin::server::get_dashboard;
@@ -41,7 +41,7 @@
 //! ```
 
 // Link reinhardt-admin crate to ensure inventory registration is executed
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 extern crate reinhardt_admin;
 
 /// Admin interface adapter implementations.
@@ -50,31 +50,28 @@ pub mod adapters {
 }
 
 /// Core admin registration and configuration types.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub mod core {
 	pub use reinhardt_admin::core::*;
 }
 
 /// Server-side admin route handlers and views.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub mod server {
 	pub use reinhardt_admin::server::*;
 }
 
-#[cfg(target_arch = "wasm32")]
-pub mod pages {
-	pub use reinhardt_admin_pages::*;
-}
+// Admin pages module is not yet available as a separate crate.
+// WASM admin UI will be provided by a future reinhardt-admin-pages crate.
 
 // Re-export core router for admin route mounting
-#[cfg(not(target_arch = "wasm32"))]
-pub use reinhardt_admin::core::{AdminRouter, admin_routes};
+#[cfg(native)]
+pub use reinhardt_admin::core::{AdminUser, admin_routes_with_di, admin_static_routes};
 
 // Also re-export at top level for convenience
 pub use adapters::*;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub use server::*;
 
-#[cfg(target_arch = "wasm32")]
-pub use pages::*;
+// WASM admin pages re-export will be added when reinhardt-admin-pages crate is available.

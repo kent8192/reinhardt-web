@@ -382,6 +382,45 @@ async fn build_from_state_from_testcontainers(
 	))
 }
 
+/// Build from_state by replaying migration files from disk (offline fallback)
+///
+/// This approach requires no database or Docker. It reads all `.rs` migration files,
+/// builds a dependency graph, topologically sorts them, and replays all operations
+/// to reconstruct the current `ProjectState`.
+#[cfg(feature = "migrations")]
+async fn build_from_state_from_files(
+	migrations_dir: &std::path::Path,
+) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
+	use reinhardt_db::migrations::{FilesystemSource, MigrationSource, build_state_from_files};
+
+	let source = FilesystemSource::new(migrations_dir);
+
+	// Check if there are any migrations on disk
+	let all_migrations = source.all_migrations().await.map_err(|e| {
+		crate::CommandError::ExecutionError(format!("Failed to load migrations from disk: {}", e))
+	})?;
+
+	if all_migrations.is_empty() {
+		// No migration files found -- this is genuinely an initial migration
+		return Ok(reinhardt_db::migrations::ProjectState::default());
+	}
+
+	eprintln!(
+		"[DEBUG] Building state from {} migration files on disk",
+		all_migrations.len()
+	);
+	for migration in &all_migrations {
+		eprintln!("[DEBUG]   - {}/{}", migration.app_label, migration.name);
+	}
+
+	build_state_from_files(&source).await.map_err(|e| {
+		crate::CommandError::ExecutionError(format!(
+			"Failed to build state from migration files: {}",
+			e
+		))
+	})
+}
+
 /// Make migrations command
 #[cfg(feature = "migrations")]
 pub struct MakeMigrationsCommand;
@@ -510,6 +549,19 @@ impl BaseCommand for MakeMigrationsCommand {
 			.unwrap_or_else(|| "migrations".to_string());
 		let migrations_dir = PathBuf::from(migrations_dir_str);
 
+		// Validate that we are running inside a Reinhardt project directory.
+		// A valid project must contain src/bin/manage.rs (the management command
+		// entry point). Running makemigrations from the wrong directory would
+		// silently create migration files in unexpected locations.
+		if !PathBuf::from("src/bin/manage.rs").exists() {
+			return Err(crate::CommandError::ExecutionError(
+				"Cannot find src/bin/manage.rs in the current directory. \
+				 Please run makemigrations from your Reinhardt project root \
+				 (the directory containing src/bin/manage.rs)."
+					.to_string(),
+			));
+		}
+
 		if is_dry_run {
 			ctx.warning("Dry run mode: No files will be created");
 		}
@@ -524,11 +576,29 @@ impl BaseCommand for MakeMigrationsCommand {
 		{
 			use crate::CommandError;
 			use reinhardt_db::migrations::{
-				FilesystemRepository, FilesystemSource, MigrationNamer, MigrationNumbering,
-				MigrationService, autodetector::ProjectState,
+				FilesystemRepository, FilesystemSource, MigrationGraph, MigrationKey,
+				MigrationNamer, MigrationNumbering, MigrationService, autodetector::ProjectState,
 			};
 			use std::sync::Arc;
 			use tokio::sync::Mutex;
+
+			// Build a MigrationGraph from a list of Migration structs
+			fn build_migration_graph(
+				migrations: &[reinhardt_db::migrations::Migration],
+			) -> MigrationGraph {
+				let mut graph = MigrationGraph::new();
+				for migration in migrations {
+					let key =
+						MigrationKey::new(migration.app_label.clone(), migration.name.clone());
+					let deps: Vec<MigrationKey> = migration
+						.dependencies
+						.iter()
+						.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
+						.collect();
+					graph.add_migration(key, deps);
+				}
+				graph
+			}
 
 			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
 			let repository = Arc::new(Mutex::new(FilesystemRepository::new(
@@ -554,6 +624,101 @@ impl BaseCommand for MakeMigrationsCommand {
 					app_migrations.last().cloned()
 				}
 			};
+
+			// Handle --merge flag for resolving migration conflicts
+			let is_merge = ctx.has_option("merge");
+			if is_merge {
+				if is_empty {
+					return Err(CommandError::ExecutionError(
+						"--merge and --empty are mutually exclusive options".to_string(),
+					));
+				}
+
+				// Load all existing migrations and build the graph
+				let all_migrations = service.load_all().await.map_err(|e| {
+					CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
+				})?;
+
+				let graph = build_migration_graph(&all_migrations);
+
+				// Detect conflicts
+				let mut conflicts = graph.detect_conflicts();
+
+				// Apply app_label filter if specified
+				if let Some(ref app_name) = app_label {
+					conflicts.retain(|app, _| app == app_name);
+				}
+
+				if conflicts.is_empty() {
+					ctx.info("No conflicts detected");
+					return Ok(());
+				}
+
+				// Generate merge migration for each conflicting app
+				let mut conflict_apps: Vec<String> = conflicts.keys().cloned().collect();
+				conflict_apps.sort();
+
+				for conflict_app in &conflict_apps {
+					let leaf_keys = &conflicts[conflict_app];
+					let leaf_names: Vec<&str> = leaf_keys.iter().map(|k| k.name.as_str()).collect();
+
+					// Generate merge name
+					let base_name = migration_name_opt
+						.clone()
+						.unwrap_or_else(|| MigrationNamer::generate_merge_name(&leaf_names));
+					let migration_number =
+						MigrationNumbering::next_number(&migrations_dir, conflict_app);
+					let final_name = format!("{}_{}", migration_number, base_name);
+
+					// Dependencies = all conflicting leaves
+					let dependencies: Vec<(String, String)> = leaf_keys
+						.iter()
+						.map(|k| (k.app_label.clone(), k.name.clone()))
+						.collect();
+
+					let merge_migration = reinhardt_db::migrations::Migration {
+						app_label: conflict_app.clone(),
+						name: final_name.clone(),
+						operations: Vec::new(),
+						dependencies,
+						atomic: true,
+						replaces: Vec::new(),
+						initial: None,
+						state_only: false,
+						database_only: false,
+						optional_dependencies: Vec::new(),
+						swappable_dependencies: Vec::new(),
+					};
+
+					if !is_dry_run {
+						service
+							.save_migration(&merge_migration)
+							.await
+							.map_err(|e| {
+								CommandError::ExecutionError(format!(
+									"Failed to save merge migration: {}",
+									e
+								))
+							})?;
+						ctx.success(&format!(
+							"Created merge migration for '{}': {}",
+							conflict_app, final_name
+						));
+					} else {
+						ctx.info(&format!(
+							"Would create merge migration for '{}': {}",
+							conflict_app, final_name
+						));
+					}
+
+					// Show merged leaves
+					for leaf in leaf_keys {
+						ctx.verbose(&format!("  Merging: {}", leaf.name));
+					}
+				}
+
+				return Ok(());
+			}
 
 			// Handle --empty flag for manual migrations
 			if is_empty {
@@ -651,8 +816,16 @@ impl BaseCommand for MakeMigrationsCommand {
 			let mut results: Vec<MigrationResult> = Vec::new();
 
 			// Build from_state based on strategy (default: TestContainers)
+			//
+			// #3871: Check --force-empty-state before any TestContainers or DB call.
+			// postgres_container() panics when Docker is unavailable, so the flag must
+			// be respected before attempting container startup, not as a fallback.
 			let from_db_flag = ctx.has_option("from-db");
-			let from_state = if from_db_flag {
+			let from_state = if ctx.has_option("force-empty-state") {
+				ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
+				ctx.warning("This may create duplicate migrations!");
+				ProjectState::new()
+			} else if from_db_flag {
 				// When --from-db flag is specified: prioritize database history
 				match build_from_state_from_db(&migrations_dir, &database_url).await {
 					Ok(state) => {
@@ -668,30 +841,37 @@ impl BaseCommand for MakeMigrationsCommand {
 								state
 							}
 							Err(e) => {
-								ctx.error(&format!("Failed to use TestContainers: {}", e));
-								ctx.error(
-									"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
-								);
-								ctx.error(
-									"This will cause ALL tables to be regenerated, creating duplicate migrations.",
-								);
-								ctx.error("");
-								ctx.error("Possible solutions:");
-								ctx.error("  1. Fix TestContainers setup (recommended)");
-								ctx.error("  2. Use --from-db flag to build from database history");
-								ctx.error(
-									"  3. Use --force-empty-state to proceed anyway (dangerous)",
-								);
-								ctx.error("");
+								ctx.warning(&format!("Failed to use TestContainers: {}", e));
+								ctx.info("Falling back to file-based state reconstruction...");
+								match build_from_state_from_files(&migrations_dir).await {
+									Ok(state) => {
+										ctx.verbose("Built state from migration files (offline)");
+										state
+									}
+									Err(e_files) => {
+										ctx.error(&format!(
+											"Failed file-based reconstruction: {}",
+											e_files
+										));
+										ctx.error(
+											"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
+										);
+										ctx.error(
+											"This will cause ALL tables to be regenerated, creating duplicate migrations.",
+										);
+										ctx.error("");
+										ctx.error("Possible solutions:");
+										ctx.error("  1. Fix TestContainers setup (recommended)");
+										ctx.error(
+											"  2. Use --from-db flag to build from database history",
+										);
+										ctx.error(
+											"  3. Use --force-empty-state to proceed anyway (dangerous)",
+										);
+										ctx.error("");
 
-								if ctx.has_option("force-empty-state") {
-									ctx.warning(
-										"⚠️  Using empty state as requested (--force-empty-state)",
-									);
-									ctx.warning("This may create duplicate migrations!");
-									ProjectState::new()
-								} else {
-									return Err("from_state construction failed. Please fix TestContainers, use --from-db, or use --force-empty-state to continue anyway.".to_string().into());
+										return Err("from_state construction failed. Please fix TestContainers, use --from-db, or use --force-empty-state to continue anyway.".to_string().into());
+									}
 								}
 							}
 						}
@@ -713,38 +893,76 @@ impl BaseCommand for MakeMigrationsCommand {
 								state
 							}
 							Err(e) => {
-								ctx.error(&format!("Failed to connect to database: {}", e));
-								ctx.error(
-									"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
-								);
-								ctx.error(
-									"This will cause ALL tables to be regenerated, creating duplicate migrations.",
-								);
-								ctx.error("");
-								ctx.error("Possible solutions:");
-								ctx.error("  1. Fix database connection (recommended)");
-								ctx.error(
-									"  2. Use TestContainers (default behavior without --from-db)",
-								);
-								ctx.error(
-									"  3. Use --force-empty-state to proceed anyway (dangerous)",
-								);
-								ctx.error("");
+								ctx.warning(&format!("Failed to connect to database: {}", e));
+								ctx.info("Falling back to file-based state reconstruction...");
+								match build_from_state_from_files(&migrations_dir).await {
+									Ok(state) => {
+										ctx.verbose("Built state from migration files (offline)");
+										state
+									}
+									Err(e_files) => {
+										ctx.error(&format!(
+											"Failed file-based reconstruction: {}",
+											e_files
+										));
+										ctx.error(
+											"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
+										);
+										ctx.error(
+											"This will cause ALL tables to be regenerated, creating duplicate migrations.",
+										);
+										ctx.error("");
+										ctx.error("Possible solutions:");
+										ctx.error("  1. Fix database connection (recommended)");
+										ctx.error(
+											"  2. Use TestContainers (default behavior without --from-db)",
+										);
+										ctx.error(
+											"  3. Use --force-empty-state to proceed anyway (dangerous)",
+										);
+										ctx.error("");
 
-								if ctx.has_option("force-empty-state") {
-									ctx.warning(
-										"⚠️  Using empty state as requested (--force-empty-state)",
-									);
-									ctx.warning("This may create duplicate migrations!");
-									ProjectState::new()
-								} else {
-									return Err("from_state construction failed. Please fix database connection, remove --from-db, or use --force-empty-state to continue anyway.".to_string().into());
+										return Err("from_state construction failed. Please fix database connection, remove --from-db, or use --force-empty-state to continue anyway.".to_string().into());
+									}
 								}
 							}
 						}
 					}
 				}
 			};
+
+			// Check for migration conflicts before proceeding
+			{
+				let all_migrations = service.load_all().await.map_err(|e| {
+					CommandError::ExecutionError(format!(
+						"Failed to load migrations for conflict check: {}",
+						e
+					))
+				})?;
+				if !all_migrations.is_empty() {
+					let graph = build_migration_graph(&all_migrations);
+
+					let conflicts = graph.detect_conflicts();
+					if !conflicts.is_empty() {
+						let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
+						conflict_apps.sort();
+						for app in &conflict_apps {
+							let leaves = &conflicts[*app];
+							let leaf_names: Vec<&str> =
+								leaves.iter().map(|k| k.name.as_str()).collect();
+							ctx.error(&format!(
+								"Conflicting migrations detected for '{}': {}",
+								app,
+								leaf_names.join(", ")
+							));
+						}
+						return Err(CommandError::ExecutionError(
+							"Run 'makemigrations --merge' to resolve migration conflicts."
+								.to_string(),
+						));
+					}
+				}
+			}
 
 			for app_name in &app_names {
 				// Filter target state for this app only
@@ -790,11 +1008,12 @@ impl BaseCommand for MakeMigrationsCommand {
 				for migration in generated_migrations {
 					if migration.app_label == app_name.as_str() {
 						// Generate migration name
-						let base_name = migration_name_opt.clone().unwrap_or_else(|| {
-							MigrationNamer::generate_name(&migration.operations, true)
-						});
 						let migration_number =
 							MigrationNumbering::next_number(&migrations_dir, app_name);
+						let is_initial = migration_number == "0001";
+						let base_name = migration_name_opt.clone().unwrap_or_else(|| {
+							MigrationNamer::generate_name(&migration.operations, is_initial)
+						});
 						let final_name = format!("{}_{}", migration_number, base_name);
 
 						// Determine dependencies
@@ -1067,6 +1286,122 @@ impl ShellCommand {
 /// Development server command
 pub struct RunServerCommand;
 
+impl RunServerCommand {
+	/// Consume `UrlPatternsRegistration` `inventory` entries and install the
+	/// merged `ServerRouter` as the process-wide HTTP router.
+	///
+	/// This is the canonical, named consumer of the `#[routes]`-emitted
+	/// server-side `inventory::submit!` block. It is invoked explicitly
+	/// from [`RunServerCommand::execute`] so that the registration step
+	/// is **visible at the call site** rather than hidden inside the
+	/// command-dispatch loop (Refs #4453 DP-1).
+	///
+	/// Users running the canonical `cargo run --bin manage runserver`
+	/// path get registration "for free" — `execute(..)` calls this method.
+	/// Users who bypass `--bin manage` and assemble their own server
+	/// entrypoint can call this method directly on `RunServerCommand`
+	/// instead of going through [`crate::auto_register_router`].
+	///
+	/// # Errors
+	///
+	/// - Zero `#[routes]` registrations found (missing `#[routes]` or
+	///   `src/lib.rs` + `src/bin/manage.rs` linker drop — the error
+	///   message includes the fix)
+	/// - Multiple `#[routes]` registrations (linker marker should normally
+	///   catch this at link time; we provide a clear fallback message)
+	/// - The async server factory returned an error
+	/// - A router is already registered when this method is called
+	///   (DP-7 confusable-API guard). Users who intentionally pre-register
+	///   via [`reinhardt_urls::routers::register_router`] should not also
+	///   call this method.
+	///
+	/// Refs #4453.
+	#[cfg(feature = "routers")]
+	pub async fn register_http_routes_from_inventory(
+		&self,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		use reinhardt_urls::routers::{
+			UrlPatternsRegistration, is_router_registered, register_router_arc,
+		};
+
+		// DP-7 confusable-API guard: reject if a router is already registered.
+		// Callers that intentionally pre-register a hand-built `ServerRouter`
+		// must not also call this method; the two paths are mutually exclusive.
+		if is_router_registered() {
+			return Err("ServerRouter is already registered.\n\
+				`RunServerCommand::register_http_routes_from_inventory()` and \
+				`reinhardt_urls::routers::register_router(..)` are mutually \
+				exclusive: choose exactly one. If you want the inventory path, \
+				do not pre-register a router; if you want manual registration, \
+				skip this method and let `RunServerCommand::execute(..)` reuse \
+				the pre-registered router."
+				.into());
+		}
+
+		// Collect all server-side registrations for validation.
+		let registrations: Vec<_> = inventory::iter::<UrlPatternsRegistration>().collect();
+
+		match registrations.len() {
+			0 => {
+				return Err("No URL patterns registered.\n\
+					Add the `#[routes]` attribute to your routes function in src/config/urls.rs:\n\n\
+					#[routes]\n\
+					pub fn routes() -> UnifiedRouter {\n\
+					    UnifiedRouter::new()\n\
+					}\n\n\
+					If your project uses a library/binary split (src/lib.rs + src/bin/manage.rs),\n\
+					the linker may silently discard route registrations from the library crate.\n\
+					Fix: add `use your_crate_name as _;` to src/bin/manage.rs to force-link\n\
+					the library and preserve its side-effectful route registrations."
+					.into());
+			}
+			1 => { /* expected case */ }
+			n => {
+				return Err(format!(
+					"Multiple #[routes] functions detected ({n} found).\n\
+					Only one function in the entire project should be annotated with #[routes].\n\n\
+					Please ensure that:\n\
+					1. Only one #[routes] attribute exists in your codebase\n\
+					2. Check src/config/urls.rs and any other files that might have #[routes]\n\
+					3. If you have multiple router configurations, combine them into a single function\n\n\
+					Example:\n\
+					#[routes]\n\
+					pub fn routes() -> UnifiedRouter {{\n\
+					    UnifiedRouter::new()\n\
+					        .mount(\"/api/\", api::routes())  // NOT annotated with #[routes]\n\
+					        .mount(\"/admin/\", admin::routes())\n\
+					}}"
+				)
+				.into());
+			}
+		}
+
+		let registration = &registrations[0];
+		let router = registration
+			.server_router_async()
+			.await
+			.map_err(|e| format!("Failed to create router from #[routes] function: {e}"))?;
+		register_router_arc(router);
+		Ok(())
+	}
+
+	/// No-op when the `routers` feature is disabled.
+	///
+	/// Kept public to preserve API stability across feature-flag toggles.
+	///
+	/// # Errors
+	///
+	/// Never returns an error in the `routers`-disabled build — always
+	/// resolves to `Ok(())`. The signature matches the active variant so
+	/// downstream callers can stay feature-flag-agnostic.
+	#[cfg(not(feature = "routers"))]
+	pub async fn register_http_routes_from_inventory(
+		&self,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		Ok(())
+	}
+}
+
 #[async_trait]
 impl BaseCommand for RunServerCommand {
 	fn name(&self) -> &str {
@@ -1087,6 +1422,11 @@ impl BaseCommand for RunServerCommand {
 	fn options(&self) -> Vec<CommandOption> {
 		vec![
 			CommandOption::flag(None, "noreload", "Disable auto-reload"),
+			CommandOption::flag(
+				None,
+				"no-wasm-rebuild",
+				"Disable WASM rebuild during hot-reload (server pipeline still runs)",
+			),
 			CommandOption::option(
 				None,
 				"watch-delay",
@@ -1107,12 +1447,60 @@ impl BaseCommand for RunServerCommand {
 			)
 			.with_default("dist"),
 			CommandOption::flag(None, "no-spa", "Disable SPA mode (no index.html fallback)"),
+			CommandOption::flag(
+				None,
+				"no-project-static",
+				"Disable auto-serving of <project-root>/static/ at /static/ (--with-pages only)",
+			),
+			CommandOption::flag(None, "no-wasm", "Skip WASM build at startup"),
+			CommandOption::flag(
+				None,
+				"no-override-wasm",
+				"Reuse existing WASM artifacts in dist/ if present (default: rebuild)",
+			),
+			CommandOption::flag(
+				None,
+				"force-wasm",
+				"DEPRECATED: rebuild is now the default. Use --no-override-wasm to opt out.",
+			),
+			CommandOption::flag(
+				None,
+				"wasm-optional",
+				"Allow server to start even if WASM build fails",
+			),
 		]
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		// Explicit HTTP route registration (Refs #4453 DP-1):
+		// the inventory consumption used to be hidden inside the dispatch
+		// chain (cli.rs's `auto_register_router()` called before this body).
+		// We now make the call site visible here, on `RunServerCommand`,
+		// so that readers of `execute(..)` see exactly when and how the
+		// `#[routes]`-emitted server inventory becomes the global router.
+		//
+		// Opt-out path: users who hand-build a `ServerRouter` and call
+		// `reinhardt_urls::routers::register_router(..)` before this body
+		// runs will short-circuit through the `is_router_registered()`
+		// guard and skip the inventory pull — preserving the existing
+		// escape hatch unchanged.
+		#[cfg(feature = "routers")]
+		{
+			if !reinhardt_urls::routers::is_router_registered() {
+				self.register_http_routes_from_inventory()
+					.await
+					.map_err(|e| crate::CommandError::ExecutionError(e.to_string()))?;
+			} else {
+				ctx.verbose(
+					"ServerRouter already registered before RunServerCommand::execute; \
+					 skipping inventory pull (manual setter opt-out path).",
+				);
+			}
+		}
+
 		let address = ctx.arg(0).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000");
 		let noreload = ctx.has_option("noreload");
+		let no_wasm_rebuild = ctx.has_option("no-wasm-rebuild");
 		let insecure = ctx.has_option("insecure");
 		let no_docs = ctx.has_option("no_docs");
 		let with_pages = ctx.has_option("with-pages");
@@ -1121,6 +1509,38 @@ impl BaseCommand for RunServerCommand {
 			.map(|s| s.to_string())
 			.unwrap_or_else(|| "dist".to_string());
 		let no_spa = ctx.has_option("no-spa");
+		let no_project_static = ctx.has_option("no-project-static");
+		// Build WASM frontend if --with-pages and not --no-wasm
+		#[cfg(feature = "pages")]
+		{
+			let no_wasm = ctx.has_option("no-wasm");
+			let no_override_wasm = ctx.has_option("no-override-wasm");
+			let force_wasm_legacy = ctx.has_option("force-wasm");
+			if force_wasm_legacy {
+				ctx.warning(
+					"--force-wasm is now the default behavior; this flag is deprecated. \
+					 Use --no-override-wasm to opt out of rebuilds.",
+				);
+			}
+			let force = !no_override_wasm;
+			let wasm_optional = ctx.has_option("wasm-optional");
+			if with_pages
+				&& !no_wasm && let Err(e) = Self::build_pages_wasm(ctx, force)
+			{
+				if wasm_optional {
+					ctx.warning(&format!(
+						"Pages WASM build failed: {}. Server will start without WASM frontend.",
+						e
+					));
+				} else {
+					ctx.error(&format!(
+						"WASM build failed: {}. Fix compilation errors or use --wasm-optional to start without WASM.",
+						e
+					));
+					return Ok(());
+				}
+			}
+		}
 
 		// Find available port early (before displaying banner)
 		#[cfg(feature = "server")]
@@ -1198,9 +1618,53 @@ impl BaseCommand for RunServerCommand {
 				));
 			}
 
+			// Display index file info (Refs #2869)
+			if with_pages
+				&& !no_spa && let Some(index_str) = ctx.option("index")
+			{
+				let path = std::path::Path::new(&index_str);
+				if path.exists() {
+					ctx.info(&format!("📄 Index:   {} (specified)", index_str));
+				} else {
+					ctx.warning(&format!(
+						"📄 Index:   {} (specified, missing — will be ignored)",
+						index_str
+					));
+				}
+			}
+
 			#[cfg(feature = "openapi-router")]
 			if !no_docs {
 				ctx.info(&format!("📖 Docs:    http://{}/api/docs", actual_address));
+			}
+
+			#[cfg(all(feature = "pages", feature = "routers"))]
+			if with_pages {
+				use reinhardt_urls::routers::registration::iter_registered_url_patterns;
+				// `client_router()` returns `Arc<ClientRouter>` (owned), and
+				// `route_patterns()` borrows from it, so the inner `collect`
+				// is required to terminate the borrow within the closure.
+				let mut routes: Vec<(String, Option<String>)> = iter_registered_url_patterns()
+					.filter_map(|reg| reg.client_router())
+					.flat_map(|cr| {
+						cr.route_patterns()
+							.map(|(pat, name)| (pat.to_string(), name.map(|n| n.to_string())))
+							.collect::<Vec<_>>()
+					})
+					.collect();
+				// inventory::iter order is linker-dependent; sort for a
+				// stable, diff-friendly startup banner across builds.
+				routes.sort();
+				if !routes.is_empty() {
+					ctx.info("🗺  Routes (WASM-bound):");
+					for (pat, name) in &routes {
+						if let Some(n) = name {
+							ctx.info(&format!("     {}  →  {}", pat, n));
+						} else {
+							ctx.info(&format!("     {}", pat));
+						}
+					}
+				}
 			}
 
 			ctx.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -1230,15 +1694,44 @@ impl BaseCommand for RunServerCommand {
 		// Server implementation with conditional features
 		#[cfg(feature = "server")]
 		{
+			// Autoreload PARENT path: run only stateless hook validation,
+			// then dispatch directly to the watcher. The full bring-up
+			// (DI / DB / on_server_start / HttpServer / static-files
+			// middleware) lives in the spawned `--noreload` child so any
+			// listeners opened by `on_server_start` hooks (e.g. gRPC) do
+			// not collide with the child's HTTP bind (#4244).
+			#[cfg(feature = "autoreload")]
+			if !noreload {
+				Self::validate_hooks_only(ctx).await?;
+				let index_raw = ctx.option("index").map(|s| s.to_string());
+				return Self::run_with_autoreload(
+					ctx,
+					&actual_address,
+					insecure,
+					no_docs,
+					with_pages,
+					&static_dir_raw,
+					no_spa,
+					no_project_static,
+					index_raw.as_deref(),
+					no_wasm_rebuild,
+				)
+				.await;
+			}
+
+			// `--noreload` (autoreload child or explicit opt-out) OR
+			// `feature = "autoreload"` is off: full bring-up + listen.
 			Self::run_server(
 				ctx,
 				&actual_address,
 				noreload,
+				no_wasm_rebuild,
 				insecure,
 				no_docs,
 				with_pages,
 				&static_dir_raw,
 				no_spa,
+				no_project_static,
 			)
 			.await
 		}
@@ -1267,6 +1760,46 @@ impl BaseCommand for RunServerCommand {
 }
 
 impl RunServerCommand {
+	/// Collect runserver hooks from inventory and run their `validate()` phase.
+	///
+	/// Used in two places:
+	/// - `run_server` (the actual listening process) calls this and then reuses
+	///   the returned hooks for `on_server_start`.
+	/// - The autoreload parent path in `execute()` calls this for fail-fast
+	///   validation but discards the returned hooks; `on_server_start` only
+	///   runs in the spawned `--noreload` child so hooks that open listeners
+	///   do not collide with the child's HTTP bind (#4244).
+	#[cfg(feature = "server")]
+	async fn validate_hooks_only(
+		ctx: &CommandContext,
+	) -> CommandResult<Vec<crate::runserver_hooks::CollectedRunserverHook>> {
+		let hooks = crate::runserver_hooks::collect_hooks();
+		if !hooks.is_empty() {
+			ctx.verbose(&format!("Found {} runserver hook(s)", hooks.len()));
+		}
+		for collected in &hooks {
+			collected.hook.validate().await.map_err(|e| {
+				crate::CommandError::ExecutionError(format!(
+					"Runserver hook validation failed for {}: {}",
+					collected.type_name, e
+				))
+			})?;
+		}
+		Ok(hooks)
+	}
+
+	/// Test-only entry point exercising the autoreload-parent validation path.
+	///
+	/// Mirrors `validate_hooks_only` but returns `()` so it can cross the
+	/// crate boundary without leaking the crate-private
+	/// `CollectedRunserverHook` type. Re-exported via
+	/// `crate::__hot_reload_test_api::validate_hooks_only` for integration
+	/// tests; not part of the public API.
+	#[cfg(feature = "server")]
+	pub(crate) async fn validate_hooks_only_for_tests(ctx: &CommandContext) -> CommandResult<()> {
+		Self::validate_hooks_only(ctx).await.map(|_| ())
+	}
+
 	/// Run the development server
 	#[cfg(feature = "server")]
 	// Allow many arguments: CLI command handler needs to accept all server configuration options
@@ -1276,11 +1809,14 @@ impl RunServerCommand {
 		#[allow(unused_variables)] ctx: &CommandContext,
 		address: &str,
 		noreload: bool,
+		// Only consumed by the autoreload pipeline; allow unused when feature is off.
+		#[cfg_attr(not(feature = "autoreload"), allow(unused_variables))] no_wasm_rebuild: bool,
 		_insecure: bool,
 		no_docs: bool,
 		with_pages: bool,
 		static_dir: &str,
 		no_spa: bool,
+		no_project_static: bool,
 	) -> CommandResult<()> {
 		use reinhardt_server::{HttpServer, ShutdownCoordinator};
 
@@ -1331,67 +1867,86 @@ impl RunServerCommand {
 			shutdown_tx.shutdown();
 		});
 
+		// Collect and validate runserver hooks (#3442). The validate phase is
+		// shared with the autoreload-parent path so misconfigured hooks fail
+		// fast in the parent before any child is spawned (#4244).
+		let hooks = Self::validate_hooks_only(ctx).await?;
+
 		// OpenAPI documentation is shown in startup banner above
 
-		// Create DI context for dependency injection
-		let singleton_scope = std::sync::Arc::new(reinhardt_di::SingletonScope::new());
+		// Resolve DI context: reuse user-provided context from router, or create a new one.
+		// When the user attaches a DI context via UnifiedRouter::with_di_context(),
+		// we must register server-managed singletons (e.g., DatabaseConnection)
+		// into that context's singleton scope rather than creating a separate one.
+		let (singleton_scope, user_provided_context) =
+			if let Some(existing_ctx) = reinhardt_urls::routers::get_router_di_context() {
+				ctx.verbose("Using user-provided DI context from router configuration");
+				(existing_ctx.singleton_scope().clone(), Some(existing_ctx))
+			} else {
+				let scope = std::sync::Arc::new(reinhardt_di::SingletonScope::new());
+				// Apply deferred DI registrations only when no user context exists.
+				// When a user context is present, UnifiedRouter::flush_di_registrations
+				// has already applied them to the user's singleton scope.
+				if let Some(registrations) = reinhardt_urls::routers::take_di_registrations() {
+					ctx.verbose("Applying deferred DI registrations from route configuration");
+					registrations.apply_to(&scope);
+				}
+				(scope, None)
+			};
 
-		// Register DatabaseConnection as singleton when database feature is enabled
+		// Register DatabaseConnection in DI context when database feature is enabled.
+		// ORM is already initialized by run_command_with_registry() via
+		// initialize_orm_database(), so we only need to get the connection
+		// and register it in the DI singleton scope. (#3186)
 		#[cfg(feature = "reinhardt-db")]
 		{
-			// Check if DATABASE_URL was explicitly set in the environment before resolution
-			let env_database_url = std::env::var("DATABASE_URL").ok();
-
-			// Try to connect to database and register connection
-			match get_database_url() {
-				Ok(url) => {
-					// Sync DATABASE_URL to environment so all connection paths use the same URL.
-					// This prevents divergence where the ORM uses settings.toml but other code
-					// (e.g., sqlx::AnyPool, ModelViewSetHandler) reads DATABASE_URL directly.
-					sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
-
-					// Initialize ORM global database first, which also creates the connection pool
-					match reinhardt_db::orm::init_database(&url).await {
-						Ok(()) => {
-							ctx.verbose("ORM database initialized");
-							// Get the connection from ORM and register in DI context for dependency injection
-							match reinhardt_db::orm::get_connection().await {
-								Ok(db_conn) => {
-									// Register DatabaseConnection directly (not wrapped in Arc)
-									// The DI system wraps it in Arc internally via SingletonScope::set
-									singleton_scope.set(db_conn);
-									ctx.info(&format!(
-										"💾 Database: {} (connected)",
-										sanitize_database_url(&url)
-									));
-								}
-								Err(e) => {
-									ctx.warning(&format!(
-										"⚠️ Failed to get database connection for DI: {}",
-										e
-									));
-								}
-							}
-						}
-						Err(e) => {
-							ctx.warning(&format!(
-								"⚠️ Failed to initialize ORM database: {}. DI injection for DatabaseConnection will fail.",
-								e
-							));
-						}
-					}
+			match reinhardt_db::orm::get_connection().await {
+				Ok(db_conn) => {
+					// Register DatabaseConnection directly (not wrapped in Arc)
+					// The DI system wraps it in Arc internally via SingletonScope::set
+					singleton_scope.set(db_conn);
+					let url = get_database_url().unwrap_or_default();
+					ctx.info(&format!(
+						"💾 Database: {} (DI registered)",
+						sanitize_database_url(&url)
+					));
 				}
 				Err(e) => {
 					ctx.warning(&format!(
-						"⚠️ No DATABASE_URL configured: {}. DI injection for DatabaseConnection will fail.",
+						"⚠️ Failed to get database connection for DI: {}",
 						e
 					));
 				}
 			}
 		}
 
-		let di_context =
-			std::sync::Arc::new(reinhardt_di::InjectionContext::builder(singleton_scope).build());
+		// Build or reuse the DI context
+		let di_context = match user_provided_context {
+			Some(ctx) => ctx,
+			None => std::sync::Arc::new(
+				reinhardt_di::InjectionContext::builder(singleton_scope).build(),
+			),
+		};
+
+		// Invoke runserver hook startup phase (#3442)
+		if !hooks.is_empty() {
+			let runserver_ctx = crate::runserver_hooks::RunserverContext {
+				shutdown_coordinator: coordinator.clone(),
+				di_context: di_context.clone(),
+			};
+			for collected in &hooks {
+				collected
+					.hook
+					.on_server_start(&runserver_ctx)
+					.await
+					.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Runserver hook startup failed for {}: {}",
+							collected.type_name, e
+						))
+					})?;
+			}
+		}
 
 		// Create HTTP server with DI context and logging middleware
 		let mut server = HttpServer::new(router)
@@ -1401,18 +1956,99 @@ impl RunServerCommand {
 		// Add static files middleware for WASM frontend if enabled
 		if with_pages {
 			use reinhardt_utils::staticfiles::PathResolver;
+			use reinhardt_utils::staticfiles::caching::CacheControlConfig;
 			use reinhardt_utils::staticfiles::middleware::{
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
 
+			// Auto-mount <project-root>/static/ at /static/ unless opted out.
+			// This is registered BEFORE the dist/ middleware so that, when
+			// MiddlewareChain::handle reverses registration order at request
+			// time, the project-static middleware sits outermost and runs
+			// first; misses fall through to the dist/ middleware and then to
+			// the application router (Issue #4484).
+			if !no_project_static && let Some(project_root) = PathResolver::find_project_root() {
+				let project_static_dir = project_root.join("static");
+				if project_static_dir.is_dir() {
+					let mut project_static_config =
+						StaticFilesConfig::new(project_static_dir.clone())
+							.url_prefix("/static/")
+							.spa_mode(false)
+							.auto_inject_wasm(false)
+							.passthrough_prefixes(vec!["/static/admin/".to_string()]);
+					// Disable long-lived caching in dev (mirrors #4383 for the
+					// dist/ bundle so hot-reload picks up CSS/JS edits).
+					#[cfg(debug_assertions)]
+					{
+						project_static_config =
+							project_static_config.cache_config(CacheControlConfig::disabled());
+					}
+					server =
+						server.with_middleware(StaticFilesMiddleware::new(project_static_config));
+					ctx.verbose(&format!(
+						"Project static files middleware enabled: {} (mounted at /static/)",
+						project_static_dir.display()
+					));
+				}
+			}
+
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);
 
-			let static_config = StaticFilesConfig::new(resolved_static_dir.clone())
+			let mut static_config = StaticFilesConfig::new(resolved_static_dir.clone())
 				.url_prefix("/")
 				.spa_mode(!no_spa)
-				// All API and documentation endpoints are under /api/ prefix
-				.excluded_prefixes(vec!["/api/".to_string()]);
+				// Exclude framework-managed route prefixes from SPA fallback
+				// so that API endpoints and admin panel are handled by the
+				// application router instead of receiving index.html.
+				.excluded_prefixes(vec![
+					"/api/".to_string(),
+					"/admin/".to_string(),
+					"/static/admin/".to_string(),
+				]);
+
+			// Issue #4383: In debug builds (dev runserver), disable the
+			// long-lived `public, immutable, max-age=31536000` Cache-Control
+			// policy that is applied by default to `.js` / `.wasm` / `.css`
+			// bundle assets. Without this, browsers never re-validate during
+			// development and hot-reload appears broken. Release builds keep
+			// the immutable policy for production-grade caching.
+			#[cfg(debug_assertions)]
+			{
+				static_config = static_config.cache_config(CacheControlConfig::disabled());
+			}
+
+			// Resolve index file for SPA fallback (only when SPA mode is enabled)
+			// Refs #2869: Separate index.html (source) from dist/ (build output)
+			if !no_spa {
+				let index_option = ctx.option("index").map(|s| s.to_string());
+				let index_path = match &index_option {
+					Some(path) => {
+						let resolved = PathResolver::resolve_static_dir(path);
+						if resolved.exists() {
+							Some(resolved)
+						} else {
+							ctx.warning(&format!("Index file not found: {}", path));
+							None
+						}
+					}
+					None => {
+						// Auto-detect from project root
+						let candidate = PathResolver::find_project_root()
+							.unwrap_or_else(|| std::env::current_dir().unwrap())
+							.join("index.html");
+						if candidate.exists() {
+							Some(candidate)
+						} else {
+							None // Fallback to existing behavior
+						}
+					}
+				};
+
+				if let Some(ref path) = index_path {
+					static_config = static_config.index_file(path.clone());
+				}
+			}
 
 			server = server.with_middleware(StaticFilesMiddleware::new(static_config));
 			ctx.verbose(&format!(
@@ -1426,8 +2062,18 @@ impl RunServerCommand {
 		if !noreload {
 			#[cfg(feature = "autoreload")]
 			{
+				let index_raw = ctx.option("index").map(|s| s.to_string());
 				Self::run_with_autoreload(
-					ctx, address, _insecure, no_docs, with_pages, static_dir, no_spa,
+					ctx,
+					address,
+					_insecure,
+					no_docs,
+					with_pages,
+					static_dir,
+					no_spa,
+					no_project_static,
+					index_raw.as_deref(),
+					no_wasm_rebuild,
 				)
 				.await
 			}
@@ -1446,8 +2092,14 @@ impl RunServerCommand {
 		}
 	}
 
-	/// Run server with file watching and auto-reload
+	/// Run server with file watching, debounced dispatch to the wasm + server
+	/// rebuild pipelines, and Django-style outer-loop resilience.
+	///
+	/// Pipeline failures are logged but never propagate as `Err` — only
+	/// watcher infrastructure errors (e.g. notify subscribe failed) do.
 	#[cfg(all(feature = "server", feature = "autoreload"))]
+	// Allow many arguments: autoreload handler mirrors run_server configuration options
+	#[allow(clippy::too_many_arguments)]
 	async fn run_with_autoreload(
 		ctx: &CommandContext,
 		address: &str,
@@ -1456,18 +2108,75 @@ impl RunServerCommand {
 		with_pages: bool,
 		static_dir: &str,
 		no_spa: bool,
+		no_project_static: bool,
+		index: Option<&str>,
+		no_wasm_rebuild: bool,
 	) -> CommandResult<()> {
-		use std::time::{Duration, Instant};
+		// Resolve the cargo metadata for the current working directory.
+		let metadata = cargo_metadata::MetadataCommand::new().exec().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("cargo metadata failed: {}", e))
+		})?;
 
-		ctx.info("Starting autoreload mode...");
-		ctx.verbose("Watching for file changes in src/ and Cargo.toml");
+		let cwd = std::env::current_dir().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("Failed to get current directory: {}", e))
+		})?;
+		let cwd_manifest = cwd.join("Cargo.toml");
 
-		let mut restart_count = 0;
-		let max_restarts_per_minute = 10;
-		let mut last_restart_time = Instant::now();
+		let roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &cwd_manifest);
 
-		// Set up Ctrl+C handler
-		let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+		// Derive the bin name from the current executable file stem. The
+		// child server is always re-spawned by re-execing the same binary,
+		// but `cargo build --bin <name>` needs the cargo bin name and that
+		// matches the executable file stem in every project layout we
+		// ship templates for.
+		let current_exe_for_bin = std::env::current_exe().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
+		})?;
+		let bin_name = current_exe_for_bin
+			.file_stem()
+			.and_then(|s| s.to_str())
+			.unwrap_or("manage")
+			.to_string();
+
+		// Optional diagnostic snapshot at autoreload startup. See issue #4236.
+		// Gated on `REINHARDT_AUTORELOAD_DEBUG=1` so production runs stay
+		// quiet but the user can capture full state with one env flip.
+		if Self::autoreload_debug_enabled() {
+			eprintln!(
+				"[autoreload-debug] bin_name={} {}",
+				bin_name,
+				Self::spawn_diagnostics(&current_exe_for_bin, true),
+			);
+		}
+
+		// Startup banner (spec §7).
+		ctx.info("[hot-reload] enabled");
+		ctx.info(&format!(
+			"  watching: {} source roots",
+			roots.src_dirs.len() + roots.manifest_files.len()
+		));
+		for dir in &roots.src_dirs {
+			ctx.info(&format!("    - {}", dir.display()));
+		}
+		for manifest in &roots.manifest_files {
+			ctx.info(&format!("    - {}", manifest.display()));
+		}
+		#[cfg(feature = "pages")]
+		{
+			if with_pages && !no_wasm_rebuild {
+				ctx.info("  pipelines: server rebuild + restart, wasm rebuild");
+			} else {
+				ctx.info("  pipelines: server rebuild + restart");
+			}
+		}
+		#[cfg(not(feature = "pages"))]
+		{
+			ctx.info("  pipelines: server rebuild + restart");
+		}
+		ctx.info("  on failure: keep watching (Ctrl+C to quit)");
+
+		// Set up Ctrl+C handler.
+		let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 		let ctx_clone = ctx.clone();
 		tokio::spawn(async move {
 			if let Err(e) = tokio::signal::ctrl_c().await {
@@ -1478,90 +2187,209 @@ impl RunServerCommand {
 			let _ = shutdown_tx.send(());
 		});
 
-		loop {
-			// Check restart frequency limit (stop if more than 10 restarts per minute)
-			if restart_count >= max_restarts_per_minute {
-				let elapsed = last_restart_time.elapsed();
-				if elapsed < Duration::from_secs(60) {
-					return Err(crate::CommandError::ExecutionError(format!(
-						"Too many restarts ({} in {:?}). Aborting to prevent infinite loop.",
-						restart_count, elapsed
-					)));
-				} else {
-					// Reset counter if more than 1 minute has elapsed
-					restart_count = 0;
-					last_restart_time = Instant::now();
-				}
-			}
+		// Captured state for the respawn closure.
+		let address_owned = address.to_string();
+		let static_dir_owned = static_dir.to_string();
+		let index_owned = index.map(|s| s.to_string());
 
-			// Start child process
-			ctx.verbose("Starting server subprocess...");
-			let mut child = Self::spawn_server_process(
-				address, insecure, no_docs, with_pages, static_dir, no_spa,
-			)?;
-			restart_count += 1;
+		let respawn = move || -> std::io::Result<tokio::process::Child> {
+			Self::spawn_server_process(
+				&address_owned,
+				insecure,
+				no_docs,
+				with_pages,
+				&static_dir_owned,
+				no_spa,
+				no_project_static,
+				index_owned.as_deref(),
+			)
+			.map_err(|e| std::io::Error::other(e.to_string()))
+		};
 
-			// Wait for file change, child process exit, or Ctrl+C
-			tokio::select! {
-				change_result = Self::watch_files_async() => {
-					match change_result {
-						Ok(_) => {
-							ctx.info("\n📝 File change detected. Restarting server...");
-							// Stop child process
-							if let Err(e) = child.kill().await {
-								ctx.warning(&format!("Failed to kill child process: {}", e));
-							}
-							// Ensure cleanup with wait() (prevent zombie processes)
-							let _ = child.wait().await;
+		// Spawn the initial child via the respawn closure so identical
+		// argument handling applies to startup and every reload.
+		let child = respawn().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("Failed to spawn initial server: {}", e))
+		})?;
 
-							// Wait for port release + debounce
-							tokio::time::sleep(Duration::from_millis(500)).await;
-							continue; // Return to loop start and restart
-						}
-						Err(e) => {
-							return Err(crate::CommandError::ExecutionError(format!(
-								"File watcher error: {}",
-								e
-							)));
-						}
-					}
-				}
+		let cfg = crate::debounced_watcher::WatcherConfig {
+			bin_name,
+			roots,
+			no_wasm_rebuild,
+			#[cfg(feature = "pages")]
+			pages_enabled: with_pages,
+		};
 
-				exit_status = child.wait() => {
-					match exit_status {
-						Ok(status) if status.success() => {
-							ctx.info("Server process exited cleanly.");
-							break; // Exit parent if clean exit
-						}
-						Ok(status) => {
-							return Err(crate::CommandError::ExecutionError(format!(
-								"Server process crashed with status: {}",
-								status
-							)));
-						}
-						Err(e) => {
-							return Err(crate::CommandError::ExecutionError(format!(
-								"Failed to wait for child process: {}",
-								e
-							)));
-						}
-					}
-				}
-
-				_ = &mut shutdown_rx => {
-					ctx.info("Shutdown signal received. Stopping server...");
-					let _ = child.kill().await;
-					let _ = child.wait().await;
-					break;
-				}
-			}
-		}
+		crate::debounced_watcher::run_watcher(ctx, &cfg, shutdown_rx, child, respawn)
+			.await
+			.map_err(|e| {
+				crate::CommandError::ExecutionError(format!("File watcher error: {}", e))
+			})?;
 
 		Ok(())
 	}
 
+	/// Collect diagnostic state about the candidate spawn target.
+	///
+	/// Two output modes guard against accidental filesystem-layout leakage
+	/// in shared log bundles (issue #4250) while preserving the issue #4236
+	/// root-cause signals (`(deleted)` suffix on `/proc/self/exe`,
+	/// `raw_os_error == 2` / `ENOENT`):
+	///
+	/// - `debug == false` (default): redacted allowlist of non-sensitive
+	///   fields (`exe_filename`, `exists`, `inode`/`nlink`, `pid`,
+	///   `proc_self_exe_deleted_suffix`). Embedded into the always-on
+	///   `Failed to spawn server process: ...` error message.
+	/// - `debug == true` (`REINHARDT_AUTORELOAD_DEBUG=1`): full snapshot
+	///   including absolute paths, canonicalised path, file metadata, and
+	///   toolchain environment values. Opt-in only.
+	///
+	/// `raw_os_error` and the `io::ErrorKind` are emitted by the
+	/// surrounding `CommandError::ExecutionError` format string and are not
+	/// duplicated here.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_diagnostics(exe: &std::path::Path, debug: bool) -> String {
+		if debug {
+			Self::spawn_diagnostics_full(exe)
+		} else {
+			Self::spawn_diagnostics_redacted(exe)
+		}
+	}
+
+	/// Redacted always-on diagnostic body (issue #4250).
+	///
+	/// Strict allowlist that intentionally excludes any field carrying an
+	/// absolute path, file size/mtime, or toolchain environment values.
+	/// `proc_self_exe_deleted_suffix` is emitted as `true`, `false`, or
+	/// `unknown` so the issue #4236 signal is preserved across read_link
+	/// failures.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_diagnostics_redacted(exe: &std::path::Path) -> String {
+		let mut parts: Vec<String> = Vec::with_capacity(5);
+		let filename = exe
+			.file_name()
+			.map(|s| s.to_string_lossy().into_owned())
+			.unwrap_or_else(|| "?".to_string());
+		parts.push(format!("exe_filename={}", filename));
+		parts.push(format!("exists={}", exe.exists()));
+
+		#[cfg(unix)]
+		{
+			if let Ok(m) = exe.metadata() {
+				use std::os::unix::fs::MetadataExt;
+				parts.push(format!("inode={} nlink={}", m.ino(), m.nlink()));
+			}
+		}
+
+		parts.push(format!("pid={}", std::process::id()));
+
+		#[cfg(target_os = "linux")]
+		{
+			// Linux marks a path read from /proc/self/exe whose backing
+			// inode was unlinked with the literal " (deleted)" suffix.
+			// Match the suffix exactly so paths that legitimately contain
+			// "(deleted)" elsewhere don't trip the flag.
+			let suffix = match std::fs::read_link("/proc/self/exe") {
+				Ok(p) => {
+					if p.to_string_lossy().ends_with(" (deleted)") {
+						"true"
+					} else {
+						"false"
+					}
+				}
+				Err(_) => "unknown",
+			};
+			parts.push(format!("proc_self_exe_deleted_suffix={}", suffix));
+		}
+
+		parts.join(" ")
+	}
+
+	/// Full diagnostic snapshot, opt-in via `REINHARDT_AUTORELOAD_DEBUG=1`.
+	///
+	/// Includes absolute paths, the canonicalised path, file metadata, and
+	/// toolchain environment values that may leak filesystem layout. Only
+	/// invoked from explicit debug code paths.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_diagnostics_full(exe: &std::path::Path) -> String {
+		let mut parts: Vec<String> = Vec::with_capacity(12);
+		parts.push(format!("exe={}", exe.display()));
+		parts.push(format!("exists={}", exe.exists()));
+
+		match exe.metadata() {
+			Ok(m) => {
+				parts.push(format!("size={}", m.len()));
+				#[cfg(unix)]
+				{
+					use std::os::unix::fs::MetadataExt;
+					parts.push(format!("inode={} nlink={}", m.ino(), m.nlink()));
+				}
+				if let Ok(mt) = m.modified()
+					&& let Ok(d) = mt.duration_since(std::time::UNIX_EPOCH)
+				{
+					parts.push(format!("mtime_unix={}", d.as_secs()));
+				}
+			}
+			Err(e) => parts.push(format!("metadata_err={}", e)),
+		}
+
+		match exe.canonicalize() {
+			Ok(c) => parts.push(format!("canonical={}", c.display())),
+			Err(e) => parts.push(format!("canonical_err={}", e)),
+		}
+
+		#[cfg(target_os = "linux")]
+		{
+			match std::fs::read_link("/proc/self/exe") {
+				Ok(p) => {
+					let s = p.to_string_lossy();
+					let deleted_suffix = s.ends_with(" (deleted)");
+					parts.push(format!(
+						"proc_self_exe={} deleted_suffix={}",
+						p.display(),
+						deleted_suffix
+					));
+				}
+				Err(e) => parts.push(format!("proc_self_exe_err={}", e)),
+			}
+		}
+
+		parts.push(format!("pid={}", std::process::id()));
+		parts.push(format!(
+			"CARGO_TARGET_DIR={:?}",
+			std::env::var_os("CARGO_TARGET_DIR")
+		));
+		parts.push(format!(
+			"RUSTC_WRAPPER={:?}",
+			std::env::var_os("RUSTC_WRAPPER")
+		));
+		parts.push(format!(
+			"REINHARDT_IS_AUTORELOAD_CHILD={:?}",
+			std::env::var_os("REINHARDT_IS_AUTORELOAD_CHILD")
+		));
+
+		parts.join(" ")
+	}
+
+	/// Returns true when the user opted into autoreload debug logging via
+	/// `REINHARDT_AUTORELOAD_DEBUG=1`. Off by default to keep release output
+	/// quiet; on for issue #4236 root-cause diagnosis.
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn autoreload_debug_enabled() -> bool {
+		match std::env::var("REINHARDT_AUTORELOAD_DEBUG") {
+			Ok(v) => {
+				let v = v.trim();
+				v == "1" || v.eq_ignore_ascii_case("true")
+			}
+			Err(_) => false,
+		}
+	}
+
 	/// Spawn server in child process
 	#[cfg(all(feature = "server", feature = "autoreload"))]
+	// Allow many arguments: mirrors run_server's CLI surface and forwards each
+	// flag the autoreload parent received to its `--noreload` child.
+	#[allow(clippy::too_many_arguments)]
 	fn spawn_server_process(
 		address: &str,
 		insecure: bool,
@@ -1569,12 +2397,31 @@ impl RunServerCommand {
 		with_pages: bool,
 		static_dir: &str,
 		no_spa: bool,
+		no_project_static: bool,
+		index: Option<&str>,
 	) -> CommandResult<tokio::process::Child> {
 		let current_exe = std::env::current_exe().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
 		})?;
 
-		let mut cmd = tokio::process::Command::new(current_exe);
+		// Diagnostics policy (issue #4236):
+		// - Debug enabled: snapshot BEFORE the spawn syscall and emit so the
+		//   pre-spawn state is logged even on success.
+		// - Debug disabled: defer the snapshot to the error path to avoid
+		//   per-spawn filesystem cost on the success hot path. The post-spawn
+		//   read is acceptable because the kernel-visible state for an ENOENT
+		//   failure is effectively unchanged in the few microseconds between
+		//   the syscall returning and reading the diagnostics.
+		let debug = Self::autoreload_debug_enabled();
+		let pre_spawn_diag = if debug {
+			let d = Self::spawn_diagnostics(&current_exe, true);
+			eprintln!("[autoreload-debug] pre-spawn {}", d);
+			Some(d)
+		} else {
+			None
+		};
+
+		let mut cmd = tokio::process::Command::new(&current_exe);
 		cmd.arg("runserver").arg(address).arg("--noreload");
 
 		if insecure {
@@ -1592,6 +2439,12 @@ impl RunServerCommand {
 		if no_spa {
 			cmd.arg("--no-spa");
 		}
+		if no_project_static {
+			cmd.arg("--no-project-static");
+		}
+		if let Some(index_path) = index {
+			cmd.arg("--index").arg(index_path);
+		}
 
 		// Set environment variable to indicate this is a child process (prevent log duplication, etc.)
 		cmd.env("REINHARDT_IS_AUTORELOAD_CHILD", "1");
@@ -1601,58 +2454,93 @@ impl RunServerCommand {
 		cmd.stderr(std::process::Stdio::inherit());
 
 		cmd.spawn().map_err(|e| {
-			crate::CommandError::ExecutionError(format!("Failed to spawn server process: {}", e))
+			// Always-on enrichment (#4236): include the resolved path,
+			// `raw_os_error`, error kind, and Linux `/proc/self/exe` state in
+			// the error so the first failure log is actionable. Reuse the
+			// pre-spawn snapshot when debug emitted one; otherwise compute it
+			// lazily here so the success path pays no diagnostic cost.
+			let diag = pre_spawn_diag
+				.clone()
+				.unwrap_or_else(|| Self::spawn_diagnostics(&current_exe, false));
+			crate::CommandError::ExecutionError(format!(
+				"Failed to spawn server process: {} (raw_os_error={:?} kind={:?}) [{}]",
+				e,
+				e.raw_os_error(),
+				e.kind(),
+				diag,
+			))
 		})
 	}
 
-	/// Watch for file changes asynchronously
-	#[cfg(all(feature = "server", feature = "autoreload"))]
-	async fn watch_files_async() -> Result<(), notify::Error> {
-		use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
-		use std::path::Path;
-
-		let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-
-		let mut watcher = RecommendedWatcher::new(
-			move |res: Result<Event, notify::Error>| {
-				if let Ok(event) = res {
-					let _ = tx.blocking_send(event);
-				}
-			},
-			Config::default(),
-		)?;
-
-		// Directories to watch
-		watcher.watch(Path::new("src"), RecursiveMode::Recursive)?;
-		watcher.watch(Path::new("Cargo.toml"), RecursiveMode::NonRecursive)?;
-
-		// Wait for the first relevant change event
-		while let Some(event) = rx.recv().await {
-			if Self::is_relevant_change(&event) {
+	/// Build the pages WASM bundle from the current project (if it declares cdylib).
+	///
+	/// Mirrors the logic in the standalone runserver binary. Returns an error
+	/// when the WASM compilation fails so the caller can decide whether to
+	/// abort or continue.
+	#[cfg(feature = "pages")]
+	pub(crate) fn build_pages_wasm(
+		ctx: &CommandContext,
+		force: bool,
+	) -> Result<(), crate::wasm_builder::WasmBuildError> {
+		let cwd = match std::env::current_dir() {
+			Ok(d) => d,
+			Err(e) => {
+				ctx.warning(&format!("Failed to get current directory: {}", e));
 				return Ok(());
 			}
+		};
+		let cargo_toml_path = cwd.join("Cargo.toml");
+
+		// Only build if this project exports cdylib
+		if !crate::wasm_builder::detect_cdylib_in_cargo_toml(&cargo_toml_path) {
+			return Ok(());
 		}
 
-		Ok(())
-	}
+		// Parse the crate name from Cargo.toml
+		let crate_name = match std::fs::read_to_string(&cargo_toml_path) {
+			Ok(content) => {
+				let mut name = String::new();
+				for line in content.lines() {
+					let trimmed = line.trim();
+					if trimmed.starts_with("name")
+						&& trimmed.contains('=')
+						&& let Some(val) = trimmed.split('=').nth(1)
+					{
+						name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+						break;
+					}
+				}
+				if name.is_empty() {
+					ctx.warning("Could not determine crate name from Cargo.toml");
+					return Ok(());
+				}
+				name
+			}
+			Err(e) => {
+				ctx.warning(&format!("Failed to read Cargo.toml: {}", e));
+				return Ok(());
+			}
+		};
 
-	/// Check if the change event is relevant
-	#[cfg(all(feature = "server", feature = "autoreload"))]
-	fn is_relevant_change(event: &notify::Event) -> bool {
-		use notify::EventKind;
+		let js_name = crate_name.replace('-', "_");
+		let artifact = cwd.join("dist").join(format!("{}.js", js_name));
+		if artifact.exists() && !force {
+			ctx.info(&format!(
+				"Pages WASM: --no-override-wasm set and dist/{}.js exists, skipping build",
+				js_name
+			));
+			return Ok(());
+		}
 
-		matches!(
-			event.kind,
-			EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
-		) && event.paths.iter().any(|p| {
-			let path_str = p.to_string_lossy();
-			!path_str.contains("/target/")
-				&& !path_str.contains("/.git/")
-				&& !path_str.ends_with('~')
-				&& !path_str.ends_with(".swp")
-				&& !path_str.ends_with(".tmp")
-				&& (path_str.ends_with(".rs") || path_str.ends_with(".toml"))
-		})
+		ctx.info(&format!("Building pages WASM for {}...", crate_name));
+		let config = crate::wasm_builder::WasmBuildConfig::new(".").output_dir("dist");
+		match crate::wasm_builder::WasmBuilder::new(config).build() {
+			Ok(_) => {
+				ctx.info("Pages WASM build succeeded.");
+				Ok(())
+			}
+			Err(e) => Err(e),
+		}
 	}
 }
 
@@ -1802,10 +2690,14 @@ impl BaseCommand for CheckCommand {
 		let mut checks_passed = 0;
 		let mut checks_failed = 0;
 
-		// 1. Database connectivity check (if DATABASE_URL is set)
-		if let Ok(database_url) = std::env::var("DATABASE_URL") {
+		// 1. Database connectivity check. Prefer the URL exposed by the
+		// composed `ProjectSettings` attached to `ctx.settings`; fall back
+		// to the `DATABASE_URL` env var so users running the CLI without
+		// settings plumbing keep getting the legacy behavior.
+		let database_url = Self::resolve_database_url(ctx);
+		if let Some(database_url) = database_url.as_deref() {
 			ctx.info("Checking database connectivity...");
-			match Self::check_database(&database_url).await {
+			match Self::check_database(database_url).await {
 				Ok(_) => {
 					ctx.success("  ✓ Database connection successful");
 					checks_passed += 1;
@@ -1816,15 +2708,17 @@ impl BaseCommand for CheckCommand {
 				}
 			}
 		} else {
-			ctx.info("Skipping database check (DATABASE_URL not set)");
+			ctx.info(
+				"Skipping database check (no DATABASE_URL env var and no [core.databases.default])",
+			);
 		}
 
 		// 2. Settings validation
 		ctx.info("Checking settings...");
 		checks_passed += Self::check_settings(ctx, is_deploy);
 
-		// 3. Migration status check (if DATABASE_URL is set)
-		if std::env::var("DATABASE_URL").is_ok() {
+		// 3. Migration status check (only when we have a database URL).
+		if database_url.is_some() {
 			ctx.info("Checking migrations...");
 			match Self::check_migrations().await {
 				Ok(count) => {
@@ -1842,16 +2736,18 @@ impl BaseCommand for CheckCommand {
 			}
 		}
 
-		// 4. Static files verification
+		// 4. Static files verification. Use the composed settings'
+		// `static_files.root` when available, else fall back to the
+		// `STATIC_ROOT` env var.
 		ctx.info("Checking static files...");
-		if std::env::var("STATIC_ROOT").is_ok() {
-			ctx.success("  ✓ STATIC_ROOT configured");
+		if Self::resolve_static_root_configured(ctx) {
+			ctx.success("  ✓ static files root configured");
 			checks_passed += 1;
 		} else if is_deploy {
-			ctx.warning("  ✗ STATIC_ROOT not set (required for deployment)");
+			ctx.warning("  ✗ static files root not set (required for deployment)");
 			checks_failed += 1;
 		} else {
-			ctx.info("  ⚠ STATIC_ROOT not set (optional for development)");
+			ctx.info("  ⚠ static files root not set (optional for development)");
 		}
 
 		// 5. Security settings check (if --deploy)
@@ -1878,6 +2774,32 @@ impl BaseCommand for CheckCommand {
 }
 
 impl CheckCommand {
+	/// Resolve the database URL from the composed settings on `ctx`,
+	/// falling back to the `DATABASE_URL` environment variable.
+	///
+	/// Returns `None` when neither source produces a URL.
+	fn resolve_database_url(ctx: &CommandContext) -> Option<String> {
+		if let Some(settings) = ctx.settings.as_ref()
+			&& let Some(db) = settings.core().databases.get("default")
+		{
+			return Some(db.to_url());
+		}
+		std::env::var("DATABASE_URL").ok()
+	}
+
+	/// Returns true when a static-files root is configured, either via
+	/// composed settings or via the `STATIC_ROOT` env var.
+	fn resolve_static_root_configured(_ctx: &CommandContext) -> bool {
+		// CoreSettings does not own the static-files root; downstream
+		// projects compose `StaticSettings` separately. Without
+		// `HasStaticSettings` in `HasCommonSettings` we cannot peek at
+		// it generically here, so we currently only consult the env
+		// var. This preserves existing behavior while issue #4282's
+		// follow-up wires the static-files fragment through the
+		// CommandContext.
+		std::env::var("STATIC_ROOT").is_ok()
+	}
+
 	/// Check database connectivity
 	async fn check_database(database_url: &str) -> Result<(), String> {
 		if database_url.is_empty() {
@@ -2049,8 +2971,15 @@ fn sync_database_url_to_env(
 		}
 		ctx.verbose("Synced DATABASE_URL from settings configuration");
 	} else if let Some(env_url) = env_database_url {
-		// Both env var and settings exist - warn if they differ
-		if let Ok(settings_url) = get_database_url_from_settings()
+		// Both env var and settings exist - warn if they differ.
+		// Prefer the composed `ProjectSettings` on `ctx` when present
+		// (no disk I/O); otherwise fall back to re-loading TOML.
+		let settings_url_result = match ctx.settings.as_ref() {
+			Some(settings) => DatabaseConnection::database_url_from(settings.as_ref(), None)
+				.map_err(|e| crate::CommandError::ExecutionError(e.to_string())),
+			None => get_database_url_from_settings(),
+		};
+		if let Ok(settings_url) = settings_url_result
 			&& env_url != settings_url
 		{
 			ctx.warning(&format!(
@@ -2080,12 +3009,54 @@ fn sanitize_database_url(url: &str) -> String {
 	url.to_string()
 }
 
-/// Helper function to get DATABASE_URL from environment or settings
+/// Initialize the ORM database connection from reinhardt-conf settings.
+///
+/// Resolves the database URL via [`get_database_url()`] (reinhardt-conf
+/// settings as primary source, `DATABASE_URL` env var as fallback),
+/// syncs the resolved URL to the `DATABASE_URL` environment variable,
+/// and initializes the ORM global connection pool.
+///
+/// This function does **not** handle DI registration — that remains
+/// the responsibility of `runserver` since only HTTP-serving commands
+/// need the `DatabaseConnection` registered in the DI context.
+///
+/// # Errors
+///
+/// Returns [`CommandError::ExecutionError`] if the database URL cannot
+/// be resolved or the ORM connection pool fails to initialize.
+#[cfg(feature = "reinhardt-db")]
+pub(crate) async fn initialize_orm_database(
+	ctx: &CommandContext,
+) -> Result<(), crate::CommandError> {
+	let env_database_url = std::env::var("DATABASE_URL").ok();
+	let url = get_database_url()?;
+
+	sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
+
+	reinhardt_db::orm::init_database(&url).await.map_err(|e| {
+		crate::CommandError::ExecutionError(format!("Failed to initialize ORM database: {}", e))
+	})?;
+
+	ctx.verbose("ORM database initialized");
+	ctx.info(&format!(
+		"💾 Database: {} (connected)",
+		sanitize_database_url(&url)
+	));
+	Ok(())
+}
+
+/// Helper function to get `DATABASE_URL` from environment or settings files.
+///
+/// This is the disk-reading fallback used when no `ProjectSettings` handle
+/// is available on the `CommandContext`. Once the CLI wires the composed
+/// settings through, callers should prefer
+/// `DatabaseConnection::database_url_from(ctx.settings.unwrap().as_ref(), ...)`.
 #[cfg(feature = "reinhardt-db")]
 fn get_database_url() -> Result<String, crate::CommandError> {
 	use std::env;
 
 	let base_dir = env::current_dir().ok();
+	#[allow(deprecated)] // disk-reading fallback; superseded by `database_url_from`
 	DatabaseConnection::get_database_url_from_env_or_settings(base_dir).map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
 	})
@@ -2095,8 +3066,11 @@ fn get_database_url() -> Result<String, crate::CommandError> {
 ///
 /// Used for startup validation to detect configuration mismatches between
 /// the `DATABASE_URL` environment variable and `settings/*.toml` files.
+///
+/// Visibility is `pub(crate)` so the in-crate regression tests for issue
+/// #4247 can call the real loader without going through a public API.
 #[cfg(feature = "reinhardt-db")]
-fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
+pub(crate) fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
 	use std::env;
 
 	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
@@ -2120,12 +3094,21 @@ fn get_database_url_from_settings() -> Result<String, crate::CommandError> {
 			reinhardt_conf::settings::sources::LowPriorityEnvSource::new()
 				.with_prefix("REINHARDT_"),
 		)
-		.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-			settings_dir.join("base.toml"),
-		))
-		.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
-			settings_dir.join(format!("{}.toml", profile_str)),
-		))
+		// Explicitly opt in to ${VAR:-default} interpolation so the
+		// validation comparison sees the same expanded host that the ORM
+		// init path uses; otherwise a literal `${...}` host would be
+		// compared against an env-derived URL and produce a false
+		// "DATABASE_URL mismatch" warning (issue #4235).
+		.add_source(
+			reinhardt_conf::settings::sources::TomlFileSource::new(settings_dir.join("base.toml"))
+				.with_interpolation(),
+		)
+		.add_source(
+			reinhardt_conf::settings::sources::TomlFileSource::new(
+				settings_dir.join(format!("{}.toml", profile_str)),
+			)
+			.with_interpolation(),
+		)
 		.build()
 		.map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to load settings: {}", e))
@@ -2673,6 +3656,13 @@ mod tests {
 		use reinhardt_db::prelude::FieldType;
 		use tempfile::TempDir;
 
+		// Create a temporary project directory with the required structure
+		let project_dir = TempDir::new().unwrap();
+		std::fs::create_dir_all(project_dir.path().join("src/bin")).unwrap();
+		std::fs::write(project_dir.path().join("src/bin/manage.rs"), "fn main() {}").unwrap();
+		let original_dir = std::env::current_dir().unwrap();
+		std::env::set_current_dir(project_dir.path()).unwrap();
+
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
 		let migrations_dir = temp_dir.path();
@@ -2705,6 +3695,7 @@ mod tests {
 
 		let result = cmd.execute(&ctx).await;
 		unsafe { std::env::remove_var("DATABASE_URL") };
+		std::env::set_current_dir(&original_dir).unwrap();
 
 		// Should succeed (creates an empty migration)
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
@@ -2719,6 +3710,13 @@ mod tests {
 			prelude::FieldType,
 		};
 		use tempfile::TempDir;
+
+		// Create a temporary project directory with the required structure
+		let project_dir = TempDir::new().unwrap();
+		std::fs::create_dir_all(project_dir.path().join("src/bin")).unwrap();
+		std::fs::write(project_dir.path().join("src/bin/manage.rs"), "fn main() {}").unwrap();
+		let original_dir = std::env::current_dir().unwrap();
+		std::env::set_current_dir(project_dir.path()).unwrap();
 
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
@@ -2753,6 +3751,7 @@ mod tests {
 
 		let result = cmd.execute(&ctx).await;
 		unsafe { std::env::remove_var("DATABASE_URL") };
+		std::env::set_current_dir(&original_dir).unwrap();
 
 		// Should succeed (dry-run mode, no actual files created)
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
@@ -2804,6 +3803,51 @@ mod tests {
 		}
 	}
 
+	// Confusable-API guard: explicit invocation of
+	// `register_http_routes_from_inventory` after a manual
+	// `register_router(..)` must be rejected with a clear message
+	// (Refs #4453 DP-7).
+	#[cfg(all(feature = "routers", feature = "server"))]
+	#[tokio::test]
+	#[serial_test::serial(runserver)]
+	async fn test_register_http_routes_from_inventory_rejects_pre_registered_router() {
+		use reinhardt_urls::routers::ServerRouter;
+
+		// RAII guard so the manually registered router is cleared even if
+		// an assertion below panics. Keeps the `runserver` serial group
+		// hygienic without ordering the cleanup against `expect_err`.
+		struct RouterCleanupGuard;
+		impl Drop for RouterCleanupGuard {
+			fn drop(&mut self) {
+				reinhardt_urls::routers::clear_router();
+			}
+		}
+
+		// Arrange: a router is already registered via the manual setter
+		// (simulating an opt-out user who hand-built a ServerRouter and
+		// called `register_router(..)` themselves before invoking
+		// `RunServerCommand`).
+		reinhardt_urls::routers::register_router(ServerRouter::new());
+		let _cleanup_guard = RouterCleanupGuard;
+
+		// Act: explicit call to the inventory consumer must error.
+		let result = RunServerCommand.register_http_routes_from_inventory().await;
+
+		// Assert: error mentions the mutual-exclusion contract so the
+		// caller can fix the bootstrap rather than silently overriding.
+		let err = result
+			.expect_err("expected DP-7 confusable-API rejection when a router is pre-registered");
+		let msg = err.to_string();
+		assert!(
+			msg.contains("already registered"),
+			"error must call out the pre-registered router; got: {msg}"
+		);
+		assert!(
+			msg.contains("mutually exclusive"),
+			"error must state the two paths are mutually exclusive; got: {msg}"
+		);
+	}
+
 	// ==================== Command Metadata Tests ====================
 
 	#[test]
@@ -2849,6 +3893,28 @@ mod tests {
 		let options = cmd.options();
 		// Should have migration-related options
 		assert!(!options.is_empty());
+	}
+
+	#[test]
+	fn test_runserver_command_options_include_no_override_wasm() {
+		// Arrange
+		let cmd = RunServerCommand;
+
+		// Act
+		let options = cmd.options();
+		let option_names: Vec<&str> = options.iter().map(|o| o.long.as_str()).collect();
+
+		// Assert: --no-override-wasm replaces --force-wasm as the supported opt-out;
+		// --force-wasm is retained as a deprecated alias.
+		assert!(
+			option_names.contains(&"no-override-wasm"),
+			"--no-override-wasm must be registered as a runserver option"
+		);
+		assert!(
+			option_names.contains(&"force-wasm"),
+			"--force-wasm must remain registered (deprecated alias)"
+		);
+		assert!(option_names.contains(&"no-wasm"));
 	}
 
 	#[test]
@@ -3131,110 +4197,310 @@ port = 5432
 		}
 	}
 
+	// `is_relevant_change` unit tests now live in
+	// `crate::debounced_watcher::tests` after the watcher refactor.
+
+	// End-to-end regression coverage for issue #4247.
+	//
+	// `get_database_url_from_settings` opts into
+	// `TomlFileSource::with_interpolation()` (PR #4239). The interpolation
+	// tests in `reinhardt-conf/tests/interpolation.rs` build a fresh
+	// `TomlFileSource`, so they will keep passing even if a future
+	// refactor accidentally drops the opt-in here. These tests exercise
+	// the real loader so that regression fails loudly.
+	//
+	// The loader reads cwd via `env::current_dir()`. Tests change cwd
+	// under `#[serial(env)]` and restore it via the drop guard.
+	#[cfg(feature = "reinhardt-db")]
+	mod interpolation_4247 {
+		use super::super::get_database_url_from_settings;
+		use rstest::rstest;
+		use serial_test::serial;
+		use std::env;
+		use std::io::Write;
+		use std::path::{Path, PathBuf};
+		use tempfile::TempDir;
+
+		// Captures each key's value on construction and restores it (or
+		// removes it if previously unset) on drop. This prevents the
+		// guard from leaking state into ambient env vars that existed
+		// before the test ran.
+		struct EnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+		impl EnvGuard {
+			fn new(keys: Vec<&'static str>) -> Self {
+				let captured = keys.into_iter().map(|k| (k, env::var_os(k))).collect();
+				Self(captured)
+			}
+		}
+
+		impl Drop for EnvGuard {
+			fn drop(&mut self) {
+				for (key, prev) in &self.0 {
+					// SAFETY: env mutation in tests is protected by #[serial(env)].
+					unsafe {
+						match prev {
+							Some(value) => env::set_var(key, value),
+							None => env::remove_var(key),
+						}
+					}
+				}
+			}
+		}
+
+		struct CwdGuard(PathBuf);
+
+		impl Drop for CwdGuard {
+			fn drop(&mut self) {
+				// Best-effort restore; if the original cwd vanished there is
+				// nothing the test process can do, and dropping silently is
+				// preferable to panicking from Drop.
+				let _ = env::set_current_dir(&self.0);
+			}
+		}
+
+		fn write_settings_dir(profile: &str, base_toml: &str) -> TempDir {
+			let temp = TempDir::new().expect("create temp dir");
+			let settings_dir = temp.path().join("settings");
+			std::fs::create_dir_all(&settings_dir).expect("create settings dir");
+			write_file(&settings_dir.join("base.toml"), base_toml);
+			write_file(&settings_dir.join(format!("{profile}.toml")), "");
+			temp
+		}
+
+		fn write_file(path: &Path, contents: &str) {
+			let mut f = std::fs::File::create(path).expect("create file");
+			f.write_all(contents.as_bytes()).expect("write file");
+		}
+
+		#[rstest]
+		#[serial(env)]
+		fn loader_expands_env_var_in_host() {
+			// Arrange
+			let _env = EnvGuard::new(vec!["IT4247C_DB_HOST", "REINHARDT_ENV"]);
+			// SAFETY: serial-protected.
+			unsafe {
+				env::set_var("REINHARDT_ENV", "local");
+				env::set_var("IT4247C_DB_HOST", "production-db.example.com");
+			}
+			let temp = write_settings_dir(
+				"local",
+				r#"
+[database]
+engine = "postgresql"
+name = "appdb"
+user = "app"
+password = "secret"
+host = "${IT4247C_DB_HOST}"
+port = 5432
+"#,
+			);
+			let original_cwd = env::current_dir().expect("read cwd");
+			let _cwd = CwdGuard(original_cwd);
+			env::set_current_dir(temp.path()).expect("set cwd");
+
+			// Act
+			let url = get_database_url_from_settings().expect("loader returns a URL");
+
+			// Assert
+			assert!(
+				url.contains("production-db.example.com"),
+				"expected expanded host in URL, got: {url}"
+			);
+			assert!(
+				!url.contains("${"),
+				"URL still contains literal interpolation pattern: {url}"
+			);
+		}
+
+		#[rstest]
+		#[serial(env)]
+		fn loader_uses_inline_default_when_var_unset() {
+			// Arrange — declare the var in the guard even though we never set
+			// it, so an ambient value cannot silence the inline `:-fallback`.
+			let _env = EnvGuard::new(vec!["IT4247C_DB_HOST_OPT", "REINHARDT_ENV"]);
+			// SAFETY: serial-protected.
+			unsafe {
+				env::remove_var("IT4247C_DB_HOST_OPT");
+				env::set_var("REINHARDT_ENV", "local");
+			}
+			let temp = write_settings_dir(
+				"local",
+				r#"
+[database]
+engine = "postgresql"
+name = "appdb"
+user = "app"
+password = "secret"
+host = "${IT4247C_DB_HOST_OPT:-fallback-host}"
+port = 5432
+"#,
+			);
+			let original_cwd = env::current_dir().expect("read cwd");
+			let _cwd = CwdGuard(original_cwd);
+			env::set_current_dir(temp.path()).expect("set cwd");
+
+			// Act
+			let url = get_database_url_from_settings().expect("loader returns a URL");
+
+			// Assert
+			assert!(
+				url.contains("fallback-host"),
+				"expected fallback host in URL, got: {url}"
+			);
+			assert!(
+				!url.contains("${"),
+				"URL still contains literal interpolation pattern: {url}"
+			);
+		}
+	}
+
+	// Issue #4250: the always-on spawn diagnostic must not leak absolute
+	// filesystem paths or toolchain env values, while still preserving the
+	// issue #4236 root-cause signals. Verify the redacted (debug=false)
+	// allowlist and the full (debug=true) snapshot independently.
 	#[cfg(all(feature = "server", feature = "autoreload"))]
-	mod autoreload_tests {
+	mod spawn_diagnostics_4250 {
 		use super::*;
-		use notify::{Event, EventKind};
-		use std::path::PathBuf;
+		use tempfile::TempDir;
 
-		#[test]
-		fn test_is_relevant_change_rust_file() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/main.rs")],
-				attrs: Default::default(),
-			};
-			assert!(RunServerCommand::is_relevant_change(&event));
+		fn temp_exe() -> (TempDir, std::path::PathBuf) {
+			let tmp = tempfile::tempdir().expect("create tempdir");
+			let exe = tmp.path().join("manage_test_bin");
+			std::fs::write(&exe, b"#!/bin/sh\nexit 0\n").expect("write fake exe");
+			(tmp, exe)
 		}
 
 		#[test]
-		fn test_is_relevant_change_toml_file() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/Cargo.toml")],
-				attrs: Default::default(),
-			};
-			assert!(RunServerCommand::is_relevant_change(&event));
+		fn redacted_omits_absolute_paths_and_keeps_filename() {
+			// Arrange
+			let (tmp, exe) = temp_exe();
+			let parent = tmp.path().to_string_lossy().into_owned();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, false);
+
+			// Assert: allowlist present.
+			assert!(
+				out.contains("exe_filename=manage_test_bin"),
+				"redacted must include filename, got: {out}"
+			);
+			assert!(
+				out.contains("exists=true"),
+				"redacted missing exists: {out}"
+			);
+			assert!(out.contains("pid="), "redacted missing pid: {out}");
+
+			// Assert: no absolute paths or path-bearing fields.
+			assert!(
+				!out.contains(&parent),
+				"redacted leaks parent dir {parent}: {out}"
+			);
+			assert!(
+				!out.contains("canonical="),
+				"redacted leaks canonical path: {out}"
+			);
+			assert!(
+				!out.contains("canonical_err="),
+				"redacted leaks canonical_err message: {out}"
+			);
+			assert!(
+				!out.contains("size="),
+				"size dropped per #4250 allowlist: {out}"
+			);
+			assert!(
+				!out.contains("mtime_unix="),
+				"mtime dropped per #4250 allowlist: {out}"
+			);
+			assert!(
+				!out.contains("CARGO_TARGET_DIR"),
+				"redacted must not emit CARGO_TARGET_DIR in any form: {out}"
+			);
+			assert!(
+				!out.contains("RUSTC_WRAPPER"),
+				"redacted must not emit RUSTC_WRAPPER in any form: {out}"
+			);
+
+			// Assert: outer CommandError format owns raw_os_error/kind, so
+			// spawn_diagnostics must not duplicate them.
+			assert!(
+				!out.contains("raw_os_error="),
+				"redacted must not duplicate raw_os_error from outer format: {out}"
+			);
 		}
 
 		#[test]
-		fn test_is_relevant_change_target_dir_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/target/debug/main.rs")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
+		#[cfg(target_os = "linux")]
+		fn redacted_keeps_4236_deleted_suffix_signal() {
+			// Arrange
+			let (_tmp, exe) = temp_exe();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, false);
+
+			// Assert: the load-bearing #4236 signal is preserved.
+			assert!(
+				out.contains("proc_self_exe_deleted_suffix="),
+				"redacted missing #4236 deleted_suffix signal: {out}"
+			);
+			// The full /proc/self/exe path must be redacted out.
+			assert!(
+				!out.contains("proc_self_exe=/"),
+				"redacted leaks /proc/self/exe path: {out}"
+			);
 		}
 
 		#[test]
-		fn test_is_relevant_change_git_dir_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/.git/objects/abc")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
+		#[cfg(unix)]
+		fn redacted_includes_inode_nlink_when_metadata_ok() {
+			// Arrange
+			let (_tmp, exe) = temp_exe();
+
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, false);
+
+			// Assert
+			assert!(
+				out.contains("inode="),
+				"redacted missing inode field: {out}"
+			);
+			assert!(
+				out.contains("nlink="),
+				"redacted missing nlink field: {out}"
+			);
 		}
 
 		#[test]
-		fn test_is_relevant_change_swap_file_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/main.rs.swp")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
+		fn full_includes_absolute_paths_and_env_values() {
+			// Arrange
+			let (tmp, exe) = temp_exe();
+			let parent = tmp.path().to_string_lossy().into_owned();
 
-		#[test]
-		fn test_is_relevant_change_backup_file_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/main.rs~")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
+			// Act
+			let out = RunServerCommand::spawn_diagnostics(&exe, true);
 
-		#[test]
-		fn test_is_relevant_change_tmp_file_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/temp.tmp")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_non_rust_file_ignored() {
-			let event = Event {
-				kind: EventKind::Modify(notify::event::ModifyKind::Any),
-				paths: vec![PathBuf::from("/project/src/style.css")],
-				attrs: Default::default(),
-			};
-			assert!(!RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_create_event() {
-			let event = Event {
-				kind: EventKind::Create(notify::event::CreateKind::File),
-				paths: vec![PathBuf::from("/project/src/new.rs")],
-				attrs: Default::default(),
-			};
-			assert!(RunServerCommand::is_relevant_change(&event));
-		}
-
-		#[test]
-		fn test_is_relevant_change_remove_event() {
-			let event = Event {
-				kind: EventKind::Remove(notify::event::RemoveKind::File),
-				paths: vec![PathBuf::from("/project/src/old.rs")],
-				attrs: Default::default(),
-			};
-			assert!(RunServerCommand::is_relevant_change(&event));
+			// Assert: full mode intentionally leaks paths for debugging.
+			assert!(
+				out.contains(&parent),
+				"full mode must keep parent path {parent}: {out}"
+			);
+			assert!(
+				out.contains("canonical=") || out.contains("canonical_err="),
+				"full mode must emit canonical: {out}"
+			);
+			// Full env-var values, not the redacted `_set` presence flag.
+			assert!(
+				out.contains("CARGO_TARGET_DIR="),
+				"full mode must emit CARGO_TARGET_DIR value: {out}"
+			);
+			assert!(
+				!out.contains("CARGO_TARGET_DIR_set="),
+				"redacted-only field must not appear in full mode: {out}"
+			);
+			assert!(
+				out.contains("REINHARDT_IS_AUTORELOAD_CHILD="),
+				"full mode must emit REINHARDT_IS_AUTORELOAD_CHILD value: {out}"
+			);
 		}
 	}
 }

@@ -31,10 +31,11 @@
 mod into_page;
 mod props;
 pub(crate) mod reactive_if;
+pub mod suspense;
 mod r#trait;
 
 // Re-export Page types (originally from into_page, now from reinhardt-types via into_page)
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 pub use into_page::DummyEvent;
 pub use into_page::PageExt;
 pub use into_page::{
@@ -42,6 +43,7 @@ pub use into_page::{
 	ReactiveIf, ScriptTag, StyleTag,
 };
 pub use props::Props;
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 pub use reactive_if::{ReactiveIfNode, ReactiveNode, cleanup_reactive_nodes, store_reactive_node};
+pub use suspense::{ResourceTracker, SuspenseBoundary};
 pub use r#trait::Component;

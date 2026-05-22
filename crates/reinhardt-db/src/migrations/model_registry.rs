@@ -11,6 +11,7 @@
 //!
 //! See [`ModelMetadata`] for the architecture comparison diagram.
 
+use super::ConstraintDefinition;
 use super::autodetector::{FieldState, ModelState};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -55,6 +56,15 @@ pub struct ModelMetadata {
 	pub options: HashMap<String, String>,
 	/// ManyToMany relationship definitions
 	pub many_to_many_fields: Vec<ManyToManyMetadata>,
+	/// Model-level constraints declared via `#[model(unique_together = ...)]`
+	/// and other peer-constraint attributes. Field-level `unique = true` is
+	/// still synthesized inside `to_model_state()` and not stored here, to
+	/// preserve the existing single-field UNIQUE behavior.
+	///
+	/// Kept private so that adding the field to a previously
+	/// externally-constructible struct does not break the public API.
+	/// Read via [`Self::constraints`]; write via [`Self::add_constraint`].
+	constraints: Vec<ConstraintDefinition>,
 }
 
 impl ModelMetadata {
@@ -71,6 +81,7 @@ impl ModelMetadata {
 			fields: HashMap::new(),
 			options: HashMap::new(),
 			many_to_many_fields: Vec::new(),
+			constraints: Vec::new(),
 		}
 	}
 
@@ -87,6 +98,21 @@ impl ModelMetadata {
 	/// Adds many to many.
 	pub fn add_many_to_many(&mut self, m2m: ManyToManyMetadata) {
 		self.many_to_many_fields.push(m2m);
+	}
+
+	/// Adds a model-level constraint declared via macro attributes
+	/// (e.g., `#[model(unique_together = ...)]`).
+	pub fn add_constraint(&mut self, constraint: ConstraintDefinition) {
+		self.constraints.push(constraint);
+	}
+
+	/// Returns model-level constraints registered by the `#[model(...)]`
+	/// macro (currently composite UNIQUE from `unique_together`).
+	///
+	/// Field-level `unique = true` is not included here; it is synthesized
+	/// inside [`Self::to_model_state`] from `FieldMetadata` parameters.
+	pub fn constraints(&self) -> &[ConstraintDefinition] {
+		&self.constraints
 	}
 
 	/// Convert to ModelState for migrations
@@ -117,21 +143,17 @@ impl ModelMetadata {
 
 		// Convert fields
 		for (name, field_meta) in &self.fields {
+			// Nullability is sourced from `params["null"]` via
+			// `FieldMetadata::is_nullable()`. A type-safe field is deferred
+			// to the next major version (tracked under `rc-migration`).
+			// See #4430 / #4431.
 			let mut field_state = FieldState::new(
 				name.clone(),
 				field_meta.field_type.clone(),
-				field_meta
-					.params
-					.get("null")
-					.and_then(|v| v.parse::<bool>().ok())
-					.unwrap_or(false),
+				field_meta.is_nullable(),
 			);
 			for (key, value) in &field_meta.params {
 				field_state.params.insert(key.clone(), value.clone());
-			}
-			// Override nullable from params if explicitly set
-			if let Some(null_value) = field_meta.params.get("null") {
-				field_state.nullable = null_value == "true";
 			}
 			// Set ForeignKey information if present
 			if let Some(ref fk_info) = field_meta.foreign_key {
@@ -156,7 +178,6 @@ impl ModelMetadata {
 		// Generate Unique constraints from field params
 		for (field_name, field_meta) in &self.fields {
 			if field_meta.params.get("unique").map(String::as_str) == Some("true") {
-				use super::ConstraintDefinition;
 				let constraint = ConstraintDefinition {
 					name: format!(
 						"{}_{}_{}_uniq",
@@ -173,6 +194,13 @@ impl ModelMetadata {
 			}
 		}
 
+		// Copy model-level constraints declared via #[model(unique_together = ...)]
+		// (and other peer-constraint attributes). These are populated by the
+		// derive macro at registration time. See reinhardt-web#4022.
+		model_state
+			.constraints
+			.extend(self.constraints.iter().cloned());
+
 		model_state
 	}
 }
@@ -183,6 +211,11 @@ pub struct FieldMetadata {
 	/// Field type (e.g., CharField, IntegerField, ForeignKey)
 	pub field_type: super::FieldType,
 	/// Field parameters (max_length, null, blank, default, etc.)
+	///
+	/// Nullability is stored under the `"null"` key as `"true"` / `"false"`.
+	/// Prefer [`Self::with_nullable`] and [`Self::is_nullable`] over raw
+	/// params access. A type-safe replacement is tracked in the next-major
+	/// (post-RC) `rc-migration` issue; see #4430 / #4431.
 	pub params: HashMap<String, String>,
 	/// ForeignKey information if this field is a foreign key
 	pub foreign_key: Option<super::autodetector::ForeignKeyInfo>,
@@ -202,6 +235,26 @@ impl FieldMetadata {
 	pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
 		self.params.insert(key.into(), value.into());
 		self
+	}
+
+	/// Sets the nullability and returns self for chaining.
+	///
+	/// Stored under `params["null"]`; a type-safe field is deferred to the
+	/// next major version (tracked under `rc-migration`).
+	pub fn with_nullable(mut self, nullable: bool) -> Self {
+		self.params.insert("null".to_string(), nullable.to_string());
+		self
+	}
+
+	/// Returns whether the column is nullable (i.e., `NULL` is allowed).
+	///
+	/// Reads `params["null"]`; absent or unparseable values default to
+	/// `false` (NOT NULL).
+	pub fn is_nullable(&self) -> bool {
+		self.params
+			.get("null")
+			.and_then(|v| v.parse::<bool>().ok())
+			.unwrap_or(false)
 	}
 
 	/// Sets the foreign key and returns self for chaining.
@@ -415,6 +468,12 @@ impl ModelRegistry {
 
 	/// Get all registered models
 	///
+	/// Returns a freshly-cloned `Vec<ModelMetadata>`. For hot paths that
+	/// only need to look up a single model, prefer
+	/// [`Self::find_model_qualified`] (when the target app is known) or
+	/// [`Self::find_model_by_name`] (when only the model name is known)
+	/// to avoid materializing the entire registry on each call.
+	///
 	/// # Django Reference
 	/// From: django/apps/registry.py:169-186
 	/// ```python
@@ -450,6 +509,79 @@ impl ModelRegistry {
 				.cloned()
 		} else {
 			None
+		}
+	}
+
+	/// Find a model by `(app_label, model_name)` without materializing the
+	/// entire registry.
+	///
+	/// The cost is an O(1) index lookup plus a single clone of the matched
+	/// [`ModelMetadata`] (whose size depends on its `fields` vector). This
+	/// is the preferred path for hot code (e.g. migration generation, FK
+	/// column type resolution) where [`Self::get_models`] would otherwise
+	/// clone every registered model on every call.
+	///
+	/// Semantically equivalent to [`Self::get_model`]; named to make the
+	/// "qualified lookup" intent explicit at call sites. See issue #4436.
+	pub fn find_model_qualified(&self, app_label: &str, model_name: &str) -> Option<ModelMetadata> {
+		self.get_model(app_label, model_name)
+	}
+
+	/// Find a model by `model_name` alone, without an app label.
+	///
+	/// Scans the registry values under the read lock but clones only the
+	/// matched entry (not the entire registry), so it avoids the
+	/// `Vec<ModelMetadata>` materialization in [`Self::get_models`].
+	///
+	/// # Ambiguity
+	///
+	/// If two or more apps have registered a model with the same
+	/// `model_name`, this function returns `None` and emits a
+	/// `tracing::warn!` (one log line per call — there is no
+	/// deduplication, so callers on a hot path should switch to
+	/// [`Self::find_model_qualified`]). Callers that need a specific
+	/// cross-app FK target must use [`Self::find_model_qualified`]
+	/// instead. This conservative behavior prevents the silent
+	/// wrong-target resolution flagged on PR #4434 (Copilot review
+	/// thread HYL).
+	///
+	/// See issue #4436.
+	pub fn find_model_by_name(&self, model_name: &str) -> Option<ModelMetadata> {
+		let models = self.models.read().ok()?;
+		let mut matches = models.values().filter(|m| m.model_name == model_name);
+		let first = matches.next()?.clone();
+		if matches.next().is_some() {
+			tracing::warn!(
+				model_name,
+				"ModelRegistry::find_model_by_name: ambiguous model name registered \
+				 under multiple app labels; returning None. Use \
+				 ModelRegistry::find_model_qualified(app, name) to disambiguate.",
+			);
+			return None;
+		}
+		Some(first)
+	}
+
+	/// Count how many registered models have `model_name`, irrespective
+	/// of app label.
+	///
+	/// Used by [`crate::migrations::operations`] FK column-type
+	/// resolution to distinguish "model name is genuinely missing" from
+	/// "model name is registered under more than one app" when a
+	/// by-name lookup returns `None`. The two cases need different
+	/// diagnostics: ambiguity is a user error worth a `tracing::warn!`,
+	/// while a missing name is normal during partial registry
+	/// population at startup.
+	///
+	/// See issue #4436.
+	pub fn count_models_by_name(&self, model_name: &str) -> usize {
+		if let Ok(models) = self.models.read() {
+			models
+				.values()
+				.filter(|m| m.model_name == model_name)
+				.count()
+		} else {
+			0
 		}
 	}
 
@@ -551,6 +683,76 @@ mod tests {
 	}
 
 	#[test]
+	fn test_find_model_qualified_hit() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+		registry.register_model(ModelMetadata::new("blog", "Post", "blog_post"));
+
+		// Act
+		let hit = registry.find_model_qualified("auth", "User");
+
+		// Assert
+		assert!(hit.is_some());
+		let model = hit.unwrap();
+		assert_eq!(model.app_label, "auth");
+		assert_eq!(model.model_name, "User");
+		assert_eq!(model.table_name, "auth_user");
+	}
+
+	#[test]
+	fn test_find_model_qualified_miss_wrong_app() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+
+		// Act / Assert: same model name registered under a different app
+		// must not be returned.
+		assert!(registry.find_model_qualified("billing", "User").is_none());
+	}
+
+	#[test]
+	fn test_find_model_by_name_unique() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+		registry.register_model(ModelMetadata::new("blog", "Post", "blog_post"));
+
+		// Act
+		let hit = registry.find_model_by_name("Post");
+
+		// Assert
+		assert!(hit.is_some());
+		assert_eq!(hit.unwrap().app_label, "blog");
+	}
+
+	#[test]
+	fn test_find_model_by_name_missing() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+
+		// Act / Assert
+		assert!(registry.find_model_by_name("NoSuchModel").is_none());
+	}
+
+	#[test]
+	fn test_find_model_by_name_ambiguous_returns_none() {
+		// Arrange: same model name registered under two different apps.
+		// The conservative behavior is to refuse the unqualified lookup
+		// rather than silently pick one (issue #4436, PR #4434 thread HYL).
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
+		registry.register_model(ModelMetadata::new("billing", "User", "billing_user"));
+
+		// Act
+		let hit = registry.find_model_by_name("User");
+
+		// Assert
+		assert!(hit.is_none());
+	}
+
+	#[test]
 	fn test_get_app_models() {
 		let registry = ModelRegistry::new();
 		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
@@ -630,5 +832,63 @@ mod tests {
 		// Assert
 		let field_state = model_state.fields.get("description").unwrap();
 		assert_eq!(field_state.nullable, expected_nullable);
+	}
+
+	#[rstest]
+	fn to_model_state_nullable_false_for_primary_key_matches_macro_contract() {
+		// Arrange — regression for issue #4052.
+		//
+		// The `#[model]` macro must emit `null = "false"` for primary key
+		// fields regardless of whether the Rust type is `Option<T>`. The
+		// `Option<T>` wrapper for PKs is a Rust-side convention to allow
+		// `id = None` before the DB assigns the auto-increment value, not
+		// a DB-level nullability statement. PK columns are always NOT NULL
+		// at the DB level.
+		//
+		// This test codifies the contract that `to_model_state` consumes
+		// from the macro: with the fixed macro params, the resulting
+		// `FieldState.nullable` for an `Option<i64>` PK must be `false`,
+		// matching the migration-replay path's
+		// `column_def_to_field_state(...).nullable = !col.not_null = false`.
+		//
+		// Pre-fix, the macro emitted `null = "true"` for any Option<T>
+		// field including PKs, producing `FieldState.nullable = true` and
+		// surfacing as a spurious `AlterColumn` for the unchanged PK in
+		// offline `makemigrations` runs.
+		let mut metadata = ModelMetadata::new("clusters", "Cluster", "clusters");
+		// Mirror the fixed macro params for `id: Option<i64>` with
+		// `#[field(primary_key = true)]`: `null = "false"` (forced by the
+		// fix), `not_null = "true"`, `primary_key = "true"`,
+		// `auto_increment = "true"`.
+		let id_field = FieldMetadata::new(FieldType::BigInteger)
+			.with_param("primary_key", "true")
+			.with_param("auto_increment", "true")
+			.with_param("not_null", "true")
+			.with_param("null", "false");
+		metadata.add_field("id".to_string(), id_field);
+
+		// Act
+		let model_state = metadata.to_model_state();
+
+		// Assert — nullable=false on the FieldState side, regardless of
+		// the underlying Rust Option<T> wrapping.
+		let id_state = model_state
+			.fields
+			.get("id")
+			.expect("id field present in to_model_state output");
+		assert!(
+			!id_state.nullable,
+			"PK FieldState.nullable must be false even when the Rust type is \
+			 Option<i64>. Did the #[model] macro regress to emitting \
+			 null=\"true\" for Option<T> PKs? params={:?}",
+			id_state.params
+		);
+		assert_eq!(
+			id_state.params.get("null").map(String::as_str),
+			Some("false"),
+			"PK params[\"null\"] must be \"false\" (fixed macro contract). \
+			 Got params={:?}",
+			id_state.params
+		);
 	}
 }

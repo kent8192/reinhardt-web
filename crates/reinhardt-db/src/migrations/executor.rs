@@ -559,9 +559,19 @@ impl DatabaseMigrationExecutor {
 				continue;
 			}
 
-			// Check if this is a CreateTable operation and if the table already exists
+			// Check if this is a CreateTable operation and if the table already
+			// exists. The check MUST run through the schema editor (and thus
+			// through the editor's open transaction, if any) — otherwise the
+			// pool may pick a different physical connection whose schema cache
+			// is stale w.r.t. DDL committed earlier in this same migration.
+			//
+			// On SQLite, an introspection read on a separate pool connection
+			// after a DDL on the transaction's connection raises SQLITE_SCHEMA
+			// (code 262, "database schema is locked") because the schema
+			// cookie has been bumped on the writer but the reader's prepared
+			// statement cache is stale. See reinhardt-web#4584.
 			if let Operation::CreateTable { name, .. } = operation {
-				let table_exists = self.table_exists(name).await?;
+				let table_exists = editor.table_exists(name).await?;
 				if table_exists {
 					tracing::info!(
 						"Table '{}' already exists, skipping CREATE TABLE operation",
@@ -717,46 +727,105 @@ impl DatabaseMigrationExecutor {
 		Ok(plan)
 	}
 
-	/// Get table information for SQLite table recreation
+	/// Read columns + constraints for a SQLite table using the SchemaEditor's
+	/// currently-open transaction (if any), falling back to the live pool when
+	/// the editor is non-atomic.
 	///
-	/// Uses introspection to read current table schema and convert to
-	/// ColumnDefinition and Constraint types needed for SqliteTableRecreation.
+	/// This exists because `SQLiteIntrospector` issues every query through the
+	/// underlying `sqlx::SqlitePool`, which transparently picks a *different*
+	/// physical connection than the one holding the editor's open transaction.
+	/// That second connection cannot see uncommitted DDL — so a recreation
+	/// triggered later in the same migration would rebuild the table from a
+	/// stale column list and silently discard the just-`ALTER`'d column.
+	/// See reinhardt-web#4447.
 	#[cfg(feature = "sqlite")]
-	async fn get_sqlite_table_metadata(
-		&self,
+	async fn read_sqlite_table_via_editor(
+		editor: &mut SchemaEditor,
 		table_name: &str,
 	) -> Result<(Vec<super::ColumnDefinition>, Vec<super::Constraint>)> {
-		use super::introspection::DatabaseIntrospector;
+		// 1. PRAGMA table_info(<table>) → columns. Identifier interpolation
+		//    via the shared `sqlite_pragma` helper. See issue #4454.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let table_info_sql = format!(
+			"PRAGMA table_info({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
+		let info_rows = editor.fetch_all(&table_info_sql, vec![]).await?;
 
-		// Get SQLite pool from connection
-		let pool = self.connection.into_sqlite().ok_or_else(|| {
-			MigrationError::IntrospectionError(
-				"Failed to get SQLite pool from connection".to_string(),
+		// Collect rows into typed records first so we can detect AUTOINCREMENT.
+		struct ColRow {
+			name: String,
+			type_str: String,
+			notnull: i64,
+			default: Option<String>,
+			pk: i64,
+		}
+		let mut col_rows: Vec<ColRow> = Vec::with_capacity(info_rows.len());
+		for row in &info_rows {
+			let name: String = row
+				.get("name")
+				.map_err(|e| MigrationError::IntrospectionError(format!("table_info name: {e}")))?;
+			let type_str: String = row.get("type").unwrap_or_default();
+			let notnull: i64 = row.get("notnull").unwrap_or(0);
+			let default: Option<String> = row.get("dflt_value").ok();
+			let pk: i64 = row.get("pk").unwrap_or(0);
+			col_rows.push(ColRow {
+				name,
+				type_str,
+				notnull,
+				default,
+				pk,
+			});
+		}
+
+		// 2. CREATE TABLE SQL → detect AUTOINCREMENT and parse named
+		//    constraint metadata (FK names + CHECK constraints).
+		let create_sql_row = editor
+			.fetch_optional(
+				"SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+				vec![table_name.into()],
 			)
-		})?;
+			.await?;
+		let create_sql: Option<String> = create_sql_row.and_then(|r| r.get("sql").ok());
+		let has_autoincrement = create_sql
+			.as_ref()
+			.map(|sql| sql.to_uppercase().contains("AUTOINCREMENT"))
+			.unwrap_or(false);
 
-		// Create introspector and read table
-		let introspector = SQLiteIntrospector::new(pool);
-		let table_info = introspector.read_table(table_name).await?.ok_or_else(|| {
-			MigrationError::IntrospectionError(format!("Table '{}' not found", table_name))
-		})?;
-
-		// Convert ColumnInfo to ColumnDefinition
-		let mut columns: Vec<super::ColumnDefinition> = table_info
-			.columns
-			.values()
-			.map(|col_info| {
-				let mut col_def =
-					super::ColumnDefinition::new(&col_info.name, col_info.column_type.clone());
-				col_def.not_null = !col_info.nullable;
-				col_def.auto_increment = col_info.auto_increment;
-				col_def.primary_key = table_info.primary_key.contains(&col_info.name);
-				col_def.default = col_info.default.clone();
-				col_def
+		// 3. Build ColumnDefinition list, mirroring the introspector's
+		//    semantics (PK columns are implicitly NOT NULL; AUTOINCREMENT is
+		//    only meaningful on PK columns).
+		let mut columns: Vec<super::ColumnDefinition> = col_rows
+			.iter()
+			.map(|c| {
+				let is_pk = c.pk > 0;
+				let is_auto = is_pk && has_autoincrement;
+				let nullable = if is_pk { false } else { c.notnull == 0 };
+				// Preserve `dflt_value` verbatim as the raw SQL fragment
+				// (e.g. `'pending'` including surrounding quotes). The
+				// downstream `format!("DEFAULT {}", default)` paths in
+				// `operations.rs` then emit valid DDL (`DEFAULT 'pending'`,
+				// not the previously broken `DEFAULT pending`). See
+				// `super::sqlite_pragma` and issue #4454.
+				let default = c
+					.default
+					.as_ref()
+					.map(|v| super::sqlite_pragma::normalize_default_value(v));
+				super::ColumnDefinition {
+					name: c.name.clone(),
+					type_definition: SQLiteIntrospector::parse_sqlite_type(&c.type_str),
+					not_null: !nullable,
+					unique: false,
+					primary_key: is_pk,
+					auto_increment: is_auto,
+					default,
+				}
 			})
 			.collect();
 
-		// Sort columns to maintain consistent order (primary key columns first, then by name)
+		// Preserve the introspector's ordering: PK first, then by name. This
+		// matters because `SqliteTableRecreation` uses column order to emit
+		// the new CREATE TABLE and the INSERT SELECT.
 		columns.sort_by(|a, b| {
 			if a.primary_key && !b.primary_key {
 				std::cmp::Ordering::Less
@@ -767,49 +836,126 @@ impl DatabaseMigrationExecutor {
 			}
 		});
 
-		// Helper function to convert Option<String> to ForeignKeyAction
-		fn parse_fk_action(action: &Option<String>) -> ForeignKeyAction {
-			match action.as_deref() {
-				Some("CASCADE") => ForeignKeyAction::Cascade,
-				Some("SET NULL") => ForeignKeyAction::SetNull,
-				Some("SET DEFAULT") => ForeignKeyAction::SetDefault,
-				Some("NO ACTION") => ForeignKeyAction::NoAction,
-				_ => ForeignKeyAction::Restrict,
-			}
-		}
+		// 4. Foreign keys via PRAGMA foreign_key_list(<table>), grouped by
+		//    id. Identifier interpolation via the shared `sqlite_pragma`
+		//    helper. See issue #4454.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let fk_sql = format!(
+			"PRAGMA foreign_key_list({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
+		let fk_rows = editor.fetch_all(&fk_sql, vec![]).await?;
 
-		// Convert ForeignKeyInfo to Constraint
-		let mut constraints: Vec<super::Constraint> = table_info
-			.foreign_keys
+		struct FkRow {
+			id: i64,
+			seq: i64,
+			table: String,
+			from: String,
+			to: String,
+			on_update: String,
+			on_delete: String,
+		}
+		let parsed_fks: Vec<FkRow> = fk_rows
 			.iter()
-			.map(|fk| super::Constraint::ForeignKey {
-				name: fk.name.clone(),
-				columns: fk.columns.clone(),
-				referenced_table: fk.referenced_table.clone(),
-				referenced_columns: fk.referenced_columns.clone(),
-				on_delete: parse_fk_action(&fk.on_delete),
-				on_update: parse_fk_action(&fk.on_update),
-				deferrable: None,
+			.map(|row| FkRow {
+				id: row.get("id").unwrap_or(0),
+				seq: row.get("seq").unwrap_or(0),
+				table: row.get("table").unwrap_or_default(),
+				from: row.get("from").unwrap_or_default(),
+				to: row.get("to").unwrap_or_default(),
+				on_update: row.get("on_update").unwrap_or_default(),
+				on_delete: row.get("on_delete").unwrap_or_default(),
 			})
 			.collect();
 
-		// Add unique constraints
-		for unique in &table_info.unique_constraints {
-			constraints.push(super::Constraint::Unique {
-				name: unique.name.clone(),
-				columns: unique.columns.clone(),
+		let named_fks = create_sql
+			.as_ref()
+			.map(|sql| SQLiteIntrospector::parse_fk_constraint_names(sql))
+			.unwrap_or_default();
+
+		let mut fk_groups: std::collections::HashMap<i64, Vec<FkRow>> =
+			std::collections::HashMap::new();
+		for r in parsed_fks {
+			fk_groups.entry(r.id).or_default().push(r);
+		}
+
+		fn fk_action(s: &str) -> super::ForeignKeyAction {
+			match s {
+				"CASCADE" => super::ForeignKeyAction::Cascade,
+				"SET NULL" => super::ForeignKeyAction::SetNull,
+				"SET DEFAULT" => super::ForeignKeyAction::SetDefault,
+				"NO ACTION" => super::ForeignKeyAction::NoAction,
+				_ => super::ForeignKeyAction::Restrict,
+			}
+		}
+
+		let mut constraints: Vec<super::Constraint> = Vec::new();
+		for (fk_id, mut group) in fk_groups {
+			group.sort_by_key(|r| r.seq);
+			let referenced_table = group[0].table.clone();
+			let columns_from: Vec<String> = group.iter().map(|r| r.from.clone()).collect();
+			let columns_to: Vec<String> = group.iter().map(|r| r.to.clone()).collect();
+			let signature = (columns_from.clone(), referenced_table.clone());
+			let name = named_fks
+				.get(&signature)
+				.cloned()
+				.unwrap_or_else(|| format!("fk_{}_{}", table_name, fk_id));
+			constraints.push(super::Constraint::ForeignKey {
+				name,
+				columns: columns_from,
+				referenced_table,
+				referenced_columns: columns_to,
+				on_delete: fk_action(&group[0].on_delete),
+				on_update: fk_action(&group[0].on_update),
+				deferrable: None,
 			});
 		}
 
-		// Add CHECK constraints
-		for (idx, check) in table_info.check_constraints.iter().enumerate() {
-			constraints.push(super::Constraint::Check {
-				name: check
-					.name
-					.clone()
-					.unwrap_or_else(|| format!("check_{}", idx)),
-				expression: check.expression.clone(),
+		// 5. Unique constraints via PRAGMA index_list / index_info where
+		//    origin = 'u' (i.e. declared with the UNIQUE keyword or as a
+		//    named CONSTRAINT … UNIQUE). Identifier interpolation via the
+		//    shared `sqlite_pragma` helper. See issue #4454.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let idx_list_sql = format!(
+			"PRAGMA index_list({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
+		let idx_rows = editor.fetch_all(&idx_list_sql, vec![]).await?;
+		for row in &idx_rows {
+			let origin: String = row.get("origin").unwrap_or_default();
+			let unique: i64 = row.get("unique").unwrap_or(0);
+			if origin != "u" || unique != 1 {
+				continue;
+			}
+			let idx_name: String = row.get("name").unwrap_or_default();
+			// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+			let info_sql = format!(
+				"PRAGMA index_info({})",
+				super::sqlite_pragma::quote_pragma_identifier(&idx_name)
+			);
+			let info_rows = editor.fetch_all(&info_sql, vec![]).await?;
+			let cols: Vec<String> = info_rows
+				.iter()
+				.filter_map(|r| r.get::<String>("name").ok())
+				.collect();
+			constraints.push(super::Constraint::Unique {
+				name: idx_name,
+				columns: cols,
 			});
+		}
+
+		// 6. CHECK constraints parsed from CREATE TABLE SQL (SQLite has no
+		//    PRAGMA for these).
+		if let Some(ref sql) = create_sql {
+			for (idx, check) in SQLiteIntrospector::parse_check_constraints(sql)?
+				.into_iter()
+				.enumerate()
+			{
+				constraints.push(super::Constraint::Check {
+					name: check.name.unwrap_or_else(|| format!("check_{}", idx)),
+					expression: check.expression,
+				});
+			}
 		}
 
 		Ok((columns, constraints))
@@ -837,7 +983,14 @@ impl DatabaseMigrationExecutor {
 		// This prevents FK violations during the temporary DROP TABLE phase
 		editor.disable_foreign_keys().await?;
 
-		// Build the recreation plan based on operation type
+		// Build the recreation plan based on operation type.
+		//
+		// Critical: introspection must run via the editor's open transaction so
+		// that DDL applied earlier in the same migration (e.g. a preceding
+		// `AddColumn`) is visible. Reading via the pool would land on a
+		// different connection that cannot see the uncommitted schema and
+		// would silently rebuild the table from a stale column set — the
+		// root cause of reinhardt-web#4447.
 		let recreation = match operation {
 			Operation::DropColumn { table, column } => {
 				tracing::debug!(
@@ -845,7 +998,8 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints) = self.get_sqlite_table_metadata(table).await?;
+				let (columns, constraints) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
 			}
 			Operation::AlterColumn {
@@ -859,7 +1013,8 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints) = self.get_sqlite_table_metadata(table).await?;
+				let (columns, constraints) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_alter_column(
 					table,
 					columns,
@@ -876,7 +1031,8 @@ impl DatabaseMigrationExecutor {
 					"Handling SQLite table recreation for AddConstraint: table={}",
 					table
 				);
-				let (columns, constraints) = self.get_sqlite_table_metadata(table).await?;
+				let (columns, constraints) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint(
 					table,
 					columns,
@@ -893,7 +1049,8 @@ impl DatabaseMigrationExecutor {
 					table,
 					constraint_name
 				);
-				let (columns, constraints) = self.get_sqlite_table_metadata(table).await?;
+				let (columns, constraints) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
 					columns,
@@ -1757,5 +1914,255 @@ CREATE UNIQUE INDEX "idx_products_id" ON "products" ("id");"###;
 				"Third statement should be CREATE UNIQUE INDEX"
 			);
 		}
+	}
+}
+
+#[cfg(all(test, feature = "sqlite"))]
+mod rollback_orchestration_tests {
+	//! In-crate tests for [`DatabaseMigrationExecutor::rollback_migrations`] and
+	//! the private [`DatabaseMigrationExecutor::rollback_migration`].
+	//!
+	//! These exercise the orchestration layer — reverse iteration of the input
+	//! slice, recorder synchronisation, the `state_only` short-circuit, and the
+	//! warn-and-continue behaviour for `RunSQL` operations that lack a
+	//! `reverse_sql`. Per-`Operation` SQL generation is already covered by the
+	//! `to_reverse_sql` tests in `operations.rs`; this module focuses on what
+	//! sits above those primitives in `executor.rs`.
+	//!
+	//! A real SQLite `:memory:` connection is used rather than test doubles
+	//! because [`DatabaseConnection`], [`DatabaseMigrationRecorder`], and
+	//! [`SchemaEditor`] are concrete types with no trait abstraction today.
+	//! `:memory:` is the lightest available substitute — sub-second per case,
+	//! no external services, and gated behind the `sqlite` feature that the
+	//! rollback path itself already references.
+	//!
+	//! Not covered here (require failure injection, which needs a trait
+	//! refactor to land first): non-atomic partial-rollback bookkeeping when
+	//! an operation fails mid-run, atomic-mode rollback-on-failure, and
+	//! foreign-key violation behaviour during rollback. Those paths remain
+	//! exercised by the container-backed suite in
+	//! `tests/integration/tests/migrations/migration_rollback_integration.rs`.
+
+	use super::*;
+	use crate::backends::DatabaseConnection;
+	use crate::migrations::recorder::DatabaseMigrationRecorder;
+	use crate::migrations::{ColumnDefinition, FieldType, Migration};
+	use rstest::*;
+
+	/// Open a fresh SQLite `:memory:` database and wrap it in a
+	/// [`DatabaseMigrationExecutor`]. Each call returns an isolated database.
+	async fn make_executor() -> DatabaseMigrationExecutor {
+		let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.expect("failed to open sqlite :memory: connection");
+		DatabaseMigrationExecutor::new(connection)
+	}
+
+	/// Build a single-operation `CreateTable` migration with one integer
+	/// primary key column.
+	fn make_create_table_migration(name: &str, table: &str) -> Migration {
+		let mut migration = Migration::new(name, "rolltest");
+		migration.operations.push(Operation::CreateTable {
+			name: table.to_string(),
+			columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		});
+		migration
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_with_empty_input_returns_empty_result() {
+		// Arrange
+		let mut executor = make_executor().await;
+
+		// Act
+		let result = executor
+			.rollback_migrations(&[])
+			.await
+			.expect("rollback of empty input should not fail");
+
+		// Assert
+		assert!(
+			result.applied.is_empty(),
+			"no migrations should be reported as rolled back"
+		);
+		assert!(result.failed.is_none(), "no failure should be reported");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_iterates_input_slice_in_reverse_order() {
+		// Arrange - apply three independent migrations.
+		let m1 = make_create_table_migration("0001_a", "rolltest_a");
+		let m2 = make_create_table_migration("0002_b", "rolltest_b");
+		let m3 = make_create_table_migration("0003_c", "rolltest_c");
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(&[m1.clone(), m2.clone(), m3.clone()])
+			.await
+			.expect("apply m1..m3");
+
+		// Act - pass the slice in declaration order; rollback must consume in reverse.
+		let result = executor
+			.rollback_migrations(&[m1.clone(), m2.clone(), m3.clone()])
+			.await
+			.expect("rollback m1..m3");
+
+		// Assert - newest-first order, independent of how apply_migrations
+		// ordered them via the topological sort.
+		assert_eq!(
+			result.applied,
+			vec![m3.id(), m2.id(), m1.id()],
+			"rollback_migrations must iterate input in reverse"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_skips_migrations_that_were_never_applied() {
+		// Arrange - apply only m1, leave m2 unrecorded.
+		let m1 = make_create_table_migration("0001_first", "rolltest_first");
+		let m2 = make_create_table_migration("0002_second", "rolltest_second");
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(std::slice::from_ref(&m1))
+			.await
+			.expect("apply m1");
+
+		// Act - ask to roll both back.
+		let result = executor
+			.rollback_migrations(&[m1.clone(), m2.clone()])
+			.await
+			.expect("rollback should succeed even with an unapplied entry");
+
+		// Assert - only the actually-applied migration is reported as rolled back.
+		assert_eq!(
+			result.applied,
+			vec![m1.id()],
+			"unapplied migrations must be silently skipped, not rolled back"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_clears_recorder_state_for_rolled_back_migration() {
+		// Arrange
+		let migration = make_create_table_migration("0001_only", "rolltest_only");
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("apply migration");
+
+		let recorder_before = DatabaseMigrationRecorder::new(executor.connection().clone());
+		assert!(
+			recorder_before
+				.is_applied(&migration.app_label, &migration.name)
+				.await
+				.expect("query recorder before"),
+			"sanity: migration should be applied before rollback"
+		);
+
+		// Act
+		executor
+			.rollback_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("rollback");
+
+		// Assert - recorder no longer marks the migration as applied.
+		let recorder_after = DatabaseMigrationRecorder::new(executor.connection().clone());
+		assert!(
+			!recorder_after
+				.is_applied(&migration.app_label, &migration.name)
+				.await
+				.expect("query recorder after"),
+			"recorder must report unapplied after successful rollback"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_with_state_only_flag_skips_schema_changes() {
+		// Arrange - apply a normal migration so the table really exists.
+		let mut migration = make_create_table_migration("0001_state", "rolltest_state");
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("apply migration to create the table");
+
+		// Re-mark the migration as state_only for the rollback request,
+		// which must hit the `state_only` short-circuit in
+		// `rollback_migration` and skip schema operations entirely.
+		migration.state_only = true;
+
+		// Act
+		let result = executor
+			.rollback_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("state_only rollback should succeed without DB ops");
+
+		// Assert - rollback is recorded, but the table is intentionally still
+		// present because no DROP TABLE was issued.
+		assert_eq!(result.applied, vec![migration.id()]);
+
+		let table_still_present = executor
+			.connection()
+			.fetch_optional(
+				"SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+				vec!["rolltest_state".into()],
+			)
+			.await
+			.expect("introspect sqlite_master")
+			.is_some();
+		assert!(
+			table_still_present,
+			"state_only rollback must not execute schema operations"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn rollback_run_sql_without_reverse_sql_completes_without_error() {
+		// Pins the current contract of the `Operation::RunSQL` arm in
+		// `rollback_migration` when `reverse_sql` is `None`: the rollback
+		// logs a warning and continues. It does NOT return an error. If a
+		// future change promotes that to a typed error, this test will fail
+		// and force the change to be explicit rather than silent.
+		let mut migration = Migration::new("0001_run_sql_noop", "rolltest");
+		migration.operations.push(Operation::RunSQL {
+			sql: "CREATE TABLE rolltest_runsql (id INTEGER PRIMARY KEY)".to_string(),
+			reverse_sql: None,
+		});
+
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("apply RunSQL migration");
+
+		// Act
+		let result = executor
+			.rollback_migrations(std::slice::from_ref(&migration))
+			.await
+			.expect("rollback should succeed even when reverse_sql is missing");
+
+		// Assert - the rollback is reported in `result.applied` and the
+		// recorder is cleared even though no reverse SQL ran (the
+		// warn-and-skip contract still updates bookkeeping).
+		assert_eq!(result.applied, vec![migration.id()]);
+
+		let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+		assert!(
+			!recorder
+				.is_applied(&migration.app_label, &migration.name)
+				.await
+				.expect("query recorder after"),
+			"recorder must reflect unapplied state after warn-and-skip rollback"
+		);
 	}
 }

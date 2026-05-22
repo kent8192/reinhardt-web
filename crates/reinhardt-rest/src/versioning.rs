@@ -35,6 +35,7 @@ pub mod config;
 pub mod handler;
 pub mod middleware;
 pub mod reverse;
+pub mod settings;
 
 use async_trait::async_trait;
 pub use config::{VersioningConfig, VersioningManager, VersioningStrategy};
@@ -50,6 +51,7 @@ pub use reverse::{
 	ApiDocFormat, ApiDocUrlBuilder, UrlReverseManager, VersionedUrlBuilder,
 	VersioningStrategy as ReverseVersioningStrategy,
 };
+pub use settings::VersioningSettings;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use thiserror::Error as ThisError;
@@ -217,22 +219,23 @@ impl BaseVersioning for AcceptHeaderVersioning {
 					{
 						let version = value.trim().trim_matches('"');
 						if self.is_allowed_version(version) {
-							return Ok(version.to_string());
+							return Ok(version.to_owned());
 						} else {
-							return Err(Error::Validation(
-								VersioningError::VersionNotAllowed(version.to_string()).to_string(),
-							));
+							// Avoid intermediate String allocation from VersionNotAllowed(String).to_string()
+							return Err(Error::Validation(format!(
+								"Version not allowed: {version}"
+							)));
 						}
 					}
 				}
 			}
 		}
 
-		// Return default version if no version in header
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Return default version if no version in header.
+		// Use as_deref().to_owned() instead of clone().unwrap_or_else(...) to skip
+		// cloning the Option<String> wrapper. The final String allocation to satisfy
+		// the Result<String> return type is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
@@ -279,7 +282,7 @@ impl URLPathVersioning {
 			default_version: None,
 			allowed_versions: HashSet::new(),
 			version_param: "version".to_string(),
-			path_regex: Regex::new(r"/v?(\d+\.?\d*)").unwrap(),
+			path_regex: Regex::new(r"/v(\d+\.?\d*)(?:/|$)").unwrap(),
 		}
 	}
 	/// Set the default version to use when no version is found in the path
@@ -386,19 +389,16 @@ impl BaseVersioning for URLPathVersioning {
 		{
 			let version = version_match.as_str();
 			if self.is_allowed_version(version) {
-				return Ok(version.to_string());
+				return Ok(version.to_owned());
 			} else {
-				return Err(Error::Validation(
-					VersioningError::VersionNotAllowed(version.to_string()).to_string(),
-				));
+				// Avoid intermediate String allocation from VersionNotAllowed(String).to_string()
+				return Err(Error::Validation(format!("Version not allowed: {version}")));
 			}
 		}
 
-		// Return default version if no version in path
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Return default version if no version in path.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
@@ -585,11 +585,9 @@ impl BaseVersioning for HostNameVersioning {
 			}
 		}
 
-		// Return default version if no version in hostname
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Return default version if no version in hostname.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
@@ -698,21 +696,18 @@ impl BaseVersioning for QueryParameterVersioning {
 					&& key == self.version_param
 				{
 					if self.is_allowed_version(value) {
-						return Ok(value.to_string());
+						return Ok(value.to_owned());
 					} else {
-						return Err(Error::Validation(
-							VersioningError::VersionNotAllowed(value.to_string()).to_string(),
-						));
+						// Avoid intermediate String allocation from VersionNotAllowed(String).to_string()
+						return Err(Error::Validation(format!("Version not allowed: {value}")));
 					}
 				}
 			}
 		}
 
-		// Return default version if no version in query
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Return default version if no version in query.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
@@ -871,11 +866,9 @@ impl BaseVersioning for NamespaceVersioning {
 			return Ok(version);
 		}
 
-		// Fallback to default version
-		Ok(self
-			.default_version
-			.clone()
-			.unwrap_or_else(|| "1.0".to_string()))
+		// Fallback to default version.
+		// Skip cloning the Option<String> wrapper; final String alloc is unavoidable.
+		Ok(self.default_version.as_deref().unwrap_or("1.0").to_owned())
 	}
 
 	fn default_version(&self) -> Option<&str> {
@@ -918,68 +911,115 @@ impl NamespaceVersioning {
 		self.allowed_versions.is_empty() || self.allowed_versions.contains(version)
 	}
 
-	/// Extract version from a router's namespace pattern
-	/// This method integrates with reinhardt-routers for namespace-based versioning
+	/// Extract a version from a router-aware path, applying the
+	/// configured pattern.
+	///
+	/// Unlike `extract_version_from_path` (private helper), this method is
+	/// router-aware: it returns `Some(version)` only if `path` matches
+	/// (starts with) at least one `path_prefix` registered on the
+	/// router AND the configured pattern successfully extracts a
+	/// version from that prefix. Otherwise it returns `None`. This
+	/// prevents reporting a version for paths that no route on
+	/// `router` actually serves.
+	///
+	/// The trait bound on [`reinhardt_router::VersionedRouter`] is what
+	/// finally lets this method live in `reinhardt-rest` without
+	/// pulling in `reinhardt-urls` (issue #4321).
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
 	/// use reinhardt_rest::versioning::NamespaceVersioning;
-	/// use reinhardt_urls::routers::DefaultRouter;
+	/// use reinhardt_router::{RouteVersionInfo, VersionedRouter};
+	///
+	/// struct FakeRouter;
+	/// impl VersionedRouter for FakeRouter {
+	///     fn route_version_infos(&self) -> Vec<RouteVersionInfo> {
+	///         vec![RouteVersionInfo::new(Some("v1".into()), "/v1/")]
+	///     }
+	/// }
 	///
 	/// let versioning = NamespaceVersioning::new()
 	///     .with_pattern("/v{version}/")
 	///     .with_allowed_versions(vec!["1", "2"]);
 	///
-	/// let router = DefaultRouter::new();
+	/// let router = FakeRouter;
+	/// // "/v1/users/" matches the "/v1/" prefix registered on the router.
 	/// let version = versioning.extract_version_from_router(&router, "/v1/users/");
 	/// assert_eq!(version, Some("1".to_string()));
+	///
+	/// // "/v9/users/" does NOT match any registered prefix → None.
+	/// let unknown = versioning.extract_version_from_router(&router, "/v9/users/");
+	/// assert_eq!(unknown, None);
 	/// ```
-	// Router integration disabled due to circular dependency (reinhardt-urls ↔ reinhardt-rest)
-	// Use extract_version_from_path() directly instead
-	#[allow(dead_code)]
-	fn extract_version_from_router_stub(&self, _router: &(), path: &str) -> Option<String> {
-		self.extract_version_from_path(path)
+	pub fn extract_version_from_router<R: reinhardt_router::VersionedRouter + ?Sized>(
+		&self,
+		router: &R,
+		path: &str,
+	) -> Option<String> {
+		// Find the first registered route whose `path_prefix` matches
+		// the incoming `path`, then extract the version from that
+		// prefix. If no route matches, the path is not served by this
+		// router and we return None.
+		router
+			.route_version_infos()
+			.into_iter()
+			.find(|info| path.starts_with(&info.path_prefix))
+			.and_then(|info| self.extract_version_from_path(&info.path_prefix))
 	}
 
-	/// Get available versions from a router's registered routes
-	/// This discovers all versions that are currently registered in the router
+	/// Enumerate the versions currently registered on `router`.
+	///
+	/// The router exposes its routes through
+	/// [`reinhardt_router::VersionedRouter`]; this method then applies
+	/// the configured pattern to each route's `path_prefix` and filters
+	/// by `allowed_versions` (when configured).
+	///
+	/// # Ordering
+	///
+	/// The returned `Vec<String>` is sorted **ascending in
+	/// lexicographic (string) order** and deduplicated. Lexicographic
+	/// order coincides with numeric order for single-digit versions
+	/// (e.g. `"1" < "2"`) but diverges for multi-digit versions
+	/// (e.g. `"10"` sorts before `"2"`). Callers that need a different
+	/// ordering must re-sort the result themselves.
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// // This example is disabled because router integration is disabled
-	/// // due to circular dependency (reinhardt-urls ↔ reinhardt-rest)
+	/// ```
 	/// use reinhardt_rest::versioning::NamespaceVersioning;
-	/// use reinhardt_urls::routers::{DefaultRouter, Router, path};
-	/// use reinhardt_http::Handler;
-	/// use std::sync::Arc;
+	/// use reinhardt_router::{RouteVersionInfo, VersionedRouter};
 	///
-	/// # use async_trait::async_trait;
-	/// # use reinhardt_http::{Request, Response, Result};
-	/// # struct DummyHandler;
-	/// # #[async_trait]
-	/// # impl Handler for DummyHandler {
-	/// #     async fn handle(&self, _req: Request) -> Result<Response> {
-	/// #         Ok(Response::ok())
-	/// #     }
-	/// # }
-	/// let versioning = NamespaceVersioning::new()
-	///     .with_pattern("/v{version}/");
+	/// struct FakeRouter;
+	/// impl VersionedRouter for FakeRouter {
+	///     fn route_version_infos(&self) -> Vec<RouteVersionInfo> {
+	///         vec![
+	///             RouteVersionInfo::new(Some("v1".into()), "/v1/users/"),
+	///             RouteVersionInfo::new(Some("v2".into()), "/v2/users/"),
+	///         ]
+	///     }
+	/// }
 	///
-	/// let mut router = DefaultRouter::new();
-	/// let handler = Arc::new(DummyHandler);
-	/// router.add_route(path("/v1/users/", handler.clone()).with_namespace("v1"));
-	/// router.add_route(path("/v2/users/", handler).with_namespace("v2"));
+	/// let versioning = NamespaceVersioning::new().with_pattern("/v{version}/");
+	/// let router = FakeRouter;
 	///
 	/// let versions = versioning.get_available_versions_from_router(&router);
 	/// assert!(versions.contains(&"1".to_string()));
 	/// assert!(versions.contains(&"2".to_string()));
 	/// ```
-	// Router integration disabled due to circular dependency (reinhardt-urls ↔ reinhardt-rest)
-	#[allow(dead_code)]
-	fn get_available_versions_from_router_stub(&self, _router: &()) -> Vec<String> {
-		Vec::new()
+	pub fn get_available_versions_from_router<R: reinhardt_router::VersionedRouter + ?Sized>(
+		&self,
+		router: &R,
+	) -> Vec<String> {
+		let mut versions: Vec<String> = router
+			.route_version_infos()
+			.into_iter()
+			.filter_map(|info| self.extract_version_from_path(&info.path_prefix))
+			.filter(|version| self.is_allowed_version(version))
+			.collect();
+		versions.sort();
+		versions.dedup();
+		versions
 	}
 }
 

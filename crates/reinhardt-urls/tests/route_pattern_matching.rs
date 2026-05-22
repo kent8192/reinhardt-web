@@ -97,7 +97,7 @@ fn path_pattern_too_many_segments_is_error() {
 #[case("abc", false)]
 fn type_int_matching(#[case] value: &str, #[case] should_match: bool) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<int:id>}}/")).unwrap();
+	let pattern = PathPattern::new("/items/{<int:id>}/".to_string()).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -122,7 +122,7 @@ fn type_int_matching(#[case] value: &str, #[case] should_match: bool) {
 #[case("hello/world", false)]
 fn type_str_matching(#[case] value: &str, #[case] should_match: bool) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<str:name>}}/")).unwrap();
+	let pattern = PathPattern::new("/items/{<str:name>}/".to_string()).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -148,7 +148,7 @@ fn type_str_matching(#[case] value: &str, #[case] should_match: bool) {
 #[case("550e8400e29b41d4a716446655440000", false)]
 fn type_uuid_matching(#[case] value: &str, #[case] should_match: bool) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<uuid:id>}}/")).unwrap();
+	let pattern = PathPattern::new("/items/{<uuid:id>}/".to_string()).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -175,7 +175,7 @@ fn type_uuid_matching(#[case] value: &str, #[case] should_match: bool) {
 #[case("-leading-dash", false)]
 fn type_slug_matching(#[case] value: &str, #[case] should_match: bool) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<slug:name>}}/")).unwrap();
+	let pattern = PathPattern::new("/items/{<slug:name>}/".to_string()).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -203,7 +203,7 @@ fn type_slug_matching(#[case] value: &str, #[case] should_match: bool) {
 #[case("True", false)]
 fn type_bool_matching(#[case] value: &str, #[case] should_match: bool) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<bool:flag>}}/")).unwrap();
+	let pattern = PathPattern::new("/items/{<bool:flag>}/".to_string()).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -229,7 +229,7 @@ fn type_bool_matching(#[case] value: &str, #[case] should_match: bool) {
 #[case("2024/01/15", false)]
 fn type_date_matching(#[case] value: &str, #[case] should_match: bool) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<date:d>}}/")).unwrap();
+	let pattern = PathPattern::new("/items/{<date:d>}/".to_string()).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -255,7 +255,7 @@ fn type_date_matching(#[case] value: &str, #[case] should_match: bool) {
 #[case("user@", false)]
 fn type_email_matching(#[case] value: &str, #[case] should_match: bool) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<email:addr>}}/")).unwrap();
+	let pattern = PathPattern::new("/items/{<email:addr>}/".to_string()).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -289,7 +289,7 @@ fn type_signed_integers_matching(
 	#[case] should_match: bool,
 ) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<{}:n>}}/", type_name)).unwrap();
+	let pattern = PathPattern::new(format!("/items/{{<{}:n>}}/", type_name)).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -321,7 +321,7 @@ fn type_unsigned_integers_matching(
 	#[case] should_match: bool,
 ) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<{}:n>}}/", type_name)).unwrap();
+	let pattern = PathPattern::new(format!("/items/{{<{}:n>}}/", type_name)).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -349,7 +349,7 @@ fn type_unsigned_integers_matching(
 #[case("f64", "1.2.3", false)]
 fn type_float_matching(#[case] type_name: &str, #[case] value: &str, #[case] should_match: bool) {
 	// Arrange
-	let pattern = PathPattern::new(&format!("/items/{{<{}:n>}}/", type_name)).unwrap();
+	let pattern = PathPattern::new(format!("/items/{{<{}:n>}}/", type_name)).unwrap();
 	let path = format!("/items/{}/", value);
 
 	// Act
@@ -461,16 +461,13 @@ fn path_param_with_null_byte_rejected() {
 	let params = pattern.extract_params(path);
 
 	// Assert
-	match params {
-		Some(params) => {
-			let filepath = params.get("filepath").unwrap();
-			assert!(
-				!filepath.contains("%00"),
-				"null byte encoded path should be rejected"
-			);
-		}
-		// Path rejection at routing level is acceptable
-		None => {}
+	// Path rejection at routing level is acceptable, so only verify when Some.
+	if let Some(params) = params {
+		let filepath = params.get("filepath").unwrap();
+		assert!(
+			!filepath.contains("%00"),
+			"null byte encoded path should be rejected"
+		);
 	}
 }
 
@@ -653,7 +650,9 @@ fn path_matcher_linear_static_match() {
 	// Arrange
 	let mut matcher = PathMatcher::new();
 	let pattern = PathPattern::new("/users/").unwrap();
-	matcher.add_pattern(pattern, "users_list".to_string());
+	matcher
+		.add_pattern(pattern, "users_list".to_string())
+		.unwrap();
 
 	// Act
 	let result = matcher.match_path("/users/");
@@ -670,7 +669,9 @@ fn path_matcher_linear_param_match() {
 	// Arrange
 	let mut matcher = PathMatcher::new();
 	let pattern = PathPattern::new("/users/{id}/").unwrap();
-	matcher.add_pattern(pattern, "users_detail".to_string());
+	matcher
+		.add_pattern(pattern, "users_detail".to_string())
+		.unwrap();
 
 	// Act
 	let result = matcher.match_path("/users/42/");
@@ -688,8 +689,8 @@ fn path_matcher_linear_first_match_wins() {
 	let mut matcher = PathMatcher::new();
 	let pattern1 = PathPattern::new("/items/{id}/").unwrap();
 	let pattern2 = PathPattern::new("/items/{<int:id>}/").unwrap();
-	matcher.add_pattern(pattern1, "first".to_string());
-	matcher.add_pattern(pattern2, "second".to_string());
+	matcher.add_pattern(pattern1, "first".to_string()).unwrap();
+	matcher.add_pattern(pattern2, "second".to_string()).unwrap();
 
 	// Act
 	let result = matcher.match_path("/items/123/");
@@ -709,7 +710,9 @@ fn path_matcher_radix_mode() {
 	// Arrange
 	let mut matcher = PathMatcher::with_mode(MatchingMode::RadixTree);
 	let pattern = PathPattern::new("/users/{id}/").unwrap();
-	matcher.add_pattern(pattern, "users_detail".to_string());
+	matcher
+		.add_pattern(pattern, "users_detail".to_string())
+		.unwrap();
 
 	// Act
 	let result = matcher.match_path("/users/42/");
@@ -728,8 +731,10 @@ fn path_matcher_enable_radix_tree() {
 	assert_eq!(matcher.mode(), MatchingMode::Linear);
 
 	let pattern = PathPattern::new("/users/").unwrap();
-	matcher.add_pattern(pattern, "users_list".to_string());
-	matcher.enable_radix_tree();
+	matcher
+		.add_pattern(pattern, "users_list".to_string())
+		.unwrap();
+	matcher.enable_radix_tree().unwrap();
 
 	// Act
 	let result = matcher.match_path("/users/");

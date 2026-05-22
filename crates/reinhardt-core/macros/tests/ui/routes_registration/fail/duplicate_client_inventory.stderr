@@ -1,0 +1,5 @@
+error: `client_inventory` specified twice
+ --> tests/ui/routes_registration/fail/duplicate_client_inventory.rs:8:28
+  |
+8 | #[routes(client_inventory, client_inventory)]
+  |                            ^^^^^^^^^^^^^^^^

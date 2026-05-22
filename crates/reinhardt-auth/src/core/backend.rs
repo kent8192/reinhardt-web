@@ -1,3 +1,7 @@
+// This module uses the deprecated User trait for backward compatibility.
+// AuthBackend and CompositeAuthBackend are keyed on User to preserve existing APIs
+// until a full migration to AuthIdentity is complete.
+#![allow(deprecated)]
 use async_trait::async_trait;
 
 use crate::core::user::User;
@@ -30,7 +34,7 @@ use crate::core::user::User;
 ///         let hasher = Argon2Hasher::new();
 ///
 ///         let user = SimpleUser {
-///             id: Uuid::new_v4(),
+///             id: Uuid::now_v7(),
 ///             username: "alice".to_string(),
 ///             email: "alice@example.com".to_string(),
 ///             is_active: true,

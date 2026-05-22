@@ -7,93 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-rc.4...reinhardt-i18n@v0.1.0-rc.5) - 2026-03-07
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-rc.30...reinhardt-i18n@v0.1.0) - 2026-05-22
 
-### Documentation
+Initial stable release of `reinhardt-i18n` as part of the reinhardt-web
+0.1.0 release. Provides locale activation, message catalog loading, and
+plural-aware translation for Django-style i18n in Rust.
 
-- add missing doc comments for public API modules and types
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-rc.2...reinhardt-i18n@v0.1.0-rc.3) - 2026-03-05
+### Capabilities at 0.1.0
 
-### Fixed
+- **Locale activation guards** — `TranslationGuard` activates a locale
+  for the current task and restores the prior locale on drop, using
+  `try_borrow_mut` so the destructor cannot panic re-entrantly.
+- **Gettext-compatible PO parser** — Reads PO files with full
+  `msgctxt` continuation-line support, enforces input-size limits, and
+  refuses path traversal in `CatalogLoader::load` so untrusted locale
+  directories cannot escape the catalog root.
+- **Comprehensive plural rules** — Plural-form expressions cover the
+  Unicode CLDR rule families (including the corrected non-plural
+  language set without Hungarian) and validate plural indices to
+  prevent memory exhaustion.
+- **Locale and format validation** — `validate_locale()` is applied
+  uniformly across every entry point, with a length cap; number and
+  format-string handling rejects malformed inputs and special float
+  values rather than panicking.
+- **Optional DI integration** — Activated via the `di` feature, the
+  crate registers translation services with `reinhardt-di` so message
+  loaders can be injected via `Depends<T>`.
 
-- *(release)* move reinhardt-test to optional dep in non-cyclic crates
+### Notable Breaking Changes
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-rc.1...reinhardt-i18n@v0.1.0-rc.2) - 2026-03-04
+`reinhardt-i18n` did not introduce its own framework-wide breaking
+changes in 0.1.0. Workspace-level breaking changes are tracked at the
+[Breaking Changes Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/breaking-changes)
+and summarized in the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
 
-### Fixed
+### Migration Notes
 
-- *(i18n)* remove Hungarian from no-plural language group
+See the workspace-level [Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the full upgrade flow. Crate-specific notes:
 
-### Maintenance
-
-- *(testing)* add insta snapshot testing dependency across all crates
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-alpha.5...reinhardt-i18n@v0.1.0-rc.1) - 2026-02-21
-
-### Fixed
-
-- handle special float values and add format string limit
-- add input size limits to PO file parser
-- add length limit to validate_locale()
-- use try_borrow_mut in TranslationGuard::drop to prevent reentrant panic
-- add comprehensive plural rules and fix negative number formatting
-- replace mem::forget with proper guard handling (#713)
-- prevent path traversal in CatalogLoader::load (#714)
-- add plural index validation to prevent memory exhaustion
-- add path traversal prevention with input validation
-- roll back unpublished crate versions after partial release failure
-- roll back unpublished crate versions and enable release_always
-- revert unpublished crate versions to pre-release state
-
-### Security
-
-- apply validate_locale uniformly across all entry points
-
-### Changed
-
-- remove 8 unused dependencies from Cargo.toml
-
-### Styling
-
-- apply rustfmt to pre-existing formatting violations in 16 files
-
-### Reverted
-
-- undo PR #219 version bumps for unpublished crates
-- undo release PR #215 version bumps
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-alpha.4...reinhardt-i18n@v0.1.0-alpha.5) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-di, reinhardt-di
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-alpha.3...reinhardt-i18n@v0.1.0-alpha.4) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-di, reinhardt-di, reinhardt-test
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-alpha.2...reinhardt-i18n@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.2] - 2026-01-23
-
-### Changed
-
-- Re-publish with correct repository URL (reinhardt-web)
-
-## [0.1.0-alpha.1] - 2026-01-23 [YANKED]
-
-### Added
-
-- Initial crates.io release
-
+- DI integration moved to `Depends<T>` ([#3628](https://github.com/kent8192/reinhardt-web/discussions/3628));
+  update injection sites from `Arc<T>` accordingly.
+- Eight previously unused dependencies were dropped from `Cargo.toml`;
+  if you transitively depended on them through this crate, declare
+  them directly.

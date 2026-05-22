@@ -3,14 +3,15 @@
 //! The `AdminSite` is the central registry for all admin models and provides
 //! routing, authentication, and rendering functionality.
 
-use crate::core::{AdminRouter, ModelAdmin};
+use crate::core::ModelAdmin;
+use crate::core::model_admin::AdminUser;
+use crate::server::admin_auth::{AdminLoginAuthenticator, AdminUserLoader};
 use crate::types::{AdminError, AdminResult};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use parking_lot::RwLock;
-use reinhardt_db::orm::DatabaseConnection;
-use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
-use reinhardt_urls::routers::ServerRouter;
+use reinhardt_core::macros::injectable;
+use reinhardt_di::{DiResult, Injectable, InjectionContext};
 use std::sync::Arc;
 
 /// The main admin site that manages all registered models
@@ -23,6 +24,7 @@ use std::sync::Arc;
 /// let admin = AdminSite::new("My Application");
 /// assert_eq!(admin.name(), "My Application");
 /// ```
+#[injectable(scope = Singleton, prebuilt = true)]
 #[derive(Clone)]
 pub struct AdminSite {
 	/// Site name displayed in the admin interface
@@ -39,6 +41,25 @@ pub struct AdminSite {
 
 	/// Favicon data (PNG, ICO, etc.)
 	favicon_data: Arc<RwLock<Option<Vec<u8>>>>,
+
+	/// Type-erased user loader for admin authentication.
+	///
+	/// When `None`, [`AdminDefaultUser`] is used as a fallback.
+	///
+	/// [`AdminDefaultUser`]: crate::server::user::AdminDefaultUser
+	user_loader: Option<Arc<AdminUserLoader>>,
+
+	/// Type-erased login authenticator for admin login.
+	///
+	/// When `None`, [`AdminDefaultUser`] is used as a fallback.
+	///
+	/// [`AdminDefaultUser`]: crate::server::user::AdminDefaultUser
+	login_authenticator: Option<Arc<AdminLoginAuthenticator>>,
+
+	/// JWT secret for token generation during admin login.
+	///
+	/// When `None`, admin login is disabled.
+	jwt_secret: Option<Vec<u8>>,
 }
 
 /// Configuration for the admin site
@@ -93,6 +114,9 @@ impl AdminSite {
 			registry: Arc::new(DashMap::new()),
 			config: Arc::new(RwLock::new(AdminSiteConfig::default())),
 			favicon_data: Arc::new(RwLock::new(None)),
+			user_loader: None,
+			login_authenticator: None,
+			jwt_secret: None,
 		}
 	}
 
@@ -179,6 +203,85 @@ impl AdminSite {
 		self.config.read().clone()
 	}
 
+	/// Set the user type for admin authentication.
+	///
+	/// This determines which database table and model is used to load the
+	/// authenticated user in admin server functions. The type `U` must
+	/// implement `BaseUser`, `AdminUser`, and the ORM trait (`Model`).
+	/// Types annotated with `#[model(...)]` and `#[user(full = true)]`
+	/// satisfy this automatically via the blanket `impl<T: FullUser> AdminUser for T`.
+	/// Simpler user models that only implement `BaseUser` can manually
+	/// implement `AdminUser` to use admin authentication.
+	///
+	/// If this method is not called, [`AdminDefaultUser`] (table `auth_user`)
+	/// is used as the default.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_admin::core::AdminSite;
+	///
+	/// let mut site = AdminSite::new("My Admin");
+	/// site.set_user_type::<MyCustomUser>();
+	/// ```
+	///
+	/// [`AdminDefaultUser`]: crate::server::user::AdminDefaultUser
+	pub fn set_user_type<U>(&mut self) -> &mut Self
+	where
+		U: reinhardt_auth::BaseUser
+			+ AdminUser
+			+ reinhardt_db::orm::Model
+			+ Clone
+			+ Send
+			+ Sync
+			+ 'static,
+		<U as reinhardt_auth::BaseUser>::PrimaryKey: std::str::FromStr + ToString + Send + Sync,
+		<<U as reinhardt_auth::BaseUser>::PrimaryKey as std::str::FromStr>::Err: std::fmt::Debug,
+		<U as reinhardt_db::orm::Model>::PrimaryKey:
+			From<<U as reinhardt_auth::BaseUser>::PrimaryKey>,
+	{
+		self.user_loader = Some(Arc::new(
+			crate::server::admin_auth::create_admin_user_loader::<U>(),
+		));
+		self.login_authenticator = Some(Arc::new(
+			crate::server::admin_auth::create_admin_login_authenticator::<U>(),
+		));
+		self
+	}
+
+	/// Returns the registered user loader, if any.
+	pub(crate) fn user_loader(&self) -> Option<Arc<AdminUserLoader>> {
+		self.user_loader.clone()
+	}
+
+	/// Returns the registered login authenticator, if any.
+	pub(crate) fn login_authenticator(&self) -> Option<Arc<AdminLoginAuthenticator>> {
+		self.login_authenticator.clone()
+	}
+
+	/// Sets the JWT secret used for token generation during admin login.
+	///
+	/// The secret should be at least 32 bytes for adequate security.
+	/// Without this, admin login functionality will be disabled.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// use reinhardt_admin::core::AdminSite;
+	///
+	/// let mut site = AdminSite::new("Admin");
+	/// site.set_jwt_secret(b"my-very-secret-key-at-least-32-bytes!");
+	/// ```
+	pub fn set_jwt_secret(&mut self, secret: &[u8]) -> &mut Self {
+		self.jwt_secret = Some(secret.to_vec());
+		self
+	}
+
+	/// Returns the JWT secret, if configured.
+	pub(crate) fn jwt_secret(&self) -> Option<&[u8]> {
+		self.jwt_secret.as_deref()
+	}
+
 	/// Register a model with the admin site
 	///
 	/// # Examples
@@ -201,23 +304,29 @@ impl AdminSite {
 		admin: impl ModelAdmin + 'static,
 	) -> AdminResult<()> {
 		let model_name = model_name.into();
-		// Use entry API for atomic check-and-insert to avoid TOCTOU race condition
-		match self.registry.entry(model_name) {
-			dashmap::mapref::entry::Entry::Occupied(entry) => Err(AdminError::ValidationError(
-				format!("Model '{}' is already registered", entry.key()),
-			)),
-			dashmap::mapref::entry::Entry::Vacant(entry) => {
-				entry.insert(Arc::new(admin));
-				Ok(())
-			}
+		// Reject case-insensitive duplicates (URLs are lowercased, so "User" and "user"
+		// would collide at /admin/user/).
+		let needle = model_name.to_lowercase();
+		if let Some(existing) = self
+			.registry
+			.iter()
+			.find(|e| e.key().to_lowercase() == needle)
+		{
+			return Err(AdminError::ValidationError(format!(
+				"Model '{}' is already registered (as '{}')",
+				model_name,
+				existing.key()
+			)));
 		}
+		self.registry.insert(model_name, Arc::new(admin));
+		Ok(())
 	}
 
 	/// Unregister a model from the admin site
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
@@ -225,9 +334,14 @@ impl AdminSite {
 	/// admin.unregister("User");
 	/// ```
 	pub fn unregister(&self, model_name: &str) -> AdminResult<()> {
-		self.registry
-			.remove(model_name)
+		let needle = model_name.to_lowercase();
+		let key = self
+			.registry
+			.iter()
+			.find(|entry| entry.key().to_lowercase() == needle)
+			.map(|entry| entry.key().clone())
 			.ok_or_else(|| AdminError::ModelNotRegistered(model_name.into()))?;
+		self.registry.remove(&key);
 		Ok(())
 	}
 
@@ -242,14 +356,17 @@ impl AdminSite {
 	/// assert!(!admin.is_registered("User"));
 	/// ```
 	pub fn is_registered(&self, model_name: &str) -> bool {
-		self.registry.contains_key(model_name)
+		let needle = model_name.to_lowercase();
+		self.registry
+			.iter()
+			.any(|entry| entry.key().to_lowercase() == needle)
 	}
 
 	/// Get the admin for a specific model
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
@@ -257,8 +374,10 @@ impl AdminSite {
 	/// let user_admin = admin.get_model_admin("User").unwrap();
 	/// ```
 	pub fn get_model_admin(&self, model_name: &str) -> AdminResult<Arc<dyn ModelAdmin>> {
+		let needle = model_name.to_lowercase();
 		self.registry
-			.get(model_name)
+			.iter()
+			.find(|entry| entry.key().to_lowercase() == needle)
 			.map(|entry| Arc::clone(entry.value()))
 			.ok_or_else(|| AdminError::ModelNotRegistered(model_name.into()))
 	}
@@ -308,120 +427,25 @@ impl AdminSite {
 	pub fn clear(&self) {
 		self.registry.clear();
 	}
-
-	/// Build a ServerRouter from this admin site
-	///
-	/// Creates HTTP endpoints for all registered models including:
-	/// - `GET /` - Dashboard (list of registered models)
-	/// - `GET /favicon.ico` - Favicon
-	/// - `GET /{model}/` - List model instances
-	/// - `GET /{model}/{id}/` - Get model instance detail
-	/// - `POST /{model}/` - Create model instance
-	/// - `PUT /{model}/{id}/` - Update model instance
-	/// - `DELETE /{model}/{id}/` - Delete model instance
-	/// - `POST /{model}/bulk-delete/` - Bulk delete model instances
-	/// - `GET /{model}/export/` - Export model data
-	/// - `POST /{model}/import/` - Import model data
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_admin::core::{AdminSite, ModelAdminConfig};
-	/// use reinhardt_db::orm::DatabaseConnection;
-	///
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let admin = AdminSite::new("My Admin");
-	/// admin.register("User", ModelAdminConfig::new("User"))?;
-	///
-	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
-	/// let router = admin.get_urls(conn);
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub fn get_urls(self, _db: DatabaseConnection) -> ServerRouter {
-		let url_prefix = self.url_prefix.clone();
-		crate::core::router::admin_routes().with_prefix(&url_prefix)
-	}
-
-	/// Get an AdminRouter for more control over route building
-	///
-	/// Use this when you need to customize the router before building,
-	/// such as setting a custom favicon.
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_admin::core::{AdminSite, ModelAdminConfig};
-	/// use reinhardt_db::orm::DatabaseConnection;
-	///
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let admin = AdminSite::new("My Admin");
-	/// admin.register("User", ModelAdminConfig::new("User"))?;
-	///
-	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
-	/// let router = admin.get_router(conn)
-	///     .with_favicon_file("branding/logo.png")?
-	///     .build();
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub fn get_router(self, _db: DatabaseConnection) -> AdminRouter {
-		AdminRouter::from_arc(Arc::new(self))
-	}
-
-	/// Configure dependency injection container for admin panel
-	///
-	/// Registers AdminSite, AdminDatabase, and optional favicon data
-	/// as singletons in the DI container. This allows handlers to use
-	/// `#[inject]` to automatically receive these dependencies.
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_admin::core::{AdminSite, AdminDatabase};
-	/// use reinhardt_di::SingletonScope;
-	/// use reinhardt_db::orm::DatabaseConnection;
-	/// use std::sync::Arc;
-	///
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let admin_site = Arc::new(AdminSite::new("My Admin"));
-	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
-	/// let admin_db = AdminDatabase::new(conn);
-	///
-	/// let singleton = Arc::new(SingletonScope::new());
-	/// AdminSite::configure_di(&singleton, Arc::clone(&admin_site), admin_db, None);
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub fn configure_di(
-		singleton: &SingletonScope,
-		site: Arc<AdminSite>,
-		db: crate::core::AdminDatabase,
-		favicon_data: Option<Vec<u8>>,
-	) {
-		// Set favicon data on AdminSite if provided
-		if let Some(data) = favicon_data {
-			site.set_favicon(data);
-		}
-
-		// Register AdminSite as singleton
-		singleton.set(site);
-
-		// Register AdminDatabase as singleton
-		singleton.set(Arc::new(db));
-	}
 }
 
 /// Injectable trait implementation for AdminSite
 ///
-/// This allows AdminSite to be injected via the DI container.
-/// The implementation resolves `Arc<AdminSite>` from the container
-/// and clones the inner value.
+/// Resolves `AdminSite` directly from the singleton scope.
+/// The `AdminSite` must be registered via `admin_routes_with_di()` which
+/// returns a `DiRegistrationList` to be attached to the router.
 #[async_trait]
 impl Injectable for AdminSite {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		// Resolve Arc<AdminSite> from the container and clone it
-		ctx.resolve::<Self>().await.map(|arc| (*arc).clone())
+		ctx.get_singleton::<Self>()
+			.map(|arc| (*arc).clone())
+			.ok_or_else(|| reinhardt_di::DiError::NotRegistered {
+				type_name: "AdminSite".into(),
+				hint: "AdminSite must be registered as a singleton. \
+				       Use admin_routes_with_di(site) and attach the returned \
+				       DiRegistrationList via .with_di_registrations() on UnifiedRouter."
+					.into(),
+			})
 	}
 }
 
@@ -429,6 +453,7 @@ impl Injectable for AdminSite {
 mod tests {
 	use super::*;
 	use crate::core::ModelAdminConfig;
+	use reinhardt_di::SingletonScope;
 	use rstest::rstest;
 
 	#[rstest]
@@ -559,5 +584,151 @@ mod tests {
 		assert_eq!(config.list_per_page, 100);
 		assert!(config.enable_search);
 		assert!(config.enable_filters);
+	}
+
+	#[rstest]
+	fn test_set_arc_stores_admin_site_with_correct_type_id() {
+		// Arrange
+		let singleton = SingletonScope::new();
+		let site = Arc::new(AdminSite::new("Test Admin"));
+
+		// Act - use set_arc which stores with TypeId::of::<AdminSite>()
+		singleton.set_arc(site);
+
+		// Assert - should be retrievable as AdminSite (not Arc<AdminSite>)
+		assert!(
+			singleton.get::<AdminSite>().is_some(),
+			"AdminSite should be retrievable via get::<AdminSite>()"
+		);
+	}
+
+	#[rstest]
+	fn test_set_arc_preserves_favicon_data() {
+		// Arrange
+		let singleton = SingletonScope::new();
+		let site = Arc::new(AdminSite::new("Test Admin"));
+		let favicon = vec![0x89, 0x50, 0x4E, 0x47]; // PNG magic bytes
+
+		// Act
+		site.set_favicon(favicon.clone());
+		singleton.set_arc(site);
+
+		// Assert
+		let retrieved = singleton.get::<AdminSite>().unwrap();
+		assert_eq!(retrieved.favicon_data(), Some(favicon));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_admin_site_inject_resolves_from_singleton() {
+		// Arrange
+		let singleton = Arc::new(SingletonScope::new());
+		let site = Arc::new(AdminSite::new("Injectable Admin"));
+		singleton.set_arc(site);
+		let ctx = reinhardt_di::InjectionContext::builder(singleton).build();
+
+		// Act
+		let result = AdminSite::inject(&ctx).await;
+
+		// Assert
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap().name(), "Injectable Admin");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_admin_site_inject_returns_error_when_not_registered() {
+		// Arrange
+		let singleton = Arc::new(SingletonScope::new());
+		let ctx = reinhardt_di::InjectionContext::builder(singleton).build();
+
+		// Act
+		let result = AdminSite::inject(&ctx).await;
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.err().unwrap();
+		assert!(
+			err.to_string().contains("AdminSite"),
+			"Error should mention AdminSite, got: {}",
+			err
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_admin_site_inject_error_hint_mentions_routes_with_di() {
+		// Arrange
+		let singleton = Arc::new(SingletonScope::new());
+		let ctx = reinhardt_di::InjectionContext::builder(singleton).build();
+
+		// Act
+		let result = AdminSite::inject(&ctx).await;
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.err().unwrap();
+		assert!(
+			err.to_string().contains("admin_routes_with_di"),
+			"Error hint should mention admin_routes_with_di, got: {}",
+			err
+		);
+	}
+
+	// ---- Case-insensitive registry tests (Fixes #3353) ----
+
+	#[rstest]
+	fn test_get_model_admin_case_insensitive() {
+		let admin = AdminSite::new("Admin");
+		admin
+			.register("User", ModelAdminConfig::new("User"))
+			.unwrap();
+
+		assert!(admin.get_model_admin("User").is_ok());
+		assert!(admin.get_model_admin("user").is_ok());
+		assert!(admin.get_model_admin("USER").is_ok());
+		assert!(admin.get_model_admin("uSeR").is_ok());
+		assert!(admin.get_model_admin("nonexistent").is_err());
+	}
+
+	#[rstest]
+	fn test_is_registered_case_insensitive() {
+		let admin = AdminSite::new("Admin");
+		admin
+			.register("User", ModelAdminConfig::new("User"))
+			.unwrap();
+
+		assert!(admin.is_registered("User"));
+		assert!(admin.is_registered("user"));
+		assert!(admin.is_registered("USER"));
+		assert!(!admin.is_registered("Post"));
+	}
+
+	#[rstest]
+	fn test_register_rejects_case_insensitive_duplicate() {
+		let admin = AdminSite::new("Admin");
+		admin
+			.register("User", ModelAdminConfig::new("User"))
+			.unwrap();
+
+		let result = admin.register("user", ModelAdminConfig::new("user"));
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("already registered")
+		);
+	}
+
+	#[rstest]
+	fn test_unregister_case_insensitive() {
+		let admin = AdminSite::new("Admin");
+		admin
+			.register("User", ModelAdminConfig::new("User"))
+			.unwrap();
+
+		admin.unregister("user").unwrap();
+		assert!(!admin.is_registered("User"));
 	}
 }

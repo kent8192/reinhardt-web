@@ -1,17 +1,23 @@
 [package]
 name = "examples-tutorial-basis"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 edition = "2024"
 publish = false
 description = "Reinhardt basis tutorial example - Polling application with Pages"
-default-run = "examples-tutorial-basis"
+default-run = "manage"
 
 [lib]
 crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 
+# The `manage` binary uses tokio / reinhardt::commands / async fn main(), none
+# of which compile for `wasm32-unknown-unknown`. Gate it behind the
+# `with-reinhardt` feature (native-only via the default-features chain) so
+# `wasm-pack test`, which invokes `cargo build --tests --target wasm32-...`,
+# skips this bin instead of failing to compile it.
 [[bin]]
-name = "examples-tutorial-basis"
+name = "manage"
 path = "src/bin/manage.rs"
+required-features = ["with-reinhardt"]
 
 [dependencies]
 # Common dependencies (both WASM and server)
@@ -19,8 +25,8 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 
 # WASM-specific dependencies
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-reinhardt = { workspace = true, features = ["pages"] }
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+reinhardt = { workspace = true, features = ["pages", "client-router"] }
 wasm-bindgen = "0.2.106"
 wasm-bindgen-futures = "0.4.56"
 web-sys = { version = "0.3.83", features = [
@@ -36,40 +42,47 @@ console_error_panic_hook = "0.1"
 gloo-net = "0.6"
 # WASM-compatible chrono and uuid
 chrono = { version = "0.4", features = ["serde", "wasmbind"] }
-uuid = { version = "1.11.0", features = ["serde", "v4", "js"] }
+uuid = { version = "1.11.0", features = ["serde", "v4", "v7", "js"] }
 
 # Server-specific dependencies
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 reinhardt = { workspace = true, features = [
 	"full",
 	"pages",
 	"conf",
 	"commands",
+	"db-postgres",
 	"db-sqlite",
 	"forms",
 	"client-router",
+	"auth-session",
 ] }
 tokio = { version = "1.48.0", features = ["full"] }
 # Server-specific common dependencies
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.11.0", features = ["serde", "v4"] }
+uuid = { version = "1.11.0", features = ["serde", "v4", "v7"] }
 anyhow = { workspace = true }
 ctor = "0.6.1"
 inventory = "0.3"
 linkme = "0.3"
+tracing = "0.1"
 
 [dev-dependencies]
-reinhardt = { workspace = true, features = [
-    "test",
-] }
+reinhardt = { workspace = true, features = ["test"] }
 rstest = { version = "0.26", default-features = false }
+
+# Native-only dev-dependencies (consumed by `tests/integration.rs`). Kept out
+# of the shared `[dev-dependencies]` block because tokio/sqlx/tempfile and
+# their transitive deps (mio etc.) do not build for `wasm32-unknown-unknown`,
+# which would otherwise break `wasm-pack test`.
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 serial_test = "3.2"
 tokio = { version = "1.48.0", features = ["rt", "macros"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tempfile = "3.15"
 
 # WASM-specific dev-dependencies
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
 wasm-bindgen-test = "0.3.56"
 
 [build-dependencies]
@@ -80,7 +93,33 @@ default = ["with-reinhardt", "client-router"]
 # client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
 client-router = []
 with-reinhardt = []
+# `msw` is forwarded to the facade so `#[server_fn]` generates the
+# `MockableServerFn` markers consumed by `tests/wasm/polls_mock_test.rs`.
+# This feature only resolves once the framework `msw` facade flag ships
+# (tracked in #4287 / PR #4288); until then, leaving it absent makes the
+# typed MSW test target skip cleanly via its `required-features = ["msw"]`.
+msw = []
 
 [[test]]
 name = "integration"
 required-features = ["with-reinhardt"]
+
+# WASM-only test target. The file is `#![cfg(wasm)]`-gated, so it compiles
+# to a no-op on native and only fires under `wasm-pack test`. Declaring it
+# explicitly is necessary because Cargo does not auto-discover test files
+# under `tests/<subdir>/`.
+[[test]]
+name = "polls_mock_test"
+path = "tests/wasm/polls_mock_test.rs"
+required-features = ["msw"]
+
+# Mirror of `polls_mock_test` for the users (authentication) app. Same
+# `msw` feature gate — the typed MSW target compiles only once upstream
+# #4287 / PR #4288 lands and this project flips on the framework facade.
+[[test]]
+name = "users_mock_test"
+path = "tests/wasm/users_mock_test.rs"
+required-features = ["msw"]
+
+[lints]
+workspace = true

@@ -97,6 +97,14 @@ fn test_api_view_macro_fail() {
 	t.compile_fail("tests/ui/api_view/fail/*.rs");
 }
 
+// ===== Routes Registration (#[routes] attribute) =====
+
+#[test]
+fn test_routes_registration_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/routes_registration/fail/*.rs");
+}
+
 // ===== Injectable =====
 
 #[test]
@@ -127,4 +135,62 @@ fn test_app_config_fail() {
 fn test_validate_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/validate/fail/*.rs");
+}
+
+// ===== Hook =====
+
+#[test]
+fn test_hook_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/hook/fail/*.rs");
+}
+
+// ===== Settings =====
+
+#[test]
+fn test_settings_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/settings/fail/*.rs");
+}
+
+// ===== User =====
+
+#[test]
+fn test_user_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/user/pass/*.rs");
+}
+
+#[test]
+fn test_user_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/user/fail/*.rs");
+}
+
+// ===== DTO (Issue #4478) =====
+
+#[test]
+fn test_dto_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/dto/pass/*.rs");
+}
+
+#[test]
+fn test_dto_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/dto/fail/*.rs");
+}
+
+// ===== ViewSet (Issue #4507) =====
+
+#[test]
+fn test_viewset_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/viewset/pass/*.rs");
+}
+
+#[test]
+fn test_viewset_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/viewset/fail/*.rs");
 }

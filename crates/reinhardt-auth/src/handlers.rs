@@ -2,6 +2,9 @@
 //!
 //! Provides ready-to-use handlers for common authentication workflows
 
+// This module uses the deprecated User trait for backward compatibility.
+// Login handler accepts Box<dyn User> to preserve existing authentication APIs.
+#![allow(deprecated)]
 use crate::AuthenticationBackend;
 use crate::User;
 use crate::session::{SESSION_KEY_USER_ID, Session, SessionId, SessionStore};
@@ -43,7 +46,7 @@ pub const SESSION_COOKIE_NAME: &str = "sessionid";
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```ignore
 /// use reinhardt_auth::handlers::LoginHandler;
 /// use reinhardt_auth::session::InMemorySessionStore;
 /// use reinhardt_auth::core::backend::AuthenticationBackend;
@@ -82,6 +85,23 @@ impl<S: SessionStore, A: AuthenticationBackend> LoginHandler<S, A> {
 		}
 	}
 
+	fn extract_session_id(&self, request: &Request) -> Option<SessionId> {
+		request
+			.headers
+			.get(hyper::header::COOKIE)
+			.and_then(|v| v.to_str().ok())
+			.and_then(|cookies| {
+				cookies.split(';').find_map(|cookie| {
+					let mut parts = cookie.trim().splitn(2, '=');
+					if parts.next()? == SESSION_COOKIE_NAME {
+						Some(parts.next()?.to_string())
+					} else {
+						None
+					}
+				})
+			})
+	}
+
 	async fn perform_login(&self, user: Box<dyn User>) -> Result<(SessionId, String)> {
 		let session_id = self.session_store.create_session_id();
 		let mut session = Session::new();
@@ -108,6 +128,11 @@ impl<S: SessionStore + 'static, A: AuthenticationBackend + 'static> Handler for 
 			.ok()
 			.flatten()
 		{
+			// Invalidate old session to prevent session fixation attacks
+			if let Some(old_session_id) = self.extract_session_id(&request) {
+				self.session_store.delete(&old_session_id).await;
+			}
+
 			let (_session_id, cookie_str) = self.perform_login(user).await?;
 
 			Ok(Response::ok()
@@ -165,11 +190,11 @@ impl<S: SessionStore> LogoutHandler<S> {
 	fn extract_session_id(&self, request: &Request) -> Option<SessionId> {
 		request
 			.headers
-			.get("cookie")
+			.get(hyper::header::COOKIE)
 			.and_then(|v| v.to_str().ok())
 			.and_then(|cookies| {
 				cookies.split(';').find_map(|cookie| {
-					let mut parts = cookie.trim().split('=');
+					let mut parts = cookie.trim().splitn(2, '=');
 					if parts.next()? == SESSION_COOKIE_NAME {
 						Some(parts.next()?.to_string())
 					} else {
@@ -243,7 +268,7 @@ mod tests {
 	async fn test_login_handler_success() {
 		let session_store = Arc::new(InMemorySessionStore::new());
 		let test_user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),
 			is_active: true,
@@ -357,7 +382,7 @@ mod tests {
 	async fn test_login_handler_session_contains_user_id() {
 		// Arrange
 		let session_store = Arc::new(InMemorySessionStore::new());
-		let user_id = Uuid::new_v4();
+		let user_id = Uuid::now_v7();
 		let test_user = SimpleUser {
 			id: user_id,
 			username: "session_user".to_string(),
@@ -409,7 +434,7 @@ mod tests {
 		// Arrange
 		let session_store = Arc::new(InMemorySessionStore::new());
 		let test_user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "cookie_user".to_string(),
 			email: "cookie@example.com".to_string(),
 			is_active: true,
@@ -489,7 +514,7 @@ mod tests {
 		// Arrange
 		let session_store = Arc::new(InMemorySessionStore::new());
 		let test_user = SimpleUser {
-			id: Uuid::new_v4(),
+			id: Uuid::now_v7(),
 			username: "body_user".to_string(),
 			email: "body@example.com".to_string(),
 			is_active: true,
@@ -544,5 +569,83 @@ mod tests {
 		let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
 		assert_eq!(body["success"], false);
 		assert_eq!(body["message"], "Invalid credentials");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_login_handler_invalidates_old_session() {
+		// Arrange
+		let session_store = Arc::new(InMemorySessionStore::new());
+		let old_session_id = session_store.create_session_id();
+		let mut old_session = Session::new();
+		old_session.set(SESSION_KEY_USER_ID, serde_json::json!("old_user"));
+		session_store.save(&old_session_id, &old_session).await;
+
+		let test_user = SimpleUser {
+			id: Uuid::now_v7(),
+			username: "new_user".to_string(),
+			email: "new@example.com".to_string(),
+			is_active: true,
+			is_admin: false,
+			is_staff: false,
+			is_superuser: false,
+		};
+		let auth_backend = Arc::new(TestAuthBackend {
+			test_user: Some(test_user),
+		});
+		let handler = LoginHandler::new(session_store.clone(), auth_backend);
+
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			"cookie",
+			format!("{}={}", SESSION_COOKIE_NAME, old_session_id)
+				.parse()
+				.unwrap(),
+		);
+
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/login")
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert - login succeeds
+		assert_eq!(response.status, reinhardt_http::Response::ok().status);
+
+		// Assert - old session is invalidated
+		assert!(
+			session_store.load(&old_session_id).await.is_none(),
+			"Old session must be invalidated on login"
+		);
+
+		// Assert - new session is created with a different ID
+		let cookie_value = response
+			.headers
+			.get("set-cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		let cookie_pair = cookie_value.split(';').next().unwrap();
+		let mut parts = cookie_pair.splitn(2, '=');
+		let cookie_name = parts.next().unwrap();
+		let cookie_val = parts.next().unwrap();
+		assert_eq!(
+			cookie_name, SESSION_COOKIE_NAME,
+			"Expected session cookie name to be {SESSION_COOKIE_NAME}"
+		);
+		let new_session_id: String = cookie_val.to_string();
+		assert_ne!(
+			new_session_id, old_session_id,
+			"New session ID must differ from old session ID"
+		);
+		assert!(
+			session_store.load(&new_session_id).await.is_some(),
+			"New session must exist"
+		);
 	}
 }

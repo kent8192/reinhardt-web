@@ -17,18 +17,42 @@ skip_core_tasks = true
 CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
 
 # ============================================================================
+# Infrastructure (disposable PostgreSQL + Redis containers)
+# ============================================================================
+#
+# These tasks mirror the `infra-up` / `infra-down` / `infra-reset` shape
+# from `reinhardt-cloud/dashboard/Makefile.toml` so the developer
+# experience is uniform across the Reinhardt family. The actual provisioning
+# is delegated to `scripts/infra_up.sh` (Docker required); credentials are
+# parsed from `settings/<profile>.toml`. `runserver` and `dev` chain
+# `migrate` (which itself depends on `infra-up`), so a contributor can
+# bootstrap the full local stack with a single `cargo make runserver`.
+
+[tasks.infra-up]
+description = "Start disposable PostgreSQL + Redis containers (docker run --rm); credentials parsed from settings/<profile>.toml"
+command = "bash"
+args = ["scripts/infra_up.sh"]
+env = { REINHARDT_ENV = "local" }
+
+[tasks.infra-down]
+description = "Stop disposable PostgreSQL + Redis containers (data is wiped)"
+command = "bash"
+args = ["scripts/infra_down.sh"]
+env = { REINHARDT_ENV = "local" }
+
+[tasks.infra-reset]
+description = "Stop and recreate disposable infrastructure (wipes all data)"
+dependencies = ["infra-down", "infra-up"]
+
+# ============================================================================
 # Development Server
 # ============================================================================
 
 [tasks.runserver]
-description = "Start the development server"
+description = "Start the development server (auto-reloads on changes). Forwards extra args, e.g. `cargo make runserver -- -vv` for verbose output. Auto-starts PostgreSQL/Redis via `infra-up` (transitively through `migrate`)."
+dependencies = ["migrate"]
 command = "cargo"
-args = ["run", "runserver"]
-
-[tasks.runserver-watch]
-description = "Start the development server with auto-reload (requires bacon)"
-command = "bacon"
-args = ["runserver"]
+args = ["run", "--bin", "manage", "--", "runserver", "--with-pages", "${@}"]
 
 # ============================================================================
 # Database Migrations
@@ -37,17 +61,13 @@ args = ["runserver"]
 [tasks.makemigrations]
 description = "Create new migrations based on model changes"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "makemigrations"]
-
-[tasks.makemigrations-app]
-description = "Create new migrations for a specific app (usage: cargo make makemigrations-app -- <app_label>)"
-command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "makemigrations", "${@}"]
+args = ["run", "--bin", "manage", "makemigrations"]
 
 [tasks.migrate]
-description = "Apply database migrations"
+description = "Apply database migrations (auto-starts PostgreSQL/Redis via `infra-up`)"
+dependencies = ["infra-up"]
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "migrate"]
+args = ["run", "--bin", "manage", "migrate"]
 
 # ============================================================================
 # Static Files
@@ -56,7 +76,7 @@ args = ["run", "--bin", "examples-tutorial-basis", "migrate"]
 [tasks.collectstatic]
 description = "Collect static files into STATIC_ROOT"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "collectstatic"]
+args = ["run", "--bin", "manage", "collectstatic"]
 
 # ============================================================================
 # Project Management
@@ -65,17 +85,17 @@ args = ["run", "--bin", "examples-tutorial-basis", "collectstatic"]
 [tasks.check]
 description = "Check the project for common issues"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "check"]
+args = ["run", "--bin", "manage", "check"]
 
 [tasks.showurls]
 description = "Display all registered URL patterns"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "showurls"]
+args = ["run", "--bin", "manage", "showurls"]
 
 [tasks.shell]
 description = "Run an interactive Rust shell (REPL)"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "shell"]
+args = ["run", "--bin", "manage", "shell"]
 
 # ============================================================================
 # Testing
@@ -95,11 +115,6 @@ args = ["nextest", "run", "--lib", "--all-features"]
 description = "Run integration tests only"
 command = "cargo"
 args = ["nextest", "run", "--test", "*", "--all-features"]
-
-[tasks.test-watch]
-description = "Run tests with auto-reload (requires bacon)"
-command = "bacon"
-args = ["test"]
 
 # ============================================================================
 # Code Quality
@@ -156,20 +171,25 @@ args = ["clean"]
 # WASM Testing Tasks
 # ============================================================================
 
+# `--no-default-features` is forwarded to the underlying `cargo build --tests
+# --target wasm32-unknown-unknown` so the `with-reinhardt`-gated `manage` bin
+# (native-only, uses tokio / reinhardt::commands / async fn main) is skipped
+# via its `required-features`. Without this flag the wasm test build pulls
+# the bin in and fails to compile.
+#
+# `--features client-router` is also forwarded so that the
+# `#[cfg(feature = "client-router")]`-gated `impl ClientUrlResolver for
+# ResolvedUrls` block emitted by the `#[routes]` macro (see
+# `crates/reinhardt-core/macros/src/routes_registration.rs` around the
+# `ResolvedUrls` definition) stays in scope. Without it, `links.rs` cannot
+# call `resolve_client_url(name, params)` because the trait impl is gated
+# out — `--no-default-features` alone disables the example's default
+# `client-router` feature flag, which is what the macro probes at expansion
+# time in the consumer crate.
 [tasks.wasm-test]
 description = "Run WASM tests in headless Chrome"
 command = "wasm-pack"
-args = ["test", "--headless", "--chrome"]
-
-[tasks.wasm-test-firefox]
-description = "Run WASM tests in headless Firefox"
-command = "wasm-pack"
-args = ["test", "--headless", "--firefox"]
-
-[tasks.wasm-test-debug]
-description = "Run WASM tests with browser (for debugging)"
-command = "wasm-pack"
-args = ["test", "--chrome"]
+args = ["test", "--headless", "--chrome", "--", "--no-default-features", "--features", "client-router"]
 
 [tasks.wasm-compile-dev]
 description = "Compile WASM binary (debug mode)"
@@ -191,11 +211,7 @@ args = [
 [tasks.wasm-build-dev]
 description = "Build WASM in debug mode and collect static files"
 dependencies = ["wasm-bindgen-dev"]
-script = '''
-echo "Running collectstatic..."
-cargo run --bin examples-tutorial-basis collectstatic --no-input
-echo "✓ WASM build and collectstatic completed"
-'''
+script = { file = "scripts/wasm-build-dev.sh" }
 
 [tasks.wasm-compile-release]
 description = "Compile WASM binary (release mode)"
@@ -215,105 +231,42 @@ args = [
 
 [tasks.wasm-finalize-release]
 description = "Optimize WASM with wasm-opt and collect static files"
-script = '''
-# Optimize with wasm-opt if available
-if command -v wasm-opt &> /dev/null; then
-	echo "Running wasm-opt..."
-	WASM_FILE="dist-wasm/examples_tutorial_basis_bg.wasm"
-	wasm-opt -O3 -o "$WASM_FILE.opt" "$WASM_FILE"
-	mv "$WASM_FILE.opt" "$WASM_FILE"
-	echo "✓ WASM optimized"
-else
-	echo "⚠️  wasm-opt not found, skipping optimization"
-fi
-'''
 dependencies = ["wasm-bindgen-release"]
+script = { file = "scripts/wasm-finalize-release.sh" }
 
 [tasks.wasm-build-release]
 description = "Build WASM in release mode with optimization and collect static files"
 dependencies = ["wasm-finalize-release"]
-script = '''
-echo "Running collectstatic..."
-cargo run --bin examples-tutorial-basis collectstatic --no-input
-echo "✓ WASM release build and collectstatic completed"
-'''
+script = { file = "scripts/wasm-build-release.sh" }
 
-[tasks.wasm-clean]
-description = "Clean WASM build artifacts"
-script = '''
-rm -rf dist dist-wasm
-echo "✓ Cleaned WASM artifacts"
-'''
+# `wasm-clean` was removed — `clean-cache` (below) already removes the
+# same `dist/` + `dist-wasm/` directories and additionally drops the Rust
+# incremental cache that drives the next `cargo build`, so the WASM-only
+# variant became redundant.
 
 [tasks.clean-cache]
 description = "Clean WASM artifacts and Rust incremental build cache"
-script = '''
-echo "🧹 Cleaning build cache..."
-
-# WASM artifacts
-if [ -d "dist-wasm" ]; then
-	rm -rf dist-wasm
-	echo "  ✓ Removed dist-wasm/"
-fi
-
-if [ -d "dist" ]; then
-	rm -rf dist
-	echo "  ✓ Removed dist/"
-fi
-
-# Rust incremental build cache
-if [ -d "target/debug/incremental" ]; then
-	rm -rf target/debug/incremental
-	echo "  ✓ Removed target/debug/incremental/"
-fi
-
-# WASM target build cache
-if [ -d "target/wasm32-unknown-unknown" ]; then
-	rm -rf target/wasm32-unknown-unknown
-	echo "  ✓ Removed target/wasm32-unknown-unknown/"
-fi
-
-echo "✨ Build cache cleaned"
-'''
+script = { file = "scripts/clean-cache.sh" }
 
 # ============================================================================
 # Development Workflow
 # ============================================================================
 
 [tasks.dev]
-description = "Build WASM and start development server with frontend"
-dependencies = ["clean-cache", "wasm-build-dev", "run-dev-server"]
+description = "Build WASM and start development server with frontend (auto-starts PostgreSQL/Redis via `migrate` → `infra-up`)"
+dependencies = ["wasm-build-dev", "migrate", "run-dev-server"]
 
 [tasks.run-dev-server]
 description = "Start development server with frontend (MUST run from project directory)"
-script = '''
-#!/bin/bash
-CURRENT_DIR=$(basename "$PWD")
-if [ "$CURRENT_DIR" != "examples-tutorial-basis" ]; then
-	echo "Error: This command must be run from examples/examples-tutorial-basis directory"
-	echo "Current directory: $PWD"
-	echo "Please run: cd examples/examples-tutorial-basis && cargo make dev"
-	exit 1
-fi
-
-echo "🚀 Starting development server with WASM frontend..."
-cargo run --bin examples-tutorial-basis -- runserver --with-pages --noreload
-'''
-
-[tasks.dev-watch]
-description = "Start development with auto-reload"
-dependencies = ["build", "runserver-watch"]
+script = { file = "scripts/run-dev-server.sh" }
 
 [tasks.dev-release]
-description = "Build optimized WASM and start server"
-dependencies = ["clean-cache", "wasm-build-release", "collectstatic", "run-dev-release-server"]
+description = "Build optimized WASM and start server (auto-starts PostgreSQL/Redis via `migrate` → `infra-up`)"
+dependencies = ["wasm-build-release", "collectstatic", "migrate", "run-dev-release-server"]
 
 [tasks.run-dev-release-server]
-script = '''
-#!/bin/bash
-echo "🚀 Starting server with optimized WASM frontend..."
-cargo run --release --bin examples-tutorial-basis -- runserver --with-pages --noreload
-'''
+description = "Start release-mode dev server against the optimised WASM bundle produced by `wasm-build-release`"
+script = { file = "scripts/run-dev-release-server.sh" }
 
 # ============================================================================
 # CI/CD Workflow
@@ -322,22 +275,3 @@ cargo run --release --bin examples-tutorial-basis -- runserver --with-pages --no
 [tasks.ci]
 description = "Run CI pipeline (format, lint, build, test)"
 dependencies = ["fmt-check", "clippy-check", "build", "test"]
-
-# ============================================================================
-# Verbosity Control
-# ============================================================================
-
-[tasks.runserver-v]
-description = "Start the development server with verbose output"
-command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "runserver", "-v"]
-
-[tasks.runserver-vv]
-description = "Start the development server with very verbose output"
-command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "runserver", "-vv"]
-
-[tasks.runserver-vvv]
-description = "Start the development server with maximum verbosity"
-command = "cargo"
-args = ["run", "--bin", "examples-tutorial-basis", "runserver", "-vvv"]

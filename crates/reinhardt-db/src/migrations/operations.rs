@@ -53,7 +53,7 @@ pub use special::{RunCode, RunSQL, StateOperation};
 // Legacy types for backward compatibility
 // These are maintained from the original operations.rs
 use super::{FieldState, FieldType, ModelState, ProjectState};
-use pg_escape::quote_identifier;
+use pg_escape::{quote_identifier, quote_literal};
 use reinhardt_query::prelude::{
 	Alias, AlterTableStatement, ColumnDef, CreateIndexStatement, CreateTableStatement,
 	DropIndexStatement, DropTableStatement, Query, SimpleExpr, Value,
@@ -1113,6 +1113,51 @@ pub enum Operation {
 		#[serde(default)]
 		options: BulkLoadOptions,
 	},
+	/// Reset the auto-increment counter for a table
+	///
+	/// Sets the next value produced by the table's auto-increment mechanism.
+	/// Typical uses include seeding IDs after a bulk import or shifting the
+	/// sequence above a range reserved for historical data.
+	///
+	/// # Backend Behavior
+	///
+	/// - **PostgreSQL / CockroachDB**: `SELECT setval(pg_get_serial_sequence('{table}', '{column}'), {value}, false)`
+	///   (resolves the sequence dynamically so both default `SERIAL` conventions
+	///   and user-defined sequence names work; `false` makes the NEXT generated
+	///   value equal `{value}`).
+	/// - **MySQL**: `ALTER TABLE {table} AUTO_INCREMENT = {value}`.
+	/// - **SQLite**: `INSERT OR REPLACE INTO sqlite_sequence(name, seq) VALUES (...)`
+	///   (robust against tables that have not yet inserted any rows, where a
+	///   simple `UPDATE` would silently no-op).
+	SetAutoIncrementValue {
+		/// The table whose auto-increment counter should be set.
+		table: String,
+		/// The auto-increment column (used to resolve the backing sequence
+		/// on PostgreSQL / CockroachDB).
+		column: String,
+		/// The next value the counter should produce.
+		value: i64,
+	},
+	/// Create a composite (multi-column) PRIMARY KEY constraint on an existing table
+	///
+	/// Emits `ALTER TABLE {table} ADD CONSTRAINT {name} PRIMARY KEY ({cols})`
+	/// on every supported backend. When `constraint_name` is `None` the name
+	/// defaults to `{table}_pkey`, matching PostgreSQL's conventional
+	/// auto-generated identifier.
+	///
+	/// `columns` must be non-empty; emitting an empty column list would
+	/// produce invalid SQL and is rejected as an `InvalidMigration` error at
+	/// SQL generation time.
+	CreateCompositePrimaryKey {
+		/// The table to add the composite primary key to.
+		table: String,
+		/// The ordered list of columns participating in the primary key.
+		columns: Vec<String>,
+		/// Optional explicit constraint name. Defaults to `{table}_pkey`
+		/// when `None`.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		constraint_name: Option<String>,
+	},
 }
 
 /// Default value provider for serde (returns true)
@@ -1232,7 +1277,12 @@ impl Operation {
 			| Operation::RunRust { .. }
 			| Operation::AlterTableComment { .. }
 			| Operation::AlterUniqueTogether { .. }
-			| Operation::AlterModelOptions { .. } => {}
+			| Operation::AlterModelOptions { .. }
+			| Operation::SetAutoIncrementValue { .. }
+			| Operation::CreateCompositePrimaryKey { .. } => {
+				// Counter/constraint-level ops do not affect ProjectState
+				// (they track model-level structure only).
+			}
 			Operation::MoveModel {
 				model_name,
 				from_app,
@@ -1318,7 +1368,20 @@ impl Operation {
 					parts.push("AUTO_INCREMENT".to_string().into());
 				}
 				SqlDialect::Sqlite => {
-					parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+					// SQLite requires the literal token `INTEGER` (not `BIGINT`/`SMALLINT`)
+					// for AUTOINCREMENT columns. Widen any integer width to `INTEGER`
+					// because SQLite's storage classes do not distinguish integer widths.
+					match &col.type_definition {
+						FieldType::BigInteger | FieldType::Integer | FieldType::SmallInteger => {
+							parts.push("INTEGER".to_string().into());
+						}
+						_ => {
+							// Non-integer auto_increment is invalid for SQLite; emit the
+							// original type and let SQLite surface the error rather than
+							// silently mis-emitting.
+							parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+						}
+					}
 					// For SQLite, if part of composite PK, we don't add AUTOINCREMENT here
 					// It will be handled by the table-level PRIMARY KEY constraint
 				}
@@ -1387,11 +1450,35 @@ impl Operation {
 					parts.push("AUTO_INCREMENT".to_string().into());
 				}
 				SqlDialect::Sqlite => {
-					parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
-					// SQLite: INTEGER PRIMARY KEY is implicitly AUTOINCREMENT
-					// But we need explicit AUTOINCREMENT keyword for tests
+					// SQLite requires the literal token `INTEGER` (not `BIGINT`/`SMALLINT`)
+					// for AUTOINCREMENT columns. Widen any integer width to `INTEGER`
+					// because SQLite's storage classes do not distinguish integer widths,
+					// and `BIGINT PRIMARY KEY AUTOINCREMENT` is rejected at apply time
+					// with: "AUTOINCREMENT is only allowed on an INTEGER PRIMARY KEY".
+					//
+					// For non-integer column types (e.g. `Uuid`), `auto_increment = true`
+					// is meaningless in SQLite — the AUTOINCREMENT keyword would be
+					// rejected. Emit the column type as a plain PRIMARY KEY (no
+					// AUTOINCREMENT). See reinhardt-web#4378.
+					let widened_to_integer = matches!(
+						&col.type_definition,
+						FieldType::BigInteger | FieldType::Integer | FieldType::SmallInteger
+					);
+					if widened_to_integer {
+						parts.push("INTEGER".to_string().into());
+					} else {
+						parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+					}
+					// SQLite: AUTOINCREMENT requires `INTEGER PRIMARY KEY AUTOINCREMENT`.
+					// Note that `INTEGER PRIMARY KEY` alone only enables rowid auto-assignment
+					// (alias for the rowid); the explicit AUTOINCREMENT keyword is required to
+					// guarantee monotonic, non-reused IDs (backed by sqlite_sequence).
 					if col.primary_key {
-						parts.push("PRIMARY KEY AUTOINCREMENT".to_string().into());
+						if widened_to_integer {
+							parts.push("PRIMARY KEY AUTOINCREMENT".to_string().into());
+						} else {
+							parts.push("PRIMARY KEY".to_string().into());
+						}
 						// Return early to avoid duplicate PRIMARY KEY
 						if col.unique {
 							parts.push("UNIQUE".to_string().into());
@@ -1960,7 +2047,140 @@ impl Operation {
 				format,
 				options,
 			} => Self::bulk_load_to_sql(table, source, format, options, dialect),
+			Operation::SetAutoIncrementValue {
+				table,
+				column,
+				value,
+			} => Self::set_auto_increment_to_sql(table, column, *value, dialect),
+			Operation::CreateCompositePrimaryKey {
+				table,
+				columns,
+				constraint_name,
+			} => Self::create_composite_pk_to_sql(table, columns, constraint_name.as_deref()),
 		}
+	}
+
+	/// Generate `SetAutoIncrementValue` SQL for each dialect
+	///
+	/// PostgreSQL / CockroachDB resolve the backing sequence via
+	/// `pg_get_serial_sequence(...)` so that both the default
+	/// `{table}_{column}_seq` naming and user-customized sequences work without
+	/// the caller having to know the sequence name.
+	fn set_auto_increment_to_sql(
+		table: &str,
+		column: &str,
+		value: i64,
+		dialect: &SqlDialect,
+	) -> String {
+		match dialect {
+			SqlDialect::Postgres | SqlDialect::Cockroachdb => {
+				// pg_get_serial_sequence takes a regclass literal for the table
+				// and a text literal for the column. `setval(..., value, false)`
+				// makes the NEXT generated value equal `value`, matching the
+				// intent of "set the auto-increment to <value>".
+				format!(
+					"SELECT setval(pg_get_serial_sequence({}, {}), {}, false);",
+					quote_literal(table),
+					quote_literal(column),
+					value
+				)
+			}
+			SqlDialect::Mysql => {
+				format!(
+					"ALTER TABLE {} AUTO_INCREMENT = {};",
+					quote_identifier(table),
+					value
+				)
+			}
+			SqlDialect::Sqlite => {
+				// INSERT OR REPLACE so the statement works whether or not a
+				// sqlite_sequence row already exists for the table. UPDATE
+				// would silently no-op on fresh tables that have never had
+				// a row inserted.
+				format!(
+					"INSERT OR REPLACE INTO sqlite_sequence(name, seq) VALUES ({}, {});",
+					quote_literal(table),
+					value
+				)
+			}
+		}
+	}
+
+	/// Generate `CreateCompositePrimaryKey` SQL
+	///
+	/// Produces `ALTER TABLE ... ADD CONSTRAINT ... PRIMARY KEY (...)` for
+	/// every supported backend. Emits guaranteed-fail SQL if the column list
+	/// is empty so the migration aborts at execution time instead of silently
+	/// succeeding.
+	///
+	/// Workaround for the shared infallible `String` return type used by every
+	/// `to_sql` arm. Converting the entire pipeline to `Result` would cascade
+	/// through dozens of call sites, so this arm instead emits a deliberately
+	/// invalid SQL statement (a bare identifier) that every supported backend's
+	/// parser rejects before execution. This replaces the earlier `SELECT 1/0`
+	/// fallback, which silently returned `NULL` on SQLite and lax-mode MySQL
+	/// (reinhardt-web#4325). The identifier text encodes the diagnostic so it
+	/// surfaces in the parser error message.
+	///
+	/// The long-term fix — migrating the `to_sql` family to `Result` and
+	/// returning a structured `MigrationError::EmptyCompositePrimaryKey` — is
+	/// shown in the ideal implementation below.
+	///
+	/// Remove this workaround once the `to_sql` family is migrated to a
+	/// fallible signature.
+	///
+	/// Ideal implementation (without workaround):
+	///   fn create_composite_pk_to_sql(
+	///       table: &str,
+	///       columns: &[String],
+	///       constraint_name: Option<&str>,
+	///   ) -> Result<String, MigrationError> {
+	///       if columns.is_empty() {
+	///           return Err(MigrationError::EmptyCompositePrimaryKey {
+	///               table: table.to_owned(),
+	///           });
+	///       }
+	///       // ... build the ALTER TABLE statement ...
+	///   }
+	fn create_composite_pk_to_sql(
+		table: &str,
+		columns: &[String],
+		constraint_name: Option<&str>,
+	) -> String {
+		if columns.is_empty() {
+			// Deliberately invalid SQL: a bare identifier is not a valid
+			// statement in PostgreSQL, MySQL, or SQLite grammar, so every
+			// backend's parser rejects it before execution. This avoids the
+			// lax-mode MySQL / SQLite silent-pass that the previous
+			// `SELECT 1/0` fallback was prone to (reinhardt-web#4325). The
+			// identifier text preserves the diagnostic in the parser error.
+			return format!(
+				"SYNTAX_ERROR_create_composite_pk_on_{}_requires_at_least_one_column;",
+				table.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+			);
+		}
+
+		let default_name;
+		let name: &str = match constraint_name {
+			Some(n) => n,
+			None => {
+				default_name = format!("{}_pkey", table);
+				&default_name
+			}
+		};
+
+		let quoted_columns = columns
+			.iter()
+			.map(|c| quote_identifier(c).to_string())
+			.collect::<Vec<_>>()
+			.join(", ");
+
+		format!(
+			"ALTER TABLE {} ADD CONSTRAINT {} PRIMARY KEY ({});",
+			quote_identifier(table),
+			quote_identifier(name),
+			quoted_columns
+		)
 	}
 
 	/// Generate bulk load SQL for different dialects
@@ -2168,10 +2388,13 @@ impl Operation {
 		project_state: &ProjectState,
 	) -> super::Result<Option<String>> {
 		match self {
-			Operation::CreateTable { name, .. } => Ok(Some(format!("DROP TABLE {};", name))),
+			Operation::CreateTable { name, .. } => {
+				Ok(Some(format!("DROP TABLE {};", quote_identifier(name))))
+			}
 			Operation::AddColumn { table, column, .. } => Ok(Some(format!(
 				"ALTER TABLE {} DROP COLUMN {};",
-				table, column.name
+				quote_identifier(table),
+				quote_identifier(&column.name)
 			))),
 			Operation::RunSQL { reverse_sql, .. } => {
 				Ok(reverse_sql.as_ref().map(|s| s.to_string()))
@@ -2185,7 +2408,8 @@ impl Operation {
 			// Phase 1: Simple reverse operations
 			Operation::RenameTable { old_name, new_name } => Ok(Some(format!(
 				"ALTER TABLE {} RENAME TO {};",
-				new_name, old_name
+				quote_identifier(new_name),
+				quote_identifier(old_name)
 			))),
 			Operation::RenameColumn {
 				table,
@@ -2193,14 +2417,28 @@ impl Operation {
 				new_name,
 			} => Ok(Some(format!(
 				"ALTER TABLE {} RENAME COLUMN {} TO {};",
-				table, new_name, old_name
+				quote_identifier(table),
+				quote_identifier(new_name),
+				quote_identifier(old_name)
 			))),
 			Operation::CreateIndex { table, columns, .. } => {
 				// Use the same naming convention as to_sql(): idx_{table}_{columns_joined}
 				// This ensures the rollback DROP INDEX targets the correct index name
 				let columns_joined = columns.join("_");
 				let index_name = format!("idx_{}_{}", table, columns_joined);
-				Ok(Some(format!("DROP INDEX {};", index_name)))
+				// MySQL requires `DROP INDEX <name> ON <table>`; PostgreSQL/SQLite/CockroachDB
+				// only need the index name. Mirror the dialect dispatch used by the forward
+				// `Operation::DropIndex` SQL generator above.
+				Ok(Some(match dialect {
+					SqlDialect::Mysql => format!(
+						"DROP INDEX {} ON {};",
+						quote_identifier(&index_name),
+						quote_identifier(table)
+					),
+					SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
+						format!("DROP INDEX {};", quote_identifier(&index_name))
+					}
+				}))
 			}
 			Operation::AddConstraint {
 				table,
@@ -2217,7 +2455,8 @@ impl Operation {
 					})?;
 				Ok(Some(format!(
 					"ALTER TABLE {} DROP CONSTRAINT {};",
-					table, constraint_name
+					quote_identifier(table),
+					quote_identifier(&constraint_name)
 				)))
 			}
 			// Phase 2: Complex reverse operations using ProjectState
@@ -2230,7 +2469,8 @@ impl Operation {
 					let col_sql = Self::column_to_sql(&col_def, dialect);
 					return Ok(Some(format!(
 						"ALTER TABLE {} ADD COLUMN {};",
-						table, col_sql
+						quote_identifier(table),
+						col_sql
 					)));
 				}
 				// Cannot reconstruct without state
@@ -2243,31 +2483,106 @@ impl Operation {
 				new_definition: _,
 				..
 			} => {
-				// Prioritize old_definition if available (accurate rollback)
-				if let Some(old_def) = old_definition {
-					let type_sql = old_def.type_definition.to_sql_for_dialect(dialect);
-					let null_clause = if old_def.not_null { " NOT NULL" } else { "" };
-					return Ok(Some(format!(
-						"ALTER TABLE {} ALTER COLUMN {} TYPE {}{};",
-						table, column, type_sql, null_clause
-					)));
-				}
+				// Resolve the original column definition to revert to.
+				// Prioritize the explicit `old_definition` over ProjectState lookup.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
 
-				// Fallback: Retrieve original column definition from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
-					// Generate ALTER COLUMN to restore original definition
-					let type_sql = col_def.type_definition.to_sql_for_dialect(dialect);
-					let null_clause = if col_def.not_null { " NOT NULL" } else { "" };
-					return Ok(Some(format!(
-						"ALTER TABLE {} ALTER COLUMN {} TYPE {}{};",
-						table, column, type_sql, null_clause
-					)));
-				}
-				// Cannot reconstruct without state
-				Ok(None)
+				let Some(old_def) = resolved_old_def else {
+					// Cannot reconstruct without state
+					return Ok(None);
+				};
+
+				let type_sql = old_def.type_definition.to_sql_for_dialect(dialect);
+				let null_clause = if old_def.not_null { " NOT NULL" } else { "" };
+
+				// Dispatch reverse SQL per dialect.
+				// SQLite is handled via the SQLite-recreation path before reaching
+				// here (see executor::rollback_migration and
+				// `Operation::reverse_requires_sqlite_recreation`). The placeholder
+				// comment below is a defensive fallback: emitting executable
+				// ALTER COLUMN syntax on SQLite would always error (#4582).
+				let sql = match dialect {
+					SqlDialect::Postgres => {
+						// PostgreSQL allows multiple `ALTER COLUMN` clauses to
+						// be combined into a single `ALTER TABLE` statement via
+						// comma separation. Use this form (rather than two
+						// independent statements joined by `\n`) so the payload
+						// remains a single statement and round-trips through
+						// `SchemaEditor::execute()`, which is backed by
+						// `sqlx::query(sql).execute(...)` and uses the Extended
+						// Query protocol that rejects multi-statement payloads.
+						// Fixes #4630.
+						let nullability_clause = if old_def.not_null {
+							"SET NOT NULL"
+						} else {
+							"DROP NOT NULL"
+						};
+						format!(
+							"ALTER TABLE {table} \
+							 ALTER COLUMN {column} TYPE {type_sql}, \
+							 ALTER COLUMN {column} {nullability_clause};",
+							table = quote_identifier(table),
+							column = quote_identifier(column),
+							type_sql = type_sql,
+							nullability_clause = nullability_clause,
+						)
+					}
+					SqlDialect::Cockroachdb => {
+						// CockroachDB does NOT accept a combined `ALTER TABLE
+						// ... ALTER COLUMN c TYPE T, ALTER COLUMN c {SET|DROP}
+						// NOT NULL` in a single statement (it rejects mixing
+						// `ALTER COLUMN ... TYPE` with sibling `ALTER COLUMN`
+						// clauses), and `SchemaEditor::execute()` is a
+						// single-statement dispatcher (sqlx Extended Query),
+						// so the two clauses cannot share a payload either.
+						//
+						// Emit the column-type reversion only; nullability
+						// rollback for CockroachDB is intentionally
+						// best-effort here. The full fix requires returning
+						// `Vec<String>` from `to_reverse_sql` so multiple
+						// single-statement payloads can be dispatched — that
+						// change is tracked separately so this PR can unblock
+						// the rc.30 release without cascading into ~25 call
+						// sites and tests. The stop-gap output shape of this
+						// branch (single statement, `ALTER COLUMN ... TYPE`,
+						// no nullability clause, no comma-combined form) is
+						// pinned by the inline unit test
+						// `test_to_reverse_sql_alter_column_cockroachdb` in
+						// the `#[cfg(test)] mod tests` block of this file,
+						// added under reinhardt-web#4639. An end-to-end
+						// integration test against a live CockroachDB
+						// testcontainer is blocked on reinhardt-web#4642
+						// (`DatabaseMigrationExecutor` calls
+						// `pg_advisory_lock()`, which CockroachDB does not
+						// implement). The full `Vec<String>` API refactor
+						// that restores NOT NULL rollback fidelity is
+						// tracked in reinhardt-web#4640 and targets
+						// `develop/0.2.0`. Refs #4630, #4639, #4640, #4642.
+						format!(
+							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
+							quote_identifier(table),
+							quote_identifier(column),
+							type_sql
+						)
+					}
+					SqlDialect::Mysql => format!(
+						"ALTER TABLE {} MODIFY COLUMN {} {}{};",
+						quote_identifier(table),
+						quote_identifier(column),
+						type_sql,
+						null_clause
+					),
+					SqlDialect::Sqlite => format!(
+						"-- SQLite does not support ALTER COLUMN, table recreation required for {}",
+						quote_identifier(table)
+					),
+				};
+				Ok(Some(sql))
 			}
 			Operation::DropIndex { table, columns } => {
 				// Enhancement opportunity: Full index reconstruction would preserve
@@ -2275,10 +2590,16 @@ impl Operation {
 				// The current implementation generates a basic CREATE INDEX statement.
 				let columns_joined = columns.join("_");
 				let index_name = format!("idx_{}_{}", table, columns_joined);
-				let columns_list = columns.join(", ");
+				let columns_list = columns
+					.iter()
+					.map(|c| quote_identifier(c).to_string())
+					.collect::<Vec<_>>()
+					.join(", ");
 				Ok(Some(format!(
 					"CREATE INDEX {} ON {} ({});",
-					index_name, table, columns_list
+					quote_identifier(&index_name),
+					quote_identifier(table),
+					columns_list
 				)))
 			}
 			Operation::DropConstraint {
@@ -2293,7 +2614,11 @@ impl Operation {
 						.find(|c| c.name == *constraint_name)
 				{
 					let constraint = constraint_def.to_constraint();
-					return Ok(Some(format!("ALTER TABLE {} ADD {};", table, constraint)));
+					return Ok(Some(format!(
+						"ALTER TABLE {} ADD {};",
+						quote_identifier(table),
+						constraint
+					)));
 				}
 				// Cannot reconstruct without state
 				Ok(None)
@@ -2317,7 +2642,7 @@ impl Operation {
 
 					return Ok(Some(format!(
 						"CREATE TABLE {} (\n{}\n);",
-						name,
+						quote_identifier(name),
 						parts.join(",\n")
 					)));
 				}
@@ -2327,7 +2652,7 @@ impl Operation {
 			Operation::BulkLoad { table, .. } => {
 				// Reverse of bulk load is to truncate the table (remove loaded data)
 				// Note: This removes ALL data, not just the data loaded by this operation
-				Ok(Some(format!("TRUNCATE TABLE {};", table)))
+				Ok(Some(format!("TRUNCATE TABLE {};", quote_identifier(table))))
 			}
 			_ => Ok(None),
 		}
@@ -2491,8 +2816,11 @@ impl ColumnDefinition {
 
 	/// Create a ColumnDefinition from FieldState with attribute parsing
 	///
-	/// This method reads field attributes (primary_key, not_null, unique, etc.) from
-	/// the FieldState.params HashMap and properly initializes ColumnDefinition fields.
+	/// Reads boolean attributes (primary_key, unique, auto_increment) and the
+	/// default expression from `FieldState.params`, and derives the NOT NULL
+	/// constraint from `FieldState.nullable` (the single source of truth
+	/// populated by `FieldMetadata::is_nullable()` in
+	/// `ModelMetadata::to_model_state()`).
 	///
 	/// # Arguments
 	///
@@ -2501,7 +2829,8 @@ impl ColumnDefinition {
 	///
 	/// # Notes
 	///
-	/// - If `primary_key` is true, `not_null` is automatically set to true
+	/// - If `primary_key` is true, `not_null` is forced to true regardless of
+	///   `FieldState.nullable` — primary keys cannot accept NULL.
 	/// - Default values are false/None for unspecified attributes
 	pub fn from_field_state(name: impl Into<String>, field_state: &FieldState) -> Self {
 		let name_str = name.into();
@@ -2513,11 +2842,23 @@ impl ColumnDefinition {
 			.and_then(|v| v.parse::<bool>().ok())
 			.unwrap_or(false);
 
-		let not_null = params
-			.get("not_null")
-			.and_then(|v| v.parse::<bool>().ok())
-			.or(if primary_key { Some(true) } else { None })
-			.unwrap_or(false);
+		// Derive `not_null` from FieldState's nullability field (single source
+		// of truth set in `ModelMetadata::to_model_state()` from
+		// `FieldMetadata::is_nullable()`). Primary keys are always NOT NULL
+		// regardless of the nullability flag.
+		//
+		// Fixes #4573: the previous implementation derived `not_null` from a
+		// `params["not_null"]` key, which the `#[model]` proc-macro only
+		// emits conditionally (when its `is_not_null` calculation returns
+		// `true`). The same macro also always emits `params["null"]`, which
+		// `is_nullable()` reads into `field_state.nullable`. Keeping the two
+		// keys as parallel sources of truth for nullability was the root
+		// cause of the drift: any code path that bypassed or mis-routed the
+		// `not_null` emission (e.g., offline state reconstruction, future
+		// macro refactors, or hand-built `FieldState` values in tests) would
+		// produce NULLABLE columns for non-Optional fields. Consolidating on
+		// `field_state.nullable` removes that class of regression.
+		let not_null = !field_state.nullable || primary_key;
 
 		let unique = params
 			.get("unique")
@@ -2531,9 +2872,24 @@ impl ColumnDefinition {
 
 		let default = params.get("default").cloned();
 
+		// Resolve ForeignKey column type from the referenced model's primary
+		// key in the global `ModelRegistry`. This addresses the macro-level
+		// limitation that the target model's PK type is not knowable at
+		// macro-expansion time (see issue #4430). The macro emits a
+		// placeholder `FieldType::Uuid` for `ForeignKeyField<T>` `_id`
+		// columns and tags the field with the `fk_target` parameter; here
+		// we look up the referenced model and adopt its PK column type.
+		//
+		// If the lookup fails (e.g., the target model has not been
+		// registered yet), we fall back to the placeholder field type so
+		// existing behavior is preserved and the caller can surface a
+		// downstream error rather than crash here.
+		let type_definition = resolve_foreign_key_column_type(field_state)
+			.unwrap_or_else(|| field_state.field_type.clone());
+
 		Self {
 			name: name_str,
-			type_definition: field_state.field_type.clone(),
+			type_definition,
 			not_null,
 			unique,
 			primary_key,
@@ -2541,6 +2897,103 @@ impl ColumnDefinition {
 			default,
 		}
 	}
+}
+
+/// Resolve the column type of a `ForeignKeyField<T>` `_id` column by
+/// looking up the target model's primary key in the global
+/// `ModelRegistry`. Returns `None` if `field_state` is not tagged as a
+/// foreign key column or if the target model / its PK cannot be
+/// resolved.
+///
+/// This indirection exists because the `#[model]` macro cannot resolve
+/// the target model's PK type at macro-expansion time (the registry is
+/// populated at process startup via `#[ctor::ctor]`). See issue #4430.
+///
+/// # Lookup Strategy
+///
+/// The resolver coordinates two lookup paths against the
+/// `ModelRegistry`:
+///
+/// 1. **Qualified `(fk_target_app, fk_target)` lookup.** The
+///    `#[model]` macro emits `fk_target_app` for every
+///    `ForeignKeyField<T>` field by reading the target type's *own*
+///    `<T as Model>::app_label()` at registration time. That value is
+///    authoritative — it respects `#[app_label = "..."]` overrides
+///    and matches whatever key the target was registered under,
+///    regardless of how the user spelled the type (bare ident,
+///    `use`-imported ident, absolute path, or crate-relative path).
+///    The qualified lookup is therefore trusted as the primary
+///    resolution path.
+/// 2. **By-name lookup.** Used as a defensive fallback for cases
+///    where `fk_target_app` is absent (e.g. manually-constructed
+///    `FieldState` outside the macro path) or the qualified lookup
+///    misses (e.g. the target model isn't registered yet during
+///    partial registry population at startup). The by-name lookup
+///    returns `Some` only when *exactly one* model is registered
+///    under the name; on ambiguity it returns `None`.
+///
+/// When both paths return `None` and the name is ambiguous across two
+/// or more apps (`ModelRegistry::count_models_by_name > 1`), the
+/// resolver emits a `tracing::warn!` so operators see a targeted
+/// diagnostic. A genuinely missing name returns `None` silently —
+/// that case is normal during partial registry population at startup.
+///
+/// See issue #4436 and PR #4440 review threads on `model_derive.rs`
+/// line 2863 and `operations.rs` line 2836.
+fn resolve_foreign_key_column_type(field_state: &FieldState) -> Option<FieldType> {
+	resolve_foreign_key_column_type_with(field_state, super::model_registry::global_registry())
+}
+
+/// Registry-injected variant of [`resolve_foreign_key_column_type`].
+///
+/// Exists so unit tests can exercise the qualified-hit / by-name
+/// fallback / ambiguous-miss branches against a local
+/// [`super::model_registry::ModelRegistry`] without touching global
+/// state. Production code paths go through
+/// [`resolve_foreign_key_column_type`].
+fn resolve_foreign_key_column_type_with(
+	field_state: &FieldState,
+	registry: &super::model_registry::ModelRegistry,
+) -> Option<FieldType> {
+	let target_model = field_state.params.get("fk_target")?;
+	// `fk_target_app` is sourced from the target type's own
+	// `Model::app_label()` (see `model_derive.rs`), so the qualified
+	// lookup is authoritative. The by-name fallback is defensive: it
+	// covers manually-constructed `FieldState`s and partial-registry
+	// init races where the target isn't registered yet.
+	let target = match field_state.params.get("fk_target_app") {
+		Some(app) => registry
+			.find_model_qualified(app, target_model)
+			.or_else(|| registry.find_model_by_name(target_model)),
+		None => registry.find_model_by_name(target_model),
+	};
+	let target = match target {
+		Some(t) => t,
+		None => {
+			// `find_model_by_name` returns `None` for both "missing"
+			// and "ambiguous". Warn only on ambiguity so operators see
+			// a targeted message; silent on genuinely missing targets
+			// (normal during partial registry population at startup).
+			if registry.count_models_by_name(target_model) > 1 {
+				tracing::warn!(
+					model_name = %target_model,
+					fk_target_app = ?field_state.params.get("fk_target_app"),
+					"FK target name is ambiguous across apps and the qualified \
+					 lookup did not resolve a unique target. Refusing to resolve \
+					 to avoid silent wrong-target resolution. Ensure the FK \
+					 target type is registered and that its `Model::app_label()` \
+					 matches one of the registered apps.",
+				);
+			}
+			return None;
+		}
+	};
+	// Find the primary key field of the target model.
+	let pk_field = target
+		.fields
+		.values()
+		.find(|f| f.params.get("primary_key").map(String::as_str) == Some("true"))?;
+	Some(pk_field.field_type.clone())
 }
 
 /// Convert a field type string (e.g., "reinhardt.orm.models.CharField") to FieldType.
@@ -3028,14 +3481,21 @@ impl Operation {
 			Operation::AlterColumn {
 				table,
 				column,
+				old_definition,
 				new_definition: _,
 				..
 			} => {
-				// Reconstruct AlterColumn with original definition from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
+				// Reconstruct AlterColumn with the original definition. Prefer the
+				// explicit `old_definition` carried by the forward operation; fall
+				// back to ProjectState lookup only if `old_definition` is absent.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
+
+				if let Some(col_def) = resolved_old_def {
 					return Ok(Some(Operation::AlterColumn {
 						table: table.clone(),
 						column: column.clone(),
@@ -3464,6 +3924,32 @@ impl Operation {
 					table, source, format, options,
 				))
 			}
+			Operation::SetAutoIncrementValue { table, .. } => {
+				// `to_statement` has no dialect context, but `SetAutoIncrementValue`
+				// renders fundamentally different SQL per backend (PostgreSQL
+				// `setval`, MySQL `ALTER TABLE AUTO_INCREMENT`, SQLite
+				// `sqlite_sequence` upsert). Silently emitting PostgreSQL-only
+				// SQL here would break MySQL/SQLite migrations.
+				//
+				// Emit guaranteed-fail SQL that aborts execution with a visible
+				// diagnostic pointing callers at the dialect-aware `to_sql`
+				// path. Converting the signature to
+				// `Result<OperationStatement, MigrationError>` would cascade
+				// through dozens of call sites.
+				OperationStatement::RawSql(format!(
+					"SELECT 1/0 AS \"SetAutoIncrementValue on {} requires dialect-aware rendering; call Operation::to_sql(&dialect) instead of to_statement()\";",
+					table.replace('"', "\"\"")
+				))
+			}
+			Operation::CreateCompositePrimaryKey {
+				table,
+				columns,
+				constraint_name,
+			} => OperationStatement::RawSql(Self::create_composite_pk_to_sql(
+				table,
+				columns,
+				constraint_name.as_deref(),
+			)),
 		}
 	}
 
@@ -3939,6 +4425,14 @@ impl MigrationOperation for Operation {
 			Operation::BulkLoad { table, .. } => {
 				Some(format!("bulk_load_{}", table.to_lowercase()))
 			}
+			Operation::SetAutoIncrementValue { table, column, .. } => Some(format!(
+				"set_auto_increment_{}_{}",
+				table.to_lowercase(),
+				column.to_lowercase()
+			)),
+			Operation::CreateCompositePrimaryKey { table, .. } => {
+				Some(format!("composite_pk_{}", table.to_lowercase()))
+			}
 		}
 	}
 
@@ -4027,6 +4521,16 @@ impl MigrationOperation for Operation {
 				};
 				format!("Bulk load data into {} from {}", table, source_desc)
 			}
+			Operation::SetAutoIncrementValue {
+				table,
+				column,
+				value,
+			} => format!("Set auto-increment of {}.{} to {}", table, column, value),
+			Operation::CreateCompositePrimaryKey { table, columns, .. } => format!(
+				"Create composite primary key on {} ({})",
+				table,
+				columns.join(", ")
+			),
 		}
 	}
 
@@ -5002,6 +5506,251 @@ mod tests {
 		);
 	}
 
+	/// Build an [`Operation::AlterColumn`] that carries an `old_definition`,
+	/// so reverse-SQL generation has all the inputs it needs without a
+	/// populated `ProjectState`. Used by the dialect-dispatch regression
+	/// tests for reinhardt-web#4582.
+	fn alter_column_with_old_def() -> Operation {
+		Operation::AlterColumn {
+			table: "products".to_string(),
+			column: "name".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "name".to_string(),
+				type_definition: FieldType::VarChar(50),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			}),
+			new_definition: ColumnDefinition {
+				name: "name".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			mysql_options: None,
+		}
+	}
+
+	/// Reverse SQL for Postgres must use `ALTER COLUMN ... TYPE` syntax
+	/// (regression coverage for reinhardt-web#4582).
+	#[test]
+	fn test_to_reverse_sql_alter_column_postgres() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.expect("reverse SQL should succeed")
+			.expect("reverse SQL should be present");
+
+		// Assert
+		assert!(
+			sql.contains("ALTER COLUMN") && sql.contains("TYPE"),
+			"Postgres reverse SQL should use ALTER COLUMN ... TYPE syntax, got: {}",
+			sql
+		);
+		assert!(
+			sql.contains("VARCHAR(50)"),
+			"Postgres reverse SQL should restore VARCHAR(50), got: {}",
+			sql
+		);
+	}
+
+	/// Reverse SQL for MySQL must use `MODIFY COLUMN` syntax — the previous
+	/// implementation emitted Postgres `ALTER COLUMN ... TYPE` which MySQL
+	/// rejects with error 1064 (reinhardt-web#4582).
+	#[test]
+	fn test_to_reverse_sql_alter_column_mysql() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Mysql, &state)
+			.expect("reverse SQL should succeed")
+			.expect("reverse SQL should be present");
+
+		// Assert
+		assert!(
+			sql.contains("MODIFY COLUMN"),
+			"MySQL reverse SQL should use MODIFY COLUMN syntax, got: {}",
+			sql
+		);
+		assert!(
+			!sql.contains("ALTER COLUMN"),
+			"MySQL reverse SQL must not emit Postgres ALTER COLUMN syntax, got: {}",
+			sql
+		);
+		assert!(
+			!sql.contains(" TYPE "),
+			"MySQL reverse SQL must not contain Postgres ' TYPE ' token, got: {}",
+			sql
+		);
+		assert!(
+			sql.contains("VARCHAR(50)"),
+			"MySQL reverse SQL should restore VARCHAR(50), got: {}",
+			sql
+		);
+	}
+
+	/// Reverse SQL for CockroachDB must emit the column-type reversion as a
+	/// single, dialect-isolated statement.
+	///
+	/// PR #4633 split CockroachDB off from PostgreSQL because CockroachDB
+	/// rejects the comma-combined `ALTER COLUMN ... TYPE T, ALTER COLUMN
+	/// ... {SET|DROP} NOT NULL` form that PostgreSQL accepts. The current
+	/// stop-gap emits only the column-type reversion and intentionally
+	/// drops nullability rollback fidelity (the full fix is tracked in
+	/// reinhardt-web#4640 and depends on `to_reverse_sql` returning
+	/// `Vec<String>`).
+	///
+	/// This unit test guards the stop-gap output shape so that a future
+	/// regression — e.g. re-folding CockroachDB into the Postgres comma form,
+	/// or accidentally appending the nullability clause as a second `\n`-joined
+	/// statement that `SchemaEditor::execute()` would reject — surfaces at
+	/// `cargo test` time instead of only at downstream CockroachDB deployments
+	/// (reinhardt-web#4639).
+	#[test]
+	fn test_to_reverse_sql_alter_column_cockroachdb() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Cockroachdb, &state)
+			.expect("reverse SQL should succeed")
+			.expect("reverse SQL should be present");
+
+		// Assert: shape must match the expected single-statement form
+		// exactly. Asserting `==` (not `contains`) is intentional: the
+		// stop-gap is supposed to emit *only* `ALTER TABLE products ALTER
+		// COLUMN name TYPE VARCHAR(50);` with no extra clauses (no
+		// nullability, no USING, no comma-combined sibling). A `contains`
+		// check would silently allow `, ALTER COLUMN ... SET NOT NULL`
+		// suffixes — exactly the regression this test is meant to pin.
+		//
+		// Identifier quoting note: `quote_identifier` here is
+		// `pg_escape::quote_identifier`, which only quotes identifiers
+		// that fall outside PostgreSQL's unquoted-identifier grammar
+		// (anything outside `[a-z_][a-z0-9_]*`, or a reserved keyword).
+		// `products` and `name` are plain lowercase ASCII matching that
+		// grammar, so the expected output is unquoted. This matches the
+		// identical convention documented on
+		// `test_to_reverse_sql_drop_index_includes_on_table_for_mysql`.
+		// Identifier-quoting-by-default is tracked separately in #4674.
+		let expected = "ALTER TABLE products ALTER COLUMN name TYPE VARCHAR(50);";
+		assert_eq!(
+			sql, expected,
+			"CockroachDB reverse SQL must match the pinned single-statement \
+			 form exactly (no extra clauses), got: {}",
+			sql
+		);
+
+		// Assert: must be exactly one SQL statement. CockroachDB rejects the
+		// Postgres comma-combined form, and `SchemaEditor::execute()` is a
+		// single-statement dispatcher (sqlx Extended Query), so the stop-gap
+		// must not return a `;\n`-joined multi-statement payload either.
+		// Trim whitespace first so a trailing `;\n` or `; ` still has its
+		// terminating semicolon recognised by `trim_end_matches(';')`.
+		let trimmed = sql.trim().trim_end_matches(';').trim();
+		assert!(
+			!trimmed.contains(';'),
+			"CockroachDB reverse SQL must be exactly one statement (no internal \
+			 `;`), got: {}",
+			sql
+		);
+		assert!(
+			!sql.contains(",\n") && !sql.contains(", ALTER COLUMN"),
+			"CockroachDB reverse SQL must not emit the Postgres comma-combined \
+			 form (CockroachDB rejects it), got: {}",
+			sql
+		);
+
+		// Assert: nullability rollback is intentionally dropped under the
+		// stop-gap. Regressing toward emitting `SET NOT NULL` / `DROP NOT
+		// NULL` either as a second statement or inline in the same `ALTER
+		// TABLE` payload would re-break CockroachDB rollback — the
+		// `Vec<String>` API refactor (reinhardt-web#4640) is the supported
+		// path for restoring NOT NULL fidelity.
+		assert!(
+			!sql.contains("SET NOT NULL") && !sql.contains("DROP NOT NULL"),
+			"CockroachDB reverse SQL must not emit nullability clause under \
+			 the current stop-gap (tracked in #4640), got: {}",
+			sql
+		);
+	}
+
+	/// SQLite has no general `ALTER COLUMN`; the rollback path is handled
+	/// via table recreation in the executor. `to_reverse_sql` therefore
+	/// returns an inert comment so that any accidental fall-through does
+	/// not produce executable SQL that SQLite would reject
+	/// (reinhardt-web#4582).
+	#[test]
+	fn test_to_reverse_sql_alter_column_sqlite() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Sqlite, &state)
+			.expect("reverse SQL should succeed")
+			.expect("reverse SQL should be present");
+
+		// Assert
+		assert!(
+			sql.trim_start().starts_with("--"),
+			"SQLite reverse SQL should be a SQL comment (recreation handled by executor), got: {}",
+			sql
+		);
+		// Strip leading `--` (and any whitespace) before checking; the comment
+		// body itself is allowed to mention ALTER COLUMN as English prose.
+		let body = sql.trim_start_matches("--").trim_start();
+		assert!(
+			!body.to_uppercase().contains("ALTER TABLE"),
+			"SQLite reverse SQL body must not emit executable ALTER TABLE statement, got: {}",
+			sql
+		);
+	}
+
+	/// `to_reverse_operation` for `AlterColumn` must prefer the explicit
+	/// `old_definition` carried by the forward operation, instead of
+	/// always falling back to an (often empty) `ProjectState` lookup
+	/// (reinhardt-web#4582).
+	#[test]
+	fn test_to_reverse_operation_alter_column_uses_old_definition() {
+		// Arrange
+		let op = alter_column_with_old_def();
+		let state = ProjectState::default();
+
+		// Act
+		let reverse = op
+			.to_reverse_operation(&state)
+			.expect("reverse operation should succeed")
+			.expect("reverse operation should be present (old_definition is supplied)");
+
+		// Assert
+		match reverse {
+			Operation::AlterColumn { new_definition, .. } => {
+				assert!(
+					matches!(new_definition.type_definition, FieldType::VarChar(50)),
+					"reverse AlterColumn should restore VARCHAR(50), got: {:?}",
+					new_definition.type_definition
+				);
+			}
+			other => panic!("reverse operation should be AlterColumn, got: {:?}", other),
+		}
+	}
+
 	#[test]
 	fn test_to_reverse_sql_run_sql_with_reverse() {
 		let op = Operation::RunSQL {
@@ -5055,6 +5804,169 @@ mod tests {
 			"auto_increment should default to false"
 		);
 		assert!(col.default.is_none(), "default should be None");
+	}
+
+	// -----------------------------------------------------------------------
+	// Regression tests for issue #4573:
+	// `ColumnDefinition::from_field_state` previously read a non-existent
+	// `params["not_null"]` key and silently emitted NULLABLE columns for
+	// every non-PK field, violating the non-Optional Rust type ↔ NOT NULL
+	// schema contract. These tests pin the corrected behavior:
+	//   not_null = !field_state.nullable || primary_key
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn from_field_state_non_optional_bool_with_true_default() {
+		// Arrange
+		// Models a Rust field declared as `pub is_active: bool` with
+		// `#[field(default = true)]`. The proc-macro sets
+		// `field_state.nullable = false` via `FieldMetadata::with_nullable`,
+		// and emits the default value as `params["default"] = "true"`.
+		let mut field_state = FieldState::new("is_active", FieldType::Boolean, false);
+		field_state
+			.params
+			.insert("default".to_string(), "true".to_string());
+
+		// Act
+		let col = ColumnDefinition::from_field_state("is_active", &field_state);
+
+		// Assert
+		assert_eq!(col.name, "is_active", "Column name should round-trip");
+		assert_eq!(
+			col.type_definition,
+			FieldType::Boolean,
+			"Boolean field type should round-trip"
+		);
+		assert!(
+			col.not_null,
+			"Non-Optional bool must emit NOT NULL (regression #4573)"
+		);
+		assert_eq!(
+			col.default,
+			Some("true".to_string()),
+			"`#[field(default = true)]` must propagate as Some(\"true\")"
+		);
+		assert!(!col.primary_key, "Non-PK field must not be primary_key");
+	}
+
+	#[rstest]
+	fn from_field_state_non_optional_bool_with_false_default() {
+		// Arrange
+		// Models a Rust field declared as `pub is_superuser: bool` with
+		// `#[field(default = false)]` — the symptom previously hand-patched
+		// in PR #4513.
+		let mut field_state = FieldState::new("is_superuser", FieldType::Boolean, false);
+		field_state
+			.params
+			.insert("default".to_string(), "false".to_string());
+
+		// Act
+		let col = ColumnDefinition::from_field_state("is_superuser", &field_state);
+
+		// Assert
+		assert!(
+			col.not_null,
+			"Non-Optional bool with default=false must emit NOT NULL"
+		);
+		assert_eq!(
+			col.default,
+			Some("false".to_string()),
+			"default=false must propagate as Some(\"false\")"
+		);
+	}
+
+	#[rstest]
+	fn from_field_state_optional_bool_with_default() {
+		// Arrange
+		// Models a Rust field declared as `pub maybe_flag: Option<bool>` with
+		// `#[field(default = true)]`. Existing behavior must be preserved:
+		// nullable column with default still set.
+		let mut field_state = FieldState::new("maybe_flag", FieldType::Boolean, true);
+		field_state
+			.params
+			.insert("default".to_string(), "true".to_string());
+
+		// Act
+		let col = ColumnDefinition::from_field_state("maybe_flag", &field_state);
+
+		// Assert
+		assert!(
+			!col.not_null,
+			"Optional bool must remain NULLABLE — no regression on Option<T>"
+		);
+		assert_eq!(
+			col.default,
+			Some("true".to_string()),
+			"Default propagation must work for Optional fields too"
+		);
+	}
+
+	#[rstest]
+	fn from_field_state_non_optional_non_bool() {
+		// Arrange
+		// Models a Rust field declared as `pub username: String` with no
+		// default. This confirms the fix is type-agnostic (not bool-only) —
+		// the broader symptom in `examples-twitter/migrations/auth/0001_initial.rs`
+		// where `username`, `bio`, `email`, etc. were all silently NULLABLE.
+		let field_state = FieldState::new("username", FieldType::VarChar(150), false);
+
+		// Act
+		let col = ColumnDefinition::from_field_state("username", &field_state);
+
+		// Assert
+		assert!(
+			col.not_null,
+			"Non-Optional String must emit NOT NULL (regression #4573 — bug \
+			 affected all field types, not just bool)"
+		);
+		assert!(
+			col.default.is_none(),
+			"No default annotation → default = None"
+		);
+	}
+
+	#[rstest]
+	fn from_field_state_primary_key_is_always_not_null() {
+		// Arrange
+		// A primary key column must be NOT NULL even when the nullability
+		// flag would otherwise allow NULL. This pins the `|| primary_key`
+		// short-circuit in the corrected expression.
+		let mut field_state = FieldState::new("id", FieldType::Uuid, true);
+		field_state
+			.params
+			.insert("primary_key".to_string(), "true".to_string());
+
+		// Act
+		let col = ColumnDefinition::from_field_state("id", &field_state);
+
+		// Assert
+		assert!(
+			col.primary_key,
+			"primary_key param must propagate to ColumnDefinition"
+		);
+		assert!(
+			col.not_null,
+			"Primary key must be NOT NULL regardless of nullable flag"
+		);
+	}
+
+	#[rstest]
+	fn from_field_state_optional_field_remains_nullable() {
+		// Arrange
+		// Models a Rust field declared as `pub last_login: Option<DateTime<Utc>>`
+		// with no default. Existing nullable-field behavior must be preserved.
+		let field_state = FieldState::new("last_login", FieldType::TimestampTz, true);
+
+		// Act
+		let col = ColumnDefinition::from_field_state("last_login", &field_state);
+
+		// Assert
+		assert!(
+			!col.not_null,
+			"Optional field with no default must remain NULLABLE"
+		);
+		assert!(col.default.is_none(), "No default → default = None");
+		assert!(!col.primary_key, "Non-PK field must not be primary_key");
 	}
 
 	#[test]
@@ -5448,5 +6360,777 @@ mod tests {
 			Some("single_table".to_string()),
 			"inheritance_type should be 'single_table'"
 		);
+	}
+
+	#[rstest]
+	fn test_to_reverse_sql_create_table_quotes_identifiers() {
+		// Arrange
+		let op = Operation::CreateTable {
+			name: "user-data".to_string(),
+			columns: vec![],
+			constraints: vec![],
+			without_rowid: None,
+			partition: None,
+			interleave_in_parent: None,
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			sql, "DROP TABLE \"user-data\";",
+			"Identifiers with special characters must be quoted"
+		);
+	}
+
+	#[rstest]
+	fn test_to_reverse_sql_add_column_quotes_identifiers() {
+		// Arrange
+		let op = Operation::AddColumn {
+			table: "my table".to_string(),
+			column: ColumnDefinition {
+				name: "my column".to_string(),
+				type_definition: FieldType::VarChar(255),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			mysql_options: None,
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			sql, "ALTER TABLE \"my table\" DROP COLUMN \"my column\";",
+			"Table and column names with spaces must be quoted"
+		);
+	}
+
+	#[rstest]
+	fn test_to_reverse_sql_rename_table_quotes_identifiers() {
+		// Arrange: both names contain special characters requiring quoting
+		let op = Operation::RenameTable {
+			old_name: "old; DROP TABLE users;--".to_string(),
+			new_name: "new-name".to_string(),
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			sql, "ALTER TABLE \"new-name\" RENAME TO \"old; DROP TABLE users;--\";",
+			"SQL injection attempt must be quoted as identifier"
+		);
+	}
+
+	#[rstest]
+	fn test_to_reverse_sql_rename_column_quotes_identifiers() {
+		// Arrange: use identifiers with special characters to verify quoting
+		let op = Operation::RenameColumn {
+			table: "my table".to_string(),
+			old_name: "old col".to_string(),
+			new_name: "new col".to_string(),
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			sql, "ALTER TABLE \"my table\" RENAME COLUMN \"new col\" TO \"old col\";",
+			"Identifiers with spaces must be quoted"
+		);
+	}
+
+	#[rstest]
+	fn test_to_reverse_sql_create_index_quotes_identifiers() {
+		// Arrange
+		let op = Operation::CreateIndex {
+			table: "my-table".to_string(),
+			columns: vec!["col a".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert!(
+			sql.contains("DROP INDEX \"idx_my-table_col a\""),
+			"Index name must be quoted, got: {}",
+			sql
+		);
+	}
+
+	/// Regression test for kent8192/reinhardt-web#4583.
+	///
+	/// MySQL requires `DROP INDEX <name> ON <table>` when reversing a `CreateIndex`
+	/// operation. The previous implementation emitted `DROP INDEX <name>;` for every
+	/// dialect, which produced malformed SQL on MySQL (1064 syntax error). This test
+	/// pins the MySQL-specific `ON <table>` clause to prevent regressions.
+	#[rstest]
+	fn test_to_reverse_sql_create_index_emits_on_table_clause_for_mysql() {
+		// Arrange
+		let op = Operation::CreateIndex {
+			table: "users".to_string(),
+			columns: vec!["email".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Mysql, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert: `quote_identifier` is `pg_escape::quote_identifier`, which only
+		// adds quotes when the identifier contains reserved or non-lowercase
+		// characters. For plain ASCII names, the output is unquoted. What matters
+		// for regression is the presence of the `ON <table>` suffix.
+		assert_eq!(
+			sql, "DROP INDEX idx_users_email ON users;",
+			"MySQL reverse SQL must include `ON <table>` clause"
+		);
+	}
+
+	/// Verify Postgres / SQLite / CockroachDB continue to emit the bare
+	/// `DROP INDEX <name>;` form without an `ON <table>` clause.
+	#[rstest]
+	#[case(SqlDialect::Postgres, "DROP INDEX idx_users_email;")]
+	#[case(SqlDialect::Sqlite, "DROP INDEX idx_users_email;")]
+	#[case(SqlDialect::Cockroachdb, "DROP INDEX idx_users_email;")]
+	fn test_to_reverse_sql_create_index_omits_on_table_for_non_mysql(
+		#[case] dialect: SqlDialect,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let op = Operation::CreateIndex {
+			table: "users".to_string(),
+			columns: vec!["email".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op.to_reverse_sql(&dialect, &state).unwrap().unwrap();
+
+		// Assert
+		assert_eq!(
+			sql, expected,
+			"Non-MySQL reverse SQL must remain unchanged for dialect {:?}",
+			dialect
+		);
+	}
+
+	#[rstest]
+	fn test_to_reverse_sql_add_constraint_quotes_identifiers() {
+		// Arrange: table name with special characters triggers quoting
+		let op = Operation::AddConstraint {
+			table: "my-table".to_string(),
+			constraint_sql: "CONSTRAINT chk_positive CHECK (x > 0)".to_string(),
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert!(
+			sql.contains("ALTER TABLE \"my-table\""),
+			"Table name with special characters must be quoted, got: {}",
+			sql
+		);
+		assert!(
+			sql.contains("DROP CONSTRAINT"),
+			"Should contain DROP CONSTRAINT, got: {}",
+			sql
+		);
+	}
+
+	#[rstest]
+	fn test_to_reverse_sql_bulk_load_quotes_identifiers() {
+		// Arrange
+		let op = Operation::BulkLoad {
+			table: "user-data".to_string(),
+			source: BulkLoadSource::Stdin,
+			format: BulkLoadFormat::default(),
+			options: BulkLoadOptions::default(),
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = op
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			sql, "TRUNCATE TABLE \"user-data\";",
+			"Table name must be quoted"
+		);
+	}
+
+	// ========================================================================
+	// SetAutoIncrementValue — per-backend SQL rendering
+	// ========================================================================
+
+	#[rstest]
+	#[case::postgres(SqlDialect::Postgres)]
+	#[case::cockroachdb(SqlDialect::Cockroachdb)]
+	fn test_set_auto_increment_postgres_uses_setval(#[case] dialect: SqlDialect) {
+		// Arrange
+		let op = Operation::SetAutoIncrementValue {
+			table: "users".to_string(),
+			column: "id".to_string(),
+			value: 1000,
+		};
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert_eq!(
+			sql,
+			"SELECT setval(pg_get_serial_sequence('users', 'id'), 1000, false);"
+		);
+	}
+
+	#[test]
+	fn test_set_auto_increment_mysql_alters_table() {
+		// Arrange
+		let op = Operation::SetAutoIncrementValue {
+			table: "users".to_string(),
+			column: "id".to_string(),
+			value: 1000,
+		};
+
+		// Act
+		let sql = op.to_sql(&SqlDialect::Mysql);
+
+		// Assert: identifier quoting uses pg_escape's `quote_identifier`
+		// uniformly across dialects (matches convention used elsewhere in
+		// this module, e.g. AlterTableComment). pg_escape omits quotes when
+		// the identifier needs no escaping.
+		assert_eq!(sql, "ALTER TABLE users AUTO_INCREMENT = 1000;");
+	}
+
+	#[test]
+	fn test_set_auto_increment_sqlite_upserts_sqlite_sequence() {
+		// Arrange
+		let op = Operation::SetAutoIncrementValue {
+			table: "users".to_string(),
+			column: "id".to_string(),
+			value: 1000,
+		};
+
+		// Act
+		let sql = op.to_sql(&SqlDialect::Sqlite);
+
+		// Assert: INSERT OR REPLACE is robust vs. UPDATE which no-ops when
+		// the sqlite_sequence row does not yet exist.
+		assert_eq!(
+			sql,
+			"INSERT OR REPLACE INTO sqlite_sequence(name, seq) VALUES ('users', 1000);"
+		);
+	}
+
+	#[test]
+	fn test_set_auto_increment_postgres_escapes_literals() {
+		// Arrange: embedded single quote must be doubled to avoid injection.
+		let op = Operation::SetAutoIncrementValue {
+			table: "user's".to_string(),
+			column: "id".to_string(),
+			value: 42,
+		};
+
+		// Act
+		let sql = op.to_sql(&SqlDialect::Postgres);
+
+		// Assert
+		assert!(
+			sql.contains("'user''s'"),
+			"single quote in table name must be escaped: {}",
+			sql
+		);
+	}
+
+	// ========================================================================
+	// CreateCompositePrimaryKey — SQL rendering and edge cases
+	// ========================================================================
+
+	#[rstest]
+	#[case::postgres(SqlDialect::Postgres)]
+	#[case::mysql(SqlDialect::Mysql)]
+	#[case::sqlite(SqlDialect::Sqlite)]
+	#[case::cockroachdb(SqlDialect::Cockroachdb)]
+	fn test_composite_pk_default_name(#[case] dialect: SqlDialect) {
+		// Arrange
+		let op = Operation::CreateCompositePrimaryKey {
+			table: "order_items".to_string(),
+			columns: vec!["order_id".to_string(), "line_number".to_string()],
+			constraint_name: None,
+		};
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert!(
+			sql.contains("ALTER TABLE"),
+			"SQL should use ALTER TABLE: {}",
+			sql
+		);
+		assert!(
+			sql.contains("ADD CONSTRAINT"),
+			"SQL should add a named constraint: {}",
+			sql
+		);
+		assert!(
+			sql.contains("PRIMARY KEY"),
+			"SQL should add PRIMARY KEY: {}",
+			sql
+		);
+		assert!(
+			sql.contains("order_items_pkey"),
+			"Default constraint name should be table_pkey: {}",
+			sql
+		);
+		assert!(
+			sql.contains("order_id") && sql.contains("line_number"),
+			"Both PK columns must appear: {}",
+			sql
+		);
+	}
+
+	#[test]
+	fn test_composite_pk_custom_name_and_quoting() {
+		// Arrange
+		let op = Operation::CreateCompositePrimaryKey {
+			table: "tbl".to_string(),
+			columns: vec!["a".to_string(), "b".to_string()],
+			constraint_name: Some("my_pk".to_string()),
+		};
+
+		// Act
+		let sql = op.to_sql(&SqlDialect::Postgres);
+
+		// Assert: pg_escape omits quotes for identifiers that need no escaping.
+		assert_eq!(
+			sql,
+			"ALTER TABLE tbl ADD CONSTRAINT my_pk PRIMARY KEY (a, b);"
+		);
+	}
+
+	#[test]
+	fn test_composite_pk_empty_columns_produces_failing_sql() {
+		// Arrange: empty column list is invalid; we emit a deliberately
+		// invalid SQL statement (a bare identifier) so every backend's
+		// parser rejects it before execution, replacing the earlier
+		// `SELECT 1/0` fallback that silently passed on SQLite and
+		// lax-mode MySQL (reinhardt-web#4325).
+		let op = Operation::CreateCompositePrimaryKey {
+			table: "tbl".to_string(),
+			columns: vec![],
+			constraint_name: None,
+		};
+
+		// Act: verify behavior on every supported dialect.
+		for dialect in [SqlDialect::Postgres, SqlDialect::Mysql, SqlDialect::Sqlite] {
+			let sql = op.to_sql(&dialect);
+
+			// Assert: the emitted statement encodes the diagnostic and is
+			// not a syntactically valid SELECT/DDL on any backend.
+			assert!(
+				sql.starts_with("SYNTAX_ERROR_create_composite_pk_on_")
+					&& sql.contains("requires_at_least_one_column"),
+				"Empty column list must emit a syntax-error statement with diagnostic ({:?}): {}",
+				dialect,
+				sql
+			);
+			assert!(
+				!sql.contains("SELECT 1/0"),
+				"Must not fall back to SELECT 1/0 (silently passes on SQLite / lax MySQL): {}",
+				sql
+			);
+		}
+	}
+
+	// ========================================================================
+	// column_to_sql — SQLite AUTOINCREMENT type widening (Issue #4184)
+	//
+	// SQLite rejects `BIGINT PRIMARY KEY AUTOINCREMENT` at apply time with:
+	//   "AUTOINCREMENT is only allowed on an INTEGER PRIMARY KEY"
+	// The default `BigAutoField` from CoreSettings produces FieldType::BigInteger
+	// + auto_increment, so the SQLite emitter must widen integer widths to the
+	// literal `INTEGER` token.
+	// ========================================================================
+
+	#[rstest]
+	#[case::big_integer(FieldType::BigInteger)]
+	#[case::integer(FieldType::Integer)]
+	#[case::small_integer(FieldType::SmallInteger)]
+	fn test_column_to_sql_sqlite_auto_increment_pk_emits_integer(#[case] field_type: FieldType) {
+		// Arrange: BigAutoField/AutoField/SmallAutoField PK with auto_increment.
+		let mut col = ColumnDefinition::new("id", field_type);
+		col.primary_key = true;
+		col.auto_increment = true;
+		col.not_null = true;
+
+		// Act
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Sqlite);
+
+		// Assert: must use the literal `INTEGER` token (not BIGINT/SMALLINT)
+		// to satisfy SQLite's AUTOINCREMENT constraint.
+		assert!(
+			sql.contains("INTEGER PRIMARY KEY AUTOINCREMENT"),
+			"SQLite auto_increment PK must emit `INTEGER PRIMARY KEY AUTOINCREMENT`: {}",
+			sql
+		);
+		assert!(
+			!sql.contains("BIGINT"),
+			"SQLite auto_increment must not emit BIGINT (rejected by SQLite): {}",
+			sql
+		);
+		assert!(
+			!sql.contains("SMALLINT"),
+			"SQLite auto_increment must not emit SMALLINT (rejected by SQLite): {}",
+			sql
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_sqlite_big_integer_without_auto_increment_no_autoincrement() {
+		// Arrange: plain BigInteger column without auto_increment must not emit
+		// the AUTOINCREMENT keyword. SQLite represents all integer widths as
+		// INTEGER (storage class), so emitting INTEGER (per to_sql_for_dialect)
+		// is correct even without auto_increment.
+		let mut col = ColumnDefinition::new("count", FieldType::BigInteger);
+		col.not_null = true;
+
+		// Act
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Sqlite);
+
+		// Assert
+		assert!(
+			!sql.contains("AUTOINCREMENT"),
+			"Non-auto_increment column must not emit AUTOINCREMENT: {}",
+			sql
+		);
+		// SQLite accepts `BIGINT` declarations via type affinity, but our emitter
+		// normalizes integer widths to `INTEGER` for consistency with the
+		// auto_increment path. This assertion guards that normalization, not a
+		// SQLite-level prohibition on BIGINT.
+		assert!(
+			!sql.contains("BIGINT"),
+			"emitter is expected to normalize BigInteger to INTEGER for SQLite: {}",
+			sql
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_postgres_big_integer_auto_increment_unchanged() {
+		// Arrange: regression guard — Postgres path must remain GENERATED AS IDENTITY.
+		let mut col = ColumnDefinition::new("id", FieldType::BigInteger);
+		col.primary_key = true;
+		col.auto_increment = true;
+		col.not_null = true;
+
+		// Act
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Postgres);
+
+		// Assert
+		assert!(
+			sql.contains("BIGINT GENERATED BY DEFAULT AS IDENTITY"),
+			"Postgres auto_increment BigInteger must emit identity syntax: {}",
+			sql
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_sqlite_auto_increment_uuid_pk_omits_autoincrement() {
+		// Arrange: a UUID primary key with auto_increment=true. The `#[model]`
+		// macro previously emitted `auto_increment="true"` for every PK
+		// regardless of type, which produced `"id" UUID PRIMARY KEY AUTOINCREMENT`
+		// — rejected by SQLite with "AUTOINCREMENT is only allowed on an
+		// INTEGER PRIMARY KEY". The emitter must defend against this combination
+		// by omitting AUTOINCREMENT when the column type was not widened to
+		// INTEGER. See reinhardt-web#4378.
+		let mut col = ColumnDefinition::new("id", FieldType::Uuid);
+		col.primary_key = true;
+		col.auto_increment = true;
+		col.not_null = true;
+
+		// Act
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Sqlite);
+
+		// Assert: PRIMARY KEY must be emitted, AUTOINCREMENT must NOT.
+		assert!(
+			sql.contains("PRIMARY KEY"),
+			"UUID PK must still emit PRIMARY KEY: {}",
+			sql
+		);
+		assert!(
+			!sql.contains("AUTOINCREMENT"),
+			"non-integer auto_increment PK must not emit AUTOINCREMENT (SQLite rejects it): {}",
+			sql
+		);
+		// SQLite's `to_sql_for_dialect(Uuid)` returns `TEXT` (the storage class
+		// SQLite actually uses for UUIDs); the important guarantee is that the
+		// type was NOT silently widened to `INTEGER`, which would change the
+		// column's semantics.
+		assert!(
+			!sql.contains("INTEGER"),
+			"UUID column type must not be widened to INTEGER: {}",
+			sql
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_without_pk_sqlite_auto_increment_emits_integer() {
+		// Arrange: composite PK path also widens to INTEGER for SQLite.
+		let mut col = ColumnDefinition::new("id", FieldType::BigInteger);
+		col.auto_increment = true;
+		col.not_null = true;
+
+		// Act
+		let sql = Operation::column_to_sql_without_pk(&col, &SqlDialect::Sqlite);
+
+		// Assert
+		assert!(
+			sql.contains("INTEGER"),
+			"SQLite auto_increment column (composite PK path) must emit INTEGER: {}",
+			sql
+		);
+		assert!(
+			!sql.contains("BIGINT"),
+			"SQLite auto_increment must not emit BIGINT in composite PK path: {}",
+			sql
+		);
+	}
+
+	mod resolve_foreign_key_column_type_tests {
+		use super::super::resolve_foreign_key_column_type_with;
+		use super::FieldType;
+		use crate::migrations::autodetector::FieldState;
+		use crate::migrations::model_registry::{FieldMetadata, ModelMetadata, ModelRegistry};
+
+		/// Helper: build a target model registered under `(app, name)`
+		/// whose PK column is of `pk_type`.
+		fn target_model(app: &str, name: &str, table: &str, pk_type: FieldType) -> ModelMetadata {
+			let mut meta = ModelMetadata::new(app, name, table);
+			meta.add_field(
+				"id".to_string(),
+				FieldMetadata::new(pk_type).with_param("primary_key", "true"),
+			);
+			meta
+		}
+
+		/// Helper: build a `ForeignKeyField`-style FieldState whose
+		/// `fk_target` (and optionally `fk_target_app`) drive the
+		/// resolver.
+		fn fk_field_state(target_model: &str, target_app: Option<&str>) -> FieldState {
+			let mut fs = FieldState::new("owner_id", FieldType::Uuid, false);
+			fs.params
+				.insert("fk_target".to_string(), target_model.to_string());
+			if let Some(app) = target_app {
+				fs.params
+					.insert("fk_target_app".to_string(), app.to_string());
+			}
+			fs
+		}
+
+		#[test]
+		fn qualified_hit_resolves_to_target_pk_type() {
+			// Arrange
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"auth",
+				"User",
+				"auth_user",
+				FieldType::BigInteger,
+			));
+			let fs = fk_field_state("User", Some("auth"));
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert: qualified lookup hits and returns the target's PK type.
+			assert_eq!(resolved, Some(FieldType::BigInteger));
+		}
+
+		#[test]
+		fn qualified_miss_falls_back_to_by_name_when_unambiguous() {
+			// Arrange: target registered under a different app than the
+			// macro emitted (simulates the `use`-import edge case).
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"reinhardt_auth",
+				"User",
+				"auth_user",
+				FieldType::Uuid,
+			));
+			// Macro emitted the current crate's app, which is wrong here.
+			let fs = fk_field_state("User", Some("blog"));
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert: by-name fallback resolves to the only registered
+			// `User` model, preserving the pre-#4436 resolution path.
+			assert_eq!(resolved, Some(FieldType::Uuid));
+		}
+
+		#[test]
+		fn ambiguous_by_name_returns_none() {
+			// Arrange: two apps register the same model name.
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"auth",
+				"User",
+				"auth_user",
+				FieldType::BigInteger,
+			));
+			registry.register_model(target_model(
+				"billing",
+				"User",
+				"billing_user",
+				FieldType::Uuid,
+			));
+			// No `fk_target_app` -> straight to by-name lookup.
+			let fs = fk_field_state("User", None);
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert: conservative `None` rather than silently picking
+			// one of the two `User` models.
+			assert_eq!(resolved, None);
+		}
+
+		#[test]
+		fn path_typed_disambiguates_ambiguous_name() {
+			// Arrange: two apps register `User`. The user wrote a
+			// path-typed FK target (`ForeignKeyField<reinhardt_auth::User>`),
+			// so the macro emits `fk_target_app="reinhardt_auth"` —
+			// trusted as a user-explicit qualifier. The resolver must
+			// use it to pick the correct `User`, not the unrelated
+			// `blog.User`.
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"blog",
+				"User",
+				"blog_user",
+				FieldType::BigInteger,
+			));
+			registry.register_model(target_model(
+				"reinhardt_auth",
+				"User",
+				"reinhardt_auth_user",
+				FieldType::Uuid,
+			));
+			let fs = fk_field_state("User", Some("reinhardt_auth"));
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert: qualified hit picks `reinhardt_auth.User`
+			// (FieldType::Uuid), not `blog.User` (FieldType::BigInteger).
+			assert_eq!(resolved, Some(FieldType::Uuid));
+		}
+
+		#[test]
+		fn qualified_miss_with_ambiguous_by_name_returns_none() {
+			// Arrange: qualified lookup misses AND the by-name fallback
+			// is itself ambiguous. The resolver must still refuse to
+			// guess.
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"auth",
+				"User",
+				"auth_user",
+				FieldType::BigInteger,
+			));
+			registry.register_model(target_model(
+				"billing",
+				"User",
+				"billing_user",
+				FieldType::Uuid,
+			));
+			let fs = fk_field_state("User", Some("blog")); // misses; falls back; ambiguous.
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert
+			assert_eq!(resolved, None);
+		}
+
+		#[test]
+		fn no_fk_target_param_returns_none() {
+			// Arrange: a non-FK field has no `fk_target` param.
+			let registry = ModelRegistry::new();
+			registry.register_model(target_model(
+				"auth",
+				"User",
+				"auth_user",
+				FieldType::BigInteger,
+			));
+			let fs = FieldState::new("name", FieldType::VarChar(64), false);
+
+			// Act
+			let resolved = resolve_foreign_key_column_type_with(&fs, &registry);
+
+			// Assert
+			assert_eq!(resolved, None);
+		}
 	}
 }

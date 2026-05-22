@@ -90,6 +90,9 @@ pub struct CollectStaticCommand {
 	config: StaticFilesConfig,
 	options: CollectStaticOptions,
 	manifest: HashMap<String, String>,
+	/// Source path for index.html (copies to static_root with template processing).
+	/// Refs #2869
+	index_source: Option<PathBuf>,
 }
 
 impl CollectStaticCommand {
@@ -99,7 +102,16 @@ impl CollectStaticCommand {
 			config,
 			options,
 			manifest: HashMap::new(),
+			index_source: None,
 		}
+	}
+
+	/// Set the source path for index.html.
+	///
+	/// When set, `execute()` copies this file to `static_root/index.html`
+	/// with `{{ static_url() }}` template processing applied.
+	pub fn set_index_source(&mut self, path: Option<PathBuf>) {
+		self.index_source = path;
 	}
 
 	/// Execute the collectstatic command
@@ -117,6 +129,72 @@ impl CollectStaticCommand {
 		// Create destination directory if it doesn't exist
 		if !self.options.dry_run {
 			fs::create_dir_all(&self.config.static_root)?;
+		}
+
+		// Download vendor assets across all registered apps before collecting
+		// static files. Each app's `vendor_assets` (declared via inventory) is
+		// fetched into that app's registered `static_dir`. Apps without a
+		// registered static directory are skipped.
+		#[cfg(feature = "server")]
+		{
+			use reinhardt_utils::staticfiles::vendor::{Verbosity, download_all_vendor_assets};
+
+			let static_dirs: std::collections::HashMap<&'static str, PathBuf> =
+				::reinhardt_apps::get_app_static_files()
+					.iter()
+					.map(|c| (c.app_label, PathBuf::from(c.static_dir)))
+					.collect();
+
+			// Ensure each registered static directory exists so vendor downloads
+			// have a valid target.
+			if !self.options.dry_run {
+				for dir in static_dirs.values() {
+					fs::create_dir_all(dir).ok();
+				}
+			}
+
+			let verbosity = match self.options.verbosity {
+				0 => Verbosity::Silent,
+				1 => Verbosity::Normal,
+				_ => Verbosity::Verbose,
+			};
+
+			let resolver = |label: &str| static_dirs.get(label).cloned();
+
+			// Bridge sync->async: try the current tokio runtime handle first,
+			// then fall back to a freshly created single-threaded runtime.
+			let result: Result<(), String> = match tokio::runtime::Handle::try_current() {
+				Ok(handle) => tokio::task::block_in_place(|| {
+					handle
+						.block_on(download_all_vendor_assets(resolver, verbosity))
+						.map_err(|e| e.to_string())
+				}),
+				Err(_) => match tokio::runtime::Builder::new_current_thread()
+					.enable_all()
+					.build()
+				{
+					Ok(rt) => rt
+						.block_on(download_all_vendor_assets(resolver, verbosity))
+						.map_err(|e| e.to_string()),
+					Err(e) => Err(format!("failed to create tokio runtime: {}", e)),
+				},
+			};
+
+			match result {
+				Ok(()) => {
+					if self.options.verbosity > 0 {
+						println!("All vendor assets up-to-date");
+					}
+				}
+				Err(e) => {
+					// Vendor download failures are non-fatal; warn and continue
+					// with whatever assets already exist on disk.
+					eprintln!(
+						"Warning: vendor asset download failed (continuing with existing files): {}",
+						e
+					);
+				}
+			}
 		}
 
 		// Collect files from all source directories
@@ -179,6 +257,37 @@ impl CollectStaticCommand {
 		// Save manifest if hashing is enabled
 		if self.options.enable_hashing && !self.options.dry_run {
 			self.save_manifest()?;
+		}
+
+		// Process index.html from explicit source path
+		// Refs #2869: Copy index.html from project root to dist/ with template processing
+		if let Some(ref index_source) = self.index_source {
+			if index_source.exists() {
+				let dest_path = self.config.static_root.join("index.html");
+				if !self.options.dry_run {
+					if let Some(parent) = dest_path.parent() {
+						fs::create_dir_all(parent)?;
+					}
+					if self.options.link {
+						self.create_symlink(index_source, &dest_path)?;
+					} else {
+						self.process_html_template(index_source, &dest_path)?;
+					}
+				}
+				if self.options.verbosity > 0 {
+					println!(
+						"Index: {} → {}",
+						index_source.display(),
+						dest_path.display()
+					);
+				}
+				stats.copied += 1;
+			} else {
+				return Err(io::Error::new(
+					io::ErrorKind::NotFound,
+					format!("Index source file not found: {}", index_source.display()),
+				));
+			}
 		}
 
 		// Print summary
@@ -538,6 +647,7 @@ impl Clone for CollectStaticCommand {
 			config: self.config.clone(),
 			options: self.options.clone(),
 			manifest: HashMap::new(),
+			index_source: self.index_source.clone(),
 		}
 	}
 }

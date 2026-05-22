@@ -17,13 +17,42 @@ skip_core_tasks = true
 CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
 
 # ============================================================================
+# Infrastructure (disposable PostgreSQL + Redis containers)
+# ============================================================================
+#
+# These tasks mirror the `infra-up` / `infra-down` / `infra-reset` shape
+# from `reinhardt-cloud/dashboard/Makefile.toml` so the developer
+# experience is uniform across the Reinhardt family. The actual
+# provisioning is delegated to `scripts/infra_up.sh` (Docker required);
+# credentials are parsed from `settings/<profile>.toml`. `runserver`
+# chains `migrate` (which itself depends on `infra-up`), so a contributor
+# can bootstrap the full local stack with a single `cargo make runserver`.
+
+[tasks.infra-up]
+description = "Start disposable PostgreSQL + Redis containers (docker run --rm); credentials parsed from settings/<profile>.toml"
+command = "bash"
+args = ["scripts/infra_up.sh"]
+env = { REINHARDT_ENV = "local" }
+
+[tasks.infra-down]
+description = "Stop disposable PostgreSQL + Redis containers (data is wiped)"
+command = "bash"
+args = ["scripts/infra_down.sh"]
+env = { REINHARDT_ENV = "local" }
+
+[tasks.infra-reset]
+description = "Stop and recreate disposable infrastructure (wipes all data)"
+dependencies = ["infra-down", "infra-up"]
+
+# ============================================================================
 # Development Server
 # ============================================================================
 
 [tasks.runserver]
-description = "Start the development server"
+description = "Start the development server (auto-starts PostgreSQL/Redis via `infra-up` transitively through `migrate`)"
+dependencies = ["migrate"]
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "runserver"]
+args = ["run", "--bin", "manage", "--", "runserver"]
 
 # ============================================================================
 # Database Migrations
@@ -32,12 +61,13 @@ args = ["run", "--bin", "examples-tutorial-rest", "runserver"]
 [tasks.makemigrations]
 description = "Create new migrations based on model changes"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "makemigrations"]
+args = ["run", "--bin", "manage", "makemigrations"]
 
 [tasks.migrate]
-description = "Apply database migrations"
+description = "Apply database migrations (auto-starts PostgreSQL/Redis via `infra-up`)"
+dependencies = ["infra-up"]
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "migrate"]
+args = ["run", "--bin", "manage", "migrate"]
 
 # ============================================================================
 # Testing
@@ -109,59 +139,45 @@ description = "Clean build artifacts"
 command = "cargo"
 args = ["clean"]
 
-[tasks.runserver-watch]
-description = "Start the development server with auto-reload (requires bacon)"
-command = "bacon"
-args = ["runserver"]
-
 [tasks.makemigrations-app]
 description = "Create new migrations for a specific app (usage: cargo make makemigrations-app -- <app_label>)"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "makemigrations", "${@}"]
+args = ["run", "--bin", "manage", "makemigrations", "${@}"]
 
 [tasks.collectstatic]
 description = "Collect static files into STATIC_ROOT"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "collectstatic"]
+args = ["run", "--bin", "manage", "collectstatic"]
 
 [tasks.check]
 description = "Check the project for common issues"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "check"]
+args = ["run", "--bin", "manage", "check"]
 
 [tasks.showurls]
 description = "Display all registered URL patterns"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "showurls"]
+args = ["run", "--bin", "manage", "showurls"]
 
 [tasks.shell]
 description = "Run an interactive Rust shell (REPL)"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "shell"]
-
-[tasks.test-watch]
-description = "Run tests with auto-reload (requires bacon)"
-command = "bacon"
-args = ["test"]
-
-[tasks.dev-watch]
-description = "Start development with auto-reload"
-dependencies = ["build", "runserver-watch"]
+args = ["run", "--bin", "manage", "shell"]
 
 [tasks.runserver-v]
 description = "Start the development server with verbose output"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "runserver", "-v"]
+args = ["run", "--bin", "manage", "runserver", "-v"]
 
 [tasks.runserver-vv]
 description = "Start the development server with very verbose output"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "runserver", "-vv"]
+args = ["run", "--bin", "manage", "runserver", "-vv"]
 
 [tasks.runserver-vvv]
 description = "Start the development server with maximum verbosity"
 command = "cargo"
-args = ["run", "--bin", "examples-tutorial-rest", "runserver", "-vvv"]
+args = ["run", "--bin", "manage", "runserver", "-vvv"]
 
 # ============================================================================
 # CI/CD Workflow
@@ -172,13 +188,20 @@ description = "Run CI pipeline (format, lint, build, test)"
 dependencies = ["fmt-check", "clippy-check", "build", "test"]
 
 # ============================================================================
-# API Tests (Newman/Postman)
+# API Tests (Bruno)
 # ============================================================================
 
 [tasks.api-test]
-description = "Run Newman API tests"
+description = "Run Bruno API tests"
 script = '''
 #!/bin/bash
+# Export the host UID/GID so the Bruno container can write the bind-mounted
+# reports directory on Linux CI runners. Bash's `$UID`/`$GID` are shell
+# built-ins that are not exported by default, which would let Compose
+# silently fall back to the 1000:1000 default declared in
+# docker-compose.api-tests.yml even when the checkout is owned by another UID.
+export BRUNO_UID="$(id -u)"
+export BRUNO_GID="$(id -g)"
 docker-compose -f docker-compose.api-tests.yml up --build --abort-on-container-exit
 docker-compose -f docker-compose.api-tests.yml down
 '''
@@ -187,12 +210,12 @@ docker-compose -f docker-compose.api-tests.yml down
 description = "Open API test report in browser"
 script = '''
 #!/bin/bash
-open postman/reports/report.html
+open bruno/reports/report.html
 '''
 
 [tasks.api-test-clean]
 description = "Clean API test reports"
 script = '''
 #!/bin/bash
-rm -f postman/reports/*.xml postman/reports/*.html
+rm -f bruno/reports/*.xml bruno/reports/*.html
 '''

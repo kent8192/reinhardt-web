@@ -1,0 +1,21 @@
+meta {
+  name: Get Snippet
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/snippets-viewset/{{viewsetSnippetId}}/
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("Returned snippet matches stored id", function() {
+    const snippet = res.body && res.body.id !== undefined ? res.body : (res.body && res.body.snippet ? res.body.snippet : null);
+    expect(snippet, "response should contain a snippet object").to.not.equal(null);
+    expect(String(snippet.id)).to.equal(bru.getEnvVar("viewsetSnippetId"));
+  });
+}

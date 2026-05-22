@@ -17,29 +17,43 @@ use syn::{ItemFn, ItemStruct, parse_macro_input};
 mod action;
 mod admin;
 mod api_view;
+// client_routes module removed: superseded by #[url_patterns(InstalledApp::<variant>, mode = client)]
 mod app_config_attribute;
 mod app_config_derive;
 mod apply_update_attribute;
 mod apply_update_derive;
 mod collect_migrations;
 mod crate_paths;
+mod dto;
+mod flatten_imports;
+mod hook;
 mod injectable_common;
 mod injectable_fn;
 mod injectable_struct;
 mod installed_apps;
+mod macro_state;
 mod model_attribute;
 mod model_derive;
 mod orm_reflectable_derive;
+mod pascal_case;
 mod path_macro;
 mod permission_macro;
 mod permissions;
+mod pk_shape;
 mod query_fields;
 mod receiver;
 mod rel;
 mod routes;
 mod routes_registration;
 mod schema;
+mod settings_compose;
+mod settings_fragment;
+pub(crate) mod settings_parser;
+mod streaming;
+mod streaming_patterns;
 mod use_inject;
+mod user_attribute;
+mod user_field_mapping;
 mod validate_derive;
 
 use action::action_impl;
@@ -60,8 +74,13 @@ use query_fields::derive_query_fields_impl;
 use receiver::receiver_impl;
 use routes::{delete_impl, get_impl, patch_impl, post_impl, put_impl};
 use routes_registration::routes_impl;
+mod url_patterns;
+mod viewset_macro;
+mod websocket;
 use schema::derive_schema_impl;
+use url_patterns::url_patterns_impl;
 use use_inject::use_inject_impl;
+use user_attribute::user_attribute_impl;
 
 /// Decorator for function-based API views
 #[proc_macro_attribute]
@@ -129,6 +148,82 @@ pub fn delete(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
 
 	delete_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Producer handler decorator — auto-publishes return value to a Kafka topic.
+///
+/// # Arguments
+///
+/// - `topic` — Kafka topic to publish to
+/// - `name` — identifier used in `ResolvedUrls::streaming().<app>().<name>()`
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[producer(topic = "orders", name = "create_order")]
+/// pub async fn create_order(cmd: CreateOrderCommand) -> Result<Order, StreamingError> {
+///     Ok(Order::from(cmd))
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn producer(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemFn);
+	streaming::producer_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Consumer handler decorator — receives messages from a Kafka topic.
+///
+/// # Arguments
+///
+/// - `topic` — Kafka topic to consume from
+/// - `group` — Consumer group id
+/// - `name` — identifier used in `ResolvedUrls::streaming().<app>().<name>()`
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[consumer(topic = "orders", group = "order-processor", name = "handle_order")]
+/// pub async fn handle_order(msg: Message<Order>) -> Result<(), StreamingError> {
+///     Ok(())
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn consumer(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemFn);
+	streaming::consumer_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Streaming patterns attribute — generates typed per-app streaming URL accessors.
+///
+/// Apply to the function that builds and returns the app's `StreamingRouter`.
+/// The function body must contain `streaming_routes![handler1, handler2, ...]`.
+///
+/// # Arguments
+///
+/// - First positional arg: `InstalledApp::<Variant>` — the app's label (or any path/ident)
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[streaming_patterns(InstalledApp::Orders)]
+/// pub fn streaming_routes() -> reinhardt_streaming::StreamingRouter {
+///     streaming_routes![create_order, handle_order]
+/// }
+/// ```
+///
+/// After this macro expands:
+/// - `OrdersStreamingUrls` struct is generated with `.create_order()` and `.handle_order()` methods
+/// - `urls.streaming().orders()` returns `OrdersStreamingUrls<'_>` (requires `#[routes]` in same crate)
+/// - Each method returns the Kafka topic name as `&'static str`
+#[proc_macro_attribute]
+pub fn streaming_patterns(args: TokenStream, input: TokenStream) -> TokenStream {
+	streaming_patterns::streaming_patterns_impl(args.into(), input.into())
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }
@@ -266,14 +361,11 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// # Usage
+/// # Supported Function Signatures
 ///
-/// In your `src/config/urls.rs`:
+/// ## 1. Sync function (standard)
 ///
 /// ```rust,ignore
-/// use reinhardt::prelude::*;
-/// use reinhardt::routes;
-///
 /// #[routes]
 /// pub fn routes() -> UnifiedRouter {
 ///     UnifiedRouter::new()
@@ -282,16 +374,198 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
+/// ## 2. Async function (no DI)
+///
+/// ```rust,ignore
+/// #[routes]
+/// pub async fn routes() -> UnifiedRouter {
+///     UnifiedRouter::new()
+///         .mount("/api/", api::routes())
+/// }
+/// ```
+///
+/// ## 3. Async function with `#[inject]` (DI-aware)
+///
+/// ```rust,ignore
+/// #[routes]
+/// pub async fn routes(#[inject] router: UnifiedRouter) -> UnifiedRouter {
+///     router
+/// }
+/// ```
+///
+/// When `#[inject]` parameters are present, the macro automatically creates
+/// a DI context (`SingletonScope` + `InjectionContext`) and resolves each
+/// injected dependency before calling the function.
+///
+/// # Arguments
+///
+/// - `#[routes]` — Default mode. Generates `ResolvedUrls` and `url_prelude`
+///   module with URL resolver traits from all installed apps. Requires
+///   `installed_apps!` to be present in the crate.
+/// - `#[routes(standalone)]` — Standalone mode. Generates `ResolvedUrls` only,
+///   without `url_prelude` module. Use this for projects that don't use
+///   `installed_apps!`.
+/// - `#[routes(client_inventory)]` — Opt into the WASM cross-target
+///   `ClientRouter` `inventory::submit!` registration (see Issue #4453).
+///
+/// ## Per-mode resolver suppression (Issue #4509)
+///
+/// Plain `#[routes]` unconditionally emits per-app resolver lookups for
+/// three modes (server, client, ws). REST-only apps that do not use
+/// `#[url_patterns(InstalledApp::<app>, mode = client)]` or
+/// `#[url_patterns(InstalledApp::<app>, mode = ws)]` would need to stub
+/// the missing modules. These flags let the macro skip the unused lookups:
+///
+/// - `#[routes(server_only)]` — Shorthand for
+///   `no_client_resolvers, no_ws_resolvers`. The `urls.client()` /
+///   `urls.ws()` gateways are not emitted; only `urls.server().<app>()`
+///   remains. The `ResolvedUrls::<app>()` server-side accessor is
+///   preserved (unlike `standalone`, which suppresses it).
+/// - `#[routes(no_client_resolvers)]` — Skip per-app client resolver
+///   lookups and the `ClientUrls` / `<app>ClientUrls` types.
+/// - `#[routes(no_ws_resolvers)]` — Skip per-app WebSocket resolver
+///   lookups, the `WsUrls` / `<app>WsUrls` types, and the stub
+///   `WebSocketUrlResolver` impl on `ResolvedUrls`.
+///
+/// `client_inventory` is mutually exclusive with the `no_*` flags
+/// (and therefore with `server_only`) — `client_inventory` registers
+/// the very WASM client surface those flags suppress.
+///
+/// ```rust,ignore
+/// // REST-only project with #[url_patterns(InstalledApp::api, mode = server)]
+/// // — no stub client_router.rs / ws_urls.rs needed. `server_only` only
+/// // gates per-app client/ws emission, so the return type stays
+/// // `UnifiedRouter` for consistency with every other `#[routes]` example.
+/// #[routes(server_only)]
+/// pub fn routes() -> UnifiedRouter {
+///     UnifiedRouter::new().mount("/api/", api::urls::url_patterns())
+/// }
+///
+/// // HTTP + WebSocket but no WASM admin: skip client resolvers only.
+/// #[routes(no_client_resolvers)]
+/// pub fn routes() -> UnifiedRouter { ... }
+/// ```
+///
 /// # Notes
 ///
 /// - The function can have any name (e.g., `routes`, `app_routes`, `url_patterns`)
 /// - The return type must be `UnifiedRouter` (not `Arc<UnifiedRouter>`)
 /// - The framework automatically wraps the router in `Arc`
+/// - Sync functions cannot use `#[inject]` (DI resolution is inherently async)
 #[proc_macro_attribute]
 pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
 
 	routes_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Register an app-scoped URL pattern function with the framework and
+/// generate per-mode helper modules from its body.
+///
+/// # Syntax
+///
+/// ```text
+/// #[url_patterns(<InstalledApp::variant>, mode = server|client|unified|ws)]
+/// pub fn url_patterns() -> Router { ... }
+/// ```
+///
+/// The first argument is a path to a variant of an enum implementing
+/// `reinhardt_apps::apps::AppLabel` — normally the `InstalledApp`
+/// enum generated by `installed_apps!`. The macro wraps the original
+/// function so the returned router carries the variant's
+/// `AppLabel::path(&variant)` value as its runtime namespace.
+///
+/// # Modes
+///
+/// | mode      | Router          | Scanned calls                                                            | Modules emitted                                    |
+/// |-----------|-----------------|--------------------------------------------------------------------------|----------------------------------------------------|
+/// | `server`  | `ServerRouter`  | `.endpoint()`, `.viewset()`, `.mount()`                                  | `url_resolvers`                                    |
+/// | `client`  | `ClientRouter`  | `.named_route()` / `.named_route_path*()` family                         | `client_url_resolvers` + `urls` (typed helpers)    |
+/// | `unified` | `UnifiedRouter` | both sides (inside `.server(\|s\| ...)` / `.client(\|c\| ...)` closures) | `url_resolvers` + `client_url_resolvers` + `urls`  |
+/// | `ws`      | `WsRouter`      | `.consumer(...)`                                                         | `ws_url_resolvers`                                 |
+///
+/// # The `urls` module (Issue #4644)
+///
+/// For `mode = client` and the client side of `mode = unified`, the macro
+/// emits a sibling `pub mod urls` whose contents mirror the named routes
+/// declared in the function body. Each named route appears as a free
+/// function whose signature carries the path parameters lifted from the
+/// closure binding:
+///
+/// ```text
+/// // Input
+/// #[url_patterns(InstalledApp::polls, mode = client)]
+/// pub fn client_url_patterns() -> ClientRouter {
+///     ClientRouter::new()
+///         .named_route("index", "/", index_page)
+///         .named_route_path(
+///             "detail",
+///             "/polls/{question_id}/",
+///             |ClientPath(question_id): ClientPath<i64>| polls_detail_page(question_id),
+///         )
+/// }
+///
+/// // Generated (sketch)
+/// pub mod urls {
+///     pub fn index() -> String { /* "polls:index" via global reverser */ }
+///     pub fn detail(question_id: i64) -> String { /* "polls:detail" */ }
+/// }
+/// ```
+///
+/// Each helper resolves through the global `ClientUrlReverser`
+/// (`reinhardt::get_client_reverser()`), so a route-pattern change in the
+/// `#[url_patterns]` body propagates without any call-site edits.
+///
+/// **Extraction rules.** A typed helper is generated when the path
+/// parameter count in the pattern matches the binding count in the
+/// closure, and every binding is shaped `ClientPath(name): ClientPath<T>`:
+///
+/// - `.named_route(name, pattern, component)` — always emits a zero-arg
+///   helper.
+/// - `.named_route_path(name, pattern, |ClientPath(id): ClientPath<T>| ...)`
+///   — emits `fn name(id: T) -> String`.
+/// - `.named_route_path2(...)` / `.named_route_path3(...)` — emit helpers
+///   with two / three positional parameters, in binding order.
+/// - `.named_route_params(...)` / `.named_route_result(...)` — the macro
+///   does not project these into typed helpers today; the route is still
+///   reachable through the stringly-typed
+///   `ResolvedUrls::resolve_client_url(...)` API.
+/// - Routes whose handler is a function reference (not an inline closure)
+///   are silently skipped in the `urls` module for the same reason.
+///
+/// The `urls` module is emitted unconditionally so call sites can write
+/// `use ...::urls;` regardless of which routes happen to be typed; an
+/// empty module is harmless.
+#[doc = include_str!("upstream_workaround_note.md")]
+#[proc_macro_attribute]
+pub fn url_patterns(args: TokenStream, input: TokenStream) -> TokenStream {
+	url_patterns_impl(args.into(), input.into())
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Generate URL resolver traits for a ViewSet function.
+///
+/// When applied to a function returning a ViewSet (e.g., `ModelViewSet`), extracts
+/// the basename from the function body and generates `__url_resolver_{basename}_list`
+/// and `__url_resolver_{basename}_detail` modules.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[viewset]
+/// pub fn viewset() -> ModelViewSet<Snippet, SnippetSerializer> {
+///     ModelViewSet::new("snippet")
+/// }
+/// // Generates: __url_resolver_snippet_list, __url_resolver_snippet_detail
+/// ```
+///
+#[doc = include_str!("upstream_workaround_note.md")]
+#[proc_macro_attribute]
+pub fn viewset(args: TokenStream, input: TokenStream) -> TokenStream {
+	viewset_macro::viewset_macro_impl(args.into(), input.into())
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }
@@ -336,6 +610,34 @@ pub fn receiver(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
 
 	receiver_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Attribute macro for registering lifecycle hooks.
+///
+/// Currently supports `runserver` hooks for extending server startup behavior.
+///
+/// # Usage
+///
+/// ```rust,ignore
+/// use reinhardt::commands::{RunserverHook, RunserverContext};
+///
+/// #[reinhardt::hook(on = runserver)]
+/// struct MyValidationHook;
+///
+/// #[async_trait]
+/// impl RunserverHook for MyValidationHook {
+///     async fn validate(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
+///         // Fail-fast validation before server starts
+///         Ok(())
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn hook(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemStruct);
+	hook::hook_impl(args.into(), input)
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }
@@ -441,11 +743,32 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 /// - Struct must have named fields
 /// - All fields must have either `#[inject]` or `#[no_inject]` attribute
 /// - `#[no_inject]` without default value requires field type to be `Option<T>`
-/// - Struct must be `Clone` (required by `Injectable` trait)
+/// - `Clone` is auto-derived if not already present (used by `into_inner()` and `injectable_factory` patterns)
 /// - All `#[inject]` field types must implement `Injectable`
 ///
+/// # Attribute Ordering
+///
+/// **`#[injectable]` must be placed above `#[derive(...)]` attributes.**
+///
+/// In Rust 2024 edition, attribute macros can only see attributes listed
+/// below them. If `#[derive(Clone)]` appears above `#[injectable]`, the
+/// macro cannot detect it and will add a duplicate `#[derive(Clone)]`,
+/// causing a compilation error.
+///
+/// ```ignore
+/// // Correct
+/// #[injectable]
+/// #[derive(Default, Debug)]
+/// struct MyService { /* ... */ }
+///
+/// // Incorrect — may cause duplicate Clone derive
+/// #[derive(Default, Debug)]
+/// #[injectable]
+/// struct MyService { /* ... */ }
+/// ```
+///
 #[proc_macro_attribute]
-pub fn injectable(_args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 	// Try to parse as ItemFn first
 	if let Ok(item_fn) = syn::parse::<ItemFn>(input.clone()) {
 		return injectable_fn_impl(proc_macro2::TokenStream::new(), item_fn)
@@ -468,7 +791,7 @@ pub fn injectable(_args: TokenStream, input: TokenStream) -> TokenStream {
 			}),
 		};
 
-		return injectable_struct_impl(derive_input)
+		return injectable_struct_impl(args.into(), derive_input)
 			.unwrap_or_else(|e| e.to_compile_error())
 			.into();
 	}
@@ -497,6 +820,41 @@ pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemStruct);
 
 	model_attribute_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Attribute macro for generating auth trait implementations.
+///
+/// Generates `BaseUser`, `FullUser` (when `full = true`), `PermissionsMixin`
+/// (when `user_permissions` and `groups` fields exist), and `AuthIdentity`
+/// trait implementations based on struct fields.
+///
+/// # Arguments
+///
+/// - `hasher`: Type implementing `PasswordHasher + Default` (required)
+/// - `username_field`: Name of the field used as username (required)
+/// - `full`: Generate `FullUser` impl (default: `false`)
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// #[user(hasher = Argon2Hasher, username_field = "email", full = true)]
+/// #[derive(Serialize, Deserialize)]
+/// pub struct MyUser {
+///     pub id: Uuid,
+///     pub email: String,
+///     pub password_hash: Option<String>,
+///     pub last_login: Option<DateTime<Utc>>,
+///     pub is_active: bool,
+///     pub is_superuser: bool,
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn user(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemStruct);
+
+	user_attribute_impl(args.into(), input)
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }
@@ -637,6 +995,13 @@ pub fn derive_app_config(input: TokenStream) -> TokenStream {
 
 /// Collect migrations and register them with the global registry
 ///
+/// # Deprecated since 0.2.0
+///
+/// **This macro is deprecated.** Use `FilesystemSource` instead for loading migrations.
+/// `FilesystemSource` scans directories for `.rs` migration files and does not require
+/// compile-time registration. It is consistent with `manage migrate` behavior and
+/// works reliably in Cargo workspaces when using `env!("CARGO_MANIFEST_DIR")`.
+///
 /// This macro generates a `MigrationProvider` implementation and automatically
 /// registers it with the global migration registry using `linkme::distributed_slice`.
 ///
@@ -752,6 +1117,230 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as syn::DeriveInput);
 
 	validate_derive::validate_derive_impl(input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Attribute macro that absorbs the `cfg_attr(native, ...)` boilerplate for
+/// DTOs shared between the server (`native` cfg) and client (`wasm`) builds.
+///
+/// The macro:
+///
+/// 1. Emits `#[cfg_attr(native, derive(::reinhardt::Validate, ::reinhardt::rest::openapi::Schema))]`
+///    on the struct so the server build gets validation and OpenAPI schema
+///    generation, while the wasm build sees a plain serializable type.
+/// 2. Wraps every `#[validate(...)]` field attribute in `#[cfg_attr(native, ...)]`
+///    so the same source compiles unchanged for `wasm32-unknown-unknown`.
+/// 3. Is idempotent: if the user already wrote
+///    `#[cfg_attr(native, derive(Validate))]` or
+///    `#[cfg_attr(native, derive(Schema))]` on the struct, that derive is not
+///    duplicated.
+///
+/// # `#[dto]` vs [`macro@model`]
+///
+/// Both are struct attributes, but they describe different things and live in
+/// different files:
+///
+/// | | `#[model]` (ORM) | `#[dto]` (this macro) |
+/// |---|---|---|
+/// | What | A persistent record | A wire-level data shape |
+/// | Where it lives | `apps/<app>/models/*.rs` | `apps/<app>/shared/types.rs` |
+/// | Where it runs | Server only (`native`) | Both server (`native`) and client (`wasm`) |
+/// | What it adds | Table mapping, primary key, FK fields, migrations | Validate + OpenAPI `Schema` derives (native-only), wraps `#[validate(...)]` |
+/// | Boundary it crosses | Rust ↔ database | Server ↔ client (via `#[server_fn]`, REST handlers, WebSocket payloads) |
+///
+/// "DTO" is the industry-standard term for the second row — a data-transfer
+/// object that is serialized on one side, sent over the wire, and
+/// deserialized on the other side.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reinhardt::dto;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[dto]
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// pub struct LoginRequest {
+///     #[validate(email(message = "Invalid email address"))]
+///     pub email: String,
+///
+///     #[validate(length(min = 1, message = "Password is required"))]
+///     pub password: String,
+/// }
+/// ```
+///
+/// Expands (conceptually) to:
+///
+/// ```rust,ignore
+/// #[cfg_attr(native, derive(::reinhardt::Validate, ::reinhardt::rest::openapi::Schema))]
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// pub struct LoginRequest {
+///     #[cfg_attr(native, validate(email(message = "Invalid email address")))]
+///     pub email: String,
+///
+///     #[cfg_attr(native, validate(length(min = 1, message = "Password is required")))]
+///     pub password: String,
+/// }
+/// ```
+///
+/// # Requirements
+///
+/// - The consumer crate's **native** build of `reinhardt` MUST enable the
+///   `rest` feature — the macro expansion references
+///   `::reinhardt::rest::openapi::Schema`.
+/// - Applies only to `struct` items (named, tuple, or unit). Enums and unions
+///   produce a compile error.
+/// - Does not accept arguments in this version. Passing any tokens (e.g.
+///   `#[dto(no_schema)]`) is a compile error.
+/// - Unconditional `#[derive(Validate)]` or `#[derive(Schema)]` on the same
+///   struct is a compile error. Both traits live behind the `native` cfg, so
+///   an unconditional derive cannot resolve on wasm and would duplicate the
+///   macro's emission on native. Either delete the derive (and let `#[dto]`
+///   emit it) or wrap it in `#[cfg_attr(native, derive(...))]` yourself.
+/// - Any pre-existing `#[cfg_attr(native, derive(Validate))]` or
+///   `#[cfg_attr(native, derive(Schema))]` MUST be written *below* `#[dto]`,
+///   not above it. Attribute proc macros only observe attributes that appear
+///   under them in source order, so a `cfg_attr` placed above `#[dto]` is
+///   invisible to the macro and would cause `#[dto]` to emit a duplicate
+///   `cfg_attr(native, derive(...))` on native. Example of the supported
+///   ordering:
+///
+/// ```rust,ignore
+/// #[dto]
+/// #[cfg_attr(native, derive(Schema))]
+/// pub struct LoginRequest { /* ... */ }
+/// ```
+#[proc_macro_attribute]
+pub fn dto(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as syn::DeriveInput);
+
+	dto::dto_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Settings attribute macro for composable configuration.
+///
+/// # Fragment mode
+///
+/// Marks a struct as a settings fragment:
+///
+/// ```rust,ignore
+/// #[settings(fragment = true, section = "cache")]
+/// pub struct CacheSettings {
+///     pub backend: String,
+/// }
+/// ```
+///
+/// # Composition mode
+///
+/// Composes fragments into a project settings struct.
+///
+/// Supports two syntax forms:
+/// - **Explicit**: `key: Type` — specify field name explicitly
+/// - **Implicit**: `Type` — infer field name from type (requires `Settings` suffix)
+///
+/// Both forms can be mixed freely:
+///
+/// ```rust,ignore
+/// // All implicit (XxxSettings → xxx)
+/// #[settings(CoreSettings | CacheSettings | SessionSettings)]
+/// pub struct ProjectSettings;
+///
+/// // Mixed implicit + explicit
+/// #[settings(CoreSettings | CacheSettings | static_files: StaticSettings)]
+/// pub struct ProjectSettings;
+///
+/// // Explicit only (original syntax, still fully supported)
+/// #[settings(core: CoreSettings | cache: CacheSettings)]
+/// pub struct ProjectSettings;
+/// ```
+///
+/// Types without `Settings` suffix require explicit `key: Type` syntax. Note that
+/// even for `*Settings` types, if the inferred field name would be a Rust keyword
+/// (e.g. `StaticSettings` → `static`), you must use explicit `key: Type` syntax,
+/// as in `static_files: StaticSettings` above.
+#[proc_macro_attribute]
+pub fn settings(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input_struct = parse_macro_input!(input as ItemStruct);
+
+	// Detect mode: if args contain "fragment", use fragment handler
+	let args_str = args.to_string();
+	if args_str.contains("fragment") {
+		settings_fragment::settings_fragment_impl(args.into(), input_struct)
+			.unwrap_or_else(|e| e.to_compile_error())
+			.into()
+	} else {
+		settings_compose::settings_compose_impl(args.into(), input_struct)
+			.unwrap_or_else(|e| e.to_compile_error())
+			.into()
+	}
+}
+
+/// WebSocket consumer macro. Parallel to `#[get]` / `#[post]`.
+///
+/// Annotates an `async fn` that handles WebSocket messages (`on_message`).
+/// Generates a `{FnName}Consumer` struct implementing `WebSocketConsumer`,
+/// a factory function, inventory metadata, and URL resolver extension traits.
+///
+/// # Example
+///
+/// ```ignore
+/// use reinhardt::websocket;
+/// use reinhardt_websockets::consumers::{ConsumerContext, WebSocketResult};
+/// use reinhardt_websockets::connection::Message;
+///
+/// #[websocket("/ws/chat/{room_id}/", name = "chat_ws")]
+/// pub async fn chat_ws(
+///     context: &mut ConsumerContext,
+///     message: Message,
+/// ) -> WebSocketResult<()> {
+///     context.send_text("pong".to_string()).await
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn websocket(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemFn);
+	websocket::websocket_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Function-like proc macro for multi-file view modules.
+///
+/// When a view module uses per-file endpoint organization (one file per view in
+/// `views/`), the URL resolver modules generated by `#[get]`/`#[post]`/etc.
+/// live inside the submodules. This macro generates `pub use submod::*;`
+/// for each `pub mod` declaration, bringing endpoint functions and their
+/// resolver modules into the parent module scope.
+///
+/// This enables `#[url_patterns]` to discover resolvers using the standard
+/// parent-module path convention (e.g., `.endpoint(views::login)`).
+///
+/// # Usage
+///
+/// ```rust,ignore
+/// // views.rs (multi-file pattern)
+/// use reinhardt::flatten_imports;
+///
+/// flatten_imports! {
+///     pub mod login;
+///     pub mod register;
+/// }
+///
+/// // Generates:
+/// //   pub mod login;
+/// //   pub mod register;
+/// //   pub use login::*;
+/// //   pub use register::*;
+/// ```
+///
+/// For single-file views where all functions are defined directly in
+/// `views.rs`, this macro is not needed.
+#[proc_macro]
+pub fn flatten_imports(input: TokenStream) -> TokenStream {
+	flatten_imports::flatten_imports_impl(input.into())
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }

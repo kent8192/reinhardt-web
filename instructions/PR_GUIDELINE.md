@@ -31,6 +31,7 @@ This file defines the pull request (PR) policy for the Reinhardt project. These 
 - **Fallback**: Use GitHub CLI (`gh pr create`) when GitHub MCP is not available
 - **NEVER** use web browser UI for PR creation when MCP or CLI is available
 - MCP and CLI both ensure consistency and can be automated
+- **Autonomy (Reinhardt family)**: Creating a **Draft** PR is authorized without further user confirmation in `reinhardt-web` / `reinhardt-cloud` / `awesome-delions` / `reinhardt-cc` (see Autonomous Operation Policy in `CLAUDE.md` / `AGENTS.md`); the Draft PR body MUST still follow `.github/PULL_REQUEST_TEMPLATE.md` and `--draft` MUST be passed. Marking a PR as Ready for Review is also authorized autonomously once the implementation is complete (CI completion is **not** required).
 
 The following diagram summarizes the PR creation flow:
 
@@ -98,6 +99,22 @@ test/database-integration-tests
 chore/ci-github-actions-update
 ```
 
+**Issue-Linked Branch Naming:**
+
+When a branch addresses specific GitHub Issues, include the issue number(s) in the branch name:
+
+| Pattern | Format | Example |
+|---------|--------|---------|
+| Single issue | `<type>/issue-XXXX-<description>` | `fix/issue-2636-retrieve-view-integer-pk` |
+| Consecutive range | `<type>/issue-XXXX-to-YYYY-<description>` | `fix/issue-3017-to-3019-feature-gate-compilation` |
+| Multiple ranges | `<type>/issue-XXXX-to-YYYY-and-WWWW-to-ZZZZ-<description>` | `fix/issue-1570-to-1572-and-1591-to-1596-workspace-deps` |
+
+**Rules for issue-linked branches:**
+- Use `to` to express consecutive issue number ranges (NOT hyphens between numbers)
+- Use `and` to separate multiple consecutive ranges
+- Single (non-consecutive) issues do NOT use `to` — just `<type>/issue-XXXX-<description>`
+- The `<description>` suffix MUST be kebab-case and describe the fix/feature
+
 **Exception:** Release branches follow the format `release/<crate>/vX.Y.Z` for compatibility with automated workflows.
 
 **RC Phase: Next-Version Feature Branches**
@@ -137,36 +154,39 @@ gitGraph
 ### PC-4 (SHOULD): Draft PRs for Work in Progress
 
 - Use draft PRs for incomplete work
-- Convert to ready for review when all tests pass
+- Convert to Ready for Review **once the implementation is complete** — CI completion is **not** a prerequisite (the Reinhardt-family Autonomous Operation Policy in `CLAUDE.md` / `AGENTS.md` overrides any "wait for all tests to pass" criterion for the Draft→Ready transition)
 - Draft PRs allow early feedback without formal review requests
 
 **Example:**
 ```bash
 gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
+
+# Convert to Ready once implementation is complete (no need to wait for CI):
+gh pr ready <number>
 ```
 
-### PC-4a (MUST): Draft PR Conversion Protection
+### PC-4a (MUST): Draft PR Conversion Readiness
 
-Converting a Draft PR to Ready for Review is a **visibility-affecting action** that exposes the PR to reviewers and triggers notifications. This conversion **MUST** require explicit user instruction.
+Converting a Draft PR to Ready for Review is a **review-readiness decision**. The agent MAY perform the conversion autonomously **once the PR meets readiness criteria** (i.e., it is in a state worth requesting Copilot Review). Explicit user instruction is also accepted at any time.
 
 **Rules:**
-- **NEVER** convert a Draft PR to Ready for Review without explicit user instruction
-- **Plan Mode approval does NOT authorize Draft PR conversion** (unlike commits/pushes)
-  - Rationale: Plan Mode authorizes *implementation work* (code changes, commits, pushes), but Draft PR conversion is a *review readiness decision* that only the user can make
-- Before converting, ensure all CI checks pass and tests pass locally
-- Use `gh pr ready <number>` for conversion
+- The agent MAY convert a Draft PR to Ready for Review when ALL readiness criteria below are satisfied
+- The agent MUST convert immediately when the user explicitly instructs it (regardless of CI state — the user accepts the trade-off)
+- The agent MUST NOT convert when any readiness criterion is unmet, unless the user explicitly overrides
+- Use `gh pr ready <number>` (or the equivalent GitHub MCP call) for conversion
 
-**Pre-Conversion Checklist:**
-- [ ] User has explicitly instructed conversion
-- [ ] All CI checks pass
-- [ ] All tests pass locally
-- [ ] PR description is complete and accurate
-- [ ] Code follows project style guidelines
-- [ ] Documentation is updated (if applicable)
+**Readiness Criteria (ALL must be true for autonomous conversion):**
+- [ ] Implementation is complete (no remaining `todo!()` or `// TODO:` introduced by this PR)
+- [ ] PR description follows the template and accurately reflects the diff
+- [ ] Code follows project style (`cargo make fmt-check` + `cargo make clippy-check` clean)
+- [ ] Documentation updated where applicable
+- [ ] PR is at a quality level worth submitting for Copilot Review
+
+**Note:** Under the Reinhardt-family Autonomous Operation Policy (`CLAUDE.md` / `AGENTS.md`), **CI completion is the single waived prerequisite** — the previous "wait for CI green / tests to pass" gate no longer applies in the four Reinhardt-family repos (`reinhardt-web`, `reinhardt-cloud`, `awesome-delions`, `reinhardt-cc`). All other readiness criteria above remain mandatory for autonomous conversion.
 
 **Example:**
 ```bash
-# Convert Draft PR to Ready for Review (ONLY after explicit user instruction)
+# Autonomous conversion once readiness criteria are met
 gh pr ready 123
 
 # Verify PR status after conversion
@@ -175,12 +195,12 @@ gh pr view 123 --json isDraft
 
 **Authorization Comparison:**
 
-| Action | Explicit Instruction | Plan Mode Approval |
-|--------|---------------------|-------------------|
-| Commit | ✅ Authorized | ✅ Authorized |
-| Push | ✅ Authorized | ✅ Authorized |
-| GitHub Comments | ✅ Authorized | ✅ Authorized |
-| Draft PR → Ready | ✅ Authorized | ❌ NOT Authorized |
+| Action | Explicit Instruction | Plan Mode Approval | Readiness Criteria Met |
+|--------|---------------------|-------------------|------------------------|
+| Commit | ✅ Authorized | ✅ Authorized | n/a |
+| Push | ✅ Authorized | ✅ Authorized | n/a |
+| GitHub Comments | ✅ Authorized | ✅ Authorized | n/a |
+| Draft PR → Ready | ✅ Authorized | ✅ Authorized (when readiness met) | ✅ Authorized |
 
 The following diagram illustrates the Draft PR lifecycle:
 
@@ -189,9 +209,9 @@ stateDiagram-v2
     [*] --> Draft: gh pr create --draft
     Draft --> Draft: Implementation continues
     Draft --> Draft: CI checks run
-    Draft --> ReadyForReview: User explicitly instructs conversion
-    note right of ReadyForReview: Requires explicit user instruction\nPlan Mode approval NOT sufficient
-    ReadyForReview --> Review: Reviewers notified
+    Draft --> ReadyForReview: Readiness criteria met OR user instructs
+    note right of ReadyForReview: Agent may convert autonomously\nonce ready for Copilot Review
+    ReadyForReview --> Review: Reviewers notified (incl. Copilot)
     Review --> Merged: Approved and merged
     Review --> Draft: Converted back to draft
     Merged --> [*]
@@ -462,6 +482,37 @@ cargo make fmt-check
 cargo make clippy-check
 ```
 
+### RP-1a (MUST): Local SemVer Check + PR Comment
+
+Before converting a Draft PR to Ready for Review on any PR that touches public API, the agent / developer MUST:
+
+1. Run `cargo make semver-check` locally (mirrors `.github/workflows/semver-check.yml` for the normal-PR path)
+2. Post the full stdout/stderr as a PR comment with the `<!-- local-semver-check -->` marker
+3. On re-runs, **update** the existing marked comment instead of creating a new one (use GraphQL `updateIssueComment` or `gh api`)
+
+**Rationale:**
+
+- CI semver-check typically takes 1.5〜2 hours wall clock (April 2026 measurement: 104 min avg ≈ 1.7 h), with tail-end outliers up to ~4.7 hours (max 284 min). Running it locally in parallel with CI shortens the feedback loop
+- Provides a permanent, reviewer-visible audit trail of SemVer impact directly on the PR, independent of CI logs that may expire
+- Replaces the previous CI-generated `cargo-public-api` PR comment that was removed from `semver-check.yml`
+
+**Comment template:**
+
+`````markdown
+<!-- local-semver-check -->
+## Local SemVer Check Result
+
+````text
+<output of `cargo make semver-check`>
+````
+
+*Generated locally via `cargo make semver-check` (mirrors CI `semver-check.yml`).*
+`````
+
+The inner fence uses a 4-backtick `text` block so that any backticks in the captured output do not prematurely terminate the fence. The outer 5-backtick fence wraps the whole template safely when rendered in this document.
+
+If local output diverges from CI, investigate the cause before requesting review.
+
 ### RP-2 (SHOULD): Self-Review
 
 - Review your own PR before requesting review from others
@@ -486,7 +537,7 @@ cargo make clippy-check
 - Each PR should have a single, clear purpose
 - Smaller PRs are easier to review and less risky to merge
 
-**For batch issue handling**: See docs/ISSUE_HANDLING.md for work unit principles (WU-1 ~ WU-3) on how to scope PRs when addressing multiple issues.
+**For batch issue handling**: See instructions/ISSUE_HANDLING.md for work unit principles (WU-1 ~ WU-3) on how to scope PRs when addressing multiple issues.
 
 ### RP-5 (MUST): Use Three-Dot Diff for PR Verification
 
@@ -798,7 +849,7 @@ docs(readme): add installation instructions
 - Address all review comments
 - Ensure all CI checks pass before merge
 - Use three-dot diff (`main...branch`) for PR verification to exclude merge history noise
-- Wait for explicit user instruction before converting Draft PRs to Ready for Review (Plan Mode approval does NOT authorize conversion)
+- Convert Draft PRs to Ready for Review autonomously once PC-4a readiness criteria are satisfied, OR upon explicit user instruction
 
 ### ❌ NEVER DO
 - Write PR titles or descriptions in non-English languages
@@ -811,14 +862,14 @@ docs(readme): add installation instructions
 - Force push after review has started (unless explicitly requested)
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
 - Use two-dot diff (`main..branch`) for PR verification (includes merge history noise)
-- Convert Draft PRs to Ready for Review without explicit user instruction (Plan Mode approval does NOT count)
+- Convert Draft PRs to Ready for Review while PC-4a readiness criteria are unmet (incomplete implementation, failing CI/tests, dirty fmt/clippy) without explicit user override
 
 ---
 
 ## Related Documentation
 
 - **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)
-- **Issue Handling Principles**: docs/ISSUE_HANDLING.md
+- **Issue Handling Principles**: instructions/ISSUE_HANDLING.md
 - **Commit Guidelines**: @instructions/COMMIT_GUIDELINE.md
 - **Release Process**: @instructions/RELEASE_PROCESS.md
 - **GitHub MCP Tools**: Available when GitHub MCP server is configured

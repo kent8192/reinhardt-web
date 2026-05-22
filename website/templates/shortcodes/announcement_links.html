@@ -1,0 +1,31 @@
+{%- set data = load_data(
+    url="https://api.github.com/repos/kent8192/reinhardt-web/contents/announcements?ref=main",
+    format="json",
+    headers=["User-Agent=reinhardt-web-site (zola)"],
+    required=false
+) -%}
+{%- if data -%}
+{%- set files = data | filter(attribute="type", value="file") -%}
+{#- Build a numeric-aware sort key by zero-padding the trailing prerelease
+    counter to 3 digits (e.g. `v0.1.0-rc.9.md` -> `v0.1.0-rc.009.md`), so a
+    lex sort puts `rc.10` after `rc.9`. The original name is recovered later
+    by stripping the leading zero(s) on the trailing segment. -#}
+{%- set_global announcement_keys = [] -%}
+{%- for item in files -%}
+  {%- if item.name is starting_with("v") and item.name is ending_with(".md") -%}
+    {%- set sort_key = item.name
+        | regex_replace(pattern=`\.([0-9])\.md$`, rep=`.00$1.md`)
+        | regex_replace(pattern=`\.([0-9][0-9])\.md$`, rep=`.0$1.md`) -%}
+    {%- set_global announcement_keys = announcement_keys | concat(with=[sort_key]) -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- set sorted_keys = announcement_keys | sort | reverse -%}
+<ul>
+{%- for key in sorted_keys %}
+  {%- set name = key | regex_replace(pattern=`\.0+([0-9]+)\.md$`, rep=`.$1.md`) %}
+  <li><a href="https://github.com/kent8192/reinhardt-web/blob/main/announcements/{{ name | safe }}">{{ name | trim_end_matches(pat=".md") }}</a></li>
+{%- endfor %}
+</ul>
+{%- else %}
+<p>Announcement list is currently unavailable. Please check the <a href="https://github.com/kent8192/reinhardt-web/tree/main/announcements">announcements directory</a> directly.</p>
+{%- endif -%}

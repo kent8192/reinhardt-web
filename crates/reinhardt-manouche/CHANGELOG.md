@@ -7,79 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.8...reinhardt-manouche@v0.1.0-rc.9) - 2026-03-15
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.30...reinhardt-manouche@v0.1.0) - 2026-05-22
 
-### Styling
+Initial stable release of `reinhardt-manouche` as part of the
+reinhardt-web 0.1.0 release. Provides the AST, parser, validator, and
+codegen for the Manouche DSL that powers the `page!` and `form!`
+procedural macros in `reinhardt-pages`.
 
-- add explanatory comments to remaining #[allow(dead_code)] attributes
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.4...reinhardt-manouche@v0.1.0-rc.5) - 2026-03-07
+### Capabilities at 0.1.0
 
-### Fixed
+- **Unified page / form / head DSL** — A single parser stack handles
+  `page!`, `form!`, and `<head>` content with shared AST types,
+  reactive trait definitions, and consistent diagnostic spans driven
+  by `syn` and `darling`.
+- **Typed form fields with validator scope** — Form fields declare
+  client/server scope via `ValidatorScope` and `ClientTrigger`. Typed
+  validator rules carry scope information so codegen can place
+  each validator on the appropriate side of the network boundary.
+- **First-class navigation and submit ergonomics** — `success_url`
+  for post-submit navigation, `on_success` / `on_success_ref` callback
+  forms, `strip_arguments`, `autocomplete`, and `SubmitButton` are
+  parsed and lowered without per-field boilerplate.
+- **Compile-time safety hardening** — `js_condition` expressions are
+  validated at compile time to prevent injection, `<head>` element
+  attribute extraction is validated for safe rendering, and the page
+  parser uses `assert!` (not `debug_assert!`) so contracts hold in
+  release builds too.
 
-- *(manouche)* convert todo!() to unimplemented!() for stable audit
+### Notable Breaking Changes
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.1...reinhardt-manouche@v0.1.0-rc.2) - 2026-03-04
+- **`manouche` IR / `IRVisitor` removed** ([#3900](https://github.com/kent8192/reinhardt-web/discussions/3900))
+  — the unused intermediate-representation layer and its visitor
+  scaffold were removed. Codegen now lowers directly from AST to
+  generated tokens. External consumers of the IR types must migrate to
+  the AST surface.
 
-### Fixed
+Workspace-level breaking changes are tracked at the
+[Breaking Changes Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/breaking-changes)
+and summarized in the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
 
-- use workspace inheritance for authors, edition, license, and repository
+### Migration Notes
 
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-alpha.2...reinhardt-manouche@v0.1.0-rc.1) - 2026-02-23
+See the workspace-level [Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the full upgrade flow. Crate-specific notes:
 
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-alpha.1...reinhardt-manouche@v0.1.0-alpha.2) - 2026-02-23
-
-### Changed
-
-- *(manouche)* reduce duplication and improve error context
-- *(manouche)* replace magic string with Option<Ident> for FormMacro name
-
-### Fixed
-
-- *(manouche)* add compile-time validation for js_condition to prevent injection
-- replace panicking name() with safe error handling in FormFieldProperty ([[#578](https://github.com/kent8192/reinhardt-web/issues/578)](https://github.com/kent8192/reinhardt-web/issues/578))
-- *(reinhardt-manouche)* emit compile error for unsupported form-level validators
-- *(reinhardt-manouche)* replace debug_assert with assert in page parser
-
-### Maintenance
-
-- *(manouche)* convert TODO comments to todo!() macros in IR lowering
-
-### Security
-
-- *(manouche)* implement head element validation and fix attribute value extraction
-
-### Styling
-
-- apply rustfmt formatting to workspace files
-- apply rustfmt to pre-existing unformatted files
-
-## [0.1.0-alpha.1](https://github.com/kent8192/reinhardt-web/releases/tag/reinhardt-manouche@v0.1.0-alpha.1) - 2026-02-05
-
-### Added
-
-- *(manouche)* add IRVisitor trait and walk helpers
-- *(manouche)* add IR type definitions
-- *(manouche)* add validator module with page, form, and head validators
-- *(manouche)* add parser module with page, form, and head parsers
-- *(manouche)* add head node definitions
-- *(manouche)* migrate typed form definitions
-- *(manouche)* migrate form node definitions
-- *(manouche)* migrate typed page node definitions
-- *(manouche)* migrate page node definitions
-- *(manouche)* migrate types module from reinhardt-pages-ast
-- *(manouche)* add reactive trait definitions
-
-### Fixed
-
-- add reinhardt-manouche to workspace deps and address review comments
-
-### Other
-
-- *(manouche)* add README
-- *(manouche)* add module skeleton
-- *(manouche)* create reinhardt-manouche crate structure
+- Replace any direct dependency on `manouche`'s IR types or
+  `IRVisitor` trait with the AST node types ([#3900](https://github.com/kent8192/reinhardt-web/discussions/3900));
+  most downstream users only ever consumed the procedural macros and
+  are unaffected.
+- Form-level client validators that previously emitted JavaScript are
+  rejected at parse time with a migration error. Move them to
+  scope-annotated typed validator rules.

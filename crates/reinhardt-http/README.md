@@ -78,19 +78,20 @@ Core HTTP abstractions for the Reinhardt framework. Provides comprehensive reque
 
 #### Error Integration
 
-- Re-exports `reinhardt_exception::Error` and `Result` for consistent error handling
+- Re-exports `reinhardt_core::exception::Error` and `Result` for consistent error handling
 
 ## Installation
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = "0.1.0-alpha.1"
+reinhardt = "0.1.0-rc.30"
 
 # Or use a preset with parsers support:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 **Note:** HTTP types are available through the main `reinhardt` crate, which provides a unified interface to all framework components.
@@ -130,7 +131,7 @@ let mut request = Request::builder()
 	.unwrap();
 
 // Access query parameters
-assert_eq!(request.query_params.get("sort"), Some(&"sort".to_string()));
+assert_eq!(request.query_params.get("sort"), Some(&"name".to_string()));
 assert_eq!(request.query_params.get("order"), Some(&"asc".to_string()));
 
 // Add path parameters (typically done by router)
@@ -361,7 +362,7 @@ let response = StreamingResponse::with_status(
 
 - `parsers` - Enable request body parsing (JSON, form data, multipart)
   - Adds `parse_json()`, `parse_form()` methods to Request
-  - Requires `reinhardt-parsers` crate
+  - Requires `reinhardt-core` crate (parsers module)
 
 ## Dependencies
 
@@ -369,8 +370,7 @@ let response = StreamingResponse::with_status(
 - `bytes` - Efficient byte buffer handling
 - `futures` - Stream support for streaming responses
 - `serde` - Serialization support (with `serde_json` for JSON)
-- `reinhardt-exception` - Error handling
-- `reinhardt-parsers` - Request body parsing (optional, with `parsers` feature)
+- `reinhardt-core` - Core types, error handling, and optional request body parsing (parsers module enabled via the `parsers` feature)
 
 ## Testing
 

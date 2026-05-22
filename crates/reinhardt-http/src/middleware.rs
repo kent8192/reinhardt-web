@@ -43,9 +43,19 @@
 
 use async_trait::async_trait;
 use reinhardt_core::exception::Result;
+use std::any::{Any, TypeId};
 use std::sync::Arc;
 
 use crate::{Request, Response};
+
+/// Type-erased DI singleton registration entry contributed by a middleware.
+///
+/// Pairs the concrete `TypeId` of `T` with an `Arc<dyn Any + Send + Sync>` that
+/// can be inserted directly into a DI singleton scope keyed by that `TypeId`.
+/// This indirection lets `reinhardt-http` expose a DI hook on the `Middleware`
+/// trait without taking a dependency on `reinhardt-di` (which would create a
+/// circular crate dependency).
+pub type MiddlewareDiRegistration = (TypeId, Arc<dyn Any + Send + Sync>);
 
 /// Handler trait for processing requests.
 ///
@@ -114,6 +124,43 @@ pub trait Middleware: Send + Sync {
 	/// By default, returns `true` (always execute), maintaining backward compatibility.
 	fn should_continue(&self, _request: &Request) -> bool {
 		true
+	}
+
+	/// Returns DI singleton registrations contributed by this middleware.
+	///
+	/// Each entry is a `(TypeId, Arc<dyn Any + Send + Sync>)` pair representing
+	/// a singleton that the middleware owns and wants to expose to handlers
+	/// resolved via `#[inject]`. The default implementation returns an empty
+	/// vector, preserving backward compatibility for middleware that does not
+	/// own any DI-visible state.
+	///
+	/// Routers such as `ServerRouter` / `UnifiedRouter` call this method when
+	/// the middleware is registered via `with_middleware()` and merge the
+	/// resulting list into the server's DI singleton scope. This lets a
+	/// middleware (for example `SessionMiddleware`) automatically register the
+	/// `Arc<T>` it constructs in its constructor, so callers no longer have to
+	/// thread a parallel `with_di_registrations(...)` call alongside every
+	/// `with_middleware(...)`.
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// use std::any::TypeId;
+	/// use std::sync::Arc;
+	/// use reinhardt_http::{Middleware, MiddlewareDiRegistration};
+	///
+	/// struct MyStore;
+	/// struct MyMiddleware { store: Arc<MyStore> }
+	///
+	/// impl Middleware for MyMiddleware {
+	///     // ... process / should_continue ...
+	///     fn di_registrations(&self) -> Vec<MiddlewareDiRegistration> {
+	///         vec![(TypeId::of::<MyStore>(), Arc::clone(&self.store) as _)]
+	///     }
+	/// }
+	/// ```
+	fn di_registrations(&self) -> Vec<MiddlewareDiRegistration> {
+		Vec::new()
 	}
 }
 
@@ -233,7 +280,11 @@ impl Handler for MiddlewareChain {
 		// - Condition check: O(1) per middleware
 		// - Skip unnecessary middleware: achieves O(k) where k <= n
 		// - Early return: stops processing on first stop_chain=true response
-		let mut current_handler = self.handler.clone();
+		// Wrap the base handler to convert errors to responses, ensuring
+		// all middleware post-processing runs even for error responses.
+		let mut current_handler: Arc<dyn Handler> = Arc::new(ErrorToResponseHandler {
+			inner: self.handler.clone(),
+		});
 
 		// Filter middleware based on should_continue condition
 		// This achieves the O(k) optimization where k is the number of middleware that should run
@@ -258,9 +309,126 @@ impl Handler for MiddlewareChain {
 	}
 }
 
-/// Optimized internal handler that composes middleware with next handler.
+/// Middleware wrapper that excludes specific URL paths from execution.
 ///
-/// Supports short-circuiting via `response.should_stop_chain()`.
+/// When a request matches an excluded path, the middleware is skipped
+/// and the request passes directly to the next handler in the chain.
+///
+/// Path matching follows Django URL conventions:
+/// - Paths ending with `/` are treated as **prefix matches**
+///   (e.g., `"/api/auth/"` excludes `"/api/auth/login"`, `"/api/auth/register"`)
+/// - Paths without trailing `/` require an **exact match**
+///   (e.g., `"/health"` excludes only `"/health"`, not `"/health/check"`)
+///
+/// This struct is typically not used directly. Instead, use the
+/// `exclude` methods on the `ServerRouter` or `UnifiedRouter` types
+/// from the `reinhardt_urls::routers` module for declarative
+/// route exclusion at the router level.
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_http::middleware::ExcludeMiddleware;
+/// use reinhardt_http::{Middleware, Request};
+/// use std::sync::Arc;
+///
+/// # struct MyMiddleware;
+/// # #[async_trait::async_trait]
+/// # impl Middleware for MyMiddleware {
+/// #     async fn process(
+/// #         &self,
+/// #         request: Request,
+/// #         next: Arc<dyn reinhardt_http::Handler>,
+/// #     ) -> reinhardt_core::exception::Result<reinhardt_http::Response> {
+/// #         next.handle(request).await
+/// #     }
+/// # }
+/// let inner: Arc<dyn Middleware> = Arc::new(MyMiddleware);
+/// let excluded = ExcludeMiddleware::new(inner)
+///     .add_exclusion("/api/auth/")   // prefix match
+///     .add_exclusion("/health");     // exact match
+/// ```
+pub struct ExcludeMiddleware {
+	inner: Arc<dyn Middleware>,
+	exclusions: Vec<String>,
+}
+
+impl ExcludeMiddleware {
+	/// Creates a new `ExcludeMiddleware` wrapping the given middleware.
+	pub fn new(inner: Arc<dyn Middleware>) -> Self {
+		Self {
+			inner,
+			exclusions: Vec::new(),
+		}
+	}
+
+	/// Adds an exclusion pattern (builder pattern, consumes self).
+	///
+	/// Paths ending with `/` are prefix matches; others are exact matches.
+	pub fn add_exclusion(mut self, pattern: &str) -> Self {
+		self.exclusions.push(pattern.to_string());
+		self
+	}
+
+	/// Adds an exclusion pattern (mutable reference).
+	///
+	/// Paths ending with `/` are prefix matches; others are exact matches.
+	pub fn add_exclusion_mut(&mut self, pattern: &str) {
+		self.exclusions.push(pattern.to_string());
+	}
+
+	/// Checks whether the given path matches any exclusion pattern.
+	fn is_excluded(&self, path: &str) -> bool {
+		self.exclusions.iter().any(|pattern| {
+			if pattern.ends_with('/') {
+				// Prefix match: excluded if path starts with the pattern
+				path.starts_with(pattern.as_str())
+			} else {
+				// Exact match: excluded only if path equals the pattern
+				path == pattern
+			}
+		})
+	}
+}
+
+#[async_trait]
+impl Middleware for ExcludeMiddleware {
+	async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+		self.inner.process(request, next).await
+	}
+
+	fn should_continue(&self, request: &Request) -> bool {
+		if self.is_excluded(request.uri.path()) {
+			return false;
+		}
+		self.inner.should_continue(request)
+	}
+}
+
+/// Internal handler wrapper that converts errors to HTTP responses.
+///
+/// Wraps the base handler so that middleware always receives `Ok(Response)`
+/// from `next.handle()`, even when the handler returns an error. This ensures
+/// middleware post-processing (e.g., adding security headers) runs for all
+/// responses, matching Django's `process_response` semantics.
+struct ErrorToResponseHandler {
+	inner: Arc<dyn Handler>,
+}
+
+#[async_trait]
+impl Handler for ErrorToResponseHandler {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		match self.inner.handle(request).await {
+			Ok(response) => Ok(response),
+			Err(e) => Ok(Response::from(e)),
+		}
+	}
+}
+
+/// Internal handler that composes a single middleware with the next handler.
+///
+/// Converts middleware errors to HTTP responses so that outer middleware
+/// post-processing (e.g., adding security headers) always runs.
 struct ConditionalComposedHandler {
 	middleware: Arc<dyn Middleware>,
 	next: Arc<dyn Handler>,
@@ -269,14 +437,14 @@ struct ConditionalComposedHandler {
 #[async_trait]
 impl Handler for ConditionalComposedHandler {
 	async fn handle(&self, request: Request) -> Result<Response> {
-		// Process the request through this middleware
-		let response = self.middleware.process(request, self.next.clone()).await?;
-
-		// Short-circuit: if response indicates chain should stop, return immediately
-		// This prevents further middleware/handlers from executing
-		if response.should_stop_chain() {
-			return Ok(response);
-		}
+		// Process the request through this middleware.
+		// Convert errors to responses so that outer middleware post-processing
+		// (e.g., security headers) always runs — matching Django's process_response
+		// semantics where the response hook executes for both success and error cases.
+		let response = match self.middleware.process(request, self.next.clone()).await {
+			Ok(response) => response,
+			Err(e) => Response::from(e),
+		};
 
 		Ok(response)
 	}
@@ -618,5 +786,272 @@ mod tests {
 
 		let stopping_response = Response::unauthorized().with_stop_chain(true);
 		assert!(stopping_response.should_stop_chain());
+	}
+
+	// --- ExcludeMiddleware tests ---
+
+	fn create_request_with_path(path: &str) -> Request {
+		Request::builder()
+			.method(Method::GET)
+			.uri(path)
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap()
+	}
+
+	#[rstest::rstest]
+	#[case("/api/auth/login", true)]
+	#[case("/api/auth/register", true)]
+	#[case("/api/auth/", true)]
+	#[case("/api/users", false)]
+	#[case("/public", false)]
+	fn test_exclude_middleware_prefix_match(#[case] path: &str, #[case] should_exclude: bool) {
+		// Arrange
+		let inner: Arc<dyn Middleware> = Arc::new(MockMiddleware {
+			prefix: "MW:".to_string(),
+		});
+		let exclude_mw = ExcludeMiddleware::new(inner).add_exclusion("/api/auth/");
+
+		// Act
+		let request = create_request_with_path(path);
+		let result = exclude_mw.should_continue(&request);
+
+		// Assert
+		assert_eq!(result, !should_exclude);
+	}
+
+	#[rstest::rstest]
+	#[case("/health", true)]
+	#[case("/health/check", false)]
+	#[case("/healthz", false)]
+	#[case("/api/health", false)]
+	fn test_exclude_middleware_exact_match(#[case] path: &str, #[case] should_exclude: bool) {
+		// Arrange
+		let inner: Arc<dyn Middleware> = Arc::new(MockMiddleware {
+			prefix: "MW:".to_string(),
+		});
+		let exclude_mw = ExcludeMiddleware::new(inner).add_exclusion("/health");
+
+		// Act
+		let request = create_request_with_path(path);
+		let result = exclude_mw.should_continue(&request);
+
+		// Assert
+		assert_eq!(result, !should_exclude);
+	}
+
+	#[rstest::rstest]
+	fn test_exclude_middleware_no_match_passes_through() {
+		// Arrange
+		let inner: Arc<dyn Middleware> = Arc::new(MockMiddleware {
+			prefix: "MW:".to_string(),
+		});
+		let exclude_mw = ExcludeMiddleware::new(inner)
+			.add_exclusion("/api/auth/")
+			.add_exclusion("/health");
+
+		// Act
+		let request = create_request_with_path("/api/users");
+		let result = exclude_mw.should_continue(&request);
+
+		// Assert
+		assert!(result);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_exclude_middleware_delegates_process() {
+		// Arrange
+		let inner: Arc<dyn Middleware> = Arc::new(MockMiddleware {
+			prefix: "INNER:".to_string(),
+		});
+		let exclude_mw = ExcludeMiddleware::new(inner).add_exclusion("/excluded/");
+
+		let handler = Arc::new(MockHandler {
+			response_body: "Response".to_string(),
+		});
+
+		// Act
+		let request = create_request_with_path("/api/test");
+		let response = exclude_mw.process(request, handler).await.unwrap();
+
+		// Assert
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "INNER:Response");
+	}
+
+	#[rstest::rstest]
+	fn test_exclude_middleware_multiple_exclusions() {
+		// Arrange
+		let inner: Arc<dyn Middleware> = Arc::new(MockMiddleware {
+			prefix: "MW:".to_string(),
+		});
+		let mut exclude_mw = ExcludeMiddleware::new(inner);
+		exclude_mw.add_exclusion_mut("/api/auth/");
+		exclude_mw.add_exclusion_mut("/admin/");
+		exclude_mw.add_exclusion_mut("/health");
+
+		// Act & Assert
+		assert!(!exclude_mw.should_continue(&create_request_with_path("/api/auth/login")));
+		assert!(!exclude_mw.should_continue(&create_request_with_path("/admin/dashboard")));
+		assert!(!exclude_mw.should_continue(&create_request_with_path("/health")));
+		assert!(exclude_mw.should_continue(&create_request_with_path("/api/users")));
+	}
+
+	#[rstest::rstest]
+	fn test_exclude_middleware_respects_inner_should_continue() {
+		// Arrange - inner middleware that rejects non-/api/ paths
+		let inner: Arc<dyn Middleware> = Arc::new(ConditionalMiddleware {
+			prefix: "API:".to_string(),
+		});
+		let exclude_mw = ExcludeMiddleware::new(inner).add_exclusion("/api/auth/");
+
+		// Act & Assert
+		// Excluded path -> false (excluded by wrapper)
+		assert!(!exclude_mw.should_continue(&create_request_with_path("/api/auth/login")));
+		// Non-excluded, but inner rejects non-/api/ -> false (inner's should_continue)
+		assert!(!exclude_mw.should_continue(&create_request_with_path("/public")));
+		// Non-excluded, inner accepts /api/ -> true
+		assert!(exclude_mw.should_continue(&create_request_with_path("/api/users")));
+	}
+
+	// ========================================================================
+	// Error-to-response conversion tests (issue #3230)
+	// ========================================================================
+
+	/// Handler that always returns an error.
+	struct NotFoundHandler;
+
+	#[async_trait]
+	impl Handler for NotFoundHandler {
+		async fn handle(&self, _request: Request) -> Result<Response> {
+			Err(reinhardt_core::exception::Error::NotFound(
+				"not found".into(),
+			))
+		}
+	}
+
+	struct UnauthorizedHandler;
+
+	#[async_trait]
+	impl Handler for UnauthorizedHandler {
+		async fn handle(&self, _request: Request) -> Result<Response> {
+			Err(reinhardt_core::exception::Error::Authentication(
+				"unauthorized".into(),
+			))
+		}
+	}
+
+	/// Middleware that adds a custom header to the response after calling next.
+	struct HeaderAddingMiddleware {
+		header_name: &'static str,
+		header_value: &'static str,
+	}
+
+	#[async_trait]
+	impl Middleware for HeaderAddingMiddleware {
+		async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+			let response = next.handle(request).await?;
+			Ok(response.with_header(self.header_name, self.header_value))
+		}
+	}
+
+	/// Middleware that always returns an error (simulates CSRF rejection).
+	struct RejectingMiddleware;
+
+	#[async_trait]
+	impl Middleware for RejectingMiddleware {
+		async fn process(&self, _request: Request, _next: Arc<dyn Handler>) -> Result<Response> {
+			Err(reinhardt_core::exception::Error::Authorization(
+				"CSRF check failed".into(),
+			))
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_chain_post_processing_runs_on_handler_error() {
+		// Arrange: handler returns 404 error, outer middleware adds header
+		let handler: Arc<dyn Handler> = Arc::new(NotFoundHandler);
+		let mut chain = MiddlewareChain::new(handler);
+		chain.add_middleware(Arc::new(HeaderAddingMiddleware {
+			header_name: "X-Custom-Security",
+			header_value: "applied",
+		}));
+
+		// Act
+		let request = create_test_request();
+		let response = chain.handle(request).await.unwrap();
+
+		// Assert: error converted to 404 response AND header is present
+		assert_eq!(response.status, hyper::StatusCode::NOT_FOUND);
+		assert_eq!(
+			response
+				.headers
+				.get("X-Custom-Security")
+				.map(|v| v.to_str().unwrap()),
+			Some("applied")
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_chain_post_processing_runs_on_middleware_error() {
+		// Arrange: outer middleware adds header, inner middleware rejects.
+		// First add = outermost in this framework's chain ordering.
+		let handler = Arc::new(MockHandler {
+			response_body: "OK".into(),
+		});
+		let mut chain = MiddlewareChain::new(handler);
+		// Outer middleware adds a security header (post-processing)
+		chain.add_middleware(Arc::new(HeaderAddingMiddleware {
+			header_name: "X-Frame-Options",
+			header_value: "DENY",
+		}));
+		// Inner middleware rejects the request
+		chain.add_middleware(Arc::new(RejectingMiddleware));
+
+		// Act
+		let request = create_test_request();
+		let response = chain.handle(request).await.unwrap();
+
+		// Assert: inner middleware error converted to 403, outer middleware header present
+		assert_eq!(response.status, hyper::StatusCode::FORBIDDEN);
+		assert_eq!(
+			response
+				.headers
+				.get("X-Frame-Options")
+				.map(|v| v.to_str().unwrap()),
+			Some("DENY")
+		);
+	}
+
+	/// Passthrough middleware that does not modify the response.
+	struct PassthroughMiddleware;
+
+	#[async_trait]
+	impl Middleware for PassthroughMiddleware {
+		async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+			next.handle(request).await
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_chain_error_preserves_correct_status_code() {
+		// Arrange: handler returns 401 Unauthorized, with at least one middleware
+		// so that ConditionalComposedHandler is used (empty chain bypasses it)
+		let handler: Arc<dyn Handler> = Arc::new(UnauthorizedHandler);
+		let mut chain = MiddlewareChain::new(handler);
+		chain.add_middleware(Arc::new(PassthroughMiddleware));
+
+		// Act
+		let request = create_test_request();
+		let response = chain.handle(request).await.unwrap();
+
+		// Assert: status code correctly reflects the error
+		assert_eq!(response.status, hyper::StatusCode::UNAUTHORIZED);
 	}
 }

@@ -4,6 +4,7 @@
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
 use super::FieldSelector;
+use crate::naming::to_snake_case;
 use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::orm::query_fields::comparison::FieldComparison;
@@ -514,6 +515,14 @@ where
 	pub fn filter(mut self, filter: Filter) -> Self {
 		self.filters.push(filter);
 		self
+	}
+
+	/// Returns the filters that have been applied to this `QuerySet`.
+	///
+	/// Useful for inspection in tests and for custom managers that need to
+	/// observe or assert on the active filter chain (Issue #3980).
+	pub fn filters(&self) -> &[Filter] {
+		&self.filters
 	}
 
 	/// Create a QuerySet from a subquery (FROM clause subquery / derived table)
@@ -3431,10 +3440,66 @@ where
 		pk_values: &[i64],
 	) -> SelectStatement {
 		let table_name = T::table_name();
-		let junction_table = Alias::new(format!("{}_{}", table_name, related_field));
-		let related_table = Alias::new(format!("{}s", related_field));
-		let junction_main_fk = Alias::new(format!("{}_id", table_name.trim_end_matches('s')));
-		let junction_related_fk = Alias::new(format!("{}_id", related_field));
+		// Apply the canonical M2M naming rule used by
+		// `ManyToManyAccessor::default_through_table` and the autodetector
+		// (`crates/reinhardt-db/src/migrations/autodetector.rs`):
+		// `{source_table.to_lowercase()}_{to_snake_case(field_name)}`.
+		// Without this, prefetch joins target a junction table whose
+		// casing/snake-case diverges from what `makemigrations` produced
+		// for the same M2M field (#4659).
+		let junction_table = Alias::new(format!(
+			"{}_{}",
+			table_name.to_lowercase(),
+			to_snake_case(related_field)
+		));
+
+		// Look up relationship metadata to derive FK names correctly
+		let rel_info = T::relationship_metadata().into_iter().find(|r| {
+			r.name == related_field
+				&& r.relationship_type == super::relationship::RelationshipType::ManyToMany
+		});
+
+		// Derive related table name from metadata
+		let related_table = if let Some(ref info) = rel_info {
+			Alias::new(to_snake_case(&info.related_model).to_lowercase())
+		} else {
+			// Fallback to pluralization heuristic
+			Alias::new(format!("{}s", related_field))
+		};
+
+		// Derive junction FK names from metadata or use default_link_fields logic
+		let table_name_lower = table_name.to_lowercase();
+		let (junction_main_fk, junction_related_fk) = if let Some(ref info) = rel_info {
+			let source_fk = if let Some(ref sf) = info.source_field {
+				sf.clone()
+			} else {
+				// Mirror ManyToManyAccessor::default_link_fields logic
+				let related_lower = to_snake_case(&info.related_model).to_lowercase();
+				if table_name_lower == related_lower {
+					format!("from_{}_id", table_name_lower)
+				} else {
+					format!("{}_id", table_name_lower)
+				}
+			};
+
+			let target_fk = if let Some(ref tf) = info.target_field {
+				tf.clone()
+			} else {
+				let related_lower = to_snake_case(&info.related_model).to_lowercase();
+				if table_name_lower == related_lower {
+					format!("to_{}_id", table_name_lower)
+				} else {
+					format!("{}_id", to_snake_case(related_field))
+				}
+			};
+
+			(Alias::new(source_fk), Alias::new(target_fk))
+		} else {
+			// Fallback to heuristics
+			let source_fk = format!("{}_id", table_name_lower);
+			let target_fk = format!("{}_id", to_snake_case(related_field));
+			(Alias::new(source_fk), Alias::new(target_fk))
+		};
 
 		let mut stmt = Query::select();
 		stmt.from(related_table.clone())

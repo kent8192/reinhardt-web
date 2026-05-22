@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 
 /// Configuration for WASM builds.
 #[derive(Debug, Clone)]
@@ -20,6 +21,10 @@ pub struct WasmBuildConfig {
 	pub optimize: bool,
 	/// Target name (crate name, used for output file naming)
 	pub target_name: Option<String>,
+	/// Override for the cargo target directory. When `None`, falls back to
+	/// `project_dir/target`. In workspace setups, this should point to the
+	/// workspace root's target directory.
+	pub target_dir: Option<PathBuf>,
 }
 
 impl Default for WasmBuildConfig {
@@ -30,6 +35,7 @@ impl Default for WasmBuildConfig {
 			release: false,
 			optimize: true,
 			target_name: None,
+			target_dir: None,
 		}
 	}
 }
@@ -64,6 +70,16 @@ impl WasmBuildConfig {
 	/// Set the target name explicitly.
 	pub fn target_name(mut self, name: impl Into<String>) -> Self {
 		self.target_name = Some(name.into());
+		self
+	}
+
+	/// Set the cargo target directory explicitly.
+	///
+	/// When building inside a Cargo workspace, the target directory is at
+	/// the workspace root, not relative to the member crate. Use this to
+	/// point wasm-bindgen at the correct artifact location.
+	pub fn target_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+		self.target_dir = Some(dir.into());
 		self
 	}
 }
@@ -120,6 +136,31 @@ impl WasmBuilder {
 		Self { config }
 	}
 
+	/// Detect the cargo target directory by running `cargo metadata`.
+	///
+	/// In workspace setups, Cargo places build artifacts in the workspace root's
+	/// `target/` directory, not the individual crate's directory. This method
+	/// queries `cargo metadata` for the canonical `target_directory` path, which
+	/// respects `CARGO_TARGET_DIR`, `.cargo/config.toml`, and workspace layout.
+	///
+	/// Falls back to `project_dir/target` if `cargo metadata` is unavailable.
+	fn detect_target_dir(&self) -> PathBuf {
+		let output = Command::new("cargo")
+			.args(["metadata", "--no-deps", "--format-version=1"])
+			.current_dir(&self.config.project_dir)
+			.output();
+
+		if let Ok(output) = output
+			&& output.status.success()
+			&& let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout)
+			&& let Some(target_dir) = json.get("target_directory").and_then(|v| v.as_str())
+		{
+			return PathBuf::from(target_dir);
+		}
+
+		self.config.project_dir.join("target")
+	}
+
 	/// Build the WASM target.
 	pub fn build(&self) -> Result<WasmBuildOutput, WasmBuildError> {
 		// Ensure wasm32 target is installed
@@ -146,10 +187,13 @@ impl WasmBuilder {
 		} else {
 			"debug"
 		};
-		let wasm_path = self
+		let target_base = self
 			.config
-			.project_dir
-			.join("target")
+			.target_dir
+			.as_ref()
+			.cloned()
+			.unwrap_or_else(|| self.detect_target_dir());
+		let wasm_path = target_base
 			.join("wasm32-unknown-unknown")
 			.join(profile)
 			.join(format!("{}.wasm", crate_name.replace('-', "_")));
@@ -247,6 +291,7 @@ impl WasmBuilder {
 	fn run_cargo_build(&self) -> Result<(), WasmBuildError> {
 		let mut cmd = Command::new("cargo");
 		cmd.arg("build")
+			.arg("--lib")
 			.arg("--target")
 			.arg("wasm32-unknown-unknown")
 			.current_dir(&self.config.project_dir);
@@ -347,6 +392,97 @@ pub fn check_wasm_tools_installed() -> Result<(), Vec<String>> {
 	}
 }
 
+/// Check if a Cargo.toml content string declares `cdylib` in `crate-type`.
+///
+/// Parses the `[lib]` section looking for a `crate-type` array that
+/// includes `"cdylib"`. Returns `false` if no `[lib]` section or no
+/// `crate-type` key is found.
+pub fn detect_cdylib_in_cargo_toml_content(content: &str) -> bool {
+	let mut in_lib_section = false;
+	for line in content.lines() {
+		let trimmed = line.trim();
+		if trimmed.starts_with('[') {
+			in_lib_section = trimmed == "[lib]";
+			continue;
+		}
+		if in_lib_section && trimmed.starts_with("crate-type") && trimmed.contains("cdylib") {
+			return true;
+		}
+	}
+	false
+}
+
+/// Check if the Cargo.toml at the given path declares `cdylib` in `crate-type`.
+pub fn detect_cdylib_in_cargo_toml(path: &Path) -> bool {
+	std::fs::read_to_string(path)
+		.map(|content| detect_cdylib_in_cargo_toml_content(&content))
+		.unwrap_or(false)
+}
+
+/// Returns the most recent modification time among the WASM crate's tracked
+/// source files: every `.rs` under `<crate_dir>/src/` (recursive) and
+/// `<crate_dir>/Cargo.toml`.
+///
+/// Returns `None` if neither `src/` nor `Cargo.toml` is readable.
+pub fn latest_source_mtime(crate_dir: &Path) -> Option<SystemTime> {
+	let mut latest: Option<SystemTime> = None;
+	let mut update = |t: SystemTime| {
+		latest = Some(latest.map_or(t, |l| l.max(t)));
+	};
+
+	if let Ok(meta) = std::fs::metadata(crate_dir.join("Cargo.toml"))
+		&& let Ok(mtime) = meta.modified()
+	{
+		update(mtime);
+	}
+
+	let src = crate_dir.join("src");
+	let mut stack = vec![src];
+	while let Some(dir) = stack.pop() {
+		let entries = match std::fs::read_dir(&dir) {
+			Ok(e) => e,
+			Err(_) => continue,
+		};
+		for entry in entries.flatten() {
+			let path = entry.path();
+			let file_type = match entry.file_type() {
+				Ok(t) => t,
+				Err(_) => continue,
+			};
+			if file_type.is_dir() {
+				stack.push(path);
+			} else if file_type.is_file()
+				&& path.extension().and_then(|e| e.to_str()) == Some("rs")
+				&& let Ok(meta) = entry.metadata()
+				&& let Ok(mtime) = meta.modified()
+			{
+				update(mtime);
+			}
+		}
+	}
+
+	latest
+}
+
+/// Returns `true` if the WASM bundle at `artifact` is missing or older than
+/// any tracked source file under `crate_dir` (see [`latest_source_mtime`]).
+///
+/// On any failure to read metadata, the function returns `true` (rebuild)
+/// to fail safely toward freshness rather than serving a potentially stale
+/// bundle.
+pub fn is_wasm_stale(crate_dir: &Path, artifact: &Path) -> bool {
+	let Ok(artifact_meta) = std::fs::metadata(artifact) else {
+		return true;
+	};
+	let Ok(artifact_mtime) = artifact_meta.modified() else {
+		return true;
+	};
+	match latest_source_mtime(crate_dir) {
+		Some(src_mtime) => src_mtime > artifact_mtime,
+		None => true,
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -372,5 +508,138 @@ mod tests {
 		assert!(config.release);
 		assert!(!config.optimize);
 		assert_eq!(config.target_name, Some("my-app".to_string()));
+	}
+
+	#[test]
+	fn test_detect_cdylib_present() {
+		let content = r#"
+[lib]
+crate-type = ["cdylib", "rlib"]
+"#;
+		assert!(detect_cdylib_in_cargo_toml_content(content));
+	}
+
+	#[test]
+	fn test_detect_cdylib_absent() {
+		let content = r#"
+[lib]
+name = "my_lib"
+"#;
+		assert!(!detect_cdylib_in_cargo_toml_content(content));
+	}
+
+	#[test]
+	fn test_detect_cdylib_only_rlib() {
+		let content = r#"
+[lib]
+crate-type = ["rlib"]
+"#;
+		assert!(!detect_cdylib_in_cargo_toml_content(content));
+	}
+
+	#[test]
+	fn test_detect_cdylib_no_lib_section() {
+		let content = r#"
+[package]
+name = "my-app"
+version = "0.1.0"
+"#;
+		assert!(!detect_cdylib_in_cargo_toml_content(content));
+	}
+
+	mod staleness {
+		use super::*;
+		use std::fs::{self, File};
+		use std::time::Duration;
+
+		// Build a minimal cdylib-like crate layout under `dir`:
+		//   <dir>/Cargo.toml
+		//   <dir>/src/lib.rs
+		//   <dir>/src/nested/mod_a.rs
+		// Returns the crate directory.
+		fn make_crate(dir: &Path) -> PathBuf {
+			fs::create_dir_all(dir.join("src/nested")).unwrap();
+			fs::write(dir.join("Cargo.toml"), b"[package]\nname=\"x\"\n").unwrap();
+			fs::write(dir.join("src/lib.rs"), b"// lib").unwrap();
+			fs::write(dir.join("src/nested/mod_a.rs"), b"// nested").unwrap();
+			dir.to_path_buf()
+		}
+
+		fn set_mtime(path: &Path, t: SystemTime) {
+			let f = File::options().write(true).open(path).unwrap();
+			f.set_modified(t).unwrap();
+		}
+
+		#[test]
+		fn returns_true_when_artifact_missing() {
+			let tmp = tempfile::tempdir().unwrap();
+			let crate_dir = make_crate(tmp.path());
+			let artifact = crate_dir.join("dist/x_bg.wasm");
+			// Arrange: artifact does not exist.
+			// Act + Assert
+			assert!(is_wasm_stale(&crate_dir, &artifact));
+		}
+
+		#[test]
+		fn returns_false_when_artifact_newer_than_sources() {
+			let tmp = tempfile::tempdir().unwrap();
+			let crate_dir = make_crate(tmp.path());
+			let dist = crate_dir.join("dist");
+			fs::create_dir_all(&dist).unwrap();
+			let artifact = dist.join("x_bg.wasm");
+			fs::write(&artifact, b"\0asm").unwrap();
+
+			let base = SystemTime::now() - Duration::from_secs(120);
+			set_mtime(&crate_dir.join("Cargo.toml"), base);
+			set_mtime(&crate_dir.join("src/lib.rs"), base);
+			set_mtime(&crate_dir.join("src/nested/mod_a.rs"), base);
+			set_mtime(&artifact, base + Duration::from_secs(60));
+
+			assert!(!is_wasm_stale(&crate_dir, &artifact));
+		}
+
+		#[test]
+		fn returns_true_when_source_newer_than_artifact() {
+			let tmp = tempfile::tempdir().unwrap();
+			let crate_dir = make_crate(tmp.path());
+			let dist = crate_dir.join("dist");
+			fs::create_dir_all(&dist).unwrap();
+			let artifact = dist.join("x_bg.wasm");
+			fs::write(&artifact, b"\0asm").unwrap();
+
+			let base = SystemTime::now() - Duration::from_secs(120);
+			set_mtime(&crate_dir.join("Cargo.toml"), base);
+			set_mtime(&crate_dir.join("src/lib.rs"), base);
+			set_mtime(&artifact, base);
+			// One nested source is newer than the artifact.
+			set_mtime(
+				&crate_dir.join("src/nested/mod_a.rs"),
+				base + Duration::from_secs(60),
+			);
+
+			assert!(is_wasm_stale(&crate_dir, &artifact));
+		}
+
+		#[test]
+		fn treats_cargo_toml_changes_as_stale() {
+			let tmp = tempfile::tempdir().unwrap();
+			let crate_dir = make_crate(tmp.path());
+			let dist = crate_dir.join("dist");
+			fs::create_dir_all(&dist).unwrap();
+			let artifact = dist.join("x_bg.wasm");
+			fs::write(&artifact, b"\0asm").unwrap();
+
+			let base = SystemTime::now() - Duration::from_secs(120);
+			set_mtime(&crate_dir.join("src/lib.rs"), base);
+			set_mtime(&crate_dir.join("src/nested/mod_a.rs"), base);
+			set_mtime(&artifact, base);
+			// Cargo.toml updated after artifact (e.g. dependency bump).
+			set_mtime(
+				&crate_dir.join("Cargo.toml"),
+				base + Duration::from_secs(60),
+			);
+
+			assert!(is_wasm_stale(&crate_dir, &artifact));
+		}
 	}
 }

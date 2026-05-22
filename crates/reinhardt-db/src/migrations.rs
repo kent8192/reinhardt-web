@@ -59,11 +59,14 @@ pub mod schema_diff;
 pub mod schema_editor;
 pub mod service;
 pub mod source;
+#[cfg(feature = "sqlite")]
+pub(crate) mod sqlite_pragma;
 pub mod squash;
 pub mod state_loader;
 pub mod visualization;
 pub mod zero_downtime;
 
+#[cfg(feature = "contenttypes")]
 pub use crate::contenttypes::migration::MigrationRecord;
 pub use autodetector::{
 	// Pattern Learning and Inference
@@ -104,6 +107,12 @@ pub use model_registry::{
 	FieldMetadata, ManyToManyMetadata, ModelMetadata, ModelRegistry, RelationshipMetadata,
 	global_registry,
 };
+// Re-export the crate-root M2M naming helpers so callers can continue to
+// import them from `reinhardt_db::migrations::*` or
+// `reinhardt_db::migrations::naming::*`. The actual module lives at the
+// crate root because the `orm` and `migrations` features are independent.
+pub use crate::m2m_naming as naming;
+pub use crate::m2m_naming::{default_m2m_columns, default_through_table};
 pub use operation_trait::MigrationOperation;
 pub use operations::{
 	AddColumn, AlterColumn, AlterTableOptions, BulkLoadFormat, BulkLoadOptions, BulkLoadSource,
@@ -135,7 +144,7 @@ pub use source::{
 	registry::RegistrySource,
 };
 pub use squash::{MigrationSquasher, SquashOptions};
-pub use state_loader::MigrationStateLoader;
+pub use state_loader::{MigrationStateLoader, build_state_from_files};
 pub use visualization::{HistoryEntry, MigrationStats, MigrationVisualizer, OutputFormat};
 pub use zero_downtime::{MigrationPhase, Strategy, ZeroDowntimeMigration};
 

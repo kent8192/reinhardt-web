@@ -7,37 +7,21 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use uuid::Uuid;
 
 // Server-only imports
-#[cfg(server)]
+#[cfg(native)]
 use {
 	crate::apps::auth::models::User,
+	reinhardt::AuthUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::db::orm::{FilterOperator, FilterValue, ManyToManyAccessor, Model},
-	reinhardt::middleware::session::SessionData,
 };
 
 /// Follow a user
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn follow_user(
 	target_user_id: Uuid,
 	#[inject] db: DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] AuthUser(follower): AuthUser<User>,
 ) -> std::result::Result<(), ServerFnError> {
-	let follower_id = session
-		.get::<Uuid>("user_id")
-		.ok_or_else(|| ServerFnError::server(401, "Not authenticated"))?;
-
-	// Load follower user
-	let follower = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(follower_id.to_string()),
-		)
-		.first()
-		.await
-		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
-		.ok_or_else(|| ServerFnError::server(404, "Follower user not found"))?;
-
 	// Load target user
 	let target_user = User::objects()
 		.filter(
@@ -61,28 +45,12 @@ pub async fn follow_user(
 }
 
 /// Unfollow a user
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn unfollow_user(
 	target_user_id: Uuid,
 	#[inject] db: DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] AuthUser(follower): AuthUser<User>,
 ) -> std::result::Result<(), ServerFnError> {
-	let follower_id = session
-		.get::<Uuid>("user_id")
-		.ok_or_else(|| ServerFnError::server(401, "Not authenticated"))?;
-
-	// Load follower user
-	let follower = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(follower_id.to_string()),
-		)
-		.first()
-		.await
-		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
-		.ok_or_else(|| ServerFnError::server(404, "Follower user not found"))?;
-
 	// Load target user
 	let target_user = User::objects()
 		.filter(
@@ -106,7 +74,7 @@ pub async fn unfollow_user(
 }
 
 /// Fetch followers of a user
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn fetch_followers(
 	user_id: Uuid,
 	#[inject] db: DatabaseConnection,
@@ -135,7 +103,7 @@ pub async fn fetch_followers(
 }
 
 /// Fetch users that the specified user is following
-#[server_fn(use_inject = true)]
+#[server_fn]
 pub async fn fetch_following(
 	user_id: Uuid,
 	#[inject] db: DatabaseConnection,

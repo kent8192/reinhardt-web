@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-debug-toolbar"
-version = "0.1.0-alpha.1"
+version = "0.2.0-rc.1"
 edition.workspace = true
 license.workspace = true
 description = "Debug toolbar for Reinhardt web framework (inspired by Django Debug Toolbar)"

@@ -14,6 +14,11 @@
 //!
 //! For new tests, **prefer the reinhardt-test fixtures approach** (see reinhardt_test_examples module).
 
+// Native-only: this file uses tokio/sqlx/tempfile which don't build for wasm32.
+// `wasm-pack test` builds all `--tests` targets; without this gate the test
+// binary tries (and fails) to link sqlx for wasm32.
+#![cfg(native)]
+
 #[cfg(with_reinhardt)]
 mod database_tests {
 	use rstest::*;
@@ -480,7 +485,7 @@ mod database_tests {
 // Server Function Tests
 // ============================================================================
 
-#[cfg(all(with_reinhardt, not(target_arch = "wasm32")))]
+#[cfg(all(with_reinhardt, server))]
 mod server_fn_tests {
 	use reinhardt::DatabaseConnection;
 	use reinhardt::db::orm::reinitialize_database;
@@ -807,5 +812,197 @@ mod server_fn_tests {
 
 		// Keep temp_file alive
 		drop(temp_file);
+	}
+}
+
+// =========================================================================
+// Authorization tests for CUD server functions (Phase 4)
+// =========================================================================
+//
+// These tests cover the `SessionUser` DI factory's `require_active()` gate
+// at the entrance of every authenticated mutation (`create_question`,
+// `update_question`, `delete_question`, and the three Choice mirrors). The
+// gate runs *before* any database access, so these tests do not depend on
+// the schema and can run against an empty SQLite file. They guarantee that:
+//
+//   - An empty `SessionData` (no `user_id` key) → `SessionUser::Anonymous`
+//     → `require_active()` returns 401 Unauthorized.
+//   - The error originates from the `SessionUser` gate, not from the model
+//     layer (i.e. the auth gate is never accidentally bypassed for any of
+//     the six CUD entry points).
+//
+// Session-positive ("author can update", "non-author gets 403") paths
+// require a `users` table + `author_id` column in the fixture — see the
+// follow-up note at the top of `sqlite_with_test_data`. They are
+// intentionally deferred until that fixture is rebuilt around
+// `reinhardt-test`'s model-driven schema generation rather than the
+// hand-written `CREATE TABLE` here.
+
+#[cfg(with_reinhardt)]
+mod auth_tests {
+	use examples_tutorial_basis::apps::polls::di::SessionUser;
+	use examples_tutorial_basis::apps::polls::server_fn::{
+		create_choice, create_question, delete_choice, delete_question, update_choice,
+		update_question,
+	};
+	use reinhardt::DatabaseConnection;
+	use reinhardt::di::Depends;
+	use rstest::*;
+	use tempfile::NamedTempFile;
+
+	/// Fixture: an empty SQLite database + DatabaseConnection wired through
+	/// reinhardt-orm. No tables are created; the authorization tests below
+	/// short-circuit on `session_user.require_active()` before any query runs.
+	#[fixture]
+	async fn empty_db_conn() -> (NamedTempFile, DatabaseConnection) {
+		let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+		let db_path = temp_file.path().to_str().unwrap().to_string();
+		let orm_url = format!("sqlite:///{}", db_path);
+		let db_conn = DatabaseConnection::connect_sqlite(&orm_url)
+			.await
+			.expect("Failed to create DatabaseConnection");
+		(temp_file, db_conn)
+	}
+
+	/// Anonymous `SessionUser` wrapped in `Depends<_>` — the same value the
+	/// request-scoped `session_user_factory` in `apps::polls::di` would
+	/// produce for a `SessionData` without a `user_id` key. We construct it
+	/// directly with `Depends::from_value` so the test does not need to spin
+	/// up the middleware stack or the DI container; the gate under test is
+	/// `SessionUser::require_active()`, not the factory itself.
+	fn anonymous_session_user() -> Depends<SessionUser> {
+		Depends::from_value(SessionUser::Anonymous)
+	}
+
+	/// Helper: assert that a ServerFnError result represents a 401.
+	fn assert_unauthorized<T>(
+		result: std::result::Result<T, reinhardt::pages::server_fn::ServerFnError>,
+		operation: &str,
+	) {
+		let err = result
+			.err()
+			.unwrap_or_else(|| panic!("{} should reject anonymous callers", operation));
+		// The `SessionUser::require_active()` gate emits
+		// `ServerFnError::server(401, ...)`. We match on the Debug-formatted
+		// output because ServerFnError does not expose the inner status as a
+		// typed accessor in the public API, and its `Debug` impl is the most
+		// stable representation that includes the numeric status.
+		let rendered = format!("{:?}", err);
+		assert!(
+			rendered.contains("401") || rendered.contains("Authentication required"),
+			"{} should fail with 401, got: {}",
+			operation,
+			rendered
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_create_question_requires_auth(
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+	) {
+		// Arrange
+		let (_file, db_conn) = empty_db_conn.await;
+		let session_user = anonymous_session_user();
+
+		// Act
+		let result = create_question(
+			"Anonymous attempt".to_string(),
+			"csrf-token-ignored".to_string(),
+			db_conn,
+			session_user,
+		)
+		.await;
+
+		// Assert
+		assert_unauthorized(result, "create_question");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_update_question_requires_auth(
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+	) {
+		let (_file, db_conn) = empty_db_conn.await;
+		let session_user = anonymous_session_user();
+
+		let result = update_question(
+			"1".to_string(),
+			"New text".to_string(),
+			"csrf".to_string(),
+			db_conn,
+			session_user,
+		)
+		.await;
+
+		assert_unauthorized(result, "update_question");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_delete_question_requires_auth(
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+	) {
+		let (_file, db_conn) = empty_db_conn.await;
+		let session_user = anonymous_session_user();
+
+		let result =
+			delete_question("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
+
+		assert_unauthorized(result, "delete_question");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_create_choice_requires_auth(
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+	) {
+		let (_file, db_conn) = empty_db_conn.await;
+		let session_user = anonymous_session_user();
+
+		let result = create_choice(
+			"1".to_string(),
+			"Anonymous choice".to_string(),
+			"csrf".to_string(),
+			db_conn,
+			session_user,
+		)
+		.await;
+
+		assert_unauthorized(result, "create_choice");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_update_choice_requires_auth(
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+	) {
+		let (_file, db_conn) = empty_db_conn.await;
+		let session_user = anonymous_session_user();
+
+		let result = update_choice(
+			"1".to_string(),
+			"Hijack".to_string(),
+			"csrf".to_string(),
+			db_conn,
+			session_user,
+		)
+		.await;
+
+		assert_unauthorized(result, "update_choice");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_delete_choice_requires_auth(
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+	) {
+		let (_file, db_conn) = empty_db_conn.await;
+		let session_user = anonymous_session_user();
+
+		let result =
+			delete_choice("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
+
+		assert_unauthorized(result, "delete_choice");
 	}
 }

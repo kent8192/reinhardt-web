@@ -51,6 +51,23 @@ pub enum SourceError {
 	/// The configuration source is invalid or misconfigured.
 	#[error("Invalid source: {0}")]
 	InvalidSource(String),
+
+	/// A `${VAR}` interpolation failed during TOML loading.
+	///
+	/// `InterpolationError` is boxed so that adding this variant does
+	/// not push `BuildError::Source` over the `result_large_err` clippy
+	/// threshold (the `Syntax` variant carries four heap-owning fields).
+	#[error("Interpolation error: {0}")]
+	Interpolation(#[from] Box<super::interpolation::InterpolationError>),
+}
+
+// Allow the `?` operator to convert a bare `InterpolationError` into a
+// `SourceError::Interpolation`. The auto-derived `From<Box<...>>` from
+// `#[from]` would otherwise force every call site to box explicitly.
+impl From<super::interpolation::InterpolationError> for SourceError {
+	fn from(err: super::interpolation::InterpolationError) -> Self {
+		SourceError::Interpolation(Box::new(err))
+	}
 }
 
 /// Environment variable configuration source
@@ -308,10 +325,19 @@ impl ConfigSource for DotEnvSource {
 /// TOML file configuration source
 pub struct TomlFileSource {
 	path: PathBuf,
+	interpolate: bool,
 }
 
 impl TomlFileSource {
-	/// Create a new TOML file configuration source
+	/// Create a new TOML file configuration source.
+	///
+	/// `${VAR}` interpolation is **enabled by default** because the vast
+	/// majority of real-world settings files (secrets, per-environment
+	/// hosts, 12-factor overrides) require it. Call
+	/// [`Self::without_interpolation`] to opt out and preserve raw TOML
+	/// strings verbatim.
+	///
+	/// See [`Self::with_interpolation`] for the supported syntax.
 	///
 	/// # Examples
 	///
@@ -319,10 +345,83 @@ impl TomlFileSource {
 	/// use reinhardt_conf::settings::sources::TomlFileSource;
 	/// use std::path::PathBuf;
 	///
+	/// // Interpolation enabled by default — `${VAR}` is substituted from env.
 	/// let source = TomlFileSource::new(PathBuf::from("config.toml"));
 	/// ```
 	pub fn new(path: impl Into<PathBuf>) -> Self {
-		Self { path: path.into() }
+		Self {
+			path: path.into(),
+			interpolate: true,
+		}
+	}
+
+	/// Explicitly opt **in** to `${VAR}` interpolation.
+	///
+	/// This is a no-op for the default state — interpolation is on by
+	/// default since `0.1.0-rc.27`. The method exists so call sites can
+	/// document intent or re-enable interpolation after a previous
+	/// [`Self::without_interpolation`] call in a builder chain.
+	///
+	/// Supported syntax (applied to every `toml::Value::String` in the tree):
+	///
+	/// | Token              | Meaning                                          |
+	/// |--------------------|--------------------------------------------------|
+	/// | `${VAR}`           | required — fails if `VAR` is unset or empty      |
+	/// | `${VAR:-default}`  | substitutes `default` if `VAR` is unset or empty |
+	/// | `${VAR:?message}`  | fails with `message` if `VAR` is unset or empty  |
+	/// | `$$`               | escape — produces a literal `$`                  |
+	///
+	/// Only string nodes are scanned, but the walker recurses into nested
+	/// tables and arrays. Numeric, boolean, and datetime values are
+	/// never rewritten.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::sources::TomlFileSource;
+	/// use std::path::PathBuf;
+	///
+	/// let source = TomlFileSource::new(PathBuf::from("settings.toml"))
+	///     .with_interpolation();
+	/// ```
+	pub fn with_interpolation(mut self) -> Self {
+		self.interpolate = true;
+		self
+	}
+
+	/// Opt **out** of `${VAR}` interpolation and keep all TOML strings as
+	/// literal values.
+	///
+	/// Use this when you intend `${...}` substrings to survive the load —
+	/// for example, when the configuration is itself a template that
+	/// downstream code expands later.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::sources::TomlFileSource;
+	/// use std::path::PathBuf;
+	///
+	/// let source = TomlFileSource::new(PathBuf::from("template.toml"))
+	///     .without_interpolation();
+	/// ```
+	pub fn without_interpolation(mut self) -> Self {
+		self.interpolate = false;
+		self
+	}
+
+	/// Set interpolation explicitly via a boolean flag.
+	///
+	/// This is the legacy 0.1.0-rc API surface. New code should use
+	/// [`Self::with_interpolation`] / [`Self::without_interpolation`]
+	/// instead.
+	#[deprecated(
+		since = "0.1.0-rc.27",
+		note = "Use with_interpolation()/without_interpolation() instead; will be removed in 0.2.0 (issue #4224)"
+	)]
+	pub fn set_interpolation(mut self, enabled: bool) -> Self {
+		self.interpolate = enabled;
+		self
 	}
 }
 
@@ -333,7 +432,15 @@ impl ConfigSource for TomlFileSource {
 		}
 
 		let content = fs::read_to_string(&self.path)?;
-		let toml_value: toml::Value = toml::from_str(&content)?;
+		let mut toml_value: toml::Value = toml::from_str(&content)?;
+
+		// Apply ${VAR} interpolation if enabled. The lookup closure
+		// resolves variables from process env at load time.
+		if self.interpolate {
+			let lookup = |name: &str| std::env::var(name).ok();
+			let interpolator = super::interpolation::Interpolator::new(&lookup);
+			interpolator.interpolate_value(&mut toml_value, &self.path)?;
+		}
 
 		// Convert TOML value to JSON value
 		let json_str = serde_json::to_string(&toml_value)?;
@@ -356,27 +463,44 @@ impl ConfigSource for TomlFileSource {
 	}
 }
 
-/// JSON file configuration source
+/// JSON file configuration source.
+///
+/// TOML is the canonical Reinhardt configuration format; this type will be
+/// removed in 0.2.0. Migrate `.json` files to `.toml` (TOML is a superset of
+/// typical JSON config use cases) or implement the public `ConfigSource` trait
+/// against `serde_json` if you need to keep JSON support out of tree. See
+/// <https://github.com/kent8192/reinhardt-web/issues/4087>.
+#[deprecated(
+	since = "0.1.0-rc.26",
+	note = "Use TomlFileSource instead. JsonFileSource will be removed in 0.2.0 (issue #4087)"
+)]
 pub struct JsonFileSource {
 	path: PathBuf,
 }
 
+#[allow(deprecated)] // impl block on a deprecated type (issue #4087).
 impl JsonFileSource {
 	/// Create a new JSON file configuration source
 	///
 	/// # Examples
 	///
 	/// ```
+	/// # #![allow(deprecated)]
 	/// use reinhardt_conf::settings::sources::JsonFileSource;
 	/// use std::path::PathBuf;
 	///
 	/// let source = JsonFileSource::new(PathBuf::from("config.json"));
 	/// ```
+	#[deprecated(
+		since = "0.1.0-rc.26",
+		note = "Use TomlFileSource::new instead. JsonFileSource will be removed in 0.2.0 (issue #4087)"
+	)]
 	pub fn new(path: impl Into<PathBuf>) -> Self {
 		Self { path: path.into() }
 	}
 }
 
+#[allow(deprecated)] // ConfigSource impl on a deprecated type (issue #4087).
 impl ConfigSource for JsonFileSource {
 	fn load(&self) -> Result<IndexMap<String, Value>, SourceError> {
 		if !self.path.exists() {
@@ -482,20 +606,30 @@ impl ConfigSource for DefaultSource {
 		"Default values".to_string()
 	}
 }
-/// Auto-detect configuration source based on file extension
+/// Auto-detect configuration source based on file extension.
+///
+/// The `*.json` branch is going away in 0.2.0 alongside [`JsonFileSource`].
+/// For TOML usage, prefer constructing [`TomlFileSource::new`] directly — it
+/// makes the configuration format explicit at the call site. See
+/// <https://github.com/kent8192/reinhardt-web/issues/4087>.
 ///
 /// # Examples
 ///
 /// ```
+/// # #![allow(deprecated)]
 /// use reinhardt_conf::settings::sources::auto_source;
 /// use std::path::PathBuf;
 ///
 /// // Automatically detects TOML source from extension
 /// let source = auto_source(PathBuf::from("config.toml")).unwrap();
 ///
-/// // Or JSON source
+/// // Or JSON source (deprecated; will be removed in 0.2.0)
 /// let source = auto_source(PathBuf::from("settings.json")).unwrap();
 /// ```
+#[deprecated(
+	since = "0.1.0-rc.26",
+	note = "Use TomlFileSource::new directly. The *.json branch will be removed in 0.2.0 (issue #4087)"
+)]
 pub fn auto_source(path: impl AsRef<Path>) -> Result<Box<dyn ConfigSource>, SourceError> {
 	let path = path.as_ref();
 	let ext = path
@@ -505,6 +639,9 @@ pub fn auto_source(path: impl AsRef<Path>) -> Result<Box<dyn ConfigSource>, Sour
 
 	match ext {
 		"toml" => Ok(Box::new(TomlFileSource::new(path))),
+		// JsonFileSource is deprecated alongside this function (issue #4087);
+		// keep wiring it through until the *.json branch is removed in 0.2.0.
+		#[allow(deprecated)]
 		"json" => Ok(Box::new(JsonFileSource::new(path))),
 		_ => Err(SourceError::InvalidSource(format!(
 			"Unsupported file extension: {}",
@@ -602,6 +739,97 @@ impl ConfigSource for LowPriorityEnvSource {
 	}
 }
 
+/// High-priority environment variable configuration source for test overrides
+///
+/// This wrapper provides the same functionality as `EnvSource` but with higher priority
+/// than TOML files, allowing environment variables to override TOML configuration.
+/// Intended for integration tests where dynamic values (e.g., TestContainer ports)
+/// must override file-based settings.
+///
+/// Priority: 60 (higher than TOML files at 50, lower than `DotEnvSource` at 90)
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_conf::settings::sources::HighPriorityEnvSource;
+/// use reinhardt_conf::settings::builder::SettingsBuilder;
+///
+/// let settings = SettingsBuilder::new()
+///     .add_source(HighPriorityEnvSource::new().with_prefix("REINHARDT_TEST_"))
+///     .build()
+///     .unwrap();
+/// ```
+pub struct HighPriorityEnvSource {
+	inner: EnvSource,
+}
+
+impl HighPriorityEnvSource {
+	/// Create a new high-priority environment variable configuration source
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::sources::HighPriorityEnvSource;
+	///
+	/// let source = HighPriorityEnvSource::new();
+	/// ```
+	pub fn new() -> Self {
+		Self {
+			inner: EnvSource::new(),
+		}
+	}
+
+	/// Set a prefix filter for environment variables
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::sources::HighPriorityEnvSource;
+	///
+	/// let source = HighPriorityEnvSource::new()
+	///     .with_prefix("REINHARDT_TEST_");
+	/// ```
+	pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
+		self.inner = self.inner.with_prefix(prefix);
+		self
+	}
+
+	/// Enable variable interpolation for environment values
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::sources::HighPriorityEnvSource;
+	///
+	/// let source = HighPriorityEnvSource::new()
+	///     .with_interpolation(true);
+	/// ```
+	pub fn with_interpolation(mut self, enabled: bool) -> Self {
+		self.inner = self.inner.with_interpolation(enabled);
+		self
+	}
+}
+
+impl Default for HighPriorityEnvSource {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl ConfigSource for HighPriorityEnvSource {
+	fn load(&self) -> Result<IndexMap<String, Value>, SourceError> {
+		self.inner.load()
+	}
+
+	fn priority(&self) -> u8 {
+		60 // Higher than TOML files (50), allowing env vars to override TOML config
+	}
+
+	fn description(&self) -> String {
+		format!("{} (high priority)", self.inner.description())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -661,6 +889,9 @@ secret_key = "test-key"
 		);
 	}
 
+	// `JsonFileSource::new` is deprecated until removal in 0.2.0 (issue #4087);
+	// the test exercises load behavior so we still want to construct one here.
+	#[allow(deprecated)]
 	#[test]
 	fn test_json_source() {
 		let temp_dir = TempDir::new().unwrap();
@@ -705,7 +936,84 @@ secret_key = "test-key"
 	fn test_source_priority() {
 		assert_eq!(EnvSource::new().priority(), 100);
 		assert_eq!(DotEnvSource::new().priority(), 90);
+		assert_eq!(HighPriorityEnvSource::new().priority(), 60);
 		assert_eq!(TomlFileSource::new("test.toml").priority(), 50);
+		assert_eq!(LowPriorityEnvSource::new().priority(), 40);
 		assert_eq!(DefaultSource::new().priority(), 0);
+	}
+
+	#[test]
+	fn test_high_priority_env_source_wraps_env_source() {
+		// Arrange
+		let source = HighPriorityEnvSource::new();
+
+		// Act
+		let priority = source.priority();
+		let description = source.description();
+
+		// Assert
+		assert_eq!(priority, 60);
+		assert!(description.contains("high priority"));
+	}
+
+	#[test]
+	fn test_high_priority_env_source_with_prefix() {
+		// Arrange
+		let source = HighPriorityEnvSource::new().with_prefix("REINHARDT_TEST_");
+
+		// Act
+		let description = source.description();
+
+		// Assert
+		assert!(description.contains("REINHARDT_TEST_"));
+		assert!(description.contains("high priority"));
+	}
+
+	#[test]
+	fn toml_file_source_without_interpolation_preserves_literal() {
+		// Arrange — issue #4224: explicit opt-out keeps `${...}` verbatim.
+		let temp_dir = TempDir::new().unwrap();
+		let config_path = temp_dir.path().join("config.toml");
+		let mut file = File::create(&config_path).unwrap();
+		writeln!(file, r#"host = "${{LITERAL_VAR}}""#).unwrap();
+
+		// Act
+		let source = TomlFileSource::new(&config_path).without_interpolation();
+		let config = source.load().unwrap();
+
+		// Assert
+		assert_eq!(
+			config.get("host").unwrap(),
+			&Value::String("${LITERAL_VAR}".to_string())
+		);
+	}
+
+	#[test]
+	fn test_high_priority_env_source_overrides_toml() {
+		// Arrange
+		let temp_dir = TempDir::new().unwrap();
+		let config_path = temp_dir.path().join("config.toml");
+		let mut file = File::create(&config_path).unwrap();
+		writeln!(file, r#"port = 1025"#).unwrap();
+
+		let prefix = "HPENV_TEST_3518_";
+		let env_key = format!("{prefix}PORT");
+
+		// SAFETY: Single-threaded test, no concurrent env access.
+		unsafe { env::set_var(&env_key, "9999") };
+
+		// Act
+		let settings = crate::settings::builder::SettingsBuilder::new()
+			.add_source(TomlFileSource::new(&config_path))
+			.add_source(HighPriorityEnvSource::new().with_prefix(prefix))
+			.build()
+			.unwrap();
+
+		// Assert — HighPriorityEnvSource (60) overrides TOML (50)
+		let port: i64 = settings.get("port").unwrap();
+		assert_eq!(port, 9999);
+
+		// Cleanup
+		unsafe { env::remove_var(&env_key) };
 	}
 }

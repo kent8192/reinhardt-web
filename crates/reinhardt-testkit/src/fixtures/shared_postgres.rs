@@ -118,6 +118,7 @@ async fn test_connection(url: &str) -> bool {
 	{
 		Ok(pool) => {
 			let result = sqlx::query("SELECT 1").fetch_one(&pool).await;
+			pool.close().await;
 			result.is_ok()
 		}
 		Err(_) => false,
@@ -156,7 +157,7 @@ async fn start_postgres_container() -> (ContainerAsync<GenericImage>, String) {
 	// to allow container reuse across processes. This avoids the thread-safety
 	// violation of calling std::env::set_var in an async context. (Fixes #873)
 
-	let container = GenericImage::new("postgres", "16-alpine")
+	let container = GenericImage::new("postgres", "17-alpine")
 		.with_exposed_port(5432.tcp())
 		.with_wait_for(WaitFor::message_on_stderr(
 			"database system is ready to accept connections",
@@ -302,7 +303,7 @@ pub async fn get_shared_postgres() -> &'static SharedPostgres {
 /// Panics if the test database cannot be created or connected to.
 pub async fn get_test_pool() -> PgPool {
 	let pg = get_shared_postgres().await;
-	let db_name = format!("test_{}", Uuid::new_v4().simple());
+	let db_name = format!("test_{}", Uuid::now_v7().simple());
 
 	// Connect to postgres database to create test database
 	let admin_pool = sqlx::postgres::PgPoolOptions::new()
@@ -387,7 +388,7 @@ pub async fn get_test_pool_with_table(table_sql: &str) -> PgPool {
 /// initialization fails.
 pub async fn get_test_pool_with_orm() -> (PgPool, String) {
 	let pg = get_shared_postgres().await;
-	let db_name = format!("test_{}", Uuid::new_v4().simple());
+	let db_name = format!("test_{}", Uuid::now_v7().simple());
 	let db_url = format!("{}/{}?sslmode=disable", pg.base_url, db_name);
 
 	// Connect to postgres database to create test database

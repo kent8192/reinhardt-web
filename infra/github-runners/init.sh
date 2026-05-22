@@ -46,6 +46,10 @@ REGION="${REGION:-us-east-1}"
 BUCKET_NAME="reinhardt-ci-terraform-state-${ACCOUNT_ID}"
 
 # Generate backend.tfvars
+# The S3 state bucket lives in the CI sub-account, so the backend must also
+# assume the OrganizationAccountAccessRole to access it.
+ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+
 cat > "$BACKEND_FILE" <<EOF
 bucket       = "${BUCKET_NAME}"
 key          = "${STATE_KEY}"
@@ -58,10 +62,15 @@ echo "  bucket       = \"${BUCKET_NAME}\""
 echo "  key          = \"${STATE_KEY}\""
 echo "  region       = \"${REGION}\""
 echo "  use_lockfile = true"
+echo "  assume_role  = ${ROLE_ARN}"
 echo ""
 
-# Run terraform init with generated backend config
-terraform init -backend-config="$BACKEND_FILE"
+# Run terraform init with generated backend config.
+# The assume_role block is passed via CLI because .tfvars files do not support
+# nested blocks. This allows the S3 backend to access the sub-account bucket.
+terraform init \
+  -backend-config="$BACKEND_FILE" \
+  -backend-config="assume_role={role_arn=\"${ROLE_ARN}\"}"
 echo ""
 
 # --- Download pre-built Lambda zip files ---
@@ -103,13 +112,46 @@ fi
 if [[ "$CURRENT_TRACKED_VERSION" != "$MODULE_VERSION" && -n "$CURRENT_TRACKED_VERSION" ]]; then
   echo "  [version-change] Lambda version changed: v${CURRENT_TRACKED_VERSION} -> v${MODULE_VERSION}"
   echo "  [cleanup] Removing outdated Lambda zip files..."
-  for zip_name in webhook runners runner-binaries-syncer; do
+  for zip_name in webhook runners runner-binaries-syncer termination-watcher ami-housekeeper; do
     rm -f "${LAMBDA_DIR}/${zip_name}.zip"
   done
 fi
 
-# Download each required Lambda zip (skip if already downloaded for this version)
-for LAMBDA_NAME in webhook runners runner-binaries-syncer; do
+# Drift detection: list actual release assets and warn if upstream has added
+# new zip artifacts we do not yet track. Ensures no silent misses (like the
+# pre-#3903 ami-housekeeper gap that motivated this check).
+EXPECTED_ZIPS="webhook runners runner-binaries-syncer termination-watcher ami-housekeeper"
+
+ACTUAL_ZIPS=$(curl -sfL \
+  "https://api.github.com/repos/github-aws-runners/terraform-aws-github-runner/releases/tags/v${MODULE_VERSION}" \
+  | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    for a in data.get('assets', []):
+        name = a.get('name', '')
+        if name.endswith('.zip'):
+            print(name[:-4])
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+
+if [[ -n "$ACTUAL_ZIPS" ]]; then
+  for actual in $ACTUAL_ZIPS; do
+    if ! echo " $EXPECTED_ZIPS " | grep -q " $actual "; then
+      echo "  [warn] Upstream v${MODULE_VERSION} contains untracked zip: ${actual}.zip"
+      echo "  [warn] Review github-aws-runners release notes and add to init.sh if needed."
+    fi
+  done
+fi
+
+# Download each required Lambda zip (skip if already downloaded for this version).
+# - webhook, runners, runner-binaries-syncer: core pipeline.
+# - termination-watcher: Lambda for spot interruption handling (cancels GitHub
+#   job on 2-min warning).
+# - ami-housekeeper: AMI cleanup Lambda (gated by enable_ami_housekeeper, but
+#   pre-staged so toggling the flag in tfvars does not require a re-init).
+for LAMBDA_NAME in webhook runners runner-binaries-syncer termination-watcher ami-housekeeper; do
   DEST="${LAMBDA_DIR}/${LAMBDA_NAME}.zip"
   # Check if the file exists and is non-empty
   if [[ -f "$DEST" && -s "$DEST" ]]; then
@@ -126,5 +168,42 @@ echo "$MODULE_VERSION" > "$VERSION_FILE"
 
 echo ""
 echo "All Lambda zip files are ready in ./${LAMBDA_DIR}/"
+
+# --- Project-owned Lambda build prerequisites (Issue #3903) ---
+# The orphan-detector Lambda is built locally and archived by Terraform.
+# Verify Node.js, install deps, and build the bundle here so `terraform apply`
+# only needs to zip the resulting dist/ directory (no local-exec provisioner).
+ORPHAN_DETECTOR_DIR="lambda-src/orphan-detector"
+
+if [[ -d "$ORPHAN_DETECTOR_DIR" ]]; then
+  echo ""
+  echo "Building orphan-detector Lambda..."
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "  [error] Node.js is not installed. Install Node.js 20+ to build orphan-detector."
+    echo "          Alternative: set orphan_detector_enabled = false in terraform.tfvars."
+    exit 1
+  fi
+
+  NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
+  if (( NODE_MAJOR < 20 )); then
+    echo "  [error] Node.js ${NODE_MAJOR} detected, 20+ required."
+    exit 1
+  fi
+  echo "  [ok] Node.js $(node -v)"
+
+  echo "  Installing orphan-detector dependencies (npm ci)..."
+  (cd "$ORPHAN_DETECTOR_DIR" && npm ci --no-audit --no-fund >/dev/null 2>&1)
+
+  echo "  Building bundle (esbuild)..."
+  (cd "$ORPHAN_DETECTOR_DIR" && npm run build >/dev/null 2>&1)
+
+  if [[ ! -f "$ORPHAN_DETECTOR_DIR/dist/index.mjs" ]]; then
+    echo "  [error] build did not produce dist/index.mjs"
+    exit 1
+  fi
+  echo "  [ok] orphan-detector bundle ready ($(du -sh "$ORPHAN_DETECTOR_DIR/dist/index.mjs" | cut -f1))"
+fi
+
 echo ""
 echo "Next step: terraform plan"

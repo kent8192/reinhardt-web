@@ -185,7 +185,7 @@ If you prefer to set up manually, or the quickstart script doesn't work for your
 
 ### Prerequisites
 
-- Rust 1.91.1+ (2024 Edition required)
+- Rust 1.94.1+ (2024 Edition required)
 - Docker (required for PostgreSQL and TestContainers-based integration tests)
 - wasm-pack (for WASM frontend build)
 - cargo-make (`cargo install cargo-make`)
@@ -200,16 +200,11 @@ cd examples/examples-twitter
 # Copy local settings
 cp settings/local.example.toml settings/local.toml
 
-# Start PostgreSQL
-docker compose up -d
-
-# Build the project
-cargo build
-
-# Run migrations
-cargo run --bin examples-twitter migrate
-
-# Build WASM frontend and start development server
+# Build WASM frontend and start development server.
+# `cargo make dev` chains `migrate` → `infra-up`, which starts the
+# disposable PostgreSQL + Redis containers (via `scripts/infra_up.sh`)
+# and runs migrations automatically. Stop the infra later with
+# `cargo make infra-down`.
 cargo make dev
 ```
 
@@ -262,7 +257,7 @@ cargo run --bin manage makemigrations
 cargo run --bin manage migrate
 
 # Create new app
-cargo run --bin manage startapp myapp --template-type restful
+cargo run --bin manage startapp myapp --restful
 
 # Development server
 cargo run --bin manage runserver
@@ -363,7 +358,7 @@ async fn test_with_database(
 ```
 
 For comprehensive testing standards, see:
-- [Testing Standards](../../../docs/TESTING_STANDARDS.md)
+- [Testing Standards](../../../instructions/TESTING_STANDARDS.md)
 - [Examples Database Integration](../examples-database-integration/README.md)
 
 ## API Reference
@@ -792,8 +787,7 @@ CARGO_MANIFEST_DIR=$(pwd)/examples/examples-twitter \
 ## References
 
 - [Reinhardt Framework Documentation](https://docs.rs/reinhardt-web)
-- [Getting Started Guide](../../../docs/GETTING_STARTED.md)
-- [Testing Standards](../../../docs/TESTING_STANDARDS.md)
+- [Testing Standards](../../../instructions/TESTING_STANDARDS.md)
 - [Database Integration Example](../examples-database-integration/README.md)
 - [REST API Example](../examples-rest-api/README.md)
 

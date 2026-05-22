@@ -55,7 +55,7 @@ use uuid::Uuid;
 /// use chrono::Utc;
 ///
 /// let mut user = DefaultUser {
-///     id: Uuid::new_v4(),
+///     id: Uuid::now_v7(),
 ///     username: "alice".to_string(),
 ///     email: "alice@example.com".to_string(),
 ///     first_name: "Alice".to_string(),
@@ -86,7 +86,7 @@ use uuid::Uuid;
 /// use chrono::Utc;
 ///
 /// let mut user = DefaultUser {
-///     id: Uuid::new_v4(),
+///     id: Uuid::now_v7(),
 ///     username: "bob".to_string(),
 ///     email: "bob@example.com".to_string(),
 ///     first_name: "Bob".to_string(),
@@ -111,6 +111,10 @@ use uuid::Uuid;
 /// assert!(user.has_module_perms("blog"));
 /// ```
 #[cfg(feature = "argon2-hasher")]
+#[deprecated(
+	since = "0.1.0-rc.15",
+	note = "Use the `user` attribute macro to define your own user struct instead"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DefaultUser {
 	/// Unique identifier (primary key)
@@ -362,6 +366,7 @@ impl Default for DefaultUser {
 }
 
 #[cfg(feature = "argon2-hasher")]
+#[allow(deprecated)] // Implementing deprecated User trait for backward compatibility
 impl User for DefaultUser {
 	fn id(&self) -> String {
 		self.id.to_string()

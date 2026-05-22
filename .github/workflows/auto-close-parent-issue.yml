@@ -4,6 +4,13 @@ on:
   issues:
     types: [closed, reopened]
 
+# Serialize so a rapid close -> reopen -> close burst is processed in order.
+# Issues fire on the default branch ref so all issue events share one queue;
+# cancel-in-progress: false preserves every close/reopen transition.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   issues: write
   contents: read
@@ -11,6 +18,7 @@ permissions:
 jobs:
   auto-close-parent:
     name: Auto-Close Parent Issue
+    timeout-minutes: 360
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
@@ -157,6 +165,7 @@ jobs:
 
   auto-reopen-parent:
     name: Reopen Parent Issue
+    timeout-minutes: 360
     if: github.event.action == 'reopened'
     runs-on: ubuntu-latest
     steps:

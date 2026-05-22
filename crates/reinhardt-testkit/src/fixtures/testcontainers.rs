@@ -78,7 +78,7 @@ fn get_pool_config() -> (u32, u64) {
 /// * `database_url` - Connection URL (postgres://, mysql://, sqlite://)
 ///
 /// # Example
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::testcontainers::create_test_any_pool;
 ///
 /// # async fn example() {
@@ -223,7 +223,7 @@ use fs2::FileExt;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::FileLockGuard;
 ///
 /// // Acquire lock (blocks until available)
@@ -236,7 +236,6 @@ use fs2::FileExt;
 /// ```
 pub struct FileLockGuard {
 	file: std::fs::File,
-	path: std::path::PathBuf,
 }
 
 impl FileLockGuard {
@@ -257,14 +256,17 @@ impl FileLockGuard {
 
 		file.lock_exclusive()?;
 
-		Ok(Self { file, path })
+		Ok(Self { file })
 	}
 }
 
 impl Drop for FileLockGuard {
 	fn drop(&mut self) {
+		// Only unlock; do not remove the lock file.
+		// Removing the file after unlock creates a race condition where another
+		// process can acquire the lock between unlock and delete, then the
+		// delete removes a valid lock held by that process.
 		let _ = self.file.unlock();
-		let _ = std::fs::remove_file(&self.path);
 	}
 }
 
@@ -279,7 +281,7 @@ impl Drop for FileLockGuard {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::postgres_container;
 /// use rstest::*;
 ///
@@ -480,7 +482,7 @@ pub async fn cockroachdb_container()
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::redis_container;
 /// use rstest::*;
 ///
@@ -575,7 +577,7 @@ impl std::fmt::Debug for RedisClusterContainer {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_lock;
 /// use rstest::*;
 ///
@@ -597,7 +599,7 @@ pub fn redis_cluster_lock() -> FileLockGuard {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::testcontainers::{redis_cluster_lock, redis_cluster_cleanup};
 /// use rstest::*;
 ///
@@ -801,7 +803,7 @@ pub async fn redis_cluster_ports_ready(
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_container;
 /// use rstest::*;
 ///
@@ -910,7 +912,7 @@ pub async fn redis_cluster(
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_client;
 /// use rstest::*;
 ///
@@ -974,7 +976,7 @@ pub async fn redis_cluster_client(
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_urls;
 /// use rstest::*;
 ///
@@ -1013,7 +1015,7 @@ pub async fn redis_cluster_urls(
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::testcontainers::redis_cluster_fixture;
 /// use rstest::*;
 ///
@@ -1277,7 +1279,7 @@ pub async fn mongodb_container() -> (ContainerAsync<GenericImage>, String, u16) 
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::localstack_fixture;
 /// use rstest::*;
 ///
@@ -1333,7 +1335,7 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// # use reinhardt_testkit::fixtures::postgres_with_migrations_from;
 /// # use reinhardt_db::migrations::MigrationProvider;
 /// # #[tokio::main]
@@ -1400,7 +1402,7 @@ pub async fn postgres_with_migrations_from<P: reinhardt_db::migrations::Migratio
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_testkit::fixtures::mysql_container;
 /// use rstest::*;
 ///
@@ -1541,7 +1543,7 @@ pub async fn mysql_container() -> (
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// # use reinhardt_testkit::fixtures::mysql_with_migrations_from;
 /// # use reinhardt_db::migrations::MigrationProvider;
 /// # #[tokio::main]
@@ -1607,7 +1609,7 @@ pub async fn mysql_with_migrations_from<P: reinhardt_db::migrations::MigrationPr
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// # use reinhardt_testkit::fixtures::sqlite_with_migrations_from;
 /// # use reinhardt_db::migrations::MigrationProvider;
 /// # #[tokio::main]
@@ -1671,7 +1673,7 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// # use reinhardt_testkit::fixtures::*;
 /// # use rstest::*;
 /// # use std::sync::Arc;
@@ -1693,7 +1695,7 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 ///
 /// Your app must register migrations using `collect_migrations!`:
 ///
-/// ```rust,ignore
+/// ```ignore
 /// // In your app's migrations.rs
 /// reinhardt::collect_migrations!(
 ///     app_label = "polls",
@@ -1702,6 +1704,13 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 /// );
 /// ```
 #[cfg(feature = "testcontainers")]
+#[deprecated(
+	since = "0.1.0-rc.16",
+	note = "Use `postgres_with_migrations_from_dir()` instead. \
+			This fixture requires `collect_migrations!` macro registration \
+			which is being deprecated in favor of `FilesystemSource`."
+)]
+#[allow(deprecated)] // Suppress warnings from rstest-generated code referencing this deprecated fixture
 #[rstest::fixture]
 pub async fn postgres_with_all_migrations() -> Result<
 	(
@@ -1747,7 +1756,7 @@ pub async fn postgres_with_all_migrations() -> Result<
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// # use reinhardt_testkit::fixtures::postgres_with_apps_migrations;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -1760,6 +1769,13 @@ pub async fn postgres_with_all_migrations() -> Result<
 /// # }
 /// ```
 #[cfg(feature = "testcontainers")]
+#[deprecated(
+	since = "0.1.0-rc.16",
+	note = "Use `postgres_with_migrations_from_dir()` instead. \
+			This function requires `collect_migrations!` macro registration \
+			which is being deprecated in favor of `FilesystemSource`."
+)]
+#[allow(deprecated)] // Suppress warnings from internal usage of this deprecated function
 pub async fn postgres_with_apps_migrations(
 	app_labels: &[&str],
 ) -> Result<
@@ -1800,6 +1816,83 @@ pub async fn postgres_with_apps_migrations(
 	Ok((container, Arc::new(connection)))
 }
 
+/// Helper function for creating a PostgreSQL container with migrations
+/// loaded from a filesystem directory via `FilesystemSource`.
+///
+/// This is the recommended approach for loading migrations in tests:
+/// - Consistent with `manage migrate` behavior
+/// - Does not require `collect_migrations!` macro registration
+/// - Works reliably in Cargo workspaces when using `env!("CARGO_MANIFEST_DIR")`
+///
+/// # Arguments
+///
+/// * `migrations_dir` - Path to the root directory containing migration files
+///   organized as `<app_label>/<name>.rs`
+///
+/// # Example
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::postgres_with_migrations_from_dir;
+/// use std::sync::Arc;
+///
+/// #[tokio::test]
+/// async fn test_with_filesystem_migrations() {
+///     let migrations_dir = format!("{}/migrations", env!("CARGO_MANIFEST_DIR"));
+///     let (_container, db) = postgres_with_migrations_from_dir(&migrations_dir)
+///         .await
+///         .unwrap();
+///     // All migrations from the directory are applied
+/// }
+/// ```
+///
+#[cfg(feature = "testcontainers")]
+pub async fn postgres_with_migrations_from_dir(
+	migrations_dir: impl AsRef<std::path::Path>,
+) -> Result<
+	(
+		ContainerAsync<GenericImage>,
+		std::sync::Arc<reinhardt_db::DatabaseConnection>,
+	),
+	Box<dyn std::error::Error>,
+> {
+	use reinhardt_db::DatabaseConnection;
+	use reinhardt_db::migrations::FilesystemSource;
+	use reinhardt_db::migrations::MigrationSource;
+	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
+	use std::sync::Arc;
+
+	// Start PostgreSQL container
+	let (container, _pool, _port, url) = postgres_container().await;
+
+	// Connect to database
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
+
+	// Load migrations from filesystem
+	let source = FilesystemSource::new(migrations_dir);
+	let migrations = source
+		.all_migrations()
+		.await
+		.map_err(|e| format!("Failed to load migrations from filesystem: {}", e))?;
+
+	if !migrations.is_empty() {
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
+		executor
+			.apply_migrations(&migrations)
+			.await
+			.map_err(|e| format!("Failed to apply migrations: {}", e))?;
+	}
+
+	// Initialize the ORM global database connection so that E2E tests
+	// using ORM models can access the database without manual setup.
+	reinhardt_db::orm::reinitialize_database(&url)
+		.await
+		.map_err(|e| format!("Failed to initialize ORM global state: {}", e))?;
+
+	Ok((container, Arc::new(connection)))
+}
+
 /// MySQL container with ALL registered migrations applied
 ///
 /// This fixture collects migrations from the global registry and applies them
@@ -1807,7 +1900,7 @@ pub async fn postgres_with_apps_migrations(
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// # use reinhardt_testkit::fixtures::*;
 /// # use rstest::*;
 /// # use std::sync::Arc;
@@ -1823,6 +1916,13 @@ pub async fn postgres_with_apps_migrations(
 /// }
 /// ```
 #[cfg(feature = "testcontainers")]
+#[deprecated(
+	since = "0.1.0-rc.16",
+	note = "Use filesystem-based migration loading instead. \
+			This fixture requires `collect_migrations!` macro registration \
+			which is being deprecated in favor of `FilesystemSource`."
+)]
+#[allow(deprecated)] // Suppress warnings from rstest-generated code referencing this deprecated fixture
 #[rstest::fixture]
 pub async fn mysql_with_all_migrations() -> (
 	ContainerAsync<GenericImage>,
@@ -1861,6 +1961,13 @@ pub async fn mysql_with_all_migrations() -> (
 ///
 /// * `app_labels` - List of app labels to include
 #[cfg(feature = "testcontainers")]
+#[deprecated(
+	since = "0.1.0-rc.16",
+	note = "Use filesystem-based migration loading instead. \
+			This function requires `collect_migrations!` macro registration \
+			which is being deprecated in favor of `FilesystemSource`."
+)]
+#[allow(deprecated)] // Suppress warnings from internal usage of this deprecated function
 pub async fn mysql_with_apps_migrations(
 	app_labels: &[&str],
 ) -> (
@@ -1905,7 +2012,7 @@ pub async fn mysql_with_apps_migrations(
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// # use reinhardt_testkit::fixtures::*;
 /// # use rstest::*;
 /// # use std::sync::Arc;
@@ -1920,6 +2027,13 @@ pub async fn mysql_with_apps_migrations(
 /// }
 /// ```
 #[cfg(feature = "testcontainers")]
+#[deprecated(
+	since = "0.1.0-rc.16",
+	note = "Use filesystem-based migration loading instead. \
+			This fixture requires `collect_migrations!` macro registration \
+			which is being deprecated in favor of `FilesystemSource`."
+)]
+#[allow(deprecated)] // Suppress warnings from rstest-generated code referencing this deprecated fixture
 #[rstest::fixture]
 pub async fn sqlite_with_all_migrations() -> std::sync::Arc<reinhardt_db::DatabaseConnection> {
 	use reinhardt_db::DatabaseConnection;
@@ -1954,6 +2068,13 @@ pub async fn sqlite_with_all_migrations() -> std::sync::Arc<reinhardt_db::Databa
 ///
 /// * `app_labels` - List of app labels to include
 #[cfg(feature = "testcontainers")]
+#[deprecated(
+	since = "0.1.0-rc.16",
+	note = "Use filesystem-based migration loading instead. \
+			This function requires `collect_migrations!` macro registration \
+			which is being deprecated in favor of `FilesystemSource`."
+)]
+#[allow(deprecated)] // Suppress warnings from internal usage of this deprecated function
 pub async fn sqlite_with_apps_migrations(
 	app_labels: &[&str],
 ) -> std::sync::Arc<reinhardt_db::DatabaseConnection> {
@@ -2081,4 +2202,195 @@ async fn try_start_rabbitmq_container()
 	let url = format!("amqp://localhost:{}/%2f", port);
 
 	Ok((rabbitmq, port, url))
+}
+
+// ---------------------------------------------------------------------------
+// Shared Kafka container (module-/process-scoped, amortized startup)
+// ---------------------------------------------------------------------------
+
+/// Process-wide shared `KafkaContainer`, lazily started on first use.
+///
+/// `KafkaContainer::new()` takes several seconds (image pull + KRaft startup
+/// barrier). For test suites that exercise many small Kafka scenarios — e.g.
+/// `kafka_error_paths` — paying that cost once per test binary is significantly
+/// faster than starting a fresh container per `#[rstest]`.
+///
+/// The container handle is kept alive for the lifetime of the process via the
+/// static `OnceCell`; testcontainers' `Drop` will tear it down when the test
+/// binary exits.
+///
+/// **Caller responsibility:** Topic-name collisions across tests sharing the
+/// same broker are NOT prevented by this fixture. Tests MUST generate unique
+/// topic names per test (e.g. via `uuid::Uuid::new_v4()` or a counter).
+#[cfg(feature = "testcontainers")]
+static SHARED_KAFKA: tokio::sync::OnceCell<Arc<crate::containers::KafkaContainer>> =
+	tokio::sync::OnceCell::const_new();
+
+/// Return a process-wide shared `KafkaContainer`, starting it on first call.
+///
+/// Subsequent calls return clones of the same `Arc`, so the underlying broker
+/// — and its mapped host port — is reused across all callers in the same test
+/// binary.
+///
+/// See the `SHARED_KAFKA` static for the topic-collision caveat.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::shared_kafka_container;
+///
+/// # async fn doc() {
+/// let kafka = shared_kafka_container().await;
+/// let brokers = kafka.brokers();
+/// # }
+/// ```
+#[cfg(feature = "testcontainers")]
+pub async fn shared_kafka_container() -> Arc<crate::containers::KafkaContainer> {
+	SHARED_KAFKA
+		.get_or_init(|| async { Arc::new(crate::containers::KafkaContainer::new().await) })
+		.await
+		.clone()
+}
+
+/// rstest fixture that yields the process-wide shared `KafkaContainer`.
+///
+/// This is the rstest-idiomatic wrapper around [`shared_kafka_container`].
+/// Use this when writing `#[rstest] #[tokio::test]` tests that need a Kafka
+/// broker but want to amortize container startup across the whole test binary.
+///
+/// **Caller responsibility:** generate unique topic names per test — the
+/// underlying broker is shared, so two tests using the same topic will see
+/// each other's records.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::kafka_container;
+/// use reinhardt_testkit::containers::KafkaContainer;
+/// use rstest::*;
+/// use std::sync::Arc;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_kafka(#[future] kafka_container: Arc<KafkaContainer>) {
+///     let kafka = kafka_container.await;
+///     let brokers = kafka.brokers();
+///     // ... unique topic per test ...
+/// }
+/// ```
+#[cfg(feature = "testcontainers")]
+#[fixture]
+pub async fn kafka_container() -> Arc<crate::containers::KafkaContainer> {
+	shared_kafka_container().await
+}
+
+#[cfg(all(test, feature = "testcontainers"))]
+mod tests {
+	use super::*;
+	use rstest::*;
+
+	#[rstest]
+	fn test_get_pool_config_defaults() {
+		// Arrange (uses default env — no TEST_MAX_CONNECTIONS or TEST_ACQUIRE_TIMEOUT_SECS set)
+
+		// Act
+		let (max_connections, acquire_timeout) = get_pool_config();
+
+		// Assert
+		assert!(
+			max_connections > 0,
+			"Expected max_connections > 0, got: {}",
+			max_connections
+		);
+		assert!(
+			acquire_timeout > 0,
+			"Expected acquire_timeout > 0, got: {}",
+			acquire_timeout
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_is_port_available() {
+		// Arrange
+		// Bind to port 0 to get an OS-assigned free port, then release it
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+			.await
+			.expect("Failed to bind to random port");
+		let port = listener.local_addr().unwrap().port();
+		drop(listener);
+
+		// Act
+		let available = is_port_available(port).await;
+
+		// Assert
+		assert!(available, "Expected released port {} to be available", port);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_postgres_container_connects(
+		#[future] postgres_container: (
+			ContainerAsync<GenericImage>,
+			Arc<sqlx::PgPool>,
+			u16,
+			String,
+		),
+	) {
+		// Arrange
+		let (_container, pool, _port, _url) = postgres_container.await;
+
+		// Act
+		let row: (i32,) = sqlx::query_as("SELECT 1")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to execute SELECT 1 on postgres container");
+
+		// Assert
+		assert_eq!(row.0, 1);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_postgres_container_port_nonzero(
+		#[future] postgres_container: (
+			ContainerAsync<GenericImage>,
+			Arc<sqlx::PgPool>,
+			u16,
+			String,
+		),
+	) {
+		// Arrange
+		let (_container, _pool, port, _url) = postgres_container.await;
+
+		// Act (no-op: port is set at initialization)
+
+		// Assert
+		assert!(port > 0, "Expected port to be non-zero, got: {}", port);
+	}
+
+	#[rstest]
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	async fn test_create_test_any_pool(
+		#[future] postgres_container: (
+			ContainerAsync<GenericImage>,
+			Arc<sqlx::PgPool>,
+			u16,
+			String,
+		),
+	) {
+		// Arrange
+		let (_container, _pool, _port, url) = postgres_container.await;
+		sqlx::any::install_default_drivers();
+
+		// Act
+		let any_pool = create_test_any_pool(&url).await;
+
+		// Assert
+		assert!(
+			any_pool.is_ok(),
+			"Expected create_test_any_pool to succeed, got: {:?}",
+			any_pool.err()
+		);
+	}
 }

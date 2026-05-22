@@ -4,19 +4,20 @@
 
 ## Overview
 
-This crate serves as a **convenience layer** that combines multiple Reinhardt crates into a single import. It does not contain its own implementation or tests - all functionality is provided by the underlying specialized crates.
+This crate serves as a **convenience layer** that combines multiple Reinhardt crates into a single import. Core functionality is provided by the underlying specialized crates, though this crate also contains its own implementations for browsable API, filters, metadata, serializers, throttling, versioning, authentication, response handling, schema generation, and OpenAPI support.
 
 ## Installation
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-rc.9", features = ["rest"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["rest"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-rc.9", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-rc.9", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import REST features:
@@ -24,7 +25,7 @@ Then import REST features:
 ```rust
 use reinhardt::rest::{ApiResponse, ResponseBuilder, IntoApiResponse};
 use reinhardt::rest::{JwtAuth, IsAuthenticated, AllowAny, User, SimpleUser};
-use reinhardt::rest::{DefaultRouter, Router, Route};
+use reinhardt::urls::routers::UnifiedRouter;
 use reinhardt::rest::{PaginatedResponse};
 ```
 
@@ -34,8 +35,8 @@ use reinhardt::rest::{PaginatedResponse};
 
 - **Unified Interface**: Single import point for REST API functionality
 - **Re-export Layer**: Combines authentication, routing, browsable API, and response handling
-- **No Implementation**: Pure export/aggregation crate
-- **No Tests**: All functionality is tested in specialized crates
+- **Own Implementations**: Contains browsable API, filters, metadata, serializers, throttling, versioning, authentication, response handling, schema generation, and OpenAPI support
+- **Tested Locally**: Core modules have tests; additional coverage in specialized crates
 
 ## Features
 
@@ -59,7 +60,7 @@ use reinhardt::rest::{PaginatedResponse};
   - `AuthResult<U>` - Result type for authentication operations
   - `AuthBackend` - Authentication backend trait
 
-#### Routing (from `reinhardt-http`)
+#### Routing (from `reinhardt-urls`)
 
 - **Router Types**:
   - `DefaultRouter` - Default router with automatic ViewSet URL generation
@@ -130,7 +131,7 @@ use reinhardt::rest::{PaginatedResponse};
 This crate does not contain tests. All functionality is tested in the underlying specialized crates:
 
 - Authentication tests: `reinhardt-auth/tests/`
-- Router tests: `reinhardt-http/tests/`
+- Router tests: `reinhardt-urls/tests/`
 - Browsable API tests: `reinhardt-rest/src/browsable_api/`
 - Response handling tests: Documentation tests in `src/response.rs`
 - Integration tests: `tests/integration/`
@@ -142,16 +143,12 @@ use reinhardt::rest::{
     // Authentication
     JwtAuth, IsAuthenticated, AllowAny, User, SimpleUser,
 
-    // Routing
-    DefaultRouter, Router, Route,
-
     // Response handling
     ApiResponse, ResponseBuilder, IntoApiResponse,
 
     // Pagination
     PaginatedResponse,
 };
-
 // Create a successful response
 let user = SimpleUser::new(1, "Alice");
 let response = ApiResponse::success(user);
@@ -936,13 +933,15 @@ println!("Average: {}ms", stats.avg_serialization_ms);
     - `config()` - Get current configuration
     - `versioning()` - Get versioning instance
     - `update_config()` - Update configuration at runtime
-    - Environment variable support with `from_env()`
 
-19. **Environment Configuration** - Env var support
-    - `REINHARDT_VERSIONING_DEFAULT_VERSION` - Default version
-    - `REINHARDT_VERSIONING_ALLOWED_VERSIONS` - Comma-separated allowed versions
-    - `REINHARDT_VERSIONING_STRATEGY` - Strategy type
-    - `REINHARDT_VERSIONING_STRICT_MODE` - Enable/disable strict mode
+19. **Settings-based Configuration** - TOML fragment
+    - Configure under the `[rest_versioning]` TOML section via
+      `VersioningSettings` (a `reinhardt-conf` settings fragment)
+    - Convert into `VersioningConfig` with
+      `VersioningConfig::from(settings)`
+    - Recognized keys: `default_version`, `allowed_versions`,
+      `strategy`, `strict_mode`, `version_param`,
+      `hostname_patterns`
 
 #### URL Reverse System
 

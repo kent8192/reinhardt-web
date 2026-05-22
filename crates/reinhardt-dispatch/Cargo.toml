@@ -1,7 +1,8 @@
 [package]
 name = "reinhardt-dispatch"
-version = "0.1.0-rc.11"
+version = "0.2.0-rc.1"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
@@ -39,3 +40,5 @@ hyper = { workspace = true }
 bytes = { workspace = true }
 tokio-test = "0.4"
 serde_json = { workspace = true }
+rstest = { workspace = true }
+serial_test = { workspace = true }

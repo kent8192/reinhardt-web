@@ -14,6 +14,8 @@
 //!     });
 //! ```
 
+#![allow(deprecated)] // (Refs #4234) Internal references to deprecated routing types are intentional during the deprecation cycle.
+
 use std::collections::HashMap;
 use std::ops::Deref;
 
@@ -113,6 +115,10 @@ pub trait FromPath: Sized {
 /// }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[deprecated(
+	since = "0.1.0-rc.27",
+	note = "Use `reinhardt_urls::routers::Path<T>` instead. Refs #4234, cloud#578."
+)]
 pub struct PathParams<T>(pub T);
 
 impl<T> PathParams<T> {

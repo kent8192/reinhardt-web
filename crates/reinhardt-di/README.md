@@ -12,13 +12,14 @@ Delivers the FastAPI development experience in Rust with type-safe and async-fir
 
 Add `reinhardt` to your `Cargo.toml`:
 
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["di"] }
+reinhardt = { version = "0.1.0-rc.30", features = ["di"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-rc.30", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-rc.30", features = ["full"] }      # All features
 ```
 
 Then import DI features:
@@ -466,8 +467,8 @@ Mark a struct as injectable and automatically register it with the global regist
 
 **Syntax:**
 ```rust
-#[injectable]
-#[scope(singleton|request|transient)]
+// `scope` accepts "singleton", "request", or "transient" (see Attributes below).
+#[injectable(scope = "singleton")]
 struct YourStruct {
     #[no_inject]
     field: Type,
@@ -475,17 +476,20 @@ struct YourStruct {
 ```
 
 **Attributes:**
-- `` `#[scope(singleton)]` `` - Singleton scope (default)
-- `` `#[scope(request)]` `` - Request scope
-- `` `#[scope(transient)]` `` - Transient scope (new instance every time)
+
+Scope is passed as a macro argument in key-value form. `#[injectable]`
+defaults to `request` when no `scope` argument is supplied.
+
+- `` `#[injectable(scope = "request")]` `` - Request scope (default)
+- `` `#[injectable(scope = "singleton")]` `` - Singleton scope
+- `` `#[injectable(scope = "transient")]` `` - Transient scope (new instance every time)
 - `` `#[no_inject]` `` - Exclude specific fields from automatic injection
 
 **Example:**
 ```rust
 use reinhardt::di::macros::injectable;
 
-#[injectable]
-#[scope(singleton)]
+#[injectable(scope = "singleton")]
 struct Config {
     #[no_inject]
     database_url: String,
@@ -499,17 +503,22 @@ Mark an async function as a dependency factory for complex initialization logic.
 
 **Syntax:**
 ```rust
-#[injectable_factory]
-#[scope(singleton|request|transient)]
+// `scope` accepts "singleton", "request", or "transient" (see Attributes below).
+#[injectable_factory(scope = "singleton")]
 async fn factory_function(#[inject] dep: Arc<Dependency>) -> ReturnType {
     // Initialization logic
 }
 ```
 
 **Attributes:**
-- `` `#[scope(singleton)]` `` - Singleton scope (default)
-- `` `#[scope(request)]` `` - Request scope
-- `` `#[scope(transient)]` `` - Transient scope
+
+Scope is passed as a macro argument in key-value form.
+`#[injectable_factory]` defaults to `singleton` when no `scope` argument is
+supplied.
+
+- `` `#[injectable_factory(scope = "singleton")]` `` - Singleton scope (default)
+- `` `#[injectable_factory(scope = "request")]` `` - Request scope
+- `` `#[injectable_factory(scope = "transient")]` `` - Transient scope
 - `` `#[inject]` `` - Mark function parameters for automatic injection
 
 **Example:**
@@ -517,8 +526,7 @@ async fn factory_function(#[inject] dep: Arc<Dependency>) -> ReturnType {
 use reinhardt::di::macros::injectable_factory;
 use std::sync::Arc;
 
-#[injectable_factory]
-#[scope(singleton)]
+#[injectable_factory(scope = "singleton")]
 async fn create_database(#[inject] config: Arc<Config>) -> DatabaseConnection {
     DatabaseConnection::connect(&config.database_url)
         .await
@@ -571,8 +579,7 @@ async fn main() {
 use reinhardt::di::macros::{injectable, injectable_factory};
 use std::sync::Arc;
 
-#[injectable]
-#[scope(singleton)]
+#[injectable(scope = "singleton")]
 struct AppConfig {
     #[no_inject]
     db_url: String,
@@ -580,8 +587,7 @@ struct AppConfig {
     cache_size: usize,
 }
 
-#[injectable_factory]
-#[scope(request)]
+#[injectable_factory(scope = "request")]
 async fn create_service(
     #[inject] config: Arc<AppConfig>
 ) -> MyService {
@@ -679,7 +685,7 @@ async fn create_service(
   - `validate_number()`: Numeric validation
   - Support for combining multiple constraints
 - **Type aliases**: `ValidatedPath<T>`, `ValidatedQuery<T>`, `ValidatedForm<T>`
-- **Integration with `reinhardt-validators`**
+- **Integration with `reinhardt-core` validators module**
 
 ## License
 

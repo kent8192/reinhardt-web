@@ -589,7 +589,7 @@ mod revoke_statement_tests {
 		let stmt = GrantRoleStatement::new();
 		assert_eq!(stmt.roles.len(), 0);
 		assert_eq!(stmt.grantees.len(), 0);
-		assert_eq!(stmt.with_admin_option, false);
+		assert!(!stmt.with_admin_option);
 		assert!(stmt.granted_by.is_none());
 	}
 
@@ -664,7 +664,7 @@ mod revoke_statement_tests {
 		let stmt = RevokeRoleStatement::new();
 		assert_eq!(stmt.roles.len(), 0);
 		assert_eq!(stmt.grantees.len(), 0);
-		assert_eq!(stmt.admin_option_for, false);
+		assert!(!stmt.admin_option_for);
 		assert!(stmt.granted_by.is_none());
 		assert!(stmt.drop_behavior.is_none());
 	}
@@ -1277,7 +1277,7 @@ mod revoke_statement_tests {
 			.to(RoleSpecification::new("alice"));
 
 		let (sql, values) = builder.build_grant_role(&stmt);
-		assert_eq!(sql, r#"GRANT `developer` TO alice"#);
+		assert_eq!(sql, r#"GRANT `developer` TO `alice`"#);
 		assert!(values.is_empty());
 	}
 
@@ -1293,7 +1293,7 @@ mod revoke_statement_tests {
 
 		let (sql, values) = builder.build_grant_role(&stmt);
 		assert!(sql.contains(r#"GRANT `developer`, `analyst`"#));
-		assert!(sql.contains("TO alice, bob"));
+		assert!(sql.contains("TO `alice`, `bob`"));
 		assert!(values.is_empty());
 	}
 
@@ -1308,7 +1308,7 @@ mod revoke_statement_tests {
 			.with_admin_option();
 
 		let (sql, values) = builder.build_grant_role(&stmt);
-		assert!(sql.contains(r#"GRANT `developer` TO alice"#));
+		assert!(sql.contains(r#"GRANT `developer` TO `alice`"#));
 		assert!(sql.contains("WITH ADMIN OPTION"));
 		assert!(values.is_empty());
 	}
@@ -1323,7 +1323,7 @@ mod revoke_statement_tests {
 			.from(RoleSpecification::new("alice"));
 
 		let (sql, values) = builder.build_revoke_role(&stmt);
-		assert_eq!(sql, r#"REVOKE `developer` FROM alice"#);
+		assert_eq!(sql, r#"REVOKE `developer` FROM `alice`"#);
 		assert!(values.is_empty());
 	}
 
@@ -1338,7 +1338,7 @@ mod revoke_statement_tests {
 			.admin_option_for();
 
 		let (sql, values) = builder.build_revoke_role(&stmt);
-		assert!(sql.contains(r#"REVOKE ADMIN OPTION FOR `developer` FROM alice"#));
+		assert!(sql.contains(r#"REVOKE ADMIN OPTION FOR `developer` FROM `alice`"#));
 		assert!(values.is_empty());
 	}
 

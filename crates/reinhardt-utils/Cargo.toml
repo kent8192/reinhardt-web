@@ -1,8 +1,9 @@
 [package]
 name = "reinhardt-utils"
-version = "0.1.0-rc.11"
+version = "0.2.0-rc.1"
 description = "Utility functions aggregator for Reinhardt"
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -17,18 +18,18 @@ async-trait = { workspace = true }
 reinhardt-core = { workspace = true, features = ["exception", "security", "types"] }
 reinhardt-http = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
 hyper = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
-redis = { version = "0.32.7", features = [
+redis = { workspace = true, features = [
   "tokio-comp",
   "connection-manager",
   "cluster",
   "cluster-async",
   "sentinel",
 ], optional = true }
-deadpool-redis = { version = "0.22.0", optional = true }
+deadpool-redis = { version = "0.23.0", optional = true }
 memcache-async = { version = "0.9.0", optional = true }
 tokio-util = { version = "0.7", features = ["compat"], optional = true }
 rand = { workspace = true }
@@ -64,6 +65,8 @@ webp = { version = "0.3", optional = true }
 uuid = { workspace = true }
 tempfile = "3.14"
 chrono-tz = { workspace = true }
+inventory = "0.3"
+reqwest = { version = "0.13.2", default-features = false, features = ["rustls"] }
 
 [features]
 default = []
@@ -105,7 +108,7 @@ dev-server = ["dep:notify"]
 
 [dev-dependencies]
 insta = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 proptest = { workspace = true }
 regex = "1.0"
 bytes = { workspace = true }
@@ -116,3 +119,4 @@ testcontainers-modules = { workspace = true }
 uuid = { workspace = true }
 tokio-test = "0.4"
 tempfile = "3.8"
+wiremock = "0.6"

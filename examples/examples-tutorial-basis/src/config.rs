@@ -1,9 +1,14 @@
 //! Configuration module for examples-tutorial-basis
 
-#[cfg(server)]
+// `apps` declares `InstalledApp`, which `#[url_patterns(InstalledApp::polls, ...)]`
+// references from both the server-side router (`apps/polls/urls/server_urls.rs`)
+// and the client-side router (`apps/polls/urls/client_router.rs`), so it must
+// be available on both targets.
+#[cfg(native)]
+pub mod admin;
 pub mod apps;
-#[cfg(server)]
+#[cfg(native)]
 pub mod settings;
 pub mod urls;
-#[cfg(server)]
+#[cfg(native)]
 pub mod wasm;

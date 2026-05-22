@@ -13,32 +13,32 @@ use uuid::Uuid;
 use crate::apps::auth::models::User;
 
 // Test-only dependency for sqlx::FromRow (server-side only)
-#[cfg(all(test, server))]
+#[cfg(all(test, native))]
 use sqlx::FromRow;
 
 #[model(app_label = "tweet", table_name = "tweet_tweet")]
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(all(test, server), derive(FromRow))]
+#[cfg_attr(all(test, native), derive(FromRow))]
 pub struct Tweet {
 	#[field(primary_key = true)]
-	id: Uuid,
+	pub id: Uuid,
 
-	#[cfg_attr(all(test, server), sqlx(skip))]
+	#[cfg_attr(all(test, native), sqlx(skip))]
 	#[rel(foreign_key, related_name = "tweets")]
-	user: ForeignKeyField<User>,
+	pub user: ForeignKeyField<User>,
 
 	#[field(max_length = 280)]
-	content: String,
+	pub content: String,
 
 	#[field(default = 0)]
-	like_count: i32,
+	pub like_count: i32,
 
 	#[field(default = 0)]
-	retweet_count: i32,
+	pub retweet_count: i32,
 
 	#[field(auto_now_add = true)]
-	created_at: DateTime<Utc>,
+	pub created_at: DateTime<Utc>,
 
 	#[field(auto_now = true)]
-	updated_at: DateTime<Utc>,
+	pub updated_at: DateTime<Utc>,
 }

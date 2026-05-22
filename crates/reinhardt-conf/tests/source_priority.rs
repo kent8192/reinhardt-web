@@ -1,9 +1,17 @@
 // Integration tests for EnvSource type inference, LowPriorityEnvSource, and cross-priority merging.
 // Covers: smart parsing, prefix handling, priority chain (Default → LowPriorityEnv → Toml/Json → Env).
+//
+// `JsonFileSource` is deprecated until removal in 0.2.0 (issue #4087); the
+// JSON priority cases must keep running during the deprecation window.
+// Deprecation warnings are silenced per import / per test function below so
+// that any new deprecation added elsewhere in this file still surfaces.
 
 use reinhardt_conf::settings::builder::SettingsBuilder;
+#[allow(deprecated)] // Deprecated alongside *.json support (issue #4087).
+use reinhardt_conf::settings::sources::JsonFileSource;
 use reinhardt_conf::settings::sources::{
-	ConfigSource, DefaultSource, EnvSource, JsonFileSource, LowPriorityEnvSource, TomlFileSource,
+	ConfigSource, DefaultSource, EnvSource, HighPriorityEnvSource, LowPriorityEnvSource,
+	TomlFileSource,
 };
 use rstest::rstest;
 use serde_json::Value;
@@ -351,6 +359,7 @@ fn low_priority_env_overrides_default() {
 }
 
 #[rstest]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn json_overrides_default() {
 	// Arrange
 	let (_dir, json_path) = write_json_file(r#"{"name": "from_json"}"#);
@@ -370,6 +379,7 @@ fn json_overrides_default() {
 
 #[rstest]
 #[serial(env)]
+#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
 fn env_overrides_json() {
 	// Arrange
 	let (_dir, json_path) = write_json_file(r#"{"port": 2000}"#);
@@ -482,4 +492,46 @@ fn full_chain_partial_overlap() {
 
 	// Cleanup
 	unsafe { remove_env_vars(&["FCTEST3_HOST"]) };
+}
+
+// ===========================================================================
+// Interpolation × priority composition
+// ===========================================================================
+
+#[rstest]
+#[serial(env)]
+fn high_priority_env_overrides_interpolated_toml() {
+	// Verifies that HighPriorityEnvSource (priority 60) wins against
+	// values produced by an interpolated TomlFileSource (priority 50).
+
+	// Arrange — reuse the file-local set/remove helpers for consistency
+	// with the other 17 tests in this file.
+	unsafe {
+		set_env_vars(&[
+			("IT_PG_PORT_PRIO", "8080"), // for TOML interpolation
+			("PRIO_TEST_PORT", "9999"),  // for HighPriorityEnvSource override
+		])
+	};
+	let (_dir, path) = write_toml_file(r#"port = "${IT_PG_PORT_PRIO:-5432}""#);
+
+	// Act
+	let settings = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(&path).with_interpolation()) // priority 50
+		.add_source(HighPriorityEnvSource::new().with_prefix("PRIO_TEST_")) // priority 60
+		.build()
+		.unwrap();
+
+	// Assert — HighPriorityEnvSource (60) beats interpolated TOML (50).
+	// Note: HighPriorityEnvSource performs smart type inference and parses
+	// "9999" as a number, so we read it back as `u16`. The interpolated TOML
+	// value is a string ("8080"), but it gets overridden before deserialization.
+	let port: u16 = settings.get("port").unwrap();
+
+	// Cleanup
+	unsafe { remove_env_vars(&["IT_PG_PORT_PRIO", "PRIO_TEST_PORT"]) };
+
+	assert_eq!(
+		port, 9999,
+		"HighPriorityEnvSource (60) must override interpolated TOML (50)"
+	);
 }

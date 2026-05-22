@@ -7,107 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-rc.4...reinhardt-grpc@v0.1.0-rc.5) - 2026-03-07
+## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-rc.30...reinhardt-grpc@v0.1.0) - 2026-05-22
 
-### Documentation
+Initial stable release of `reinhardt-grpc` as part of the
+reinhardt-web 0.1.0 release. Embeds a tonic-based gRPC server in the
+framework, sharing DI, middleware, and observability with the HTTP
+stack.
 
-- add missing doc comments for public API modules and types
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-rc.1...reinhardt-grpc@v0.1.0-rc.2) - 2026-03-04
+### Capabilities at 0.1.0
 
-### Maintenance
+- **Per-request DI in gRPC handlers** — handler macros fork the
+  `InjectionContext` per request, giving each gRPC call a clean
+  request scope and removing implementation-name collisions in
+  generated code.
+- **Hardened transport limits** — request timeouts, connection
+  limits, default message-size limits, and protobuf depth limits
+  ship out of the box; error messages are sanitized so server-side
+  details never leak to clients.
+- **Strict protobuf input validation** — string fields are validated
+  by Unicode scalar count (not byte length) with early-exit
+  counting, and macro-generated code performs the same checks
+  user-written validators would.
+- **Cow-based test helpers** — `Cow<str>` is used in test messaging
+  to reduce allocations without changing the public API.
+- **Tower integration documented** — out-of-the-box compatibility
+  with the tower middleware stack is covered in the crate docs,
+  alongside the engine-name and feature-flag corrections that
+  landed during the rc cycle.
 
-- *(testing)* add insta snapshot testing dependency across all crates
+### Notable Breaking Changes
 
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-alpha.6...reinhardt-grpc@v0.1.0-rc.1) - 2026-02-23
+- **`Injected<T>` deprecated** ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631))
+  — gRPC handler injection sites move to `Depends<T>`.
 
-### Maintenance
+### Migration Notes
 
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-alpha.5...reinhardt-grpc@v0.1.0-alpha.6) - 2026-02-21
-
-### Fixed
-
-- add async validation and fix impl name collision
-- return generic errors and log details server-side
-- emit compile error for unrecognized inject attribute options
-- roll back unpublished crate versions after partial release failure
-- roll back unpublished crate versions and enable release_always
-
-### Security
-
-- add request timeout, connection limits, and tower integration docs
-- strengthen type checking in macro-generated code
-- add protobuf depth limits and sanitize error messages
-- add default message size limit
-
-### Changed
-
-- use Cow<str> to reduce allocations and improve test messages
-
-### Styling
-
-- fix pre-existing clippy warnings and apply rustfmt
-- apply rustfmt to pre-existing formatting violations in 16 files
-
-### Maintenance
-
-- replace Japanese comments with English in proto type tests
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-alpha.4...reinhardt-grpc@v0.1.0-alpha.5) - 2026-02-10
-
-### Maintenance
-
-- *(clippy)* add deny lints for todo/unimplemented/dbg_macro
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-alpha.3...reinhardt-grpc@v0.1.0-alpha.4) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-di
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-alpha.2...reinhardt-grpc@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-di
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-alpha.1...reinhardt-grpc@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- *(package)* replace version.workspace with explicit versions
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+See the [root CHANGELOG migration guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide).
+Existing tonic services keep working; only the DI-attribute syntax on
+generated handler wrappers changes.

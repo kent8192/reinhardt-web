@@ -6,6 +6,7 @@
 //! - django/core/management/commands/startproject.py
 //! - django/core/management/commands/startapp.py
 
+use crate::template_source::{EmbeddedSource, FilesystemSource, MergedSource, TemplateSource};
 use crate::{
 	BaseCommand, CommandArgument, CommandContext, CommandError, CommandOption, CommandResult,
 	TemplateCommand, TemplateContext, generate_secret_key, to_camel_case,
@@ -13,6 +14,25 @@ use crate::{
 use async_trait::async_trait;
 use std::env;
 use std::path::{Path, PathBuf};
+
+/// Validate that a name does not use the reserved `reinhardt_*` namespace.
+///
+/// Names starting with `reinhardt_` or `reinhardt-` conflict with the DI
+/// pseudo orphan rule (#3468, #3502) which treats `reinhardt_*::*` as
+/// framework-managed types.
+fn validate_not_reserved_namespace(name: &str) -> CommandResult<()> {
+	let normalized = name.replace('-', "_");
+	if normalized.starts_with("reinhardt_") || normalized == "reinhardt" {
+		return Err(CommandError::InvalidArguments(format!(
+			"Name '{}' is not allowed: names starting with 'reinhardt_' or 'reinhardt-' \
+			 are reserved for the Reinhardt framework. This conflicts with the DI pseudo \
+			 orphan rule which treats 'reinhardt_*' namespaces as framework-managed. \
+			 Please choose a different name.",
+			name
+		)));
+	}
+	Ok(())
+}
 
 /// Create a Reinhardt project directory structure
 ///
@@ -40,6 +60,11 @@ impl BaseCommand for StartProjectCommand {
 		vec![
 			CommandOption::option(None, "template", "The path to load the template from"),
 			CommandOption::option(
+				None,
+				"template-dir",
+				"Root directory whose sub-templates override embedded defaults (also reads REINHARDT_TEMPLATE_DIR)",
+			),
+			CommandOption::option(
 				Some('e'),
 				"extension",
 				"The file extension(s) to render (default: \"rs\")",
@@ -61,6 +86,9 @@ impl BaseCommand for StartProjectCommand {
 				CommandError::InvalidArguments("You must provide a project name.".to_string())
 			})?
 			.clone();
+
+		// Reject reserved reinhardt_* namespace (#3502)
+		validate_not_reserved_namespace(&project_name)?;
 
 		let target = ctx.arg(1).map(PathBuf::from);
 
@@ -98,17 +126,22 @@ impl BaseCommand for StartProjectCommand {
 		context.insert("project_name", &project_name)?;
 		context.insert("crate_name", project_name.replace('-', "_"))?;
 		context.insert("secret_key", &secret_key)?;
+		context.set_example_override(
+			"secret_key",
+			"CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET",
+		)?;
 		context.insert("camel_case_project_name", to_camel_case(&project_name))?;
 		context.insert("reinhardt_version", env!("CARGO_PKG_VERSION"))?;
 		context.insert("is_restful", if !with_pages { "true" } else { "false" })?;
 		context.insert("with_pages", if with_pages { "true" } else { "false" })?;
 
-		// Determine template directory
-		let template_dir = if let Some(template_path) = ctx.option("template") {
-			PathBuf::from(template_path)
+		// Determine template source (--template > --template-dir/env > embedded)
+		let subdir = format!("project_{}_template", template_key);
+		let source: Box<dyn TemplateSource> = if let Some(template_path) = ctx.option("template") {
+			Box::new(FilesystemSource::new(template_path)?)
 		} else {
-			// Use built-in template based on project type
-			get_project_template_dir(template_key)?
+			let override_root = effective_template_dir_override(ctx);
+			resolve_source(override_root.as_deref(), &subdir)?
 		};
 
 		// Create project using TemplateCommand
@@ -116,7 +149,7 @@ impl BaseCommand for StartProjectCommand {
 		template_cmd.handle(
 			&project_name,
 			target.as_deref(),
-			&template_dir,
+			source.as_ref(),
 			context,
 			ctx,
 		)?;
@@ -167,6 +200,11 @@ impl BaseCommand for StartAppCommand {
 		vec![
 			CommandOption::option(None, "template", "The path to load the template from"),
 			CommandOption::option(
+				None,
+				"template-dir",
+				"Root directory whose sub-templates override embedded defaults (also reads REINHARDT_TEMPLATE_DIR)",
+			),
+			CommandOption::option(
 				Some('e'),
 				"extension",
 				"The file extension(s) to render (default: \"rs\")",
@@ -193,6 +231,9 @@ impl BaseCommand for StartAppCommand {
 				CommandError::InvalidArguments("You must provide an application name.".to_string())
 			})?
 			.clone();
+
+		// Reject reserved reinhardt_* namespace (#3502)
+		validate_not_reserved_namespace(&app_name)?;
 
 		let target = ctx.arg(1).map(PathBuf::from);
 
@@ -267,20 +308,22 @@ impl BaseCommand for StartAppCommand {
 			context.insert("is_restful", if !with_pages { "true" } else { "false" })?;
 			context.insert("with_pages", if with_pages { "true" } else { "false" })?;
 
-			// Determine template directory
-			let template_dir = if let Some(template_path) = ctx.option("template") {
-				PathBuf::from(template_path)
-			} else {
-				// Use built-in template based on app type
-				get_app_template_dir(template_key)?
-			};
+			// Determine template source (--template > --template-dir/env > embedded)
+			let subdir = format!("app_{}_template", template_key);
+			let source: Box<dyn TemplateSource> =
+				if let Some(template_path) = ctx.option("template") {
+					Box::new(FilesystemSource::new(template_path)?)
+				} else {
+					let override_root = effective_template_dir_override(ctx);
+					resolve_source(override_root.as_deref(), &subdir)?
+				};
 
 			// Create app using TemplateCommand
 			let template_cmd = TemplateCommand::new();
 			template_cmd.handle(
 				&app_name,
 				app_target.as_deref(),
-				&template_dir,
+				source.as_ref(),
 				context,
 				ctx,
 			)?;
@@ -317,54 +360,66 @@ impl BaseCommand for StartAppCommand {
 			}
 
 			// Update or create apps.rs to export the new app
-			update_apps_export(&app_name)?;
+			update_apps_export(&app_name, with_pages)?;
+
+			// Append to installed_apps! { ... } block (Issue #3670).
+			// Idempotent and silently skipped if src/config/apps.rs is
+			// missing (older project structure).
+			update_installed_apps_block(&app_name)?;
 
 			ctx.success(&format!(
 				"{} app '{}' created successfully in src/apps/{}!",
 				app_type, app_name, app_name
 			));
-			ctx.info("The app has been added to src/apps.rs");
-			ctx.info("Don't forget to add it to INSTALLED_APPS in your settings.rs");
+			ctx.info("The app has been added to src/apps.rs and src/config/apps.rs");
 		}
 
 		Ok(())
 	}
 }
 
-/// Get the path to the built-in project template directory
-fn get_project_template_dir(template_type: &str) -> CommandResult<PathBuf> {
-	// template_type: "mvc" or "restful"
-	let manifest_dir = env!("CARGO_MANIFEST_DIR");
-	let template_dir = PathBuf::from(manifest_dir)
-		.join("templates")
-		.join(format!("project_{}_template", template_type));
-
-	if !template_dir.exists() {
-		return Err(CommandError::ExecutionError(format!(
-			"Project template directory not found at {}. Falling back to default template.",
-			template_dir.display()
-		)));
+/// Resolve a `TemplateSource` for a given template subdirectory key.
+///
+/// Priority (highest first):
+/// 1. `--template` CLI flag (handled by each command directly — full replacement via `FilesystemSource`)
+/// 2. `--template-dir` CLI flag or `REINHARDT_TEMPLATE_DIR` env — `MergedSource` with embedded fallback
+/// 3. Embedded-only (`EmbeddedSource`)
+fn resolve_source(
+	override_root: Option<&Path>,
+	subdir: &str,
+) -> CommandResult<Box<dyn TemplateSource>> {
+	if let Some(root) = override_root {
+		if !root.exists() || !root.is_dir() {
+			return Err(CommandError::ExecutionError(format!(
+				"template override root does not exist or is not a directory: {}",
+				root.display()
+			)));
+		}
+		let subdir_path = root.join(subdir);
+		if subdir_path.exists() {
+			let primary = FilesystemSource::new(&subdir_path)?;
+			return Ok(Box::new(MergedSource {
+				primary,
+				fallback: EmbeddedSource::new(subdir),
+			}));
+		}
+		// Override root exists but has no subdir for this template type;
+		// fall through to embedded-only so partial override trees are still valid.
 	}
-
-	Ok(template_dir)
+	Ok(Box::new(EmbeddedSource::new(subdir)))
 }
 
-/// Get the path to the built-in app template directory
-fn get_app_template_dir(template_type: &str) -> CommandResult<PathBuf> {
-	// template_type: "mvc" or "restful"
-	let manifest_dir = env!("CARGO_MANIFEST_DIR");
-	let template_dir = PathBuf::from(manifest_dir)
-		.join("templates")
-		.join(format!("app_{}_template", template_type));
-
-	if !template_dir.exists() {
-		return Err(CommandError::ExecutionError(format!(
-			"App template directory not found at {}. Falling back to default template.",
-			template_dir.display()
-		)));
+fn effective_template_dir_override(ctx: &CommandContext) -> Option<PathBuf> {
+	if let Some(v) = ctx.option("template-dir").filter(|v| !v.trim().is_empty()) {
+		return Some(PathBuf::from(v));
 	}
-
-	Ok(template_dir)
+	if let Some(v) = env::var("REINHARDT_TEMPLATE_DIR")
+		.ok()
+		.filter(|v| !v.is_empty())
+	{
+		return Some(PathBuf::from(v));
+	}
+	None
 }
 
 /// Create a workspace-based app
@@ -396,37 +451,30 @@ async fn create_workspace_app(
 	context.insert("camel_case_app_name", to_camel_case(app_name))?;
 	context.insert("is_restful", if !with_pages { "true" } else { "false" })?;
 	context.insert("with_pages", if with_pages { "true" } else { "false" })?;
+	// Workspace apps reference the parent project crate by name (for example
+	// `use my_project::config::apps::InstalledApp;`). Derive that name from
+	// the current directory (the workspace root), normalizing hyphens to
+	// underscores so the import is a valid Rust path. Falls back to
+	// `"project"` when the directory name is unavailable.
+	let project_crate_name = std::env::current_dir()
+		.ok()
+		.and_then(|p| p.file_name().map(|n| n.to_string_lossy().replace('-', "_")))
+		.unwrap_or_else(|| "project".to_string());
+	context.insert("project_crate_name", &project_crate_name)?;
 
-	// Determine template directory for workspace apps
+	// Determine template source via embedded fallback
 	let template_key = if with_pages { "pages" } else { "restful" };
-	let template_dir = get_app_workspace_template_dir(template_key)?;
+	let subdir = format!("app_{}_workspace_template", template_key);
+	let source = resolve_source(effective_template_dir_override(ctx).as_deref(), &subdir)?;
 
 	// Create app using TemplateCommand
 	let template_cmd = TemplateCommand::new();
-	template_cmd.handle(app_name, Some(&app_target), &template_dir, context, ctx)?;
+	template_cmd.handle(app_name, Some(&app_target), source.as_ref(), context, ctx)?;
 
 	// Update workspace Cargo.toml
 	update_workspace_members(app_name)?;
 
 	Ok(())
-}
-
-/// Get the path to the built-in workspace app template directory
-fn get_app_workspace_template_dir(template_type: &str) -> CommandResult<PathBuf> {
-	// template_type: "mvc" or "restful"
-	let manifest_dir = env!("CARGO_MANIFEST_DIR");
-	let template_dir = PathBuf::from(manifest_dir)
-		.join("templates")
-		.join(format!("app_{}_workspace_template", template_type));
-
-	if !template_dir.exists() {
-		return Err(CommandError::ExecutionError(format!(
-			"Workspace app template directory not found at {}.",
-			template_dir.display()
-		)));
-	}
-
-	Ok(template_dir)
 }
 
 /// Update workspace Cargo.toml to add new app as a member
@@ -508,7 +556,16 @@ fn update_workspace_members(app_name: &str) -> CommandResult<()> {
 ///
 /// Uses AST parsing to robustly detect existing module declarations
 /// and add new ones, avoiding issues with comments and formatting.
-fn update_apps_export(app_name: &str) -> CommandResult<()> {
+///
+/// `with_pages` controls whether the emitted `pub use <app>::<App>Config;`
+/// re-export is gated by `#[cfg(server)]`. Pages projects compile `apps.rs`
+/// on the WASM target where the `#[app_config]`-generated `Config` struct
+/// is itself `#[cfg(server)]`, so the re-export must match. REST projects
+/// do not define a `server` cfg alias and the `Config` struct is not
+/// cfg-gated, so adding `#[cfg(server)]` there would silently drop the
+/// re-export (and would emit an `unexpected_cfgs` warning) — keep it
+/// un-gated for REST.
+fn update_apps_export(app_name: &str, with_pages: bool) -> CommandResult<()> {
 	use std::fs;
 	use syn::{File, Item, ItemMod, ItemUse, parse_file};
 
@@ -561,11 +618,28 @@ fn update_apps_export(app_name: &str) -> CommandResult<()> {
 		};
 		ast.items.push(Item::Mod(mod_item));
 
-		// Add use declaration: pub use app_name::AppNameConfig;
+		// Add use declaration: `pub use app_name::AppNameConfig;`, gated
+		// by `#[cfg(server)]` only for Pages projects.
+		//
+		// The `Config` struct is created by `#[app_config(...)]`. In Pages
+		// projects, that struct is itself server-only (`#[cfg(server)]`)
+		// and `apps.rs` compiles on the WASM target as well, so the
+		// re-export must match — leaving it ungated would produce E0432
+		// "unresolved import" at the `apps.rs` line on the WASM build.
+		// REST projects do not define a `server` cfg alias and do not
+		// gate the `Config` struct, so adding `#[cfg(server)]` there
+		// would silently drop the re-export (and emit `unexpected_cfgs`).
 		let config_name = format!("{}Config", camel_case_name);
 		let config_ident = syn::Ident::new(&config_name, proc_macro2::Span::call_site());
-		let use_item: ItemUse = syn::parse_quote! {
-			pub use #app_ident::#config_ident;
+		let use_item: ItemUse = if with_pages {
+			syn::parse_quote! {
+				#[cfg(server)]
+				pub use #app_ident::#config_ident;
+			}
+		} else {
+			syn::parse_quote! {
+				pub use #app_ident::#config_ident;
+			}
 		};
 		ast.items.push(Item::Use(use_item));
 	}
@@ -574,6 +648,100 @@ fn update_apps_export(app_name: &str) -> CommandResult<()> {
 	let formatted = prettyplease::unparse(&ast);
 	fs::write(&apps_file, formatted)
 		.map_err(|e| CommandError::ExecutionError(format!("Failed to write apps.rs: {}", e)))?;
+
+	Ok(())
+}
+
+/// Append a new app entry to the `installed_apps! { ... }` block in
+/// `src/config/apps.rs`.
+///
+/// Issue #3670: the typed `#[url_patterns(InstalledApp::<name>, ...)]`
+/// form requires the app's label to be registered via `installed_apps!`.
+/// This function is idempotent: if an entry with the same label already
+/// exists, it is left alone.
+///
+/// Silently succeeds if `src/config/apps.rs` does not exist (projects
+/// scaffolded before this change may not have it; users are expected to
+/// add it manually following the migration guide).
+fn update_installed_apps_block(app_name: &str) -> CommandResult<()> {
+	use std::fs;
+
+	let apps_file = PathBuf::from("src/config/apps.rs");
+	if !apps_file.exists() {
+		// Pre-#3670 projects don't have this file — skip silently. Users
+		// on an older project structure can still use the new macro
+		// syntax by manually creating the file per the migration guide.
+		return Ok(());
+	}
+
+	let src = fs::read_to_string(&apps_file).map_err(|e| {
+		CommandError::ExecutionError(format!("Failed to read {}: {}", apps_file.display(), e))
+	})?;
+
+	// Idempotency: skip if the label is already present.
+	// We match `<name>:` since installed_apps! entries are of the form
+	// `<label>: "<path>"`.
+	let needle = format!("{}:", app_name);
+	if src.contains(&needle) {
+		return Ok(());
+	}
+
+	// Locate `installed_apps! { ... }` and append the entry before the
+	// closing `}`. A simple brace-walker suffices: we find the opening
+	// brace after `installed_apps!` and then the matching closing brace.
+	let Some(macro_start) = src.find("installed_apps!") else {
+		return Err(CommandError::ExecutionError(format!(
+			"{} does not contain `installed_apps! {{ ... }}`; cannot register new app",
+			apps_file.display()
+		)));
+	};
+
+	let Some(open_rel) = src[macro_start..].find('{') else {
+		return Err(CommandError::ExecutionError(format!(
+			"malformed installed_apps! block in {} (no opening brace)",
+			apps_file.display()
+		)));
+	};
+	let open_idx = macro_start + open_rel;
+
+	// Find matching closing brace.
+	let mut depth = 0usize;
+	let mut close_idx: Option<usize> = None;
+	for (i, ch) in src[open_idx..].char_indices() {
+		match ch {
+			'{' => depth += 1,
+			'}' => {
+				depth -= 1;
+				if depth == 0 {
+					close_idx = Some(open_idx + i);
+					break;
+				}
+			}
+			_ => {}
+		}
+	}
+	let Some(close_idx) = close_idx else {
+		return Err(CommandError::ExecutionError(format!(
+			"malformed installed_apps! block in {} (unmatched brace)",
+			apps_file.display()
+		)));
+	};
+
+	// Insert the new entry before the closing brace. Preserve existing
+	// trailing newline/indent style as best-effort.
+	let new_entry = format!("    {}: \"{}\",\n", app_name, app_name);
+	let mut out = String::with_capacity(src.len() + new_entry.len());
+	out.push_str(&src[..close_idx]);
+	// Ensure the content ends with a newline before we append.
+	if !out.ends_with('\n') {
+		out.push('\n');
+	}
+	out.push_str(&new_entry);
+	out.push_str(&src[close_idx..]);
+
+	fs::write(&apps_file, out).map_err(|e| {
+		CommandError::ExecutionError(format!("Failed to write {}: {}", apps_file.display(), e))
+	})?;
 
 	Ok(())
 }
@@ -671,15 +839,10 @@ mod tests {
 		let cmd = TemplateCommand::new();
 		let context = crate::template::TemplateContext::new();
 		let ctx = crate::CommandContext::new(vec![]);
+		let source = crate::template_source::FilesystemSource::new(template_dir.path()).unwrap();
 
-		cmd.handle(
-			"test",
-			Some(output_dir.path()),
-			template_dir.path(),
-			context,
-			&ctx,
-		)
-		.unwrap();
+		cmd.handle("test", Some(output_dir.path()), &source, context, &ctx)
+			.unwrap();
 
 		// Verify that both files exist
 		let output_file_with_example = output_dir.path().join("settings").join("base.example.toml");
@@ -719,14 +882,9 @@ mod tests {
 		context.insert("debug_value", "false").unwrap();
 		let ctx = crate::CommandContext::new(vec![]);
 
-		cmd.handle(
-			"test",
-			Some(output_dir.path()),
-			template_dir.path(),
-			context,
-			&ctx,
-		)
-		.unwrap();
+		let source = crate::template_source::FilesystemSource::new(template_dir.path()).unwrap();
+		cmd.handle("test", Some(output_dir.path()), &source, context, &ctx)
+			.unwrap();
 
 		// Verify that both files exist (without .tpl but with/without .example)
 		let output_file_with_example = output_dir.path().join("settings").join("base.example.toml");
@@ -775,5 +933,32 @@ mod tests {
 			options.iter().any(|opt| opt.long == "with-pages"),
 			"--with-pages flag should exist in StartAppCommand for mtv type mapping"
 		);
+	}
+
+	#[rstest]
+	#[case("reinhardt_myapp")]
+	#[case("reinhardt-myapp")]
+	#[case("reinhardt_")]
+	#[case("reinhardt-")]
+	#[case("reinhardt")]
+	fn test_reserved_namespace_rejected(#[case] name: &str) {
+		// Act
+		let result = validate_not_reserved_namespace(name);
+
+		// Assert
+		assert!(result.is_err(), "should reject '{}'", name);
+	}
+
+	#[rstest]
+	#[case("myapp")]
+	#[case("my_reinhardt_app")]
+	#[case("cool_project")]
+	#[case("reinhard")]
+	fn test_non_reserved_namespace_accepted(#[case] name: &str) {
+		// Act
+		let result = validate_not_reserved_namespace(name);
+
+		// Assert
+		assert!(result.is_ok(), "should accept '{}'", name);
 	}
 }

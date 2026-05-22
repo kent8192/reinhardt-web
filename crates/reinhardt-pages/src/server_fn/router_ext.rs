@@ -20,7 +20,7 @@
 use super::ServerFnError;
 use super::registration::ServerFnRegistration;
 use hyper::{Method, StatusCode};
-use reinhardt_http::{Request, Response};
+use reinhardt_http::{Request, Response, SharedResponseCookies};
 use reinhardt_urls::routers::ServerRouter;
 use std::future::Future;
 use std::pin::Pin;
@@ -79,15 +79,27 @@ impl ServerFnRouterExt for ServerRouter {
 		let handler = S::handler();
 		let path = S::PATH;
 		let name = S::NAME;
+		// Response Content-Type based on codec.
+		// "url" codec still returns JSON responses (only request format differs).
+		let response_content_type = match S::CODEC {
+			"msgpack" => "application/msgpack",
+			_ => "application/json",
+		};
 
 		let wrapper = move |req: Request| -> Pin<
 			Box<dyn Future<Output = Result<Response, reinhardt_http::Error>> + Send>,
 		> {
 			Box::pin(async move {
-				match handler(req).await {
-					Ok(body) => Ok(Response::ok()
-						.with_header("Content-Type", "application/json")
-						.with_body(body)),
+				// Insert a shared cookie jar so the handler can set response
+				// cookies. Clones share the same backing store, so cookies
+				// added by the handler are visible to this wrapper afterwards.
+				let cookie_jar = SharedResponseCookies::new();
+				req.extensions.insert(cookie_jar.clone());
+
+				let mut response = match handler(req).await {
+					Ok(body) => Response::ok()
+						.with_header("Content-Type", response_content_type)
+						.with_body(body),
 					Err(error_body) => {
 						// Log the error to stderr for debugging
 						eprintln!("[server_fn ERROR] {} ({}): {}", name, path, error_body);
@@ -104,11 +116,19 @@ impl ServerFnRouterExt for ServerRouter {
 							})
 							.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
-						Ok(Response::new(status_code)
-							.with_header("Content-Type", "application/json")
-							.with_body(error_body))
+						Response::new(status_code)
+							.with_header("Content-Type", response_content_type)
+							.with_body(error_body)
 					}
+				};
+
+				// Apply response cookies from the shared cookie jar.
+				let cookies = cookie_jar.take();
+				for cookie in cookies.cookies() {
+					response = response.append_header("Set-Cookie", cookie);
 				}
+
+				Ok(response)
 			})
 		};
 

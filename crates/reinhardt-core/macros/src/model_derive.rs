@@ -54,6 +54,8 @@ struct ModelAttributesParsed {
 	table_name: Option<String>,
 	constraints: Option<Vec<ConstraintSpec>>,
 	unique_together: Vec<Vec<String>>, // Multiple Django-style unique_together constraints
+	/// Optional custom manager path: `manager = MyManager` (Issue #3980).
+	manager: Option<syn::Path>,
 }
 
 /// Validate a raw SQL expression to reject dangerous patterns.
@@ -125,6 +127,11 @@ struct ModelConfig {
 	app_label: String,
 	table_name: String,
 	constraints: Vec<ConstraintSpec>,
+	/// Custom manager type path from `manager = MyManager` (Issue #3980).
+	///
+	/// When `Some`, the macro emits an `impl HasCustomManager for Self`
+	/// that wires the model to the user-supplied manager type.
+	manager: Option<syn::Path>,
 }
 
 impl ModelConfig {
@@ -133,6 +140,7 @@ impl ModelConfig {
 		let mut app_label = None;
 		let mut table_name = None;
 		let mut constraints = Vec::new();
+		let mut manager: Option<syn::Path> = None;
 
 		for attr in attrs {
 			// Accept both #[model(...)] and #[model_config(...)] helper attributes
@@ -166,6 +174,15 @@ impl ModelConfig {
 			if let Some(tn) = model_attr.table_name {
 				table_name = Some(tn);
 			}
+			if let Some(m) = model_attr.manager {
+				if manager.is_some() {
+					return Err(syn::Error::new_spanned(
+						struct_name,
+						"#[model(manager = ...)] specified more than once",
+					));
+				}
+				manager = Some(m);
+			}
 		}
 
 		let table_name = table_name.ok_or_else(|| {
@@ -179,6 +196,7 @@ impl ModelConfig {
 			app_label: app_label.unwrap_or_else(|| "default".to_string()),
 			table_name,
 			constraints,
+			manager,
 		})
 	}
 
@@ -190,6 +208,7 @@ impl ModelConfig {
 		let mut table_name = None;
 		let mut constraints = None;
 		let mut unique_together = Vec::new();
+		let mut manager: Option<syn::Path> = None;
 
 		while !input.is_empty() {
 			let ident: Ident = input.parse()?;
@@ -201,6 +220,10 @@ impl ModelConfig {
 			} else if ident == "table_name" {
 				let value: LitStr = input.parse()?;
 				table_name = Some(value.value());
+			} else if ident == "manager" {
+				// Custom object manager type: `manager = MyManager` (Issue #3980).
+				let path: syn::Path = input.parse()?;
+				manager = Some(path);
 			} else if ident == "unique_together" {
 				// Tuple syntax: unique_together = ("field1", "field2")
 				use syn::punctuated::Punctuated;
@@ -245,6 +268,7 @@ impl ModelConfig {
 			table_name,
 			constraints,
 			unique_together,
+			manager,
 		})
 	}
 
@@ -436,6 +460,17 @@ struct FieldConfig {
 	unsigned: Option<bool>,
 	#[cfg(feature = "db-mysql")]
 	zerofill: Option<bool>,
+
+	// Getter/setter generation control
+	/// Skip getter and setter generation for this field.
+	/// Used by `#[user]` macro to avoid conflicts with trait method signatures.
+	skip_getter: bool,
+
+	/// Completely skip this field from model processing.
+	/// Excluded from type validation, getter/setter, constructor, metadata, and registration.
+	/// Initialized with `Default::default()` in constructor. Implies `skip_getter = true`.
+	/// Used by `#[user]` macro for non-DB cache fields (e.g., `Vec<String>` permissions).
+	skip: bool,
 
 	// Constructor generation control
 	/// Whether to include this field in the new() function arguments
@@ -819,10 +854,21 @@ impl FieldConfig {
 						Err(meta
 							.error("array_base_type is only available with db-postgres feature"))
 					}
+				} else if meta.path.is_ident("skip_getter") {
+					config.skip_getter = meta.value()?.parse::<syn::LitBool>()?.value();
+					Ok(())
+				} else if meta.path.is_ident("skip") {
+					config.skip = meta.value()?.parse::<syn::LitBool>()?.value();
+					Ok(())
 				} else {
 					Err(meta.error("unsupported field attribute"))
 				}
 			})?;
+		}
+
+		// skip implies skip_getter
+		if config.skip {
+			config.skip_getter = true;
 		}
 
 		Ok(config)
@@ -971,6 +1017,10 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 				"Time" => "TimeField",
 				"Decimal" => "DecimalField",
 				"Uuid" => "UuidField",
+				// Extended types (SQL generation is gated per-DB in map_type_to_field_type)
+				"Vec" => "ArrayField",
+				"Value" => "JsonField",
+				"HashMap" => "HStoreField",
 				other => {
 					return Err(syn::Error::new_spanned(
 						ty,
@@ -982,6 +1032,53 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 			Ok(format!("reinhardt.orm.models.{}", type_name))
 		}
 		_ => Err(syn::Error::new_spanned(ty, "Unsupported field type")),
+	}
+}
+
+/// Serialize a `#[field(default = ...)]` expression into the dialect-neutral
+/// SQL fragment stored in `FieldState.params["default"]`.
+///
+/// The autodetector reads this string verbatim into the generated migration's
+/// `ColumnDefinition.default`, and the runner interpolates it as
+/// `DEFAULT <fragment>` inside the generated DDL. The serialization therefore
+/// has to:
+///
+/// * Produce SQL the three supported dialects (Postgres, MySQL, SQLite) all
+///   accept. For booleans we emit lowercase `true` / `false`; Postgres and
+///   MySQL accept these as literals and SQLite (≥ 3.23) treats them as
+///   integer 1 / 0.
+/// * Quote string literals so that `default = "active"` lands as `'active'`.
+///   We use SQL single-quote escaping (double the inner quote) rather than
+///   Rust escaping.
+/// * Stay opt-in for anything we cannot prove is safe — unrecognised forms
+///   (function calls, paths, complex expressions) return `None` so that the
+///   macro keeps today's behaviour of silently omitting the default rather
+///   than emitting something that would break parsing downstream. The runner
+///   surfaces a clearer "missing default" failure when this matters; see
+///   reinhardt-web#4447.
+fn serialize_field_default(expr: &syn::Expr) -> Option<String> {
+	// Allow a leading unary `-` so `default = -1` works.
+	if let syn::Expr::Unary(unary) = expr
+		&& matches!(unary.op, syn::UnOp::Neg(_))
+		&& let Some(inner) = serialize_field_default(&unary.expr)
+	{
+		return Some(format!("-{}", inner));
+	}
+
+	let lit = match expr {
+		syn::Expr::Lit(l) => &l.lit,
+		_ => return None,
+	};
+	match lit {
+		syn::Lit::Bool(b) => Some(if b.value {
+			"true".into()
+		} else {
+			"false".into()
+		}),
+		syn::Lit::Int(i) => Some(i.base10_digits().to_string()),
+		syn::Lit::Float(f) => Some(f.base10_digits().to_string()),
+		syn::Lit::Str(s) => Some(format!("'{}'", s.value().replace('\'', "''"))),
+		_ => None,
 	}
 }
 
@@ -1263,6 +1360,7 @@ fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo])
 
 	let accessor_methods: Vec<_> = field_infos
 		.iter()
+		.filter(|field| !field.config.skip)
 		.map(|field| {
 			let field_name = &field.name;
 			let field_type = &field.ty;
@@ -1553,9 +1651,11 @@ fn is_copy_type(ty: &Type) -> bool {
 fn generate_getter_methods(struct_name: &syn::Ident, field_infos: &[FieldInfo]) -> TokenStream {
 	let getter_methods: Vec<_> = field_infos
 		.iter()
-		// Exclude ForeignKey and OneToOne fields (accessor methods are generated separately)
+		// Exclude ForeignKey, OneToOne, and skip_getter fields
 		.filter(|field| {
-			!is_foreign_key_field_type(&field.ty) && !is_one_to_one_field_type(&field.ty)
+			!is_foreign_key_field_type(&field.ty)
+				&& !is_one_to_one_field_type(&field.ty)
+				&& !field.config.skip_getter
 		})
 		.map(|field| {
 			let field_name = &field.name;
@@ -1592,7 +1692,7 @@ fn generate_getter_methods(struct_name: &syn::Ident, field_infos: &[FieldInfo]) 
 fn generate_setter_methods(struct_name: &syn::Ident, field_infos: &[FieldInfo]) -> TokenStream {
 	let setter_methods: Vec<_> = field_infos
 		.iter()
-		.filter(|f| !is_auto_generated_field(f))
+		.filter(|f| !is_auto_generated_field(f) && !f.config.skip_getter)
 		.map(|field| {
 			let field_name = &field.name;
 			let field_type = &field.ty;
@@ -1838,6 +1938,15 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		})
 		.collect();
 
+	// Token streams that register each model-level UNIQUE constraint
+	// (e.g., from `unique_together`) into ModelMetadata.constraints so the
+	// migration autodetector can emit AddConstraint operations.
+	// See reinhardt-web#4022.
+	let unique_constraint_field_lists: Vec<Vec<String>> = unique_constraints
+		.iter()
+		.map(|(fields, _, _)| fields.clone())
+		.collect();
+
 	// Define composite_pk_type_def and holder for code generation
 	let composite_pk_type_def: Option<TokenStream>;
 	// Note: composite_pk_type_holder is only assigned in the composite PK branch,
@@ -1886,6 +1995,8 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		table_name,
 		&field_infos,
 		&fk_field_infos,
+		&unique_constraint_names,
+		&unique_constraint_field_lists,
 	)?;
 
 	// Generate relationship registration code for RELATIONSHIPS registry
@@ -2000,6 +2111,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	// Generate new() constructor function
 	let new_fn_impl = generate_new_function(struct_name, &field_infos, &fk_id_field_names);
 
+	// Generate typestate build() builder (non-breaking addition alongside new()).
+	// See issue #4400.
+	let build_fn_impl = generate_build_function(struct_name, &field_infos, &fk_id_field_names);
+
 	// Generate getter/setter methods
 	let getters = generate_getter_methods(struct_name, &field_infos);
 	let setters = generate_setter_methods(struct_name, &field_infos);
@@ -2012,6 +2127,19 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		syn::Ident::new(&format!("{}Fields", struct_name), struct_name.span());
 	let field_selector_struct = generate_field_selector_struct(struct_name, &field_infos);
 
+	// Conditionally emit `impl HasCustomManager for ...` when the model
+	// requested a custom manager via `#[model(manager = ...)]` (Issue #3980).
+	// Without this attribute we emit nothing, preserving complete backward
+	// compatibility with existing models.
+	let custom_manager_impl = match &model_config.manager {
+		Some(path) => quote! {
+			impl #generics #orm_crate::HasCustomManager for #struct_name #generics #where_clause {
+				type Manager = #path;
+			}
+		},
+		None => quote! {},
+	};
+
 	// Generate the Model implementation
 	let expanded = quote! {
 		// Generate composite PK type definition if needed
@@ -2019,6 +2147,9 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 		// Generate new() constructor function
 		#new_fn_impl
+
+		// Generate typestate build() builder (non-breaking addition, see #4400)
+		#build_fn_impl
 
 		// Generate getter methods for all fields
 		#getters
@@ -2107,6 +2238,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			#relationship_metadata
 		}
 
+		// Conditional `impl HasCustomManager` (Issue #3980) — empty when the
+		// model did not opt in to a custom manager.
+		#custom_manager_impl
+
 		#registration_code
 
 		// Register relationships in RELATIONSHIPS distributed slice
@@ -2126,10 +2261,14 @@ fn generate_field_metadata(
 ) -> Result<Vec<TokenStream>> {
 	let mut items = Vec::new();
 
-	// Filter out ManyToMany, ForeignKeyField, OneToOneField, and FK _id fields - they are virtual or auto-generated
+	// Filter out skipped, ManyToMany, ForeignKeyField, OneToOneField, and FK _id fields
 	let regular_fields: Vec<_> = field_infos
 		.iter()
 		.filter(|f| {
+			// Exclude fields marked with #[field(skip = true)]
+			if f.config.skip {
+				return false;
+			}
 			// Exclude FK _id fields (auto-generated by #[model] attribute macro)
 			if f.is_fk_id_field {
 				return false;
@@ -2486,6 +2625,8 @@ fn generate_registration_code(
 	table_name: &str,
 	field_infos: &[FieldInfo],
 	fk_field_infos: &[ForeignKeyFieldInfo],
+	unique_constraint_names: &[String],
+	unique_constraint_field_lists: &[Vec<String>],
 ) -> Result<TokenStream> {
 	let migrations_crate = get_reinhardt_migrations_crate();
 	let orm_crate = get_reinhardt_orm_crate();
@@ -2516,10 +2657,10 @@ fn generate_registration_code(
 			false
 		});
 
-	// Filter out FK _id fields from regular_fields
+	// Filter out FK _id fields and skip fields from regular_fields
 	let regular_fields: Vec<_> = regular_fields_with_fk_id
 		.into_iter()
-		.filter(|f| !f.is_fk_id_field)
+		.filter(|f| !f.is_fk_id_field && !f.config.skip)
 		.collect();
 
 	// Generate field registration code for regular fields
@@ -2534,15 +2675,10 @@ fn generate_registration_code(
 			params.push(quote! { .with_param("primary_key", "true") });
 		}
 
-		// auto_increment: default true for primary_key fields (Django-compatible)
-		if config.primary_key {
-			let auto_inc = config.auto_increment.unwrap_or(true);
-			if auto_inc {
-				params.push(quote! { .with_param("auto_increment", "true") });
-			}
-		} else if let Some(true) = config.auto_increment {
-			params.push(quote! { .with_param("auto_increment", "true") });
-		}
+		// auto_increment emission for PK and non-PK fields is handled below,
+		// gated on `is_integer_primary_key_type` so non-integer PKs (Uuid,
+		// String, custom types) do not accidentally inherit
+		// `auto_increment = "true"`. See reinhardt-web#4378.
 
 		// not_null: infer from Rust Option type
 		let (is_option, _) = extract_option_type(&field_info.ty);
@@ -2570,14 +2706,23 @@ fn generate_registration_code(
 		{
 			params.push(quote! { .with_param("unique", "true") });
 		}
-		// Infer nullable from Rust type when not explicitly set
+		// Infer nullable from Rust type when not explicitly set.
+		//
+		// PK columns are always NOT NULL at the DB level. The Option<T>
+		// wrapper for PKs is a Rust-side convention to allow `id = None`
+		// before the DB assigns the auto-increment value, not a DB-level
+		// nullability statement. Emitting `null = "true"` for `Option<T>`
+		// PKs would diverge from `column_def_to_field_state`'s migration-
+		// replay output (which derives nullability from `not_null`) and
+		// surface as a spurious `AlterColumn` for the unchanged PK under
+		// offline state reconstruction.
+		//
+		// See reinhardt-web#4052 for the residual regression.
 		if config.null.is_none() {
 			let (is_option, _) = extract_option_type(&field_info.ty);
-			if is_option {
-				params.push(quote! { .with_param("null", "true") });
-			} else {
-				params.push(quote! { .with_param("null", "false") });
-			}
+			let nullable = !config.primary_key && is_option;
+			let null_str = nullable.to_string();
+			params.push(quote! { .with_param("null", #null_str) });
 		}
 		// auto_increment: explicit value or default true for integer PKs
 		if config.primary_key && is_integer_primary_key_type(&field_info.ty) {
@@ -2594,6 +2739,18 @@ fn generate_registration_code(
 		}
 		if config.auto_now_add == Some(true) {
 			params.push(quote! { .with_param("auto_now_add", "true") });
+		}
+
+		// Propagate `#[field(default = ...)]` into FieldState.params so the
+		// autodetector emits `ColumnDefinition.default = Some(<sql>)`. Without
+		// this, makemigrations dropped the default on the floor and the
+		// runner produced `ADD COLUMN ... NOT NULL` with no DEFAULT — see
+		// reinhardt-web#4447. Unrecognised expression forms are intentionally
+		// skipped (today's behaviour) rather than emitted as garbage.
+		if let Some(ref default_expr) = config.default
+			&& let Some(serialized) = serialize_field_default(default_expr)
+		{
+			params.push(quote! { .with_param("default", #serialized) });
 		}
 
 		// Generate ForeignKey information if present
@@ -2719,7 +2876,7 @@ fn generate_registration_code(
 		let nullable = fk_info.rel_attr.null.unwrap_or(false);
 		let unique = fk_info.is_one_to_one; // OneToOne fields have UNIQUE constraint
 		let db_index = fk_info.rel_attr.db_index.unwrap_or(true); // FK fields are indexed by default
-		let nullable_str = nullable.to_string();
+		let not_null_str = (!nullable).to_string();
 		let unique_str = unique.to_string();
 		let db_index_str = db_index.to_string();
 
@@ -2735,22 +2892,103 @@ fn generate_registration_code(
 			"Unknown".to_string()
 		};
 
+		// `fk_target_app` is sourced from the FK target type itself via
+		// `<TargetType as Model>::app_label()` — the model's
+		// authoritative app label, which respects `#[app_label = "..."]`
+		// overrides and any future remapping. The macro deliberately
+		// does NOT try to guess the app label from the syntactic path
+		// the user wrote: a path like `reinhardt_auth::User` is just a
+		// crate / module name and can diverge from the registered app
+		// label (e.g. crate `reinhardt_auth` registering its app as
+		// `"auth"` via `#[app_label("auth")]`), and a bare ident
+		// `User` can come from a `use`-import out of another crate.
+		// Reading `app_label()` off the type sidesteps both pitfalls.
+		//
+		// The qualified lookup at FK resolution time uses this value,
+		// so the qualifier always matches the registry key regardless
+		// of whether the target is referenced by a bare ident, a
+		// `use`-imported ident, or an absolute path. The user can
+		// disambiguate same-name models across apps by writing a
+		// path-typed FK target (`ForeignKeyField<reinhardt_auth::User>`)
+		// or by relying on Rust's normal scoping — Rust resolves the
+		// type and the macro reads the type's own app label.
+		//
+		// We only emit `fk_target_app` for `Type::Path` target types
+		// (the common case for `ForeignKeyField<T>`). Other shapes
+		// (`fn` types, trait objects, etc.) cannot be FK targets and
+		// don't reach this branch in practice.
+		//
+		// See issue #4436 and PR #4440 review threads on
+		// `model_derive.rs` line 2863 and `operations.rs` line 2836.
+		let fk_target_app_chain = if let Type::Path(_) = &fk_info.target_type {
+			let target_ty = &fk_info.target_type;
+			quote! {
+				.with_param(
+					"fk_target_app",
+					<#target_ty as #orm_crate::Model>::app_label(),
+				)
+			}
+		} else {
+			quote! {}
+		};
+
+		// The `FieldType::Uuid` value here is a placeholder. The real column
+		// type is resolved at migration-generation time by looking up the
+		// target model's primary key in the global `ModelRegistry`
+		// (see `ColumnDefinition::from_field_state`). The placeholder is
+		// required because the target model's PK type is not knowable at
+		// macro-expansion time (the registry is populated at runtime via
+		// `#[ctor::ctor]`).
+		//
+		// `nullable` is set on the structured `FieldMetadata.nullable`
+		// field (single source of truth — `FieldMetadata::to_model_state`
+		// reads it directly when constructing `FieldState`). `not_null`
+		// is still emitted as a parameter because `ColumnDefinition::from_field_state`
+		// reads `params["not_null"]` to set its boolean. Reflects the
+		// non-`Option<_>` nullability of `ForeignKeyField<T>` (issue #4431).
+		// Follow-up tracked in #4436 to migrate `from_field_state` to
+		// derive `not_null` from `FieldState.nullable` and drop this param.
 		fk_id_registrations.push(quote! {
 			metadata.add_field(
 				#id_column_name.to_string(),
 				#migrations_crate::model_registry::FieldMetadata::new(
 					#migrations_crate::FieldType::Uuid
 				)
-					.with_param("null", #nullable_str)
+					.with_nullable(#nullable)
+					.with_param("not_null", #not_null_str)
 					.with_param("unique", #unique_str)
 					.with_param("db_index", #db_index_str)
 					.with_param("fk_target", #target_model_name)
+					#fk_target_app_chain
 			);
 		});
 	}
 
 	// Generate type path for global model registry
 	let type_path = quote! { #struct_name }.to_string();
+
+	// Build per-constraint registration blocks for ModelMetadata.
+	// We walk three parallel vectors (names + field lists) and emit one
+	// `metadata.add_constraint(...)` call per declared `unique_together`.
+	// See reinhardt-web#4022.
+	let constraint_registrations: Vec<TokenStream> = unique_constraint_names
+		.iter()
+		.zip(unique_constraint_field_lists.iter())
+		.map(|(name, fields)| {
+			let field_lits = fields.iter().map(|f| quote! { #f.to_string() });
+			quote! {
+				metadata.add_constraint(
+					#migrations_crate::ConstraintDefinition {
+						name: #name.to_string(),
+						constraint_type: "unique".to_string(),
+						fields: vec![ #(#field_lits),* ],
+						expression: None,
+						foreign_key_info: None,
+					}
+				);
+			}
+		})
+		.collect();
 
 	let code = quote! {
 		#[::ctor::ctor]
@@ -2767,6 +3005,7 @@ fn generate_registration_code(
 			#(#field_registrations)*
 			#(#fk_id_registrations)*
 			#(#m2m_registrations)*
+			#(#constraint_registrations)*
 
 			#migrations_crate::model_registry::global_registry().register_model(metadata);
 
@@ -3275,15 +3514,13 @@ fn generate_relationship_metadata(
 	}
 }
 
-/// Check if a type is Uuid or `Option<Uuid>`
+/// Check if a type is Uuid or `Option<Uuid>`.
+///
+/// Thin projection of the shared `crate::pk_shape::pk_uuid_shape`
+/// helper — see issue #4246 for why the underlying detection lives in
+/// one place.
 fn is_uuid_type(ty: &Type) -> bool {
-	let (_, inner_ty) = extract_option_type(ty);
-	if let Type::Path(type_path) = inner_ty
-		&& let Some(last_segment) = type_path.path.segments.last()
-	{
-		return last_segment.ident == "Uuid";
-	}
-	false
+	crate::pk_shape::pk_uuid_shape(ty).0
 }
 
 /// Check if a type is String or `Option<String>`
@@ -3449,6 +3686,10 @@ fn is_option_type(ty: &syn::Type) -> bool {
 
 /// Determine if a field should be auto-generated (excluded from new() function arguments)
 fn is_auto_generated_field(field: &FieldInfo) -> bool {
+	// Fields with skip = true are always excluded from new() constructor
+	if field.config.skip {
+		return true;
+	}
 	// FK _id fields are auto-generated (excluded from new() and setters)
 	if field.is_fk_id_field {
 		return true;
@@ -3517,7 +3758,7 @@ fn is_auto_generated_field(field: &FieldInfo) -> bool {
 		return true;
 	}
 
-	// UUID primary key is auto-generated with Uuid::new_v4()
+	// UUID primary key is auto-generated with Uuid::now_v7()
 	if config.primary_key && is_uuid_type(&field.ty) {
 		return true;
 	}
@@ -3539,6 +3780,11 @@ fn is_auto_generated_field(field: &FieldInfo) -> bool {
 /// Get the default value expression for an auto-generated field
 fn get_auto_field_default_value(field: &FieldInfo) -> TokenStream {
 	let config = &field.config;
+
+	// Fields with skip = true use Default::default()
+	if config.skip {
+		return quote! { ::std::default::Default::default() };
+	}
 
 	// ManyToManyField or ManyToMany relationship
 	if is_many_to_many_field_type(&field.ty) {
@@ -3570,9 +3816,9 @@ fn get_auto_field_default_value(field: &FieldInfo) -> TokenStream {
 	if config.primary_key && is_uuid_type(&field.ty) {
 		let (is_option, _) = extract_option_type(&field.ty);
 		if is_option {
-			return quote! { Some(::uuid::Uuid::new_v4()) };
+			return quote! { Some(::uuid::Uuid::now_v7()) };
 		} else {
-			return quote! { ::uuid::Uuid::new_v4() };
+			return quote! { ::uuid::Uuid::now_v7() };
 		}
 	}
 
@@ -3816,7 +4062,7 @@ fn generate_new_function(
 			/// Create a new instance with user-specified fields.
 			///
 			/// Auto-generated fields are initialized automatically:
-			/// - UUID primary keys: Generated with `Uuid::new_v4()`
+			/// - UUID primary keys: Generated with `Uuid::now_v7()`
 			/// - Timestamp fields (created_at, updated_at, etc.): Set to `Utc::now()`
 			/// - Fields with `#[field(auto_now_add)]` or `#[field(auto_now)]`: Set to `Utc::now()`
 			/// - ManyToManyField: Initialized with `Default::default()`
@@ -3829,10 +4075,539 @@ fn generate_new_function(
 			/// - The related model instance (e.g., `User { ... }`)
 			/// - A reference to the related model (e.g., `&user`)
 			/// - The primary key value directly (e.g., `user_id: Uuid`)
+			#[allow(clippy::too_many_arguments)]
 			pub fn new #generic_signature(#(#params),*) -> Self
 			#where_clause
 			{
 				Self {
+					#(#user_field_assignments,)*
+					#(#fk_id_assignments,)*
+					#(#fk_field_assignments,)*
+					#(#auto_field_assignments,)*
+				}
+			}
+		}
+	}
+}
+
+/// Generate the typestate `build()` builder for the model.
+///
+/// This is a non-breaking addition that lives **alongside** the positional
+/// `new()` constructor. Adding a new required field to a model only adds a
+/// new builder setter — every existing `build().setter().finish()` call site
+/// keeps compiling. See issue #4400 for the full motivation.
+///
+/// # Generated API
+///
+/// For a model with required fields `f1: T1`, `f2: T2`, …, `fN: TN` this
+/// function emits:
+///
+/// - A marker pair `<StructName>BuilderSet` / `<StructName>BuilderUnset` to
+///   track per-field set/unset state at the type level.
+/// - A struct `<StructName>Builder<S1, …, SN>` that stores the so-far-supplied
+///   values in `Option<Ti>` slots and carries `PhantomData<(S1, …, SN)>`.
+/// - One `impl` block per required field that provides the setter, transitioning
+///   that field's state from `Unset` to `Set` in the type parameter list.
+/// - A single `impl <StructName>Builder<Set, …, Set>` block with `finish()` that
+///   constructs `Self` exactly like the positional `new()` does.
+/// - A `pub fn build() -> <StructName>Builder<Unset, …, Unset>` entry point on
+///   the model.
+///
+/// FK setters accept any `IntoPrimaryKey<Related>` value — the same flexibility
+/// the positional `new()` already offered — so callers can pass `&user`
+/// (the FK shortcut from #4398) or a raw primary-key value.
+///
+/// Auto-generated fields (`auto_now_add`, integer/UUID primary keys, FK relation
+/// fields, etc.) and fields with `include_in_new = false` are filled in by
+/// `finish()` using the same defaults as `new()` — they require no setter.
+fn generate_build_function(
+	struct_name: &syn::Ident,
+	field_infos: &[FieldInfo],
+	fk_id_field_names: &[syn::Ident],
+) -> TokenStream {
+	let orm_crate = get_reinhardt_orm_crate();
+
+	// Partition fields exactly as generate_new_function does so the builder's
+	// finish() body mirrors new()'s body.
+	let user_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|f| !is_auto_generated_field(f))
+		.collect();
+
+	let auto_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|f| is_auto_generated_field(f))
+		.collect();
+
+	// Map of `*_id` (in field_infos / fk_id_field_names) -> related FK field name
+	// (the model-typed field, e.g. `room_id` -> `room`). Mirrors new()'s logic.
+	let fk_id_to_fk_field: HashMap<String, String> = fk_id_field_names
+		.iter()
+		.filter_map(|id_name| {
+			let id_str = id_name.to_string();
+			if id_str.ends_with("_id") {
+				let fk_name = id_str.trim_end_matches("_id").to_string();
+				Some((id_str, fk_name))
+			} else {
+				None
+			}
+		})
+		.collect();
+
+	// Classify each required (user-facing) field into one of three setter shapes.
+	// `Type` is large (~240 bytes via `syn`), so the FK variant boxes it to keep
+	// `SetterKind` compact and satisfy `clippy::large_enum_variant`.
+	enum SetterKind {
+		/// FK `*_id` field. Setter name is the related FK field (e.g. `author`)
+		/// and accepts `impl IntoPrimaryKey<Related>` to mirror new().
+		ForeignKey {
+			related_type: Box<Type>,
+			setter_name: syn::Ident,
+		},
+		/// `String` field. Setter accepts `impl Into<String>` for ergonomics.
+		String,
+		/// Plain field. Setter accepts the exact declared type.
+		Plain,
+	}
+
+	struct Required<'a> {
+		/// The struct field name as stored in the model itself (e.g. `author_id`
+		/// for FKs, `question_text` otherwise).
+		storage_name: syn::Ident,
+		/// The struct field type as stored in the model itself.
+		storage_ty: &'a Type,
+		/// Setter shape — controls the setter signature and finish() expression.
+		kind: SetterKind,
+	}
+
+	let mut required: Vec<Required> =
+		Vec::with_capacity(user_fields.len() + fk_id_field_names.len());
+	for f in user_fields.iter() {
+		let name_str = f.name.to_string();
+		if let Some(fk_field_name) = fk_id_to_fk_field.get(&name_str) {
+			// FK `*_id` field. Look up the related model type from the FK field.
+			let fk_field_info = field_infos.iter().find(|fi| fi.name == *fk_field_name);
+			let related_type = match fk_field_info {
+				Some(info) => extract_foreign_key_target_type(&info.ty),
+				// Defensive fallback: keep the stored type. This branch is not
+				// expected because new() establishes the same mapping.
+				None => f.ty.clone(),
+			};
+			let setter_name = syn::Ident::new(fk_field_name, f.name.span());
+			required.push(Required {
+				storage_name: f.name.clone(),
+				storage_ty: &f.ty,
+				kind: SetterKind::ForeignKey {
+					related_type: Box::new(related_type),
+					setter_name,
+				},
+			});
+		} else if is_string_type(&f.ty) && !extract_option_type(&f.ty).0 {
+			required.push(Required {
+				storage_name: f.name.clone(),
+				storage_ty: &f.ty,
+				kind: SetterKind::String,
+			});
+		} else {
+			required.push(Required {
+				storage_name: f.name.clone(),
+				storage_ty: &f.ty,
+				kind: SetterKind::Plain,
+			});
+		}
+	}
+
+	// FK `*_id` fields (e.g. `user_id`) are flagged as auto-generated by
+	// `is_auto_generated_field` and therefore excluded from `user_fields`,
+	// but they still need a user-facing setter on the builder so that callers
+	// can supply the related model / primary key — mirroring the dedicated
+	// FK parameter loop in `generate_new_function`.
+	for fk_id_name in fk_id_field_names.iter() {
+		let fk_id_str = fk_id_name.to_string();
+		// `fk_id_to_fk_field` only retains `*_id`-suffixed names (see its
+		// construction above); names that don't follow the convention have no
+		// implicit related-field name and are intentionally skipped, mirroring
+		// the filter in `generate_new_function`.
+		let Some(fk_field_name) = fk_id_to_fk_field.get(&fk_id_str) else {
+			continue;
+		};
+		// `fk_id_field_names` is built from `field_infos`, so the lookup MUST
+		// succeed; failure indicates an internal data-structure desync.
+		let id_field_info = field_infos
+			.iter()
+			.find(|fi| fi.name == *fk_id_name)
+			.unwrap_or_else(|| {
+				panic!(
+					"internal macro invariant: `{}` is in fk_id_field_names but missing from field_infos",
+					fk_id_str
+				)
+			});
+		let fk_field_info = field_infos.iter().find(|fi| fi.name == *fk_field_name);
+		let related_type = match fk_field_info {
+			Some(info) => extract_foreign_key_target_type(&info.ty),
+			// Defensive fallback: use the `*_id` storage type itself.
+			None => id_field_info.ty.clone(),
+		};
+		// Prefer reusing the existing FK field identifier (preserves raw-ident
+		// spelling, hygiene, and span). Fall back to `Ident::new_raw` so the
+		// proc-macro never panics if `fk_field_name` happens to be a Rust
+		// keyword (e.g. `type`, `match`). Strip a leading `r#` defensively in
+		// case the source identifier was a raw ident (`Ident::new_raw`
+		// expects the bare name without the prefix). Reserved identifiers
+		// that even `new_raw` rejects (`self`, `Self`, `super`, `crate`)
+		// are surfaced as a clear macro error rather than the underlying
+		// panic from `proc_macro2`. Note: `extern` is a keyword but IS
+		// permitted as a raw identifier (`r#extern`), so it is excluded
+		// from this set.
+		let setter_name = match fk_field_info {
+			Some(info) => info.name.clone(),
+			None => {
+				let bare = fk_field_name
+					.strip_prefix("r#")
+					.unwrap_or(fk_field_name.as_str());
+				if matches!(bare, "self" | "Self" | "super" | "crate") {
+					return syn::Error::new(
+						fk_id_name.span(),
+						format!(
+							"cannot derive builder setter for FK field `{fk_id_str}`: \
+							 the implied setter name `{bare}` is a reserved identifier; \
+							 rename the related model-typed field or the `*_id` field"
+						),
+					)
+					.to_compile_error();
+				}
+				syn::Ident::new_raw(bare, fk_id_name.span())
+			}
+		};
+		required.push(Required {
+			storage_name: id_field_info.name.clone(),
+			storage_ty: &id_field_info.ty,
+			kind: SetterKind::ForeignKey {
+				related_type: Box::new(related_type),
+				setter_name,
+			},
+		});
+	}
+
+	// Type names for the per-model builder + markers.
+	let builder_name = syn::Ident::new(&format!("{}Builder", struct_name), struct_name.span());
+	let set_marker = syn::Ident::new(&format!("{}BuilderSet", struct_name), struct_name.span());
+	let unset_marker = syn::Ident::new(&format!("{}BuilderUnset", struct_name), struct_name.span());
+
+	// Per-field type parameter idents `B0, B1, …` used in the builder's signature.
+	let state_params: Vec<syn::Ident> = (0..required.len())
+		.map(|i| syn::Ident::new(&format!("B{}", i), struct_name.span()))
+		.collect();
+
+	// Builder struct fields: one Option<StorageTy> per required field, plus the
+	// PhantomData state marker.
+	let builder_struct_fields: Vec<TokenStream> = required
+		.iter()
+		.map(|r| {
+			let name = &r.storage_name;
+			let ty = r.storage_ty;
+			quote! { #name: ::std::option::Option<#ty> }
+		})
+		.collect();
+
+	// `build()` initializer: every slot starts as `None`, every state slot as `Unset`.
+	let init_struct_field_assignments: Vec<TokenStream> = required
+		.iter()
+		.map(|r| {
+			let name = &r.storage_name;
+			quote! { #name: ::std::option::Option::None }
+		})
+		.collect();
+
+	// Per-field setter impl blocks. Each one transitions exactly one type slot
+	// from `Unset` to `Set` while leaving the others polymorphic.
+	let mut setter_impls: Vec<TokenStream> = Vec::with_capacity(required.len());
+	for (idx, r) in required.iter().enumerate() {
+		// Generic state parameters EXCLUDING the one being transitioned. The
+		// transitioned slot is concretely `Unset` on the input and `Set` on the
+		// output.
+		let other_params: Vec<&syn::Ident> = state_params
+			.iter()
+			.enumerate()
+			.filter_map(|(i, p)| if i == idx { None } else { Some(p) })
+			.collect();
+
+		// Input state list (this slot = Unset, others = generic).
+		let input_states: Vec<TokenStream> = state_params
+			.iter()
+			.enumerate()
+			.map(|(i, p)| {
+				if i == idx {
+					quote! { #unset_marker }
+				} else {
+					quote! { #p }
+				}
+			})
+			.collect();
+
+		// Output state list (this slot = Set, others = generic).
+		let output_states: Vec<TokenStream> = state_params
+			.iter()
+			.enumerate()
+			.map(|(i, p)| {
+				if i == idx {
+					quote! { #set_marker }
+				} else {
+					quote! { #p }
+				}
+			})
+			.collect();
+
+		// Field copy expressions for moving non-transitioned slots into the new
+		// builder. The transitioned slot is replaced by the supplied value.
+		let copy_fields: Vec<TokenStream> = required
+			.iter()
+			.enumerate()
+			.map(|(i, other)| {
+				let n = &other.storage_name;
+				if i == idx {
+					quote! {}
+				} else {
+					quote! { #n: self.#n, }
+				}
+			})
+			.collect();
+
+		let storage_name = &r.storage_name;
+		let storage_ty = r.storage_ty;
+
+		// Setter signature + body depend on the field kind.
+		let (setter_sig, value_expr): (TokenStream, TokenStream) = match &r.kind {
+			SetterKind::ForeignKey {
+				related_type,
+				setter_name,
+			} => {
+				// Setter named after the related FK field, accepting any
+				// IntoPrimaryKey<Related>. This composes with #4398 — callers
+				// can pass `&user` directly without manually extracting the PK.
+				let sig = quote! {
+					/// Set the foreign-key reference for this required field.
+					///
+					/// Accepts any `IntoPrimaryKey<Related>` — pass either the
+					/// related model (e.g. `&user`) or a raw primary-key value.
+					/// Transitions this slot from `Unset` to `Set` in the
+					/// builder's type-state.
+					pub fn #setter_name<__FkArg>(self, value: __FkArg)
+						-> #builder_name<#(#output_states),*>
+					where
+						__FkArg: #orm_crate::IntoPrimaryKey<#related_type>,
+				};
+				let expr = quote! { value.into_primary_key() };
+				(sig, expr)
+			}
+			SetterKind::String => {
+				// Setter for `String` field, accepting `impl Into<String>`.
+				let sig = quote! {
+					/// Set this required `String` field.
+					///
+					/// Accepts any `impl Into<String>` (e.g. `&str`, `String`,
+					/// `Cow<'_, str>`). Transitions this slot from `Unset` to
+					/// `Set` in the builder's type-state.
+					pub fn #storage_name<__StrArg>(self, value: __StrArg)
+						-> #builder_name<#(#output_states),*>
+					where
+						__StrArg: ::std::convert::Into<::std::string::String>,
+				};
+				let expr = quote! { value.into() };
+				(sig, expr)
+			}
+			SetterKind::Plain => {
+				// Plain setter using the declared field type.
+				let sig = quote! {
+					/// Set this required field.
+					///
+					/// Transitions this slot from `Unset` to `Set` in the
+					/// builder's type-state.
+					pub fn #storage_name(self, value: #storage_ty)
+						-> #builder_name<#(#output_states),*>
+				};
+				let expr = quote! { value };
+				(sig, expr)
+			}
+		};
+
+		let other_param_list = if other_params.is_empty() {
+			quote! {}
+		} else {
+			quote! { <#(#other_params),*> }
+		};
+
+		setter_impls.push(quote! {
+			impl #other_param_list #builder_name<#(#input_states),*> {
+				#setter_sig
+				{
+					#builder_name {
+						#(#copy_fields)*
+						#storage_name: ::std::option::Option::Some(#value_expr),
+						__state: ::std::marker::PhantomData,
+					}
+				}
+			}
+		});
+	}
+
+	// finish() body. Mirrors the assignment layout used by generate_new_function:
+	// user fields → FK `*_id` fields → FK relation defaults → auto-generated fields.
+
+	// FK id field names by raw string (matches new()).
+	let fk_id_field_names_set: std::collections::HashSet<String> =
+		fk_id_to_fk_field.keys().cloned().collect();
+	let fk_field_names: std::collections::HashSet<String> =
+		fk_id_to_fk_field.values().cloned().collect();
+
+	// User field assignments (non-FK regular fields). Pull from the builder's
+	// `Option` slot — type-state guarantees `Some`.
+	let user_field_assignments: Vec<TokenStream> = user_fields
+		.iter()
+		.filter(|f| {
+			!fk_field_names.contains(&f.name.to_string())
+				&& !fk_id_field_names_set.contains(&f.name.to_string())
+		})
+		.map(|f| {
+			let name = &f.name;
+			quote! {
+				#name: self
+					.#name
+					.expect(concat!(
+						"build() typestate guarantees ",
+						stringify!(#name),
+						" is set before finish() is callable"
+					))
+			}
+		})
+		.collect();
+
+	// FK `*_id` assignments. The value was stored under the `*_id` name when
+	// the user called the related-field setter.
+	let fk_id_assignments: Vec<TokenStream> = fk_id_field_names
+		.iter()
+		.map(|fk_id_name| {
+			let name = fk_id_name.clone();
+			quote! {
+				#name: self
+					.#name
+					.expect(concat!(
+						"build() typestate guarantees ",
+						stringify!(#name),
+						" is set before finish() is callable"
+					))
+			}
+		})
+		.collect();
+
+	// FK relation fields (the `ForeignKeyField<T>` themselves) — default-init,
+	// same as new().
+	let fk_field_assignments: Vec<TokenStream> = fk_id_to_fk_field
+		.values()
+		.map(|fk_name_str| {
+			let fk_name = syn::Ident::new(fk_name_str, proc_macro2::Span::call_site());
+			quote! { #fk_name: ::std::default::Default::default() }
+		})
+		.collect();
+
+	// Auto-generated fields (timestamps, UUID/integer PKs, identity, generated,
+	// skipped, etc.) — use the exact same default expressions as new().
+	let auto_field_assignments: Vec<TokenStream> = auto_fields
+		.iter()
+		.filter(|f| {
+			!fk_field_names.contains(&f.name.to_string())
+				&& !fk_id_field_names_set.contains(&f.name.to_string())
+		})
+		.map(|f| {
+			let name = &f.name;
+			let default_value = get_auto_field_default_value(f);
+			quote! { #name: #default_value }
+		})
+		.collect();
+
+	// All-Set state list for the finish() impl bound.
+	let all_set_states: Vec<TokenStream> = state_params
+		.iter()
+		.map(|_| quote! { #set_marker })
+		.collect();
+
+	// State parameter list for the builder struct + the initial-Unset list for
+	// build().
+	let state_param_list = if state_params.is_empty() {
+		quote! {}
+	} else {
+		quote! { <#(#state_params),*> }
+	};
+	let initial_unset_states: Vec<TokenStream> = state_params
+		.iter()
+		.map(|_| quote! { #unset_marker })
+		.collect();
+
+	// The PhantomData tuple type and field expression. Unit tuple (`()`) when
+	// there are no required fields, so the model still gets a usable builder.
+	let phantom_tuple_ty = if state_params.is_empty() {
+		quote! { () }
+	} else {
+		quote! { ( #(#state_params,)* ) }
+	};
+
+	// Suppress dead_code warnings for builders generated for models that never
+	// gain a required field — the markers and Option slots exist for type-state
+	// shape consistency.
+	let allow_dead = quote! { #[allow(dead_code)] };
+
+	quote! {
+		/// Type-state marker: the corresponding builder slot has been provided.
+		#allow_dead
+		pub struct #set_marker;
+
+		/// Type-state marker: the corresponding builder slot is still missing.
+		///
+		/// `finish()` is only implemented when every slot is `#set_marker`, so
+		/// calling `finish()` with any remaining `#unset_marker` slot is a
+		/// compile error.
+		#allow_dead
+		pub struct #unset_marker;
+
+		/// Typestate builder for [`#struct_name`] (issue #4400).
+		///
+		/// Construct via [`#struct_name::build`]; each required-field setter
+		/// transitions exactly one `Unset` slot to `Set`. `finish()` is only
+		/// available when every required slot is `Set`, so omitting a required
+		/// field is a compile-time error.
+		#allow_dead
+		pub struct #builder_name #state_param_list {
+			#(#builder_struct_fields,)*
+			__state: ::std::marker::PhantomData<#phantom_tuple_ty>,
+		}
+
+		impl #struct_name {
+			/// Begin constructing a [`#struct_name`] via the typestate builder.
+			///
+			/// Adding a new required field to this model becomes a non-breaking
+			/// change for every caller that uses `build()` — the new field is
+			/// surfaced as a new setter rather than a new positional parameter.
+			///
+			/// The positional [`Self::new`] constructor remains available and
+			/// unchanged for callers that want the compact form.
+			pub fn build() -> #builder_name<#(#initial_unset_states),*> {
+				#builder_name {
+					#(#init_struct_field_assignments,)*
+					__state: ::std::marker::PhantomData,
+				}
+			}
+		}
+
+		#(#setter_impls)*
+
+		impl #builder_name<#(#all_set_states),*> {
+			/// Finalize the builder and construct the model instance.
+			///
+			/// Auto-generated fields (`auto_now_add` timestamps, UUID / integer
+			/// primary keys, identity columns, FK relation fields, etc.) are
+			/// initialized exactly the same way as [`#struct_name::new`].
+			pub fn finish(self) -> #struct_name {
+				#struct_name {
 					#(#user_field_assignments,)*
 					#(#fk_id_assignments,)*
 					#(#fk_field_assignments,)*
@@ -3863,10 +4638,14 @@ fn generate_field_selector_struct(
 ) -> TokenStream {
 	let orm_crate = get_reinhardt_orm_crate();
 
-	// Exclude FK/M2M/O2O fields (only normal DB columns)
+	// Exclude skip/FK/M2M/O2O fields (only normal DB columns)
 	let regular_fields: Vec<_> = field_infos
 		.iter()
 		.filter(|f| {
+			// Exclude fields marked with #[field(skip = true)]
+			if f.config.skip {
+				return false;
+			}
 			// FK _id fields are included (they are actual DB columns)
 			// But exclude ForeignKeyField, OneToOneField, ManyToManyField (virtual fields)
 			!is_foreign_key_field_type(&f.ty)

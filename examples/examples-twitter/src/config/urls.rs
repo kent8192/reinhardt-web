@@ -3,25 +3,26 @@
 //! This project uses reinhardt-pages with Server Functions for API communication.
 //! Each app defines unified routes (server + client) in `urls.rs`, which are mounted here.
 //!
-//! Admin panel routes are integrated via `AdminSite::get_urls()`, which requires
-//! a `DatabaseConnection`. In production, the connection comes from the DI container.
+//! Admin panel routes are integrated via `admin_routes_with_di()`, which
+//! captures `AdminSite` DI registration for later application by the server.
+//! `AdminDatabase` is lazily constructed from `DatabaseConnection` at first request.
 
 use reinhardt::UnifiedRouter;
-#[cfg(not(target_arch = "wasm32"))]
-use reinhardt::admin::admin_routes;
-#[cfg(server)]
+#[cfg(native)]
+use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
+#[cfg(native)]
 use reinhardt::routes;
 
 // Import app URL modules
 use crate::apps::{auth, dm, profile, relationship, tweet};
-#[cfg(server)]
+#[cfg(native)]
 use crate::config::admin::configure_admin;
-#[cfg(server)]
+#[cfg(native)]
 use crate::config::middleware::{
 	create_cache_control_middleware, create_cors_middleware, create_security_middleware,
 	create_session_middleware, create_static_files_middleware,
 };
-#[cfg(server)]
+#[cfg(native)]
 use reinhardt::LoggingMiddleware;
 
 /// Build URL patterns for the application
@@ -30,7 +31,12 @@ use reinhardt::LoggingMiddleware;
 /// - Server Functions (`#[server_fn]`) for API communication
 /// - Client routing for SPA navigation
 /// - Production-ready middleware stack for security and performance
-/// - Admin panel mounted at `/admin/` via `AdminSite::get_urls()`
+/// - Admin panel mounted at `/admin/` via `admin_routes_with_di()`
+///
+/// Admin DI setup:
+/// - `AdminSite` registration is deferred via `DiRegistrationList` and
+///   applied to the server's singleton scope during startup
+/// - `AdminDatabase` is lazily constructed from `DatabaseConnection` at first request
 ///
 /// Middleware stack (in execution order):
 /// 1. LoggingMiddleware - Request/response logging
@@ -42,21 +48,14 @@ use reinhardt::LoggingMiddleware;
 ///
 /// Each app's `routes()` function returns a `UnifiedRouter` with both
 /// server and client routes defined.
-#[cfg_attr(server, routes)]
+#[cfg_attr(native, routes(standalone))]
 pub fn routes() -> UnifiedRouter {
 	// Configure admin site (registration only, no DB needed yet)
-	#[cfg(server)]
-	let _admin = configure_admin();
-
-	// Admin routes require DatabaseConnection for query execution.
-	// In production, mount admin routes like this:
-	//
-	//   let db = DatabaseConnection::connect("postgres://...").await?;
-	//   let admin_router = admin.get_urls(db);
-	//   router.mount("/admin", admin_router)
-	//
-	// For this example, admin is configured but not mounted since
-	// get_urls() requires an async DatabaseConnection.
+	#[cfg(native)]
+	let admin_site = {
+		let site = configure_admin();
+		std::sync::Arc::new(site)
+	};
 
 	let router = UnifiedRouter::new()
 		// Mount each app's unified routes
@@ -65,11 +64,17 @@ pub fn routes() -> UnifiedRouter {
 		.mount_unified("/", profile::urls::routes())
 		.mount_unified("/", relationship::urls::routes())
 		.mount_unified("/", dm::urls::routes());
-	// Mount admin panel routes (server-only, not available on wasm32)
-	#[cfg(not(target_arch = "wasm32"))]
-	let router = router.mount("/admin/", admin_routes());
+	// Mount admin panel routes and static assets with deferred DI registration (server-only)
+	#[cfg(native)]
+	let router = {
+		let (admin_router, admin_di) = admin_routes_with_di(admin_site);
+		router
+			.mount("/admin/", admin_router)
+			.mount("/static/admin/", admin_static_routes())
+			.with_di_registrations(admin_di)
+	};
 	// Apply middleware stack (server-only)
-	#[cfg(server)]
+	#[cfg(native)]
 	let router = router
 		.with_middleware(LoggingMiddleware::new())
 		.with_middleware(create_security_middleware())
