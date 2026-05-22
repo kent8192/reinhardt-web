@@ -97,10 +97,12 @@ mod tests {
 
 	#[test]
 	fn test_page_macro_with_events() {
+		// Spec §3.7 (no implicit captures): event handler bodies route free
+		// functions through `self::` so the path is multi-segment.
 		let input = quote!(|| {
 			button {
-				@click: |e| { handle_click(e); },
-				@input: |e| { handle_input(e); },
+				@click: |e| { self::handle_click(e); },
+				@input: |e| { self::handle_input(e); },
 				"Click me"
 			}
 		});
