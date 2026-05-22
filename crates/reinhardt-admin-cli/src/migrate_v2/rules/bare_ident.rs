@@ -78,6 +78,7 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 		// These all mean "not a bare expression in body position".
 		if let TokenTree::Ident(id) = &tt
 			&& starts_lowercase(&id.to_string())
+			&& !is_reserved_keyword(&id.to_string())
 		{
 			let is_followed_by_continuation = match iter.peek() {
 				Some(TokenTree::Group(g))
@@ -122,4 +123,51 @@ fn starts_lowercase(s: &str) -> bool {
 		.next()
 		.map(|c| c.is_ascii_lowercase())
 		.unwrap_or(false)
+}
+
+/// Rust reserved keywords that can legally appear at the head of an
+/// expression / control-flow construct inside a `page!` body. We must
+/// never wrap these in braces — `{ if } cond { ... }` is a parse error.
+fn is_reserved_keyword(s: &str) -> bool {
+	matches!(
+		s,
+		"if" | "else"
+			| "match"
+			| "for"
+			| "while"
+			| "loop"
+			| "let"
+			| "return"
+			| "break"
+			| "continue"
+			| "move"
+			| "ref"
+			| "mut"
+			| "async"
+			| "await"
+			| "yield"
+			| "do"
+			| "in"
+			| "as"
+			| "where"
+			| "use"
+			| "fn"
+			| "true"
+			| "false"
+			| "self"
+			| "Self"
+			| "super"
+			| "crate"
+			| "impl"
+			| "trait"
+			| "struct"
+			| "enum"
+			| "type"
+			| "const"
+			| "static"
+			| "pub"
+			| "mod"
+			| "unsafe"
+			| "extern"
+	)
 }
