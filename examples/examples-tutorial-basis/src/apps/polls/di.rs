@@ -188,17 +188,8 @@ async fn session_user_factory(#[inject] session: SessionData) -> SessionUser {
 	// `tracing::warn!` logs the underlying error for observability
 	// while `require_active()` echoes only a generic 500 message to
 	// the client, so schema details do not leak via error bodies.
-	//
-	// Ideal implementation (blocked on #4650): once `Manager::filter`
-	// accepts the typed builder, this becomes:
-	//   `.filter(User::field_id().eq(user_id))`.
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
 	let user = match User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(user_id),
-		)
+		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 	{

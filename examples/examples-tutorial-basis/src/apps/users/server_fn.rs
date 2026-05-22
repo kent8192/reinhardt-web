@@ -16,7 +16,7 @@ use {
 	reinhardt::BaseUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
-	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
+	reinhardt::db::orm::Model,
 	reinhardt::di::Depends,
 	reinhardt::middleware::session::{
 		SessionAuthExt, SessionData, SessionStoreRef, USER_ID_SESSION_KEY,
@@ -52,11 +52,7 @@ pub async fn login(
 
 	let manager = User::objects();
 	let user = manager
-		.filter(
-			User::field_username(),
-			FilterOperator::Eq,
-			FilterValue::String(request.username.trim().to_string()),
-		)
+		.filter(User::field_username().eq(request.username.trim().to_string()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
@@ -204,11 +200,7 @@ pub async fn current_user(
 	};
 
 	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(user_id),
-		)
+		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
