@@ -9,77 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-rc.30...reinhardt-grpc-macros@v0.1.0) - 2026-05-22
 
-### Breaking Changes
+Initial stable release of `reinhardt-grpc-macros` as part of the
+reinhardt-web 0.1.0 release. Provides the procedural macros that wire
+tonic-generated gRPC services to the framework's DI runtime.
 
-- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-### Fixed
+### Capabilities at 0.1.0
 
-- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
-- *(reinhardt-grpc)* fork DI context per-request in gRPC handler macros
-- *(meta)* fix workspace inheritance and authors metadata
-- add async validation and fix impl name collision
-- return generic errors and log details server-side
-- emit compile error for unrecognized inject attribute options
+- **Per-request DI context** — gRPC handler macros fork the
+  `InjectionContext` per request, so each call obtains an isolated
+  request scope rather than sharing the service-level scope.
+- **Strict attribute validation** — unknown `inject` attribute
+  options surface as compile errors; trait-impl name collisions in
+  generated code were resolved during the alpha cycle.
+- **Async-aware validation codegen** — generated input validators
+  participate in the async control flow so service implementations
+  can `.await` validation without resorting to ad-hoc spawning.
+- **Hardened generated types** — macro-emitted code applies
+  workspace-uniform native-tls pinning and workspace-version
+  alignment, and tightens type-checks against malicious input.
 
-### Security
+### Notable Breaking Changes
 
-- strengthen type checking in macro-generated code
+- **`Injected<T>` deprecated** ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631))
+  — generated handler wrappers expose `Depends<T>` injection sites.
 
-### Maintenance
+### Migration Notes
 
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-### Styling
-
-- fix pre-existing clippy warnings and apply rustfmt
-- apply rustfmt to pre-existing formatting violations in 16 files
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-rc.15...reinhardt-grpc-macros@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-rc.14...reinhardt-grpc-macros@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-rc.13...reinhardt-grpc-macros@v0.1.0-rc.14) - 2026-03-24
-
-### Fixed
-
-- *(deps)* update native-tls pin and use workspace versions in proc-macro crates
-- *(reinhardt-grpc)* fork DI context per-request in gRPC handler macros
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-rc.1...reinhardt-grpc-macros@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(meta)* fix workspace inheritance and authors metadata
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-alpha.2...reinhardt-grpc-macros@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.1.0-alpha.1...reinhardt-grpc-macros@v0.1.0-alpha.2) - 2026-02-21
-
-### Fixed
-
-- add async validation and fix impl name collision
-- return generic errors and log details server-side
-- emit compile error for unrecognized inject attribute options
-
-### Security
-
-- strengthen type checking in macro-generated code
-
-### Styling
-
-- fix pre-existing clippy warnings and apply rustfmt
-- apply rustfmt to pre-existing formatting violations in 16 files
+See the [root CHANGELOG migration guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide).
+Macro-side migration is mechanical: existing `#[inject]` parameters
+move from `Injected<T>` / `Arc<T>` to `Depends<T>`.

@@ -9,403 +9,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.30...reinhardt-test@v0.1.0) - 2026-05-22
 
-### Added
-
-- add CDP-based E2E browser testing infrastructure and WASM SPA fixes
-- *(test)* add MSW-style network interception module with core components
-- *(test)* add fantoccini E2E browser testing utility fixtures
-- standardize PostgreSQL version to 17
-
-### Changed
-
-- replace target_arch = "wasm32" with target_family/target_os best practice
-- *(reinhardt-test)* delegate to reinhardt-testkit with re-exports
-- deduplicate request() by delegating to request_with_extra_headers()
-- Re-release of 0.1.0-alpha.3 content after version correction
-- Rename feature `static` to `staticfiles` following `reinhardt-utils` module rename (#114)
-- Update imports for `reinhardt_utils::staticfiles` module rename
-
-### Deprecated
-
-- *(test)* mark MockFetch and mock_server_fn as deprecated in favor of MSW
-
-### Fixed
-
-- *(test/msw)* repair wasm32 build + expose facade msw feature
-- *(test)* make host.docker.internal resolvable in cdp_browser fixture
-- *(test)* gate native-only dependencies for wasm32 target compilation
-- *(auth)* add is_staff and is_superuser fields to JWT Claims
-- *(ci)* apply rustfmt and fix collapsible_if clippy lint after main merge
-- *(ci)* add #[allow(deprecated)] to re-exports and tests using deprecated mock APIs
-- *(test)* address Copilot review feedback on MSW module
-- *(ci)* resolve clippy errors in MSW module for native builds
-- *(ci)* use backticks instead of intra-doc links for feature-gated types
-- *(testkit)* remove auth-testing feature, make auth unconditional on native targets
-- *(docs)* escape intra-doc link in TestUser deprecated note
-- *(test)* wrap env var calls in unsafe blocks for Rust 2024 edition
-- *(test)* improve test infrastructure reliability and E2E fixtures
-- *(test,testkit)* address Copilot review feedback on test infrastructure
-- resolve CI failures and remove sea-query dependency
-- *(deps)* update reinhardt-test outdated deps
-- *(deps)* convert Vec to Bytes for tungstenite message types
-- fix TOCTOU port binding and missing sqlx pool workaround
-- replace unwrap with descriptive expect in WASM helpers and containers
-- add panic prevention and error handling for admin operations
-- use configured credentials in RabbitMQ connection_url (#859)
-- implement actual delay in DelayedHandler (#861)
-- add URL encoding to prevent injection in query parameters
-- migrate SQL utilities to SeaQuery for SQL injection prevention
-- use escape_css_selector from reinhardt-core in WASM helpers
-- use escape_html_content from reinhardt-core in DebugToolbar
-- delegate has_permission to TestUser for wildcard support
-- sync session user state when permissions change
-- use String instead of Box::leak for ModelSchemaInfo
-- store WASM closures in future struct instead of forget()
-- use per-fixture tracking and UUIDs in DCL fixtures
-- set env var before runtime in shared_postgres fixture
-- extend container lifetime in redis_cluster_client fixture (#869)
-- return Result from RequestBuilder::header instead of panicking
-- panic with descriptive message on serialization failure in MockHttpRequest
-- execute callbacks in MockTimers::run_due_callbacks and document MutationTracker limitations
-- replace `mem::zeroed()` with `Option<C>` to eliminate UB in `into_inner()`
-- address Copilot review feedback (consolidated across 1 occurrences)
-
-### Security
-
-- fix path traversal in temp_file_url and cookie header injection
-
-### Documentation
-
-- *(test)* document Docker Engine 20.10 requirement for host-gateway
-- add reinhardt-version-sync markers to all crate READMEs
-- *(mail)* fix unclosed code fence, wrong thread-safety claim, and stale versions
-- *(test)* replace callback-based container patterns with #[fixture] rstest pattern
-- add SAFETY comments to unsafe Send/Sync implementations
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-- updated the following local packages: reinhardt-pages, reinhardt-admin, reinhardt-websockets
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-- updated the following local packages: reinhardt-query, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-- updated the following local packages: reinhardt-query, reinhardt-rest, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-- updated the following local packages: reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-- updated the following local packages: reinhardt-core, reinhardt-utils, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-http, reinhardt-di, reinhardt-server, reinhardt-rest, reinhardt-views, reinhardt-websockets
-- updated the following local packages: reinhardt-admin
-- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-admin, reinhardt-websockets, reinhardt-urls, reinhardt-pages
-
-### Testing
-
-- *(test)* add WASM integration tests, rstest fixtures, and fix URL matching
-- *(test)* add fixture output validation tests for auth and admin_panel
-- *(test)* add WASM module tests and convert existing tests to rstest
-
-### Styling
-
-- *(test/msw)* apply rustfmt to interceptor.rs (post-[[#4288](https://github.com/kent8192/reinhardt-web/issues/4288)](https://github.com/kent8192/reinhardt-web/issues/4288) follow-up)
-- apply rustfmt formatting fixes
-- fix clippy warnings and formatting in files merged from main
-
-### Other
-
-- resolve conflict with main branch version bump to rc.4
-- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-rest, reinhardt-conf, reinhardt-server, reinhardt-db, reinhardt-auth, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-- updated the following local packages: reinhardt-core, reinhardt-pages, reinhardt-http, reinhardt-utils, reinhardt-conf, reinhardt-di, reinhardt-server, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-admin, reinhardt-websockets
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-
-## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.28...reinhardt-test@v0.1.0-rc.29) - 2026-05-13
-
-### Fixed
-
-- *(test/msw)* repair wasm32 build + expose facade msw feature
-
-### Styling
-
-- *(test/msw)* apply rustfmt to interceptor.rs (post-[[#4288](https://github.com/kent8192/reinhardt-web/issues/4288)](https://github.com/kent8192/reinhardt-web/issues/4288) follow-up)
-
-## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.25...reinhardt-test@v0.1.0-rc.26) - 2026-05-05
-
-### Documentation
-
-- *(test)* document Docker Engine 20.10 requirement for host-gateway
-
-### Fixed
-
-- *(test)* make host.docker.internal resolvable in cdp_browser fixture
-
-## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.20...reinhardt-test@v0.1.0-rc.21) - 2026-04-23
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.19...reinhardt-test@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- *(mail)* fix unclosed code fence, wrong thread-safety claim, and stale versions
-- *(test)* replace callback-based container patterns with #[fixture] rstest pattern
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.15...reinhardt-test@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- add CDP-based E2E browser testing infrastructure and WASM SPA fixes
-- *(test)* add MSW-style network interception module with core components
-
-### Changed
-
-- replace target_arch = "wasm32" with target_family/target_os best practice
-
-### Deprecated
-
-- *(test)* mark MockFetch and mock_server_fn as deprecated in favor of MSW
-
-### Fixed
-
-- *(test)* gate native-only dependencies for wasm32 target compilation
-- *(auth)* add is_staff and is_superuser fields to JWT Claims
-- *(ci)* apply rustfmt and fix collapsible_if clippy lint after main merge
-- *(ci)* add #[allow(deprecated)] to re-exports and tests using deprecated mock APIs
-- *(test)* address Copilot review feedback on MSW module
-- *(ci)* resolve clippy errors in MSW module for native builds
-- *(ci)* use backticks instead of intra-doc links for feature-gated types
-- *(testkit)* remove auth-testing feature, make auth unconditional on native targets
-- *(docs)* escape intra-doc link in TestUser deprecated note
-
-### Testing
-
-- *(test)* add WASM integration tests, rstest fixtures, and fix URL matching
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.14...reinhardt-test@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-### Testing
-
-- *(test)* add fixture output validation tests for auth and admin_panel
-- *(test)* add WASM module tests and convert existing tests to rstest
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.13...reinhardt-test@v0.1.0-rc.14) - 2026-03-24
-
-### Added
-
-- *(test)* add fantoccini E2E browser testing utility fixtures
-
-### Fixed
-
-- address copilot review feedback and merge main
-- *(test)* wrap env var calls in unsafe blocks for Rust 2024 edition
-- *(test)* improve test infrastructure reliability and E2E fixtures
-- *(test,testkit)* address Copilot review feedback on test infrastructure
-- resolve CI failures and remove sea-query dependency
-
-### Styling
-
-- apply rustfmt formatting fixes
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.4...reinhardt-test@v0.1.0-rc.5) - 2026-03-07
-
-### Changed
-
-- *(reinhardt-test)* delegate to reinhardt-testkit with re-exports
-
-### Other
-
-- resolve conflict with main branch version bump to rc.4
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.1...reinhardt-test@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(deps)* update reinhardt-test outdated deps
-- *(deps)* convert Vec to Bytes for tungstenite message types
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.20...reinhardt-test@v0.1.0-rc.1) - 2026-02-24
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.19...reinhardt-test@v0.1.0-alpha.20) - 2026-02-24
-
-### Maintenance
-
-- updated the following local packages: reinhardt-pages, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.18...reinhardt-test@v0.1.0-alpha.19) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.17...reinhardt-test@v0.1.0-alpha.18) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.16...reinhardt-test@v0.1.0-alpha.17) - 2026-02-21
-
-### Added
-
-- standardize PostgreSQL version to 17
-
-### Fixed
-
-- fix TOCTOU port binding and missing sqlx pool workaround
-- replace unwrap with descriptive expect in WASM helpers and containers
-- add panic prevention and error handling for admin operations
-- use configured credentials in RabbitMQ connection_url (#859)
-- implement actual delay in DelayedHandler (#861)
-- add URL encoding to prevent injection in query parameters
-- migrate SQL utilities to SeaQuery for SQL injection prevention
-- use escape_css_selector from reinhardt-core in WASM helpers
-- use escape_html_content from reinhardt-core in DebugToolbar
-- delegate has_permission to TestUser for wildcard support
-- sync session user state when permissions change
-- use String instead of Box::leak for ModelSchemaInfo
-- store WASM closures in future struct instead of forget()
-- use per-fixture tracking and UUIDs in DCL fixtures
-- set env var before runtime in shared_postgres fixture
-- extend container lifetime in redis_cluster_client fixture (#869)
-- return Result from RequestBuilder::header instead of panicking
-- panic with descriptive message on serialization failure in MockHttpRequest
-- execute callbacks in MockTimers::run_due_callbacks and document MutationTracker limitations
-- replace `mem::zeroed()` with `Option<C>` to eliminate UB in `into_inner()`
-
-### Security
-
-- fix path traversal in temp_file_url and cookie header injection
-
-### Changed
-
-- deduplicate request() by delegating to request_with_extra_headers()
-
-### Styling
-
-- fix clippy warnings and formatting in files merged from main
-
-### Documentation
-
-- add SAFETY comments to unsafe Send/Sync implementations
-
-## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.15...reinhardt-test@v0.1.0-alpha.16) - 2026-02-16
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.14...reinhardt-test@v0.1.0-alpha.15) - 2026-02-15
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-rest, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.13...reinhardt-test@v0.1.0-alpha.14) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.12...reinhardt-test@v0.1.0-alpha.13) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.11...reinhardt-test@v0.1.0-alpha.12) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.9...reinhardt-test@v0.1.0-alpha.10) - 2026-02-12
-
-### Maintenance
-
-- updated the following local packages: reinhardt-core, reinhardt-utils, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-http, reinhardt-di, reinhardt-server, reinhardt-rest, reinhardt-views, reinhardt-websockets
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.8...reinhardt-test@v0.1.0-alpha.9) - 2026-02-10
-
-### Maintenance
-
-- updated the following local packages: reinhardt-admin
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.7...reinhardt-test@v0.1.0-alpha.8) - 2026-02-10
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-admin, reinhardt-websockets, reinhardt-urls, reinhardt-pages
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.6...reinhardt-test@v0.1.0-alpha.7) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-rest, reinhardt-conf, reinhardt-server, reinhardt-db, reinhardt-auth, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.5...reinhardt-test@v0.1.0-alpha.6) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core, reinhardt-pages, reinhardt-http, reinhardt-utils, reinhardt-conf, reinhardt-di, reinhardt-server, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-admin, reinhardt-websockets
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.4...reinhardt-test@v0.1.0-alpha.5) - 2026-02-03
-
-### Other
-
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.4] - 2026-01-30
-
-### Changed
-
-- Re-release of 0.1.0-alpha.3 content after version correction
-- Rename feature `static` to `staticfiles` following `reinhardt-utils` module rename (#114)
-- Update imports for `reinhardt_utils::staticfiles` module rename
-
-
-## [0.1.0-alpha.3] - 2026-01-29 [YANKED]
-
-**Note:** This version was yanked due to version skipping in the main crate (`reinhardt-web`). Use the latest available version instead.
-
-### Changed
-
-- Rename feature `static` to `staticfiles` following `reinhardt-utils` module rename (#114)
-- Update imports for `reinhardt_utils::staticfiles` module rename
-
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+Initial stable release of `reinhardt-test` as part of the
+reinhardt-web 0.1.0 release. `reinhardt-test` is the user-facing
+testing facade: it bundles `rstest` fixtures for TestContainers-
+backed databases (PostgreSQL, MySQL, SQLite, CockroachDB), message
+brokers (Redis, Kafka, RabbitMQ), and WASM / E2E browser harnesses
+on top of the lower-level `reinhardt-testkit`.
+
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **TestContainers fixtures for every supported backend** — `rstest`
+  fixtures bring up PostgreSQL 17, MySQL, SQLite, CockroachDB, Redis
+  (single + cluster), Kafka, and RabbitMQ with deterministic
+  lifecycles. Containers use module-scoped or per-test scopes as
+  appropriate, with random UUID v7 suffixes to avoid collisions
+  under `cargo nextest` parallelism.
+- **WASM SPA test harness** — Feature-gated `wasm` / `wasm-full` /
+  `msw` stacks wire `wasm-bindgen-test`, `web-sys`, `js-sys`, and
+  `gloo-timers` into an integration suite that drives `reinhardt-
+  pages` SPA UIs in a real browser. The MSW-style network-level
+  request interceptor replaces the deprecated `MockFetch` /
+  `mock_server_fn` mocks for new code.
+- **E2E browser fixtures (fantoccini & CDP)** — `e2e` (WebDriver via
+  `fantoccini`) and `e2e-cdp` (Chrome DevTools Protocol via
+  `chromiumoxide`, paired with a containerised Chrome) provide two
+  complementary E2E paths. The CDP fixture documents the Docker
+  Engine 20.10 `host-gateway` requirement and resolves
+  `host.docker.internal` for tests that target the host loopback.
+- **Admin & auth integration fixtures** — Optional `admin` feature
+  provisions Postgres + ORM + auth in one fixture so admin-panel
+  permission tests can run end-to-end. Auth fixtures inject
+  `is_staff` / `is_superuser` JWT claims and propagate handler-side
+  session ID rotation through `Set-Cookie`.
+- **Delegation to `reinhardt-testkit`** — Native targets re-export
+  from `reinhardt-testkit`, so a test file consumes a single facade
+  (`reinhardt_test::fixtures::*`) regardless of which underlying
+  capability it touches.
+- **Security-hardened helpers** — Path-traversal guards on
+  `temp_file_url`, cookie-header injection prevention, URL encoding
+  on query parameters, and `escape_html_content` /
+  `escape_css_selector` on every WASM string-rendering path.
+
+### Notable Breaking Changes
+
+This crate does not introduce crate-level breaking changes at the
+0.1.0 boundary beyond the deprecations listed below. See the
+[root Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for workspace-wide changes (e.g., `Depends<T>`, typed URL routing)
+that affect the application code under test.
+
+### Migration Notes
+
+- **`MockFetch` / `mock_server_fn` → MSW interceptor**: Both are
+  `#[deprecated(since = "0.1.0-rc.16")]`. Migrate to the
+  `reinhardt_test::msw` module: it intercepts network requests at
+  the boundary instead of stubbing function pointers, which keeps
+  Server Function tests aligned with what the browser actually
+  sends.
+- **`target_arch = "wasm32"` → `target_family` + `target_os`**: If
+  your downstream tests gated code on `target_arch = "wasm32"`,
+  switch to `all(target_family = "wasm", target_os = "unknown")` —
+  this matches the workspace-wide cfg layout and avoids future drift
+  to WASIp1 / WASIp2.
+- **Feature renamed `static` → `staticfiles`**: The `staticfiles`
+  feature flag tracks the upstream `reinhardt-utils::staticfiles`
+  module rename ([#114](https://github.com/kent8192/reinhardt-web/issues/114)).
+  Update `Cargo.toml` feature lists accordingly.

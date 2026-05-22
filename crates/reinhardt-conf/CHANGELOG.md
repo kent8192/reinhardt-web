@@ -9,612 +9,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.30...reinhardt-conf@v0.1.0) - 2026-05-22
 
-### Breaking Changes
-
-- *(conf)* [**breaking**] enable TomlFileSource interpolation by default
-
-### Added
-
-- *(conf)* add HasCommonSettings marker trait
-- *(conf)* add MergeStrategy with Deep default for build_composed
-- *(conf)* scaffold Interpolator types for TOML interpolation
-- *(conf)* add nom-based template parser for TOML interpolation
-- *(conf)* add Interpolator::interpolate_str with strict empty handling
-- *(conf)* walk TOML AST in Interpolator::interpolate_value
-- *(conf)* add SourceError::Interpolation variant
-- *(conf)* add TomlFileSource::with_interpolation opt-in
-- TOML configuration interpolation with `${VAR}`, `${VAR:-default}`,
-  `${VAR:-}` (explicit empty), and `${VAR:?message}` syntax. Opt-in via
-  `TomlFileSource::new(path).with_interpolation(true)`. Every string in
-  the TOML tree is scanned at load time, including strings nested inside
-  tables and arrays; numeric, boolean, and datetime values are
-  unaffected. Composes with `HighPriorityEnvSource` (priority 60 > TOML's
-  50) for fine-grained overrides without duplicating per-environment
-  TOML files. Fixes #4086.
-- `SourceError::Interpolation(Box<InterpolationError>)` variant for
-  surfacing interpolation failures (missing variables, syntax errors)
-  with file path and TOML key path context. The boxed payload keeps the
-  enum within `clippy::result_large_err` limits.
-- *(conf)* add OpenApiSettings fragment
-- migrate UUID generation from v4 to v7 across entire codebase
-- *(conf)* add per-test settings override for TestContainers integration
-- *(conf)* define SettingsFragment trait for composable settings
-- *(conf)* define SecuritySettings fragment
-- *(conf)* extract built-in fragments from AdvancedSettings
-- *(conf)* define Django-compat fragments (I18n, Template, Contact)
-- *(conf)* define CoreSettings fragment with nested SecuritySettings
-- *(conf)* re-export fragment types and Has* traits from crate root
-- *(conf)* add FieldRequirement and FieldPolicy types
-- *(conf)* add field_policies() to SettingsFragment trait
-- *(conf)* add ComposedSettings trait
-- *(conf)* add BuildError::MissingRequiredField and build_composed()
-- *(macros)* add composition override blocks and ComposedSettings generation
-- *(settings)* annotate CoreSettings with field policies
-
-### Changed
-
-- *(conf)* extract deep_merge into shared settings::merge module
-- *(conf)* **BREAKING CHANGE**: `TomlFileSource::new(path)` now enables `${VAR}` interpolation by default. The previous opt-in behavior caused silent failures when a developer forgot `.with_interpolation(true)` and a literal `${DB_PASSWORD}` landed in the merged settings tree. Interpolation is required by 95%+ of real-world settings files; the new default matches the common case (issue #4224).
-- *(conf)* `with_interpolation()` is now a no-argument method (the default-on no-op for explicitness). Add the new `without_interpolation()` opt-out method.
-- *(conf)* expose database URL scheme validation as public API
-- *(conf)* use #[settings(fragment = true)] macro for OpenApiSettings
-- *(conf)* deprecate AdvancedSettings in favor of fragment system
-- *(conf)* deprecate Settings, add HasCoreSettings bridge via serde(flatten)
-- *(conf)* add HasSettings<F> trait and type Accessor to SettingsFragment
-- *(conf)* add type Accessor and blanket impls for all 12 fragments
-- *(conf)* add HasSettings to public re-exports
-- *(conf)* use HasSettings<CoreSettings> for deprecated Settings struct
-- remove unnecessary async, glob imports, and strengthen validation
-- extract secret types to always-available module
-- change installed_apps and middleware defaults to empty vectors
-- remove unused media_root field from Settings
-- remove unused `middleware` string list from Settings
-- remove unused `root_urlconf` field from Settings
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-- Re-release of 0.1.0-alpha.3 content after version correction
-- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
-
-### Deprecated
-
-- *(conf)* `TomlFileSource::set_interpolation(bool)` (the legacy 0.1.0-rc form of the boolean setter) is deprecated and will be removed in `0.2.0`. Use `with_interpolation()` / `without_interpolation()` instead (issue #4224).
-- *(conf)* mark JsonFileSource and auto_source as deprecated
-- `JsonFileSource::new` and `auto_source` are deprecated and will be
-  removed in 0.2.0. TOML is the canonical Reinhardt configuration format
-  and the framework will no longer ship a privileged JSON source.
-  Migrate `.json` configuration files to `.toml` (TOML is a superset of
-  typical JSON config use cases including nested tables and arrays), or
-  implement the public `ConfigSource` trait against `serde_json` to keep
-  JSON support out of tree. For new TOML-only code, prefer
-  `TomlFileSource::new(path)` directly over `auto_source` to make the
-  configuration format explicit at the call site. Refs #4087.
-- *(conf)* mark Settings.installed_apps and related methods as deprecated
-
-### Fixed
-
-- *(conf)* address Copilot review feedback on merge strategy
-- *(conf)* suppress flat-core-key warning when only DefaultSource provides it
-- *(conf)* tighten JsonFileSource deprecation per Copilot review
-- *(reinhardt-conf)* warn on flat-key settings outside [core] section
-- *(conf)* remove #[serde(flatten)] from SecuritySettings and fix TOML scoping
-- resolve CI clippy and format warnings
-- *(ci)* resolve remaining CI failures after main merge
-- *(conf)* add else branch for SSL redirect validation
-- suppress deprecated Settings warnings and fix unreachable pub visibility
-- *(settings)* address Copilot review feedback for field policy system
-- redact sensitive fields in DatabaseUrl debug output and remove unused variable
-- avoid password field access in DatabaseUrl debug impl
-- *(conf)* replace parking_lot::Mutex with tokio::sync::Mutex in DynamicSettings hot-reload
-- *(deps)* align workspace dependency versions
-- add database URL scheme validation before connection attempts
-- fix .env parsing, AST formatter, and file safety issues
-- document thread-safety invariant for env::set_var usage
-- add missing media_root field in Settings::new
-- fix key zeroing, file perms, and value redaction in admin-cli (#650, #656, #658)
-- execute validation in validate command
-- prevent encryption key exposure via CLI arguments
-- prevent secret exposure in serialization
-- use ManuallyDrop in into_inner to preserve ZeroizeOnDrop safety
-- address Copilot review feedback (consolidated across 2 occurrences)
-
-### Security
-
-- prevent duration underflow in rotation check and handle lock poisoning
-- add input validation, file size limits, and TOCTOU mitigations
-- redact sensitive values in error messages and env validation
-- protect DatabaseConfig password and encode credentials in URLs
-
-### Documentation
-
-- *(conf)* fix unresolved intra-doc links on MergeStrategy
-- *(conf)* clarify per_source comment to reflect post-collection filtering
-- *(conf)* document TomlFileSource interpolation default flip
-- *(conf)* document TOML interpolation feature
-- *(conf)* correct interpolation scope wording
-- add reinhardt-version-sync markers to all crate READMEs
-- *(core)* fix API inaccuracies in core infrastructure crate READMEs
-- *(conf)* fix composable settings TOML structure and add serde defaults
-- *(conf)* fix unresolved SettingsFragment link in openapi module doc
-- document planned-but-unimplemented settings fields
-- wrap bare URL in backticks in azure provider doc comment
-
-### Maintenance
-
-- *(conf)* pull workspace nom dependency
-- upgrade workspace dependencies to latest versions
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-- *(workspace)* remove unpublished reinhardt-settings-cli and fix stale references
-- updated the following local packages: reinhardt-query
-- add SAFETY comments to unsafe blocks in secrets/providers/env.rs
-- add SAFETY comments to unsafe blocks in sources.rs
-- add SAFETY comments to unsafe blocks in profile.rs
-- add SAFETY comments to unsafe blocks in env_loader.rs
-- add SAFETY comments to unsafe blocks in testing.rs
-- add SAFETY comments to unsafe blocks in env.rs
-
-### Testing
-
-- *(conf)* regression coverage for nested ${VAR:-default} via SettingsBuilder
-- *(conf)* assert DATABASE_URL via parsed url::Url fields
-- *(conf)* tighten interpolation parser negative assertions
-- *(conf)* integration tests for TOML interpolation
-- *(conf)* priority composition with interpolated TOML
-- *(conf)* align test conventions with project standards
-- *(conf)* reuse remove_env_vars helper for consistency
-- *(conf)* add comprehensive composable settings tests (12 categories, 120+ scenarios)
-- *(conf)* add integration tests for file sources and cross-priority merging
-
-### Styling
-
-- apply rustfmt to PR-A files
-- *(conf)* apply rustfmt to one-line the regression test deserialize chain
-- *(conf)* restore alphabetical order of prelude re-exports
-- *(conf)* apply cargo fmt to interpolation module
-- *(conf)* apply rustfmt to source_priority.rs
-- apply cargo fmt auto-fix
-- fix formatting in OpenApiSettings files
-- apply rustfmt formatting
-- apply formatting fixes for field policy changes
-- fix pre-existing clippy warnings and apply rustfmt
-- apply rustfmt to pre-existing unformatted files
-- fix formatting after merge
-
-### Other
-
-- resolve conflict with main (criterion version)
-- updated the following local packages: reinhardt-utils
-- updated the following local packages: reinhardt-core, reinhardt-utils
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-
-## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.28...reinhardt-conf@v0.1.0-rc.29) - 2026-05-13
-
-### Added
-
-- *(conf)* add HasCommonSettings marker trait
-
-### Styling
-
-- apply rustfmt to PR-A files
-
-## [0.1.0-rc.28](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.27...reinhardt-conf@v0.1.0-rc.28) - 2026-05-10
-
-### Added
-
-- *(conf)* add MergeStrategy with Deep default for build_composed
-
-### Changed
-
-- *(conf)* extract deep_merge into shared settings::merge module
-
-### Documentation
-
-- *(conf)* fix unresolved intra-doc links on MergeStrategy
-
-### Fixed
-
-- *(conf)* address Copilot review feedback on merge strategy
-
-## [0.1.0-rc.27](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.26...reinhardt-conf@v0.1.0-rc.27) - 2026-05-09
-
-### Added
-
-- *(conf)* [**breaking**] enable TomlFileSource interpolation by default
-
-### Documentation
-
-- *(conf)* clarify per_source comment to reflect post-collection filtering
-- *(conf)* document TomlFileSource interpolation default flip
-
-### Fixed
-
-- *(conf)* suppress flat-core-key warning when only DefaultSource provides it
-
-### Styling
-
-- *(conf)* apply rustfmt to one-line the regression test deserialize chain
-
-### Testing
-
-- *(conf)* regression coverage for nested ${VAR:-default} via SettingsBuilder
-- *(conf)* assert DATABASE_URL via parsed url::Url fields
-
-### Changed
-
-- *(conf)* **BREAKING CHANGE**: `TomlFileSource::new(path)` now enables `${VAR}` interpolation by default. The previous opt-in behavior caused silent failures when a developer forgot `.with_interpolation(true)` and a literal `${DB_PASSWORD}` landed in the merged settings tree. Interpolation is required by 95%+ of real-world settings files; the new default matches the common case (issue #4224).
-
-  Migration:
-
-  | Old call                              | New call                               |
-  |---------------------------------------|----------------------------------------|
-  | `.with_interpolation(true)`           | drop the call (or `.with_interpolation()`) |
-  | `.with_interpolation(false)`          | `.without_interpolation()`             |
-  | `.with_interpolation(some_bool_var)`  | `if some_bool_var { .with_interpolation() } else { .without_interpolation() }` |
-
-- *(conf)* `with_interpolation()` is now a no-argument method (the default-on no-op for explicitness). Add the new `without_interpolation()` opt-out method.
-
-### Deprecated
-
-- *(conf)* `TomlFileSource::set_interpolation(bool)` (the legacy 0.1.0-rc form of the boolean setter) is deprecated and will be removed in `0.2.0`. Use `with_interpolation()` / `without_interpolation()` instead (issue #4224).
-
-## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.25...reinhardt-conf@v0.1.0-rc.26) - 2026-05-05
-
-### Added
-
-- *(conf)* scaffold Interpolator types for TOML interpolation
-- *(conf)* add nom-based template parser for TOML interpolation
-- *(conf)* add Interpolator::interpolate_str with strict empty handling
-- *(conf)* walk TOML AST in Interpolator::interpolate_value
-- *(conf)* add SourceError::Interpolation variant
-- *(conf)* add TomlFileSource::with_interpolation opt-in
-
-### Deprecated
-
-- *(conf)* mark JsonFileSource and auto_source as deprecated
-
-### Documentation
-
-- *(conf)* document TOML interpolation feature
-- *(conf)* correct interpolation scope wording
-
-### Fixed
-
-- *(conf)* tighten JsonFileSource deprecation per Copilot review
-
-### Maintenance
-
-- *(conf)* pull workspace nom dependency
-
-### Styling
-
-- *(conf)* restore alphabetical order of prelude re-exports
-- *(conf)* apply cargo fmt to interpolation module
-- *(conf)* apply rustfmt to source_priority.rs
-
-### Testing
-
-- *(conf)* tighten interpolation parser negative assertions
-- *(conf)* integration tests for TOML interpolation
-- *(conf)* priority composition with interpolated TOML
-- *(conf)* align test conventions with project standards
-- *(conf)* reuse remove_env_vars helper for consistency
-
-### Added
-
-- TOML configuration interpolation with `${VAR}`, `${VAR:-default}`,
-  `${VAR:-}` (explicit empty), and `${VAR:?message}` syntax. Opt-in via
-  `TomlFileSource::new(path).with_interpolation(true)`. Every string in
-  the TOML tree is scanned at load time, including strings nested inside
-  tables and arrays; numeric, boolean, and datetime values are
-  unaffected. Composes with `HighPriorityEnvSource` (priority 60 > TOML's
-  50) for fine-grained overrides without duplicating per-environment
-  TOML files. Fixes #4086.
-- `SourceError::Interpolation(Box<InterpolationError>)` variant for
-  surfacing interpolation failures (missing variables, syntax errors)
-  with file path and TOML key path context. The boxed payload keeps the
-  enum within `clippy::result_large_err` limits.
-
-### Deprecated
-
-- `JsonFileSource::new` and `auto_source` are deprecated and will be
-  removed in 0.2.0. TOML is the canonical Reinhardt configuration format
-  and the framework will no longer ship a privileged JSON source.
-  Migrate `.json` configuration files to `.toml` (TOML is a superset of
-  typical JSON config use cases including nested tables and arrays), or
-  implement the public `ConfigSource` trait against `serde_json` to keep
-  JSON support out of tree. For new TOML-only code, prefer
-  `TomlFileSource::new(path)` directly over `auto_source` to make the
-  configuration format explicit at the call site. Refs #4087.
-
-## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.24...reinhardt-conf@v0.1.0-rc.25) - 2026-04-30
-
-### Changed
-
-- *(conf)* expose database URL scheme validation as public API
-
-## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.20...reinhardt-conf@v0.1.0-rc.21) - 2026-04-23
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.19...reinhardt-conf@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- *(core)* fix API inaccuracies in core infrastructure crate READMEs
-
-## [0.1.0-rc.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.17...reinhardt-conf@v0.1.0-rc.18) - 2026-04-22
-
-### Fixed
-
-- *(reinhardt-conf)* warn on flat-key settings outside [core] section
-
-### Styling
-
-- apply cargo fmt auto-fix
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.15...reinhardt-conf@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- *(conf)* add OpenApiSettings fragment
-- migrate UUID generation from v4 to v7 across entire codebase
-- *(conf)* add per-test settings override for TestContainers integration
-
-### Changed
-
-- *(conf)* use #[settings(fragment = true)] macro for OpenApiSettings
-
-### Documentation
-
-- *(conf)* fix composable settings TOML structure and add serde defaults
-- *(conf)* fix unresolved SettingsFragment link in openapi module doc
-
-### Fixed
-
-- *(conf)* remove #[serde(flatten)] from SecuritySettings and fix TOML scoping
-- resolve CI clippy and format warnings
-- *(ci)* resolve remaining CI failures after main merge
-
-### Maintenance
-
-- upgrade workspace dependencies to latest versions
-
-### Styling
-
-- fix formatting in OpenApiSettings files
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.14...reinhardt-conf@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.13...reinhardt-conf@v0.1.0-rc.14) - 2026-03-24
-
-### Added
-
-- *(conf)* define SettingsFragment trait for composable settings
-- *(conf)* define SecuritySettings fragment
-- *(conf)* extract built-in fragments from AdvancedSettings
-- *(conf)* define Django-compat fragments (I18n, Template, Contact)
-- *(conf)* define CoreSettings fragment with nested SecuritySettings
-- *(conf)* re-export fragment types and Has* traits from crate root
-- *(conf)* add FieldRequirement and FieldPolicy types
-- *(conf)* add field_policies() to SettingsFragment trait
-- *(conf)* add ComposedSettings trait
-- *(conf)* add BuildError::MissingRequiredField and build_composed()
-- *(macros)* add composition override blocks and ComposedSettings generation
-- *(settings)* annotate CoreSettings with field policies
-
-### Changed
-
-- *(conf)* deprecate AdvancedSettings in favor of fragment system
-- *(conf)* deprecate Settings, add HasCoreSettings bridge via serde(flatten)
-- *(conf)* add HasSettings<F> trait and type Accessor to SettingsFragment
-- *(conf)* add type Accessor and blanket impls for all 12 fragments
-- *(conf)* add HasSettings to public re-exports
-- *(conf)* use HasSettings<CoreSettings> for deprecated Settings struct
-
-### Fixed
-
-- *(conf)* add else branch for SSL redirect validation
-- address copilot review feedback and merge main
-- suppress deprecated Settings warnings and fix unreachable pub visibility
-- address Copilot review feedback
-- *(settings)* address Copilot review feedback for field policy system
-
-### Styling
-
-- apply rustfmt formatting
-- apply formatting fixes for field policy changes
-
-### Testing
-
-- *(conf)* add comprehensive composable settings tests (12 categories, 120+ scenarios)
-
-## [0.1.0-rc.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.11...reinhardt-conf@v0.1.0-rc.12) - 2026-03-18
-
-### Deprecated
-
-- *(conf)* mark Settings.installed_apps and related methods as deprecated
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.8...reinhardt-conf@v0.1.0-rc.9) - 2026-03-15
-
-### Fixed
-
-- redact sensitive fields in DatabaseUrl debug output and remove unused variable
-- avoid password field access in DatabaseUrl debug impl
-
-## [0.1.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.6...reinhardt-conf@v0.1.0-rc.7) - 2026-03-11
-
-### Testing
-
-- *(conf)* add integration tests for file sources and cross-priority merging
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.1...reinhardt-conf@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(conf)* replace parking_lot::Mutex with tokio::sync::Mutex in DynamicSettings hot-reload
-- *(deps)* align workspace dependency versions
-
-### Other
-
-- resolve conflict with main (criterion version)
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.14...reinhardt-conf@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-- *(workspace)* remove unpublished reinhardt-settings-cli and fix stale references
-
-## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.13...reinhardt-conf@v0.1.0-alpha.14) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query
-
-## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.12...reinhardt-conf@v0.1.0-alpha.13) - 2026-02-21
-
-### Fixed
-
-- add database URL scheme validation before connection attempts
-- fix .env parsing, AST formatter, and file safety issues
-- document thread-safety invariant for env::set_var usage
-- add missing media_root field in Settings::new
-- fix key zeroing, file perms, and value redaction in admin-cli (#650, #656, #658)
-- execute validation in validate command
-- prevent encryption key exposure via CLI arguments
-- prevent secret exposure in serialization
-- use ManuallyDrop in into_inner to preserve ZeroizeOnDrop safety
-
-### Security
-
-- prevent duration underflow in rotation check and handle lock poisoning
-- add input validation, file size limits, and TOCTOU mitigations
-- redact sensitive values in error messages and env validation
-- protect DatabaseConfig password and encode credentials in URLs
-
-### Changed
-
-- remove unnecessary async, glob imports, and strengthen validation
-- extract secret types to always-available module
-- change installed_apps and middleware defaults to empty vectors
-- remove unused media_root field from Settings
-- remove unused `middleware` string list from Settings
-- remove unused `root_urlconf` field from Settings
-
-### Styling
-
-- fix pre-existing clippy warnings and apply rustfmt
-- apply rustfmt to pre-existing unformatted files
-- fix formatting after merge
-
-### Documentation
-
-- document planned-but-unimplemented settings fields
-- wrap bare URL in backticks in azure provider doc comment
-
-### Maintenance
-
-- add SAFETY comments to unsafe blocks in secrets/providers/env.rs
-- add SAFETY comments to unsafe blocks in sources.rs
-- add SAFETY comments to unsafe blocks in profile.rs
-- add SAFETY comments to unsafe blocks in env_loader.rs
-- add SAFETY comments to unsafe blocks in testing.rs
-- add SAFETY comments to unsafe blocks in env.rs
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.11...reinhardt-conf@v0.1.0-alpha.12) - 2026-02-15
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query
-
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.10...reinhardt-conf@v0.1.0-alpha.11) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.9...reinhardt-conf@v0.1.0-alpha.10) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.7...reinhardt-conf@v0.1.0-alpha.8) - 2026-02-12
-
-### Changed
-
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.6...reinhardt-conf@v0.1.0-alpha.7) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-utils
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.5...reinhardt-conf@v0.1.0-alpha.6) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core, reinhardt-utils
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.4...reinhardt-conf@v0.1.0-alpha.5) - 2026-02-03
-
-### Other
-
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-
-### Breaking Changes
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.4] - 2026-01-30
-
-### Changed
-
-- Re-release of 0.1.0-alpha.3 content after version correction
-- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
-
-
-## [0.1.0-alpha.3] - 2026-01-29 [YANKED]
-
-**Note:** This version was yanked due to version skipping in the main crate (`reinhardt-web`). Use the latest available version instead.
-
-### Changed
-
-- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+Initial stable release of `reinhardt-conf` as part of the reinhardt-web
+0.1.0 release. This crate is Reinhardt's Django-inspired settings
+framework: it owns the `SettingsBuilder` layered configuration model,
+the composable fragment system (`CoreSettings`, `SecuritySettings`,
+`I18nSettings`, ...), the TOML / env source priority stack, and the
+secrets / encryption primitives that protect sensitive values in
+memory.
+
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **Composable settings fragments** — `SettingsFragment` is the
+  trait every fragment implements, with a `type Accessor` projection
+  and a `field_policies()` hook. The crate ships `CoreSettings` as
+  the required base plus Django-compat fragments (`I18nSettings`,
+  `TemplateSettings`, `ContactSettings`, `OpenApiSettings`, ...).
+  `ComposedSettings`, `HasSettings<F>`, and `HasCommonSettings`
+  expose composition to user code.
+- **Layered `SettingsBuilder` with priority sources** — the
+  builder merges `TomlFileSource`, `EnvFileSource`,
+  `DefaultSource`, `HighPriorityEnvSource`, and user-supplied
+  sources by priority. `MergeStrategy::Deep` is the default
+  (`build_composed`), and per-test override sources let
+  TestContainers integration tests inject configuration without
+  touching real files.
+- **Typed TOML interpolation** ([#4241](https://github.com/kent8192/reinhardt-web/discussions/4241),
+  [#4229](https://github.com/kent8192/reinhardt-web/discussions/4229))
+  — TOML strings support `${VAR}`, `${VAR:-default}`, `${VAR:-}`
+  (explicit empty), and `${VAR:?message}` placeholders. The
+  interpolator walks the full TOML AST (including strings nested in
+  tables and arrays), and placeholders coerce to the destination
+  field's type (e.g., `${REINHARDT_DB_PORT}` becomes a `u16`). Opt
+  out of coercion with `SettingsBuilder::with_typed_coercion(false)`
+  or disable interpolation entirely with `without_interpolation()`.
+- **Field policies via `#[setting(...)]`** — the
+  `FieldRequirement` / `FieldPolicy` types drive
+  `BuildError::MissingRequiredField` and feed `build_composed()` so
+  required-field errors surface at boot rather than as `None`
+  values mid-request.
+- **Secrets & encryption primitives** — `DatabaseUrl` redacts
+  passwords in `Debug` output, the secrets module uses
+  `ZeroizeOnDrop` with `ManuallyDrop` to preserve drop safety
+  through `into_inner`, and credentials are URL-encoded when
+  reassembled. Encryption-key exposure via CLI arguments is
+  prevented, and hot-reload uses `tokio::sync::Mutex` to keep async
+  reload paths free of `parking_lot` blocking.
+- **Database-URL scheme validation as public API** — consumers
+  (notably `reinhardt-apps::ApplicationBuilder::build`) reuse the
+  same validator that the crate uses internally.
+
+### Notable Breaking Changes
+
+- **TOML interpolation is on by default** — `TomlFileSource::new(path)`
+  now enables `${VAR}` interpolation; the previous opt-in behavior
+  caused silent failures when a literal `${DB_PASSWORD}` landed in
+  the merged tree. `with_interpolation()` is a no-arg explicitness
+  marker; `without_interpolation()` opts out (issue #4224).
+- **`set_interpolation(bool)` is deprecated** — use
+  `with_interpolation()` / `without_interpolation()` instead; the
+  boolean setter will be removed in 0.2.0.
+- **`JsonFileSource` and `auto_source` are deprecated** ([#4120](https://github.com/kent8192/reinhardt-web/discussions/4120))
+  — TOML is the canonical Reinhardt configuration format. Migrate
+  `.json` configuration files to `.toml` or implement
+  `ConfigSource` against `serde_json` to keep JSON support
+  out-of-tree.
+- **`Settings.installed_apps` is deprecated** — installed apps
+  flow through the `reinhardt-apps` registry; the legacy
+  `Settings`-level field remains as a serde-flattened bridge but
+  emits a deprecation warning.
+- **Built-in fragments extracted from `AdvancedSettings`** —
+  `AdvancedSettings` is deprecated in favour of explicit fragments
+  (`SecuritySettings`, `I18nSettings`, `TemplateSettings`,
+  `ContactSettings`, `OpenApiSettings`, `CoreSettings`).
+
+### Migration Notes
+
+See the [root Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide)
+for project-wide guidance. Settings-specific moves:
+
+- If you relied on literal `${...}` strings in TOML, append
+  `.without_interpolation()` to your `TomlFileSource` constructor.
+- Replace `JsonFileSource::new(...)` / `auto_source(...)` with
+  `TomlFileSource::new(...)` against a `.toml` file.
+- Migrate from `AdvancedSettings` to the matching fragments
+  (`SecuritySettings`, `I18nSettings`, ...) and add an explicit
+  `CoreSettings` fragment to every composed-settings declaration.

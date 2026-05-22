@@ -9,567 +9,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.30...reinhardt-core@v0.1.0) - 2026-05-22
 
-### Breaking Changes
-
-- *(urls)* [**breaking**] support async functions in #[routes] macro
-- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
-- *(macros)* [**breaking**] extend #[url_patterns] for viewset/mount, add #[viewset] macro, deprecate named variants
-- *(apps)* [**breaking**] require explicit LABEL on AppLabel implementors
-- *(di)* [**breaking**] make DependencyRegistration const-compatible for Rust 2024 edition
-
-### Added
-
-- *(macros)* generate typed urls helpers from #[url_patterns]
-- *(reactive)* add #[doc(hidden)] diagnostic API for dependency graph inspection
-- `Runtime::debug_subscribers`, `debug_dependencies`, `debug_observer_stack`,
-  `debug_pending_updates` `#[doc(hidden)]` diagnostic methods for inspecting
-  the reactive dependency graph in cross-crate WASM tests.
-  ([#4088](https://github.com/kent8192/reinhardt-web/issues/4088))
-- *(auth)* add SuperuserInit trait and SuperuserCreator registry
-- *(auth)* auto-register SuperuserCreator via inventory for #[user(full = true)] + #[model] types
-- *(core)* add AuthProtection enum and EndpointMetadata extension
-- *(core)* detect auth parameters in route macros for metadata
-- *(core)* set task-local resolve context in request dispatch macros
-- *(commands)* add RunserverHook for concurrent service startup and pre-listen validation
-- *(urls)* add compile-time type-safe URL resolution via extension traits
-- migrate UUID generation from v4 to v7 across entire codebase
-- *(macros)* accept typed identifier instead of string literal in `#[url_patterns]`
-- *(core)* add use_endpoint! macro for multi-file view resolver re-export
-- *(macros)* add #[export_endpoints] attribute for multi-file view modules
-- *(orm)* add Vec/Value/HashMap support to field_type_to_metadata_string
-- *(macros)* inject ManyToMany relationships in #[user] + #[model]
-- *(orm)* add #[field(skip = true)] attribute for non-DB fields
-- *(macros)* extend nom parser for { field: policy } override blocks
-- *(macros)* add #[setting()] attribute parsing and field_policies() generation
-- *(macros)* add composition override blocks and ComposedSettings generation
-- *(rest)* add operation-level OpenAPI route attributes
-- *(core)* add validate_html_attr_name for attribute key validation
-- add path sanitization and input validation helpers
-- add resource limits configuration types
-- add numeric safety utilities for checked arithmetic
-- add redirect URL validation utilities
-- add anchor link support to is_safe_url
-- add enhanced sanitization utilities for XSS prevention
-
-### Changed
-
-- *(macros)* dedupe upstream-workaround rustdoc via include_str!
-- *(di)* remove unnecessary Clone bound from Depends<T> and Injected<T>
-- *(macros)* simplify URL/routing macro internals
-- *(macros)* simplify url_patterns enum-type extraction and fix docs
-- *(macros)* require explicit CoreSettings in #[settings] macro
-- *(macros)* generate HasSettings<F> in both settings macros
-- replace glob imports with explicit re-exports in validators prelude
-- use dynamic crate path resolution for all dependencies
-- replace glob import with explicit rayon trait imports
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-
-### Deprecated
-
-- *(macros)* rename define_views! to flatten_imports! and deprecate old name
-
-### Fixed
-
-- *(macros)* namespace installed_apps state file by CARGO_CRATE_NAME
-- *(macros)* align macro_state.rs fallback with #[routes]'s hard-fail include_bytes!
-- *(macros)* emit fully-qualified type name for SuperuserCreatorRegistration
-- *(macros)* fall back to empty client reverser when no_client_resolvers is set
-- *(macros)* address Copilot review on type_name const-ness and stale from_global() docstrings
-- *(macros)* pair typed urls::* params by binding name; tighten ClientPath pattern check
-- *(macros)* emit per-app client URL accessors on wasm32
-- *(reactive)* make Signal<T> Sync on native via Arc<RwLock<T>>
-- *(macros)* delegate DI injection errors to From<DiError> instead of hardcoding 500
-- *(pages)* cfg-gate @event handler compilation to wasm32 only
-- resolve merge conflicts with main and fix CI failures
-- *(core)* unify flush_updates to actually execute pending effects
-- *(di)* address Copilot review feedback on const-compatible DependencyRegistration
-- *(commands)* address Copilot review feedback on RunserverHook
-- *(urls)* address Copilot review on URL resolver macro generation
-- *(query,core)* replace approx_constant test values to avoid clippy deny
-- *(core)* resolve clippy warnings in reactive, security, and exception modules
-- *(macros)* remove url-resolver feature flag, gate on platform instead
-- *(macros)* use resolve_from_registry() in #[routes] for factory type compatibility
-- *(macros)* integrate standalone mode with namespaced URL resolvers
-- *(macros)* resolve merge conflict with main
-- *(macros)* move #[viewset] usage to module-level free function
-- *(macros)* address review — error propagation, WASM skip, ident validation
-- *(macros)* resolve url_patterns path resolution and nested endpoint detection
-- *(macros)* use tt repetition instead of path fragment in __for_each_url_resolver
-- *(macros)* address Copilot review — use tt+ and normalize test assertions
-- *(macros)* use tt+ pattern instead of path in for_each_url_resolver macro
-- *(urls)* add UrlResolver trait import to generated url_prelude methods
-- *(macros)* suppress unexpected_cfgs for client-router in #[routes] macro
-- *(macros)* use resolve_from_registry() in HTTP method macros for factory type compatibility
-- *(macros)* move urls.ws() impl inside __namespaced_ws_resolvers to fix E0451
-- *(admin)* generate table_name() and permission methods in admin macro
-- *(macros)* allow too_many_arguments on generated Model::new function
-- *(core)* add feature gates to conditionally compiled modules
-- *(reinhardt-core)* fork DI context per-request in route and action macros
-- *(reinhardt-core)* fix DLQ lock ordering, send_async filtering, overflow, and counter bugs in signals
-- *(reinhardt-core)* pre-allocate results vector and fix profiler average calculation
-- *(core)* prevent panics from user-controlled pagination and string inputs
-- *(core)* address Copilot review feedback on panic-safety PR
-- *(macros)* add missing CoreSettings and HasCoreSettings imports for explicit settings
-- *(settings)* address Copilot review feedback for field policy system
-- *(settings)* use section-nested keys in #[settings] macro validation and deserialization
-- *(rest)* address Copilot review feedback on OpenAPI annotations
-- *(core,pages)* escape script tag content and HTML attributes to prevent XSS
-- *(pages)* validate attr keys, fix SSR lang escaping, enhance script escape docs
-- *(core)* correct misleading CSRF token rotation comment
-- *(core)* replace lock().unwrap() with safe alternatives for panic prevention
-- *(core)* centralize message mutex poison recovery with logging
-- *(macros)* dereference extractor before validation in pre_validate
-- *(macros)* replace skeleton tests with meaningful assertions in pre_validate
-- *(core)* add wasm32 platform gate to parallel and jsonschema validator modules
-- *(deps)* align dependency versions to workspace definitions
-- *(core)* use character count instead of byte length in CharField validation
-- fix DOT format output vulnerable to content injection
-- log signal send errors instead of silently discarding
-- emit errors instead of silently ignoring invalid macro arguments
-- fix Request type path and remove tracing from use_inject generated code
-- replace unwrap() with proper syn::Error propagation in proc macros
-- prevent arithmetic underflow in cursor pagination encoder
-- use exact MIME type matching in ContentTypeValidator
-- replace Box::leak with Arc to prevent memory leak
-- emit error when permission function lacks Request (#775)
-- use push instead of push_str for single char in escape_css_selector
-- *(core)* replace reinhardt-test with local poll_until helper
-
-### Security
-
-- add default size limits to multipart parser
-- replace eprintln with tracing to prevent type info leakage
-- fix fragile CSRF token format parsing
-- add input validation for route paths and SQL expressions
-- fix signal handler deadlock by releasing lock before callback execution
-- fix input validation and resource limits across form fields
-- remove info leak and validate factory code generation
-- use HMAC-SHA256 for cursor integrity validation
-- fix CSP header sanitization and CSRF panic
-- add request body size limits and decompression bomb prevention
-
-### Performance
-
-- *(reactive)* avoid clone in Resource::is_loading via Signal::with_untracked
-
-### Documentation
-
-- *(macros)* document urls::* helper module emitted by #[url_patterns]
-- *(macros)* drop intra-doc links to types not in reinhardt-macros deps
-- *(pages)* document [[#4088](https://github.com/kent8192/reinhardt-web/issues/4088)](https://github.com/kent8192/reinhardt-web/issues/4088) fix and on_navigate API in CHANGELOGs
-- add reinhardt-version-sync markers to all crate READMEs
-- *(core)* fix API inaccuracies in core infrastructure crate READMEs
-- *(macros)* clarify cross-crate extract_depends_inner_type duplication
-- *(core)* add missing doc comments to WebSocket routing types in ws.rs
-- *(macros)* use backtick for FilesystemSource in collect_migrations doc
-
-### Maintenance
-
-- remove commented-out dead imports in reinhardt-core and reinhardt-urls
-- *(merge)* merge main into feature/pages-suspense
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-### Testing
-
-- *(macros)* refresh trybuild snapshot for non_uuid_pk_with_default_manager
-- *(settings)* update tests for explicit CoreSettings requirement
-
-### Styling
-
-- *(core)* apply rustfmt formatting
-- apply auto-fix formatting corrections
-- apply rustfmt formatting fixes
-- apply rustfmt to clippy-fixed files
-- *(macros)* apply rustfmt to url_patterns tests
-- *(core)* fix formatting in reinhardt-core macros and lib
-- *(macros)* apply rustfmt formatting fixes
-- *(pages)* apply rustfmt to merged files from main
-- reformat long lines in effect and burst modules
-- apply formatting fixes for field policy changes
-- fix clippy warnings and formatting in files merged from main
-- apply formatting to model_attribute.rs
-- replace map_or(false, ...) with is_some_and in model_attribute.rs
-- apply formatting to files introduced by merge from main
-- apply rustfmt formatting to workspace files
-- fix formatting in security module
-
-### Other
-
-- resolve conflict with main (BUILTIN_FRAGMENTS + resolve helpers)
-- resolve conflict with main (implicit inference tests from PR [[#2860](https://github.com/kent8192/reinhardt-web/issues/2860)](https://github.com/kent8192/reinhardt-web/issues/2860))
-- Merge pull request #111 from kent8192/fix/issue-81-bug-reinhardt-pages-wasm-build-fails-due-to-tokiomio-server-side-dependencies
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- *(package)* replace version.workspace with explicit versions
-
-## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.29...reinhardt-core@v0.1.0-rc.30) - 2026-05-21
-
-### Added
-
-- *(macros)* generate typed urls helpers from #[url_patterns]
-
-### Changed
-
-- *(macros)* dedupe upstream-workaround rustdoc via include_str!
-
-### Documentation
-
-- *(macros)* document urls::* helper module emitted by #[url_patterns]
-- *(macros)* drop intra-doc links to types not in reinhardt-macros deps
-
-### Fixed
-
-- *(macros)* namespace installed_apps state file by CARGO_CRATE_NAME
-- *(macros)* align macro_state.rs fallback with #[routes]'s hard-fail include_bytes!
-- *(macros)* emit fully-qualified type name for SuperuserCreatorRegistration
-- *(macros)* fall back to empty client reverser when no_client_resolvers is set
-- *(macros)* address Copilot review on type_name const-ness and stale from_global() docstrings
-- *(macros)* pair typed urls::* params by binding name; tighten ClientPath pattern check
-
-### Testing
-
-- *(macros)* refresh trybuild snapshot for non_uuid_pk_with_default_manager
-
-## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.25...reinhardt-core@v0.1.0-rc.26) - 2026-05-05
-
-### Added
-
-- *(reactive)* add #[doc(hidden)] diagnostic API for dependency graph inspection
-
-### Documentation
-
-- *(pages)* document [[#4088](https://github.com/kent8192/reinhardt-web/issues/4088)](https://github.com/kent8192/reinhardt-web/issues/4088) fix and on_navigate API in CHANGELOGs
-
-### Fixed
-
-- *(macros)* emit per-app client URL accessors on wasm32
-
-### Added
-
-- `Runtime::debug_subscribers`, `debug_dependencies`, `debug_observer_stack`,
-  `debug_pending_updates` `#[doc(hidden)]` diagnostic methods for inspecting
-  the reactive dependency graph in cross-crate WASM tests.
-  ([#4088](https://github.com/kent8192/reinhardt-web/issues/4088))
-
-## [0.1.0-rc.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.24...reinhardt-core@v0.1.0-rc.25) - 2026-04-30
-
-### Fixed
-
-- *(reactive)* make Signal<T> Sync on native via Arc<RwLock<T>>
-
-## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.20...reinhardt-core@v0.1.0-rc.21) - 2026-04-23
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.19...reinhardt-core@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- *(core)* fix API inaccuracies in core infrastructure crate READMEs
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.15...reinhardt-core@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- *(auth)* add SuperuserInit trait and SuperuserCreator registry
-- *(auth)* auto-register SuperuserCreator via inventory for #[user(full = true)] + #[model] types
-- *(core)* add AuthProtection enum and EndpointMetadata extension
-- *(core)* detect auth parameters in route macros for metadata
-- *(core)* set task-local resolve context in request dispatch macros
-- *(urls)* [**breaking**] support async functions in #[routes] macro
-- *(commands)* add RunserverHook for concurrent service startup and pre-listen validation
-- *(urls)* add compile-time type-safe URL resolution via extension traits
-- migrate UUID generation from v4 to v7 across entire codebase
-- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
-- *(macros)* [**breaking**] extend #[url_patterns] for viewset/mount, add #[viewset] macro, deprecate named variants
-- *(macros)* accept typed identifier instead of string literal in `#[url_patterns]`
-- *(core)* add use_endpoint! macro for multi-file view resolver re-export
-- *(macros)* add #[export_endpoints] attribute for multi-file view modules
-- *(apps)* [**breaking**] require explicit LABEL on AppLabel implementors
-
-### Changed
-
-- *(di)* remove unnecessary Clone bound from Depends<T> and Injected<T>
-- *(macros)* simplify URL/routing macro internals
-- *(macros)* simplify url_patterns enum-type extraction and fix docs
-
-### Deprecated
-
-- *(macros)* rename define_views! to flatten_imports! and deprecate old name
-
-### Documentation
-
-- *(macros)* clarify cross-crate extract_depends_inner_type duplication
-- *(core)* add missing doc comments to WebSocket routing types in ws.rs
-
-### Fixed
-
-- *(macros)* delegate DI injection errors to From<DiError> instead of hardcoding 500
-- *(pages)* cfg-gate @event handler compilation to wasm32 only
-- resolve merge conflicts with main and fix CI failures
-- *(core)* unify flush_updates to actually execute pending effects
-- *(di)* [**breaking**] make DependencyRegistration const-compatible for Rust 2024 edition
-- *(di)* address Copilot review feedback on const-compatible DependencyRegistration
-- *(commands)* address Copilot review feedback on RunserverHook
-- *(urls)* address Copilot review on URL resolver macro generation
-- *(query,core)* replace approx_constant test values to avoid clippy deny
-- *(core)* resolve clippy warnings in reactive, security, and exception modules
-- *(macros)* remove url-resolver feature flag, gate on platform instead
-- *(macros)* use resolve_from_registry() in #[routes] for factory type compatibility
-- *(macros)* integrate standalone mode with namespaced URL resolvers
-- *(macros)* resolve merge conflict with main
-- *(macros)* move #[viewset] usage to module-level free function
-- *(macros)* address review — error propagation, WASM skip, ident validation
-- *(macros)* resolve url_patterns path resolution and nested endpoint detection
-- *(macros)* use tt repetition instead of path fragment in __for_each_url_resolver
-- *(macros)* address Copilot review — use tt+ and normalize test assertions
-- *(macros)* use tt+ pattern instead of path in for_each_url_resolver macro
-- *(urls)* add UrlResolver trait import to generated url_prelude methods
-- *(macros)* suppress unexpected_cfgs for client-router in #[routes] macro
-- *(macros)* use resolve_from_registry() in HTTP method macros for factory type compatibility
-- *(macros)* move urls.ws() impl inside __namespaced_ws_resolvers to fix E0451
-
-### Maintenance
-
-- remove commented-out dead imports in reinhardt-core and reinhardt-urls
-- *(merge)* merge main into feature/pages-suspense
-
-### Performance
-
-- *(reactive)* avoid clone in Resource::is_loading via Signal::with_untracked
-
-### Styling
-
-- *(core)* apply rustfmt formatting
-- apply auto-fix formatting corrections
-- apply rustfmt formatting fixes
-- apply rustfmt to clippy-fixed files
-- *(macros)* apply rustfmt to url_patterns tests
-- *(core)* fix formatting in reinhardt-core macros and lib
-- *(macros)* apply rustfmt formatting fixes
-- *(pages)* apply rustfmt to merged files from main
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.14...reinhardt-core@v0.1.0-rc.15) - 2026-03-29
-
-### Added
-
-- *(orm)* add Vec/Value/HashMap support to field_type_to_metadata_string
-- *(macros)* inject ManyToMany relationships in #[user] + #[model]
-- *(orm)* add #[field(skip = true)] attribute for non-DB fields
-
-### Fixed
-
-- *(admin)* generate table_name() and permission methods in admin macro
-- *(macros)* allow too_many_arguments on generated Model::new function
-- *(core)* add feature gates to conditionally compiled modules
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.13...reinhardt-core@v0.1.0-rc.14) - 2026-03-24
-
-### Added
-
-- *(macros)* extend nom parser for { field: policy } override blocks
-- *(macros)* add #[setting()] attribute parsing and field_policies() generation
-- *(macros)* add composition override blocks and ComposedSettings generation
-
-### Changed
-
-- *(macros)* require explicit CoreSettings in #[settings] macro
-- *(macros)* generate HasSettings<F> in both settings macros
-
-### Fixed
-
-- *(reinhardt-core)* fork DI context per-request in route and action macros
-- *(reinhardt-core)* fix DLQ lock ordering, send_async filtering, overflow, and counter bugs in signals
-- *(reinhardt-core)* pre-allocate results vector and fix profiler average calculation
-- *(core)* prevent panics from user-controlled pagination and string inputs
-- *(core)* address Copilot review feedback on panic-safety PR
-- *(macros)* add missing CoreSettings and HasCoreSettings imports for explicit settings
-- *(settings)* address Copilot review feedback for field policy system
-- *(settings)* use section-nested keys in #[settings] macro validation and deserialization
-
-### Other
-
-- resolve conflict with main (BUILTIN_FRAGMENTS + resolve helpers)
-- resolve conflict with main (implicit inference tests from PR [[#2860](https://github.com/kent8192/reinhardt-web/issues/2860)](https://github.com/kent8192/reinhardt-web/issues/2860))
-
-### Styling
-
-- reformat long lines in effect and burst modules
-- apply formatting fixes for field policy changes
-
-### Testing
-
-- *(settings)* update tests for explicit CoreSettings requirement
-
-## [0.1.0-rc.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.11...reinhardt-core@v0.1.0-rc.12) - 2026-03-18
-
-### Added
-
-- *(rest)* add operation-level OpenAPI route attributes
-
-### Documentation
-
-- *(macros)* use backtick for FilesystemSource in collect_migrations doc
-
-### Fixed
-
-- *(rest)* address Copilot review feedback on OpenAPI annotations
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.8...reinhardt-core@v0.1.0-rc.9) - 2026-03-15
-
-### Added
-
-- *(core)* add validate_html_attr_name for attribute key validation
-
-### Fixed
-
-- *(core,pages)* escape script tag content and HTML attributes to prevent XSS
-- *(pages)* validate attr keys, fix SSR lang escaping, enhance script escape docs
-- *(core)* correct misleading CSRF token rotation comment
-- *(core)* replace lock().unwrap() with safe alternatives for panic prevention
-- *(core)* centralize message mutex poison recovery with logging
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.4...reinhardt-core@v0.1.0-rc.5) - 2026-03-07
-
-### Fixed
-
-- *(macros)* dereference extractor before validation in pre_validate
-- *(macros)* replace skeleton tests with meaningful assertions in pre_validate
-
-## [0.1.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.3...reinhardt-core@v0.1.0-rc.4) - 2026-03-05
-
-### Fixed
-
-- *(core)* add wasm32 platform gate to parallel and jsonschema validator modules
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.1...reinhardt-core@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(deps)* align dependency versions to workspace definitions
-- *(core)* use character count instead of byte length in CharField validation
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.7...reinhardt-core@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.6...reinhardt-core@v0.1.0-alpha.7) - 2026-02-21
-
-### Added
-
-- add path sanitization and input validation helpers
-- add resource limits configuration types
-- add numeric safety utilities for checked arithmetic
-- add redirect URL validation utilities
-- add anchor link support to is_safe_url
-- add enhanced sanitization utilities for XSS prevention
-
-### Fixed
-
-- fix DOT format output vulnerable to content injection
-- log signal send errors instead of silently discarding
-- emit errors instead of silently ignoring invalid macro arguments
-- fix Request type path and remove tracing from use_inject generated code
-- replace unwrap() with proper syn::Error propagation in proc macros
-- prevent arithmetic underflow in cursor pagination encoder
-- use exact MIME type matching in ContentTypeValidator
-- replace Box::leak with Arc to prevent memory leak
-- emit error when permission function lacks Request (#775)
-- use push instead of push_str for single char in escape_css_selector
-
-### Security
-
-- add default size limits to multipart parser
-- replace eprintln with tracing to prevent type info leakage
-- fix fragile CSRF token format parsing
-- add input validation for route paths and SQL expressions
-- fix signal handler deadlock by releasing lock before callback execution
-- fix input validation and resource limits across form fields
-- remove info leak and validate factory code generation
-- use HMAC-SHA256 for cursor integrity validation
-- fix CSP header sanitization and CSRF panic
-- add request body size limits and decompression bomb prevention
-
-### Changed
-
-- replace glob imports with explicit re-exports in validators prelude
-- use dynamic crate path resolution for all dependencies
-- replace glob import with explicit rayon trait imports
-
-### Styling
-
-- fix clippy warnings and formatting in files merged from main
-- apply formatting to model_attribute.rs
-- replace map_or(false, ...) with is_some_and in model_attribute.rs
-- apply formatting to files introduced by merge from main
-- apply rustfmt formatting to workspace files
-- fix formatting in security module
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.4...reinhardt-core@v0.1.0-alpha.5) - 2026-02-12
-
-### Changed
-
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.3...reinhardt-core@v0.1.0-alpha.4) - 2026-02-08
-
-### Fixed
-
-- *(core)* replace reinhardt-test with local poll_until helper
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.2...reinhardt-core@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- Merge pull request #111 from kent8192/fix/issue-81-bug-reinhardt-pages-wasm-build-fails-due-to-tokiomio-server-side-dependencies
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.1...reinhardt-core@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- *(package)* replace version.workspace with explicit versions
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+Initial stable release of `reinhardt-core` as part of the reinhardt-web
+0.1.0 release. This crate is the foundation of the framework: it owns
+the cross-cutting type system, the reactive signal runtime, the request
+dispatch surface that route / action / WebSocket macros expand into,
+and the security primitives (sanitization, validation, resource limits)
+that every other Reinhardt crate consumes.
+
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **Reactive signal runtime** — `Signal<T>`, `Effect`, and `Resource`
+  power the reinhardt-pages reactive layer. Signals are `Sync` on
+  native via `Arc<RwLock<T>>`, are WASM-compatible, and the runtime
+  exposes `#[doc(hidden)]` diagnostic accessors (`debug_subscribers`,
+  `debug_dependencies`, `debug_observer_stack`, `debug_pending_updates`)
+  for cross-crate WASM tests ([#4088](https://github.com/kent8192/reinhardt-web/issues/4088)).
+- **Request dispatch primitives for route / action / WebSocket macros**
+  — sets the task-local resolve context, forks the per-request DI
+  context, surfaces async-capable `#[routes]` handlers, and exposes
+  `AuthProtection` plus `EndpointMetadata` so route macros can detect
+  auth parameters and propagate the resulting metadata automatically.
+- **`use_endpoint!` and `flatten_imports!`** — multi-file view modules
+  expose their endpoints through `use_endpoint!` for resolver re-export,
+  and `flatten_imports!` (renamed from `define_views!`) replaces the
+  removed `#[export_endpoints]` attribute for stable-Rust compatibility
+  ([#3783](https://github.com/kent8192/reinhardt-web/discussions/3783)).
+- **Auth scaffolding (`SuperuserInit`, `SuperuserCreator`)** — the
+  registry-backed `SuperuserCreator` is auto-populated via `inventory`
+  whenever a `#[user(full = true)]` + `#[model]` type is declared,
+  enabling `manage createsuperuser` to bootstrap any user model.
+- **Compile-time security primitives** — `validate_html_attr_name`,
+  `is_safe_url` (with anchor-link support), redirect-URL validation,
+  HTML / CSS / script escaping, multipart body limits, decompression-
+  bomb prevention, HMAC-SHA256 cursor integrity, and a runtime resource-
+  limits configuration shared by `reinhardt-http` / `reinhardt-pages` /
+  `reinhardt-rest`.
+- **Settings primitives backing `#[settings]`** — `CoreSettings` is the
+  required base fragment, and the macro now generates `HasSettings<F>`
+  impls and `field_policies()` from `#[setting(...)]` attribute blocks
+  so consumers can compose fragments without losing per-field policy
+  data.
+- **OpenAPI / REST hooks** — operation-level `#[rest::*]` route
+  attributes contribute OpenAPI metadata to `reinhardt-rest` without
+  forcing a hard dependency on the REST crate.
+- **Workspace-wide invariants** — UUIDs are emitted as v7 throughout
+  the codebase, glob imports have been replaced with explicit `pub use`
+  re-exports across the validators / rayon preludes, and all relative
+  paths beyond `../` are eliminated per project policy.
+
+### Notable Breaking Changes
+
+- **`#[url_patterns]` becomes typed** ([#3770](https://github.com/kent8192/reinhardt-web/discussions/3770))
+  — accepts `InstalledApp::*` identifiers and `mode = server|client|unified|ws`;
+  pattern functions are renamed accordingly. `reinhardt-core`'s
+  dispatch macros consume the typed form.
+- **DI unifies on `Depends<T>`** ([#3628](https://github.com/kent8192/reinhardt-web/discussions/3628))
+  and **`Injected<T>` is deprecated** ([#3631](https://github.com/kent8192/reinhardt-web/discussions/3631))
+  — `#[inject]` no longer accepts `Arc<T>` directly; `Depends<T>`
+  adds caching, cycle detection, and DI metadata. The auto-`Clone`
+  bound is removed.
+- **`#[routes]` is async-capable** — handler signatures may be
+  `async fn`; synchronous handlers remain supported.
+- **`DependencyRegistration` is const-compatible** for Rust 2024
+  edition.
+- **`#[settings]` requires explicit `CoreSettings`** and emits
+  `HasSettings<F>` impls in both attribute forms.
+- **`flatten_imports!` replaces `define_views!`** ([#3783](https://github.com/kent8192/reinhardt-web/discussions/3783)),
+  which itself replaced `#[export_endpoints]` ([#3768](https://github.com/kent8192/reinhardt-web/discussions/3768)).
+
+### Migration Notes
+
+See the [root Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide)
+for the full per-feature migration steps. The high-value moves for
+`reinhardt-core` consumers are:
+
+- Switch every `#[inject] Arc<T>` site to `#[inject] Depends<T>` and
+  drop redundant `#[derive(Clone)]` bounds.
+- Replace `Injected<T>` / `OptionalInjected<T>` with `Depends<T>` /
+  `Option<Depends<T>>`.
+- Add an explicit `CoreSettings` fragment to any `#[settings]` block
+  that previously relied on the implicit one, and migrate
+  `#[export_endpoints]` views to `flatten_imports!`.

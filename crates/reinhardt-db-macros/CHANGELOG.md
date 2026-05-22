@@ -9,53 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-rc.30...reinhardt-db-macros@v0.1.0) - 2026-05-22
 
-### Fixed
+Initial stable release of `reinhardt-db-macros` as part of the
+reinhardt-web 0.1.0 release. `reinhardt-db-macros` provides the
+procedural macros that back `reinhardt-db`'s NoSQL ODM layer (the
+`#[derive(Document)]` family) and supports the SQL-side `#[model]`
+field-attribute parser.
 
-- *(db-macros)* emit compile error for unknown field attributes
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-### Documentation
+### Capabilities at 0.1.0
 
-- *(db)* fix ConnectionPool API and import path inaccuracies in README
-- *(db-macros)* add warn(missing_docs) lint attribute
+- **Strict field-attribute validation** — Unknown attribute names on
+  derive inputs emit a compile-time error pointing at the offending
+  span, instead of being silently ignored. Typos no longer
+  short-circuit derives.
+- **`missing_docs` lint hygiene** — The crate compiles under
+  `#![warn(missing_docs)]`, so every public macro and helper carries
+  rustdoc and contributes to `docs.rs` coverage.
+- **Stable proc-macro toolchain** — Locked to the workspace-pinned
+  `syn` / `quote` / `proc-macro2` versions and Rust 1.94.0 MSRV, so
+  proc-macro recompilation is deterministic across CI and downstream
+  users.
 
-### Maintenance
+### Notable Breaking Changes
 
-- update Cargo.toml dependencies
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-- Update dependencies
+This release does not introduce crate-level breaking changes. See the
+[root Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for workspace-wide changes that may affect callers of derived APIs.
 
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-rc.19...reinhardt-db-macros@v0.1.0-rc.20) - 2026-04-23
+### Migration Notes
 
-### Documentation
-
-- *(db)* fix ConnectionPool API and import path inaccuracies in README
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-rc.15...reinhardt-db-macros@v0.1.0-rc.16) - 2026-04-20
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-rc.14...reinhardt-db-macros@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-rc.13...reinhardt-db-macros@v0.1.0-rc.14) - 2026-03-24
-
-### Fixed
-
-- *(db-macros)* emit compile error for unknown field attributes
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-rc.8...reinhardt-db-macros@v0.1.0-rc.9) - 2026-03-15
-
-### Documentation
-
-- *(db-macros)* add warn(missing_docs) lint attribute
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-alpha.1...reinhardt-db-macros@v0.1.0-rc.1) - 2026-02-21
-
-### Maintenance
-
-- Update dependencies
+- **Fix unknown field attributes**: If an upgrade fails with
+  `unknown field attribute ...`, remove the offending attribute or
+  rename it to one of the documented forms — pre-stable releases
+  accepted it silently.

@@ -9,52 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-streaming@v0.1.0-rc.30...reinhardt-streaming@v0.1.0) - 2026-05-22
 
-### Added
+Initial stable release of `reinhardt-streaming` as part of the
+reinhardt-web 0.1.0 release. Provides a backend-agnostic async
+streaming abstraction with a first-party Kafka backend (`rskafka`).
 
-- *(testkit,streaming)* module-scoped Kafka fixture + KafkaConfig.partitions
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-### Fixed
+### Capabilities at 0.1.0
 
-- *(streaming)* tighten Kafka partition typing per Copilot review
-- *(ci)* unblock release-plz rc.29 CI on three pre-existing failures
-- *(ci)* resolve SemVer and docs.rs failures on rc.29 branch
+- **Backend-agnostic stream API** — A `StreamBackend` trait with
+  inventory-based registration lets applications swap producers and
+  consumers without touching call sites, with strongly-typed payloads
+  serialized via `serde_json`.
+- **Kafka backend (rskafka, rustls)** — Behind the `kafka` feature
+  flag, the Kafka backend exposes typed producer / consumer handles
+  and the `KafkaConfig.partitions` knob for tuning publish targets.
+- **TestContainers Kafka fixture** — A module-scoped Kafka fixture
+  in `reinhardt-testkit` starts an ephemeral broker per test module,
+  enabling deterministic integration tests for backend error paths
+  and partitioning behavior.
+- **Hardened error surface** — Kafka error paths are exercised with
+  flakiness-resistant tests so transport errors propagate as typed
+  `thiserror` variants rather than panicking.
 
-### Maintenance
+### Notable Breaking Changes
 
-- *(merge)* merge main into feature/streaming-phase2
+`reinhardt-streaming` did not introduce its own framework-wide
+breaking changes in 0.1.0. Workspace-level breaking changes are
+tracked at the [Breaking Changes Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/breaking-changes)
+and summarized in the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
 
-### Testing
+### Migration Notes
 
-- *(streaming)* expand Kafka backend error-handling coverage
-- *(streaming)* harden Kafka error-path tests against transport flakiness
-
-### Styling
-
-- *(pages)* apply rustfmt to merged files from main
-
-## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-streaming@v0.1.0-rc.28...reinhardt-streaming@v0.1.0-rc.29) - 2026-05-13
-
-### Added
-
-- *(testkit,streaming)* module-scoped Kafka fixture + KafkaConfig.partitions
-
-### Fixed
-
-- *(streaming)* tighten Kafka partition typing per Copilot review
-- *(ci)* unblock release-plz rc.29 CI on three pre-existing failures
-- *(ci)* resolve SemVer and docs.rs failures on rc.29 branch
-
-### Testing
-
-- *(streaming)* expand Kafka backend error-handling coverage
-- *(streaming)* harden Kafka error-path tests against transport flakiness
-
-## [0.1.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-streaming@v0.1.0-alpha...reinhardt-streaming@v0.1.0-alpha.1) - 2026-04-20
-
-### Maintenance
-
-- *(merge)* merge main into feature/streaming-phase2
-
-### Styling
-
-- *(pages)* apply rustfmt to merged files from main
+See the workspace-level [Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the full upgrade flow. This crate has no crate-specific migration
+steps for the 0.1.0 transition; consumers staying on the Kafka backend
+need only enable the `kafka` feature flag and supply a `KafkaConfig`
+with the new `partitions` field.

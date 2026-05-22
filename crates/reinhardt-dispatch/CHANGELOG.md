@@ -9,221 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.30...reinhardt-dispatch@v0.1.0) - 2026-05-22
 
-### Fixed
-
-- *(dispatch-tests)* serialize signal tests and correct middleware doc
-- fix dead code, default handler, and lost request context
-- log signal send errors instead of silently discarding
-- replace lock unwrap with poison error recovery
-
-### Security
-
-- add configurable middleware chain depth limit
-- add content-type and nosniff headers to error responses
-- prevent information disclosure in exception handler
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-- *(core)* fix API inaccuracies in core infrastructure crate READMEs
-- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
-- *(readme)* fix documentation discrepancies across crate READMEs
-
-### Maintenance
-
-- update Cargo.toml dependencies
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-- *(testing)* add insta snapshot testing dependency across all crates
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-urls, reinhardt-middleware, reinhardt-views
-- updated the following local packages: reinhardt-views, reinhardt-middleware, reinhardt-urls
-
-### Testing
-
-- *(dispatch)* add integration tests for routing × middleware main paths
-
-### Styling
-
-- add explanatory comments to remaining #[allow(dead_code)] attributes
-- apply rustfmt to pre-existing unformatted files
-- apply rustfmt to pre-existing formatting violations in 16 files
-
-### Other
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-middleware, reinhardt-views, reinhardt-urls
-- add release-plz migration markers to CHANGELOGs
-
-## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.28...reinhardt-dispatch@v0.1.0-rc.29) - 2026-05-13
-
-### Fixed
-
-- *(dispatch-tests)* serialize signal tests and correct middleware doc
-
-### Testing
-
-- *(dispatch)* add integration tests for routing × middleware main paths
-
-## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.20...reinhardt-dispatch@v0.1.0-rc.21) - 2026-04-23
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.19...reinhardt-dispatch@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- *(core)* fix API inaccuracies in core infrastructure crate READMEs
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.15...reinhardt-dispatch@v0.1.0-rc.16) - 2026-04-20
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.14...reinhardt-dispatch@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.13...reinhardt-dispatch@v0.1.0-rc.14) - 2026-03-24
-
-### Documentation
-
-- *(crates)* update version references from 0.1.0-alpha.1 to 0.1.0-rc.13 across all READMEs
-- *(readme)* fix documentation discrepancies across crate READMEs
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.8...reinhardt-dispatch@v0.1.0-rc.9) - 2026-03-15
-
-### Styling
-
-- add explanatory comments to remaining #[allow(dead_code)] attributes
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.1...reinhardt-dispatch@v0.1.0-rc.2) - 2026-03-04
-
-### Maintenance
-
-- *(testing)* add insta snapshot testing dependency across all crates
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.13...reinhardt-dispatch@v0.1.0-rc.1) - 2026-02-24
-
-### Maintenance
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-
-## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.12...reinhardt-dispatch@v0.1.0-alpha.13) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-urls, reinhardt-middleware, reinhardt-views
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.11...reinhardt-dispatch@v0.1.0-alpha.12) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.10...reinhardt-dispatch@v0.1.0-alpha.11) - 2026-02-21
-
-### Fixed
-
-- fix dead code, default handler, and lost request context
-- log signal send errors instead of silently discarding
-- replace lock unwrap with poison error recovery
-
-### Security
-
-- add configurable middleware chain depth limit
-- add content-type and nosniff headers to error responses
-- prevent information disclosure in exception handler
-
-### Styling
-
-- apply rustfmt to pre-existing unformatted files
-- apply rustfmt to pre-existing formatting violations in 16 files
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.9...reinhardt-dispatch@v0.1.0-alpha.10) - 2026-02-16
-
-### Maintenance
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.8...reinhardt-dispatch@v0.1.0-alpha.9) - 2026-02-15
-
-### Maintenance
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.7...reinhardt-dispatch@v0.1.0-alpha.8) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.6...reinhardt-dispatch@v0.1.0-alpha.7) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.5...reinhardt-dispatch@v0.1.0-alpha.6) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.4...reinhardt-dispatch@v0.1.0-alpha.5) - 2026-02-10
-
-### Maintenance
-
-- updated the following local packages: reinhardt-views, reinhardt-middleware, reinhardt-urls
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.3...reinhardt-dispatch@v0.1.0-alpha.4) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.2...reinhardt-dispatch@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-middleware, reinhardt-views, reinhardt-urls
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.1...reinhardt-dispatch@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+Initial stable release of `reinhardt-dispatch` as part of the
+reinhardt-web 0.1.0 release. This crate is the request dispatch
+runtime: it joins the URL resolver (`reinhardt-urls`), the middleware
+chain (`reinhardt-middleware`), and the view handlers (`reinhardt-views`)
+into a single executable pipeline that turns an incoming HTTP request
+into a response, and it owns the dispatcher-level exception handler
+and signal-handling glue.
+
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **Routing × middleware dispatch pipeline** — resolves the URL via
+  `reinhardt-urls`, runs the middleware chain with per-request DI
+  forked off the application context, and invokes the matched view.
+  Default-handler resolution preserves the request context across
+  every layer (no lost extensions on the fallback path).
+- **Configurable middleware-chain depth limit** — the chain depth is
+  bounded by configuration to prevent infinite-recursion DoS via
+  pathological middleware composition.
+- **Signal dispatch with error logging** — signal sends log their
+  errors instead of silently discarding them, and the signal lock
+  is released before user callbacks run so handler panics cannot
+  deadlock the dispatcher.
+- **Dispatcher-level exception handler** — produces structured error
+  responses with `Content-Type` and `X-Content-Type-Options: nosniff`
+  headers, and is hardened against information disclosure (no
+  internal type names or stack frames leak into responses).
+- **Lock-poisoning recovery** — `Mutex` / `RwLock` accesses use the
+  workspace-wide poison-recovery helpers from `reinhardt-utils`
+  instead of `unwrap()`, so a single poisoned guard cannot take
+  down the dispatcher.
+
+### Notable Breaking Changes
+
+Tracked at the workspace level — see the [root CHANGELOG Breaking Changes section](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#breaking-changes).
+
+### Migration Notes
+
+See the [root Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#migration-guide)
+for project-wide guidance.

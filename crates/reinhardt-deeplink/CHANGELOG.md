@@ -9,74 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-rc.30...reinhardt-deeplink@v0.1.0) - 2026-05-22
 
-### Added
+Initial stable release of `reinhardt-deeplink` as part of the
+reinhardt-web 0.1.0 release. Provides mobile-app deep-linking primitives
+for iOS Universal Links, Android App Links, and custom URL schemes.
 
-- add grpc, dispatch, deeplink module re-exports with feature flags
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
 
-### Fixed
+### Capabilities at 0.1.0
 
-- *(release)* roll back unpublished crate versions after partial release failure
+- **Universal Links and App Links** — Helpers for serving the
+  Apple `apple-app-site-association` and Android
+  `assetlinks.json` manifests over `reinhardt-http`, so deep-link
+  associations are configured in the same project as the routes.
+- **Custom URL scheme dispatch** — Async dispatch primitives accept
+  inbound deep-link URLs, resolve them against typed `reinhardt-urls`
+  patterns, and forward to handlers without parsing raw URL strings
+  at the call site.
+- **Composable with `grpc` and `dispatch` re-exports** — The crate
+  exposes feature-gated re-exports for the gRPC and dispatch
+  integrations so downstream code can opt in without depending on the
+  full surface.
 
-### Documentation
+### Notable Breaking Changes
 
-- *(pages)* fix type name and API inaccuracies in pages crate docs
+`reinhardt-deeplink` did not introduce its own framework-wide breaking
+changes in 0.1.0. Workspace-level breaking changes are tracked at the
+[Breaking Changes Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/breaking-changes)
+and summarized in the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
 
-### Maintenance
+### Migration Notes
 
-- update Cargo.toml dependencies
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-- *(testing)* add insta snapshot testing dependency across all crates
-- updated the following local packages: reinhardt-urls
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-rc.19...reinhardt-deeplink@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- *(pages)* fix type name and API inaccuracies in pages crate docs
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-rc.15...reinhardt-deeplink@v0.1.0-rc.16) - 2026-04-20
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-rc.14...reinhardt-deeplink@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-rc.8...reinhardt-deeplink@v0.1.0-rc.9) - 2026-03-15
-
-### Added
-
-- add grpc, dispatch, deeplink module re-exports with feature flags
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-rc.1...reinhardt-deeplink@v0.1.0-rc.2) - 2026-03-04
-
-### Maintenance
-
-- *(testing)* add insta snapshot testing dependency across all crates
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-alpha.5...reinhardt-deeplink@v0.1.0-rc.1) - 2026-02-24
-
-### Maintenance
-
-- updated the following local packages: reinhardt-urls
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-alpha.4...reinhardt-deeplink@v0.1.0-alpha.5) - 2026-02-24
-
-### Fixed
-
-- *(release)* roll back unpublished crate versions after partial release failure
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-alpha.3...reinhardt-deeplink@v0.1.0-alpha.4) - 2026-02-16
-
-### Maintenance
-
-- updated the following local packages: reinhardt-urls
+See the workspace-level [Migration Guide](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the full upgrade flow. This crate has no crate-specific migration
+steps for the 0.1.0 transition.

@@ -9,224 +9,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.30...reinhardt-testkit@v0.1.0) - 2026-05-22
 
-### Added
-
-- *(testkit)* add DiOverrideBuilder + with_di_overrides! re-export
-- *(testkit,streaming)* module-scoped Kafka fixture + KafkaConfig.partitions
-- *(testkit)* add `DiOverrideBuilder`, `DiOverrides`, `injection_context_with_di_overrides`, and re-export the `with_di_overrides!` macro from `reinhardt-testkit-macros` for ergonomic DI mocking in tests
-- *(testkit)* add in-process test transport for APIClient via Handler trait
-- migrate UUID generation from v4 to v7 across entire codebase
-- *(testkit)* add with_test_di_context() for isolated parallel-safe test DI contexts
-- *(testkit)* add builder-based auth testing API
-- *(testkit)* add KafkaContainer fixture and producer/consumer integration test
-- add streaming feature to reinhardt facade and fix KafkaContainer API
-- *(testkit)* add postgres_with_migrations_from_dir helper using FilesystemSource
-
-### Changed
-
-- *(testkit-macros)* route generated paths through reinhardt-testkit
-- post-simplify-review cleanups for DI mock fixtures
-- *(testkit)* extract RequestSeedFn alias to satisfy clippy::type_complexity
-- *(di,urls,http)* preserve path parameter insertion order through pipeline
-
-### Deprecated
-
-- update deprecation since version from 0.2.0 to 0.1.0-rc.16
-- *(testkit)* deprecate global_registry-based migration fixtures
-
-### Fixed
-
-- *(testkit)* make request_value seed the request scope and document the round-trip
-- *(ci)* unblock release-plz rc.29 CI on three pre-existing failures
-- *(admin)* add missing SingletonScope import and fix formatting
-- *(testkit)* use random portion of UUID v7 for unique suffix
-- *(testkit)* address review feedback and CI clippy failures
-- *(testkit)* update deprecated since to 0.1.0-rc.16 and suppress internal usage warnings
-- *(docs)* use backticks for feature-gated types in testkit auth docs
-- *(testkit)* align rabbitmq image tag to pre-pulled 3-management-alpine
-- *(streaming)* address Copilot review feedback on Phase 1 PR
-- *(testkit)* update bitnami/kafka image tag from 3.7 to 3.9
-- *(pages,testkit)* add hmr feature gate to e2e tests and migrate Kafka image to apache/kafka
-- *(middleware)* propagate handler-side session ID rotation to Set-Cookie
-- *(testkit)* migrate SessionData construction to use new() to support #[non_exhaustive]
-- *(testkit)* use multi-thread runtime and install any drivers in fixture tests
-- *(testkit)* unify PostgreSQL version, add pool close, and cleanup backoff
-- *(test)* improve test infrastructure reliability and E2E fixtures
-- *(test,testkit)* address Copilot review feedback on test infrastructure
-- *(testkit)* initialize ORM global state in postgres_with_migrations_from_dir
-- resolve CI failures and remove sea-query dependency
-
-### Security
-
-- *(testkit)* remove sensitive values from cookie validation panic messages
-
-### Documentation
-
-- *(testing)* document DI mock fixtures and override patterns
-- *(mail)* fix unclosed code fence, wrong thread-safety claim, and stale versions
-- *(macros,testkit)* use backticks for cross-crate intra-doc links
-
-### Maintenance
-
-- *(deps)* floor astral-tokio-tar to 0.6.2 (RUSTSEC-2026-0145)
-- cargo fmt after di-mock-fixtures
-- upgrade workspace dependencies to latest versions
-- *(testkit)* add auth-testing feature with reinhardt-auth and reinhardt-middleware optional deps
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-### Testing
-
-- *(di)* register test types in global registry for Depends resolution
-- *(testkit)* add comprehensive tests for core utility modules
-- *(testkit)* add tests for fixture modules (server, testcontainers, resources, validator)
-
-### Styling
-
-- *(testkit)* fix rustfmt formatting in di.rs
-- *(testkit)* format cookie value assertion in client.rs
-- *(testkit)* apply auto-fix formatting to fixtures re-export
-- add explanatory comments to remaining #[allow(dead_code)] attributes
-
-## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.29...reinhardt-testkit@v0.1.0-rc.30) - 2026-05-21
-
-### Maintenance
-
-- *(deps)* floor astral-tokio-tar to 0.6.2 (RUSTSEC-2026-0145)
-
-## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.28...reinhardt-testkit@v0.1.0-rc.29) - 2026-05-13
-
-### Added
-
-- *(testkit)* add DiOverrideBuilder + with_di_overrides! re-export
-- *(testkit,streaming)* module-scoped Kafka fixture + KafkaConfig.partitions
-
-### Changed
-
-- *(testkit-macros)* route generated paths through reinhardt-testkit
-- post-simplify-review cleanups for DI mock fixtures
-- *(testkit)* extract RequestSeedFn alias to satisfy clippy::type_complexity
-
-### Documentation
-
-- *(testing)* document DI mock fixtures and override patterns
-
-### Fixed
-
-- *(testkit)* make request_value seed the request scope and document the round-trip
-- *(ci)* unblock release-plz rc.29 CI on three pre-existing failures
-
-### Maintenance
-
-- cargo fmt after di-mock-fixtures
-
-### Added
-
-- *(testkit)* add `DiOverrideBuilder`, `DiOverrides`, `injection_context_with_di_overrides`, and re-export the `with_di_overrides!` macro from `reinhardt-testkit-macros` for ergonomic DI mocking in tests
-
-## [0.1.0-rc.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.23...reinhardt-testkit@v0.1.0-rc.24) - 2026-04-30
-
-### Changed
-
-- *(di,urls,http)* preserve path parameter insertion order through pipeline
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.19...reinhardt-testkit@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- *(mail)* fix unclosed code fence, wrong thread-safety claim, and stale versions
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.15...reinhardt-testkit@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- *(testkit)* add in-process test transport for APIClient via Handler trait
-- migrate UUID generation from v4 to v7 across entire codebase
-- *(testkit)* add with_test_di_context() for isolated parallel-safe test DI contexts
-- *(testkit)* add builder-based auth testing API
-- *(testkit)* add KafkaContainer fixture and producer/consumer integration test
-- add streaming feature to reinhardt facade and fix KafkaContainer API
-
-### Deprecated
-
-- update deprecation since version from 0.2.0 to 0.1.0-rc.16
-
-### Fixed
-
-- *(admin)* add missing SingletonScope import and fix formatting
-- *(testkit)* use random portion of UUID v7 for unique suffix
-- *(testkit)* address review feedback and CI clippy failures
-- *(testkit)* update deprecated since to 0.1.0-rc.16 and suppress internal usage warnings
-- *(docs)* use backticks for feature-gated types in testkit auth docs
-- *(testkit)* align rabbitmq image tag to pre-pulled 3-management-alpine
-- *(streaming)* address Copilot review feedback on Phase 1 PR
-- *(testkit)* update bitnami/kafka image tag from 3.7 to 3.9
-- *(pages,testkit)* add hmr feature gate to e2e tests and migrate Kafka image to apache/kafka
-- *(middleware)* propagate handler-side session ID rotation to Set-Cookie
-- *(testkit)* migrate SessionData construction to use new() to support #[non_exhaustive]
-
-### Maintenance
-
-- upgrade workspace dependencies to latest versions
-- *(testkit)* add auth-testing feature with reinhardt-auth and reinhardt-middleware optional deps
-
-### Security
-
-- *(testkit)* remove sensitive values from cookie validation panic messages
-
-### Styling
-
-- *(testkit)* fix rustfmt formatting in di.rs
-- *(testkit)* format cookie value assertion in client.rs
-
-### Testing
-
-- *(di)* register test types in global registry for Depends resolution
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.14...reinhardt-testkit@v0.1.0-rc.15) - 2026-03-29
-
-### Fixed
-
-- *(testkit)* use multi-thread runtime and install any drivers in fixture tests
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-### Testing
-
-- *(testkit)* add comprehensive tests for core utility modules
-- *(testkit)* add tests for fixture modules (server, testcontainers, resources, validator)
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.13...reinhardt-testkit@v0.1.0-rc.14) - 2026-03-24
-
-### Fixed
-
-- *(testkit)* unify PostgreSQL version, add pool close, and cleanup backoff
-- *(test)* improve test infrastructure reliability and E2E fixtures
-- *(test,testkit)* address Copilot review feedback on test infrastructure
-- *(testkit)* initialize ORM global state in postgres_with_migrations_from_dir
-- resolve CI failures and remove sea-query dependency
-
-## [0.1.0-rc.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.11...reinhardt-testkit@v0.1.0-rc.12) - 2026-03-18
-
-### Added
-
-- *(testkit)* add postgres_with_migrations_from_dir helper using FilesystemSource
-
-### Deprecated
-
-- *(testkit)* deprecate global_registry-based migration fixtures
-
-### Documentation
-
-- *(macros,testkit)* use backticks for cross-crate intra-doc links
-
-### Styling
-
-- *(testkit)* apply auto-fix formatting to fixtures re-export
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.8...reinhardt-testkit@v0.1.0-rc.9) - 2026-03-15
-
-### Styling
-
-- add explanatory comments to remaining #[allow(dead_code)] attributes
+Initial stable release of `reinhardt-testkit` as part of the
+reinhardt-web 0.1.0 release. `reinhardt-testkit` is the lower-level
+test infrastructure crate that `reinhardt-test` builds on; it owns
+the DI override machinery, the TestContainers fixtures, and the
+in-process HTTP transport used to exercise handlers without a real
+network socket.
+
+For the workspace-wide release narrative (Highlights, Breaking
+Changes, Migration Guide), see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is preserved in the
+[Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **`with_di_overrides!` & `DiOverrideBuilder`** — A typed builder
+  plus a macro re-exported from `reinhardt-testkit-macros` lets a
+  test swap a `Depends<T>` registration for a mock in one call. The
+  generated context is isolated per test via
+  `with_test_di_context()` so parallel `cargo nextest` runs do not
+  share DI state.
+- **TestContainers fixtures** — `rstest`-friendly fixtures for
+  Postgres (unified version pin, pool close, cleanup backoff),
+  Kafka (`apache/kafka` image, module-scoped, configurable
+  partitions), Redis (single + cluster), RabbitMQ, and friends.
+  `postgres_with_migrations_from_dir` loads migrations through
+  `FilesystemSource` and initialises ORM global state so a fresh
+  schema is ready before the first `await`.
+- **In-process APIClient transport** — `APIClient` can run against
+  any `Handler` directly, bypassing the network. Path parameter
+  insertion order is preserved through the DI / URLs / HTTP
+  pipeline so route matching is byte-identical to the production
+  router.
+- **Auth & session fixtures** — Builder-based auth API with JWT
+  session handling; SessionData migrated to a `new()` constructor
+  for `#[non_exhaustive]` compatibility, and handler-side session
+  rotation is reflected back in `Set-Cookie`.
+- **Cross-feature gating** — Feature flags (`testcontainers`,
+  `websockets`, `graphql`, `viewsets`, `messages`, `admin`,
+  `property-based`, `static`) keep heavy optional deps out of
+  default builds; `full` turns them all on.
+- **Security-hardened diagnostics** — Cookie validation panic
+  messages were stripped of sensitive values; floor pins on
+  `astral-tokio-tar` clear RUSTSEC-2026-0145; explanatory comments
+  document every remaining `#[allow(dead_code)]`.
+
+### Notable Breaking Changes
+
+- **`global_registry`-based migration fixtures deprecated** — They
+  remain available but emit `#[deprecated(since = "0.1.0-rc.16")]`.
+  New code should call `postgres_with_migrations_from_dir(...)`.
+
+### Migration Notes
+
+- **Adopt `with_di_overrides!`**: For DI mocking, replace
+  hand-rolled `InjectionContext` construction with
+  `with_di_overrides! { MyTrait => Arc::new(mock) }` (or the
+  builder form). This routes through
+  `injection_context_with_di_overrides`, which keeps the override
+  table isolated per test.
+- **Migrate migration fixtures**: Replace the deprecated
+  `global_registry`-based migration helpers with
+  `postgres_with_migrations_from_dir(path)`. The new helper accepts
+  a workspace-relative `CARGO_MANIFEST_DIR`-based path and avoids
+  the global-state leakage of the legacy registry.
+- **Reuse the in-process transport**: If your tests currently
+  spawn a real listener to exercise handlers, consider switching
+  to the `APIClient` in-process transport via the `Handler` trait —
+  it's faster and avoids port-binding races on CI.

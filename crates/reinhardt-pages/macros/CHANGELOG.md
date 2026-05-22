@@ -9,441 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.30...reinhardt-pages-macros@v0.1.0) - 2026-05-22
 
-### Added
-
-- *(pages)* allow dynamic expressions for img src attribute
-- *(pages-macros)* add strip_arguments to form! macro
-- *(macros)* support FromRequest extractors as #[server_fn] parameters
-- *(pages)* add JWT token management and auth header injection for WASM SPA
-- *(pages)* add autocomplete attribute support to form! macro
-- add SubmitButton support to form! macro fields
-- *(pages)* add MockableServerFn trait and macro generation under msw feature
-- Initial release of `reinhardt-pages-macros` crate
-- `page!` macro for anonymous component DSL with closure-style props
-  - Support for 70+ HTML elements with compile-time validation
-  - Event handlers using `@event: handler` syntax
-  - Conditional rendering with `if`/`else` and list rendering with `for` loops
-  - Reactive features with `watch` blocks for Signal-dependent rendering
-  - Component calls with named arguments
-  - Accessibility validation (img alt, button labels)
-  - Security validation (XSS prevention for URL attributes)
-- `head!` macro for HTML head section DSL
-  - Support for title, meta, link, script, and style elements
-  - SSR metadata injection support
-- `form!` macro for type-safe forms with reactive bindings
-  - Multiple field types: CharField, TextField, EmailField, IntegerField, etc.
-  - Widget customization: TextInput, PasswordInput, Select, RadioSelect, etc.
-  - Built-in validation (required, min/max length, pattern)
-  - Server-side and client-side validators
-  - UI state management (loading, error, success)
-  - Two-way Signal binding
-  - Computed values with `derived` block
-  - Field groups with `FieldGroup`
-  - Custom wrapper elements and SVG icon support
-  - Slots for custom content injection
-  - CSRF protection for non-GET methods
-  - Initial value loading with `initial_loader`
-  - Dynamic choice loading with `choices_loader`
-- `#[server_fn]` attribute macro for Server Functions (RPC)
-  - WASM client stub generation
-  - Server-side handler generation
-  - Custom endpoint paths
-  - Codec selection (json, url, msgpack)
-  - Dependency injection support with `#[reinhardt::inject]`
-
-### Changed
-
-- *(pages-macros)* route strip_arguments through server_fn submit
-- *(reinhardt-pages)* auto-detect #[inject] in server_fn macro
-- replace magic string with Option<Ident> for FormMacro name
-- extract duplicated form ID and action string generation
-- remove duplicate img required attribute validation
-- update references for flattened examples structure
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-- Version bump for publish workflow correction (no functional changes)
-- Internal updates (changelog entry backfilled)
-
-### Fixed
-
-- *(pages-macros)* allow form! watch handlers to capture outer locals
-- *(pages/macros)* apply HiddenField initial to signal at first render
-- *(pages-macros)* collapse nested if-let into let-chain in extract_initial_expr
-- *(pages-macros)* make form! watch handler a real closure ([[#4414](https://github.com/kent8192/reinhardt-web/issues/4414)](https://github.com/kent8192/reinhardt-web/issues/4414))
-- *(pages-macros)* let form! initial and inner watch capture outer scope
-- *(pages-macros)* lift success_url to outer scope + SPA-aware redirect
-- *(pages)* address Copilot review feedback on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
-- *(pages)* address CodeRabbit review on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
-- *(pages-macros)* hoist value-sink before on_success to avoid borrow-after-move
-- *(pages-macros)* hoist on_success_submit_invocation before navigation
-- *(pages-macros)* emit WASM marker module + drop unreachable env-var guard
-- *(pages-macros)* address Copilot review feedback on PR [[#4293](https://github.com/kent8192/reinhardt-web/issues/4293)](https://github.com/kent8192/reinhardt-web/issues/4293)
-- *(pages-macros)* reference server_fn ident on native to silence unused_imports
-- *(pages)* resolve server_fn endpoint URL with mount prefix in WASM
-- *(docs)* resolve broken intra-doc links and incorrect test assertion
-- *(pages)* add reference to endpoint variable for gloo-net Request::post
-- *(pages-macros)* inline is_safe_url to remove reinhardt-core dependency
-- *(pages)* preserve HTTP status codes for DI auth errors in server_fn
-- *(pages)* inline @event closure capture to fix move semantics
-- auto-pass CSRF token as server_fn argument in form! macro
-- suppress unused_variables warnings in form! macro codegen
-- *(admin)* switch WASM SPA to mount() rendering with scheduler init
-- WASM SPA server_fn cookie credentials, absolute URL, and CSRF fallback
-- *(ci)* add CHROMEDRIVER to WASM integration tests and fix cfg assertion
-- *(pages-macros)* resolve clippy len_zero and bool_assert_comparison warnings
-- *(test)* address Copilot review feedback on MSW module
-- *(pages)* add compile-time guard for msw cfg and re-export export_endpoints
-- *(pages)* clarify msw guard comment wording
-- *(macros)* use resolve_from_registry() in #[server_fn] for factory type compatibility
-- *(pages)* route tracing through __private re-export in server_fn macro
-- *(manouche,pages)* support standalone boolean attributes in page! macro
-- *(manouche,pages)* align boolean attribute lists with canonical definition
-- *(reinhardt-pages)* fork DI context per-request in server function macros
-- *(reinhardt-pages,reinhardt-di)* add Content-Type negotiation for server_fn and Json<T> extractor
-- *(reinhardt-pages)* address Copilot review feedback on server_fn macro
-- redact sensitive fields in DatabaseUrl debug output and remove unused variable
-- *(pages)* remove block scope around form field value bindings in codegen
-- *(meta)* fix workspace inheritance and authors metadata
-- reject non-boolean values for disabled/readonly/autofocus
-- reject whitespace in server_fn endpoint paths
-- add missing input type image and form method dialog
-- replace direct indexing with safe .first() access
-- validate img src URLs and wrapper tag names
-- add tag name allowlist for wrapper and icon elements
-- validate img src against dangerous URL schemes
-- emit compile error for unknown codec instead of silent fallback
-- replace expect() panics with compile errors in head.rs
-- fix link tag as_ attribute code generation
-- emit compile error for unsupported form-level validators
-- add required attributes to allowed_attrs for track, param, data
-- add reinhardt-manouche to workspace deps and address review comments
-
-### Security
-
-- *(macros)* redact DI error details in server_fn 500 responses
-- add URL scheme and path validation for forms and head
-
-### Documentation
-
-- *(reinhardt-pages)* update server_fn doc example paths to per-app form
-- *(pages/macros)* note example migration is a follow-up for form! paths
-- *(macros)* clarify cross-crate extract_depends_inner_type duplication
-- *(pages,forms)* clarify unified validators scope and runtime status
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-- updated the following local packages: reinhardt-manouche
-
-### Testing
-
-- add SubmitButton rendering regression tests
-- *(pages)* add FileField and ImageField coverage for typed form macro
-
-### Styling
-
-- apply cargo fmt auto-fix
-- apply auto-fix formatting
-- apply rustfmt formatting via cargo make auto-fix
-- apply rustfmt formatting
-- *(manouche,pages)* apply auto-fix formatting
-- apply rustfmt to pre-existing unformatted files
-- apply formatting to files introduced by merge from main
-
-### Reverted
-
-- undo unintended visibility and formatting changes
-
-### Other
-
-- incorporate remote on_success lift (PR [[#4624](https://github.com/kent8192/reinhardt-web/issues/4624)](https://github.com/kent8192/reinhardt-web/issues/4624) splice point)
-- resolve conflicts with main (on_success_ref + on_success lift)
-- Merge branch 'main' into refactor/extract-manouche-dsl
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-
-## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.29...reinhardt-pages-macros@v0.1.0-rc.30) - 2026-05-21
-
-### Added
-
-- *(pages)* allow dynamic expressions for img src attribute
-
-### Documentation
-
-- *(reinhardt-pages)* update server_fn doc example paths to per-app form
-- *(pages/macros)* note example migration is a follow-up for form! paths
-
-### Fixed
-
-- *(pages-macros)* allow form! watch handlers to capture outer locals
-- *(pages/macros)* apply HiddenField initial to signal at first render
-- *(pages-macros)* collapse nested if-let into let-chain in extract_initial_expr
-- *(pages-macros)* make form! watch handler a real closure ([[#4414](https://github.com/kent8192/reinhardt-web/issues/4414)](https://github.com/kent8192/reinhardt-web/issues/4414))
-- *(pages-macros)* let form! initial and inner watch capture outer scope
-- *(pages-macros)* lift success_url to outer scope + SPA-aware redirect
-- *(pages)* address Copilot review feedback on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
-- *(pages)* address CodeRabbit review on PR [[#4623](https://github.com/kent8192/reinhardt-web/issues/4623)](https://github.com/kent8192/reinhardt-web/issues/4623)
-- *(pages-macros)* hoist value-sink before on_success to avoid borrow-after-move
-- *(pages-macros)* hoist on_success_submit_invocation before navigation
-
-### Other
-
-- incorporate remote on_success lift (PR [[#4624](https://github.com/kent8192/reinhardt-web/issues/4624)](https://github.com/kent8192/reinhardt-web/issues/4624) splice point)
-- resolve conflicts with main (on_success_ref + on_success lift)
-
-## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.28...reinhardt-pages-macros@v0.1.0-rc.29) - 2026-05-13
-
-### Fixed
-
-- *(pages-macros)* emit WASM marker module + drop unreachable env-var guard
-- *(pages-macros)* address Copilot review feedback on PR [[#4293](https://github.com/kent8192/reinhardt-web/issues/4293)](https://github.com/kent8192/reinhardt-web/issues/4293)
-
-## [0.1.0-rc.26](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.25...reinhardt-pages-macros@v0.1.0-rc.26) - 2026-05-05
-
-### Fixed
-
-- *(pages-macros)* reference server_fn ident on native to silence unused_imports
-
-## [0.1.0-rc.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.21...reinhardt-pages-macros@v0.1.0-rc.22) - 2026-04-25
-
-### Added
-
-- *(pages-macros)* add strip_arguments to form! macro
-
-### Changed
-
-- *(pages-macros)* route strip_arguments through server_fn submit
-
-## [0.1.0-rc.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.17...reinhardt-pages-macros@v0.1.0-rc.18) - 2026-04-22
-
-### Added
-
-- *(macros)* support FromRequest extractors as #[server_fn] parameters
-
-### Styling
-
-- apply cargo fmt auto-fix
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.15...reinhardt-pages-macros@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- *(pages)* add JWT token management and auth header injection for WASM SPA
-- *(pages)* add autocomplete attribute support to form! macro
-- add SubmitButton support to form! macro fields
-- *(pages)* add MockableServerFn trait and macro generation under msw feature
-
-### Documentation
-
-- *(macros)* clarify cross-crate extract_depends_inner_type duplication
-- *(pages,forms)* clarify unified validators scope and runtime status
-
-### Fixed
-
-- *(pages)* resolve server_fn endpoint URL with mount prefix in WASM
-- *(docs)* resolve broken intra-doc links and incorrect test assertion
-- *(pages)* add reference to endpoint variable for gloo-net Request::post
-- *(pages-macros)* inline is_safe_url to remove reinhardt-core dependency
-- *(pages)* preserve HTTP status codes for DI auth errors in server_fn
-- *(pages)* inline @event closure capture to fix move semantics
-- auto-pass CSRF token as server_fn argument in form! macro
-- suppress unused_variables warnings in form! macro codegen
-- *(admin)* switch WASM SPA to mount() rendering with scheduler init
-- WASM SPA server_fn cookie credentials, absolute URL, and CSRF fallback
-- *(ci)* add CHROMEDRIVER to WASM integration tests and fix cfg assertion
-- *(pages-macros)* resolve clippy len_zero and bool_assert_comparison warnings
-- *(test)* address Copilot review feedback on MSW module
-- *(pages)* add compile-time guard for msw cfg and re-export export_endpoints
-- *(pages)* clarify msw guard comment wording
-- *(macros)* use resolve_from_registry() in #[server_fn] for factory type compatibility
-- *(pages)* route tracing through __private re-export in server_fn macro
-
-### Security
-
-- *(macros)* redact DI error details in server_fn 500 responses
-
-### Styling
-
-- apply auto-fix formatting
-- apply rustfmt formatting via cargo make auto-fix
-- apply rustfmt formatting
-
-### Testing
-
-- add SubmitButton rendering regression tests
-- *(pages)* add FileField and ImageField coverage for typed form macro
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.14...reinhardt-pages-macros@v0.1.0-rc.15) - 2026-03-29
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.13...reinhardt-pages-macros@v0.1.0-rc.14) - 2026-03-24
-
-### Changed
-
-- *(reinhardt-pages)* auto-detect #[inject] in server_fn macro
-
-### Fixed
-
-- *(manouche,pages)* support standalone boolean attributes in page! macro
-- *(manouche,pages)* align boolean attribute lists with canonical definition
-- *(reinhardt-pages)* fork DI context per-request in server function macros
-- *(reinhardt-pages,reinhardt-di)* add Content-Type negotiation for server_fn and Json<T> extractor
-- *(reinhardt-pages)* address Copilot review feedback on server_fn macro
-
-### Styling
-
-- *(manouche,pages)* apply auto-fix formatting
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.8...reinhardt-pages-macros@v0.1.0-rc.9) - 2026-03-15
-
-### Fixed
-
-- redact sensitive fields in DatabaseUrl debug output and remove unused variable
-
-## [0.1.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.6...reinhardt-pages-macros@v0.1.0-rc.7) - 2026-03-11
-
-### Fixed
-
-- *(pages)* remove block scope around form field value bindings in codegen
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.1...reinhardt-pages-macros@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(meta)* fix workspace inheritance and authors metadata
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.9...reinhardt-pages-macros@v0.1.0-rc.1) - 2026-02-23
-
-### Maintenance
-
-- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.8...reinhardt-pages-macros@v0.1.0-alpha.9) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-manouche
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.7...reinhardt-pages-macros@v0.1.0-alpha.8) - 2026-02-21
-
-### Fixed
-
-- reject non-boolean values for disabled/readonly/autofocus
-- reject whitespace in server_fn endpoint paths
-- add missing input type image and form method dialog
-- replace direct indexing with safe .first() access
-- validate img src URLs and wrapper tag names
-- add tag name allowlist for wrapper and icon elements
-- validate img src against dangerous URL schemes
-- emit compile error for unknown codec instead of silent fallback
-- replace expect() panics with compile errors in head.rs
-- fix link tag as_ attribute code generation
-- emit compile error for unsupported form-level validators
-- add required attributes to allowed_attrs for track, param, data
-
-### Security
-
-- add URL scheme and path validation for forms and head
-
-### Changed
-
-- replace magic string with Option<Ident> for FormMacro name
-- extract duplicated form ID and action string generation
-- remove duplicate img required attribute validation
-
-### Styling
-
-- apply rustfmt to pre-existing unformatted files
-- apply formatting to files introduced by merge from main
-
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.6...reinhardt-pages-macros@v0.1.0-alpha.7) - 2026-02-16
-
-### Changed
-
-- update references for flattened examples structure
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.5...reinhardt-pages-macros@v0.1.0-alpha.6) - 2026-02-12
-
-### Changed
-
-- convert relative paths to absolute paths
-- restore single-level super:: paths preserved by convention
-
-### Reverted
-
-- undo unintended visibility and formatting changes
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.4...reinhardt-pages-macros@v0.1.0-alpha.5) - 2026-02-05
-
-### Fixed
-
-- add reinhardt-manouche to workspace deps and address review comments
-
-### Other
-
-- Merge branch 'main' into refactor/extract-manouche-dsl
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.3...reinhardt-pages-macros@v0.1.0-alpha.4) - 2026-02-03
-
-### Other
-
-- merge main into chore/release-plz-migration
-- add release-plz migration markers to CHANGELOGs
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.3] - 2026-01-30
-
-### Changed
-
-- Version bump for publish workflow correction (no functional changes)
-
-
-## [0.1.0-alpha.2] - 2026-01-29
-
-### Changed
-
-- Internal updates (changelog entry backfilled)
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial release of `reinhardt-pages-macros` crate
-- `page!` macro for anonymous component DSL with closure-style props
-  - Support for 70+ HTML elements with compile-time validation
-  - Event handlers using `@event: handler` syntax
-  - Conditional rendering with `if`/`else` and list rendering with `for` loops
-  - Reactive features with `watch` blocks for Signal-dependent rendering
-  - Component calls with named arguments
-  - Accessibility validation (img alt, button labels)
-  - Security validation (XSS prevention for URL attributes)
-- `head!` macro for HTML head section DSL
-  - Support for title, meta, link, script, and style elements
-  - SSR metadata injection support
-- `form!` macro for type-safe forms with reactive bindings
-  - Multiple field types: CharField, TextField, EmailField, IntegerField, etc.
-  - Widget customization: TextInput, PasswordInput, Select, RadioSelect, etc.
-  - Built-in validation (required, min/max length, pattern)
-  - Server-side and client-side validators
-  - UI state management (loading, error, success)
-  - Two-way Signal binding
-  - Computed values with `derived` block
-  - Field groups with `FieldGroup`
-  - Custom wrapper elements and SVG icon support
-  - Slots for custom content injection
-  - CSRF protection for non-GET methods
-  - Initial value loading with `initial_loader`
-  - Dynamic choice loading with `choices_loader`
-- `#[server_fn]` attribute macro for Server Functions (RPC)
-  - WASM client stub generation
-  - Server-side handler generation
-  - Custom endpoint paths
-  - Codec selection (json, url, msgpack)
-  - Dependency injection support with `#[reinhardt::inject]`
-
+Initial stable release of `reinhardt-pages-macros` as part of the
+reinhardt-web 0.1.0 release. This crate provides the procedural
+macros that back `reinhardt-pages`: the `page!`, `head!`, and
+`form!` declarative DSLs, plus the `#[server_fn]` attribute macro
+that emits matched WASM client stubs and server-side handlers.
+
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **`page!` macro** — anonymous component DSL with closure-style
+  props, 70+ HTML elements validated at compile time, `@event:
+  handler` syntax, `if`/`else`/`for` control flow, `watch` blocks
+  for `Signal<T>`-driven re-rendering, dynamic expressions for
+  `img src`, and accessibility / XSS validation at expansion time.
+- **`head!` macro** — title, meta, link, script, and style
+  elements for SSR head metadata injection.
+- **`form!` macro** — typed form fields (`CharField`, `EmailField`,
+  `IntegerField`, `FileField`, `ImageField`, `SubmitButton`, …),
+  widget customization, server / client validators, `derived`
+  computed values, `FieldGroup`, custom wrapper and SVG icon
+  elements, slots, two-way `Signal` binding, CSRF protection,
+  `initial_loader`, dynamic `choices_loader`, `autocomplete`
+  attribute, and `strip_arguments` for downstream `server_fn`
+  shaping.
+- **`#[server_fn]` attribute macro** — WASM client stub plus
+  server-side handler, custom endpoint paths, codec selection
+  (`json` / `url` / `msgpack`), `#[reinhardt::inject]` parameter
+  auto-detection, `FromRequest` extractor support, per-request DI
+  context forking, and DI error → HTTP status mapping (with
+  redacted 500 bodies).
+- **MSW-style mocking (`msw` feature)** — generates a
+  `MockableServerFn` trait per `#[server_fn]` so tests can stub
+  RPC endpoints with the same typed surface they see in
+  production.
+- **Closure-lift pipeline** — `form! { on_success: |value: T|
+  ... }` closures with explicit type annotations lift to the
+  outer scope so the body can capture enclosing locals (e.g., a
+  `qid` route parameter); `success_url:` and inner `watch`
+  closures observe the same lift semantics. Unannotated closures
+  keep the historical inline emit.
+
+### Notable Breaking Changes
+
+- **`form! on_success:` lift requires `Send + Sync`** ([#4623](https://github.com/kent8192/reinhardt-web/issues/4623), [#4624](https://github.com/kent8192/reinhardt-web/issues/4624)) — type-annotated `on_success: |value: T| ...` closures are now lifted to the outer construction block and therefore must be `Send + Sync`; unannotated closures (`|value|`, `|_value|`) are unaffected.
+- **`#[export_endpoints]` removed in favour of `define_views!` / `flatten_imports!`** ([#3768](https://github.com/kent8192/reinhardt-web/discussions/3768), [#3783](https://github.com/kent8192/reinhardt-web/discussions/3783)) — multi-file view modules use the renamed declarative macro for stable-Rust compatibility.
+- **`is_safe_url` inlined into `pages-macros`** — the macro no longer pulls in `reinhardt-core` as a dependency; downstream code that imported the helper through this crate should source it from `reinhardt-core` directly.
+
+### Migration Notes
+
+- Annotate `on_success` closure parameters with explicit types
+  (`|value: T| ...`) when you need to capture enclosing-scope
+  locals from `form!` bodies; ensure captured types are `Send +
+  Sync`.
+- Replace any `#[export_endpoints]` attribute usage with the
+  `define_views!` / `flatten_imports!` declarative macro from
+  `reinhardt-pages`.
+- For the workspace-wide migration narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).

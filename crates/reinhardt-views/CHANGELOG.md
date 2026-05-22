@@ -9,323 +9,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.30...reinhardt-views@v0.1.0) - 2026-05-22
 
-### Breaking Changes
-
-- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
-
-### Changed
-
-- *(views)* split viewsets/handler.rs by responsibility ([[#4313](https://github.com/kent8192/reinhardt-web/issues/4313)](https://github.com/kent8192/reinhardt-web/issues/4313))
-- *(views)* address Copilot review feedback on PR [[#4340](https://github.com/kent8192/reinhardt-web/issues/4340)](https://github.com/kent8192/reinhardt-web/issues/4340)
-- *(views)* add From<ViewError> for core exception Error
-- *(views,middleware)* extract PATCH merge helper and use typed SET_COOKIE header
-
-### Fixed
-
-- *(macros)* emit runtime action registration from #[viewset] impl-form
-- *(views)* dedupe actions in bridge_marker_actions_to_viewset
-- *(ci)* resolve SemVer and docs.rs failures on rc.29 branch
-- *(views)* wire ModelViewSet dispatch through real CRUD handler ([[#3985](https://github.com/kent8192/reinhardt-web/issues/3985)](https://github.com/kent8192/reinhardt-web/issues/3985))
-- *(views)* preserve UnwindSafe auto traits on viewset/generic public types
-- suppress deprecated User trait warnings in downstream crates
-- *(views)* use actual total count for pagination instead of page length
-- use saturating arithmetic for pagination overflow safety
-- *(views)* determine partial update from HTTP method, not config field
-- *(views)* return 405 instead of 400 for unsupported HTTP methods
-- *(views)* reject non-object PATCH body with 400 Bad Request
-- *(views)* replace unwrap with safe alternatives for panic prevention
-- *(views)* replace panics with error handling and add poison logging
-- merge main and resolve CI issues
-- *(views)* replace std RwLock with parking_lot to prevent poisoning panics
-- *(views)* add RefUnwindSafe impl for ViewSetHandler
-- *(views)* remove unsafe keyword from RefUnwindSafe impl
-- replace Box::leak with Arc to prevent memory leak
-- escape user input to prevent XSS
-- *(views)* move tests to integration crate to break circular publish chain
-- *(release)* revert unpublished crate versions to pre-release state
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-- *(http)* fix type name and API inaccuracies across HTTP crate READMEs
-- update version references in crate READMEs to 0.1.0-rc.9
-
-### Maintenance
-
-- *(views,urls)* drive-by fmt + clippy fixes for clean workspace lint
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-- *(testing)* add insta snapshot testing dependency across all crates
-- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest
-- updated the following local packages: reinhardt-query, reinhardt-core, reinhardt-http, reinhardt-di, reinhardt-db, reinhardt-auth, reinhardt-utils, reinhardt-rest
-- updated the following local packages: reinhardt-query, reinhardt-db, reinhardt-auth, reinhardt-rest
-- updated the following local packages: reinhardt-query, reinhardt-rest, reinhardt-db, reinhardt-auth
-- updated the following local packages: reinhardt-auth, reinhardt-rest
-- updated the following local packages: reinhardt-core, reinhardt-utils, reinhardt-db, reinhardt-auth, reinhardt-http, reinhardt-di, reinhardt-rest
-
-### Testing
-
-- *(views)* update doctests and lib tests to use Model-implementing types
-- *(views)* add response body verification to viewset routing tests
-
-### Styling
-
-- apply rustfmt and page! macro formatting
-- apply formatting to migrated test files and modified source files
-
-### Reverted
-
-- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
-
-### Other
-
-- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-rest, reinhardt-db, reinhardt-db, reinhardt-auth
-- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-utils, reinhardt-di, reinhardt-db, reinhardt-db, reinhardt-auth, reinhardt-rest
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- *(package)* replace version.workspace with explicit versions
-
-## [0.1.0-rc.30](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.29...reinhardt-views@v0.1.0-rc.30) - 2026-05-21
-
-### Fixed
-
-- *(macros)* emit runtime action registration from #[viewset] impl-form
-- *(views)* dedupe actions in bridge_marker_actions_to_viewset
-
-### Maintenance
-
-- *(views,urls)* drive-by fmt + clippy fixes for clean workspace lint
-
-## [0.1.0-rc.29](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.28...reinhardt-views@v0.1.0-rc.29) - 2026-05-13
-
-### Changed
-
-- *(views)* split viewsets/handler.rs by responsibility ([[#4313](https://github.com/kent8192/reinhardt-web/issues/4313)](https://github.com/kent8192/reinhardt-web/issues/4313))
-- *(views)* address Copilot review feedback on PR [[#4340](https://github.com/kent8192/reinhardt-web/issues/4340)](https://github.com/kent8192/reinhardt-web/issues/4340)
-
-### Fixed
-
-- *(ci)* resolve SemVer and docs.rs failures on rc.29 branch
-
-## [0.1.0-rc.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.22...reinhardt-views@v0.1.0-rc.23) - 2026-04-29
-
-### Changed
-
-- *(views)* add From<ViewError> for core exception Error
-
-### Fixed
-
-- *(views)* wire ModelViewSet dispatch through real CRUD handler ([[#3985](https://github.com/kent8192/reinhardt-web/issues/3985)](https://github.com/kent8192/reinhardt-web/issues/3985))
-- *(views)* preserve UnwindSafe auto traits on viewset/generic public types
-
-### Testing
-
-- *(views)* update doctests and lib tests to use Model-implementing types
-
-## [0.1.0-rc.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.20...reinhardt-views@v0.1.0-rc.21) - 2026-04-23
-
-### Documentation
-
-- add reinhardt-version-sync markers to all crate READMEs
-
-## [0.1.0-rc.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.19...reinhardt-views@v0.1.0-rc.20) - 2026-04-23
-
-### Documentation
-
-- *(http)* fix type name and API inaccuracies across HTTP crate READMEs
-
-## [0.1.0-rc.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.15...reinhardt-views@v0.1.0-rc.16) - 2026-04-20
-
-### Added
-
-- *(di)* [**breaking**] deprecate Injected<T> in favor of Depends<T> and remove auto-Clone
-
-### Styling
-
-- apply rustfmt and page! macro formatting
-
-### Testing
-
-- *(views)* add response body verification to viewset routing tests
-
-## [0.1.0-rc.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.14...reinhardt-views@v0.1.0-rc.15) - 2026-03-29
-
-### Fixed
-
-- suppress deprecated User trait warnings in downstream crates
-
-### Maintenance
-
-- update rust toolchain to 1.94.1 and set MSRV 1.94.0
-
-## [0.1.0-rc.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.13...reinhardt-views@v0.1.0-rc.14) - 2026-03-24
-
-### Changed
-
-- *(views,middleware)* extract PATCH merge helper and use typed SET_COOKIE header
-
-### Fixed
-
-- *(views)* use actual total count for pagination instead of page length
-- use saturating arithmetic for pagination overflow safety
-- *(views)* determine partial update from HTTP method, not config field
-- *(views)* return 405 instead of 400 for unsupported HTTP methods
-- *(views)* reject non-object PATCH body with 400 Bad Request
-
-## [0.1.0-rc.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.9...reinhardt-views@v0.1.0-rc.10) - 2026-03-15
-
-### Documentation
-
-- update version references in crate READMEs to 0.1.0-rc.9
-
-## [0.1.0-rc.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.8...reinhardt-views@v0.1.0-rc.9) - 2026-03-15
-
-### Fixed
-
-- *(views)* replace unwrap with safe alternatives for panic prevention
-- *(views)* replace panics with error handling and add poison logging
-
-## [0.1.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.4...reinhardt-views@v0.1.0-rc.5) - 2026-03-07
-
-### Fixed
-
-- merge main and resolve CI issues
-
-## [0.1.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.1...reinhardt-views@v0.1.0-rc.2) - 2026-03-04
-
-### Fixed
-
-- *(views)* replace std RwLock with parking_lot to prevent poisoning panics
-- *(views)* add RefUnwindSafe impl for ViewSetHandler
-- *(views)* remove unsafe keyword from RefUnwindSafe impl
-
-### Maintenance
-
-- *(testing)* add insta snapshot testing dependency across all crates
-
-## [0.1.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.15...reinhardt-views@v0.1.0-rc.1) - 2026-02-24
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest
-
-## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.14...reinhardt-views@v0.1.0-alpha.15) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-core, reinhardt-http, reinhardt-di, reinhardt-db, reinhardt-auth, reinhardt-utils, reinhardt-rest
-
-## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.13...reinhardt-views@v0.1.0-alpha.14) - 2026-02-23
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-db, reinhardt-auth, reinhardt-rest
-
-## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.12...reinhardt-views@v0.1.0-alpha.13) - 2026-02-21
-
-### Fixed
-
-- replace Box::leak with Arc to prevent memory leak
-- escape user input to prevent XSS
-
-## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.11...reinhardt-views@v0.1.0-alpha.12) - 2026-02-16
-
-### Maintenance
-
-- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest
-
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.10...reinhardt-views@v0.1.0-alpha.11) - 2026-02-15
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-rest, reinhardt-db, reinhardt-auth
-
-## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.9...reinhardt-views@v0.1.0-alpha.10) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-auth, reinhardt-rest
-
-## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.8...reinhardt-views@v0.1.0-alpha.9) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-db, reinhardt-auth, reinhardt-rest
-
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.7...reinhardt-views@v0.1.0-alpha.8) - 2026-02-14
-
-### Maintenance
-
-- updated the following local packages: reinhardt-query, reinhardt-db, reinhardt-auth, reinhardt-rest
-
-## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.5...reinhardt-views@v0.1.0-alpha.6) - 2026-02-12
-
-### Maintenance
-
-- updated the following local packages: reinhardt-core, reinhardt-utils, reinhardt-db, reinhardt-auth, reinhardt-http, reinhardt-di, reinhardt-rest
-
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.4...reinhardt-views@v0.1.0-alpha.5) - 2026-02-10
-
-### Fixed
-
-- *(views)* move tests to integration crate to break circular publish chain
-- *(release)* revert unpublished crate versions to pre-release state
-
-### Reverted
-
-- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
-
-### Styling
-
-- apply formatting to migrated test files and modified source files
-
-## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.3...reinhardt-views@v0.1.0-alpha.4) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-rest, reinhardt-db, reinhardt-db, reinhardt-auth
-
-## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.2...reinhardt-views@v0.1.0-alpha.3) - 2026-02-03
-
-### Other
-
-- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-utils, reinhardt-di, reinhardt-db, reinhardt-db, reinhardt-auth, reinhardt-rest
-
-## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.1...reinhardt-views@v0.1.0-alpha.2) - 2026-02-03
-
-### Other
-
-- add release-plz migration markers to CHANGELOGs
-- *(changelog)* remove obsolete [0.1.0] sections
-- *(changelog)* add missing 0.1.0-alpha.1 release entries
-- *(package)* replace version.workspace with explicit versions
-- N/A
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-
-<!-- release-plz-separator -->
-<!-- Entries below this line were created before release-plz adoption -->
-
-## [0.1.0-alpha.1] - 2026-01-23
-
-### Added
-
-- Initial crates.io release
-
+Initial stable release of `reinhardt-views` as part of the
+reinhardt-web 0.1.0 release. Provides the view helpers, ViewSet
+handlers, response builders, and pagination plumbing that sit above
+`reinhardt-rest` and `reinhardt-urls`.
+
+For the workspace-wide release narrative, see the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22).
+Per-prerelease history is in the [Release Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+
+### Capabilities at 0.1.0
+
+- **ViewSet handler dispatch** — `ModelViewSet` dispatches through a
+  real CRUD handler (resolves [#3985](https://github.com/kent8192/reinhardt-web/issues/3985)),
+  `viewsets/handler` is split by responsibility for legibility, and
+  runtime action registration is emitted from the `#[viewset]`
+  impl-form. Marker actions are bridged into the ViewSet so manual
+  wiring is not needed.
+- **HTTP-correct method handling** — Partial updates are inferred from
+  the HTTP method (not a config field), unsupported methods return
+  `405 Method Not Allowed` (not `400`), and non-object PATCH bodies
+  are rejected with `400 Bad Request`.
+- **Safe pagination** — Total count uses the actual row count rather
+  than the page length, and pagination arithmetic saturates to
+  prevent overflow under adversarial input.
+- **Auto-trait preservation** — Public types on the ViewSet path
+  preserve `UnwindSafe` / `RefUnwindSafe` so panic-in-handler crashes
+  isolate cleanly; `parking_lot::RwLock` replaces `std::sync::RwLock`
+  so the dispatcher never panics on poisoning.
+- **Error model integration** — `From<ViewError> for core::Error`
+  bridges view errors into the framework-wide exception type, and
+  `(views, middleware)` share a PATCH-merge helper that uses the typed
+  `SET_COOKIE` header.
+- **`define_views!` declarative macro** — Multi-file view modules use
+  `define_views!` (renamed later to `flatten_imports!`) for
+  stable-Rust compatibility, replacing the removed `#[export_endpoints]`
+  attribute form ([Discussion #3768](https://github.com/kent8192/reinhardt-web/discussions/3768)).
+
+### Notable Breaking Changes
+
+- **`Injected<T>` deprecated** ([Discussion #3631](https://github.com/kent8192/reinhardt-web/discussions/3631))
+  — `Depends<T>` replaces `Injected<T>` in view handlers; the
+  auto-`Clone` bound is removed.
+- **`define_views!` replaces `#[export_endpoints]`** ([Discussion #3768](https://github.com/kent8192/reinhardt-web/discussions/3768))
+  — Multi-file view modules must use the declarative macro.
+
+### Migration Notes
+
+This is the first stable release. See the [root CHANGELOG](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md#010---2026-05-22)
+for the cross-crate migration guide; for view-specific moves, follow
+Discussions [#3631](https://github.com/kent8192/reinhardt-web/discussions/3631)
+and [#3768](https://github.com/kent8192/reinhardt-web/discussions/3768).
