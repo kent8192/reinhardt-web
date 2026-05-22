@@ -5,7 +5,7 @@
 //! This crate provides the fundamental authentication abstractions used throughout
 //! Reinhardt. It includes:
 //!
-//! - **User traits**: `User`, `BaseUser`, `FullUser` for representing authenticated users
+//! - **User traits**: `BaseUser`, `FullUser` for representing authenticated users
 //! - **Permission system**: `Permission` trait and common permission classes
 //! - **Authentication backends**: `AuthBackend` trait for custom authentication
 //! - **Password hashing**: `PasswordHasher` trait and Argon2 implementation
@@ -18,22 +18,41 @@
 //!
 //! ### Basic User Implementation
 //!
-//! ```
-//! use reinhardt_auth::core::{User, SimpleUser};
+//! Implement `BaseUser` and `FullUser` on a custom struct:
+//!
+//! ```no_run
+//! use reinhardt_auth::core::{BaseUser, FullUser, PasswordHasher};
 //! use uuid::Uuid;
+//! use chrono::{DateTime, Utc};
 //!
-//! let user = SimpleUser {
-//!     id: Uuid::now_v7(),
-//!     username: "alice".to_string(),
-//!     email: "alice@example.com".to_string(),
-//!     is_active: true,
-//!     is_admin: false,
-//!     is_staff: false,
-//!     is_superuser: false,
-//! };
-//!
-//! assert!(user.is_authenticated());
-//! assert_eq!(user.username(), "alice");
+//! # #[cfg(feature = "argon2-hasher")]
+//! # use reinhardt_auth::core::Argon2Hasher;
+//! # use serde::{Serialize, Deserialize};
+//! # #[derive(Serialize, Deserialize)]
+//! # struct MyUser { id: Uuid, username: String, email: String,
+//! #     first_name: String, last_name: String, password_hash: Option<String>,
+//! #     last_login: Option<DateTime<Utc>>, is_active: bool, is_staff: bool,
+//! #     is_superuser: bool, date_joined: DateTime<Utc> }
+//! # #[cfg(feature = "argon2-hasher")]
+//! # impl BaseUser for MyUser {
+//! #     type PrimaryKey = Uuid; type Hasher = Argon2Hasher;
+//! #     fn get_username_field() -> &'static str { "username" }
+//! #     fn get_username(&self) -> &str { &self.username }
+//! #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
+//! #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
+//! #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
+//! #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
+//! #     fn is_active(&self) -> bool { self.is_active }
+//! # }
+//! # impl FullUser for MyUser {
+//! #     fn username(&self) -> &str { &self.username }
+//! #     fn email(&self) -> &str { &self.email }
+//! #     fn first_name(&self) -> &str { &self.first_name }
+//! #     fn last_name(&self) -> &str { &self.last_name }
+//! #     fn is_staff(&self) -> bool { self.is_staff }
+//! #     fn is_superuser(&self) -> bool { self.is_superuser }
+//! #     fn date_joined(&self) -> DateTime<Utc> { self.date_joined }
+//! # }
 //! ```
 //!
 //! ### Custom User with Password Hashing

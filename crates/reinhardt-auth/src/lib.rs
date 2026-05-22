@@ -33,7 +33,6 @@
 //!
 //! - [`core`]: Authentication traits, user types, permission classes, and password hashing
 //! - [`sessions`]: Session backends (JWT, database, Redis, cookie, file)
-//! - [`current_user`]: Dependency-injectable `CurrentUser` extractor
 //! - `social` (feature-gated): OAuth2/OpenID Connect social authentication providers
 //! - `user_management`: CRUD operations for users and groups
 //!
@@ -41,7 +40,7 @@
 //!
 //! | Feature | Default | Description |
 //! |---------|---------|-------------|
-//! | `params` | enabled | `CurrentUser` parameter extraction via DI |
+//! | `params` | enabled | Parameter extraction via DI |
 //! | `jwt` | disabled | JWT-based authentication backend |
 //! | `sessions` | disabled | Session-based authentication |
 //! | `oauth` | disabled | OAuth2 authorization code flow |
