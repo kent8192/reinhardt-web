@@ -18,7 +18,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```no_run
 //! use reinhardt_urls::routers::client_router::from_request::{
 //!     ExtractError, FromRequest, PathParam, RouteContext,
 //! };
@@ -253,38 +253,40 @@ fn parse_query(query: &str, key: &str) -> Option<String> {
 /// necessary.
 fn url_decode(s: &str) -> String {
 	let bytes = s.as_bytes();
-	let mut out = String::with_capacity(bytes.len());
+	let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
 	let mut i = 0;
 	while i < bytes.len() {
 		match bytes[i] {
 			b'+' => {
-				out.push(' ');
+				out.push(b' ');
 				i += 1;
 			}
 			b'%' if i + 2 < bytes.len() => {
 				if let (Some(h), Some(l)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
-					out.push((h * 16 + l) as char);
+					out.push(h * 16 + l);
 					i += 3;
 				} else {
 					// Invalid escape — emit the `%` and continue scanning
 					// from the next byte so trailing characters are
 					// preserved literally.
-					out.push('%');
+					out.push(b'%');
 					i += 1;
 				}
 			}
 			b'%' => {
 				// Trailing `%` with fewer than 2 hex digits — emit literal.
-				out.push('%');
+				out.push(b'%');
 				i += 1;
 			}
 			b => {
-				out.push(b as char);
+				out.push(b);
 				i += 1;
 			}
 		}
 	}
-	out
+	String::from_utf8(out).unwrap_or_else(|e| {
+		String::from_utf8_lossy(&e.into_bytes()).into_owned()
+	})
 }
 
 fn hex_digit(b: u8) -> Option<u8> {
