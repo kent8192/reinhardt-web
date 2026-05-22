@@ -94,19 +94,19 @@
 //!
 //! The fixture system is designed to be compatible with Django fixtures:
 //!
-//! - [`FixtureRecord`](fixtures::FixtureRecord) - Single fixture record with model ID, pk, and fields
-//! - [`FixtureFormat`](fixtures::FixtureFormat) - Supported formats (JSON, YAML)
-//! - [`FixtureParser`](fixtures::FixtureParser) - Parse fixture files
-//! - [`FixtureLoader`](fixtures::FixtureLoader) - Load fixtures into database
+//! - [`FixtureRecord`] - Single fixture record with model ID, pk, and fields
+//! - [`FixtureFormat`] - Supported formats (JSON, YAML)
+//! - [`FixtureParser`] - Parse fixture files
+//! - [`FixtureLoader`] - Load fixtures into database
 //! - [`FixtureSerializer`](fixtures::FixtureSerializer) - Serialize data to fixtures
 //!
 //! ## Factory System
 //!
 //! The factory system is inspired by Factory Boy:
 //!
-//! - [`Factory`](factory::Factory) trait - Core factory interface
-//! - [`FakerType`](factory::FakerType) - Fake data generators
-//! - [`Sequence`](factory::Sequence) - Auto-incrementing values
+//! - [`Factory`] trait - Core factory interface
+//! - [`FakerType`] - Fake data generators
+//! - [`Sequence`] - Auto-incrementing values
 //! - [`FactoryBuilder`](factory::FactoryBuilder) - Fluent factory configuration
 //!
 //! ## Commands
