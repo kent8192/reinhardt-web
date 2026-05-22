@@ -264,9 +264,9 @@ pub fn polls_detail(question_id: i64) -> Page {
 	};
 
 	// Bridge load_detail results to form choices via use_effect.
-	// TODO(#4195 follow-up): swap to Action's phase Signal once exposed.
 	{
 		let load_detail_for_effect = load_detail.clone();
+		let load_detail_dep = load_detail.clone();
 		let voting_form_for_effect = voting_form.clone();
 		use_effect(
 			move || {
@@ -281,7 +281,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 				}
 				None::<fn()>
 			},
-			(),
+			(load_detail_dep,),
 		);
 	}
 
@@ -827,9 +827,9 @@ pub fn question_edit(question_id: i64) -> Page {
 	};
 
 	// Prefill the question_text input once the load_detail action resolves.
-	// TODO(#4195 follow-up): swap to Action's phase Signal once exposed.
 	{
 		let load_detail_for_effect = load_detail.clone();
+		let load_detail_dep = load_detail.clone();
 		let edit_form_for_effect = edit_form.clone();
 		use_effect(
 			move || {
@@ -840,7 +840,7 @@ pub fn question_edit(question_id: i64) -> Page {
 				}
 				None::<fn()>
 			},
-			(),
+			(load_detail_dep,),
 		);
 	}
 

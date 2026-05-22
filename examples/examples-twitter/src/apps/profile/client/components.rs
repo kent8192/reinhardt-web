@@ -320,15 +320,12 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 	// Bridge loaded profile data to form fields
 	{
 		let load_profile_for_effect = load_profile.clone();
+		let load_profile_dep = load_profile.clone();
 		let avatar_url_signal = profile_form.avatar_url().clone();
 		let bio_signal = profile_form.bio().clone();
 		let location_signal = profile_form.location().clone();
 		let website_signal = profile_form.website().clone();
 
-		// TODO(#4195 follow-up): once Action exposes its phase Signal, pass it
-		// as the dep so this effect re-runs only on load_profile.result()
-		// transition. For the example surface, `()` is acceptable — the
-		// dispatch fires once at mount.
 		use_effect(
 			move || {
 				if let Some(profile_data) = load_profile_for_effect.result() {
@@ -339,7 +336,7 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 				}
 				None::<fn()>
 			},
-			(),
+			(load_profile_dep,),
 		);
 	}
 

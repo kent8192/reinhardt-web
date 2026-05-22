@@ -56,11 +56,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 		{
 			let toggle_follow_for_effect = toggle_follow.clone();
 			let is_following_for_effect = is_following.clone();
-			// TODO(#4195 follow-up): once Action exposes its phase Signal,
-			// pass it as the dep so this effect re-runs on is_success()
-			// transition. For now `()` keeps the example compiling — the
-			// reset path is exercised on the very next render, not
-			// reactively (acceptable for the example surface).
+			let toggle_follow_dep = toggle_follow.clone();
 			use_effect(
 				move || {
 					if toggle_follow_for_effect.is_success() {
@@ -70,7 +66,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 					}
 					None::<fn()>
 				},
-				(),
+				(toggle_follow_dep,),
 			);
 		}
 
