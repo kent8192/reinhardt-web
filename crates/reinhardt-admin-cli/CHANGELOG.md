@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `reinhardt-admin migrate-manouche-v2 [PATH]` subcommand applying the
+  Manouche v1 → v2 codemod (spec §6.1 + §6.2). Available as `cargo make
+  migrate-manouche-v2`. Supports `--dry-run` and `--skip <rule>`. Rules:
+  `bare_ident`, `watch_unwrap`, `use_effect_deps`, `component_props`.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.30...reinhardt-admin-cli@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-admin-cli` as part of the
