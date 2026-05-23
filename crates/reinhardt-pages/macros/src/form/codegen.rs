@@ -3123,12 +3123,18 @@ fn type_is_string(ty: &syn::Type) -> bool {
 	if let syn::Type::Path(type_path) = ty
 		&& type_path.qself.is_none()
 	{
-		return type_path
-			.path
-			.segments
-			.last()
-			.map(|seg| seg.ident == "String")
-			.unwrap_or(false);
+		let segs = &type_path.path.segments;
+		if segs.len() == 1 {
+			return segs[0].ident == "String";
+		}
+		// std::string::String (or ::std::string::String)
+		if segs.len() == 3
+			&& segs[0].ident == "std"
+			&& segs[1].ident == "string"
+			&& segs[2].ident == "String"
+		{
+			return true;
+		}
 	}
 	false
 }
