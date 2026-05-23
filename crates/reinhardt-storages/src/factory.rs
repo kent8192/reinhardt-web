@@ -28,6 +28,7 @@ use std::sync::Arc;
 ///     Ok(())
 /// }
 /// ```
+#[allow(clippy::todo)] // GCS and Azure backends not yet implemented (Phase 2)
 pub async fn create_storage(config: StorageConfig) -> Result<Arc<dyn StorageBackend>> {
 	match config {
 		#[cfg(feature = "s3")]

@@ -32,6 +32,8 @@ mod ast_formatter;
 mod formatter;
 mod utils;
 
+use reinhardt_admin_cli::migrate_v2;
+
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -247,6 +249,9 @@ enum Commands {
 		#[arg(long)]
 		backup: bool,
 	},
+
+	/// Migrate Manouche v1 source files to v2 grammar (spec §6.1 + §6.2).
+	MigrateManoucheV2(migrate_v2::MigrateV2Args),
 }
 
 /// Plugin management subcommands
@@ -461,6 +466,13 @@ async fn main() {
 			backup,
 			cli.verbosity,
 		),
+		Commands::MigrateManoucheV2(args) => {
+			if let Err(e) = migrate_v2::run(args) {
+				eprintln!("{}", format!("error: {e}").red());
+				process::exit(1);
+			}
+			Ok(())
+		}
 	};
 
 	if let Err(e) = result {

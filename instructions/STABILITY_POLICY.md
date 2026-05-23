@@ -704,7 +704,6 @@ During the RC phase:
 Automated SemVer checking is performed on every pull request targeting `main` using [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks).
 
 - **CI workflow**: `.github/workflows/semver-check.yml` reports any detected SemVer violations before code is merged.
-- **Local mirror**: `cargo make semver-check` mirrors the CI workflow and MUST be run before converting a Draft PR to Ready for Review on any PR touching public API (see `instructions/PR_GUIDELINE.md` § RP-1a).
 - **Audit trail**: A full breaking change audit is maintained at `docs/breaking-change-audit.md`.
 
 ---
@@ -737,6 +736,7 @@ Automated SemVer checking is performed on every pull request targeting `main` us
 - Trigger `release-plz-promote.yml` (`workflow_dispatch`) after merging `develop/m.n.l` into `main` to graduate the prerelease suffix to stable (DBR-3)
 
 ### NEVER DO
+- Use `#[cfg(any())]` as a substitute for deleting deprecated code — deprecated code MUST be deleted entirely, not hidden behind an always-false cfg gate
 - Regress from RC back to alpha
 - Add new public APIs during the RC phase without SP-6 approval
 - Add unapproved `feat:` commits during the RC phase (SP-6-approved additions may use `feat:`)
