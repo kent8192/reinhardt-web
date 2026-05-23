@@ -29,7 +29,8 @@ mod tests {
 	/// Build a request whose extensions carry the active `Arc<InjectionContext>`
 	/// (so `req.get_di_context::<InjectionContext>()` returns it) and an
 	/// optional session cookie that `SessionData::inject` will resolve from
-	/// the singleton-scoped `Arc<SessionStore>`.
+	/// the singleton-scoped `SessionStore` (keyed under
+	/// `TypeId::of::<SessionStore>()` post-#4437).
 	fn build_request_with_session(
 		store: Arc<SessionStore>,
 		session_cookie: Option<&str>,
@@ -62,7 +63,10 @@ mod tests {
 		let request = build();
 
 		let singleton: Arc<SingletonScope> = Arc::new(SingletonScope::new());
-		singleton.set::<Arc<SessionStore>>(store);
+		// Post-#4437: store registered under TypeId::of::<SessionStore>() via
+		// set_arc (no double-Arc envelope), matching what SessionMiddleware
+		// contributes through `di_registrations()` in production.
+		singleton.set_arc(store);
 
 		// Mirror what `RouterMiddleware` does in production: seed the
 		// request scope so `SessionData::inject` can pull the live request.

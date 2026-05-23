@@ -190,12 +190,12 @@ fn dashboard_view() -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "dashboard-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// Dashboard view component for router (non-WASM fallback)
@@ -298,12 +298,12 @@ fn list_view_component(model_name: String) -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "list-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// List view component for router (non-WASM fallback)
@@ -371,12 +371,12 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "detail-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// Detail view component for router (non-WASM fallback)
@@ -426,12 +426,12 @@ fn create_view_component(model_name: String) -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "form-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// Create form view component for router (non-WASM fallback)
@@ -523,12 +523,12 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "form-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// Edit form view component for router (non-WASM fallback)
@@ -565,7 +565,7 @@ fn not_found_view() -> Page {
 		.class("admin-btn admin-btn-primary")
 		.render();
 
-	page!(|| {
+	page!(|dashboard_link: Page| {
 		div {
 			class: "not-found text-center py-16 animate__animated animate__fadeIn",
 			h1 {
@@ -580,7 +580,7 @@ fn not_found_view() -> Page {
 				{ dashboard_link }
 			}
 		}
-	})()
+	})(dashboard_link)
 }
 
 /// Loading view component
@@ -633,7 +633,7 @@ fn error_view(message: &str) -> Page {
 		.class("admin-btn admin-btn-primary")
 		.render();
 
-	page!(|| {
+	page!(|message: String, dashboard_link: Page| {
 		div {
 			class: "admin-alert admin-alert-danger mt-8 animate__animated animate__shakeX",
 			role: "alert",
@@ -647,7 +647,7 @@ fn error_view(message: &str) -> Page {
 			}
 			{ dashboard_link }
 		}
-	})()
+	})(message, dashboard_link)
 }
 
 /// Initialize the admin router

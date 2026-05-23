@@ -7,9 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: `page!` macro now unconditionally wraps every `{expr}` and
+  every `if` / `for` / `match` control-flow block in `Page::reactive(move || ...)`.
+  Helper-routed Signal reads (`{helper(&signal)}`) re-render correctly without
+  any opt-in. Spec §4.1. Resolves #4515.
+- **BREAKING**: `page!` body identifiers must be declared in the closure
+  parameter list. Implicit captures of outer Signal bindings are a hard
+  compile error. Spec §3.7. Migration: pass the binding as a closure param
+  or qualify free function calls with `self::` so the path is multi-segment.
+
 ### Removed
 
-#### BREAKING CHANGES
+- **BREAKING**: `watch { ... }` block is removed. The body of `watch` can be
+  inlined as-is; the new auto-wrap subsumes it. The validator emits a
+  pointer at the `cargo make migrate-manouche-v2` codemod when it sees a
+  surviving `watch` block.
+
+#### BREAKING CHANGES — Router Relocation Cleanup
 
 **First of two PRs** removing reinhardt-pages's 16 RC-deprecated items per
 STABILITY_POLICY § SP-4 (umbrella Issue
@@ -20,7 +36,7 @@ items (App struct, launcher legacy, use_reducer migration, MSW
 migration, CSRF auto-inject) require selective Edit and ship in
 the follow-up `feat(pages)!:` PR.
 
-Removed in this PR (8 items via `#![cfg(any())]` module gating):
+Removed in this PR (8 items):
 
 - **`src/router/core.rs`** (6 items, all deprecated `0.1.0-rc.27`,
   refs #4234 / cloud#578) — `PathError`, `RouterError`,
@@ -32,12 +48,14 @@ Removed in this PR (8 items via `#![cfg(any())]` module gating):
 - **`src/router/params.rs`** (1 item, `0.1.0-rc.27`) — `Path` extractor.
   Use `reinhardt_urls::routers::Path`.
 
-The three `router/*` modules are gated with `#![cfg(any())]` so they
-no longer compile; this preserves git blame readability for one
-release. A subsequent cleanup PR can delete the files outright.
-
 ### Added
 
+- `pub trait Trackable` in `reinhardt-pages::reactive` (re-exported as
+  `reinhardt_pages::reactive::Trackable`). Implemented for `Signal<T>` and
+  `Memo<T>`; consumed by the new auto-wrap visitor and the upcoming hook
+  deps-tuple machinery (#4195).
+- `NodeId::as_u64()` accessor in `reinhardt-core` so external callers (such
+  as `Trackable::signal_id`) can obtain the underlying counter value.
 - New `Component { prop: val, @event: handler, child_element { ... } }`
   invocation syntax inside `page!` bodies. Components are functions
   matching `fn <name>(props: <NameProps>) -> Page` where `<NameProps>`

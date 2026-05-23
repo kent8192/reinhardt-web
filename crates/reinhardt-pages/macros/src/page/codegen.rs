@@ -131,13 +131,28 @@ fn generate_nodes(nodes: &[TypedPageNode], pages_crate: &TokenStream) -> TokenSt
 }
 
 /// Generates code for a single node.
+///
+/// Spec §4.1 unconditional auto-wrap: every `{expr}` and every `if` / `for`
+/// control-flow expression is wrapped in `Page::reactive(move || ...)` at
+/// codegen time. The wrap is the single point of truth so reactive reads
+/// inside helper-routed Signals (#4515) "just work" without a static
+/// detection step.
 fn generate_node(node: &TypedPageNode, pages_crate: &TokenStream) -> TokenStream {
 	match node {
 		TypedPageNode::Element(elem) => generate_element(elem, pages_crate),
 		TypedPageNode::Text(text) => generate_text(text, pages_crate),
-		TypedPageNode::Expression(expr) => generate_expression(expr, pages_crate),
-		TypedPageNode::If(if_node) => generate_if(if_node, pages_crate),
-		TypedPageNode::For(for_node) => generate_for(for_node, pages_crate),
+		TypedPageNode::Expression(expr) => {
+			let inner = generate_expression(expr, pages_crate);
+			wrap_reactive(inner, pages_crate)
+		}
+		TypedPageNode::If(if_node) => {
+			let inner = generate_if(if_node, pages_crate);
+			wrap_reactive(inner, pages_crate)
+		}
+		TypedPageNode::For(for_node) => {
+			let inner = generate_for(for_node, pages_crate);
+			wrap_reactive(inner, pages_crate)
+		}
 		TypedPageNode::Component(comp) => generate_component(comp, pages_crate),
 		TypedPageNode::Watch(watch_node) => generate_watch(watch_node, pages_crate),
 	}
@@ -456,16 +471,24 @@ fn generate_event(event: &PageEvent, pages_crate: &TokenStream) -> TokenStream {
 }
 
 /// Generates code for a child node (used in .child() calls).
+///
+/// Spec §4.1 unconditional auto-wrap: child `{expr}` / control-flow nodes
+/// are routed through `generate_node` so they pick up the
+/// `Page::reactive(move || ...)` wrap. Text and bare literals stay
+/// uninstrumented for performance.
+///
+/// Note: passing pre-built non-`Clone` `Page` values as `page!` parameters
+/// and then re-emitting them via `{ value }` will fail to compile under
+/// this rule because the inner `Page::reactive` closure must be `Fn` and
+/// `IntoPage::into_page` consumes the value. Compose such values inline
+/// from their underlying data (or pass them in via a `Clone`able wrapper
+/// once Page-Clone lands) instead.
 fn generate_child(node: &TypedPageNode, pages_crate: &TokenStream) -> TokenStream {
 	match node {
 		TypedPageNode::Text(text) => {
 			// Create a proper string literal token
 			let lit = LitStr::new(&text.content, Span::call_site());
 			quote!(#lit)
-		}
-		TypedPageNode::Expression(expr) => {
-			let e = &expr.expr;
-			quote!(#e)
 		}
 		_ => generate_node(node, pages_crate),
 	}
@@ -481,10 +504,18 @@ fn generate_text(text: &PageText, pages_crate: &TokenStream) -> TokenStream {
 }
 
 /// Generates code for an expression node.
+///
+/// The expression is cloned before conversion so the enclosing
+/// `Page::reactive(move || ...)` (spec §4.1 auto-wrap) remains `Fn` even
+/// when the captured value would otherwise be consumed by
+/// `IntoPage::into_page`. `Page` is `Clone` (cheap, Arc-backed), so this
+/// is a constant-time clone for the common case. For values that already
+/// borrow (e.g. `count.get()` returning `i32`), the redundant `.clone()`
+/// on the owned result is a no-op.
 fn generate_expression(expr: &PageExpression, pages_crate: &TokenStream) -> TokenStream {
 	let e = &expr.expr;
 	quote! {
-		#pages_crate::component::IntoPage::into_page(#e)
+		#pages_crate::component::IntoPage::into_page((#e).clone())
 	}
 }
 
@@ -592,10 +623,18 @@ fn generate_for(for_node: &TypedPageFor, pages_crate: &TokenStream) -> TokenStre
 /// ```
 fn generate_watch(watch_node: &TypedPageWatch, pages_crate: &TokenStream) -> TokenStream {
 	let inner_expr = generate_node(&watch_node.expr, pages_crate);
+	wrap_reactive(inner_expr, pages_crate)
+}
 
+/// Wraps a generated TokenStream in `Page::reactive(move || ...)`.
+///
+/// This is the single point of truth for spec §4.1 auto-wrap. Used by
+/// `generate_expression`, `generate_if`, `generate_for`, and (kept for
+/// backward compat) `generate_watch`.
+fn wrap_reactive(inner: TokenStream, pages_crate: &TokenStream) -> TokenStream {
 	quote! {
 		#pages_crate::component::Page::reactive(move || {
-			#inner_expr
+			#inner
 		})
 	}
 }
