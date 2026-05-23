@@ -1,8 +1,6 @@
 //! `SessionMiddleware`: cookie parsing, store wiring, and `Set-Cookie` writeback.
 
 use async_trait::async_trait;
-#[allow(deprecated)]
-use reinhardt_conf::Settings;
 use reinhardt_http::{Handler, Middleware, MiddlewareDiRegistration, Request, Response, Result};
 use std::any::TypeId;
 use std::sync::Arc;
@@ -74,24 +72,6 @@ impl SessionMiddleware {
 			config,
 			store: Arc::new(SessionStore::new()),
 		}
-	}
-
-	/// Create a `SessionMiddleware` from application `Settings`
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::Settings;
-	/// use reinhardt_middleware::session::SessionMiddleware;
-	///
-	/// #[allow(deprecated)]
-	/// let settings = Settings::default();
-	/// #[allow(deprecated)]
-	/// let middleware = SessionMiddleware::from_settings(&settings);
-	/// ```
-	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
-	pub fn from_settings(settings: &Settings) -> Self {
-		Self::new(SessionConfig::from_settings(settings))
 	}
 
 	/// Create with default configuration

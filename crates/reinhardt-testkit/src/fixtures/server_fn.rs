@@ -25,7 +25,9 @@
 //!     test_admin: TestUser,
 //! ) {
 //!     let ctx = ServerFnTestContext::new(singleton_scope)
-//!         .with_authenticated_user(test_admin)
+//!         .auth()
+//!             .session(&test_admin)
+//!         .done()
 //!         .build();
 //!
 //!     // Test your server function here

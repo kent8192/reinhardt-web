@@ -112,8 +112,7 @@ pub use reinhardt_http::{Request, Response, StreamBody, StreamingResponse};
 
 // Re-export from reinhardt-conf (native-only: pulls in tokio runtime).
 #[cfg(native)]
-#[allow(deprecated)]
-pub use reinhardt_conf::settings::{DatabaseConfig, MiddlewareConfig, Settings, TemplateConfig};
+pub use reinhardt_conf::settings::{DatabaseConfig, MiddlewareConfig, TemplateConfig};
 
 // Re-export from reinhardt-core::exception (cross-target).
 pub use reinhardt_core::exception::{Error, Result};
