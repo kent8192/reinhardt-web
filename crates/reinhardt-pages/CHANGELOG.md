@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `Component { prop: val, @event: handler, child_element { ... } }`
+  invocation syntax inside `page!` bodies. Components are functions
+  matching `fn <name>(props: <NameProps>) -> Page` where `<NameProps>`
+  derives `bon::Builder`. The legacy positional form
+  `{component_fn(args)}` continues to work unchanged. Spec §3.5.
+- `bon` added as a `reinhardt-pages` runtime dependency. Staged for
+  removal under spec §10 once `#[derive(PageProps)]` /
+  `#[component]` proc-macros take over the prop-struct generation.
 - `reinhardt_pages::router::request` submodule re-exports the
   Manouche DSL v2 spec §4.3 `FromRequest` building blocks
   (`FromRequest`, `RouteContext`, `ExtractError`, `PathParam<T>`,
