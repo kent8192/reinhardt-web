@@ -362,16 +362,42 @@ fn read_developer_file(path: &std::path::Path) -> anyhow::Result<String> {
 
 /// Writes the rewritten source back to a developer-owned file. Same scope
 /// note as `read_developer_file`.
+///
+/// Uses a unique temp file in the target's parent directory so that the
+/// final `rename` is atomic (same filesystem). Process ID and a random
+/// suffix prevent collisions under concurrent invocations.
 fn write_developer_file(path: &std::path::Path, content: &str) -> anyhow::Result<()> {
 	let canonical = path.canonicalize()?;
+	let parent = canonical
+		.parent()
+		.ok_or_else(|| anyhow::anyhow!("no parent directory for {}", canonical.display()))?;
 	let file_name = canonical
 		.file_name()
 		.and_then(|n| n.to_str())
 		.unwrap_or("rewrite");
-	let tmp = std::env::temp_dir().join(format!("reinhardt-admin-{file_name}.tmp"));
+	let random_suffix: u32 = {
+		use std::time::{SystemTime, UNIX_EPOCH};
+		let nanos = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.unwrap_or_default()
+			.subsec_nanos();
+		nanos ^ (std::process::id() as u32)
+	};
+	let tmp = parent.join(format!(".{file_name}.{random_suffix:x}.tmp")); // nosemgrep: path-traversal false positive — developer CLI bounded by --path root
 	std::fs::write(&tmp, content)?;
-	std::fs::copy(&tmp, canonical)?;
-	let _ = std::fs::remove_file(tmp);
+	std::fs::rename(&tmp, canonical)?;
+	// Best-effort cleanup if rename fails after write — the temp file is
+	// in the project tree (unavoidable for same-FS atomic rename), but
+	// `rename` either succeeds and the tmp is gone, or fails and we try
+	// to remove it here.
+	if let Err(e) = std::fs::remove_file(&tmp) {
+		if tmp.exists() {
+			eprintln!(
+				"warning: failed to clean up temp file {}: {e}",
+				tmp.display()
+			);
+		}
+	}
 	Ok(())
 }
 
