@@ -24,8 +24,9 @@ use quote::ToTokens;
 use regex::Regex;
 use reinhardt_pages::ast::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
-	PageIf, PageMacro, PageNode, PageParam, PageText,
+	PageIf, PageMacro, PageNode, PageParam, PageText, PageWatch,
 };
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::LazyLock;
@@ -111,6 +112,8 @@ struct MacroInfo {
 	tokens: proc_macro2::TokenStream,
 	/// Whether this macro should be skipped during formatting
 	should_skip: bool,
+	/// Original source text the tokens were parsed from (for span-based blank line detection)
+	original_text: String,
 }
 
 /// Backup information for a protected page! macro.
@@ -211,6 +214,7 @@ impl<'a> PageMacroVisitor<'a> {
 						end: end_pos + 1, // Include closing paren
 						tokens,
 						should_skip: false,
+						original_text: macro_content.to_string(),
 					});
 				}
 			}
@@ -681,7 +685,7 @@ impl AstPageFormatter {
 			let base_indent = Self::calculate_base_indent(content, macro_info.start);
 
 			// Try to parse and format the macro
-			match self.format_macro_tokens(&macro_info.tokens, base_indent) {
+			match self.format_macro_tokens(&macro_info.tokens, &macro_info.original_text, base_indent) {
 				Ok(formatted) => {
 					result.push_str("page!(");
 					result.push_str(&formatted);
@@ -751,6 +755,7 @@ impl AstPageFormatter {
 						end: end_pos + 1,
 						tokens,
 						should_skip: false,
+						original_text: macro_content.to_string(),
 					});
 				}
 
@@ -828,18 +833,61 @@ impl AstPageFormatter {
 		in_string || in_line_comment || in_block_comment
 	}
 
+	/// Extract the span from a PageNode.
+	fn node_span(node: &PageNode) -> proc_macro2::Span {
+		match node {
+			PageNode::Element(e) => e.span,
+			PageNode::Text(t) => t.span,
+			PageNode::Expression(e) => e.span,
+			PageNode::If(i) => i.span,
+			PageNode::For(f) => f.span,
+			PageNode::Component(c) => c.span,
+			PageNode::Watch(w) => w.span,
+		}
+	}
+
+	/// Detect node indices after which a blank line should be inserted.
+	///
+	/// Examines the original source text between adjacent nodes in the body.
+	/// When `\n\n` appears between the end of node i and the start of node i+1,
+	/// index i is added to the returned set.
+	fn detect_blank_lines_between_nodes(body: &PageBody, original_text: &str) -> BTreeSet<usize> {
+		let mut blanks = BTreeSet::new();
+		let bytes = original_text.as_bytes();
+
+		for i in 0..body.nodes.len().saturating_sub(1) {
+			let end_pos = Self::node_span(&body.nodes[i]).end();
+			let start_pos = Self::node_span(&body.nodes[i + 1]).start();
+
+			if end_pos >= bytes.len() || start_pos > bytes.len() || start_pos <= end_pos {
+				continue;
+			}
+
+			let between = &bytes[end_pos..start_pos];
+			if between.windows(2).any(|w| w == b"\n\n") {
+				blanks.insert(i);
+			}
+		}
+
+		blanks
+	}
+
 	/// Format macro tokens to formatted string.
 	fn format_macro_tokens(
 		&self,
 		tokens: &proc_macro2::TokenStream,
+		original_text: &str,
 		base_indent: usize,
 	) -> Result<String, String> {
 		// Parse tokens as PageMacro
 		let page_macro: PageMacro =
 			syn::parse2(tokens.clone()).map_err(|e| format!("Parse error: {}", e))?;
 
+		// Detect blank lines between nodes in original source
+		let blank_lines = Self::detect_blank_lines_between_nodes(&page_macro.body, original_text);
+
 		// Format the macro
-		self.format_page_macro(&page_macro, base_indent)
+		self.format_page_macro(&page_macro, base_indent, &blank_lines)
 	}
 
 	/// Check if a page macro body is simple and can be formatted on a single line.
@@ -858,11 +906,8 @@ impl AstPageFormatter {
 		&self,
 		macro_ast: &PageMacro,
 		base_indent: usize,
+		blank_lines: &BTreeSet<usize>,
 	) -> Result<String, String> {
-		let mut output = String::new();
-
-		// Format closure parameters
-		self.format_params(&mut output, &macro_ast.params);
 
 		// Check if body is simple enough for single-line format
 		if Self::is_simple_body(&macro_ast.body) {
@@ -876,7 +921,7 @@ impl AstPageFormatter {
 		} else {
 			// Multi-line format
 			output.push_str(" {\n");
-			self.format_body(&mut output, &macro_ast.body, base_indent + 1, 0);
+			self.format_body(&mut output, &macro_ast.body, base_indent + 1, 0, blank_lines);
 			output.push_str(&self.make_indent(base_indent));
 			output.push('}');
 		}
@@ -912,9 +957,12 @@ impl AstPageFormatter {
 	}
 
 	/// Format the page body.
-	fn format_body(&self, output: &mut String, body: &PageBody, indent: usize, depth: usize) {
-		for node in &body.nodes {
+	fn format_body(&self, output: &mut String, body: &PageBody, indent: usize, depth: usize, blank_lines: &BTreeSet<usize>) {
+		for (i, node) in body.nodes.iter().enumerate() {
 			self.format_node(output, node, indent, depth);
+			if blank_lines.contains(&i) {
+				output.push('\n');
+			}
 		}
 	}
 
@@ -1835,7 +1883,7 @@ impl AstPageFormatter {
 			.filter(|c| *c == '\t')
 			.count();
 
-		let formatted = self.format_macro_tokens(&tokens, base_indent).ok()?;
+		let formatted = self.format_macro_tokens(&tokens, inner, base_indent).ok()?;
 		Some(format!("page!({})", formatted))
 	}
 }
@@ -3469,5 +3517,53 @@ fn main() {
 			result.content,
 			"page!(|items: Vec<Item>| {\n\tdiv class=\"list\" {\n\t\tfor item in items {\n\t\t\tdiv class=\"card\" {\n\t\t\t\t{ View::fragment(item.tags.iter().map(|tag| { let t = tag.clone(); page!(|t: String| { span class=\"tag\" { { t } } })(t) }).collect::<Vec<_>>()) }\n\t\t\t}\n\t\t}\n\t}\n})(items)"
 		);
+
+	}
+
+	#[rstest]
+	fn test_blank_line_preserved_between_elements() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "page!(|| {\n    div { \"first\" }\n\n    div { \"second\" }\n})";
+
+		// Act
+		let result = formatter.format(input).unwrap();
+
+		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
+		assert!(
+			result.content.contains("\n\n"),
+			"blank line should be preserved, got: {:?}",
+			result.content
+		);
+	}
+
+	#[rstest]
+	fn test_no_blank_lines_added_when_not_in_original() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = "page!(|| {\n    div { \"first\" }\n    div { \"second\" }\n})";
+
+		// Act
+		let result = formatter.format(input).unwrap();
+
+		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
+		let blank_line_count = result.content.as_bytes().windows(2).filter(|w| *w == b"\n\n").count();
+		assert_eq!(blank_line_count, 0, "no blank lines should be added, got: {:?}", result.content);
+	}
+
+	#[rstest]
+	fn test_blank_line_not_added_for_single_element() {
+		// Arrange: single bare element - no blank line possible since only one node
+		let formatter = AstPageFormatter::new();
+		let input = "page!(|| {\n    div { \"only\" }\n})";
+
+		// Act
+		let result = formatter.format(input).unwrap();
+
+		// Assert
+		assert!(result.skipped.is_none(), "formatting should not be skipped");
+		assert!(result.content.contains("div"), "should contain the element");
 	}
 }
