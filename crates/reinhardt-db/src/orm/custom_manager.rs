@@ -125,7 +125,7 @@ use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::cte::CTE;
 use super::manager::Manager;
 use super::model::Model;
-use super::query::{Filter, FilterOperator, FilterValue, QuerySet};
+use super::query::{Filter, QuerySet};
 
 /// Trait that exposes the full surface area of an object manager and provides
 /// extension hooks for custom behavior.
@@ -167,19 +167,13 @@ pub trait CustomManager: Sized + Send + Sync {
 		Manager::<Self::Model>::new().all()
 	}
 
-	/// Filter records by field, operator, and value.
-	fn filter<F: Into<String>>(
-		&self,
-		field: F,
-		operator: FilterOperator,
-		value: FilterValue,
-	) -> QuerySet<Self::Model> {
-		Manager::<Self::Model>::new().filter(field, operator, value)
-	}
-
-	/// Filter records by a `Filter` object (Django-style chain).
-	fn filter_by(&self, filter: Filter) -> QuerySet<Self::Model> {
-		Manager::<Self::Model>::new().filter_by(filter)
+	/// Filter records by a typed filter expression.
+	///
+	/// Accepts any value convertible into [`Filter`]. See
+	/// [`Manager::filter`] for the recommended fluent builder form
+	/// (`Model::field_x().eq(value)`).
+	fn filter(&self, filter: impl Into<Filter>) -> QuerySet<Self::Model> {
+		Manager::<Self::Model>::new().filter(filter)
 	}
 
 	/// Get a single record by primary key (returns a `QuerySet` for chaining).
