@@ -66,7 +66,7 @@ pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
 	let site_name = site_name.to_string();
 	let grid = models_grid(models);
 
-	page!(|| {
+	page!(|site_name: String, grid: Page| {
 		div {
 			class: "dashboard animate__animated animate__fadeIn",
 			h1 {
@@ -75,7 +75,7 @@ pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
 			}
 			{ grid }
 		}
-	})()
+	})(site_name, grid)
 }
 
 /// Generates a grid of model cards
@@ -94,12 +94,12 @@ fn models_grid(models: &[ModelInfo]) -> Page {
 		.map(|model| model_card(&model.name, &model.list_url))
 		.collect();
 
-	page!(|| {
+	page!(|card_views: Vec<Page>| {
 		div {
 			class: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4",
 			{ card_views }
 		}
-	})()
+	})(card_views)
 }
 
 /// Generates a single model card
@@ -107,17 +107,18 @@ fn model_card(name: &str, url: &str) -> Page {
 	let name = name.to_string();
 	let url = url.to_string();
 	let label = format!("View {}", &name);
+	let manage_text = format!("Manage {} records", &name);
 
-	page!(|| {
+	page!(|name: String, url: String, label: String, manage_text: String| {
 		div {
 			class: "admin-card p-5 flex flex-col animate__animated animate__fadeInUp",
 			h3 {
 				class: "font-display text-lg font-bold text-slate-900 mb-1",
-				{ name.clone() }
+				{ name }
 			}
 			p {
 				class: "text-sm text-slate-500 mb-4 flex-1",
-				{ format!("Manage {} records", name) }
+				{ manage_text }
 			}
 			a {
 				class: "admin-btn admin-btn-primary text-center",
@@ -125,7 +126,7 @@ fn model_card(name: &str, url: &str) -> Page {
 				{ label }
 			}
 		}
-	})()
+	})(name, url, label, manage_text)
 }
 
 /// Column definition for list view
@@ -200,7 +201,7 @@ pub fn list_view(
 	let pagination_page =
 		crate::pages::components::common::pagination(current_page_signal, data.total_pages);
 
-	page!(|| {
+	page!(|title: String, filters_page: Page, summary: String, table_page: Page, pagination_page: Page| {
 		div {
 			class: "list-view animate__animated animate__fadeIn",
 			h1 {
@@ -215,7 +216,7 @@ pub fn list_view(
 			{ table_page }
 			{ pagination_page }
 		}
-	})()
+	})(title, filters_page, summary, table_page, pagination_page)
 }
 
 /// Generates a data table
@@ -228,11 +229,11 @@ fn data_table(
 		.iter()
 		.map(|col| {
 			let label = col.label.clone();
-			page!(|| {
+			page!(|label: String| {
 				th {
 					{ label }
 				}
-			})()
+			})(label)
 		})
 		.chain(std::iter::once(page!(|| {
 			th {
@@ -241,26 +242,26 @@ fn data_table(
 		})()))
 		.collect();
 
-	let thead = page!(|| {
+	let thead = page!(|header_cells: Vec<Page>| {
 		thead {
 			tr {
 				{ header_cells }
 			}
 		}
-	})();
+	})(header_cells);
 
 	let body_rows: Vec<Page> = records
 		.iter()
 		.map(|record| table_row(columns, record, model_name))
 		.collect();
 
-	let tbody = page!(|| {
+	let tbody = page!(|body_rows: Vec<Page>| {
 		tbody {
 			{ body_rows }
 		}
-	})();
+	})(body_rows);
 
-	page!(|| {
+	page!(|thead: Page, tbody: Page| {
 		div {
 			class: "overflow-x-auto rounded-lg border border-slate-200",
 			table {
@@ -269,7 +270,7 @@ fn data_table(
 				{ tbody }
 			}
 		}
-	})()
+	})(thead, tbody)
 }
 
 /// Generates a table row for a single record
@@ -285,28 +286,28 @@ fn table_row(
 				.get(&col.field)
 				.cloned()
 				.unwrap_or_else(|| "-".to_string());
-			page!(|| {
+			page!(|value: String| {
 				td {
 					{ value }
 				}
-			})()
+			})(value)
 		})
 		.collect();
 
 	let record_id = record.get("id").cloned().unwrap_or_else(|| "0".to_string());
 	let actions = action_buttons(model_name, &record_id);
-	let actions_cell = page!(|| {
+	let actions_cell = page!(|actions: Page| {
 		td {
 			{ actions }
 		}
-	})();
+	})(actions);
 
-	page!(|| {
+	page!(|data_cells: Vec<Page>, actions_cell: Page| {
 		tr {
 			{ data_cells }
 			{ actions_cell }
 		}
-	})()
+	})(data_cells, actions_cell)
 }
 
 /// Generates action buttons for a record
@@ -326,13 +327,13 @@ fn action_buttons(model_name: &str, record_id: &str) -> Page {
 		.class("admin-btn admin-btn-outline admin-btn-sm")
 		.render();
 
-	page!(|| {
+	page!(|view_link: Page, edit_link: Page| {
 		div {
 			class: "flex gap-1",
 			{ view_link }
 			{ edit_link }
 		}
-	})()
+	})(view_link, edit_link)
 }
 
 /// Form field definition for model forms
@@ -387,7 +388,7 @@ pub fn detail_view(
 		.class("admin-btn admin-btn-secondary")
 		.render();
 
-	page!(|| {
+	page!(|title: String, table_page: Page, edit_link: Page, back_link: Page| {
 		div {
 			class: "detail-view animate__animated animate__fadeIn",
 			h1 {
@@ -401,7 +402,7 @@ pub fn detail_view(
 				{ back_link }
 			}
 		}
-	})()
+	})(title, table_page, edit_link, back_link)
 }
 
 /// Generates a detail table for record fields
@@ -414,7 +415,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 		.map(|(key, value)| {
 			let key = key.clone();
 			let value = value.clone();
-			page!(|| {
+			page!(|key: String, value: String| {
 				tr {
 					th {
 						class: "w-1/4 text-left text-sm font-medium text-slate-500 py-3 px-4 bg-slate-50",
@@ -425,11 +426,11 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 						{ value }
 					}
 				}
-			})()
+			})(key, value)
 		})
 		.collect();
 
-	page!(|| {
+	page!(|rows: Vec<Page>| {
 		div {
 			class: "overflow-x-auto rounded-lg border border-slate-200",
 			table {
@@ -439,7 +440,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 				}
 			}
 		}
-	})()
+	})(rows)
 }
 
 /// Model form component
@@ -492,17 +493,17 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 	);
 
 	let form_fields: Vec<Page> = fields.iter().map(form_group).collect();
-	let form_groups = page!(|| {
+	let form_groups = page!(|form_fields: Vec<Page>| {
 		div {
 			class: "admin-card p-6",
 			{ form_fields }
 		}
-	})();
+	})(form_fields);
 	let cancel_link = Link::new(list_url, "Cancel")
 		.class("admin-btn admin-btn-secondary")
 		.render();
 
-	page!(|| {
+	page!(|form_title: String, action_url: String, form_groups: Page, cancel_link: Page| {
 		div {
 			class: "model-form max-w-2xl animate__animated animate__fadeIn",
 			h1 {
@@ -524,7 +525,7 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 				}
 			}
 		}
-	})()
+	})(form_title, action_url, form_groups, cancel_link)
 }
 
 /// Generates a form group (label + input) for a field
@@ -533,7 +534,7 @@ fn form_group(field: &FormField) -> Page {
 	let label = field.label.clone();
 	let input = form_element(field, &input_id);
 
-	page!(|| {
+	page!(|input_id: String, label: String, input: Page| {
 		div {
 			class: "mb-4",
 			label {
@@ -543,7 +544,7 @@ fn form_group(field: &FormField) -> Page {
 			}
 			{ input }
 		}
-	})()
+	})(input_id, label, input)
 }
 
 /// Render `<option>` elements for a list of `(value, label)` choices,
@@ -560,20 +561,20 @@ fn render_option_elements(choices: &[(String, String)], selected: &[&str]) -> Ve
 			let label = label.clone();
 			let is_selected = selected.iter().any(|s| *s == value);
 			if is_selected {
-				page!(|| {
+				page!(|value: String, label: String| {
 					option {
 						value: value,
 						selected: true,
 						{ label }
 					}
-				})()
+				})(value, label)
 			} else {
-				page!(|| {
+				page!(|value: String, label: String| {
 					option {
 						value: value,
 						{ label }
 					}
-				})()
+				})(value, label)
 			}
 		})
 		.collect()
@@ -608,7 +609,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 		}
 		FormFieldSpec::TextArea => {
 			if required {
-				page!(|| {
+				page!(|input_id: String, name: String, value: String| {
 					textarea {
 						class: "admin-input",
 						id: input_id,
@@ -617,9 +618,9 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						autocomplete: "off",
 						{ value }
 					}
-				})()
+				})(input_id, name, value)
 			} else {
-				page!(|| {
+				page!(|input_id: String, name: String, value: String| {
 					textarea {
 						class: "admin-input",
 						id: input_id,
@@ -627,13 +628,13 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						autocomplete: "off",
 						{ value }
 					}
-				})()
+				})(input_id, name, value)
 			}
 		}
 		FormFieldSpec::Select { choices } => {
 			let options = render_option_elements(choices, &[value.as_str()]);
 			if required {
-				page!(|| {
+				page!(|input_id: String, name: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
@@ -641,23 +642,23 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						required: true,
 						{ options }
 					}
-				})()
+				})(input_id, name, options)
 			} else {
-				page!(|| {
+				page!(|input_id: String, name: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
 						name: name,
 						{ options }
 					}
-				})()
+				})(input_id, name, options)
 			}
 		}
 		FormFieldSpec::MultiSelect { choices } => {
 			let selected = parse_multi_value(&value);
 			let options = render_option_elements(choices, &selected);
 			if required {
-				page!(|| {
+				page!(|input_id: String, name: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
@@ -666,9 +667,9 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						required: true,
 						{ options }
 					}
-				})()
+				})(input_id, name, options)
 			} else {
-				page!(|| {
+				page!(|input_id: String, name: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
@@ -676,7 +677,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						multiple: true,
 						{ options }
 					}
-				})()
+				})(input_id, name, options)
 			}
 		}
 	}
@@ -691,7 +692,7 @@ fn render_input(
 	required: bool,
 ) -> Page {
 	if required {
-		page!(|| {
+		page!(|html_type: String, input_id: String, name: String, value: String| {
 			input {
 				class: "admin-input",
 				type: html_type,
@@ -701,9 +702,9 @@ fn render_input(
 				required: true,
 				autocomplete: "off",
 			}
-		})()
+		})(html_type, input_id, name, value)
 	} else {
-		page!(|| {
+		page!(|html_type: String, input_id: String, name: String, value: String| {
 			input {
 				class: "admin-input",
 				type: html_type,
@@ -712,7 +713,7 @@ fn render_input(
 				value: value,
 				autocomplete: "off",
 			}
-		})()
+		})(html_type, input_id, name, value)
 	}
 }
 
@@ -769,31 +770,31 @@ fn create_filter_select(
 			let value = value.clone();
 			let label = label.clone();
 			if value == current_val {
-				page!(|| {
+				page!(|value: String, label: String| {
 					option {
 						value: value,
 						selected: true,
 						{ label }
 					}
-				})()
+				})(value, label)
 			} else {
-				page!(|| {
+				page!(|value: String, label: String| {
 					option {
 						value: value,
 						{ label }
 					}
-				})()
+				})(value, label)
 			}
 		})
 		.collect();
-	let options_container = page!(|| {
+	let options_container = page!(|options: Vec<Page>| {
 		span {
 			{ options }
 		}
-	})();
+	})(options);
 	let field_str = field.to_string();
 
-	page!(|field_str: String, _filters_signal: Signal<HashMap<String, String>>| {
+	page!(|field_str: String, _filters_signal: Signal<HashMap<String, String>>, options_container: Page| {
 		select {
 			class: "admin-select",
 			data_filter_field: field_str.clone(),
@@ -815,7 +816,7 @@ fn create_filter_select(
 					},
 			{ options_container }
 		}
-	})(field_str, filters_signal)
+	})(field_str, filters_signal, options_container)
 }
 
 /// Create filter control (label + select)
@@ -834,7 +835,7 @@ fn create_filter_control(
 		filters_signal,
 	);
 
-	page!(|| {
+	page!(|label: String, select: Page| {
 		div {
 			class: "min-w-48",
 			label {
@@ -843,7 +844,7 @@ fn create_filter_control(
 			}
 			{ select }
 		}
-	})()
+	})(label, select)
 }
 
 /// Filters component
@@ -888,14 +889,14 @@ pub fn filters(
 		})
 		.collect();
 
-	let filter_controls = page!(|| {
+	let filter_controls = page!(|filter_controls: Vec<Page>| {
 		div {
 			class: "flex flex-wrap gap-4",
 			{ filter_controls }
 		}
-	})();
+	})(filter_controls);
 
-	page!(|| {
+	page!(|filter_controls: Page| {
 		div {
 			class: "admin-card p-4 mb-4",
 			h5 {
@@ -904,7 +905,7 @@ pub fn filters(
 			}
 			{ filter_controls }
 		}
-	})()
+	})(filter_controls)
 }
 
 #[cfg(test)]
