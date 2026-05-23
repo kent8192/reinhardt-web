@@ -385,18 +385,9 @@ fn write_developer_file(path: &std::path::Path, content: &str) -> anyhow::Result
 	};
 	let tmp = parent.join(format!(".{file_name}.{random_suffix:x}.tmp")); // nosemgrep: path-traversal false positive — developer CLI bounded by --path root
 	std::fs::write(&tmp, content)?;
-	std::fs::rename(&tmp, canonical)?;
-	// Best-effort cleanup if rename fails after write — the temp file is
-	// in the project tree (unavoidable for same-FS atomic rename), but
-	// `rename` either succeeds and the tmp is gone, or fails and we try
-	// to remove it here.
-	if let Err(e) = std::fs::remove_file(&tmp) {
-		if tmp.exists() {
-			eprintln!(
-				"warning: failed to clean up temp file {}: {e}",
-				tmp.display()
-			);
-		}
+	if let Err(e) = std::fs::rename(&tmp, canonical) {
+		let _ = std::fs::remove_file(&tmp);
+		return Err(e.into());
 	}
 	Ok(())
 }
