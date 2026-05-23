@@ -290,7 +290,7 @@ function in this section follows the same five conventions:
   `anyhow::Result` if it is in scope.
 - Parameters marked `#[inject]` are resolved by the DI container before
   the body runs. Common injections are `reinhardt::DatabaseConnection`,
-  `SessionData`, `SessionStoreRef`, and project-local services like
+  `SessionData`, `Depends<SessionStore>`, and project-local services like
   `Depends<UserManager>`.
 - The body is implicitly `#[cfg(native)]` — the macro generates a typed
   client stub for the WASM side so callers only see the signature.
@@ -661,9 +661,10 @@ matrix in one place and makes each handler body very small.
 ## Authentication Server Functions (`apps/users/server_fn.rs`)
 
 The `users` app's server functions follow the same conventions but talk
-to `SessionData` and `SessionStoreRef` instead of business models. They
-are the only server-side handlers in the project that read passwords, so
-they're the right place to introduce the session-cookie machinery.
+to `SessionData` and `Depends<SessionStore>` instead of business models.
+They are the only server-side handlers in the project that read
+passwords, so they're the right place to introduce the session-cookie
+machinery.
 
 The imports illustrate which pieces come from where: `SessionAuthExt`
 provides the `login` / `logout` methods on `SessionData`,
@@ -686,7 +687,7 @@ use {
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
 	reinhardt::di::Depends,
 	reinhardt::middleware::session::{
-		SessionAuthExt, SessionData, SessionStoreRef, USER_ID_SESSION_KEY,
+		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
 	},
 	reinhardt::reinhardt_auth::BaseUserManager,
 	std::collections::HashMap,
@@ -711,7 +712,7 @@ pub async fn login(
 	_csrf_token: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -773,7 +774,7 @@ pub async fn register(
 	_csrf_token: String,
 	#[inject] user_manager: Depends<UserManager>,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -844,7 +845,7 @@ for the actual rotation:
 pub async fn logout(
 	_csrf_token: String,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<(), ServerFnError> {
 	let mut session = session;
 
@@ -1238,9 +1239,10 @@ pub fn routes() -> UnifiedRouter {
 			.with_di_registrations(admin_di)
 	};
 
-	// `SessionMiddleware` auto-registers its `Arc<SessionStore>` as a DI
-	// singleton via `Middleware::di_registrations`, so server functions that
-	// `#[inject] session: SessionData` (or `#[inject] store: SessionStoreRef`)
+	// `SessionMiddleware` auto-registers its `SessionStore` as a DI singleton
+	// via `Middleware::di_registrations` (keyed by `TypeId::of::<SessionStore>()`
+	// post-#4437), so server functions that
+	// `#[inject] session: SessionData` (or `#[inject] store: Depends<SessionStore>`)
 	// can resolve the same store the middleware writes to without a parallel
 	// `with_di_registrations(...)` call. See #4426 (and the original #4423
 	// regression that motivated the auto-registration hook).
@@ -1305,14 +1307,14 @@ pub fn client_url_patterns() -> ClientRouter {
 			"/polls/{question_id}/choices/new/",
 			|ClientPath(question_id): ClientPath<i64>| choice_new_page(question_id),
 		)
-		.named_route_path2(
+		.named_route_path(
 			"choice_edit",
 			"/polls/{question_id}/choices/{choice_id}/edit/",
 			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
 				choice_edit_page(question_id, choice_id)
 			},
 		)
-		.named_route_path2(
+		.named_route_path(
 			"choice_delete",
 			"/polls/{question_id}/choices/{choice_id}/delete/",
 			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
@@ -1370,10 +1372,10 @@ and over:
 
 - **`named_route(name, path, page_factory)`** — for parameter-less
   routes. `page_factory` is a `Fn() -> Page`.
-- **`named_route_path(name, path, page_factory)`** — for a single
-  typed path parameter. The factory receives a `ClientPath<T>`.
-- **`named_route_path2(name, path, page_factory)`** — for two typed
-  path parameters.
+- **`named_route_path(name, path, page_factory)`** — for any number of
+  typed path parameters from 1 to 8. The factory takes one
+  `ClientPath<T>` per parameter, and the arity is inferred from the
+  closure signature via the sealed `Handler<Args>` trait.
 
 The `polls:` namespace in `ResolvedUrls` lookups comes from the
 `InstalledApp::polls` argument to `#[url_patterns]`; you do not write it
@@ -1836,7 +1838,7 @@ the polling application:
 - **Typed RPC server functions.** Every reactive mutation the WASM
   client will call lives in `src/apps/<app>/server_fn.rs`. The DI
   container injects `DatabaseConnection`, `SessionData`,
-  `SessionStoreRef`, and (for the polls mutations)
+  `Depends<SessionStore>`, and (for the polls mutations)
   `Depends<SessionUser>`; `session_user.require_active()?` is the shared
   401 gate, layered on the `SessionUser` factory in
   `apps::polls::di`; `atomic(&db, || async { … })` guards
@@ -1856,7 +1858,8 @@ the polling application:
   `SessionMiddleware` with a two-week TTL and Lax SameSite.
 - **Client routing and link resolution.** Each app's
   `urls/client_router.rs` registers routes by stable name through
-  `named_route` / `named_route_path` / `named_route_path2`;
+  `named_route` / `named_route_path` (the latter covers every arity
+  1..=8 via the sealed `Handler<Args>` trait);
   `src/client/links.rs` wraps every `ResolvedUrls::resolve_client_url`
   lookup so components never construct URLs by hand.
 - **SPA bootstrap.** `src/client/lib.rs` collapses to

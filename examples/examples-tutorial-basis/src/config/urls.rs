@@ -157,9 +157,10 @@ pub fn routes() -> UnifiedRouter {
 			.with_di_registrations(admin_di)
 	};
 
-	// `SessionMiddleware` auto-registers its `Arc<SessionStore>` as a DI
-	// singleton via `Middleware::di_registrations`, so server functions that
-	// `#[inject] session: SessionData` (or `#[inject] store: SessionStoreRef`)
+	// `SessionMiddleware` auto-registers its `SessionStore` as a DI singleton
+	// via `Middleware::di_registrations` (keyed by `TypeId::of::<SessionStore>()`
+	// post-#4437), so server functions that
+	// `#[inject] session: SessionData` (or `#[inject] store: Depends<SessionStore>`)
 	// can resolve the same store the middleware writes to without a parallel
 	// `with_di_registrations(...)` call. See #4426 (and the original #4423
 	// regression that motivated the auto-registration hook).

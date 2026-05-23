@@ -15,6 +15,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `#[url_patterns(mode = unified)]` aggregator can name
   `my_fn::marker` from a closure body that compiles on either side
   of the cfg boundary ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+- `pub trait Trackable` in `reinhardt-pages::reactive` (re-exported as
+  `reinhardt_pages::reactive::Trackable`). Implemented for `Signal<T>` and
+  `Memo<T>`; consumed by the new auto-wrap visitor and the upcoming hook
+  deps-tuple machinery (#4195).
+- `NodeId::as_u64()` accessor in `reinhardt-core` so external callers (such
+  as `Trackable::signal_id`) can obtain the underlying counter value.
+- New `Component { prop: val, @event: handler, child_element { ... } }`
+  invocation syntax inside `page!` bodies. Components are functions
+  matching `fn <name>(props: <NameProps>) -> Page` where `<NameProps>`
+  derives `bon::Builder`. The legacy positional form
+  `{component_fn(args)}` continues to work unchanged. Spec §3.5.
+- `bon` added as a `reinhardt-pages` runtime dependency. Staged for
+  removal under spec §10 once `#[derive(PageProps)]` /
+  `#[component]` proc-macros take over the prop-struct generation.
+- `form!` macro fields now accept optional generic type parameters
+  (`HiddenField<i64>`, `ChoiceField<bool>`, `MultipleChoiceField<String>`,
+  `JsonField<MyStruct>`) to forward typed values to `#[server_fn]` handlers
+  instead of always stringifying them (#4397)
+- `IpAddressField` is now specialized to `Option<IpAddr>` in generated code
+- Fields without a generic parameter default to `String` for backward
+  compatibility
+- `reinhardt_pages::router::request` submodule re-exports the
+  Manouche DSL v2 spec §4.3 `FromRequest` building blocks
+  (`FromRequest`, `RouteContext`, `ExtractError`, `PathParam<T>`,
+  `QueryParam<T>`) from `reinhardt_urls::routers::client_router::from_request`
+  so application code can write
+  `use reinhardt_pages::router::request::FromRequest;` matching the
+  spec's namespace. The legacy non-generic `PathParam` re-exported at
+  `reinhardt_pages::router::PathParam` (deprecated since `0.1.0-rc.27`)
+  is unrelated and remains in place during its deprecation cycle.
+  (Refs #4668)
 
 ### Changed
 
@@ -23,6 +54,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CODEC` themselves. Existing consumers reach the constants through
   supertrait inheritance with no source change required
   ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+- **BREAKING**: `page!` macro now unconditionally wraps every `{expr}` and
+  every `if` / `for` / `match` control-flow block in `Page::reactive(move || ...)`.
+  Helper-routed Signal reads (`{helper(&signal)}`) re-render correctly without
+  any opt-in. Spec §4.1. Resolves #4515.
+- **BREAKING**: `page!` body identifiers must be declared in the closure
+  parameter list. Implicit captures of outer Signal bindings are a hard
+  compile error. Spec §3.7. Migration: pass the binding as a closure param
+  or qualify free function calls with `self::` so the path is multi-segment.
+
+### Removed
+
+- **BREAKING**: `watch { ... }` block is removed. The body of `watch` can be
+  inlined as-is; the new auto-wrap subsumes it. The validator emits a
+  pointer at the `cargo make migrate-manouche-v2` codemod when it sees a
+  surviving `watch` block.
+
+#### BREAKING CHANGES — Router Relocation Cleanup
+
+**First of two PRs** removing reinhardt-pages's 16 RC-deprecated items per
+STABILITY_POLICY § SP-4 (umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)).
+This PR removes the 8 router-relocation items (relocated to
+`reinhardt_urls::routers` since `0.1.0-rc.27`); the remaining 8
+items (App struct, launcher legacy, use_reducer migration, MSW
+migration, CSRF auto-inject) require selective Edit and ship in
+the follow-up `feat(pages)!:` PR.
+
+Removed in this PR (8 items):
+
+- **`src/router/core.rs`** (6 items, all deprecated `0.1.0-rc.27`,
+  refs #4234 / cloud#578) — `PathError`, `RouterError`,
+  `ClientRouteMatch` (RouteMatch), `ClientRoute` (Route),
+  `ClientRouter` (Router), `NavigationSubscription`. All relocated
+  to `reinhardt_urls::routers`.
+- **`src/router/pattern.rs`** (1 item, `0.1.0-rc.27`) — `ClientPathPattern`
+  (PathPattern). Use `reinhardt_urls::routers::ClientPathPattern`.
+- **`src/router/params.rs`** (1 item, `0.1.0-rc.27`) — `Path` extractor.
+  Use `reinhardt_urls::routers::Path`.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 

@@ -27,6 +27,33 @@ pub fn parse_form(input: TokenStream) -> syn::Result<FormMacro> {
 	syn::parse2(input)
 }
 
+/// Parses an optional generic-argument list of the form `<T1, T2, ...>` that may
+/// appear immediately after a field-type identifier in the form! DSL.
+///
+/// - Returns `Ok(None)` when the next token is not `<`.
+/// - Returns `Ok(Some(types))` for a non-empty list `<T1, ...>`.
+/// - Returns `Err` for an empty `<>` (zero arguments), with a span at the
+///   field-type identifier so the diagnostic points at the user's code.
+fn parse_optional_field_type_generics(
+	input: ParseStream,
+	field_type_span: Span,
+) -> Result<Option<syn::punctuated::Punctuated<syn::Type, Token![,]>>> {
+	if !input.peek(Token![<]) {
+		return Ok(None);
+	}
+	let _: Token![<] = input.parse()?;
+	if input.peek(Token![>]) {
+		return Err(syn::Error::new(
+			field_type_span,
+			"expected at least one type argument inside `<...>`",
+		));
+	}
+	let args: syn::punctuated::Punctuated<syn::Type, Token![,]> =
+		syn::punctuated::Punctuated::parse_separated_nonempty(input)?;
+	let _: Token![>] = input.parse()?;
+	Ok(Some(args))
+}
+
 impl Parse for FormMacro {
 	fn parse(input: ParseStream) -> Result<Self> {
 		let span = input.span();
@@ -230,6 +257,11 @@ fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 				span,
 			}));
 		} else {
+			// Optionally consume `<T1, T2, ...>` generic arguments before the
+			// property block. Only regular fields support generics; FieldGroup
+			// and SubmitButton are handled in the branches above.
+			let generics = parse_optional_field_type_generics(input, field_type.span())?;
+
 			// Parse regular field properties in braces: { required, max_length: 100, ... }
 			let properties = if input.peek(token::Brace) {
 				let content;
@@ -242,6 +274,7 @@ fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 			entries.push(FormFieldEntry::Field(FormFieldDef {
 				name,
 				field_type,
+				generics,
 				properties,
 				span,
 			}));
@@ -318,6 +351,11 @@ fn parse_group_fields(input: ParseStream) -> Result<Vec<FormFieldDef>> {
 			));
 		}
 
+		// Optionally consume `<T1, T2, ...>` generic arguments before the
+		// property block. Mirrors the top-level field parser; nested FieldGroup
+		// is rejected above so this only runs for regular field types.
+		let generics = parse_optional_field_type_generics(input, field_type.span())?;
+
 		// Parse properties in braces: { required, max_length: 100, ... }
 		let properties = if input.peek(token::Brace) {
 			let content;
@@ -330,6 +368,7 @@ fn parse_group_fields(input: ParseStream) -> Result<Vec<FormFieldDef>> {
 		fields.push(FormFieldDef {
 			name,
 			field_type,
+			generics,
 			properties,
 			span,
 		});
@@ -3670,6 +3709,82 @@ mod scope_tests {
 			"Expected error containing '{}', got: {}",
 			expected_fragment,
 			err
+		);
+	}
+
+	// ---- Field-type generic argument parsing (Issue #4397) ----
+
+	#[rstest]
+	fn parses_field_type_with_generic_argument() {
+		// Arrange
+		let input = quote! {
+			name: MyForm,
+			action: "/x",
+
+			fields: {
+				question_id: HiddenField<i64> { initial: 0i64 },
+			},
+		};
+
+		// Act
+		let parsed: FormMacro = syn::parse2(input).expect("should parse");
+
+		// Assert
+		let field = parsed.fields[0]
+			.as_field()
+			.expect("question_id should be a regular field");
+		assert_eq!(field.name.to_string(), "question_id");
+		let generics = field.generics.as_ref().expect("generics should be Some");
+		assert_eq!(generics.len(), 1);
+		let first = &generics[0];
+		let first_str = quote!(#first).to_string();
+		assert_eq!(first_str.replace(' ', ""), "i64");
+	}
+
+	#[rstest]
+	fn parses_field_type_without_generic_argument() {
+		// Arrange
+		let input = quote! {
+			name: MyForm,
+			action: "/x",
+
+			fields: {
+				username: CharField { required },
+			},
+		};
+
+		// Act
+		let parsed: FormMacro = syn::parse2(input).expect("should parse");
+
+		// Assert
+		let field = parsed.fields[0]
+			.as_field()
+			.expect("username should be a regular field");
+		assert_eq!(field.name.to_string(), "username");
+		assert!(field.generics.is_none());
+	}
+
+	#[rstest]
+	fn rejects_zero_generic_arguments() {
+		// Arrange
+		let input = quote! {
+			name: MyForm,
+			action: "/x",
+
+			fields: {
+				question_id: HiddenField<> {},
+			},
+		};
+
+		// Act
+		let res: Result<FormMacro> = syn::parse2(input);
+
+		// Assert
+		let err = res.expect_err("empty <> must be rejected");
+		assert!(
+			err.to_string()
+				.contains("expected at least one type argument"),
+			"unexpected error message: {err}",
 		);
 	}
 }

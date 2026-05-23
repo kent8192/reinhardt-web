@@ -15,7 +15,9 @@
 //! #[tokio::test]
 //! async fn test_protected_endpoint(singleton_scope: Arc<SingletonScope>) {
 //!     let ctx = ServerFnTestContext::new(singleton_scope)
-//!         .with_authenticated_user(TestUser::admin())
+//!         .auth()
+//!             .session(&TestUser::admin())
+//!         .done()
 //!         .with_transaction_rollback()
 //!         .build();
 //!
@@ -60,7 +62,9 @@ pub enum TransactionMode {
 ///
 /// ```rust,ignore
 /// let ctx = ServerFnTestContext::new(singleton_scope)
-///     .with_authenticated_user(TestUser::authenticated("alice"))
+///     .auth()
+///         .session(&TestUser::authenticated("alice"))
+///     .done()
 ///     .with_permissions(vec!["read", "write"])
 ///     .with_csrf_token("test-token")
 ///     .build();
@@ -119,32 +123,6 @@ impl ServerFnTestContext {
 		self.overrides.push(Box::new(move |ctx| {
 			ctx.set_singleton(value);
 		}));
-		self
-	}
-
-	/// Set the authenticated user for this test.
-	///
-	/// This configures the test context to simulate an authenticated user,
-	/// allowing you to test protected endpoints.
-	///
-	/// # Arguments
-	///
-	/// * `user` - The test user to authenticate as
-	///
-	/// # Example
-	///
-	/// ```rust,ignore
-	/// let ctx = ServerFnTestContext::new(singleton)
-	///     .with_authenticated_user(TestUser::admin())
-	///     .build();
-	/// ```
-	#[deprecated(
-		since = "0.1.0-rc.16",
-		note = "use `.auth().session(&user).done()` instead"
-	)]
-	pub fn with_authenticated_user(mut self, user: TestUser) -> Self {
-		self.test_user = Some(user.clone());
-		self.mock_session = Some(MockSession::authenticated(user));
 		self
 	}
 
@@ -536,18 +514,16 @@ mod tests {
 		let singleton = Arc::new(SingletonScope::new());
 		let user = TestUser::admin();
 		let ctx = ServerFnTestContext::new(singleton)
-			.with_authenticated_user(user)
+			.with_session(MockSession::authenticated(user))
 			.build();
 
-		assert!(ctx.is_authenticated());
-		assert!(ctx.test_user.is_some());
+		assert!(ctx.mock_session.as_ref().is_some_and(|s| s.user.is_some()));
 	}
 
 	#[test]
 	fn test_permissions() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = ServerFnTestContext::new(singleton)
-			.with_authenticated_user(TestUser::authenticated("alice"))
 			.with_permissions(vec!["read", "write"])
 			.build();
 

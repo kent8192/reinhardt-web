@@ -13,8 +13,6 @@ pub mod import;
 pub mod model_admin;
 pub mod router;
 pub mod site;
-pub mod vendor;
-
 // Re-exports
 pub use crate::types::{
 	AdminError, AdminResult, BulkDeleteRequest, BulkDeleteResponse, ColumnInfo, DashboardResponse,

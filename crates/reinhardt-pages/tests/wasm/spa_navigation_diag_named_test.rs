@@ -29,11 +29,10 @@
 //! module load.
 
 #![cfg(all(target_arch = "wasm32", feature = "wasm-diag-test"))]
-#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::*;
 
@@ -59,7 +58,7 @@ fn nav_link(href: &'static str, label: &'static str, current: &str) -> PageEleme
 }
 
 fn layout_shell(content_id: &'static str, content_label: &'static str) -> Page {
-	let current = with_router(|r| r.current_path().get());
+	let current = with_spa_router(|r| r.current_path().get());
 	PageElement::new("div")
 		.attr("id", "shell")
 		.child(
@@ -105,8 +104,8 @@ fn login_page() -> Page {
 	layout_shell("route-login", "LOGIN VIEW")
 }
 
-fn build_router() -> Router {
-	Router::new()
+fn build_router() -> ClientRouter {
+	ClientRouter::new()
 		.named_route("dashboard:home", "/", home_page)
 		.named_route("clusters:list", "/clusters", clusters_page)
 		.named_route("deployments:list", "/deployments", deployments_page)
@@ -184,12 +183,12 @@ async fn tier4_invariants_inv1_through_inv6_named_routes() {
 	let _root = install_app_root();
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 
 	// Inv-1: launch() must register at least one navigation observer.
-	let observer_count_initial = with_router(|r| r.__diag_observer_count());
+	let observer_count_initial = with_spa_router(|r| r.__diag_observer_count());
 	assert!(
 		observer_count_initial >= 1,
 		"Inv-1 (Tier 4) violated: launch() must register the render listener; got {}",
@@ -197,23 +196,23 @@ async fn tier4_invariants_inv1_through_inv6_named_routes() {
 	);
 
 	// Inv-6 baseline: capture the router id at launch time.
-	let router_id_initial = with_router(|r| r.__diag_router_id());
+	let router_id_initial = with_spa_router(|r| r.__diag_router_id());
 
 	// DOM check: home content is mounted at boot.
 	await_element("#route-home", 100).await;
 	let document = web_sys::window().unwrap().document().unwrap();
 
-	let dispatch_before = with_router(|r| r.__diag_dispatch_count());
+	let dispatch_before = with_spa_router(|r| r.__diag_dispatch_count());
 	let render_before = ClientLauncher::__diag_render_count();
 
 	// ---- Click 1: / -> /clusters ----
 	click_link("/clusters");
 	await_element("#route-clusters", 100).await;
 
-	let observer_after_one = with_router(|r| r.__diag_observer_count());
-	let dispatch_after_one = with_router(|r| r.__diag_dispatch_count());
+	let observer_after_one = with_spa_router(|r| r.__diag_observer_count());
+	let dispatch_after_one = with_spa_router(|r| r.__diag_dispatch_count());
 	let render_after_one = ClientLauncher::__diag_render_count();
-	let router_id_after_one = with_router(|r| r.__diag_router_id());
+	let router_id_after_one = with_spa_router(|r| r.__diag_router_id());
 	let route_name_after_one = read_history_route_name();
 
 	assert!(
@@ -271,10 +270,10 @@ async fn tier4_invariants_inv1_through_inv6_named_routes() {
 	click_link("/deployments");
 	await_element("#route-deployments", 100).await;
 
-	let observer_after_two = with_router(|r| r.__diag_observer_count());
-	let dispatch_after_two = with_router(|r| r.__diag_dispatch_count());
+	let observer_after_two = with_spa_router(|r| r.__diag_observer_count());
+	let dispatch_after_two = with_spa_router(|r| r.__diag_dispatch_count());
 	let render_after_two = ClientLauncher::__diag_render_count();
-	let router_id_after_two = with_router(|r| r.__diag_router_id());
+	let router_id_after_two = with_spa_router(|r| r.__diag_router_id());
 	let route_name_after_two = read_history_route_name();
 
 	assert!(
@@ -314,9 +313,9 @@ async fn tier4_invariants_inv1_through_inv6_named_routes() {
 	click_link("/login");
 	await_element("#route-login", 100).await;
 
-	let dispatch_after_three = with_router(|r| r.__diag_dispatch_count());
+	let dispatch_after_three = with_spa_router(|r| r.__diag_dispatch_count());
 	let render_after_three = ClientLauncher::__diag_render_count();
-	let router_id_after_three = with_router(|r| r.__diag_router_id());
+	let router_id_after_three = with_spa_router(|r| r.__diag_router_id());
 	let route_name_after_three = read_history_route_name();
 
 	assert_eq!(
