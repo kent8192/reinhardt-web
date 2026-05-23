@@ -150,140 +150,122 @@ where
 }
 
 // ============================================================================
-// Multi-argument Path<T> handlers
+// Arity-generic Handler<Args> trait (axum-style)
 // ============================================================================
+//
+// Replaces the per-arity `SinglePathHandler` / `TwoPathHandler` /
+// `ThreePathHandler` structs with a single `Handler<Args>` trait whose
+// `Args` is inferred from the closure signature. `Args` is a marker tuple
+// (e.g., `(T1,)`, `(T1, T2)`, …) so the compiler picks the right impl
+// without forcing the caller to name an arity in the method.
+//
+// The trait is sealed: only the framework can add impls. This keeps the
+// shape of `Args` free to grow (for example, to mix `Path<T>`, `Query<Q>`,
+// and `State<S>` extractors) without it being a breaking change.
 
-/// Handler for routes with a single `Path<T>` argument.
+mod sealed {
+	/// Sealed marker — only impls inside this crate can satisfy
+	/// [`super::Handler`]. The `Args` type parameter mirrors
+	/// `Handler<Args>` so that each per-arity impl reaches the tuple
+	/// type from its trait parameter (Rust would otherwise reject the
+	/// `T1..Tn` of the where-clause as unconstrained — E0207). Refs
+	/// Issue #4637.
+	pub trait Sealed<Args> {}
+}
+
+/// Sealed trait implemented for every closure shape `Fn(Path<T1>, …,
+/// Path<Tn>) -> Page` for `n` in 1..=8.
 ///
-/// Wraps a `Fn(Path<T>) -> Page` closure.
-pub(crate) struct SinglePathHandler<F, T> {
-	handler: F,
-	_phantom: PhantomData<T>,
-}
-
-impl<F, T> SinglePathHandler<F, T> {
-	pub(crate) fn new(handler: F) -> Self {
-		Self {
-			handler,
-			_phantom: PhantomData,
-		}
-	}
-}
-
-// SAFETY: SinglePathHandler is Send + Sync when F is Send + Sync
-unsafe impl<F: Send, T> Send for SinglePathHandler<F, T> {}
-unsafe impl<F: Sync, T> Sync for SinglePathHandler<F, T> {}
-
-impl<F, T> RouteHandler for SinglePathHandler<F, T>
-where
-	F: Fn(Path<T>) -> Page + Send + Sync,
-	T: SingleFromPath + Send + Sync,
-{
-	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
-		let value = T::from_path_at(ctx, 0).map_err(RouterError::PathExtraction)?;
-		Ok((self.handler)(Path(value)))
-	}
-}
-
-/// Handler for routes with two `Path<T>` arguments.
+/// `Args` is a marker tuple `(T1, …, Tn)` that the compiler infers from
+/// the closure signature; callers never name it explicitly. To register
+/// the closure as a [`RouteHandler`], call
+/// [`Handler::into_route_handler`].
 ///
-/// Wraps a `Fn(Path<T1>, Path<T2>) -> Page` closure.
-pub(crate) struct TwoPathHandler<F, T1, T2> {
-	handler: F,
-	_phantom: PhantomData<(T1, T2)>,
-}
-
-impl<F, T1, T2> TwoPathHandler<F, T1, T2> {
-	pub(crate) fn new(handler: F) -> Self {
-		Self {
-			handler,
-			_phantom: PhantomData,
-		}
-	}
-}
-
-// SAFETY: TwoPathHandler is Send + Sync when F is Send + Sync
-unsafe impl<F: Send, T1, T2> Send for TwoPathHandler<F, T1, T2> {}
-unsafe impl<F: Sync, T1, T2> Sync for TwoPathHandler<F, T1, T2> {}
-
-impl<F, T1, T2> RouteHandler for TwoPathHandler<F, T1, T2>
-where
-	F: Fn(Path<T1>, Path<T2>) -> Page + Send + Sync,
-	T1: SingleFromPath + Send + Sync,
-	T2: SingleFromPath + Send + Sync,
-{
-	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
-		let v1 = T1::from_path_at(ctx, 0).map_err(RouterError::PathExtraction)?;
-		let v2 = T2::from_path_at(ctx, 1).map_err(RouterError::PathExtraction)?;
-		Ok((self.handler)(Path(v1), Path(v2)))
-	}
-}
-
-/// Handler for routes with three `Path<T>` arguments.
+/// # Sealing
 ///
-/// Wraps a `Fn(Path<T1>, Path<T2>, Path<T3>) -> Page` closure.
-pub(crate) struct ThreePathHandler<F, T1, T2, T3> {
+/// Users do **not** implement this trait — every legal impl lives in
+/// the [`impl_handler!`] macro expansion below. Sealing the trait keeps
+/// the shape of `Args` an internal concern so a future revision can mix
+/// `Path<T>` with `Query<Q>` / `State<S>` extractors without breaking
+/// downstream code.
+///
+/// Refs Issue #4637.
+pub trait Handler<Args>: sealed::Sealed<Args> + Send + Sync + 'static {
+	/// Convert this closure into a type-erased `Arc<dyn RouteHandler>`
+	/// suitable for storage inside a `ClientRoute`.
+	fn into_route_handler(self) -> Arc<dyn RouteHandler>;
+}
+
+/// Internal storage type that pairs a closure `F` with its inferred
+/// marker tuple `Args`. The `Args` parameter is phantom; it exists only
+/// so multiple `RouteHandler` impls (one per arity) can coexist on a
+/// single struct without `Args` leaking Send/Sync constraints onto `F`.
+pub(crate) struct PathHandler<F, Args> {
 	handler: F,
-	_phantom: PhantomData<(T1, T2, T3)>,
+	// `PhantomData<fn(Args) -> ()>` so `Args` is contravariant and does
+	// not impose `Send + Sync` on the wrapper independently of `F`.
+	_phantom: PhantomData<fn(Args) -> ()>,
 }
 
-impl<F, T1, T2, T3> ThreePathHandler<F, T1, T2, T3> {
-	pub(crate) fn new(handler: F) -> Self {
-		Self {
-			handler,
-			_phantom: PhantomData,
+// SAFETY: `Args` lives only in `PhantomData<fn(Args) -> ()>`, which is
+// `Send + Sync` for every `Args`. Thread safety of `PathHandler` is
+// therefore identical to thread safety of `F`.
+unsafe impl<F: Send, Args> Send for PathHandler<F, Args> {}
+unsafe impl<F: Sync, Args> Sync for PathHandler<F, Args> {}
+
+/// Generate per-arity `Sealed` / `Handler<Args>` / `RouteHandler` impls
+/// for a closure shape `Fn(Path<T1>, …, Path<Tn>) -> Page`.
+///
+/// Invoked once per arity below (`impl_handler!([T1], [0]);` for
+/// `n = 1`, up through `[T1..T8]` / `[0..7]` for `n = 8`). Each
+/// expansion is gated on a distinct `Fn` arity, so the resulting
+/// `Handler<(T1, …, Tn)>` impls do not overlap (Rust treats `Fn`s of
+/// different arities as distinct trait bounds — axum's `all_the_tuples!`
+/// uses the same trick).
+macro_rules! impl_handler {
+	([$($Ti:ident),+], [$($idx:tt),+]) => {
+		impl<F, $($Ti),+> sealed::Sealed<($($Ti,)+)> for F
+		where
+			F: Fn($(Path<$Ti>),+) -> Page + Send + Sync + 'static,
+			$($Ti: SingleFromPath + Send + Sync + 'static,)+
+		{}
+
+		impl<F, $($Ti),+> Handler<($($Ti,)+)> for F
+		where
+			F: Fn($(Path<$Ti>),+) -> Page + Send + Sync + 'static,
+			$($Ti: SingleFromPath + Send + Sync + 'static,)+
+		{
+			fn into_route_handler(self) -> Arc<dyn RouteHandler> {
+				Arc::new(PathHandler::<F, ($($Ti,)+)> {
+					handler: self,
+					_phantom: PhantomData,
+				})
+			}
 		}
-	}
+
+		impl<F, $($Ti),+> RouteHandler for PathHandler<F, ($($Ti,)+)>
+		where
+			F: Fn($(Path<$Ti>),+) -> Page + Send + Sync,
+			$($Ti: SingleFromPath + Send + Sync,)+
+		{
+			#[allow(non_snake_case)] // matches the macro's tuple type idents
+			fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
+				$(let $Ti = $Ti::from_path_at(ctx, $idx)
+					.map_err(RouterError::PathExtraction)?;)+
+				Ok((self.handler)($(Path($Ti)),+))
+			}
+		}
+	};
 }
 
-// SAFETY: ThreePathHandler is Send + Sync when F is Send + Sync
-unsafe impl<F: Send, T1, T2, T3> Send for ThreePathHandler<F, T1, T2, T3> {}
-unsafe impl<F: Sync, T1, T2, T3> Sync for ThreePathHandler<F, T1, T2, T3> {}
-
-impl<F, T1, T2, T3> RouteHandler for ThreePathHandler<F, T1, T2, T3>
-where
-	F: Fn(Path<T1>, Path<T2>, Path<T3>) -> Page + Send + Sync,
-	T1: SingleFromPath + Send + Sync,
-	T2: SingleFromPath + Send + Sync,
-	T3: SingleFromPath + Send + Sync,
-{
-	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
-		let v1 = T1::from_path_at(ctx, 0).map_err(RouterError::PathExtraction)?;
-		let v2 = T2::from_path_at(ctx, 1).map_err(RouterError::PathExtraction)?;
-		let v3 = T3::from_path_at(ctx, 2).map_err(RouterError::PathExtraction)?;
-		Ok((self.handler)(Path(v1), Path(v2), Path(v3)))
-	}
-}
-
-/// Helper function to create a single-path handler.
-pub(crate) fn single_path_handler<F, T>(handler: F) -> Arc<dyn RouteHandler>
-where
-	F: Fn(Path<T>) -> Page + Send + Sync + 'static,
-	T: SingleFromPath + Send + Sync + 'static,
-{
-	Arc::new(SinglePathHandler::new(handler))
-}
-
-/// Helper function to create a two-path handler.
-pub(crate) fn two_path_handler<F, T1, T2>(handler: F) -> Arc<dyn RouteHandler>
-where
-	F: Fn(Path<T1>, Path<T2>) -> Page + Send + Sync + 'static,
-	T1: SingleFromPath + Send + Sync + 'static,
-	T2: SingleFromPath + Send + Sync + 'static,
-{
-	Arc::new(TwoPathHandler::new(handler))
-}
-
-/// Helper function to create a three-path handler.
-pub(crate) fn three_path_handler<F, T1, T2, T3>(handler: F) -> Arc<dyn RouteHandler>
-where
-	F: Fn(Path<T1>, Path<T2>, Path<T3>) -> Page + Send + Sync + 'static,
-	T1: SingleFromPath + Send + Sync + 'static,
-	T2: SingleFromPath + Send + Sync + 'static,
-	T3: SingleFromPath + Send + Sync + 'static,
-{
-	Arc::new(ThreePathHandler::new(handler))
-}
+impl_handler!([T1], [0]);
+impl_handler!([T1, T2], [0, 1]);
+impl_handler!([T1, T2, T3], [0, 1, 2]);
+impl_handler!([T1, T2, T3, T4], [0, 1, 2, 3]);
+impl_handler!([T1, T2, T3, T4, T5], [0, 1, 2, 3, 4]);
+impl_handler!([T1, T2, T3, T4, T5, T6], [0, 1, 2, 3, 4, 5]);
+impl_handler!([T1, T2, T3, T4, T5, T6, T7], [0, 1, 2, 3, 4, 5, 6]);
+impl_handler!([T1, T2, T3, T4, T5, T6, T7, T8], [0, 1, 2, 3, 4, 5, 6, 7]);
 
 // ============================================================================
 // FromRequest-based page handler (spec §4.3)

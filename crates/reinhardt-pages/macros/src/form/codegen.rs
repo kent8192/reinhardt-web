@@ -816,16 +816,8 @@ fn generate_on_success_ref_artifacts(
 			// call below matches whatever signature the runtime call uses.
 			let all_fields = collect_all_fields(&macro_ast.fields);
 			let field_count = all_fields.len();
-			let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
-			let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
 			let strip_arg_count = macro_ast.strip_arguments.len();
-			let extra_count = if strip_arg_count > 0 {
-				strip_arg_count
-			} else if needs_csrf && !has_explicit_csrf_field {
-				1usize
-			} else {
-				0usize
-			};
+			let extra_count = strip_arg_count;
 			let total_arg_count = field_count + extra_count;
 			let probe_args = (0..total_arg_count)
 				.map(|_| quote! { ::core::unreachable!() })
@@ -2046,15 +2038,6 @@ fn generate_submit_method(
 			let all_fields = collect_all_fields(&macro_ast.fields);
 			let field_names: Vec<&syn::Ident> = all_fields.iter().map(|f| &f.name).collect();
 
-			// Check if CSRF token should be auto-injected as a server_fn argument
-			let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
-			let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
-
-			// reinhardt-web#3971: Generic strip_arguments take precedence over the
-			// implicit CSRF auto-injection. When the user supplies any
-			// `strip_arguments: { ... }` entries we route exactly those values to
-			// the server_fn — no hidden additional arguments — so the call signature
-			// matches what the user wrote in their server_fn definition.
 			let strip_arg_exprs: Vec<&syn::Expr> = macro_ast
 				.strip_arguments
 				.iter()
@@ -2067,23 +2050,6 @@ fn generate_submit_method(
 				quote! {
 					{
 						#server_fn_ident(#(self.#field_names.get(),)* #(#strip_arg_exprs),*).await
-					}
-				}
-			} else if needs_csrf && !has_explicit_csrf_field {
-				// Backward-compatible CSRF auto-injection path. Triggers a
-				// deprecation warning at compile time so users migrate to
-				// explicit `strip_arguments: { csrf_token: ... }` (reinhardt-web#3971).
-				quote! {
-					{
-						#[deprecated(
-							since = "0.1.0-rc.22",
-							note = "implicit CSRF token injection is deprecated; declare `csrf_token: String` on the server_fn and pass it via `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default() }`. See reinhardt-web#3971."
-						)]
-						const __FORM_CSRF_AUTO_INJECT_DEPRECATED: () = ();
-						let _ = __FORM_CSRF_AUTO_INJECT_DEPRECATED;
-						let __csrf_token = #pages_crate::csrf::get_csrf_token()
-							.unwrap_or_default();
-						#server_fn_ident(#(self.#field_names.get(),)* __csrf_token).await
 					}
 				}
 			} else {

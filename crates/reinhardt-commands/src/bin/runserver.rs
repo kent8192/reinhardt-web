@@ -2,9 +2,6 @@
 //!
 //! Starts the development server.
 
-// Uses deprecated Settings type; retained for backward compatibility until migration is complete.
-#![allow(deprecated)]
-
 use clap::Parser;
 use colored::Colorize;
 use http_body_util::Full;
@@ -34,10 +31,29 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 
-use reinhardt_conf::Settings;
+use reinhardt_conf::settings::core_settings::CoreSettings;
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+
+/// Settings bundle needed by the runserver command.
+struct RunServerSettings {
+	debug: bool,
+	static_url: String,
+	static_root: Option<PathBuf>,
+	staticfiles_dirs: Vec<PathBuf>,
+}
+
+impl Default for RunServerSettings {
+	fn default() -> Self {
+		Self {
+			debug: true,
+			static_url: "/static/".to_string(),
+			static_root: None,
+			staticfiles_dirs: Vec::new(),
+		}
+	}
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "runserver")]
@@ -158,7 +174,7 @@ async fn serve_static_file(file_path: &Path) -> Result<Response<Full<Bytes>>, In
 ///
 /// The environment is determined by the `REINHARDT_ENV` environment variable.
 /// If no settings files exist, falls back to default settings.
-fn load_settings() -> Settings {
+fn load_settings() -> RunServerSettings {
 	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
 	let profile = Profile::parse(&profile_str);
 
@@ -171,7 +187,7 @@ fn load_settings() -> Settings {
 			"{}",
 			"Warning: settings/ directory not found, using default settings".yellow()
 		);
-		return Settings::default();
+		return RunServerSettings::default();
 	}
 
 	// Build settings with priority: Default < LowPriorityEnv < base.toml < {profile}.toml
@@ -235,24 +251,34 @@ fn load_settings() -> Settings {
 		.build();
 
 	match merged {
-		Ok(merged_settings) => match merged_settings.into_typed::<Settings>() {
-			Ok(settings) => {
-				println!(
-					"{}",
-					format!(
-						"Loaded settings from settings/ directory (profile: {})",
-						profile_str
-					)
-					.green()
-				);
-				settings
-			}
+		Ok(merged_settings) => {
+			let static_url: String = merged_settings.get_or("static_url", "/static/".to_string());
+			let static_root: Option<PathBuf> = merged_settings.get("static_root").ok().flatten();
+			let staticfiles_dirs: Vec<PathBuf> = merged_settings.get_or("staticfiles_dirs", Vec::new());
+			match merged_settings.into_typed::<CoreSettings>() {
+				Ok(core) => {
+					println!(
+						"{}",
+						format!(
+							"Loaded settings from settings/ directory (profile: {})",
+							profile_str
+						)
+						.green()
+					);
+					RunServerSettings {
+						debug: core.debug,
+						static_url,
+						static_root,
+						staticfiles_dirs,
+					}
+				}
 			Err(e) => {
 				eprintln!(
 					"{}",
 					format!("Warning: Failed to parse settings: {}. Using defaults.", e).yellow()
 				);
-				Settings::default()
+				RunServerSettings::default()
+			}
 			}
 		},
 		Err(e) => {
@@ -260,20 +286,20 @@ fn load_settings() -> Settings {
 				"{}",
 				format!("Warning: Failed to build settings: {}. Using defaults.", e).yellow()
 			);
-			Settings::default()
+			RunServerSettings::default()
 		}
 	}
 }
 
 async fn handle_request(
 	req: Request<Incoming>,
-	settings: Arc<Settings>,
+	settings: Arc<RunServerSettings>,
 	spa_index: Option<Arc<PathBuf>>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
 	let path = req.uri().path();
 
 	// Serve static files in debug mode from staticfiles_dirs
-	if settings.core.debug && path.starts_with(&settings.static_url) {
+	if settings.debug && path.starts_with(&settings.static_url) {
 		// Strip static_url prefix to get relative path
 		let relative_path = match path.strip_prefix(&settings.static_url) {
 			Some(p) => p,
@@ -647,7 +673,7 @@ fn build_wasm_targets(no_wasm: bool, no_override_wasm: bool, force_wasm_legacy: 
 /// Run collectstatic to copy all static files into STATIC_ROOT.
 ///
 /// Returns `true` on success, `false` on failure.
-fn run_collectstatic(settings: &Settings) -> bool {
+fn run_collectstatic(settings: &RunServerSettings) -> bool {
 	let cwd = match env::current_dir() {
 		Ok(d) => d,
 		Err(e) => {
@@ -721,7 +747,7 @@ fn run_collectstatic(settings: &Settings) -> bool {
 }
 
 /// Resolve the SPA index.html path for client-side routing fallback.
-fn resolve_spa_index(settings: &Settings) -> Option<PathBuf> {
+fn resolve_spa_index(settings: &RunServerSettings) -> Option<PathBuf> {
 	let cwd = env::current_dir().ok()?;
 
 	// Prefer configured STATIC_ROOT
@@ -779,7 +805,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 
 	// Display loaded settings info (debug mode only)
-	if settings.core.debug {
+	if settings.debug {
 		println!(
 			"{}",
 			format!(

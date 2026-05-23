@@ -55,6 +55,7 @@ pub mod validation;
 use reinhardt_http::Error as CoreError;
 use std::any::TypeId;
 use std::collections::HashMap;
+use std::sync::Mutex;
 use thiserror::Error;
 
 // Re-export Request from reinhardt-http and parameter error types from reinhardt-exception
@@ -268,6 +269,13 @@ pub struct ParamContext {
 	header_names: HashMap<TypeId, &'static str>,
 	/// Cookie name registry keyed by value type
 	cookie_names: HashMap<TypeId, &'static str>,
+	/// Cached request body bytes. Populated on first call to
+	/// [`read_body_cached`](Self::read_body_cached) so that multiple
+	/// body-consuming extractors (e.g. two `Json<T>` factories in the same
+	/// request, see #4645) can share a single read of the underlying
+	/// stream instead of failing with "body already consumed" on the
+	/// second call. The `Mutex` is held only briefly during init.
+	body_cache: Mutex<Option<bytes::Bytes>>,
 }
 
 impl ParamContext {
@@ -286,6 +294,7 @@ impl ParamContext {
 			path_params: reinhardt_http::PathParams::new(),
 			header_names: HashMap::new(),
 			cookie_names: HashMap::new(),
+			body_cache: Mutex::new(None),
 		}
 	}
 	/// Create a ParamContext with pre-populated path parameters.
@@ -315,6 +324,7 @@ impl ParamContext {
 			path_params: path_params.into(),
 			header_names: HashMap::new(),
 			cookie_names: HashMap::new(),
+			body_cache: Mutex::new(None),
 		}
 	}
 	/// Get a path parameter by name
@@ -356,6 +366,40 @@ impl ParamContext {
 	/// Get a registered cookie name for value type `T`
 	pub fn get_cookie_name<T: 'static>(&self) -> Option<&'static str> {
 		self.cookie_names.get(&TypeId::of::<T>()).copied()
+	}
+
+	/// Read the request body, caching the bytes on first call.
+	///
+	/// `Request::read_body()` is one-shot: it flips an internal
+	/// `body_consumed` flag and refuses subsequent calls. That is fine for
+	/// a single handler, but breaks down once multiple request-scoped
+	/// extractors (e.g. two `Json<T>` factories within one
+	/// `#[injectable_factory]` resolution chain — see #4645) want to read
+	/// the same body. This method consumes the body exactly once per
+	/// request and caches the resulting [`bytes::Bytes`] in
+	/// `ParamContext`; subsequent callers receive a cheap `Bytes::clone`
+	/// (refcount bump, no copy).
+	///
+	/// Returns `ParamError::BodyError` if the underlying read fails or
+	/// the body was previously consumed through some path that bypassed
+	/// this cache.
+	pub fn read_body_cached(&self, request: &reinhardt_http::Request) -> ParamResult<bytes::Bytes> {
+		// Brief critical section: short-lived sync mutex is acceptable
+		// because the cached bytes never block on I/O — the only work
+		// done inside the lock is the (sync) `request.read_body()` call,
+		// which is itself just an `AtomicBool` swap + `Bytes::clone()`.
+		let mut guard = self
+			.body_cache
+			.lock()
+			.expect("ParamContext body_cache mutex poisoned");
+		if let Some(bytes) = guard.as_ref() {
+			return Ok(bytes.clone());
+		}
+		let bytes = request
+			.read_body()
+			.map_err(|e| ParamError::BodyError(format!("Failed to read body: {}", e)))?;
+		*guard = Some(bytes.clone());
+		Ok(bytes)
 	}
 }
 
