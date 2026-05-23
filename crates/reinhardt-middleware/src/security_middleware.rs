@@ -12,8 +12,6 @@ use async_trait::async_trait;
 use hyper::StatusCode;
 use hyper::header::{HeaderValue, LOCATION};
 use reinhardt_conf::SecuritySettings;
-#[allow(deprecated)]
-use reinhardt_conf::Settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
@@ -72,28 +70,6 @@ impl Default for SecurityConfig {
 			cross_origin_opener_policy: None,
 			x_frame_options: Some("DENY".to_string()),
 			secure_proxy_ssl_header: None,
-		}
-	}
-}
-
-#[allow(deprecated)] // Settings and SecurityConfig are both deprecated
-impl From<&Settings> for SecurityConfig {
-	fn from(settings: &Settings) -> Self {
-		let security = &settings.core.security;
-		let hsts_enabled = security.secure_hsts_seconds.is_some();
-		let hsts_seconds = security
-			.secure_hsts_seconds
-			.map(|s| u32::try_from(s).unwrap_or(u32::MAX))
-			.unwrap_or(0);
-
-		Self {
-			ssl_redirect: security.secure_ssl_redirect,
-			hsts_enabled,
-			hsts_seconds,
-			hsts_include_subdomains: security.secure_hsts_include_subdomains,
-			hsts_preload: security.secure_hsts_preload,
-			secure_proxy_ssl_header: security.secure_proxy_ssl_header.clone(),
-			..Self::default()
 		}
 	}
 }
@@ -227,36 +203,6 @@ impl SecurityMiddleware {
 	/// ```
 	pub fn with_config(config: SecurityConfig) -> Self {
 		Self { config }
-	}
-
-	/// Create a new SecurityMiddleware from application `Settings`
-	///
-	/// Maps security-related fields from `Settings` to `SecurityConfig`.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::Settings;
-	/// use reinhardt_middleware::SecurityMiddleware;
-	/// use std::path::PathBuf;
-	///
-	/// #[allow(deprecated)]
-	/// let mut settings = Settings::new(PathBuf::from("/app"), "secret".to_string());
-	/// settings.core.security.secure_ssl_redirect = true;
-	/// settings.core.security.secure_hsts_seconds = Some(31536000);
-	///
-	/// #[allow(deprecated)]
-	/// let middleware = SecurityMiddleware::from_settings(&settings);
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "use SecurityMiddleware::from_security_settings() instead"
-	)]
-	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
-	pub fn from_settings(settings: &Settings) -> Self {
-		Self {
-			config: SecurityConfig::from(settings),
-		}
 	}
 
 	/// Create a new SecurityMiddleware from a [`SecuritySettings`] fragment
@@ -783,88 +729,6 @@ mod tests {
 		assert_eq!(
 			response.headers.get("Cross-Origin-Opener-Policy").unwrap(),
 			"same-origin-allow-popups"
-		);
-	}
-
-	#[tokio::test]
-	async fn test_from_settings_conversion() {
-		// Arrange
-		#[allow(deprecated)]
-		let mut settings = Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
-		settings.core.security.secure_ssl_redirect = true;
-		settings.core.security.secure_hsts_seconds = Some(63072000);
-		settings.core.security.secure_hsts_include_subdomains = true;
-		settings.core.security.secure_hsts_preload = true;
-		settings.core.security.secure_proxy_ssl_header =
-			Some(("X-Forwarded-Proto".to_string(), "https".to_string()));
-
-		// Act
-		#[allow(deprecated)]
-		let config = SecurityConfig::from(&settings);
-
-		// Assert
-		assert_eq!(config.ssl_redirect, true);
-		assert_eq!(config.hsts_enabled, true);
-		assert_eq!(config.hsts_seconds, 63072000);
-		assert_eq!(config.hsts_include_subdomains, true);
-		assert_eq!(config.hsts_preload, true);
-		assert_eq!(
-			config.secure_proxy_ssl_header,
-			Some(("X-Forwarded-Proto".to_string(), "https".to_string()))
-		);
-	}
-
-	#[tokio::test]
-	async fn test_from_settings_defaults() {
-		// Arrange
-		#[allow(deprecated)]
-		let settings = Settings::default();
-
-		// Act
-		#[allow(deprecated)]
-		let config = SecurityConfig::from(&settings);
-
-		// Assert
-		assert_eq!(config.ssl_redirect, false);
-		assert_eq!(config.hsts_enabled, false);
-		assert_eq!(config.hsts_seconds, 0);
-		assert_eq!(config.hsts_include_subdomains, false);
-		assert_eq!(config.hsts_preload, false);
-		assert_eq!(config.secure_proxy_ssl_header, None);
-		// Default values from SecurityConfig::default() are preserved
-		assert_eq!(config.content_type_nosniff, true);
-		assert_eq!(config.referrer_policy, Some("same-origin".to_string()));
-	}
-
-	#[tokio::test]
-	async fn test_from_settings_constructor() {
-		// Arrange
-		#[allow(deprecated)]
-		let mut settings = Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
-		settings.core.security.secure_ssl_redirect = true;
-		settings.core.security.secure_hsts_seconds = Some(31536000);
-
-		// Act
-		#[allow(deprecated)]
-		let middleware = SecurityMiddleware::from_settings(&settings);
-		let handler = Arc::new(TestHandler);
-
-		let request = Request::builder()
-			.method(Method::GET)
-			.uri("/test")
-			.version(Version::HTTP_11)
-			.headers(HeaderMap::new())
-			.secure(true)
-			.body(Bytes::new())
-			.build()
-			.unwrap();
-
-		// Assert
-		let response = middleware.process(request, handler).await.unwrap();
-		assert_eq!(response.status, StatusCode::OK);
-		assert_eq!(
-			response.headers.get("Strict-Transport-Security").unwrap(),
-			"max-age=31536000"
 		);
 	}
 

@@ -457,11 +457,9 @@ pub use reinhardt_macros::admin;
 
 // Re-export settings from dedicated crate
 #[cfg(all(feature = "conf", native))]
-#[allow(deprecated)]
-// Re-exports deprecated Settings and AdvancedSettings for backward compatibility
 pub use reinhardt_conf::settings::{
-	AdvancedSettings, CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
-	MediaSettings, MiddlewareConfig, SessionSettings, Settings, SettingsError, StaticSettings,
+	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
+	MediaSettings, MiddlewareConfig, SessionSettings, SettingsError, StaticSettings,
 	TemplateConfig,
 };
 
@@ -1368,11 +1366,6 @@ pub mod prelude {
 		UserRateThrottle,
 		VersioningMiddleware,
 	};
-
-	// Settings feature
-	#[cfg(feature = "conf")]
-	#[allow(deprecated)] // Re-exports deprecated Settings for backward compatibility
-	pub use crate::Settings;
 
 	// Middleware
 	#[cfg(any(feature = "standard", feature = "middleware"))]
