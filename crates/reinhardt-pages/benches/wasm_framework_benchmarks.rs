@@ -1,4 +1,3 @@
-#![allow(deprecated)] // (Refs #4234) Benchmark exercises deprecated `pages::Router` surface.
 
 //! WASM Framework Benchmarks
 //!
@@ -13,7 +12,7 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{Effect, Memo, Signal};
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
 
 // ============================================================================
@@ -274,7 +273,7 @@ fn bench_ssr_with_hydration_markers(c: &mut Criterion) {
 
 /// Benchmark: Path matching with simple routes
 fn bench_router_path_matching(c: &mut Criterion) {
-	let router = Router::new()
+	let router = ClientRouter::new()
 		.route("/users/{id}", || {
 			PageElement::new("div").child("User").into_page()
 		})
@@ -292,7 +291,7 @@ fn bench_router_path_matching(c: &mut Criterion) {
 
 /// Benchmark: Complex path matching with many routes
 fn bench_router_complex_path_matching(c: &mut Criterion) {
-	let mut router = Router::new();
+	let mut router = ClientRouter::new();
 
 	// Add many routes
 	for i in 0..100 {
@@ -310,7 +309,7 @@ fn bench_router_complex_path_matching(c: &mut Criterion) {
 
 /// Benchmark: Parameter extraction
 fn bench_router_parameter_extraction(c: &mut Criterion) {
-	let router = Router::new().route(
+	let router = ClientRouter::new().route(
 		"/users/{user_id}/posts/{post_id}/comments/{comment_id}/",
 		|| PageElement::new("div").child("Comment").into_page(),
 	);
@@ -329,7 +328,7 @@ fn bench_router_parameter_extraction(c: &mut Criterion) {
 fn bench_router_named_routes(c: &mut Criterion) {
 	c.bench_function("router_named_routes", |b| {
 		b.iter(|| {
-			let _router = Router::new()
+			let _router = ClientRouter::new()
 				.named_route("user_profile", "/users/{id}/profile", || {
 					PageElement::new("div").child("Profile").into_page()
 				})

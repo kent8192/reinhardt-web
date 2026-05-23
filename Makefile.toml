@@ -754,3 +754,8 @@ args = ["mutants", "--shard", "${SHARD}/${TOTAL_SHARDS}", "--test-tool", "nextes
 description = "Run mutation testing for all mutants (no sharding)"
 command = "cargo"
 args = ["mutants", "--test-tool", "nextest", "--timeout-multiplier", "2", "--jobs", "1"]
+
+[tasks.migrate-manouche-v2]
+description = "Apply the Manouche v1 → v2 codemod (spec §6.1 + §6.2)"
+command = "cargo"
+args = ["run", "-p", "reinhardt-admin-cli", "--", "migrate-manouche-v2", "${@}"]

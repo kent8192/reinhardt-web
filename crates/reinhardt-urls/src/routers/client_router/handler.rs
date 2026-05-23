@@ -5,6 +5,7 @@
 //! extraction in route definitions.
 
 use super::error::RouterError;
+use super::from_request::{FromRequest, RouteContext};
 use super::params::{FromPath, ParamContext, Path, SingleFromPath};
 use reinhardt_core::types::page::Page;
 use std::marker::PhantomData;
@@ -282,6 +283,74 @@ where
 	T3: SingleFromPath + Send + Sync + 'static,
 {
 	Arc::new(ThreePathHandler::new(handler))
+}
+
+// ============================================================================
+// FromRequest-based page handler (spec §4.3)
+// ============================================================================
+
+/// Handler for routes registered via [`ClientRouter::page`].
+///
+/// Wraps a `Fn(P) -> Page` closure where `P: FromRequest`. Constructs
+/// `P` from the matched path / query data via `P::from_request`, then
+/// invokes the closure. Extraction errors are surfaced as a
+/// `Page::Text` describing the failure so client-side navigation does
+/// not panic; a future iteration may route these through a dedicated
+/// error page.
+///
+/// [`ClientRouter::page`]: super::core::ClientRouter::page
+pub(crate) struct FromRequestHandler<F, P> {
+	handler: F,
+	pattern: String,
+	_phantom: PhantomData<P>,
+}
+
+impl<F, P> FromRequestHandler<F, P> {
+	pub(crate) fn new(handler: F, pattern: String) -> Self {
+		Self {
+			handler,
+			pattern,
+			_phantom: PhantomData,
+		}
+	}
+}
+
+// SAFETY: FromRequestHandler is Send + Sync when F is Send + Sync.
+// The PhantomData<P> is only used for type inference and does not
+// hold data — matching the established pattern in this file.
+unsafe impl<F: Send, P> Send for FromRequestHandler<F, P> {}
+unsafe impl<F: Sync, P> Sync for FromRequestHandler<F, P> {}
+
+impl<F, P> RouteHandler for FromRequestHandler<F, P>
+where
+	F: Fn(P) -> Page + Send + Sync,
+	P: FromRequest + Send + Sync,
+{
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
+		let route_ctx = RouteContext::new(
+			// The matched path is not directly available to RouteHandler;
+			// pass an empty placeholder. Handlers that need the path can
+			// read it from the router's `current_path` signal.
+			String::new(),
+			ctx.params().clone(),
+			ctx.query().unwrap_or("").to_string(),
+		);
+		match P::from_request(&route_ctx) {
+			Ok(props) => Ok((self.handler)(props)),
+			Err(e) => Ok(Page::Text(
+				format!("route extraction error on `{}`: {e}", self.pattern).into(),
+			)),
+		}
+	}
+}
+
+/// Helper function to create a `FromRequest`-based handler.
+pub(crate) fn from_request_handler<F, P>(handler: F, pattern: String) -> Arc<dyn RouteHandler>
+where
+	F: Fn(P) -> Page + Send + Sync + 'static,
+	P: FromRequest + Send + Sync + 'static,
+{
+	Arc::new(FromRequestHandler::new(handler, pattern))
 }
 
 #[cfg(test)]
