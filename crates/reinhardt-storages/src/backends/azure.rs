@@ -21,6 +21,7 @@ impl AzureStorage {
 	}
 }
 
+#[allow(clippy::todo)] // Phase 2 backend not yet implemented
 #[async_trait]
 impl StorageBackend for AzureStorage {
 	async fn save(&self, _name: &str, _content: &[u8]) -> Result<String> {
