@@ -52,8 +52,9 @@
 //!     post_page(id)
 //! })
 //!
-//! // Multiple parameters
-//! .route_path2("/users/{user_id}/posts/{post_id}/",
+//! // Multiple parameters — same method, the arity is inferred from
+//! // the closure signature (Issue #4637).
+//! .route_path("/users/{user_id}/posts/{post_id}/",
 //!     |Path(user_id): Path<u64>, Path(post_id): Path<u64>| {
 //!         user_post_page(user_id, post_id)
 //!     })

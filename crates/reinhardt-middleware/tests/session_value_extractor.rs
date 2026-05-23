@@ -46,8 +46,11 @@ mod tests {
 			.unwrap();
 
 		let singleton: Arc<SingletonScope> = Arc::new(SingletonScope::new());
-		// `SessionData::inject` reads `Arc<SessionStore>` from the singleton scope.
-		singleton.set::<Arc<SessionStore>>(store);
+		// `SessionData::inject` reads the store from the singleton scope under
+		// TypeId::of::<SessionStore>() (post-#4437 key). `set_arc` stores the
+		// `Arc<SessionStore>` verbatim under that key, so handlers using
+		// `#[inject] store: Depends<SessionStore>` would resolve the same value.
+		singleton.set_arc(store);
 
 		// `SessionData::inject` reads the `Request` from the request scope via
 		// `ctx.get_request::<Request>()`, not the `with_request` field used by
