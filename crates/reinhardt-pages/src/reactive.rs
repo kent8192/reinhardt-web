@@ -114,8 +114,8 @@ pub use resource::{create_resource, create_resource_with_deps};
 // Re-export hooks
 #[allow(deprecated)] // Intentional: re-exporting deprecated items for backward compatibility
 pub use hooks::{
-	Action, ActionPhase, ActionState, Dispatch, OptimisticState, Ref, SetState, SharedSetState,
-	SharedSignal, TransitionState, use_action, use_action_state, use_callback, use_context,
+	Action, ActionPhase, Dispatch, OptimisticState, Ref, SetState, SharedSetState,
+	SharedSignal, TransitionState, use_action, use_callback, use_context,
 	use_debug_value, use_deferred_value, use_effect, use_effect_event, use_id, use_layout_effect,
 	use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
 	use_sync_external_store, use_transition,
