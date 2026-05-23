@@ -242,7 +242,10 @@ impl FieldMetadata {
 		let key_s: String = key.into();
 		let value_s: String = value.into();
 		if key_s == "null" {
-			self.nullable = value_s.parse::<bool>().unwrap_or(false);
+			let parsed = value_s.parse::<bool>().unwrap_or(false);
+			self.nullable = parsed;
+			self.params.insert(key_s, parsed.to_string());
+			return self;
 		}
 		self.params.insert(key_s, value_s);
 		self
