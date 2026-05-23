@@ -1,0 +1,15 @@
+error[E0061]: this function takes 2 arguments but 1 argument was supplied
+ --> tests/ui/hooks/fail/missing_deps_use_effect.rs:9:10
+  |
+9 |     let _ = use_effect(|| {});
+  |             ^^^^^^^^^^------- argument #2 is missing
+  |
+note: function defined here
+ --> src/reactive/hooks/effect.rs
+  |
+  | pub fn use_effect<F, D>(f: F, deps: D) -> Effect
+  |        ^^^^^^^^^^
+help: provide the argument
+  |
+9 |     let _ = use_effect(|| {}, /* deps */);
+  |                             ++++++++++++
