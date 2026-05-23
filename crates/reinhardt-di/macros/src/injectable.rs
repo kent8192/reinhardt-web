@@ -32,13 +32,9 @@ fn should_use_cache(_field: &syn::Field) -> bool {
 /// Injection field type classification
 #[derive(Debug, Clone)]
 enum InjectionType {
-	/// `Injected<T>` - required dependency (deprecated, use `Depends<T>`)
-	Injected(Type),
-	/// `OptionalInjected<T>` (= `Option<Injected<T>>`) - optional dependency (deprecated)
-	OptionalInjected(Type),
-	/// `Depends<T>` - required dependency (preferred)
+	/// `Depends<T>` - required dependency
 	Depends(Type),
-	/// `Option<Depends<T>>` - optional dependency (preferred)
+	/// `Option<Depends<T>>` - optional dependency
 	OptionalDepends(Type),
 }
 
@@ -47,8 +43,8 @@ enum InjectionType {
 /// In proc-macro context, full path resolution is not available. This heuristic
 /// inspects the path segments preceding the terminal identifier for known
 /// `reinhardt_di` / `reinhardt` prefixes. When the type is referenced with a
-/// bare identifier (single segment, e.g. `Injected<T>`), we accept it because
-/// the user likely has `use reinhardt_di::Injected` in scope. Multi-segment
+/// bare identifier (single segment, e.g. `Depends<T>`), we accept it because
+/// the user likely has `use reinhardt_di::Depends` in scope. Multi-segment
 /// paths that do NOT contain a recognized prefix are rejected to prevent
 /// accidental misclassification of user-defined types with the same name.
 fn is_likely_reinhardt_di_path(
@@ -69,19 +65,19 @@ fn is_likely_reinhardt_di_path(
 	})
 }
 
-/// Extract inner type from `Injected<T>` or `OptionalInjected<T>`
+/// Extract inner type from `Depends<T>` or `Option<Depends<T>>`
 ///
 /// Returns `Some(InjectionType)` if the type is a valid injection type,
 /// `None` otherwise.
 ///
 /// # Path qualification
 ///
-/// This function matches on the terminal identifier (`Injected`,
-/// `OptionalInjected`, `Option`) and additionally validates that multi-segment
-/// paths contain a recognized `reinhardt_di` prefix. This prevents user-defined
-/// types with the same leaf name from being misclassified as DI wrapper types.
-/// Single-segment paths are accepted because the typical usage is via
-/// `use reinhardt_di::Injected;`.
+/// This function matches on the terminal identifier (`Depends`, `Option`)
+/// and additionally validates that multi-segment paths contain a recognized
+/// `reinhardt_di` prefix. This prevents user-defined types with the same
+/// leaf name from being misclassified as DI wrapper types. Single-segment
+/// paths are accepted because the typical usage is via
+/// `use reinhardt_di::Depends;`.
 fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 	if let Type::Path(type_path) = ty {
 		let segments = &type_path.path.segments;
@@ -92,25 +88,6 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 		let last_segment = segments.last()?;
 		let ident = &last_segment.ident;
 
-		// Check for Injected<T>
-		if ident == "Injected"
-			&& is_likely_reinhardt_di_path(segments)
-			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
-			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
-		{
-			return Some(InjectionType::Injected(inner_ty.clone()));
-		}
-
-		// Check for OptionalInjected<T> (type alias for Option<Injected<T>>)
-		// Also check for Option<Injected<T>> directly
-		if ident == "OptionalInjected"
-			&& is_likely_reinhardt_di_path(segments)
-			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
-			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
-		{
-			return Some(InjectionType::OptionalInjected(inner_ty.clone()));
-		}
-
 		// Check for Depends<T>
 		if ident == "Depends"
 			&& is_likely_reinhardt_di_path(segments)
@@ -120,7 +97,7 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 			return Some(InjectionType::Depends(inner_ty.clone()));
 		}
 
-		// Check for Option<Injected<T>> or Option<Depends<T>>
+		// Check for Option<Depends<T>>
 		if ident == "Option"
 			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
 			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
@@ -128,20 +105,10 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 			&& let Some(inner_seg) = inner_path.path.segments.last()
 			&& let PathArguments::AngleBracketed(inner_args) = &inner_seg.arguments
 			&& let Some(GenericArgument::Type(innermost_ty)) = inner_args.args.first()
+			&& inner_seg.ident == "Depends"
+			&& is_likely_reinhardt_di_path(&inner_path.path.segments)
 		{
-			// Check if inner type is Injected<T> (deprecated)
-			if inner_seg.ident == "Injected"
-				&& is_likely_reinhardt_di_path(&inner_path.path.segments)
-			{
-				return Some(InjectionType::OptionalInjected(innermost_ty.clone()));
-			}
-
-			// Check if inner type is Depends<T>
-			if inner_seg.ident == "Depends"
-				&& is_likely_reinhardt_di_path(&inner_path.path.segments)
-			{
-				return Some(InjectionType::OptionalDepends(innermost_ty.clone()));
-			}
+			return Some(InjectionType::OptionalDepends(innermost_ty.clone()));
 		}
 	}
 
@@ -220,7 +187,7 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 				let injection_type = classify_injection_type(ty).ok_or_else(|| {
 					syn::Error::new_spanned(
 						field,
-						"#[inject] field must have type Depends<T>, Option<Depends<T>>, Injected<T>, or OptionalInjected<T>",
+						"#[inject] field must have type Depends<T> or Option<Depends<T>>",
 					)
 				})?;
 
@@ -258,52 +225,6 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 								#di_crate::Depends::<#inner_ty>::resolve(__di_ctx, false)
 									.await
 									.ok()
-							}
-						}
-					}
-					// Deprecated: Injected<T> and OptionalInjected<T> are still supported
-					// for backward compatibility but users should migrate to Depends<T>.
-					InjectionType::Injected(inner_ty) => {
-						if use_cache {
-							quote! {
-								{
-									#[allow(deprecated)]
-									let __v = #di_crate::Injected::<#inner_ty>::resolve(__di_ctx)
-										.await?;
-									__v
-								}
-							}
-						} else {
-							quote! {
-								{
-									#[allow(deprecated)]
-									let __v = #di_crate::Injected::<#inner_ty>::resolve_uncached(__di_ctx)
-										.await?;
-									__v
-								}
-							}
-						}
-					}
-					InjectionType::OptionalInjected(inner_ty) => {
-						if use_cache {
-							quote! {
-								{
-									#[allow(deprecated)]
-									let __v = #di_crate::Injected::<#inner_ty>::resolve(__di_ctx)
-										.await
-										.ok();
-									__v
-								}
-							}
-						} else {
-							quote! {
-								{
-									#[allow(deprecated)]
-									let __v = #di_crate::Injected::<#inner_ty>::resolve_uncached(__di_ctx)
-										.await
-										.ok();
-									__v
-								}
 							}
 						}
 					}
