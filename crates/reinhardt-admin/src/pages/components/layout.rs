@@ -33,7 +33,7 @@ pub fn header(site_name: &str, user_name: Option<&str>) -> Page {
 	let site_name = site_name.to_string();
 	let user_display = user_name.unwrap_or("Guest").to_string();
 
-	page!(|| {
+	page!(|site_name: String, user_display: String| {
 		nav {
 			class: "flex items-center justify-between px-6 py-3 bg-slate-900 text-white animate__animated animate__fadeInDown",
 			style: "position: fixed; top: 0; left: 0; right: 0; z-index: 50; height: 56px;",
@@ -52,7 +52,7 @@ pub fn header(site_name: &str, user_name: Option<&str>) -> Page {
 				}
 			}
 		}
-	})()
+	})(site_name, user_display)
 }
 
 /// Determines whether a nav item URL matches the current path.
@@ -103,16 +103,16 @@ pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> Page {
 				.class(item_class)
 				.render();
 
-			page!(|| {
+			page!(|link: Page| {
 				li {
 					class: "list-none",
 					{ link }
 				}
-			})()
+			})(link)
 		})
 		.collect();
 
-	page!(|| {
+	page!(|nav_items: Vec<Page>| {
 		div {
 			class: "admin-sidebar bg-slate-900 border-r border-slate-800 animate__animated animate__fadeInLeft",
 			style: "width: 240px; height: 100vh; position: fixed; top: 56px; left: 0; overflow-y: auto; padding-top: 1rem;",
@@ -128,7 +128,7 @@ pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> Page {
 				{ nav_items }
 			}
 		}
-	})()
+	})(nav_items)
 }
 
 /// Footer component
@@ -145,13 +145,13 @@ pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> Page {
 pub fn footer(version: &str) -> Page {
 	let version = version.to_string();
 
-	page!(|| {
+	page!(|version: String| {
 		footer {
 			class: "text-center py-4 text-xs text-slate-400 border-t border-slate-200 animate__animated animate__fadeIn",
 			style: "margin-left: 240px;",
 			{ format!("Reinhardt Admin v{}", version) }
 		}
-	})()
+	})(version)
 }
 
 /// Main layout wrapper
@@ -187,7 +187,7 @@ pub fn main_layout(
 	let footer_page = footer(version);
 		let outlet = router.render_current();
 
-	page!(|| {
+	page!(|header_page: Page, sidebar_page: Page, outlet: Page, footer_page: Page| {
 		div {
 			class: "admin-layout min-h-screen bg-slate-50",
 			{ header_page }
@@ -199,7 +199,7 @@ pub fn main_layout(
 			}
 			{ footer_page }
 		}
-	})()
+	})(header_page, sidebar_page, outlet, footer_page)
 }
 
 #[cfg(test)]
