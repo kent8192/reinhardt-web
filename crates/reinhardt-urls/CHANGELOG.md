@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ClientRouter::page<F, P>(pattern, handler)` and
+  `ClientRouter::named_page<F, P>(name, pattern, handler)` accepting any
+  handler `Fn(P) -> Page` where `P: FromRequest`. The same Props struct
+  can be used both as a Component prop bag (Manouche DSL v2 spec §4.3)
+  and as a page function — "every page is a component." Path / query
+  extraction errors surface as a `Page::Text` at the router boundary
+  rather than panicking. (Refs #4668)
+- `reinhardt_urls::routers::client_router::from_request` module
+  exposing `FromRequest`, `RouteContext`, `ExtractError`,
+  `PathParam<T>`, and `QueryParam<T>` — the manual building blocks for
+  `ClientRouter::page` handlers. `#[derive(FromRequest)]` and
+  `#[derive(PageProps)]` proc-macros are deferred to spec §10.
+- `ClientRouteMatch::query: Option<String>` — populated by `match_path`
+  after stripping an optional `?query` suffix from the path before
+  pattern matching. Required for `QueryParam<T>` to see the query under
+  real routing.
+- `ParamContext::with_query(...)` / `ParamContext::query()` /
+  `ParamContext::params()` — `render_current` threads the captured
+  query through to the `RouteHandler` trait. Backward-compatible:
+  existing `ParamContext::new(...)` keeps the previous signature and
+  defaults the new field to `None`.
+
 ### Removed
 
 #### BREAKING CHANGES
