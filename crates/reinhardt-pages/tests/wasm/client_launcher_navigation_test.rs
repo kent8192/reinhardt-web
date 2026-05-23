@@ -19,12 +19,11 @@
 //! accept Cargo flags before the path argument.
 
 #![cfg(wasm)]
-#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::with_runtime;
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -75,8 +74,8 @@ async fn client_launcher_re_renders_on_router_push() {
 	let root = install_app_root();
 
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
+		.router_client(|| {
+			ClientRouter::new()
 				.route("/", page_root)
 				.route("/a", page_a)
 				.route("/b", page_b)
@@ -87,7 +86,7 @@ async fn client_launcher_re_renders_on_router_push() {
 	yield_to_microtasks().await;
 
 	// Navigate to /a and confirm the body switches.
-	with_router(|r| r.push("/a")).expect("push /a");
+	with_spa_router(|r| r.push("/a")).expect("push /a");
 	let pending_after_push_a = with_runtime(|rt| rt.debug_pending_updates());
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
@@ -106,7 +105,7 @@ async fn client_launcher_re_renders_on_router_push() {
 	);
 
 	// Navigate to /b — this is the regression-critical step.
-	with_router(|r| r.push("/b")).expect("push /b");
+	with_spa_router(|r| r.push("/b")).expect("push /b");
 	let pending_after_push_b = with_runtime(|rt| rt.debug_pending_updates());
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
@@ -158,8 +157,8 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 	}
 
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
+		.router_client(|| {
+			ClientRouter::new()
 				.route("/", dashboard)
 				.route("/login", login_page)
 				.route("/register", register_page)
@@ -176,7 +175,7 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 	);
 
 	// Issue #4088 row 2: /login should render login_page after Router::push
-	with_router(|r| r.push("/login")).expect("push /login");
+	with_spa_router(|r| r.push("/login")).expect("push /login");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
 	assert!(
@@ -186,7 +185,7 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 	);
 
 	// Issue #4088 row 3: /register
-	with_router(|r| r.push("/register")).expect("push /register");
+	with_spa_router(|r| r.push("/register")).expect("push /register");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
 	assert!(
@@ -196,7 +195,7 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 	);
 
 	// Issue #4088 row 4: /clusters has no route — must fall through to not_found
-	with_router(|r| r.push("/clusters")).expect("push /clusters");
+	with_spa_router(|r| r.push("/clusters")).expect("push /clusters");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
 	assert!(
@@ -220,8 +219,8 @@ async fn client_launcher_re_renders_on_popstate() {
 	let observed_paths_for_listener = observed_paths.clone();
 
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
+		.router_client(|| {
+			ClientRouter::new()
 				.route("/", page_root)
 				.route("/a", page_a)
 				.route("/b", page_b)
@@ -230,7 +229,7 @@ async fn client_launcher_re_renders_on_popstate() {
 			// after_launch is FnOnce, so observed_paths_for_listener can
 			// be moved straight into the listener body without an extra
 			// clone.
-			let sub = with_router(move |r| {
+			let sub = with_spa_router(move |r| {
 				r.on_navigate(move |path, _params| {
 					observed_paths_for_listener
 						.borrow_mut()
@@ -248,10 +247,10 @@ async fn client_launcher_re_renders_on_popstate() {
 
 	// Arrange: navigate forward to /a then /b so popstate has somewhere
 	// to pop back to.
-	with_router(|r| r.push("/a")).expect("push /a");
+	with_spa_router(|r| r.push("/a")).expect("push /a");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
-	with_router(|r| r.push("/b")).expect("push /b");
+	with_spa_router(|r| r.push("/b")).expect("push /b");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
 
@@ -306,8 +305,8 @@ async fn client_launcher_handles_back_to_back_navigations() {
 	let root = install_app_root();
 
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
+		.router_client(|| {
+			ClientRouter::new()
 				.route("/", page_root)
 				.route("/a", page_a)
 				.route("/b", page_b)
@@ -321,7 +320,7 @@ async fn client_launcher_handles_back_to_back_navigations() {
 	// class manifested as the second or third navigation no longer
 	// re-mounting.
 	for iteration in 0..3 {
-		with_router(|r| r.push("/a")).expect("push /a");
+		with_spa_router(|r| r.push("/a")).expect("push /a");
 		yield_to_microtasks().await;
 		yield_to_microtasks().await;
 		assert!(
@@ -335,7 +334,7 @@ async fn client_launcher_handles_back_to_back_navigations() {
 			root.inner_html()
 		);
 
-		with_router(|r| r.push("/b")).expect("push /b");
+		with_spa_router(|r| r.push("/b")).expect("push /b");
 		yield_to_microtasks().await;
 		yield_to_microtasks().await;
 		assert!(
