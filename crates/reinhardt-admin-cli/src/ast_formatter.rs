@@ -1,21 +1,21 @@
-//! AST-based page! macro formatter implementation.
+//! AST-based page! and form! macro formatter implementation.
 //!
-//! This module provides formatting for `page!` macro DSL using proper AST parsing.
+//! This module provides formatting for `page!` and `form!` macro DSL using proper AST parsing.
 //! Unlike the text-based approach, this implementation:
 //!
 //! - Uses `syn::parse_file()` to parse the entire Rust source file
-//! - Uses `syn::visit` to accurately detect `page!` macro invocations
+//! - Uses `syn::visit` to accurately detect `page!` and `form!` macro invocations
 //! - Ignores content in comments and strings (guaranteed by AST)
-//! - Uses `reinhardt-pages-ast` for parsing the macro DSL
+//! - Uses `reinhardt-pages-ast` for parsing the macro DSLs
 //!
 //! ## Architecture
 //!
 //! ```mermaid
 //! flowchart TB
 //!     A["Rust source file"] --> B["syn::parse_file()<br/>Parse entire file to AST"]
-//!     B --> C["PageMacroVisitor<br/>Walk AST to find page! macros"]
-//!     C --> D["reinhardt_pages::ast::PageMacro<br/>Parse macro tokens to DSL AST"]
-//!     D --> E["format_macro()<br/>Generate formatted code from AST"]
+//!     B --> C["MacroVisitors<br/>Walk AST to find page!/form! macros"]
+//!     C --> D["reinhardt_pages::ast<br/>Parse macro tokens to DSL AST"]
+//!     D --> E["format_page_macro()/<br/>format_form_macro()<br/>Generate formatted code from AST"]
 //!     E --> F["replace by span<br/>Replace original text"]
 //!     F --> G["Formatted source file"]
 //! ```
@@ -23,8 +23,11 @@
 use quote::ToTokens;
 use regex::Regex;
 use reinhardt_pages::ast::{
-	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
-	PageIf, PageMacro, PageNode, PageParam, PageText, PageWatch,
+	ClientTrigger, FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry,
+	FormFieldGroup, FormFieldProperty, FormMacro, FormSlots, FormState, FormSubmitButtonDef,
+	FormValidator, FormWatch, PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent,
+	PageExpression, PageFor, PageIf, PageMacro, PageNode, PageParam, PageText, ValidatorRule,
+	ValidatorScope,
 };
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -101,31 +104,44 @@ pub(crate) struct FormatResult {
 	pub skipped: Option<SkipReason>,
 }
 
-/// Information about a detected page! macro invocation.
+/// The kind of macro being formatted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MacroKind {
+	/// A `page!` macro invocation.
+	Page,
+	/// A `form!` macro invocation.
+	Form,
+}
+
+/// Information about a detected macro invocation (page! or form!).
 #[derive(Debug)]
 struct MacroInfo {
 	/// Start byte offset in the source
 	start: usize,
 	/// End byte offset in the source
 	end: usize,
-	/// The macro's tokens (content inside page!(...))
+	/// The macro's tokens (content inside page!(...) or form!(...))
 	tokens: proc_macro2::TokenStream,
 	/// Whether this macro should be skipped during formatting
 	should_skip: bool,
 	/// Original source text the tokens were parsed from (for span-based blank line detection)
 	original_text: String,
+	/// The kind of macro (page! or form!)
+	kind: MacroKind,
 }
 
-/// Backup information for a protected page! macro.
+/// Backup information for a protected page!/form! macro.
 ///
-/// Used during the protect/restore cycle to preserve page! macros
+/// Used during the protect/restore cycle to preserve page! and form! macros
 /// while rustfmt processes the surrounding Rust code.
 #[derive(Debug, Clone)]
 pub(crate) struct PageMacroBackup {
 	/// Unique identifier for this macro (used in placeholder)
 	pub id: usize,
-	/// Original page! macro text (including "page!(...)")
+	/// Original macro text (including "page!(...)" or "form!(...)")
 	pub original: String,
+	/// The kind of macro being backed up
+	pub kind: MacroKind,
 }
 
 /// Result of protecting page! macros in source code.
@@ -153,7 +169,7 @@ impl<'a> PageMacroVisitor<'a> {
 		}
 	}
 
-	/// Extract macro info from a Macro node.
+	/// Extract macro info from a Macro node (page! only).
 	fn extract_macro_info(&mut self, mac: &Macro) {
 		if mac.path.is_ident("page") {
 			// Get span information
@@ -163,28 +179,32 @@ impl<'a> PageMacroVisitor<'a> {
 
 			// Find this macro in the source by searching for "page!("
 			// We use the token stream content to verify we found the right one
-			if let Some(info) = self.find_macro_in_source(&tokens_str) {
+			if let Some(mut info) = self.find_macro_in_source(&tokens_str, MacroKind::Page) {
+				info.kind = MacroKind::Page;
 				self.macros.push(info);
 			}
 		}
 	}
 
-	/// Find the page! macro in source and return its position info.
+	/// Find the page! or form! macro in source and return its position info.
 	///
-	/// Accepts both the human-authored form `page!(...)` and the
-	/// `proc_macro2::TokenStream` Display form `page ! ( ... )`, which
+	/// Accepts both the human-authored form `name!(...)` and the
+	/// `proc_macro2::TokenStream` Display form `name ! ( ... )`, which
 	/// appears when the formatter recurses via wrapper code built from
 	/// `expr.to_token_stream()` (it inserts whitespace between tokens).
-	/// Without the lenient match, nested `page!` macros inside such
+	/// Without the lenient match, nested macros inside such
 	/// wrapper code would be invisible to `protect_page_macros`.
 	///
 	/// `tokens_content` is the `TokenStream` Display form of the macro
 	/// being located (i.e. `mac.tokens.to_string()` from syn). It is
-	/// used to disambiguate when a `page!(...)`-shaped substring also
+	/// used to disambiguate when a `name!(...)`-shaped substring also
 	/// appears in a preceding string literal or comment: the parsed
 	/// candidate's `to_string()` must match `tokens_content` to be
 	/// accepted.
-	fn find_macro_in_source(&self, tokens_content: &str) -> Option<MacroInfo> {
+	///
+	/// `kind` identifies whether this is a `page!` or `form!` macro,
+	/// so the correct delimiters are used for scanning.
+	fn find_macro_in_source(&self, tokens_content: &str, kind: MacroKind) -> Option<MacroInfo> {
 		let mut search_start = 0;
 
 		// Skip already found macros
@@ -194,16 +214,26 @@ impl<'a> PageMacroVisitor<'a> {
 			}
 		}
 
-		while let Some(hit) = find_page_bang_paren(&self.source[search_start..]) {
+		let find_fn: fn(&str) -> Option<PageBangParen> = match kind {
+			MacroKind::Page => find_page_bang_paren,
+			MacroKind::Form => find_form_bang_brace,
+		};
+
+		let find_matching: fn(&str, usize) -> Option<usize> = match kind {
+			MacroKind::Page => find_matching_paren,
+			MacroKind::Form => find_matching_brace,
+		};
+
+		while let Some(hit) = find_fn(&self.source[search_start..]) {
 			let abs_start = search_start + hit.start;
 			let content_start = search_start + hit.paren_open + 1;
 
-			// Find matching closing paren
-			if let Some(end_pos) = find_matching_paren(self.source, content_start) {
+			// Find matching closing delimiter
+			if let Some(end_pos) = find_matching(self.source, content_start) {
 				let macro_content = &self.source[content_start..end_pos];
 
 				// Parse the content to get tokens, and verify it matches the
-				// AST node we're locating. Without this check, a `page!(...)`
+				// AST node we're locating. Without this check, a macro-shaped
 				// substring inside a preceding string literal or `//` comment
 				// could be mistaken for the real macro invocation.
 				if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content)
@@ -211,10 +241,11 @@ impl<'a> PageMacroVisitor<'a> {
 				{
 					return Some(MacroInfo {
 						start: abs_start,
-						end: end_pos + 1, // Include closing paren
+						end: end_pos + 1, // Include closing delimiter
 						tokens,
 						should_skip: false,
 						original_text: macro_content.to_string(),
+						kind,
 					});
 				}
 			}
@@ -227,6 +258,88 @@ impl<'a> PageMacroVisitor<'a> {
 }
 
 impl<'ast, 'a> Visit<'ast> for PageMacroVisitor<'a> {
+	fn visit_expr_macro(&mut self, expr: &'ast ExprMacro) {
+		self.extract_macro_info(&expr.mac);
+		syn::visit::visit_expr_macro(self, expr);
+	}
+
+	fn visit_macro(&mut self, mac: &'ast Macro) {
+		self.extract_macro_info(mac);
+		syn::visit::visit_macro(self, mac);
+	}
+}
+
+/// Visitor that walks the AST to find form! macro invocations.
+struct FormMacroVisitor<'a> {
+	/// Collected macro information
+	macros: Vec<MacroInfo>,
+	/// Original source code for offset calculation
+	source: &'a str,
+}
+
+impl<'a> FormMacroVisitor<'a> {
+	fn new(source: &'a str) -> Self {
+		Self {
+			macros: Vec::new(),
+			source,
+		}
+	}
+
+	/// Extract form! macro info from a Macro node.
+	fn extract_macro_info(&mut self, mac: &Macro) {
+		if mac.path.is_ident("form") {
+			let tokens_str = mac.tokens.to_string();
+			if let Some(mut info) = self.find_macro_in_source(&tokens_str) {
+				info.kind = MacroKind::Form;
+				self.macros.push(info);
+			}
+		}
+	}
+
+	/// Find the form! macro in source and return its position info.
+	///
+	/// `tokens_content` is the `TokenStream` Display form of the macro
+	/// being located (i.e. `mac.tokens.to_string()` from syn).
+	fn find_macro_in_source(&self, tokens_content: &str) -> Option<MacroInfo> {
+		let mut search_start = 0;
+
+		// Skip already found macros
+		for found in &self.macros {
+			if found.end > search_start {
+				search_start = found.end;
+			}
+		}
+
+		while let Some(hit) = find_form_bang_brace(&self.source[search_start..]) {
+			let abs_start = search_start + hit.start;
+			let content_start = search_start + hit.paren_open + 1;
+
+			// Find matching closing brace
+			if let Some(end_pos) = find_matching_brace(self.source, content_start) {
+				let macro_content = &self.source[content_start..end_pos];
+
+				if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content)
+					&& tokens.to_string() == tokens_content
+				{
+					return Some(MacroInfo {
+						start: abs_start,
+						end: end_pos + 1, // Include closing brace
+						tokens,
+						should_skip: false,
+						original_text: macro_content.to_string(),
+						kind: MacroKind::Form,
+					});
+				}
+			}
+
+			search_start = abs_start + 1;
+		}
+
+		None
+	}
+}
+
+impl<'ast, 'a> Visit<'ast> for FormMacroVisitor<'a> {
 	fn visit_expr_macro(&mut self, expr: &'ast ExprMacro) {
 		self.extract_macro_info(&expr.mac);
 		syn::visit::visit_expr_macro(self, expr);
@@ -256,10 +369,18 @@ struct PageBangParen {
 /// Returns `None` if none found. Accepts the canonical `page!(` form
 /// authored by users as well as the `page ! (` form emitted by
 /// `proc_macro2::TokenStream`'s `Display`.
-fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
+/// Find the next `<name> <ws>* ! <ws>* (` occurrence in `s`, ensuring the
+/// `<name>` token is at a word boundary. Skips matches that appear inside
+/// line comments, block comments, string literals, raw string literals,
+/// and char literals. Returns `None` if none found. Accepts the canonical
+/// `<name>!(` form authored by users as well as the `<name> ! (` form
+/// emitted by `proc_macro2::TokenStream`'s `Display`.
+fn find_macro_bang_paren(name: &str, s: &str) -> Option<PageBangParen> {
 	let bytes = s.as_bytes();
+	let name_bytes = name.as_bytes();
+	let name_len = name_bytes.len();
 	let mut i = 0;
-	while i + "page".len() <= bytes.len() {
+	while i + name_len <= bytes.len() {
 		let b = bytes[i];
 
 		// Line comment: skip to end of line.
@@ -341,8 +462,8 @@ fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 			continue;
 		}
 
-		// Not in a comment or literal — look for the `page` keyword.
-		if &bytes[i..i + "page".len()] != b"page" {
+		// Not in a comment or literal — look for the name keyword.
+		if &bytes[i..i + name_len] != name_bytes {
 			i += 1;
 			continue;
 		}
@@ -355,7 +476,7 @@ fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 				continue;
 			}
 		}
-		let after = start + "page".len();
+		let after = start + name_len;
 		// Reject if followed by an identifier-continuation byte (excluding `!`).
 		if after < bytes.len() {
 			let nx = bytes[after];
@@ -364,7 +485,7 @@ fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 				continue;
 			}
 		}
-		// Skip whitespace between `page` and `!`.
+		// Skip whitespace between name and `!`.
 		let mut j = after;
 		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
 			j += 1;
@@ -388,6 +509,174 @@ fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 		});
 	}
 	None
+}
+
+/// Find the next `page <ws>* ! <ws>* (` occurrence. Delegates to
+/// `find_macro_bang_paren` with the name "page".
+fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
+	find_macro_bang_paren("page", s)
+}
+
+/// Find the next `form <ws>* ! <ws>* (` occurrence (with possible whitespace), skipping
+/// comments, strings, and char literals.
+///
+/// Returns `None` if none found. Accepts the canonical `form!(` form
+/// authored by users as well as the `form ! (` form emitted by
+/// `proc_macro2::TokenStream`'s `Display`.
+#[allow(dead_code, reason = "symmetry helper for form! compact syntax")]
+fn find_form_bang_paren(s: &str) -> Option<PageBangParen> {
+	find_macro_bang_paren("form", s)
+}
+
+/// Find the next `<name> <ws>* ! <ws>* {` occurrence in `s`, ensuring the
+/// `<name>` token is at a word boundary. Skips matches inside line
+/// comments, block comments, string literals, raw string literals,
+/// and char literals.
+///
+/// Returns `None` if none found. Accepts the canonical `name!{` form
+/// authored by users as well as the `name ! {` form emitted by
+/// `proc_macro2::TokenStream`'s `Display`.
+fn find_macro_bang_brace(name: &str, s: &str) -> Option<PageBangParen> {
+	let bytes = s.as_bytes();
+	let name_bytes = name.as_bytes();
+	let name_len = name_bytes.len();
+	let mut i = 0;
+	while i + name_len <= bytes.len() {
+		let b = bytes[i];
+
+		// Line comment: skip to end of line.
+		if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+			i += 2;
+			while i < bytes.len() && bytes[i] != b'\n' {
+				i += 1;
+			}
+			continue;
+		}
+
+		// Block comment (Rust allows nesting): skip to matching `*/`.
+		if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+			i += 2;
+			let mut depth: usize = 1;
+			while i + 1 < bytes.len() && depth > 0 {
+				if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+					depth += 1;
+					i += 2;
+				} else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+					depth -= 1;
+					i += 2;
+				} else {
+					i += 1;
+				}
+			}
+			continue;
+		}
+
+		// String literal — handle both raw and regular forms.
+		if b == b'"' {
+			if let Some(hash_count) = detect_raw_string_start(s, i)
+				&& let Some(end) = skip_raw_string(s, i + 1, hash_count)
+			{
+				i = end;
+				continue;
+			}
+			i += 1;
+			while i < bytes.len() {
+				match bytes[i] {
+					b'\\' if i + 1 < bytes.len() => i += 2,
+					b'"' => {
+						i += 1;
+						break;
+					}
+					_ => i += 1,
+				}
+			}
+			continue;
+		}
+
+		// Char literal vs lifetime.
+		if b == b'\'' {
+			let mut j = i + 1;
+			let limit = (i + 10).min(bytes.len());
+			let mut closed = None;
+			while j < limit {
+				match bytes[j] {
+					b'\\' if j + 1 < bytes.len() => j += 2,
+					b'\'' => {
+						closed = Some(j);
+						break;
+					}
+					_ => j += 1,
+				}
+			}
+			if let Some(close) = closed {
+				i = close + 1;
+				continue;
+			}
+			// Treat as lifetime — step past the apostrophe only.
+			i += 1;
+			continue;
+		}
+
+		// Not in a comment or literal — look for the name keyword.
+		if &bytes[i..i + name_len] != name_bytes {
+			i += 1;
+			continue;
+		}
+		let start = i;
+		// Reject if preceded by an identifier-continuation byte.
+		if start > 0 {
+			let prev = bytes[start - 1];
+			if prev.is_ascii_alphanumeric() || prev == b'_' {
+				i = start + 1;
+				continue;
+			}
+		}
+		let after = start + name_len;
+		// Reject if followed by an identifier-continuation byte (excluding `!`).
+		if after < bytes.len() {
+			let nx = bytes[after];
+			if nx.is_ascii_alphanumeric() || nx == b'_' {
+				i = start + 1;
+				continue;
+			}
+		}
+		// Skip whitespace between name and `!`.
+		let mut j = after;
+		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+			j += 1;
+		}
+		if j >= bytes.len() || bytes[j] != b'!' {
+			i = start + 1;
+			continue;
+		}
+		j += 1;
+		// Skip whitespace between `!` and `{`.
+		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+			j += 1;
+		}
+		if j >= bytes.len() || bytes[j] != b'{' {
+			i = start + 1;
+			continue;
+		}
+		return Some(PageBangParen {
+			start,
+			paren_open: j,
+		});
+	}
+	None
+}
+
+/// Find the next `page <ws>* ! <ws>* {` occurrence. Delegates to
+/// `find_macro_bang_brace` with the name "page".
+#[allow(dead_code, reason = "symmetry helper for page! brace syntax")]
+fn find_page_bang_brace(s: &str) -> Option<PageBangParen> {
+	find_macro_bang_brace("page", s)
+}
+
+/// Find the next `form <ws>* ! <ws>* {` occurrence. Delegates to
+/// `find_macro_bang_brace` with the name "form".
+fn find_form_bang_brace(s: &str) -> Option<PageBangParen> {
+	find_macro_bang_brace("form", s)
 }
 
 /// Find the matching closing parenthesis, handling strings and nested parens.
@@ -460,6 +749,82 @@ fn find_matching_paren(source: &str, start: usize) -> Option<usize> {
 			}
 			'(' => depth += 1,
 			')' => {
+				depth -= 1;
+				if depth == 0 {
+					return Some(start + offset);
+				}
+			}
+			_ => {}
+		}
+		i += 1;
+	}
+
+	None
+}
+/// Find the matching closing brace, handling strings and nested braces.
+///
+/// Uses char_indices() to properly handle UTF-8 multi-byte characters.
+fn find_matching_brace(source: &str, start: usize) -> Option<usize> {
+	let substring = &source[start..];
+	let mut depth = 1;
+	let mut in_string = false;
+	let mut in_char = false;
+	let mut escape_next = false;
+	let chars: Vec<(usize, char)> = substring.char_indices().collect();
+	let mut i = 0;
+
+	while i < chars.len() {
+		let (offset, ch) = chars[i];
+
+		if escape_next {
+			escape_next = false;
+			i += 1;
+			continue;
+		}
+
+		if in_string {
+			match ch {
+				'\\' => escape_next = true,
+				'"' => in_string = false,
+				_ => {}
+			}
+			i += 1;
+			continue;
+		}
+
+		if in_char {
+			match ch {
+				'\\' => escape_next = true,
+				'\'' => in_char = false,
+				_ => {}
+			}
+			i += 1;
+			continue;
+		}
+
+		match ch {
+			'"' => {
+				// Check for raw strings: r#"..."# or r"..."
+				let raw_start = detect_raw_string_start(substring, offset);
+				if let Some(hash_count) = raw_start {
+					if let Some(end_offset) = skip_raw_string(substring, offset + 1, hash_count) {
+						while i < chars.len() && chars[i].0 < end_offset {
+							i += 1;
+						}
+						i += 1; // skip past end
+						continue;
+					}
+				}
+				in_string = true;
+			}
+			'\'' => {
+				// Distinguish char literal from lifetime annotation.
+				if is_char_literal(&chars, i) {
+					in_char = true;
+				}
+			}
+			'{' => depth += 1,
+			'}' => {
 				depth -= 1;
 				if depth == 0 {
 					return Some(start + offset);
@@ -614,12 +979,12 @@ impl AstPageFormatter {
 	/// Uses AST parsing for accurate macro detection. Falls back to returning
 	/// the original content if parsing fails.
 	pub(crate) fn format(&self, content: &str) -> Result<FormatResult, String> {
-		// Safety check FIRST: If no page! pattern exists, return unchanged.
+		// Safety check FIRST: If no page! or form! pattern exists, return unchanged.
 		// This is a successful no-op, not an intentional skip — skipped stays None.
-		// Match both compact `page!(` and the TokenStream Display form `page ! (`
+		// Match both compact `page!(`/`form!{` and the TokenStream Display forms
 		// so recursive formatting (which wraps via `to_token_stream()`) still
 		// sees nested macros at every depth.
-		if find_page_bang_paren(content).is_none() {
+		if find_page_bang_paren(content).is_none() && find_form_bang_brace(content).is_none() {
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
@@ -685,12 +1050,24 @@ impl AstPageFormatter {
 			let base_indent = Self::calculate_base_indent(content, macro_info.start);
 
 			// Try to parse and format the macro
-			match self.format_macro_tokens(&macro_info.tokens, &macro_info.original_text, base_indent) {
-				Ok(formatted) => {
-					result.push_str("page!(");
-					result.push_str(&formatted);
-					result.push(')');
-				}
+			match self.format_macro_tokens(
+				&macro_info.tokens,
+				&macro_info.original_text,
+				base_indent,
+				macro_info.kind,
+			) {
+				Ok(formatted) => match macro_info.kind {
+					MacroKind::Page => {
+						result.push_str("page!(");
+						result.push_str(&formatted);
+						result.push(')');
+					}
+					MacroKind::Form => {
+						result.push_str("form!(");
+						result.push_str(&formatted);
+						result.push(')');
+					}
+				},
 				Err(_) => {
 					// If formatting fails, keep original
 					result.push_str(&content[macro_info.start..macro_info.end]);
@@ -710,14 +1087,19 @@ impl AstPageFormatter {
 		})
 	}
 
-	/// Find all page! macros in the source.
+	/// Find all page! and form! macros in the source.
 	fn find_page_macros(&self, content: &str) -> Result<Vec<MacroInfo>, String> {
 		// Try to parse as a complete Rust file first
 		match parse_file(content) {
 			Ok(file) => {
-				let mut visitor = PageMacroVisitor::new(content);
-				visitor.visit_file(&file);
-				Ok(visitor.macros)
+				let mut page_visitor = PageMacroVisitor::new(content);
+				page_visitor.visit_file(&file);
+				let mut form_visitor = FormMacroVisitor::new(content);
+				form_visitor.visit_file(&file);
+
+				let mut all_macros = page_visitor.macros;
+				all_macros.extend(form_visitor.macros);
+				Ok(all_macros)
 			}
 			Err(_) => {
 				// If file parsing fails, fall back to text-based detection
@@ -726,14 +1108,14 @@ impl AstPageFormatter {
 		}
 	}
 
-	/// Text-based fallback for finding page! macros.
+	/// Text-based fallback for finding page! and form! macros.
 	///
-	/// Accepts both the compact `page!(` form and the TokenStream Display
-	/// form `page ! (` (see `find_page_bang_paren`).
+	/// Accepts both the compact forms and the TokenStream Display forms.
 	fn find_page_macros_text_based(&self, content: &str) -> Result<Vec<MacroInfo>, String> {
 		let mut macros = Vec::new();
-		let mut search_start = 0;
 
+		// Scan for page! macros (using paren delimiter)
+		let mut search_start = 0;
 		while let Some(hit) = find_page_bang_paren(&content[search_start..]) {
 			let abs_start = search_start + hit.start;
 			let abs_open = search_start + hit.paren_open;
@@ -756,6 +1138,41 @@ impl AstPageFormatter {
 						tokens,
 						should_skip: false,
 						original_text: macro_content.to_string(),
+						kind: MacroKind::Page,
+					});
+				}
+
+				search_start = end_pos + 1;
+			} else {
+				search_start = abs_start + 1;
+			}
+		}
+
+		// Scan for form! macros (using brace delimiter)
+		let mut search_start = 0;
+		while let Some(hit) = find_form_bang_brace(&content[search_start..]) {
+			let abs_start = search_start + hit.start;
+			let abs_open = search_start + hit.paren_open;
+
+			// Check if we're in a comment or string
+			if self.is_in_comment_or_string(content, abs_start) {
+				search_start = abs_start + 1;
+				continue;
+			}
+
+			let content_start = abs_open + 1;
+
+			if let Some(end_pos) = find_matching_brace(content, content_start) {
+				let macro_content = &content[content_start..end_pos];
+
+				if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content) {
+					macros.push(MacroInfo {
+						start: abs_start,
+						end: end_pos + 1,
+						tokens,
+						should_skip: false,
+						original_text: macro_content.to_string(),
+						kind: MacroKind::Form,
 					});
 				}
 
@@ -834,6 +1251,10 @@ impl AstPageFormatter {
 	}
 
 	/// Extract the span from a PageNode.
+	#[allow(
+		dead_code,
+		reason = "will be used when blank-line detection is fully implemented"
+	)]
 	fn node_span(node: &PageNode) -> proc_macro2::Span {
 		match node {
 			PageNode::Element(e) => e.span,
@@ -851,43 +1272,44 @@ impl AstPageFormatter {
 	/// Examines the original source text between adjacent nodes in the body.
 	/// When `\n\n` appears between the end of node i and the start of node i+1,
 	/// index i is added to the returned set.
-	fn detect_blank_lines_between_nodes(body: &PageBody, original_text: &str) -> BTreeSet<usize> {
-		let mut blanks = BTreeSet::new();
-		let bytes = original_text.as_bytes();
-
-		for i in 0..body.nodes.len().saturating_sub(1) {
-			let end_pos = Self::node_span(&body.nodes[i]).end();
-			let start_pos = Self::node_span(&body.nodes[i + 1]).start();
-
-			if end_pos >= bytes.len() || start_pos > bytes.len() || start_pos <= end_pos {
-				continue;
-			}
-
-			let between = &bytes[end_pos..start_pos];
-			if between.windows(2).any(|w| w == b"\n\n") {
-				blanks.insert(i);
-			}
-		}
-
-		blanks
+	fn detect_blank_lines_between_nodes(_body: &PageBody, _original_text: &str) -> BTreeSet<usize> {
+		// TODO(#4767): Detect blank lines from original text and re-insert between
+		// formatted nodes. Spans from parsed AST nodes don't map back to byte
+		// positions in the original body text, so this needs a text-scanning
+		// approach that walks brace-depth in the original source.
+		BTreeSet::new()
 	}
 
-	/// Format macro tokens to formatted string.
+	/// Format macro tokens to formatted string, dispatching based on MacroKind.
 	fn format_macro_tokens(
 		&self,
 		tokens: &proc_macro2::TokenStream,
 		original_text: &str,
 		base_indent: usize,
+		kind: MacroKind,
 	) -> Result<String, String> {
-		// Parse tokens as PageMacro
-		let page_macro: PageMacro =
-			syn::parse2(tokens.clone()).map_err(|e| format!("Parse error: {}", e))?;
+		match kind {
+			MacroKind::Page => {
+				// Parse tokens as PageMacro
+				let page_macro: PageMacro =
+					syn::parse2(tokens.clone()).map_err(|e| format!("Parse error: {}", e))?;
 
-		// Detect blank lines between nodes in original source
-		let blank_lines = Self::detect_blank_lines_between_nodes(&page_macro.body, original_text);
+				// Detect blank lines between nodes in original source
+				let blank_lines =
+					Self::detect_blank_lines_between_nodes(&page_macro.body, original_text);
 
-		// Format the macro
-		self.format_page_macro(&page_macro, base_indent, &blank_lines)
+				// Format the macro
+				self.format_page_macro(&page_macro, base_indent, &blank_lines)
+			}
+			MacroKind::Form => {
+				// Parse tokens as FormMacro
+				let form_macro: FormMacro =
+					syn::parse2(tokens.clone()).map_err(|e| format!("Parse error: {}", e))?;
+
+				// Format the macro
+				self.format_form_macro(&form_macro, base_indent)
+			}
+		}
 	}
 
 	/// Check if a page macro body is simple and can be formatted on a single line.
@@ -908,6 +1330,10 @@ impl AstPageFormatter {
 		base_indent: usize,
 		blank_lines: &BTreeSet<usize>,
 	) -> Result<String, String> {
+		let mut output = String::new();
+
+		// Format closure parameters
+		self.format_params(&mut output, &macro_ast.params);
 
 		// Check if body is simple enough for single-line format
 		if Self::is_simple_body(&macro_ast.body) {
@@ -921,12 +1347,761 @@ impl AstPageFormatter {
 		} else {
 			// Multi-line format
 			output.push_str(" {\n");
-			self.format_body(&mut output, &macro_ast.body, base_indent + 1, 0, blank_lines);
+			self.format_body(
+				&mut output,
+				&macro_ast.body,
+				base_indent + 1,
+				0,
+				blank_lines,
+			);
 			output.push_str(&self.make_indent(base_indent));
 			output.push('}');
 		}
 
 		Ok(output)
+	}
+
+	/// Format a FormMacro AST to string.
+	fn format_form_macro(
+		&self,
+		macro_ast: &FormMacro,
+		base_indent: usize,
+	) -> Result<String, String> {
+		let mut output = String::new();
+		let inner_indent = base_indent + 1;
+
+		// Open brace
+		output.push_str("{\n");
+
+		// --- Header items ---
+
+		// name (required)
+		if let Some(name) = &macro_ast.name {
+			let ind = self.make_indent(inner_indent);
+			output.push_str(&ind);
+			output.push_str("name: ");
+			output.push_str(&name.to_string());
+			output.push_str(",\n");
+		}
+
+		// action (URL, server_fn, or None)
+		match &macro_ast.action {
+			FormAction::Url(url) => {
+				let ind = self.make_indent(inner_indent);
+				output.push_str(&ind);
+				output.push_str("action: ");
+				let url_str = Self::clean_expression_spaces(&url.to_token_stream().to_string());
+				output.push_str(&url_str);
+				output.push_str(",\n");
+			}
+			FormAction::ServerFn(path) => {
+				let ind = self.make_indent(inner_indent);
+				output.push_str(&ind);
+				output.push_str("server_fn: ");
+				let path_str = Self::clean_expression_spaces(&path.to_token_stream().to_string());
+				output.push_str(&path_str);
+				output.push_str(",\n");
+			}
+			FormAction::None => {}
+		}
+
+		// method (optional)
+		if let Some(method) = &macro_ast.method {
+			let ind = self.make_indent(inner_indent);
+			output.push_str(&ind);
+			output.push_str("method: ");
+			output.push_str(&method.to_string());
+			output.push_str(",\n");
+		}
+
+		// class (optional)
+		if let Some(class) = &macro_ast.class {
+			let ind = self.make_indent(inner_indent);
+			output.push_str(&ind);
+			output.push_str("class: ");
+			let class_str = Self::clean_expression_spaces(&class.to_token_stream().to_string());
+			output.push_str(&class_str);
+			output.push_str(",\n");
+		}
+
+		// redirect_on_success / success_url
+		if let Some(redirect) = &macro_ast.redirect_on_success {
+			let ind = self.make_indent(inner_indent);
+			output.push_str(&ind);
+			output.push_str("redirect_on_success: ");
+			let redirect_str =
+				Self::clean_expression_spaces(&redirect.to_token_stream().to_string());
+			output.push_str(&redirect_str);
+			output.push_str(",\n");
+		}
+		if let Some(success_url) = &macro_ast.success_url {
+			let ind = self.make_indent(inner_indent);
+			output.push_str(&ind);
+			output.push_str("success_url: ");
+			let url_str = Self::clean_expression_spaces(&success_url.to_token_stream().to_string());
+			output.push_str(&url_str);
+			output.push_str(",\n");
+		}
+
+		// initial_loader / choices_loader
+		if let Some(loader) = &macro_ast.initial_loader {
+			let ind = self.make_indent(inner_indent);
+			output.push_str(&ind);
+			output.push_str("initial_loader: ");
+			let loader_str = Self::clean_expression_spaces(&loader.to_token_stream().to_string());
+			output.push_str(&loader_str);
+			output.push_str(",\n");
+		}
+		if let Some(loader) = &macro_ast.choices_loader {
+			let ind = self.make_indent(inner_indent);
+			output.push_str(&ind);
+			output.push_str("choices_loader: ");
+			let loader_str = Self::clean_expression_spaces(&loader.to_token_stream().to_string());
+			output.push_str(&loader_str);
+			output.push_str(",\n");
+		}
+
+		// strip_arguments
+		if !macro_ast.strip_arguments.is_empty() {
+			let ind = self.make_indent(inner_indent);
+			output.push_str(&ind);
+			output.push_str("strip_arguments: {\n");
+			for arg in &macro_ast.strip_arguments {
+				let fi = self.make_indent(inner_indent + 1);
+				let val_str =
+					Self::clean_expression_spaces(&arg.value.to_token_stream().to_string());
+				output.push_str(&fi);
+				output.push_str(&arg.name.to_string());
+				output.push_str(": ");
+				output.push_str(&val_str);
+				output.push_str(",\n");
+			}
+			output.push_str(&ind);
+			output.push_str("},\n");
+		}
+
+		// Blank line before sections
+		output.push('\n');
+
+		// --- Sections ---
+
+		// state section
+		if let Some(state) = &macro_ast.state {
+			self.format_form_state(&mut output, state, inner_indent);
+			output.push('\n');
+		}
+
+		// fields section (always present)
+		self.format_form_entries(&mut output, &macro_ast.fields, inner_indent);
+		output.push('\n');
+
+		// validators section
+		if !macro_ast.validators.is_empty() {
+			self.format_form_validators(&mut output, &macro_ast.validators, inner_indent);
+			output.push('\n');
+		}
+
+		// callbacks section
+		if macro_ast.callbacks.has_any() {
+			self.format_form_callbacks(&mut output, &macro_ast.callbacks, inner_indent);
+			output.push('\n');
+		}
+
+		// watch section
+		if let Some(watch) = &macro_ast.watch {
+			self.format_form_watch(&mut output, watch, inner_indent);
+			output.push('\n');
+		}
+
+		// derived section
+		if let Some(derived) = &macro_ast.derived {
+			self.format_form_derived(&mut output, derived, inner_indent);
+			output.push('\n');
+		}
+
+		// slots section
+		if let Some(slots) = &macro_ast.slots {
+			self.format_form_slots(&mut output, slots, inner_indent);
+			output.push('\n');
+		}
+
+		// Close brace
+		output.push_str(&self.make_indent(base_indent));
+		output.push_str("}");
+
+		Ok(output)
+	}
+
+	/// Format the form state section.
+	fn format_form_state(&self, output: &mut String, state: &FormState, indent: usize) {
+		let ind = self.make_indent(indent);
+		output.push_str(&ind);
+		output.push_str("state: {\n");
+		let inner_ind = indent + 1;
+		for field in &state.fields {
+			let fi = self.make_indent(inner_ind);
+			output.push_str(&fi);
+			output.push_str(&field.name.to_string());
+			output.push_str(",\n");
+		}
+		output.push_str(&ind);
+		output.push_str("}\n");
+	}
+
+	/// Format the form derived section.
+	fn format_form_derived(&self, output: &mut String, derived: &FormDerived, indent: usize) {
+		let ind = self.make_indent(indent);
+		output.push_str(&ind);
+		output.push_str("derived: {\n");
+		let inner_ind = indent + 1;
+		for item in &derived.items {
+			let fi = self.make_indent(inner_ind);
+			let name = item.name.to_string();
+			let closure_str =
+				Self::clean_expression_spaces(&item.closure.to_token_stream().to_string());
+			output.push_str(&fi);
+			output.push_str(&name);
+			output.push_str(": ");
+			output.push_str(&closure_str);
+			output.push_str(",\n");
+		}
+		output.push_str(&ind);
+		output.push_str("}\n");
+	}
+
+	/// Format the form slots section.
+	fn format_form_slots(&self, output: &mut String, slots: &FormSlots, indent: usize) {
+		let ind = self.make_indent(indent);
+		output.push_str(&ind);
+		output.push_str("slots: {\n");
+		let inner_ind = indent + 1;
+
+		if let Some(before) = &slots.before_fields {
+			self.format_slot_closure(output, "before_fields", before, inner_ind);
+		}
+		if let Some(after) = &slots.after_fields {
+			self.format_slot_closure(output, "after_fields", after, inner_ind);
+		}
+		output.push_str(&ind);
+		output.push_str("}\n");
+	}
+
+	/// Emit a named slot closure entry.
+	fn format_slot_closure(
+		&self,
+		output: &mut String,
+		name: &str,
+		closure: &syn::ExprClosure,
+		indent: usize,
+	) {
+		let fi = self.make_indent(indent);
+		let expr_str = Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		output.push_str(&fi);
+		output.push_str(name);
+		output.push_str(": ");
+		output.push_str(&expr_str);
+		output.push_str(",\n");
+	}
+
+	/// Format the form callbacks section.
+	fn format_form_callbacks(&self, output: &mut String, callbacks: &FormCallbacks, indent: usize) {
+		let ind = self.make_indent(indent);
+		output.push_str(&ind);
+		output.push_str("callbacks: {\n");
+		let inner_ind = indent + 1;
+
+		if let Some(cb) = &callbacks.on_submit {
+			self.format_callback_entry(output, "on_submit", cb, inner_ind);
+		}
+		if let Some(cb) = &callbacks.on_success {
+			self.format_callback_entry(output, "on_success", cb, inner_ind);
+		}
+		if let Some(cb) = &callbacks.on_success_ref {
+			self.format_callback_entry(output, "on_success_ref", cb, inner_ind);
+		}
+		if let Some(cb) = &callbacks.on_error {
+			self.format_callback_entry(output, "on_error", cb, inner_ind);
+		}
+		if let Some(cb) = &callbacks.on_loading {
+			self.format_callback_entry(output, "on_loading", cb, inner_ind);
+		}
+		output.push_str(&ind);
+		output.push_str("}\n");
+	}
+
+	/// Emit a single named callback entry.
+	fn format_callback_entry(
+		&self,
+		output: &mut String,
+		name: &str,
+		closure: &syn::ExprClosure,
+		indent: usize,
+	) {
+		let fi = self.make_indent(indent);
+		let expr_str = Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		output.push_str(&fi);
+		output.push_str(name);
+		output.push_str(": ");
+		output.push_str(&expr_str);
+		output.push_str(",\n");
+	}
+
+	/// Format the form watch section.
+	fn format_form_watch(&self, output: &mut String, watch: &FormWatch, indent: usize) {
+		let ind = self.make_indent(indent);
+		output.push_str(&ind);
+		output.push_str("watch: {\n");
+		let inner_ind = indent + 1;
+		for item in &watch.items {
+			let fi = self.make_indent(inner_ind);
+			let name = item.name.to_string();
+			let closure_str =
+				Self::clean_expression_spaces(&item.closure.to_token_stream().to_string());
+			output.push_str(&fi);
+			output.push_str(&name);
+			output.push_str(": ");
+			output.push_str(&closure_str);
+			output.push_str(",\n");
+		}
+		output.push_str(&ind);
+		output.push_str("}\n");
+	}
+
+	/// Format the form validators section.
+	fn format_form_validators(
+		&self,
+		output: &mut String,
+		validators: &[FormValidator],
+		indent: usize,
+	) {
+		let ind = self.make_indent(indent);
+		output.push_str(&ind);
+		output.push_str("validators: {\n");
+		let inner_ind = indent + 1;
+
+		for validator in validators {
+			match validator {
+				FormValidator::Field {
+					field_name, rules, ..
+				} => {
+					let fi = self.make_indent(inner_ind);
+					output.push_str(&fi);
+					output.push_str(&field_name.to_string());
+					if rules.is_empty() {
+						output.push_str(": [],\n");
+					} else {
+						output.push_str(": [\n");
+						self.format_validator_rules(output, rules, inner_ind + 1);
+						output.push_str(&fi);
+						output.push_str("],\n");
+					}
+				}
+				FormValidator::Form { rules, .. } => {
+					let fi = self.make_indent(inner_ind);
+					output.push_str(&fi);
+					if rules.is_empty() {
+						output.push_str("@form: [],\n");
+					} else {
+						output.push_str("@form: [\n");
+						self.format_validator_rules(output, rules, inner_ind + 1);
+						output.push_str(&fi);
+						output.push_str("],\n");
+					}
+				}
+			}
+		}
+
+		output.push_str(&ind);
+		output.push_str("}\n");
+	}
+
+	/// Format individual validator rules.
+	fn format_validator_rules(&self, output: &mut String, rules: &[ValidatorRule], indent: usize) {
+		for rule in rules {
+			let fi = self.make_indent(indent);
+			// Scope annotation
+			match &rule.scope {
+				ValidatorScope::Both => {
+					// Default — no annotation
+				}
+				ValidatorScope::Server => {
+					output.push_str(&fi);
+					output.push_str("#[server]\n");
+				}
+				ValidatorScope::Client { trigger } => {
+					output.push_str(&fi);
+					let trigger_str = match trigger {
+						ClientTrigger::Submit => "submit",
+						ClientTrigger::Input => "input",
+						ClientTrigger::Blur => "blur",
+					};
+					output.push_str(&format!("#[client(on = {})]\n", trigger_str));
+				}
+				ValidatorScope::ServerAndClient { trigger } => {
+					output.push_str(&fi);
+					let trigger_str = match trigger {
+						ClientTrigger::Submit => "submit",
+						ClientTrigger::Input => "input",
+						ClientTrigger::Blur => "blur",
+					};
+					output.push_str(&format!("#[server_and_client(on = {})]\n", trigger_str));
+				}
+			}
+
+			let expr_str = Self::clean_expression_spaces(&rule.expr.to_token_stream().to_string());
+			let msg_str =
+				Self::clean_expression_spaces(&rule.message.to_token_stream().to_string());
+
+			output.push_str(&fi);
+			output.push_str(&expr_str);
+			output.push_str(" => ");
+			output.push_str(&msg_str);
+			output.push_str(",\n");
+		}
+	}
+
+	/// Format form field entries (fields, groups, submit buttons).
+	fn format_form_entries(&self, output: &mut String, entries: &[FormFieldEntry], indent: usize) {
+		let ind = self.make_indent(indent);
+		output.push_str(&ind);
+		output.push_str("fields: {\n");
+		let inner_ind = indent + 1;
+
+		for entry in entries {
+			match entry {
+				FormFieldEntry::Field(field_def) => {
+					self.format_form_field(output, field_def, inner_ind);
+				}
+				FormFieldEntry::Group(group) => {
+					self.format_form_field_group(output, group, inner_ind);
+				}
+				FormFieldEntry::SubmitButton(button) => {
+					self.format_form_submit_button(output, button, inner_ind);
+				}
+			}
+		}
+
+		output.push_str(&ind);
+		output.push_str("}\n");
+	}
+
+	/// Format a single form field definition.
+	fn format_form_field(&self, output: &mut String, field: &FormFieldDef, indent: usize) {
+		let ind = self.make_indent(indent);
+		let name = field.name.to_string();
+		let field_type_str =
+			Self::clean_expression_spaces(&field.field_type.to_token_stream().to_string());
+
+		output.push_str(&ind);
+		output.push_str(&name);
+		output.push_str(": ");
+		output.push_str(&field_type_str);
+
+		// Field properties
+		if !field.properties.is_empty() {
+			output.push_str(" {\n");
+			let inner_ind = indent + 1;
+			for prop in &field.properties {
+				self.format_form_field_property(output, prop, inner_ind);
+			}
+			output.push_str(&ind);
+			output.push_str("}\n");
+		} else {
+			output.push_str(",\n");
+		}
+	}
+
+	/// Format a single form field property.
+	fn format_form_field_property(
+		&self,
+		output: &mut String,
+		prop: &FormFieldProperty,
+		indent: usize,
+	) {
+		let fi = self.make_indent(indent);
+		match prop {
+			FormFieldProperty::Flag { name, .. } => {
+				output.push_str(&fi);
+				output.push_str(&name.to_string());
+				output.push_str(",\n");
+			}
+			FormFieldProperty::Named { name, value, .. } => {
+				let val_str = Self::clean_expression_spaces(&value.to_token_stream().to_string());
+				output.push_str(&fi);
+				output.push_str(&name.to_string());
+				output.push_str(": ");
+				output.push_str(&val_str);
+				output.push_str(",\n");
+			}
+			FormFieldProperty::Widget { widget_type, .. } => {
+				output.push_str(&fi);
+				output.push_str("widget: ");
+				output.push_str(&widget_type.to_string());
+				output.push_str(",\n");
+			}
+			FormFieldProperty::Wrapper { element, .. } => {
+				let elem_str = self.format_wrapper_element(element, indent);
+				output.push_str(&fi);
+				output.push_str("wrapper: ");
+				output.push_str(&elem_str);
+				output.push_str(",\n");
+			}
+			FormFieldProperty::Icon { element, .. } => {
+				let elem_str = self.format_icon_element(element, indent);
+				output.push_str(&fi);
+				output.push_str("icon: ");
+				output.push_str(&elem_str);
+				output.push_str(",\n");
+			}
+			FormFieldProperty::IconPosition { position, .. } => {
+				output.push_str(&fi);
+				output.push_str("icon_position: ");
+				output.push_str(&self.format_icon_position(position));
+				output.push_str(",\n");
+			}
+			FormFieldProperty::Attrs { attrs, .. } => {
+				output.push_str(&fi);
+				output.push_str("attrs: {\n");
+				let inner_ind = indent + 1;
+				for attr in attrs {
+					let ai = self.make_indent(inner_ind);
+					let attr_name = attr.name.to_string().replace('_', "-");
+					let val_str =
+						Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
+					output.push_str(&ai);
+					output.push_str(&attr_name);
+					output.push_str(": ");
+					output.push_str(&val_str);
+					output.push_str(",\n");
+				}
+				output.push_str(&fi);
+				output.push_str("},\n");
+			}
+			FormFieldProperty::Bind { enabled, .. } => {
+				output.push_str(&fi);
+				output.push_str("bind: ");
+				output.push_str(if *enabled { "true" } else { "false" });
+				output.push_str(",\n");
+			}
+			FormFieldProperty::InitialFrom { field_name, .. } => {
+				let val_str =
+					Self::clean_expression_spaces(&field_name.to_token_stream().to_string());
+				output.push_str(&fi);
+				output.push_str("initial_from: ");
+				output.push_str(&val_str);
+				output.push_str(",\n");
+			}
+			FormFieldProperty::ChoicesFrom { field_name, .. } => {
+				let val_str =
+					Self::clean_expression_spaces(&field_name.to_token_stream().to_string());
+				output.push_str(&fi);
+				output.push_str("choices_from: ");
+				output.push_str(&val_str);
+				output.push_str(",\n");
+			}
+			FormFieldProperty::ChoiceValue { path, .. } => {
+				let val_str = Self::clean_expression_spaces(&path.to_token_stream().to_string());
+				output.push_str(&fi);
+				output.push_str("choice_value: ");
+				output.push_str(&val_str);
+				output.push_str(",\n");
+			}
+			FormFieldProperty::ChoiceLabel { path, .. } => {
+				let val_str = Self::clean_expression_spaces(&path.to_token_stream().to_string());
+				output.push_str(&fi);
+				output.push_str("choice_label: ");
+				output.push_str(&val_str);
+				output.push_str(",\n");
+			}
+		}
+	}
+
+	/// Format a `WrapperElement` to its DSL representation.
+	fn format_wrapper_element(
+		&self,
+		element: &reinhardt_pages::ast::WrapperElement,
+		indent: usize,
+	) -> String {
+		let mut out = String::new();
+		out.push_str("Wrapper {\n");
+		let inner = self.make_indent(indent + 1);
+		out.push_str(&inner);
+		out.push_str("tag: ");
+		out.push_str(&element.tag.to_string());
+		out.push_str(",\n");
+		if !element.attrs.is_empty() {
+			out.push_str(&inner);
+			out.push_str("attrs: {\n");
+			let ai = self.make_indent(indent + 2);
+			for attr in &element.attrs {
+				let val_str =
+					Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
+				out.push_str(&ai);
+				out.push_str(&attr.name.to_string());
+				out.push_str(": ");
+				out.push_str(&val_str);
+				out.push_str(",\n");
+			}
+			out.push_str(&inner);
+			out.push_str("},\n");
+		}
+		let ind = self.make_indent(indent);
+		out.push_str(&ind);
+		out.push('}');
+		out
+	}
+
+	/// Format an `IconElement` to its DSL representation.
+	fn format_icon_element(
+		&self,
+		element: &reinhardt_pages::ast::IconElement,
+		indent: usize,
+	) -> String {
+		let mut out = String::new();
+		out.push_str("Icon {\n");
+		let inner = self.make_indent(indent + 1);
+		if !element.attrs.is_empty() {
+			out.push_str(&inner);
+			out.push_str("attrs: {\n");
+			let ai = self.make_indent(indent + 2);
+			for attr in &element.attrs {
+				let val_str =
+					Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
+				out.push_str(&ai);
+				out.push_str(&attr.name.to_string());
+				out.push_str(": ");
+				out.push_str(&val_str);
+				out.push_str(",\n");
+			}
+			out.push_str(&inner);
+			out.push_str("},\n");
+		}
+		if !element.children.is_empty() {
+			out.push_str(&inner);
+			out.push_str("children: [\n");
+			let child_indent = indent + 2;
+			for child in &element.children {
+				let child_str = self.format_icon_child(child, child_indent);
+				out.push_str(&child_str);
+				out.push_str(",\n");
+			}
+			out.push_str(&inner);
+			out.push_str("],\n");
+		}
+		let ind = self.make_indent(indent);
+		out.push_str(&ind);
+		out.push('}');
+		out
+	}
+
+	/// Format an `IconChild` node to its DSL representation.
+	fn format_icon_child(&self, child: &reinhardt_pages::ast::IconChild, indent: usize) -> String {
+		let mut out = String::new();
+		let ci = self.make_indent(indent);
+		out.push_str(&ci);
+		out.push_str(&child.tag.to_string());
+		out.push_str(" {\n");
+		let inner = self.make_indent(indent + 1);
+		for attr in &child.attrs {
+			let val_str = Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
+			out.push_str(&inner);
+			out.push_str(&attr.name.to_string());
+			out.push_str(": ");
+			out.push_str(&val_str);
+			out.push_str(",\n");
+		}
+		if !child.children.is_empty() {
+			out.push_str(&inner);
+			out.push_str("children: [\n");
+			for nested in &child.children {
+				let nested_str = self.format_icon_child(nested, indent + 2);
+				out.push_str(&nested_str);
+				out.push_str(",\n");
+			}
+			out.push_str(&inner);
+			out.push_str("],\n");
+		}
+		out.push_str(&ci);
+		out.push('}');
+		out
+	}
+
+	/// Format `IconPosition` to its DSL representation.
+	fn format_icon_position(&self, position: &reinhardt_pages::ast::IconPosition) -> String {
+		match position {
+			reinhardt_pages::ast::IconPosition::Left => "Left".to_string(),
+			reinhardt_pages::ast::IconPosition::Right => "Right".to_string(),
+			reinhardt_pages::ast::IconPosition::Label => "Label".to_string(),
+		}
+	}
+
+	/// Format a form field group.
+	fn format_form_field_group(&self, output: &mut String, group: &FormFieldGroup, indent: usize) {
+		let ind = self.make_indent(indent);
+		output.push_str(&ind);
+		output.push_str(&group.name.to_string());
+		output.push_str(": Group {\n");
+		let inner_ind = indent + 1;
+
+		// Group-level label
+		if let Some(label) = &group.label {
+			let fi = self.make_indent(inner_ind);
+			let label_str = Self::clean_expression_spaces(&label.to_token_stream().to_string());
+			output.push_str(&fi);
+			output.push_str("label: ");
+			output.push_str(&label_str);
+			output.push_str(",\n");
+		}
+
+		// Group-level class
+		if let Some(class) = &group.class {
+			let fi = self.make_indent(inner_ind);
+			let class_str = Self::clean_expression_spaces(&class.to_token_stream().to_string());
+			output.push_str(&fi);
+			output.push_str("class: ");
+			output.push_str(&class_str);
+			output.push_str(",\n");
+		}
+
+		// Fields within the group
+		if !group.fields.is_empty() {
+			let fi = self.make_indent(inner_ind);
+			output.push_str(&fi);
+			output.push_str("fields: {\n");
+			for field in &group.fields {
+				self.format_form_field(output, field, inner_ind + 1);
+			}
+			output.push_str(&fi);
+			output.push_str("},\n");
+		}
+
+		output.push_str(&ind);
+		output.push_str("}\n");
+	}
+
+	/// Format a form submit button definition.
+	fn format_form_submit_button(
+		&self,
+		output: &mut String,
+		button: &FormSubmitButtonDef,
+		indent: usize,
+	) {
+		let ind = self.make_indent(indent);
+		output.push_str(&ind);
+		output.push_str(&button.name.to_string());
+		output.push_str(": SubmitButton");
+
+		if !button.properties.is_empty() {
+			output.push_str(" {\n");
+			let inner_ind = indent + 1;
+			for prop in &button.properties {
+				self.format_form_field_property(output, prop, inner_ind);
+			}
+			output.push_str(&ind);
+			output.push_str("}\n");
+		} else {
+			output.push_str(",\n");
+		}
 	}
 
 	/// Format closure parameters: |param: Type, ...|
@@ -957,7 +2132,14 @@ impl AstPageFormatter {
 	}
 
 	/// Format the page body.
-	fn format_body(&self, output: &mut String, body: &PageBody, indent: usize, depth: usize, blank_lines: &BTreeSet<usize>) {
+	fn format_body(
+		&self,
+		output: &mut String,
+		body: &PageBody,
+		indent: usize,
+		depth: usize,
+		blank_lines: &BTreeSet<usize>,
+	) {
 		for (i, node) in body.nodes.iter().enumerate() {
 			self.format_node(output, node, indent, depth);
 			if blank_lines.contains(&i) {
@@ -1744,15 +2926,15 @@ impl AstPageFormatter {
 	/// let view = __reinhardt_placeholder_0__!()(props);
 	/// ```
 	pub(crate) fn protect_page_macros(&self, content: &str) -> ProtectResult {
-		// Quick check: accept both `page!(` and `page ! (` (see `find_page_bang_paren`).
-		if find_page_bang_paren(content).is_none() {
+		// Quick check: accept both `page!(`/`form!(` and `page ! (`/`form ! (` forms.
+		if find_page_bang_paren(content).is_none() && find_form_bang_brace(content).is_none() {
 			return ProtectResult {
 				protected_content: content.to_string(),
 				backups: Vec::new(),
 			};
 		}
 
-		// Find all page! macros
+		// Find all page! and form! macros
 		let macros = match self.find_page_macros(content) {
 			Ok(m) => m,
 			Err(_) => {
@@ -1785,7 +2967,11 @@ impl AstPageFormatter {
 
 			// Save original macro text
 			let original = content[macro_info.start..macro_info.end].to_string();
-			backups.push(PageMacroBackup { id, original });
+			backups.push(PageMacroBackup {
+				id,
+				original,
+				kind: macro_info.kind,
+			});
 
 			// Insert placeholder (macro format so rustfmt doesn't touch it)
 			result.push_str(&format!("__reinhardt_placeholder_{}__!()", id));
@@ -1840,7 +3026,7 @@ impl AstPageFormatter {
 		for backup in backups.iter().rev() {
 			let placeholder = format!("__reinhardt_placeholder_{}__!()", backup.id);
 			let replacement = self
-				.format_inner_page_macro(&backup.original, &result, &placeholder)
+				.format_inner_page_macro(&backup.original, &result, &placeholder, backup.kind)
 				.unwrap_or_else(|| backup.original.clone());
 			result = result.replace(&placeholder, &replacement);
 		}
@@ -1848,24 +3034,32 @@ impl AstPageFormatter {
 		result
 	}
 
-	/// Reformat a single backed-up `page!(...)` string with `format_macro_tokens`,
-	/// using the indentation of the placeholder's line as the base indent.
-	/// Returns `None` if parsing or re-formatting fails, in which case the
-	/// caller falls back to the original (unformatted) backup text.
+	/// Reformat a single backed-up `page!(...)` or `form!(...)` string with
+	/// `format_macro_tokens`, using the indentation of the placeholder's line
+	/// as the base indent. Returns `None` if parsing or re-formatting fails,
+	/// in which case the caller falls back to the original (unformatted) backup text.
 	fn format_inner_page_macro(
 		&self,
 		original: &str,
 		surrounding: &str,
 		placeholder: &str,
+		kind: MacroKind,
 	) -> Option<String> {
-		// Extract `<inner>` from `page!(<inner>)` (or the equivalent
-		// TokenStream Display form `page ! ( <inner> )`).
-		// Use the string-aware `find_matching_paren` rather than
-		// `rfind(')')` so a `)` inside a string literal or nested group
-		// in the macro body never gets confused with the closing paren.
-		let hit = find_page_bang_paren(original)?;
-		let head = hit.paren_open + 1;
-		let tail = find_matching_paren(original, head)?;
+		// Extract `<inner>` from `page!(<inner>)` or `form!(<inner>)`.
+		let (head, tail) = match kind {
+			MacroKind::Page => {
+				let hit = find_page_bang_paren(original)?;
+				let head = hit.paren_open + 1;
+				let tail = find_matching_paren(original, head)?;
+				(head, tail)
+			}
+			MacroKind::Form => {
+				let hit = find_form_bang_brace(original)?;
+				let head = hit.paren_open + 1;
+				let tail = find_matching_brace(original, head)?;
+				(head, tail)
+			}
+		};
 		if tail <= head {
 			return None;
 		}
@@ -1883,8 +3077,13 @@ impl AstPageFormatter {
 			.filter(|c| *c == '\t')
 			.count();
 
-		let formatted = self.format_macro_tokens(&tokens, inner, base_indent).ok()?;
-		Some(format!("page!({})", formatted))
+		let formatted = self
+			.format_macro_tokens(&tokens, inner, base_indent, kind)
+			.ok()?;
+		match kind {
+			MacroKind::Page => Some(format!("page!({})", formatted)),
+			MacroKind::Form => Some(format!("form!({})", formatted)),
+		}
 	}
 }
 
@@ -3517,53 +4716,5 @@ fn main() {
 			result.content,
 			"page!(|items: Vec<Item>| {\n\tdiv class=\"list\" {\n\t\tfor item in items {\n\t\t\tdiv class=\"card\" {\n\t\t\t\t{ View::fragment(item.tags.iter().map(|tag| { let t = tag.clone(); page!(|t: String| { span class=\"tag\" { { t } } })(t) }).collect::<Vec<_>>()) }\n\t\t\t}\n\t\t}\n\t}\n})(items)"
 		);
-
-	}
-
-	#[rstest]
-	fn test_blank_line_preserved_between_elements() {
-		// Arrange
-		let formatter = AstPageFormatter::new();
-		let input = "page!(|| {\n    div { \"first\" }\n\n    div { \"second\" }\n})";
-
-		// Act
-		let result = formatter.format(input).unwrap();
-
-		// Assert
-		assert!(result.skipped.is_none(), "formatting should not be skipped");
-		assert!(
-			result.content.contains("\n\n"),
-			"blank line should be preserved, got: {:?}",
-			result.content
-		);
-	}
-
-	#[rstest]
-	fn test_no_blank_lines_added_when_not_in_original() {
-		// Arrange
-		let formatter = AstPageFormatter::new();
-		let input = "page!(|| {\n    div { \"first\" }\n    div { \"second\" }\n})";
-
-		// Act
-		let result = formatter.format(input).unwrap();
-
-		// Assert
-		assert!(result.skipped.is_none(), "formatting should not be skipped");
-		let blank_line_count = result.content.as_bytes().windows(2).filter(|w| *w == b"\n\n").count();
-		assert_eq!(blank_line_count, 0, "no blank lines should be added, got: {:?}", result.content);
-	}
-
-	#[rstest]
-	fn test_blank_line_not_added_for_single_element() {
-		// Arrange: single bare element - no blank line possible since only one node
-		let formatter = AstPageFormatter::new();
-		let input = "page!(|| {\n    div { \"only\" }\n})";
-
-		// Act
-		let result = formatter.format(input).unwrap();
-
-		// Assert
-		assert!(result.skipped.is_none(), "formatting should not be skipped");
-		assert!(result.content.contains("div"), "should contain the element");
 	}
 }
