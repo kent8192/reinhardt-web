@@ -13,11 +13,10 @@
 //!        -- --test nav_diag_dom_test`
 
 #![cfg(all(wasm, feature = "nav-diag-dom"))]
-#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::*;
 
@@ -48,8 +47,8 @@ fn install_app_root() -> web_sys::Element {
 	root
 }
 
-fn build_router() -> Router {
-	Router::new()
+fn build_router() -> ClientRouter {
+	ClientRouter::new()
 		.named_route("dashboard:home", "/", home_page)
 		.named_route("clusters:list", "/clusters", clusters_page)
 }
@@ -72,7 +71,7 @@ async fn nav_diag_dom_writes_some_site_at_launch() {
 	}
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 
@@ -97,7 +96,7 @@ async fn nav_diag_dom_writes_notify_observers_after_router_push() {
 	let _root = install_app_root();
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 
@@ -116,7 +115,7 @@ async fn nav_diag_dom_writes_notify_observers_after_router_push() {
 	// Drive a programmatic navigation. After this returns, the most recent
 	// nav_diag_dom! site to have written is `notify_observers` (push path:
 	// push → navigate → notify_observers).
-	with_router(|r| r.push("/clusters")).expect("push /clusters");
+	with_spa_router(|r| r.push("/clusters")).expect("push /clusters");
 
 	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
 	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
@@ -152,7 +151,7 @@ async fn nav_diag_dom_writes_notify_observers_after_router_push() {
 async fn nav_diag_dom_advances_through_full_link_click_chain() {
 	let _root = install_app_root();
 
-	// `Router::new()` reads `current_path()` from `window.location` at
+	// `ClientRouter::new()` reads `current_path()` from `window.location` at
 	// construction time, so a previous test in the same wasm test binary
 	// that navigated away from `/` would make this reproducer start on a
 	// non-`/` path. Reset history to `/` before launching to keep the
@@ -164,7 +163,7 @@ async fn nav_diag_dom_advances_through_full_link_click_chain() {
 	let _ = history.replace_state_with_url(&JsValue::NULL, "", Some("/"));
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 

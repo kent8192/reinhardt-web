@@ -21,6 +21,7 @@ mindmap
       Obsolete code comments
       Alternative TODO notations
       Undocumented allow attrs
+      cfg(any()) gate
     Testing
       Skeleton tests
       No Reinhardt components
@@ -355,6 +356,29 @@ pub fn send_email(to: &str, body: &str) -> Result<()> {
 
 **Why?** Unmarked placeholders can be mistaken for production code.
 
+### ❌ Using `#[cfg(any())]` as a Deletion Substitute
+
+**DON'T:**
+
+```rust
+#[cfg(any())] // Removed in 0.2.0, kept for reference
+pub fn old_api() {}
+```
+
+**DO:**
+
+```rust
+// Delete the function entirely. Git history preserves old code.
+```
+
+**Why?** `#[cfg(any())]` is always false, leaving dead code in the sourcebase
+even though no target can ever activate it. This confuses readers who may think
+there is a valid compilation target where this code exists, creates a
+maintenance burden (dead imports, type requirements, async/sync mismatches),
+and circumvents the project's delete-over-hide policy. If removal must be
+staged, use `#[deprecated]` on the API surface while keeping real callers;
+delete unconditionally when the deprecation period ends.
+
 ### ❌ Undocumented `#[allow(...)]` Attributes
 
 **DON'T:**
@@ -560,6 +584,31 @@ git commit -m "..."
 ```
 
 **Why?** Commits should only be made with explicit user authorization.
+
+### ❌ Committing Directly to Protected Branches
+
+**DON'T:**
+
+```bash
+# ❌ Never commit directly on a protected branch
+git checkout develop/0.2.0
+# ... make changes ...
+git add .
+git commit -m "docs: update some instruction files"
+```
+
+**DO:**
+
+```bash
+# ✅ Always use a non-protected feature/fix/docs branch
+git checkout -b docs/update-instructions
+# ... make changes ...
+git add .
+git commit -m "docs: update some instruction files"
+# Then create a Pull Request from docs/update-instructions to develop/0.2.0
+```
+
+**Why?** Protected branches (`main`, `master`, `develop/*`, `release/*`) receive changes exclusively through Pull Requests. Direct commits bypass review, CI validation, and branch protection rules.
 
 ### ❌ Batch Operations Without Dry-Run
 

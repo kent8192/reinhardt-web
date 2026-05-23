@@ -766,6 +766,7 @@ Automated SemVer checking is performed on every pull request targeting `main` us
 - Trigger `release-plz-promote.yml` (`workflow_dispatch`) after merging `develop/m.n.l` into `main` to graduate the prerelease suffix to stable (DBR-3)
 
 ### NEVER DO
+- Use `#[cfg(any())]` as a substitute for deleting deprecated code — deprecated code MUST be deleted entirely, not hidden behind an always-false cfg gate
 - Regress from RC back to alpha
 - Add new public APIs during the RC phase without SP-6 approval
 - Add unapproved `feat:` commits during the RC phase (SP-6-approved additions may use `feat:`)

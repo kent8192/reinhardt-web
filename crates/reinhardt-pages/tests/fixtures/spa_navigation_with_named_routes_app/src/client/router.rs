@@ -1,4 +1,3 @@
-#![allow(deprecated)] // (Refs #4234) Fixture exercises deprecated `pages::Router` surface.
 
 //! Client-side router for the Tier 4 fixture.
 //!
@@ -11,14 +10,13 @@
 //! read.
 //!
 //! [`init_router`] is invoked once by `super::lib::main` through
-//! `ClientLauncher::router`. From any component, call [`with_router`]
+//! `ClientLauncher::router_client`. From any component, call [`with_spa_router`]
 //! (re-exported from `reinhardt-pages`) to inspect routing state at
 //! render time.
 
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 
-// Re-export so callers can `use crate::client::router::with_router`.
-pub use reinhardt_pages::with_router;
+pub use reinhardt_pages::app::with_spa_router;
 
 use super::pages::{clusters_page, deployments_page, home_page, login_page};
 
@@ -29,8 +27,8 @@ use super::pages::{clusters_page, deployments_page, home_page, login_page};
 /// the namespaced name into `history.state.route_name`. Anonymous
 /// `route(...)` registrations would leave that field empty and miss
 /// the regression class Tier 4 is meant to catch.
-pub fn init_router() -> Router {
-	Router::new()
+pub fn init_router() -> ClientRouter {
+	ClientRouter::new()
 		.named_route("dashboard:home", "/", home_page)
 		.named_route("clusters:list", "/clusters", clusters_page)
 		.named_route("deployments:list", "/deployments", deployments_page)

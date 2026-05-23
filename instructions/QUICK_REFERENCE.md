@@ -15,6 +15,7 @@
 - When editing `CLAUDE.md` or `AGENTS.md`, mirror the change into the other file in the same commit (sync policy)
 - **MUST** convert Draft PRs to Ready for Review **immediately** once the implementation is complete (CI completion is NOT required) — leaving a PR in Draft state after implementation completion is forbidden (see instructions/PR_GUIDELINE.md § PC-4a)
 - Mark placeholders with `todo!()` or `// TODO:`
+- Delete deprecated code entirely — never use `#[cfg(any())]` as a hiding mechanism
 - Use `#[serial(group_name)]` for global state tests
 - Split commits by specific intent, not features
 - Follow Conventional Commits v1.0.0 format: `<type>[scope]: <description>`
@@ -91,13 +92,15 @@
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
 - Commit without user instruction (except Plan Mode approval or the Autonomous Operation Policy for Reinhardt-family repos)
-- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — even under the Autonomous Operation Policy these require explicit user authorization
+- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — direct commits and pushes to protected branches are NEVER allowed; changes must go through Pull Requests from non-protected branches
+- Commit directly to a protected branch (`main`, `master`, `develop/*`, `release/*`) — all changes to protected branches MUST go through feature/fix/docs branches and Pull Requests
 - Force-push, rebase-and-push, or otherwise rewrite history without explicit user authorization (the Autonomous Operation Policy does NOT cover history-rewriting pushes)
 - Close, merge, or delete PRs / Issues / comments without explicit user authorization (autonomy covers creation only, not destruction)
 - Create release tags or any PR with the `release` label without explicit user authorization
 - Commit a change that touches only `CLAUDE.md` or only `AGENTS.md` without mirroring it into the other
 - Convert Draft PRs to Ready for Review when implementation is incomplete, without explicit user override
 - Leave a PR in Draft state after the implementation is complete (MUST convert to Ready for Review immediately; the agent MUST NOT wait for CI completion)
+- Use `#[cfg(any())]` instead of deleting deprecated APIs — always delete dead code, never cfg-gate it
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
 - Save files to project directory (use `/tmp`)
