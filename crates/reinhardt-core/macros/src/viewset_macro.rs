@@ -100,23 +100,14 @@ fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
 	let list_doc = format!("Resolve URL for route `{list_route_name}`.");
 	let detail_doc = format!("Resolve URL for route `{detail_route_name}`.");
 
-	// Deprecation notes steering callers from the flat blanket-trait surface
-	// (`urls.snippet_list()`) to the namespaced gateway accessors
-	// (`urls.server().<app>().<basename>_list()`). Refs Issue #4507 (defect #2).
-	let deprecated_note_list = format!("use `urls.server().<app>().{basename}_list()` instead");
-	let deprecated_note_detail =
-		format!("use `urls.server().<app>().{basename}_detail(id)` instead");
-
 	let reinhardt_crate = crate::crate_paths::get_reinhardt_crate();
 
 	quote! {
 		#[doc(hidden)]
 		pub mod #list_mod_ident {
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_list)]
 			#[doc = #list_doc]
 			pub trait #list_trait_ident: #reinhardt_crate::UrlResolverUnprefixed {
-				#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_list)]
 				#[doc = #list_doc]
 				fn #list_method_ident(&self) -> String {
 					// Supertrait `UrlResolverUnprefixed` brings the
@@ -147,10 +138,8 @@ fn generate_viewset_resolver_tokens(basename: &str) -> TokenStream {
 		#[doc(hidden)]
 		pub mod #detail_mod_ident {
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_detail)]
 			#[doc = #detail_doc]
 			pub trait #detail_trait_ident: #reinhardt_crate::UrlResolverUnprefixed {
-				#[deprecated(since = "0.1.0-rc.29", note = #deprecated_note_detail)]
 				#[doc = #detail_doc]
 				fn #detail_method_ident(&self, id: &str) -> String {
 					// Supertrait `UrlResolverUnprefixed` brings the
@@ -1195,13 +1184,13 @@ mod tests {
 		// Act
 		let out_s = viewset_macro_impl(quote! {}, input).unwrap().to_string();
 
-		// Assert: #[deprecated] appears on both list and detail traits AND
-		// their methods (trait + method for list and detail => >= 4).
+		// Assert: no #[deprecated] markers remain on the legacy blanket traits
+		// since they were removed in Issue #4520.
 		let occurrences =
 			out_s.matches("# [deprecated").count() + out_s.matches("#[deprecated").count();
-		assert!(
-			occurrences >= 4,
-			"expected >= 4 #[deprecated] markers (trait+method for list+detail), got {occurrences}; out={out_s}"
+		assert_eq!(
+			occurrences, 0,
+			"expected 0 #[deprecated] markers (removed in #4520), got {occurrences}; out={out_s}"
 		);
 	}
 

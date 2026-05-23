@@ -907,12 +907,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 							crate::apps::#app::urls::url_resolvers
 						);
 
-						// Deprecated 2-level accessor (use urls.server().#app() instead)
 						impl ResolvedUrls {
-							#[deprecated(
-								since = "0.1.0-rc.16",
-								note = "use `urls.server().#app()` instead"
-							)]
 							pub fn #app(&self) -> #urls_struct<'_> {
 								#urls_struct { resolver: self }
 							}
@@ -1001,12 +996,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 								crate::apps::#app::urls::client_url_resolvers
 							);
 
-							// Deprecated 2-level accessor (use urls.client().#app() instead)
 							impl ResolvedUrls {
-								#[deprecated(
-									since = "0.1.0-rc.16",
-									note = "use `urls.client().#app()` instead"
-								)]
 								pub fn #accessor_method(&self) -> #client_urls_struct<'_> {
 									#client_urls_struct { resolver: self }
 								}
