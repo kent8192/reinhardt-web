@@ -202,12 +202,26 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	// Generate load_choices method if choices_loader is specified
 	let load_choices_method = generate_load_choices(macro_ast, pages_crate);
 
+	// Collect every field (including group children) and compute the
+	// struct-level where clause for generic-capable inner types. The clause
+	// is spliced into BOTH the struct definition and every `impl #struct_name`
+	// block — Rust requires consistency between the two. For forms without
+	// any generic-capable field (`HiddenField<T>` / `ChoiceField<T>` /
+	// `MultipleChoiceField<T>` / `JsonField<T>`), the helper returns an empty
+	// TokenStream, so the macro output is unchanged for such forms. See
+	// `build_typed_field_where_clause` below for the bound list and the
+	// rationale (issue #4397, Task 9).
+	let all_fields_for_bounds = collect_all_fields(&macro_ast.fields);
+	let where_clause = build_typed_field_where_clause(&all_fields_for_bounds);
+
 	quote! {
 		{
 			#use_statement
 
 			#[derive(Clone)]
-			struct #struct_name {
+			struct #struct_name
+			#where_clause
+			{
 				#field_decls
 				#state_decls
 				#watch_field_decls
@@ -216,7 +230,9 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 				#on_success_ref_field_decl
 			}
 
-			impl #struct_name {
+			impl #struct_name
+			#where_clause
+			{
 				fn new() -> Self {
 					Self {
 						#field_inits
@@ -287,8 +303,9 @@ fn generate_field_declarations(
 			if field.choices_config.is_some() {
 				let choices_name =
 					syn::Ident::new(&format!("{}_choices", field.name), field.name.span());
+				let choice_value_ty = choice_value_type(&field.field_type);
 				Some(quote! {
-					#choices_name: #pages_crate::reactive::Signal<Vec<(String, String)>>,
+					#choices_name: #pages_crate::reactive::Signal<Vec<(#choice_value_ty, String)>>,
 				})
 			} else {
 				None
@@ -400,9 +417,10 @@ fn generate_field_accessors(
 			if field.choices_config.is_some() {
 				let choices_name =
 					syn::Ident::new(&format!("{}_choices", field.name), field.name.span());
+				let choice_value_ty = choice_value_type(&field.field_type);
 				Some(quote! {
 					/// Returns the choices signal for dynamic choice options.
-					pub fn #choices_name(&self) -> &#pages_crate::reactive::Signal<Vec<(String, String)>> {
+					pub fn #choices_name(&self) -> &#pages_crate::reactive::Signal<Vec<(#choice_value_ty, String)>> {
 						&self.#choices_name
 					}
 				})
@@ -2325,10 +2343,19 @@ fn generate_load_choices(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) 
 				let from_ident = syn::Ident::new(&config.choices_from, field.name.span());
 				let value_ident = syn::Ident::new(&config.choice_value, field.name.span());
 				let label_ident = syn::Ident::new(&config.choice_label, field.name.span());
+				// When the field carries a generic type parameter (e.g.
+				// ChoiceField<i64>), clone the value rather than
+				// stringifying so the tuple type matches the choices
+				// Signal declaration `Signal<Vec<(T, String)>>`.
+				let value_expr = if choice_inner_type_is_string(&field.field_type) {
+					quote!(item.#value_ident.to_string())
+				} else {
+					quote!(item.#value_ident.clone())
+				};
 				quote! {
 					self.#choices_signal_name.set(
 						data.#from_ident.iter().map(|item| {
-							(item.#value_ident.to_string(), item.#label_ident.clone())
+							(#value_expr, item.#label_ident.clone())
 						}).collect()
 					);
 				}
@@ -2945,30 +2972,42 @@ fn field_type_to_signal_type(
 	pages_crate: &TokenStream,
 ) -> TokenStream {
 	let inner_type = match field_type {
+		// Inherently String-shaped (always String, no generic accepted)
 		TypedFieldType::CharField
 		| TypedFieldType::TextField
 		| TypedFieldType::EmailField
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
-		| TypedFieldType::SlugField
-		| TypedFieldType::IpAddressField
-		| TypedFieldType::JsonField => quote!(String),
+		| TypedFieldType::SlugField => quote!(::std::string::String),
 
+		// Primitive typed
 		TypedFieldType::IntegerField => quote!(i64),
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(f64),
 		TypedFieldType::BooleanField => quote!(bool),
 
-		TypedFieldType::DateField => quote!(Option<chrono::NaiveDate>),
-		TypedFieldType::TimeField => quote!(Option<chrono::NaiveTime>),
-		TypedFieldType::DateTimeField => quote!(Option<chrono::NaiveDateTime>),
+		// Date / Time
+		TypedFieldType::DateField => quote!(::core::option::Option<chrono::NaiveDate>),
+		TypedFieldType::TimeField => quote!(::core::option::Option<chrono::NaiveTime>),
+		TypedFieldType::DateTimeField => quote!(::core::option::Option<chrono::NaiveDateTime>),
 
-		TypedFieldType::ChoiceField => quote!(String),
-		TypedFieldType::MultipleChoiceField => quote!(Vec<String>),
+		// File-like
+		TypedFieldType::FileField | TypedFieldType::ImageField => {
+			quote!(::core::option::Option<web_sys::File>)
+		}
 
-		TypedFieldType::FileField | TypedFieldType::ImageField => quote!(Option<web_sys::File>),
+		// Misc
+		TypedFieldType::UuidField => quote!(::core::option::Option<uuid::Uuid>),
 
-		TypedFieldType::UuidField => quote!(Option<uuid::Uuid>),
-		TypedFieldType::HiddenField => quote!(String),
+		// Generic-capable: substitute the inner type recorded by the validator
+		TypedFieldType::HiddenField { inner } => quote!(#inner),
+		TypedFieldType::ChoiceField { inner } => quote!(#inner),
+		TypedFieldType::MultipleChoiceField { inner } => quote!(::std::vec::Vec<#inner>),
+		TypedFieldType::JsonField { inner } => quote!(#inner),
+
+		// Specialized
+		TypedFieldType::IpAddressField => {
+			quote!(::core::option::Option<::std::net::IpAddr>)
+		}
 	};
 
 	quote!(#pages_crate::reactive::Signal<#inner_type>)
@@ -2977,29 +3016,140 @@ fn field_type_to_signal_type(
 /// Returns the default value for a field type.
 fn field_type_default_value(field_type: &TypedFieldType) -> TokenStream {
 	match field_type {
+		// Inherently String-shaped — empty string default
 		TypedFieldType::CharField
 		| TypedFieldType::TextField
 		| TypedFieldType::EmailField
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
-		| TypedFieldType::SlugField
-		| TypedFieldType::IpAddressField
-		| TypedFieldType::JsonField
-		| TypedFieldType::ChoiceField
-		| TypedFieldType::HiddenField => quote!(String::new()),
+		| TypedFieldType::SlugField => quote!(::std::string::String::new()),
 
+		// Primitive
 		TypedFieldType::IntegerField => quote!(0i64),
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(0.0f64),
 		TypedFieldType::BooleanField => quote!(false),
 
+		// Optional-shaped — None default
 		TypedFieldType::DateField
 		| TypedFieldType::TimeField
 		| TypedFieldType::DateTimeField
 		| TypedFieldType::FileField
 		| TypedFieldType::ImageField
-		| TypedFieldType::UuidField => quote!(None),
+		| TypedFieldType::UuidField => quote!(::core::option::Option::None),
 
-		TypedFieldType::MultipleChoiceField => quote!(Vec::new()),
+		// Generic-capable: rely on T: Default (enforced by the
+		// struct-level where clause emitted in Task 9)
+		TypedFieldType::HiddenField { inner }
+		| TypedFieldType::ChoiceField { inner }
+		| TypedFieldType::JsonField { inner } => {
+			quote!(<#inner as ::core::default::Default>::default())
+		}
+		TypedFieldType::MultipleChoiceField { .. } => quote!(::std::vec::Vec::new()),
+
+		// Specialized
+		TypedFieldType::IpAddressField => quote!(::core::option::Option::None),
+	}
+}
+
+/// Returns the inner type used as the *value* in a choices store for the
+/// given field type.
+///
+/// For `ChoiceField<T>` the choices store is `Signal<Vec<(T, String)>>`
+/// (value, label). For `MultipleChoiceField<T>` the per-item value type is
+/// also `T`. This helper MUST only be called on those two field types —
+/// it panics otherwise to surface mis-routed callers.
+fn choice_value_type(field_type: &TypedFieldType) -> TokenStream {
+	match field_type {
+		TypedFieldType::ChoiceField { inner } | TypedFieldType::MultipleChoiceField { inner } => {
+			quote!(#inner)
+		}
+		_ => panic!(
+			"choice_value_type called on a non-choice TypedFieldType variant; \
+			 this is a codegen bug",
+		),
+	}
+}
+
+/// Returns `true` when the inner type of a `ChoiceField` or
+/// `MultipleChoiceField` is `String` (including the implicit default).
+/// When `false`, the field carries a user-supplied non-String generic
+/// and the codegen must not stringify the value in choice-loading code.
+fn choice_inner_type_is_string(field_type: &TypedFieldType) -> bool {
+	match field_type {
+		TypedFieldType::ChoiceField { inner } | TypedFieldType::MultipleChoiceField { inner } => {
+			type_is_string(inner)
+		}
+		_ => false,
+	}
+}
+
+/// Returns `true` when a `syn::Type` is the path `String`
+/// (including fully-qualified forms like `::std::string::String`).
+fn type_is_string(ty: &syn::Type) -> bool {
+	if let syn::Type::Path(type_path) = ty
+		&& type_path.qself.is_none()
+	{
+		let segs = &type_path.path.segments;
+		if segs.len() == 1 {
+			return segs[0].ident == "String";
+		}
+		// std::string::String (or ::std::string::String)
+		if segs.len() == 3
+			&& segs[0].ident == "std"
+			&& segs[1].ident == "string"
+			&& segs[2].ident == "String"
+		{
+			return true;
+		}
+	}
+	false
+}
+
+/// Builds the struct-level `where` clause that asserts trait-bound
+/// satisfaction for every concrete type substituted into a generic-capable
+/// field. For monomorphic forms (where the inner type is fully resolved at
+/// macro-expansion time) this clause acts as a compile-time assertion: if
+/// the user picked a type that lacks the required impls, the error fires
+/// once at the struct definition site with a precise diagnostic.
+///
+/// Returns an empty token stream when the form has no generic-capable
+/// fields (so no where clause is emitted at all).
+///
+/// Each unique inner type is asserted once. Duplicate inner types across
+/// multiple fields contribute only one predicate (deduplicated by the
+/// stringified token sequence of the inner type).
+fn build_typed_field_where_clause(all_fields: &[&TypedFormFieldDef]) -> TokenStream {
+	let mut bounds: Vec<TokenStream> = Vec::new();
+	let mut seen: ::std::collections::HashSet<String> = ::std::collections::HashSet::new();
+
+	for field in all_fields {
+		let inner = match &field.field_type {
+			TypedFieldType::HiddenField { inner }
+			| TypedFieldType::ChoiceField { inner }
+			| TypedFieldType::JsonField { inner }
+			| TypedFieldType::MultipleChoiceField { inner } => Some(inner.clone()),
+			_ => None,
+		};
+		if let Some(ty) = inner {
+			let key = quote!(#ty).to_string();
+			if seen.insert(key) {
+				bounds.push(quote! {
+					#ty: ::serde::Serialize
+						+ ::serde::de::DeserializeOwned
+						+ ::core::clone::Clone
+						+ ::core::fmt::Display
+						+ ::core::str::FromStr
+						+ ::core::default::Default
+						+ 'static
+				});
+			}
+		}
+	}
+
+	if bounds.is_empty() {
+		quote!()
+	} else {
+		quote!(where #(#bounds),*)
 	}
 }
 
@@ -3017,16 +3167,16 @@ fn field_type_to_string(field_type: &TypedFieldType) -> &'static str {
 		TypedFieldType::DateField => "DateField",
 		TypedFieldType::TimeField => "TimeField",
 		TypedFieldType::DateTimeField => "DateTimeField",
-		TypedFieldType::ChoiceField => "ChoiceField",
-		TypedFieldType::MultipleChoiceField => "MultipleChoiceField",
+		TypedFieldType::ChoiceField { .. } => "ChoiceField",
+		TypedFieldType::MultipleChoiceField { .. } => "MultipleChoiceField",
 		TypedFieldType::FileField => "FileField",
 		TypedFieldType::ImageField => "ImageField",
 		TypedFieldType::UrlField => "UrlField",
 		TypedFieldType::SlugField => "SlugField",
 		TypedFieldType::UuidField => "UuidField",
 		TypedFieldType::IpAddressField => "IpAddressField",
-		TypedFieldType::JsonField => "JsonField",
-		TypedFieldType::HiddenField => "HiddenField",
+		TypedFieldType::JsonField { .. } => "JsonField",
+		TypedFieldType::HiddenField { .. } => "HiddenField",
 	}
 }
 
@@ -5346,5 +5496,119 @@ mod tests {
 			!output_str.contains("\"button\""),
 			"form without SubmitButton must not generate a <button> element"
 		);
+	}
+
+	#[test]
+	fn hidden_field_with_generic_emits_typed_signal() {
+		// Arrange
+		let ft = TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(i64),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected = quote::quote!(::reinhardt_pages::reactive::Signal<i64>).to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn hidden_field_default_string_when_no_generic_specified() {
+		// Arrange — validator substitutes String when the user omits generics
+		let ft = TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(::std::string::String),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected =
+			quote::quote!(::reinhardt_pages::reactive::Signal<::std::string::String>).to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn multiple_choice_emits_vec_of_inner() {
+		// Arrange
+		let ft = TypedFieldType::MultipleChoiceField {
+			inner: syn::parse_quote!(i64),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		// Proc-macro token streams render nested angle brackets with a
+		// space between `>` and `>` (e.g. `Vec < i64 > >`), matching
+		// how `field_type_to_signal_type` constructs the type. The
+		// expected string uses a literal to avoid `quote!` collapsing.
+		let expected = ":: reinhardt_pages :: reactive :: Signal < :: std :: vec :: Vec < i64 > >";
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn ip_address_field_is_specialized_to_option_ipaddr() {
+		// Arrange
+		let ft = TypedFieldType::IpAddressField;
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected = ":: reinhardt_pages :: reactive :: Signal < :: core :: option :: Option < :: std :: net :: IpAddr > >";
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn json_field_explicit_serde_json_value() {
+		// Arrange
+		let ft = TypedFieldType::JsonField {
+			inner: syn::parse_quote!(::serde_json::Value),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected =
+			quote::quote!(::reinhardt_pages::reactive::Signal<::serde_json::Value>).to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn hidden_field_default_value_is_t_default() {
+		// Arrange
+		let ft = TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(i64),
+		};
+
+		// Act
+		let actual = field_type_default_value(&ft).to_string();
+
+		// Assert
+		let expected = quote::quote!(<i64 as ::core::default::Default>::default()).to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn multiple_choice_default_value_is_vec_new() {
+		// Arrange
+		let ft = TypedFieldType::MultipleChoiceField {
+			inner: syn::parse_quote!(i64),
+		};
+
+		// Act
+		let actual = field_type_default_value(&ft).to_string();
+
+		// Assert
+		let expected = quote::quote!(::std::vec::Vec::new()).to_string();
+		assert_eq!(actual, expected);
 	}
 }

@@ -64,6 +64,13 @@ Removed in this PR (8 items):
 - `bon` added as a `reinhardt-pages` runtime dependency. Staged for
   removal under spec §10 once `#[derive(PageProps)]` /
   `#[component]` proc-macros take over the prop-struct generation.
+- `form!` macro fields now accept optional generic type parameters
+  (`HiddenField<i64>`, `ChoiceField<bool>`, `MultipleChoiceField<String>`,
+  `JsonField<MyStruct>`) to forward typed values to `#[server_fn]` handlers
+  instead of always stringifying them (#4397)
+- `IpAddressField` is now specialized to `Option<IpAddr>` in generated code
+- Fields without a generic parameter default to `String` for backward
+  compatibility
 - `reinhardt_pages::router::request` submodule re-exports the
   Manouche DSL v2 spec §4.3 `FromRequest` building blocks
   (`FromRequest`, `RouteContext`, `ExtractError`, `PathParam<T>`,
