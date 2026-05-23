@@ -1190,9 +1190,6 @@ pub use reinhardt_forms::{
 
 // Re-export DI and parameters (FastAPI-style parameter extraction)
 #[cfg(all(feature = "di", native))]
-#[allow(deprecated)]
-pub use reinhardt_di::injected::{Injected, OptionalInjected};
-#[cfg(all(feature = "di", native))]
 pub use reinhardt_di::scope::{RequestScope, Scope, SingletonScope};
 #[cfg(all(feature = "di", native))]
 pub use reinhardt_di::{
