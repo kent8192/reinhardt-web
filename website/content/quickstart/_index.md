@@ -19,7 +19,7 @@ pin). The literal below is auto-bumped by release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
+cargo install reinhardt-admin-cli --version "0.1.0"
 ```
 
 ## 2. Create your project
