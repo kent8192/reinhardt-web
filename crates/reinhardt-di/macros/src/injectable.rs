@@ -50,7 +50,7 @@ enum InjectionType {
 fn is_likely_reinhardt_di_path(
 	segments: &syn::punctuated::Punctuated<syn::PathSegment, syn::token::PathSep>,
 ) -> bool {
-	// Single-segment path (e.g. `Injected<T>`) — assume it was imported from
+	// Single-segment path (e.g. `Depends<T>`) — assume it was imported from
 	// `reinhardt_di`. This is the normal usage pattern.
 	if segments.len() <= 1 {
 		return true;
