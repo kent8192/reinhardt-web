@@ -3117,13 +3117,18 @@ fn choice_inner_type_is_string(field_type: &TypedFieldType) -> bool {
 	}
 }
 
-/// Returns `true` when a `syn::Type` is the path `String`.
+/// Returns `true` when a `syn::Type` is the path `String`
+/// (including fully-qualified forms like `::std::string::String`).
 fn type_is_string(ty: &syn::Type) -> bool {
 	if let syn::Type::Path(type_path) = ty
 		&& type_path.qself.is_none()
-		&& type_path.path.segments.len() == 1
 	{
-		return type_path.path.segments[0].ident == "String";
+		return type_path
+			.path
+			.segments
+			.last()
+			.map(|seg| seg.ident == "String")
+			.unwrap_or(false);
 	}
 	false
 }
