@@ -699,7 +699,7 @@ impl TypedFormFieldGroup {
 /// `JsonField`) carry an `inner: syn::Type` that is substituted at codegen time
 /// into the Signal wrapper. For example, `HiddenField<MyId>` becomes
 /// `Signal<MyId>`. When no generic is supplied, the validator falls back to a
-/// default inner type (`String` for most, `serde_json::Value` for `JsonField`).
+/// default inner type (`String` for all generic-capable variants).
 ///
 /// # Field Type Mapping
 ///
@@ -719,7 +719,7 @@ impl TypedFormFieldGroup {
 /// | `MultipleChoiceField<T>` | `Vec<T>` (default `T = String`) | `Signal<Vec<T>>` |
 /// | `FileField` | `Option<File>` | `Signal<Option<File>>` |
 /// | `HiddenField<T>` | `T` (default `String`) | `Signal<T>` |
-/// | `JsonField<T>` | `T` (default `serde_json::Value`) | `Signal<T>` |
+/// | `JsonField<T>` | `T` (default `String`) | `Signal<T>` |
 /// | `IpAddressField` | `Option<IpAddr>` | `Signal<Option<IpAddr>>` |
 #[derive(Debug, Clone)]
 pub enum TypedFieldType {
@@ -778,9 +778,9 @@ pub enum TypedFieldType {
 		/// `Signal<Vec<(T, String)>>`. Default `::std::string::String`.
 		inner: syn::Type,
 	},
-	/// JsonField<T> -> `Signal<T>`. Default `T = ::serde_json::Value`.
+	/// JsonField<T> -> `Signal<T>`. Default `T = ::std::string::String`.
 	JsonField {
-		/// The concrete JSON-shaped type. Default `::serde_json::Value`
+		/// The concrete JSON-shaped type. Default `::std::string::String`
 		/// when no generic argument is supplied.
 		inner: syn::Type,
 	},

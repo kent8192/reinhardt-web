@@ -5600,7 +5600,7 @@ mod tests {
 	}
 
 	#[test]
-	fn json_field_default_is_serde_json_value() {
+	fn json_field_explicit_serde_json_value() {
 		// Arrange
 		let ft = TypedFieldType::JsonField {
 			inner: syn::parse_quote!(::serde_json::Value),
