@@ -469,12 +469,11 @@ pub use reinhardt_macros::admin;
 
 // Re-export settings from dedicated crate
 #[cfg(all(feature = "conf", native))]
-#[allow(deprecated)]
-// Re-exports deprecated Settings and AdvancedSettings for backward compatibility
+// `AdvancedSettings` was removed in 0.2.0 (Issue #4520); individual
+// fragment types (CacheSettings, StaticSettings, etc.) remain.
 pub use reinhardt_conf::settings::{
-	AdvancedSettings, CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
-	MediaSettings, MiddlewareConfig, SessionSettings, Settings, SettingsError, StaticSettings,
-	TemplateConfig,
+	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings, MediaSettings,
+	MiddlewareConfig, SessionSettings, Settings, SettingsError, StaticSettings, TemplateConfig,
 };
 
 #[cfg(all(feature = "conf", native))]
