@@ -1060,8 +1060,11 @@ fn run_fmt_all(
 			continue;
 		}
 
-		// Skip files without page! macros
-		if !original_content.contains("page!(") && !original_content.contains("form!{") {
+		// Skip files without page!/form! macros (both brace and paren forms)
+		if !original_content.contains("page!(")
+			&& !original_content.contains("form!(")
+			&& !original_content.contains("form!{")
+		{
 			continue;
 		}
 

@@ -981,10 +981,13 @@ impl AstPageFormatter {
 	pub(crate) fn format(&self, content: &str) -> Result<FormatResult, String> {
 		// Safety check FIRST: If no page! or form! pattern exists, return unchanged.
 		// This is a successful no-op, not an intentional skip — skipped stays None.
-		// Match both compact `page!(`/`form!{` and the TokenStream Display forms
-		// so recursive formatting (which wraps via `to_token_stream()`) still
-		// sees nested macros at every depth.
-		if find_page_bang_paren(content).is_none() && find_form_bang_brace(content).is_none() {
+		// Match compact `page!(`/`form!(`/`form!{` and the TokenStream Display
+		// forms so recursive formatting (which wraps via `to_token_stream()`)
+		// still sees nested macros at every depth.
+		if find_page_bang_paren(content).is_none()
+			&& find_form_bang_paren(content).is_none()
+			&& find_form_bang_brace(content).is_none()
+		{
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
@@ -2926,8 +2929,11 @@ impl AstPageFormatter {
 	/// let view = __reinhardt_placeholder_0__!()(props);
 	/// ```
 	pub(crate) fn protect_page_macros(&self, content: &str) -> ProtectResult {
-		// Quick check: accept both `page!(`/`form!(` and `page ! (`/`form ! (` forms.
-		if find_page_bang_paren(content).is_none() && find_form_bang_brace(content).is_none() {
+		// Quick check: accept `page!(`/`form!(`/`form!{` and whitespace variants.
+		if find_page_bang_paren(content).is_none()
+			&& find_form_bang_paren(content).is_none()
+			&& find_form_bang_brace(content).is_none()
+		{
 			return ProtectResult {
 				protected_content: content.to_string(),
 				backups: Vec::new(),

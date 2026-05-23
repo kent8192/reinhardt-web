@@ -283,12 +283,9 @@ fn find_item_end_offset(src: &str) -> usize {
 			continue;
 		}
 
-		// Skip byte/char literals: b'x' or 'x'
-		if (ch == b'b' && i + 1 < len && bytes[i + 1] == b'\'') || ch == b'\'' {
-			if ch == b'b' {
-				i += 1; // skip 'b'
-			}
-			i += 1; // skip opening quote
+		// Skip byte literals: b'x'
+		if ch == b'b' && i + 1 < len && bytes[i + 1] == b'\'' {
+			i += 2; // skip "b'"
 			while i < len {
 				if bytes[i] == b'\'' {
 					i += 1;
@@ -298,6 +295,31 @@ fn find_item_end_offset(src: &str) -> usize {
 					i += 2;
 				} else {
 					i += 1;
+				}
+			}
+			continue;
+		}
+
+		// Skip char literals ('x') vs lifetimes ('ident)
+		if ch == b'\'' {
+			i += 1; // skip opening quote
+			if i < len {
+				// Lifetime: ' followed by letter or underscore (e.g. 'a, 'static)
+				if bytes[i].is_ascii_alphabetic() || bytes[i] == b'_' {
+					while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+						i += 1;
+					}
+				} else {
+					// Char literal: skip the character (or escape sequence)
+					if bytes[i] == b'\\' && i + 1 < len {
+						i += 2;
+					} else {
+						i += 1;
+					}
+					// Skip closing quote
+					if i < len && bytes[i] == b'\'' {
+						i += 1;
+					}
 				}
 			}
 			continue;
@@ -342,16 +364,14 @@ fn read_developer_file(path: &std::path::Path) -> anyhow::Result<String> {
 /// note as `read_developer_file`.
 fn write_developer_file(path: &std::path::Path, content: &str) -> anyhow::Result<()> {
 	let canonical = path.canonicalize()?;
-	let parent = canonical
-		.parent()
-		.ok_or_else(|| anyhow::anyhow!("missing parent directory"))?;
 	let file_name = canonical
 		.file_name()
 		.and_then(|n| n.to_str())
 		.unwrap_or("rewrite");
-	let tmp = parent.join(format!(".{file_name}.tmp"));
+	let tmp = std::env::temp_dir().join(format!("reinhardt-admin-{file_name}.tmp"));
 	std::fs::write(&tmp, content)?;
-	std::fs::rename(tmp, canonical)?;
+	std::fs::copy(&tmp, canonical)?;
+	let _ = std::fs::remove_file(tmp);
 	Ok(())
 }
 
