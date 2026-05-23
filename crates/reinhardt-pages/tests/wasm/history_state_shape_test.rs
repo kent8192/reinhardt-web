@@ -26,20 +26,10 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 wasm_bindgen_test_configure!(run_in_browser);
 fn home_page() -> Page {
-	page!(|| {
-		div {
-			id: "route-home",
-			"HOME"
-		}
-	})()
+	page!(|| { div { id : "route-home", "HOME" } })()
 }
 fn clusters_page() -> Page {
-	page!(|| {
-		div {
-			id: "route-clusters",
-			"CLUSTERS"
-		}
-	})()
+	page!(|| { div { id : "route-clusters", "CLUSTERS" } })()
 }
 fn install_app_root() -> web_sys::Element {
 	let document = web_sys::window().unwrap().document().unwrap();

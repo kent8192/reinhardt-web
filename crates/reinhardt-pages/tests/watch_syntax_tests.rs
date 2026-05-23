@@ -40,15 +40,9 @@ fn counter_signal() -> Signal<i32> {
 #[serial(reactive)]
 fn test_watch_with_if_condition(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			if signal.get() {
-				span {
-					"Visible"
-				}
-			}
-		}
-	})(signal.clone());
+	let view = page!(
+		| signal : Signal < bool >| { div { if signal.get() { span { "Visible" } } } }
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -64,19 +58,10 @@ fn test_watch_with_if_condition(bool_signal: Signal<bool>) {
 #[serial(reactive)]
 fn test_watch_with_if_else(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			if signal.get() {
-				span {
-					"True branch"
-				}
-			} else {
-				span {
-					"False branch"
-				}
-			}
-		}
-	})(signal.clone());
+	let view = page!(
+		| signal : Signal < bool >| { div { if signal.get() { span { "True branch" } }
+		else { span { "False branch" } } } }
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -90,25 +75,11 @@ fn test_watch_with_if_else(bool_signal: Signal<bool>) {
 fn test_watch_with_nested_if(bool_signal: Signal<bool>) {
 	let outer = bool_signal.clone();
 	let inner = Signal::new(true);
-	let view = page!(|outer: Signal<bool>, inner: Signal<bool>| {
-		div {
-			if outer.get() {
-				if inner.get() {
-					span {
-						"Both true"
-					}
-				} else {
-					span {
-						"Outer only"
-					}
-				}
-			} else {
-				span {
-					"Outer false"
-				}
-			}
-		}
-	})(outer.clone(), inner.clone());
+	let view = page!(
+		| outer : Signal < bool >, inner : Signal < bool >| { div { if outer.get() { if
+		inner.get() { span { "Both true" } } else { span { "Outer only" } } } else { span
+		{ "Outer false" } } } }
+	)(outer.clone(), inner.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -120,21 +91,10 @@ fn test_watch_with_nested_if(bool_signal: Signal<bool>) {
 #[serial(reactive)]
 fn test_watch_with_element_child(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			if signal.get() {
-				div {
-					class: "container",
-					p {
-						"Paragraph 1"
-					}
-					p {
-						"Paragraph 2"
-					}
-				}
-			}
-		}
-	})(signal.clone());
+	let view = page!(
+		| signal : Signal < bool >| { div { if signal.get() { div { class : "container",
+		p { "Paragraph 1" } p { "Paragraph 2" } } } } }
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -146,11 +106,9 @@ fn test_watch_with_element_child(bool_signal: Signal<bool>) {
 #[serial(reactive)]
 fn test_watch_with_text_content(string_signal: Signal<String>) {
 	let signal = string_signal.clone();
-	let view = page!(|signal: Signal<String>| {
-		div {
-			{ signal.get() }
-		}
-	})(signal.clone());
+	let view = page!(
+		| signal : Signal < String >| { div { { signal.get() } } }
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -162,11 +120,9 @@ fn test_watch_with_text_content(string_signal: Signal<String>) {
 #[serial(reactive)]
 fn test_watch_with_expression_node(counter_signal: Signal<i32>) {
 	let signal = counter_signal.clone();
-	let view = page!(|signal: Signal<i32>| {
-		div {
-			{ format!("Count: {}", signal.get()) }
-		}
-	})(signal.clone());
+	let view = page!(
+		| signal : Signal < i32 >| { div { { format!("Count: {}", signal.get()) } } }
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -193,22 +149,11 @@ fn test_watch_with_for_loop(list_signal: Signal<Vec<String>>) {
 #[serial(reactive)]
 fn test_watch_nested_in_element(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			class: "outer",
-			section {
-				class: "middle",
-				article {
-					class: "inner",
-					if signal.get() {
-						p {
-							"Deep nested content"
-						}
-					}
-				}
-			}
+	let view = page!(
+		| signal : Signal < bool >| { div { class : "outer", section { class : "middle",
+		article { class : "inner", if signal.get() { p { "Deep nested content" } } } } }
 		}
-	})(signal.clone());
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -223,20 +168,11 @@ fn test_watch_nested_in_element(bool_signal: Signal<bool>) {
 fn test_multiple_watch_blocks(bool_signal: Signal<bool>, error_signal: Signal<Option<String>>) {
 	let loading = bool_signal.clone();
 	let error = error_signal.clone();
-	let view = page!(|loading: Signal<bool>, error: Signal<Option<String>>| {
-		div {
-			if loading.get() {
-				div {
-					"Loading..."
-				}
-			}
-			if error.get().is_some() {
-				div {
-					{ error.get().unwrap_or_default() }
-				}
-			}
-		}
-	})(loading.clone(), error.clone());
+	let view = page!(
+		| loading : Signal < bool >, error : Signal < Option < String >>| { div { if
+		loading.get() { div { "Loading..." } } if error.get().is_some() { div { { error
+		.get().unwrap_or_default() } } } } }
+	)(loading.clone(), error.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -252,23 +188,10 @@ fn test_multiple_watch_blocks(bool_signal: Signal<bool>, error_signal: Signal<Op
 #[serial(reactive)]
 fn test_watch_deeply_nested(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			div {
-				div {
-					div {
-						div {
-							if signal.get() {
-								span {
-									"Deep"
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	})(signal.clone());
+	let view = page!(
+		| signal : Signal < bool >| { div { div { div { div { div { if signal.get() {
+		span { "Deep" } } } } } } } }
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -280,11 +203,9 @@ fn test_watch_deeply_nested(bool_signal: Signal<bool>) {
 #[serial(reactive)]
 fn test_watch_with_unicode() {
 	let text = Signal::new("日本語テスト 🎉 emoji".to_string());
-	let view = page!(|text: Signal<String>| {
-		div {
-			{ text.get() }
-		}
-	})(text.clone());
+	let view = page!(
+		| text : Signal < String >| { div { { text.get() } } }
+	)(text.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -296,11 +217,9 @@ fn test_watch_with_unicode() {
 #[serial(reactive)]
 fn test_watch_with_empty_string() {
 	let text = Signal::new("".to_string());
-	let view = page!(|text: Signal<String>| {
-		div {
-			{ text.get() }
-		}
-	})(text.clone());
+	let view = page!(
+		| text : Signal < String >| { div { { text.get() } } }
+	)(text.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -312,19 +231,10 @@ fn test_watch_with_empty_string() {
 #[serial(reactive)]
 fn test_watch_with_fragment_result(list_signal: Signal<Vec<String>>) {
 	let items = list_signal.clone();
-	let view = page!(|items: Signal<Vec<String>>| {
-		div {
-			{
-				Page::fragment(
-						items
-							.get()
-							.iter()
-							.map(|i| Page::text(i.clone()))
-							.collect::<Vec<Page>>(),
-					)
-			}
-		}
-	})(items.clone());
+	let view = page!(
+		| items : Signal < Vec < String >>| { div { { Page::fragment(items.get().iter()
+		.map(| i | Page::text(i.clone())).collect::< Vec < Page >> (),) } } }
+	)(items.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -336,16 +246,10 @@ fn test_watch_with_fragment_result(list_signal: Signal<Vec<String>>) {
 #[serial(reactive)]
 fn test_watch_with_data_attributes(counter_signal: Signal<i32>) {
 	let signal = counter_signal.clone();
-	let view = page!(|signal: Signal<i32>| {
-		div {
-			if signal.get()> 0 {
-				span {
-					data_count: signal.get().to_string(),
-					"Has data"
-				}
-			}
-		}
-	})(signal.clone());
+	let view = page!(
+		| signal : Signal < i32 >| { div { if signal.get() > 0 { span { data_count :
+		signal.get().to_string(), "Has data" } } } }
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -359,19 +263,10 @@ fn test_watch_with_data_attributes(counter_signal: Signal<i32>) {
 #[serial(reactive)]
 fn test_watch_condition_boolean_partitions(#[case] initial_value: bool) {
 	let signal = Signal::new(initial_value);
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			if signal.get() {
-				span {
-					"True"
-				}
-			} else {
-				span {
-					"False"
-				}
-			}
-		}
-	})(signal.clone());
+	let view = page!(
+		| signal : Signal < bool >| { div { if signal.get() { span { "True" } } else {
+		span { "False" } } } }
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -386,15 +281,9 @@ fn test_watch_condition_boolean_partitions(#[case] initial_value: bool) {
 #[serial(reactive)]
 fn test_watch_nesting_depth(#[case] depth: usize, bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
-	let view = page!(|signal: Signal<bool>| {
-		div {
-			if signal.get() {
-				span {
-					"Content"
-				}
-			}
-		}
-	})(signal.clone());
+	let view = page!(
+		| signal : Signal < bool >| { div { if signal.get() { span { "Content" } } } }
+	)(signal.clone());
 	match &view {
 		Page::Element(el) => {
 			assert_eq!(el.tag_name(), "div");
@@ -411,29 +300,15 @@ fn test_watch_nesting_depth(#[case] depth: usize, bool_signal: Signal<bool>) {
 fn test_watch_condition_content_matrix(#[case] condition: bool, #[case] content_type: &str) {
 	let signal = Signal::new(condition);
 	let view = if content_type == "text" {
-		page!(|signal: Signal<bool>| {
-			div {
-				if signal.get() {
-					"Text content"
-				} else {
-					"Other text"
-				}
-			}
-		})(signal.clone())
+		page!(
+			| signal : Signal < bool >| { div { if signal.get() { "Text content" } else {
+			"Other text" } } }
+		)(signal.clone())
 	} else {
-		page!(|signal: Signal<bool>| {
-			div {
-				if signal.get() {
-					span {
-						"Element content"
-					}
-				} else {
-					span {
-						"Other element"
-					}
-				}
-			}
-		})(signal.clone())
+		page!(
+			| signal : Signal < bool >| { div { if signal.get() { span {
+			"Element content" } } else { span { "Other element" } } } }
+		)(signal.clone())
 	};
 	match &view {
 		Page::Element(el) => {

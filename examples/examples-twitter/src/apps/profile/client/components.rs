@@ -66,128 +66,40 @@ pub fn profile_view(user_id: Uuid) -> Page {
 	let error_signal = error.clone();
 	let profile_signal = profile.clone();
 	let user_id_str = user_id.to_string();
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, profile_signal: Signal<Option<ProfileResponse>>, user_id_str: String| {
-		div {
-			class: "max-w-2xl mx-auto",
-			if loading_signal.get() {
-				div {
-					class: "flex flex-col items-center justify-center py-16",
-					div {
-						class: "spinner-lg mb-4",
-					}
-					p {
-						class: "text-content-secondary text-sm",
-						"Loading profile..."
-					}
-				}
-			} else if error_signal.get().is_some() {
-				div {
-					class: "p-4",
-					div {
-						class: "alert-danger",
-						role: "alert",
-						div {
-							class: "flex items-center gap-2",
-							{ icons::error_circle_icon() }
-							span {
-								{ error_signal.get().unwrap_or_default() }
-							}
-						}
-					}
-				}
-			} else if profile_signal.get().is_some() {
-				div {
-					class: "card overflow-hidden animate-fade-in",
-					div {
-						class: "h-32 sm:h-48 bg-gradient-to-r from-brand to-brand-dark relative",
-					}
-					div {
-						class: "px-4 pb-4",
-						div {
-							class: "flex justify-between items-end -mt-12 sm:-mt-16 mb-4",
-							div {
-								class: "avatar-xl sm:w-32 sm:h-32 rounded-full border-4 border-surface-primary bg-surface-tertiary flex items-center justify-center text-3xl sm:text-4xl font-bold text-content-secondary",
-								span {
-									"👤"
-								}
-							}
-							a {
-								href: format!("/profile/{}/edit", user_id_str),
-								class: "btn-outline",
-								"Edit profile"
-							}
-						}
-						div {
-							class: "mb-4",
-							h1 {
-								class: "text-xl font-bold text-content-primary",
-								"@user"
-							}
-						}
-						if let Some(ref data) = profile_signal.get() {
-							if data.bio.is_some() {
-								p {
-									class: "text-content-primary mb-4 whitespace-pre-wrap",
-									{ data.bio.clone().unwrap_or_default() }
-								}
-							}
-						}
-						div {
-							class: "flex flex-wrap gap-4 text-content-secondary text-sm",
-							if let Some(ref data) = profile_signal.get() {
-								if data.location.is_some() {
-									div {
-										class: "flex items-center gap-1",
-										{ icons::location_pin_icon() }
-										span {
-											{ data.location.clone().unwrap_or_default() }
-										}
-									}
-								}
-								if data.website.is_some() {
-									a {
-										class: "flex items-center gap-1 text-brand hover:underline",
-										href: data.website.clone().unwrap_or_default(),
-										target: "_blank",
-										rel: "noopener noreferrer",
-										{ icons::link_icon() }
-										span {
-											{ data.website.clone().unwrap_or_default() }
-										}
-									}
-								}
-							}
-						}
-						div {
-							class: "flex gap-6 mt-4 pt-4 border-t border-border",
-							div {
-								class: "flex items-center gap-1",
-								span {
-									class: "font-bold text-content-primary",
-									"0"
-								}
-								span {
-									class: "text-content-secondary text-sm",
-									"Following"
-								}
-							}
-							div {
-								class: "flex items-center gap-1",
-								span {
-									class: "font-bold text-content-primary",
-									"0"
-								}
-								span {
-									class: "text-content-secondary text-sm",
-									"Followers"
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	})(loading_signal, error_signal, profile_signal, user_id_str)
+	page!(
+		| loading_signal : Signal < bool >, error_signal : Signal < Option < String >>,
+		profile_signal : Signal < Option < ProfileResponse >>, user_id_str : String | {
+		div { class : "max-w-2xl mx-auto", if loading_signal.get() { div { class :
+		"flex flex-col items-center justify-center py-16", div { class :
+		"spinner-lg mb-4", } p { class : "text-content-secondary text-sm",
+		"Loading profile..." } } } else if error_signal.get().is_some() { div { class :
+		"p-4", div { class : "alert-danger", role : "alert", div { class :
+		"flex items-center gap-2", { icons::error_circle_icon() } span { { error_signal
+		.get().unwrap_or_default() } } } } } } else if profile_signal.get().is_some() {
+		div { class : "card overflow-hidden animate-fade-in", div { class :
+		"h-32 sm:h-48 bg-gradient-to-r from-brand to-brand-dark relative", } div { class
+		: "px-4 pb-4", div { class :
+		"flex justify-between items-end -mt-12 sm:-mt-16 mb-4", div { class :
+		"avatar-xl sm:w-32 sm:h-32 rounded-full border-4 border-surface-primary bg-surface-tertiary flex items-center justify-center text-3xl sm:text-4xl font-bold text-content-secondary",
+		span { "👤" } } a { href : format!("/profile/{}/edit", user_id_str), class :
+		"btn-outline", "Edit profile" } } div { class : "mb-4", h1 { class :
+		"text-xl font-bold text-content-primary", "@user" } } if let Some(ref data) =
+		profile_signal.get() { if data.bio.is_some() { p { class :
+		"text-content-primary mb-4 whitespace-pre-wrap", { data.bio.clone()
+		.unwrap_or_default() } } } } div { class :
+		"flex flex-wrap gap-4 text-content-secondary text-sm", if let Some(ref data) =
+		profile_signal.get() { if data.location.is_some() { div { class :
+		"flex items-center gap-1", { icons::location_pin_icon() } span { { data.location
+		.clone().unwrap_or_default() } } } } if data.website.is_some() { a { class :
+		"flex items-center gap-1 text-brand hover:underline", href : data.website.clone()
+		.unwrap_or_default(), target : "_blank", rel : "noopener noreferrer", {
+		icons::link_icon() } span { { data.website.clone().unwrap_or_default() } } } } }
+		} div { class : "flex gap-6 mt-4 pt-4 border-t border-border", div { class :
+		"flex items-center gap-1", span { class : "font-bold text-content-primary", "0" }
+		span { class : "text-content-secondary text-sm", "Following" } } div { class :
+		"flex items-center gap-1", span { class : "font-bold text-content-primary", "0" }
+		span { class : "text-content-secondary text-sm", "Followers" } } } } } } } }
+	)(loading_signal, error_signal, profile_signal, user_id_str)
 }
 /// Profile edit component using form! macro with state management
 ///
@@ -256,86 +168,28 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 	let success_signal = profile_form.success().clone();
 	let form_view = profile_form.into_page();
 	let user_id_str = user_id.to_string();
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, success_signal: Signal<bool>, form_view: Page, user_id_str: String| {
-		div {
-			class: "max-w-2xl mx-auto p-4",
-			div {
-				class: "card animate-fade-in",
-				div {
-					class: "card-header flex items-center gap-3",
-					a {
-						href: format!("/profile/{}", user_id_str.clone()),
-						class: "btn-icon",
-						{ icons::arrow_left_icon() }
-					}
-					h1 {
-						class: "text-xl font-bold",
-						"Edit Profile"
-					}
-				}
-				div {
-					class: "card-body",
-					if success_signal.get() {
-						div {
-							class: "alert-success mb-4",
-							role: "alert",
-							div {
-								class: "flex items-center gap-2",
-								{ icons::success_check_icon() }
-								span {
-									"Profile updated successfully! Redirecting..."
-								}
-							}
-						}
-					}
-					if error_signal.get().is_some() {
-						div {
-							class: "alert-danger mb-4",
-							role: "alert",
-							div {
-								class: "flex items-center gap-2",
-								{ icons::error_circle_icon() }
-								span {
-									{ error_signal.get().unwrap_or_default() }
-								}
-							}
-						}
-					}
-					{ { form_view } }
-					div {
-						class: "flex justify-end gap-3 pt-4 border-t border-border mt-5",
-						a {
-							href: format!("/profile/{}", user_id_str),
-							class: "btn-secondary",
-							"Cancel"
-						}
-						if loading_signal.get() {
-							button {
-								type: "submit",
-								class: "btn-primary opacity-50 cursor-not-allowed",
-								disabled: loading_signal.get(),
-								form: "profile-edit-form",
-								div {
-									class: "flex items-center gap-2",
-									div {
-										class: "spinner-sm border-white border-t-transparent",
-									}
-									"Saving..."
-								}
-							}
-						} else {
-							button {
-								type: "submit",
-								class: "btn-primary",
-								form: "profile-edit-form",
-								"Save"
-							}
-						}
-					}
-				}
-			}
-		}
-	})(
+	page!(
+		| loading_signal : Signal < bool >, error_signal : Signal < Option < String >>,
+		success_signal : Signal < bool >, form_view : Page, user_id_str : String | { div
+		{ class : "max-w-2xl mx-auto p-4", div { class : "card animate-fade-in", div {
+		class : "card-header flex items-center gap-3", a { href : format!("/profile/{}",
+		user_id_str.clone()), class : "btn-icon", { icons::arrow_left_icon() } } h1 {
+		class : "text-xl font-bold", "Edit Profile" } } div { class : "card-body", if
+		success_signal.get() { div { class : "alert-success mb-4", role : "alert", div {
+		class : "flex items-center gap-2", { icons::success_check_icon() } span {
+		"Profile updated successfully! Redirecting..." } } } } if error_signal.get()
+		.is_some() { div { class : "alert-danger mb-4", role : "alert", div { class :
+		"flex items-center gap-2", { icons::error_circle_icon() } span { { error_signal
+		.get().unwrap_or_default() } } } } } { { form_view } } div { class :
+		"flex justify-end gap-3 pt-4 border-t border-border mt-5", a { href :
+		format!("/profile/{}", user_id_str), class : "btn-secondary", "Cancel" } if
+		loading_signal.get() { button { type : "submit", class :
+		"btn-primary opacity-50 cursor-not-allowed", disabled : loading_signal.get(),
+		form : "profile-edit-form", div { class : "flex items-center gap-2", div { class
+		: "spinner-sm border-white border-t-transparent", } "Saving..." } } } else {
+		button { type : "submit", class : "btn-primary", form : "profile-edit-form",
+		"Save" } } } } } } }
+	)(
 		loading_signal,
 		error_signal,
 		success_signal,

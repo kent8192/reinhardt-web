@@ -123,51 +123,31 @@ pub fn button_with_size(
 	#[cfg(native)]
 	{
 		let _ = on_click;
-		page!(|class: String, text: String, disabled: bool| {
-			button {
-				class: { { class } },
-				type: "button",
-				disabled: disabled,
-				data_reactive: "true",
-				{ { text } }
-			}
-		})(class, text, disabled)
+		page!(
+			| class : String, text : String, disabled : bool | { button { class : { {
+			class } }, type : "button", disabled : disabled, data_reactive : "true", { {
+			text } } } }
+		)(class, text, disabled)
 	}
 }
 /// Loading spinner component
 ///
 /// Displays a modern spinner animation while content is loading.
 pub fn loading_spinner() -> Page {
-	page!(|| {
-		div {
-			class: "flex items-center justify-center py-8",
-			div {
-				class: "spinner-md",
-				role: "status",
-				span {
-					class: "sr-only",
-					"Loading..."
-				}
-			}
-		}
-	})()
+	page!(
+		|| { div { class : "flex items-center justify-center py-8", div { class :
+		"spinner-md", role : "status", span { class : "sr-only", "Loading..." } } } }
+	)()
 }
 /// Large loading spinner with text
 pub fn loading_spinner_large(message: &str) -> Page {
 	let message = message.to_string();
-	page!(|message: String| {
-		div {
-			class: "flex flex-col items-center justify-center py-12 gap-4",
-			div {
-				class: "spinner-lg",
-				role: "status",
-			}
-			p {
-				class: "text-content-secondary text-sm",
-				{ { message } }
-			}
-		}
-	})(message)
+	page!(
+		| message : String | { div { class :
+		"flex flex-col items-center justify-center py-12 gap-4", div { class :
+		"spinner-lg", role : "status", } p { class : "text-content-secondary text-sm", {
+		{ message } } } } }
+	)(message)
 }
 /// Error alert component
 ///
@@ -180,40 +160,21 @@ pub fn loading_spinner_large(message: &str) -> Page {
 pub fn error_alert(message: &str, dismissible: bool) -> Page {
 	let message = message.to_string();
 	if dismissible {
-		page!(|message: String| {
-			div {
-				class: "alert-danger animate-fade-in",
-				role: "alert",
-				div {
-					class: "flex items-start gap-3",
-					{ icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") }
-					span {
-						class: "flex-1",
-						{ { message } }
-					}
-					button {
-						type: "button",
-						class: "btn-icon text-danger hover:bg-red-100 dark:hover:bg-red-900/30 -mr-2 -mt-1",
-						aria_label: "Close",
-						{ icons::close_icon() }
-					}
-				}
-			}
-		})(message)
+		page!(
+			| message : String | { div { class : "alert-danger animate-fade-in", role :
+			"alert", div { class : "flex items-start gap-3", {
+			icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") } span {
+			class : "flex-1", { { message } } } button { type : "button", class :
+			"btn-icon text-danger hover:bg-red-100 dark:hover:bg-red-900/30 -mr-2 -mt-1",
+			aria_label : "Close", { icons::close_icon() } } } } }
+		)(message)
 	} else {
-		page!(|message: String| {
-			div {
-				class: "alert-danger animate-fade-in",
-				role: "alert",
-				div {
-					class: "flex items-start gap-3",
-					{ icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") }
-					span {
-						{ message }
-					}
-				}
-			}
-		})(message)
+		page!(
+			| message : String | { div { class : "alert-danger animate-fade-in", role :
+			"alert", div { class : "flex items-start gap-3", {
+			icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") } span {
+			{ message } } } } }
+		)(message)
 	}
 }
 /// Success alert component
@@ -225,36 +186,20 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 /// * `message` - Success message to display
 pub fn success_alert(message: &str) -> Page {
 	let message = message.to_string();
-	page!(|message: String| {
-		div {
-			class: "alert-success animate-fade-in",
-			role: "alert",
-			div {
-				class: "flex items-start gap-3",
-				{ icons::success_check_icon() }
-				span {
-					{ message }
-				}
-			}
-		}
-	})(message)
+	page!(
+		| message : String | { div { class : "alert-success animate-fade-in", role :
+		"alert", div { class : "flex items-start gap-3", { icons::success_check_icon() }
+		span { { message } } } } }
+	)(message)
 }
 /// Warning alert component
 pub fn warning_alert(message: &str) -> Page {
 	let message = message.to_string();
-	page!(|message: String| {
-		div {
-			class: "alert-warning animate-fade-in",
-			role: "alert",
-			div {
-				class: "flex items-start gap-3",
-				{ icons::warning_icon() }
-				span {
-					{ message }
-				}
-			}
-		}
-	})(message)
+	page!(
+		| message : String | { div { class : "alert-warning animate-fade-in", role :
+		"alert", div { class : "flex items-start gap-3", { icons::warning_icon() } span {
+		{ message } } } } }
+	)(message)
 }
 /// Text input component
 ///
@@ -306,26 +251,15 @@ pub fn text_input(
 	}
 	#[cfg(native)]
 	{
-		page!(|id_owned: String, label_owned: String, input_type_owned: String, placeholder_owned: String, value_signal: Signal<String>, required: bool| {
-			div {
-				class: "mb-4",
-				label {
-					for: { id_owned.clone() },
-					class: "form-label",
-					{ { label_owned } }
-				}
-				input {
-					type: { input_type_owned.clone() },
-					class: "form-input",
-					id: { id_owned.clone() },
-					name: { id_owned.clone() },
-					placeholder: { placeholder_owned.clone() },
-					value: { value_signal.get() },
-					required: required,
-					data_reactive: "true",
-				}
-			}
-		})(
+		page!(
+			| id_owned : String, label_owned : String, input_type_owned : String,
+			placeholder_owned : String, value_signal : Signal < String >, required : bool
+			| { div { class : "mb-4", label { for : { id_owned.clone() }, class :
+			"form-label", { { label_owned } } } input { type : { input_type_owned.clone()
+			}, class : "form-input", id : { id_owned.clone() }, name : { id_owned.clone()
+			}, placeholder : { placeholder_owned.clone() }, value : { value_signal.get()
+			}, required : required, data_reactive : "true", } } }
+		)(
 			id_owned,
 			label_owned,
 			input_type_owned,
@@ -502,16 +436,10 @@ pub fn avatar_sized(url: Option<&str>, alt: &str, size: AvatarSize) -> Page {
 /// Uses JavaScript to toggle the theme and persist to localStorage.
 /// The click event is attached via JavaScript in index.html.
 pub fn theme_toggle() -> Page {
-	page!(|| {
-		button {
-			class: "theme-toggle",
-			type: "button",
-			id: "theme-toggle-btn",
-			aria_label: "Toggle theme",
-			{ icons::sun_icon() }
-			{ icons::moon_icon() }
-		}
-	})()
+	page!(
+		|| { button { class : "theme-toggle", type : "button", id : "theme-toggle-btn",
+		aria_label : "Toggle theme", { icons::sun_icon() } { icons::moon_icon() } } }
+	)()
 }
 /// Empty placeholder component
 ///
@@ -521,11 +449,7 @@ pub fn empty() -> Page {
 }
 /// Divider component
 pub fn divider() -> Page {
-	page!(|| {
-		div {
-			class: "divider",
-		}
-	})()
+	page!(|| { div { class: "divider" } })()
 }
 /// Badge component
 pub fn badge(text: &str, primary: bool) -> Page {
@@ -536,10 +460,7 @@ pub fn badge(text: &str, primary: bool) -> Page {
 		"badge-secondary"
 	}
 	.to_string();
-	page!(|text: String, class: String| {
-		span {
-			class: class,
-			{ { text } }
-		}
-	})(text, class)
+	page!(
+		| text : String, class : String | { span { class : class, { { text } } } }
+	)(text, class)
 }
