@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `reactive::deps` module with `Trackable` trait, `Deps` opaque container, and
+  `IntoDeps` for tuples arity 0..=12. Enables the React-aligned
+  `(closure, deps)` hook signatures in `reinhardt-pages` (#4195).
+- `Effect::new_with_deps` and `Effect::new_with_deps_and_timing` constructors
+  with Option A semantics (closure runs without active Observer; only listed
+  deps subscribe) and optional `FnOnce` cleanup return.
+- `Memo::new_with_deps` constructor mirroring the same Option A semantics for
+  derived values. Adds an internal `MEMO_DIRTY` thread-local for type-agnostic
+  invalidation by a hidden Layout-timing Effect that subscribes to the deps.
+- `impl Trackable for Signal<T>` and `impl Trackable for Memo<T>`, enabling
+  these primitives to participate in hook deps tuples.
+
 ### Removed
 
 #### BREAKING CHANGES
