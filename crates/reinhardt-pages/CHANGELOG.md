@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0...reinhardt-pages@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(pages)* add Trackable trait for reactive dependency identity
+- *(pages-macros)* enforce no-implicit-captures in page! body
+- *(pages-macros)* [**breaking**] unconditionally wrap {expr}, if, for in Page::reactive
+- *(pages-macros)* [**breaking**] reject watch { ... } in v2
+- *(pages-macros)* refine no-implicit-capture visitor scope tracking
+- *(pages-macros)* [**breaking**] clone expression in auto-wrapped Page::reactive
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(pages-macros)* scaffold enforce_capture_discipline pass
+
+### Documentation
+
+- *(pages)* document v2 auto-wrap + no-implicit-captures rules
+
+### Fixed
+
+- resolve CI failures for unconditional reactive auto-wrap PR
+
+### Maintenance
+
+- trigger CI with real file change
+- merge develop/0.2.0 and resolve CHANGELOG conflict
+
+### Testing
+
+- *(pages)* align existing UI pass tests with spec §3.7
+- *(pages)* UI tests for spec §3.7 + §4.1 contract
+
 ### Changed
 
 - **BREAKING**: `page!` macro now unconditionally wraps every `{expr}` and
