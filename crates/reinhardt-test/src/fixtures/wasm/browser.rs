@@ -11,7 +11,6 @@
 //! - `screen`: DOM query interface for finding elements
 //! - `mock_storage`: Mock localStorage/sessionStorage
 //! - `mock_cookies`: Mock document.cookie
-//! - `mock_fetch`: Mock fetch API responses
 //!
 //! # Example
 //!
@@ -33,7 +32,7 @@
 
 use rstest::*;
 
-use crate::wasm::{MockCookies, MockFetch, MockStorage, Screen};
+use crate::wasm::{MockCookies, MockStorage, Screen};
 
 // ============================================================================
 // Screen / Query Fixtures
@@ -176,32 +175,6 @@ pub fn session_cookies() -> MockCookies {
 }
 
 // ============================================================================
-// Mock Fetch Fixtures
-// ============================================================================
-
-/// Fixture providing an empty mock fetch handler.
-///
-/// Use this to set up custom fetch responses for your tests.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::wasm::mock_fetch;
-/// use wasm_bindgen_test::*;
-///
-/// #[wasm_bindgen_test]
-/// async fn test_api_call(mut mock_fetch: MockFetch) {
-///     mock_fetch.respond_json("/api/users", &vec!["user1", "user2"]);
-///
-///     // Component makes fetch to /api/users and gets mocked response
-/// }
-/// ```
-#[fixture]
-pub fn mock_fetch() -> MockFetch {
-	MockFetch::new()
-}
-
-// ============================================================================
 // Combination Fixtures
 // ============================================================================
 
@@ -217,8 +190,6 @@ pub struct WasmTestEnv {
 	pub session_storage: MockStorage,
 	/// Mock cookies
 	pub cookies: MockCookies,
-	/// Mock fetch handler
-	pub fetch: MockFetch,
 }
 
 impl WasmTestEnv {
@@ -229,7 +200,6 @@ impl WasmTestEnv {
 			local_storage: MockStorage::new(),
 			session_storage: MockStorage::new(),
 			cookies: MockCookies::new(),
-			fetch: MockFetch::new(),
 		}
 	}
 }
@@ -252,9 +222,6 @@ impl Default for WasmTestEnv {
 /// async fn test_full_component(mut env: WasmTestEnv) {
 ///     // Set up storage
 ///     env.local_storage.set("user", "test");
-///
-///     // Set up fetch mock
-///     env.fetch.respond_json("/api/data", &json!({"key": "value"}));
 ///
 ///     // Query DOM
 ///     let element = env.screen.get_by_role("button").query();

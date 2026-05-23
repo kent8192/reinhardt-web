@@ -51,64 +51,9 @@ pub type ReverseResult<T> = Result<T>;
 /// let url = reverse_with_aho_corasick("/users/{id}/posts/{post_id}/", &params);
 /// assert_eq!(url, "/users/123/posts/456/");
 /// ```
-#[deprecated(
-	since = "0.1.0-rc.29",
-	note = "use `try_reverse_with_aho_corasick`; this variant panics on invalid params and will be removed in a future release"
-)]
-pub fn reverse_with_aho_corasick(pattern: &str, params: &HashMap<String, String>) -> String {
-	// Extract all placeholder names
-	let param_names = extract_param_names(pattern);
-
-	if param_names.is_empty() {
-		return pattern.to_string();
-	}
-
-	// Validate parameter values against injection attacks
-	for (name, value) in params {
-		if !validate_reverse_param(value) {
-			panic!(
-				"Invalid parameter value for '{}': contains dangerous characters (path separators, query delimiters, or encoded sequences)",
-				name
-			);
-		}
-	}
-
-	// Build patterns for Aho-Corasick: ["{id}", "{post_id}", ...]
-	let placeholders: Vec<String> = param_names
-		.iter()
-		.map(|name| format!("{{{}}}", name))
-		.collect();
-
-	// Build Aho-Corasick automaton
-	let ac = match AhoCorasick::new(&placeholders) {
-		Ok(ac) => ac,
-		Err(_) => {
-			// Fallback to original implementation if AC construction fails
-			#[allow(deprecated, reason = "internal fallback during deprecation cycle")]
-			return reverse_single_pass(pattern, params);
-		}
-	};
-
-	// Find all matches
-	let mut replacements = Vec::new();
-	for mat in ac.find_iter(pattern) {
-		let param_name = &param_names[mat.pattern()];
-		if let Some(value) = params.get(param_name) {
-			replacements.push((mat.start(), mat.end(), value.clone()));
-		} else {
-			// Keep placeholder if parameter not found
-			replacements.push((mat.start(), mat.end(), format!("{{{}}}", param_name)));
-		}
-	}
-
-	// Apply replacements from right to left to avoid position shifts
-	let mut result = pattern.to_string();
-	for (start, end, value) in replacements.into_iter().rev() {
-		result.replace_range(start..end, &value);
-	}
-
-	result
-}
+// `reverse_with_aho_corasick(pattern, params)` (deprecated since
+// 0.1.0-rc.29) was removed in 0.2.0 per Issue #4520. Use
+// `try_reverse_with_aho_corasick` — the fallible variant — instead.
 
 /// Extract parameter names from a URL pattern
 ///
@@ -172,48 +117,11 @@ pub fn extract_param_names(pattern: &str) -> Vec<String> {
 /// let url = reverse_single_pass("/users/{id}/posts/{post_id}/", &params);
 /// assert_eq!(url, "/users/123/posts/456/");
 /// ```
-#[deprecated(
-	since = "0.1.0-rc.29",
-	note = "use `try_reverse_single_pass`; this variant panics on invalid params and will be removed in a future release"
-)]
-pub fn reverse_single_pass(pattern: &str, params: &HashMap<String, String>) -> String {
-	// Validate parameter values against injection attacks
-	for (name, value) in params {
-		if !validate_reverse_param(value) {
-			panic!(
-				"Invalid parameter value for '{}': contains dangerous characters (path separators, query delimiters, or encoded sequences)",
-				name
-			);
-		}
-	}
+// `reverse_single_pass(pattern, params)` (deprecated since 0.1.0-rc.29)
+// was removed in 0.2.0 per Issue #4520. Use `try_reverse_single_pass` —
+// the fallible variant — instead.
 
-	let mut result = String::with_capacity(pattern.len());
-	let mut chars = pattern.chars().peekable();
-
-	while let Some(ch) = chars.next() {
-		if ch == '{' {
-			// Extract parameter name until '}'
-			let param_name: String = chars.by_ref().take_while(|&c| c != '}').collect();
-
-			// Lookup parameter value (O(1) amortized)
-			if let Some(value) = params.get(&param_name) {
-				result.push_str(value);
-			} else {
-				// Parameter not found - preserve placeholder
-				// This should not happen if validation was done beforehand
-				result.push('{');
-				result.push_str(&param_name);
-				result.push('}');
-			}
-		} else {
-			result.push(ch);
-		}
-	}
-
-	result
-}
-
-/// Fallible variant of [`reverse_with_aho_corasick`].
+/// Fallible URL parameter substitution using Aho-Corasick algorithm.
 ///
 /// Returns `Err(ReverseError::Validation(..))` instead of panicking when any
 /// parameter value is rejected by `validate_reverse_param` (path separators,
