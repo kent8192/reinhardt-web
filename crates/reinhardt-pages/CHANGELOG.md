@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0...reinhardt-pages@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(manouche)* plumb Component { ... } form fields through typed AST
+- *(pages-macros)* emit bon Builder chain for Component { ... } form
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(pages)* document Component { ... } brace invocation form
+
+### Fixed
+
+- *(pages-macros)* drop redundant Some wrap on bon Builder children setter
+- *(pages-macros)* address CodeRabbit review — comma handling and allow comment
+
+### Maintenance
+
+- *(pages)* add bon workspace dependency for P7 Component invocation
+- merge develop/0.2.0 into feat/issue-4520-rc-deprecated-pages
+
+### Testing
+
+- *(pages)* UI pass-cases for Component { ... } brace form
+- *(pages)* page!-in-page! nesting + missing-prop UI fail-case
+
 ### Removed
 
 #### BREAKING CHANGES

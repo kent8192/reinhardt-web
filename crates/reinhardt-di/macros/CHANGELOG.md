@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0...reinhardt-di-macros@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(di)* [**breaking**] remove Injected and OptionalInjected (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.30...reinhardt-di-macros@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-di-macros` as part of the

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0...reinhardt-urls@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(urls)* [**breaking**] remove panicking reverse_* variants and UrlResolverUnprefixed (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(urls)* fix broken intra-doc link in try_reverse_single_pass doc
+
+### Maintenance
+
+- resolve merge conflict in reinhardt-urls CHANGELOG.md (develop/0.2.0)
+
 ### Added
 
 - `ClientRouter::page<F, P>(pattern, handler)` and

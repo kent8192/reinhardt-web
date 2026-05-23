@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0...reinhardt-test@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(test)* [**breaking**] gate MockFetch and TestUser behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- delete gated items instead of cfg-gating, update callers
+
 ### Removed
 
 #### BREAKING CHANGES
