@@ -30,8 +30,9 @@ use syn::{
 };
 
 use crate::{
-	ComponentInvocationForm, PageAttr, PageBody, PageComponent, PageComponentArg, PageElement,
-	PageElse, PageEvent, PageExpression, PageFor, PageIf, PageMacro, PageNode, PageParam, PageText,
+	ComponentInvocationForm, NamedSlot, PageAttr, PageBody, PageComponent, PageComponentArg,
+	PageElement, PageElse, PageEvent, PageExpression, PageFor, PageIf, PageMacro, PageNode,
+	PageParam, PageText,
 	PageWatch,
 };
 
@@ -212,6 +213,14 @@ pub(super) fn parse_node(input: ParseStream) -> Result<PageNode> {
 			// It's an expression: variable or method call
 			return parse_expression_node(input);
 		}
+	}
+
+	// Check for named slot syntax `$slotname { ... }` — only valid inside component body
+	if input.peek(Token![$]) {
+		return Err(syn::Error::new(
+			input.span(),
+			"`$slotname { }` is only valid inside a component body",
+		));
 	}
 
 	// Otherwise, try to parse as a general expression
@@ -529,13 +538,13 @@ fn parse_component_node(input: ParseStream) -> Result<PageNode> {
 	parenthesized!(args_content in input);
 	let args = parse_component_args(&args_content)?;
 
-	// Parse optional children in braces
-	let children = if input.peek(token::Brace) {
+	// Parse optional body in braces (may contain default children and/or named slots)
+	let (children, named_slots) = if input.peek(token::Brace) {
 		let content;
 		braced!(content in input);
-		Some(parse_nodes(&content)?)
+		parse_component_body(&content)?
 	} else {
-		None
+		(None, Vec::new())
 	};
 
 	Ok(PageNode::Component(PageComponent {
@@ -546,8 +555,52 @@ fn parse_component_node(input: ParseStream) -> Result<PageNode> {
 		// in this form are passed positionally like any other named arg.
 		events: Vec::new(),
 		children,
+		named_slots,
 		span,
 	}))
+}
+
+/// Parses the body of a component invocation: `{ children... $slot { } ... }`.
+///
+/// Separates default (unnamed) children from named slots (`$slotname { }`).
+/// Detects duplicate named slots (E1).
+fn parse_component_body(
+	input: ParseStream,
+) -> Result<(Option<Vec<PageNode>>, Vec<NamedSlot>)> {
+	let mut default_children: Vec<PageNode> = Vec::new();
+	let mut named_slots: Vec<NamedSlot> = Vec::new();
+
+	while !input.is_empty() {
+		if input.peek(Token![$]) {
+			input.parse::<Token![$]>()?;
+			let name: Ident = input.parse()?;
+			let span = name.span();
+
+			// Check for duplicate named slot (E1)
+			if named_slots.iter().any(|s: &NamedSlot| s.name == name) {
+				return Err(syn::Error::new(
+					span,
+					format!("duplicate named slot `{}` in component", name),
+				));
+			}
+
+			let content;
+			braced!(content in input);
+			let children = parse_nodes(&content)?;
+
+			named_slots.push(NamedSlot { name, children, span });
+		} else {
+			default_children.push(parse_node(input)?);
+		}
+	}
+
+	let children = if default_children.is_empty() {
+		None
+	} else {
+		Some(default_children)
+	};
+
+	Ok((children, named_slots))
 }
 
 /// Parses component arguments: `name: value, ...`
@@ -1317,6 +1370,122 @@ mod tests {
 				assert_eq!(elem.children.len(), 2);
 			}
 			_ => panic!("expected Element"),
+		}
+	}
+
+	#[rstest]
+	fn test_parse_component_with_named_slot() {
+		// Arrange
+		let input = quote!(|| {
+			Table(args: 1) {
+				$header { div { "Title" } }
+				$body { div { "Content" } }
+			}
+		});
+
+		// Act
+		let result: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		let body = result.body;
+		assert_eq!(body.nodes.len(), 1);
+		if let PageNode::Component(comp) = &body.nodes[0] {
+			assert_eq!(comp.name, "Table");
+			assert_eq!(comp.named_slots.len(), 2);
+			assert_eq!(comp.named_slots[0].name, "header");
+			assert_eq!(comp.named_slots[1].name, "body");
+			assert_eq!(comp.named_slots[0].children.len(), 1);
+			assert_eq!(comp.named_slots[1].children.len(), 1);
+		} else {
+			panic!("expected Component node");
+		}
+	}
+
+	#[rstest]
+	fn test_parse_named_slot_duplicate_rejected() {
+		// Arrange
+		let input = quote!(|| {
+			Table(args: 1) {
+				$header { div { "A" } }
+				$header { div { "B" } }
+			}
+		});
+
+		// Act
+		let result: syn::Result<PageMacro> = syn::parse2(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("duplicate named slot"), "got: {err}");
+		assert!(err.contains("header"), "got: {err}");
+	}
+
+	#[rstest]
+	fn test_named_slot_outside_component_rejected() {
+		// Arrange
+		let input = quote!(|| {
+			div {
+				$header { "this is invalid" }
+			}
+		});
+
+		// Act
+		let result: syn::Result<PageMacro> = syn::parse2(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(
+			err.contains("only valid inside a component body"),
+			"got: {err}"
+		);
+	}
+
+	#[rstest]
+	fn test_parse_component_mixed_default_and_named_slots() {
+		// Arrange
+		let input = quote!(|| {
+			Table(args: 1) {
+				div { "default child" }
+				$header { div { "Header" } }
+				span { "another default" }
+			}
+		});
+
+		// Act
+		let result: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		if let PageNode::Component(comp) = &result.body.nodes[0] {
+			assert!(comp.children.is_some());
+			assert_eq!(comp.children.as_ref().unwrap().len(), 2);
+			assert_eq!(comp.named_slots.len(), 1);
+			assert_eq!(comp.named_slots[0].name, "header");
+		} else {
+			panic!("expected Component node");
+		}
+	}
+
+	#[rstest]
+	fn test_parse_component_empty_named_slot() {
+		// Arrange
+		let input = quote!(|| {
+			Table(args: 1) {
+				$header {}
+			}
+		});
+
+		// Act
+		let result: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		if let PageNode::Component(comp) = &result.body.nodes[0] {
+			assert_eq!(comp.named_slots.len(), 1);
+			assert_eq!(comp.named_slots[0].name, "header");
+			assert!(comp.named_slots[0].children.is_empty());
+		} else {
+			panic!("expected Component node");
 		}
 	}
 }
