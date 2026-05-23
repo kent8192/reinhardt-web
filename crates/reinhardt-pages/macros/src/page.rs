@@ -1,19 +1,37 @@
-//! The page! macro implementation.
+//! The `page!` macro implementation.
 //!
 //! This module provides the `page!` procedural macro for creating anonymous
 //! WASM components with a concise, ergonomic DSL.
+//!
+//! ## v2 contract
+//!
+//! Per the Manouche v2 design (spec §3.7 + §4.1), `page!` enforces two
+//! rules at compile time:
+//!
+//! 1. **No implicit captures.** Every value identifier inside the body
+//!    must appear in the closure parameter list. Item paths (multi-segment
+//!    like `crate::util::fmt`), type identifiers (`Vec`, `Option`),
+//!    constants (`MAX_LEN`), and macro invocations (`format!`) are exempt.
+//!    Free function calls should use `self::` (or any module prefix) so
+//!    the path is multi-segment.
+//!
+//! 2. **Unconditional auto-wrap.** Every `{expr}` and every `if` / `for`
+//!    control-flow block is wrapped in `Page::reactive(move || ...)` at
+//!    codegen time. Re-renders happen automatically when tracked inputs
+//!    change. The historical `watch { ... }` wrapper is removed.
 //!
 //! ## Example
 //!
 //! ```ignore
 //! use reinhardt_pages::page;
+//! use reinhardt_pages::reactive::Signal;
 //!
-//! // Define an anonymous component
-//! let counter = page!(|initial: i32| {
+//! // Anonymous component with explicit Signal dependency.
+//! let counter = page!(|count: Signal<i32>| {
 //!     div {
 //!         class: "counter",
 //!         h1 { "Counter" }
-//!         span { format!("Count: {}", initial) }
+//!         span { { format!("Count: {}", count.get()) } }
 //!         button {
 //!             @click: |_| { /* increment logic */ },
 //!             "+"
@@ -21,9 +39,46 @@
 //!     }
 //! });
 //!
-//! // Use it like a function
-//! let view = counter(42);
+//! // Use it like a function.
+//! let count = Signal::new(0);
+//! let view = counter(count);
 //! ```
+//!
+//! ## Component invocation (spec §3.5)
+//!
+//! Two syntactically distinct forms can be used to invoke a component from
+//! within a `page!` body:
+//!
+//! 1. **Legacy positional / paren form** — `{my_button("label".into(), false)}`.
+//!    The component is just a normal Rust function call wrapped in `{ ... }`.
+//!
+//! 2. **React-style brace form** — `Card { item: x, @click: h, p { "kid" } }`.
+//!    The component is a function `fn card(props: CardProps) -> Page` where
+//!    `CardProps` derives `bon::Builder`. Codegen emits a builder chain that
+//!    sets each named prop, each `@event:` prop (as `.on_<event>(handler)`),
+//!    and (when children are present) `.children(Some(<child_view>))`.
+//!
+//! Both forms coexist; the parser picks based on the punctuation that
+//! follows the component identifier (`(` vs. `{`).
+//!
+//! ```ignore
+//! use reinhardt_pages::component::Page;
+//! use reinhardt_pages::page;
+//!
+//! #[derive(bon::Builder)]
+//! struct CardProps { item: String }
+//!
+//! fn card(p: CardProps) -> Page {
+//!     page!(|p: CardProps| { article { h2 { {p.item.clone()} } } })(p)
+//! }
+//!
+//! // Brace form (spec §3.5).
+//! let _ = page!(|| { div { Card { item: "hello".to_string() } } });
+//! ```
+//!
+//! See `reinhardt-pages/CHANGELOG.md` `### Added` entry and the design
+//! comment in `page::codegen::generate_component_brace` for the full
+//! lowering rules.
 
 mod codegen;
 pub(crate) mod hook_deps_validator;
@@ -112,10 +167,12 @@ mod tests {
 
 	#[test]
 	fn test_page_macro_with_events() {
+		// Spec §3.7 (no implicit captures): event handler bodies route free
+		// functions through `self::` so the path is multi-segment.
 		let input = quote!(|| {
 			button {
-				@click: |e| { handle_click(e); },
-				@input: |e| { handle_input(e); },
+				@click: |e| { self::handle_click(e); },
+				@input: |e| { self::handle_input(e); },
 				"Click me"
 			}
 		});

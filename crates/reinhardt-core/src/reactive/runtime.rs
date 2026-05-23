@@ -49,6 +49,14 @@ impl NodeId {
 		static COUNTER: AtomicUsize = AtomicUsize::new(0);
 		Self(COUNTER.fetch_add(1, Ordering::Relaxed))
 	}
+
+	/// Returns the underlying counter value as a `u64`.
+	///
+	/// Useful when an opaque numeric identifier is needed (e.g. by the
+	/// `Trackable` trait in `reinhardt-pages`).
+	pub fn as_u64(self) -> u64 {
+		self.0 as u64
+	}
 }
 
 impl Default for NodeId {

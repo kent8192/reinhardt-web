@@ -498,8 +498,10 @@ struct ClientNamedRoute {
 enum NamedRouteVariant {
 	/// `.named_route(name, pattern, component)` — zero path params.
 	None,
-	/// `.named_route_path*(name, pattern, |ClientPath(…): ClientPath<…>, …| body)`
-	/// — one `ClientPath<T>` binding per path param.
+	/// `.named_route_path(name, pattern, |ClientPath(…): ClientPath<…>, …| body)`
+	/// — one `ClientPath<T>` binding per path param. Covers every arity
+	/// 1..=8 since Issue #4637 collapsed `named_route_path2` /
+	/// `named_route_path3` into the unified `named_route_path`.
 	Path,
 	/// `.named_route_params(name, pattern, |Path(t): Path<Struct>| body)` or
 	/// `.named_route_result(name, pattern, …)` — typed struct binding the
@@ -510,10 +512,10 @@ enum NamedRouteVariant {
 fn classify_named_route(ident: &proc_macro2::Ident) -> Option<NamedRouteVariant> {
 	if ident == "named_route" {
 		Some(NamedRouteVariant::None)
-	} else if ident == "named_route_path"
-		|| ident == "named_route_path2"
-		|| ident == "named_route_path3"
-	{
+	} else if ident == "named_route_path" {
+		// Issue #4637: arity-suffixed variants (`named_route_path2` /
+		// `named_route_path3`) were removed in favor of a single
+		// arity-generic `named_route_path` driven by `Handler<Args>`.
 		Some(NamedRouteVariant::Path)
 	} else if ident == "named_route_params" || ident == "named_route_result" {
 		Some(NamedRouteVariant::Untyped)

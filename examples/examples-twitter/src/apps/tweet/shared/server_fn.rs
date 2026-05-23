@@ -113,7 +113,7 @@ pub async fn list_tweets(
 		Vec::new()
 	} else {
 		User::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"id",
 				FilterOperator::In,
 				FilterValue::Array(user_ids),
@@ -160,7 +160,7 @@ pub async fn delete_tweet(
 
 	// Fetch the tweet
 	let tweet = Tweet::objects()
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"id",
 			FilterOperator::Eq,
 			FilterValue::string(tweet_id),

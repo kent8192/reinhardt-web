@@ -7271,13 +7271,13 @@ mod tests {
 			.with_param("primary_key", "true")
 			.with_param("auto_increment", "true")
 			.with_param("not_null", "true")
-			.with_param("null", "false");
+			.with_nullable(false);
 		let mut name_meta =
 			super::super::model_registry::FieldMetadata::new(super::super::FieldType::VarChar(255));
 		name_meta = name_meta
 			.with_param("max_length", "255")
 			.with_param("not_null", "true")
-			.with_param("null", "false");
+			.with_nullable(false);
 
 		let mut metadata =
 			super::super::model_registry::ModelMetadata::new("clusters", "Cluster", "clusters");

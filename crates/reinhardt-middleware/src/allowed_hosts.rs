@@ -5,8 +5,6 @@
 
 use async_trait::async_trait;
 use hyper::StatusCode;
-#[allow(deprecated)]
-use reinhardt_conf::Settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
@@ -26,32 +24,6 @@ impl AllowedHostsConfig {
 	/// Create a new configuration with the given allowed hosts
 	pub fn new(allowed_hosts: Vec<String>) -> Self {
 		Self { allowed_hosts }
-	}
-
-	/// Create from application `Settings`
-	///
-	/// Maps `Settings.core.allowed_hosts` to `AllowedHostsConfig.allowed_hosts`.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::Settings;
-	/// use reinhardt_middleware::allowed_hosts::AllowedHostsConfig;
-	/// use std::path::PathBuf;
-	///
-	/// #[allow(deprecated)]
-	/// let mut settings = Settings::new(PathBuf::from("/app"), "secret".to_string());
-	/// settings.core.allowed_hosts = vec!["example.com".to_string(), "*.example.com".to_string()];
-	///
-	/// #[allow(deprecated)]
-	/// let config = AllowedHostsConfig::from_settings(&settings);
-	/// assert_eq!(config.allowed_hosts.len(), 2);
-	/// ```
-	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
-	pub fn from_settings(settings: &Settings) -> Self {
-		Self {
-			allowed_hosts: settings.core.allowed_hosts.clone(),
-		}
 	}
 
 	/// Check if a host is allowed by this configuration
@@ -110,24 +82,6 @@ impl AllowedHostsMiddleware {
 	/// Create a new `AllowedHostsMiddleware` with the given configuration
 	pub fn new(config: AllowedHostsConfig) -> Self {
 		Self { config }
-	}
-
-	/// Create from application `Settings`
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::Settings;
-	/// use reinhardt_middleware::AllowedHostsMiddleware;
-	///
-	/// #[allow(deprecated)]
-	/// let settings = Settings::default();
-	/// #[allow(deprecated)]
-	/// let middleware = AllowedHostsMiddleware::from_settings(&settings);
-	/// ```
-	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
-	pub fn from_settings(settings: &Settings) -> Self {
-		Self::new(AllowedHostsConfig::from_settings(settings))
 	}
 
 	/// Extract the host from the request
@@ -263,24 +217,6 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_from_settings_conversion() {
-		// Arrange
-		#[allow(deprecated)]
-		let mut settings = Settings::new(std::path::PathBuf::from("/app"), "secret".to_string());
-		settings.core.allowed_hosts = vec!["example.com".to_string(), "*.example.com".to_string()];
-
-		// Act
-		#[allow(deprecated)]
-		let config = AllowedHostsConfig::from_settings(&settings);
-
-		// Assert
-		assert_eq!(config.allowed_hosts.len(), 2);
-		assert_eq!(config.allowed_hosts[0], "example.com");
-		assert_eq!(config.allowed_hosts[1], "*.example.com");
-	}
-
-	#[rstest]
-	#[tokio::test]
 	async fn test_case_insensitive_host_matching() {
 		// Arrange
 		let config = AllowedHostsConfig::new(vec!["Example.COM".to_string()]);
@@ -359,22 +295,4 @@ mod tests {
 		assert_eq!(response.status, StatusCode::BAD_REQUEST);
 	}
 
-	#[rstest]
-	#[tokio::test]
-	async fn test_from_settings_middleware_creation() {
-		// Arrange
-		#[allow(deprecated)]
-		let mut settings = Settings::new(std::path::PathBuf::from("/app"), "secret".to_string());
-		settings.core.allowed_hosts = vec!["example.com".to_string()];
-		#[allow(deprecated)]
-		let middleware = AllowedHostsMiddleware::from_settings(&settings);
-		let handler = Arc::new(TestHandler);
-		let request = build_request_with_host("example.com");
-
-		// Act
-		let response = middleware.process(request, handler).await.unwrap();
-
-		// Assert
-		assert_eq!(response.status, StatusCode::OK);
-	}
 }

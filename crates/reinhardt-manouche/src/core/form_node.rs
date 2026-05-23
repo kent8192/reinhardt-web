@@ -218,6 +218,9 @@ pub struct FormFieldDef {
 	pub name: Ident,
 	/// Field type identifier (e.g., CharField, EmailField)
 	pub field_type: Ident,
+	/// Optional generic type arguments parsed from `FieldType<T1, T2, ...>`.
+	/// `None` when no `<...>` follows the field type identifier in the DSL.
+	pub generics: Option<syn::punctuated::Punctuated<syn::Type, syn::Token![,]>>,
 	/// Field properties (validation and styling)
 	pub properties: Vec<FormFieldProperty>,
 	/// Span for error reporting
@@ -1160,6 +1163,7 @@ impl FormFieldDef {
 		Self {
 			name,
 			field_type,
+			generics: None,
 			properties: Vec::new(),
 			span,
 		}

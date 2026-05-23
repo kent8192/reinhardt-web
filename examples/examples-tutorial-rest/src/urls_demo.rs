@@ -2,13 +2,14 @@
 //!
 //! This module is the canonical demonstration of the **typed
 //! `ResolvedUrls` accessor pattern** introduced by Issue #4507 / PR #4518.
-//! Instead of formatting URLs inline (`format!("/api/snippets/{id}/")`) or
-//! reaching for the deprecated flat surface
-//! (`urls.snippets_list()` — deprecated since `0.1.0-rc.16`), every helper
-//! below delegates to the typed gateway
+//! Instead of formatting URLs inline (`format!("/api/snippets/{id}/")`)
+//! every helper below delegates to the typed gateway
 //! `urls.server().<app>().<route>()` so that the URL strings stay in lock-
 //! step with the `#[get]` / `#[post]` / `#[viewset]` route definitions in
 //! `apps::snippets::views`.
+//!
+//! The deprecated flat surface (`urls.snippets_list()` etc.) that
+//! preceded the typed pattern was removed in 0.2.0 per Issue #4520.
 //!
 //! ## Why typed accessors
 //!
@@ -58,15 +59,11 @@ use crate::config::urls::ResolvedUrls;
 // ----------------------------------------------------------------------------
 
 /// Resolve `GET /api/snippets/` (list endpoint).
-///
-/// Replaces the deprecated `urls.snippets_list()` flat accessor.
 pub fn snippets_list(urls: &ResolvedUrls) -> String {
 	urls.server().snippets().snippets_list()
 }
 
 /// Resolve `POST /api/snippets/` (create endpoint).
-///
-/// Replaces the deprecated `urls.snippets_create()` flat accessor.
 pub fn snippets_create(urls: &ResolvedUrls) -> String {
 	urls.server().snippets().snippets_create()
 }
