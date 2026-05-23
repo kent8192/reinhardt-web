@@ -292,13 +292,20 @@ jobs:
       }}
     uses: ./.github/workflows/terraform-check.yml
 
+  # Release Dry-Run only makes sense for PRs targeting `main`, because
+  # release-plz dry-run tracks against `origin/main` and resolves workspace
+  # dep versions against crates.io. PRs targeting `develop/*` carry the
+  # accumulated next-version (e.g., 0.2.0-rc.1) which is intentionally not
+  # yet on crates.io, so dry-run always fails to resolve macro subcrates.
+  # Skip on non-main base refs (and on push events that aren't to main).
   release-dry-run:
     name: Release Dry-Run
     needs: [determine-runner, check-branch-status]
     if: >-
       ${{
         needs.check-branch-status.outputs.has-conflicts != 'true' &&
-        !startsWith(github.head_ref || '', 'release-plz-')
+        !startsWith(github.head_ref || '', 'release-plz-') &&
+        (github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
       }}
     uses: ./.github/workflows/release-plz-dry-run.yml
     with:

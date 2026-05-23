@@ -97,24 +97,34 @@ impl std::error::Error for MountError {}
 ///
 /// This struct holds closures for condition evaluation and view generation,
 /// enabling automatic DOM updates when the condition's dependencies change.
+///
+/// The closures are stored as `Arc<dyn Fn>` so the entire `ReactiveIf` (and
+/// therefore the enclosing `Page`) is `Clone`. Cloning duplicates only the
+/// Arc handle; both clones invoke the same underlying render closure.
+#[derive(Clone)]
 pub struct ReactiveIf {
 	/// Condition closure that returns bool when called.
 	/// This closure is re-evaluated whenever its Signal dependencies change.
-	condition: Box<dyn Fn() -> bool + 'static>,
+	condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
 	/// Page to render when condition is true.
-	then_view: Box<dyn Fn() -> Page + 'static>,
+	then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
 	/// Page to render when condition is false.
-	else_view: Box<dyn Fn() -> Page + 'static>,
+	else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
 }
 
 /// Reactive view that re-evaluates when Signal dependencies change.
 ///
 /// This struct holds a single closure that generates a Page, enabling
 /// automatic DOM updates when any Signal accessed within the closure changes.
+///
+/// The closure is stored as `Arc<dyn Fn>` so the entire `Reactive` (and
+/// therefore the enclosing `Page`) is `Clone`. Cloning duplicates only the
+/// Arc handle; both clones invoke the same underlying render closure.
+#[derive(Clone)]
 pub struct Reactive {
 	/// Page generation closure that returns a Page when called.
 	/// This closure is re-evaluated whenever its Signal dependencies change.
-	render: Box<dyn Fn() -> Page + 'static>,
+	render: std::sync::Arc<dyn Fn() -> Page + 'static>,
 }
 
 impl std::fmt::Debug for Reactive {
@@ -132,7 +142,7 @@ impl Reactive {
 	}
 
 	/// Consumes the Reactive and returns the render closure.
-	pub fn into_render(self) -> Box<dyn Fn() -> Page + 'static> {
+	pub fn into_render(self) -> std::sync::Arc<dyn Fn() -> Page + 'static> {
 		self.render
 	}
 }
@@ -170,9 +180,9 @@ impl ReactiveIf {
 	pub fn into_parts(
 		self,
 	) -> (
-		Box<dyn Fn() -> bool + 'static>,
-		Box<dyn Fn() -> Page + 'static>,
-		Box<dyn Fn() -> Page + 'static>,
+		std::sync::Arc<dyn Fn() -> bool + 'static>,
+		std::sync::Arc<dyn Fn() -> Page + 'static>,
+		std::sync::Arc<dyn Fn() -> Page + 'static>,
 	) {
 		(self.condition, self.then_view, self.else_view)
 	}
@@ -182,7 +192,13 @@ impl ReactiveIf {
 ///
 /// Page is the core abstraction for all UI elements in the component system.
 /// It can represent DOM elements, text nodes, fragments, or reactive content.
-#[derive(Debug)]
+///
+/// `Page` is `Clone`: the `Reactive` and `ReactiveIf` variants share their
+/// render closures via `Arc<dyn Fn>`, so cloning is O(1) and both clones
+/// invoke the same render closure. This makes `Page` usable as a `page!`
+/// parameter (spec §3.7) where the auto-wrap (spec §4.1) needs to capture
+/// it from a `Fn`-callable closure.
+#[derive(Debug, Clone)]
 pub enum Page {
 	/// A DOM element.
 	Element(PageElement),
@@ -217,6 +233,12 @@ pub enum Page {
 }
 
 /// Represents a DOM element in the view tree.
+///
+/// `PageElement` is `Clone` to support `Page::Clone` (which in turn enables
+/// using `Page` as a `page!` parameter under spec §3.7 / §4.1). Event
+/// handlers are `Arc<dyn Fn>`, so cloning the element duplicates only Arc
+/// handles.
+#[derive(Clone)]
 pub struct PageElement {
 	/// The tag name (e.g., "div", "span").
 	tag: Cow<'static, str>,
@@ -520,9 +542,9 @@ impl Page {
 		E: Fn() -> Page + 'static,
 	{
 		Page::ReactiveIf(ReactiveIf {
-			condition: Box::new(condition),
-			then_view: Box::new(then_view),
-			else_view: Box::new(else_view),
+			condition: std::sync::Arc::new(condition),
+			then_view: std::sync::Arc::new(then_view),
+			else_view: std::sync::Arc::new(else_view),
 		})
 	}
 
@@ -581,7 +603,7 @@ impl Page {
 		F: Fn() -> Page + 'static,
 	{
 		Page::Reactive(Reactive {
-			render: Box::new(render),
+			render: std::sync::Arc::new(render),
 		})
 	}
 

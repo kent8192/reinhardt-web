@@ -147,7 +147,6 @@
 //! ```
 
 pub mod auto_schema;
-pub mod config;
 pub mod endpoint_inspector;
 pub mod endpoints;
 pub mod enum_schema;
@@ -165,8 +164,6 @@ pub mod swagger;
 use thiserror::Error;
 
 pub use auto_schema::{SchemaObject, ToSchema};
-#[allow(deprecated)] // Re-export deprecated OpenApiConfig for backward compatibility
-pub use config::OpenApiConfig;
 pub use endpoint_inspector::EndpointInspector;
 pub use endpoints::generate_openapi_schema;
 pub use enum_schema::{EnumSchemaBuilder, EnumTagging};

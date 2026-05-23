@@ -8,7 +8,7 @@
 
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 
-use super::router::with_router;
+use reinhardt_pages::app::with_spa_router;
 
 fn nav_link(href: &'static str, label: &'static str, current: &str) -> PageElement {
 	let class = if current == href { "active" } else { "" };
@@ -19,7 +19,7 @@ fn nav_link(href: &'static str, label: &'static str, current: &str) -> PageEleme
 }
 
 fn layout_shell(content_id: &'static str, content_label: &'static str) -> Page {
-	let current = with_router(|r| r.current_path().get());
+	let current = with_spa_router(|r| r.current_path().get());
 	PageElement::new("div")
 		.attr("id", "shell")
 		.child(
