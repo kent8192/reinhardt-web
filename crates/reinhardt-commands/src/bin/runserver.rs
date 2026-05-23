@@ -41,10 +41,10 @@ use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, Tom
 
 #[cfg(feature = "routers")]
 use {
-    http_body_util::{BodyExt, Limited},
-    reinhardt_commands::auto_register_router,
-    reinhardt_http::Handler,
-    reinhardt_urls::routers::get_router,
+	http_body_util::{BodyExt, Limited},
+	reinhardt_commands::auto_register_router,
+	reinhardt_http::Handler,
+	reinhardt_urls::routers::get_router,
 };
 
 #[derive(Parser, Debug)]
@@ -284,7 +284,15 @@ async fn dispatch_through_router(
 	let (parts, body) = req.into_parts();
 	let body_bytes = match Limited::new(body, MAX_BODY).collect().await {
 		Ok(collected) => collected.to_bytes(),
-		Err(_) => return None,
+		Err(_) => {
+			return Some(
+				hyper::Response::builder()
+					.status(StatusCode::PAYLOAD_TOO_LARGE)
+					.header("Content-Type", "text/plain; charset=utf-8")
+					.body(Full::new(Bytes::from("Request body exceeds 10 MiB")))
+					.expect("failed to build 413 response"),
+			);
+		}
 	};
 	let request = match reinhardt_http::Request::builder()
 		.method(parts.method)
@@ -332,13 +340,13 @@ async fn handle_request(
 	req: Request<Incoming>,
 	settings: Arc<Settings>,
 	spa_index: Option<Arc<PathBuf>>,
+	remote_addr: SocketAddr,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
 	let path = req.uri().path().to_string();
 
 	// Route dispatch through registered ServerRouter
 	#[cfg(feature = "routers")]
 	{
-		let remote_addr = "127.0.0.1:0".parse().unwrap();
 		if let Some(response) = dispatch_through_router(req, remote_addr).await {
 			return Ok(response);
 		}
@@ -935,7 +943,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	// Accept connections in a loop
 	loop {
-		let (stream, _) = listener.accept().await?;
+		let (stream, peer_addr) = listener.accept().await?;
 
 		if let Some(ref acceptor) = tls_acceptor {
 			// HTTPS connection
@@ -952,7 +960,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 								service_fn(move |req| {
 									let settings = Arc::clone(&settings_clone);
 									let spa = spa_clone.clone();
-									async move { handle_request(req, settings, spa).await }
+									async move { handle_request(req, settings, spa, peer_addr).await }
 								}),
 							)
 							.await
@@ -977,7 +985,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 						service_fn(move |req| {
 							let settings = Arc::clone(&settings_clone);
 							let spa = spa_clone.clone();
-							async move { handle_request(req, settings, spa).await }
+							async move { handle_request(req, settings, spa, peer_addr).await }
 						}),
 					)
 					.await
