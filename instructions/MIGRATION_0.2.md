@@ -1,196 +1,87 @@
 # Migration Guide: 0.1.0 → 0.2.0
 
-This guide enumerates every public API removed (or, in one case,
-converted to a type alias) on the path from `0.1.0-rc.*` to `0.2.0`.
-
-See umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)
-for the full rationale and PR tracker. See companion Issue
-[#4652](https://github.com/kent8192/reinhardt-web/issues/4652) for the
-`CurrentUser → AuthUser` unification (delivered as part of `reinhardt-auth`).
-
-> **Status:** This file is filled in incrementally as each per-crate PR
-> lands. Empty sections below are placeholders for upcoming PRs.
-
----
+Umbrella tracker: [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+Companion: [#4652](https://github.com/kent8192/reinhardt-web/issues/4652).
 
 ## Quick removal index
 
-| Crate | PR | Status | Section |
-|---|---|---|---|
-| `reinhardt-core` | TBD | ⏳ pending | [reinhardt-core](#reinhardt-core) |
-| `reinhardt-query` | TBD | ⏳ pending | [reinhardt-query](#reinhardt-query) |
-| `reinhardt-di` | TBD | 🔄 in progress | [reinhardt-di](#reinhardt-di) |
-| `reinhardt-conf` | TBD | ⏳ pending | [reinhardt-conf](#reinhardt-conf) |
-| `reinhardt-db` | TBD | ⏳ pending | [reinhardt-db](#reinhardt-db) |
-| `reinhardt-auth` | TBD | ⏳ pending | [reinhardt-auth](#reinhardt-auth) |
-| `reinhardt-rest` | TBD | ⏳ pending | [reinhardt-rest](#reinhardt-rest) |
-| `reinhardt-urls` | TBD | ⏳ pending | [reinhardt-urls](#reinhardt-urls) |
-| `reinhardt-pages` | TBD | ⏳ pending | [reinhardt-pages](#reinhardt-pages) |
-| `reinhardt-testkit` | TBD | ⏳ pending | [reinhardt-testkit](#reinhardt-testkit) |
-| `reinhardt-test` | TBD | ⏳ pending | [reinhardt-test](#reinhardt-test) |
-| `reinhardt-admin` | TBD | ⏳ pending | [reinhardt-admin](#reinhardt-admin) |
-
-Legend: ✅ done · ⏳ pending · 🔄 in progress
+| Crate | Status |
+|---|---|
+| reinhardt-core / -query / -di / -conf (partial) / -db | shipped via PRs #4713 / #4717 / #4722 / #4728 / #4729 |
+| reinhardt-auth + #4652 | 🔄 this PR |
+| (others) | ⏳ pending |
 
 ---
 
-## reinhardt-core
+## reinhardt-auth (closes #4652)
 
-Section to be populated by PR #1.
+### `CurrentUser<U>` → `AuthUser<U>` (closes #4652)
 
----
-
-## reinhardt-query
-
-Section to be populated by PR #2.
-
----
-
-## reinhardt-di
-
-PR: TBD · Closes part of [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
-
-Removed two FastAPI-inspired injection wrappers in favour of the
-canonical [`Depends<T>`](../crates/reinhardt-di/src/depends.rs)
-extractor.
-
-### `Injected<T>` → `Depends<T>`
-
-Deprecated since `0.1.0-rc.16`. `Injected<T>` was a transitional
-wrapper that coexisted with `Depends<T>` during the migration window;
-the migration window is closed and the wrapper is gone.
-
-**Before:**
+Deprecated since `0.1.0-rc.12`. The `current_user` module is removed
+entirely. **`CurrentUser` is not a type alias** — its shape differs
+from `AuthUser`, so pattern-match call sites need restructuring.
 
 ```rust
-use reinhardt_di::{Injected, Injectable};
+// Before
+async fn handler(current_user: CurrentUser<DefaultUser>) -> Response {
+    if current_user.is_authenticated() {
+        let user = current_user.user()?;
+        let id = current_user.id()?;
+        // ...
+    }
+}
 
-#[injectable]
-struct Handler {
-    #[inject]
-    db: Injected<Database>,
+// After
+async fn handler(auth_user: AuthUser<MyUser>) -> Response {
+    let user: &MyUser = &auth_user.0;
+    let id = user.id();
+    // ...
 }
 ```
 
-**After:**
+For anonymous-user handling, branch on the `AuthUser<U>` extractor
+result at the framework level (return 401 / redirect via guards)
+rather than carrying an `Option<U>` payload inside the extractor.
+
+### `DefaultUser` → `#[user]` macro
+
+Deprecated since `0.1.0-rc.15`. Define your own user struct:
 
 ```rust
-use reinhardt_di::Depends;
+// Before
+use reinhardt_auth::DefaultUser;
 
-#[injectable]
-struct Handler {
-    #[inject]
-    db: Depends<Database>,
+// After
+use reinhardt_auth::user;
+
+#[user]
+pub struct MyUser {
+    pub username: String,
+    pub email: String,
+    // ...
 }
 ```
 
-Field-access semantics are unchanged — `Depends<T>` derefs to `&T` the
-same way `Injected<T>` did.
+### `User` trait + `SimpleUser` + `AnonymousUser` → composable trait stack
 
-### `OptionalInjected<T>` → `Option<Depends<T>>`
+Deprecated since `0.1.0-rc.15`. The `core::user` module is gone. Use:
 
-Deprecated since `0.1.0-rc.16`. The alias was sugar for
-`Option<Injected<T>>`; the canonical form drops the alias.
+- `AuthIdentity` for the identity claim
+- `BaseUser` / `FullUser` for user model traits
+- `PermissionsMixin` for authorization checks
 
-**Before:**
+### Consumer migration follow-up
 
-```rust
-#[injectable]
-struct Handler {
-    #[inject]
-    cache: OptionalInjected<Cache>,
-}
-```
+The following workspace crates still reference the removed symbols and
+need a follow-up PR to migrate:
 
-**After:**
+- `crates/reinhardt-middleware/src/auth.rs`
+- `crates/reinhardt-rest/src/serializers/model_serializer.rs`
+- `crates/reinhardt-http/src/auth_state.rs`
+- `crates/reinhardt-views/src/viewsets/handler/model_view_set_handler.rs`
+- `crates/reinhardt-di/src/lib.rs` (User-related re-export, if any)
+- `examples/examples-tutorial-basis/apps/polls/di.rs` (per #4652
+  companion-PR section)
 
-```rust
-#[injectable]
-struct Handler {
-    #[inject]
-    cache: Option<Depends<Cache>>,
-}
-```
-
-### `#[injectable]` macro error message
-
-The `#[inject]` field validation error now reads:
-
-```text
-#[inject] field must have type Depends<T> or Option<Depends<T>>
-```
-
-Previously it also accepted `Injected<T>` and `OptionalInjected<T>`.
-
-### What survived this PR
-
-`InjectionMetadata` (struct) and `DependencyScope` (enum) — the
-metadata types that lived alongside `Injected<T>` — are unchanged.
-`Depends<T>` still uses them, so they remain in
-`crates/reinhardt-di/src/injected.rs` for now. The module file name
-(`injected.rs`) is a candidate for renaming in a follow-up PR; this
-PR keeps the rename out of scope to focus the diff.
-
-### In-tree call site migration
-
-No in-tree call sites referenced `Injected<T>` or `OptionalInjected<T>`
-in this repository (verified via workspace-wide grep before this PR),
-so no `examples/` or integration-test updates were required here. The
-sister project `reinhardt-cloud` should audit its own DI usage as part
-of the cross-repo migration tracked separately.
-
----
-
-## reinhardt-conf
-
-Section to be populated by PR #4.
-
----
-
-## reinhardt-db
-
-Section to be populated by PR #5.
-
----
-
-## reinhardt-auth
-
-### CurrentUser → AuthUser (closes #4652)
-
-Section to be populated by PR #6.
-
----
-
-## reinhardt-rest
-
-Section to be populated by PR #7.
-
----
-
-## reinhardt-urls
-
-Section to be populated by PR #8.
-
----
-
-## reinhardt-pages
-
-Section to be populated by PR #9.
-
----
-
-## reinhardt-testkit
-
-Section to be populated by PR #10.
-
----
-
-## reinhardt-test
-
-Section to be populated by PR #11.
-
----
-
-## reinhardt-admin
-
-Section to be populated by PR #12.
+CI on this PR is expected to surface those compile errors so the
+follow-up PR has a complete punch list.
