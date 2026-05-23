@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Trait for configuration sources
 pub trait ConfigSource: Send + Sync {
@@ -409,7 +409,6 @@ impl TomlFileSource {
 		self.interpolate = false;
 		self
 	}
-
 }
 
 impl ConfigSource for TomlFileSource {

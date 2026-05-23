@@ -4,7 +4,6 @@
 //! Settings can be loaded from environment variables, configuration files, or code.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 // `AdvancedSettings` (deprecated since 0.1.0-rc.16) and its impl block were
@@ -217,10 +216,6 @@ pub struct EmailSettings {
 	/// Required when backend is "file".
 	#[serde(default)]
 	pub file_path: Option<PathBuf>,
-}
-
-fn default_secret_key() -> String {
-	"change-me-in-production".to_string()
 }
 
 fn default_server_email() -> String {
