@@ -332,11 +332,18 @@ mod tests {
 
 	#[test]
 	fn test_clear_mocks() {
+		// Register a mock response and record a call
+		MOCK_REGISTRY.with(|r| {
+			r.borrow_mut().responses.insert(
+				"/api/test".to_string(),
+				MockResponse::ok(&"test"),
+			);
+		});
 		record_mock_call("/api/test", "", "GET", 1000.0);
 		assert!(get_mock_response("/api/test").is_some());
 		assert_eq!(get_call_history().len(), 1);
 
-
+		clear_mocks();
 		assert!(get_mock_response("/api/test").is_none());
 		assert!(get_call_history().is_empty());
 	}
