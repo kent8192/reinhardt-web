@@ -1307,14 +1307,14 @@ pub fn client_url_patterns() -> ClientRouter {
 			"/polls/{question_id}/choices/new/",
 			|ClientPath(question_id): ClientPath<i64>| choice_new_page(question_id),
 		)
-		.named_route_path2(
+		.named_route_path(
 			"choice_edit",
 			"/polls/{question_id}/choices/{choice_id}/edit/",
 			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
 				choice_edit_page(question_id, choice_id)
 			},
 		)
-		.named_route_path2(
+		.named_route_path(
 			"choice_delete",
 			"/polls/{question_id}/choices/{choice_id}/delete/",
 			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
@@ -1372,10 +1372,10 @@ and over:
 
 - **`named_route(name, path, page_factory)`** — for parameter-less
   routes. `page_factory` is a `Fn() -> Page`.
-- **`named_route_path(name, path, page_factory)`** — for a single
-  typed path parameter. The factory receives a `ClientPath<T>`.
-- **`named_route_path2(name, path, page_factory)`** — for two typed
-  path parameters.
+- **`named_route_path(name, path, page_factory)`** — for any number of
+  typed path parameters from 1 to 8. The factory takes one
+  `ClientPath<T>` per parameter, and the arity is inferred from the
+  closure signature via the sealed `Handler<Args>` trait.
 
 The `polls:` namespace in `ResolvedUrls` lookups comes from the
 `InstalledApp::polls` argument to `#[url_patterns]`; you do not write it
@@ -1858,7 +1858,8 @@ the polling application:
   `SessionMiddleware` with a two-week TTL and Lax SameSite.
 - **Client routing and link resolution.** Each app's
   `urls/client_router.rs` registers routes by stable name through
-  `named_route` / `named_route_path` / `named_route_path2`;
+  `named_route` / `named_route_path` (the latter covers every arity
+  1..=8 via the sealed `Handler<Args>` trait);
   `src/client/links.rs` wraps every `ResolvedUrls::resolve_client_url`
   lookup so components never construct URLs by hand.
 - **SPA bootstrap.** `src/client/lib.rs` collapses to
