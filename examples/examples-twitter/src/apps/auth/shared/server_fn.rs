@@ -11,8 +11,8 @@ use {
 	crate::apps::auth::models::User,
 	crate::apps::auth::shared::types::{LoginRequest, RegisterRequest},
 	reinhardt::Validate,
-	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
-	reinhardt::di::Depends,
+		reinhardt::db::orm::Model,
+		reinhardt::di::Depends,
 	reinhardt::middleware::session::{
 		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
 	},
@@ -47,11 +47,7 @@ pub async fn login(
 	// Find user by email
 	let manager = User::objects();
 	let user = manager
-		.filter(
-			User::field_email(),
-			FilterOperator::Eq,
-			FilterValue::String(request.email.trim().to_string()),
-		)
+		.filter(User::field_email().eq(request.email.trim().to_string()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
@@ -115,11 +111,7 @@ pub async fn register(
 
 	// Check if user already exists
 	let existing = User::objects()
-		.filter(
-			User::field_email(),
-			FilterOperator::Eq,
-			FilterValue::String(request.email.trim().to_string()),
-		)
+		.filter(User::field_email().eq(request.email.trim().to_string()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
@@ -181,11 +173,7 @@ pub async fn current_user(
 
 	// Find user by ID
 	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(user_id.to_string()),
-		)
+		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;

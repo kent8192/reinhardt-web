@@ -349,7 +349,7 @@ impl SessionBackend for DatabaseSessionBackend {
 	{
 		// Use ORM to load session
 		let session = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::Eq,
 				FilterValue::String(session_key.to_string()),
@@ -461,7 +461,7 @@ impl SessionBackend for DatabaseSessionBackend {
 
 		// Use ORM to check if session exists and is not expired
 		let session = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::Eq,
 				FilterValue::String(session_key.to_string()),
@@ -502,7 +502,7 @@ impl CleanupableBackend for DatabaseSessionBackend {
 	) -> Result<Option<SessionMetadata>, SessionError> {
 		// Use ORM to get session metadata
 		let session = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::Eq,
 				FilterValue::String(session_key.to_string()),
@@ -533,7 +533,7 @@ impl CleanupableBackend for DatabaseSessionBackend {
 	async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, SessionError> {
 		// Use ORM to list session keys with prefix
 		let sessions = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::StartsWith,
 				FilterValue::String(prefix.to_string()),
@@ -550,7 +550,7 @@ impl CleanupableBackend for DatabaseSessionBackend {
 	async fn count_keys_with_prefix(&self, prefix: &str) -> Result<usize, SessionError> {
 		// Use ORM to count session keys with prefix
 		let count = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::StartsWith,
 				FilterValue::String(prefix.to_string()),

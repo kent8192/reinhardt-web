@@ -1506,18 +1506,14 @@ fn generate_fk_accessor_methods(
 					db: &#orm_crate::connection::DatabaseConnection
 				) -> #core_crate::exception::Result<Option<#target_ty>> {
 					use #orm_crate::Model;
-					use #orm_crate::{FilterOperator, FilterValue};
 
 					// Get FK _id value (getter returns &PrimaryKey)
 					let fk_id = self.#fk_id_field_name();
 
-					// Query the target model using the FK _id
+					// Query the target model using the FK _id via the typed
+					// `FieldRef::eq` builder (Issue #4650).
 					#target_ty::objects()
-						.filter(
-							#target_ty::field_id(),
-							FilterOperator::Eq,
-							FilterValue::String(fk_id.to_string())
-						)
+						.filter(#target_ty::field_id().eq(fk_id.to_string()))
 						.first_with_db(db)
 						.await
 				}

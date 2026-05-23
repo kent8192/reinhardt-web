@@ -12,7 +12,7 @@ use {
 	crate::apps::auth::models::User,
 	reinhardt::AuthUser,
 	reinhardt::DatabaseConnection,
-	reinhardt::db::orm::{FilterOperator, FilterValue, ManyToManyAccessor, Model},
+	reinhardt::db::orm::{ManyToManyAccessor, Model},
 };
 
 /// Follow a user
@@ -24,11 +24,7 @@ pub async fn follow_user(
 ) -> std::result::Result<(), ServerFnError> {
 	// Load target user
 	let target_user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(target_user_id.to_string()),
-		)
+		.filter(User::field_id().eq(target_user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -53,11 +49,7 @@ pub async fn unfollow_user(
 ) -> std::result::Result<(), ServerFnError> {
 	// Load target user
 	let target_user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(target_user_id.to_string()),
-		)
+		.filter(User::field_id().eq(target_user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -80,11 +72,7 @@ pub async fn fetch_followers(
 	#[inject] db: DatabaseConnection,
 ) -> std::result::Result<Vec<UserInfo>, ServerFnError> {
 	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(user_id.to_string()),
-		)
+		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -110,11 +98,7 @@ pub async fn fetch_following(
 ) -> std::result::Result<Vec<UserInfo>, ServerFnError> {
 	// Load target user
 	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(user_id.to_string()),
-		)
+		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
