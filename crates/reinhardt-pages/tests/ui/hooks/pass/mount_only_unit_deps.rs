@@ -7,6 +7,7 @@ fn main() {
 	let _e = use_effect(
 		|| {
 			// one-time mount work
+			None::<fn()>
 		},
 		(),
 	);

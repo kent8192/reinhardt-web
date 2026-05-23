@@ -11,6 +11,7 @@ fn main() {
 			let count = count.clone();
 			move || {
 				let _ = count.get();
+				None::<fn()>
 			}
 		},
 		(count.clone(),),
