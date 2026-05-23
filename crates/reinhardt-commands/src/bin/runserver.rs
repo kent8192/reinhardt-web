@@ -42,6 +42,7 @@ use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, Tom
 #[cfg(feature = "routers")]
 use {
     http_body_util::{BodyExt, Limited},
+    reinhardt_commands::auto_register_router,
     reinhardt_http::Handler,
     reinhardt_urls::routers::get_router,
 };
@@ -839,6 +840,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	} else {
 		println!("{}", "collectstatic skipped (--no-collectstatic)".dimmed());
 	}
+
+	// Phase 3: Register HTTP routes from #[routes] inventory
+	#[cfg(feature = "routers")]
+	auto_register_router().await?;
 
 	// Detect SPA index.html for client-side routing fallback
 	let spa_index = resolve_spa_index(&settings).map(Arc::new);
