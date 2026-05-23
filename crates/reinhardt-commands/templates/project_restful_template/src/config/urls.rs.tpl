@@ -5,7 +5,7 @@
 use reinhardt::prelude::*;
 use reinhardt::routes;
 
-#[routes]
+#[routes(server_only, no_ws_resolvers)]
 pub fn routes() -> UnifiedRouter {
     let router = UnifiedRouter::new();
 
