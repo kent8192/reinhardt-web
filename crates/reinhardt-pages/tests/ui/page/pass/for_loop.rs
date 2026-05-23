@@ -8,7 +8,7 @@ fn main() {
 		ul {
 			for item in items {
 				li {
-					item
+					{item}
 				}
 			}
 		}
@@ -20,10 +20,10 @@ fn main() {
 			for (index, item) in items {
 				li {
 					span {
-						index.to_string()
+						{index.to_string()}
 					}
 					span {
-						item
+						{item}
 					}
 				}
 			}

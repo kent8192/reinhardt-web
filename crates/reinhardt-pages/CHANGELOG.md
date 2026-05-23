@@ -90,6 +90,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parameter list. Implicit captures of outer Signal bindings are a hard
   compile error. Spec §3.7. Migration: pass the binding as a closure param
   or qualify free function calls with `self::` so the path is multi-segment.
+- **BREAKING**: `page!` no longer accepts bare-identifier shorthand in
+  element bodies (`div { name }`). Always use the explicit braced form:
+  `div { {name} }`. Spec §3.6. Migration: codemod `cargo make
+  migrate-manouche-v2` (PR3) handles this mechanically.
 
 ### Deprecated
 

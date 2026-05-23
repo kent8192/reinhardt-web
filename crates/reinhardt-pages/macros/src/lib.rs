@@ -403,11 +403,15 @@ pub fn server_fn(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ### Expressions
 ///
+/// Every expression child must be wrapped in braces. Bare-identifier
+/// shorthand was removed in Manouche v2 (spec §3.6); see the
+/// `reinhardt-pages` CHANGELOG for the migration codemod.
+///
 /// ```ignore
-/// div { name }                    // Variable
-/// div { name.to_string() }        // Method call
-/// div { format!("{}", count) }    // Macro
-/// div { { complex_expr } }        // Braced expression
+/// div { {name} }                  // Variable
+/// div { {name.to_string()} }      // Method call
+/// div { {format!("{}", count)} }  // Macro
+/// div { { complex_expr } }        // Block expression
 /// ```
 ///
 /// ### Nested Elements
@@ -464,7 +468,7 @@ pub fn server_fn(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```ignore
 /// ul {
 ///     for item in items {
-///         li { item }
+///         li { {item} }
 ///     }
 /// }
 /// ```
