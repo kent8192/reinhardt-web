@@ -1,12 +1,12 @@
 //! Internal launch-time router abstraction. (Refs #4234)
 //!
-//! `pub(crate) trait SpaRouter` abstracts the launch-time dispatch surface
-//! shared between [`crate::router::Router`] (deprecated) and
-//! [`reinhardt_urls::routers::ClientRouter`] (canonical going forward),
-//! letting [`crate::app::ClientLauncher::launch`] operate against a single
-//! `Box<dyn SpaRouter>` regardless of which builder
-//! ([`crate::app::ClientLauncher::router`] or
-//! [`crate::app::ClientLauncher::router_client`]) the application picked.
+//! `trait SpaRouter` abstracts the launch-time dispatch surface of
+//! [`reinhardt_urls::routers::ClientRouter`], letting
+//! [`crate::app::ClientLauncher::launch`] operate against a single
+//! `Box<dyn SpaRouter>`. The trait enables the launcher to stay agnostic
+//! of the concrete router type and supports the hidden
+//! [`crate::app::with_spa_router`] accessor used by tests and
+//! macro-generated code.
 //!
 //! On non-wasm targets, the launcher's `launch()` body is largely behind
 //! `#[cfg(wasm)]`, so the trait methods are not invoked at compile time.
@@ -39,13 +39,9 @@ use std::collections::HashMap;
 /// subscription handle is opaque (`Box<dyn Any>`) because each backing
 /// router crate defines its own `NavigationSubscription` type.
 ///
-/// `as_any` is provided so the public deprecated
-/// [`crate::app::with_router`] helper can downcast a stored
-/// `Box<dyn SpaRouter>` back to the concrete `Router` it was built
-/// from. Calling `with_router` after the application used the new
-/// `router_client` path will panic — that is the documented contract
-/// for the deprecation cycle.
-pub(crate) trait SpaRouter: 'static {
+/// `as_any` supports downcasting for diagnostic and test use.
+#[doc(hidden)]
+pub trait SpaRouter: 'static {
 	/// Reactive subscription to the current path.
 	fn current_path(&self) -> &Signal<String>;
 
@@ -103,8 +99,7 @@ pub(crate) trait SpaRouter: 'static {
 	#[doc(hidden)]
 	fn __diag_router_id(&self) -> usize;
 
-	/// Downcast to the concrete backing router. Used by the
-	/// deprecated [`crate::app::with_router`] helper.
+	/// Downcast to the concrete backing router.
 	fn as_any(&self) -> &dyn std::any::Any;
 }
 
@@ -116,7 +111,8 @@ pub(crate) trait SpaRouter: 'static {
 /// snapshot of the matched parameter map. `name` is the route's
 /// optional name, if any (mirrors `Route::name()` /
 /// `ClientRoute::name()`).
-pub(crate) struct SpaRouteMatch {
+#[doc(hidden)]
+pub struct SpaRouteMatch {
 	#[allow(dead_code)] // Reserved for diagnostic use; not yet read by `launch`.
 	pub path: String,
 	#[allow(dead_code)] // Reserved for diagnostic use; not yet read by `launch`.
@@ -125,12 +121,12 @@ pub(crate) struct SpaRouteMatch {
 }
 
 /// Internal error type that wraps either
-/// [`crate::router::RouterError`] or
 /// [`reinhardt_urls::routers::client_router::error::RouterError`] for
 /// launcher-internal use. Stringly-typed: the launcher only renders
 /// errors via `JsValue::from_str(...)`.
 #[derive(Debug)]
-pub(crate) enum SpaRouterError {
+#[doc(hidden)]
+pub enum SpaRouterError {
 	/// Wraps the underlying router error's `Display` representation.
 	#[allow(dead_code)] // Constructed by trait impls; consumed via `Display`.
 	Inner(String),
@@ -145,79 +141,6 @@ impl std::fmt::Display for SpaRouterError {
 }
 
 impl std::error::Error for SpaRouterError {}
-
-// (Refs #4234) `Router` is deprecated as of 0.1.0-rc.27. The bridge
-// trait implementation below is wrapped in `#[allow(deprecated)]` so
-// the deprecated `Router` path keeps compiling during the migration
-// window.
-#[allow(deprecated)]
-impl SpaRouter for crate::router::Router {
-	fn current_path(&self) -> &Signal<String> {
-		self.current_path()
-	}
-
-	fn current_params(&self) -> &Signal<HashMap<String, String>> {
-		self.current_params()
-	}
-
-	fn match_path(&self, path: &str) -> Option<SpaRouteMatch> {
-		self.match_path(path).map(|m| SpaRouteMatch {
-			path: path.to_string(),
-			params: m.params.clone(),
-			name: m.route.name().map(str::to_string),
-		})
-	}
-
-	fn render_current(&self) -> Page {
-		self.render_current()
-	}
-
-	fn setup_history_listener(&self) {
-		self.setup_history_listener();
-	}
-
-	fn push(&self, path: &str) -> Result<(), SpaRouterError> {
-		self.push(path)
-			.map_err(|e| SpaRouterError::Inner(e.to_string()))
-	}
-
-	fn replace(&self, path: &str) -> Result<(), SpaRouterError> {
-		self.replace(path)
-			.map_err(|e| SpaRouterError::Inner(e.to_string()))
-	}
-
-	fn route_count(&self) -> usize {
-		self.route_count()
-	}
-
-	#[allow(clippy::type_complexity)] // The boxed listener signature mirrors the trait method; see `SpaRouter::on_navigate_dyn`.
-	fn on_navigate_dyn(
-		&self,
-		listener: Box<dyn Fn(&str, &HashMap<String, String>) + 'static>,
-	) -> Box<dyn std::any::Any> {
-		// `Router::on_navigate` takes a generic `F: Fn(...) + 'static`.
-		// `Box<dyn Fn(...) + 'static>` itself implements `Fn(...) + 'static`,
-		// so the boxed listener is accepted as the closure argument and
-		// the returned subscription is type-erased into `Box<dyn Any>`.
-		Box::new(self.on_navigate(move |path, params| listener(path, params)))
-	}
-
-	fn __diag_dispatch_count(&self) -> u64 {
-		self.__diag_dispatch_count()
-	}
-
-	fn __diag_observer_count(&self) -> usize {
-		self.__diag_observer_count()
-	}
-
-	fn __diag_router_id(&self) -> usize {
-		self.__diag_router_id()
-	}
-
-	fn as_any(&self) -> &dyn std::any::Any {
-		self
-	}
-}
 
 impl SpaRouter for reinhardt_urls::routers::ClientRouter {
 	fn current_path(&self) -> &Signal<String> {

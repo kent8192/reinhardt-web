@@ -43,6 +43,42 @@
 //! let count = Signal::new(0);
 //! let view = counter(count);
 //! ```
+//!
+//! ## Component invocation (spec §3.5)
+//!
+//! Two syntactically distinct forms can be used to invoke a component from
+//! within a `page!` body:
+//!
+//! 1. **Legacy positional / paren form** — `{my_button("label".into(), false)}`.
+//!    The component is just a normal Rust function call wrapped in `{ ... }`.
+//!
+//! 2. **React-style brace form** — `Card { item: x, @click: h, p { "kid" } }`.
+//!    The component is a function `fn card(props: CardProps) -> Page` where
+//!    `CardProps` derives `bon::Builder`. Codegen emits a builder chain that
+//!    sets each named prop, each `@event:` prop (as `.on_<event>(handler)`),
+//!    and (when children are present) `.children(Some(<child_view>))`.
+//!
+//! Both forms coexist; the parser picks based on the punctuation that
+//! follows the component identifier (`(` vs. `{`).
+//!
+//! ```ignore
+//! use reinhardt_pages::component::Page;
+//! use reinhardt_pages::page;
+//!
+//! #[derive(bon::Builder)]
+//! struct CardProps { item: String }
+//!
+//! fn card(p: CardProps) -> Page {
+//!     page!(|p: CardProps| { article { h2 { {p.item.clone()} } } })(p)
+//! }
+//!
+//! // Brace form (spec §3.5).
+//! let _ = page!(|| { div { Card { item: "hello".to_string() } } });
+//! ```
+//!
+//! See `reinhardt-pages/CHANGELOG.md` `### Added` entry and the design
+//! comment in `page::codegen::generate_component_brace` for the full
+//! lowering rules.
 
 mod codegen;
 pub(crate) mod html_spec;

@@ -163,37 +163,29 @@ pub fn footer(version: &str) -> Page {
 ///
 /// ```ignore
 /// use reinhardt_admin::pages::components::layout::{main_layout, ModelInfo};
-/// use reinhardt_pages::router::Router;
+/// use reinhardt_urls::routers::ClientRouter;
 /// use std::sync::Arc;
 ///
 /// let models = vec![
 ///     ModelInfo { name: "Users".to_string(), url: "/admin/users/".to_string() },
 /// ];
-/// let router = Arc::new(Router::new());
+/// let router = Arc::new(ClientRouter::new());
 /// main_layout("My Admin", &models, None, "0.1.0", router)
 /// ```
-// (Refs #4234) Migration to reinhardt_urls::routers::ClientRouter pending separate follow-up issue.
-// Only this signature references the deprecated `pages::router::Router` type;
-// `Link` and `RouterOutlet` used in the body are not deprecated.
-#[allow(deprecated)]
 pub fn main_layout(
 	site_name: &str,
 	models: &[ModelInfo],
 	user_name: Option<&str>,
 	version: &str,
-	router: std::sync::Arc<reinhardt_pages::router::Router>,
+	router: std::sync::Arc<reinhardt_urls::routers::ClientRouter>,
 ) -> Page {
-	use reinhardt_pages::component::Component;
-	use reinhardt_pages::router::RouterOutlet;
+	// RouterOutlet removed; using ClientRouter::render_current() instead
 
 	let current_path = router.current_path().get();
 	let header_page = header(site_name, user_name);
 	let sidebar_page = sidebar(models, Some(&current_path));
 	let footer_page = footer(version);
-	let outlet = RouterOutlet::new(router)
-		.id("admin-outlet")
-		.class("router-content")
-		.render();
+		let outlet = router.render_current();
 
 	page!(|header_page: Page, sidebar_page: Page, outlet: Page, footer_page: Page| {
 		div {

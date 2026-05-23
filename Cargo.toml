@@ -613,6 +613,11 @@ syn = { version = "2.0", features = ["full", "parsing", "extra-traits"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 
+# Builder generator for `Component { ... }` invocation form (spec §3.5.2).
+# Staged for removal under spec §10 once `#[derive(PageProps)]` /
+# `#[component]` proc-macros take over the prop-struct generation.
+bon = "3.9.1"
+
 # Cryptography & Security
 aes-gcm = "0.10"
 sha2 = "0.10.9"
