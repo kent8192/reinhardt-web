@@ -17,9 +17,3 @@ pub use reinhardt_urls::routers::client_router::history::{HistoryState, Navigati
 // call site.
 #[cfg(wasm)]
 pub use reinhardt_urls::routers::client_router::history::setup_popstate_listener;
-
-// Internal helpers consumed by `super::core`. Tightened to `pub(super)`
-// so they remain hidden from the crate's public API surface.
-pub(super) use reinhardt_urls::routers::client_router::history::{
-	current_path, push_state, replace_state,
-};
