@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### BREAKING CHANGES
+
+- **`SeaRc<T>` type alias** (`src/types/iden.rs`, deprecated since
+  `0.1.0-rc.16`) — removed per STABILITY_POLICY § SP-4. Use
+  [`SharedRc`](src/types/iden.rs) directly instead, which expands to
+  `Arc<T>` with the `thread-safe` feature and `Rc<T>` without it. The
+  `pub use iden::SeaRc;` re-export in `src/types.rs` is also dropped.
+
+  Refs umbrella Issue
+  [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+  See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-query)
+  for the migration guide.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.0-rc.30...reinhardt-query@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-query` as part of the
