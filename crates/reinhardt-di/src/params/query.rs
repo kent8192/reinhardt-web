@@ -208,6 +208,28 @@ where
 #[cfg(feature = "validation")]
 impl<T> super::validation::WithValidation for Query<T> {}
 
+// Bridge `Query<T>` to the DI container. Once `T: DeserializeOwned`, callers
+// can write `#[inject] q: Query<MyFilter>` inside `#[injectable_factory]` or
+// any handler, and the existing `FromRequest` plumbing parses the query
+// string from `InjectionContext`'s attached request.
+#[async_trait]
+impl<T> crate::Injectable for Query<T>
+where
+	T: DeserializeOwned + Send + Sync + 'static,
+{
+	async fn inject(ctx: &crate::InjectionContext) -> crate::DiResult<Self> {
+		let request = ctx
+			.get_http_request()
+			.ok_or(crate::DiError::MissingParamContext { extractor: "Query" })?;
+		let param_ctx = ctx
+			.get_param_context()
+			.ok_or(crate::DiError::MissingParamContext { extractor: "Query" })?;
+		<Query<T> as FromRequest>::from_request(request, param_ctx)
+			.await
+			.map_err(crate::DiError::from_param_error)
+	}
+}
+
 impl<T> super::has_inner::HasInner for Query<T> {
 	type Inner = T;
 

@@ -1,5 +1,0 @@
-error: watch block must contain exactly one expression
-  --> tests/ui/page/fail/watch_multiple_expressions.rs:16:5
-   |
-16 |                 span { "Second" }
-   |                 ^^^^

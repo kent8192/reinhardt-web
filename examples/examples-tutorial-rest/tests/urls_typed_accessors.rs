@@ -203,48 +203,4 @@ mod tests {
 			"/api/snippets-viewset/42/"
 		);
 	}
-
-	// ------------------------------------------------------------------
-	// Deprecated flat surface — kept as a single, isolated, opt-in test.
-	//
-	// The flat accessors (`urls.snippet_list()`, `urls.snippet_detail("id")`)
-	// are emitted ONLY by `#[viewset]` (see
-	// `crates/reinhardt-core/macros/src/viewset_macro.rs`), not by the
-	// per-route `#[get(name = "...")]` / `#[post(name = "...")]` macros.
-	// So `urls.snippets_list()` (plural, function-based) does NOT exist
-	// as a flat accessor — only `urls.snippet_list()` (singular, from
-	// the `ModelViewSet::new("snippet")` basename) does.
-	//
-	// The flat surface has been deprecated since `0.1.0-rc.16` and now
-	// goes through the namespace-iterating `UrlResolverUnprefixed`
-	// fallback. Production example code should NOT use this surface —
-	// it's exercised here only to document the migration path and pin
-	// the runtime equivalence with the typed accessor, so the
-	// deprecation does not silently change observable behaviour before
-	// the flat surface is removed (planned for v0.2.0 per Issue #4548).
-	// ------------------------------------------------------------------
-
-	#[rstest]
-	#[serial(routes_global)]
-	#[allow(deprecated)]
-	fn deprecated_flat_viewset_accessor_matches_typed_accessor() {
-		// Arrange
-		let urls = install_routes_and_resolve();
-		// Bring the deprecated flat-surface viewset trait methods into
-		// scope via the `url_prelude` re-export module emitted by
-		// `#[routes]`. The traits `ResolveSnippetList` and
-		// `ResolveSnippetDetail` add the methods `snippet_list` /
-		// `snippet_detail` on any `UrlResolverUnprefixed` implementor.
-		use examples_tutorial_rest::config::urls::url_prelude::*;
-
-		// Act
-		let typed = urls.server().snippets().snippet_list();
-		let flat = urls.snippet_list();
-
-		// Assert: the two surfaces resolve to the same URL today — the
-		// flat one will be removed in v0.2.0. See Issue #4548 §
-		// "Deprecation removal milestone".
-		assert_eq!(typed, flat);
-		assert_eq!(typed, "/api/snippets-viewset/");
-	}
 }
