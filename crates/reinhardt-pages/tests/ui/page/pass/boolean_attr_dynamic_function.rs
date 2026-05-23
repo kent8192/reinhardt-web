@@ -1,4 +1,9 @@
-//! page! macro with boolean attributes using function calls
+//! page! macro with boolean attributes using function calls.
+//!
+//! Spec §3.7 (no implicit captures): single-segment lowercase idents are
+//! treated as value bindings, so free functions must either be passed in as
+//! parameters or referenced via a multi-segment path. Here we use the
+//! `self::` prefix to make the path multi-segment.
 
 use reinhardt_pages::page;
 
@@ -14,12 +19,12 @@ fn main() {
 	let _valid = page!(|| {
 		div {
 			button {
-				disabled: is_button_disabled(),
+				disabled: self::is_button_disabled(),
 				"Submit"
 			}
 			input {
 				r#type: "checkbox",
-				checked: calculate_checked(5),
+				checked: self::calculate_checked(5),
 			}
 		}
 	});

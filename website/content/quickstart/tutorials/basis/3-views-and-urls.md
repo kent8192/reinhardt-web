@@ -290,7 +290,7 @@ function in this section follows the same five conventions:
   `anyhow::Result` if it is in scope.
 - Parameters marked `#[inject]` are resolved by the DI container before
   the body runs. Common injections are `reinhardt::DatabaseConnection`,
-  `SessionData`, `SessionStoreRef`, and project-local services like
+  `SessionData`, `Depends<SessionStore>`, and project-local services like
   `Depends<UserManager>`.
 - The body is implicitly `#[cfg(native)]` — the macro generates a typed
   client stub for the WASM side so callers only see the signature.
@@ -661,9 +661,10 @@ matrix in one place and makes each handler body very small.
 ## Authentication Server Functions (`apps/users/server_fn.rs`)
 
 The `users` app's server functions follow the same conventions but talk
-to `SessionData` and `SessionStoreRef` instead of business models. They
-are the only server-side handlers in the project that read passwords, so
-they're the right place to introduce the session-cookie machinery.
+to `SessionData` and `Depends<SessionStore>` instead of business models.
+They are the only server-side handlers in the project that read
+passwords, so they're the right place to introduce the session-cookie
+machinery.
 
 The imports illustrate which pieces come from where: `SessionAuthExt`
 provides the `login` / `logout` methods on `SessionData`,
@@ -686,7 +687,7 @@ use {
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
 	reinhardt::di::Depends,
 	reinhardt::middleware::session::{
-		SessionAuthExt, SessionData, SessionStoreRef, USER_ID_SESSION_KEY,
+		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
 	},
 	reinhardt::reinhardt_auth::BaseUserManager,
 	std::collections::HashMap,
@@ -711,7 +712,7 @@ pub async fn login(
 	_csrf_token: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -773,7 +774,7 @@ pub async fn register(
 	_csrf_token: String,
 	#[inject] user_manager: Depends<UserManager>,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -844,7 +845,7 @@ for the actual rotation:
 pub async fn logout(
 	_csrf_token: String,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<(), ServerFnError> {
 	let mut session = session;
 
@@ -1238,9 +1239,10 @@ pub fn routes() -> UnifiedRouter {
 			.with_di_registrations(admin_di)
 	};
 
-	// `SessionMiddleware` auto-registers its `Arc<SessionStore>` as a DI
-	// singleton via `Middleware::di_registrations`, so server functions that
-	// `#[inject] session: SessionData` (or `#[inject] store: SessionStoreRef`)
+	// `SessionMiddleware` auto-registers its `SessionStore` as a DI singleton
+	// via `Middleware::di_registrations` (keyed by `TypeId::of::<SessionStore>()`
+	// post-#4437), so server functions that
+	// `#[inject] session: SessionData` (or `#[inject] store: Depends<SessionStore>`)
 	// can resolve the same store the middleware writes to without a parallel
 	// `with_di_registrations(...)` call. See #4426 (and the original #4423
 	// regression that motivated the auto-registration hook).
@@ -1836,7 +1838,7 @@ the polling application:
 - **Typed RPC server functions.** Every reactive mutation the WASM
   client will call lives in `src/apps/<app>/server_fn.rs`. The DI
   container injects `DatabaseConnection`, `SessionData`,
-  `SessionStoreRef`, and (for the polls mutations)
+  `Depends<SessionStore>`, and (for the polls mutations)
   `Depends<SessionUser>`; `session_user.require_active()?` is the shared
   401 gate, layered on the `SessionUser` factory in
   `apps::polls::di`; `atomic(&db, || async { … })` guards

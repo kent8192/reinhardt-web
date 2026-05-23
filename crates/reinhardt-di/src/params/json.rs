@@ -89,7 +89,7 @@ impl<T> FromRequest for Json<T>
 where
 	T: DeserializeOwned + Send,
 {
-	async fn from_request(req: &Request, _ctx: &ParamContext) -> ParamResult<Self> {
+	async fn from_request(req: &Request, ctx: &ParamContext) -> ParamResult<Self> {
 		// Check Content-Type header (case-insensitive per RFC 7231)
 		let content_type = req
 			.headers
@@ -112,10 +112,12 @@ where
 			)));
 		}
 
-		// Read body bytes from request
-		let body_bytes = req
-			.read_body()
-			.map_err(|e| ParamError::BodyError(format!("Failed to read body: {}", e)))?;
+		// Read body bytes through ParamContext's cache so that a second
+		// `Json<T>` factory in the same request (e.g. resolving two DI
+		// dependencies that each carry a body parameter — see #4645)
+		// reuses the same bytes instead of failing with "body already
+		// consumed" on the second call.
+		let body_bytes = ctx.read_body_cached(req)?;
 
 		// Enforce body size limit to prevent memory exhaustion
 		if body_bytes.len() > DEFAULT_MAX_JSON_BODY_SIZE {
@@ -143,6 +145,29 @@ impl<T> super::has_inner::HasInner for Json<T> {
 
 	fn into_inner(self) -> T {
 		self.0
+	}
+}
+
+// Bridge `Json<T>` to the DI container. The first factory in a request that
+// resolves `Json<T>` will consume the body via `request.read_body()`; PR-2
+// (Issue #4645) adds a body cache to `ParamContext` so that subsequent
+// `Depends<Json<T>>` calls within the same request reuse the same bytes
+// without re-consuming the underlying stream.
+#[async_trait]
+impl<T> crate::Injectable for Json<T>
+where
+	T: DeserializeOwned + Send + Sync + 'static,
+{
+	async fn inject(ctx: &crate::InjectionContext) -> crate::DiResult<Self> {
+		let request = ctx
+			.get_http_request()
+			.ok_or(crate::DiError::MissingParamContext { extractor: "Json" })?;
+		let param_ctx = ctx
+			.get_param_context()
+			.ok_or(crate::DiError::MissingParamContext { extractor: "Json" })?;
+		<Json<T> as FromRequest>::from_request(request, param_ctx)
+			.await
+			.map_err(crate::DiError::from_param_error)
 	}
 }
 

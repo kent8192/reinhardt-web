@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### BREAKING CHANGES
+
+- **`DatabaseConnection::get_database_url_from_env_or_settings(base_dir)`**
+  (deprecated since `0.1.0-rc.29`) — removed per STABILITY_POLICY § SP-4
+  and umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+  The function reloaded `settings/<profile>.toml` from disk on every
+  call, duplicating the framework's settings-loading logic. Use
+  `DatabaseConnection::database_url_from(settings, env_override)` with
+  a pre-built `ProjectSettings` instead.
+
+In-tree test deleted: `crates/reinhardt-db/tests/database_url_loader_interpolation.rs`.
+
+Note: this PR keeps the consumer in `reinhardt-commands/src/builtin.rs`
+(`get_database_url_from_settings`) unchanged. That helper still
+references the removed entry point and will be migrated in a
+follow-up `chore(commands)!: replace get_database_url_from_settings with
+database_url_from` PR.
+
+See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-db)
+for the migration guide.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.30...reinhardt-db@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-db` as part of the reinhardt-web

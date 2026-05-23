@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### BREAKING CHANGES
+
+Removed both RC-deprecated items per STABILITY_POLICY § SP-4
+(umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
+
+- **`MockFetch` struct** (`src/wasm/mock.rs`, deprecated `0.1.0-rc.16`, refs #3283) — use `MockServiceWorker` from `reinhardt_test::msw`.
+- **`TestUser` struct** (`src/fixtures/auth.rs`, deprecated `0.1.0-rc.16`) — define your own user type with `#[user]` macro and use `ForceLoginUser` trait.
+
+Both items are gated with `#[cfg(any())]` (compile-excluded).
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.30...reinhardt-test@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-test` as part of the

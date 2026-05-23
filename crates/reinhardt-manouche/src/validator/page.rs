@@ -170,7 +170,9 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 
 	Ok(TypedPageComponent {
 		name: comp.name.clone(),
+		invocation_form: comp.invocation_form,
 		args: comp.args.clone(),
+		events: comp.events.clone(),
 		children: typed_children,
 		span: comp.span,
 	})

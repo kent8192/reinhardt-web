@@ -74,6 +74,7 @@
 
 mod core;
 mod error;
+pub mod from_request;
 mod global;
 mod handler;
 // Issue #4217: `history` is exposed publicly so reinhardt-pages can
@@ -88,6 +89,10 @@ mod reverser;
 // Public re-exports
 pub use core::{ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription};
 pub use error::{MergeError, PathError, RouterError};
+// Re-export the `FromRequest` building blocks at the
+// `client_router` module level so callers can write
+// `use reinhardt_urls::routers::client_router::{FromRequest, ...}`.
+pub use from_request::{ExtractError, FromRequest, PathParam, QueryParam, RouteContext};
 pub use global::{clear_client_reverser, get_client_reverser, register_client_reverser};
 pub use handler::RouteHandler;
 // Issue #4217: drop helper-function re-exports from this module's
