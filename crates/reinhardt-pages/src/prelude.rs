@@ -116,11 +116,7 @@ pub use crate::dom::{Document, Element, EventHandle, EventType, document};
 // ============================================================================
 
 // Non-deprecated rendering primitives.
-pub use crate::router::{Link, RouterOutlet};
-// Deprecated routing types (Refs #4234). Re-exported for backward
-// compatibility; new code should prefer `reinhardt_urls::routers::*`.
-#[allow(deprecated)] // (Refs #4234) Prelude re-exports deprecated routing surface.
-pub use crate::router::{PathPattern, Route, Router};
+pub use crate::router::Link;
 
 // ============================================================================
 // API and Server Functions

@@ -1,13 +1,9 @@
 //! Imperative router hook (`use_router`).
 //!
-//! Issue #4610: until now, the only way to navigate programmatically from a
-//! component or reactive context was to either (a) hard-code
-//! `web_sys::window().unwrap().location().set_href(...)` (which triggers a
-//! full document reload and defeats the SPA router), or (b) reach into the
-//! deprecated [`crate::with_router`] helper which is in a deprecation
-//! window. Neither shape composes with the canonical
-//! [`reinhardt_urls::routers::ClientRouter`] path that `ClientLauncher::router_client`
-//! installs.
+//! Issue #4610: provides a hook-based API for programmatic SPA navigation
+//! from components and reactive contexts, dispatching through the
+//! [`reinhardt_urls::routers::ClientRouter`] installed by
+//! `ClientLauncher::router_client`.
 //!
 //! `use_router()` returns a zero-sized [`RouterHandle`] that dispatches into
 //! whichever router builder the application picked, by re-entering the
@@ -25,11 +21,10 @@ use crate::router::NavigationType;
 /// Public navigation error returned by [`RouterHandle::push`],
 /// [`RouterHandle::replace`], and [`RouterHandle::navigate`].
 ///
-/// The inner SPA router translates its concrete error (either
-/// `crate::router::RouterError` for the deprecated `Router` path or
-/// `reinhardt_urls::routers::client_router::error::RouterError` for the
-/// canonical `ClientRouter` path) into a stringly-typed message so the
-/// public API does not couple to either crate's error enum.
+/// The inner SPA router translates its concrete error
+/// (`reinhardt_urls::routers::client_router::error::RouterError`) into a
+/// stringly-typed message so the public API does not couple to the
+/// concrete error enum.
 #[derive(Debug)]
 pub enum NavigateError {
 	/// `ClientLauncher::launch()` has not installed an SPA router on the
