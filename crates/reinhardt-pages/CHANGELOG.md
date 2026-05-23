@@ -7,8 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ServerFnMetadata` cross-target supertrait carrying `PATH`, `NAME`,
+  `CODEC`, and `INJECTED_PARAMS` for every `#[server_fn]`. Available
+  on both native and wasm targets without any feature flag, so a
+  `#[url_patterns(mode = unified)]` aggregator can name
+  `my_fn::marker` from a closure body that compiles on either side
+  of the cfg boundary ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+- `pub trait Trackable` in `reinhardt-pages::reactive` (re-exported as
+  `reinhardt_pages::reactive::Trackable`). Implemented for `Signal<T>` and
+  `Memo<T>`; consumed by the new auto-wrap visitor and the upcoming hook
+  deps-tuple machinery (#4195).
+- `NodeId::as_u64()` accessor in `reinhardt-core` so external callers (such
+  as `Trackable::signal_id`) can obtain the underlying counter value.
+- New `Component { prop: val, @event: handler, child_element { ... } }`
+  invocation syntax inside `page!` bodies. Components are functions
+  matching `fn <name>(props: <NameProps>) -> Page` where `<NameProps>`
+  derives `bon::Builder`. The legacy positional form
+  `{component_fn(args)}` continues to work unchanged. Spec §3.5.
+- `bon` added as a `reinhardt-pages` runtime dependency. Staged for
+  removal under spec §10 once `#[derive(PageProps)]` /
+  `#[component]` proc-macros take over the prop-struct generation.
+- `form!` macro fields now accept optional generic type parameters
+  (`HiddenField<i64>`, `ChoiceField<bool>`, `MultipleChoiceField<String>`,
+  `JsonField<MyStruct>`) to forward typed values to `#[server_fn]` handlers
+  instead of always stringifying them (#4397)
+- `IpAddressField` is now specialized to `Option<IpAddr>` in generated code
+- Fields without a generic parameter default to `String` for backward
+  compatibility
+- `reinhardt_pages::router::request` submodule re-exports the
+  Manouche DSL v2 spec §4.3 `FromRequest` building blocks
+  (`FromRequest`, `RouteContext`, `ExtractError`, `PathParam<T>`,
+  `QueryParam<T>`) from `reinhardt_urls::routers::client_router::from_request`
+  so application code can write
+  `use reinhardt_pages::router::request::FromRequest;` matching the
+  spec's namespace. The legacy non-generic `PathParam` re-exported at
+  `reinhardt_pages::router::PathParam` (deprecated since `0.1.0-rc.27`)
+  is unrelated and remains in place during its deprecation cycle.
+  (Refs #4668)
+
 ### Changed
 
+- `ServerFnRegistration` (native) and `MockableServerFn` (msw) now
+  extend `ServerFnMetadata` instead of declaring `PATH`, `NAME`, and
+  `CODEC` themselves. Existing consumers reach the constants through
+  supertrait inheritance with no source change required
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
 - **BREAKING**: `page!` macro now unconditionally wraps every `{expr}` and
   every `if` / `for` / `match` control-flow block in `Page::reactive(move || ...)`.
   Helper-routed Signal reads (`{helper(&signal)}`) re-render correctly without
@@ -47,40 +92,6 @@ Removed in this PR (8 items):
   (PathPattern). Use `reinhardt_urls::routers::ClientPathPattern`.
 - **`src/router/params.rs`** (1 item, `0.1.0-rc.27`) — `Path` extractor.
   Use `reinhardt_urls::routers::Path`.
-
-### Added
-
-- `pub trait Trackable` in `reinhardt-pages::reactive` (re-exported as
-  `reinhardt_pages::reactive::Trackable`). Implemented for `Signal<T>` and
-  `Memo<T>`; consumed by the new auto-wrap visitor and the upcoming hook
-  deps-tuple machinery (#4195).
-- `NodeId::as_u64()` accessor in `reinhardt-core` so external callers (such
-  as `Trackable::signal_id`) can obtain the underlying counter value.
-- New `Component { prop: val, @event: handler, child_element { ... } }`
-  invocation syntax inside `page!` bodies. Components are functions
-  matching `fn <name>(props: <NameProps>) -> Page` where `<NameProps>`
-  derives `bon::Builder`. The legacy positional form
-  `{component_fn(args)}` continues to work unchanged. Spec §3.5.
-- `bon` added as a `reinhardt-pages` runtime dependency. Staged for
-  removal under spec §10 once `#[derive(PageProps)]` /
-  `#[component]` proc-macros take over the prop-struct generation.
-- `form!` macro fields now accept optional generic type parameters
-  (`HiddenField<i64>`, `ChoiceField<bool>`, `MultipleChoiceField<String>`,
-  `JsonField<MyStruct>`) to forward typed values to `#[server_fn]` handlers
-  instead of always stringifying them (#4397)
-- `IpAddressField` is now specialized to `Option<IpAddr>` in generated code
-- Fields without a generic parameter default to `String` for backward
-  compatibility
-- `reinhardt_pages::router::request` submodule re-exports the
-  Manouche DSL v2 spec §4.3 `FromRequest` building blocks
-  (`FromRequest`, `RouteContext`, `ExtractError`, `PathParam<T>`,
-  `QueryParam<T>`) from `reinhardt_urls::routers::client_router::from_request`
-  so application code can write
-  `use reinhardt_pages::router::request::FromRequest;` matching the
-  spec's namespace. The legacy non-generic `PathParam` re-exported at
-  `reinhardt_pages::router::PathParam` (deprecated since `0.1.0-rc.27`)
-  is unrelated and remains in place during its deprecation cycle.
-  (Refs #4668)
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
