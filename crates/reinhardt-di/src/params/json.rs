@@ -89,7 +89,7 @@ impl<T> FromRequest for Json<T>
 where
 	T: DeserializeOwned + Send,
 {
-	async fn from_request(req: &Request, _ctx: &ParamContext) -> ParamResult<Self> {
+	async fn from_request(req: &Request, ctx: &ParamContext) -> ParamResult<Self> {
 		// Check Content-Type header (case-insensitive per RFC 7231)
 		let content_type = req
 			.headers
@@ -112,10 +112,12 @@ where
 			)));
 		}
 
-		// Read body bytes from request
-		let body_bytes = req
-			.read_body()
-			.map_err(|e| ParamError::BodyError(format!("Failed to read body: {}", e)))?;
+		// Read body bytes through ParamContext's cache so that a second
+		// `Json<T>` factory in the same request (e.g. resolving two DI
+		// dependencies that each carry a body parameter — see #4645)
+		// reuses the same bytes instead of failing with "body already
+		// consumed" on the second call.
+		let body_bytes = ctx.read_body_cached(req)?;
 
 		// Enforce body size limit to prevent memory exhaustion
 		if body_bytes.len() > DEFAULT_MAX_JSON_BODY_SIZE {
