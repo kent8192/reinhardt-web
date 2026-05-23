@@ -95,6 +95,12 @@ pub struct Effect {
 	id: NodeId,
 	/// Whether this effect has been disposed
 	disposed: Rc<RefCell<bool>>,
+	/// Pending cleanup function from the most recent run (Option A hooks only).
+	///
+	/// Populated by `new_with_deps` when the user's closure returns `Some(c)`;
+	/// flushed before each re-run and on dispose. `Effect::new` and
+	/// `Effect::new_with_timing` leave this slot empty.
+	cleanup_slot: Rc<RefCell<Option<Box<dyn FnOnce()>>>>,
 }
 
 impl Effect {
@@ -147,7 +153,11 @@ impl Effect {
 		// Run the effect for the first time
 		Self::execute_effect(id);
 
-		Self { id, disposed }
+		Self {
+			id,
+			disposed,
+			cleanup_slot: Rc::new(RefCell::new(None)),
+		}
 	}
 
 	/// Create a new Effect with specified execution timing
@@ -200,7 +210,115 @@ impl Effect {
 		// Run the effect for the first time
 		Self::execute_effect(id);
 
-		Self { id, disposed }
+		Self {
+			id,
+			disposed,
+			cleanup_slot: Rc::new(RefCell::new(None)),
+		}
+	}
+
+	/// Create a new Effect that subscribes only to the listed `deps` (Option A).
+	///
+	/// Unlike `Effect::new`, the closure runs with **no active reactive
+	/// Observer**, so `Signal::get` calls inside the closure do not auto-
+	/// subscribe. Only the `NodeId`s carried by `deps` register as
+	/// dependencies; changes to other Signals do not trigger re-execution.
+	///
+	/// The closure may return `Some(cleanup)` to register a one-shot
+	/// cleanup function that is invoked before the next re-run and on
+	/// `dispose`, matching React's `useEffect(() => () => cleanup())`.
+	///
+	/// This is the lower-layer primitive used by `use_effect(f, deps)` in
+	/// `reinhardt-pages`. See the design spec at
+	/// `docs/superpowers/specs/2026-05-22-issue-4195-hooks-deps-array-design.md`.
+	#[allow(dead_code)]
+	pub fn new_with_deps<F, C>(mut f: F, deps: super::deps::Deps) -> Self
+	where
+		F: FnMut() -> Option<C> + 'static,
+		C: FnOnce() + 'static,
+	{
+		Self::new_with_deps_internal(f, deps, EffectTiming::Passive)
+	}
+
+	/// Internal helper: constructs an Effect with deps and a specified timing,
+	/// inserting the timing entry *before* the initial execution so the first
+	/// run respects the requested timing.
+	fn new_with_deps_internal<F, C>(
+		mut f: F,
+		deps: super::deps::Deps,
+		timing: EffectTiming,
+	) -> Self
+	where
+		F: FnMut() -> Option<C> + 'static,
+		C: FnOnce() + 'static,
+	{
+		let id = NodeId::new();
+		let disposed = Rc::new(RefCell::new(false));
+		let cleanup_slot: Rc<RefCell<Option<Box<dyn FnOnce()>>>> = Rc::new(RefCell::new(None));
+
+		// Capture deps so the wrapped closure can re-subscribe after every
+		// run: `execute_effect` calls `clear_dependencies(id)` before each
+		// invocation, which would otherwise erase our explicit subscriptions.
+		let deps_for_closure = deps.into_inner();
+		let cleanup_for_closure = cleanup_slot.clone();
+		let disposed_for_closure = disposed.clone();
+
+		let wrapped = move || {
+			if *disposed_for_closure.borrow() {
+				return;
+			}
+			// Flush any cleanup from the previous run before re-executing.
+			if let Some(prev) = cleanup_for_closure.borrow_mut().take() {
+				prev();
+			}
+			// Run the user's closure with the Observer stack detached so
+			// in-closure Signal reads do not auto-subscribe.
+			let next = super::runtime::run_without_observer(|| f());
+			if let Some(c) = next {
+				*cleanup_for_closure.borrow_mut() = Some(Box::new(c));
+			}
+			// Re-subscribe the listed deps (cleared by `clear_dependencies`).
+			for &dep in &deps_for_closure {
+				super::runtime::subscribe_node_to_observer(dep, id);
+			}
+		};
+
+		EFFECT_FUNCTIONS.with(|storage| {
+			storage.borrow_mut().insert(id, Box::new(wrapped));
+		});
+
+		// Insert timing *before* initial execution so the first
+		// `execute_effect` dispatches with the requested timing.
+		EFFECT_TIMING.with(|storage| {
+			storage.borrow_mut().insert(id, timing);
+		});
+
+		// Initial run.
+		Self::execute_effect(id);
+
+		Self {
+			id,
+			disposed,
+			cleanup_slot,
+		}
+	}
+
+	/// Create a new Effect with deps and an explicit `EffectTiming`.
+	///
+	/// Combines the deps-driven semantics of [`Self::new_with_deps`] with
+	/// the synchronous-vs-asynchronous control of [`Self::new_with_timing`].
+	/// Used by `use_layout_effect(f, deps)`.
+	#[allow(dead_code)]
+	pub fn new_with_deps_and_timing<F, C>(
+		f: F,
+		deps: super::deps::Deps,
+		timing: EffectTiming,
+	) -> Self
+	where
+		F: FnMut() -> Option<C> + 'static,
+		C: FnOnce() + 'static,
+	{
+		Self::new_with_deps_internal(f, deps, timing)
 	}
 
 	/// Execute an effect by its ID
@@ -275,6 +393,12 @@ impl Effect {
 	/// After calling this, the effect will no longer run and its resources will be cleaned up.
 	pub fn dispose(&self) {
 		*self.disposed.borrow_mut() = true;
+
+		// Flush any pending cleanup from new_with_deps before tearing down
+		// runtime state, matching React's "cleanup runs on unmount" semantics.
+		if let Some(c) = self.cleanup_slot.borrow_mut().take() {
+			c();
+		}
 
 		// Remove from runtime's dependency graph (ignore if TLS is destroyed)
 		let _ = try_with_runtime(|rt| rt.remove_node(self.id));
@@ -617,5 +741,97 @@ mod tests {
 
 		// Effect should have re-executed with the new value
 		assert_eq!(*values.borrow(), alloc::vec![0, 42]);
+	}
+
+	#[test]
+	#[serial]
+	fn new_with_deps_listed_dep_triggers_rerun() {
+		// Arrange
+		let s = Signal::new(0_i32);
+		let runs = Rc::new(RefCell::new(0_i32));
+		let runs_for_effect = runs.clone();
+		let s_for_effect = s.clone();
+		let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
+
+		// Act — explicit cleanup type since closure returns None.
+		let _eff = Effect::new_with_deps::<_, fn()>(
+			move || {
+				let _ = s_for_effect.get();
+				*runs_for_effect.borrow_mut() += 1;
+				None
+			},
+			deps,
+		);
+		let initial = *runs.borrow();
+		s.set(1);
+		with_runtime(|rt| rt.flush_updates());
+
+		// Assert
+		assert_eq!(
+			*runs.borrow(),
+			initial + 1,
+			"listed dep change must trigger re-run"
+		);
+	}
+
+	#[test]
+	#[serial]
+	fn new_with_deps_unlisted_signal_no_rerun() {
+		// Arrange
+		let listed = Signal::new(0_i32);
+		let unlisted = Signal::new(0_i32);
+		let runs = Rc::new(RefCell::new(0_i32));
+		let runs_for_effect = runs.clone();
+		let unlisted_for_effect = unlisted.clone();
+		let deps = crate::reactive::deps::Deps::from_signals(&[listed.id()]);
+
+		// Act — reading `unlisted` MUST NOT subscribe under Option A.
+		let _eff = Effect::new_with_deps::<_, fn()>(
+			move || {
+				let _ = unlisted_for_effect.get();
+				*runs_for_effect.borrow_mut() += 1;
+				None
+			},
+			deps,
+		);
+		let initial = *runs.borrow();
+		unlisted.set(99);
+		with_runtime(|rt| rt.flush_updates());
+
+		// Assert
+		assert_eq!(
+			*runs.borrow(),
+			initial,
+			"unlisted Signal read must not subscribe (Option A core)"
+		);
+	}
+
+	#[test]
+	#[serial]
+	fn new_with_deps_cleanup_runs_before_rerun() {
+		// Arrange
+		let s = Signal::new(0_i32);
+		let log: Rc<RefCell<alloc::vec::Vec<&'static str>>> =
+			Rc::new(RefCell::new(alloc::vec::Vec::new()));
+		let log_for_effect = log.clone();
+		let s_for_effect = s.clone();
+		let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
+
+		// Act
+		let _eff = Effect::new_with_deps(
+			move || {
+				let _ = s_for_effect.get();
+				log_for_effect.borrow_mut().push("run");
+				let log_inner = log_for_effect.clone();
+				Some(move || log_inner.borrow_mut().push("cleanup"))
+			},
+			deps,
+		);
+		s.set(1);
+		with_runtime(|rt| rt.flush_updates());
+
+		// Assert — sequence should be: run, cleanup, run.
+		let recorded = log.borrow().clone();
+		assert_eq!(recorded, alloc::vec!["run", "cleanup", "run"]);
 	}
 }

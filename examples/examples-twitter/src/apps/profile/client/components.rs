@@ -43,23 +43,28 @@ pub fn profile_view(user_id: Uuid) -> Page {
 		let loading_setter = _set_loading.clone();
 		let error_setter = _set_error.clone();
 		let resource_for_effect = resource.clone();
+		let resource_for_deps = resource.clone();
+
 		use_effect(
-			move || match resource_for_effect.get() {
-				ResourceState::Loading => {
-					loading_setter(true);
-					error_setter(None);
+			move || {
+				match resource_for_effect.get() {
+					ResourceState::Loading => {
+						loading_setter(true);
+						error_setter(None);
+					}
+					ResourceState::Success(data) => {
+						profile_setter(Some(data));
+						loading_setter(false);
+						error_setter(None);
+					}
+					ResourceState::Error(err) => {
+						error_setter(Some(err));
+						loading_setter(false);
+					}
 				}
-				ResourceState::Success(data) => {
-					profile_setter(Some(data));
-					loading_setter(false);
-					error_setter(None);
-				}
-				ResourceState::Error(err) => {
-					error_setter(Some(err));
-					loading_setter(false);
-				}
+				None::<fn()>
 			},
-			(resource.clone(),),
+			(resource_for_deps,),
 		);
 	}
 	let loading_signal = loading.clone();
@@ -146,10 +151,12 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 		);
 	{
 		let load_profile_for_effect = load_profile.clone();
+		let load_profile_dep = load_profile.clone();
 		let avatar_url_signal = profile_form.avatar_url().clone();
 		let bio_signal = profile_form.bio().clone();
 		let location_signal = profile_form.location().clone();
 		let website_signal = profile_form.website().clone();
+
 		use_effect(
 			move || {
 				if let Some(profile_data) = load_profile_for_effect.result() {
@@ -158,8 +165,9 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 					location_signal.set(profile_data.location.unwrap_or_default());
 					website_signal.set(profile_data.website.unwrap_or_default());
 				}
+				None::<fn()>
 			},
-			(load_profile.clone(),),
+			(load_profile_dep,),
 		);
 	}
 	load_profile.dispatch(user_id);

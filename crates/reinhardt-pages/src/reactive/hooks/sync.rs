@@ -173,6 +173,15 @@ impl<T: Clone + 'static> Clone for SignalWithSubscription<T> {
 /// The `get_snapshot` function should return consistent results when called
 /// multiple times in a row. If the store's data changes, it should return
 /// a different reference (for objects) or value (for primitives).
+///
+/// # Reactivity semantics
+///
+/// The `subscribe` and `get_snapshot` closures run outside any active
+/// reactive Observer. Reading `Signal::get()`, `Memo::get()`, or
+/// `Resource::get()` inside returns the latest value WITHOUT subscribing
+/// for future changes (Option A, Refs #4195). The `get_snapshot` closure
+/// is invoked by external store notifications, not inside any reactive
+/// context.
 pub fn use_sync_external_store<T, S, G>(subscribe: S, get_snapshot: G) -> SignalWithSubscription<T>
 where
 	T: Clone + PartialEq + 'static,
@@ -225,6 +234,12 @@ where
 ///
 /// A `SignalWithSubscription<T>` that stays in sync with the external store.
 /// On server-side (non-WASM), the subscription is a no-op.
+///
+/// # Reactivity semantics
+///
+/// See [`use_sync_external_store`] — closures run outside any active
+/// reactive Observer; `get_snapshot` is invoked by external store
+/// notifications, not inside any reactive context (Option A, Refs #4195).
 pub fn use_sync_external_store_with_server<T, S, G, GS>(
 	subscribe: S,
 	get_snapshot: G,

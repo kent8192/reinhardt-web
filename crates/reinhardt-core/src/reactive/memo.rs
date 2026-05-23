@@ -65,6 +65,46 @@ thread_local! {
 	static MEMO_VALUES: RefCell<BTreeMap<NodeId, Box<dyn core::any::Any>>> = RefCell::new(BTreeMap::new());
 }
 
+// Type-agnostic dirty map for `Memo::new_with_deps` (Refs #4195).
+//
+// `MemoState<T>::dirty` is stored type-erased so flipping it from outside
+// requires `T`. The dirty notifier created by `new_with_deps` is type-erased
+// (it only knows `NodeId`), so it writes here instead. `Memo::get` checks
+// both `MemoState<T>::dirty` and this map.
+thread_local! {
+	static MEMO_DIRTY: RefCell<BTreeMap<NodeId, bool>> = RefCell::new(BTreeMap::new());
+}
+
+/// Flag the Memo identified by `memo_id` as dirty without requiring `T`,
+/// and propagate the change to downstream subscribers.
+///
+/// Called by the hidden notifier Effect created by [`Memo::new_with_deps`]
+/// whenever one of the listed deps changes. Cleared on the next
+/// [`Memo::get`] / [`Memo::get_untracked`] recompute.
+///
+/// The `notify_signal_change` call is what makes downstream `use_effect` /
+/// `use_memo` calls that take this memo as a listed dep actually re-run.
+/// Without it, the dirty flag would be set but no consumer would be
+/// woken up. Mirrors the propagation behavior of `Memo::mark_dirty`.
+pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) {
+	MEMO_DIRTY.with(|m| {
+		m.borrow_mut().insert(memo_id, true);
+	});
+	with_runtime(|rt| rt.notify_signal_change(memo_id));
+}
+
+/// Returns whether the type-agnostic dirty flag is set for `memo_id`.
+fn is_memo_dirty_externally(memo_id: NodeId) -> bool {
+	MEMO_DIRTY.with(|m| m.borrow().get(&memo_id).copied().unwrap_or(false))
+}
+
+/// Clears the type-agnostic dirty flag for `memo_id` after a recompute.
+fn clear_memo_dirty(memo_id: NodeId) {
+	MEMO_DIRTY.with(|m| {
+		m.borrow_mut().remove(&memo_id);
+	});
+}
+
 /// A memoized reactive computation that caches its result
 ///
 /// `Memo<T>` is similar to a Signal in that it can be read with `get()` and can have dependents.
@@ -105,6 +145,14 @@ pub struct Memo<T: Clone + 'static> {
 	disposed: Rc<RefCell<bool>>,
 	/// Phantom data for type parameter
 	_phantom: core::marker::PhantomData<T>,
+	/// Hidden Effect that subscribes to explicit deps (`new_with_deps` only).
+	///
+	/// Wrapped in `Rc` so `Memo<T>` remains `Clone`. The Effect's closure
+	/// calls [`mark_memo_dirty_by_id`] whenever any listed dep fires, so
+	/// the next [`Self::get`] recomputes. `None` for `Memo::new`
+	/// (auto-track path; the Memo is its own Observer).
+	#[allow(dead_code)]
+	deps_notifier: Option<Rc<super::effect::Effect>>,
 }
 
 impl<T: Clone + 'static> Memo<T> {
@@ -168,6 +216,92 @@ impl<T: Clone + 'static> Memo<T> {
 			id,
 			disposed,
 			_phantom: core::marker::PhantomData,
+			deps_notifier: None,
+		}
+	}
+
+	/// Create a Memo that recomputes only when one of the listed `deps` changes.
+	///
+	/// Unlike [`Self::new`], the computation closure runs with **no active
+	/// reactive Observer**, so `Signal::get` calls inside do not auto-
+	/// subscribe. A hidden Layout-timing Effect subscribes to the listed
+	/// deps and flips the memo's dirty flag synchronously when any dep
+	/// changes; the next [`Self::get`] then recomputes.
+	///
+	/// This is the lower-layer primitive used by `use_memo(f, deps)` in
+	/// `reinhardt-pages`. See the design spec at
+	/// `docs/superpowers/specs/2026-05-22-issue-4195-hooks-deps-array-design.md`.
+	#[allow(dead_code)]
+	pub fn new_with_deps<F>(mut f: F, deps: super::deps::Deps) -> Self
+	where
+		F: FnMut() -> T + 'static,
+	{
+		let id = NodeId::new();
+		let disposed = Rc::new(RefCell::new(false));
+
+		// Wrap the user closure to detach the Observer before each compute.
+		// `compute_value` pushes the memo's NodeId as Observer, but Option A
+		// requires Signal reads inside f to NOT auto-subscribe. The
+		// `run_without_observer` call detaches the stack for the duration
+		// of f.
+		let disposed_for_closure = disposed.clone();
+		let f_wrapped = move || {
+			if *disposed_for_closure.borrow() {
+				// Compute MUST NOT happen after dispose; the call site of
+				// `compute_value` is guarded by EFFECT_TIMING / MEMO_VALUES
+				// presence so this branch is defensive only.
+				panic!("Attempted to compute a disposed Memo");
+			}
+			super::runtime::run_without_observer(|| f())
+		};
+
+		MEMO_FUNCTIONS.with(|storage| {
+			let boxed: Box<dyn core::any::Any> = Box::new(Box::new(f_wrapped) as MemoFn<T>);
+			storage.borrow_mut().insert(id, boxed);
+		});
+
+		// Initial compute (deps not yet subscribed; auto-track no-op inside
+		// run_without_observer).
+		let initial_value = Self::compute_value(id);
+
+		MEMO_VALUES.with(|storage| {
+			let state = MemoState {
+				value: initial_value,
+				dirty: false,
+			};
+			let boxed: Box<dyn core::any::Any> = Box::new(state);
+			storage.borrow_mut().insert(id, boxed);
+		});
+
+		// Hidden notifier Effect: subscribes to deps; on trigger, marks
+		// this memo dirty. Layout timing so dep changes propagate
+		// synchronously, matching React's "memo result available immediately
+		// after dep change" semantics.
+		let deps_notifier = if deps.as_slice().is_empty() {
+			None
+		} else {
+			let memo_id = id;
+			let notifier = super::effect::Effect::new_with_deps_and_timing::<_, fn()>(
+				move || {
+					mark_memo_dirty_by_id(memo_id);
+					None
+				},
+				deps,
+				EffectTiming::Layout,
+			);
+			Some(Rc::new(notifier))
+		};
+
+		// The notifier's initial run set MEMO_DIRTY[id] = true; clear it
+		// so the first `Self::get` returns the cached `initial_value`
+		// without spuriously recomputing.
+		clear_memo_dirty(id);
+
+		Self {
+			id,
+			disposed,
+			_phantom: core::marker::PhantomData,
+			deps_notifier,
 		}
 	}
 
@@ -254,7 +388,9 @@ impl<T: Clone + 'static> Memo<T> {
 		// Track dependency with the runtime
 		with_runtime(|rt| rt.track_dependency(self.id));
 
-		// Check if we need to recompute
+		// Check if we need to recompute (either typed dirty bit OR the
+		// type-agnostic dirty flag flipped by `Memo::new_with_deps`'s
+		// notifier).
 		let needs_recompute = MEMO_VALUES.with(|storage| {
 			let storage = storage.borrow();
 			if let Some(boxed) = storage.get(&self.id)
@@ -264,7 +400,7 @@ impl<T: Clone + 'static> Memo<T> {
 			}
 			// If not found, we need to recompute
 			true
-		});
+		}) || is_memo_dirty_externally(self.id);
 
 		if needs_recompute {
 			// Recompute the value
@@ -280,6 +416,7 @@ impl<T: Clone + 'static> Memo<T> {
 					state.dirty = false;
 				}
 			});
+			clear_memo_dirty(self.id);
 
 			new_value
 		} else {
@@ -305,7 +442,7 @@ impl<T: Clone + 'static> Memo<T> {
 			panic!("Attempted to access a disposed Memo");
 		}
 
-		// Check if dirty and recompute if needed
+		// Check if dirty and recompute if needed (typed bit OR external).
 		let needs_recompute = MEMO_VALUES.with(|storage| {
 			let storage = storage.borrow();
 			if let Some(boxed) = storage.get(&self.id)
@@ -314,7 +451,7 @@ impl<T: Clone + 'static> Memo<T> {
 				return state.dirty;
 			}
 			true
-		});
+		}) || is_memo_dirty_externally(self.id);
 
 		if needs_recompute {
 			let new_value = Self::compute_value(self.id);
@@ -327,6 +464,7 @@ impl<T: Clone + 'static> Memo<T> {
 					state.dirty = false;
 				}
 			});
+			clear_memo_dirty(self.id);
 			new_value
 		} else {
 			MEMO_VALUES.with(|storage| {
@@ -378,6 +516,9 @@ impl<T: Clone + 'static> Memo<T> {
 			storage.borrow_mut().remove(&self.id);
 		});
 		let _ = MEMO_VALUES.try_with(|storage| {
+			storage.borrow_mut().remove(&self.id);
+		});
+		let _ = MEMO_DIRTY.try_with(|storage| {
 			storage.borrow_mut().remove(&self.id);
 		});
 	}
@@ -536,5 +677,52 @@ mod tests {
 				assert!(!memo_node.subscribers.contains(&observer_id));
 			}
 		});
+	}
+
+	#[test]
+	#[serial]
+	fn new_with_deps_recomputes_only_on_listed_dep() {
+		use core::cell::Cell;
+
+		// Arrange
+		let listed = Signal::new(2_i32);
+		let unlisted = Signal::new(100_i32);
+		let computations = Rc::new(Cell::new(0_i32));
+		let computations_for_memo = computations.clone();
+		let listed_for_memo = listed.clone();
+		let unlisted_for_memo = unlisted.clone();
+		let deps = crate::reactive::deps::Deps::from_signals(&[listed.id()]);
+
+		// Act
+		let memo = Memo::new_with_deps(
+			move || {
+				computations_for_memo.set(computations_for_memo.get() + 1);
+				listed_for_memo.get() * 10 + unlisted_for_memo.get()
+			},
+			deps,
+		);
+		// Force initial value materialization (also exercises the
+		// no-spurious-recompute path through the cleared MEMO_DIRTY entry).
+		let _ = memo.get();
+		let before_changes = computations.get();
+
+		unlisted.set(200);
+		let _ = memo.get();
+		let after_unlisted = computations.get();
+
+		listed.set(3);
+		let _ = memo.get();
+		let after_listed = computations.get();
+
+		// Assert
+		assert_eq!(
+			after_unlisted, before_changes,
+			"memo MUST NOT recompute when unlisted Signal changes (Option A)"
+		);
+		assert_eq!(
+			after_listed,
+			before_changes + 1,
+			"memo MUST recompute exactly once when listed dep changes"
+		);
 	}
 }

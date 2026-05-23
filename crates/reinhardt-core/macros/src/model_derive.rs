@@ -1506,18 +1506,14 @@ fn generate_fk_accessor_methods(
 					db: &#orm_crate::connection::DatabaseConnection
 				) -> #core_crate::exception::Result<Option<#target_ty>> {
 					use #orm_crate::Model;
-					use #orm_crate::{FilterOperator, FilterValue};
 
 					// Get FK _id value (getter returns &PrimaryKey)
 					let fk_id = self.#fk_id_field_name();
 
-					// Query the target model using the FK _id
+					// Query the target model using the FK _id via the typed
+					// `FieldRef::eq` builder (Issue #4650).
 					#target_ty::objects()
-						.filter(
-							#target_ty::field_id(),
-							FilterOperator::Eq,
-							FilterValue::String(fk_id.to_string())
-						)
+						.filter(#target_ty::field_id().eq(fk_id.to_string()))
 						.first_with_db(db)
 						.await
 				}
@@ -2698,8 +2694,7 @@ fn generate_registration_code(
 			params.push(quote! { .with_param("max_length", #ml_str) });
 		}
 		if let Some(null) = config.null {
-			let null_str = null.to_string();
-			params.push(quote! { .with_param("null", #null_str) });
+			params.push(quote! { .with_nullable(#null) });
 		}
 		if let Some(unique) = config.unique
 			&& unique
@@ -2721,8 +2716,7 @@ fn generate_registration_code(
 		if config.null.is_none() {
 			let (is_option, _) = extract_option_type(&field_info.ty);
 			let nullable = !config.primary_key && is_option;
-			let null_str = nullable.to_string();
-			params.push(quote! { .with_param("null", #null_str) });
+			params.push(quote! { .with_nullable(#nullable) });
 		}
 		// auto_increment: explicit value or default true for integer PKs
 		if config.primary_key && is_integer_primary_key_type(&field_info.ty) {

@@ -17,11 +17,10 @@
 //!   `wasm-pack test --headless --chrome crates/reinhardt-pages \
 //!        --features wasm-diag-test -- --test history_state_shape_test`
 #![cfg(wasm)]
-#![allow(deprecated)]
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::Page;
 use reinhardt_pages::page;
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 wasm_bindgen_test_configure!(run_in_browser);
@@ -41,8 +40,8 @@ fn install_app_root() -> web_sys::Element {
 	document.body().unwrap().append_child(&root).unwrap();
 	root
 }
-fn build_router() -> Router {
-	Router::new()
+fn build_router() -> ClientRouter {
+	ClientRouter::new()
 		.named_route("dashboard:home", "/", home_page)
 		.named_route("clusters:list", "/clusters", clusters_page)
 }
@@ -85,10 +84,17 @@ fn raw_history_state() -> JsValue {
 async fn history_state_is_object_after_router_push() {
 	let _root = install_app_root();
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
-	with_router(|r| r.push("/clusters")).expect("push /clusters");
+	// Drive a programmatic navigation, mirroring the link-interceptor's
+	// `with_spa_router(|r| r.push(href))` call site exactly.
+	with_spa_router(|r| r.push("/clusters")).expect("push /clusters");
+
+	// Yield once so any async observers / scheduler tasks settle before
+	// we read `history.state`. The state assertions below are independent
+	// of observer ordering, but yielding keeps the failure shape stable
+	// across runs.
 	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
 	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 	let state = raw_history_state();
@@ -130,10 +136,10 @@ async fn history_state_is_object_after_router_push() {
 async fn history_state_is_object_after_router_replace() {
 	let _root = install_app_root();
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
-	with_router(|r| r.replace("/clusters")).expect("replace /clusters");
+	with_spa_router(|r| r.replace("/clusters")).expect("replace /clusters");
 	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
 	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 	let state = raw_history_state();

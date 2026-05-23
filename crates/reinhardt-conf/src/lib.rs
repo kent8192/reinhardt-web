@@ -18,17 +18,18 @@
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use reinhardt_conf::Settings;
+//! use reinhardt_conf::settings::builder::SettingsBuilder;
+//! use reinhardt_conf::settings::sources::TomlFileSource;
+//! use std::path::PathBuf;
 //!
-//! // Create settings with defaults and override specific fields
-//! #[allow(deprecated)]
-//! let mut settings = Settings::default();
-//! settings.core.secret_key = "my-secret-key".to_string();
-//! settings.core.debug = false;
-//! settings.core.allowed_hosts = vec!["example.com".to_string()];
+//! // Load settings from a TOML configuration file
+//! let settings = SettingsBuilder::new()
+//!     .add_source(TomlFileSource::new(PathBuf::from("config.toml")))
+//!     .build()
+//!     .unwrap();
 //!
-//! assert!(!settings.core.debug);
-//! assert_eq!(settings.core.allowed_hosts[0], "example.com");
+//! let debug: bool = settings.get("debug").unwrap_or(false);
+//! assert!(!debug);
 //! ```
 //!
 //! ## Architecture
@@ -69,8 +70,7 @@ pub mod settings;
 
 // Re-export commonly used types at the crate root for convenience
 #[cfg(feature = "settings")]
-#[allow(deprecated)] // Settings is deprecated but re-exported for backward compatibility
-pub use settings::{DatabaseConfig, MiddlewareConfig, Settings, TemplateConfig};
+pub use settings::{DatabaseConfig, MiddlewareConfig, TemplateConfig};
 
 // Re-export third-party types used in macro-generated code.
 // The `#[settings(...)]` composition macro generates `ComposedSettings` impls

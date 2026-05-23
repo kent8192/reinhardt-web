@@ -85,6 +85,7 @@
 - Create upstream issue before implementing any workaround for external dependency bugs (WP-2)
 - Include the ideal implementation as a comment when introducing workaround code (WP-3)
 - Create a tracking issue in reinhardt-web for every upstream dependency issue with `upstream-tracking` label (UR-4)
+- When removing deprecated APIs, DELETE the code and update all callers — never use `#[cfg(any())]` or other conditional compilation gates to preserve dead code
 - Apply `good first issue` only when all GFI-1 criteria are met (single crate, ≤3 files, unambiguous fix)
 - Ensure issue description has file paths, expected behavior, and verification steps before applying `good first issue` (GFI-4)
 
@@ -110,6 +111,7 @@
 - Create circular dependencies
 - Leave unmarked placeholder implementations
 - Use `#[allow(...)]` without explanatory comments
+- Use `#[cfg(any())]` or similar conditional compilation hacks to "soft-delete" deprecated APIs (delete the code and update callers)
 - Use alternative TODO notations (`FIXME:`, `NOTE:` for unimplemented features)
 - Create batch commits without user confirmation
 - Use relative paths beyond `../`

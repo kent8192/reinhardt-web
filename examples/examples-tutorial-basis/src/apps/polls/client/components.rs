@@ -126,8 +126,11 @@ pub fn polls_detail(question_id: i64) -> Page {
 		div { class : "alert-danger mt-3", { format_server_error(& e) } } } } }) (err) },
 		}, success_url : | _form | links::results(qid),
 	};
+
+	// Bridge load_detail results to form choices via use_effect.
 	{
 		let load_detail_for_effect = load_detail.clone();
+		let load_detail_dep = load_detail.clone();
 		let voting_form_for_effect = voting_form.clone();
 		use_effect(
 			move || {
@@ -140,8 +143,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 						.choice_id_choices()
 						.set(choice_options);
 				}
+				}
+				None::<fn()>
 			},
-			(load_detail.clone(),),
+			(load_detail_dep,),
 		);
 	}
 	load_detail.dispatch(qid);
@@ -320,6 +325,7 @@ pub fn question_edit(question_id: i64) -> Page {
 	};
 	{
 		let load_detail_for_effect = load_detail.clone();
+		let load_detail_dep = load_detail.clone();
 		let edit_form_for_effect = edit_form.clone();
 		use_effect(
 			move || {
@@ -328,8 +334,9 @@ pub fn question_edit(question_id: i64) -> Page {
 						.question_text()
 						.set(question.question_text.clone());
 				}
+				None::<fn()>
 			},
-			(load_detail.clone(),),
+			(load_detail_dep,),
 		);
 	}
 	let load_detail_signal = load_detail.clone();

@@ -311,11 +311,6 @@ macro_rules! authenticated_test_case {
                 "id": 1,
                 "username": "testuser",
             });
-            {
-                let client = $case.client().await;
-                #[allow(deprecated)]
-                client.force_authenticate(Some($user.clone())).await;
-            }
 
             // Run test
             $body
