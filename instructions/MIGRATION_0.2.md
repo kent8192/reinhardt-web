@@ -1,142 +1,87 @@
 # Migration Guide: 0.1.0 → 0.2.0
 
-This guide enumerates every public API removed (or, in one case,
-converted to a type alias) on the path from `0.1.0-rc.*` to `0.2.0`.
-
-See umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)
-for the full rationale and PR tracker. See companion Issue
-[#4652](https://github.com/kent8192/reinhardt-web/issues/4652) for the
-`CurrentUser → AuthUser` unification (delivered as part of `reinhardt-auth`).
-
-> **Status:** This file is filled in incrementally as each per-crate PR
-> lands. Empty sections below are placeholders for upcoming PRs.
-
----
+Umbrella tracker: [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+Companion: [#4652](https://github.com/kent8192/reinhardt-web/issues/4652).
 
 ## Quick removal index
 
-| Crate | PR | Status | Section |
-|---|---|---|---|
-| `reinhardt-core` | TBD | ⏳ pending | [reinhardt-core](#reinhardt-core) |
-| `reinhardt-query` | TBD | 🔄 in progress | [reinhardt-query](#reinhardt-query) |
-| `reinhardt-di` | TBD | ⏳ pending | [reinhardt-di](#reinhardt-di) |
-| `reinhardt-conf` | TBD | ⏳ pending | [reinhardt-conf](#reinhardt-conf) |
-| `reinhardt-db` | TBD | ⏳ pending | [reinhardt-db](#reinhardt-db) |
-| `reinhardt-auth` | TBD | ⏳ pending | [reinhardt-auth](#reinhardt-auth) |
-| `reinhardt-rest` | TBD | ⏳ pending | [reinhardt-rest](#reinhardt-rest) |
-| `reinhardt-urls` | TBD | ⏳ pending | [reinhardt-urls](#reinhardt-urls) |
-| `reinhardt-pages` | TBD | ⏳ pending | [reinhardt-pages](#reinhardt-pages) |
-| `reinhardt-testkit` | TBD | ⏳ pending | [reinhardt-testkit](#reinhardt-testkit) |
-| `reinhardt-test` | TBD | ⏳ pending | [reinhardt-test](#reinhardt-test) |
-| `reinhardt-admin` | TBD | ⏳ pending | [reinhardt-admin](#reinhardt-admin) |
-
-Legend: ✅ done · ⏳ pending · 🔄 in progress
+| Crate | Status |
+|---|---|
+| reinhardt-core / -query / -di / -conf (partial) / -db | shipped via PRs #4713 / #4717 / #4722 / #4728 / #4729 |
+| reinhardt-auth + #4652 | 🔄 this PR |
+| (others) | ⏳ pending |
 
 ---
 
-## reinhardt-core
+## reinhardt-auth (closes #4652)
 
-Section to be populated by PR #1.
+### `CurrentUser<U>` → `AuthUser<U>` (closes #4652)
 
----
-
-## reinhardt-query
-
-PR: TBD · Closes part of [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
-
-### `SeaRc<T>` type alias removed
-
-Deprecated since `0.1.0-rc.16`. The alias was a transitional shim
-left over from the SeaQuery → `reinhardt-query` fork; the canonical
-name has been [`SharedRc`](../crates/reinhardt-query/src/types/iden.rs)
-since 0.1.0-rc.16, and the alias is now gone.
-
-`SharedRc<T>` expands to:
-
-- `std::sync::Arc<T>` with the `thread-safe` feature enabled
-- `std::rc::Rc<T>` without it (lower overhead in single-threaded contexts)
-
-**Before:**
+Deprecated since `0.1.0-rc.12`. The `current_user` module is removed
+entirely. **`CurrentUser` is not a type alias** — its shape differs
+from `AuthUser`, so pattern-match call sites need restructuring.
 
 ```rust
-use reinhardt_query::SeaRc;
+// Before
+async fn handler(current_user: CurrentUser<DefaultUser>) -> Response {
+    if current_user.is_authenticated() {
+        let user = current_user.user()?;
+        let id = current_user.id()?;
+        // ...
+    }
+}
 
-let iden: SeaRc<dyn Iden> = SeaRc::new(MyTable);
+// After
+async fn handler(auth_user: AuthUser<MyUser>) -> Response {
+    let user: &MyUser = &auth_user.0;
+    let id = user.id();
+    // ...
+}
 ```
 
-**After:**
+For anonymous-user handling, branch on the `AuthUser<U>` extractor
+result at the framework level (return 401 / redirect via guards)
+rather than carrying an `Option<U>` payload inside the extractor.
+
+### `DefaultUser` → `#[user]` macro
+
+Deprecated since `0.1.0-rc.15`. Define your own user struct:
 
 ```rust
-use reinhardt_query::SharedRc;
+// Before
+use reinhardt_auth::DefaultUser;
 
-let iden: SharedRc<dyn Iden> = SharedRc::new(MyTable);
+// After
+use reinhardt_auth::user;
+
+#[user]
+pub struct MyUser {
+    pub username: String,
+    pub email: String,
+    // ...
+}
 ```
 
-The `pub use iden::SeaRc;` re-export in `crates/reinhardt-query/src/types.rs`
-is also dropped, so paths that imported the alias via the crate root
-(`reinhardt_query::SeaRc`) must switch to `reinhardt_query::SharedRc`.
+### `User` trait + `SimpleUser` + `AnonymousUser` → composable trait stack
 
-No in-tree call sites referenced `SeaRc`, so no examples or
-integration tests required migration as part of this PR.
+Deprecated since `0.1.0-rc.15`. The `core::user` module is gone. Use:
 
----
+- `AuthIdentity` for the identity claim
+- `BaseUser` / `FullUser` for user model traits
+- `PermissionsMixin` for authorization checks
 
-## reinhardt-di
+### Consumer migration follow-up
 
-Section to be populated by PR #3.
+The following workspace crates still reference the removed symbols and
+need a follow-up PR to migrate:
 
----
+- `crates/reinhardt-middleware/src/auth.rs`
+- `crates/reinhardt-rest/src/serializers/model_serializer.rs`
+- `crates/reinhardt-http/src/auth_state.rs`
+- `crates/reinhardt-views/src/viewsets/handler/model_view_set_handler.rs`
+- `crates/reinhardt-di/src/lib.rs` (User-related re-export, if any)
+- `examples/examples-tutorial-basis/apps/polls/di.rs` (per #4652
+  companion-PR section)
 
-## reinhardt-conf
-
-Section to be populated by PR #4.
-
----
-
-## reinhardt-db
-
-Section to be populated by PR #5.
-
----
-
-## reinhardt-auth
-
-### CurrentUser → AuthUser (closes #4652)
-
-Section to be populated by PR #6.
-
----
-
-## reinhardt-rest
-
-Section to be populated by PR #7.
-
----
-
-## reinhardt-urls
-
-Section to be populated by PR #8.
-
----
-
-## reinhardt-pages
-
-Section to be populated by PR #9.
-
----
-
-## reinhardt-testkit
-
-Section to be populated by PR #10.
-
----
-
-## reinhardt-test
-
-Section to be populated by PR #11.
-
----
-
-## reinhardt-admin
-
-Section to be populated by PR #12.
+CI on this PR is expected to surface those compile errors so the
+follow-up PR has a complete punch list.
