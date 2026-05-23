@@ -39,6 +39,13 @@ use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 
+#[cfg(feature = "routers")]
+use {
+    http_body_util::{BodyExt, Limited},
+    reinhardt_http::Handler,
+    reinhardt_urls::routers::get_router,
+};
+
 #[derive(Parser, Debug)]
 #[command(name = "runserver")]
 #[command(about = "Starts the development server", long_about = None)]
@@ -265,19 +272,83 @@ fn load_settings() -> Settings {
 	}
 }
 
+#[cfg(feature = "routers")]
+async fn dispatch_through_router(
+	req: hyper::Request<hyper::body::Incoming>,
+	remote_addr: std::net::SocketAddr,
+) -> Option<hyper::Response<Full<Bytes>>> {
+	const MAX_BODY: usize = 10 * 1024 * 1024; // 10 MiB
+	let router = get_router()?;
+
+	let (parts, body) = req.into_parts();
+	let body_bytes = match Limited::new(body, MAX_BODY).collect().await {
+		Ok(collected) => collected.to_bytes(),
+		Err(_) => return None,
+	};
+	let request = match reinhardt_http::Request::builder()
+		.method(parts.method)
+		.uri(parts.uri)
+		.version(parts.version)
+		.headers(parts.headers)
+		.body(body_bytes)
+		.remote_addr(remote_addr)
+		.build()
+	{
+		Ok(r) => r,
+		Err(_) => return None,
+	};
+
+	match router.handle(request).await {
+		Ok(response) => {
+			if response.status == hyper::StatusCode::NOT_FOUND
+				|| response.status == hyper::StatusCode::METHOD_NOT_ALLOWED
+			{
+				return None;
+			}
+			let mut hyper_resp = hyper::Response::builder().status(response.status);
+			for (key, value) in response.headers.iter() {
+				hyper_resp = hyper_resp.header(key, value);
+			}
+			hyper_resp.body(Full::new(response.body)).ok()
+		}
+		Err(e) => {
+			let response = reinhardt_http::Response::from(e);
+			if response.status == hyper::StatusCode::NOT_FOUND
+				|| response.status == hyper::StatusCode::METHOD_NOT_ALLOWED
+			{
+				return None;
+			}
+			let mut hyper_resp = hyper::Response::builder().status(response.status);
+			for (key, value) in response.headers.iter() {
+				hyper_resp = hyper_resp.header(key, value);
+			}
+			hyper_resp.body(Full::new(response.body)).ok()
+		}
+	}
+}
+
 async fn handle_request(
 	req: Request<Incoming>,
 	settings: Arc<Settings>,
 	spa_index: Option<Arc<PathBuf>>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-	let path = req.uri().path();
+	let path = req.uri().path().to_string();
+
+	// Route dispatch through registered ServerRouter
+	#[cfg(feature = "routers")]
+	{
+		let remote_addr = "127.0.0.1:0".parse().unwrap();
+		if let Some(response) = dispatch_through_router(req, remote_addr).await {
+			return Ok(response);
+		}
+	}
 
 	// Serve static files in debug mode from staticfiles_dirs
 	if settings.core.debug && path.starts_with(&settings.static_url) {
 		// Strip static_url prefix to get relative path
 		let relative_path = match path.strip_prefix(&settings.static_url) {
 			Some(p) => p,
-			None => path,
+			None => path.as_str(),
 		};
 		let relative_path = relative_path.trim_start_matches('/');
 
