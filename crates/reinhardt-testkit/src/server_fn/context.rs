@@ -15,7 +15,9 @@
 //! #[tokio::test]
 //! async fn test_protected_endpoint(singleton_scope: Arc<SingletonScope>) {
 //!     let ctx = ServerFnTestContext::new(singleton_scope)
-//!         .with_authenticated_user(TestUser::admin())
+//!         .auth()
+//!             .session(&TestUser::admin())
+//!         .done()
 //!         .with_transaction_rollback()
 //!         .build();
 //!
@@ -60,7 +62,9 @@ pub enum TransactionMode {
 ///
 /// ```rust,ignore
 /// let ctx = ServerFnTestContext::new(singleton_scope)
-///     .with_authenticated_user(TestUser::authenticated("alice"))
+///     .auth()
+///         .session(&TestUser::authenticated("alice"))
+///     .done()
 ///     .with_permissions(vec!["read", "write"])
 ///     .with_csrf_token("test-token")
 ///     .build();

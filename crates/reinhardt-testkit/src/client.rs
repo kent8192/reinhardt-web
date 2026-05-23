@@ -488,7 +488,7 @@ impl APIClient {
 
 	/// Clear all authentication state (session cookies, auth headers, stored user).
 	///
-	/// This is the replacement for `force_authenticate(None)`.
+	/// Clears the current authenticated user and all related authentication state.
 	pub async fn logout(&self) -> ClientResult<()> {
 		self.clear_auth().await
 	}
