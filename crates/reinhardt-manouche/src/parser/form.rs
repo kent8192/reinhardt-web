@@ -42,13 +42,14 @@ fn parse_optional_field_type_generics(
 		return Ok(None);
 	}
 	let _: Token![<] = input.parse()?;
+	if input.peek(Token![>]) {
+		return Err(syn::Error::new(
+			field_type_span,
+			"expected at least one type argument inside `<...>`",
+		));
+	}
 	let args: syn::punctuated::Punctuated<syn::Type, Token![,]> =
-		syn::punctuated::Punctuated::parse_separated_nonempty(input).map_err(|_| {
-			syn::Error::new(
-				field_type_span,
-				"expected at least one type argument inside `<...>`",
-			)
-		})?;
+		syn::punctuated::Punctuated::parse_separated_nonempty(input)?;
 	let _: Token![>] = input.parse()?;
 	Ok(Some(args))
 }
