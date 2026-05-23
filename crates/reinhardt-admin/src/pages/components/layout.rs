@@ -169,7 +169,7 @@ pub fn footer(version: &str) -> Page {
 /// let models = vec![
 ///     ModelInfo { name: "Users".to_string(), url: "/admin/users/".to_string() },
 /// ];
-/// let router = Arc::new(Router::new());
+/// let router = Arc::new(ClientRouter::new());
 /// main_layout("My Admin", &models, None, "0.1.0", router)
 /// ```
 // (Refs #4234) Migration to reinhardt_urls::routers::ClientRouter pending separate follow-up issue.
