@@ -39,7 +39,7 @@ pub struct Deps(SmallVec<[NodeId; 8]>);
 impl Deps {
 	// See struct-level note: consumed by Task 5 / Task 6.
 	#[allow(dead_code)]
-	pub(crate) fn as_slice(&self) -> &[NodeId] {
+	pub fn as_slice(&self) -> &[NodeId] {
 		&self.0
 	}
 
