@@ -2,9 +2,11 @@
 //!
 //! These types are used for communication between the WASM client and the server.
 //! All types must be serializable with serde.
+
 use chrono::{DateTime, Utc};
 use reinhardt::dto;
 use serde::{Deserialize, Serialize};
+
 /// User information (DTO)
 ///
 /// Returned by the authentication server functions. Mirrors the public-facing
@@ -16,6 +18,7 @@ pub struct UserInfo {
 	pub username: String,
 	pub is_active: bool,
 }
+
 /// Login request (DTO)
 ///
 /// Sent from the WASM client to the server when submitting the login form.
@@ -33,9 +36,11 @@ pub struct LoginRequest {
 		message = "Username must be between 1 and 150 characters"
 	))]
 	pub username: String,
+
 	#[validate(length(min = 1, message = "Password must not be empty"))]
 	pub password: String,
 }
+
 /// Register request (DTO)
 ///
 /// Sent from the WASM client to the server when submitting the sign-up form.
@@ -58,14 +63,17 @@ pub struct RegisterRequest {
 		message = "Username must be between 1 and 150 characters"
 	))]
 	pub username: String,
+
 	#[validate(length(min = 8, message = "Password must be at least 8 characters"))]
 	pub password: String,
+
 	#[validate(length(
 		min = 8,
 		message = "Password confirmation must be at least 8 characters"
 	))]
 	pub password_confirmation: String,
 }
+
 #[cfg(native)]
 impl RegisterRequest {
 	/// Confirm that `password` and `password_confirmation` match.
@@ -84,6 +92,7 @@ impl RegisterRequest {
 		}
 	}
 }
+
 /// Question information (DTO)
 ///
 /// This is a Data Transfer Object that represents a poll question.
@@ -98,6 +107,7 @@ pub struct QuestionInfo {
 	/// ownership before performing any mutation.
 	pub author_id: i64,
 }
+
 /// Choice information (DTO)
 ///
 /// This is a Data Transfer Object that represents a poll choice.
@@ -109,6 +119,7 @@ pub struct ChoiceInfo {
 	pub choice_text: String,
 	pub votes: i32,
 }
+
 /// Vote request
 ///
 /// Sent from client when user votes for a choice.
@@ -117,6 +128,10 @@ pub struct VoteRequest {
 	pub question_id: i64,
 	pub choice_id: i64,
 }
+
+// Server-side conversions from models to DTOs
+// These are only compiled on the server side
+
 #[cfg(native)]
 impl From<crate::apps::polls::models::Question> for QuestionInfo {
 	fn from(question: crate::apps::polls::models::Question) -> Self {
@@ -128,9 +143,13 @@ impl From<crate::apps::polls::models::Question> for QuestionInfo {
 		}
 	}
 }
+
 #[cfg(native)]
 impl From<crate::apps::users::models::User> for UserInfo {
 	fn from(user: crate::apps::users::models::User) -> Self {
+		// `#[user]` injects `skip_getter` on the convention fields
+		// (username, is_active, …), so we read them as struct fields rather
+		// than through accessor methods.
 		UserInfo {
 			id: user.id(),
 			username: user.username.clone(),
@@ -138,6 +157,7 @@ impl From<crate::apps::users::models::User> for UserInfo {
 		}
 	}
 }
+
 #[cfg(native)]
 impl From<crate::apps::polls::models::Choice> for ChoiceInfo {
 	fn from(choice: crate::apps::polls::models::Choice) -> Self {

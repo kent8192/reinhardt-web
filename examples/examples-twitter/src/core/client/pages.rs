@@ -29,25 +29,33 @@
 //! Page implementations are kept in `router.rs` for co-location with
 //! route definitions. This module provides a clean public API for
 //! accessing page components.
+
 use reinhardt::pages::component::Page;
+
+// Re-export page functions from router for convenience
+// Note: The actual implementations are in router.rs to keep routes and views together
+
 /// Home/landing page
 ///
 /// Displays a welcome message with links to login and register.
 pub fn home_page() -> Page {
 	crate::core::client::router::home_page_view()
 }
+
 /// Login page
 ///
 /// Displays the login form using the auth component.
 pub fn login_page() -> Page {
 	crate::core::client::router::login_page_view()
 }
+
 /// Register page
 ///
 /// Displays the registration form using the auth component.
 pub fn register_page() -> Page {
 	crate::core::client::router::register_page_view()
 }
+
 /// Profile page
 ///
 /// Displays a user's profile information.
@@ -58,6 +66,7 @@ pub fn register_page() -> Page {
 pub fn profile_page(user_id: uuid::Uuid) -> Page {
 	crate::core::client::router::profile_page_view(user_id)
 }
+
 /// Profile edit page
 ///
 /// Displays the profile editing form.
@@ -68,12 +77,14 @@ pub fn profile_page(user_id: uuid::Uuid) -> Page {
 pub fn profile_edit_page(user_id: uuid::Uuid) -> Page {
 	crate::core::client::router::profile_edit_page_view(user_id)
 }
+
 /// Timeline page
 ///
 /// Displays the tweet timeline with a compose form.
 pub fn timeline_page() -> Page {
 	crate::core::client::router::timeline_page_view()
 }
+
 /// DM chat page
 ///
 /// Displays the DM chat interface for a specific room.
@@ -84,6 +95,7 @@ pub fn timeline_page() -> Page {
 pub fn dm_chat_page(room_id: String) -> Page {
 	crate::core::client::router::dm_chat_page_view(room_id)
 }
+
 /// 404 Not Found page
 ///
 /// Displays an error message for invalid routes.

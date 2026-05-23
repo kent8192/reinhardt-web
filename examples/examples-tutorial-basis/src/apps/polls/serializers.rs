@@ -1,5 +1,6 @@
 use reinhardt::Validate;
 use serde::{Deserialize, Serialize};
+
 /// Serializer for creating/updating questions
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct QuestionSerializer {
@@ -10,6 +11,7 @@ pub struct QuestionSerializer {
 	))]
 	pub question_text: String,
 }
+
 /// Response model for questions
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QuestionResponse {
@@ -18,6 +20,13 @@ pub struct QuestionResponse {
 	pub pub_date: chrono::DateTime<chrono::Utc>,
 	pub was_published_recently: bool,
 }
+
+// `From<&Question>` is the borrowed-input counterpart to the owned-input
+// `From<Question> for QuestionInfo` in `crate::shared::types`. Use this form
+// when the caller still needs the `Question` after the conversion (rendering
+// + auditing on the same instance), and use `QuestionInfo::from(question)`
+// when ownership can be transferred. Both follow the canonical `From` /
+// `Into` idiom — there is no `from_model` factory.
 impl From<&crate::apps::polls::models::Question> for QuestionResponse {
 	fn from(model: &crate::apps::polls::models::Question) -> Self {
 		Self {
@@ -28,10 +37,12 @@ impl From<&crate::apps::polls::models::Question> for QuestionResponse {
 		}
 	}
 }
+
 /// Serializer for creating/updating choices
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ChoiceSerializer {
 	pub question_id: i64,
+
 	#[validate(length(
 		min = 1,
 		max = 200,
@@ -39,6 +50,7 @@ pub struct ChoiceSerializer {
 	))]
 	pub choice_text: String,
 }
+
 /// Response model for choices
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChoiceResponse {
@@ -47,6 +59,7 @@ pub struct ChoiceResponse {
 	pub choice_text: String,
 	pub votes: i32,
 }
+
 impl From<&crate::apps::polls::models::Choice> for ChoiceResponse {
 	fn from(model: &crate::apps::polls::models::Choice) -> Self {
 		Self {
@@ -57,10 +70,12 @@ impl From<&crate::apps::polls::models::Choice> for ChoiceResponse {
 		}
 	}
 }
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
 	#[rstest]
 	fn test_question_serializer_valid() {
 		let serializer = QuestionSerializer {
@@ -68,6 +83,7 @@ mod tests {
 		};
 		assert!(serializer.validate().is_ok());
 	}
+
 	#[rstest]
 	fn test_question_serializer_empty_text() {
 		let serializer = QuestionSerializer {
@@ -75,6 +91,7 @@ mod tests {
 		};
 		assert!(serializer.validate().is_err());
 	}
+
 	#[rstest]
 	fn test_question_serializer_too_long() {
 		let serializer = QuestionSerializer {
@@ -82,6 +99,7 @@ mod tests {
 		};
 		assert!(serializer.validate().is_err());
 	}
+
 	#[rstest]
 	fn test_choice_serializer_valid() {
 		let serializer = ChoiceSerializer {
@@ -90,6 +108,7 @@ mod tests {
 		};
 		assert!(serializer.validate().is_ok());
 	}
+
 	#[rstest]
 	fn test_choice_serializer_empty_text() {
 		let serializer = ChoiceSerializer {

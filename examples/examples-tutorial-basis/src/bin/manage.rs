@@ -6,28 +6,49 @@
 //! try to compile a tokio-based CLI for the browser target. The wasm side
 //! still requires a `main` symbol for `bin` crate-types, so we keep an
 //! empty stub.
+
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
+	// Force-link the parent library so its `#[routes]` /
+	// `#[url_patterns]` `inventory::submit!` registrations (e.g. the
+	// `UrlPatternsRegistration` emitted from `config::urls::routes`)
+	// survive Rust's dead-code elimination. Without an explicit
+	// reference from this binary, the linker drops the library
+	// wholesale and `inventory::iter::<UrlPatternsRegistration>()`
+	// returns an empty set, which the framework surfaces as
+	// "No URL patterns registered" at runtime.
 	use examples_tutorial_basis as _;
 	use reinhardt::commands::execute_from_command_line;
 	use std::process;
+
 	#[tokio::main]
 	pub(super) async fn main() {
+		// SAFETY: Called at program start before any spawned tasks.
 		unsafe {
 			std::env::set_var(
 				"REINHARDT_SETTINGS_MODULE",
 				"examples_tutorial_basis.config.settings",
 			);
 		}
+
+		// The `createsuperuser` management command resolves the registered
+		// `SuperuserCreator` from the framework's inventory at dispatch
+		// time. Since reinhardt-web#4522, any `#[user] + #[model]` struct
+		// (including the tutorial's minimal `User`) auto-registers via
+		// `inventory::submit!`, so no manual `register_superuser_creator`
+		// call is required here.
+
 		if let Err(e) = execute_from_command_line().await {
 			eprintln!("Error: {e}");
 			process::exit(1);
 		}
 	}
 }
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
 	native::main();
 }
+
 #[cfg(target_arch = "wasm32")]
 fn main() {}

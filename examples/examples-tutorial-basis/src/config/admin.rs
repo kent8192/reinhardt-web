@@ -3,8 +3,10 @@
 //! Builds an `AdminSite` and registers per-app `ModelAdmin` configurations
 //! so the Django-style auto-generated admin UI is reachable at `/admin/`.
 //! Mounting and DI wiring happen in `crate::config::urls`.
+
 use crate::apps::polls::admin::{ChoiceAdmin, QuestionAdmin};
 use reinhardt::admin::AdminSite;
+
 /// Configure the admin site and register all polls-app model admins.
 ///
 /// The database connection is supplied later via DI (see
@@ -12,14 +14,17 @@ use reinhardt::admin::AdminSite;
 /// only handles registration metadata.
 pub fn configure_admin() -> AdminSite {
 	let site = AdminSite::new("Polls Tutorial Admin");
+
 	site.configure(|config| {
 		config.site_title = "Polls Tutorial - Admin".into();
 		config.site_header = "Polls Administration".into();
 		config.list_per_page = 25;
 	});
+
 	site.register("Question", QuestionAdmin)
 		.expect("Failed to register QuestionAdmin");
 	site.register("Choice", ChoiceAdmin)
 		.expect("Failed to register ChoiceAdmin");
+
 	site
 }

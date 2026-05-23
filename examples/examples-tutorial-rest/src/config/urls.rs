@@ -18,8 +18,10 @@
 //! module and the per-app `ResolvedUrls::<app>()` accessor — which the
 //! `standalone` flag would suppress — remain available because
 //! `server_only` only gates client/ws emission, not server.
+
 use reinhardt::prelude::*;
 use reinhardt::routes;
+
 #[routes(server_only)]
 pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new().mount("/api/", crate::apps::snippets::urls::url_patterns())

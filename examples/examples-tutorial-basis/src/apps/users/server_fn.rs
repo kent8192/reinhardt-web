@@ -1,27 +1,30 @@
 //! User authentication server functions
 //!
 //! Provides session-cookie-based login/logout and current-user lookup.
-//! Follows the examples-twitter pattern: `SessionData` + `SessionStoreRef`
+//! Follows the examples-twitter pattern: `SessionData` + `Depends<SessionStore>`
 //! are injected, the session ID is regenerated on successful login
 //! (fixation prevention), and `user_id` is persisted in the session map.
+
 use crate::shared::types::UserInfo;
 #[cfg(native)]
 use crate::shared::types::{LoginRequest, RegisterRequest};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+
 #[cfg(native)]
 use {
 	crate::apps::users::models::{User, UserManager},
 	reinhardt::BaseUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
-	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
+	reinhardt::db::orm::Model,
 	reinhardt::di::Depends,
 	reinhardt::middleware::session::{
-		SessionAuthExt, SessionData, SessionStoreRef, USER_ID_SESSION_KEY,
+		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
 	},
 	reinhardt::reinhardt_auth::BaseUserManager,
 	std::collections::HashMap,
 };
+
 /// Authenticate a user by username/password and persist the session.
 ///
 /// `_csrf_token` is appended by `form!` for non-GET forms (reinhardt-web#3337);
@@ -33,38 +36,51 @@ pub async fn login(
 	_csrf_token: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
+
 	let request = LoginRequest { username, password };
+
+	// Run the field-level validators declared on `LoginRequest` before
+	// touching the database — empty/oversized credentials should reject
+	// at the request boundary rather than slip through to the password
+	// comparison below.
 	request
 		.validate()
 		.map_err(|e| ServerFnError::application(format!("Validation failed: {}", e)))?;
+
 	let manager = User::objects();
 	let user = manager
-		.filter(
-			User::field_username(),
-			FilterOperator::Eq,
-			FilterValue::String(request.username.trim().to_string()),
-		)
+		.filter(User::field_username().eq(request.username.trim().to_string()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(401, "Invalid credentials"))?;
+
 	let valid = user
 		.check_password(&request.password)
 		.map_err(|e| ServerFnError::application(format!("Password check failed: {}", e)))?;
+
 	if !valid {
 		return Err(ServerFnError::server(401, "Invalid credentials"));
 	}
+
 	if !user.is_active() {
 		return Err(ServerFnError::server(403, "User account is inactive"));
 	}
+
+	// Session fixation prevention: `SessionAuthExt::login` rotates the session
+	// ID, writes the authenticated user's primary key under
+	// `USER_ID_SESSION_KEY`, deletes the old store entry, and persists the
+	// rotated session in one step. See issue #4446.
 	session
 		.login(&store, user.id())
 		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
+
 	Ok(UserInfo::from(user))
 }
+
 /// Register a new account and start an authenticated session.
 ///
 /// Mirrors `login`'s session-handling: on success the session id is rotated
@@ -92,20 +108,41 @@ pub async fn register(
 	_csrf_token: String,
 	#[inject] user_manager: Depends<UserManager>,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
+
 	let request = RegisterRequest {
 		username,
 		password,
 		password_confirmation,
 	};
+
+	// Field-level validators declared on `RegisterRequest` (length on
+	// username + password, non-empty password_confirmation). Run them
+	// before the password-equality check so a too-short password does
+	// not silently match a too-short confirmation.
 	request
 		.validate()
 		.map_err(|e| ServerFnError::application(format!("Validation failed: {}", e)))?;
+
+	// Password confirmation lives outside the derived `Validate` —
+	// see the `validate_passwords_match` rationale on `RegisterRequest`.
 	request
 		.validate_passwords_match()
 		.map_err(ServerFnError::application)?;
+
+	// Delegate to `UserManager` — it owns the "validate + hash + persist"
+	// pipeline so this server function stays focused on session handling.
+	// Username length, uniqueness, and password strength are all enforced
+	// inside `create_user`; any failure surfaces as a `reinhardt::Error`
+	// that maps to a 400 via `ServerFnError::application`.
+	//
+	// `BaseUserManager::create_user` takes `&mut self`, but DI hands us a
+	// shared `Depends<UserManager>` (an `Arc` under the hood). Clone the
+	// inner manager — its only field is another `Depends<DatabaseConnection>`,
+	// which is itself an `Arc` clone — so this is cheap and gives us the
+	// `&mut` access the trait method needs.
 	let mut user_manager: UserManager = (*user_manager).clone();
 	let saved = user_manager
 		.create_user(
@@ -115,11 +152,17 @@ pub async fn register(
 		)
 		.await
 		.map_err(|e| ServerFnError::application(e.to_string()))?;
+
+	// Match `login`: rotate via `SessionAuthExt::login` so the account is
+	// signed in immediately on successful registration and the `"user_id"`
+	// key stays centralised behind `USER_ID_SESSION_KEY`.
 	session
 		.login(&store, saved.id())
 		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
+
 	Ok(UserInfo::from(saved))
 }
+
 /// Clear the active session.
 ///
 /// `_csrf_token` is appended by `form!` for non-GET forms; see [`login`].
@@ -127,15 +170,24 @@ pub async fn register(
 pub async fn logout(
 	_csrf_token: String,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<(), ServerFnError> {
 	let mut session = session;
+
+	// Only honor logout for sessions that actually carry an authenticated
+	// user; unauthenticated callers with a fresh cookie should not be able
+	// to drive session-store deletes.
 	if session.get::<i64>(USER_ID_SESSION_KEY).is_none() {
 		return Err(ServerFnError::server(401, "Not authenticated"));
 	}
+
+	// `SessionAuthExt::logout` rotates the session id, drops the user-id
+	// key, and persists the rotated session — see the docstring on
+	// `SessionAuthExt` for the rationale on rotation-before-clear.
 	session.logout(&store);
 	Ok(())
 }
+
 /// Return the currently authenticated user, if any.
 #[server_fn]
 pub async fn current_user(
@@ -146,14 +198,12 @@ pub async fn current_user(
 		Some(id) => id,
 		None => return Ok(None),
 	};
+
 	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(user_id),
-		)
+		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
 	Ok(user.map(UserInfo::from))
 }

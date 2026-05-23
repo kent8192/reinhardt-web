@@ -1,19 +1,26 @@
 //! Integration tests for snippets application
+
 #[cfg(with_reinhardt)]
 mod tests {
 	use rstest::*;
 	use sqlx::SqlitePool;
 	use std::sync::Arc;
 	use tempfile::NamedTempFile;
+
 	#[fixture]
 	async fn sqlite_with_migrations() -> (NamedTempFile, Arc<SqlitePool>) {
+		// Create temp file
 		let temp_file = NamedTempFile::new().expect("Failed to create temp file");
 		let db_path = temp_file.path().to_str().unwrap().to_string();
 		let database_url = format!("sqlite://{}?mode=rwc", db_path);
+
+		// Connect to SQLite
 		let pool = SqlitePool::connect(&database_url)
 			.await
 			.expect("Failed to connect to SQLite");
 		let pool = Arc::new(pool);
+
+		// Manual table creation (SQLite)
 		let create_snippets_table = r#"
 			CREATE TABLE IF NOT EXISTS snippets (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,40 +30,58 @@ mod tests {
 				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 			)
 		"#;
+
 		sqlx::query(create_snippets_table)
 			.execute(pool.as_ref())
 			.await
 			.expect("Failed to create snippets table");
+
 		(temp_file, pool)
 	}
+
+	// ============================================================================
+	// Unit Tests (2 tests)
+	// ============================================================================
+
 	#[rstest]
 	fn test_snippet_model() {
 		use examples_tutorial_rest::apps::snippets::models::Snippet;
+
+		// Arrange / Act
 		let snippet = Snippet::new(
 			"Hello World".to_string(),
 			"println!(\"Hello, world!\");".to_string(),
 			"rust".to_string(),
 		);
+
+		// Assert
 		assert_eq!(snippet.title, "Hello World");
 		assert_eq!(snippet.code, "println!(\"Hello, world!\");");
 		assert_eq!(snippet.language, "rust");
 	}
+
 	#[rstest]
 	fn test_snippet_serializer_validation() {
 		use examples_tutorial_rest::apps::snippets::serializers::SnippetSerializer;
 		use reinhardt::Validate;
+
+		// Valid snippet
 		let valid = SnippetSerializer {
 			title: "Valid".to_string(),
 			code: "fn main() {}".to_string(),
 			language: "rust".to_string(),
 		};
 		assert!(valid.validate().is_ok());
+
+		// Invalid: empty title
 		let invalid_title = SnippetSerializer {
 			title: "".to_string(),
 			code: "fn main() {}".to_string(),
 			language: "rust".to_string(),
 		};
 		assert!(invalid_title.validate().is_err());
+
+		// Invalid: empty code
 		let invalid_code = SnippetSerializer {
 			title: "Valid".to_string(),
 			code: "".to_string(),
@@ -64,12 +89,19 @@ mod tests {
 		};
 		assert!(invalid_code.validate().is_err());
 	}
+
+	// ============================================================================
+	// Database Integration Tests - CRUD Operations (4 tests)
+	// ============================================================================
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_create(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create a snippet
 		let result: (i64, String, String, String) = sqlx::query_as(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -83,14 +115,18 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to create snippet");
+
 		assert_eq!(result.1, "Test Snippet");
 		assert_eq!(result.2, "fn main() {}");
 		assert_eq!(result.3, "rust");
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_read(#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>)) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create a snippet
 		let created: (i64,) = sqlx::query_as(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -104,6 +140,8 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to create snippet");
+
+		// Read the snippet
 		let result: (i64, String, String, String) = sqlx::query_as(
 			r#"
 			SELECT id, title, code, language
@@ -115,17 +153,21 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to read snippet");
+
 		assert_eq!(result.0, created.0);
 		assert_eq!(result.1, "Read Test");
 		assert_eq!(result.2, "println!(\"Hello\");");
 		assert_eq!(result.3, "rust");
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_update(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create a snippet
 		let created: (i64,) = sqlx::query_as(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -139,6 +181,8 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to create snippet");
+
+		// Update the snippet
 		let updated: (i64, String, String, String) = sqlx::query_as(
 			r#"
 			UPDATE snippets
@@ -154,17 +198,21 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to update snippet");
+
 		assert_eq!(updated.0, created.0);
 		assert_eq!(updated.1, "Updated Title");
 		assert_eq!(updated.2, "updated code");
 		assert_eq!(updated.3, "javascript");
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_delete(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create a snippet
 		let created: (i64,) = sqlx::query_as(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -178,6 +226,8 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to create snippet");
+
+		// Delete the snippet
 		let deleted_rows = sqlx::query(
 			r#"
 			DELETE FROM snippets
@@ -189,7 +239,10 @@ mod tests {
 		.await
 		.expect("Failed to delete snippet")
 		.rows_affected();
+
 		assert_eq!(deleted_rows, 1);
+
+		// Verify deletion
 		let result: Option<(i64,)> = sqlx::query_as(
 			r#"
 			SELECT id FROM snippets WHERE id = $1
@@ -199,14 +252,22 @@ mod tests {
 		.fetch_optional(pool.as_ref())
 		.await
 		.expect("Failed to verify deletion");
+
 		assert!(result.is_none());
 	}
+
+	// ============================================================================
+	// Database Integration Tests - Query Operations (4 tests)
+	// ============================================================================
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_list_all(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create multiple snippets
 		sqlx::query(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -228,6 +289,8 @@ mod tests {
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to create snippets");
+
+		// List all snippets
 		let snippets: Vec<(i64, String, String, String)> = sqlx::query_as(
 			r#"
 			SELECT id, title, code, language
@@ -238,17 +301,21 @@ mod tests {
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Failed to list snippets");
+
 		assert_eq!(snippets.len(), 3);
 		assert_eq!(snippets[0].1, "Snippet 1");
 		assert_eq!(snippets[1].1, "Snippet 2");
 		assert_eq!(snippets[2].1, "Snippet 3");
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_filter_by_language(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create snippets with different languages
 		sqlx::query(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -270,6 +337,8 @@ mod tests {
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to create snippets");
+
+		// Filter by language
 		let rust_snippets: Vec<(i64, String, String, String)> = sqlx::query_as(
 			r#"
 			SELECT id, title, code, language
@@ -282,16 +351,20 @@ mod tests {
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Failed to filter snippets");
+
 		assert_eq!(rust_snippets.len(), 2);
 		assert_eq!(rust_snippets[0].1, "Rust Snippet");
 		assert_eq!(rust_snippets[1].1, "Another Rust");
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_search_by_title(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create snippets with searchable titles
 		sqlx::query(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -313,6 +386,8 @@ mod tests {
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to create snippets");
+
+		// Search by title pattern
 		let results: Vec<(i64, String, String, String)> = sqlx::query_as(
 			r#"
 			SELECT id, title, code, language
@@ -325,16 +400,20 @@ mod tests {
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Failed to search snippets");
+
 		assert_eq!(results.len(), 2);
 		assert_eq!(results[0].1, "Hello World");
 		assert_eq!(results[1].1, "Goodbye World");
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_pagination(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create 5 snippets
 		for i in 1..=5 {
 			sqlx::query(
 				r#"
@@ -349,6 +428,8 @@ mod tests {
 			.await
 			.expect("Failed to create snippet");
 		}
+
+		// First page (limit 2, offset 0)
 		let page1: Vec<(i64, String, String, String)> = sqlx::query_as(
 			r#"
 			SELECT id, title, code, language
@@ -362,9 +443,12 @@ mod tests {
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Failed to fetch page 1");
+
 		assert_eq!(page1.len(), 2);
 		assert_eq!(page1[0].1, "Snippet 1");
 		assert_eq!(page1[1].1, "Snippet 2");
+
+		// Second page (limit 2, offset 2)
 		let page2: Vec<(i64, String, String, String)> = sqlx::query_as(
 			r#"
 			SELECT id, title, code, language
@@ -378,16 +462,24 @@ mod tests {
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Failed to fetch page 2");
+
 		assert_eq!(page2.len(), 2);
 		assert_eq!(page2[0].1, "Snippet 3");
 		assert_eq!(page2[1].1, "Snippet 4");
 	}
+
+	// ============================================================================
+	// Database Integration Tests - Edge Cases (7 tests)
+	// ============================================================================
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_empty_database(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Query empty database
 		let snippets: Vec<(i64, String, String, String)> = sqlx::query_as(
 			r#"
 			SELECT id, title, code, language
@@ -397,14 +489,18 @@ mod tests {
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Failed to query empty database");
+
 		assert_eq!(snippets.len(), 0);
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_nonexistent_id(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Query with nonexistent ID
 		let result: Option<(i64, String, String, String)> = sqlx::query_as(
 			r#"
 			SELECT id, title, code, language
@@ -416,14 +512,18 @@ mod tests {
 		.fetch_optional(pool.as_ref())
 		.await
 		.expect("Failed to query nonexistent ID");
+
 		assert!(result.is_none());
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_duplicate_title_allowed(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create first snippet
 		sqlx::query(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -436,6 +536,8 @@ mod tests {
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to create first snippet");
+
+		// Create second snippet with same title (should succeed - no unique constraint)
 		let result: Result<(i64,), _> = sqlx::query_as(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -448,7 +550,10 @@ mod tests {
 		.bind("python")
 		.fetch_one(pool.as_ref())
 		.await;
+
 		assert!(result.is_ok());
+
+		// Verify both exist
 		let count: (i64,) = sqlx::query_as(
 			r#"
 			SELECT COUNT(*) as count
@@ -460,14 +565,18 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to count snippets");
+
 		assert_eq!(count.0, 2);
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_count(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create 3 snippets
 		sqlx::query(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -489,6 +598,8 @@ mod tests {
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to create snippets");
+
+		// Count all snippets
 		let total: (i64,) = sqlx::query_as(
 			r#"
 			SELECT COUNT(*) as count
@@ -498,7 +609,10 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to count all snippets");
+
 		assert_eq!(total.0, 3);
+
+		// Count rust snippets
 		let rust_count: (i64,) = sqlx::query_as(
 			r#"
 			SELECT COUNT(*) as count
@@ -510,14 +624,18 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to count rust snippets");
+
 		assert_eq!(rust_count.0, 2);
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_order_by_title(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create snippets with different titles
 		sqlx::query(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -539,6 +657,8 @@ mod tests {
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to create snippets");
+
+		// Order by title ascending
 		let results: Vec<(i64, String, String, String)> = sqlx::query_as(
 			r#"
 			SELECT id, title, code, language
@@ -549,17 +669,21 @@ mod tests {
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Failed to order snippets");
+
 		assert_eq!(results.len(), 3);
 		assert_eq!(results[0].1, "Alice");
 		assert_eq!(results[1].1, "Bob");
 		assert_eq!(results[2].1, "Charlie");
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_language_case_sensitivity(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Create snippets with different case languages
 		sqlx::query(
 			r#"
 			INSERT INTO snippets (title, code, language)
@@ -577,6 +701,8 @@ mod tests {
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to create snippets");
+
+		// Exact match (case-sensitive)
 		let exact: (i64,) = sqlx::query_as(
 			r#"
 			SELECT COUNT(*) as count
@@ -588,7 +714,10 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to count exact match");
+
 		assert_eq!(exact.0, 1);
+
+		// Case-insensitive match
 		let case_insensitive: (i64,) = sqlx::query_as(
 			r#"
 			SELECT COUNT(*) as count
@@ -600,14 +729,18 @@ mod tests {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to count case-insensitive match");
+
 		assert_eq!(case_insensitive.0, 2);
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_update_nonexistent(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
+
+		// Try to update nonexistent snippet
 		let updated_rows = sqlx::query(
 			r#"
 			UPDATE snippets
@@ -621,6 +754,7 @@ mod tests {
 		.await
 		.expect("Failed to update nonexistent snippet")
 		.rows_affected();
+
 		assert_eq!(updated_rows, 0);
 	}
 }

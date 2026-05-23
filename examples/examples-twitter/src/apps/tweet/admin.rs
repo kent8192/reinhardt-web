@@ -1,6 +1,8 @@
 //! Admin configuration for tweet app
+
 use crate::apps::tweet::models::Tweet;
 use reinhardt::admin;
+
 /// Admin configuration for Tweet model
 ///
 /// This configures the admin panel display for Tweet items:
@@ -10,26 +12,16 @@ use reinhardt::admin;
 /// - Sorted by creation date (newest first)
 /// - Read-only fields: id, created_at (auto-generated, not editable)
 /// - 25 items per page
-#[admin(
-    model,
-    for = Tweet,
-    name = "Tweet",
-    list_display = [id,
-    user_id,
-    content,
-    like_count,
-    retweet_count,
-    created_at],
-    fields = [id,
-    user_id,
-    content,
-    created_at],
-    list_filter = [created_at],
-    search_fields = [content],
-    ordering = [(created_at, desc)],
-    readonly_fields = [id,
-    created_at],
-    list_per_page = 25,
-    permissions = allow_all,
+#[admin(model,
+	for = Tweet,
+	name = "Tweet",
+	list_display = [id, user_id, content, like_count, retweet_count, created_at],
+	fields = [id, user_id, content, created_at],
+	list_filter = [created_at],
+	search_fields = [content],
+	ordering = [(created_at, desc)],
+	readonly_fields = [id, created_at],
+	list_per_page = 25,
+	permissions = allow_all,
 )]
 pub struct TweetAdmin;

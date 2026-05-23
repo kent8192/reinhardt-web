@@ -2,9 +2,11 @@
 //!
 //! These types are serializable and can be sent between the WASM client
 //! and the Rust server via server functions.
+
 use reinhardt::dto;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
 /// Tweet information
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,6 +19,7 @@ pub struct TweetInfo {
 	pub retweet_count: i32,
 	pub created_at: String,
 }
+
 impl TweetInfo {
 	/// Create a new TweetInfo instance
 	pub fn new(
@@ -39,6 +42,7 @@ impl TweetInfo {
 		}
 	}
 }
+
 /// Conversion from server-side Tweet model to shared TweetInfo
 #[cfg(native)]
 impl From<crate::apps::tweet::models::Tweet> for TweetInfo {
@@ -46,7 +50,7 @@ impl From<crate::apps::tweet::models::Tweet> for TweetInfo {
 		TweetInfo {
 			id: tweet.id(),
 			user_id: *tweet.user_id(),
-			username: String::new(),
+			username: String::new(), // Will be set by server_fn
 			content: tweet.content().to_string(),
 			like_count: tweet.like_count(),
 			retweet_count: tweet.retweet_count(),
@@ -54,6 +58,7 @@ impl From<crate::apps::tweet::models::Tweet> for TweetInfo {
 		}
 	}
 }
+
 /// Create tweet request
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,7 +2,9 @@
 //!
 //! Provides standardized pagination response format following
 //! the cookbook patterns (docs/cookbook/pagination.en.md).
+
 use reinhardt::core::serde::{Deserialize, Serialize};
+
 /// Paginated response wrapper
 ///
 /// Standard format for paginated API responses with metadata
@@ -18,6 +20,7 @@ pub struct PaginatedResponse<T> {
 	/// Items on the current page
 	pub results: Vec<T>,
 }
+
 impl<T> PaginatedResponse<T> {
 	/// Create a new paginated response
 	///
@@ -36,6 +39,7 @@ impl<T> PaginatedResponse<T> {
 		base_url: &str,
 	) -> Self {
 		let num_pages = total_count.div_ceil(page_size);
+
 		Self {
 			count: total_count,
 			next: if page < num_pages {
@@ -52,6 +56,7 @@ impl<T> PaginatedResponse<T> {
 		}
 	}
 }
+
 /// Query parameters for pagination
 ///
 /// Deserializes pagination parameters from query string.
@@ -63,15 +68,18 @@ pub struct PageQuery {
 	/// Number of items per page, defaults to DEFAULT_PAGE_SIZE
 	pub page_size: Option<usize>,
 }
+
 impl PageQuery {
 	/// Default number of items per page
 	pub const DEFAULT_PAGE_SIZE: usize = 20;
 	/// Maximum allowed page size to prevent excessive queries
 	pub const MAX_PAGE_SIZE: usize = 100;
+
 	/// Get the page number, defaulting to 1
 	pub fn page(&self) -> usize {
 		self.page.unwrap_or(1)
 	}
+
 	/// Get the page size with bounds checking
 	///
 	/// Returns the requested page size clamped to MAX_PAGE_SIZE,
@@ -81,6 +89,7 @@ impl PageQuery {
 			.unwrap_or(Self::DEFAULT_PAGE_SIZE)
 			.min(Self::MAX_PAGE_SIZE)
 	}
+
 	/// Calculate the offset for database queries
 	///
 	/// Returns the number of items to skip based on

@@ -23,9 +23,12 @@
 //! `InstalledApp::polls` (= `"polls"`), so even if endpoints are added
 //! later the aggregating `config/urls.rs` does not need an explicit
 //! `.mount("/polls/", ...)` call.
-use crate::config::apps::InstalledApp;
+
 use reinhardt::ServerRouter;
 use reinhardt::url_patterns;
+
+use crate::config::apps::InstalledApp;
+
 #[url_patterns(InstalledApp::polls, mode = server)]
 pub fn server_url_patterns() -> ServerRouter {
 	ServerRouter::new()

@@ -22,13 +22,15 @@
 //!   `wasm-pack test --headless --chrome crates/reinhardt-pages \
 //!        --features wasm-diag-test \
 //!        -- --test wasm_bindgen_abi_pin_test`
+
 #![cfg(wasm)]
-#![allow(deprecated)]
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
+
 wasm_bindgen_test_configure!(run_in_browser);
+
 /// Mirror of `reinhardt-urls`'s private `HistoryStateJson` wire shape.
 ///
 /// Kept here as a literal copy rather than re-exporting the framework
@@ -44,6 +46,7 @@ struct HistoryStateJson {
 	scroll_x: Option<i32>,
 	scroll_y: Option<i32>,
 }
+
 fn make_state() -> HistoryStateJson {
 	HistoryStateJson {
 		path: "/clusters".to_string(),
@@ -54,10 +57,12 @@ fn make_state() -> HistoryStateJson {
 		scroll_y: None,
 	}
 }
+
 #[wasm_bindgen_test]
 fn serde_wasm_bindgen_to_value_returns_object_not_string() {
 	let state = make_state();
 	let js_value = serde_wasm_bindgen::to_value(&state).expect("to_value");
+
 	assert!(
 		!js_value.is_string(),
 		"#4221 ABI: serde_wasm_bindgen::to_value produced a JS string \
@@ -72,16 +77,20 @@ fn serde_wasm_bindgen_to_value_returns_object_not_string() {
 		js_value
 	);
 }
+
 #[wasm_bindgen_test]
 fn pushstate_round_trip_preserves_object_shape() {
 	let state = make_state();
 	let js_value = serde_wasm_bindgen::to_value(&state).expect("to_value");
+
 	let window = web_sys::window().expect("window");
 	let history = window.history().expect("history");
 	history
 		.push_state_with_url(&js_value, "", Some("/clusters"))
 		.expect("push_state");
+
 	let read_back = history.state().expect("state");
+
 	assert!(
 		!read_back.is_string(),
 		"#4221: history.state is a JS string after push_state. \
@@ -95,5 +104,7 @@ fn pushstate_round_trip_preserves_object_shape() {
 		"#4221: history.state is not is_object() after push_state. Raw: {:?}",
 		read_back
 	);
+
+	// Cleanup so subsequent tests start with a clean slate.
 	let _ = history.replace_state_with_url(&JsValue::NULL, "", Some("/"));
 }

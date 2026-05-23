@@ -2,6 +2,7 @@
 //!
 //! Custom React-like hooks for direct messaging functionality.
 //! These hooks provide reactive state management for the DM UI components.
+
 use crate::apps::dm::shared::types::{MessageInfo, RoomInfo};
 use reinhardt::pages::reactive::Signal;
 use reinhardt::pages::reactive::hooks::{
@@ -10,6 +11,7 @@ use reinhardt::pages::reactive::hooks::{
 };
 use std::rc::Rc;
 use uuid::Uuid;
+
 /// Handle returned by `use_dm_chat` hook
 ///
 /// Provides reactive access to chat state and functions for sending messages.
@@ -26,20 +28,24 @@ pub struct DmChatHandle {
 	/// Function to send a message
 	send_message_fn: Rc<dyn Fn(String)>,
 }
+
 impl DmChatHandle {
 	/// Check if the WebSocket connection is open
 	pub fn is_connected(&self) -> bool {
 		matches!(self.ws.connection_state().get(), ConnectionState::Open)
 	}
+
 	/// Send a text message to the room
 	pub fn send_message(&self, content: String) {
 		(self.send_message_fn)(content);
 	}
+
 	/// Get the current list of messages
 	pub fn get_messages(&self) -> Vec<MessageInfo> {
 		self.messages.get()
 	}
 }
+
 /// Handle returned by `use_dm_room_list` hook
 ///
 /// Provides reactive access to room list state.
@@ -54,16 +60,19 @@ pub struct DmRoomListHandle {
 	/// WebSocket connection for notifications (optional)
 	pub ws: Option<WebSocketHandle>,
 }
+
 impl DmRoomListHandle {
 	/// Get the current list of rooms
 	pub fn get_rooms(&self) -> Vec<RoomInfo> {
 		self.rooms.get()
 	}
+
 	/// Find a room by ID
 	pub fn find_room(&self, room_id: Uuid) -> Option<RoomInfo> {
 		self.rooms.get().into_iter().find(|r| r.id == room_id)
 	}
 }
+
 /// Hook for managing DM chat state
 ///
 /// Provides reactive state management for a single DM room, including:
@@ -93,6 +102,7 @@ impl DmRoomListHandle {
 /// chat.send_message("Hello!".to_string());
 /// ```
 pub fn use_dm_chat(room_id: Uuid) -> DmChatHandle {
+	// WebSocket connection for real-time messaging
 	let ws_url = format!("/ws/dm/{}", room_id);
 	let ws = use_websocket(
 		&ws_url,
@@ -103,9 +113,13 @@ pub fn use_dm_chat(room_id: Uuid) -> DmChatHandle {
 			..Default::default()
 		},
 	);
+
+	// Reactive state
 	let (messages, set_messages) = use_state(Vec::<MessageInfo>::new());
 	let (is_loading, set_loading) = use_state(true);
 	let (error, set_error) = use_state(None::<String>);
+
+	// Initial message loading via create_resource
 	#[cfg(wasm)]
 	{
 		let initial_messages = reinhardt::pages::create_resource(move || async move {
@@ -113,56 +127,76 @@ pub fn use_dm_chat(room_id: Uuid) -> DmChatHandle {
 				.await
 				.map_err(|e| format!("Failed to load messages: {}", e))
 		});
+
 		let set_messages_for_resource = set_messages.clone();
 		let set_loading_for_resource = set_loading.clone();
 		let set_error_for_resource = set_error.clone();
 		let resource_for_effect = initial_messages.clone();
-		use_effect(
-			move || match resource_for_effect.get() {
-				reinhardt::pages::reactive::ResourceState::Loading => {}
-				reinhardt::pages::reactive::ResourceState::Success(msgs) => {
-					set_messages_for_resource(msgs);
-					set_loading_for_resource(false);
-				}
-				reinhardt::pages::reactive::ResourceState::Error(err) => {
-					set_error_for_resource(Some(err));
-					set_loading_for_resource(false);
-				}
-			},
-			(initial_messages.clone(),),
-		);
-	}
-	{
-		let ws_for_effect = ws.clone();
-		let messages_for_effect = messages.clone();
-		let ws_for_deps = ws.clone();
+
+		let resource_for_deps = initial_messages.clone();
 		use_effect(
 			move || {
-				if let Some(WebSocketMessage::Text(text)) = ws_for_effect.latest_message().get() {
-					if let Ok(msg) = serde_json::from_str::<MessageInfo>(&text) {
-						let mut current = messages_for_effect.get();
-						current.push(msg);
-						messages_for_effect.set(current);
+				match resource_for_effect.get() {
+					reinhardt::pages::reactive::ResourceState::Loading => {
+						// Keep loading state
+					}
+					reinhardt::pages::reactive::ResourceState::Success(msgs) => {
+						set_messages_for_resource(msgs);
+						set_loading_for_resource(false);
+					}
+					reinhardt::pages::reactive::ResourceState::Error(err) => {
+						set_error_for_resource(Some(err));
+						set_loading_for_resource(false);
 					}
 				}
-				()
+				None::<fn()>
 			},
-			(ws_for_deps,),
+			(resource_for_deps,),
 		);
 	}
+
+	// Handle incoming WebSocket messages
+	{
+		let ws = ws.clone();
+		let messages = messages.clone();
+		let ws_latest_for_deps = ws.latest_message().clone();
+
+		use_effect(
+			move || {
+				if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+					// Try to parse as MessageInfo
+					if let Ok(msg) = serde_json::from_str::<MessageInfo>(&text) {
+						// Add the new message to the list
+						let mut current = messages.get();
+						current.push(msg);
+						messages.set(current);
+					}
+				}
+				None::<fn()>
+			},
+			(ws_latest_for_deps,),
+		);
+	}
+
+	// Create send message function
 	let send_message_fn: Rc<dyn Fn(String)> = {
 		let ws = ws.clone();
 		let room_id = room_id;
+
 		Rc::new(move |content: String| {
-			let payload = serde_json::json!(
-				{ "type" : "message", "room_id" : room_id.to_string(), "content" :
-				content, }
-			);
+			// Create a message payload for WebSocket
+			let payload = serde_json::json!({
+				"type": "message",
+				"room_id": room_id.to_string(),
+				"content": content,
+			});
+
 			if let Ok(json_str) = serde_json::to_string(&payload) {
 				let _ = ws.send_text(json_str);
 			}
 		})
 	};
+
 	DmChatHandle {
 		messages,
 		is_loading,
@@ -171,6 +205,7 @@ pub fn use_dm_chat(room_id: Uuid) -> DmChatHandle {
 		send_message_fn,
 	}
 }
+
 /// Hook for managing DM room list state
 ///
 /// Provides reactive state management for the list of DM rooms, including:
@@ -194,6 +229,7 @@ pub fn use_dm_chat(room_id: Uuid) -> DmChatHandle {
 /// }
 /// ```
 pub fn use_dm_room_list() -> DmRoomListHandle {
+	// Optional WebSocket for notifications
 	let ws = use_websocket(
 		"/ws/dm/notifications",
 		UseWebSocketOptions {
@@ -203,9 +239,13 @@ pub fn use_dm_room_list() -> DmRoomListHandle {
 			..Default::default()
 		},
 	);
+
+	// Reactive state
 	let (rooms, set_rooms) = use_state(Vec::<RoomInfo>::new());
 	let (is_loading, set_loading) = use_state(true);
 	let (error, set_error) = use_state(None::<String>);
+
+	// Initial room list loading via create_resource
 	#[cfg(wasm)]
 	{
 		let initial_rooms = reinhardt::pages::create_resource(move || async move {
@@ -213,50 +253,61 @@ pub fn use_dm_room_list() -> DmRoomListHandle {
 				.await
 				.map_err(|e| format!("Failed to load rooms: {}", e))
 		});
+
 		let set_rooms_for_resource = set_rooms.clone();
 		let set_loading_for_resource = set_loading.clone();
 		let set_error_for_resource = set_error.clone();
 		let resource_for_effect = initial_rooms.clone();
-		use_effect(
-			move || match resource_for_effect.get() {
-				reinhardt::pages::reactive::ResourceState::Loading => {}
-				reinhardt::pages::reactive::ResourceState::Success(rooms) => {
-					set_rooms_for_resource(rooms);
-					set_loading_for_resource(false);
-				}
-				reinhardt::pages::reactive::ResourceState::Error(err) => {
-					set_error_for_resource(Some(err));
-					set_loading_for_resource(false);
-				}
-			},
-			(initial_rooms.clone(),),
-		);
-	}
-	{
-		let ws_for_effect = ws.clone();
-		let rooms_for_effect = rooms.clone();
-		let ws_for_deps = ws.clone();
+
+		let resource_for_deps = initial_rooms.clone();
 		use_effect(
 			move || {
-				if let Some(WebSocketMessage::Text(text)) = ws_for_effect.latest_message().get() {
-					if let Ok(notification) = serde_json::from_str::<NewMessageNotification>(&text)
-					{
-						let mut current = rooms_for_effect.get();
-						if let Some(room) =
-							current.iter_mut().find(|r| r.id == notification.room_id)
-						{
+				match resource_for_effect.get() {
+					reinhardt::pages::reactive::ResourceState::Loading => {
+						// Keep loading state
+					}
+					reinhardt::pages::reactive::ResourceState::Success(rooms) => {
+						set_rooms_for_resource(rooms);
+						set_loading_for_resource(false);
+					}
+					reinhardt::pages::reactive::ResourceState::Error(err) => {
+						set_error_for_resource(Some(err));
+						set_loading_for_resource(false);
+					}
+				}
+				None::<fn()>
+			},
+			(resource_for_deps,),
+		);
+	}
+
+	// Handle notification updates from WebSocket
+	{
+		let ws = ws.clone();
+		let rooms = rooms.clone();
+		let ws_latest_for_deps = ws.latest_message().clone();
+
+		use_effect(
+			move || {
+				if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+					// Parse notification message
+					if let Ok(notification) = serde_json::from_str::<NewMessageNotification>(&text) {
+						// Update the affected room's unread count and last message
+						let mut current = rooms.get();
+						if let Some(room) = current.iter_mut().find(|r| r.id == notification.room_id) {
 							room.last_message = Some(notification.message_preview.clone());
 							room.last_activity = Some(notification.timestamp.clone());
 							room.unread_count += 1;
 						}
-						rooms_for_effect.set(current);
+						rooms.set(current);
 					}
 				}
-				()
+				None::<fn()>
 			},
-			(ws_for_deps,),
+			(ws_latest_for_deps,),
 		);
 	}
+
 	DmRoomListHandle {
 		rooms,
 		is_loading,
@@ -264,6 +315,7 @@ pub fn use_dm_room_list() -> DmRoomListHandle {
 		ws: Some(ws),
 	}
 }
+
 /// Notification message for new DM messages
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct NewMessageNotification {

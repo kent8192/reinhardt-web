@@ -12,8 +12,10 @@
 //! `ResolvedUrls::from_global()` lookups resolve in components and the
 //! nav bar, and installs the router as the SPA mount on `#root`. Refs
 //! #4453.
+
 use reinhardt::pages::ClientLauncher;
 use wasm_bindgen::prelude::*;
+
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
 	ClientLauncher::new("#root")

@@ -2,9 +2,7 @@
 //!
 //! Provides factory functions for creating Users and Profiles in the database
 //! with proper password hashing and relationships.
-use crate::apps::auth::models::User;
-use crate::apps::profile::models::Profile;
-use crate::test_utils::fixtures::users::TestTwitterUser;
+
 use chrono::Utc;
 use reinhardt::db::orm::{
 	Alias, Expr, ExprTrait, IntoValue, PostgresQueryBuilder, Query, QueryBuilderValue as Value,
@@ -14,6 +12,11 @@ use reinhardt::{Argon2Hasher, PasswordHasher};
 use rstest::*;
 use sqlx::PgPool;
 use uuid::Uuid;
+
+use crate::apps::auth::models::User;
+use crate::apps::profile::models::Profile;
+use crate::test_utils::fixtures::users::TestTwitterUser;
+
 /// Factory for creating User records in the database.
 ///
 /// Uses reinhardt-query for SQL construction and Argon2 for password hashing.
@@ -21,11 +24,13 @@ use uuid::Uuid;
 pub struct UserFactory {
 	hasher: Argon2Hasher,
 }
+
 impl Default for UserFactory {
 	fn default() -> Self {
 		Self::new()
 	}
 }
+
 impl UserFactory {
 	/// Create a new UserFactory with default hasher.
 	pub fn new() -> Self {
@@ -33,6 +38,7 @@ impl UserFactory {
 			hasher: Argon2Hasher,
 		}
 	}
+
 	/// Create a user in the database from TestTwitterUser data.
 	///
 	/// Hashes the password and inserts the user record.
@@ -45,6 +51,7 @@ impl UserFactory {
 			.hasher
 			.hash(&test_user.password)
 			.expect("Password hashing should not fail");
+
 		let sql = Query::insert()
 			.into_table(Alias::new("auth_user"))
 			.columns([
@@ -68,9 +75,13 @@ impl UserFactory {
 				test_user.bio.clone().into_value(),
 			])
 			.to_string(PostgresQueryBuilder);
+
 		sqlx::query(&sql).execute(pool).await?;
+
+		// Return the created user by fetching it
 		self.find_by_id(pool, test_user.id).await
 	}
+
 	/// Create a user with custom data.
 	pub async fn create(
 		&self,
@@ -82,13 +93,16 @@ impl UserFactory {
 		let test_user = TestTwitterUser::new(username)
 			.with_email(email)
 			.with_password(password);
+
 		self.create_from_test_user(pool, &test_user).await
 	}
+
 	/// Create a user with default values.
 	pub async fn create_default(&self, pool: &PgPool) -> Result<User, sqlx::Error> {
 		self.create_from_test_user(pool, &TestTwitterUser::default())
 			.await
 	}
+
 	/// Find a user by ID.
 	pub async fn find_by_id(&self, pool: &PgPool, id: Uuid) -> Result<User, sqlx::Error> {
 		let sql = Query::select()
@@ -106,8 +120,10 @@ impl UserFactory {
 			.from(Alias::new("auth_user"))
 			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
+
 		sqlx::query_as::<_, User>(&sql).fetch_one(pool).await
 	}
+
 	/// Find a user by username.
 	pub async fn find_by_username(
 		&self,
@@ -129,21 +145,26 @@ impl UserFactory {
 			.from(Alias::new("auth_user"))
 			.and_where(Expr::col(Alias::new("username")).eq(Expr::val(username)))
 			.to_string(PostgresQueryBuilder);
+
 		sqlx::query_as::<_, User>(&sql).fetch_one(pool).await
 	}
 }
+
 /// Factory for creating Profile records in the database.
 pub struct ProfileFactory;
+
 impl Default for ProfileFactory {
 	fn default() -> Self {
 		Self::new()
 	}
 }
+
 impl ProfileFactory {
 	/// Create a new ProfileFactory.
 	pub fn new() -> Self {
 		Self
 	}
+
 	/// Create a profile for the given user.
 	pub async fn create_for_user(
 		&self,
@@ -154,6 +175,7 @@ impl ProfileFactory {
 	) -> Result<Profile, sqlx::Error> {
 		let id = Uuid::now_v7();
 		let now = Utc::now();
+
 		let sql = Query::insert()
 			.into_table(Alias::new("profile_profile"))
 			.columns([
@@ -177,9 +199,12 @@ impl ProfileFactory {
 				Value::from(now),
 			])
 			.to_string(PostgresQueryBuilder);
+
 		sqlx::query(&sql).execute(pool).await?;
+
 		self.find_by_id(pool, id).await
 	}
+
 	/// Create a profile with default values.
 	pub async fn create_default_for_user(
 		&self,
@@ -188,6 +213,7 @@ impl ProfileFactory {
 	) -> Result<Profile, sqlx::Error> {
 		self.create_for_user(pool, user_id, "", "").await
 	}
+
 	/// Find a profile by ID.
 	pub async fn find_by_id(&self, pool: &PgPool, id: Uuid) -> Result<Profile, sqlx::Error> {
 		let sql = Query::select()
@@ -204,8 +230,10 @@ impl ProfileFactory {
 			.from(Alias::new("profile_profile"))
 			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
+
 		sqlx::query_as::<_, Profile>(&sql).fetch_one(pool).await
 	}
+
 	/// Find a profile by user ID.
 	pub async fn find_by_user_id(
 		&self,
@@ -226,23 +254,28 @@ impl ProfileFactory {
 			.from(Alias::new("profile_profile"))
 			.and_where(Expr::col(Alias::new("user_id")).eq(Expr::val(user_id)))
 			.to_string(PostgresQueryBuilder);
+
 		sqlx::query_as::<_, Profile>(&sql).fetch_one(pool).await
 	}
 }
+
 /// rstest fixture providing a UserFactory.
 #[fixture]
 pub fn user_factory() -> UserFactory {
 	UserFactory::new()
 }
+
 /// rstest fixture providing a ProfileFactory.
 #[fixture]
 pub fn profile_factory() -> ProfileFactory {
 	ProfileFactory::new()
 }
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::test_utils::fixtures::database::twitter_db_pool;
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_user_factory_create(
@@ -250,15 +283,18 @@ mod tests {
 		user_factory: UserFactory,
 	) {
 		let (pool, _url) = twitter_db_pool.await;
+
 		let test_user = TestTwitterUser::new("factoryuser");
 		let user = user_factory
 			.create_from_test_user(&pool, &test_user)
 			.await
 			.expect("User creation should succeed");
+
 		assert_eq!(user.username, "factoryuser");
 		assert_eq!(user.email, "factoryuser@example.com");
 		assert!(user.is_active);
 	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_profile_factory_create(
@@ -267,11 +303,13 @@ mod tests {
 		profile_factory: ProfileFactory,
 	) {
 		let (pool, _url) = twitter_db_pool.await;
+
 		let test_user = TestTwitterUser::new("profileuser");
 		let user = user_factory
 			.create_from_test_user(&pool, &test_user)
 			.await
 			.expect("User creation should succeed");
+
 		let profile = profile_factory
 			.create_for_user(
 				&pool,
@@ -281,6 +319,7 @@ mod tests {
 			)
 			.await
 			.expect("Profile creation should succeed");
+
 		assert_eq!(profile.user_id(), user.id());
 		assert_eq!(profile.bio(), "Test bio");
 		assert_eq!(profile.avatar_url(), "https://example.com/avatar.png");

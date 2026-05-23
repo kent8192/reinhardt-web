@@ -1,9 +1,11 @@
 //! DM shared types
 //!
 //! Types shared between client and server for direct messaging.
+
 use reinhardt::dto;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
 /// Information about a DM room
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +25,7 @@ pub struct RoomInfo {
 	/// Count of unread messages for the current user
 	pub unread_count: i32,
 }
+
 /// A direct message
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +45,7 @@ pub struct MessageInfo {
 	/// Whether the current user has read this message
 	pub is_read: bool,
 }
+
 /// Request to send a new message
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +55,7 @@ pub struct SendMessageRequest {
 	/// Message content
 	pub content: String,
 }
+
 /// Request to create a new DM room
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +65,7 @@ pub struct CreateRoomRequest {
 	/// Optional room name (for group chats)
 	pub name: Option<String>,
 }
+
 /// WebSocket notification for new messages (sent to room list subscribers)
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]

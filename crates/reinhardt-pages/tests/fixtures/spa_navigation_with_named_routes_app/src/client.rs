@@ -6,6 +6,9 @@
 //!
 //! The scaffolded `components` submodule was dropped: a regression
 //! fixture only needs the components inlined into `pages.rs`.
+
 pub mod lib;
+
 pub mod router;
+
 pub mod pages;

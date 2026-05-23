@@ -7,8 +7,20 @@
 //! - Authentication and permissions
 //! - ViewSets and routers
 //! - Typed `ResolvedUrls` accessors (see [`urls_demo`])
+
+// The `#[reinhardt::viewset]` attribute in `apps/snippets/views.rs` expands
+// into a `macro_rules!` definition that is then referenced through the
+// crate-absolute path `$crate::__for_each_viewset_*!` by sibling macros
+// (`#[url_patterns]`, `#[routes]`). That composition trips the
+// `macro_expanded_macro_exports_accessed_by_absolute_paths` future-incompat
+// lint (rust-lang/rust#52234) which is `deny`-by-default. The framework's
+// own integration tests apply the same crate-level allow (see
+// `tests/integration/tests/url_patterns_viewset_typed_integration.rs`) until
+// the framework reworks the manifest macros to avoid absolute paths. Remove
+// this allow once Phase 6.2's `__for_each_viewset_*!` indirection no longer
+// goes through `$crate::`.
 #![allow(macro_expanded_macro_exports_accessed_by_absolute_paths)]
-#![allow(deprecated)]
+
 pub mod apps;
 pub mod config;
 pub mod urls_demo;

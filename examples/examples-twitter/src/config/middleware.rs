@@ -1,6 +1,7 @@
 //! Server middleware
 //!
 //! Production-ready middleware stack for the Twitter clone example.
+
 use reinhardt::SecuritySettings;
 use reinhardt::middleware::cors::CorsConfig;
 use reinhardt::middleware::security_middleware::SecurityMiddleware;
@@ -15,6 +16,7 @@ use reinhardt::utils::staticfiles::middleware::{
 };
 use std::sync::Arc;
 use std::time::Duration;
+
 /// Create CORS middleware with credentials support for the Twitter clone.
 ///
 /// Enables cross-origin requests with authentication support:
@@ -23,7 +25,7 @@ use std::time::Duration;
 /// - Includes CSRF token header for security
 pub fn create_cors_middleware() -> CorsMiddleware {
 	let mut config = CorsConfig::default();
-	config.allow_origins = vec!["*".to_string()];
+	config.allow_origins = vec!["*".to_string()]; // Development
 	config.allow_methods = vec![
 		"GET".to_string(),
 		"POST".to_string(),
@@ -40,6 +42,7 @@ pub fn create_cors_middleware() -> CorsMiddleware {
 	config.max_age = Some(3600);
 	CorsMiddleware::new(config)
 }
+
 /// Create SecurityMiddleware with default configuration.
 ///
 /// Provides security headers for the application:
@@ -49,6 +52,7 @@ pub fn create_cors_middleware() -> CorsMiddleware {
 pub fn create_security_middleware() -> SecurityMiddleware {
 	SecurityMiddleware::from_security_settings(&SecuritySettings::default())
 }
+
 /// Create CacheControlMiddleware with optimized settings for API responses.
 ///
 /// Configuration:
@@ -60,9 +64,12 @@ pub fn create_cache_control_middleware() -> CacheControlMiddleware {
 		.with_directive(CacheDirective::Public)
 		.with_max_age(Duration::from_secs(3600))
 		.with_s_maxage(Duration::from_secs(86400));
+
 	let cache_config = CacheControlConfig::new().with_default_policy(cache_policy);
+
 	CacheControlMiddleware::new(cache_config)
 }
+
 /// Create StaticFilesMiddleware for serving static and media files.
 ///
 /// Configuration:
@@ -75,8 +82,10 @@ pub fn create_static_files_middleware() -> StaticFilesMiddleware {
 		.url_prefix("/static/")
 		.spa_mode(false)
 		.excluded_prefixes(vec!["/api/".to_string(), "/media/".to_string()]);
+
 	StaticFilesMiddleware::new(config)
 }
+
 /// Create SessionMiddleware with default configuration.
 ///
 /// Provides cookie-based session management:
@@ -91,6 +100,7 @@ pub fn create_session_middleware() -> SessionMiddleware {
 		.with_path("/".to_string());
 	SessionMiddleware::new(config)
 }
+
 /// Create a production-ready middleware stack for the Twitter clone.
 ///
 /// Stack order (execution order for requests):

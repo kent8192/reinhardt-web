@@ -3,9 +3,11 @@
 //! Types used by both client and server for authentication.
 //! These types are serializable and can be sent between the WASM client
 //! and the Rust server via server functions.
+
 use reinhardt::dto;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
 /// User information (shared between client and server)
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +17,7 @@ pub struct UserInfo {
 	pub email: String,
 	pub is_active: bool,
 }
+
 /// Conversion from server-side User model to shared UserInfo
 #[cfg(native)]
 impl From<crate::apps::auth::models::User> for UserInfo {
@@ -27,15 +30,18 @@ impl From<crate::apps::auth::models::User> for UserInfo {
 		}
 	}
 }
+
 /// Login request
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
 	#[validate(email(message = "Invalid email address"))]
 	pub email: String,
+
 	#[validate(length(min = 1, message = "Password is required"))]
 	pub password: String,
 }
+
 /// Register request
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,16 +52,20 @@ pub struct RegisterRequest {
 		message = "Username must be between 3 and 150 characters"
 	))]
 	pub username: String,
+
 	#[validate(email(message = "Invalid email address"))]
 	pub email: String,
+
 	#[validate(length(min = 8, message = "Password must be at least 8 characters"))]
 	pub password: String,
+
 	#[validate(length(
 		min = 8,
 		message = "Password confirmation must be at least 8 characters"
 	))]
 	pub password_confirmation: String,
 }
+
 impl RegisterRequest {
 	/// Validate that password and password_confirmation match
 	pub fn validate_passwords_match(&self) -> Result<(), String> {
@@ -65,6 +75,7 @@ impl RegisterRequest {
 		Ok(())
 	}
 }
+
 /// Session data containing authenticated user information.
 ///
 /// Used for both client-side authentication state and server-side

@@ -29,11 +29,15 @@
 //!     // Test with user
 //! }
 //! ```
+
 #[cfg(test)]
 pub mod factories;
+
 #[cfg(test)]
 pub mod fixtures;
+
 #[cfg(test)]
 pub use factories::*;
+
 #[cfg(test)]
 pub use fixtures::*;
