@@ -449,7 +449,33 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 			parent_tags,
 		)?)),
 		PageNode::Text(text) => Ok(TypedPageNode::Text(text.clone())),
-		PageNode::Expression(expr) => Ok(TypedPageNode::Expression(expr.clone())),
+		PageNode::Expression(expr) => {
+			if !expr.braced {
+				// Recover the source ident for the fix-it hint where possible.
+				// A bare path like `name` becomes `{name}`; anything else falls
+				// back to a generic `{expr}` placeholder.
+				let suggestion = match &expr.expr {
+					Expr::Path(ep)
+						if ep.qself.is_none() && ep.path.segments.len() == 1 =>
+					{
+						format!("{{{}}}", ep.path.segments[0].ident)
+					}
+					_ => "{expr}".to_string(),
+				};
+				return Err(syn::Error::new(
+					expr.span,
+					format!(
+						"bare identifier shorthand is removed in v2 — \
+						 wrap the expression in braces: `{suggestion}`.\n\n\
+						 note: spec §3.6 — `div {{ foo }}` is no longer parsed as \
+						       an expression. Use `div {{ {{foo}} }}` to render the \
+						       value, or `div {{ foo {{ ... }} }}` if `foo` was \
+						       intended as an HTML tag.",
+					),
+				));
+			}
+			Ok(TypedPageNode::Expression(expr.clone()))
+		}
 		PageNode::If(if_node) => Ok(TypedPageNode::If(transform_if(if_node, parent_tags)?)),
 		PageNode::For(for_node) => Ok(TypedPageNode::For(transform_for(for_node, parent_tags)?)),
 		PageNode::Component(comp) => Ok(TypedPageNode::Component(transform_component(
@@ -1809,6 +1835,37 @@ mod tests {
 	#[case("JAVASCRIPT:alert(1)", false)]
 	fn test_is_safe_url(#[case] url: &str, #[case] expected: bool) {
 		assert_eq!(is_safe_url(url), expected);
+	}
+
+	/// Helper: parse a `quote!`-built TokenStream into a `PageMacro` AST.
+	///
+	/// Scoped to this test module for now; PR1 may promote it to a shared
+	/// helper. Panics on parse failure so individual tests stay concise.
+	fn parse(input: proc_macro2::TokenStream) -> PageMacro {
+		syn::parse2(input).expect("test input must parse as PageMacro")
+	}
+
+	#[rstest]
+	fn rejects_bare_identifier_shorthand() {
+		// Arrange
+		let ast = parse(quote::quote! {
+			|name: String| { div { name } }
+		});
+
+		// Act
+		let result = validate(&ast);
+
+		// Assert
+		let err = result.unwrap_err();
+		let msg = err.to_string();
+		assert!(
+			msg.contains("bare identifier"),
+			"expected diagnostic to mention 'bare identifier', got: {msg}"
+		);
+		assert!(
+			msg.contains("{name}"),
+			"expected fix-it hint to quote `{{name}}`, got: {msg}"
+		);
 	}
 }
 
