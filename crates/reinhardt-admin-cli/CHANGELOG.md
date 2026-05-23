@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
+=======
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0...reinhardt-admin-cli@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(admin-cli)* scaffold migrate-manouche-v2 subcommand
+- *(admin-cli)* codemod pipeline scaffolding (walker + rule trait)
+- *(admin-cli)* codemod rule bare_ident (§6.1 (1))
+- *(admin-cli)* codemod rule watch_unwrap (§6.1 (2)+(3))
+- *(admin-cli)* codemod rule use_effect_deps (§6.1 (4))
+- *(admin-cli)* codemod rule component_props (§6.2)
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(admin-cli)* note migrate-manouche-v2 in CHANGELOG
+
+### Fixed
+
+- *(admin-cli)* address CodeRabbit review — validate --skip, atomic writes, bracket groups, multi-derive, reactive lookahead, walker determinism
+- *(admin-cli)* use segment-based path comparison for bon::Builder dedup
+
+### Styling
+
+- *(admin-cli)* apply rustfmt + clippy lints to codemod
+
+### Testing
+
+- *(admin-cli)* codemod idempotency tests
+
+### Added
+
+- `reinhardt-admin migrate-manouche-v2 [PATH]` subcommand applying the
+  Manouche v1 → v2 codemod (spec §6.1 + §6.2). Available as `cargo make
+  migrate-manouche-v2`. Supports `--dry-run` and `--skip <rule>`. Rules:
+  `bare_ident`, `watch_unwrap`, `use_effect_deps`, `component_props`.
+
+>>>>>>> Stashed changes
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.30...reinhardt-admin-cli@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-admin-cli` as part of the

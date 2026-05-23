@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
+=======
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0...reinhardt-pages-macros@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(manouche,pages-macros)* validator populates inner from generics
+- *(pages-macros)* codegen substitutes inner type into Signal<T>
+- *(pages-macros)* codegen emits typed default values
+- *(pages-macros)* typed choices store for ChoiceField<T>
+- *(pages-macros)* emit struct-level where clause for typed fields
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(manouche)* [**breaking**] TypedFieldType variants carry inner syn::Type
+
+### Fixed
+
+- *(pages-macros)* avoid stringifying typed choice values in load_choices
+- *(manouche)* use String as default JsonField inner type for backward compat
+- *(pages)* detect std-qualified String paths in type_is_string utility
+- *(pages)* detect std-qualified String paths in type_is_string utility
+- *(pages)* update JsonField default type docs and rename stale test
+
+### Styling
+
+- apply cargo fmt-fix
+
+### Testing
+
+- *(pages-macros)* codegen unit tests for typed signal/default emission
+
+### Changed
+
+- `#[server_fn]` now emits the `marker` module on wasm
+  unconditionally — previously the marker was only present when the
+  `msw` feature was active, which forced `#[url_patterns(mode = unified)]`
+  closure bodies that referenced `my_fn::marker` to be wrapped in
+  `#[cfg(native)] { ... }` arms. The optional `Args` struct and
+  `MockableServerFn` impl remain gated behind `#[cfg(feature = "msw")]`
+  inside the marker module
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+- `#[server_fn]` emits `impl ServerFnMetadata for marker` on every
+  emission path, providing a single source of truth for `PATH`,
+  `NAME`, `CODEC`, and `INJECTED_PARAMS` across the cfg boundary.
+  Duplicate constant declarations have been removed from
+  `impl ServerFnRegistration` (native) and `impl MockableServerFn`
+  (msw) blocks
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+
+>>>>>>> Stashed changes
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.30...reinhardt-pages-macros@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages-macros` as part of the

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0...reinhardt-manouche@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(manouche)* parse generic type arguments on form fields
+- *(manouche,pages-macros)* validator populates inner from generics
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(manouche)* add generics field to FormFieldDef
+- *(manouche)* [**breaking**] TypedFieldType variants carry inner syn::Type
+
+### Documentation
+
+- *(manouche)* document inner fields on generic-capable TypedFieldType variants
+
+### Fixed
+
+- *(manouche)* use String as default JsonField inner type for backward compat
+- *(manouche)* preserve original parse error in generic type argument parsing
+- *(pages)* update JsonField default type docs and rename stale test
+
+### Styling
+
+- apply cargo fmt-fix
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.30...reinhardt-manouche@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-manouche` as part of the

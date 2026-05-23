@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
+=======
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0...reinhardt-rest@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(rest)* [**breaking**] remove deprecated OpenApiConfig struct (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(rest)* remove deletion-history comments from openapi.rs
+
+### Removed
+
+#### BREAKING CHANGES
+
+- **`OpenApiConfig` struct** (`src/openapi/config.rs`, deprecated since
+  `0.1.0-rc.16`) — removed per STABILITY_POLICY § SP-4. Use
+  `OpenApiSettings` from `reinhardt_conf::settings::openapi` instead.
+  Refs [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+
+No workspace consumers referenced `OpenApiConfig` directly, so no
+follow-up consumer migration is required.
+
+>>>>>>> Stashed changes
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-rc.30...reinhardt-rest@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-rest` as part of the reinhardt-web

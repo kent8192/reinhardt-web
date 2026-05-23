@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0...reinhardt-conf@v0.2.0-rc.1) - 2026-05-23
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.30...reinhardt-conf@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-conf` as part of the reinhardt-web

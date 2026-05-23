@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
+=======
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0...reinhardt-urls@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(urls)* [**breaking**] remove panicking reverse_* variants and UrlResolverUnprefixed (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(urls)* fix broken intra-doc link in try_reverse_single_pass doc
+
+### Maintenance
+
+- resolve merge conflict in reinhardt-urls CHANGELOG.md (develop/0.2.0)
+
+### Changed
+
+- **[breaking]** Collapse `ClientRouter::route_pathN` / `named_route_pathN`
+  into a single arity-generic `route_path` / `named_route_path` driven by
+  a sealed `Handler<Args>` trait. The arity is inferred from the closure
+  signature (1..=8 `Path<T>` extractors supported). Migration is a
+  mechanical rename: drop the numeric suffix on every call site. Refs
+  [#4637](https://github.com/kent8192/reinhardt-web/issues/4637).
+### Added
+
+- `ClientRouter::page<F, P>(pattern, handler)` and
+  `ClientRouter::named_page<F, P>(name, pattern, handler)` accepting any
+  handler `Fn(P) -> Page` where `P: FromRequest`. The same Props struct
+  can be used both as a Component prop bag (Manouche DSL v2 spec §4.3)
+  and as a page function — "every page is a component." Path / query
+  extraction errors surface as a `Page::Text` at the router boundary
+  rather than panicking. (Refs #4668)
+- `reinhardt_urls::routers::client_router::from_request` module
+  exposing `FromRequest`, `RouteContext`, `ExtractError`,
+  `PathParam<T>`, and `QueryParam<T>` — the manual building blocks for
+  `ClientRouter::page` handlers. `#[derive(FromRequest)]` and
+  `#[derive(PageProps)]` proc-macros are deferred to spec §10.
+- `ClientRouteMatch::query: Option<String>` — populated by `match_path`
+  after stripping an optional `?query` suffix from the path before
+  pattern matching. Required for `QueryParam<T>` to see the query under
+  real routing.
+- `ParamContext::with_query(...)` / `ParamContext::query()` /
+  `ParamContext::params()` — `render_current` threads the captured
+  query through to the `RouteHandler` trait. Backward-compatible:
+  existing `ParamContext::new(...)` keeps the previous signature and
+  defaults the new field to `None`.
+
+### Removed
+
+#### BREAKING CHANGES
+
+Removed 3 RC-deprecated items per STABILITY_POLICY § SP-4 (umbrella
+Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
+
+- **`reverse_with_aho_corasick(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_with_aho_corasick` (the fallible variant).
+- **`reverse_single_pass(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_single_pass`.
+- **`UrlResolverUnprefixed` trait** (`src/routers/resolver.rs`, deprecated `0.1.0-rc.29`, refs #4507 defect #2) — only supported the removed flat ViewSet trait accessors emitted by `#[viewset]`. Prefer `urls.server().<app>().<route>()`.
+
+>>>>>>> Stashed changes
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.30...reinhardt-urls@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-urls` as part of the reinhardt-web

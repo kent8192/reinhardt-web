@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
+=======
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0...reinhardt-test@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(test)* [**breaking**] gate MockFetch and TestUser behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(pages)* delete deprecated mock_server_fn and use_action_state APIs
+
+### Fixed
+
+- delete gated items instead of cfg-gating, update callers
+- *(test)* restore missing pub use prefix in wasm mock re-export
+
+### Removed
+
+#### BREAKING CHANGES
+
+Removed both RC-deprecated items per STABILITY_POLICY § SP-4
+(umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
+
+- **`MockFetch` struct** (`src/wasm/mock.rs`, deprecated `0.1.0-rc.16`, refs #3283) — use `MockServiceWorker` from `reinhardt_test::msw`.
+- **`TestUser` struct** (`src/fixtures/auth.rs`, deprecated `0.1.0-rc.16`) — define your own user type with `#[user]` macro and use `ForceLoginUser` trait.
+
+Both items are gated with `#[cfg(any())]` (compile-excluded).
+
+>>>>>>> Stashed changes
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.30...reinhardt-test@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-test` as part of the
