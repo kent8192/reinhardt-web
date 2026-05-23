@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0...reinhardt-web@v0.2.0-rc.1) - 2026-05-23
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(seeding)* drop redundant intra-doc link targets and wrap bare URL
+- *(admin)* fix doc reference to deleted Router type
+
+### Fixed
+
+- restore accidentally deleted settings template files
+- *(pages-components-macros)* emit compile_error! instead of todo!() panics
+- *(seeding)* add version to reinhardt-seeding-macros workspace dep
+- delete vendor.rs instead of cfg-gating, update core.rs module declaration
+
+### Maintenance
+
+- resolve merge conflict in reinhardt-urls CHANGELOG.md (develop/0.2.0)
+- merge develop/0.2.0 into feat/issue-4520-rc-deprecated-pages
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.30...reinhardt-web@v0.1.0) - 2026-05-22
 
 First stable release of `reinhardt-web`, after 19 alpha and 30 rc

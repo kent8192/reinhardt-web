@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0...reinhardt-pages-macros@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(manouche)* plumb Component { ... } form fields through typed AST
+- *(pages-macros)* emit bon Builder chain for Component { ... } form
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(pages)* delete deprecated mock_server_fn and use_action_state APIs
+
+### Documentation
+
+- *(pages)* document Component { ... } brace invocation form
+
+### Fixed
+
+- *(pages-macros)* drop redundant Some wrap on bon Builder children setter
+
+### Other
+
+- update from develop/0.2.0
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.30...reinhardt-pages-macros@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages-macros` as part of the

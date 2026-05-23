@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0...reinhardt-db@v0.2.0-rc.1) - 2026-05-23
+
+### Added
+
+- *(db)* [**breaking**] remove get_database_url_from_env_or_settings (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- delete gated stub instead of cfg-gating, update callers
+
 ### Removed
 
 #### BREAKING CHANGES
