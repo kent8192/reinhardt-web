@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `reinhardt_pages::router::request` submodule re-exports the
+  Manouche DSL v2 spec §4.3 `FromRequest` building blocks
+  (`FromRequest`, `RouteContext`, `ExtractError`, `PathParam<T>`,
+  `QueryParam<T>`) from `reinhardt_urls::routers::client_router::from_request`
+  so application code can write
+  `use reinhardt_pages::router::request::FromRequest;` matching the
+  spec's namespace. The legacy non-generic `PathParam` re-exported at
+  `reinhardt_pages::router::PathParam` (deprecated since `0.1.0-rc.27`)
+  is unrelated and remains in place during its deprecation cycle.
+  (Refs #4668)
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages` as part of the
