@@ -11,7 +11,7 @@ use reinhardt_db::migrations::DatabaseMigrationExecutor;
 #[cfg(feature = "migrations")]
 use reinhardt_db::backends::{DatabaseConnection, DatabaseType};
 
-// Import backends' DatabaseConnection for get_database_url helper (without migrations feature)
+// Import DatabaseConnection for database_url_from (without migrations feature)
 #[cfg(all(feature = "reinhardt-db", not(feature = "migrations")))]
 use reinhardt_db::backends::DatabaseConnection;
 
@@ -110,7 +110,7 @@ impl BaseCommand for MigrateCommand {
 			let database_url = ctx
 				.option("database")
 				.map(|s| s.to_string())
-				.or_else(|| get_database_url().ok())
+				.or_else(|| std::env::var("DATABASE_URL").ok())
 				.ok_or_else(|| {
 					crate::CommandError::ExecutionError(
 						"No database URL provided. Use --database option or set DATABASE_URL environment variable".to_string()
@@ -803,7 +803,7 @@ impl BaseCommand for MakeMigrationsCommand {
 			let database_url = ctx
 				.option("database")
 				.map(|s| s.to_string())
-				.or_else(|| get_database_url().ok())
+				.or_else(|| std::env::var("DATABASE_URL").ok())
 				.unwrap_or_default();
 
 			// 2. Build from_state from database history or TestContainers
@@ -1905,7 +1905,7 @@ impl RunServerCommand {
 					// Register DatabaseConnection directly (not wrapped in Arc)
 					// The DI system wraps it in Arc internally via SingletonScope::set
 					singleton_scope.set(db_conn);
-					let url = get_database_url().unwrap_or_default();
+					let url = std::env::var("DATABASE_URL").ok().unwrap_or_default();
 					ctx.info(&format!(
 						"💾 Database: {} (DI registered)",
 						sanitize_database_url(&url)
@@ -3009,12 +3009,13 @@ fn sanitize_database_url(url: &str) -> String {
 	url.to_string()
 }
 
-/// Initialize the ORM database connection from reinhardt-conf settings.
+/// Initialize the ORM database connection from settings.
 ///
-/// Resolves the database URL via [`get_database_url()`] (reinhardt-conf
-/// settings as primary source, `DATABASE_URL` env var as fallback),
-/// syncs the resolved URL to the `DATABASE_URL` environment variable,
-/// and initializes the ORM global connection pool.
+/// Resolves the database URL from `ctx.settings` (via
+/// [`DatabaseConnection::database_url_from`]) or falls back
+/// to the `DATABASE_URL` environment variable, syncs the
+/// resolved URL to `DATABASE_URL`, and initializes the ORM
+/// global connection pool.
 ///
 /// This function does **not** handle DI registration — that remains
 /// the responsibility of `runserver` since only HTTP-serving commands
@@ -3029,7 +3030,21 @@ pub(crate) async fn initialize_orm_database(
 	ctx: &CommandContext,
 ) -> Result<(), crate::CommandError> {
 	let env_database_url = std::env::var("DATABASE_URL").ok();
-	let url = get_database_url()?;
+	let url = match ctx.settings.as_ref() {
+		Some(settings) => DatabaseConnection::database_url_from(
+			settings.as_ref(),
+			env_database_url.as_deref(),
+		)
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
+		})?,
+		None => env_database_url.ok_or_else(|| {
+			crate::CommandError::ExecutionError(
+				"No database URL available. Set DATABASE_URL environment variable."
+					.to_string(),
+			)
+		})?,
+	};
 
 	sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
 
@@ -3045,22 +3060,6 @@ pub(crate) async fn initialize_orm_database(
 	Ok(())
 }
 
-/// Helper function to get `DATABASE_URL` from environment or settings files.
-///
-/// This is the disk-reading fallback used when no `ProjectSettings` handle
-/// is available on the `CommandContext`. Once the CLI wires the composed
-/// settings through, callers should prefer
-/// `DatabaseConnection::database_url_from(ctx.settings.unwrap().as_ref(), ...)`.
-#[cfg(feature = "reinhardt-db")]
-fn get_database_url() -> Result<String, crate::CommandError> {
-	use std::env;
-
-	let base_dir = env::current_dir().ok();
-	#[allow(deprecated)] // disk-reading fallback; superseded by `database_url_from`
-	DatabaseConnection::get_database_url_from_env_or_settings(base_dir).map_err(|e| {
-		crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
-	})
-}
 
 /// Helper function to get DATABASE_URL from settings files only (ignoring env var).
 ///
@@ -4100,44 +4099,6 @@ port = 5432
 			if let Some(db_url) = original_db_url {
 				unsafe { std::env::set_var("DATABASE_URL", db_url) };
 			}
-			std::env::set_current_dir(original_dir).unwrap();
-		}
-
-		#[rstest]
-		#[serial(env_database_url)]
-		fn test_get_database_url_prefers_env_var() {
-			// Arrange
-			let temp_dir = tempfile::TempDir::new().unwrap();
-			let settings_dir = temp_dir.path().join("settings");
-			std::fs::create_dir_all(&settings_dir).unwrap();
-
-			let toml_content = r#"
-[database]
-engine = "postgresql"
-name = "settings_db"
-user = "user"
-password = "pass"
-host = "localhost"
-port = 5432
-"#;
-			std::fs::write(settings_dir.join("base.toml"), toml_content).unwrap();
-			std::fs::write(settings_dir.join("local.toml"), "").unwrap();
-
-			let original_dir = std::env::current_dir().unwrap();
-			std::env::set_current_dir(temp_dir.path()).unwrap();
-
-			let env_url = "postgresql://envuser:envpass@envhost:5433/envdb";
-			unsafe { std::env::set_var("DATABASE_URL", env_url) };
-
-			// Act
-			let result = get_database_url();
-
-			// Assert
-			assert!(result.is_ok());
-			assert_eq!(result.unwrap(), env_url);
-
-			// Cleanup
-			unsafe { std::env::remove_var("DATABASE_URL") };
 			std::env::set_current_dir(original_dir).unwrap();
 		}
 
