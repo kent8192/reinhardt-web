@@ -122,6 +122,12 @@ pub(super) fn migration() -> Migration {
 					ColumnDefinition {
 						name: "is_superuser".to_string(),
 						type_definition: FieldType::Boolean,
+						// The Rust model declares `pub is_superuser: bool`
+						// (non-optional) with `#[field(default = false)]`,
+						// so the schema must mirror that contract: NOT NULL
+						// with a database-level default of `false`. Allowing
+						// NULL would let the column decode into a state the
+						// Rust type cannot represent.
 						not_null: true,
 						unique: false,
 						primary_key: false,
