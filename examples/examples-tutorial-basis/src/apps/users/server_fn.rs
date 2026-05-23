@@ -1,7 +1,7 @@
 //! User authentication server functions
 //!
 //! Provides session-cookie-based login/logout and current-user lookup.
-//! Follows the examples-twitter pattern: `SessionData` + `SessionStoreRef`
+//! Follows the examples-twitter pattern: `SessionData` + `Depends<SessionStore>`
 //! are injected, the session ID is regenerated on successful login
 //! (fixation prevention), and `user_id` is persisted in the session map.
 
@@ -19,7 +19,7 @@ use {
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
 	reinhardt::di::Depends,
 	reinhardt::middleware::session::{
-		SessionAuthExt, SessionData, SessionStoreRef, USER_ID_SESSION_KEY,
+		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
 	},
 	reinhardt::reinhardt_auth::BaseUserManager,
 	std::collections::HashMap,
@@ -36,7 +36,7 @@ pub async fn login(
 	_csrf_token: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -112,7 +112,7 @@ pub async fn register(
 	_csrf_token: String,
 	#[inject] user_manager: Depends<UserManager>,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -174,7 +174,7 @@ pub async fn register(
 pub async fn logout(
 	_csrf_token: String,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<(), ServerFnError> {
 	let mut session = session;
 

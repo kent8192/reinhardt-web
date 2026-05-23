@@ -46,6 +46,9 @@ See instructions/MODULE_SYSTEM.md for comprehensive module system standards incl
 - **ALL code comments MUST be written in English** (no exceptions)
 - MINIMIZE `.to_string()` calls - prefer borrowing
 - DELETE obsolete code immediately
+- When removing deprecated APIs, DELETE the code (do NOT use `#[cfg(any())]` or other conditional compilation gates to preserve dead code)
+- `#[cfg(any())]` is NEVER an acceptable mechanism for "soft deletion" of deprecated APIs
+- Update ALL in-crate and cross-crate callers when deleting deprecated APIs
 - NO deletion record comments in code
 - NO relative paths beyond `../` (use absolute paths)
 - Mark ALL placeholders with `todo!()` or `// TODO:` comment

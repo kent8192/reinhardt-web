@@ -524,10 +524,11 @@ pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// - `.named_route(name, pattern, component)` — always emits a zero-arg
 ///   helper.
-/// - `.named_route_path(name, pattern, |ClientPath(id): ClientPath<T>| ...)`
-///   — emits `fn name(id: T) -> String`.
-/// - `.named_route_path2(...)` / `.named_route_path3(...)` — emit helpers
-///   with two / three positional parameters, in binding order.
+/// - `.named_route_path(name, pattern, |ClientPath(a): ClientPath<A>, …,
+///   ClientPath(n): ClientPath<N>| ...)` — emits
+///   `fn name(a: A, …, n: N) -> String`. Up to **8** path parameters are
+///   supported by the underlying `Handler<Args>` trait (Issue #4637); the
+///   arity is inferred from the closure signature.
 /// - `.named_route_params(...)` / `.named_route_result(...)` — the macro
 ///   does not project these into typed helpers today; the route is still
 ///   reachable through the stringly-typed

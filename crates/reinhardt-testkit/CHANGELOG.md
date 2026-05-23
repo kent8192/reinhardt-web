@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### BREAKING CHANGES
+
+Removed all 9 RC-deprecated items from `reinhardt-testkit` per
+STABILITY_POLICY § SP-4 (umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
+
+- **`APIRequestFactory::force_authenticate`** (`src/factory.rs`, deprecated `0.1.0-rc.16`) — use `client.auth().session()` or `client.auth().jwt()`.
+- **`APIClient::force_authenticate`** (`src/client.rs`, deprecated `0.1.0-rc.16`) — same migration.
+- **`ServerFnTestContext::with_authenticated_user`** (`src/server_fn/context.rs`, deprecated `0.1.0-rc.16`) — use `.auth().session(&user).done()`.
+- **6 testcontainers fixtures + helpers** (`src/fixtures/testcontainers.rs`, deprecated `0.1.0-rc.16`) — use `postgres_with_migrations_from_dir()` and the filesystem-based migration loader.
+
+All 9 items are gated with `#[cfg(any())]` so they no longer compile;
+this preserves git blame readability for one release. A subsequent
+cleanup PR can delete the gated code outright.
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.30...reinhardt-testkit@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-testkit` as part of the

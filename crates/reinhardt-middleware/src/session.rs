@@ -11,7 +11,11 @@
 //! - `backend` — pluggable `AsyncSessionBackend` trait
 //! - `config` — `SessionConfig` cookie/TTL knobs
 //! - `middleware` — `SessionMiddleware` that wires it all together
-//! - `injectable` — DI integration (`Injectable` impls + `SessionStoreRef`)
+//! - `injectable` — DI integration (`Injectable` impl for `SessionData`).
+//!   Handlers that want the store directly use
+//!   `#[inject] store: Depends<SessionStore>`; the middleware contributes
+//!   the store under `TypeId::of::<SessionStore>()` via `di_registrations()`.
+//!   See #4437.
 //!
 //! All public types are re-exported here so existing call sites that
 //! used `crate::session::*` continue to work unchanged.
@@ -40,7 +44,6 @@ pub use backend::AsyncSessionBackend;
 pub use config::SessionConfig;
 pub use data::{SessionData, USER_ID_SESSION_KEY};
 pub use id::{ActiveSessionId, SessionCookieName, SessionId};
-pub use injectable::SessionStoreRef;
 pub use middleware::SessionMiddleware;
 pub use store::SessionStore;
 pub use value::{
@@ -54,8 +57,6 @@ mod tests {
 	use async_trait::async_trait;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
-	#[allow(deprecated)]
-	use reinhardt_conf::Settings;
 	use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 	use std::sync::{Arc, RwLock};
 	use std::thread;
@@ -380,73 +381,6 @@ mod tests {
 		// Custom cookie name should be used
 		assert!(cookie.starts_with("my_session="));
 		assert!(!cookie.starts_with("sessionid="));
-	}
-
-	#[rstest::rstest]
-	#[tokio::test]
-	async fn test_session_config_from_settings_secure_enabled() {
-		// Arrange
-		#[allow(deprecated)]
-		let mut settings = Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
-		settings.core.security.session_cookie_secure = true;
-
-		// Act
-		#[allow(deprecated)]
-		let config = SessionConfig::from_settings(&settings);
-
-		// Assert
-		assert_eq!(config.secure, true);
-	}
-
-	#[rstest::rstest]
-	#[tokio::test]
-	async fn test_session_config_from_settings_defaults() {
-		// Arrange
-		#[allow(deprecated)]
-		let settings = Settings::default();
-
-		// Act
-		#[allow(deprecated)]
-		let config = SessionConfig::from_settings(&settings);
-
-		// Assert
-		assert_eq!(config.secure, false);
-		assert_eq!(config.cookie_name, "sessionid");
-		assert_eq!(config.ttl, Duration::from_secs(3600));
-	}
-
-	#[rstest::rstest]
-	#[tokio::test]
-	async fn test_session_middleware_from_settings() {
-		// Arrange
-		#[allow(deprecated)]
-		let mut settings = Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
-		settings.core.security.session_cookie_secure = true;
-		#[allow(deprecated)]
-		let middleware = SessionMiddleware::from_settings(&settings);
-		let handler = Arc::new(TestHandler);
-
-		let request = Request::builder()
-			.method(Method::GET)
-			.uri("/test")
-			.version(Version::HTTP_11)
-			.headers(HeaderMap::new())
-			.body(Bytes::new())
-			.build()
-			.unwrap();
-
-		// Act
-		let response = middleware.process(request, handler).await.unwrap();
-
-		// Assert
-		assert_eq!(response.status, StatusCode::OK);
-		let cookie = response
-			.headers
-			.get("set-cookie")
-			.unwrap()
-			.to_str()
-			.unwrap();
-		assert!(cookie.contains("Secure"));
 	}
 
 	#[rstest::rstest]
