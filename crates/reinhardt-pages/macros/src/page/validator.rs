@@ -17,7 +17,7 @@ use syn::{Expr, Result};
 use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageMacro, PageNode,
 	PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
-	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode, TypedPageWatch, types::AttrValue,
+	TypedPageFor, TypedPageIf, TypedPageMacro, TypedNamedSlot, TypedPageNode, TypedPageWatch, types::AttrValue,
 };
 
 /// Check if a URL is safe (no dangerous schemes like javascript:).
@@ -185,7 +185,7 @@ fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<Typ
 
 /// Transforms a PageComponent node.
 ///
-/// Recursively transforms the component's children (if any).
+/// Recursively transforms the component's children (if any) and named slots.
 fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<TypedPageComponent> {
 	// Transform children if present
 	let typed_children = if let Some(children) = &comp.children {
@@ -194,10 +194,23 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 		None
 	};
 
+	let typed_named_slots: Vec<TypedNamedSlot> = comp
+		.named_slots
+		.iter()
+		.map(|slot| {
+			Ok(TypedNamedSlot {
+				name: slot.name.clone(),
+				children: transform_nodes(&slot.children, parent_tags)?,
+				span: slot.span,
+			})
+		})
+		.collect::<Result<Vec<_>>>()?;
+
 	Ok(TypedPageComponent {
 		name: comp.name.clone(),
 		args: comp.args.clone(),
 		children: typed_children,
+		named_slots: typed_named_slots,
 		span: comp.span,
 	})
 }

@@ -380,6 +380,29 @@ pub struct PageComponentArg {
 	pub span: Span,
 }
 
+/// A named children slot inside a component body.
+///
+/// Named slots use the `$slotname { ... }` syntax and allow components
+/// to accept multiple named children groups mapped to distinct builder setters.
+///
+/// # Example
+///
+/// ```text
+/// Table {
+///     $header { div { "Name" } }
+///     $body { for user in users { Row { ... } } }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct NamedSlot {
+    /// Slot name without the `$` prefix (e.g., "header", "body")
+    pub name: Ident,
+    /// Child nodes inside the slot
+    pub children: Vec<PageNode>,
+    /// Span for error reporting
+    pub span: Span,
+}
+
 /// A component call node.
 ///
 /// Components are Rust functions that return a View. They are called with
@@ -404,6 +427,8 @@ pub struct PageComponent {
 	pub args: Vec<PageComponentArg>,
 	/// Optional children (content inside `{ }` after arguments)
 	pub children: Option<Vec<PageNode>>,
+	/// Named children slots (e.g., `$header { ... }`)
+	pub named_slots: Vec<NamedSlot>,
 	/// Span for error reporting
 	pub span: Span,
 }

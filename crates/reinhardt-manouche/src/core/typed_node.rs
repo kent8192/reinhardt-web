@@ -195,6 +195,20 @@ pub struct TypedPageWatch {
 	pub span: Span,
 }
 
+/// A typed named children slot inside a component body.
+///
+/// This is the validated counterpart of `NamedSlot`, produced by the validator
+/// after transforming the slot's children from untyped to typed AST nodes.
+#[derive(Debug)]
+pub struct TypedNamedSlot {
+    /// Slot name without the `$` prefix
+    pub name: Ident,
+    /// Validated child nodes inside the slot
+    pub children: Vec<TypedPageNode>,
+    /// Span for error reporting
+    pub span: Span,
+}
+
 /// Typed component call node.
 ///
 /// Components are Rust functions that return a View. They are called with
@@ -207,6 +221,8 @@ pub struct TypedPageComponent {
 	pub args: Vec<PageComponentArg>,
 	/// Optional typed children (content inside `{ }` after arguments)
 	pub children: Option<Vec<TypedPageNode>>,
+	/// Typed named children slots
+	pub named_slots: Vec<TypedNamedSlot>,
 	/// Span for error reporting
 	pub span: Span,
 }
