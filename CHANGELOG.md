@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0...reinhardt-web@v0.1.1) - 2026-05-23
+
+### Fixed
+
+- *(templates)* add server_only, no_ws_resolvers to RESTful project url template
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.30...reinhardt-web@v0.1.0) - 2026-05-22
 
 First stable release of `reinhardt-web`, after 19 alpha and 30 rc
