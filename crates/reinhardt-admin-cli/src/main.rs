@@ -168,10 +168,10 @@ enum Commands {
 		subcommand: PluginCommands,
 	},
 
-	/// Format Rust code and page! macro DSL in source files
+	/// Format Rust code and page!/form! macro DSL in source files
 	///
-	/// By default, runs both rustfmt (protecting page! macros) and page! DSL formatting.
-	/// Use --with-rustfmt=false to only format page! macro DSL.
+	/// By default, runs both rustfmt (protecting page! and form! macros) and page!/form! DSL formatting.
+	/// Use --with-rustfmt=false to only format page! and form! macro DSL.
 	Fmt {
 		/// Path to file or directory to format
 		#[arg(value_name = "PATH")]
@@ -1061,7 +1061,7 @@ fn run_fmt_all(
 		}
 
 		// Skip files without page! macros
-		if !original_content.contains("page!(") {
+		if !original_content.contains("page!(") && !original_content.contains("form!{") {
 			continue;
 		}
 
