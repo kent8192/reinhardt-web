@@ -780,7 +780,7 @@ fn parse_field_type(
 			Ok(TypedFieldType::MultipleChoiceField { inner })
 		}
 		"JsonField" => {
-			let inner = require_one_generic(syn::parse_quote!(::serde_json::Value))?;
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
 			Ok(TypedFieldType::JsonField { inner })
 		}
 
