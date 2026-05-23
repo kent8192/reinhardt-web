@@ -4,7 +4,7 @@
 //! `#[url_patterns(..., mode = server)]` to the typed `ResolvedUrls`
 //! accessors exposed via `urls.server().<app>().<route>()`.
 //!
-//! Specifically, the four tests below pin:
+//! Specifically, the three tests below pin:
 //!
 //! 1. `viewset_list_typed_accessor_returns_namespaced_url` — `#[viewset]`
 //!    fn-form generates a `<basename>_list()` accessor returning the
@@ -15,10 +15,9 @@
 //! 3. `action_typed_accessor_appears_under_app` — `#[viewset]` impl-form
 //!    paired with `#[action]` produces a typed accessor under the same
 //!    namespaced gateway (regression for defect #3 in the spec).
-//! 4. `flat_blanket_trait_is_deprecated_but_works` — the legacy
-//!    `urls.<basename>_list()` blanket-trait accessor still resolves
-//!    through the namespace-aware `UrlResolverUnprefixed` lookup, with
-//!    the trait carrying `#[deprecated]` (regression for defect #2).
+//!
+//! The legacy `urls.<basename>_list()` blanket-trait flat surface was
+//! removed in 0.2.0 — see `instructions/MIGRATION_0.2.md` and Issue #4520.
 //!
 //! Refs Issue #4507.
 
@@ -223,26 +222,4 @@ fn action_typed_accessor_appears_under_app() {
 	// under the per-app gateway (`urls.server().<app>().<action>()`), not at
 	// the top-level `ResolvedUrls` surface.
 	assert_eq!(url, "/snippets-viewset/42/highlight/");
-}
-
-#[rstest]
-#[serial(routes_global)]
-fn flat_blanket_trait_is_deprecated_but_works() {
-	// Arrange
-	let urls = install_routes_and_resolve();
-	// `url_prelude` is emitted at the user crate root by `#[routes]`
-	// (see `routes_registration.rs::url_prelude_code`), so resolve it
-	// through `crate::` rather than `reinhardt::`.
-	use crate::url_prelude::*;
-
-	// Act: the deprecated flat surface still resolves through the
-	// namespace-aware `UrlResolverUnprefixed` lookup emitted by Phase 7.
-	#[allow(deprecated)]
-	let url = urls.snippet_list();
-
-	// Assert: regression for defect #2 — the legacy blanket-trait surface
-	// must continue to return the *namespaced* URL so existing call sites
-	// keep compiling and resolving correctly while consumers migrate to
-	// `urls.server().<app>().<basename>_list()`.
-	assert_eq!(url, "/snippets-viewset/");
 }

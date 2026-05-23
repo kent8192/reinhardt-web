@@ -17,11 +17,10 @@
 //!        -- --test link_interceptor_robustness_test`
 
 #![cfg(all(wasm, feature = "nav-diag-dom"))]
-#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
 use reinhardt_pages::app::ClientLauncher;
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::*;
 
@@ -52,8 +51,8 @@ fn install_app_root() -> web_sys::Element {
 	root
 }
 
-fn build_router() -> Router {
-	Router::new()
+fn build_router() -> ClientRouter {
+	ClientRouter::new()
 		.named_route("dashboard:home", "/", home_page)
 		.named_route("clusters:list", "/clusters", clusters_page)
 }
@@ -79,7 +78,7 @@ async fn link_interceptor_resolves_anchor_from_nested_element_target() {
 	let _ = history.replace_state_with_url(&JsValue::NULL, "", Some("/"));
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 
@@ -157,7 +156,7 @@ async fn link_interceptor_resolves_anchor_from_text_node_target() {
 	let _ = history.replace_state_with_url(&JsValue::NULL, "", Some("/"));
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 
@@ -240,7 +239,7 @@ async fn link_interceptor_push_success_still_drives_navigation_chain() {
 	let _ = history.replace_state_with_url(&JsValue::NULL, "", Some("/"));
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 

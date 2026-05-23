@@ -11,9 +11,10 @@ use {
 	crate::apps::auth::models::User,
 	crate::apps::auth::shared::types::{LoginRequest, RegisterRequest},
 	reinhardt::Validate,
-	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
+		reinhardt::db::orm::Model,
+		reinhardt::di::Depends,
 	reinhardt::middleware::session::{
-		SessionAuthExt, SessionData, SessionStoreRef, USER_ID_SESSION_KEY,
+		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
 	},
 	reinhardt::{BaseUser, DatabaseConnection},
 	uuid::Uuid,
@@ -31,7 +32,7 @@ pub async fn login(
 	_csrf_token: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -46,11 +47,7 @@ pub async fn login(
 	// Find user by email
 	let manager = User::objects();
 	let user = manager
-		.filter(
-			User::field_email(),
-			FilterOperator::Eq,
-			FilterValue::String(request.email.trim().to_string()),
-		)
+		.filter(User::field_email().eq(request.email.trim().to_string()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
@@ -114,11 +111,7 @@ pub async fn register(
 
 	// Check if user already exists
 	let existing = User::objects()
-		.filter(
-			User::field_email(),
-			FilterOperator::Eq,
-			FilterValue::String(request.email.trim().to_string()),
-		)
+		.filter(User::field_email().eq(request.email.trim().to_string()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
@@ -157,7 +150,7 @@ pub async fn register(
 #[server_fn]
 pub async fn logout(
 	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
+	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<(), ServerFnError> {
 	let mut session = session;
 	// Rotate the session id, drop the user-id key, and persist the rotated
@@ -180,11 +173,7 @@ pub async fn current_user(
 
 	// Find user by ID
 	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(user_id.to_string()),
-		)
+		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;

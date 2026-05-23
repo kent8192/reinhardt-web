@@ -421,28 +421,6 @@ impl APIClient {
 		headers.insert(header_name, HeaderValue::from_str(value.as_ref())?);
 		Ok(())
 	}
-	/// Force authenticate as a user (for testing)
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_testkit::client::APIClient;
-	/// use serde_json::json;
-	///
-	/// # tokio_test::block_on(async {
-	/// let client = APIClient::new();
-	/// let user = json!({"id": 1, "username": "testuser"});
-	/// client.force_authenticate(Some(user)).await;
-	/// # });
-	/// ```
-	#[deprecated(
-		since = "0.1.0-rc.16",
-		note = "use `client.auth().session()` or `client.auth().jwt()` instead"
-	)]
-	pub async fn force_authenticate(&self, user: Option<Value>) {
-		let mut current_user = self.user.write().await;
-		*current_user = user;
-	}
 	/// Set credentials for Basic Authentication
 	///
 	/// # Examples
@@ -473,8 +451,10 @@ impl APIClient {
 	/// # });
 	/// ```
 	pub async fn clear_auth(&self) -> ClientResult<()> {
-		#[allow(deprecated)]
-		self.force_authenticate(None).await;
+		{
+			let mut current_user = self.user.write().await;
+			*current_user = None;
+		}
 		let mut cookies = self.cookies.write().await;
 		cookies.clear();
 		drop(cookies);
@@ -508,7 +488,7 @@ impl APIClient {
 
 	/// Clear all authentication state (session cookies, auth headers, stored user).
 	///
-	/// This is the replacement for `force_authenticate(None)`.
+	/// Clears the current authenticated user and all related authentication state.
 	pub async fn logout(&self) -> ClientResult<()> {
 		self.clear_auth().await
 	}
@@ -552,8 +532,10 @@ impl APIClient {
 	/// ```
 	pub async fn cleanup(&self) {
 		// Clear authentication
-		#[allow(deprecated)]
-		self.force_authenticate(None).await;
+		{
+			let mut current_user = self.user.write().await;
+			*current_user = None;
+		}
 
 		// Clear cookies
 		{

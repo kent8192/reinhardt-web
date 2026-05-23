@@ -1270,65 +1270,85 @@ fn generate_server_handler(
 			impl #pages_crate::server_fn::MockableServerFn for marker {
 				type Args = Args;
 				type Response = #response_type;
-				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 			}
 		}
 	} else {
 		quote! {}
 	};
 
-	// MSW: Generate WASM-side marker module only when msw feature is enabled.
-	//
-	// (Copilot review on PR #4293) The generated `#[cfg(feature = "msw")]`
-	// also gates the module at the *consumer* compile site so that consumers
-	// who never activate `reinhardt-pages/msw` (e.g. mixed-feature workspace
-	// builds where another package activates `reinhardt-pages-macros/msw` and
-	// Cargo reuses that proc-macro artifact) never see the
-	// `MockableServerFn` impl whose trait wouldn't be in scope for them. The
-	// `#[allow(unexpected_cfgs)]` keeps the generated `cfg` quiet in consumer
-	// crates that don't themselves declare an `msw` feature, restoring the
-	// original Issue #3673 / #3700 intent without re-introducing the
-	// always-false env-var guard that caused #4290.
-	let msw_wasm_tokens = if msw_enabled {
+	// MSW: optional `Args` struct + `MockableServerFn` impl for type-safe
+	// mocking on wasm. Lives inside the always-emitted wasm marker module
+	// further below; gated on `feature = "msw"` so consumer crates that
+	// never activate `reinhardt-pages/msw` (e.g. mixed-feature workspace
+	// builds where another package activates `reinhardt-pages-macros/msw`
+	// and Cargo reuses the proc-macro artifact — Issue #4290) do not see
+	// the `MockableServerFn` impl whose trait isn't in scope for them.
+	// `#[allow(unexpected_cfgs)]` keeps the cfg quiet in consumer crates
+	// that don't themselves declare an `msw` feature.
+	let msw_wasm_inner_tokens = if msw_enabled {
 		quote! {
-			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 			#[cfg(feature = "msw")]
 			#[allow(unexpected_cfgs)]
-			#vis mod #marker_module_name {
-				// (Fixes #4290) Bring in the parent scope's imports so the
-				// `Args` struct field types and the `#response_type` (which
-				// can be a tuple of user types like `(QuestionInfo, Vec<ChoiceInfo>)`)
-				// resolve. Mirrors the native marker module further below.
-				//
-				// `#[allow(unused_imports)]` silences the warning when the
-				// server_fn signature uses only primitive / fully-qualified
-				// types and `use super::*;` ends up importing nothing the
-				// generated body references. (Copilot review on PR #4293.)
+			mod __msw_args {
 				#[allow(unused_imports)]
 				use super::*;
 				use ::serde::{Serialize, Deserialize};
-
-				#[doc = concat!("Marker struct for server function `", #name_str, "` (WASM MSW mock target)")]
-				pub struct marker;
 
 				/// Public Args struct for MSW type-safe mocking.
 				#[derive(Serialize, Deserialize)]
 				pub struct Args {
 					#(pub #regular_param_names: #regular_param_types),*
 				}
+			}
 
-				impl #pages_crate::server_fn::MockableServerFn for marker {
-					type Args = Args;
-					type Response = #response_type;
-					const PATH: &'static str = #endpoint;
-					const NAME: &'static str = #name_str;
-					const CODEC: &'static str = #codec;
-					const INJECTED_PARAMS: &'static [&'static str] = &[];
-				}
+			#[cfg(feature = "msw")]
+			#[allow(unexpected_cfgs)]
+			pub use __msw_args::Args;
+
+			#[cfg(feature = "msw")]
+			#[allow(unexpected_cfgs)]
+			impl #pages_crate::server_fn::MockableServerFn for marker {
+				type Args = Args;
+				type Response = #response_type;
 			}
 		}
 	} else {
 		quote! {}
+	};
+
+	// WASM marker module — emitted unconditionally on wasm targets so that
+	// `s.server_fn(my_fn::marker)` resolves regardless of whether `msw` is
+	// active (#4711). The struct + ServerFnMetadata impl are always present;
+	// the optional `Args` struct and `MockableServerFn` impl live behind the
+	// inner `feature = "msw"` cfg (see `msw_wasm_inner_tokens` above).
+	let wasm_marker_tokens = quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		#vis mod #marker_module_name {
+			// (Fixes #4290) Bring in the parent scope's imports so that
+			// the `#response_type` (which can be a tuple of user types
+			// like `(QuestionInfo, Vec<ChoiceInfo>)`) resolves inside the
+			// optional `MockableServerFn` impl. Mirrors the native marker
+			// module further below.
+			//
+			// `#[allow(unused_imports)]` silences the warning when the
+			// server_fn signature uses only primitive / fully-qualified
+			// types and `use super::*;` ends up importing nothing the
+			// generated body references. (Copilot review on PR #4293.)
+			#[allow(unused_imports)]
+			use super::*;
+
+			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`)")]
+			pub struct marker;
+
+			impl #pages_crate::server_fn::ServerFnMetadata for marker {
+				const PATH: &'static str = #endpoint;
+				const NAME: &'static str = #name_str;
+				const CODEC: &'static str = #codec;
+				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+			}
+
+			#msw_wasm_inner_tokens
+		}
 	};
 
 	quote! {
@@ -1441,12 +1461,20 @@ fn generate_server_handler(
 			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`)")]
 			pub struct marker;
 
-			// Implement ServerFnRegistration for explicit router registration
-			impl #pages_crate::server_fn::ServerFnRegistration for marker {
+			// Cross-target metadata. ServerFnMetadata lives in reinhardt-pages
+			// and is available on both native and wasm — the constants below
+			// are inherited by ServerFnRegistration (native) and
+			// MockableServerFn (msw) via supertrait, keeping a single source
+			// of truth for PATH / NAME / CODEC across targets.
+			impl #pages_crate::server_fn::ServerFnMetadata for marker {
 				const PATH: &'static str = #endpoint;
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
+				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+			}
 
+			// Native-only handler entry point for explicit router registration.
+			impl #pages_crate::server_fn::ServerFnRegistration for marker {
 				fn handler() -> #pages_crate::server_fn::ServerFnHandler {
 					super::#static_wrapper_name
 				}
@@ -1456,8 +1484,9 @@ fn generate_server_handler(
 			#msw_server_tokens
 		}
 
-		// MSW: WASM-side marker module (conditionally generated; Issue #3673)
-		#msw_wasm_tokens
+		// WASM-side marker module — always emitted on wasm (#4711); the
+		// optional MSW Args / MockableServerFn impl is gated inside.
+		#wasm_marker_tokens
 	}
 }
 
