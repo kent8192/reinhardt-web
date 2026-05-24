@@ -423,7 +423,6 @@ pub struct NamedSlot {
     /// Span for error reporting
     pub span: Span,
 }
-}
 
 /// A component call node.
 ///
@@ -568,6 +567,7 @@ mod tests {
 			args: vec![],
 			events: vec![],
 			children: None,
+			named_slots: vec![],
 			span: Span::call_site(),
 		};
 
@@ -587,6 +587,7 @@ mod tests {
 			args: vec![],
 			events: vec![],
 			children: None,
+			named_slots: vec![],
 			span: Span::call_site(),
 		};
 
