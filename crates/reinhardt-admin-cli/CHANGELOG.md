@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.2.0-rc.1...reinhardt-admin-cli@v0.2.0-rc.2) - 2026-05-24
+
+### Maintenance
+
+- updated the following local packages: reinhardt-pages, reinhardt-dentdelion, reinhardt-commands
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.30...reinhardt-admin-cli@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-admin-cli` as part of the
