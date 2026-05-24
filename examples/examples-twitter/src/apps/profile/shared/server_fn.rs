@@ -14,7 +14,7 @@ use {
 	reinhardt::AuthUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
-	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
+	reinhardt::db::orm::Model,
 };
 
 /// Internal helper for profile update logic
@@ -31,11 +31,7 @@ async fn update_profile_internal(
 
 	// Find existing profile
 	let mut profile = Profile::objects()
-		.filter(
-			Profile::field_user_id(),
-			FilterOperator::Eq,
-			FilterValue::String(user.id().to_string()),
-		)
+		.filter(Profile::field_user_id().eq(user.id()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -71,11 +67,7 @@ pub async fn fetch_profile(
 	#[inject] _db: DatabaseConnection,
 ) -> std::result::Result<ProfileResponse, ServerFnError> {
 	let profile = Profile::objects()
-		.filter(
-			Profile::field_user_id(),
-			FilterOperator::Eq,
-			FilterValue::String(user_id.to_string()),
-		)
+		.filter(Profile::field_user_id().eq(user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?

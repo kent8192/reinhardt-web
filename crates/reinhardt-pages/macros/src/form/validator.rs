@@ -626,7 +626,7 @@ fn transform_submit_button(btn: &FormSubmitButtonDef) -> Result<TypedSubmitButto
 /// Transforms a single field definition.
 fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	// Parse field type
-	let field_type = parse_field_type(&field.field_type)?;
+	let field_type = parse_field_type(&field.field_type, field.generics.as_ref())?;
 
 	// Extract properties into categories
 	let validation = extract_validation_properties(&field.properties)?;
@@ -660,30 +660,136 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 }
 
 /// Parses field type identifier into TypedFieldType enum.
-fn parse_field_type(ident: &syn::Ident) -> Result<TypedFieldType> {
+///
+/// `generics` carries the optional `<T1, T2, ...>` parsed off the field-type
+/// identifier in the form! DSL. For non-generic field types, any generics
+/// are rejected; for generic-capable field types, exactly one type argument
+/// is required (or zero, in which case a default type is substituted).
+fn parse_field_type(
+	ident: &syn::Ident,
+	generics: Option<&syn::punctuated::Punctuated<syn::Type, syn::Token![,]>>,
+) -> Result<TypedFieldType> {
 	let type_str = ident.to_string();
+
+	// Helper: require exactly one type argument; default to `fallback` if absent.
+	let require_one_generic = |fallback: syn::Type| -> Result<syn::Type> {
+		match generics {
+			None => Ok(fallback),
+			Some(args) if args.len() == 1 => Ok(args[0].clone()),
+			Some(args) => Err(Error::new(
+				ident.span(),
+				format!(
+					"{} accepts exactly one type parameter, found {}",
+					type_str,
+					args.len(),
+				),
+			)),
+		}
+	};
+
+	// Helper: reject any generic arguments on non-generic-capable field types.
+	let reject_generics = || -> Result<()> {
+		if generics.is_some() {
+			Err(Error::new(
+				ident.span(),
+				format!("{} does not accept a type parameter", type_str),
+			))
+		} else {
+			Ok(())
+		}
+	};
+
 	match type_str.as_str() {
-		"CharField" => Ok(TypedFieldType::CharField),
-		"TextField" => Ok(TypedFieldType::TextField),
-		"EmailField" => Ok(TypedFieldType::EmailField),
-		"PasswordField" => Ok(TypedFieldType::PasswordField),
-		"IntegerField" => Ok(TypedFieldType::IntegerField),
-		"FloatField" => Ok(TypedFieldType::FloatField),
-		"DecimalField" => Ok(TypedFieldType::DecimalField),
-		"BooleanField" => Ok(TypedFieldType::BooleanField),
-		"DateField" => Ok(TypedFieldType::DateField),
-		"TimeField" => Ok(TypedFieldType::TimeField),
-		"DateTimeField" => Ok(TypedFieldType::DateTimeField),
-		"ChoiceField" => Ok(TypedFieldType::ChoiceField),
-		"MultipleChoiceField" => Ok(TypedFieldType::MultipleChoiceField),
-		"FileField" => Ok(TypedFieldType::FileField),
-		"ImageField" => Ok(TypedFieldType::ImageField),
-		"UrlField" => Ok(TypedFieldType::UrlField),
-		"SlugField" => Ok(TypedFieldType::SlugField),
-		"UuidField" => Ok(TypedFieldType::UuidField),
-		"IpAddressField" => Ok(TypedFieldType::IpAddressField),
-		"JsonField" => Ok(TypedFieldType::JsonField),
-		"HiddenField" => Ok(TypedFieldType::HiddenField),
+		// Non-generic field types
+		"CharField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::CharField)
+		}
+		"TextField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::TextField)
+		}
+		"EmailField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::EmailField)
+		}
+		"PasswordField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::PasswordField)
+		}
+		"UrlField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::UrlField)
+		}
+		"SlugField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::SlugField)
+		}
+		"IntegerField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::IntegerField)
+		}
+		"FloatField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::FloatField)
+		}
+		"DecimalField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::DecimalField)
+		}
+		"BooleanField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::BooleanField)
+		}
+		"DateField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::DateField)
+		}
+		"TimeField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::TimeField)
+		}
+		"DateTimeField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::DateTimeField)
+		}
+		"FileField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::FileField)
+		}
+		"ImageField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::ImageField)
+		}
+		"UuidField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::UuidField)
+		}
+
+		// Generic-capable field types
+		"HiddenField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::HiddenField { inner })
+		}
+		"ChoiceField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::ChoiceField { inner })
+		}
+		"MultipleChoiceField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::MultipleChoiceField { inner })
+		}
+		"JsonField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::JsonField { inner })
+		}
+
+		// Specialized (no generic accepted)
+		"IpAddressField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::IpAddressField)
+		}
+
 		_ => Err(Error::new(
 			ident.span(),
 			format!(
@@ -691,7 +797,7 @@ fn parse_field_type(ident: &syn::Ident) -> Result<TypedFieldType> {
 				PasswordField, IntegerField, FloatField, DecimalField, BooleanField, DateField, \
 				TimeField, DateTimeField, ChoiceField, MultipleChoiceField, FileField, ImageField, \
 				UrlField, SlugField, UuidField, IpAddressField, JsonField, HiddenField",
-				type_str
+				type_str,
 			),
 		)),
 	}

@@ -6,7 +6,7 @@ fn main() {
 	// Single prop
 	let _greeting = page!(|name: String| {
 		span {
-			name
+			{name}
 		}
 	});
 
@@ -15,10 +15,10 @@ fn main() {
 		div {
 			class: "user-card",
 			span {
-				name
+				{name}
 			}
 			span {
-				age.to_string()
+				{age.to_string()}
 			}
 		}
 	});
@@ -26,7 +26,7 @@ fn main() {
 	// Props with trailing comma
 	let _trailing = page!(|x: i32| {
 		div {
-			x.to_string()
+			{x.to_string()}
 		}
 	});
 }

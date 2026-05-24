@@ -80,7 +80,6 @@ mod manager {
 	use reinhardt::Model;
 	use reinhardt::core::async_trait;
 	use reinhardt::core::exception::Error;
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
 	use reinhardt::di::{Depends, injectable_factory};
 	// `BaseUserManager` lives in `reinhardt-auth` and is not yet re-exported
 	// at the top level of `reinhardt`; reach it via the doc-hidden module
@@ -142,11 +141,7 @@ mod manager {
 
 			let manager = User::objects();
 			let existing = manager
-				.filter(
-					User::field_username(),
-					FilterOperator::Eq,
-					FilterValue::String(username.to_string()),
-				)
+				.filter(User::field_username().eq(username.to_string()))
 				.first()
 				.await
 				.map_err(|e| Error::Database(e.to_string()))?;

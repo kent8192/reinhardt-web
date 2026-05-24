@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **`FieldMetadata` gains type-safe `nullable: bool` field** ([#4439](https://github.com/kent8192/reinhardt-web/issues/4439)).
+  `is_nullable()` reads the struct field. `with_nullable()` sets it as
+  the canonical source of truth. `with_param("null", ...)` still works
+  (auto-syncs the struct field) but should migrate to `with_nullable()`.
+  `to_model_state()` no longer copies `"null"` into `FieldState.params`.
+
 ### Removed
 
 #### BREAKING CHANGES

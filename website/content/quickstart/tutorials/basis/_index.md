@@ -57,7 +57,7 @@ examples-tutorial-basis/
 ├── Makefile.toml              # cargo make tasks: runserver, migrate, dev, wasm-build-dev, collectstatic, test, …
 ├── build.rs                   # cfg_aliases: `native` vs `wasm`
 ├── index.html                 # SPA shell with #root mount point and UnoCSS runtime
-├── settings/                  # TOML settings (base.toml, ci.toml, local.example.toml)
+├── settings/                  # TOML settings (base.toml, ci.toml, local.toml)
 ├── src/
 │   ├── lib.rs                 # Entry: declares apps / config / shared / client modules with cfg gates
 │   ├── apps.rs                # pub mod polls; pub mod users;

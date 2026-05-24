@@ -7,8 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### Added
 
+- `callback_with_deps` internal helper backing `use_callback` /
+  `use_callback_with`. Maintains stable `Arc<dyn Fn>` identity across
+  re-entries at the same call site while listed deps are unchanged,
+  matching React `useCallback`.
+- "Reactivity semantics" rustdoc section on 8 closure-taking hooks
+  (`use_reducer`, `use_action`, `use_action_state`,
+  `use_sync_external_store{,_with_server}`, `use_transition`,
+  `use_debug_value_with`, `use_websocket`) documenting that their
+  closures run outside any active Observer by construction.
+- Cross-hook integration test suite at
+  `tests/hooks_deps_integration.rs` covering Memo→Effect propagation,
+  unlisted-Signal isolation, cleanup ordering, and empty-deps
+  mount-only behavior.
+- Scaffolded `page!` macro pre-codegen pass `hook_deps_validator` (in
+  the `macros` crate). Full Signal-read detection against Manouche's
+  `PageBody` AST is deferred to a follow-up issue; the runtime contract
+  is already enforced by the `*::new_with_deps` constructors.
+- `ServerFnMetadata` cross-target supertrait carrying `PATH`, `NAME`,
+  `CODEC`, and `INJECTED_PARAMS` for every `#[server_fn]`. Available
+  on both native and wasm targets without any feature flag, so a
+  `#[url_patterns(mode = unified)]` aggregator can name
+  `my_fn::marker` from a closure body that compiles on either side
+  of the cfg boundary ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+- `pub trait Trackable` in `reinhardt-pages::reactive` (re-exported as
+  `reinhardt_pages::reactive::Trackable`). Implemented for `Signal<T>` and
+  `Memo<T>`; consumed by the new auto-wrap visitor and the upcoming hook
+  deps-tuple machinery (#4195).
+- `NodeId::as_u64()` accessor in `reinhardt-core` so external callers (such
+  as `Trackable::signal_id`) can obtain the underlying counter value.
+- New `Component { prop: val, @event: handler, child_element { ... } }`
+  invocation syntax inside `page!` bodies. Components are functions
+  matching `fn <name>(props: <NameProps>) -> Page` where `<NameProps>`
+  derives `bon::Builder`. The legacy positional form
+  `{component_fn(args)}` continues to work unchanged. Spec §3.5.
+- `bon` added as a `reinhardt-pages` runtime dependency. Staged for
+  removal under spec §10 once `#[derive(PageProps)]` /
+  `#[component]` proc-macros take over the prop-struct generation.
+- `form!` macro fields now accept optional generic type parameters
+  (`HiddenField<i64>`, `ChoiceField<bool>`, `MultipleChoiceField<String>`,
+  `JsonField<MyStruct>`) to forward typed values to `#[server_fn]` handlers
+  instead of always stringifying them (#4397)
+- `IpAddressField` is now specialized to `Option<IpAddr>` in generated code
+- Fields without a generic parameter default to `String` for backward
+  compatibility
+- `reinhardt_pages::router::request` submodule re-exports the
+  Manouche DSL v2 spec §4.3 `FromRequest` building blocks
+  (`FromRequest`, `RouteContext`, `ExtractError`, `PathParam<T>`,
+  `QueryParam<T>`) from `reinhardt_urls::routers::client_router::from_request`
+  so application code can write
+  `use reinhardt_pages::router::request::FromRequest;` matching the
+  spec's namespace. The legacy non-generic `PathParam` re-exported at
+  `reinhardt_pages::router::PathParam` (deprecated since `0.1.0-rc.27`)
+  is unrelated and remains in place during its deprecation cycle.
+  (Refs #4668)
+
+### Changed (BREAKING)
+
+- `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
+  `use_callback_with` now take an explicit dependency tuple as the second
+  argument, aligning with React.js semantics (#4195, Manouche v2 Layer ②).
+  The closure type for `use_effect` / `use_layout_effect` is now
+  `FnMut() -> Option<C>` so cleanup functions can be returned, matching
+  React `useEffect(() => () => cleanup())`. Pass `()` for mount-only.
+- Hook closures now run with no active reactive Observer ("Option A"),
+  so `Signal::get` inside the closure does NOT auto-subscribe.
+  Subscriptions derive exclusively from the deps tuple.
+- `impl Trackable for Resource<T, E>` lets `Resource` participate in
+  hook deps tuples alongside `Signal` and `Memo`.
+- `ServerFnRegistration` (native) and `MockableServerFn` (msw) now
+  extend `ServerFnMetadata` instead of declaring `PATH`, `NAME`, and
+  `CODEC` themselves. Existing consumers reach the constants through
+  supertrait inheritance with no source change required
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
 - **BREAKING**: `page!` macro now unconditionally wraps every `{expr}` and
   every `if` / `for` / `match` control-flow block in `Page::reactive(move || ...)`.
   Helper-routed Signal reads (`{helper(&signal)}`) re-render correctly without
@@ -17,6 +90,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parameter list. Implicit captures of outer Signal bindings are a hard
   compile error. Spec §3.7. Migration: pass the binding as a closure param
   or qualify free function calls with `self::` so the path is multi-segment.
+- **BREAKING**: `page!` no longer accepts bare-identifier shorthand in
+  element bodies (`div { name }`). Always use the explicit braced form:
+  `div { {name} }`. Spec §3.6. Migration: codemod `cargo make
+  migrate-manouche-v2` (PR3) handles this mechanically.
+
+### Deprecated
+
+- `use_effect_event` and `use_effect_event_with` are deprecated.
+  Option A semantics make them structurally redundant — the wrapped
+  closure of `use_effect`/`use_layout_effect` already runs without
+  auto-tracking. Use `use_callback(f, deps)` for stable identity, or
+  read latest values via `.get_untracked()` inside the closure.
+  Scheduled for removal in v0.3.0.
 
 ### Removed
 
@@ -47,33 +133,6 @@ Removed in this PR (8 items):
   (PathPattern). Use `reinhardt_urls::routers::ClientPathPattern`.
 - **`src/router/params.rs`** (1 item, `0.1.0-rc.27`) — `Path` extractor.
   Use `reinhardt_urls::routers::Path`.
-
-### Added
-
-- `pub trait Trackable` in `reinhardt-pages::reactive` (re-exported as
-  `reinhardt_pages::reactive::Trackable`). Implemented for `Signal<T>` and
-  `Memo<T>`; consumed by the new auto-wrap visitor and the upcoming hook
-  deps-tuple machinery (#4195).
-- `NodeId::as_u64()` accessor in `reinhardt-core` so external callers (such
-  as `Trackable::signal_id`) can obtain the underlying counter value.
-- New `Component { prop: val, @event: handler, child_element { ... } }`
-  invocation syntax inside `page!` bodies. Components are functions
-  matching `fn <name>(props: <NameProps>) -> Page` where `<NameProps>`
-  derives `bon::Builder`. The legacy positional form
-  `{component_fn(args)}` continues to work unchanged. Spec §3.5.
-- `bon` added as a `reinhardt-pages` runtime dependency. Staged for
-  removal under spec §10 once `#[derive(PageProps)]` /
-  `#[component]` proc-macros take over the prop-struct generation.
-- `reinhardt_pages::router::request` submodule re-exports the
-  Manouche DSL v2 spec §4.3 `FromRequest` building blocks
-  (`FromRequest`, `RouteContext`, `ExtractError`, `PathParam<T>`,
-  `QueryParam<T>`) from `reinhardt_urls::routers::client_router::from_request`
-  so application code can write
-  `use reinhardt_pages::router::request::FromRequest;` matching the
-  spec's namespace. The legacy non-generic `PathParam` re-exported at
-  `reinhardt_pages::router::PathParam` (deprecated since `0.1.0-rc.27`)
-  is unrelated and remains in place during its deprecation cycle.
-  (Refs #4668)
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 

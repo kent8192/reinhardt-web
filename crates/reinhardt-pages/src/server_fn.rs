@@ -74,6 +74,7 @@
 pub mod codec;
 #[cfg(native)]
 pub mod injectable;
+pub mod metadata;
 #[cfg(feature = "msw")]
 pub mod mockable;
 #[cfg(native)]
@@ -92,6 +93,7 @@ pub use codec::MessagePackCodec;
 pub use codec::{Codec, JsonCodec, UrlCodec};
 #[cfg(native)]
 pub use injectable::{ServerFnBody, ServerFnRequest};
+pub use metadata::ServerFnMetadata;
 #[cfg(feature = "msw")]
 pub use mockable::MockableServerFn;
 #[cfg(native)]
