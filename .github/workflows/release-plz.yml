@@ -232,22 +232,17 @@ jobs:
     # On develop/**, gate the job on Release-PR-merge commits to avoid
     # spinning up a self-hosted runner + cargo registry sync for every
     # routine feat/fix push (where Cargo.toml is unchanged and publish would
-    # always skip). Two commit-message shapes are accepted to cover both
-    # GitHub merge strategies:
+    # always skip). Three commit-message shapes are accepted:
     #
     #   - squash-merge → `chore: release ...` or `chore: release (develop) ...`
     #     (release-plz's `pr_name`; develop uses "chore: release (develop)" to
-    #     distinguish Release PR titles from main)
-    #   - regular merge → `Merge pull request #N from .../release-plz-...` or
-    #     `.../develop-release-plz-...` (branch-specific `pr_branch_prefix`;
-    #     both contain `release-plz-` so the `contains()` check matches both)
-    #
-    # `startsWith()` is used for the squash-merge form so we don't false-match
-    # arbitrary commits that happen to contain the substring `chore: release`
-    # in their body (e.g. `feat: add release-plz-compatible versioning`).
-    # `contains()` is retained for the merge-commit form because the GitHub
-    # default subject is `Merge pull request #N from <repo>/release-plz-...`,
-    # which doesn't start with the release-plz marker.
+    #     distinguish Release PR titles from main). `startsWith()` avoids
+    #     false-matching `feat: add release-plz-compatible versioning`.
+    #   - regular merge → `Merge pull request #N from owner/BRANCH` where
+    #     BRANCH starts with `release-plz-` or `develop-release-plz-`.
+    #     The `if:` condition only checks the `Merge pull request #` prefix;
+    #     the actual branch name prefix is validated in the "Verify release
+    #     branch name" step below using `grep -oP` + `case` matching.
     #
     # release-plz-pr (above) still runs on every develop/** push, so the
     # next Release PR is always kept up to date.
@@ -255,7 +250,7 @@ jobs:
       github.event_name == 'push' && (
         github.ref == 'refs/heads/main' ||
         startsWith(github.event.head_commit.message, 'chore: release') ||
-        contains(github.event.head_commit.message, 'release-plz-')
+        startsWith(github.event.head_commit.message, 'Merge pull request #')
       )
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
@@ -297,6 +292,52 @@ jobs:
             sudo apt-get update -qq -o DPkg::Lock::Timeout=120
             sudo apt-get install -y -o DPkg::Lock::Timeout=120 gh
           fi
+
+      - name: Verify release branch name
+        if: github.ref != 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore: release')
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          # Extract branch name from merge commit message.
+          # Format: "Merge pull request #N from owner/BRANCH_NAME"
+          BRANCH=$(echo "$COMMIT_MSG" | grep -oP 'from [^/]+/\K.+$' || true)
+          if [ -z "$BRANCH" ]; then
+            echo "::error::Could not extract branch name from commit message"
+            exit 1
+          fi
+          echo "Extracted branch name: $BRANCH"
+          case "$BRANCH" in
+            release-plz-*|develop-release-plz-*)
+              echo "Branch '$BRANCH' matches release branch pattern"
+              ;;
+            *)
+              echo "::error::Branch '$BRANCH' does not start with 'release-plz-' or 'develop-release-plz-'"
+              echo "::error::This push does not originate from a release-plz branch. Refusing to publish."
+              exit 1
+              ;;
+          esac
+
+      - name: Verify release PR label
+        if: github.ref != 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore: release')
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          # Extract PR number from merge commit message.
+          # Format: "Merge pull request #N from owner/BRANCH_NAME"
+          PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP '^Merge pull request #\K\d+' || true)
+          if [ -z "$PR_NUMBER" ]; then
+            echo "::error::Could not extract PR number from commit message"
+            exit 1
+          fi
+          echo "Verifying PR #$PR_NUMBER has the 'release' label..."
+          LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' 2>/dev/null || echo "")
+          if ! echo "$LABELS" | grep -qx 'release'; then
+            echo "::error::PR #$PR_NUMBER does not have the 'release' label. Labels found: $LABELS"
+            echo "::error::Only PRs with the 'release' label are allowed to publish. Refusing to publish."
+            exit 1
+          fi
+          echo "PR #$PR_NUMBER has the 'release' label — proceeding with publish"
 
       # Workaround for gix slotmap overflow (GitoxideLabs/gitoxide#1788)
       - name: Clear cargo registry git index cache
