@@ -665,7 +665,6 @@ fn generate_component(comp: &TypedPageComponent, pages_crate: &TokenStream) -> T
 fn generate_component_paren(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
 	let name = &comp.name;
 
-	// Generate argument values (names are discarded in generated code)
 	let args: Vec<TokenStream> = comp
 		.args
 		.iter()
@@ -675,24 +674,62 @@ fn generate_component_paren(comp: &TypedPageComponent, pages_crate: &TokenStream
 		})
 		.collect();
 
-	// Generate the component call
-	if let Some(children) = &comp.children {
-		// With children: add children as last argument
-		let children_view = generate_if_branch(children, pages_crate);
-
-		if args.is_empty() {
-			quote! { #name(#children_view) }
-		} else {
-			quote! { #name(#(#args),*, #children_view) }
-		}
+	// Build the base function call: Component(args...)
+	let base_call = if args.is_empty() {
+		quote! { #name () }
 	} else {
-		// Without children: simple function call
-		if args.is_empty() {
-			quote! { #name() }
+		quote! { #name (#(#args),*) }
+	};
+
+	// Generate children setter if present
+	let children_setter = comp.children.as_ref().map(|children| {
+		let children_view = generate_if_branch(children, pages_crate);
+		quote! { .children (#children_view) }
+	});
+
+	// Generate named slot setters
+	let slot_setters: Vec<TokenStream> = comp
+		.named_slots
+		.iter()
+		.map(|slot| {
+			let setter_name = slot_name_to_snake_case(&slot.name.to_string());
+			let setter_ident = syn::Ident::new(&setter_name, slot.name.span());
+			let slot_view = generate_if_branch(&slot.children, pages_crate);
+			quote! { .#setter_ident (#slot_view) }
+		})
+		.collect();
+
+	// If we have no children and no named slots, emit a simple function call
+	if children_setter.is_none() && slot_setters.is_empty() {
+		return base_call;
+	}
+
+	// Emit builder chain: Component(args...).children(c).slot1(v1).build()
+	quote! {
+		#base_call
+		#children_setter
+		#(#slot_setters)*
+		.build ()
+	}
+}
+
+/// Converts a DSL slot name to snake_case for the builder setter method name.
+///
+/// The DSL slot name is already in camelCase or PascalCase (it comes from a Rust
+/// identifier), so this converts to snake_case: "bodyContent" → "body_content".
+fn slot_name_to_snake_case(name: &str) -> String {
+	let mut result = String::with_capacity(name.len() + 4);
+	for (i, ch) in name.chars().enumerate() {
+		if ch.is_uppercase() {
+			if i > 0 {
+				result.push('_');
+			}
+			result.push(ch.to_ascii_lowercase());
 		} else {
-			quote! { #name(#(#args),*) }
+			result.push(ch);
 		}
 	}
+	result
 }
 
 /// Generates the `bon::Builder` chain for a brace-form component invocation.
@@ -778,12 +815,25 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 		}
 	};
 
+	// Named slot setters (e.g., `$header { ... }` → `.header(view)`).
+	let slot_setters: Vec<TokenStream> = comp
+		.named_slots
+		.iter()
+		.map(|slot| {
+			let setter_name = slot_name_to_snake_case(&slot.name.to_string());
+			let setter_ident = syn::Ident::new(&setter_name, slot.name.span());
+			let slot_view = generate_if_branch(&slot.children, pages_crate);
+			quote! { .#setter_ident (#slot_view) }
+		})
+		.collect();
+
 	quote! {
 		#fn_name(
 			#props_ty::builder()
 				#(#prop_setters)*
 				#(#event_setters)*
 				#children_setter
+				#(#slot_setters)*
 				.build()
 		)
 	}
@@ -950,5 +1000,68 @@ mod tests {
 		assert!(output_str.contains("MyWrapper"));
 		assert!(output_str.contains("\"container\""));
 		assert!(output_str.contains("PageElement"));
+	}
+
+	#[test]
+	fn test_generate_component_with_named_slots() {
+		let input = quote::quote!(|| {
+			Table(args: 1) {
+				$header { div { "Header" } }
+				$body { div { "Body" } }
+			}
+		});
+		let output = parse_and_generate(input);
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("Table"));
+		// Should contain builder chain with named slot setters
+		assert!(output_str.contains(". header"));
+		assert!(output_str.contains(". body"));
+		assert!(output_str.contains(". build ()"));
+	}
+
+	#[test]
+	fn test_generate_component_mixed_default_and_named() {
+		let input = quote::quote!(|| {
+			Layout(args: 1) {
+				div { "default" }
+				$sidebar { div { "Sidebar" } }
+			}
+		});
+		let output = parse_and_generate(input);
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("Layout"));
+		assert!(output_str.contains(". children"));
+		assert!(output_str.contains(". sidebar"));
+		assert!(output_str.contains(". build ()"));
+	}
+
+	#[test]
+	fn test_generate_component_slot_name_snake_case() {
+		let input = quote::quote!(|| {
+			Container(args: 1) {
+				$bodyContent { div { "Body" } }
+			}
+		});
+		let output = parse_and_generate(input);
+		let output_str = output.to_string();
+
+		// bodyContent → body_content
+		assert!(output_str.contains(". body_content"));
+	}
+
+	#[test]
+	fn test_generate_component_no_slots_unchanged() {
+		// Components without named slots should keep existing behavior
+		let input = quote::quote!(|| {
+			MyButton(label: "Click")
+		});
+		let output = parse_and_generate(input);
+		let output_str = output.to_string();
+
+		// No builder chain for simple component
+		assert!(output_str.contains("MyButton"));
+		assert!(!output_str.contains(". build ()"));
 	}
 }

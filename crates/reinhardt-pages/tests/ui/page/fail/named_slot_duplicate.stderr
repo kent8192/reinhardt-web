@@ -1,0 +1,5 @@
+error: duplicate named slot `header` in component
+  --> tests/ui/page/fail/named_slot_duplicate.rs:10:14
+   |
+10 |             $header { div { "B" } }
+   |              ^^^^^^

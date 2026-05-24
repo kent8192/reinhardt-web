@@ -37,8 +37,8 @@ use syn::{Expr, Result};
 use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
 	PageIf, PageMacro, PageNode, PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent,
-	TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode,
-	TypedPageWatch, types::AttrValue,
+	TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedNamedSlot,
+	TypedPageNode, TypedPageWatch, types::AttrValue,
 };
 
 /// Check if a URL is safe (no dangerous schemes like javascript:).
@@ -199,6 +199,14 @@ impl CaptureChecker {
 			for n in children {
 				self.visit_node(n);
 			}
+		}
+		for slot in &c.named_slots {
+			for n in &slot.children {
+				self.visit_node(n);
+			}
+		}
+		for e in &c.events {
+			self.visit_expr(&e.handler);
 		}
 	}
 
@@ -564,7 +572,7 @@ fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<Typ
 
 /// Transforms a PageComponent node.
 ///
-/// Recursively transforms the component's children (if any).
+/// Recursively transforms the component's children (if any) and named slots.
 fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<TypedPageComponent> {
 	// Validate component event handlers (same as element events)
 	for event in &comp.events {
@@ -578,12 +586,25 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 		None
 	};
 
+	let typed_named_slots: Vec<TypedNamedSlot> = comp
+		.named_slots
+		.iter()
+		.map(|slot| {
+			Ok(TypedNamedSlot {
+				name: slot.name.clone(),
+				children: transform_nodes(&slot.children, parent_tags)?,
+				span: slot.span,
+			})
+		})
+		.collect::<Result<Vec<_>>>()?;
+
 	Ok(TypedPageComponent {
 		name: comp.name.clone(),
 		invocation_form: comp.invocation_form,
 		args: comp.args.clone(),
 		events: comp.events.clone(),
 		children: typed_children,
+		named_slots: typed_named_slots,
 		span: comp.span,
 	})
 }
