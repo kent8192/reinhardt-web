@@ -412,14 +412,16 @@ git push origin --delete develop/0.2.0
 ### DB-6 (MUST): release-plz Interaction
 
 release-plz monitors both `main` and `develop/**`. Each branch follows the
-Cargo.toml version it currently carries, with no branch-specific
-configuration in `release-plz.toml`:
+Cargo.toml version it currently carries. **Branch-specific `pr_branch_prefix`
+values are REQUIRED in `release-plz.toml`** to prevent cross-branch PR closure
+(release-plz's `opened_prs()` searches all open PRs by branch prefix with no
+base-branch filter):
 
-| Branch | Cargo.toml version | Release PR output |
-|---|---|---|
-| `main` | `x.y.z` (stable) | Stable Release PR (`x.y.z` → `x.y.(z+1)` or `x.(y+1).0`) |
-| `develop/m.n.l` (alpha phase) | `m.n.l-alpha.N` | Prerelease Release PR (`alpha.N` → `alpha.(N+1)`) |
-| `develop/m.n.l` (rc phase) | `m.n.l-rc.N` | Prerelease Release PR (`rc.N` → `rc.(N+1)`) |
+| Branch | `pr_branch_prefix` | Cargo.toml version | Release PR output |
+|---|---|---|---|
+| `main` | `"release-plz-"` | `x.y.z` (stable) | Stable Release PR (`x.y.z` → `x.y.(z+1)` or `x.(y+1).0`) |
+| `develop/m.n.l` (alpha phase) | `"release-plz-develop-"` | `m.n.l-alpha.N` | Prerelease Release PR (`alpha.N` → `alpha.(N+1)`) |
+| `develop/m.n.l` (rc phase) | `"release-plz-develop-"` | `m.n.l-rc.N` | Prerelease Release PR (`rc.N` → `rc.(N+1)`) |
 
 **Version management on the develop branch** is operator-controlled at three
 explicit gates (see `instructions/RELEASE_PROCESS.md` § "Develop Branch
