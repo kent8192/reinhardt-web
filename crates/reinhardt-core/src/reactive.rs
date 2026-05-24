@@ -54,6 +54,7 @@
 extern crate alloc;
 
 pub mod context;
+pub mod deps;
 pub mod effect;
 pub mod memo;
 pub mod runtime;
@@ -63,6 +64,7 @@ pub mod signal;
 pub use context::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
 };
+pub use deps::{Deps, IntoDeps, Trackable};
 pub use effect::Effect;
 pub use memo::Memo;
 pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, with_runtime};

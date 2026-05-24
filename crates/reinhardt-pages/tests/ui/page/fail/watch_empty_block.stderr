@@ -1,5 +1,0 @@
-error: unexpected end of input, expected an expression
-  --> tests/ui/page/fail/watch_empty_block.rs:15:4
-   |
-15 |             }
-   |             ^

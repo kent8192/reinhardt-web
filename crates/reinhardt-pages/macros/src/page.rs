@@ -1,19 +1,48 @@
-//! The page! macro implementation.
+//! The `page!` macro implementation.
 //!
 //! This module provides the `page!` procedural macro for creating anonymous
 //! WASM components with a concise, ergonomic DSL.
+//!
+//! ## v2 contract
+//!
+//! Per the Manouche v2 design, `page!` enforces three rules at compile time:
+//!
+//! 1. **No implicit captures** (spec §3.7). Every value identifier inside
+//!    the body must appear in the closure parameter list. Item paths
+//!    (multi-segment like `crate::util::fmt`), type identifiers (`Vec`,
+//!    `Option`), constants (`MAX_LEN`), and macro invocations (`format!`)
+//!    are exempt. Free function calls should use `self::` (or any module
+//!    prefix) so the path is multi-segment.
+//!
+//! 2. **Unconditional auto-wrap** (spec §4.1). Every `{expr}` and every
+//!    `if` / `for` control-flow block is wrapped in
+//!    `Page::reactive(move || ...)` at codegen time. Re-renders happen
+//!    automatically when tracked inputs change. The historical `watch { ... }`
+//!    wrapper is removed.
+//!
+//! 3. **No bare-identifier shorthand** (spec §3.6). Bare identifiers in
+//!    element bodies are no longer accepted. The shorthand `div { foo }`
+//!    was ambiguous with the element form `div { foo { ... } }`, so the
+//!    validator requires the explicit braced form:
+//!
+//!    - Before (v1): `` `div { name }` ``
+//!    - After (v2):  `` `div { {name} }` ``
+//!
+//!    The codemod `cargo make migrate-manouche-v2` (PR3) rewrites existing
+//!    sources mechanically.
 //!
 //! ## Example
 //!
 //! ```ignore
 //! use reinhardt_pages::page;
+//! use reinhardt_pages::reactive::Signal;
 //!
-//! // Define an anonymous component
-//! let counter = page!(|initial: i32| {
+//! // Anonymous component with explicit Signal dependency.
+//! let counter = page!(|count: Signal<i32>| {
 //!     div {
 //!         class: "counter",
 //!         h1 { "Counter" }
-//!         span { format!("Count: {}", initial) }
+//!         span { { format!("Count: {}", count.get()) } }
 //!         button {
 //!             @click: |_| { /* increment logic */ },
 //!             "+"
@@ -21,8 +50,9 @@
 //!     }
 //! });
 //!
-//! // Use it like a function
-//! let view = counter(42);
+//! // Use it like a function.
+//! let count = Signal::new(0);
+//! let view = counter(count);
 //! ```
 //!
 //! ## Component invocation (spec §3.5)
@@ -66,6 +96,7 @@
 //! lowering rules.
 
 mod codegen;
+pub(crate) mod hook_deps_validator;
 pub(crate) mod html_spec;
 mod validator;
 
@@ -89,6 +120,13 @@ pub(crate) fn page_impl(input: TokenStream) -> TokenStream {
 		Err(err) => return err.to_compile_error().into(),
 	};
 
+	// 1a. Hook deps verification (pre-codegen pass, Refs #4195).
+	// Today this emits an empty TokenStream; once the follow-up
+	// implementation lands, it will surface `compile_error!` for any
+	// Signal read inside a hook closure that is missing from the
+	// hook's deps tuple.
+	let hook_deps_diagnostics = hook_deps_validator::verify_hook_deps(&untyped_ast);
+
 	// 2. Validate + Transform: Untyped AST → Typed AST
 	let typed_ast = match validator::validate(&untyped_ast) {
 		Ok(ast) => ast,
@@ -96,9 +134,16 @@ pub(crate) fn page_impl(input: TokenStream) -> TokenStream {
 	};
 
 	// 3. Codegen: Typed AST → Rust code
-	let output = codegen::generate(&typed_ast);
+	let codegen_output = codegen::generate(&typed_ast);
 
-	output.into()
+	// 4. Concatenate verification diagnostics with the codegen output so
+	// any `compile_error!` invocations land in the user's source location.
+	let combined = quote::quote! {
+		#hook_deps_diagnostics
+		#codegen_output
+	};
+
+	combined.into()
 }
 
 #[cfg(test)]
@@ -122,8 +167,8 @@ mod tests {
 		let input = quote!(|name: String, count: i32| {
 			div {
 				class: "greeting",
-				span { name }
-				span { count.to_string() }
+				span { {name} }
+				span { {count.to_string()} }
 			}
 		});
 		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
@@ -137,10 +182,12 @@ mod tests {
 
 	#[test]
 	fn test_page_macro_with_events() {
+		// Spec §3.7 (no implicit captures): event handler bodies route free
+		// functions through `self::` so the path is multi-segment.
 		let input = quote!(|| {
 			button {
-				@click: |e| { handle_click(e); },
-				@input: |e| { handle_input(e); },
+				@click: |e| { self::handle_click(e); },
+				@input: |e| { self::handle_input(e); },
 				"Click me"
 			}
 		});

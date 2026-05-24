@@ -511,9 +511,15 @@ where
 		}
 	}
 
-	/// Performs the filter operation.
-	pub fn filter(mut self, filter: Filter) -> Self {
-		self.filters.push(filter);
+	/// Appends a filter expression to this `QuerySet`.
+	///
+	/// Accepts any value convertible into [`Filter`] — typically the fluent
+	/// builder produced by `FieldRef::eq()` / `.gt()` / ... or the typed
+	/// `Field::eq()` builder (which is convertible into [`Filter`]).
+	/// Passing a `Filter` directly is also supported via the blanket identity
+	/// `impl From<Filter> for Filter`.
+	pub fn filter(mut self, filter: impl Into<Filter>) -> Self {
+		self.filters.push(filter.into());
 		self
 	}
 

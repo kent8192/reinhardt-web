@@ -68,17 +68,41 @@
 //! "DB outage" branch separate from "user is anonymous" so an
 //! availability problem cannot be silently rewritten into a fake 401.
 //!
-//! ## Limitation: dynamic request data
+//! ## Limitation: dynamic request data (status of #4645)
 //!
-//! `#[injectable_factory]` today rejects any parameter that is not
-//! `#[inject]`-tagged
-//! (`crates/reinhardt-di/macros/src/injectable_factory.rs:60-71`), so
-//! authentication scoped to a *path-bound* resource — e.g.,
-//! `require_question_author(question_id, &user)` — cannot be expressed
-//! as a factory yet. That is tracked as a `rc-migration` follow-up in
-//! [#4645](https://github.com/kent8192/reinhardt-web/issues/4645);
-//! until it ships, the per-row authorization helper stays a plain
-//! `async fn` in `server_fn.rs`.
+//! `#[injectable_factory]` today still rejects any parameter that is
+//! not `#[inject]`-tagged
+//! (`crates/reinhardt-di/macros/src/injectable_factory.rs:60-71`), so a
+//! plain `Path<i64>` cannot appear bare in a factory signature. The
+//! first wave of [#4645](https://github.com/kent8192/reinhardt-web/issues/4645)
+//! shipped `impl Injectable for Path<T> / Query<T> / Json<T>` (see
+//! `crates/reinhardt-di/src/params/{path,query,json}.rs`), so factories
+//! *can* now spell `#[inject] Path(id): Path<i64>` and the DI container
+//! resolves it from the active request's `ParamContext`.
+//!
+//! Two gaps remain before per-row authorization (e.g.
+//! `require_question_author(question_id, &user)`) collapses cleanly
+//! into a factory:
+//!
+//! 1. **form! ABI**: `#[server_fn]` arguments today must be `String`
+//!    (#4397 — relaxation in progress). The five Choice/Question
+//!    mutation handlers below therefore still parse `String → i64` by
+//!    hand even though `Path<i64>` itself is now injectable.
+//! 2. **`{question_id}` URL slot**: `Path<i64>` reads from the active
+//!    URL pattern's path params. The current `#[server_fn]` URLs are
+//!    flat (e.g. `/api/polls/update_question/`), so a factory taking
+//!    `Path<i64>` has nothing to bind to until either the form! relax
+//!    lets handlers take `question_id: i64` natively and pass it on,
+//!    or the server_fn URLs grow `{id}` slots.
+//!
+//! Until both gaps close, the per-row authorization helper
+//! (`require_question_author` in `server_fn.rs`) stays a plain
+//! `async fn`. The `AuthoredQuestion` / `AuthoredChoice` newtypes
+//! defined below are the **forward-looking shape** the helper will
+//! collapse into once #4397's relaxation lands; they are deliberately
+//! left without an `#[injectable_factory]` annotation today because
+//! firing them would always trip the `MissingParamContext` path in a
+//! `#[server_fn]` request and surface as a hard 500.
 
 #[cfg(native)]
 use reinhardt::Model;
@@ -188,17 +212,8 @@ async fn session_user_factory(#[inject] session: SessionData) -> SessionUser {
 	// `tracing::warn!` logs the underlying error for observability
 	// while `require_active()` echoes only a generic 500 message to
 	// the client, so schema details do not leak via error bodies.
-	//
-	// Ideal implementation (blocked on #4650): once `Manager::filter`
-	// accepts the typed builder, this becomes:
-	//   `.filter(User::field_id().eq(user_id))`.
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
 	let user = match User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(user_id),
-		)
+		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 	{
@@ -219,4 +234,51 @@ async fn session_user_factory(#[inject] session: SessionData) -> SessionUser {
 	} else {
 		SessionUser::Inactive(user)
 	}
+}
+
+/// Forward-looking newtype that collapses `require_question_author` into
+/// a DI-resolvable type once #4645 fully lands (see module docs).
+///
+/// The shape is intentionally minimal: a verified `Question` whose
+/// `author_id` has already been compared against the active session
+/// user. Handlers that consume `Depends<AuthoredQuestion>` drop both
+/// the `String → i64` parse and the inline 403 check.
+///
+/// Why no `#[injectable_factory]` here yet: see the "Limitation"
+/// section in the module docs. Until form!'s String ABI relaxation
+/// (#4397) ships, registering this factory would always fail at runtime
+/// inside a `#[server_fn]` request.
+#[cfg(native)]
+#[allow(
+	dead_code,
+	reason = "forward-looking newtype — wired up once #4397 + #4645 ship; see module docs"
+)]
+#[derive(Clone)]
+pub struct AuthoredQuestion(pub crate::apps::polls::models::Question);
+
+/// Forward-looking newtype for the Choice mutation handlers.
+///
+/// Unlike `AuthoredQuestion`, an authored *Choice* needs a two-stage
+/// lookup: the URL carries `choice_id`, the `Choice` row carries
+/// `question_id`, and ownership lives on the parent `Question`. The
+/// factory therefore loads the `Choice` first, then resolves the parent
+/// `Question` and verifies authorship — the same flow currently
+/// open-coded in `update_choice` / `delete_choice`.
+///
+/// The `choice` and `question` fields are kept side-by-side so handlers
+/// can mutate the `Choice` without re-fetching it.
+///
+/// Same forward-looking status as [`AuthoredQuestion`]: definition is
+/// in place, but no `#[injectable_factory]` is registered until the
+/// upstream blockers (#4397, plus a URL `{choice_id}` slot for the
+/// Choice mutation routes) clear.
+#[cfg(native)]
+#[allow(
+	dead_code,
+	reason = "forward-looking newtype — wired up once #4397 + #4645 ship; see module docs"
+)]
+#[derive(Clone)]
+pub struct AuthoredChoice {
+	pub choice: crate::apps::polls::models::Choice,
+	pub question: crate::apps::polls::models::Question,
 }

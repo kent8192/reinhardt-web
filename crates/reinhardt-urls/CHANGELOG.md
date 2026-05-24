@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **[breaking]** Collapse `ClientRouter::route_pathN` / `named_route_pathN`
+  into a single arity-generic `route_path` / `named_route_path` driven by
+  a sealed `Handler<Args>` trait. The arity is inferred from the closure
+  signature (1..=8 `Path<T>` extractors supported). Migration is a
+  mechanical rename: drop the numeric suffix on every call site. Refs
+  [#4637](https://github.com/kent8192/reinhardt-web/issues/4637).
 ### Added
 
 - `ClientRouter::page<F, P>(pattern, handler)` and
@@ -30,6 +38,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   query through to the `RouteHandler` trait. Backward-compatible:
   existing `ParamContext::new(...)` keeps the previous signature and
   defaults the new field to `None`.
+
+### Removed
+
+#### BREAKING CHANGES
+
+Removed 3 RC-deprecated items per STABILITY_POLICY § SP-4 (umbrella
+Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
+
+- **`reverse_with_aho_corasick(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_with_aho_corasick` (the fallible variant).
+- **`reverse_single_pass(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_single_pass`.
+- **`UrlResolverUnprefixed` trait** (`src/routers/resolver.rs`, deprecated `0.1.0-rc.29`, refs #4507 defect #2) — only supported the removed flat ViewSet trait accessors emitted by `#[viewset]`. Prefer `urls.server().<app>().<route>()`.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.30...reinhardt-urls@v0.1.0) - 2026-05-22
 

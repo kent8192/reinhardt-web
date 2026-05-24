@@ -112,7 +112,7 @@ fn test_text_field_mapping() {
 fn test_nullable_option_propagation() {
 	// Arrange
 	let mut metadata = ModelMetadata::new("blog", "Post", "blog_post");
-	let nullable_field = FieldMetadata::new(FieldType::VarChar(255)).with_param("null", "true");
+	let nullable_field = FieldMetadata::new(FieldType::VarChar(255)).with_nullable(true);
 	metadata.add_field("subtitle".to_string(), nullable_field);
 
 	// Act

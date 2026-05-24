@@ -71,21 +71,10 @@ pub async fn get_question_detail(
 		.map_err(|e| ServerFnError::application(e.to_string()))?
 		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
 
-	// Get choices.
-	//
-	// Ideal implementation (blocked on #4650): the typed builder
-	// `Field::eq` returns `Lookup<M>` but `Manager::filter` currently
-	// only accepts the legacy `(field_name, FilterOperator, FilterValue)`
-	// triple. Once that Issue ships, this call collapses to:
-	//   `.filter(Choice::field_question_id().eq(question_id))`.
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
+	// Get choices using the typed builder.
 	let choice_manager = Choice::objects();
 	let choices = choice_manager
-		.filter(
-			Choice::field_question_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(question_id),
-		)
+		.filter(Choice::field_question_id().eq(question_id))
 		.all()
 		.await
 		.map_err(|e| ServerFnError::application(e.to_string()))?;
@@ -116,16 +105,10 @@ pub async fn get_question_results(
 		.map_err(|e| ServerFnError::application(e.to_string()))?
 		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
 
-	// Get choices. Same legacy-filter rationale as `get_question_detail`
-	// — typed builder is blocked on #4650.
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
+	// Get choices using the typed builder.
 	let choice_manager = Choice::objects();
 	let choices = choice_manager
-		.filter(
-			Choice::field_question_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(question_id),
-		)
+		.filter(Choice::field_question_id().eq(question_id))
 		.all()
 		.await
 		.map_err(|e| ServerFnError::application(e.to_string()))?;
