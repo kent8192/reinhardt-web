@@ -442,12 +442,12 @@ fn parse_for_node(input: ParseStream) -> Result<PageNode> {
 	braced!(content in input);
 	let body = parse_nodes(&content)?;
 
-	Ok(PageNode::For(PageFor {
+	Ok(PageNode::For(Box::new(PageFor {
 		pat,
 		iter,
 		body,
 		span,
-	}))
+	})))
 }
 
 /// Parses a watch node: `watch { expr }`
