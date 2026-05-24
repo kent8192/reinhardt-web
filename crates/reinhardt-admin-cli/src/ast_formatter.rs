@@ -806,14 +806,14 @@ fn find_matching_brace(source: &str, start: usize) -> Option<usize> {
 			'"' => {
 				// Check for raw strings: r#"..."# or r"..."
 				let raw_start = detect_raw_string_start(substring, offset);
-				if let Some(hash_count) = raw_start {
-					if let Some(end_offset) = skip_raw_string(substring, offset + 1, hash_count) {
-						while i < chars.len() && chars[i].0 < end_offset {
-							i += 1;
-						}
-						i += 1; // skip past end
-						continue;
+				if let Some(hash_count) = raw_start
+					&& let Some(end_offset) = skip_raw_string(substring, offset + 1, hash_count)
+				{
+					while i < chars.len() && chars[i].0 < end_offset {
+						i += 1;
 					}
+					i += 1; // skip past end
+					continue;
 				}
 				in_string = true;
 			}
@@ -1350,7 +1350,7 @@ impl AstPageFormatter {
 		let proc_macro2::TokenTree::Ident(wrapper_ident) = &trees[start] else {
 			return None;
 		};
-		if wrapper_ident.to_string() != "wrapper" {
+		if *wrapper_ident != "wrapper" {
 			return None;
 		}
 		// Match: Punct(':')
@@ -1364,7 +1364,7 @@ impl AstPageFormatter {
 		let proc_macro2::TokenTree::Ident(wrapper_type) = &trees[start + 2] else {
 			return None;
 		};
-		if wrapper_type.to_string() != "Wrapper" {
+		if *wrapper_type != "Wrapper" {
 			return None;
 		}
 		// Match: Group with Brace delimiter
@@ -1380,11 +1380,12 @@ impl AstPageFormatter {
 			outer_group.stream().clone().into_iter().collect();
 		let (tag_ident, attrs_group) = Self::parse_wrapper_inner(&inner_trees)?;
 
-		let mut replacement = Vec::new();
-		replacement.push(trees[start].clone()); // wrapper
-		replacement.push(trees[start + 1].clone()); // :
-		replacement.push(proc_macro2::TokenTree::Ident(tag_ident)); // <tag>
-		replacement.push(proc_macro2::TokenTree::Group(attrs_group)); // { ... }
+		let replacement = vec![
+			trees[start].clone(),                       // wrapper
+			trees[start + 1].clone(),                   // :
+			proc_macro2::TokenTree::Ident(tag_ident),   // <tag>
+			proc_macro2::TokenTree::Group(attrs_group), // { ... }
+		];
 		Some((replacement, 4))
 	}
 
@@ -1419,10 +1420,10 @@ impl AstPageFormatter {
 					}
 				}
 				"attrs" => {
-					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2] {
-						if g.delimiter() == proc_macro2::Delimiter::Brace {
-							attrs_group = Some(g.clone());
-						}
+					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2]
+						&& g.delimiter() == proc_macro2::Delimiter::Brace
+					{
+						attrs_group = Some(g.clone());
 					}
 				}
 				_ => {}
@@ -1453,7 +1454,7 @@ impl AstPageFormatter {
 		let proc_macro2::TokenTree::Ident(icon_ident) = &trees[start] else {
 			return None;
 		};
-		if icon_ident.to_string() != "icon" {
+		if *icon_ident != "icon" {
 			return None;
 		}
 		// Match: Punct(':')
@@ -1467,7 +1468,7 @@ impl AstPageFormatter {
 		let proc_macro2::TokenTree::Ident(icon_type) = &trees[start + 2] else {
 			return None;
 		};
-		if icon_type.to_string() != "Icon" {
+		if *icon_type != "Icon" {
 			return None;
 		}
 		// Match: Group with Brace delimiter
@@ -1522,18 +1523,18 @@ impl AstPageFormatter {
 			}
 			match key_str.as_str() {
 				"attrs" => {
-					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2] {
-						if g.delimiter() == proc_macro2::Delimiter::Brace {
-							attrs_inner = Some(g.stream().clone().into_iter().collect());
-						}
+					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2]
+						&& g.delimiter() == proc_macro2::Delimiter::Brace
+					{
+						attrs_inner = Some(g.stream().clone().into_iter().collect());
 					}
 				}
 				"children" => {
-					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2] {
-						if g.delimiter() == proc_macro2::Delimiter::Bracket {
-							// Extract children without the bracket wrapper
-							children_inner = Some(g.stream().clone().into_iter().collect());
-						}
+					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2]
+						&& g.delimiter() == proc_macro2::Delimiter::Bracket
+					{
+						// Extract children without the bracket wrapper
+						children_inner = Some(g.stream().clone().into_iter().collect());
 					}
 				}
 				_ => {}
@@ -1548,10 +1549,10 @@ impl AstPageFormatter {
 
 		let mut merged = attrs_inner?;
 		// Strip trailing comma(s) from attrs before merging children
-		while merged.last().map_or(
-			false,
-			|t| matches!(t, proc_macro2::TokenTree::Punct(p) if p.as_char() == ','),
-		) {
+		while merged
+			.last()
+			.is_some_and(|t| matches!(t, proc_macro2::TokenTree::Punct(p) if p.as_char() == ','))
+		{
 			merged.pop();
 		}
 		if let Some(children) = children_inner {
@@ -1581,7 +1582,7 @@ impl AstPageFormatter {
 		let proc_macro2::TokenTree::Ident(pos_ident) = &trees[start] else {
 			return None;
 		};
-		if pos_ident.to_string() != "icon_position" {
+		if *pos_ident != "icon_position" {
 			return None;
 		}
 		// Match: Punct(':')
@@ -1602,12 +1603,11 @@ impl AstPageFormatter {
 			_ => return None,
 		};
 
-		let mut replacement = Vec::new();
-		replacement.push(trees[start].clone()); // icon_position
-		replacement.push(trees[start + 1].clone()); // :
-		replacement.push(proc_macro2::TokenTree::Literal(
-			proc_macro2::Literal::string(lowercase),
-		));
+		let replacement = vec![
+			trees[start].clone(),     // icon_position
+			trees[start + 1].clone(), // :
+			proc_macro2::TokenTree::Literal(proc_macro2::Literal::string(lowercase)),
+		];
 		Some((replacement, 3))
 	}
 
@@ -1866,7 +1866,7 @@ impl AstPageFormatter {
 
 		// Close brace
 		output.push_str(&self.make_indent(base_indent));
-		output.push_str("}");
+		output.push('}');
 
 		Ok(output)
 	}

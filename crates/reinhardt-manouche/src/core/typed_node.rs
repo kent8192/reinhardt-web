@@ -52,7 +52,7 @@ pub enum TypedPageNode {
 	/// Conditional rendering
 	If(TypedPageIf),
 	/// List rendering
-	For(TypedPageFor),
+	For(Box<TypedPageFor>),
 	/// A component call with typed children
 	Component(TypedPageComponent),
 	/// Reactive watch block
