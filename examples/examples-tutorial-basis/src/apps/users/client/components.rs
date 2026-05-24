@@ -27,8 +27,12 @@ pub fn login_form() -> Page {
 	let login_form = form! {
 		name: LoginForm,
 		server_fn: login,
-		state: { loading, error },
 		redirect_on_success: "/",
+
+		state: {
+			loading,
+			error,
+		}
 
 		fields: {
 			username: CharField {
@@ -36,13 +40,14 @@ pub fn login_form() -> Page {
 				placeholder: "your-username",
 				max_length: 150,
 				class: "form-control",
-			},
+			}
 			password: PasswordField {
 				label: "Password",
 				placeholder: "Enter your password",
 				class: "form-control",
-			},
-		},
+			}
+		}
+
 	};
 
 	let loading_signal = login_form.loading().clone();
@@ -123,9 +128,15 @@ pub fn logout_form() -> Page {
 	let logout_form = form! {
 		name: LogoutForm,
 		server_fn: logout,
-		state: { loading, error },
 		redirect_on_success: "/",
-		fields: {},
+
+		state: {
+			loading,
+			error,
+		}
+
+		fields: {}
+
 	};
 
 	let error_signal = logout_form.error().clone();
@@ -187,8 +198,12 @@ pub fn signup_form() -> Page {
 	let signup_form = form! {
 		name: SignupForm,
 		server_fn: register,
-		state: { loading, error },
 		redirect_on_success: "/",
+
+		state: {
+			loading,
+			error,
+		}
 
 		fields: {
 			username: CharField {
@@ -196,18 +211,19 @@ pub fn signup_form() -> Page {
 				placeholder: "choose-a-username",
 				max_length: 150,
 				class: "form-control",
-			},
+			}
 			password: PasswordField {
 				label: "Password",
 				placeholder: "At least 8 characters",
 				class: "form-control",
-			},
+			}
 			password_confirmation: PasswordField {
 				label: "Confirm password",
 				placeholder: "Re-enter the password",
 				class: "form-control",
-			},
-		},
+			}
+		}
+
 	};
 
 	let loading_signal = signup_form.loading().clone();

@@ -984,10 +984,10 @@ impl AstPageFormatter {
 		// Match compact `page!(`/`form!(`/`form!{` and the TokenStream Display
 		// forms so recursive formatting (which wraps via `to_token_stream()`)
 		// still sees nested macros at every depth.
-		if find_page_bang_paren(content).is_none()
-			&& find_form_bang_paren(content).is_none()
-			&& find_form_bang_brace(content).is_none()
-		{
+		let found_page_paren = find_page_bang_paren(content);
+		let found_form_paren = find_form_bang_paren(content);
+		let found_form_brace = find_form_bang_brace(content);
+		if found_page_paren.is_none() && found_form_paren.is_none() && found_form_brace.is_none() {
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
@@ -1066,9 +1066,8 @@ impl AstPageFormatter {
 						result.push(')');
 					}
 					MacroKind::Form => {
-						result.push_str("form!(");
+						result.push_str("form! ");
 						result.push_str(&formatted);
-						result.push(')');
 					}
 				},
 				Err(_) => {
@@ -1104,9 +1103,10 @@ impl AstPageFormatter {
 				all_macros.extend(form_visitor.macros);
 				Ok(all_macros)
 			}
-			Err(_) => {
+			Err(_e) => {
 				// If file parsing fails, fall back to text-based detection
-				self.find_page_macros_text_based(content)
+				let result = self.find_page_macros_text_based(content)?;
+				Ok(result)
 			}
 		}
 	}
@@ -1283,6 +1283,334 @@ impl AstPageFormatter {
 		BTreeSet::new()
 	}
 
+	/// Preprocess `form!` macro tokens to convert internal AST syntax to DSL syntax
+	/// before parsing with `syn::parse2`. The `FormMacro` parser expects DSL syntax
+	/// (e.g. `wrapper: div { class: "..." }`) but source files may contain internal
+	/// AST syntax (e.g. `wrapper: Wrapper { tag: div, attrs: { class: "..." } }`).
+	///
+	/// Three conversions are performed:
+	/// 1. `wrapper: Wrapper { tag: <ident>, attrs: { ... } }` → `wrapper: <ident> { ... }`
+	/// 2. `icon: Icon { attrs: { ... }, children: [ ... ] }` → `icon: svg { ..., ... }`
+	/// 3. `icon_position: Left|Right|Label` → `icon_position: "left"|"right"|"label"`
+	fn preprocess_form_tokens(tokens: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+		let trees: Vec<proc_macro2::TokenTree> = tokens.clone().into_iter().collect();
+		let processed = Self::preprocess_token_trees(&trees);
+		processed.into_iter().collect()
+	}
+
+	/// Recursively preprocess token trees, applying the three conversion patterns.
+	fn preprocess_token_trees(trees: &[proc_macro2::TokenTree]) -> Vec<proc_macro2::TokenTree> {
+		let mut result = Vec::new();
+		let mut i = 0;
+		while i < trees.len() {
+			if let Some((replacement, consumed)) = Self::try_transform_wrapper(trees, i) {
+				result.extend(replacement);
+				i += consumed;
+			} else if let Some((replacement, consumed)) = Self::try_transform_icon(trees, i) {
+				result.extend(replacement);
+				i += consumed;
+			} else if let Some((replacement, consumed)) =
+				Self::try_transform_icon_position(trees, i)
+			{
+				result.extend(replacement);
+				i += consumed;
+			} else {
+				// Recursively process groups, pass through everything else
+				match &trees[i] {
+					proc_macro2::TokenTree::Group(g) => {
+						let inner_trees: Vec<proc_macro2::TokenTree> =
+							g.stream().clone().into_iter().collect();
+						let processed_inner = Self::preprocess_token_trees(&inner_trees);
+						let inner_stream: proc_macro2::TokenStream =
+							processed_inner.into_iter().collect();
+						let mut new_group = proc_macro2::Group::new(g.delimiter(), inner_stream);
+						new_group.set_span(g.span());
+						result.push(proc_macro2::TokenTree::Group(new_group));
+					}
+					other => result.push(other.clone()),
+				}
+				i += 1;
+			}
+		}
+		result
+	}
+
+	/// Try to transform `wrapper: Wrapper { tag: <ident>, attrs: { ... } }` into
+	/// `wrapper: <ident> { ... }`. Returns replacement tokens and count of consumed
+	/// input tokens, or `None` if the pattern doesn't match at the given position.
+	fn try_transform_wrapper(
+		trees: &[proc_macro2::TokenTree],
+		start: usize,
+	) -> Option<(Vec<proc_macro2::TokenTree>, usize)> {
+		// Need at least 4 tokens: wrapper : Wrapper { ... }
+		if start + 4 > trees.len() {
+			return None;
+		}
+		// Match: Ident("wrapper")
+		let proc_macro2::TokenTree::Ident(wrapper_ident) = &trees[start] else {
+			return None;
+		};
+		if wrapper_ident.to_string() != "wrapper" {
+			return None;
+		}
+		// Match: Punct(':')
+		let proc_macro2::TokenTree::Punct(colon) = &trees[start + 1] else {
+			return None;
+		};
+		if colon.as_char() != ':' {
+			return None;
+		}
+		// Match: Ident("Wrapper")
+		let proc_macro2::TokenTree::Ident(wrapper_type) = &trees[start + 2] else {
+			return None;
+		};
+		if wrapper_type.to_string() != "Wrapper" {
+			return None;
+		}
+		// Match: Group with Brace delimiter
+		let proc_macro2::TokenTree::Group(outer_group) = &trees[start + 3] else {
+			return None;
+		};
+		if outer_group.delimiter() != proc_macro2::Delimiter::Brace {
+			return None;
+		}
+
+		// Parse the inner group to extract tag and attrs
+		let inner_trees: Vec<proc_macro2::TokenTree> =
+			outer_group.stream().clone().into_iter().collect();
+		let (tag_ident, attrs_group) = Self::parse_wrapper_inner(&inner_trees)?;
+
+		let mut replacement = Vec::new();
+		replacement.push(trees[start].clone()); // wrapper
+		replacement.push(trees[start + 1].clone()); // :
+		replacement.push(proc_macro2::TokenTree::Ident(tag_ident)); // <tag>
+		replacement.push(proc_macro2::TokenTree::Group(attrs_group)); // { ... }
+		Some((replacement, 4))
+	}
+
+	/// Parse the inner tokens of `Wrapper { tag: <ident>, attrs: { ... } }`.
+	/// Returns the tag ident and the attrs group.
+	fn parse_wrapper_inner(
+		trees: &[proc_macro2::TokenTree],
+	) -> Option<(proc_macro2::Ident, proc_macro2::Group)> {
+		// Expected structure: tag : <ident> , attrs : { ... } [ , ... ]
+		// We're lenient about trailing commas and extra fields.
+		let mut tag_ident: Option<proc_macro2::Ident> = None;
+		let mut attrs_group: Option<proc_macro2::Group> = None;
+		let mut i = 0;
+		while i < trees.len() {
+			let proc_macro2::TokenTree::Ident(key) = &trees[i] else {
+				i += 1;
+				continue;
+			};
+			let key_str = key.to_string();
+			// Skip past `key :`
+			if i + 2 >= trees.len() {
+				return None;
+			}
+			if !matches!(&trees[i + 1], proc_macro2::TokenTree::Punct(p) if p.as_char() == ':') {
+				i += 1;
+				continue;
+			}
+			match key_str.as_str() {
+				"tag" => {
+					if let proc_macro2::TokenTree::Ident(ident) = &trees[i + 2] {
+						tag_ident = Some(ident.clone());
+					}
+				}
+				"attrs" => {
+					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2] {
+						if g.delimiter() == proc_macro2::Delimiter::Brace {
+							attrs_group = Some(g.clone());
+						}
+					}
+				}
+				_ => {}
+			}
+			// Skip past the value token and any following comma
+			i += 3;
+			if i < trees.len()
+				&& matches!(&trees[i], proc_macro2::TokenTree::Punct(p) if p.as_char() == ',')
+			{
+				i += 1;
+			}
+		}
+		Some((tag_ident?, attrs_group?))
+	}
+
+	/// Try to transform `icon: Icon { attrs: { ... }, children: [ ... ] }` into
+	/// `icon: svg { ..., ... }`. Returns replacement tokens and count of consumed
+	/// input tokens, or `None` if the pattern doesn't match at the given position.
+	fn try_transform_icon(
+		trees: &[proc_macro2::TokenTree],
+		start: usize,
+	) -> Option<(Vec<proc_macro2::TokenTree>, usize)> {
+		// Need at least 4 tokens: icon : Icon { ... }
+		if start + 4 > trees.len() {
+			return None;
+		}
+		// Match: Ident("icon")
+		let proc_macro2::TokenTree::Ident(icon_ident) = &trees[start] else {
+			return None;
+		};
+		if icon_ident.to_string() != "icon" {
+			return None;
+		}
+		// Match: Punct(':')
+		let proc_macro2::TokenTree::Punct(colon) = &trees[start + 1] else {
+			return None;
+		};
+		if colon.as_char() != ':' {
+			return None;
+		}
+		// Match: Ident("Icon")
+		let proc_macro2::TokenTree::Ident(icon_type) = &trees[start + 2] else {
+			return None;
+		};
+		if icon_type.to_string() != "Icon" {
+			return None;
+		}
+		// Match: Group with Brace delimiter
+		let proc_macro2::TokenTree::Group(outer_group) = &trees[start + 3] else {
+			return None;
+		};
+		if outer_group.delimiter() != proc_macro2::Delimiter::Brace {
+			return None;
+		}
+
+		// Parse the inner group to extract attrs and children
+		let inner_trees: Vec<proc_macro2::TokenTree> =
+			outer_group.stream().clone().into_iter().collect();
+		let merged_inner = Self::parse_icon_inner(&inner_trees)?;
+
+		let mut replacement = Vec::new();
+		replacement.push(trees[start].clone()); // icon
+		replacement.push(trees[start + 1].clone()); // :
+		// Create "svg" ident
+		replacement.push(proc_macro2::TokenTree::Ident(proc_macro2::Ident::new(
+			"svg",
+			icon_type.span(),
+		)));
+		// Create merged group
+		let merged_stream: proc_macro2::TokenStream = merged_inner.into_iter().collect();
+		let mut merged_group =
+			proc_macro2::Group::new(proc_macro2::Delimiter::Brace, merged_stream);
+		merged_group.set_span(outer_group.span());
+		replacement.push(proc_macro2::TokenTree::Group(merged_group));
+		Some((replacement, 4))
+	}
+
+	/// Parse the inner tokens of `Icon { attrs: { ... }, children: [ ... ] }`.
+	/// Returns merged tokens: attrs content followed by children content (without
+	/// the array wrapper).
+	fn parse_icon_inner(trees: &[proc_macro2::TokenTree]) -> Option<Vec<proc_macro2::TokenTree>> {
+		let mut attrs_inner: Option<Vec<proc_macro2::TokenTree>> = None;
+		let mut children_inner: Option<Vec<proc_macro2::TokenTree>> = None;
+		let mut i = 0;
+		while i < trees.len() {
+			let proc_macro2::TokenTree::Ident(key) = &trees[i] else {
+				i += 1;
+				continue;
+			};
+			let key_str = key.to_string();
+			if i + 2 >= trees.len() {
+				return None;
+			}
+			if !matches!(&trees[i + 1], proc_macro2::TokenTree::Punct(p) if p.as_char() == ':') {
+				i += 1;
+				continue;
+			}
+			match key_str.as_str() {
+				"attrs" => {
+					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2] {
+						if g.delimiter() == proc_macro2::Delimiter::Brace {
+							attrs_inner = Some(g.stream().clone().into_iter().collect());
+						}
+					}
+				}
+				"children" => {
+					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2] {
+						if g.delimiter() == proc_macro2::Delimiter::Bracket {
+							// Extract children without the bracket wrapper
+							children_inner = Some(g.stream().clone().into_iter().collect());
+						}
+					}
+				}
+				_ => {}
+			}
+			i += 3;
+			if i < trees.len()
+				&& matches!(&trees[i], proc_macro2::TokenTree::Punct(p) if p.as_char() == ',')
+			{
+				i += 1;
+			}
+		}
+
+		let mut merged = attrs_inner?;
+		// Strip trailing comma(s) from attrs before merging children
+		while merged.last().map_or(
+			false,
+			|t| matches!(t, proc_macro2::TokenTree::Punct(p) if p.as_char() == ','),
+		) {
+			merged.pop();
+		}
+		if let Some(children) = children_inner {
+			// Add comma separator if there are children
+			if !merged.is_empty() && !children.is_empty() {
+				merged.push(proc_macro2::TokenTree::Punct(proc_macro2::Punct::new(
+					',',
+					proc_macro2::Spacing::Alone,
+				)));
+			}
+			merged.extend(children);
+		}
+		Some(merged)
+	}
+
+	/// Try to transform `icon_position: Left|Right|Label` into
+	/// `icon_position: "left"|"right"|"label"`. Returns replacement tokens and
+	/// count of consumed input tokens, or `None` if the pattern doesn't match.
+	fn try_transform_icon_position(
+		trees: &[proc_macro2::TokenTree],
+		start: usize,
+	) -> Option<(Vec<proc_macro2::TokenTree>, usize)> {
+		if start + 3 > trees.len() {
+			return None;
+		}
+		// Match: Ident("icon_position")
+		let proc_macro2::TokenTree::Ident(pos_ident) = &trees[start] else {
+			return None;
+		};
+		if pos_ident.to_string() != "icon_position" {
+			return None;
+		}
+		// Match: Punct(':')
+		let proc_macro2::TokenTree::Punct(colon) = &trees[start + 1] else {
+			return None;
+		};
+		if colon.as_char() != ':' {
+			return None;
+		}
+		// Match: Ident("Left"|"Right"|"Label")
+		let proc_macro2::TokenTree::Ident(value_ident) = &trees[start + 2] else {
+			return None;
+		};
+		let lowercase = match value_ident.to_string().as_str() {
+			"Left" => "left",
+			"Right" => "right",
+			"Label" => "label",
+			_ => return None,
+		};
+
+		let mut replacement = Vec::new();
+		replacement.push(trees[start].clone()); // icon_position
+		replacement.push(trees[start + 1].clone()); // :
+		replacement.push(proc_macro2::TokenTree::Literal(
+			proc_macro2::Literal::string(lowercase),
+		));
+		Some((replacement, 3))
+	}
+
 	/// Format macro tokens to formatted string, dispatching based on MacroKind.
 	fn format_macro_tokens(
 		&self,
@@ -1305,12 +1633,20 @@ impl AstPageFormatter {
 				self.format_page_macro(&page_macro, base_indent, &blank_lines)
 			}
 			MacroKind::Form => {
+				// Preprocess tokens to convert internal AST to DSL
+				let preprocessed = Self::preprocess_form_tokens(tokens);
+
 				// Parse tokens as FormMacro
-				let form_macro: FormMacro =
-					syn::parse2(tokens.clone()).map_err(|e| format!("Parse error: {}", e))?;
+				let form_macro: FormMacro = match syn::parse2(preprocessed) {
+					Ok(fm) => fm,
+					Err(e) => {
+						return Err(format!("Parse error: {}", e));
+					}
+				};
 
 				// Format the macro
-				self.format_form_macro(&form_macro, base_indent)
+				let formatted = self.format_form_macro(&form_macro, base_indent)?;
+				Ok(formatted)
 			}
 		}
 	}
@@ -1560,8 +1896,7 @@ impl AstPageFormatter {
 		for item in &derived.items {
 			let fi = self.make_indent(inner_ind);
 			let name = item.name.to_string();
-			let closure_str =
-				Self::clean_expression_spaces(&item.closure.to_token_stream().to_string());
+			let closure_str = self.format_closure_expression(&item.closure, inner_ind);
 			output.push_str(&fi);
 			output.push_str(&name);
 			output.push_str(": ");
@@ -1598,7 +1933,7 @@ impl AstPageFormatter {
 		indent: usize,
 	) {
 		let fi = self.make_indent(indent);
-		let expr_str = Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		let expr_str = self.format_closure_expression(closure, indent);
 		output.push_str(&fi);
 		output.push_str(name);
 		output.push_str(": ");
@@ -1606,30 +1941,23 @@ impl AstPageFormatter {
 		output.push_str(",\n");
 	}
 
-	/// Format the form callbacks section.
+	/// Format the form callbacks (emitted at the current indent level without a wrapper).
 	fn format_form_callbacks(&self, output: &mut String, callbacks: &FormCallbacks, indent: usize) {
-		let ind = self.make_indent(indent);
-		output.push_str(&ind);
-		output.push_str("callbacks: {\n");
-		let inner_ind = indent + 1;
-
 		if let Some(cb) = &callbacks.on_submit {
-			self.format_callback_entry(output, "on_submit", cb, inner_ind);
+			self.format_callback_entry(output, "on_submit", cb, indent);
 		}
 		if let Some(cb) = &callbacks.on_success {
-			self.format_callback_entry(output, "on_success", cb, inner_ind);
+			self.format_callback_entry(output, "on_success", cb, indent);
 		}
 		if let Some(cb) = &callbacks.on_success_ref {
-			self.format_callback_entry(output, "on_success_ref", cb, inner_ind);
+			self.format_callback_entry(output, "on_success_ref", cb, indent);
 		}
 		if let Some(cb) = &callbacks.on_error {
-			self.format_callback_entry(output, "on_error", cb, inner_ind);
+			self.format_callback_entry(output, "on_error", cb, indent);
 		}
 		if let Some(cb) = &callbacks.on_loading {
-			self.format_callback_entry(output, "on_loading", cb, inner_ind);
+			self.format_callback_entry(output, "on_loading", cb, indent);
 		}
-		output.push_str(&ind);
-		output.push_str("}\n");
 	}
 
 	/// Emit a single named callback entry.
@@ -1641,7 +1969,7 @@ impl AstPageFormatter {
 		indent: usize,
 	) {
 		let fi = self.make_indent(indent);
-		let expr_str = Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		let expr_str = self.format_closure_expression(closure, indent);
 		output.push_str(&fi);
 		output.push_str(name);
 		output.push_str(": ");
@@ -1658,8 +1986,7 @@ impl AstPageFormatter {
 		for item in &watch.items {
 			let fi = self.make_indent(inner_ind);
 			let name = item.name.to_string();
-			let closure_str =
-				Self::clean_expression_spaces(&item.closure.to_token_stream().to_string());
+			let closure_str = self.format_closure_expression(&item.closure, inner_ind);
 			output.push_str(&fi);
 			output.push_str(&name);
 			output.push_str(": ");
@@ -1766,6 +2093,11 @@ impl AstPageFormatter {
 	/// Format form field entries (fields, groups, submit buttons).
 	fn format_form_entries(&self, output: &mut String, entries: &[FormFieldEntry], indent: usize) {
 		let ind = self.make_indent(indent);
+		if entries.is_empty() {
+			output.push_str(&ind);
+			output.push_str("fields: {}\n");
+			return;
+		}
 		output.push_str(&ind);
 		output.push_str("fields: {\n");
 		let inner_ind = indent + 1;
@@ -1926,16 +2258,12 @@ impl AstPageFormatter {
 		indent: usize,
 	) -> String {
 		let mut out = String::new();
-		out.push_str("Wrapper {\n");
-		let inner = self.make_indent(indent + 1);
-		out.push_str(&inner);
-		out.push_str("tag: ");
 		out.push_str(&element.tag.to_string());
-		out.push_str(",\n");
-		if !element.attrs.is_empty() {
-			out.push_str(&inner);
-			out.push_str("attrs: {\n");
-			let ai = self.make_indent(indent + 2);
+		if element.attrs.is_empty() {
+			out.push_str(" {}");
+		} else {
+			out.push_str(" {\n");
+			let ai = self.make_indent(indent + 1);
 			for attr in &element.attrs {
 				let val_str =
 					Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
@@ -1945,12 +2273,10 @@ impl AstPageFormatter {
 				out.push_str(&val_str);
 				out.push_str(",\n");
 			}
-			out.push_str(&inner);
-			out.push_str("},\n");
+			let ind = self.make_indent(indent);
+			out.push_str(&ind);
+			out.push('}');
 		}
-		let ind = self.make_indent(indent);
-		out.push_str(&ind);
-		out.push('}');
 		out
 	}
 
@@ -1961,35 +2287,20 @@ impl AstPageFormatter {
 		indent: usize,
 	) -> String {
 		let mut out = String::new();
-		out.push_str("Icon {\n");
+		out.push_str("svg {\n");
 		let inner = self.make_indent(indent + 1);
-		if !element.attrs.is_empty() {
+		for attr in &element.attrs {
+			let val_str = Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
 			out.push_str(&inner);
-			out.push_str("attrs: {\n");
-			let ai = self.make_indent(indent + 2);
-			for attr in &element.attrs {
-				let val_str =
-					Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
-				out.push_str(&ai);
-				out.push_str(&attr.name.to_string());
-				out.push_str(": ");
-				out.push_str(&val_str);
-				out.push_str(",\n");
-			}
-			out.push_str(&inner);
-			out.push_str("},\n");
+			out.push_str(&attr.name.to_string());
+			out.push_str(": ");
+			out.push_str(&val_str);
+			out.push_str(",\n");
 		}
-		if !element.children.is_empty() {
-			out.push_str(&inner);
-			out.push_str("children: [\n");
-			let child_indent = indent + 2;
-			for child in &element.children {
-				let child_str = self.format_icon_child(child, child_indent);
-				out.push_str(&child_str);
-				out.push_str(",\n");
-			}
-			out.push_str(&inner);
-			out.push_str("],\n");
+		for child in &element.children {
+			let child_str = self.format_icon_child(child, indent + 1);
+			out.push_str(&child_str);
+			out.push_str(",\n");
 		}
 		let ind = self.make_indent(indent);
 		out.push_str(&ind);
@@ -2014,15 +2325,11 @@ impl AstPageFormatter {
 			out.push_str(",\n");
 		}
 		if !child.children.is_empty() {
-			out.push_str(&inner);
-			out.push_str("children: [\n");
 			for nested in &child.children {
-				let nested_str = self.format_icon_child(nested, indent + 2);
+				let nested_str = self.format_icon_child(nested, indent + 1);
 				out.push_str(&nested_str);
 				out.push_str(",\n");
 			}
-			out.push_str(&inner);
-			out.push_str("],\n");
 		}
 		out.push_str(&ci);
 		out.push('}');
@@ -2032,9 +2339,9 @@ impl AstPageFormatter {
 	/// Format `IconPosition` to its DSL representation.
 	fn format_icon_position(&self, position: &reinhardt_pages::ast::IconPosition) -> String {
 		match position {
-			reinhardt_pages::ast::IconPosition::Left => "Left".to_string(),
-			reinhardt_pages::ast::IconPosition::Right => "Right".to_string(),
-			reinhardt_pages::ast::IconPosition::Label => "Label".to_string(),
+			reinhardt_pages::ast::IconPosition::Left => "\"left\"".to_string(),
+			reinhardt_pages::ast::IconPosition::Right => "\"right\"".to_string(),
+			reinhardt_pages::ast::IconPosition::Label => "\"label\"".to_string(),
 		}
 	}
 
@@ -2292,6 +2599,7 @@ impl AstPageFormatter {
 			// to avoid leaving a space before :: (e.g., collect ::<Vec<_>>)
 			.replace(" :: ", "::")
 			.replace(" ::", "::")
+			.replace(":: ", "::")
 
 			// Generic type angle brackets: Vec < String > -> Vec<String>
 			// These handle spaces around < and > in generic type parameters
@@ -2474,27 +2782,90 @@ impl AstPageFormatter {
 			return Self::clean_expression_spaces(&expr.to_token_stream().to_string());
 		}
 
-		// Wrap the expression in a valid Rust file
-		let wrapper_code = format!(
-			"fn _wrapper() {{ let _handler = {}; }}",
-			expr.to_token_stream()
-		);
+		let token_str = expr.to_token_stream().to_string();
 
-		// Parse with syn
+		if token_str.contains("page !") || token_str.contains("form !") {
+			let cleaned = Self::clean_expression_spaces(&token_str);
+			let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", cleaned);
+
+			let protect_result = self.protect_page_macros(&wrapper_code);
+
+			let Ok(file) = syn::parse_file(&protect_result.protected_content) else {
+				return cleaned;
+			};
+
+			let prettyplease_output = prettyplease::unparse(&file);
+			let formatted = self.format_with_rustfmt(&prettyplease_output);
+			let restored = self.restore_page_macros_recursive(&formatted, &protect_result.backups);
+
+			if let Some(handler_str) = Self::extract_handler_from_wrapper(&restored) {
+				return self.apply_base_indent(&handler_str, base_indent);
+			}
+			return cleaned;
+		}
+
+		// Wrap the expression in a valid Rust file
+		let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", token_str);
+
 		let Ok(file) = syn::parse_file(&wrapper_code) else {
-			return Self::clean_expression_spaces(&expr.to_token_stream().to_string());
+			return Self::clean_expression_spaces(&token_str);
 		};
 
 		// Format with prettyplease + rustfmt
 		let prettyplease_output = prettyplease::unparse(&file);
 		let formatted = self.format_with_rustfmt(&prettyplease_output);
 
-		// Extract the formatted handler
 		let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) else {
-			return Self::clean_expression_spaces(&expr.to_token_stream().to_string());
+			return Self::clean_expression_spaces(&token_str);
 		};
 
 		// Apply base indentation
+		self.apply_base_indent(&handler_str, base_indent)
+	}
+	/// Format a closure expression, using rustfmt for block-body closures.
+	fn format_closure_expression(&self, closure: &syn::ExprClosure, base_indent: usize) -> String {
+		// For non-block closures (e.g., |x| x + 1), clean_expression_spaces is sufficient
+		if !matches!(closure.body.as_ref(), syn::Expr::Block(_)) {
+			return Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		}
+
+		let token_str = closure.to_token_stream().to_string();
+
+		if token_str.contains("page !") || token_str.contains("form !") {
+			let cleaned = Self::clean_expression_spaces(&token_str);
+			let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", cleaned);
+
+			let protect_result = self.protect_page_macros(&wrapper_code);
+
+			let Ok(file) = syn::parse_file(&protect_result.protected_content) else {
+				return cleaned;
+			};
+
+			let prettyplease_output = prettyplease::unparse(&file);
+			let formatted = self.format_with_rustfmt(&prettyplease_output);
+			let restored = self.restore_page_macros_recursive(&formatted, &protect_result.backups);
+
+			if let Some(handler_str) = Self::extract_handler_from_wrapper(&restored) {
+				return self.apply_base_indent(&handler_str, base_indent);
+			}
+			return cleaned;
+		}
+
+		// Wrap the full closure in a valid Rust file for formatting
+		let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", token_str);
+
+		let Ok(file) = syn::parse_file(&wrapper_code) else {
+			return Self::clean_expression_spaces(&token_str);
+		};
+
+		// Format with prettyplease + rustfmt
+		let prettyplease_output = prettyplease::unparse(&file);
+		let formatted = self.format_with_rustfmt(&prettyplease_output);
+
+		let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) else {
+			return Self::clean_expression_spaces(&token_str);
+		};
+
 		self.apply_base_indent(&handler_str, base_indent)
 	}
 
@@ -3088,7 +3459,7 @@ impl AstPageFormatter {
 			.ok()?;
 		match kind {
 			MacroKind::Page => Some(format!("page!({})", formatted)),
-			MacroKind::Form => Some(format!("form!({})", formatted)),
+			MacroKind::Form => Some(format!("form! {}", formatted)),
 		}
 	}
 }
