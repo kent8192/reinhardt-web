@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0...reinhardt-pages@v0.2.0-rc.2) - 2026-05-24
+
+### Added
+
+- *(manouche,pages-macros)* validator populates inner from generics
+- *(pages-macros)* codegen substitutes inner type into Signal<T>
+- *(pages-macros)* codegen emits typed default values
+- *(pages-macros)* typed choices store for ChoiceField<T>
+- *(pages-macros)* emit struct-level where clause for typed fields
+- *(pages)* add named children slots ($slotname) to page! macro Component invocation
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(manouche)* [**breaking**] TypedFieldType variants carry inner syn::Type
+
+### Documentation
+
+- *(pages)* add CHANGELOG entry for typed form fields ([[#4397](https://github.com/kent8192/reinhardt-web/issues/4397)](https://github.com/kent8192/reinhardt-web/issues/4397))
+
+### Fixed
+
+- *(pages-macros)* avoid stringifying typed choice values in load_choices
+- *(manouche)* use String as default JsonField inner type for backward compat
+- *(pages)* detect std-qualified String paths in type_is_string utility
+- *(pages)* detect std-qualified String paths in type_is_string utility
+- *(pages)* update JsonField default type docs and rename stale test
+- *(pages)* address CodeRabbit review — named slots capture checking, brace codegen, and test assertions
+- *(page)* normalize slot names for duplicate detection and check component event captures
+
+### Styling
+
+- apply cargo fmt-fix
+
+### Testing
+
+- *(pages)* trybuild pass cases for typed form fields
+- *(pages)* trybuild fail cases for typed form fields (.rs only)
+- *(pages-macros)* codegen unit tests for typed signal/default emission
+- *(pages)* add trybuild .stderr fixtures; drop speculative test
+
 ### Added
 
 - `callback_with_deps` internal helper backing `use_callback` /

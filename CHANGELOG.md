@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0...reinhardt-web@v0.2.0-rc.2) - 2026-05-24
+
+### Added
+
+- *(db)* introduce type-safe nullable field on FieldMetadata
+- *(pages)* add named children slots ($slotname) to page! macro Component invocation
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(seeding)* drop redundant intra-doc link targets and wrap bare URL
+- *(ci)* update comments and job names to reflect develop-release-plz-* scope
+
+### Fixed
+
+- restore accidentally deleted settings template files
+- *(pages-components-macros)* emit compile_error! instead of todo!() panics
+- *(seeding)* add version to reinhardt-seeding-macros workspace dep
+- *(db)* address CodeRabbit review on CHANGELOG and with_param normalization
+- *(manouche)* add named_slots support to brace-form component parser
+- *(pages)* address CodeRabbit review — named slots capture checking, brace codegen, and test assertions
+- *(page)* normalize slot names for duplicate detection and check component event captures
+- *(ci)* include develop-release-plz-* branches in self-hosted runner selection
+- *(ci)* extend develop-release-plz-* branch handling to all workflows
+- *(ci)* add parentheses to concurrency group expression
+- *(ci)* use separate concurrency keys for release-plz and develop-release-plz branches
+
+### Maintenance
+
+- add .coderabbit.yaml to enable reviews on all base branches
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.30...reinhardt-web@v0.1.0) - 2026-05-22
 
 First stable release of `reinhardt-web`, after 19 alpha and 30 rc

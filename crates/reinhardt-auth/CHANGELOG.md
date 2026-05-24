@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0...reinhardt-auth@v0.2.0-rc.2) - 2026-05-24
+
+### Added
+
+- *(auth)* [**breaking**] remove RC-deprecated CurrentUser, DefaultUser, and User trait (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520), closes [[#4652](https://github.com/kent8192/reinhardt-web/issues/4652)](https://github.com/kent8192/reinhardt-web/issues/4652))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(auth)* update core.rs and lib.rs doc references for removed types
+
 ### Removed
 
 #### BREAKING CHANGES

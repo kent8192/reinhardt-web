@@ -11,8 +11,8 @@ keywords = ["web", "framework", "ui", "components", "macro"]
 categories = ["web-programming", "template-engine"]
 
 [dependencies]
-reinhardt-core = { version = "0.2.0-rc.1", path = "../reinhardt-core" }
-reinhardt-pages = { version = "0.2.0-rc.1", path = "../reinhardt-pages" }
+reinhardt-core = { version = "0.2.0-rc.2", path = "../reinhardt-core" }
+reinhardt-pages = { version = "0.2.0-rc.2", path = "../reinhardt-pages" }
 reinhardt-pages-components-macros = { version = "0.2.0-rc.1", path = "../reinhardt-pages-components-macros" }
 thiserror = "2.0"
 html-escape = "0.2"
