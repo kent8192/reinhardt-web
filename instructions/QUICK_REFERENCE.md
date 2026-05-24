@@ -115,7 +115,7 @@
 - Skip reviewing Release PRs before merging
 - Use `reinhardt-test = { workspace = true }` in functional crate `[dev-dependencies]` (workspace deps include version, causing publish failures; use optional dep or path-only dev-dep instead)
 - Omit `version` field from `reinhardt-test` workspace dependency (causes publish failure for dependents)
-- Change `pr_branch_prefix` from `"release-plz-"` (breaks two-step release workflow)
+- Change `pr_branch_prefix` from `"release-plz-"` on `main` (breaks two-step release workflow); on `develop/*` the prefix MUST be `"develop-release-plz-"` to prevent cross-branch PR closure
 - Merge Release PR without rolling back unpublished crate versions after partial release failure
 - Write vague commit descriptions that are unclear as CHANGELOG entries (e.g., "fix issue", "update code")
 - Start commit description with uppercase letter
