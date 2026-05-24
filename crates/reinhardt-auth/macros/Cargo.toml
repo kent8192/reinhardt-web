@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-auth-macros"
-version = "0.1.0"
+version = "0.2.0-rc.2"
 description = "Procedural macros for reinhardt-auth (guard!)"
 edition.workspace = true
 rust-version.workspace = true

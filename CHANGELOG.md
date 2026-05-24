@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0...reinhardt-web@v0.2.0-rc.2) - 2026-05-24
+
+### Added
+
+- *(admin-cli)* scaffold migrate-manouche-v2 subcommand
+- *(admin-cli)* codemod pipeline scaffolding (walker + rule trait + review fixes)
+- *(admin)* add form! macro DSL formatting support
+
+### Fixed
+
+- *(templates)* add server_only, no_ws_resolvers to RESTful project url template
+- *(admin)* preserve blank lines inside page! macro DSL when formatting
+- *(admin)* preserve comments and blank lines in codemod rewriting
+- *(admin)* use text-based item search for codemod formatting preservation
+- *(admin-cli)* address CodeRabbit review on form! detection, char/lifetime scan, temp file, and codemod rules
+- *(admin-cli)* use unique temp filename in target directory for atomic rename
+- *(admin-cli)* ensure temp file cleanup runs on rename failure
+- *(admin)* clean up temp file when std::fs::write fails in write_developer_file
+
+### Styling
+
+- *(admin)* fix indentation in write_developer_file write-error handler
+- *(admin-cli)* apply rustfmt to migrate_v2 codemod tests
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.30...reinhardt-web@v0.1.0) - 2026-05-22
 
 First stable release of `reinhardt-web`, after 19 alpha and 30 rc
