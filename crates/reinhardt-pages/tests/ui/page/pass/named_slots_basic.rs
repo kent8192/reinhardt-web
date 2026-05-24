@@ -13,7 +13,7 @@ impl TableBuilder {
 fn Table(_args: i32) -> TableBuilder { TableBuilder }
 
 fn main() {
-	let _table = page!(|| {
+	let _table: Page = page!(|| {
 		Table(args: 1) {
 			$header {
 				div { "Name" }

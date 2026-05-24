@@ -200,6 +200,11 @@ impl CaptureChecker {
 				self.visit_node(n);
 			}
 		}
+		for slot in &c.named_slots {
+			for n in &slot.children {
+				self.visit_node(n);
+			}
+		}
 	}
 
 	fn visit_watch(&mut self, w: &PageWatch) {

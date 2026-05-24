@@ -13,7 +13,7 @@ impl LayoutBuilder {
 fn Layout(_args: i32) -> LayoutBuilder { LayoutBuilder }
 
 fn main() {
-	let _layout = page!(|| {
+	let _layout: Page = page!(|| {
 		Layout(args: 1) {
 			div { "Default child" }
 			$sidebar {

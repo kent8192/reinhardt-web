@@ -1417,8 +1417,7 @@ mod tests {
 		// Assert
 		assert!(result.is_err());
 		let err = result.unwrap_err().to_string();
-		assert!(err.contains("duplicate named slot"), "got: {err}");
-		assert!(err.contains("header"), "got: {err}");
+		assert_eq!(err, "duplicate named slot `header` in component");
 	}
 
 	#[rstest]
@@ -1436,10 +1435,7 @@ mod tests {
 		// Assert
 		assert!(result.is_err());
 		let err = result.unwrap_err().to_string();
-		assert!(
-			err.contains("only valid inside a component body"),
-			"got: {err}"
-		);
+		assert_eq!(err, "`$slotname { }` is only valid inside a component body");
 	}
 
 	#[rstest]

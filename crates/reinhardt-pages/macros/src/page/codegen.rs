@@ -815,12 +815,25 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 		}
 	};
 
+	// Named slot setters (e.g., `$header { ... }` → `.header(view)`).
+	let slot_setters: Vec<TokenStream> = comp
+		.named_slots
+		.iter()
+		.map(|slot| {
+			let setter_name = slot_name_to_snake_case(&slot.name.to_string());
+			let setter_ident = syn::Ident::new(&setter_name, slot.name.span());
+			let slot_view = generate_if_branch(&slot.children, pages_crate);
+			quote! { .#setter_ident (#slot_view) }
+		})
+		.collect();
+
 	quote! {
 		#fn_name(
 			#props_ty::builder()
 				#(#prop_setters)*
 				#(#event_setters)*
 				#children_setter
+				#(#slot_setters)*
 				.build()
 		)
 	}
