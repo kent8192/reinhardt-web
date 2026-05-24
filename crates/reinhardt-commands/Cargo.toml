@@ -84,7 +84,7 @@ trybuild = { workspace = true }
 [features]
 default = ["server", "autoreload"]
 migrations = ["reinhardt-db"]
-routers = ["dep:reinhardt-urls"]
+routers = ["dep:reinhardt-urls", "dep:reinhardt-http"]
 di = ["dep:reinhardt-di"]
 openapi = ["dep:reinhardt-rest", "dep:reinhardt-http"]
 introspect = ["routers", "dep:cargo_metadata", "dep:serde_yaml"]
