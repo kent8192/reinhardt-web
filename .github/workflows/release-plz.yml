@@ -285,7 +285,7 @@ jobs:
           fi
 
       - name: Verify release branch name
-        if: startsWith(github.event.head_commit.message, 'Merge pull request #')
+        if: "startsWith(github.event.head_commit.message, 'Merge pull request #')"
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
@@ -309,7 +309,7 @@ jobs:
           esac
 
       - name: Verify release PR label
-        if: startsWith(github.event.head_commit.message, 'Merge pull request #')
+        if: "startsWith(github.event.head_commit.message, 'Merge pull request #')"
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
