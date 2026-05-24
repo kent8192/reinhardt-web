@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0...reinhardt-admin-cli@v0.1.1) - 2026-05-24
+
+### Fixed
+
+- *(admin-cli)* revert version to 0.1.0
+
+### Styling
+
+- *(admin-cli)* apply rustfmt to migrate_v2 codemod tests
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.30...reinhardt-admin-cli@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-admin-cli` as part of the
