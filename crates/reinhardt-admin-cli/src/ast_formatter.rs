@@ -1405,7 +1405,7 @@ impl AstPageFormatter {
 			};
 			let key_str = key.to_string();
 			// Skip past `key :`
-			if i + 2 > trees.len() {
+			if i + 2 >= trees.len() {
 				return None;
 			}
 			if !matches!(&trees[i + 1], proc_macro2::TokenTree::Punct(p) if p.as_char() == ':') {
@@ -1513,7 +1513,7 @@ impl AstPageFormatter {
 				continue;
 			};
 			let key_str = key.to_string();
-			if i + 2 > trees.len() {
+			if i + 2 >= trees.len() {
 				return None;
 			}
 			if !matches!(&trees[i + 1], proc_macro2::TokenTree::Punct(p) if p.as_char() == ':') {
