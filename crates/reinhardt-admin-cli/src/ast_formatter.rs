@@ -1921,16 +1921,12 @@ impl AstPageFormatter {
 		indent: usize,
 	) -> String {
 		let mut out = String::new();
-		out.push_str("Wrapper {\n");
-		let inner = self.make_indent(indent + 1);
-		out.push_str(&inner);
-		out.push_str("tag: ");
 		out.push_str(&element.tag.to_string());
-		out.push_str(",\n");
-		if !element.attrs.is_empty() {
-			out.push_str(&inner);
-			out.push_str("attrs: {\n");
-			let ai = self.make_indent(indent + 2);
+		if element.attrs.is_empty() {
+			out.push_str(" {}");
+		} else {
+			out.push_str(" {\n");
+			let ai = self.make_indent(indent + 1);
 			for attr in &element.attrs {
 				let val_str =
 					Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
@@ -1940,12 +1936,10 @@ impl AstPageFormatter {
 				out.push_str(&val_str);
 				out.push_str(",\n");
 			}
-			out.push_str(&inner);
-			out.push_str("},\n");
+			let ind = self.make_indent(indent);
+			out.push_str(&ind);
+			out.push('}');
 		}
-		let ind = self.make_indent(indent);
-		out.push_str(&ind);
-		out.push('}');
 		out
 	}
 
@@ -1956,35 +1950,20 @@ impl AstPageFormatter {
 		indent: usize,
 	) -> String {
 		let mut out = String::new();
-		out.push_str("Icon {\n");
+		out.push_str("svg {\n");
 		let inner = self.make_indent(indent + 1);
-		if !element.attrs.is_empty() {
+		for attr in &element.attrs {
+			let val_str = Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
 			out.push_str(&inner);
-			out.push_str("attrs: {\n");
-			let ai = self.make_indent(indent + 2);
-			for attr in &element.attrs {
-				let val_str =
-					Self::clean_expression_spaces(&attr.value.to_token_stream().to_string());
-				out.push_str(&ai);
-				out.push_str(&attr.name.to_string());
-				out.push_str(": ");
-				out.push_str(&val_str);
-				out.push_str(",\n");
-			}
-			out.push_str(&inner);
-			out.push_str("},\n");
+			out.push_str(&attr.name.to_string());
+			out.push_str(": ");
+			out.push_str(&val_str);
+			out.push_str(",\n");
 		}
-		if !element.children.is_empty() {
-			out.push_str(&inner);
-			out.push_str("children: [\n");
-			let child_indent = indent + 2;
-			for child in &element.children {
-				let child_str = self.format_icon_child(child, child_indent);
-				out.push_str(&child_str);
-				out.push_str(",\n");
-			}
-			out.push_str(&inner);
-			out.push_str("],\n");
+		for child in &element.children {
+			let child_str = self.format_icon_child(child, indent + 1);
+			out.push_str(&child_str);
+			out.push_str(",\n");
 		}
 		let ind = self.make_indent(indent);
 		out.push_str(&ind);
@@ -2009,15 +1988,11 @@ impl AstPageFormatter {
 			out.push_str(",\n");
 		}
 		if !child.children.is_empty() {
-			out.push_str(&inner);
-			out.push_str("children: [\n");
 			for nested in &child.children {
-				let nested_str = self.format_icon_child(nested, indent + 2);
+				let nested_str = self.format_icon_child(nested, indent + 1);
 				out.push_str(&nested_str);
 				out.push_str(",\n");
 			}
-			out.push_str(&inner);
-			out.push_str("],\n");
 		}
 		out.push_str(&ci);
 		out.push('}');
@@ -2027,9 +2002,9 @@ impl AstPageFormatter {
 	/// Format `IconPosition` to its DSL representation.
 	fn format_icon_position(&self, position: &reinhardt_pages::ast::IconPosition) -> String {
 		match position {
-			reinhardt_pages::ast::IconPosition::Left => "Left".to_string(),
-			reinhardt_pages::ast::IconPosition::Right => "Right".to_string(),
-			reinhardt_pages::ast::IconPosition::Label => "Label".to_string(),
+			reinhardt_pages::ast::IconPosition::Left => "\"left\"".to_string(),
+			reinhardt_pages::ast::IconPosition::Right => "\"right\"".to_string(),
+			reinhardt_pages::ast::IconPosition::Label => "\"label\"".to_string(),
 		}
 	}
 
