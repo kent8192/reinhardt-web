@@ -1604,30 +1604,23 @@ impl AstPageFormatter {
 		output.push_str(",\n");
 	}
 
-	/// Format the form callbacks section.
+	/// Format the form callbacks (emitted at the current indent level without a wrapper).
 	fn format_form_callbacks(&self, output: &mut String, callbacks: &FormCallbacks, indent: usize) {
-		let ind = self.make_indent(indent);
-		output.push_str(&ind);
-		output.push_str("callbacks: {\n");
-		let inner_ind = indent + 1;
-
 		if let Some(cb) = &callbacks.on_submit {
-			self.format_callback_entry(output, "on_submit", cb, inner_ind);
+			self.format_callback_entry(output, "on_submit", cb, indent);
 		}
 		if let Some(cb) = &callbacks.on_success {
-			self.format_callback_entry(output, "on_success", cb, inner_ind);
+			self.format_callback_entry(output, "on_success", cb, indent);
 		}
 		if let Some(cb) = &callbacks.on_success_ref {
-			self.format_callback_entry(output, "on_success_ref", cb, inner_ind);
+			self.format_callback_entry(output, "on_success_ref", cb, indent);
 		}
 		if let Some(cb) = &callbacks.on_error {
-			self.format_callback_entry(output, "on_error", cb, inner_ind);
+			self.format_callback_entry(output, "on_error", cb, indent);
 		}
 		if let Some(cb) = &callbacks.on_loading {
-			self.format_callback_entry(output, "on_loading", cb, inner_ind);
+			self.format_callback_entry(output, "on_loading", cb, indent);
 		}
-		output.push_str(&ind);
-		output.push_str("}\n");
 	}
 
 	/// Emit a single named callback entry.
