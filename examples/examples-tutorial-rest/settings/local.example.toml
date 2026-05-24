@@ -1,9 +1,0 @@
-# Local development settings
-# Copy to local.toml: cp local.example.toml local.toml
-#
-# CoreSettings is registered as `#[settings(section = "core")]`, so its
-# fields must live under `[core]` to override values from base.toml.
-
-[core]
-debug = true
-secret_key = "local-development-secret-key"

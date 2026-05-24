@@ -846,25 +846,33 @@ fn props_struct_name(comp: &syn::Ident) -> syn::Ident {
 
 /// Spec §3.5.1 convention: `Card` → fn `card` (snake_case of the component name).
 ///
-/// Conversion lowercases the first letter and inserts `_` before each
-/// subsequent uppercase letter. Already-snake-case names round-trip unchanged.
+/// Conversion lowercases the name and inserts `_` at word boundaries, while
+/// keeping consecutive uppercase runs together as a single acronym word
+/// (e.g. `URLCard` → `url_card`). Already-snake-case names round-trip unchanged.
 fn component_fn_name(comp: &syn::Ident) -> syn::Ident {
 	let s = comp.to_string();
 	let snake = pascal_to_snake(&s);
 	syn::Ident::new(&snake, comp.span())
 }
 
-/// Naive PascalCase → snake_case conversion sufficient for component idents.
+/// PascalCase → snake_case conversion. Treats consecutive uppercase runs as
+/// acronyms per Rust naming conventions (e.g. `URLCard` → `url_card`).
 fn pascal_to_snake(s: &str) -> String {
 	let mut out = String::with_capacity(s.len() + 4);
-	for (i, c) in s.chars().enumerate() {
+	let mut chars = s.chars().peekable();
+	let mut prev_is_lower_or_digit = false;
+
+	while let Some(c) = chars.next() {
 		if c.is_ascii_uppercase() {
-			if i != 0 {
+			let next_is_lower = chars.peek().is_some_and(|next| next.is_ascii_lowercase());
+			if !out.is_empty() && (prev_is_lower_or_digit || next_is_lower) {
 				out.push('_');
 			}
 			out.push(c.to_ascii_lowercase());
+			prev_is_lower_or_digit = false;
 		} else {
 			out.push(c);
+			prev_is_lower_or_digit = c.is_ascii_lowercase() || c.is_ascii_digit();
 		}
 	}
 	out
