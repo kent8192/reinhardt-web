@@ -11,13 +11,18 @@
 //! and `apps::users::urls::client_router::urls`. The macro-generated
 //! helpers wrap `ResolvedUrls::from_global()` internally; the reverser is
 //! registered in `client::lib::main`.
+// `nav_bar` crosses app boundaries: the home link belongs to the polls
+// app, and the login/logout/signup links belong to the users app. Pulling
+// each from its owning app's macro-emitted `urls` module makes that
+// coupling explicit.
 use crate::apps::polls::urls::client_router::urls as polls_links;
-use crate::apps::users::server_fn::current_user;
 use crate::apps::users::urls::client_router::urls as users_links;
 use crate::shared::types::UserInfo;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action};
+
+use crate::apps::users::server_fn::current_user;
 /// Top navigation bar used by every page in the polls SPA.
 ///
 /// Layout: left side is a "Polls" home link, right side switches between a
@@ -29,13 +34,14 @@ pub fn nav_bar() -> Page {
 	let load_user =
 		use_action(|_: ()| async move { current_user().await.map_err(|e| e.to_string()) });
 	load_user.dispatch(());
+
 	let auth_signal = load_user.clone();
 	let polls_index_href = polls_links::index();
 	let login_href = users_links::login();
 	let logout_href = users_links::logout();
 	let signup_href = users_links::signup();
 	page!(
-		| auth_signal : Action < Option < UserInfo >, String >, polls_index_href :
+		| auth_signal : Action<Option<UserInfo>, String>, polls_index_href :
 		String, login_href : String, logout_href : String, signup_href : String | { nav {
 		class : "nav-bar", a { href : polls_index_href, class :
 		"font-bold text-lg text-content-primary", "Polls" } if auth_signal.is_pending() {

@@ -72,8 +72,8 @@ pub fn profile_view(user_id: Uuid) -> Page {
 	let profile_signal = profile.clone();
 	let user_id_str = user_id.to_string();
 	page!(
-		| loading_signal : Signal < bool >, error_signal : Signal < Option < String >>,
-		profile_signal : Signal < Option < ProfileResponse >>, user_id_str : String | {
+		| loading_signal : Signal<bool>, error_signal : Signal<Option<String>>,
+		profile_signal : Signal<Option<ProfileResponse>>, user_id_str : String | {
 			div {
 				class: "max-w-2xl mx-auto",
 				if loading_signal.get() {
@@ -268,8 +268,8 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 	let form_view = profile_form.into_page();
 	let user_id_str = user_id.to_string();
 	page!(
-		| loading_signal : Signal < bool >, error_signal : Signal < Option < String >>,
-		success_signal : Signal < bool >, form_view : Page, user_id_str : String | {
+		| loading_signal : Signal<bool>, error_signal : Signal<Option<String>>,
+		success_signal : Signal<bool>, form_view : Page, user_id_str : String | {
 			div {
 				class: "max-w-2xl mx-auto p-4",
 				div {

@@ -66,6 +66,7 @@ pub fn client_url_patterns() -> ClientRouter {
 /// Error page used as the `not_found` fallback.
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
+	// `urls::index()` is the macro-emitted typed helper
 	let home_href = urls::index();
 	page!(
 		| message : String, home_href : String | { div { class : "layout-page", div {

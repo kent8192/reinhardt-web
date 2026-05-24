@@ -29,7 +29,7 @@ pub fn login_form() -> Page {
 	let polls_index_href = polls_links::index();
 	let signup_href = links::signup();
 	page!(
-		| loading_signal : Signal < bool >, error_signal : Signal < Option < String >>,
+		| loading_signal : Signal<bool>, error_signal : Signal<Option<String>>,
 		form_view : Page, polls_index_href : String, signup_href : String | { div { class
 		: "max-w-md mx-auto px-4 mt-12", div { class : "card", div { class : "card-body",
 		h1 { class : "card-title", "Sign in" } if error_signal.get().is_some() { div {
@@ -60,7 +60,7 @@ pub fn logout_form() -> Page {
 	let form_view = logout_form.into_page();
 	let polls_index_href = polls_links::index();
 	page!(
-		| error_signal : Signal < Option < String >>, form_view : Page, polls_index_href
+		| error_signal : Signal<Option<String>>, form_view : Page, polls_index_href
 		: String | { div { class : "max-w-md mx-auto px-4 mt-12", div { class : "card",
 		div { class : "card-body", h1 { class : "card-title", "Sign out" } p { class :
 		"text-muted mb-4", "Click the button below to end your session." } if
@@ -94,7 +94,7 @@ pub fn signup_form() -> Page {
 	let polls_index_href = polls_links::index();
 	let login_href = links::login();
 	page!(
-		| loading_signal : Signal < bool >, error_signal : Signal < Option < String >>,
+		| loading_signal : Signal<bool>, error_signal : Signal<Option<String>>,
 		form_view : Page, polls_index_href : String, login_href : String | { div { class
 		: "max-w-md mx-auto px-4 mt-12", div { class : "card", div { class : "card-body",
 		h1 { class : "card-title", "Create account" } if error_signal.get().is_some() {

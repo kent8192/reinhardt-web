@@ -231,14 +231,14 @@ pub fn text_input(
 		let value_clone = value.clone();
 		page!(
 			| id_owned : String, label_owned : String, input_type_owned : String,
-			placeholder_owned : String, value_signal : Signal < String >, required : bool
+			placeholder_owned : String, value_signal : Signal<String>, required : bool
 			| { div { class : "mb-4", label { for : id_owned.clone(), class :
 			"form-label", { { label_owned } } } input { type : input_type_owned.clone(),
 			class : "form-input", id : id_owned.clone(), name : id_owned.clone(),
 			placeholder : placeholder_owned.clone(), value : value_signal.get(), required
 			: required, @ input : { let { value } = value_clone.clone(); move | event :
 			web_sys::Event | { if let Some(target) = event.target() { if let Ok(input_el)
-			= target.dyn_into::< web_sys::HtmlInputElement > () { value.set(input_el
+			= target.dyn_into::<web_sys::HtmlInputElement>() { value.set(input_el
 			.value()); } } } }, } } }
 		)(
 			id_owned,
@@ -253,7 +253,7 @@ pub fn text_input(
 	{
 		page!(
 			| id_owned : String, label_owned : String, input_type_owned : String,
-			placeholder_owned : String, value_signal : Signal < String >, required : bool
+			placeholder_owned : String, value_signal : Signal<String>, required : bool
 			| { div { class : "mb-4", label { for : { id_owned.clone() }, class :
 			"form-label", { { label_owned } } } input { type : { input_type_owned.clone()
 			}, class : "form-input", id : { id_owned.clone() }, name : { id_owned.clone()
@@ -306,15 +306,15 @@ pub fn textarea(
 		let value_clone = value.clone();
 		page!(
 			| id_owned : String, label_owned : String, rows_str : String,
-			placeholder_owned : String, value_signal : Signal < String >,
-			value_signal_for_count : Signal < String >, maxlength_attr : String,
+			placeholder_owned : String, value_signal : Signal<String>,
+			value_signal_for_count : Signal<String>, maxlength_attr : String,
 			show_count : bool, max_length : usize | { div { class : "mb-4", label { for :
 			id_owned.clone(), class : "form-label", { { label_owned } } } textarea {
 			class : "form-textarea", id : id_owned.clone(), name : id_owned.clone(), rows
 			: rows_str.clone(), placeholder : placeholder_owned.clone(), maxlength :
 			maxlength_attr.clone(), @ input : { let { value } = value_clone.clone(); move
 			| event : web_sys::Event | { if let Some(target) = event.target() { if let
-			Ok(textarea_el) = target.dyn_into::< web_sys::HtmlTextAreaElement > () {
+			Ok(textarea_el) = target.dyn_into::<web_sys::HtmlTextAreaElement>() {
 			value.set(textarea_el.value()); } } } }, { value_signal.get() } } if
 			show_count { div { class : "flex justify-end mt-1", span { class : if
 			value_signal_for_count.get().len() > max_length { "text-danger font-medium" }
@@ -337,7 +337,7 @@ pub fn textarea(
 	{
 		page!(
 			| id_owned : String, label_owned : String, rows_str : String,
-			placeholder_owned : String, value_signal : Signal < String >, maxlength_attr
+			placeholder_owned : String, value_signal : Signal<String>, maxlength_attr
 			: String, show_count : bool, max_length : usize | { div { class : "mb-4",
 			label { for : { id_owned.clone() }, class : "form-label", { { label_owned } }
 			} textarea { class : "form-textarea", id : { id_owned.clone() }, name : {

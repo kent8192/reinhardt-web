@@ -80,6 +80,7 @@ pub struct SuggestedUser {
 /// Displays the top navigation bar with site branding and user menu.
 /// Modern design with blur background and clean typography.
 pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[NavItem]) -> Page {
+	// Desktop navigation links
 	let nav_links: Vec<Page> = nav_items
 		.iter()
 		.map(|item| {
@@ -99,10 +100,16 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 			{ link }
 		}
 	})(nav_links);
+
+	// Brand link
 	let brand_link = Link::new("/".to_string(), site_name.to_string())
 		.class("text-xl font-bold text-content-primary hover:text-brand transition-colors")
 		.render();
+
+	// Theme toggle
 	let theme_toggle_view = theme_toggle();
+
+	// User menu based on authentication state
 	let user_menu = if let Some(user) = current_user {
 		let username = format!("@{}", user.username);
 		let profile_link = Link::new(format!("/profile/{}", user.id), "Profile".to_string())

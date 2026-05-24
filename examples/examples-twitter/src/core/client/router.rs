@@ -3,14 +3,17 @@
 //! This module provides the client-side router for the Twitter clone application.
 //! Routes are defined in each app's `urls.rs` using the `UnifiedRouter` pattern,
 //! and this module handles router initialization and global access.
-use crate::config::urls::routes;
 use reinhardt::ClientRouter;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 use std::cell::RefCell;
 use uuid::Uuid;
+
+use crate::config::urls::routes;
+
+// Global Router instance
 thread_local! {
-	static ROUTER : RefCell < Option < ClientRouter >> = const { RefCell::new(None) };
+	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
 }
 /// Initialize the global router instance
 ///
@@ -19,8 +22,11 @@ thread_local! {
 /// history API listener for browser back/forward navigation.
 pub fn init_global_router() {
 	ROUTER.with(|r| {
+		// Get unified routes from config and split into server/client
 		let unified = routes();
+		// Register server router globally and get client router
 		let client = unified.register_globally();
+		// Set up popstate listener for browser back/forward navigation
 		client.setup_history_listener();
 		*r.borrow_mut() = Some(client);
 	});
@@ -43,6 +49,8 @@ where
 /// Home page view
 pub fn home_page_view() -> Page {
 	use crate::apps::tweet::client::components::tweet_list;
+
+	// Show the global feed on the home page
 	tweet_list(None)
 }
 /// Login page view
@@ -68,8 +76,12 @@ pub fn profile_edit_page_view(user_id: Uuid) -> Page {
 /// Timeline page view
 pub fn timeline_page_view() -> Page {
 	use crate::apps::tweet::client::components::{tweet_form, tweet_list};
+
+	// Get component views
 	let form_view = tweet_form();
 	let list_view = tweet_list(None);
+
+	// Combine tweet form and list into a single timeline page
 	page!(
 		| form_view : Page, list_view : Page | { div { class : "flex flex-col gap-4", { {
 		form_view } } { { list_view } } } }

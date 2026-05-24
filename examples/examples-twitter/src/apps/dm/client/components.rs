@@ -22,14 +22,13 @@ fn message_input(
 	let input_for_change = input_signal.clone();
 	let input_for_click = input_signal.clone();
 	page!(
-		| input_for_display : Signal < String >, input_for_change : Signal < String >,
-		input_for_click : Signal < String >| { div { class :
+		| input_for_display : Signal<String>, input_for_change : Signal<String>,
+		input_for_click : Signal<String>| { div { class :
 		"dm-input-container flex gap-2 p-4 border-t border-surface-tertiary", input {
 		type : "text", class : "form-control flex-1", placeholder : "Type a message...",
 		value : input_for_display.get(), @ input : { let { input_signal } =
 		input_for_change.clone(); move | event : web_sys::Event | { if let Some(target) =
-		event.target() { if let Ok(input) = target.dyn_into::< web_sys::HtmlInputElement
-		> () { input_signal.set(input.value()); } } } }, } button { class :
+		event.target() { if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() { input_signal.set(input.value()); } } } }, } button { class :
 		"btn-primary", type : "button", @ click : { let { input_signal } =
 		input_for_click.clone(); let { send_callback } = send_callback.clone(); move |
 		_event | { let { content } = input_signal.get(); if ! content.trim().is_empty() {
@@ -103,10 +102,10 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 	let input_signal = input.clone();
 	let chat_for_send = chat.clone();
 	page!(
-		| messages_signal : Signal < Vec < MessageInfo >>, is_loading_signal : Signal <
-		bool >, error_signal : Signal < Option < String >>, ws_state : Signal <
-		ConnectionState >, input_signal : Signal < String >, current_user_id : Option <
-		Uuid >, _room_id : Uuid | { div { class :
+		| messages_signal : Signal<Vec<MessageInfo>>, is_loading_signal : Signal<bool>,
+		error_signal : Signal<Option<String>>, ws_state : Signal<ConnectionState>,
+		input_signal : Signal<String>, current_user_id : Option<Uuid>,
+		_room_id : Uuid | { div { class :
 		"dm-chat-container flex flex-col h-full", div { class :
 		"dm-header flex items-center justify-between p-4 border-b border-surface-tertiary",
 		h2 { class : "text-lg font-semibold", "Direct Messages" } {
@@ -143,8 +142,8 @@ fn room_item(room: &RoomInfo, on_select: impl Fn(Uuid) + Clone + 'static) -> Pag
 	let last_activity = room.last_activity.clone();
 	let unread_count = room.unread_count;
 	page!(
-		| room_id : Uuid, name : String, last_message : Option < String >, last_activity
-		: Option < String >, unread_count : i32 | { div { class :
+		| room_id : Uuid, name : String, last_message : Option<String>, last_activity
+		: Option<String>, unread_count : i32 | { div { class :
 		"room-item flex items-center gap-3 p-4 hover:bg-surface-secondary cursor-pointer transition-colors border-b border-surface-tertiary",
 		@ click : { let { on_select } = on_select.clone(); move | _event | {
 		on_select(room_id); } }, div { class : "flex-shrink-0", div { class :
@@ -181,8 +180,8 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> Page {
 	let is_loading_signal = room_list.is_loading.clone();
 	let error_signal = room_list.error.clone();
 	page!(
-		| rooms_signal : Signal < Vec < RoomInfo >>, is_loading_signal : Signal < bool >,
-		error_signal : Signal < Option < String >>| { div { class :
+		| rooms_signal : Signal<Vec<RoomInfo>>, is_loading_signal : Signal<bool>,
+		error_signal : Signal<Option<String>>| { div { class :
 		"dm-room-list h-full flex flex-col", div { class :
 		"p-4 border-b border-surface-tertiary", h3 { class : "text-lg font-semibold",
 		"Conversations" } } div { class : "flex-1 overflow-y-auto", if is_loading_signal
