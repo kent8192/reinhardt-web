@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0...reinhardt-manouche@v0.2.0-rc.2) - 2026-05-24
+
+### Added
+
+- *(manouche)* extend PageComponent with invocation_form + events
+- *(manouche)* parse Component { ... } brace invocation form
+- *(manouche)* plumb Component { ... } form fields through typed AST
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(pages-macros)* address CodeRabbit review — comma handling and allow comment
+- *(pages)* address CodeRabbit review findings on component brace invocation
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.30...reinhardt-manouche@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-manouche` as part of the

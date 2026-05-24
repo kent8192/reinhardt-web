@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0...reinhardt-web@v0.2.0-rc.2) - 2026-05-24
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(seeding)* drop redundant intra-doc link targets and wrap bare URL
+- add #[cfg(any())] prohibition policy to 4 files
+- fix misleading copy instruction in tracked local.toml
+- update stale guidance after tracking local.toml
+- remove local.example.toml references from tutorial
+- update stale local.example.toml references after deletion
+
+### Fixed
+
+- restore accidentally deleted settings template files
+- *(pages-components-macros)* emit compile_error! instead of todo!() panics
+- *(seeding)* add version to reinhardt-seeding-macros workspace dep
+- *(examples)* move redis_url to top-level and track local.toml
+- update quickstart.sh after local.example.toml deletion
+- *(examples)* read redis_url from [database] section instead of top-level
+
+### Maintenance
+
+- add .coderabbit.yaml to enable reviews on all base branches
+- remove redundant local.example.toml files from examples
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.30...reinhardt-web@v0.1.0) - 2026-05-22
 
 First stable release of `reinhardt-web`, after 19 alpha and 30 rc
