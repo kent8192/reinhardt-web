@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   cleanup-release-branch:
-    name: Delete release-plz branch
+    name: Delete release-plz / develop-release-plz branch
     if: >-
       github.event.pull_request.merged == false &&
       (startsWith(github.event.pull_request.head.ref, 'release-plz-') || startsWith(github.event.pull_request.head.ref, 'develop-release-plz-'))

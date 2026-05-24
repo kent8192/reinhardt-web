@@ -124,7 +124,7 @@ jobs:
             if [[ "$EVENT_NAME" == "workflow_dispatch" ]] && [[ "$ACTOR" == "$REPO_OWNER" ]]; then
               USE_MAC=true
             elif [[ "$EVENT_NAME" == "pull_request" ]]; then
-              # release-plz PRs: trusted (only push-access users create these branches)
+              # release-plz / develop-release-plz PRs: trusted (only push-access users create these branches)
               if [[ "$HEAD_REF" == release-plz-* || "$HEAD_REF" == develop-release-plz-* ]]; then
                 USE_MAC=true
               # Repo owner PRs: trusted
