@@ -757,8 +757,9 @@ fn props_struct_name(comp: &syn::Ident) -> syn::Ident {
 
 /// Spec §3.5.1 convention: `Card` → fn `card` (snake_case of the component name).
 ///
-/// Conversion lowercases the first letter and inserts `_` before each
-/// subsequent uppercase letter. Already-snake-case names round-trip unchanged.
+/// Conversion lowercases the name and inserts `_` at word boundaries, while
+/// keeping consecutive uppercase runs together as a single acronym word
+/// (e.g. `URLCard` → `url_card`). Already-snake-case names round-trip unchanged.
 fn component_fn_name(comp: &syn::Ident) -> syn::Ident {
 	let s = comp.to_string();
 	let snake = pascal_to_snake(&s);

@@ -38,7 +38,9 @@ fn brace_invocation_compiles_and_renders() {
 		}
 	})();
 
-	// Assert
+	// Assert — uses Debug formatting with substring assertions intentionally;
+	// Debug output is not stable, so these must not be converted to exact-string
+	// checks. The same pattern applies throughout this file.
 	let s = format!("{v:?}");
 	assert!(
 		s.contains("hello"),

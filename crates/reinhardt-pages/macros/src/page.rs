@@ -42,6 +42,10 @@
 //! Both forms coexist; the parser picks based on the punctuation that
 //! follows the component identifier (`(` vs. `{`).
 //!
+//! `ignore` — this doctest lives in a proc-macro crate where
+//! `reinhardt_pages::*` imports aren't resolvable and `bon` isn't a
+//! dev-dependency. The example is tested via integration tests instead.
+//!
 //! ```ignore
 //! use reinhardt_pages::component::Page;
 //! use reinhardt_pages::page;
