@@ -229,28 +229,19 @@ jobs:
     # release_always=true (KI-5 phantom-version-bump fix) means release-plz
     # itself decides whether to publish based on Cargo.toml vs crates.io.
     #
-    # On develop/**, gate the job on Release-PR-merge commits to avoid
-    # spinning up a self-hosted runner + cargo registry sync for every
-    # routine feat/fix push (where Cargo.toml is unchanged and publish would
-    # always skip). Three commit-message shapes are accepted:
-    #
-    #   - squash-merge → `chore: release ...` or `chore: release (develop) ...`
-    #     (release-plz's `pr_name`; develop uses "chore: release (develop)" to
-    #     distinguish Release PR titles from main). `startsWith()` avoids
-    #     false-matching `feat: add release-plz-compatible versioning`.
-    #   - regular merge → `Merge pull request #N from owner/BRANCH` where
-    #     BRANCH starts with `release-plz-` or `develop-release-plz-`.
-    #     The `if:` condition only checks the `Merge pull request #` prefix;
-    #     the actual branch name prefix is validated in the "Verify release
-    #     branch name" step below using `grep -oP` + `case` matching.
+    # On develop/**, only squash-merge Release PR commits ("chore: release")
+    # trigger the job. The merge-commit trigger is intentionally NOT included
+    # because startsWith(commit.message, 'Merge pull request #') would also
+    # match regular feature-PR merges on develop/**, which would then fail
+    # at the branch-name verification step. Release-plz PRs should be
+    # squash-merged (MP-2), producing "chore: release" covered here.
     #
     # release-plz-pr (above) still runs on every develop/** push, so the
     # next Release PR is always kept up to date.
     if: |
       github.event_name == 'push' && (
         github.ref == 'refs/heads/main' ||
-        startsWith(github.event.head_commit.message, 'chore: release') ||
-        startsWith(github.event.head_commit.message, 'Merge pull request #')
+        startsWith(github.event.head_commit.message, 'chore: release')
       )
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
@@ -294,7 +285,7 @@ jobs:
           fi
 
       - name: Verify release branch name
-        if: "github.ref != 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore: release')"
+        if: startsWith(github.event.head_commit.message, 'Merge pull request #')
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
@@ -318,7 +309,7 @@ jobs:
           esac
 
       - name: Verify release PR label
-        if: "github.ref != 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore: release')"
+        if: startsWith(github.event.head_commit.message, 'Merge pull request #')
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
