@@ -1103,9 +1103,10 @@ impl AstPageFormatter {
 				all_macros.extend(form_visitor.macros);
 				Ok(all_macros)
 			}
-			Err(_) => {
+			Err(_e) => {
 				// If file parsing fails, fall back to text-based detection
-				self.find_page_macros_text_based(content)
+				let result = self.find_page_macros_text_based(content)?;
+				Ok(result)
 			}
 		}
 	}
@@ -1282,6 +1283,327 @@ impl AstPageFormatter {
 		BTreeSet::new()
 	}
 
+	/// Preprocess `form!` macro tokens to convert internal AST syntax to DSL syntax
+	/// before parsing with `syn::parse2`. The `FormMacro` parser expects DSL syntax
+	/// (e.g. `wrapper: div { class: "..." }`) but source files may contain internal
+	/// AST syntax (e.g. `wrapper: Wrapper { tag: div, attrs: { class: "..." } }`).
+	///
+	/// Three conversions are performed:
+	/// 1. `wrapper: Wrapper { tag: <ident>, attrs: { ... } }` → `wrapper: <ident> { ... }`
+	/// 2. `icon: Icon { attrs: { ... }, children: [ ... ] }` → `icon: svg { ..., ... }`
+	/// 3. `icon_position: Left|Right|Label` → `icon_position: "left"|"right"|"label"`
+	fn preprocess_form_tokens(tokens: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+		let trees: Vec<proc_macro2::TokenTree> = tokens.clone().into_iter().collect();
+		let processed = Self::preprocess_token_trees(&trees);
+		processed.into_iter().collect()
+	}
+
+	/// Recursively preprocess token trees, applying the three conversion patterns.
+	fn preprocess_token_trees(trees: &[proc_macro2::TokenTree]) -> Vec<proc_macro2::TokenTree> {
+		let mut result = Vec::new();
+		let mut i = 0;
+		while i < trees.len() {
+			if let Some((replacement, consumed)) = Self::try_transform_wrapper(trees, i) {
+				result.extend(replacement);
+				i += consumed;
+			} else if let Some((replacement, consumed)) = Self::try_transform_icon(trees, i) {
+				result.extend(replacement);
+				i += consumed;
+			} else if let Some((replacement, consumed)) =
+				Self::try_transform_icon_position(trees, i)
+			{
+				result.extend(replacement);
+				i += consumed;
+			} else {
+				// Recursively process groups, pass through everything else
+				match &trees[i] {
+					proc_macro2::TokenTree::Group(g) => {
+						let inner_trees: Vec<proc_macro2::TokenTree> =
+							g.stream().clone().into_iter().collect();
+						let processed_inner = Self::preprocess_token_trees(&inner_trees);
+						let inner_stream: proc_macro2::TokenStream =
+							processed_inner.into_iter().collect();
+						let mut new_group = proc_macro2::Group::new(g.delimiter(), inner_stream);
+						new_group.set_span(g.span());
+						result.push(proc_macro2::TokenTree::Group(new_group));
+					}
+					other => result.push(other.clone()),
+				}
+				i += 1;
+			}
+		}
+		result
+	}
+
+	/// Try to transform `wrapper: Wrapper { tag: <ident>, attrs: { ... } }` into
+	/// `wrapper: <ident> { ... }`. Returns replacement tokens and count of consumed
+	/// input tokens, or `None` if the pattern doesn't match at the given position.
+	fn try_transform_wrapper(
+		trees: &[proc_macro2::TokenTree],
+		start: usize,
+	) -> Option<(Vec<proc_macro2::TokenTree>, usize)> {
+		// Need at least 4 tokens: wrapper : Wrapper { ... }
+		if start + 4 > trees.len() {
+			return None;
+		}
+		// Match: Ident("wrapper")
+		let proc_macro2::TokenTree::Ident(wrapper_ident) = &trees[start] else {
+			return None;
+		};
+		if wrapper_ident.to_string() != "wrapper" {
+			return None;
+		}
+		// Match: Punct(':')
+		let proc_macro2::TokenTree::Punct(colon) = &trees[start + 1] else {
+			return None;
+		};
+		if colon.as_char() != ':' {
+			return None;
+		}
+		// Match: Ident("Wrapper")
+		let proc_macro2::TokenTree::Ident(wrapper_type) = &trees[start + 2] else {
+			return None;
+		};
+		if wrapper_type.to_string() != "Wrapper" {
+			return None;
+		}
+		// Match: Group with Brace delimiter
+		let proc_macro2::TokenTree::Group(outer_group) = &trees[start + 3] else {
+			return None;
+		};
+		if outer_group.delimiter() != proc_macro2::Delimiter::Brace {
+			return None;
+		}
+
+		// Parse the inner group to extract tag and attrs
+		let inner_trees: Vec<proc_macro2::TokenTree> =
+			outer_group.stream().clone().into_iter().collect();
+		let (tag_ident, attrs_group) = Self::parse_wrapper_inner(&inner_trees)?;
+
+		let mut replacement = Vec::new();
+		replacement.push(trees[start].clone()); // wrapper
+		replacement.push(trees[start + 1].clone()); // :
+		replacement.push(proc_macro2::TokenTree::Ident(tag_ident)); // <tag>
+		replacement.push(proc_macro2::TokenTree::Group(attrs_group)); // { ... }
+		Some((replacement, 4))
+	}
+
+	/// Parse the inner tokens of `Wrapper { tag: <ident>, attrs: { ... } }`.
+	/// Returns the tag ident and the attrs group.
+	fn parse_wrapper_inner(
+		trees: &[proc_macro2::TokenTree],
+	) -> Option<(proc_macro2::Ident, proc_macro2::Group)> {
+		// Expected structure: tag : <ident> , attrs : { ... } [ , ... ]
+		// We're lenient about trailing commas and extra fields.
+		let mut tag_ident: Option<proc_macro2::Ident> = None;
+		let mut attrs_group: Option<proc_macro2::Group> = None;
+		let mut i = 0;
+		while i < trees.len() {
+			let proc_macro2::TokenTree::Ident(key) = &trees[i] else {
+				i += 1;
+				continue;
+			};
+			let key_str = key.to_string();
+			// Skip past `key :`
+			if i + 2 > trees.len() {
+				return None;
+			}
+			if !matches!(&trees[i + 1], proc_macro2::TokenTree::Punct(p) if p.as_char() == ':') {
+				i += 1;
+				continue;
+			}
+			match key_str.as_str() {
+				"tag" => {
+					if let proc_macro2::TokenTree::Ident(ident) = &trees[i + 2] {
+						tag_ident = Some(ident.clone());
+					}
+				}
+				"attrs" => {
+					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2] {
+						if g.delimiter() == proc_macro2::Delimiter::Brace {
+							attrs_group = Some(g.clone());
+						}
+					}
+				}
+				_ => {}
+			}
+			// Skip past the value token and any following comma
+			i += 3;
+			if i < trees.len()
+				&& matches!(&trees[i], proc_macro2::TokenTree::Punct(p) if p.as_char() == ',')
+			{
+				i += 1;
+			}
+		}
+		Some((tag_ident?, attrs_group?))
+	}
+
+	/// Try to transform `icon: Icon { attrs: { ... }, children: [ ... ] }` into
+	/// `icon: svg { ..., ... }`. Returns replacement tokens and count of consumed
+	/// input tokens, or `None` if the pattern doesn't match at the given position.
+	fn try_transform_icon(
+		trees: &[proc_macro2::TokenTree],
+		start: usize,
+	) -> Option<(Vec<proc_macro2::TokenTree>, usize)> {
+		// Need at least 4 tokens: icon : Icon { ... }
+		if start + 4 > trees.len() {
+			return None;
+		}
+		// Match: Ident("icon")
+		let proc_macro2::TokenTree::Ident(icon_ident) = &trees[start] else {
+			return None;
+		};
+		if icon_ident.to_string() != "icon" {
+			return None;
+		}
+		// Match: Punct(':')
+		let proc_macro2::TokenTree::Punct(colon) = &trees[start + 1] else {
+			return None;
+		};
+		if colon.as_char() != ':' {
+			return None;
+		}
+		// Match: Ident("Icon")
+		let proc_macro2::TokenTree::Ident(icon_type) = &trees[start + 2] else {
+			return None;
+		};
+		if icon_type.to_string() != "Icon" {
+			return None;
+		}
+		// Match: Group with Brace delimiter
+		let proc_macro2::TokenTree::Group(outer_group) = &trees[start + 3] else {
+			return None;
+		};
+		if outer_group.delimiter() != proc_macro2::Delimiter::Brace {
+			return None;
+		}
+
+		// Parse the inner group to extract attrs and children
+		let inner_trees: Vec<proc_macro2::TokenTree> =
+			outer_group.stream().clone().into_iter().collect();
+		let merged_inner = Self::parse_icon_inner(&inner_trees)?;
+
+		let mut replacement = Vec::new();
+		replacement.push(trees[start].clone()); // icon
+		replacement.push(trees[start + 1].clone()); // :
+		// Create "svg" ident
+		replacement.push(proc_macro2::TokenTree::Ident(proc_macro2::Ident::new(
+			"svg",
+			icon_type.span(),
+		)));
+		// Create merged group
+		let merged_stream: proc_macro2::TokenStream = merged_inner.into_iter().collect();
+		let mut merged_group =
+			proc_macro2::Group::new(proc_macro2::Delimiter::Brace, merged_stream);
+		merged_group.set_span(outer_group.span());
+		replacement.push(proc_macro2::TokenTree::Group(merged_group));
+		Some((replacement, 4))
+	}
+
+	/// Parse the inner tokens of `Icon { attrs: { ... }, children: [ ... ] }`.
+	/// Returns merged tokens: attrs content followed by children content (without
+	/// the array wrapper).
+	fn parse_icon_inner(trees: &[proc_macro2::TokenTree]) -> Option<Vec<proc_macro2::TokenTree>> {
+		let mut attrs_inner: Option<Vec<proc_macro2::TokenTree>> = None;
+		let mut children_inner: Option<Vec<proc_macro2::TokenTree>> = None;
+		let mut i = 0;
+		while i < trees.len() {
+			let proc_macro2::TokenTree::Ident(key) = &trees[i] else {
+				i += 1;
+				continue;
+			};
+			let key_str = key.to_string();
+			if i + 2 > trees.len() {
+				return None;
+			}
+			if !matches!(&trees[i + 1], proc_macro2::TokenTree::Punct(p) if p.as_char() == ':') {
+				i += 1;
+				continue;
+			}
+			match key_str.as_str() {
+				"attrs" => {
+					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2] {
+						if g.delimiter() == proc_macro2::Delimiter::Brace {
+							attrs_inner = Some(g.stream().clone().into_iter().collect());
+						}
+					}
+				}
+				"children" => {
+					if let proc_macro2::TokenTree::Group(g) = &trees[i + 2] {
+						if g.delimiter() == proc_macro2::Delimiter::Bracket {
+							// Extract children without the bracket wrapper
+							children_inner = Some(g.stream().clone().into_iter().collect());
+						}
+					}
+				}
+				_ => {}
+			}
+			i += 3;
+			if i < trees.len()
+				&& matches!(&trees[i], proc_macro2::TokenTree::Punct(p) if p.as_char() == ',')
+			{
+				i += 1;
+			}
+		}
+
+		let mut merged = attrs_inner?;
+		if let Some(children) = children_inner {
+			// Add comma separator if there are children
+			if !merged.is_empty() && !children.is_empty() {
+				merged.push(proc_macro2::TokenTree::Punct(proc_macro2::Punct::new(
+					',',
+					proc_macro2::Spacing::Alone,
+				)));
+			}
+			merged.extend(children);
+		}
+		Some(merged)
+	}
+
+	/// Try to transform `icon_position: Left|Right|Label` into
+	/// `icon_position: "left"|"right"|"label"`. Returns replacement tokens and
+	/// count of consumed input tokens, or `None` if the pattern doesn't match.
+	fn try_transform_icon_position(
+		trees: &[proc_macro2::TokenTree],
+		start: usize,
+	) -> Option<(Vec<proc_macro2::TokenTree>, usize)> {
+		if start + 3 > trees.len() {
+			return None;
+		}
+		// Match: Ident("icon_position")
+		let proc_macro2::TokenTree::Ident(pos_ident) = &trees[start] else {
+			return None;
+		};
+		if pos_ident.to_string() != "icon_position" {
+			return None;
+		}
+		// Match: Punct(':')
+		let proc_macro2::TokenTree::Punct(colon) = &trees[start + 1] else {
+			return None;
+		};
+		if colon.as_char() != ':' {
+			return None;
+		}
+		// Match: Ident("Left"|"Right"|"Label")
+		let proc_macro2::TokenTree::Ident(value_ident) = &trees[start + 2] else {
+			return None;
+		};
+		let lowercase = match value_ident.to_string().as_str() {
+			"Left" => "left",
+			"Right" => "right",
+			"Label" => "label",
+			_ => return None,
+		};
+
+		let mut replacement = Vec::new();
+		replacement.push(trees[start].clone()); // icon_position
+		replacement.push(trees[start + 1].clone()); // :
+		replacement.push(proc_macro2::TokenTree::Literal(
+			proc_macro2::Literal::string(lowercase),
+		));
+		Some((replacement, 3))
+	}
+
 	/// Format macro tokens to formatted string, dispatching based on MacroKind.
 	fn format_macro_tokens(
 		&self,
@@ -1304,9 +1626,12 @@ impl AstPageFormatter {
 				self.format_page_macro(&page_macro, base_indent, &blank_lines)
 			}
 			MacroKind::Form => {
+				// Preprocess tokens to convert internal AST to DSL
+				let preprocessed = Self::preprocess_form_tokens(tokens);
+
 				// Parse tokens as FormMacro
 				let form_macro: FormMacro =
-					syn::parse2(tokens.clone()).map_err(|e| format!("Parse error: {}", e))?;
+					syn::parse2(preprocessed).map_err(|e| format!("Parse error: {}", e))?;
 
 				// Format the macro
 				self.format_form_macro(&form_macro, base_indent)
