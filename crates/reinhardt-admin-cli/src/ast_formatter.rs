@@ -1066,9 +1066,8 @@ impl AstPageFormatter {
 						result.push(')');
 					}
 					MacroKind::Form => {
-						result.push_str("form!(");
+						result.push_str("form! ");
 						result.push_str(&formatted);
-						result.push(')');
 					}
 				},
 				Err(_) => {
@@ -1560,8 +1559,7 @@ impl AstPageFormatter {
 		for item in &derived.items {
 			let fi = self.make_indent(inner_ind);
 			let name = item.name.to_string();
-			let closure_str =
-				Self::clean_expression_spaces(&item.closure.to_token_stream().to_string());
+			let closure_str = self.format_closure_expression(&item.closure, inner_ind);
 			output.push_str(&fi);
 			output.push_str(&name);
 			output.push_str(": ");
@@ -1598,7 +1596,7 @@ impl AstPageFormatter {
 		indent: usize,
 	) {
 		let fi = self.make_indent(indent);
-		let expr_str = Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		let expr_str = self.format_closure_expression(closure, indent);
 		output.push_str(&fi);
 		output.push_str(name);
 		output.push_str(": ");
@@ -1641,7 +1639,7 @@ impl AstPageFormatter {
 		indent: usize,
 	) {
 		let fi = self.make_indent(indent);
-		let expr_str = Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		let expr_str = self.format_closure_expression(closure, indent);
 		output.push_str(&fi);
 		output.push_str(name);
 		output.push_str(": ");
@@ -1658,8 +1656,7 @@ impl AstPageFormatter {
 		for item in &watch.items {
 			let fi = self.make_indent(inner_ind);
 			let name = item.name.to_string();
-			let closure_str =
-				Self::clean_expression_spaces(&item.closure.to_token_stream().to_string());
+			let closure_str = self.format_closure_expression(&item.closure, inner_ind);
 			output.push_str(&fi);
 			output.push_str(&name);
 			output.push_str(": ");
@@ -1766,6 +1763,11 @@ impl AstPageFormatter {
 	/// Format form field entries (fields, groups, submit buttons).
 	fn format_form_entries(&self, output: &mut String, entries: &[FormFieldEntry], indent: usize) {
 		let ind = self.make_indent(indent);
+		if entries.is_empty() {
+			output.push_str(&ind);
+			output.push_str("fields: {}\n");
+			return;
+		}
 		output.push_str(&ind);
 		output.push_str("fields: {\n");
 		let inner_ind = indent + 1;
@@ -2292,6 +2294,7 @@ impl AstPageFormatter {
 			// to avoid leaving a space before :: (e.g., collect ::<Vec<_>>)
 			.replace(" :: ", "::")
 			.replace(" ::", "::")
+			.replace(":: ", "::")
 
 			// Generic type angle brackets: Vec < String > -> Vec<String>
 			// These handle spaces around < and > in generic type parameters
@@ -2495,6 +2498,33 @@ impl AstPageFormatter {
 		};
 
 		// Apply base indentation
+		self.apply_base_indent(&handler_str, base_indent)
+	}
+	/// Format a closure expression, using rustfmt for block-body closures.
+	fn format_closure_expression(&self, closure: &syn::ExprClosure, base_indent: usize) -> String {
+		// For non-block closures (e.g., |x| x + 1), clean_expression_spaces is sufficient
+		if !matches!(closure.body.as_ref(), syn::Expr::Block(_)) {
+			return Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		}
+
+		// Wrap the full closure in a valid Rust file for formatting
+		let wrapper_code = format!(
+			"fn _wrapper() {{ let _handler = {}; }}",
+			closure.to_token_stream()
+		);
+
+		let Ok(file) = syn::parse_file(&wrapper_code) else {
+			return Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		};
+
+		// Format with prettyplease + rustfmt
+		let prettyplease_output = prettyplease::unparse(&file);
+		let formatted = self.format_with_rustfmt(&prettyplease_output);
+
+		let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) else {
+			return Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+		};
+
 		self.apply_base_indent(&handler_str, base_indent)
 	}
 
@@ -3088,7 +3118,7 @@ impl AstPageFormatter {
 			.ok()?;
 		match kind {
 			MacroKind::Page => Some(format!("page!({})", formatted)),
-			MacroKind::Form => Some(format!("form!({})", formatted)),
+			MacroKind::Form => Some(format!("form! {}", formatted)),
 		}
 	}
 }
