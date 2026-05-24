@@ -106,9 +106,7 @@ fn replace_derive_default_with_bon_builder(attrs: &mut Vec<syn::Attribute>) {
 		}
 	}
 	if !derives.iter().any(|p| {
-		p.segments.len() == 2
-			&& p.segments[0].ident == "bon"
-			&& p.segments[1].ident == "Builder"
+		p.segments.len() == 2 && p.segments[0].ident == "bon" && p.segments[1].ident == "Builder"
 	}) {
 		derives.push(syn::parse_quote!(bon::Builder));
 	}

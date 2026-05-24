@@ -432,10 +432,19 @@ mod tests {
 		let result = apply_changes_preserving_formatting(src, &parsed, &out_ast);
 
 		// Assert: changed item reflects new name, comments preserved.
-		assert!(result.contains("pub struct Foo2"), "changed item not updated");
+		assert!(
+			result.contains("pub struct Foo2"),
+			"changed item not updated"
+		);
 		assert!(result.contains("//! Module doc."), "module doc lost");
-		assert!(result.contains("// Comment before struct"), "comment before struct lost");
-		assert!(result.contains("// Comment between items"), "inter-item comment lost");
+		assert!(
+			result.contains("// Comment before struct"),
+			"comment before struct lost"
+		);
+		assert!(
+			result.contains("// Comment between items"),
+			"inter-item comment lost"
+		);
 		assert!(result.contains("pub struct Bar"), "unchanged item lost");
 	}
 
@@ -450,7 +459,9 @@ mod tests {
 		// Change the second use statement.
 		if let syn::Item::Use(u) = &mut out_ast.items[1] {
 			// Replace `use std::fs` with `use std::fs::File`.
-			*u = syn::parse_quote!(use std::fs::File;);
+			*u = syn::parse_quote!(
+				use std::fs::File;
+			);
 		}
 
 		// Act
@@ -458,11 +469,20 @@ mod tests {
 
 		// Assert: blank lines between items preserved, only changed item replaced.
 		assert!(result.contains("use std::io;"), "first use lost");
-		assert!(result.contains("use std::fs::File;"), "changed use not updated");
+		assert!(
+			result.contains("use std::fs::File;"),
+			"changed use not updated"
+		);
 		assert!(result.contains("use std::path;"), "third use lost");
 		// The blank line count should be preserved between unchanged items.
-		assert!(result.contains("use std::io;\n\n\n"), "blank lines after first use altered");
-		assert!(result.contains("\n\n\nuse std::path;"), "blank lines before third use altered");
+		assert!(
+			result.contains("use std::io;\n\n\n"),
+			"blank lines after first use altered"
+		);
+		assert!(
+			result.contains("\n\n\nuse std::path;"),
+			"blank lines before third use altered"
+		);
 	}
 
 	/// Module-level `//!` doc comments are preserved.
@@ -482,7 +502,10 @@ mod tests {
 		let result = apply_changes_preserving_formatting(src, &parsed, &out_ast);
 
 		// Assert
-		assert!(result.contains("//! Crate-level documentation."), "module doc lost");
+		assert!(
+			result.contains("//! Crate-level documentation."),
+			"module doc lost"
+		);
 		assert!(result.contains("//! Second line."), "second doc line lost");
 		assert!(result.contains("pub fn bar"), "renamed function missing");
 	}
@@ -505,9 +528,18 @@ mod tests {
 		let result = apply_changes_preserving_formatting(src, &parsed, &out_ast);
 
 		// Assert
-		assert!(result.contains("pub const A: i32 = 1;"), "first item altered");
-		assert!(result.contains("pub const B_CHANGED"), "changed item not updated");
-		assert!(result.contains("pub const C: i32 = 3;"), "third item altered");
+		assert!(
+			result.contains("pub const A: i32 = 1;"),
+			"first item altered"
+		);
+		assert!(
+			result.contains("pub const B_CHANGED"),
+			"changed item not updated"
+		);
+		assert!(
+			result.contains("pub const C: i32 = 3;"),
+			"third item altered"
+		);
 		// Verify that only B was changed — A and C are verbatim from source.
 		let a_idx = result.find("pub const A").unwrap();
 		let b_idx = result.find("pub const B_CHANGED").unwrap();
