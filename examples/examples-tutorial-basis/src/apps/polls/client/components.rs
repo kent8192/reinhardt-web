@@ -231,15 +231,35 @@ pub fn polls_detail(question_id: i64) -> Page {
 			submit_button: |form| {
 					let is_loading = form.loading().get();
 					let back_href = links::index();
-					page!(|is_loading : bool, back_href : String| { div { class : "mt-3", button { type : "submit", class : if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" }, disabled : is_loading, { if is_loading { "Voting..." } else { "Vote" } } } a { href : back_href, class : "btn-secondary ml-2", "Back to Polls" } } })(
-						is_loading, back_href,
-					)
+					page!(|is_loading: bool, back_href: String| {
+						div {
+							class: "mt-3",
+							button {
+								type: "submit",
+								class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
+								disabled: is_loading,
+								{ if is_loading { "Voting..." } else { "Vote" } }
+							}
+							a {
+								href: back_href,
+								class: "btn-secondary ml-2",
+								"Back to Polls"
+							}
+						}
+					})(is_loading, back_href)
 				},
 			error_display: |form| {
 					let err = form.error().get();
-					page!(| err : Option<String>| { watch { if let Some(e) = err.clone() { div { class : "alert-danger mt-3", { format_server_error(&e) } } } } })(
-						err,
-					)
+					page!(|err: Option<String>| {
+						watch {
+							if let Some(e) = err.clone() {
+								div {
+									class: "alert-danger mt-3",
+									{ format_server_error(&e) }
+								}
+							}
+						}
+					})(err)
 				},
 		}
 

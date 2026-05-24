@@ -327,30 +327,49 @@ pub fn tweet_form() -> Page {
 						)
 					};
 					let display_text = format!("{}/280", char_count);
-					page!(|text_class : String, bar_class : String, width_style : String, display_text : String| { div { class : "flex items-center gap-2", div { class : text_class, { display_text } } div { class : "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden", div { class : bar_class, style : width_style, } } } })(
-						text_class,
-						bar_class,
-						width_style,
-						display_text,
-					)
+					page!(|text_class: String, bar_class: String, width_style: String, display_text: String| {
+						div {
+							class: "flex items-center gap-2",
+							div {
+								class: text_class,
+								{ display_text }
+							}
+							div {
+								class: "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden",
+								div {
+									class: bar_class,
+									style: width_style,
+								}
+							}
+						}
+					})(text_class, bar_class, width_style, display_text)
 				},
 			submit_button: |form| {
 					let is_loading = form.loading().get();
 					let char_count = form.content().get().len();
 					let is_valid = char_count > 0 && char_count <= 280;
 					let is_disabled = is_loading || !is_valid;
-					page!(|is_loading : bool, is_disabled : bool| { div { button { type : "submit", class : if is_disabled { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" }, disabled : is_disabled, { if is_loading { "Posting..." } else { "Post" } } } } })(
-						is_loading,
-						is_disabled,
-					)
+					page!(|is_loading: bool, is_disabled: bool| {
+						div {
+							button {
+								type: "submit",
+								class: if is_disabled { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
+								disabled: is_disabled,
+								{ if is_loading { "Posting..." } else { "Post" } }
+							}
+						}
+					})(is_loading, is_disabled)
 				},
 			error_display: |form| {
 					let err = form.error().get();
 					let has_error = err.is_some();
 					let error_msg = err.unwrap_or_default();
-					page!(|has_error : bool, error_msg : String| { div { class : if has_error { "alert-danger mb-3" } else { "hidden" }, { error_msg } } })(
-						has_error, error_msg,
-					)
+					page!(|has_error: bool, error_msg: String| {
+						div {
+							class: if has_error { "alert-danger mb-3" } else { "hidden" },
+							{ error_msg }
+						}
+					})(has_error, error_msg)
 				},
 		}
 
