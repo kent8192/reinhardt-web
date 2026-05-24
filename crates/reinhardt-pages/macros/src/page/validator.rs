@@ -205,6 +205,9 @@ impl CaptureChecker {
 				self.visit_node(n);
 			}
 		}
+		for e in &c.events {
+			self.visit_expr(&e.handler);
+		}
 	}
 
 	fn visit_watch(&mut self, w: &PageWatch) {

@@ -564,6 +564,22 @@ fn parse_component_node(input: ParseStream) -> Result<PageNode> {
 ///
 /// Separates default (unnamed) children from named slots (`$slotname { }`).
 /// Detects duplicate named slots (E1).
+
+/// Converts a DSL slot name to snake_case for duplicate detection.
+fn slot_name_to_snake_case(name: &str) -> String {
+	let mut result = String::with_capacity(name.len() + 4);
+	for (i, ch) in name.chars().enumerate() {
+		if ch.is_uppercase() {
+			if i > 0 {
+				result.push('_');
+			}
+			result.push(ch.to_ascii_lowercase());
+		} else {
+			result.push(ch);
+		}
+	}
+	result
+}
 fn parse_component_body(
 	input: ParseStream,
 ) -> Result<(Option<Vec<PageNode>>, Vec<NamedSlot>)> {
@@ -576,8 +592,14 @@ fn parse_component_body(
 			let name: Ident = input.parse()?;
 			let span = name.span();
 
-			// Check for duplicate named slot (E1)
-			if named_slots.iter().any(|s: &NamedSlot| s.name == name) {
+			// Compare snake_case-normalized names so that `$bodyContent` and
+			// `$body_content` are detected as duplicates (both map to the same
+			// builder setter `.body_content(...)`).
+			let normalized = slot_name_to_snake_case(&name.to_string());
+			if named_slots
+				.iter()
+				.any(|s: &NamedSlot| slot_name_to_snake_case(&s.name.to_string()) == normalized)
+			{
 				return Err(syn::Error::new(
 					span,
 					format!("duplicate named slot `{}` in component", name),
