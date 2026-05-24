@@ -22,11 +22,11 @@ fn card(p: CardProps) -> Page {
 }
 
 fn main() {
-	let _ = page!(|| {
+	let _page: Page = page!(|| {
 		div {
 			Card {
 				item: "x".to_string(),
 			}
 		}
-	});
+	})();
 }

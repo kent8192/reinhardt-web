@@ -351,8 +351,8 @@ pub fn polls_detail(question_id: i64) -> Page {
 					// `Ok(None)` when no session user is present; any
 					// non-`Some(Some(u))` shape (pending, error, or
 					// unauthenticated) leaves `is_author` as `false`.
-					let { is_author } = match load_current_user_signal.result() {
-						Some(Some(ref u)) => u. { id } == q.author_id,
+					let is_author = match load_current_user_signal.result() {
+						Some(Some(ref u)) => u.id == q.author_id,
 						_ => false,
 					};
 					div {
@@ -481,11 +481,11 @@ pub fn polls_results(question_id: i64) -> Page {
 					// error, or unauthenticated) leaves `is_author` as
 					// `false`. Server-side `require_question_author` still
 					// rejects unauthorized mutations as defense in depth.
-					let { is_author } = match (
+					let is_author = match (
 						load_results_signal.result(),
 						load_current_user_signal.result(),
 					) {
-						(Some((ref q, _, _)), Some(Some(ref u))) => u. { id } == q.author_id,
+						(Some((ref q, _, _)), Some(Some(ref u))) => u.id == q.author_id,
 						_ => false,
 					};
 					div {
