@@ -420,8 +420,8 @@ base-branch filter):
 | Branch | `pr_branch_prefix` | Cargo.toml version | Release PR output |
 |---|---|---|---|
 | `main` | `"release-plz-"` | `x.y.z` (stable) | Stable Release PR (`x.y.z` → `x.y.(z+1)` or `x.(y+1).0`) |
-| `develop/m.n.l` (alpha phase) | `"release-plz-develop-"` | `m.n.l-alpha.N` | Prerelease Release PR (`alpha.N` → `alpha.(N+1)`) |
-| `develop/m.n.l` (rc phase) | `"release-plz-develop-"` | `m.n.l-rc.N` | Prerelease Release PR (`rc.N` → `rc.(N+1)`) |
+| `develop/m.n.l` (alpha phase) | `"develop-release-plz-"` | `m.n.l-alpha.N` | Prerelease Release PR (`alpha.N` → `alpha.(N+1)`) |
+| `develop/m.n.l` (rc phase) | `"develop-release-plz-"` | `m.n.l-rc.N` | Prerelease Release PR (`rc.N` → `rc.(N+1)`) |
 
 **Version management on the develop branch** is operator-controlled at three
 explicit gates (see `instructions/RELEASE_PROCESS.md` § "Develop Branch

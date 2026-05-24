@@ -319,7 +319,7 @@ Configuration file at repository root. Key CHANGELOG-related settings:
 [workspace]
 changelog_update = true
 # On main:    pr_branch_prefix = "release-plz-"
-# On develop: pr_branch_prefix = "release-plz-develop-"
+# On develop: pr_branch_prefix = "develop-release-plz-"
 # See "Branch-specific pr_branch_prefix convention" in Configuration Rationale below.
 pr_branch_prefix = "release-plz-"
 pr_labels = ["release", "automated"]
@@ -386,18 +386,18 @@ The following packages are excluded from release:
 
 Key configuration decisions and the reasons behind them:
 
-**`pr_branch_prefix = "release-plz-"`**
+**`pr_branch_prefix` (branch-specific)**
 
-The branch prefix **must** start with `"release-plz-"` for the native two-step release workflow to function correctly. When `release_always = false`, release-plz determines whether to publish by checking if the latest commit originates from a PR whose branch starts with this prefix. Using a different prefix (e.g., `"release/"`) causes `release-plz release` to skip publishing entirely because it cannot detect the merged Release PR. (Ref: [#186](https://github.com/kent8192/reinhardt-web/pull/186))
+With `release_always = true`, the branch prefix is used only for Release PR discovery and naming, not for publish decisions. The prefix MUST differ between `main` and `develop/*` because release-plz's `opened_prs()` searches ALL open PRs filtered by head branch prefix with no base-branch filter — identical prefixes cause cross-branch PR closure. See the branch-specific convention table below. (Ref: [#186](https://github.com/kent8192/reinhardt-web/pull/186))
 
 **Branch-specific `pr_branch_prefix` convention:**
 
 | Branch | `pr_branch_prefix` | Rationale |
 |---|---|---|
 | `main` | `"release-plz-"` | Default prefix for stable releases |
-| `develop/m.n.l` | `"release-plz-develop-"` | MUST differ from `main` to prevent cross-branch PR closure |
+| `develop/m.n.l` | `"develop-release-plz-"` | MUST differ from `main` to prevent cross-branch PR closure |
 
-release-plz's `opened_prs()` method (in `forge.rs`) searches ALL open PRs in the repository and filters only by head branch prefix — there is NO base-branch filter. If both `main` and `develop/*` share the same prefix (e.g., `"release-plz-"`), each release-plz run finds and closes the other branch's Release PR. Using distinct prefixes (`"release-plz-"` vs `"release-plz-develop-"`) prevents this collision.
+release-plz's `opened_prs()` method (in `forge.rs`) searches ALL open PRs in the repository and filters only by head branch prefix — there is NO base-branch filter. release-plz uses `starts_with()` to match, so the prefixes must NOT be mutual substrings. `"release-plz-develop-"` would still be matched by main's `"release-plz-"` prefix because it starts with `"release-plz-"`. Using `"develop-release-plz-"` (which does NOT start with `"release-plz-"`) ensures neither prefix matches the other's PRs.
 
 Since `release_always = true` on both branches, the branch prefix is **not** used for publish decisions — it only affects Release PR discovery and naming. The distinct prefixes are safe and do not interfere with the two-step release workflow.
 

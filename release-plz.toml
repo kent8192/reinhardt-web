@@ -6,19 +6,19 @@
 changelog_update = true
 
 # PR settings
-# IMPORTANT: Branch prefix MUST start with "release-plz-" for native two-step release workflow.
-# When release_always = false, release-plz checks if the latest commit is from a PR
-# whose branch starts with "release-plz-" to determine if it should publish.
-# See: https://release-plz.ieni.dev/docs/config#the-release_always-field
+# IMPORTANT: Branch prefix distinguishes main from develop/* Release PRs.
+# release-plz's opened_prs() searches ALL open PRs filtered only by head
+# branch prefix — there is NO base-branch filter.
 #
 # Branch-specific prefix convention:
-# - main:             "release-plz-"         (this branch)
-# - develop/m.n.l:    "release-plz-develop-" (MUST differ to avoid cross-branch PR closure)
+# - main:             "release-plz-"          (this branch)
+# - develop/m.n.l:    "develop-release-plz-"  (MUST NOT start with "release-plz-")
 #
-# Rationale: release-plz's opened_prs() searches ALL open PRs in the repository
-# filtered only by head branch prefix — there is NO base-branch filter. If both
-# main and develop/* share the same prefix, each release-plz run finds and closes
-# the other branch's Release PR. Different prefixes prevent this collision.
+# Rationale: release-plz uses starts_with() to match PR branches. If the
+# develop prefix started with "release-plz-" (e.g., "release-plz-develop-"),
+# main's release-plz would still find and close develop's Release PRs.
+# Using "develop-release-plz-" ensures neither prefix is a prefix of the other,
+# preventing cross-branch PR closure.
 pr_branch_prefix = "release-plz-"
 pr_labels = ["release", "automated"]
 pr_name = "chore: release"
