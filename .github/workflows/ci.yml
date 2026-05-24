@@ -16,8 +16,10 @@ permissions:
 concurrency:
   group: >-
     ${{ github.workflow }}-${{
-      (startsWith(github.head_ref || '', 'release-plz-') || startsWith(github.head_ref || '', 'develop-release-plz-'))
-        && 'release-plz'
+      startsWith(github.head_ref || '', 'develop-release-plz-')
+        && 'develop-release-plz'
+        || startsWith(github.head_ref || '', 'release-plz-')
+          && 'release-plz'
         || github.head_ref
         || github.run_id
     }}
