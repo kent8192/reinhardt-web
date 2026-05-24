@@ -984,10 +984,10 @@ impl AstPageFormatter {
 		// Match compact `page!(`/`form!(`/`form!{` and the TokenStream Display
 		// forms so recursive formatting (which wraps via `to_token_stream()`)
 		// still sees nested macros at every depth.
-		if find_page_bang_paren(content).is_none()
-			&& find_form_bang_paren(content).is_none()
-			&& find_form_bang_brace(content).is_none()
-		{
+		let found_page_paren = find_page_bang_paren(content);
+		let found_form_paren = find_form_bang_paren(content);
+		let found_form_brace = find_form_bang_brace(content);
+		if found_page_paren.is_none() && found_form_paren.is_none() && found_form_brace.is_none() {
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
@@ -1547,6 +1547,13 @@ impl AstPageFormatter {
 		}
 
 		let mut merged = attrs_inner?;
+		// Strip trailing comma(s) from attrs before merging children
+		while merged.last().map_or(
+			false,
+			|t| matches!(t, proc_macro2::TokenTree::Punct(p) if p.as_char() == ','),
+		) {
+			merged.pop();
+		}
 		if let Some(children) = children_inner {
 			// Add comma separator if there are children
 			if !merged.is_empty() && !children.is_empty() {
@@ -1630,11 +1637,16 @@ impl AstPageFormatter {
 				let preprocessed = Self::preprocess_form_tokens(tokens);
 
 				// Parse tokens as FormMacro
-				let form_macro: FormMacro =
-					syn::parse2(preprocessed).map_err(|e| format!("Parse error: {}", e))?;
+				let form_macro: FormMacro = match syn::parse2(preprocessed) {
+					Ok(fm) => fm,
+					Err(e) => {
+						return Err(format!("Parse error: {}", e));
+					}
+				};
 
 				// Format the macro
-				self.format_form_macro(&form_macro, base_indent)
+				let formatted = self.format_form_macro(&form_macro, base_indent)?;
+				Ok(formatted)
 			}
 		}
 	}
