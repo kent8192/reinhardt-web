@@ -1,9 +1,10 @@
 # Local development settings — tracked in version control.
+# WARNING: Do NOT put real secrets (production keys, tokens, passwords)
+# in this file. It is committed to the repository. Use environment
+# variables or a separate, gitignored file for sensitive values.
 #
 # CoreSettings is registered as `#[settings(section = "core")]`, so its
 # fields must live under `[core]` to override values from base.toml.
-
-redis_url = "redis://localhost:6380/0"
 
 [core]
 debug = true
@@ -11,3 +12,4 @@ secret_key = "local-development-secret-key"
 
 [database]
 port = 5433
+redis_url = "redis://localhost:6380/0"

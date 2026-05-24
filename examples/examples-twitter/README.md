@@ -199,11 +199,12 @@ cd examples/examples-twitter
 
 # Create local settings file (edit with your local database/redis ports)
 cat > settings/local.toml << 'TOML'
-redis_url = "redis://localhost:6379/0"
-
 [core]
 debug = true
 secret_key = "local-development-secret-key"
+
+[database]
+redis_url = "redis://localhost:6379/0"
 TOML
 
 # Build WASM frontend and start development server.

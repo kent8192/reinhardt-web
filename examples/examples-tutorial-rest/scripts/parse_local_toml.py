@@ -26,9 +26,9 @@ The second form is a fallback so that a `base.toml` carrying only the
 runtime-shape schema still satisfies the provisioning script when the
 caller selects `base.toml` directly (e.g., `REINHARDT_ENV=base`).
 
-Redis URL is read from a top-level `redis_url = "..."` key with a sane
-default; examples that don't actually use Redis still get an idle
-container spun up so the infra footprint is identical across examples.
+Redis URL is read from the `[database]` section with a sane default;
+examples that don't actually use Redis still get an idle container
+spun up so the infra footprint is identical across examples.
 
 Usage:
     parse_local_toml.py <path_to_settings.toml>
@@ -147,7 +147,7 @@ def main(argv: list[str]) -> int:
 		)
 		return 1
 
-	redis_url = data.get("redis_url", "redis://localhost:6379/0")
+	redis_url = db.get("redis_url") or data.get("redis_url", "redis://localhost:6379/0")
 	parsed = urllib.parse.urlparse(redis_url)
 
 	print(f"PG_HOST={_q(db.get('host', 'localhost'))}")

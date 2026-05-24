@@ -6,13 +6,6 @@
 # are not yet wired into the framework, so they are intentionally omitted to
 # avoid implying they take effect here.
 
-# Redis URL consumed by `scripts/parse_local_toml.py` so the same
-# disposable infra script can provision a Redis container alongside
-# Postgres. The example itself does not yet use Redis, but the container
-# is started for parity with the wider Reinhardt-family stack
-# (reinhardt-cloud, examples-twitter).
-redis_url = "redis://localhost:6379/0"
-
 [core]
 debug = false
 secret_key = "CHANGE_THIS_IN_PRODUCTION"
@@ -45,3 +38,10 @@ port = 5432
 name = "examples_tutorial_basis"
 user = "reinhardt"
 password = "reinhardt"
+
+# Redis URL consumed by `scripts/parse_local_toml.py` so the same
+# disposable infra script can provision a Redis container alongside
+# Postgres. The example itself does not yet use Redis, but the container
+# is started for parity with the wider Reinhardt-family stack
+# (reinhardt-cloud, examples-twitter).
+redis_url = "redis://localhost:6379/0"
