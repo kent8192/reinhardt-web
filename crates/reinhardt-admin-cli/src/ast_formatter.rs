@@ -2472,14 +2472,21 @@ impl AstPageFormatter {
 
 		let token_str = expr.to_token_stream().to_string();
 
-		// For expressions containing page! or form! macros, use rustfmt directly
-		// (skip syn -> prettyplease) to avoid mangling the DSL content.
-		// Clean token spacing first, then let rustfmt handle line breaking.
 		if token_str.contains("page !") || token_str.contains("form !") {
 			let cleaned = Self::clean_expression_spaces(&token_str);
 			let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", cleaned);
-			let formatted = self.format_with_rustfmt(&wrapper_code);
-			if let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) {
+
+			let protect_result = self.protect_page_macros(&wrapper_code);
+
+			let Ok(file) = syn::parse_file(&protect_result.protected_content) else {
+				return cleaned;
+			};
+
+			let prettyplease_output = prettyplease::unparse(&file);
+			let formatted = self.format_with_rustfmt(&prettyplease_output);
+			let restored = self.restore_page_macros_recursive(&formatted, &protect_result.backups);
+
+			if let Some(handler_str) = Self::extract_handler_from_wrapper(&restored) {
 				return self.apply_base_indent(&handler_str, base_indent);
 			}
 			return cleaned;
@@ -2512,14 +2519,21 @@ impl AstPageFormatter {
 
 		let token_str = closure.to_token_stream().to_string();
 
-		// For closures containing page! or form! macros, use rustfmt directly
-		// (skip syn -> prettyplease) to avoid mangling the DSL content.
-		// Clean token spacing first, then let rustfmt handle line breaking.
 		if token_str.contains("page !") || token_str.contains("form !") {
 			let cleaned = Self::clean_expression_spaces(&token_str);
 			let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", cleaned);
-			let formatted = self.format_with_rustfmt(&wrapper_code);
-			if let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) {
+
+			let protect_result = self.protect_page_macros(&wrapper_code);
+
+			let Ok(file) = syn::parse_file(&protect_result.protected_content) else {
+				return cleaned;
+			};
+
+			let prettyplease_output = prettyplease::unparse(&file);
+			let formatted = self.format_with_rustfmt(&prettyplease_output);
+			let restored = self.restore_page_macros_recursive(&formatted, &protect_result.backups);
+
+			if let Some(handler_str) = Self::extract_handler_from_wrapper(&restored) {
 				return self.apply_base_indent(&handler_str, base_indent);
 			}
 			return cleaned;
