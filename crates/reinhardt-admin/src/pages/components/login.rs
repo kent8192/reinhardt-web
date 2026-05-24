@@ -132,14 +132,7 @@ fn build_login_form() -> Page {
 			},
 
 		slots: {
-			after_fields: || {
-					page!(
-						|| { div { id : "login-error", class :
-						"admin-alert admin-alert-danger hidden mb-4", role : "alert", } button { type
-						: "submit", class : "admin-btn admin-btn-primary w-full py-2.5 text-base", id
-						: "login-submit-btn", "Sign in" } }
-					)()
-				},
+			after_fields: | | { page!(|| { div { id : "login-error", class : "admin-alert admin-alert-danger hidden mb-4", role : "alert", } button { type : "submit", class : "admin-btn admin-btn-primary w-full py-2.5 text-base", id : "login-submit-btn", "Sign in" } })() },
 		}
 
 	};

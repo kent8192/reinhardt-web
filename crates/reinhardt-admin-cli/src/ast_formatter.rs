@@ -2470,24 +2470,26 @@ impl AstPageFormatter {
 			return Self::clean_expression_spaces(&expr.to_token_stream().to_string());
 		}
 
-		// Wrap the expression in a valid Rust file
-		let wrapper_code = format!(
-			"fn _wrapper() {{ let _handler = {}; }}",
-			expr.to_token_stream()
-		);
+		let token_str = expr.to_token_stream().to_string();
 
-		// Parse with syn
+		// Skip rustfmt formatting for expressions that contain page! or form! macros
+		if token_str.contains("page !") || token_str.contains("form !") {
+			return Self::clean_expression_spaces(&token_str);
+		}
+
+		// Wrap the expression in a valid Rust file
+		let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", token_str);
+
 		let Ok(file) = syn::parse_file(&wrapper_code) else {
-			return Self::clean_expression_spaces(&expr.to_token_stream().to_string());
+			return Self::clean_expression_spaces(&token_str);
 		};
 
 		// Format with prettyplease + rustfmt
 		let prettyplease_output = prettyplease::unparse(&file);
 		let formatted = self.format_with_rustfmt(&prettyplease_output);
 
-		// Extract the formatted handler
 		let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) else {
-			return Self::clean_expression_spaces(&expr.to_token_stream().to_string());
+			return Self::clean_expression_spaces(&token_str);
 		};
 
 		// Apply base indentation
@@ -2500,14 +2502,19 @@ impl AstPageFormatter {
 			return Self::clean_expression_spaces(&closure.to_token_stream().to_string());
 		}
 
+		let token_str = closure.to_token_stream().to_string();
+
+		// Skip rustfmt formatting for closures that contain page! or form! macros
+		// (the DSL inside these macros is not valid Rust and would be mangled)
+		if token_str.contains("page !") || token_str.contains("form !") {
+			return Self::clean_expression_spaces(&token_str);
+		}
+
 		// Wrap the full closure in a valid Rust file for formatting
-		let wrapper_code = format!(
-			"fn _wrapper() {{ let _handler = {}; }}",
-			closure.to_token_stream()
-		);
+		let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", token_str);
 
 		let Ok(file) = syn::parse_file(&wrapper_code) else {
-			return Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+			return Self::clean_expression_spaces(&token_str);
 		};
 
 		// Format with prettyplease + rustfmt
@@ -2515,7 +2522,7 @@ impl AstPageFormatter {
 		let formatted = self.format_with_rustfmt(&prettyplease_output);
 
 		let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) else {
-			return Self::clean_expression_spaces(&closure.to_token_stream().to_string());
+			return Self::clean_expression_spaces(&token_str);
 		};
 
 		self.apply_base_indent(&handler_str, base_indent)
