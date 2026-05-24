@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-urls"
-version = "0.1.1"
+version = "0.2.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -94,6 +94,9 @@ tokio = { version = "1.41", features = ["full"] }
 bytes = { workspace = true }
 hyper = { workspace = true }
 reinhardt-testkit = { path = "../reinhardt-testkit" }
+# trybuild: UI tests for the `ClientRouter::page` API surface
+# (compile-pass / compile-fail for `FromRequest` bounds — Refs #4668 / P7).
+trybuild = { workspace = true }
 
 # WASM-only dev dependencies (used by tests/wasm/*).
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]

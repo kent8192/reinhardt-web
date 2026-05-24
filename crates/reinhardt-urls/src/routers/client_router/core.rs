@@ -4,14 +4,15 @@
 //! The router uses `Page` type for all view rendering.
 
 use super::error::{MergeError, RouterError};
+use super::from_request::FromRequest;
 use super::handler::{
-	RouteHandler, no_params_handler, result_handler, single_path_handler, three_path_handler,
-	two_path_handler, with_params_handler,
+	Handler, RouteHandler, from_request_handler, no_params_handler, result_handler,
+	with_params_handler,
 };
 #[cfg(wasm)]
 use super::history::setup_popstate_listener;
 use super::history::{HistoryState, NavigationType, current_path, push_state, replace_state};
-use super::params::{FromPath, ParamContext, Path, SingleFromPath};
+use super::params::{FromPath, ParamContext, Path};
 use super::pattern::ClientPathPattern;
 use reinhardt_core::page::Page;
 use reinhardt_core::reactive::Signal;
@@ -88,6 +89,16 @@ pub struct ClientRouteMatch {
 	/// This guarantees that tuple extraction works correctly by index,
 	/// matching the order of parameters in the URL pattern.
 	pub(crate) param_values: Vec<String>,
+	/// Raw query string (without the leading `?`), captured from the
+	/// path passed to [`ClientRouter::match_path`].
+	///
+	/// Populated by `match_path` so [`ClientRouter::page`] handlers can
+	/// surface query data via [`QueryParam<T>`]. `None` when the path
+	/// had no `?` segment.
+	///
+	/// [`ClientRouter::page`]: ClientRouter::page
+	/// [`QueryParam<T>`]: super::from_request::QueryParam
+	pub query: Option<String>,
 }
 
 /// A single route definition.
@@ -453,6 +464,92 @@ impl ClientRouter {
 		self
 	}
 
+	/// Adds a route whose handler receives a single Props struct
+	/// constructed via [`FromRequest`] (Manouche DSL v2 spec §4.3).
+	///
+	/// This is the canonical v2 route-handler shape: the same Props
+	/// struct can be used both as a Component (passed via the
+	/// `Component { ... }` invocation syntax) and as a page function
+	/// (registered here). Path / query extraction errors surface as a
+	/// `Page::Text` describing the failure rather than panicking.
+	///
+	/// The `#[derive(FromRequest)]` / `#[derive(PageProps)]` proc-macros
+	/// that automate the manual `impl FromRequest` boilerplate are
+	/// deferred to spec §10.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// use reinhardt_urls::routers::ClientRouter;
+	/// use reinhardt_urls::routers::client_router::from_request::{
+	///     ExtractError, FromRequest, PathParam, RouteContext,
+	/// };
+	///
+	/// struct UserPageProps { id: PathParam<i32> }
+	///
+	/// impl FromRequest for UserPageProps {
+	///     fn from_request(ctx: &RouteContext) -> Result<Self, ExtractError> {
+	///         Ok(Self { id: PathParam::extract(ctx, "id")? })
+	///     }
+	/// }
+	///
+	/// fn user_page(props: UserPageProps) -> reinhardt_core::types::page::Page {
+	///     reinhardt_core::types::page::Page::Text(
+	///         format!("user {}", props.id.into_inner()).into(),
+	///     )
+	/// }
+	///
+	/// let router = ClientRouter::new().page("/users/{id}/", user_page);
+	/// ```
+	///
+	/// # Panics
+	///
+	/// Panics if the pattern is invalid (exceeds length/segment limits
+	/// or invalid regex). Use [`ClientPathPattern::new`] directly for
+	/// fallible construction.
+	pub fn page<F, P>(mut self, pattern: &str, handler: F) -> Self
+	where
+		F: Fn(P) -> Page + Send + Sync + 'static,
+		P: FromRequest + Send + Sync + 'static,
+	{
+		self.routes.push(ClientRoute {
+			pattern: ClientPathPattern::new(pattern)
+				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
+			name: None,
+			handler: from_request_handler(handler, pattern.to_string()),
+			guard: None,
+		});
+		self
+	}
+
+	/// Adds a named route whose handler receives a single Props struct
+	/// constructed via [`FromRequest`] (Manouche DSL v2 spec §4.3).
+	///
+	/// Named-route variant of [`ClientRouter::page`]. Enables reverse
+	/// URL lookup via the registered name.
+	///
+	/// # Panics
+	///
+	/// Panics if the pattern is invalid (exceeds length/segment limits
+	/// or invalid regex). Use [`ClientPathPattern::new`] directly for
+	/// fallible construction.
+	pub fn named_page<F, P>(mut self, name: &str, pattern: &str, handler: F) -> Self
+	where
+		F: Fn(P) -> Page + Send + Sync + 'static,
+		P: FromRequest + Send + Sync + 'static,
+	{
+		let index = self.routes.len();
+		self.routes.push(ClientRoute {
+			pattern: ClientPathPattern::new(pattern)
+				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
+			name: Some(name.to_string()),
+			handler: from_request_handler(handler, pattern.to_string()),
+			guard: None,
+		});
+		self.named_routes.insert(name.to_string(), index);
+		self
+	}
+
 	/// Adds a named route with typed path parameters that returns a Result.
 	pub fn named_route_result<F, T, E>(mut self, name: &str, pattern: &str, handler: F) -> Self
 	where
@@ -483,137 +580,65 @@ impl ClientRouter {
 		self
 	}
 
-	/// Adds a route with a single path parameter using `Path<T>` extractor.
+	/// Adds a route with one to eight path parameters using `Path<T>` extractors.
 	///
-	/// # Example
+	/// The handler closure may take any number of `Path<T>` arguments from 1
+	/// to 8. The compiler infers the arity from the closure signature via the
+	/// sealed [`Handler<Args>`] trait, so the same method name covers every
+	/// supported arity. Refs Issue #4637.
+	///
+	/// # Examples
 	///
 	/// ```ignore
+	/// // One path parameter
 	/// let router = ClientRouter::new()
-	///     .route_path("/users/{id}/", |Path(id): Path<i64>| {
-	///         user_detail(id)
-	///     });
+	///     .route_path("/users/{id}/", |Path(id): Path<i64>| user_detail(id));
+	///
+	/// // Two path parameters
+	/// let router = router.route_path(
+	///     "/users/{user_id}/posts/{post_id}/",
+	///     |Path(user_id): Path<i64>, Path(post_id): Path<i64>| {
+	///         user_post_detail(user_id, post_id)
+	///     },
+	/// );
+	///
+	/// // Three path parameters
+	/// let router = router.route_path(
+	///     "/org/{org}/repos/{repo}/issues/{issue}/",
+	///     |Path(org): Path<String>, Path(repo): Path<String>, Path(issue): Path<i32>| {
+	///         issue_detail(org, repo, issue)
+	///     },
+	/// );
 	/// ```
-	pub fn route_path<F, T>(mut self, pattern: &str, handler: F) -> Self
+	pub fn route_path<H, Args>(mut self, pattern: &str, handler: H) -> Self
 	where
-		F: Fn(Path<T>) -> Page + Send + Sync + 'static,
-		T: SingleFromPath + Send + Sync + 'static,
+		H: Handler<Args>,
 	{
 		self.routes.push(ClientRoute {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: None,
-			handler: single_path_handler(handler),
+			handler: handler.into_route_handler(),
 			guard: None,
 		});
 		self
 	}
 
-	/// Adds a named route with a single path parameter using `Path<T>` extractor.
-	pub fn named_route_path<F, T>(mut self, name: &str, pattern: &str, handler: F) -> Self
+	/// Adds a named route with one to eight path parameters using `Path<T>`
+	/// extractors.
+	///
+	/// Counterpart of [`ClientRouter::route_path`] that also registers a
+	/// reverse-lookup name. Refs Issue #4637.
+	pub fn named_route_path<H, Args>(mut self, name: &str, pattern: &str, handler: H) -> Self
 	where
-		F: Fn(Path<T>) -> Page + Send + Sync + 'static,
-		T: SingleFromPath + Send + Sync + 'static,
+		H: Handler<Args>,
 	{
 		let index = self.routes.len();
 		self.routes.push(ClientRoute {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.to_string()),
-			handler: single_path_handler(handler),
-			guard: None,
-		});
-		self.named_routes.insert(name.to_string(), index);
-		self
-	}
-
-	/// Adds a route with two path parameters using multiple `Path<T>` extractors.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// let router = ClientRouter::new()
-	///     .route_path2("/users/{user_id}/posts/{post_id}/",
-	///         |Path(user_id): Path<i64>, Path(post_id): Path<i64>| {
-	///             user_post_detail(user_id, post_id)
-	///         });
-	/// ```
-	pub fn route_path2<F, T1, T2>(mut self, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T1>, Path<T2>) -> Page + Send + Sync + 'static,
-		T1: SingleFromPath + Send + Sync + 'static,
-		T2: SingleFromPath + Send + Sync + 'static,
-	{
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: None,
-			handler: two_path_handler(handler),
-			guard: None,
-		});
-		self
-	}
-
-	/// Adds a named route with two path parameters.
-	pub fn named_route_path2<F, T1, T2>(mut self, name: &str, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T1>, Path<T2>) -> Page + Send + Sync + 'static,
-		T1: SingleFromPath + Send + Sync + 'static,
-		T2: SingleFromPath + Send + Sync + 'static,
-	{
-		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			handler: two_path_handler(handler),
-			guard: None,
-		});
-		self.named_routes.insert(name.to_string(), index);
-		self
-	}
-
-	/// Adds a route with three path parameters using multiple `Path<T>` extractors.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// let router = ClientRouter::new()
-	///     .route_path3("/org/{org}/repos/{repo}/issues/{issue}/",
-	///         |Path(org): Path<String>, Path(repo): Path<String>, Path(issue): Path<i32>| {
-	///             issue_detail(org, repo, issue)
-	///         });
-	/// ```
-	pub fn route_path3<F, T1, T2, T3>(mut self, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T1>, Path<T2>, Path<T3>) -> Page + Send + Sync + 'static,
-		T1: SingleFromPath + Send + Sync + 'static,
-		T2: SingleFromPath + Send + Sync + 'static,
-		T3: SingleFromPath + Send + Sync + 'static,
-	{
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: None,
-			handler: three_path_handler(handler),
-			guard: None,
-		});
-		self
-	}
-
-	/// Adds a named route with three path parameters.
-	pub fn named_route_path3<F, T1, T2, T3>(mut self, name: &str, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T1>, Path<T2>, Path<T3>) -> Page + Send + Sync + 'static,
-		T1: SingleFromPath + Send + Sync + 'static,
-		T2: SingleFromPath + Send + Sync + 'static,
-		T3: SingleFromPath + Send + Sync + 'static,
-	{
-		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			handler: three_path_handler(handler),
+			handler: handler.into_route_handler(),
 			guard: None,
 		});
 		self.named_routes.insert(name.to_string(), index);
@@ -655,13 +680,27 @@ impl ClientRouter {
 	}
 
 	/// Matches a path against registered routes.
+	///
+	/// Strips an optional `?query` suffix before matching and stores
+	/// the captured query (without the leading `?`) on
+	/// [`ClientRouteMatch::query`]. Patterns therefore match against
+	/// the path portion only; the query is delivered to handlers via
+	/// the match struct (used by [`ClientRouter::page`] /
+	/// [`QueryParam`]).
+	///
+	/// [`QueryParam`]: super::from_request::QueryParam
 	pub fn match_path(&self, path: &str) -> Option<ClientRouteMatch> {
+		let (path_only, query) = match path.split_once('?') {
+			Some((p, q)) => (p, Some(q.to_string())),
+			None => (path, None),
+		};
 		for route in &self.routes {
-			if let Some((params, param_values)) = route.pattern.matches(path) {
+			if let Some((params, param_values)) = route.pattern.matches(path_only) {
 				let route_match = ClientRouteMatch {
 					route: route.clone(),
 					params,
 					param_values,
+					query: query.clone(),
 				};
 
 				// Check guard if present
@@ -918,7 +957,8 @@ impl ClientRouter {
 
 		if let Some(route_match) = self.match_path(&path) {
 			let ctx =
-				ParamContext::new(route_match.params.clone(), route_match.param_values.clone());
+				ParamContext::new(route_match.params.clone(), route_match.param_values.clone())
+					.with_query(route_match.query.clone());
 
 			match route_match.route.handler.handle(&ctx) {
 				Ok(view) => view,
@@ -1258,8 +1298,11 @@ mod tests {
 	}
 
 	#[test]
-	fn test_route_path2_two_params() {
-		let router = ClientRouter::new().route_path2(
+	fn test_route_path_two_params() {
+		// Two path parameters now flow through the unified `route_path`
+		// (Issue #4637). Closure signature is unchanged from the prior
+		// `route_path2`.
+		let router = ClientRouter::new().route_path(
 			"/users/{user_id}/posts/{post_id}/",
 			|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
 		);
@@ -1275,8 +1318,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_route_path3_three_params() {
-		let router = ClientRouter::new().route_path3(
+	fn test_route_path_three_params() {
+		// Three path parameters via unified `route_path` (Issue #4637).
+		let router = ClientRouter::new().route_path(
 			"/orgs/{org_id}/teams/{team_id}/members/{member_id}/",
 			|Path(_org_id): Path<String>,
 			 Path(_team_id): Path<i64>,
@@ -1298,6 +1342,31 @@ mod tests {
 	}
 
 	#[test]
+	fn test_route_path_four_params() {
+		// Guard against regression of the 1..=8 widening (Issue #4637).
+		// Arity-4 is the smallest case beyond the previously supported
+		// arity-3 ceiling, so exercising it proves the `impl_handler!`
+		// macro expansion actually reaches the higher tuples.
+		let router = ClientRouter::new().route_path(
+			"/a/{a}/b/{b}/c/{c}/d/{d}/",
+			|Path(_a): Path<i64>, Path(_b): Path<i64>, Path(_c): Path<i64>, Path(_d): Path<i64>| {
+				page_with_text("Quad")
+			},
+		);
+
+		assert_eq!(router.route_count(), 1);
+
+		let route_match = router.match_path("/a/1/b/2/c/3/d/4/");
+		assert!(route_match.is_some());
+
+		let route_match = route_match.unwrap();
+		assert_eq!(route_match.params.get("a"), Some(&"1".to_string()));
+		assert_eq!(route_match.params.get("b"), Some(&"2".to_string()));
+		assert_eq!(route_match.params.get("c"), Some(&"3".to_string()));
+		assert_eq!(route_match.params.get("d"), Some(&"4".to_string()));
+	}
+
+	#[test]
 	fn test_named_route_path() {
 		let router = ClientRouter::new().named_route_path(
 			"user_detail",
@@ -1313,8 +1382,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_named_route_path2() {
-		let router = ClientRouter::new().named_route_path2(
+	fn test_named_route_path_two_params() {
+		// `named_route_path` now covers every arity (Issue #4637).
+		let router = ClientRouter::new().named_route_path(
 			"user_post",
 			"/users/{user_id}/posts/{post_id}/",
 			|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
@@ -1330,8 +1400,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_named_route_path3() {
-		let router = ClientRouter::new().named_route_path3(
+	fn test_named_route_path_three_params() {
+		let router = ClientRouter::new().named_route_path(
 			"org_team_member",
 			"/orgs/{org}/teams/{team}/members/{member}/",
 			|Path(_org): Path<String>, Path(_team): Path<i64>, Path(_member): Path<i64>| {

@@ -80,6 +80,14 @@ impl TransitionState {
 /// # Note
 ///
 /// On WASM, transitions run asynchronously via spawn_local. On native, they run synchronously.
+///
+/// # Reactivity semantics
+///
+/// On WASM, the closure runs in `spawn_task` (a new micro-task), so no
+/// reactive Observer is active when it executes. On native, the closure
+/// runs synchronously in the current turn; callers that require Observer
+/// isolation on native should wrap sensitive reads in `untracked`.
+/// (Option A, Refs #4195).
 pub fn use_transition() -> TransitionState {
 	let is_pending = Signal::new(false);
 

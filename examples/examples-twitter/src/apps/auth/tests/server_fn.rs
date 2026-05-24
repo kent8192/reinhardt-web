@@ -2,7 +2,7 @@
 //!
 //! Tests that exercise the full DI resolution pipeline by routing HTTP requests
 //! through `ServerRouter::handle()`. This ensures `#[inject]` parameters
-//! (`DatabaseConnection`, `SessionData`, `SessionStoreRef`) are resolved via
+//! (`DatabaseConnection`, `SessionData`, `Depends<SessionStore>`) are resolved via
 //! `InjectionContext` rather than passed directly as function arguments.
 //!
 //! Covers: Issue #3525 — DI bypass in auth server_fn tests
@@ -48,10 +48,14 @@ async fn build_auth_router(url: &str) -> (impl Handler, Arc<SessionStore>) {
 
 	let store = Arc::new(SessionStore::new());
 
-	// Build singleton scope with DatabaseConnection and Arc<SessionStore>
+	// Build singleton scope with DatabaseConnection and the SessionStore.
+	// Post-#4437: the store is keyed under TypeId::of::<SessionStore>() (not
+	// Arc<SessionStore>), so we use `set_arc` to store the Arc<SessionStore>
+	// verbatim under that key — matching what
+	// `SessionMiddleware::di_registrations` contributes.
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set(db);
-	singleton.set(Arc::clone(&store));
+	singleton.set_arc(Arc::clone(&store));
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
 	// Build session middleware sharing the same store

@@ -162,15 +162,11 @@ pub fn infer_admin_field_type(db_type: &DbFieldType) -> AdminFieldType {
 ///
 /// // Field with null=true is not required
 /// let meta = FieldMetadata::new(FieldType::VarChar(255))
-///     .with_param("null", "true");
+///     .with_nullable(true);
 /// assert!(!infer_required(&meta));
 /// ```
 pub fn infer_required(meta: &FieldMetadata) -> bool {
-	let is_null = meta
-		.params
-		.get("null")
-		.map(|v| v == "true")
-		.unwrap_or(false);
+	let is_null = meta.nullable;
 	let is_blank = meta
 		.params
 		.get("blank")
@@ -417,7 +413,7 @@ mod tests {
 
 	#[test]
 	fn test_infer_required_null_true() {
-		let meta = FieldMetadata::new(DbFieldType::VarChar(255)).with_param("null", "true");
+		let meta = FieldMetadata::new(DbFieldType::VarChar(255)).with_nullable(true);
 		assert!(!infer_required(&meta));
 	}
 
@@ -430,7 +426,7 @@ mod tests {
 	#[test]
 	fn test_infer_required_both_false() {
 		let meta = FieldMetadata::new(DbFieldType::VarChar(255))
-			.with_param("null", "false")
+			.with_nullable(false)
 			.with_param("blank", "false");
 		assert!(infer_required(&meta));
 	}
@@ -757,7 +753,7 @@ mod tests {
 
 	#[test]
 	fn test_infer_required_null_false_explicit() {
-		let meta = FieldMetadata::new(DbFieldType::Integer).with_param("null", "false");
+		let meta = FieldMetadata::new(DbFieldType::Integer).with_nullable(false);
 		assert!(infer_required(&meta));
 	}
 
@@ -770,7 +766,7 @@ mod tests {
 	#[test]
 	fn test_infer_required_null_true_blank_false() {
 		let meta = FieldMetadata::new(DbFieldType::Integer)
-			.with_param("null", "true")
+			.with_nullable(true)
 			.with_param("blank", "false");
 		assert!(!infer_required(&meta));
 	}
@@ -778,7 +774,7 @@ mod tests {
 	#[test]
 	fn test_infer_required_null_false_blank_true() {
 		let meta = FieldMetadata::new(DbFieldType::Integer)
-			.with_param("null", "false")
+			.with_nullable(false)
 			.with_param("blank", "true");
 		assert!(!infer_required(&meta));
 	}
@@ -786,7 +782,7 @@ mod tests {
 	#[test]
 	fn test_infer_required_both_true() {
 		let meta = FieldMetadata::new(DbFieldType::Integer)
-			.with_param("null", "true")
+			.with_nullable(true)
 			.with_param("blank", "true");
 		assert!(!infer_required(&meta));
 	}

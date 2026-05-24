@@ -60,13 +60,7 @@ impl VisitMut for StructVisitor {
 					true
 				};
 				if should_default {
-					let has_builder_default = field.attrs.iter().any(|a| {
-						a.path().is_ident("builder")
-							&& matches!(&a.meta, syn::Meta::List(l) if l.tokens.to_string().contains("default"))
-					});
-					if !has_builder_default {
-						field.attrs.push(syn::parse_quote!(#[builder(default)]));
-					}
+					field.attrs.push(syn::parse_quote!(#[builder(default)]));
 				}
 			}
 		}
@@ -105,9 +99,7 @@ fn replace_derive_default_with_bon_builder(attrs: &mut Vec<syn::Attribute>) {
 			});
 		}
 	}
-	if !derives.iter().any(|p| {
-		p.segments.len() == 2 && p.segments[0].ident == "bon" && p.segments[1].ident == "Builder"
-	}) {
+	if !derives.iter().any(is_bon_builder_path) {
 		derives.push(syn::parse_quote!(bon::Builder));
 	}
 
@@ -125,6 +117,12 @@ fn replace_derive_default_with_bon_builder(attrs: &mut Vec<syn::Attribute>) {
 	new_attrs.insert(insert_pos, syn::parse_quote!(#[derive(#(#derives),*)]));
 
 	*attrs = new_attrs;
+}
+
+fn is_bon_builder_path(p: &syn::Path) -> bool {
+	p.segments.len() == 2
+		&& p.segments[0].ident == "bon"
+		&& p.segments[1].ident == "Builder"
 }
 
 fn is_option_type(ty: &syn::Type) -> bool {

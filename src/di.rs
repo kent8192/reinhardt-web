@@ -16,5 +16,5 @@ pub use reinhardt_di::*;
 #[cfg(feature = "di")]
 #[allow(deprecated)]
 pub use reinhardt_di::{
-	DiError, DiResult, Injectable, Injected, InjectionContext, InjectionMetadata, OptionalInjected,
+	DiError, DiResult, Injectable, InjectionContext, InjectionMetadata,
 };

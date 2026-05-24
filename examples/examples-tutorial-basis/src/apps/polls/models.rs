@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
+use reinhardt::core::serde::{Deserialize, Serialize};
 use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::prelude::*;
-use serde::{Deserialize, Serialize};
+
+use crate::apps::users::models::User;
 
 use crate::apps::users::models::User;
 

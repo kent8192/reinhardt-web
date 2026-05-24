@@ -155,6 +155,17 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	}
 }
 
+impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Trackable
+	for Resource<T, E>
+{
+	/// Returns the underlying state `Signal`'s `NodeId`, allowing this
+	/// `Resource` to participate in hook deps tuples alongside `Signal`
+	/// and `Memo` (Refs #4195).
+	fn node_id(&self) -> reinhardt_core::reactive::runtime::NodeId {
+		self.state.id()
+	}
+}
+
 /// Create a resource from an async function
 ///
 /// This function takes an async fetcher and returns a `Resource<T>`.

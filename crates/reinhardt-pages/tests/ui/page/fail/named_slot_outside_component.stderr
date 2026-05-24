@@ -1,0 +1,5 @@
+error: `$slotname { }` is only valid inside a component body
+ --> tests/ui/page/fail/named_slot_outside_component.rs:9:13
+  |
+9 |             $header { "This is invalid" }
+  |             ^

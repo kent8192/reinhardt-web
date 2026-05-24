@@ -1,0 +1,7 @@
+error: bare identifier shorthand is removed in v2 — wrap the expression in braces: `{name}`.
+
+       note: spec §3.6 — `div { foo }` is no longer parsed as an expression. Use `div { {foo} }` to render the value, or `div { foo { ... } }` if `foo` was intended as an HTML tag.
+  --> tests/ui/page/fail/bare_ident_shorthand_in_body.rs:11:9
+   |
+11 |         div { name }
+   |               ^^^^

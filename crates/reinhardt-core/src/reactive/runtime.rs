@@ -49,6 +49,14 @@ impl NodeId {
 		static COUNTER: AtomicUsize = AtomicUsize::new(0);
 		Self(COUNTER.fetch_add(1, Ordering::Relaxed))
 	}
+
+	/// Returns the underlying counter value as a `u64`.
+	///
+	/// Useful when an opaque numeric identifier is needed (e.g. by the
+	/// `Trackable` trait in `reinhardt-pages`).
+	pub fn as_u64(self) -> u64 {
+		self.0 as u64
+	}
 }
 
 impl Default for NodeId {
@@ -435,6 +443,80 @@ where
 	RUNTIME.try_with(f).ok()
 }
 
+/// Execute `f` with the active Observer (if any) temporarily detached.
+///
+/// `Signal::get` calls inside `f` will not auto-subscribe to the outer
+/// reactive context. The Observer stack is restored before this function
+/// returns, including on panic.
+///
+/// Used by `*::new_with_deps` constructors to implement the React-aligned
+/// "closure runs without Observer; only listed deps subscribe" semantics
+/// (Refs #4195).
+//
+// Unused in lib builds until Task 5 (`Effect::new_with_deps`) and Task 6
+// (`Memo::new_with_deps`) land. Tests in this file already exercise it.
+#[allow(dead_code)]
+pub(crate) fn run_without_observer<R>(f: impl FnOnce() -> R) -> R {
+	struct Restore {
+		saved: Vec<Observer>,
+		active: bool,
+	}
+	impl Drop for Restore {
+		fn drop(&mut self) {
+			if self.active {
+				let saved = core::mem::take(&mut self.saved);
+				// Best-effort restore on panic. `try_with_runtime` guards
+				// against thread-local destruction during shutdown.
+				let _ = try_with_runtime(|rt| {
+					*rt.observer_stack.borrow_mut() = saved;
+				});
+			}
+		}
+	}
+
+	let saved = with_runtime(|rt| core::mem::take(&mut *rt.observer_stack.borrow_mut()));
+	let mut guard = Restore {
+		saved,
+		active: true,
+	};
+	let result = f();
+	// Success path: restore inline and disarm the Drop guard so the panic
+	// branch does not double-restore.
+	let saved = core::mem::take(&mut guard.saved);
+	with_runtime(|rt| {
+		*rt.observer_stack.borrow_mut() = saved;
+	});
+	guard.active = false;
+	result
+}
+
+/// Wire an explicit subscription edge from `node` to `observer` in the
+/// reactive dependency graph, bypassing the auto-tracking Observer stack.
+///
+/// Used by `Effect::new_with_deps` and `Memo::new_with_deps` to subscribe
+/// the observer to each listed dependency after running the closure with
+/// no Observer active (Refs #4195).
+//
+// Unused in lib builds until Task 5 / Task 6. Tests in this file exercise it.
+#[allow(dead_code)]
+pub(crate) fn subscribe_node_to_observer(node: NodeId, observer: NodeId) {
+	with_runtime(|rt| {
+		let mut graph = rt.dependency_graph.borrow_mut();
+
+		// node -> observer: node has a new subscriber
+		let node_entry = graph.entry(node).or_default();
+		if !node_entry.subscribers.contains(&observer) {
+			node_entry.subscribers.push(observer);
+		}
+
+		// observer -> node: observer now depends on this node
+		let obs_entry = graph.entry(observer).or_default();
+		if !obs_entry.dependencies.contains(&node) {
+			obs_entry.dependencies.push(node);
+		}
+	});
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -668,5 +750,64 @@ mod tests {
 		assert_eq!(snapshot, alloc::vec![pending_a, pending_b]);
 		// Snapshot must not drain the queue
 		assert_eq!(runtime.pending_updates.borrow().len(), 2);
+	}
+
+	#[test]
+	#[serial]
+	fn run_without_observer_isolates_inner_signal_reads() {
+		// Arrange
+		let outer = crate::reactive::signal::Signal::new(0_i32);
+		let inner = crate::reactive::signal::Signal::new(0_i32);
+		let counter = std::rc::Rc::new(std::cell::Cell::new(0));
+		let counter_for_effect = counter.clone();
+		let outer_for_effect = outer.clone();
+		let inner_for_effect = inner.clone();
+
+		// Act
+		let _eff = crate::reactive::effect::Effect::new(move || {
+			let _ = outer_for_effect.get();
+			super::run_without_observer(|| {
+				let _ = inner_for_effect.get();
+			});
+			counter_for_effect.set(counter_for_effect.get() + 1);
+		});
+
+		let initial = counter.get();
+		inner.set(99);
+		super::with_runtime(|rt| rt.flush_updates());
+
+		// Assert
+		assert_eq!(
+			counter.get(),
+			initial,
+			"run_without_observer must isolate Signal reads from outer Observer"
+		);
+	}
+
+	#[test]
+	#[serial]
+	fn subscribe_node_to_observer_wires_edges_both_directions() {
+		// Arrange
+		let node = NodeId::new();
+		let observer = NodeId::new();
+
+		// Act — exercise the public free function so this test covers the
+		// same code path used by `*::new_with_deps`.
+		super::subscribe_node_to_observer(node, observer);
+
+		// Assert
+		let subs = super::with_runtime(|rt| rt.debug_subscribers(node));
+		let deps = super::with_runtime(|rt| rt.debug_dependencies(observer));
+		assert_eq!(
+			subs,
+			alloc::vec![observer],
+			"node must have observer as subscriber"
+		);
+		assert_eq!(deps, alloc::vec![node], "observer must depend on node");
+
+		// Calling twice must not duplicate entries.
+		super::subscribe_node_to_observer(node, observer);
+		let subs2 = super::with_runtime(|rt| rt.debug_subscribers(node));
+		assert_eq!(subs2.len(), 1, "subscribe must be idempotent");
 	}
 }

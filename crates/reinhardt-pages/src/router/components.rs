@@ -124,79 +124,6 @@ impl Component for Link {
 	}
 }
 
-/// A component that renders the matched route's content.
-///
-/// Place this where you want route content to appear.
-///
-/// # Example
-///
-/// ```no_run
-/// use reinhardt_pages::router::{Router, RouterOutlet};
-/// use reinhardt_pages::component::Page;
-/// use std::sync::Arc;
-///
-/// # fn home_view() -> Page { Page::text("Home") }
-/// let router = Arc::new(Router::new().route("/", home_view));
-/// let outlet = RouterOutlet::new(router);
-/// ```
-#[derive(Debug, Clone)]
-pub struct RouterOutlet {
-	/// Reference to the router.
-	router: std::sync::Arc<super::Router>,
-	/// The ID attribute for the outlet element.
-	id: Option<String>,
-	/// CSS class for the outlet element.
-	class: Option<String>,
-}
-
-impl RouterOutlet {
-	/// Creates a new router outlet with a router reference.
-	///
-	/// ## Arguments
-	///
-	/// * `router` - An Arc reference to the Router instance
-	pub fn new(router: std::sync::Arc<super::Router>) -> Self {
-		Self {
-			router,
-			id: None,
-			class: None,
-		}
-	}
-
-	/// Sets the ID attribute.
-	pub fn id(mut self, id: impl Into<String>) -> Self {
-		self.id = Some(id.into());
-		self
-	}
-
-	/// Sets the CSS class.
-	pub fn class(mut self, class: impl Into<String>) -> Self {
-		self.class = Some(class.into());
-		self
-	}
-}
-
-impl Component for RouterOutlet {
-	fn render(&self) -> Page {
-		let mut el = PageElement::new("div").attr("data-router-outlet", "true");
-
-		if let Some(ref id) = self.id {
-			el = el.attr("id", id.clone());
-		}
-
-		if let Some(ref class) = self.class {
-			el = el.attr("class", class.clone());
-		}
-
-		// Render current route inside the outlet container
-		el.child(self.router.render_current()).into_page()
-	}
-
-	fn name() -> &'static str {
-		"RouterOutlet"
-	}
-}
-
 /// A redirect component that immediately navigates to another path.
 ///
 /// The redirect URL is validated at construction time to prevent open redirect
@@ -350,26 +277,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_router_outlet() {
-		use crate::router::Router;
-		use std::sync::Arc;
-
-		fn test_view() -> Page {
-			Page::text("Test Route")
-		}
-
-		let router = Arc::new(Router::new().route("/", test_view));
-		let outlet = RouterOutlet::new(router).id("main-outlet").class("content");
-
-		let html = outlet.render().render_to_string();
-		assert!(html.contains("data-router-outlet=\"true\""));
-		assert!(html.contains("id=\"main-outlet\""));
-		assert!(html.contains("class=\"content\""));
-		// Should render the current route content
-		assert!(html.contains("Test Route"));
-	}
-
-	#[test]
 	fn test_redirect() {
 		let redirect = Redirect::new("/login/");
 		assert_eq!(redirect.to(), "/login/");
@@ -427,11 +334,6 @@ mod tests {
 	#[test]
 	fn test_link_component_name() {
 		assert_eq!(Link::name(), "Link");
-	}
-
-	#[test]
-	fn test_router_outlet_component_name() {
-		assert_eq!(RouterOutlet::name(), "RouterOutlet");
 	}
 
 	#[test]

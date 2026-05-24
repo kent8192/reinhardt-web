@@ -34,8 +34,7 @@ cd reinhardt-web/examples/examples-twitter
 # Start PostgreSQL
 docker compose up -d
 
-# Copy local settings template
-cp settings/local.example.toml settings/local.toml
+# Create local settings file for local-only overrides
 
 # Run the example
 cargo run

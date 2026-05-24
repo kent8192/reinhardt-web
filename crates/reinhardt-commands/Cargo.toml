@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-commands"
-version = "0.1.1"
+version = "0.2.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -84,7 +84,7 @@ trybuild = { workspace = true }
 [features]
 default = ["server", "autoreload"]
 migrations = ["reinhardt-db"]
-routers = ["dep:reinhardt-urls", "dep:reinhardt-http"]
+routers = ["dep:reinhardt-urls"]
 di = ["dep:reinhardt-di"]
 openapi = ["dep:reinhardt-rest", "dep:reinhardt-http"]
 introspect = ["routers", "dep:cargo_metadata", "dep:serde_yaml"]

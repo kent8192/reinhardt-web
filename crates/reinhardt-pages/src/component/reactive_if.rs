@@ -75,17 +75,12 @@ impl ReactiveIfNode {
 	/// * `condition` - Closure that returns the condition value
 	/// * `then_view` - Closure that returns the view when condition is true
 	/// * `else_view` - Closure that returns the view when condition is false
-	pub fn new<C, T, E>(
+	pub fn new(
 		parent: &crate::dom::Element,
-		condition: C,
-		then_view: T,
-		else_view: E,
-	) -> Self
-	where
-		C: Fn() -> bool + 'static,
-		T: Fn() -> Page + 'static,
-		E: Fn() -> Page + 'static,
-	{
+		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
+		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
 		// Create a comment node as a marker/anchor point
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -180,10 +175,10 @@ impl ReactiveNode {
 	///
 	/// * `parent` - The parent DOM element to mount the reactive content into
 	/// * `render` - Closure that returns the view to render
-	pub fn new<F>(parent: &crate::dom::Element, render: F) -> Self
-	where
-		F: Fn() -> Page + 'static,
-	{
+	pub fn new(
+		parent: &crate::dom::Element,
+		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
 		// Create a comment node as a marker/anchor point
 		let document = web_sys::window()
 			.expect("window should be available")

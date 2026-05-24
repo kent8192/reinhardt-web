@@ -26,11 +26,11 @@
 //! Uses the mock HTTP infrastructure for predictable testing.
 //!
 //! ```rust,ignore
-//! use reinhardt_pages::testing::{mock_server_fn, clear_mocks, assert_server_fn_called};
+//! use reinhardt_pages::testing::{clear_mocks, assert_server_fn_called};
 //!
 //! #[wasm_bindgen_test]
 //! async fn test_component() {
-//!     mock_server_fn("/api/server_fn/login", &user_info);
+//!     // Register mock response via MockServiceWorker...
 //!     // ... render component ...
 //!     assert_server_fn_called("/api/server_fn/login");
 //!     clear_mocks();
@@ -51,7 +51,7 @@ pub use mock_fetch::fetch_with_mock;
 pub use mock_http::{
 	MockCall, MockResponse, assert_server_fn_call_count, assert_server_fn_called,
 	assert_server_fn_called_with, assert_server_fn_not_called, clear_mocks, get_call_history,
-	get_call_history_for, mock_server_fn, mock_server_fn_custom, mock_server_fn_error,
+	get_call_history_for,
 };
 
 // E2E test infrastructure (Layer 3)

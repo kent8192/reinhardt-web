@@ -7,39 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0...reinhardt-admin-cli@v0.1.1) - 2026-05-24
-
 ### Added
 
-- *(admin-cli)* scaffold migrate-manouche-v2 subcommand
-- *(admin-cli)* codemod pipeline scaffolding (walker + rule trait + review fixes)
-- *(admin)* add form! macro DSL formatting support
-
-### Fixed
-
-- *(admin)* preserve blank lines inside page! macro DSL when formatting
-- *(admin)* preserve comments and blank lines in codemod rewriting
-- *(admin)* use text-based item search for codemod formatting preservation
-- *(admin-cli)* address CodeRabbit review on form! detection, char/lifetime scan, temp file, and codemod rules
-- *(admin-cli)* use unique temp filename in target directory for atomic rename
-- *(admin-cli)* ensure temp file cleanup runs on rename failure
-- *(admin)* clean up temp file when std::fs::write fails in write_developer_file
-- *(admin-cli)* revert version to 0.1.0
-- *(admin-cli)* resolve formatting issues in fmt-all output
-- *(admin-cli)* remove invalid callbacks wrapper from formatter
-- *(admin-cli)* skip rustfmt for closures containing page!/form! macros
-- *(admin-cli)* use rustfmt directly for closures with page!/form! macros
-- *(reinhardt-admin-cli)* add page! macro protection in closure and handler expression formatting
-- *(reinhardt-admin-cli)* emit form! DSL syntax for wrapper, icon, icon_position fields
-- *(reinhardt-admin-cli)* add form! token preprocessing to convert internal AST to DSL
-- *(reinhardt-admin)* strip trailing commas from Icon attrs before merging children
-- *(reinhardt-admin-cli)* fix off-by-one bounds check in parse_wrapper_inner and parse_icon_inner
-- *(ci)* resolve Rust 1.94 clippy failures
-
-### Styling
-
-- *(admin)* fix indentation in write_developer_file write-error handler
-- *(admin-cli)* apply rustfmt to migrate_v2 codemod tests
+- `reinhardt-admin migrate-manouche-v2 [PATH]` subcommand applying the
+  Manouche v1 → v2 codemod (spec §6.1 + §6.2). Available as `cargo make
+  migrate-manouche-v2`. Supports `--dry-run` and `--skip <rule>`. Rules:
+  `bare_ident`, `watch_unwrap`, `use_effect_deps`, `component_props`.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.30...reinhardt-admin-cli@v0.1.0) - 2026-05-22
 

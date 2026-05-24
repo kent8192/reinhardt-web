@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-pages"
-version = "0.1.1"
+version = "0.2.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -95,6 +95,11 @@ web-sys-full = [
 # Documentation
 aquamarine = "0.5"
 
+# Builder generator for `Component { ... }` invocation form (spec §3.5.2).
+# Used as a runtime dep so user code can `#[derive(bon::Builder)]` on
+# component prop structs. Staged for removal under spec §10.
+bon = { workspace = true }
+
 # Constant-time comparison for CSRF token verification
 subtle = { workspace = true }
 
@@ -186,6 +191,7 @@ web-sys = { version = "0.3.83", features = [
 
 # Async support for WASM
 reinhardt-core = {workspace = true, features = ["reactive", "page"]}
+smallvec = { workspace = true }
 syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
 quote = "1.0"
 proc-macro2 = "1.0"

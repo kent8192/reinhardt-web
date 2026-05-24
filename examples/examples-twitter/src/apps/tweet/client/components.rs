@@ -274,10 +274,8 @@ pub fn tweet_form() -> Page {
 		server_fn: create_tweet,
 		method: Post,
 
-		state: {
-			loading,
-			error,
-		}
+		// State management - generates loading and error signals automatically
+		state: { loading, error },
 
 		fields: {
 			content: TextField {
@@ -288,91 +286,86 @@ pub fn tweet_form() -> Page {
 				placeholder: "What's happening?",
 				class: "form-textarea border-0 bg-transparent focus:ring-0 text-lg resize-none",
 				rows: 3,
-			}
-		}
-
-		on_success: |_result| {
-				#[cfg(wasm)]
-				{
-					if let Some(window) = web_sys::window() {
-						let _ = window.location().reload();
-					}
-				}
 			},
+		},
 
+		// Watch blocks for reactive UI rendering
+		// Following polls.rs pattern: simple inline conditionals without nested watch blocks
 		watch: {
+			// Character counter with styling based on count
 			char_counter: |form| {
-					let char_count = form.content().get().len();
-					let progress_percent = (char_count as f64 / 280.0 * 100.0).min(100.0);
-					let width_style = format!("width: {}%", progress_percent);
-					let (text_class, bar_class) = if char_count > 280 {
-						(
-							"text-sm font-medium text-danger".to_string(),
-							"h-full bg-danger transition-all".to_string(),
-						)
-					} else if char_count > 250 {
-						(
-							"text-sm font-medium text-warning".to_string(),
-							"h-full bg-warning transition-all".to_string(),
-						)
-					} else if char_count > 0 {
-						(
-							"text-sm font-medium text-content-tertiary".to_string(),
-							"h-full bg-brand transition-all".to_string(),
-						)
-					} else {
-						(
-							"text-sm font-medium text-content-tertiary".to_string(),
-							"h-full bg-surface-tertiary transition-all".to_string(),
-						)
-					};
-					let display_text = format!("{}/280", char_count);
-					page!(|text_class: String, bar_class: String, width_style: String, display_text: String| {
+				let char_count = form.content().get().len();
+				let progress_percent = (char_count as f64 / 280.0 * 100.0).min(100.0);
+				let width_style = format!("width: {}%", progress_percent);
+				// Determine color class based on count (use String for 'static lifetime)
+				let (text_class, bar_class) = if char_count > 280 {
+					("text-sm font-medium text-danger".to_string(), "h-full bg-danger transition-all".to_string())
+				} else if char_count > 250 {
+					("text-sm font-medium text-warning".to_string(), "h-full bg-warning transition-all".to_string())
+				} else if char_count > 0 {
+					("text-sm font-medium text-content-tertiary".to_string(), "h-full bg-brand transition-all".to_string())
+				} else {
+					("text-sm font-medium text-content-tertiary".to_string(), "h-full bg-surface-tertiary transition-all".to_string())
+				};
+				let display_text = format!("{}/280", char_count);
+				page!(|text_class: String, bar_class: String, width_style: String, display_text: String| {
+					div {
+						class: "flex items-center gap-2",
 						div {
-							class: "flex items-center gap-2",
+							class: text_class,
+							{ display_text }
+						}
+						div {
+							class: "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden",
 							div {
-								class: text_class,
-								{ display_text }
-							}
-							div {
-								class: "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden",
-								div {
-									class: bar_class,
-									style: width_style,
-								}
+								class: bar_class,
+								style: width_style,
 							}
 						}
-					})(text_class, bar_class, width_style, display_text)
-				},
+					}
+				})(text_class, bar_class, width_style, display_text)
+			},
+			// Submit button with loading/disabled states
+			// Pattern from polls.rs: simple inline conditionals
 			submit_button: |form| {
-					let is_loading = form.loading().get();
-					let char_count = form.content().get().len();
-					let is_valid = char_count > 0 && char_count <= 280;
-					let is_disabled = is_loading || !is_valid;
-					page!(|is_loading: bool, is_disabled: bool| {
-						div {
-							button {
-								type: "submit",
-								class: if is_disabled { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
-								disabled: is_disabled,
-								{ if is_loading { "Posting..." } else { "Post" } }
-							}
+				let is_loading = form.loading().get();
+				let char_count = form.content().get().len();
+				let is_valid = char_count > 0 && char_count <= 280;
+				let is_disabled = is_loading || !is_valid;
+				page!(|is_loading: bool, is_disabled: bool| {
+					div {
+						button {
+							type: "submit",
+							class: if is_disabled { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
+							disabled: is_disabled,
+							{ if is_loading { "Posting..." } else { "Post" } }
 						}
-					})(is_loading, is_disabled)
-				},
+					}
+				})(is_loading, is_disabled)
+			},
+			// Error display - following polls.rs pattern with simple conditional
 			error_display: |form| {
-					let err = form.error().get();
-					let has_error = err.is_some();
-					let error_msg = err.unwrap_or_default();
-					page!(|has_error: bool, error_msg: String| {
-						div {
-							class: if has_error { "alert-danger mb-3" } else { "hidden" },
-							{ error_msg }
-						}
-					})(has_error, error_msg)
-				},
-		}
+				let err = form.error().get();
+				let has_error = err.is_some();
+				let error_msg = err.unwrap_or_default();
+				page!(|has_error: bool, error_msg: String| {
+					div {
+						class: if has_error { "alert-danger mb-3" } else { "hidden" },
+						{ error_msg }
+					}
+				})(has_error, error_msg)
+			},
+		},
 
+		// Callback for successful submission - reload page
+		on_success: |_result| {
+			#[cfg(wasm)]
+			{
+				if let Some(window) = web_sys::window() {
+					let _ = window.location().reload();
+				}
+			}
+		},
 	};
 
 	// Wrap form in the card layout
@@ -426,22 +419,29 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 		let loading_setter = _set_loading.clone();
 		let error_setter = _set_error.clone();
 		let resource_for_effect = resource.clone();
+		let resource_for_deps = resource.clone();
 
-		use_effect(move || match resource_for_effect.get() {
-			ResourceState::Loading => {
-				loading_setter(true);
-				error_setter(None);
-			}
-			ResourceState::Success(data) => {
-				tweets_setter(data);
-				loading_setter(false);
-				error_setter(None);
-			}
-			ResourceState::Error(err) => {
-				error_setter(Some(err));
-				loading_setter(false);
-			}
-		});
+		use_effect(
+			move || {
+				match resource_for_effect.get() {
+					ResourceState::Loading => {
+						loading_setter(true);
+						error_setter(None);
+					}
+					ResourceState::Success(data) => {
+						tweets_setter(data);
+						loading_setter(false);
+						error_setter(None);
+					}
+					ResourceState::Error(err) => {
+						error_setter(Some(err));
+						loading_setter(false);
+					}
+				}
+				None::<fn()>
+			},
+			(resource_for_deps,),
+		);
 	}
 
 	// Clone signals for passing to page! macro (NOT extracting values)
