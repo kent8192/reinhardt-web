@@ -74,7 +74,7 @@ jobs:
     concurrency:
       # Cancel any in-flight Release PR regeneration when a newer push lands
       # on the same ref. release-plz rebuilds the release branch (release-plz-*
-      # or release-plz-develop-*) from the latest Cargo.toml each run, so older
+      # or develop-release-plz-*) from the latest Cargo.toml each run, so older
       # runs are stale the moment a newer commit appears. Safe because this job
       # only writes to the release branch (idempotent regeneration), not to
       # crates.io.
@@ -239,7 +239,7 @@ jobs:
     #     (release-plz's `pr_name`; develop uses "chore: release (develop)" to
     #     distinguish Release PR titles from main)
     #   - regular merge → `Merge pull request #N from .../release-plz-...` or
-    #     `.../release-plz-develop-...` (branch-specific `pr_branch_prefix`;
+    #     `.../develop-release-plz-...` (branch-specific `pr_branch_prefix`;
     #     both contain `release-plz-` so the `contains()` check matches both)
     #
     # `startsWith()` is used for the squash-merge form so we don't false-match
