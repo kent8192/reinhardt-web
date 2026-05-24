@@ -294,7 +294,7 @@ jobs:
           fi
 
       - name: Verify release branch name
-        if: github.ref != 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore: release')
+        if: "github.ref != 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore: release')"
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
@@ -318,7 +318,7 @@ jobs:
           esac
 
       - name: Verify release PR label
-        if: github.ref != 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore: release')
+        if: "github.ref != 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore: release')"
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
