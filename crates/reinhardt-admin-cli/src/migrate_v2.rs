@@ -384,7 +384,10 @@ fn write_developer_file(path: &std::path::Path, content: &str) -> anyhow::Result
 		nanos ^ (std::process::id() as u32)
 	};
 	let tmp = parent.join(format!(".{file_name}.{random_suffix:x}.tmp")); // nosemgrep: path-traversal false positive — developer CLI bounded by --path root
-	std::fs::write(&tmp, content)?;
+	if let Err(e) = std::fs::write(&tmp, content) {
+			let _ = std::fs::remove_file(&tmp);
+			return Err(e.into());
+		}
 	if let Err(e) = std::fs::rename(&tmp, canonical) {
 		let _ = std::fs::remove_file(&tmp);
 		return Err(e.into());
