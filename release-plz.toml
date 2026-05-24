@@ -21,7 +21,7 @@ changelog_update = true
 # the other branch's Release PR. Different prefixes prevent this collision.
 pr_branch_prefix = "release-plz-develop-"
 pr_labels = ["release", "automated"]
-pr_name = "chore: release"
+pr_name = "chore: release (develop)"
 
 # Git release settings
 git_release_enable = false
