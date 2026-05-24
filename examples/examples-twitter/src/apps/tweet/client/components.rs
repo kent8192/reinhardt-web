@@ -419,22 +419,29 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 		let loading_setter = _set_loading.clone();
 		let error_setter = _set_error.clone();
 		let resource_for_effect = resource.clone();
+		let resource_for_deps = resource.clone();
 
-		use_effect(move || match resource_for_effect.get() {
-			ResourceState::Loading => {
-				loading_setter(true);
-				error_setter(None);
-			}
-			ResourceState::Success(data) => {
-				tweets_setter(data);
-				loading_setter(false);
-				error_setter(None);
-			}
-			ResourceState::Error(err) => {
-				error_setter(Some(err));
-				loading_setter(false);
-			}
-		});
+		use_effect(
+			move || {
+				match resource_for_effect.get() {
+					ResourceState::Loading => {
+						loading_setter(true);
+						error_setter(None);
+					}
+					ResourceState::Success(data) => {
+						tweets_setter(data);
+						loading_setter(false);
+						error_setter(None);
+					}
+					ResourceState::Error(err) => {
+						error_setter(Some(err));
+						loading_setter(false);
+					}
+				}
+				None::<fn()>
+			},
+			(resource_for_deps,),
+		);
 	}
 
 	// Clone signals for passing to page! macro (NOT extracting values)

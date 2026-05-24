@@ -85,13 +85,15 @@
 - Create upstream issue before implementing any workaround for external dependency bugs (WP-2)
 - Include the ideal implementation as a comment when introducing workaround code (WP-3)
 - Create a tracking issue in reinhardt-web for every upstream dependency issue with `upstream-tracking` label (UR-4)
+- When removing deprecated APIs, DELETE the code and update all callers — never use `#[cfg(any())]` or other conditional compilation gates to preserve dead code
 - Apply `good first issue` only when all GFI-1 criteria are met (single crate, ≤3 files, unambiguous fix)
 - Ensure issue description has file paths, expected behavior, and verification steps before applying `good first issue` (GFI-4)
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
 - Commit without user instruction (except Plan Mode approval or the Autonomous Operation Policy for Reinhardt-family repos)
-- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — even under the Autonomous Operation Policy these require explicit user authorization
+- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — direct commits and pushes to protected branches are NEVER allowed; changes must go through Pull Requests from non-protected branches
+- Commit directly to a protected branch (`main`, `master`, `develop/*`, `release/*`) — all changes to protected branches MUST go through feature/fix/docs branches and Pull Requests
 - Force-push, rebase-and-push, or otherwise rewrite history without explicit user authorization (the Autonomous Operation Policy does NOT cover history-rewriting pushes)
 - Close, merge, or delete PRs / Issues / comments without explicit user authorization (autonomy covers creation only, not destruction)
 - Create release tags or any PR with the `release` label without explicit user authorization
@@ -109,6 +111,7 @@
 - Create circular dependencies
 - Leave unmarked placeholder implementations
 - Use `#[allow(...)]` without explanatory comments
+- Use `#[cfg(any())]` or similar conditional compilation hacks to "soft-delete" deprecated APIs (delete the code and update callers)
 - Use alternative TODO notations (`FIXME:`, `NOTE:` for unimplemented features)
 - Create batch commits without user confirmation
 - Use relative paths beyond `../`

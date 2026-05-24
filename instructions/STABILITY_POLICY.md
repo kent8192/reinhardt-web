@@ -255,6 +255,36 @@ pub fn legacy_method() {
 }
 ```
 
+### SP-4a (MUST): Deprecated API Removal Mechanism
+
+When removing a deprecated API, the removal **MUST** be a true deletion — the code and its module declaration are removed from the source tree. Conditional compilation gates that preserve dead code are **NEVER** acceptable as a "soft deletion" mechanism.
+
+**Prohibited pattern:**
+```rust
+// ❌ NEVER gate deprecated items behind cfg(any()) to hide them
+#[cfg(any())]
+pub fn legacy_function() {
+    // dead code preserved in the tree
+}
+```
+
+**Required pattern:**
+```rust
+// ✅ DELETE the file and the `pub mod` declaration.
+// git blame <deletion-commit>^ is the mechanism for inspecting past state.
+```
+
+**Caller update obligation:**
+- All in-crate callers of the deleted API **MUST** be updated or removed in the same commit
+- All cross-crate callers in the workspace **MUST** be updated or removed in the same commit
+- When a caller cannot be trivially updated (e.g., the replacement API lives in a different crate), file a tracking issue and reference it in the commit message
+
+**Rationale:**
+- `#[cfg(any())]` is always-false conditional compilation — it is semantically equivalent to deletion but leaves dead code in the tree
+- Dead code accumulates technical debt: it confuses readers, bloats IDE search results, and misleads future refactoring efforts
+- The "git blame readability" argument for preserving dead code is invalid: `git blame <deletion-commit>^` allows inspecting the code as it existed before deletion
+- `#[cfg(any())]` gates can mask compilation errors in callers, hiding the full impact of an API removal
+
 ### SP-5 (SHOULD): Commit Message Convention for RC
 
 During the RC phase, commit messages should clearly indicate the nature of the fix:

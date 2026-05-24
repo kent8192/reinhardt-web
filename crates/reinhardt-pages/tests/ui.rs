@@ -43,3 +43,20 @@ fn test_server_fn_macro_ui() {
 	// Issue #3858: verify FromRequest extractor params work in #[server_fn]
 	t.pass("tests/ui/server_fn/with_extractors.rs");
 }
+
+// PR5 / Issue #4195: React-parity hooks require an explicit deps tuple
+// (spec §4.2). These UI tests pin the public signature:
+// - `pass/explicit_deps_use_effect.rs`: canonical (closure, (s,))
+// - `pass/mount_only_unit_deps.rs`: mount-only `()`
+// - `fail/missing_deps_use_effect.rs`: omitting deps is a hard compile error
+#[test]
+fn test_hooks_explicit_deps_ui_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/hooks/pass/*.rs");
+}
+
+#[test]
+fn test_hooks_explicit_deps_ui_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/hooks/fail/*.rs");
+}

@@ -188,7 +188,7 @@ mod typed_accounts_app {
 				"/polls/{question_id}/",
 				|ClientPath(_question_id): ClientPath<i64>| Page::Empty,
 			)
-			.named_route_path2(
+			.named_route_path(
 				"choice_edit",
 				"/polls/{question_id}/choices/{choice_id}/edit/",
 				|ClientPath(_question_id): ClientPath<i64>,
@@ -319,7 +319,7 @@ mod typed_accounts_app_swapped_order {
 
 	#[url_patterns(super::InstalledApp::accounts, mode = client)]
 	pub fn client_url_patterns() -> ClientRouter {
-		ClientRouter::new().named_route_path2(
+		ClientRouter::new().named_route_path(
 			"choice_edit",
 			"/polls/{question_id}/choices/{choice_id}/edit/",
 			|ClientPath(_choice_id): ClientPath<i64>, ClientPath(_question_id): ClientPath<i64>| {

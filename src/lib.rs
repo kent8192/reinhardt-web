@@ -442,20 +442,8 @@ pub mod macros {
 #[cfg(native)]
 pub use reinhardt_macros::{api_view, delete, get, patch, post, put};
 
-// Re-export `flatten_imports` and provide a deprecated `define_views!` shim for compatibility
 #[cfg(native)]
 pub use reinhardt_macros::flatten_imports;
-#[cfg(native)]
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "use `flatten_imports!` instead. `define_views!` will be removed in a future version."
-)]
-#[macro_export]
-macro_rules! define_views {
-    ($($tt:tt)*) => {
-        $crate::flatten_imports!($($tt)*)
-    };
-}
 pub use reinhardt_macros::routes;
 pub use reinhardt_macros::url_patterns;
 #[cfg(native)]
@@ -469,11 +457,9 @@ pub use reinhardt_macros::admin;
 
 // Re-export settings from dedicated crate
 #[cfg(all(feature = "conf", native))]
-#[allow(deprecated)]
-// Re-exports deprecated Settings and AdvancedSettings for backward compatibility
 pub use reinhardt_conf::settings::{
-	AdvancedSettings, CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
-	MediaSettings, MiddlewareConfig, SessionSettings, Settings, SettingsError, StaticSettings,
+	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
+	MediaSettings, MiddlewareConfig, SessionSettings, SettingsError, StaticSettings,
 	TemplateConfig,
 };
 
@@ -1190,9 +1176,6 @@ pub use reinhardt_forms::{
 
 // Re-export DI and parameters (FastAPI-style parameter extraction)
 #[cfg(all(feature = "di", native))]
-#[allow(deprecated)]
-pub use reinhardt_di::injected::{Injected, OptionalInjected};
-#[cfg(all(feature = "di", native))]
 pub use reinhardt_di::scope::{RequestScope, Scope, SingletonScope};
 #[cfg(all(feature = "di", native))]
 pub use reinhardt_di::{
@@ -1383,11 +1366,6 @@ pub mod prelude {
 		UserRateThrottle,
 		VersioningMiddleware,
 	};
-
-	// Settings feature
-	#[cfg(feature = "conf")]
-	#[allow(deprecated)] // Re-exports deprecated Settings for backward compatibility
-	pub use crate::Settings;
 
 	// Middleware
 	#[cfg(any(feature = "standard", feature = "middleware"))]

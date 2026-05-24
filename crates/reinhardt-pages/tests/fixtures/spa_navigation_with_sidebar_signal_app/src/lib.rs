@@ -19,9 +19,9 @@
 //! `<a>` clicks and asserts Inv-1 ~ Inv-4 against
 //! `Router::__diag_*` and `ClientLauncher::__diag_render_count`.
 
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen::prelude::*;
 
 fn nav_link(href: &'static str, label: &'static str, current: &str) -> PageElement {
@@ -38,7 +38,7 @@ fn page_with_nav(id: &'static str, label: &'static str) -> Page {
 	// observers, so the value seen here is the freshly-navigated path.
 	// This keeps the fixture API-compatible with `reinhardt-pages` even
 	// though the public API has no per-attribute reactive helper.
-	let current = with_router(|r| r.current_path().get());
+	let current = with_spa_router(|r| r.current_path().get());
 	PageElement::new("div")
 		.attr("id", id)
 		.child(
@@ -67,8 +67,8 @@ pub fn login_page() -> Page {
 pub fn start() -> Result<(), JsValue> {
 	console_error_panic_hook::set_once();
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
+		.router_client(|| {
+			ClientRouter::new()
 				.route("/", home_page)
 				.route("/clusters", clusters_page)
 				.route("/login", login_page)

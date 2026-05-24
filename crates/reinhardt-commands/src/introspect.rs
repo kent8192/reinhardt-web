@@ -297,13 +297,12 @@ fn collect_database_metadata() -> Vec<DatabaseMetadata> {
 /// This avoids duplicating the default-value configuration across multiple
 /// call sites. The caller provides `base_dir` and `settings_dir` so that
 /// file-based sources can be added.
-#[allow(deprecated)] // Uses Settings which is deprecated; retained for backward compatibility
 fn build_settings(
 	base_dir: &std::path::Path,
 	settings_dir: &std::path::Path,
 	profile: reinhardt_conf::settings::profile::Profile,
 	profile_str: &str,
-) -> Result<reinhardt_conf::Settings, Box<dyn std::error::Error>> {
+) -> Result<reinhardt_conf::settings::core_settings::CoreSettings, Box<dyn std::error::Error>> {
 	use reinhardt_conf::settings::builder::SettingsBuilder;
 	use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 
@@ -377,12 +376,11 @@ fn build_settings(
 		))
 		.build()?;
 
-	Ok(merged.into_typed::<reinhardt_conf::Settings>()?)
+	Ok(merged.into_typed::<reinhardt_conf::settings::core_settings::CoreSettings>()?)
 }
 
 /// Load database configurations from settings, returning (alias, engine) pairs.
 /// Returns empty vec if settings cannot be loaded.
-#[allow(deprecated)] // Uses Settings which is deprecated; retained for backward compatibility
 fn load_settings_databases() -> Vec<(String, String)> {
 	use reinhardt_conf::settings::profile::Profile;
 
@@ -401,7 +399,6 @@ fn load_settings_databases() -> Vec<(String, String)> {
 	};
 
 	settings
-		.core
 		.databases
 		.iter()
 		.map(|(alias, config)| (alias.clone(), config.engine.clone()))
@@ -472,7 +469,6 @@ fn collect_settings_metadata() -> SettingsMetadata {
 }
 
 /// Load security-related settings. Returns defaults if settings cannot be loaded.
-#[allow(deprecated)] // Uses Settings which is deprecated; retained for backward compatibility
 fn load_security_settings() -> (bool, bool, bool, bool, bool) {
 	use reinhardt_conf::settings::profile::Profile;
 
@@ -487,11 +483,11 @@ fn load_security_settings() -> (bool, bool, bool, bool, bool) {
 
 	match build_settings(&base_dir, &settings_dir, profile, &profile_str) {
 		Ok(s) => (
-			s.core.security.secure_ssl_redirect,
-			s.core.security.session_cookie_secure,
-			s.core.security.csrf_cookie_secure,
-			s.core.security.secure_hsts_seconds.unwrap_or(0) > 0,
-			s.core.debug,
+			s.security.secure_ssl_redirect,
+			s.security.session_cookie_secure,
+			s.security.csrf_cookie_secure,
+			s.security.secure_hsts_seconds.unwrap_or(0) > 0,
+			s.debug,
 		),
 		Err(_) => (false, false, false, false, true),
 	}

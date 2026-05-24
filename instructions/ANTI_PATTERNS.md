@@ -229,6 +229,39 @@ pub fn new_implementation() {  // ✅ Old code deleted
 
 **Why?** Git history preserves old code. Commented code creates clutter.
 
+### ❌ Conditional Compilation Gates for Deprecated API Removal
+
+**DON'T:**
+
+```rust
+// ❌ Using #[cfg(any())] to "soft-delete" a deprecated API
+#[cfg(any())]
+pub fn legacy_function() {
+    // dead code preserved in the tree
+}
+
+#[cfg(any())]
+pub struct LegacyType {
+    // dead code preserved in the tree
+}
+```
+
+```rust
+// ❌ Gating an entire module file behind cfg(any())
+// File: src/legacy/module.rs
+#![cfg(any())]  // NEVER do this — delete the file and its `pub mod` declaration
+```
+
+**DO:**
+
+```rust
+// ✅ Delete the file and the `pub mod` declaration from its parent module.
+// ✅ Update all callers (in-crate and cross-crate) in the same commit.
+// ✅ Use `git blame <deletion-commit>^` to inspect the code as it existed before deletion.
+```
+
+**Why?** `#[cfg(any())]` is always-false conditional compilation — semantically equivalent to deletion but leaves dead code in the tree. Dead code accumulates technical debt: it confuses readers, bloats IDE search results, masks compilation errors in callers, and misleads future refactoring. The "git blame readability" argument is invalid because `git blame <commit>^` can inspect past state.
+
 ### ❌ Deletion Record Comments
 
 **DON'T:**
@@ -551,6 +584,31 @@ git commit -m "..."
 ```
 
 **Why?** Commits should only be made with explicit user authorization.
+
+### ❌ Committing Directly to Protected Branches
+
+**DON'T:**
+
+```bash
+# ❌ Never commit directly on a protected branch
+git checkout develop/0.2.0
+# ... make changes ...
+git add .
+git commit -m "docs: update some instruction files"
+```
+
+**DO:**
+
+```bash
+# ✅ Always use a non-protected feature/fix/docs branch
+git checkout -b docs/update-instructions
+# ... make changes ...
+git add .
+git commit -m "docs: update some instruction files"
+# Then create a Pull Request from docs/update-instructions to develop/0.2.0
+```
+
+**Why?** Protected branches (`main`, `master`, `develop/*`, `release/*`) receive changes exclusively through Pull Requests. Direct commits bypass review, CI validation, and branch protection rules.
 
 ### ❌ Batch Operations Without Dry-Run
 

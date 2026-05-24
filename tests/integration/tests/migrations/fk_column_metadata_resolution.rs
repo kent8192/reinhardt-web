@@ -43,7 +43,7 @@ fn register_target_model(app: &str, model: &str, table: &str, pk_type: FieldType
 		FieldMetadata::new(pk_type)
 			.with_param("primary_key", "true")
 			.with_param("not_null", "true")
-			.with_param("null", "false")
+			.with_nullable(false)
 			.with_param("auto_increment", "true"),
 	);
 	global_registry().register_model(metadata);

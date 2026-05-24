@@ -336,7 +336,10 @@ impl<M, T> fmt::Display for FieldRef<M, T> {
 	}
 }
 
-// Allow conversion from FieldRef to String for Manager::filter()
+// Allow conversion from FieldRef to String for general string-context use
+// (logging, error messages, custom query builders). `Manager::filter` /
+// `QuerySet::filter` now take `impl Into<Filter>` (Issue #4650), so they
+// no longer rely on this conversion.
 impl<M, T> From<FieldRef<M, T>> for String {
 	fn from(field_ref: FieldRef<M, T>) -> Self {
 		field_ref.name.to_string()

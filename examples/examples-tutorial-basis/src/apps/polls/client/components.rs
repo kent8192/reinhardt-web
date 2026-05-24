@@ -263,21 +263,26 @@ pub fn polls_detail(question_id: i64) -> Page {
 		success_url: |_form| links::results(qid),
 	};
 
-	// Bridge load_detail results to form choices via use_effect
+	// Bridge load_detail results to form choices via use_effect.
 	{
 		let load_detail_for_effect = load_detail.clone();
+		let load_detail_dep = load_detail.clone();
 		let voting_form_for_effect = voting_form.clone();
-		use_effect(move || {
-			if let Some((_, ref choices)) = load_detail_for_effect.result() {
-				let choice_options: Vec<(String, String)> = choices
-					.iter()
-					.map(|c| (c.id.to_string(), c.choice_text.clone()))
-					.collect();
-				voting_form_for_effect
-					.choice_id_choices()
-					.set(choice_options);
-			}
-		});
+		use_effect(
+			move || {
+				if let Some((_, ref choices)) = load_detail_for_effect.result() {
+					let choice_options: Vec<(String, String)> = choices
+						.iter()
+						.map(|c| (c.id.to_string(), c.choice_text.clone()))
+						.collect();
+					voting_form_for_effect
+						.choice_id_choices()
+						.set(choice_options);
+				}
+				None::<fn()>
+			},
+			(load_detail_dep,),
+		);
 	}
 
 	// Dispatch the action to load question data
@@ -824,14 +829,19 @@ pub fn question_edit(question_id: i64) -> Page {
 	// Prefill the question_text input once the load_detail action resolves.
 	{
 		let load_detail_for_effect = load_detail.clone();
+		let load_detail_dep = load_detail.clone();
 		let edit_form_for_effect = edit_form.clone();
-		use_effect(move || {
-			if let Some((ref question, _)) = load_detail_for_effect.result() {
-				edit_form_for_effect
-					.question_text()
-					.set(question.question_text.clone());
-			}
-		});
+		use_effect(
+			move || {
+				if let Some((ref question, _)) = load_detail_for_effect.result() {
+					edit_form_for_effect
+						.question_text()
+						.set(question.question_text.clone());
+				}
+				None::<fn()>
+			},
+			(load_detail_dep,),
+		);
 	}
 
 	let load_detail_signal = load_detail.clone();
