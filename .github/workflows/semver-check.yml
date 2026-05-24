@@ -156,7 +156,7 @@ jobs:
           # On those, release-plz bumps versions in Cargo.toml so cargo-semver-checks
           # can auto-detect the intended release type without --release-type.
           IS_RELEASE_PR="false"
-          if [[ "$HEAD_REF" == release-plz-* ]]; then
+          if [[ "$HEAD_REF" == release-plz-* || "$HEAD_REF" == develop-release-plz-* ]]; then
             IS_RELEASE_PR="true"
           fi
           echo "is-release-pr=$IS_RELEASE_PR" >> "$GITHUB_OUTPUT"

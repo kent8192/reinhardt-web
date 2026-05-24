@@ -33,6 +33,7 @@ jobs:
     if: >-
       ${{
         !startsWith(github.head_ref || github.ref_name, 'release-plz-') &&
+        !startsWith(github.head_ref || github.ref_name, 'develop-release-plz-') &&
         !startsWith(github.head_ref || github.ref_name, 'fix/release-plz')
       }}
     steps:

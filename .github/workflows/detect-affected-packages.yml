@@ -57,7 +57,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "$HEAD_REF" == release-plz-* ]]; then
+          if [[ "$HEAD_REF" == release-plz-* || "$HEAD_REF" == develop-release-plz-* ]]; then
             echo "Release PR detected — running all tests"
             echo "run-all=true" >> "$GITHUB_OUTPUT"
             echo "has-affected=true" >> "$GITHUB_OUTPUT"

@@ -16,7 +16,7 @@ jobs:
     name: Delete release-plz branch
     if: >-
       github.event.pull_request.merged == false &&
-      startsWith(github.event.pull_request.head.ref, 'release-plz-')
+      (startsWith(github.event.pull_request.head.ref, 'release-plz-') || startsWith(github.event.pull_request.head.ref, 'develop-release-plz-'))
     runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
     timeout-minutes: 360
     steps:
