@@ -63,7 +63,7 @@ async fn login_with_form(
 // Test 2: Server function with Header extractor
 #[server_fn]
 async fn get_user_with_auth(
-	user_id: u32, // Regular param (in Args)
+	user_id: u32,                               // Regular param (in Args)
 	auth: reinhardt_di::params::Header<String>, // Extractor (excluded from Args)
 ) -> Result<User, ServerFnError> {
 	let _ = auth;

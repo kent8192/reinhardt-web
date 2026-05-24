@@ -51,15 +51,28 @@ fn message_item(message: &MessageInfo, is_own_message: bool) -> Page {
 	} else {
 		"dm-message other bg-surface-secondary rounded-2xl rounded-bl-sm px-4 py-2 max-w-[70%]"
 	};
-	page!(
-		| align_class : &'static str, bubble_class : &'static str, sender : String,
-		content : String, timestamp : String, is_own_message : bool | { div { class :
-		align_class, div { class : bubble_class, if ! is_own_message { div { class :
-		"text-xs font-medium text-content-secondary mb-1", { { sender } } } } p { class :
-		"text-sm break-words", { { content } } } div { class : if is_own_message {
-		"text-xs text-white/70 mt-1 text-right" } else {
-		"text-xs text-content-tertiary mt-1" }, { { timestamp } } } } } }
-	)(
+	page!(|align_class: &'static str, bubble_class: &'static str, sender: String, content: String, timestamp: String, is_own_message: bool| {
+		div {
+			class: align_class,
+			div {
+				class: bubble_class,
+				if ! is_own_message {
+					div {
+						class: "text-xs font-medium text-content-secondary mb-1",
+						{ { sender } }
+					}
+				}
+				p {
+					class: "text-sm break-words",
+					{ { content } }
+				}
+				div {
+					class: if is_own_message { "text-xs text-white/70 mt-1 text-right" } else { "text-xs text-content-tertiary mt-1" },
+					{ { timestamp } }
+				}
+			}
+		}
+	})(
 		align_class,
 		bubble_class,
 		sender,
@@ -70,12 +83,18 @@ fn message_item(message: &MessageInfo, is_own_message: bool) -> Page {
 }
 /// Connection status indicator component
 fn connection_status(is_connected: bool) -> Page {
-	page!(
-		| is_connected : bool | { div { class : "flex items-center gap-2 text-sm", div {
-		class : if is_connected { "w-2 h-2 rounded-full bg-success animate-pulse" } else
-		{ "w-2 h-2 rounded-full bg-warning" }, } span { class : "text-content-secondary",
-		{ if is_connected { "Connected" } else { "Connecting..." } } } } }
-	)(is_connected)
+	page!(|is_connected: bool| {
+		div {
+			class: "flex items-center gap-2 text-sm",
+			div {
+				class: if is_connected { "w-2 h-2 rounded-full bg-success animate-pulse" } else { "w-2 h-2 rounded-full bg-warning" },
+			}
+			span {
+				class: "text-content-secondary",
+				{ if is_connected { "Connected" } else { "Connecting..." } }
+			}
+		}
+	})(is_connected)
 }
 /// DM chat component
 ///
@@ -102,30 +121,75 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 	let ws_state = chat.ws.connection_state();
 	let input_signal = input.clone();
 	let chat_for_send = chat.clone();
-	page!(
-		| messages_signal : Signal < Vec < MessageInfo >>, is_loading_signal : Signal <
-		bool >, error_signal : Signal < Option < String >>, ws_state : Signal <
-		ConnectionState >, input_signal : Signal < String >, current_user_id : Option <
-		Uuid >, _room_id : Uuid | { div { class :
-		"dm-chat-container flex flex-col h-full", div { class :
-		"dm-header flex items-center justify-between p-4 border-b border-surface-tertiary",
-		h2 { class : "text-lg font-semibold", "Direct Messages" } {
-		connection_status(matches!(ws_state.get(), ConnectionState::Open)) } } div {
-		class : "dm-messages flex-1 overflow-y-auto p-4 space-y-3", if is_loading_signal
-		.get() { div { class : "flex flex-col items-center justify-center py-12", div {
-		class : "spinner-lg mb-4", } p { class : "text-content-secondary text-sm",
-		"Loading messages..." } } } else if error_signal.get().is_some() { div { class :
-		"alert-danger", role : "alert", { error_signal.get().unwrap_or_default() } } }
-		else if messages_signal.get().is_empty() { div { class :
-		"flex flex-col items-center justify-center py-16 text-center", div { class :
-		"w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-		{ icons::chat_bubble_icon_lg() } } h3 { class :
-		"text-lg font-semibold text-content-primary mb-1", "No messages yet" } p { class
-		: "text-content-secondary", "Send a message to start the conversation!" } } }
-		else { div { class : "space-y-3", for m in messages_signal.get().iter() { { let is_own = current_user_id.map(| uid | m.sender_id == uid).unwrap_or(false); message_item(m, is_own) } } } } }
-		{ message_input(input_signal.clone(), move | content | { chat_for_send
-		.send_message(content); }) } } }
-	)(
+	page!(|messages_signal: Signal<Vec<MessageInfo>>, is_loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, ws_state: Signal<ConnectionState>, input_signal: Signal<String>, current_user_id: Option<Uuid>, _room_id: Uuid| {
+		div {
+			class: "dm-chat-container flex flex-col h-full",
+			div {
+				class: "dm-header flex items-center justify-between p-4 border-b border-surface-tertiary",
+				h2 {
+					class: "text-lg font-semibold",
+					"Direct Messages"
+				}
+				{ connection_status(matches!(ws_state.get(), ConnectionState::Open)) }
+			}
+			div {
+				class: "dm-messages flex-1 overflow-y-auto p-4 space-y-3",
+				if is_loading_signal.get() {
+					div {
+						class: "flex flex-col items-center justify-center py-12",
+						div {
+							class: "spinner-lg mb-4",
+						}
+						p {
+							class: "text-content-secondary text-sm",
+							"Loading messages..."
+						}
+					}
+				} else if error_signal.get().is_some() {
+					div {
+						class: "alert-danger",
+						role: "alert",
+						{ error_signal.get().unwrap_or_default() }
+					}
+				} else if messages_signal.get().is_empty() {
+					div {
+						class: "flex flex-col items-center justify-center py-16 text-center",
+						div {
+							class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+							{ icons::chat_bubble_icon_lg() }
+						}
+						h3 {
+							class: "text-lg font-semibold text-content-primary mb-1",
+							"No messages yet"
+						}
+						p {
+							class: "text-content-secondary",
+							"Send a message to start the conversation!"
+						}
+					}
+				} else {
+					div {
+						class: "space-y-3",
+						for m in messages_signal.get().iter() {
+							{
+								{
+										let is_own = current_user_id
+											.map(|uid| m.sender_id == uid)
+											.unwrap_or(false);
+										message_item(m, is_own)
+									}
+							}
+						}
+					}
+				}
+			}
+			{
+				message_input(input_signal.clone(), move |content| {
+						chat_for_send.send_message(content);
+					})
+			}
+		}
+	})(
 		messages_signal,
 		is_loading_signal,
 		error_signal,
@@ -180,23 +244,62 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> Page {
 	let rooms_signal = room_list.rooms.clone();
 	let is_loading_signal = room_list.is_loading.clone();
 	let error_signal = room_list.error.clone();
-	page!(
-		| rooms_signal : Signal < Vec < RoomInfo >>, is_loading_signal : Signal < bool >,
-		error_signal : Signal < Option < String >>| { div { class :
-		"dm-room-list h-full flex flex-col", div { class :
-		"p-4 border-b border-surface-tertiary", h3 { class : "text-lg font-semibold",
-		"Conversations" } } div { class : "flex-1 overflow-y-auto", if is_loading_signal
-		.get() { div { class : "flex flex-col items-center justify-center py-12", div {
-		class : "spinner-lg mb-4", } p { class : "text-content-secondary text-sm",
-		"Loading conversations..." } } } else if error_signal.get().is_some() { div {
-		class : "p-4", div { class : "alert-danger", role : "alert", { error_signal.get()
-		.unwrap_or_default() } } } } else if rooms_signal.get().is_empty() { div { class
-		: "flex flex-col items-center justify-center py-16 text-center px-4", div { class
-		:
-		"w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-		{ icons::chat_multi_icon_lg() } } h3 { class :
-		"text-lg font-semibold text-content-primary mb-1", "No conversations yet" } p {
-		class : "text-content-secondary", "Start a new conversation with someone!" } } }
-		else { div { for r in rooms_signal.get().iter() { { room_item(r, on_room_select.clone()) } } } } } } }
-	)(rooms_signal, is_loading_signal, error_signal)
+	page!(|rooms_signal: Signal<Vec<RoomInfo>>, is_loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
+		div {
+			class: "dm-room-list h-full flex flex-col",
+			div {
+				class: "p-4 border-b border-surface-tertiary",
+				h3 {
+					class: "text-lg font-semibold",
+					"Conversations"
+				}
+			}
+			div {
+				class: "flex-1 overflow-y-auto",
+				if is_loading_signal.get() {
+					div {
+						class: "flex flex-col items-center justify-center py-12",
+						div {
+							class: "spinner-lg mb-4",
+						}
+						p {
+							class: "text-content-secondary text-sm",
+							"Loading conversations..."
+						}
+					}
+				} else if error_signal.get().is_some() {
+					div {
+						class: "p-4",
+						div {
+							class: "alert-danger",
+							role: "alert",
+							{ error_signal.get().unwrap_or_default() }
+						}
+					}
+				} else if rooms_signal.get().is_empty() {
+					div {
+						class: "flex flex-col items-center justify-center py-16 text-center px-4",
+						div {
+							class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+							{ icons::chat_multi_icon_lg() }
+						}
+						h3 {
+							class: "text-lg font-semibold text-content-primary mb-1",
+							"No conversations yet"
+						}
+						p {
+							class: "text-content-secondary",
+							"Start a new conversation with someone!"
+						}
+					}
+				} else {
+					div {
+						for r in rooms_signal.get().iter() {
+							{ room_item(r, on_room_select.clone()) }
+						}
+					}
+				}
+			}
+		}
+	})(rooms_signal, is_loading_signal, error_signal)
 }

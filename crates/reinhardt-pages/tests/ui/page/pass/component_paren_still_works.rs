@@ -9,11 +9,17 @@ use reinhardt_pages::page;
 
 fn my_button(label: String, disabled: bool) -> Page {
 	let _ = disabled;
-	page!(|label: String| { button { {label.clone()} } })(label)
+	page!(|label: String| {
+		button {
+			{ label.clone() }
+		}
+	})(label)
 }
 
 fn main() {
 	let _ = page!(|| {
-		div { {my_button("click".to_string(), false)} }
+		div {
+			{ my_button("click".to_string(), false) }
+		}
 	});
 }

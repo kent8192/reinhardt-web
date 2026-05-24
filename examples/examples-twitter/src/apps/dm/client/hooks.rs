@@ -291,10 +291,13 @@ pub fn use_dm_room_list() -> DmRoomListHandle {
 			move || {
 				if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
 					// Parse notification message
-					if let Ok(notification) = serde_json::from_str::<NewMessageNotification>(&text) {
+					if let Ok(notification) = serde_json::from_str::<NewMessageNotification>(&text)
+					{
 						// Update the affected room's unread count and last message
 						let mut current = rooms.get();
-						if let Some(room) = current.iter_mut().find(|r| r.id == notification.room_id) {
+						if let Some(room) =
+							current.iter_mut().find(|r| r.id == notification.room_id)
+						{
 							room.last_message = Some(notification.message_preview.clone());
 							room.last_activity = Some(notification.timestamp.clone());
 							room.unread_count += 1;

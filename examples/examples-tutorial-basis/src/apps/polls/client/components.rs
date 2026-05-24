@@ -25,18 +25,30 @@
 //! strands the SPA on the spinner forever — the reactive subscription is
 //! never established. Every loading branch MUST stay inside the single
 //! outer `watch{}` block.
-use crate::apps::polls::server_fn::{
-	create_choice, create_question, delete_choice, delete_question, get_question_detail,
-	get_question_results, get_questions, submit_vote, update_choice, update_question,
-};
-use crate::apps::polls::urls::client_router::urls as links;
-use crate::apps::users::server_fn::current_user;
 use crate::shared::types::{ChoiceInfo, QuestionInfo, UserInfo};
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
 use reinhardt::pages::resolve_static;
+
+// Typed URL helpers are now emitted by `#[url_patterns]` directly
+// (issue #4656); we alias the macro-emitted `urls` module as `links` to
+// keep call sites concise.
+use crate::apps::polls::server_fn::{
+	create_choice, create_question, delete_choice, delete_question, get_question_detail,
+	get_question_results, get_questions, submit_vote, update_choice, update_question,
+};
+use crate::apps::polls::urls::client_router::urls as links;
+// Used by `polls_detail` to gate owner-only controls (Edit / Delete / Add
+// choice) on the viewer being the question's author (issue #4703). Server-
+// side `require_question_author` checks remain in place as defense in depth.
+use crate::apps::users::server_fn::current_user;
+
+// =========================================================================
+// Error display helpers
+// =========================================================================
+
 /// Extract the human-readable message from a `ServerFnError`-shaped JSON
 /// payload so the alert banner shows prose, not raw JSON (issue #4702).
 ///
@@ -583,50 +595,46 @@ pub fn question_new() -> Page {
 	let error_signal = new_form.error().clone();
 	let form_view = new_form.into_page();
 	let cancel_href = links::index();
-	page!(
-		| loading_signal : reinhardt::pages::reactive::Signal < bool >, error_signal :
-		reinhardt::pages::reactive::Signal < Option < String >>, form_view : Page,
-		cancel_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"New Question"
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mb-3",
-						{ format_server_error(& error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ { form_view } }
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"New Question"
+			}
+			if error_signal.get().is_some() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "new-question-form",
-							"Creating..."
-						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-primary",
-							form: "new-question-form",
-							"Create"
-						}
+					class: "alert-danger mb-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ { form_view } }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "new-question-form",
+						"Creating..."
 					}
-					a {
-						href: cancel_href,
-						class: "btn-secondary ml-2",
-						"Cancel"
+				} else {
+					button {
+						type: "submit",
+						class: "btn-primary",
+						form: "new-question-form",
+						"Create"
 					}
+				}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	)(loading_signal, error_signal, form_view, cancel_href)
+	})(loading_signal, error_signal, form_view, cancel_href)
 }
 /// Edit question page (`/polls/{question_id}/edit/`).
 ///
@@ -665,78 +673,75 @@ pub fn question_edit(question_id: i64) -> Page {
 		);
 	}
 	let load_detail_signal = load_detail.clone();
-	page!(
-		| load_detail_signal : Action < (QuestionInfo, Vec < ChoiceInfo >), String >,
-		question_id : i64 | {
-			div {
-				if load_detail_signal.is_pending() {
+	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
+		div {
+			if load_detail_signal.is_pending() {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12 text-center",
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
-						div {
-							class: "spinner w-8 h-8",
-							role: "status",
-							span {
-								class: "sr-only",
-								"Loading..."
-							}
+						class: "spinner w-8 h-8",
+						role: "status",
+						span {
+							class: "sr-only",
+							"Loading..."
 						}
 					}
-				} else if load_detail_signal.error().is_some() {
+				}
+			} else if load_detail_signal.error().is_some() {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
+						class: "alert-danger",
+						{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+					}
+					a {
+						href: links::index(),
+						class: "btn-primary",
+						"Back to Polls"
+					}
+				}
+			} else {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
+					h1 {
+						class: "mb-4",
+						"Edit Question"
+					}
+					if edit_form.error().get().is_some() {
 						div {
-							class: "alert-danger",
-							{ format_server_error(& load_detail_signal.error().unwrap_or_default()) }
+							class: "alert-danger mb-3",
+							{ format_server_error(&edit_form.error().get().unwrap_or_default()) }
+						}
+					}
+					{ edit_form.clone().into_page() }
+					div {
+						class: "mt-3",
+						if edit_form.loading().get() {
+							button {
+								type: "submit",
+								class: "btn-primary opacity-50 cursor-not-allowed",
+								disabled: true,
+								form: "edit-question-form",
+								"Saving..."
+							}
+						} else {
+							button {
+								type: "submit",
+								class: "btn-primary",
+								form: "edit-question-form",
+								"Save"
+							}
 						}
 						a {
-							href: links::index(),
-							class: "btn-primary",
-							"Back to Polls"
-						}
-					}
-				} else {
-					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
-						h1 {
-							class: "mb-4",
-							"Edit Question"
-						}
-						if edit_form.error().get().is_some() {
-							div {
-								class: "alert-danger mb-3",
-								{ format_server_error(& edit_form.error().get().unwrap_or_default()) }
-							}
-						}
-						{ edit_form.clone().into_page() }
-						div {
-							class: "mt-3",
-							if edit_form.loading().get() {
-								button {
-									type: "submit",
-									class: "btn-primary opacity-50 cursor-not-allowed",
-									disabled: true,
-									form: "edit-question-form",
-									"Saving..."
-								}
-							} else {
-								button {
-									type: "submit",
-									class: "btn-primary",
-									form: "edit-question-form",
-									"Save"
-								}
-							}
-							a {
-								href: links::detail(question_id),
-								class: "btn-secondary ml-2",
-								"Cancel"
-							}
+							href: links::detail(question_id),
+							class: "btn-secondary ml-2",
+							"Cancel"
 						}
 					}
 				}
 			}
 		}
-	)(load_detail_signal, question_id)
+	})(load_detail_signal, question_id)
 }
 /// Delete confirmation page (`/polls/{question_id}/delete/`).
 pub fn question_delete_confirm(question_id: i64) -> Page {
@@ -757,77 +762,72 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 	let form_view = delete_form.into_page();
 	let load_detail_signal = load_detail.clone();
 	let cancel_href = links::detail(question_id);
-	page!(
-		| load_detail_signal : Action < (QuestionInfo, Vec < ChoiceInfo >), String >,
-		loading_signal : reinhardt::pages::reactive::Signal < bool >, error_signal :
-		reinhardt::pages::reactive::Signal < Option < String >>, form_view : Page,
-		cancel_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"Delete Question?"
-				}
-				if load_detail_signal.is_pending() {
-					div {
-						class: "text-center",
-						"Loading..."
-					}
-				} else if let Some((ref q, _)) = load_detail_signal.result() {
-					div {
-						class: "card",
-						div {
-							class: "card-body",
-							p {
-								class: "text-muted",
-								"You are about to delete the following question. This action cannot be undone."
-							}
-							blockquote {
-								class: "border-l-4 border-border-secondary pl-4 italic my-3",
-								{ q.question_text.clone() }
-							}
-						}
-					}
-				} else if load_detail_signal.error().is_some() {
-					div {
-						class: "alert-danger",
-						{ format_server_error(& load_detail_signal.error().unwrap_or_default()) }
-					}
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mt-3",
-						{ format_server_error(& error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ { form_view } }
+	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Delete Question?"
+			}
+			if load_detail_signal.is_pending() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "delete-question-form",
-							"Deleting..."
+					class: "text-center",
+					"Loading..."
+				}
+			} else if let Some((ref q, _)) = load_detail_signal.result() {
+				div {
+					class: "card",
+					div {
+						class: "card-body",
+						p {
+							class: "text-muted",
+							"You are about to delete the following question. This action cannot be undone."
 						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-danger",
-							form: "delete-question-form",
-							"Delete"
+						blockquote {
+							class: "border-l-4 border-border-secondary pl-4 italic my-3",
+							{ q.question_text.clone() }
 						}
 					}
-					a {
-						href: cancel_href,
-						class: "btn-secondary ml-2",
-						"Cancel"
+				}
+			} else if load_detail_signal.error().is_some() {
+				div {
+					class: "alert-danger",
+					{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+				}
+			}
+			if error_signal.get().is_some() {
+				div {
+					class: "alert-danger mt-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ { form_view } }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "delete-question-form",
+						"Deleting..."
 					}
+				} else {
+					button {
+						type: "submit",
+						class: "btn-danger",
+						form: "delete-question-form",
+						"Delete"
+					}
+				}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	)(
+	})(
 		load_detail_signal,
 		loading_signal,
 		error_signal,
@@ -851,50 +851,46 @@ pub fn choice_new(question_id: i64) -> Page {
 	let error_signal = new_form.error().clone();
 	let form_view = new_form.into_page();
 	let back_href = links::detail(qid);
-	page!(
-		| loading_signal : reinhardt::pages::reactive::Signal < bool >, error_signal :
-		reinhardt::pages::reactive::Signal < Option < String >>, form_view : Page,
-		back_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"Add a Choice"
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mb-3",
-						{ format_server_error(& error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ { form_view } }
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, back_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Add a Choice"
+			}
+			if error_signal.get().is_some() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "new-choice-form",
-							"Adding..."
-						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-primary",
-							form: "new-choice-form",
-							"Add Choice"
-						}
+					class: "alert-danger mb-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ { form_view } }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "new-choice-form",
+						"Adding..."
 					}
-					a {
-						href: back_href,
-						class: "btn-secondary ml-2",
-						"Back to poll"
+				} else {
+					button {
+						type: "submit",
+						class: "btn-primary",
+						form: "new-choice-form",
+						"Add Choice"
 					}
+				}
+				a {
+					href: back_href,
+					class: "btn-secondary ml-2",
+					"Back to poll"
 				}
 			}
 		}
-	)(loading_signal, error_signal, form_view, back_href)
+	})(loading_signal, error_signal, form_view, back_href)
 }
 /// Edit choice page (`/polls/{question_id}/choices/{choice_id}/edit/`).
 ///
@@ -915,50 +911,46 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 	let loading_signal = edit_form.loading().clone();
 	let error_signal = edit_form.error().clone();
 	let form_view = edit_form.into_page();
-	page!(
-		| loading_signal : reinhardt::pages::reactive::Signal < bool >, error_signal :
-		reinhardt::pages::reactive::Signal < Option < String >>, form_view : Page,
-		cancel_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"Edit Choice"
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mb-3",
-						{ format_server_error(& error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ { form_view } }
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Edit Choice"
+			}
+			if error_signal.get().is_some() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "edit-choice-form",
-							"Saving..."
-						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-primary",
-							form: "edit-choice-form",
-							"Save"
-						}
+					class: "alert-danger mb-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ { form_view } }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "edit-choice-form",
+						"Saving..."
 					}
-					a {
-						href: cancel_href,
-						class: "btn-secondary ml-2",
-						"Cancel"
+				} else {
+					button {
+						type: "submit",
+						class: "btn-primary",
+						form: "edit-choice-form",
+						"Save"
 					}
+				}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	)(loading_signal, error_signal, form_view, cancel_href)
+	})(loading_signal, error_signal, form_view, cancel_href)
 }
 /// Delete-choice confirmation page
 /// (`/polls/{question_id}/choices/{choice_id}/delete/`).
@@ -977,52 +969,48 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 	let loading_signal = delete_form.loading().clone();
 	let error_signal = delete_form.error().clone();
 	let form_view = delete_form.into_page();
-	page!(
-		| loading_signal : reinhardt::pages::reactive::Signal < bool >, error_signal :
-		reinhardt::pages::reactive::Signal < Option < String >>, form_view : Page,
-		cancel_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"Delete Choice?"
-				}
-				p {
-					class: "mb-3",
-					"This action cannot be undone."
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mt-3",
-						{ format_server_error(& error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ { form_view } }
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Delete Choice?"
+			}
+			p {
+				class: "mb-3",
+				"This action cannot be undone."
+			}
+			if error_signal.get().is_some() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "delete-choice-form",
-							"Deleting..."
-						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-danger",
-							form: "delete-choice-form",
-							"Delete"
-						}
+					class: "alert-danger mt-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ { form_view } }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "delete-choice-form",
+						"Deleting..."
 					}
-					a {
-						href: cancel_href,
-						class: "btn-secondary ml-2",
-						"Cancel"
+				} else {
+					button {
+						type: "submit",
+						class: "btn-danger",
+						form: "delete-choice-form",
+						"Delete"
 					}
+				}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	)(loading_signal, error_signal, form_view, cancel_href)
+	})(loading_signal, error_signal, form_view, cancel_href)
 }

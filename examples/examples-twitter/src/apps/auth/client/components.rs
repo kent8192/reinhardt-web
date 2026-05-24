@@ -48,34 +48,104 @@ pub fn login_form() -> Page {
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
 	let form_view = login_form.into_page();
-	page!(
-		| loading_signal : Signal < bool >, error_signal : Signal < Option < String >>,
-		form_view : Page | { div { class :
-		"min-h-screen flex items-center justify-center px-4 py-12 bg-surface-secondary",
-		div { class : "w-full max-w-md", div { class : "text-center mb-8", div { class :
-		"inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand/10 mb-4",
-		{ icons::chat_bubble_icon_brand() } } h1 { class :
-		"text-2xl font-bold text-content-primary", "Welcome back" } p { class :
-		"text-content-secondary mt-2", "Sign in to your account" } } div { class :
-		"card animate-fade-in", div { class : "card-body p-6 sm:p-8", if error_signal
-		.get().is_some() { div { class : "alert-danger mb-4", div { class :
-		"flex items-center gap-2", { icons::error_circle_icon() } span { { error_signal
-		.get().unwrap_or_default() } } } } } { { form_view } } div { class :
-		"flex items-center justify-between mt-4", label { class :
-		"flex items-center gap-2 cursor-pointer", input { type : "checkbox", class :
-		"w-4 h-4 rounded border-border text-brand focus:ring-brand", } span { class :
-		"text-sm text-content-secondary", "Remember me" } } a { href : "#", class :
-		"text-sm text-brand hover:text-brand-hover", "Forgot password?" } } div { class :
-		"mt-5", if loading_signal.get() { button { type : "submit", class :
-		"btn-primary w-full opacity-50 cursor-not-allowed", disabled : loading_signal
-		.get(), form : "login-form", div { class :
-		"flex items-center justify-center gap-2", div { class :
-		"spinner-sm border-white border-t-transparent", } "Signing in..." } } } else {
-		button { type : "submit", class : "btn-primary w-full", form : "login-form",
-		"Sign in" } } } } } div { class : "text-center mt-6", span { class :
-		"text-content-secondary", "Don't have an account? " } a { href : "/register",
-		class : "text-brand font-semibold hover:text-brand-hover", "Sign up" } } } } }
-	)(loading_signal, error_signal, form_view)
+	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page| {
+		div {
+			class: "min-h-screen flex items-center justify-center px-4 py-12 bg-surface-secondary",
+			div {
+				class: "w-full max-w-md",
+				div {
+					class: "text-center mb-8",
+					div {
+						class: "inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand/10 mb-4",
+						{ icons::chat_bubble_icon_brand() }
+					}
+					h1 {
+						class: "text-2xl font-bold text-content-primary",
+						"Welcome back"
+					}
+					p {
+						class: "text-content-secondary mt-2",
+						"Sign in to your account"
+					}
+				}
+				div {
+					class: "card animate-fade-in",
+					div {
+						class: "card-body p-6 sm:p-8",
+						if error_signal.get().is_some() {
+							div {
+								class: "alert-danger mb-4",
+								div {
+									class: "flex items-center gap-2",
+									{ icons::error_circle_icon() }
+									span {
+										{ error_signal.get().unwrap_or_default() }
+									}
+								}
+							}
+						}
+						{ { form_view } }
+						div {
+							class: "flex items-center justify-between mt-4",
+							label {
+								class: "flex items-center gap-2 cursor-pointer",
+								input {
+									type: "checkbox",
+									class: "w-4 h-4 rounded border-border text-brand focus:ring-brand",
+								}
+								span {
+									class: "text-sm text-content-secondary",
+									"Remember me"
+								}
+							}
+							a {
+								href: "#",
+								class: "text-sm text-brand hover:text-brand-hover",
+								"Forgot password?"
+							}
+						}
+						div {
+							class: "mt-5",
+							if loading_signal.get() {
+								button {
+									type: "submit",
+									class: "btn-primary w-full opacity-50 cursor-not-allowed",
+									disabled: loading_signal.get(),
+									form: "login-form",
+									div {
+										class: "flex items-center justify-center gap-2",
+										div {
+											class: "spinner-sm border-white border-t-transparent",
+										}
+										"Signing in..."
+									}
+								}
+							} else {
+								button {
+									type: "submit",
+									class: "btn-primary w-full",
+									form: "login-form",
+									"Sign in"
+								}
+							}
+						}
+					}
+				}
+				div {
+					class: "text-center mt-6",
+					span {
+						class: "text-content-secondary",
+						"Don't have an account? "
+					}
+					a {
+						href: "/register",
+						class: "text-brand font-semibold hover:text-brand-hover",
+						"Sign up"
+					}
+				}
+			}
+		}
+	})(loading_signal, error_signal, form_view)
 }
 /// Registration form component using form! macro
 ///
@@ -119,34 +189,105 @@ pub fn register_form() -> Page {
 	let loading_signal = register_form.loading().clone();
 	let error_signal = register_form.error().clone();
 	let form_view = register_form.into_page();
-	page!(
-		| loading_signal : Signal < bool >, error_signal : Signal < Option < String >>,
-		form_view : Page | { div { class :
-		"min-h-screen flex items-center justify-center px-4 py-12 bg-surface-secondary",
-		div { class : "w-full max-w-md", div { class : "text-center mb-8", div { class :
-		"inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand/10 mb-4",
-		{ icons::user_add_icon() } } h1 { class :
-		"text-2xl font-bold text-content-primary", "Create an account" } p { class :
-		"text-content-secondary mt-2", "Join the conversation today" } } div { class :
-		"card animate-fade-in", div { class : "card-body p-6 sm:p-8", if error_signal
-		.get().is_some() { div { class : "alert-danger mb-4", div { class :
-		"flex items-center gap-2", { icons::error_circle_icon() } span { { error_signal
-		.get().unwrap_or_default() } } } } } { { form_view } } div { class :
-		"flex items-start gap-2 mt-4", input { type : "checkbox", class :
-		"w-4 h-4 mt-1 rounded border-border text-brand focus:ring-brand", id : "terms", }
-		label { for : "terms", class : "text-sm text-content-secondary",
-		"I agree to the " span { class :
-		"text-brand hover:text-brand-hover cursor-pointer", "Terms of Service" } " and "
-		span { class : "text-brand hover:text-brand-hover cursor-pointer",
-		"Privacy Policy" } } } div { class : "mt-5", if loading_signal.get() { button {
-		type : "submit", class : "btn-primary w-full opacity-50 cursor-not-allowed",
-		disabled : loading_signal.get(), form : "register-form", div { class :
-		"flex items-center justify-center gap-2", div { class :
-		"spinner-sm border-white border-t-transparent", } "Creating account..." } } }
-		else { button { type : "submit", class : "btn-primary w-full", form :
-		"register-form", "Create account" } } } } } div { class : "text-center mt-6",
-		span { class : "text-content-secondary", "Already have an account? " } a { href :
-		"/login", class : "text-brand font-semibold hover:text-brand-hover", "Sign in" }
-		} } } }
-	)(loading_signal, error_signal, form_view)
+	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page| {
+		div {
+			class: "min-h-screen flex items-center justify-center px-4 py-12 bg-surface-secondary",
+			div {
+				class: "w-full max-w-md",
+				div {
+					class: "text-center mb-8",
+					div {
+						class: "inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand/10 mb-4",
+						{ icons::user_add_icon() }
+					}
+					h1 {
+						class: "text-2xl font-bold text-content-primary",
+						"Create an account"
+					}
+					p {
+						class: "text-content-secondary mt-2",
+						"Join the conversation today"
+					}
+				}
+				div {
+					class: "card animate-fade-in",
+					div {
+						class: "card-body p-6 sm:p-8",
+						if error_signal.get().is_some() {
+							div {
+								class: "alert-danger mb-4",
+								div {
+									class: "flex items-center gap-2",
+									{ icons::error_circle_icon() }
+									span {
+										{ error_signal.get().unwrap_or_default() }
+									}
+								}
+							}
+						}
+						{ { form_view } }
+						div {
+							class: "flex items-start gap-2 mt-4",
+							input {
+								type: "checkbox",
+								class: "w-4 h-4 mt-1 rounded border-border text-brand focus:ring-brand",
+								id: "terms",
+							}
+							label {
+								for: "terms",
+								class: "text-sm text-content-secondary",
+								"I agree to the "
+								span {
+									class: "text-brand hover:text-brand-hover cursor-pointer",
+									"Terms of Service"
+								}
+								" and "
+								span {
+									class: "text-brand hover:text-brand-hover cursor-pointer",
+									"Privacy Policy"
+								}
+							}
+						}
+						div {
+							class: "mt-5",
+							if loading_signal.get() {
+								button {
+									type: "submit",
+									class: "btn-primary w-full opacity-50 cursor-not-allowed",
+									disabled: loading_signal.get(),
+									form: "register-form",
+									div {
+										class: "flex items-center justify-center gap-2",
+										div {
+											class: "spinner-sm border-white border-t-transparent",
+										}
+										"Creating account..."
+									}
+								}
+							} else {
+								button {
+									type: "submit",
+									class: "btn-primary w-full",
+									form: "register-form",
+									"Create account"
+								}
+							}
+						}
+					}
+				}
+				div {
+					class: "text-center mt-6",
+					span {
+						class: "text-content-secondary",
+						"Already have an account? "
+					}
+					a {
+						href: "/login",
+						class: "text-brand font-semibold hover:text-brand-hover",
+						"Sign in"
+					}
+				}
+			}
+		}
+	})(loading_signal, error_signal, form_view)
 }
