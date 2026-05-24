@@ -7,23 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0...reinhardt-pages-macros@v0.1.1) - 2026-05-24
 
-- `#[server_fn]` now emits the `marker` module on wasm
-  unconditionally — previously the marker was only present when the
-  `msw` feature was active, which forced `#[url_patterns(mode = unified)]`
-  closure bodies that referenced `my_fn::marker` to be wrapped in
-  `#[cfg(native)] { ... }` arms. The optional `Args` struct and
-  `MockableServerFn` impl remain gated behind `#[cfg(feature = "msw")]`
-  inside the marker module
-  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
-- `#[server_fn]` emits `impl ServerFnMetadata for marker` on every
-  emission path, providing a single source of truth for `PATH`,
-  `NAME`, `CODEC`, and `INJECTED_PARAMS` across the cfg boundary.
-  Duplicate constant declarations have been removed from
-  `impl ServerFnRegistration` (native) and `impl MockableServerFn`
-  (msw) blocks
-  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+### Fixed
+
+- *(ci)* resolve Rust 1.94 clippy failures
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.30...reinhardt-pages-macros@v0.1.0) - 2026-05-22
 

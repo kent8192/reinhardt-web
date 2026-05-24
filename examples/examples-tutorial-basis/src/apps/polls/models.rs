@@ -5,8 +5,6 @@ use reinhardt::prelude::*;
 
 use crate::apps::users::models::User;
 
-use crate::apps::users::models::User;
-
 /// Question model representing a poll question
 #[model(app_label = "polls", table_name = "questions")]
 #[derive(Serialize, Deserialize)]
