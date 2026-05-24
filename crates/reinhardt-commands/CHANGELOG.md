@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0...reinhardt-commands@v0.1.1) - 2026-05-24
+
+### Added
+
+- *(commands)* add router dispatch to runserver
+
+### Fixed
+
+- *(commands)* call auto_register_router before runserver starts
+- *(runserver)* address CodeRabbit review — 413 on body overflow + real peer addr
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.30...reinhardt-commands@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-commands` as part of the

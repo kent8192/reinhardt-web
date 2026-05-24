@@ -385,7 +385,7 @@ fn parse_if_node(input: ParseStream) -> Result<PageNode> {
 			// else if
 			let else_if = parse_if_node(input)?;
 			match else_if {
-				PageNode::If(if_node) => Some(PageElse::If(Box::new(if_node))),
+				PageNode::If(if_node) => Some(PageElse::If(if_node)),
 				_ => unreachable!(),
 			}
 		} else {
@@ -399,12 +399,12 @@ fn parse_if_node(input: ParseStream) -> Result<PageNode> {
 		None
 	};
 
-	Ok(PageNode::If(PageIf {
+	Ok(PageNode::If(Box::new(PageIf {
 		condition,
 		then_branch,
 		else_branch,
 		span,
-	}))
+	})))
 }
 
 /// Parses a condition expression (stops at opening brace).
@@ -442,12 +442,12 @@ fn parse_for_node(input: ParseStream) -> Result<PageNode> {
 	braced!(content in input);
 	let body = parse_nodes(&content)?;
 
-	Ok(PageNode::For(PageFor {
+	Ok(PageNode::For(Box::new(PageFor {
 		pat,
 		iter,
 		body,
 		span,
-	}))
+	})))
 }
 
 /// Parses a watch node: `watch { expr }`

@@ -37,7 +37,7 @@ pub enum AttrValue {
 	FloatLit(LitFloat),
 
 	/// Dynamic expression: variables, function calls, etc.
-	Dynamic(Expr),
+	Dynamic(Box<Expr>),
 }
 
 impl AttrValue {
@@ -78,9 +78,9 @@ impl AttrValue {
 				Lit::Bool(b) => Self::BoolLit(b),
 				Lit::Int(i) => Self::IntLit(i),
 				Lit::Float(f) => Self::FloatLit(f),
-				_ => Self::Dynamic(Expr::Lit(ExprLit { attrs: vec![], lit })),
+				_ => Self::Dynamic(Box::new(Expr::Lit(ExprLit { attrs: vec![], lit }))),
 			},
-			_ => Self::Dynamic(expr),
+			_ => Self::Dynamic(Box::new(expr)),
 		}
 	}
 
@@ -178,7 +178,7 @@ impl AttrValue {
 				attrs: vec![],
 				lit: Lit::Float(f.clone()),
 			}),
-			Self::Dynamic(e) => e.clone(),
+			Self::Dynamic(e) => (**e).clone(),
 		}
 	}
 

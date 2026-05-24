@@ -806,14 +806,14 @@ fn find_matching_brace(source: &str, start: usize) -> Option<usize> {
 			'"' => {
 				// Check for raw strings: r#"..."# or r"..."
 				let raw_start = detect_raw_string_start(substring, offset);
-				if let Some(hash_count) = raw_start {
-					if let Some(end_offset) = skip_raw_string(substring, offset + 1, hash_count) {
-						while i < chars.len() && chars[i].0 < end_offset {
-							i += 1;
-						}
-						i += 1; // skip past end
-						continue;
+				if let Some(hash_count) = raw_start
+					&& let Some(end_offset) = skip_raw_string(substring, offset + 1, hash_count)
+				{
+					while i < chars.len() && chars[i].0 < end_offset {
+						i += 1;
 					}
+					i += 1; // skip past end
+					continue;
 				}
 				in_string = true;
 			}
@@ -1530,7 +1530,7 @@ impl AstPageFormatter {
 
 		// Close brace
 		output.push_str(&self.make_indent(base_indent));
-		output.push_str("}");
+		output.push('}');
 
 		Ok(output)
 	}
