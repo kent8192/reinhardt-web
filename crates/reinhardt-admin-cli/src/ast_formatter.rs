@@ -2472,9 +2472,17 @@ impl AstPageFormatter {
 
 		let token_str = expr.to_token_stream().to_string();
 
-		// Skip rustfmt formatting for expressions that contain page! or form! macros
+		// For expressions containing page! or form! macros, use rustfmt directly
+		// (skip syn -> prettyplease) to avoid mangling the DSL content.
+		// Clean token spacing first, then let rustfmt handle line breaking.
 		if token_str.contains("page !") || token_str.contains("form !") {
-			return Self::clean_expression_spaces(&token_str);
+			let cleaned = Self::clean_expression_spaces(&token_str);
+			let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", cleaned);
+			let formatted = self.format_with_rustfmt(&wrapper_code);
+			if let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) {
+				return self.apply_base_indent(&handler_str, base_indent);
+			}
+			return cleaned;
 		}
 
 		// Wrap the expression in a valid Rust file
@@ -2504,10 +2512,17 @@ impl AstPageFormatter {
 
 		let token_str = closure.to_token_stream().to_string();
 
-		// Skip rustfmt formatting for closures that contain page! or form! macros
-		// (the DSL inside these macros is not valid Rust and would be mangled)
+		// For closures containing page! or form! macros, use rustfmt directly
+		// (skip syn -> prettyplease) to avoid mangling the DSL content.
+		// Clean token spacing first, then let rustfmt handle line breaking.
 		if token_str.contains("page !") || token_str.contains("form !") {
-			return Self::clean_expression_spaces(&token_str);
+			let cleaned = Self::clean_expression_spaces(&token_str);
+			let wrapper_code = format!("fn _wrapper() {{ let _handler = {}; }}", cleaned);
+			let formatted = self.format_with_rustfmt(&wrapper_code);
+			if let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) {
+				return self.apply_base_indent(&handler_str, base_indent);
+			}
+			return cleaned;
 		}
 
 		// Wrap the full closure in a valid Rust file for formatting
