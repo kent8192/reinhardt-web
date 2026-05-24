@@ -32,6 +32,8 @@ mod ast_formatter;
 mod formatter;
 mod utils;
 
+use reinhardt_admin_cli::migrate_v2;
+
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -166,10 +168,10 @@ enum Commands {
 		subcommand: PluginCommands,
 	},
 
-	/// Format Rust code and page! macro DSL in source files
+	/// Format Rust code and page!/form! macro DSL in source files
 	///
-	/// By default, runs both rustfmt (protecting page! macros) and page! DSL formatting.
-	/// Use --with-rustfmt=false to only format page! macro DSL.
+	/// By default, runs both rustfmt (protecting page! and form! macros) and page!/form! DSL formatting.
+	/// Use --with-rustfmt=false to only format page! and form! macro DSL.
 	Fmt {
 		/// Path to file or directory to format
 		#[arg(value_name = "PATH")]
@@ -247,6 +249,9 @@ enum Commands {
 		#[arg(long)]
 		backup: bool,
 	},
+
+	/// Migrate Manouche v1 source files to v2 grammar (spec §6.1 + §6.2).
+	MigrateManoucheV2(migrate_v2::MigrateV2Args),
 }
 
 /// Plugin management subcommands
@@ -461,6 +466,13 @@ async fn main() {
 			backup,
 			cli.verbosity,
 		),
+		Commands::MigrateManoucheV2(args) => {
+			if let Err(e) = migrate_v2::run(args) {
+				eprintln!("{}", format!("error: {e}").red());
+				process::exit(1);
+			}
+			Ok(())
+		}
 	};
 
 	if let Err(e) = result {
@@ -1048,8 +1060,11 @@ fn run_fmt_all(
 			continue;
 		}
 
-		// Skip files without page! macros
-		if !original_content.contains("page!(") {
+		// Skip files without page!/form! macros (both brace and paren forms)
+		if !original_content.contains("page!(")
+			&& !original_content.contains("form!(")
+			&& !original_content.contains("form!{")
+		{
 			continue;
 		}
 
