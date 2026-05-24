@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0...reinhardt-admin@v0.1.1) - 2026-05-24
+
+### Fixed
+
+- *(admin-cli)* skip rustfmt for closures containing page!/form! macros
+- *(admin-cli)* use rustfmt directly for closures with page!/form! macros
+
+### Styling
+
+- apply fmt-all with updated formatter
+- apply fmt-all to convert page!/form! blocks to DSL syntax
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-rc.30...reinhardt-admin@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-admin` as part of the
