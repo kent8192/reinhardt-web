@@ -24,15 +24,11 @@ use crate::apps::users::urls::client_router::urls as links;
 /// On success, redirects to the polls index. Field bindings, loading state,
 /// and CSRF token are managed by the `form!` macro.
 pub fn login_form() -> Page {
-	let login_form = form!({
+	let login_form = form! {
 		name: LoginForm,
 		server_fn: login,
+		state: { loading, error },
 		redirect_on_success: "/",
-
-		state: {
-			loading,
-			error,
-		}
 
 		fields: {
 			username: CharField {
@@ -40,15 +36,14 @@ pub fn login_form() -> Page {
 				placeholder: "your-username",
 				max_length: 150,
 				class: "form-control",
-			}
+			},
 			password: PasswordField {
 				label: "Password",
 				placeholder: "Enter your password",
 				class: "form-control",
-			}
-		}
-
-	});
+			},
+		},
+	};
 
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
@@ -125,20 +120,13 @@ pub fn login_form() -> Page {
 /// Logout page: presents a single button that invokes the `logout` server fn
 /// and redirects to the polls index on success.
 pub fn logout_form() -> Page {
-	let logout_form = form!({
+	let logout_form = form! {
 		name: LogoutForm,
 		server_fn: logout,
+		state: { loading, error },
 		redirect_on_success: "/",
-
-		state: {
-			loading,
-			error,
-		}
-
-		fields: {
-		}
-
-	});
+		fields: {},
+	};
 
 	let error_signal = logout_form.error().clone();
 	let form_view = logout_form.into_page();
@@ -196,15 +184,11 @@ pub fn logout_form() -> Page {
 /// hands the user to the polls index. Field bindings, loading state, and
 /// CSRF token plumbing are handled by the `form!` macro.
 pub fn signup_form() -> Page {
-	let signup_form = form!({
+	let signup_form = form! {
 		name: SignupForm,
 		server_fn: register,
+		state: { loading, error },
 		redirect_on_success: "/",
-
-		state: {
-			loading,
-			error,
-		}
 
 		fields: {
 			username: CharField {
@@ -212,20 +196,19 @@ pub fn signup_form() -> Page {
 				placeholder: "choose-a-username",
 				max_length: 150,
 				class: "form-control",
-			}
+			},
 			password: PasswordField {
 				label: "Password",
 				placeholder: "At least 8 characters",
 				class: "form-control",
-			}
+			},
 			password_confirmation: PasswordField {
 				label: "Confirm password",
 				placeholder: "Re-enter the password",
 				class: "form-control",
-			}
-		}
-
-	});
+			},
+		},
+	};
 
 	let loading_signal = signup_form.loading().clone();
 	let error_signal = signup_form.error().clone();

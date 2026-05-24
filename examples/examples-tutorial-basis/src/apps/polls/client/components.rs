@@ -198,24 +198,16 @@ pub fn polls_detail(question_id: i64) -> Page {
 	//   generated `submit()` method dispatches through `pages::navigate()` so
 	//   the route table installed by `ClientLauncher::router_client` handles
 	//   the transition without a full page load.
-	let voting_form = form!({
+	let voting_form = form! {
 		name: VotingForm,
 		server_fn: submit_vote,
 		method: Post,
-		success_url: |_form| links::results(qid),
-		strip_arguments: {
-			csrf_token: :: reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
-		state: {
-			loading,
-			error,
-		}
+		state: { loading, error },
 
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
-			}
+			},
 			choice_id: ChoiceField {
 				widget: RadioSelect,
 				required,
@@ -224,15 +216,52 @@ pub fn polls_detail(question_id: i64) -> Page {
 				choices_from: "choices",
 				choice_value: "id",
 				choice_label: "choice_text",
-			}
-		}
+			},
+		},
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
 
 		watch: {
-			submit_button: |form| { let is_loading = form.loading().get(); let back_href = links::index(); page!(|is_loading : bool, back_href : String| { div { class : "mt-3", button { type : "submit", class : if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" }, disabled : is_loading, { if is_loading { "Voting..." } else { "Vote" } } } a { href : back_href, class : "btn-secondary ml-2", "Back to Polls" } } }) (is_loading, back_href) },
-			error_display: |form| { let err = form.error().get(); page!(| err : Option<String>| { watch { if let Some(e) = err.clone() { div { class : "alert-danger mt-3", { format_server_error(&e) } } } } }) (err) },
-		}
+			submit_button: |form| {
+				let is_loading = form.loading().get();
+				let back_href = links::index();
+				page!(|is_loading: bool, back_href: String| {
+					div {
+						class: "mt-3",
+						button {
+							type: "submit",
+							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
+							disabled: is_loading,
+							{ if is_loading { "Voting..." } else { "Vote" } }
+						}
+						a {
+							href: back_href,
+							class: "btn-secondary ml-2",
+							"Back to Polls"
+						}
+					}
+				})(is_loading, back_href)
+			},
+			error_display: |form| {
+				let err = form.error().get();
+				page!(|err: Option<String>| {
+					watch {
+						if let Some(e) = err.clone() {
+							div {
+								class: "alert-danger mt-3",
+								{ format_server_error(&e) }
+							}
+						}
+					}
+				})(err)
+			},
+		},
 
-	});
+		success_url: |_form| links::results(qid),
+	};
 
 	// Bridge load_detail results to form choices via use_effect
 	{
@@ -680,19 +709,12 @@ pub fn polls_index_with_logo() -> Page {
 
 /// New question page (`/polls/new/`).
 pub fn question_new() -> Page {
-	let new_form = form!({
+	let new_form = form! {
 		name: NewQuestionForm,
 		server_fn: create_question,
 		method: Post,
+		state: { loading, error },
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: :: reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
-		state: {
-			loading,
-			error,
-		}
 
 		fields: {
 			question_text: CharField {
@@ -700,10 +722,14 @@ pub fn question_new() -> Page {
 				placeholder: "What do you want to ask?",
 				max_length: 200,
 				class: "form-control",
-			}
-		}
+			},
+		},
 
-	});
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
 
 	let loading_signal = new_form.loading().clone();
 	let error_signal = new_form.error().clone();
@@ -770,33 +796,30 @@ pub fn question_edit(question_id: i64) -> Page {
 		);
 	load_detail.dispatch(qid);
 
-	let edit_form = form!({
+	let edit_form = form! {
 		name: EditQuestionForm,
 		server_fn: update_question,
 		method: Post,
+		state: { loading, error },
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: :: reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
-		state: {
-			loading,
-			error,
-		}
 
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
-			}
+			},
 			question_text: CharField {
 				label: "Question",
 				placeholder: "Updated question text",
 				max_length: 200,
 				class: "form-control",
-			}
-		}
+			},
+		},
 
-	});
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
 
 	// Prefill the question_text input once the load_detail action resolves.
 	{
@@ -913,27 +936,24 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		);
 	load_detail.dispatch(qid);
 
-	let delete_form = form!({
+	let delete_form = form! {
 		name: DeleteQuestionForm,
 		server_fn: delete_question,
 		method: Post,
+		state: { loading, error },
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: :: reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
-		state: {
-			loading,
-			error,
-		}
 
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
-			}
-		}
+			},
+		},
 
-	});
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
 
 	let loading_signal = delete_form.loading().clone();
 	let error_signal = delete_form.error().clone();
@@ -1131,33 +1151,30 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
 	let cancel_href = links::detail(question_id);
 
-	let edit_form = form!({
+	let edit_form = form! {
 		name: EditChoiceForm,
 		server_fn: update_choice,
 		method: Post,
+		state: { loading, error },
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: :: reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
-		state: {
-			loading,
-			error,
-		}
 
 		fields: {
 			choice_id: HiddenField {
 				initial: cid_str,
-			}
+			},
 			choice_text: CharField {
 				label: "Choice text",
 				placeholder: "Updated answer option",
 				max_length: 200,
 				class: "form-control",
-			}
-		}
+			},
+		},
 
-	});
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
 
 	let loading_signal = edit_form.loading().clone();
 	let error_signal = edit_form.error().clone();
@@ -1218,27 +1235,24 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
 	let cancel_href = links::detail(question_id);
 
-	let delete_form = form!({
+	let delete_form = form! {
 		name: DeleteChoiceForm,
 		server_fn: delete_choice,
 		method: Post,
+		state: { loading, error },
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: :: reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
-		state: {
-			loading,
-			error,
-		}
 
 		fields: {
 			choice_id: HiddenField {
 				initial: cid_str,
-			}
-		}
+			},
+		},
 
-	});
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
+				.unwrap_or_default(),
+		},
+	};
 
 	let loading_signal = delete_form.loading().clone();
 	let error_signal = delete_form.error().clone();
