@@ -50,9 +50,9 @@ pub enum TypedPageNode {
 	/// A Rust expression
 	Expression(PageExpression),
 	/// Conditional rendering
-	If(TypedPageIf),
+	If(Box<TypedPageIf>),
 	/// List rendering
-	For(TypedPageFor),
+	For(Box<TypedPageFor>),
 	/// A component call with typed children
 	Component(TypedPageComponent),
 	/// Reactive watch block

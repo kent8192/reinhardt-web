@@ -105,8 +105,14 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 		)?)),
 		PageNode::Text(text) => Ok(TypedPageNode::Text(text.clone())),
 		PageNode::Expression(expr) => Ok(TypedPageNode::Expression(expr.clone())),
-		PageNode::If(if_node) => Ok(TypedPageNode::If(transform_if(if_node, parent_tags)?)),
-		PageNode::For(for_node) => Ok(TypedPageNode::For(transform_for(for_node, parent_tags)?)),
+		PageNode::If(if_node) => Ok(TypedPageNode::If(Box::new(transform_if(
+			if_node,
+			parent_tags,
+		)?))),
+		PageNode::For(for_node) => Ok(TypedPageNode::For(Box::new(transform_for(
+			for_node,
+			parent_tags,
+		)?))),
 		PageNode::Component(comp) => Ok(TypedPageNode::Component(transform_component(
 			comp,
 			parent_tags,
