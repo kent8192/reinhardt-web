@@ -65,5 +65,8 @@ pub fn nav_bar() -> Page {
 /// body itself. Early-return branches (loading / error states) can wrap
 /// their return value the same way.
 pub fn with_nav(body: Page) -> Page {
-	Page::Fragment(vec![nav_bar(), body])
+		page!(|body: Page| {
+			{ nav_bar() }
+			{ body }
+		})(body)
 }

@@ -63,26 +63,70 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 		let toggle_follow_for_error = toggle_follow.clone();
 		page!(
 			| is_following_signal : Signal < bool >, toggle_follow : Action < (), String
-			>, toggle_follow_for_error : Action < (), String >| { div { if toggle_follow
-			.is_pending() { button { type : "button", class :
-			"btn-secondary opacity-50 cursor-not-allowed", disabled : { true },
-			aria_label : "Loading", @ click : { let { toggle_follow } = toggle_follow
-			.clone(); let { is_following_signal } = is_following_signal.clone(); move |
-			_event | { toggle_follow.dispatch((target_user_id, is_following_signal
-			.get())); } }, div { class : "flex items-center gap-2", div { class :
-			"spinner-sm", } } } } else if is_following_signal.get() { button { type :
-			"button", class : "btn-outline group", @ click : { let { toggle_follow } =
-			toggle_follow.clone(); let { is_following_signal } = is_following_signal
-			.clone(); move | _event | { toggle_follow.dispatch((target_user_id,
-			is_following_signal.get())); } }, span { class : "group-hover:hidden",
-			"Following" } span { class : "hidden group-hover:inline text-danger",
-			"Unfollow" } } } else { button { type : "button", class : "btn-primary", @
-			click : { let { toggle_follow } = toggle_follow.clone(); let {
-			is_following_signal } = is_following_signal.clone(); move | _event | {
-			toggle_follow.dispatch((target_user_id, is_following_signal.get())); } },
-			"Follow" } } if toggle_follow_for_error.error().is_some() { div { class :
-			"alert-danger mt-2 text-sm", { toggle_follow_for_error.error()
-			.unwrap_or_default() } } } } }
+			>, toggle_follow_for_error : Action < (), String >| {
+				div {
+					if toggle_follow.is_pending() {
+						button {
+							type: "button",
+							class: "btn-secondary opacity-50 cursor-not-allowed",
+							disabled: { true },
+							aria_label: "Loading",
+							@click: {
+								let toggle_follow = toggle_follow.clone();
+								let is_following_signal = is_following_signal.clone();
+								move |_event| {
+									toggle_follow.dispatch((target_user_id, is_following_signal.get()));
+								}
+							},
+							div {
+								class: "flex items-center gap-2",
+								div {
+									class: "spinner-sm",
+								}
+							}
+						}
+					} else if is_following_signal.get() {
+						button {
+							type: "button",
+							class: "btn-outline group",
+							@click: {
+								let toggle_follow = toggle_follow.clone();
+								let is_following_signal = is_following_signal.clone();
+								move |_event| {
+									toggle_follow.dispatch((target_user_id, is_following_signal.get()));
+								}
+							},
+							span {
+								class: "group-hover:hidden",
+								"Following"
+							}
+							span {
+								class: "hidden group-hover:inline text-danger",
+								"Unfollow"
+							}
+						}
+					} else {
+						button {
+							type: "button",
+							class: "btn-primary",
+							@click: {
+								let toggle_follow = toggle_follow.clone();
+								let is_following_signal = is_following_signal.clone();
+								move |_event| {
+									toggle_follow.dispatch((target_user_id, is_following_signal.get()));
+								}
+							},
+							"Follow"
+						}
+					}
+					if toggle_follow_for_error.error().is_some() {
+						div {
+							class: "alert-danger mt-2 text-sm",
+							{ toggle_follow_for_error.error().unwrap_or_default() }
+						}
+					}
+				}
+			}
 		)(is_following_signal, toggle_follow, toggle_follow_for_error)
 	}
 	#[cfg(native)]
@@ -98,8 +142,15 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 			"Follow"
 		};
 		page!(
-			| btn_class : & str, btn_text : & str | { div { button { type : "button",
-			class : btn_class, { { btn_text } } } } }
+			| btn_class : & str, btn_text : & str | {
+				div {
+					button {
+						type: "button",
+						class: btn_class,
+						{ btn_text }
+					}
+				}
+			}
 		)(btn_class, btn_text)
 	}
 }
@@ -121,13 +172,31 @@ fn user_card(user: &UserInfo) -> Page {
 		.to_string();
 	page!(
 		| username : String, display_username : String, _email : String, profile_url :
-		String, avatar_initial : String | { a { href : profile_url.clone(), class :
-		"user-card block", div { class : "flex items-center gap-3", div { class :
-		"user-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold flex-shrink-0",
-		{ { avatar_initial } } } div { class : "flex-1 min-w-0", div { class :
-		"font-semibold text-content-primary truncate", { { username } } } div { class :
-		"text-content-secondary text-sm truncate", { { display_username } } } } {
-		icons::chevron_right_icon() } } } }
+		String, avatar_initial : String | {
+			a {
+				href: profile_url.clone(),
+				class: "user-card block",
+				div {
+					class: "flex items-center gap-3",
+					div {
+						class: "user-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold flex-shrink-0",
+						{ avatar_initial }
+					}
+					div {
+						class: "flex-1 min-w-0",
+						div {
+							class: "font-semibold text-content-primary truncate",
+							{ username }
+						}
+						div {
+							class: "text-content-secondary text-sm truncate",
+							{ display_username }
+						}
+					}
+					{ icons::chevron_right_icon() }
+				}
+			}
+		}
 	)(
 		username,
 		display_username,
@@ -193,38 +262,91 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 	}
 	.to_string();
 	let empty_icon = match list_type {
-        UserListType::Followers => {
-            "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-        }
-        UserListType::Following => {
-            "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-        }
-    }
-        .to_string();
+		UserListType::Followers => {
+			"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+		}
+		UserListType::Following => {
+			"M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+		}
+	}
+	.to_string();
 	let users_signal = users.clone();
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
 	page!(
 		| title : String, empty_message : String, empty_icon : String, users_signal :
 		Signal < Vec < UserInfo >>, loading_signal : Signal < bool >, error_signal :
-		Signal < Option < String >>| { div { class : "animate-fade-in", div { class :
-		"flex items-center gap-3 mb-4", a { href : "/", class : "btn-icon", aria_label :
-		"Go back home", { icons::arrow_left_icon() } } h2 { class :
-		"text-xl font-bold text-content-primary", { { title } } } } if loading_signal
-		.get() { div { class : "flex flex-col items-center justify-center py-12", div {
-		class : "spinner-lg mb-4", } p { class : "text-content-secondary text-sm",
-		"Loading..." } } } else if error_signal.get().is_some() { div { class :
-		"alert-danger", div { class : "flex items-center gap-2", {
-		icons::error_circle_icon() } span { { error_signal.get().unwrap_or_default() } }
-		} } } else if users_signal.get().is_empty() { div { class :
-		"flex flex-col items-center justify-center py-16 text-center", div { class :
-		"w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-		svg { class : "w-8 h-8 text-content-tertiary", fill : "none", stroke :
-		"currentColor", viewBox : "0 0 24 24", path { stroke_linecap : "round",
-		stroke_linejoin : "round", stroke_width : "1.5", d : empty_icon.clone(), } } } p
-		{ class : "text-content-secondary", { empty_message.clone() } } } } else { div {
-		class : "card overflow-hidden", { Page::Fragment(users_signal.get().iter().map(|
-		u | user_card(u)).collect::< Vec < _ >> (),) } } } } }
+		Signal < Option < String >>| {
+			div {
+				class: "animate-fade-in",
+				div {
+					class: "flex items-center gap-3 mb-4",
+					a {
+						href: "/",
+						class: "btn-icon",
+						aria_label: "Go back home",
+						{ icons::arrow_left_icon() }
+					}
+					h2 {
+						class: "text-xl font-bold text-content-primary",
+						{ title }
+					}
+				}
+				if loading_signal.get() {
+					div {
+						class: "flex flex-col items-center justify-center py-12",
+						div {
+							class: "spinner-lg mb-4",
+						}
+						p {
+							class: "text-content-secondary text-sm",
+							"Loading..."
+						}
+					}
+				} else if error_signal.get().is_some() {
+					div {
+						class: "alert-danger",
+						div {
+							class: "flex items-center gap-2",
+							{ icons::error_circle_icon() }
+							span {
+								{ error_signal.get().unwrap_or_default() }
+							}
+						}
+					}
+				} else if users_signal.get().is_empty() {
+					div {
+						class: "flex flex-col items-center justify-center py-16 text-center",
+						div {
+							class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+							svg {
+								class: "w-8 h-8 text-content-tertiary",
+								fill: "none",
+								stroke: "currentColor",
+								viewBox: "0 0 24 24",
+								path {
+									stroke_linecap: "round",
+									stroke_linejoin: "round",
+									stroke_width: "1.5",
+									d: empty_icon.clone(),
+								}
+							}
+						}
+						p {
+							class: "text-content-secondary",
+							{ empty_message.clone() }
+						}
+					}
+				} else {
+					div {
+						class: "card overflow-hidden",
+						for user in users_signal.get().iter() {
+							{ user_card(user) }
+						}
+					}
+				}
+			}
+		}
 	)(
 		title,
 		empty_message,

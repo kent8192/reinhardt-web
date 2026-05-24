@@ -122,9 +122,7 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 		{ icons::chat_bubble_icon_lg() } } h3 { class :
 		"text-lg font-semibold text-content-primary mb-1", "No messages yet" } p { class
 		: "text-content-secondary", "Send a message to start the conversation!" } } }
-		else { div { class : "space-y-3", { Page::Fragment(messages_signal.get().iter()
-		.map(| m | { let is_own = current_user_id.map(| uid | m.sender_id == uid)
-		.unwrap_or(false); message_item(m, is_own) }).collect::< Vec < _ >> (),) } } } }
+		else { div { class : "space-y-3", for m in messages_signal.get().iter() { { let is_own = current_user_id.map(| uid | m.sender_id == uid).unwrap_or(false); message_item(m, is_own) } } } } }
 		{ message_input(input_signal.clone(), move | content | { chat_for_send
 		.send_message(content); }) } } }
 	)(
@@ -199,7 +197,6 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> Page {
 		{ icons::chat_multi_icon_lg() } } h3 { class :
 		"text-lg font-semibold text-content-primary mb-1", "No conversations yet" } p {
 		class : "text-content-secondary", "Start a new conversation with someone!" } } }
-		else { div { { Page::Fragment(rooms_signal.get().iter().map(| r | room_item(r,
-		on_room_select.clone())).collect::< Vec < _ >> (),) } } } } } }
+		else { div { for r in rooms_signal.get().iter() { { room_item(r, on_room_select.clone()) } } } } } } }
 	)(rooms_signal, is_loading_signal, error_signal)
 }

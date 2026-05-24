@@ -94,7 +94,11 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 			link_view
 		})
 		.collect();
-	let nav_links_view = Page::Fragment(nav_links);
+	let nav_links_view = page!(|nav_links: Vec<Page>| {
+		for link in nav_links {
+			{ link }
+		}
+	})(nav_links);
 	let brand_link = Link::new("/".to_string(), site_name.to_string())
 		.class("text-xl font-bold text-content-primary hover:text-brand transition-colors")
 		.render();
@@ -162,7 +166,11 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 			"Nothing trending right now" } }
 		)()
 	} else {
-		Page::Fragment(topics_list)
+		page!(|topics_list: Vec<Page>| {
+			for topic in topics_list {
+				{ topic }
+			}
+		})(topics_list)
 	};
 	let users_list: Vec<Page> = suggested_users
         .iter()
@@ -199,7 +207,11 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 			"No suggestions yet" } }
 		)()
 	} else {
-		Page::Fragment(users_list)
+		page!(|users_list: Vec<Page>| {
+			for user in users_list {
+				{ user }
+			}
+		})(users_list)
 	};
 	page!(
 		| topics_view : Page, users_view : Page | { aside { class :
