@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0...reinhardt-dispatch@v0.1.1) - 2026-05-24
+
+### Documentation
+
+- update version references to v0.1.1
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.30...reinhardt-dispatch@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-dispatch` as part of the
