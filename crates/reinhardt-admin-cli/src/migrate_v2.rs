@@ -381,7 +381,7 @@ fn write_developer_file(path: &std::path::Path, content: &str) -> anyhow::Result
 			.duration_since(UNIX_EPOCH)
 			.unwrap_or_default()
 			.subsec_nanos();
-		nanos ^ (std::process::id() as u32)
+		nanos ^ std::process::id()
 	};
 	let tmp = parent.join(format!(".{file_name}.{random_suffix:x}.tmp")); // nosemgrep: path-traversal false positive — developer CLI bounded by --path root
 	if let Err(e) = std::fs::write(&tmp, content) {

@@ -123,7 +123,7 @@ fn parse_title_content(input: ParseStream) -> syn::Result<(Vec<HeadAttr>, Option
 	{
 		HeadContent::Text(s.value())
 	} else {
-		HeadContent::Expr(expr)
+		HeadContent::Expr(Box::new(expr))
 	};
 
 	Ok((Vec::new(), Some(content)))
@@ -141,7 +141,7 @@ fn parse_style_content(input: ParseStream) -> syn::Result<(Vec<HeadAttr>, Option
 	{
 		HeadContent::Text(s.value())
 	} else {
-		HeadContent::Expr(expr)
+		HeadContent::Expr(Box::new(expr))
 	};
 
 	Ok((Vec::new(), Some(content)))

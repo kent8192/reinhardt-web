@@ -129,7 +129,7 @@ pub enum PageNode {
 	/// Conditional rendering (e.g., `if condition { ... }`)
 	If(PageIf),
 	/// List rendering (e.g., `for item in items { ... }`)
-	For(PageFor),
+	For(Box<PageFor>),
 	/// A component call (e.g., `MyButton(label: "Click")`)
 	Component(PageComponent),
 	/// Reactive watch block (e.g., `watch { if signal.get() { ... } }`)
