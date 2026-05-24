@@ -1,12 +1,14 @@
 //! Relationship components (follow/block)
 //!
 //! Provides follow button and user list components for managing user relationships.
+
 use crate::apps::auth::shared::types::UserInfo;
 use crate::core::client::components::icons;
 use reinhardt::pages::Signal;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 use uuid::Uuid;
+
 #[cfg(wasm)]
 use {
 	crate::apps::relationship::shared::server_fn::{
@@ -16,6 +18,7 @@ use {
 	reinhardt::pages::reactive::ResourceState,
 	reinhardt::pages::reactive::hooks::{Action, use_action, use_effect},
 };
+
 /// Type of user list to display
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UserListType {
@@ -24,6 +27,7 @@ pub enum UserListType {
 	/// List of users being followed
 	Following,
 }
+
 /// Follow button component
 ///
 /// Provides a button to follow/unfollow a user with state management.
@@ -31,7 +35,10 @@ pub enum UserListType {
 /// Uses watch blocks for reactive UI updates when state changes.
 pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 	let is_following = Signal::new(is_following_initial);
+
+	// Clone signal for passing to page! macro
 	let is_following_signal = is_following.clone();
+
 	#[cfg(wasm)]
 	{
 		let toggle_follow = use_action(
@@ -44,6 +51,8 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 				.map_err(|e| e.to_string())
 			},
 		);
+
+		// Toggle is_following on success and reset the action
 		{
 			let toggle_follow_for_effect = toggle_follow.clone();
 			let is_following_for_effect = is_following.clone();
@@ -60,8 +69,10 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 				(toggle_follow_dep,),
 			);
 		}
+
 		let toggle_follow_for_error = toggle_follow.clone();
-		page!(|is_following_signal: Signal<bool>, toggle_follow: Action<(), String>, toggle_follow_for_error: Action<(), String>| {
+
+		page!(| is_following_signal : Signal<bool>, toggle_follow : Action<(), String>, toggle_follow_for_error : Action<(), String> | {
 			div {
 				if toggle_follow.is_pending() {
 					button {
@@ -126,8 +137,10 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 			}
 		})(is_following_signal, toggle_follow, toggle_follow_for_error)
 	}
+
 	#[cfg(native)]
 	{
+		// For SSR, render initial state without event handlers
 		let btn_class = if is_following_initial {
 			"btn-outline group"
 		} else {
@@ -138,7 +151,8 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 		} else {
 			"Follow"
 		};
-		page!(|btn_class: &str, btn_text: &str| {
+
+		page!(| btn_class : &str, btn_text : &str | {
 			div {
 				button {
 					type: "button",
@@ -149,6 +163,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 		})(btn_class, btn_text)
 	}
 }
+
 /// User card component
 ///
 /// Displays a single user in a list with modern SNS design.
@@ -165,7 +180,8 @@ fn user_card(user: &UserInfo) -> Page {
 		.unwrap_or('U')
 		.to_uppercase()
 		.to_string();
-	page!(|username: String, display_username: String, _email: String, profile_url: String, avatar_initial: String| {
+
+	page!(| username : String, display_username : String, _email : String, profile_url : String, avatar_initial : String | {
 		a {
 			href: profile_url.clone(),
 			class: "user-card block",
@@ -197,6 +213,7 @@ fn user_card(user: &UserInfo) -> Page {
 		avatar_initial,
 	)
 }
+
 /// User list component
 ///
 /// Displays a list of users (followers or following) with loading and error states.
@@ -206,6 +223,7 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 	let users = Signal::new(Vec::<UserInfo>::new());
 	let loading = Signal::new(true);
 	let error = Signal::new(None::<String>);
+
 	#[cfg(wasm)]
 	{
 		let resource = create_resource(move || async move {
@@ -215,6 +233,7 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 			};
 			result.map_err(|e| e.to_string())
 		});
+
 		let users_clone = users.clone();
 		let loading_clone = loading.clone();
 		let error_clone = error.clone();
@@ -243,29 +262,31 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 			(resource_for_deps,),
 		);
 	}
+
 	let title = match list_type {
 		UserListType::Followers => "Followers",
 		UserListType::Following => "Following",
 	}
 	.to_string();
+
 	let empty_message = match list_type {
 		UserListType::Followers => "No followers yet",
 		UserListType::Following => "Not following anyone yet",
 	}
 	.to_string();
+
 	let empty_icon = match list_type {
-		UserListType::Followers => {
-			"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-		}
-		UserListType::Following => {
-			"M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-		}
+		UserListType::Followers => "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z",
+		UserListType::Following => "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
 	}
 	.to_string();
+
+	// Clone signals for passing to page! macro
 	let users_signal = users.clone();
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
-	page!(|title: String, empty_message: String, empty_icon: String, users_signal: Signal<Vec<UserInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
+
+	page!(| title : String, empty_message : String, empty_icon : String, users_signal : Signal<Vec<UserInfo>>, loading_signal : Signal<bool>, error_signal : Signal<Option<String>> | {
 		div {
 			class: "animate-fade-in",
 			div {
