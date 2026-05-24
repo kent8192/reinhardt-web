@@ -566,6 +566,11 @@ fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<Typ
 ///
 /// Recursively transforms the component's children (if any).
 fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<TypedPageComponent> {
+	// Validate component event handlers (same as element events)
+	for event in &comp.events {
+		validate_event_handler(event)?;
+	}
+
 	// Transform children if present
 	let typed_children = if let Some(children) = &comp.children {
 		Some(transform_nodes(children, parent_tags)?)
