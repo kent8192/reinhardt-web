@@ -16,8 +16,10 @@ permissions:
 concurrency:
   group: >-
     ${{ github.workflow }}-${{
-      startsWith(github.head_ref || '', 'release-plz-')
-        && 'release-plz'
+      startsWith(github.head_ref || '', 'develop-release-plz-')
+        && 'develop-release-plz'
+        || startsWith(github.head_ref || '', 'release-plz-')
+          && 'release-plz'
         || github.head_ref
         || github.run_id
     }}
@@ -124,8 +126,8 @@ jobs:
             if [[ "$EVENT_NAME" == "workflow_dispatch" ]] && [[ "$ACTOR" == "$REPO_OWNER" ]]; then
               USE_MAC=true
             elif [[ "$EVENT_NAME" == "pull_request" ]]; then
-              # release-plz PRs: trusted (only push-access users create these branches)
-              if [[ "$HEAD_REF" == release-plz-* ]]; then
+              # release-plz / develop-release-plz PRs: trusted (only push-access users create these branches)
+              if [[ "$HEAD_REF" == release-plz-* || "$HEAD_REF" == develop-release-plz-* ]]; then
                 USE_MAC=true
               # Repo owner PRs: trusted
               elif [[ "$ACTOR" == "$REPO_OWNER" ]]; then
@@ -137,7 +139,7 @@ jobs:
 
           # --- AWS Spot runner selection (opt-in) ---
           if [[ "$USE_MAC" == "false" ]] && [[ "$SELF_HOSTED_ENABLED" == "true" ]]; then
-            if [[ "$HEAD_REF" == release-plz-* ]]; then
+            if [[ "$HEAD_REF" == release-plz-* || "$HEAD_REF" == develop-release-plz-* ]]; then
               USE_AWS=true
             elif [[ "$ACTOR" == "$REPO_OWNER" ]]; then
               if [[ "$EVENT_NAME" == "pull_request" ]]; then
@@ -267,7 +269,7 @@ jobs:
     if: >-
       ${{
         needs.check-branch-status.outputs.has-conflicts != 'true' &&
-        startsWith(github.head_ref || '', 'release-plz-')
+        (startsWith(github.head_ref || '', 'release-plz-') || startsWith(github.head_ref || '', 'develop-release-plz-'))
       }}
     uses: ./.github/workflows/reinhardt-feature-check.yml
     with:
