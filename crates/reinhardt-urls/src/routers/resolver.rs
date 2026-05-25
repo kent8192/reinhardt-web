@@ -8,9 +8,9 @@
 //! # Architecture
 //!
 //! ```text
-//! #[get("/login/", name = "auth_login")]  →  trait ResolveAuthLogin
-//!     ↓ (blanket impl)
-//! ResolvedUrls: UrlResolver  →  urls.auth_login()
+//! #[get("/login/", name = "auth_login")]
+//!     ↓ (inventory registration)
+//! UrlReverser::from_global().reverse("server:auth:login", &HashMap::new())
 //! ```
 //!
 //! # Usage
@@ -53,9 +53,8 @@ pub trait UrlResolver {
 
 	/// Non-panicking variant of `resolve_url`. Default returns `None`.
 	///
-	/// Override in implementations that have a route-lookup table; the
-	/// `ResolvedUrls`-emitted impl uses this to probe candidate namespaces
-	/// for [`UrlResolverUnprefixed::resolve_url_unprefixed`] without panicking.
+	/// Override in implementations that have a route-lookup table to probe
+	/// candidate namespaces without panicking.
 	///
 	/// Refs Issue #4507.
 	fn try_resolve_url(&self, _name: &str, _params: &[(&str, &str)]) -> Option<String> {
@@ -70,12 +69,8 @@ pub trait UrlResolver {
 // Prefer `urls.server().<app>().<route>()` instead.
 
 // NOTE: No blanket `impl<T: UrlResolver> UrlResolverUnprefixed for T {}` is
-// provided here because `#[routes]` emits a specific
-// `impl UrlResolverUnprefixed for ResolvedUrls` with namespace-iterating
-// behavior. A blanket impl would collide with that specific impl and
-// trigger E0119 ("conflicting implementations") in any project that
-// expands `#[routes]`. Consumers that need `UrlResolverUnprefixed`
-// semantics on custom `UrlResolver` types must opt in explicitly with
+// provided here. Consumers that need `UrlResolverUnprefixed` semantics on
+// custom `UrlResolver` types must opt in explicitly with
 // `impl UrlResolverUnprefixed for MyType {}` (uses the default passthrough
 // body) or provide their own override.
 //
@@ -164,8 +159,7 @@ mod url_resolver_unprefixed_tests {
 
 	// Opt-in to the deprecated unprefixed trait using its default passthrough
 	// body. The blanket impl was removed (see module-level NOTE above) to
-	// avoid E0119 with the `#[routes]`-emitted specific impl for
-	// `ResolvedUrls`, so consumers must opt in explicitly.
+	// avoid E0119, so consumers must opt in explicitly.
 	//
 	// Refs Issue #4507.
 	#[allow(
@@ -191,7 +185,7 @@ mod url_resolver_unprefixed_tests {
 		)]
 		let out = r.resolve_url_unprefixed("snippet-list", &[]);
 
-		// Assert: default body is a passthrough (overrides land in ResolvedUrls).
+		// Assert: default body is a passthrough.
 		assert_eq!(out, "RESOLVED:snippet-list");
 	}
 }

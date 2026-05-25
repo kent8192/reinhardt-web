@@ -170,7 +170,7 @@ impl UnifiedRouter {
 	/// Configure WebSocket routing with a closure.
 	///
 	/// Parallel to `server()` and `client()`. The registered consumers are
-	/// available via `urls.ws().<app>().<handler>()` in `ResolvedUrls`.
+	/// available via `UrlReverser::from_global().reverse("websocket:<app>:<handler>")`.
 	///
 	/// # Example
 	///

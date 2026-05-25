@@ -154,7 +154,7 @@ pub fn delete(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Arguments
 ///
 /// - `topic` — Kafka topic to publish to
-/// - `name` — identifier used in `ResolvedUrls::streaming().<app>().<name>()`
+/// - `name` — handler identifier for topic resolution via `resolve_streaming_topic()`
 ///
 /// # Example
 ///
@@ -178,7 +178,7 @@ pub fn producer(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// - `topic` — Kafka topic to consume from
 /// - `group` — Consumer group id
-/// - `name` — identifier used in `ResolvedUrls::streaming().<app>().<name>()`
+/// - `name` — handler identifier for topic resolution via `resolve_streaming_topic()`
 ///
 /// # Example
 ///

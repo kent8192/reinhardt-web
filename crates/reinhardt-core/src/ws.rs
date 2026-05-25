@@ -24,7 +24,7 @@ pub trait WebSocketEndpointInfo {
 
 /// Inventory metadata submitted by `#[websocket]` at compile time.
 ///
-/// Used by `impl WebSocketUrlResolver for ResolvedUrls` to resolve route names.
+/// Used by `UrlReverser` to resolve WebSocket route names.
 pub struct WebSocketEndpointMetadata {
 	/// URL path pattern (e.g. `"/ws/chat/{room_id}/"`).
 	pub path: &'static str,

@@ -55,7 +55,7 @@ pub use message::Message;
 
 /// Metadata about a streaming handler, submitted to inventory by `#[producer]`/`#[consumer]`.
 ///
-/// Used by `ResolvedUrls::streaming()` to resolve topic names at runtime.
+/// Used by `resolve_streaming_topic()` to look up topic names at runtime.
 #[derive(Debug)]
 pub struct StreamingHandlerMetadata {
 	pub name: &'static str,
