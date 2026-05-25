@@ -7,7 +7,14 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Command-line tool for Reinhardt project management"
-publish = true
+# Workaround for topiary/topiary#1246 (tracked in reinhardt-web#4827).
+# [patch.crates-io] is not applied during `cargo package`, so the vendored
+# topiary-tree-sitter-facade cannot be resolved from crates.io.
+# Remove this workaround when Topiary publishes relaxed wasm-bindgen constraints.
+#
+# Ideal implementation (without workaround):
+#   publish = true
+publish = false
 
 [dependencies]
 # Documentation

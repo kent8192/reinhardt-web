@@ -423,7 +423,9 @@ fn skip_raw_string(bytes: &[u8], start: usize, result: &mut Vec<u8>) -> usize {
 		result.push(bytes[i]);
 		if bytes[i] == b'"' {
 			let mut matched = 0;
-			while matched < hashes && i + 1 + matched < bytes.len() && bytes[i + 1 + matched] == b'#'
+			while matched < hashes
+				&& i + 1 + matched < bytes.len()
+				&& bytes[i + 1 + matched] == b'#'
 			{
 				matched += 1;
 			}

@@ -7,6 +7,7 @@ edition = "2024"
 name = "topiary-web-tree-sitter-sys"
 version = "0.7.3"
 authors = ["<silvanshade@users.noreply.github.com>"]
+publish = false
 build = false
 autolib = false
 autobins = false
