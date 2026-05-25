@@ -305,29 +305,29 @@ pub fn tweet_form() -> Page {
 					let char_count = form.content().get().len();
 					let progress_percent = (char_count as f64 / 280.0 * 100.0).min(100.0);
 					let width_style = format!("width: {}%", progress_percent);
-					let (text_class, bar_class) = if char_count > 280 {
+					let (text_class, bar_class): (&'static str, &'static str) = if char_count > 280 {
 						(
-							"text-sm font-medium text-danger".to_string(),
-							"h-full bg-danger transition-all".to_string(),
+							"text-sm font-medium text-danger",
+							"h-full bg-danger transition-all",
 						)
 					} else if char_count > 250 {
 						(
-							"text-sm font-medium text-warning".to_string(),
-							"h-full bg-warning transition-all".to_string(),
+							"text-sm font-medium text-warning",
+							"h-full bg-warning transition-all",
 						)
 					} else if char_count > 0 {
 						(
-							"text-sm font-medium text-content-tertiary".to_string(),
-							"h-full bg-brand transition-all".to_string(),
+							"text-sm font-medium text-content-tertiary",
+							"h-full bg-brand transition-all",
 						)
 					} else {
 						(
-							"text-sm font-medium text-content-tertiary".to_string(),
-							"h-full bg-surface-tertiary transition-all".to_string(),
+							"text-sm font-medium text-content-tertiary",
+							"h-full bg-surface-tertiary transition-all",
 						)
 					};
 					let display_text = format!("{}/280", char_count);
-					page!(|text_class: String, bar_class: String, width_style: String, display_text: String| {
+					page!(|text_class: &'static str, bar_class: &'static str, width_style: String, display_text: String| {
 						div {
 							class: "flex items-center gap-2",
 							div {

@@ -335,36 +335,35 @@ async fn dispatch_through_router(
 		.build()
 	{
 		Ok(r) => r,
-		Err(_) => return None,
+		Err(e) => {
+			eprintln!(
+				"{}",
+				format!("Warning: Failed to build router request: {}.", e).yellow()
+			);
+			return None;
+		}
 	};
 
 	match router.handle(request).await {
-		Ok(response) => {
-			if response.status == hyper::StatusCode::NOT_FOUND
-				|| response.status == hyper::StatusCode::METHOD_NOT_ALLOWED
-			{
-				return None;
-			}
-			let mut hyper_resp = hyper::Response::builder().status(response.status);
-			for (key, value) in response.headers.iter() {
-				hyper_resp = hyper_resp.header(key, value);
-			}
-			hyper_resp.body(Full::new(response.body)).ok()
-		}
-		Err(e) => {
-			let response = reinhardt_http::Response::from(e);
-			if response.status == hyper::StatusCode::NOT_FOUND
-				|| response.status == hyper::StatusCode::METHOD_NOT_ALLOWED
-			{
-				return None;
-			}
-			let mut hyper_resp = hyper::Response::builder().status(response.status);
-			for (key, value) in response.headers.iter() {
-				hyper_resp = hyper_resp.header(key, value);
-			}
-			hyper_resp.body(Full::new(response.body)).ok()
-		}
+		Ok(response) => convert_to_hyper_response(response),
+		Err(e) => convert_to_hyper_response(reinhardt_http::Response::from(e)),
 	}
+}
+
+#[cfg(feature = "routers")]
+fn convert_to_hyper_response(
+	response: reinhardt_http::Response,
+) -> Option<hyper::Response<Full<Bytes>>> {
+	if response.status == hyper::StatusCode::NOT_FOUND
+		|| response.status == hyper::StatusCode::METHOD_NOT_ALLOWED
+	{
+		return None;
+	}
+	let mut hyper_resp = hyper::Response::builder().status(response.status);
+	for (key, value) in response.headers.iter() {
+		hyper_resp = hyper_resp.header(key, value);
+	}
+	hyper_resp.body(Full::new(response.body)).ok()
 }
 
 async fn handle_request(

@@ -205,55 +205,7 @@ impl<'a> PageMacroVisitor<'a> {
 	/// `kind` identifies whether this is a `page!` or `form!` macro,
 	/// so the correct delimiters are used for scanning.
 	fn find_macro_in_source(&self, tokens_content: &str, kind: MacroKind) -> Option<MacroInfo> {
-		let mut search_start = 0;
-
-		// Skip already found macros
-		for found in &self.macros {
-			if found.end > search_start {
-				search_start = found.end;
-			}
-		}
-
-		let find_fn: fn(&str) -> Option<PageBangParen> = match kind {
-			MacroKind::Page => find_page_bang_paren,
-			MacroKind::Form => find_form_bang_brace,
-		};
-
-		let find_matching: fn(&str, usize) -> Option<usize> = match kind {
-			MacroKind::Page => find_matching_paren,
-			MacroKind::Form => find_matching_brace,
-		};
-
-		while let Some(hit) = find_fn(&self.source[search_start..]) {
-			let abs_start = search_start + hit.start;
-			let content_start = search_start + hit.paren_open + 1;
-
-			// Find matching closing delimiter
-			if let Some(end_pos) = find_matching(self.source, content_start) {
-				let macro_content = &self.source[content_start..end_pos];
-
-				// Parse the content to get tokens, and verify it matches the
-				// AST node we're locating. Without this check, a macro-shaped
-				// substring inside a preceding string literal or `//` comment
-				// could be mistaken for the real macro invocation.
-				if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content)
-					&& tokens.to_string() == tokens_content
-				{
-					return Some(MacroInfo {
-						start: abs_start,
-						end: end_pos + 1, // Include closing delimiter
-						tokens,
-						should_skip: false,
-						original_text: macro_content.to_string(),
-						kind,
-					});
-				}
-			}
-
-			search_start = abs_start + 1;
-		}
-
-		None
+		find_macro_in_source(self.source, &self.macros, tokens_content, kind)
 	}
 }
 
@@ -269,11 +221,105 @@ impl<'ast, 'a> Visit<'ast> for PageMacroVisitor<'a> {
 	}
 }
 
-/// Result of locating a `page!(` invocation (with possible whitespace).
+/// Visitor that walks the AST to find form! macro invocations.
+struct FormMacroVisitor<'a> {
+	/// Collected macro information
+	macros: Vec<MacroInfo>,
+	/// Original source code for offset calculation
+	source: &'a str,
+}
+
+impl<'a> FormMacroVisitor<'a> {
+	fn new(source: &'a str) -> Self {
+		Self {
+			macros: Vec::new(),
+			source,
+		}
+	}
+
+	/// Extract macro info from a Macro node (form! only).
+	fn extract_macro_info(&mut self, mac: &Macro) {
+		if mac.path.is_ident("form") {
+			let tokens_str = mac.tokens.to_string();
+
+			if let Some(mut info) =
+				find_macro_in_source(self.source, &self.macros, &tokens_str, MacroKind::Form)
+			{
+				info.kind = MacroKind::Form;
+				self.macros.push(info);
+			}
+		}
+	}
+}
+
+impl<'ast, 'a> Visit<'ast> for FormMacroVisitor<'a> {
+	fn visit_expr_macro(&mut self, expr: &'ast ExprMacro) {
+		self.extract_macro_info(&expr.mac);
+		syn::visit::visit_expr_macro(self, expr);
+	}
+
+	fn visit_macro(&mut self, mac: &'ast Macro) {
+		self.extract_macro_info(mac);
+		syn::visit::visit_macro(self, mac);
+	}
+}
+
+fn find_macro_in_source(
+	source: &str,
+	found_macros: &[MacroInfo],
+	tokens_content: &str,
+	kind: MacroKind,
+) -> Option<MacroInfo> {
+	let mut search_start = 0;
+
+	for found in found_macros {
+		if found.end > search_start {
+			search_start = found.end;
+		}
+	}
+
+	let find_fn: fn(&str) -> Option<PageBangParen> = match kind {
+		MacroKind::Page => find_page_bang_paren,
+		MacroKind::Form => find_form_bang_brace,
+	};
+
+	let find_matching: fn(&str, usize) -> Option<usize> = match kind {
+		MacroKind::Page => find_matching_paren,
+		MacroKind::Form => find_matching_brace,
+	};
+
+	while let Some(hit) = find_fn(&source[search_start..]) {
+		let abs_start = search_start + hit.start;
+		let content_start = search_start + hit.paren_open + 1;
+
+		if let Some(end_pos) = find_matching(source, content_start) {
+			let macro_content = &source[content_start..end_pos];
+
+			if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content)
+				&& tokens.to_string() == tokens_content
+			{
+				return Some(MacroInfo {
+					start: abs_start,
+					end: end_pos + 1,
+					tokens,
+					should_skip: false,
+					original_text: macro_content.to_string(),
+					kind,
+				});
+			}
+		}
+
+		search_start = abs_start + 1;
+	}
+
+	None
+}
+
+/// Result of locating a bang macro invocation (with possible whitespace).
 struct PageBangParen {
-	/// Byte offset of the leading `p` of `page`.
+	/// Byte offset of the leading byte of the macro name.
 	start: usize,
-	/// Byte offset of the opening `(`.
+	/// Byte offset of the opening delimiter.
 	paren_open: usize,
 }
 
@@ -288,9 +334,21 @@ struct PageBangParen {
 /// authored by users as well as the `page ! (` form emitted by
 /// `proc_macro2::TokenStream`'s `Display`.
 fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
+	find_bang_macro_open(s, "page", b'(')
+}
+
+/// Find the next `form <ws>* ! <ws>* {` occurrence in `s`.
+///
+/// Uses the same comment and literal skipping rules as `find_page_bang_paren`.
+fn find_form_bang_brace(s: &str) -> Option<PageBangParen> {
+	find_bang_macro_open(s, "form", b'{')
+}
+
+fn find_bang_macro_open(s: &str, macro_name: &str, opening_delimiter: u8) -> Option<PageBangParen> {
 	let bytes = s.as_bytes();
+	let macro_bytes = macro_name.as_bytes();
 	let mut i = 0;
-	while i + "page".len() <= bytes.len() {
+	while i + macro_bytes.len() <= bytes.len() {
 		let b = bytes[i];
 
 		// Line comment: skip to end of line.
@@ -372,8 +430,8 @@ fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 			continue;
 		}
 
-		// Not in a comment or literal — look for the `page` keyword.
-		if &bytes[i..i + "page".len()] != b"page" {
+		// Not in a comment or literal — look for the macro name keyword.
+		if &bytes[i..i + macro_bytes.len()] != macro_bytes {
 			i += 1;
 			continue;
 		}
@@ -386,7 +444,7 @@ fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 				continue;
 			}
 		}
-		let after = start + "page".len();
+		let after = start + macro_bytes.len();
 		// Reject if followed by an identifier-continuation byte (excluding `!`).
 		if after < bytes.len() {
 			let nx = bytes[after];
@@ -405,11 +463,11 @@ fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 			continue;
 		}
 		j += 1;
-		// Skip whitespace between `!` and `(`.
+		// Skip whitespace between `!` and the opening delimiter.
 		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
 			j += 1;
 		}
-		if j >= bytes.len() || bytes[j] != b'(' {
+		if j >= bytes.len() || bytes[j] != opening_delimiter {
 			i = start + 1;
 			continue;
 		}
@@ -723,10 +781,10 @@ impl AstPageFormatter {
 	pub(crate) fn format(&self, content: &str) -> Result<FormatResult, String> {
 		// Safety check FIRST: If no page! pattern exists, return unchanged.
 		// This is a successful no-op, not an intentional skip — skipped stays None.
-		// Match both compact `page!(` and the TokenStream Display form `page ! (`
-		// so recursive formatting (which wraps via `to_token_stream()`) still
-		// sees nested macros at every depth.
-		if find_page_bang_paren(content).is_none() {
+		// Match both compact and TokenStream Display forms so recursive
+		// formatting (which wraps via `to_token_stream()`) still sees nested
+		// macros at every depth.
+		if find_page_bang_paren(content).is_none() && find_form_bang_brace(content).is_none() {
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
@@ -3038,8 +3096,8 @@ impl AstPageFormatter {
 	/// let view = __reinhardt_placeholder_0__!()(props);
 	/// ```
 	pub(crate) fn protect_page_macros(&self, content: &str) -> ProtectResult {
-		// Quick check: accept both `page!(` and `page ! (` (see `find_page_bang_paren`).
-		if find_page_bang_paren(content).is_none() {
+		// Quick check: accept compact and TokenStream Display forms for both macros.
+		if find_page_bang_paren(content).is_none() && find_form_bang_brace(content).is_none() {
 			return ProtectResult {
 				protected_content: content.to_string(),
 				backups: Vec::new(),
@@ -3138,7 +3196,7 @@ impl AstPageFormatter {
 		for backup in backups.iter().rev() {
 			let placeholder = format!("__reinhardt_placeholder_{}__!()", backup.id);
 			let replacement = self
-				.format_inner_page_macro(&backup.original, &result, &placeholder)
+				.format_inner_page_macro(&backup.original, &result, &placeholder, backup.kind)
 				.unwrap_or_else(|| backup.original.clone());
 			result = result.replace(&placeholder, &replacement);
 		}
@@ -3155,15 +3213,25 @@ impl AstPageFormatter {
 		original: &str,
 		surrounding: &str,
 		placeholder: &str,
+		kind: MacroKind,
 	) -> Option<String> {
-		// Extract `<inner>` from `page!(<inner>)` (or the equivalent
-		// TokenStream Display form `page ! ( <inner> )`).
-		// Use the string-aware `find_matching_paren` rather than
-		// `rfind(')')` so a `)` inside a string literal or nested group
-		// in the macro body never gets confused with the closing paren.
-		let hit = find_page_bang_paren(original)?;
-		let head = hit.paren_open + 1;
-		let tail = find_matching_paren(original, head)?;
+		// Extract `<inner>` using the string-aware delimiter matchers so a
+		// delimiter inside a string literal or nested group is not mistaken
+		// for the macro's closing delimiter.
+		let (head, tail) = match kind {
+			MacroKind::Page => {
+				let hit = find_page_bang_paren(original)?;
+				let head = hit.paren_open + 1;
+				let tail = find_matching_paren(original, head)?;
+				(head, tail)
+			}
+			MacroKind::Form => {
+				let hit = find_form_bang_brace(original)?;
+				let head = hit.paren_open + 1;
+				let tail = find_matching_brace(original, head)?;
+				(head, tail)
+			}
+		};
 		if tail <= head {
 			return None;
 		}
@@ -3181,8 +3249,13 @@ impl AstPageFormatter {
 			.filter(|c| *c == '\t')
 			.count();
 
-		let formatted = self.format_macro_tokens(&tokens, base_indent).ok()?;
-		Some(format!("page!({})", formatted))
+		let formatted = self
+			.format_macro_tokens(&tokens, inner, base_indent, kind)
+			.ok()?;
+		match kind {
+			MacroKind::Page => Some(format!("page!({})", formatted)),
+			MacroKind::Form => Some(format!("form! {}", formatted)),
+		}
 	}
 }
 
@@ -4352,6 +4425,39 @@ fn main() {
 				.matches("__reinhardt_placeholder_0__!()")
 				.count(),
 			1
+		);
+	}
+
+	#[rstest]
+	fn test_find_form_bang_brace_skips_lookalikes() {
+		// Arrange
+		let input = "let s = \"form! { name: Bad }\";\n// form! { name: Bad }\nlet login = form! { name: LoginForm, };";
+
+		// Act
+		let hit = find_form_bang_brace(input).expect("form macro should be found");
+
+		// Assert
+		assert_eq!(&input[hit.start..hit.start + "form".len()], "form");
+		assert_eq!(input.as_bytes()[hit.paren_open], b'{');
+		assert_eq!(input[..hit.start].matches("form!").count(), 2);
+	}
+
+	#[rstest]
+	fn test_protect_single_form_macro() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = r#"let login = form! { name: LoginForm, };"#;
+
+		// Act
+		let result = formatter.protect_page_macros(input);
+
+		// Assert
+		assert_eq!(result.backups.len(), 1);
+		assert_eq!(result.backups[0].kind, MacroKind::Form);
+		assert!(result.backups[0].original.starts_with("form!"));
+		assert_eq!(
+			result.protected_content,
+			r#"let login = __reinhardt_placeholder_0__!();"#
 		);
 	}
 
