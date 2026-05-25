@@ -8,11 +8,10 @@
 //! because hooks must be invoked from a reactive context, which the
 //! generated `async fn submit(&self)` is not.
 
-
 use reinhardt_pages::app::{__clear_spa_router_for_test, __install_client_router_for_test};
-use reinhardt_urls::routers::ClientRouter;
 use reinhardt_pages::component::Page;
 use reinhardt_pages::router::{NavigationType, navigate};
+use reinhardt_urls::routers::ClientRouter;
 
 use rstest::rstest;
 use serial_test::serial;

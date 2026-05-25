@@ -9,7 +9,8 @@
 //! - Two-way binding (bind: true by default)
 //! - SVG icons with custom positioning
 //! - Server function integration for form submission
-
+#[cfg(native)]
+use crate::apps::profile::shared::server_fn::fetch_profile;
 use crate::apps::profile::shared::types::ProfileResponse;
 use crate::core::client::components::icons;
 use reinhardt::pages::component::Page;
@@ -18,34 +19,26 @@ use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
 use reinhardt::pages::reactive::hooks::{use_action, use_effect, use_state};
 use uuid::Uuid;
-
 #[cfg(wasm)]
 use {
 	crate::apps::profile::shared::server_fn::{fetch_profile, update_profile_form},
 	reinhardt::pages::create_resource,
 	reinhardt::pages::reactive::ResourceState,
 };
-
-#[cfg(native)]
-use crate::apps::profile::shared::server_fn::fetch_profile;
-
 /// Profile view component using hooks
 ///
 /// Displays user profile information with modern SNS design.
 /// Features cover image, large avatar, bio, location, and website.
 /// Uses watch blocks for reactive UI updates when async data loads.
 pub fn profile_view(user_id: Uuid) -> Page {
-	// Data fetching with create_resource on client, initial loading state on server
 	let (profile, _set_profile) = use_state(None::<ProfileResponse>);
 	let (loading, _set_loading) = use_state(true);
 	let (error, _set_error) = use_state(None::<String>);
-
 	#[cfg(wasm)]
 	{
 		let resource = create_resource(move || async move {
 			fetch_profile(user_id).await.map_err(|e| e.to_string())
 		});
-
 		let profile_setter = _set_profile.clone();
 		let loading_setter = _set_loading.clone();
 		let error_setter = _set_error.clone();
@@ -74,131 +67,124 @@ pub fn profile_view(user_id: Uuid) -> Page {
 			(resource_for_deps,),
 		);
 	}
-
-	// Clone signals for passing to page! macro
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
 	let profile_signal = profile.clone();
-
-	// Clone user_id for use in page! macro
 	let user_id_str = user_id.to_string();
-
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, profile_signal: Signal<Option<ProfileResponse>>, user_id_str: String| {
 		div {
 			class: "max-w-2xl mx-auto",
-			watch {
-				if loading_signal.get() {
+			if loading_signal.get() {
+				div {
+					class: "flex flex-col items-center justify-center py-16",
 					div {
-						class: "flex flex-col items-center justify-center py-16",
+						class: "spinner-lg mb-4",
+					}
+					p {
+						class: "text-content-secondary text-sm",
+						"Loading profile..."
+					}
+				}
+			} else if error_signal.get().is_some() {
+				div {
+					class: "p-4",
+					div {
+						class: "alert-danger",
+						role: "alert",
 						div {
-							class: "spinner-lg mb-4",
-						}
-						p {
-							class: "text-content-secondary text-sm",
-							"Loading profile..."
+							class: "flex items-center gap-2",
+							{ icons::error_circle_icon() }
+							span {
+								{ error_signal.get().unwrap_or_default() }
+							}
 						}
 					}
-				} else if error_signal.get().is_some() {
+				}
+			} else if profile_signal.get().is_some() {
+				div {
+					class: "card overflow-hidden animate-fade-in",
 					div {
-						class: "p-4",
+						class: "h-32 sm:h-48 bg-gradient-to-r from-brand to-brand-dark relative",
+					}
+					div {
+						class: "px-4 pb-4",
 						div {
-							class: "alert-danger",
-							role: "alert",
+							class: "flex justify-between items-end -mt-12 sm:-mt-16 mb-4",
 							div {
-								class: "flex items-center gap-2",
-								{ icons::error_circle_icon() }
+								class: "avatar-xl sm:w-32 sm:h-32 rounded-full border-4 border-surface-primary bg-surface-tertiary flex items-center justify-center text-3xl sm:text-4xl font-bold text-content-secondary",
 								span {
-									{ error_signal.get().unwrap_or_default() }
+									"👤"
+								}
+							}
+							a {
+								href: format!("/profile/{}/edit", user_id_str),
+								class: "btn-outline",
+								"Edit profile"
+							}
+						}
+						div {
+							class: "mb-4",
+							h1 {
+								class: "text-xl font-bold text-content-primary",
+								"@user"
+							}
+						}
+						if let Some(ref data) = profile_signal.get() {
+							if data.bio.is_some() {
+								p {
+									class: "text-content-primary mb-4 whitespace-pre-wrap",
+									{ data.bio.clone().unwrap_or_default() }
 								}
 							}
 						}
-					}
-				} else if profile_signal.get().is_some() {
-					div {
-						class: "card overflow-hidden animate-fade-in",
 						div {
-							class: "h-32 sm:h-48 bg-gradient-to-r from-brand to-brand-dark relative",
-						}
-						div {
-							class: "px-4 pb-4",
-							div {
-								class: "flex justify-between items-end -mt-12 sm:-mt-16 mb-4",
-								div {
-									class: "avatar-xl sm:w-32 sm:h-32 rounded-full border-4 border-surface-primary bg-surface-tertiary flex items-center justify-center text-3xl sm:text-4xl font-bold text-content-secondary",
-									span {
-										"👤"
-									}
-								}
-								a {
-									href: format!("/profile/{}/edit", user_id_str),
-									class: "btn-outline",
-									"Edit profile"
-								}
-							}
-							div {
-								class: "mb-4",
-								h1 {
-									class: "text-xl font-bold text-content-primary",
-									"@user"
-								}
-							}
+							class: "flex flex-wrap gap-4 text-content-secondary text-sm",
 							if let Some(ref data) = profile_signal.get() {
-								if data.bio.is_some() {
-									p {
-										class: "text-content-primary mb-4 whitespace-pre-wrap",
-										{ data.bio.clone().unwrap_or_default() }
-									}
-								}
-							}
-							div {
-								class: "flex flex-wrap gap-4 text-content-secondary text-sm",
-								if let Some(ref data) = profile_signal.get() {
-									if data.location.is_some() {
-										div {
-											class: "flex items-center gap-1",
-											{ icons::location_pin_icon() }
-											span {
-												{ data.location.clone().unwrap_or_default() }
-											}
+								if data.location.is_some() {
+									div {
+										class: "flex items-center gap-1",
+										{ icons::location_pin_icon() }
+										span {
+											{ data.location.clone().unwrap_or_default() }
 										}
 									}
-									if data.website.is_some() {
-										a {
-											class: "flex items-center gap-1 text-brand hover:underline",
-											href: data.website.clone().unwrap_or_default(),
-											target: "_blank",
-											rel: "noopener noreferrer",
-											{ icons::link_icon() }
-											span {
-												{ data.website.clone().unwrap_or_default() }
-											}
+								}
+								if data.website.is_some() {
+									a {
+										class: "flex items-center gap-1 text-brand hover:underline",
+										href: data.website.clone().unwrap_or_default(),
+										target: "_blank",
+										rel: "noopener noreferrer",
+										{ icons::link_icon() }
+										span {
+											{ data.website.clone().unwrap_or_default() }
 										}
 									}
 								}
 							}
+						}
+						div {
+							class: "flex gap-6 mt-4 pt-4 border-t border-border",
 							div {
-								class: "flex gap-6 mt-4 pt-4 border-t border-border",
-								div {
-									class: "flex items-center gap-1",
-									span {
-										class: "font-bold text-content-primary",
-										"0"
-									}
-									span {
-										class: "text-content-secondary text-sm",
-										"Following"
-									}
+								class: "flex items-center gap-1",
+								span {
+									class: "font-bold text-content-primary",
+									"0"
 								}
-								div {
-									class: "flex items-center gap-1",
-									span {
-										class: "font-bold text-content-primary",
-										"0"
-									}
-									span {
-										class: "text-content-secondary text-sm",
-										"Followers"
-									}
+								span {
+									class: "text-content-secondary text-sm",
+									"Following"
+								}
+							}
+							div {
+								class: "flex items-center gap-1",
+								span {
+									class: "font-bold text-content-primary",
+									"0"
+								}
+								span {
+									class: "text-content-secondary text-sm",
+									"Followers"
 								}
 							}
 						}
@@ -208,7 +194,6 @@ pub fn profile_view(user_id: Uuid) -> Page {
 		}
 	})(loading_signal, error_signal, profile_signal, user_id_str)
 }
-
 /// Profile edit component using form! macro with state management
 ///
 /// Uses the `form!` macro for:
@@ -221,113 +206,37 @@ pub fn profile_view(user_id: Uuid) -> Page {
 /// The form uses custom UnoCSS styling and card layout through page! macro,
 /// while form! handles all Signal management and form submission logic.
 pub fn profile_edit(user_id: Uuid) -> Page {
-	// Define form with state management and field definitions
-	// form! macro generates:
-	// - Signal<String> for each field with automatic two-way binding
-	// - Signal<bool> for loading state
-	// - Signal<Option<String>> for error state
-	// - Signal<bool> for success state
-	// - Accessor methods: avatar_url(), bio(), location(), website()
-	// - State accessors: loading(), error(), success()
-	// - submit() method that calls server_fn
 	let profile_form = form! {
-		name: ProfileEditForm,
-		server_fn: update_profile_form,
-
-		state: {
-			loading,
-			error,
-			success,
-		}
-
-		fields: {
-			avatar_url: UrlField {
-				label: "Avatar URL",
-				placeholder: "https://example.com/avatar.jpg",
-				wrapper: div {
-					class: "relative",
-				},
-				icon: svg {
-					class: "w-5 h-5 text-content-tertiary",
-					fill: "none",
-					stroke: "currentColor",
-					viewBox: "0 0 24 24",
-					path {
-						stroke_linecap: "round",
-						stroke_linejoin: "round",
-						stroke_width: "2",
-						d: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z",
-					},
-				},
-				icon_position: "left",
-				class: "form-input pl-10",
-			}
-			bio: TextField {
-				label: "Bio",
-				max_length: 500,
-				placeholder: "Tell the world about yourself...",
-				class: "form-textarea",
-			}
-			location: CharField {
-				label: "Location",
-				max_length: 100,
-				placeholder: "San Francisco, CA",
-				wrapper: div {
-					class: "relative",
-				},
-				icon: svg {
-					class: "w-5 h-5 text-content-tertiary",
-					fill: "none",
-					stroke: "currentColor",
-					viewBox: "0 0 24 24",
-					path {
-						stroke_linecap: "round",
-						stroke_linejoin: "round",
-						stroke_width: "2",
-						d: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z",
-					},
-					path {
-						stroke_linecap: "round",
-						stroke_linejoin: "round",
-						stroke_width: "2",
-						d: "M15 11a3 3 0 11-6 0 3 3 0 016 0z",
-					},
-				},
-				icon_position: "left",
-				class: "form-input pl-10",
-			}
-			website: UrlField {
-				label: "Website",
-				placeholder: "https://example.com",
-				wrapper: div {
-					class: "relative",
-				},
-				icon: svg {
-					class: "w-5 h-5 text-content-tertiary",
-					fill: "none",
-					stroke: "currentColor",
-					viewBox: "0 0 24 24",
-					path {
-						stroke_linecap: "round",
-						stroke_linejoin: "round",
-						stroke_width: "2",
-						d: "M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1",
-					},
-				},
-				icon_position: "left",
-				class: "form-input pl-10",
-			}
-		}
-
+		name : ProfileEditForm, server_fn : update_profile_form, state : { loading,
+		error, success }, fields : { avatar_url : UrlField { label : "Avatar URL",
+		placeholder : "https://example.com/avatar.jpg", wrapper : div { class :
+		"relative" }, icon : svg { class : "w-5 h-5 text-content-tertiary", fill :
+		"none", stroke : "currentColor", viewBox : "0 0 24 24", path { stroke_linecap :
+		"round", stroke_linejoin : "round", stroke_width : "2", d :
+		"M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+		} }, icon_position : "left", class : "form-input pl-10", }, bio : TextField {
+		label : "Bio", max_length : 500, placeholder :
+		"Tell the world about yourself...", class : "form-textarea", }, location :
+		CharField { label : "Location", max_length : 100, placeholder :
+		"San Francisco, CA", wrapper : div { class : "relative" }, icon : svg { class :
+		"w-5 h-5 text-content-tertiary", fill : "none", stroke : "currentColor", viewBox
+		: "0 0 24 24", path { stroke_linecap : "round", stroke_linejoin : "round",
+		stroke_width : "2", d :
+		"M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+		} path { stroke_linecap : "round", stroke_linejoin : "round", stroke_width : "2",
+		d : "M15 11a3 3 0 11-6 0 3 3 0 016 0z" } }, icon_position : "left", class :
+		"form-input pl-10", }, website : UrlField { label : "Website", placeholder :
+		"https://example.com", wrapper : div { class : "relative" }, icon : svg { class :
+		"w-5 h-5 text-content-tertiary", fill : "none", stroke : "currentColor", viewBox
+		: "0 0 24 24", path { stroke_linecap : "round", stroke_linejoin : "round",
+		stroke_width : "2", d :
+		"M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+		} }, icon_position : "left", class : "form-input pl-10", }, },
 	};
-
-	// Load current profile data into form fields using use_action
 	let load_profile =
 		use_action(
 			move |uid: Uuid| async move { fetch_profile(uid).await.map_err(|e| e.to_string()) },
 		);
-
-	// Bridge loaded profile data to form fields
 	{
 		let load_profile_for_effect = load_profile.clone();
 		let load_profile_dep = load_profile.clone();
@@ -349,22 +258,12 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 			(load_profile_dep,),
 		);
 	}
-
 	load_profile.dispatch(user_id);
-
-	// Clone state signals for page! macro
 	let loading_signal = profile_form.loading().clone();
 	let error_signal = profile_form.error().clone();
 	let success_signal = profile_form.success().clone();
-
-	// Convert form! to View before passing to page!
-	// into_view() consumes self, so we call it after cloning signals
 	let form_view = profile_form.into_page();
-
 	let user_id_str = user_id.to_string();
-
-	// Render custom UI using page! macro
-	// form! handles Signal management, page! handles custom layout
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, success_signal: Signal<bool>, form_view: Page, user_id_str: String| {
 		div {
 			class: "max-w-2xl mx-auto p-4",
@@ -384,32 +283,28 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 				}
 				div {
 					class: "card-body",
-					watch {
-						if success_signal.get() {
+					if success_signal.get() {
+						div {
+							class: "alert-success mb-4",
+							role: "alert",
 							div {
-								class: "alert-success mb-4",
-								role: "alert",
-								div {
-									class: "flex items-center gap-2",
-									{ icons::success_check_icon() }
-									span {
-										"Profile updated successfully! Redirecting..."
-									}
+								class: "flex items-center gap-2",
+								{ icons::success_check_icon() }
+								span {
+									"Profile updated successfully! Redirecting..."
 								}
 							}
 						}
 					}
-					watch {
-						if error_signal.get().is_some() {
+					if error_signal.get().is_some() {
+						div {
+							class: "alert-danger mb-4",
+							role: "alert",
 							div {
-								class: "alert-danger mb-4",
-								role: "alert",
-								div {
-									class: "flex items-center gap-2",
-									{ icons::error_circle_icon() }
-									span {
-										{ error_signal.get().unwrap_or_default() }
-									}
+								class: "flex items-center gap-2",
+								{ icons::error_circle_icon() }
+								span {
+									{ error_signal.get().unwrap_or_default() }
 								}
 							}
 						}
@@ -422,28 +317,26 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 							class: "btn-secondary",
 							"Cancel"
 						}
-						watch {
-							if loading_signal.get() {
-								button {
-									type: "submit",
-									class: "btn-primary opacity-50 cursor-not-allowed",
-									disabled: loading_signal.get(),
-									form: "profile-edit-form",
+						if loading_signal.get() {
+							button {
+								type: "submit",
+								class: "btn-primary opacity-50 cursor-not-allowed",
+								disabled: loading_signal.get(),
+								form: "profile-edit-form",
+								div {
+									class: "flex items-center gap-2",
 									div {
-										class: "flex items-center gap-2",
-										div {
-											class: "spinner-sm border-white border-t-transparent",
-										}
-										"Saving..."
+										class: "spinner-sm border-white border-t-transparent",
 									}
+									"Saving..."
 								}
-							} else {
-								button {
-									type: "submit",
-									class: "btn-primary",
-									form: "profile-edit-form",
-									"Save"
-								}
+							}
+						} else {
+							button {
+								type: "submit",
+								class: "btn-primary",
+								form: "profile-edit-form",
+								"Save"
 							}
 						}
 					}
