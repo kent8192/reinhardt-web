@@ -349,14 +349,20 @@ mod wasm {
         ) -> impl Iterator<Item = Node<'tree>> + 'a {
             cursor.reset(self.clone());
             cursor.goto_first_child();
+            let mut done = false;
             std::iter::from_fn(move || {
+                if done {
+                    return None;
+                }
                 while cursor.field_id() != Some(field_id) {
                     if !cursor.goto_next_sibling() {
                         return None;
                     }
                 }
                 let result = cursor.node();
-                cursor.goto_next_sibling();
+                if !cursor.goto_next_sibling() {
+                    done = true;
+                }
                 Some(result)
             })
         }
@@ -368,14 +374,20 @@ mod wasm {
         ) -> impl Iterator<Item = Node<'tree>> + 'a {
             cursor.reset(self.clone());
             cursor.goto_first_child();
+            let mut done = false;
             std::iter::from_fn(move || {
+                if done {
+                    return None;
+                }
                 while cursor.field_name() != Some(field_name.into()) {
                     if !cursor.goto_next_sibling() {
                         return None;
                     }
                 }
                 let result = cursor.node();
-                cursor.goto_next_sibling();
+                if !cursor.goto_next_sibling() {
+                    done = true;
+                }
                 Some(result)
             })
         }
