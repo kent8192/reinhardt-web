@@ -572,7 +572,19 @@ async fn workspace_app_pages_uses_unified_template() {
 		"workspace client_router.rs must import InstalledApp from project crate:\n{client_router}"
 	);
 
-	// 6. Cargo.toml is valid and references src/lib.rs
+	// 6. client/pages.rs imports with_nav from project crate, not crate::
+	let pages_rs =
+		fs::read_to_string(src.join("client").join("pages.rs")).expect("read client/pages.rs");
+	assert!(
+		!pages_rs.contains("use crate::client::components::nav::with_nav"),
+		"workspace client/pages.rs must NOT use crate:: for with_nav import:\n{pages_rs}"
+	);
+	assert!(
+		pages_rs.contains("::client::components::nav::with_nav"),
+		"workspace client/pages.rs must import with_nav from project crate:\n{pages_rs}"
+	);
+
+	// 8. Cargo.toml is valid and references src/lib.rs
 	let cargo_content =
 		fs::read_to_string(app_dir.join("Cargo.toml")).expect("read app Cargo.toml");
 	assert!(
@@ -584,7 +596,7 @@ async fn workspace_app_pages_uses_unified_template() {
 		"app Cargo.toml must reference src/lib.rs:\n{cargo_content}"
 	);
 
-	// 7. Workspace Cargo.toml has the new member registered
+	// 9. Workspace Cargo.toml has the new member registered
 	let root_cargo = fs::read_to_string(&cargo_toml).expect("read root Cargo.toml");
 	assert!(
 		root_cargo.contains("apps/bar"),
