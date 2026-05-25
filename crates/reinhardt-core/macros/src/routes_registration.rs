@@ -179,11 +179,17 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 	};
 
+	// WASM-only cfg gate for the client-side ClientRouterRegistration submit.
+	let wasm_only = quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+	};
+
+	let reinhardt_urls = crate::crate_paths::get_reinhardt_urls_crate();
+
 	let expanded = if !is_async {
 		// Case 1: Sync, no #[inject]
 		let fn_sig = &input.sig;
 		quote! {
-			#native_only
 			#[allow(private_interfaces)]
 			#(#fn_attrs)*
 			#fn_vis #fn_sig #fn_block
@@ -209,6 +215,21 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			// non_upper_case_globals: Intentionally lowercase for linker symbol
 			// dead_code: Symbol is never directly used, only exists for linker validation
 			static __reinhardt_routes_registration_marker: () = ();
+
+			// WASM: submit ClientRouterRegistration so inventory-based
+			// route discovery works on wasm32-unknown-unknown (Refs #4853).
+			#wasm_only
+			#[allow(unsafe_attr_outside_unsafe)]
+			const _: () = {
+				fn __get_client_router() -> ::std::sync::Arc<#reinhardt_urls::routers::ClientRouter> {
+					let unified = #fn_name();
+					::std::sync::Arc::new(unified.into_client())
+				}
+
+				#reinhardt_urls::inventory::submit! {
+					#reinhardt_urls::routers::ClientRouterRegistration::__macro_new(__get_client_router)
+				}
+			};
 		}
 	} else if !has_inject {
 		// Case 2: Async, no #[inject]
