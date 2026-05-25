@@ -60,6 +60,7 @@ static bool scan_line_comment_after_slash(TSLexer *lexer) {
 }
 
 static bool scan_block_comment_after_slash(TSLexer *lexer) {
+	lexer->advance(lexer, false);
 	bool saw_star = false;
 	while (lexer->lookahead != 0) {
 		int32_t curr = lexer->lookahead;
