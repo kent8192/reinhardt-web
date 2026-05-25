@@ -19,11 +19,3 @@ pub use reinhardt_auth::{
     UpdateUserData, UserManagementError, UserManagementResult, UserManager,
 };
 
-// Sessions
-#[cfg(feature = "sessions")]
-pub use reinhardt_auth::sessions::{
-    CacheSessionBackend, InMemorySessionBackend, Session, SessionBackend, SessionError,
-};
-
-#[cfg(all(feature = "sessions", feature = "middleware"))]
-pub use reinhardt_auth::sessions::{HttpSessionConfig, SameSite, SessionMiddleware};
