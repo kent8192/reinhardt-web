@@ -295,7 +295,8 @@ use thiserror::Error;
 
 pub use context::{InjectionContext, InjectionContextBuilder, RequestContext};
 pub use cycle_detection::{
-	CycleError, ResolutionGuard, begin_resolution, register_type_name, with_cycle_detection_scope,
+	CycleError, ResolutionGuard, begin_resolution, begin_scoped_resolution,
+	current_dependent_scope, register_type_name, with_cycle_detection_scope,
 };
 pub use function_handle::FunctionHandle;
 pub use override_registry::OverrideRegistry;

@@ -74,6 +74,10 @@ proptest = { workspace = true }
 rstest = { workspace = true }
 trybuild = { workspace = true }
 criterion = { workspace = true, features = ["async_tokio"] }
+[[test]]
+name = "scope_hierarchy_tests"
+required-features = ["testing"]
+
 [[bench]]
 name = "cache_performance"
 harness = false
