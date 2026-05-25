@@ -134,8 +134,10 @@ mod wasm {
 
         #[inline]
         pub fn capture_names(&self) -> Vec<&str> {
-            // The Wasm code does not use this when looking up
-            // QueryCapture::name, the way the native code needs to.
+            // In the wasm path, QueryCapture exposes a .name() getter
+            // directly, so this method is not needed for name lookup.
+            // The native path uses capture_names() for index-based lookup,
+            // but the wasm QueryCapture already stores the name string.
             vec![]
         }
 

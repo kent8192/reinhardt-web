@@ -159,6 +159,8 @@ mod wasm {
         options: topiary_web_tree_sitter_sys::ParseOptions,
     }
 
+    // SAFETY: wasm32 environments using this facade are single-threaded
+    // (no SharedArrayBuffer). This would be unsound with wasm threads enabled.
     unsafe impl Send for Parser {}
 
     impl Parser {

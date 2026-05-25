@@ -150,8 +150,11 @@ mod wasm {
 
     impl std::panic::RefUnwindSafe for Range {}
 
+    // SAFETY: wasm32 environments using this facade are single-threaded
+    // (no SharedArrayBuffer). This would be unsound with wasm threads enabled.
     unsafe impl Send for Range {}
 
+    // SAFETY: see Send impl above.
     unsafe impl Sync for Range {}
 
     impl Unpin for Range {}
