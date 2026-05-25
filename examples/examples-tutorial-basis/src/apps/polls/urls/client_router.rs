@@ -1,10 +1,8 @@
 //! Client-side routing for the polls SPA.
 //!
-//! The router is auto-registered via inventory and applies the `polls`
-//! namespace to every named route (so the route name passed to `route`
-//! is reachable as `polls:<name>` through `ResolvedUrls`). Each route is
-//! registered with a stable name so that page components can resolve URLs
-//! through `ResolvedUrls::resolve_client_url(...)` instead of formatting
+//! The router applies the `polls` namespace to every named route.
+//! Each route is registered with a stable name so that page components
+//! can resolve URLs through the URL reverser instead of formatting
 //! path strings inline.
 
 use reinhardt::ClientPath;

@@ -11,9 +11,7 @@
 //! same running server.
 //!
 //! This app is REST-only — it has no client (WASM SPA) or WebSocket
-//! surface, so the routes macro is invoked in
-//! `examples/examples-tutorial-rest/src/config/urls.rs` with
-//! `#[routes(server_only)]` (Issue #4509).
+//! surface.
 
 use reinhardt::ServerRouter;
 

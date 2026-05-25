@@ -1,4 +1,4 @@
-error: unknown argument for #[routes]; expected `standalone`, `client_inventory`, `server_only`, `no_client_resolvers`, `no_ws_resolvers`, or no arguments
+error: The #[routes] macro no longer accepts arguments. The flags `standalone`, `client_inventory`, `server_only`, `no_client_resolvers`, and `no_ws_resolvers` have been removed as part of the URL routing simplification (Issue #4784).
  --> tests/ui/routes_registration/fail/unknown_argument.rs:3:10
   |
 3 | #[routes(foobar)]

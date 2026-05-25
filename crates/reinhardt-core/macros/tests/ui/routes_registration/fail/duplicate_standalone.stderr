@@ -1,5 +1,0 @@
-error: `standalone` specified twice
- --> tests/ui/routes_registration/fail/duplicate_standalone.rs:8:22
-  |
-8 | #[routes(standalone, standalone)]
-  |                      ^^^^^^^^^^

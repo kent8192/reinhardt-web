@@ -6,7 +6,6 @@
 //! - Class-based views
 //! - Authentication and permissions
 //! - ViewSets and routers
-//! - Typed `ResolvedUrls` accessors (see [`urls_demo`])
 
 // The `#[reinhardt::viewset]` attribute in `apps/snippets/views.rs` expands
 // into a `macro_rules!` definition that is then referenced through the
@@ -23,4 +22,3 @@
 
 pub mod apps;
 pub mod config;
-pub mod urls_demo;

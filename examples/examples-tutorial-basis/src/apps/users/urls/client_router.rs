@@ -1,8 +1,7 @@
 //! Client-side routing for the users application (login/logout pages).
 //!
 //! Each route is registered with a stable name (`users:login`,
-//! `users:logout`) so callers can resolve URLs via
-//! `ResolvedUrls::resolve_client_url(...)`.
+//! `users:logout`) so callers can resolve URLs via the URL reverser.
 
 use reinhardt::ClientRouter;
 
