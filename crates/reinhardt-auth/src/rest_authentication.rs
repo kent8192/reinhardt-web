@@ -190,7 +190,10 @@ impl AuthBackend for CompositeAuthentication {
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Try each backend in order until one succeeds, collecting errors
 		let mut errors: Vec<AuthenticationError> = Vec::new();
 
@@ -340,7 +343,10 @@ impl AuthBackend for TokenAuthentication {
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		if self.tokens.values().any(|id| id == user_id) {
 			// Try to parse user_id as UUID, or generate a new one if it fails
 			let id = uuid::Uuid::parse_str(user_id).unwrap_or_else(|_| {
@@ -426,7 +432,10 @@ impl AuthBackend for RemoteUserAuthentication {
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		_user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		Ok(None)
 	}
 }
@@ -554,7 +563,10 @@ impl<B: SessionBackend> AuthBackend for SessionAuthentication<B> {
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		_user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Session-based user retrieval by ID is not supported without a
 		// concrete user model. Applications should provide their own
 		// AuthBackend implementation that queries the database with their
@@ -625,8 +637,7 @@ mod tests {
 			.unwrap();
 		let user = result.expect("token authentication should succeed");
 		assert!(user.is_authenticated());
-		let expected_id =
-			uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"alice").to_string();
+		let expected_id = uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"alice").to_string();
 		assert_eq!(user.id(), expected_id);
 	}
 
@@ -650,8 +661,7 @@ mod tests {
 			.unwrap();
 		let user = result.expect("remote user authentication should succeed");
 		assert!(user.is_authenticated());
-		let expected_id =
-			uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"bob").to_string();
+		let expected_id = uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"bob").to_string();
 		assert_eq!(user.id(), expected_id);
 	}
 
@@ -903,8 +913,7 @@ mod tests {
 			.unwrap();
 		let user = result.expect("custom token authentication should succeed");
 		assert!(user.is_authenticated());
-		let expected_id =
-			uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"charlie").to_string();
+		let expected_id = uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"charlie").to_string();
 		assert_eq!(user.id(), expected_id);
 	}
 

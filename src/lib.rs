@@ -454,9 +454,8 @@ pub use reinhardt_macros::admin;
 // Re-export settings from dedicated crate
 #[cfg(all(feature = "conf", native))]
 pub use reinhardt_conf::settings::{
-	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
-	MediaSettings, MiddlewareConfig, SessionSettings, SettingsError, StaticSettings,
-	TemplateConfig,
+	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings, MediaSettings,
+	MiddlewareConfig, SessionSettings, SettingsError, StaticSettings, TemplateConfig,
 };
 
 #[cfg(all(feature = "conf", native))]
@@ -859,12 +858,6 @@ pub use reinhardt_urls::routers::ClientUrlResolver;
 pub use reinhardt_urls::routers::resolver::UrlResolver;
 // Deprecated namespace-aware helper trait used by the legacy flat
 // `#[viewset]` accessors. Refs #4507.
-#[cfg(native)]
-#[allow(
-	deprecated,
-	reason = "re-export deprecated helper trait during the deprecation cycle"
-)]
-pub use reinhardt_urls::routers::resolver::UrlResolverUnprefixed;
 #[cfg(native)]
 pub use reinhardt_urls::routers::resolver::WebSocketUrlResolver;
 

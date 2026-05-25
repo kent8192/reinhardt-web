@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use reinhardt_apps::{Handler, Request, Response, Result};
 use reinhardt_auth::session::InMemorySessionStore;
 use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
-use reinhardt_auth::internal_user::InternalUser;
 use reinhardt_middleware::AuthenticationMiddleware;
 use reinhardt_middleware::csrf::{CsrfMiddleware, CsrfMiddlewareConfig};
 use reinhardt_core::security::csrf::{CsrfMeta, check_token, get_secret};
@@ -269,10 +268,32 @@ pub fn get_csrf_token_for_testing(state: &AppState) -> Option<String> {
 	})
 }
 
+/// Local test user implementing `AuthIdentity` for flatpages integration tests.
+/// Replaces `InternalUser` which is now `pub(crate)` in `reinhardt-auth`.
+#[derive(Debug, Clone)]
+struct FlatpagesTestUser {
+	id: Uuid,
+	is_admin: bool,
+}
+
+impl AuthIdentity for FlatpagesTestUser {
+	fn id(&self) -> String {
+		self.id.to_string()
+	}
+
+	fn is_authenticated(&self) -> bool {
+		true
+	}
+
+	fn is_admin(&self) -> bool {
+		self.is_admin
+	}
+}
+
 /// Authentication backend for integration tests
 struct TestAuthBackend {
 	authenticated: bool,
-	test_user: Option<InternalUser>,
+	test_user: Option<FlatpagesTestUser>,
 }
 
 #[async_trait]
@@ -285,14 +306,9 @@ impl AuthBackend for TestAuthBackend {
 			if let Some(user) = &self.test_user {
 				Ok(Some(Box::new(user.clone())))
 			} else {
-				Ok(Some(Box::new(InternalUser {
+				Ok(Some(Box::new(FlatpagesTestUser {
 					id: Uuid::now_v7(),
-					username: "testuser".to_string(),
-					email: "test@example.com".to_string(),
-					is_active: true,
 					is_admin: false,
-					is_staff: false,
-					is_superuser: false,
 				})))
 			}
 		} else {
@@ -308,14 +324,9 @@ impl AuthBackend for TestAuthBackend {
 			if let Some(user) = &self.test_user {
 				Ok(Some(Box::new(user.clone())))
 			} else {
-				Ok(Some(Box::new(InternalUser {
+				Ok(Some(Box::new(FlatpagesTestUser {
 					id: Uuid::now_v7(),
-					username: "testuser".to_string(),
-					email: "test@example.com".to_string(),
-					is_active: true,
 					is_admin: false,
-					is_staff: false,
-					is_superuser: false,
 				})))
 			}
 		} else {

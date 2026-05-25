@@ -36,9 +36,17 @@ use reinhardt_auth::{AuthBackend, AuthIdentity};
 /// use reinhardt_http::MiddlewareChain;
 /// # use reinhardt_http::{Handler, {Request, Response, Result}};
 /// # use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
-/// # use reinhardt_auth::internal_user::InternalUser;
 /// # use async_trait::async_trait;
 /// # use uuid::Uuid;
+/// #
+/// # // Local test user implementing AuthIdentity for doc example
+/// # #[derive(Clone)]
+/// # struct TestUser { id: Uuid, is_admin: bool }
+/// # impl AuthIdentity for TestUser {
+/// #     fn id(&self) -> String { self.id.to_string() }
+/// #     fn is_authenticated(&self) -> bool { true }
+/// #     fn is_admin(&self) -> bool { self.is_admin }
+/// # }
 /// #
 /// # struct MyHandler;
 /// # #[async_trait]
@@ -53,15 +61,7 @@ use reinhardt_auth::{AuthBackend, AuthIdentity};
 /// # #[async_trait]
 /// # impl AuthBackend for TestAuthBackend {
 /// #     async fn authenticate(&self, _request: &Request) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
-/// #         Ok(Some(Box::new(InternalUser {
-/// #             id: Uuid::now_v7(),
-/// #             username: "testuser".to_string(),
-/// #             email: "test@example.com".to_string(),
-/// #             is_active: true,
-/// #             is_admin: false,
-/// #             is_staff: false,
-/// #             is_superuser: false,
-/// #         })))
+/// #         Ok(Some(Box::new(TestUser { id: Uuid::now_v7(), is_admin: false })))
 /// #     }
 /// #     async fn get_user(&self, _user_id: &str) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 /// #         Ok(None)
@@ -129,23 +129,23 @@ impl<S: SessionStore, A: AuthBackend> AuthenticationMiddleware<S, A> {
 	/// use reinhardt_auth::session::InMemorySessionStore;
 	/// # use reinhardt_http::Request;
 	/// # use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
-	/// # use reinhardt_auth::internal_user::InternalUser;
 	/// # use uuid::Uuid;
+	/// #
+	/// # // Local test user implementing AuthIdentity for doc example
+	/// # #[derive(Clone)]
+	/// # struct TestUser { id: Uuid, is_admin: bool }
+	/// # impl AuthIdentity for TestUser {
+	/// #     fn id(&self) -> String { self.id.to_string() }
+	/// #     fn is_authenticated(&self) -> bool { true }
+	/// #     fn is_admin(&self) -> bool { self.is_admin }
+	/// # }
 	/// #
 	/// # // Simple test authentication backend
 	/// # struct TestAuthBackend;
 	/// # #[async_trait::async_trait]
 	/// # impl AuthBackend for TestAuthBackend {
 	/// #     async fn authenticate(&self, _request: &Request) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
-	/// #         Ok(Some(Box::new(InternalUser {
-	/// #             id: Uuid::now_v7(),
-	/// #             username: "testuser".to_string(),
-	/// #             email: "test@example.com".to_string(),
-	/// #             is_active: true,
-	/// #             is_admin: false,
-	/// #             is_staff: false,
-	/// #             is_superuser: false,
-	/// #         })))
+	/// #         Ok(Some(Box::new(TestUser { id: Uuid::now_v7(), is_admin: false })))
 	/// #     }
 	/// #     async fn get_user(&self, _user_id: &str) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 	/// #         Ok(None)
@@ -199,10 +199,7 @@ impl<S: SessionStore, A: AuthBackend> AuthenticationMiddleware<S, A> {
 	}
 
 	/// Get user from session
-	async fn get_user_from_session(
-		&self,
-		session_id: &String,
-	) -> Option<Box<dyn AuthIdentity>> {
+	async fn get_user_from_session(&self, session_id: &String) -> Option<Box<dyn AuthIdentity>> {
 		if let Some(session) = self.session_store.load(session_id).await
 			&& let Some(user_id_value) = session.get(SESSION_KEY_USER_ID)
 			&& let Some(user_id) = user_id_value.as_str()
@@ -263,9 +260,30 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_auth::AuthenticationError;
-	use reinhardt_auth::internal_user::InternalUser;
 	use reinhardt_auth::session::{InMemorySessionStore, Session};
 	use uuid::Uuid;
+
+	/// Local test user implementing `AuthIdentity` for middleware tests.
+	/// Replaces `InternalUser` which is now `pub(crate)` in `reinhardt-auth`.
+	#[derive(Debug, Clone)]
+	struct TestUser {
+		id: Uuid,
+		is_admin: bool,
+	}
+
+	impl AuthIdentity for TestUser {
+		fn id(&self) -> String {
+			self.id.to_string()
+		}
+
+		fn is_authenticated(&self) -> bool {
+			true
+		}
+
+		fn is_admin(&self) -> bool {
+			self.is_admin
+		}
+	}
 
 	struct TestHandler;
 
@@ -287,7 +305,7 @@ mod tests {
 	}
 
 	struct TestAuthBackend {
-		user: Option<InternalUser>,
+		user: Option<TestUser>,
 	}
 
 	#[async_trait::async_trait]
@@ -316,14 +334,9 @@ mod tests {
 	#[tokio::test]
 	async fn test_auth_middleware_with_valid_session() {
 		let session_store = Arc::new(InMemorySessionStore::new());
-		let user = InternalUser {
+		let user = TestUser {
 			id: Uuid::now_v7(),
-			username: "testuser".to_string(),
-			email: "test@example.com".to_string(),
-			is_active: true,
 			is_admin: false,
-			is_staff: false,
-			is_superuser: false,
 		};
 		let auth_backend = Arc::new(TestAuthBackend { user: Some(user) });
 

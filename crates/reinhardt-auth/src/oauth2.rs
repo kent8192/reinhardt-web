@@ -399,7 +399,10 @@ impl AuthBackend for OAuth2Authentication {
 		Ok(None)
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		self.user_repository
 			.get_user_by_id(user_id)
 			.await
@@ -618,7 +621,10 @@ mod tests {
 
 		#[async_trait]
 		impl UserRepository for MockUserRepository {
-			async fn get_user_by_id(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, String> {
+			async fn get_user_by_id(
+				&self,
+				user_id: &str,
+			) -> Result<Option<Box<dyn AuthIdentity>>, String> {
 				if user_id == "mock_user" {
 					Ok(Some(Box::new(InternalUser {
 						id: Uuid::from_u128(999),
@@ -660,7 +666,10 @@ mod tests {
 
 		#[async_trait]
 		impl UserRepository for CustomRepository {
-			async fn get_user_by_id(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, String> {
+			async fn get_user_by_id(
+				&self,
+				user_id: &str,
+			) -> Result<Option<Box<dyn AuthIdentity>>, String> {
 				Ok(Some(Box::new(InternalUser {
 					id: Uuid::from_u128(777),
 					username: format!("custom_{}", user_id),

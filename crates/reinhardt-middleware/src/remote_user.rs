@@ -263,10 +263,31 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_auth::AuthenticationError;
-	use reinhardt_auth::internal_user::InternalUser;
 	use reinhardt_http::{AuthState, Handler, Middleware, Request, Response};
 	use rstest::rstest;
 	use uuid::Uuid;
+
+	/// Local test user implementing `AuthIdentity` for remote user middleware tests.
+	/// Replaces `InternalUser` which is now `pub(crate)` in `reinhardt-auth`.
+	#[derive(Debug, Clone)]
+	struct TestUser {
+		id: Uuid,
+		is_admin: bool,
+	}
+
+	impl AuthIdentity for TestUser {
+		fn id(&self) -> String {
+			self.id.to_string()
+		}
+
+		fn is_authenticated(&self) -> bool {
+			true
+		}
+
+		fn is_admin(&self) -> bool {
+			self.is_admin
+		}
+	}
 
 	struct TestHandler;
 
@@ -282,7 +303,7 @@ mod tests {
 	}
 
 	struct TestAuthBackend {
-		user: Option<InternalUser>,
+		user: Option<TestUser>,
 	}
 
 	#[async_trait::async_trait]
@@ -308,15 +329,10 @@ mod tests {
 		}
 	}
 
-	fn test_user() -> InternalUser {
-		InternalUser {
+	fn test_user() -> TestUser {
+		TestUser {
 			id: Uuid::now_v7(),
-			username: "proxy-user".to_string(),
-			email: "proxy@example.com".to_string(),
-			is_active: true,
 			is_admin: false,
-			is_staff: false,
-			is_superuser: false,
 		}
 	}
 

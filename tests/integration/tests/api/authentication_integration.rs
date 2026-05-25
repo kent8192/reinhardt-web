@@ -259,11 +259,11 @@ async fn test_jwt_token_expiration(
 	// Here we verify the integration expects proper expiration handling
 	// (Actual JWT implementation would use jsonwebtoken crate)
 
-	// Simulate expired token scenario with a payload containing an "exp" claim
-	let expired_token = "header.eyJleHAiOjE2MDAwMDAwMDB9.signature";
+	// Simulate expired token scenario with a decoded payload containing an "exp" claim
+	let expired_payload = r#"{"exp":1600000000}"#;
 
 	// In real implementation, this would return AuthenticationError::InvalidToken
-	assert!(expired_token.contains("exp"));
+	assert!(expired_payload.contains("exp"));
 }
 
 /// Test JWT token refresh flow

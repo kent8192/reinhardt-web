@@ -28,7 +28,7 @@ pub struct ObjectPermission {
 	permission: String,
 	/// Optional object identifier (e.g., "article:123")
 	object_id: Option<String>,
-	/// Granted permissions: (username, object_id) -> set of permission names
+	/// Granted permissions: (user_id, object_id) -> set of permission names
 	grants: HashMap<(String, String), HashSet<String>>,
 }
 
@@ -74,11 +74,11 @@ impl ObjectPermission {
 	/// ```
 	pub fn grant(
 		&mut self,
-		username: impl Into<String>,
+		user_id: impl Into<String>,
 		permission: impl Into<String>,
 		object_id: impl Into<String>,
 	) {
-		let key = (username.into(), object_id.into());
+		let key = (user_id.into(), object_id.into());
 		self.grants
 			.entry(key)
 			.or_default()
@@ -88,12 +88,12 @@ impl ObjectPermission {
 	/// Check if a user has a specific permission on a specific object
 	pub fn user_has_object_permission(
 		&self,
-		username: &str,
+		user_id: &str,
 		permission: &str,
 		object_id: &str,
 	) -> bool {
 		self.grants
-			.get(&(username.to_string(), object_id.to_string()))
+			.get(&(user_id.to_string(), object_id.to_string()))
 			.is_some_and(|perms| perms.contains(permission))
 	}
 }
@@ -145,7 +145,7 @@ impl Permission for ObjectPermission {
 pub struct RoleBasedPermission {
 	/// Roles mapped to their permissions
 	roles: HashMap<String, Vec<String>>,
-	/// User role mapping (username -> role)
+	/// User role mapping (user_id -> role)
 	user_roles: HashMap<String, String>,
 	/// Required permission for the Permission trait check (optional)
 	required_permission: Option<String>,
@@ -219,8 +219,8 @@ impl RoleBasedPermission {
 	/// perm.add_role("user", vec!["read"]);
 	/// perm.assign_user_role("alice", "user");
 	/// ```
-	pub fn assign_user_role(&mut self, username: impl Into<String>, role: impl Into<String>) {
-		self.user_roles.insert(username.into(), role.into());
+	pub fn assign_user_role(&mut self, user_id: impl Into<String>, role: impl Into<String>) {
+		self.user_roles.insert(user_id.into(), role.into());
 	}
 
 	/// Check if user has specific permission
@@ -238,8 +238,8 @@ impl RoleBasedPermission {
 	/// assert!(perm.user_has_permission("bob", "write"));
 	/// assert!(!perm.user_has_permission("bob", "delete"));
 	/// ```
-	pub fn user_has_permission(&self, username: &str, permission: &str) -> bool {
-		if let Some(role) = self.user_roles.get(username)
+	pub fn user_has_permission(&self, user_id: &str, permission: &str) -> bool {
+		if let Some(role) = self.user_roles.get(user_id)
 			&& let Some(perms) = self.roles.get(role)
 		{
 			return perms.iter().any(|p| p == permission);

@@ -221,7 +221,10 @@ impl<H: PasswordHasher> UserManager<H> {
 	///     assert_eq!(user.username, "bob");
 	/// }
 	/// ```
-	pub async fn create_user(&mut self, data: CreateUserData) -> UserManagementResult<InternalUser> {
+	pub async fn create_user(
+		&mut self,
+		data: CreateUserData,
+	) -> UserManagementResult<InternalUser> {
 		// Validate username
 		if data.username.is_empty() || data.username.len() < 3 {
 			return Err(UserManagementError::InvalidUsername);

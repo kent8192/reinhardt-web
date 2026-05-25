@@ -14,7 +14,6 @@
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, Version};
 use reinhardt_auth::sessions::{Session, backends::InMemorySessionBackend};
-use reinhardt_auth::internal_user::InternalUser;
 use reinhardt_auth::{
 	AuthBackend, AuthIdentity, AuthenticationError, CompositeAuthentication, RestAuthentication,
 	SessionAuthentication, TokenAuthentication,
@@ -30,6 +29,32 @@ use ::testcontainers::{ContainerAsync, GenericImage};
 
 use chrono::Duration;
 use reinhardt_auth::{Claims, JwtAuth};
+
+// ============================================================================
+// Local Test User
+// ============================================================================
+
+/// Local test user implementing `AuthIdentity` for database integration tests.
+/// Replaces `InternalUser` which is now `pub(crate)` in `reinhardt-auth`.
+#[derive(Debug, Clone)]
+struct TestUser {
+	id: Uuid,
+	is_admin: bool,
+}
+
+impl AuthIdentity for TestUser {
+	fn id(&self) -> String {
+		self.id.to_string()
+	}
+
+	fn is_authenticated(&self) -> bool {
+		true
+	}
+
+	fn is_admin(&self) -> bool {
+		self.is_admin
+	}
+}
 
 // ============================================================================
 // Helper Functions
@@ -888,15 +913,10 @@ impl AuthBackend for DatabaseAuthBackend {
 		.map_err(|e| AuthenticationError::DatabaseError(e.to_string()))?;
 
 		Ok(
-			result.map(|(id, username, email, is_active, is_staff, is_superuser)| {
-				Box::new(InternalUser {
+			result.map(|(id, _username, _email, _is_active, is_staff, _is_superuser)| {
+				Box::new(TestUser {
 					id,
-					username,
-					email,
-					is_active,
 					is_admin: is_staff,
-					is_staff,
-					is_superuser,
 				}) as Box<dyn AuthIdentity>
 			}),
 		)

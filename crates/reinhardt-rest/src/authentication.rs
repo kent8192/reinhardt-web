@@ -4,8 +4,8 @@
 
 // Re-export core authentication types from reinhardt-auth
 pub use reinhardt_auth::{
-	AllowAny, AuthBackend, AuthIdentity, IsAdminUser, IsAuthenticated,
-	IsAuthenticatedOrReadOnly, Permission,
+	AllowAny, AuthBackend, AuthIdentity, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly,
+	Permission,
 };
 
 // Re-export JWT types conditionally from reinhardt-auth

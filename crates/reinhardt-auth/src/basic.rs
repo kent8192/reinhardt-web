@@ -5,8 +5,8 @@
 //!
 //! Implements [`AuthBackend`] returning [`AuthIdentity`] trait objects.
 
-use crate::core::hasher::PasswordHasher;
 use crate::core::AuthIdentity;
+use crate::core::hasher::PasswordHasher;
 use crate::internal_user::InternalUser;
 use crate::rest_authentication::RestAuthentication;
 use crate::{AuthBackend, AuthenticationError};
@@ -202,7 +202,10 @@ impl AuthBackend for BasicAuthentication {
 		Ok(None)
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		if self.users.contains_key(user_id) {
 			Ok(Some(Box::new(InternalUser {
 				id: Uuid::new_v5(&crate::USER_ID_NAMESPACE, user_id.as_bytes()),
@@ -262,9 +265,7 @@ mod tests {
 		let request = create_request_with_auth(auth);
 
 		// Act
-		let result = AuthBackend::authenticate(&backend, &request)
-			.await
-			.unwrap();
+		let result = AuthBackend::authenticate(&backend, &request).await.unwrap();
 
 		// Assert
 		let user = result.expect("authentication should succeed");
@@ -304,9 +305,7 @@ mod tests {
 			.unwrap();
 
 		// Act
-		let result = AuthBackend::authenticate(&backend, &request)
-			.await
-			.unwrap();
+		let result = AuthBackend::authenticate(&backend, &request).await.unwrap();
 
 		// Assert
 		assert!(result.is_none());

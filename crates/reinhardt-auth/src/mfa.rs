@@ -201,7 +201,10 @@ impl AuthBackend for MFAAuthentication {
 		}
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Check if user exists in our secrets store
 		let secrets = self.secrets.lock().await;
 		if secrets.contains_key(user_id) {

@@ -372,7 +372,10 @@ impl AuthBackend for JwtAuth {
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		_user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// JWT authentication doesn't support get_user by ID
 		// It only authenticates via token validation
 		// Return None to indicate this backend doesn't support user retrieval

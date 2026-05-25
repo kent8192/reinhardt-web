@@ -425,7 +425,9 @@ mod tests {
 			.grant_permission(&user_id, "article:123", "change")
 			.await;
 
-		manager.revoke_all_permissions(&user_id, "article:123").await;
+		manager
+			.revoke_all_permissions(&user_id, "article:123")
+			.await;
 
 		assert!(
 			!manager

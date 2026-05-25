@@ -2,9 +2,6 @@
 //!
 //! Provides permissions based on model-level operations with Django-style permission checking.
 
-// This module uses the deprecated User trait for backward compatibility.
-// DjangoModelPermissions reads username from Box<dyn User> in PermissionContext.
-#![allow(deprecated)]
 use crate::{Permission, PermissionContext};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -49,7 +46,7 @@ type PermissionMap = Arc<RwLock<HashMap<String, Vec<String>>>>;
 /// }
 /// ```
 pub struct DjangoModelPermissions {
-	/// User permissions map (username -> list of permissions)
+	/// User permissions map (user_id -> list of permissions)
 	user_permissions: PermissionMap,
 	/// Model name in `app_label.model` format (e.g., "blog.article")
 	/// Used to derive required permissions from HTTP methods.
@@ -165,13 +162,13 @@ impl DjangoModelPermissions {
 	/// perm.add_user_permission("alice", "blog.add_article");
 	/// perm.add_user_permission("bob", "blog.view_article");
 	/// ```
-	pub fn add_user_permission(&mut self, username: &str, permission: &str) {
+	pub fn add_user_permission(&mut self, user_id: &str, permission: &str) {
 		let user_perms = Arc::clone(&self.user_permissions);
 		tokio::task::block_in_place(|| {
 			tokio::runtime::Handle::current().block_on(async {
 				let mut perms = user_perms.write().await;
 				perms
-					.entry(username.to_string())
+					.entry(user_id.to_string())
 					.or_default()
 					.push(permission.to_string());
 			})
@@ -194,9 +191,9 @@ impl DjangoModelPermissions {
 	///     assert!(!perm.user_has_permission("alice", "blog.delete_article").await);
 	/// }
 	/// ```
-	pub async fn user_has_permission(&self, username: &str, permission: &str) -> bool {
+	pub async fn user_has_permission(&self, user_id: &str, permission: &str) -> bool {
 		let perms = self.user_permissions.read().await;
-		if let Some(user_perms) = perms.get(username) {
+		if let Some(user_perms) = perms.get(user_id) {
 			return user_perms.iter().any(|p| p == permission);
 		}
 		false
@@ -313,13 +310,13 @@ impl DjangoModelPermissionsOrAnonReadOnly {
 	}
 
 	/// Add permission to user
-	pub fn add_user_permission(&mut self, username: &str, permission: &str) {
-		self.base.add_user_permission(username, permission);
+	pub fn add_user_permission(&mut self, user_id: &str, permission: &str) {
+		self.base.add_user_permission(user_id, permission);
 	}
 
 	/// Check if user has specific permission
-	pub async fn user_has_permission(&self, username: &str, permission: &str) -> bool {
-		self.base.user_has_permission(username, permission).await
+	pub async fn user_has_permission(&self, user_id: &str, permission: &str) -> bool {
+		self.base.user_has_permission(user_id, permission).await
 	}
 }
 

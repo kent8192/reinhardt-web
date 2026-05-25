@@ -132,7 +132,10 @@ impl AuthBackend for RemoteUserAuthentication {
 		}
 	}
 
-	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		_user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// For remote user auth, we can't retrieve users by ID
 		// since we only have the username from the header
 		Ok(None)

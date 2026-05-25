@@ -19,7 +19,6 @@
 
 use bytes::Bytes;
 use hyper::Method;
-use reinhardt_auth::internal_user::InternalUser;
 use reinhardt_auth::{
 	AllowAny, AuthIdentity, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
 	PermissionContext,
@@ -27,6 +26,28 @@ use reinhardt_auth::{
 use reinhardt_http::Request;
 use rstest::*;
 use uuid::Uuid;
+
+/// Local test user implementing `AuthIdentity` for auth integration tests.
+/// Replaces `InternalUser` which is now `pub(crate)` in `reinhardt-auth`.
+#[derive(Debug, Clone)]
+struct TestUser {
+	id: Uuid,
+	is_admin: bool,
+}
+
+impl AuthIdentity for TestUser {
+	fn id(&self) -> String {
+		self.id.to_string()
+	}
+
+	fn is_authenticated(&self) -> bool {
+		true
+	}
+
+	fn is_admin(&self) -> bool {
+		self.is_admin
+	}
+}
 
 // ========================================================================
 // Permission Tests (Pure Unit Tests)
@@ -343,22 +364,17 @@ mod jwt_tests {
 mod user_model_tests {
 	use super::*;
 
-	/// Test InternalUser implements AuthIdentity correctly
+	/// Test `TestUser` implements `AuthIdentity` correctly
 	///
-	/// **Test Intent**: Verify InternalUser implements AuthIdentity trait correctly
+	/// **Test Intent**: Verify local `TestUser` implements `AuthIdentity` trait correctly
 	///
-	/// **Integration Point**: InternalUser AuthIdentity implementation
+	/// **Integration Point**: `AuthIdentity` implementation
 	#[rstest]
 	#[tokio::test]
 	async fn test_internal_user_implementation() {
-		let user = InternalUser {
+		let user = TestUser {
 			id: Uuid::now_v7(),
-			username: "testuser".to_string(),
-			email: "test@example.com".to_string(),
-			is_active: true,
 			is_admin: false,
-			is_staff: false,
-			is_superuser: false,
 		};
 
 		assert!(!user.id().is_empty());
@@ -366,24 +382,19 @@ mod user_model_tests {
 		assert!(!user.is_admin());
 	}
 
-	/// Test InternalUser with different admin flag values
+	/// Test `TestUser` with different admin flag values
 	///
-	/// **Test Intent**: Verify InternalUser correctly reports is_admin via AuthIdentity trait
+	/// **Test Intent**: Verify `TestUser` correctly reports `is_admin` via `AuthIdentity` trait
 	///
-	/// **Integration Point**: InternalUser AuthIdentity flag handling
+	/// **Integration Point**: `AuthIdentity` flag handling
 	#[rstest]
 	#[case(false)]
 	#[case(true)]
 	#[tokio::test]
 	async fn test_internal_user_admin_flag(#[case] is_admin: bool) {
-		let user = InternalUser {
+		let user = TestUser {
 			id: Uuid::now_v7(),
-			username: "user".to_string(),
-			email: "user@example.com".to_string(),
-			is_active: true,
 			is_admin,
-			is_staff: false,
-			is_superuser: false,
 		};
 
 		assert_eq!(user.is_admin(), is_admin);
@@ -443,9 +454,9 @@ mod database_integration_tests {
 
 	/// Test session authentication with database
 	///
-	/// **Test Intent**: Verify InternalUser can represent an authenticated session user
+	/// **Test Intent**: Verify `TestUser` can represent an authenticated session user
 	///
-	/// **Integration Point**: InternalUser AuthIdentity + Database backend
+	/// **Integration Point**: `AuthIdentity` + Database backend
 	#[rstest]
 	#[serial(auth_db)]
 	#[tokio::test]
@@ -459,15 +470,10 @@ mod database_integration_tests {
 	) {
 		let (_container, _connection, _port, _url) = auth_test_db.await;
 
-		// Create a test user via InternalUser
-		let user = InternalUser {
+		// Create a test user via TestUser
+		let user = TestUser {
 			id: Uuid::now_v7(),
-			username: "session_user".to_string(),
-			email: "session@example.com".to_string(),
-			is_active: true,
 			is_admin: false,
-			is_staff: false,
-			is_superuser: false,
 		};
 
 		// Verify AuthIdentity methods
