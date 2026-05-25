@@ -497,6 +497,23 @@ mod tests {
 	}
 
 	#[test]
+	fn preserves_separator_between_text_literal_and_following_fragment() {
+		for kind in [MacroKind::Page, MacroKind::Form, MacroKind::Head] {
+			let formatted = format_dsl(kind, r#"|| { label { "hello"span { "world" } } }"#)
+				.expect("format DSL");
+
+			assert!(
+				formatted.contains(r#""hello" span {"#),
+				"{kind:?} formatter should keep a separator before the following fragment: {formatted}"
+			);
+			assert!(
+				!formatted.contains(r#""hello"span"#),
+				"{kind:?} formatter must not concatenate text literal and fragment: {formatted}"
+			);
+		}
+	}
+
+	#[test]
 	fn preserves_ignored_macro() {
 		let formatter = FormatEngine::new();
 		let source = r#"fn main() {

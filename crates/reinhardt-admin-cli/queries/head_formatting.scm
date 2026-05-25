@@ -16,6 +16,13 @@
 )
 
 (
+  [(string) (char) (raw_string)] @append_space
+  .
+  (fragment) @leaf
+  (#match? @leaf "^(r#)?[A-Za-z_][A-Za-z0-9_]*")
+)
+
+(
   [
     (paren)
     (bracket)

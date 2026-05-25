@@ -384,11 +384,11 @@ pub fn register_form() -> Page {
 							label {
 								for: "terms",
 								class: "text-sm text-content-secondary",
-								"I agree to the "span {
+								"I agree to the " span {
 									class: "text-brand hover:text-brand-hover cursor-pointer",
 									"Terms of Service"
 								}
-								" and "span {
+								" and " span {
 									class: "text-brand hover:text-brand-hover cursor-pointer",
 									"Privacy Policy"
 								}
