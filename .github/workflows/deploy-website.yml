@@ -32,11 +32,68 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  determine-runner:
+    name: Determine Runner
+    timeout-minutes: 360
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
+    outputs:
+      runner: ${{ steps.set-runner.outputs.runner }}
+    steps:
+      - name: Set runner configuration
+        id: set-runner
+        env:
+          ACTOR: ${{ github.actor }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          SELF_HOSTED_ENABLED: ${{ vars.SELF_HOSTED_ENABLED }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          MAC_RUNNER_ENABLED: ${{ vars.MAC_RUNNER_ENABLED }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+        run: |
+          USE_MAC=false
+          USE_AWS=false
+
+          # Mac local runner selection
+          if [[ "$MAC_RUNNER_ENABLED" == "true" ]] && [[ "$IS_FORK" != "true" ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]] && [[ "$ACTOR" == "$REPO_OWNER" ]]; then
+              USE_MAC=true
+            elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+              if [[ "$HEAD_REF" == release-plz-* ]]; then
+                USE_MAC=true
+              elif [[ "$ACTOR" == "$REPO_OWNER" ]]; then
+                USE_MAC=true
+              fi
+            elif [[ "$EVENT_NAME" == "push" ]] && [[ "$ACTOR" == "$REPO_OWNER" ]]; then
+              USE_MAC=true
+            elif [[ "$EVENT_NAME" == "schedule" ]]; then
+              USE_MAC=true
+            fi
+          fi
+
+          # AWS Spot runner selection
+          if [[ "$USE_MAC" == "false" ]] && [[ "$SELF_HOSTED_ENABLED" == "true" ]]; then
+            if [[ "$HEAD_REF" == release-plz-* ]]; then
+              USE_AWS=true
+            elif [[ "$ACTOR" == "$REPO_OWNER" ]]; then
+              USE_AWS=true
+            fi
+          fi
+
+          # Output runner configuration
+          if [[ "$USE_MAC" == "true" ]]; then
+            echo 'runner=["self-hosted","linux","arm64","mac-local"]' >> "$GITHUB_OUTPUT"
+          elif [[ "$USE_AWS" == "true" ]]; then
+            echo 'runner=["self-hosted","linux","arm64","reinhardt-ci"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'runner="ubuntu-latest"' >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-deploy:
     name: Build & Deploy
+    needs: [determine-runner]
     timeout-minutes: 360
     if: github.event.action != 'closed'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.determine-runner.outputs.runner) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -86,9 +143,10 @@ jobs:
 
   cleanup-preview:
     name: Cleanup Preview
+    needs: [determine-runner]
     timeout-minutes: 360
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.determine-runner.outputs.runner) }}
     steps:
       - name: Delete preview deployments
         env:
