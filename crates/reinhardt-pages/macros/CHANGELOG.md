@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.1...reinhardt-pages-macros@v0.2.0-rc.2) - 2026-05-25
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+
 ### Changed
 
 - `#[server_fn]` now emits the `marker` module on wasm

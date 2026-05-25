@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.1...reinhardt-web@v0.2.0-rc.2) - 2026-05-25
+
+### Added
+
+- *(di)* [**breaking**] enforce scope hierarchy at resolution time
+
+### Fixed
+
+- address CodeRabbit review comments
+- address remaining CodeRabbit comments
+- address Copilot review comments
+- address follow-up CodeRabbit comments
+- *(ci)* recover develop release-plz prerelease
+- *(di)* enforce scope check on cache-hit path
+- *(di)* enforce scope check on pre-seeded request cache and bypass path
+- *(di)* address Copilot review feedback on scope hierarchy tests
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+- include all main v0.1.1 PR changes
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.30...reinhardt-web@v0.1.0) - 2026-05-22
 
 First stable release of `reinhardt-web`, after 19 alpha and 30 rc

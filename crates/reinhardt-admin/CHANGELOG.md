@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.1...reinhardt-admin@v0.2.0-rc.2) - 2026-05-25
+
+### Added
+
+- *(db)* introduce type-safe nullable field on FieldMetadata
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
+### Maintenance
+
+- include all main v0.1.1 PR changes
+
 ### Removed
 
 #### BREAKING CHANGES
