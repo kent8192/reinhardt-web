@@ -36,9 +36,9 @@ use syn::{Expr, Result};
 
 use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
-	PageIf, PageMacro, PageNode, PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent,
-	TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode,
-	TypedPageWatch, types::AttrValue,
+	PageIf, PageMacro, PageNode, PageWatch, TypedNamedSlot, TypedPageAttr, TypedPageBody,
+	TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
+	TypedPageNode, TypedPageWatch, types::AttrValue,
 };
 
 /// Check if a URL is safe (no dangerous schemes like javascript:).
@@ -199,6 +199,14 @@ impl CaptureChecker {
 			for n in children {
 				self.visit_node(n);
 			}
+		}
+		for slot in &c.named_slots {
+			for n in &slot.children {
+				self.visit_node(n);
+			}
+		}
+		for e in &c.events {
+			self.visit_expr(&e.handler);
 		}
 	}
 
@@ -455,9 +463,7 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 				// A bare path like `name` becomes `{name}`; anything else falls
 				// back to a generic `{expr}` placeholder.
 				let suggestion = match &expr.expr {
-					Expr::Path(ep)
-						if ep.qself.is_none() && ep.path.segments.len() == 1 =>
-					{
+					Expr::Path(ep) if ep.qself.is_none() && ep.path.segments.len() == 1 => {
 						format!("{{{}}}", ep.path.segments[0].ident)
 					}
 					_ => "{expr}".to_string(),
@@ -477,7 +483,10 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 			Ok(TypedPageNode::Expression(expr.clone()))
 		}
 		PageNode::If(if_node) => Ok(TypedPageNode::If(transform_if(if_node, parent_tags)?)),
-		PageNode::For(for_node) => Ok(TypedPageNode::For(transform_for(for_node, parent_tags)?)),
+		PageNode::For(for_node) => Ok(TypedPageNode::For(Box::new(transform_for(
+			for_node,
+			parent_tags,
+		)?))),
 		PageNode::Component(comp) => Ok(TypedPageNode::Component(transform_component(
 			comp,
 			parent_tags,
@@ -564,8 +573,13 @@ fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<Typ
 
 /// Transforms a PageComponent node.
 ///
-/// Recursively transforms the component's children (if any).
+/// Recursively transforms the component's children (if any) and named slots.
 fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<TypedPageComponent> {
+	// Validate component event handlers (same as element events)
+	for event in &comp.events {
+		validate_event_handler(event)?;
+	}
+
 	// Transform children if present
 	let typed_children = if let Some(children) = &comp.children {
 		Some(transform_nodes(children, parent_tags)?)
@@ -573,12 +587,25 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 		None
 	};
 
+	let typed_named_slots: Vec<TypedNamedSlot> = comp
+		.named_slots
+		.iter()
+		.map(|slot| {
+			Ok(TypedNamedSlot {
+				name: slot.name.clone(),
+				children: transform_nodes(&slot.children, parent_tags)?,
+				span: slot.span,
+			})
+		})
+		.collect::<Result<Vec<_>>>()?;
+
 	Ok(TypedPageComponent {
 		name: comp.name.clone(),
 		invocation_form: comp.invocation_form,
 		args: comp.args.clone(),
 		events: comp.events.clone(),
 		children: typed_children,
+		named_slots: typed_named_slots,
 		span: comp.span,
 	})
 }

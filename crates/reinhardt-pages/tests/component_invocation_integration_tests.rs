@@ -42,7 +42,9 @@ fn brace_invocation_compiles_and_renders() {
 		}
 	})();
 
-	// Assert
+	// Assert — uses Debug formatting with substring assertions intentionally;
+	// Debug output is not stable, so these must not be converted to exact-string
+	// checks. The same pattern applies throughout this file.
 	let s = format!("{v:?}");
 	assert!(
 		s.contains("hello"),
@@ -103,7 +105,7 @@ fn nested_component_inside_for_loop() {
 	// `for` loop. Each loop iteration invokes a component whose body itself
 	// is a `page!` macro.
 	//
-	// NOTE: this test depends on PR1 (#4527 — auto-wrap behavior for `for`
+	// This test depends on PR1 (#4527 — auto-wrap behavior for `for`
 	// loop bodies). If PR1 has not yet merged into develop/0.2.0, the test
 	// may fail at compile or assert time; this is documented in the PR body
 	// and will go green once PR #4727 lands.

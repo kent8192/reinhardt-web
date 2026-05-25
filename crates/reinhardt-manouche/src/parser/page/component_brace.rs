@@ -23,7 +23,9 @@
 
 use syn::{Expr, Ident, Result, Token, braced, ext::IdentExt, parse::ParseStream};
 
-use crate::{ComponentInvocationForm, PageComponent, PageComponentArg, PageEvent, PageNode};
+use crate::{
+    ComponentInvocationForm, NamedSlot, PageComponent, PageComponentArg, PageEvent, PageNode,
+};
 
 /// Parses one brace-form component invocation, starting at the PascalCase
 /// identifier and consuming the trailing `{ ... }` block.
@@ -43,6 +45,7 @@ pub(super) fn parse_component_brace_node(input: ParseStream) -> Result<PageNode>
 	let mut args: Vec<PageComponentArg> = Vec::new();
 	let mut events: Vec<PageEvent> = Vec::new();
 	let mut children: Vec<PageNode> = Vec::new();
+	let mut named_slots: Vec<NamedSlot> = Vec::new();
 
 	while !content.is_empty() {
 		// Event prop: `@event: handler`
@@ -68,6 +71,36 @@ pub(super) fn parse_component_brace_node(input: ParseStream) -> Result<PageNode>
 			}
 		}
 
+		// Named slot: `$slotname { ... }`
+		if content.peek(Token![$]) {
+			content.parse::<Token![$]>()?;
+			let slot_name: Ident = content.parse()?;
+			let slot_span = slot_name.span();
+
+			// Check for duplicate named slot (E1)
+			if named_slots.iter().any(|s: &NamedSlot| s.name == slot_name) {
+				return Err(syn::Error::new(
+					slot_span,
+					format!("duplicate named slot `{}` in component", slot_name),
+				));
+			}
+
+			let slot_content;
+			braced!(slot_content in content);
+			let slot_children = super::parse_nodes(&slot_content)?;
+
+			named_slots.push(NamedSlot {
+				name: slot_name,
+				children: slot_children,
+				span: slot_span,
+			});
+			// Optional trailing comma
+			if content.peek(Token![,]) {
+				content.parse::<Token![,]>()?;
+			}
+			continue;
+		}
+
 		// Anything else is a generic child node (HTML element, nested
 		// component, text literal, braced expression, if / for, ...).
 		children.push(super::parse_node(&content)?);
@@ -88,6 +121,7 @@ pub(super) fn parse_component_brace_node(input: ParseStream) -> Result<PageNode>
 		} else {
 			Some(children)
 		},
+		named_slots,
 		span,
 	}))
 }

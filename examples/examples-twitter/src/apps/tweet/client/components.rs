@@ -306,14 +306,17 @@ pub fn tweet_form() -> Page {
 					div {
 						class: "flex items-center gap-2",
 						div {
-							class: text_class,
-							{ display_text }
-						}
-						div {
-							class: "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden",
+							class: "flex items-center gap-2",
 							div {
-								class: bar_class,
-								style: width_style,
+								class: text_class,
+								{ display_text }
+							}
+							div {
+								class: "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden",
+								div {
+									class: bar_class,
+									style: width_style,
+								}
 							}
 						}
 					}

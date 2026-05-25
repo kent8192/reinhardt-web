@@ -129,7 +129,7 @@ pub enum PageNode {
 	/// Conditional rendering (e.g., `if condition { ... }`)
 	If(PageIf),
 	/// List rendering (e.g., `for item in items { ... }`)
-	For(PageFor),
+	For(Box<PageFor>),
 	/// A component call (e.g., `MyButton(label: "Click")`)
 	Component(PageComponent),
 	/// Reactive watch block (e.g., `watch { if signal.get() { ... } }`)
@@ -401,6 +401,29 @@ pub enum ComponentInvocationForm {
 	Brace,
 }
 
+/// A named children slot inside a component body.
+///
+/// Named slots use the `$slotname { ... }` syntax and allow components
+/// to accept multiple named children groups mapped to distinct builder setters.
+///
+/// # Example
+///
+/// ```text
+/// Table {
+///     $header { div { "Name" } }
+///     $body { for user in users { Row { ... } } }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct NamedSlot {
+	/// Slot name without the `$` prefix (e.g., "header", "body")
+	pub name: Ident,
+	/// Child nodes inside the slot
+	pub children: Vec<PageNode>,
+	/// Span for error reporting
+	pub span: Span,
+}
+
 /// A component call node.
 ///
 /// Components are Rust functions that return a View. They can be called with
@@ -443,6 +466,8 @@ pub struct PageComponent {
 	pub events: Vec<PageEvent>,
 	/// Optional children (content inside `{ }` after arguments)
 	pub children: Option<Vec<PageNode>>,
+	/// Named children slots (e.g., `$header { ... }`)
+	pub named_slots: Vec<NamedSlot>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -542,11 +567,15 @@ mod tests {
 			args: vec![],
 			events: vec![],
 			children: None,
+			named_slots: vec![],
 			span: Span::call_site(),
 		};
 
 		// Act + Assert
-		assert!(matches!(comp.invocation_form, ComponentInvocationForm::Brace));
+		assert!(matches!(
+			comp.invocation_form,
+			ComponentInvocationForm::Brace
+		));
 		assert!(comp.events.is_empty());
 		assert_eq!(comp.name.to_string(), "Card");
 	}
@@ -561,6 +590,7 @@ mod tests {
 			args: vec![],
 			events: vec![],
 			children: None,
+			named_slots: vec![],
 			span: Span::call_site(),
 		};
 

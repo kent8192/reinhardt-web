@@ -55,7 +55,7 @@ pub enum TypedPageNode {
 	/// Conditional rendering
 	If(TypedPageIf),
 	/// List rendering
-	For(TypedPageFor),
+	For(Box<TypedPageFor>),
 	/// A component call with typed children
 	Component(TypedPageComponent),
 	/// Reactive watch block
@@ -198,6 +198,20 @@ pub struct TypedPageWatch {
 	pub span: Span,
 }
 
+/// A typed named children slot inside a component body.
+///
+/// This is the validated counterpart of `NamedSlot`, produced by the validator
+/// after transforming the slot's children from untyped to typed AST nodes.
+#[derive(Debug)]
+pub struct TypedNamedSlot {
+	/// Slot name without the `$` prefix
+	pub name: Ident,
+	/// Validated child nodes inside the slot
+	pub children: Vec<TypedPageNode>,
+	/// Span for error reporting
+	pub span: Span,
+}
+
 /// Typed component call node.
 ///
 /// Components are Rust functions that return a View. They can be invoked in
@@ -219,6 +233,8 @@ pub struct TypedPageComponent {
 	pub events: Vec<PageEvent>,
 	/// Optional typed children (content inside `{ }` after arguments)
 	pub children: Option<Vec<TypedPageNode>>,
+	/// Typed named children slots
+	pub named_slots: Vec<TypedNamedSlot>,
 	/// Span for error reporting
 	pub span: Span,
 }

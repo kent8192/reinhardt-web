@@ -42,7 +42,7 @@ pub enum HeadContent {
 	/// Text content (for title)
 	Text(String),
 	/// Expression content
-	Expr(Expr),
+	Expr(Box<Expr>),
 }
 
 /// Typed version of HeadMacro after validation.
@@ -84,5 +84,5 @@ pub enum TypedHeadContent {
 	/// Static text content
 	Static(String),
 	/// Dynamic expression content
-	Dynamic(Expr),
+	Dynamic(Box<Expr>),
 }

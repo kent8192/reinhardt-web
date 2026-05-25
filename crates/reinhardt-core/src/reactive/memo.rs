@@ -72,7 +72,7 @@ thread_local! {
 // (it only knows `NodeId`), so it writes here instead. `Memo::get` checks
 // both `MemoState<T>::dirty` and this map.
 thread_local! {
-	static MEMO_DIRTY: RefCell<BTreeMap<NodeId, bool>> = RefCell::new(BTreeMap::new());
+	static MEMO_DIRTY: RefCell<BTreeMap<NodeId, bool>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 /// Flag the Memo identified by `memo_id` as dirty without requiring `T`,
@@ -252,7 +252,7 @@ impl<T: Clone + 'static> Memo<T> {
 				// presence so this branch is defensive only.
 				panic!("Attempted to compute a disposed Memo");
 			}
-			super::runtime::run_without_observer(|| f())
+			super::runtime::run_without_observer(&mut f)
 		};
 
 		MEMO_FUNCTIONS.with(|storage| {
