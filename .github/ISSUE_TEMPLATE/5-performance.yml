@@ -95,6 +95,20 @@ body:
 		validations:
 			required: true
 
+	- type: dropdown
+		id: breaking-change
+		attributes:
+			label: Could the fix be a breaking change?
+			description: |
+				Would fixing this performance issue require changes to existing public APIs,
+				data structures, or observable behavior? See instructions/STABILITY_POLICY.md for details.
+			options:
+				- "No - fix should be backward compatible"
+				- "Yes - fix may require API or behavior changes"
+				- "Not sure"
+		validations:
+			required: true
+
 	- type: textarea
 		attributes:
 			label: Additional Context
