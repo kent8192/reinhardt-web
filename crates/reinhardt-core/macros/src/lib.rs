@@ -196,7 +196,7 @@ pub fn consumer(args: TokenStream, input: TokenStream) -> TokenStream {
 		.into()
 }
 
-/// Streaming patterns attribute — generates typed per-app streaming URL accessors.
+/// Streaming patterns attribute — generates per-app streaming topic resolver structs.
 ///
 /// Apply to the function that builds and returns the app's `StreamingRouter`.
 /// The function body must contain `streaming_routes![handler1, handler2, ...]`.
@@ -216,7 +216,6 @@ pub fn consumer(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// After this macro expands:
 /// - `OrdersStreamingUrls` struct is generated with `.create_order()` and `.handle_order()` methods
-/// - `urls.streaming().orders()` returns `OrdersStreamingUrls<'_>` (requires `#[routes]` in same crate)
 /// - Each method returns the Kafka topic name as `&'static str`
 #[proc_macro_attribute]
 pub fn streaming_patterns(args: TokenStream, input: TokenStream) -> TokenStream {
