@@ -7,15 +7,15 @@ This document explains the overall structure of the Reinhardt project, including
 The Reinhardt project uses a **flat workspace architecture**:
 
 1. **Root Facade** (`reinhardt-web`) - Feature gate control and unified API
-2. **Workspace Crates** (44 crates under `crates/`) - Modular functionality organized by domain
+2. **Workspace Crates** (49 crates under `crates/`) - Modular functionality organized by domain
 3. **Test Crates** (3 crates under `tests/`) - Integration tests and benchmarks
 4. **Example Crates** (8 crates under `examples/`) - Separate workspace with usage examples
 
 All crates under `crates/` are published to crates.io and share versioned workspace dependencies.
 
-## Workspace Crates (45 total)
+## Workspace Crates (50 total)
 
-The main workspace consists of 1 root facade crate + 44 crates under `crates/`:
+The main workspace consists of 1 root facade crate + 49 crates under `crates/`:
 
 ### Root Facade
 
