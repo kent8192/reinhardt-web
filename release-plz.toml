@@ -11,15 +11,15 @@ changelog_update = true
 # branch prefix — there is NO base-branch filter.
 #
 # Branch-specific prefix convention:
-# - main:             "release-plz-"          (this branch)
-# - develop/m.n.l:    "develop-release-plz-"  (MUST NOT start with "release-plz-")
+# - main:             "release-plz-"
+# - develop/m.n.l:    "develop-release-plz-"  (this branch; MUST NOT start with "release-plz-")
 #
 # Rationale: release-plz uses starts_with() to match PR branches. If the
 # develop prefix started with "release-plz-" (e.g., "release-plz-develop-"),
 # main's release-plz would still find and close develop's Release PRs.
 # Using "develop-release-plz-" ensures neither prefix is a prefix of the other,
 # preventing cross-branch PR closure.
-pr_branch_prefix = "release-plz-"
+pr_branch_prefix = "develop-release-plz-"
 pr_labels = ["release", "automated"]
 pr_name = "chore: release"
 
@@ -34,9 +34,9 @@ semver_check = true
 publish_timeout = "10m"
 dependencies_update = true
 
-# Two-stage release workflow (native release-plz control):
-# - Stage 1: Push to main → `release-plz release-pr` creates Release PR (branch: release-plz-*)
-# - Stage 2: Merge Release PR → `release-plz release` detects commit from release-plz-* branch and publishes
+# Two-stage prerelease workflow (native release-plz control):
+# - Stage 1: Push to develop/m.n.l -> `release-plz release-pr` creates Release PR (branch: develop-release-plz-*)
+# - Stage 2: Merge Release PR -> `release-plz release` detects commit from develop-release-plz-* branch and publishes
 #
 # With release_always = true:
 # - release-plz publishes ALL crates whose local version differs from crates.io

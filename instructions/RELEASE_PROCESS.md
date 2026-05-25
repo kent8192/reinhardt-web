@@ -319,9 +319,9 @@ Configuration file at repository root. Key CHANGELOG-related settings:
 [workspace]
 changelog_update = true
 # On main:    pr_branch_prefix = "release-plz-"
-# On develop: pr_branch_prefix = "develop-release-plz-"
+# On develop: pr_branch_prefix = "develop-release-plz-" (current branch family)
 # See "Branch-specific pr_branch_prefix convention" in Configuration Rationale below.
-pr_branch_prefix = "release-plz-"
+pr_branch_prefix = "develop-release-plz-"
 pr_labels = ["release", "automated"]
 pr_name = "chore: release"
 git_release_enable = false
@@ -431,6 +431,7 @@ flowchart TD
     B -->|Partial failure| E["RP-1: Identify published/unpublished<br/>rollback unpublished versions<br/>new Release PR and merge"]
     B -->|gix cache panic| F["RP-3: Re-run release-plz<br/>(transient error)"]
     B -->|Phantom version bump| G["KI-5: Set release_always = true"]
+    B -->|Yanked prerelease| H["KI-7: Advance to fresh prerelease<br/>do not reuse yanked version"]
 ```
 
 ### KI-1: Circular Publish Dependencies
@@ -549,6 +550,36 @@ exceeds the burst limit, resulting in HTTP 429 errors.
 - Alternatively, increase the delay or add more retry rounds
 
 **Reference**: `<https://github.com/rust-lang/crates.io/issues/1643>`
+
+### KI-7: Yanked Prerelease Version Blocks `release-plz release-pr`
+
+**Problem**: A prerelease publish can leave crates.io with yanked workspace
+versions while the matching git tags still exist. On the next
+`release-plz release-pr` run, release-plz compares the local prerelease version
+with the latest non-yanked registry version. If the local version is greater and
+the matching git tag already exists, release-plz refuses to compute the next
+Release PR and reports that the package should be published manually.
+
+**Symptoms**:
+- `release-plz release-pr` fails with "local package has a greater version"
+- The error names a prerelease tag that already exists, such as
+  `reinhardt-query-macros@v0.2.0-rc.1`
+- crates.io shows the corresponding prerelease version as yanked
+
+**Resolution**:
+- If the yank was accidental, unyank the affected crates and rerun the release
+  workflow to finish any missing crates.
+- If the yank was intentional, advance every workspace package version and
+  versioned workspace dependency to a fresh prerelease, such as
+  `0.2.0-rc.1` -> `0.2.0-rc.2`, then push the develop branch so release-plz
+  operates on a prerelease version with no existing tag.
+
+The workflow must also avoid parsing `release-plz/action` PR JSON in GitHub
+Actions expressions. Parse the JSON inside a shell step after confirming the
+release-plz step succeeded, so the root release-plz failure is not hidden by a
+secondary expression error.
+
+(Ref: [#4828](https://github.com/kent8192/reinhardt-web/issues/4828))
 
 ---
 
