@@ -1064,6 +1064,7 @@ fn run_fmt_all(
 		if !original_content.contains("page!(")
 			&& !original_content.contains("form!(")
 			&& !original_content.contains("form!{")
+			&& !original_content.contains("form! {")
 		{
 			continue;
 		}

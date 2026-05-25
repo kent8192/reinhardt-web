@@ -49,11 +49,6 @@ pub fn login_form() -> Page {
 		// Redirect after successful login
 		redirect_on_success: "/timeline",
 
-		state: {
-			loading,
-			error,
-		}
-
 		fields: {
 			email: EmailField {
 				label: "Email",
@@ -98,14 +93,6 @@ pub fn login_form() -> Page {
 				class: "form-input pl-10",
 			}
 		}
-
-		on_success: |user_info| {
-				#[cfg(wasm)]
-				{
-					set_current_user(Some(user_info));
-				}
-			},
-
 	};
 
 	// Clone state signals for page! macro
