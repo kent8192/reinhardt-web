@@ -3,7 +3,8 @@
 use async_trait::async_trait;
 use reinhardt_apps::{Handler, Request, Response, Result};
 use reinhardt_auth::session::InMemorySessionStore;
-use reinhardt_auth::{SimpleUser, User};
+use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
+use reinhardt_auth::internal_user::InternalUser;
 use reinhardt_middleware::AuthenticationMiddleware;
 use reinhardt_middleware::csrf::{CsrfMiddleware, CsrfMiddlewareConfig};
 use reinhardt_core::security::csrf::{CsrfMeta, check_token, get_secret};
@@ -271,25 +272,27 @@ pub fn get_csrf_token_for_testing(state: &AppState) -> Option<String> {
 /// Authentication backend for integration tests
 struct TestAuthBackend {
 	authenticated: bool,
-	test_user: Option<SimpleUser>,
+	test_user: Option<InternalUser>,
 }
 
 #[async_trait]
-impl reinhardt_auth::AuthenticationBackend for TestAuthBackend {
+impl AuthBackend for TestAuthBackend {
 	async fn authenticate(
 		&self,
 		_request: &Request,
-	) -> std::result::Result<Option<Box<dyn User>>, reinhardt_auth::AuthenticationError> {
+	) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		if self.authenticated {
 			if let Some(user) = &self.test_user {
 				Ok(Some(Box::new(user.clone())))
 			} else {
-				Ok(Some(Box::new(SimpleUser {
+				Ok(Some(Box::new(InternalUser {
 					id: Uuid::now_v7(),
 					username: "testuser".to_string(),
 					email: "test@example.com".to_string(),
 					is_active: true,
 					is_admin: false,
+					is_staff: false,
+					is_superuser: false,
 				})))
 			}
 		} else {
@@ -300,17 +303,19 @@ impl reinhardt_auth::AuthenticationBackend for TestAuthBackend {
 	async fn get_user(
 		&self,
 		_user_id: &str,
-	) -> std::result::Result<Option<Box<dyn User>>, reinhardt_auth::AuthenticationError> {
+	) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		if self.authenticated {
 			if let Some(user) = &self.test_user {
 				Ok(Some(Box::new(user.clone())))
 			} else {
-				Ok(Some(Box::new(SimpleUser {
+				Ok(Some(Box::new(InternalUser {
 					id: Uuid::now_v7(),
 					username: "testuser".to_string(),
 					email: "test@example.com".to_string(),
 					is_active: true,
 					is_admin: false,
+					is_staff: false,
+					is_superuser: false,
 				})))
 			}
 		} else {

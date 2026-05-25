@@ -23,7 +23,7 @@
 //! - admin_user: Pre-configured admin user fixture
 
 use reinhardt_auth::{
-	AuthenticationBackend, AuthenticationError, DefaultUser,
+	AuthenticationError,
 	token_storage::{InMemoryTokenStorage, TokenStorage},
 };
 use reinhardt_test::fixtures::{auth::*, postgres_container};
@@ -52,9 +52,63 @@ struct AuthUser {
 reinhardt_test::impl_test_model!(AuthUser, Uuid, "auth_users", "auth", non_option_pk);
 
 // ========================================================================
+// Test User Fixture
+// ========================================================================
+
+/// Pre-configured test user data for authentication integration tests.
+///
+/// This struct was previously provided by `reinhardt_test::fixtures::auth`
+/// but was removed along with the deprecated `User` trait in 0.2.0.
+#[derive(Debug, Clone)]
+struct TestUser {
+	id: Uuid,
+	username: String,
+	email: String,
+	is_active: bool,
+	is_admin: bool,
+	is_staff: bool,
+	is_superuser: bool,
+}
+
+/// Fixture providing a regular (non-admin) test user.
+#[fixture]
+fn test_user() -> TestUser {
+	TestUser {
+		id: Uuid::now_v7(),
+		username: "testuser".to_string(),
+		email: "test@example.com".to_string(),
+		is_active: true,
+		is_admin: false,
+		is_staff: false,
+		is_superuser: false,
+	}
+}
+
+/// Fixture providing an admin/superuser test user.
+#[fixture]
+fn admin_user() -> TestUser {
+	TestUser {
+		id: Uuid::now_v7(),
+		username: "admin".to_string(),
+		email: "admin@example.com".to_string(),
+		is_active: true,
+		is_admin: true,
+		is_staff: true,
+		is_superuser: true,
+	}
+}
+
+// ========================================================================
 // Mock Authentication Backend
 // ========================================================================
 
+/// Credentials-based authentication backend for integration tests.
+///
+/// The old `AuthenticationBackend` trait (with associated `User` and
+/// `Credentials` types) was removed in 0.2.0. The replacement `AuthBackend`
+/// trait accepts `&Request` instead of typed credentials. This mock keeps
+/// the credentials-based lookup pattern that the tests exercise, using a
+/// standalone trait rather than the framework trait.
 struct MockAuthBackend {
 	pool: Arc<PgPool>,
 }
@@ -63,17 +117,12 @@ impl MockAuthBackend {
 	fn new(pool: Arc<PgPool>) -> Self {
 		Self { pool }
 	}
-}
 
-#[async_trait::async_trait]
-impl AuthenticationBackend for MockAuthBackend {
-	type User = AuthUser;
-	type Credentials = (String, String); // (username, password)
-
+	/// Authenticate by username/password credentials (test helper).
 	async fn authenticate(
 		&self,
-		credentials: &Self::Credentials,
-	) -> Result<Option<Self::User>, AuthenticationError> {
+		credentials: &(String, String),
+	) -> Result<Option<AuthUser>, AuthenticationError> {
 		let (username, _password) = credentials;
 
 		// Query user from database
@@ -89,7 +138,8 @@ impl AuthenticationBackend for MockAuthBackend {
 		Ok(user)
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Self::User>, AuthenticationError> {
+	/// Look up a user by ID (test helper).
+	async fn get_user(&self, user_id: &str) -> Result<Option<AuthUser>, AuthenticationError> {
 		let uuid = Uuid::parse_str(user_id).map_err(|e| {
 			AuthenticationError::BackendError(format!("Invalid UUID format: {}", e))
 		})?;
@@ -691,69 +741,53 @@ async fn test_authentication_with_database_error(
 // User Model Integration Tests
 // ========================================================================
 
-/// Test authentication with DefaultUser model
+/// Test authentication with database-backed user model
 ///
-/// **Test Intent**: Verify authentication works with Reinhardt's DefaultUser model
+/// **Test Intent**: Verify authentication works with a user model stored in
+/// PostgreSQL via `sqlx::FromRow` deserialization
 ///
-/// **Integration Point**: DefaultUser Model → Authentication Backend → Database
+/// **Integration Point**: AuthUser Model → Database Query → ORM Mapping
 ///
 /// **Not Intent**: Custom user models, user model fields
 #[rstest]
 #[tokio::test]
-async fn test_authentication_with_default_user_model(
+async fn test_authentication_with_database_user_model(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = postgres_container.await;
 
-	// Create table for DefaultUser
-	sqlx::query(
-		r#"
-		CREATE TABLE IF NOT EXISTS users (
-			id UUID PRIMARY KEY,
-			username VARCHAR(150) UNIQUE NOT NULL,
-			email VARCHAR(254) NOT NULL,
-			password_hash VARCHAR(128),
-			first_name VARCHAR(150),
-			last_name VARCHAR(150),
-			is_active BOOLEAN NOT NULL DEFAULT true,
-			is_staff BOOLEAN NOT NULL DEFAULT false,
-			is_superuser BOOLEAN NOT NULL DEFAULT false,
-			date_joined TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			last_login TIMESTAMPTZ
-		)
-		"#,
-	)
-	.execute(&pool)
-	.await
-	.expect("Failed to create users table");
+	// Arrange
+	setup_auth_table(&pool).await;
 
-	// Insert DefaultUser
 	let user_id = Uuid::now_v7();
 	sqlx::query(
-		"INSERT INTO users (id, username, email, password_hash, first_name, last_name)
-		 VALUES ($1, $2, $3, $4, $5, $6)",
+		"INSERT INTO auth_users (id, username, email, password_hash, is_active, is_staff, is_superuser)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)",
 	)
 	.bind(user_id)
-	.bind("defaultuser")
-	.bind("default@example.com")
+	.bind("dbuser")
+	.bind("db@example.com")
 	.bind("hashed_password")
-	.bind("Default")
-	.bind("User")
+	.bind(true)
+	.bind(false)
+	.bind(false)
 	.execute(&pool)
 	.await
 	.expect("Failed to insert user");
 
-	// Query user
-	let user = sqlx::query_as::<_, DefaultUser>(
-		"SELECT id, username, email, password_hash, first_name, last_name,
-		 is_active, is_staff, is_superuser, date_joined, last_login
-		 FROM users WHERE id = $1",
+	// Act
+	let user = sqlx::query_as::<_, AuthUser>(
+		"SELECT id, username, email, password_hash, is_active, is_staff, is_superuser
+		 FROM auth_users WHERE id = $1",
 	)
 	.bind(user_id)
 	.fetch_one(&pool)
 	.await
 	.expect("Failed to query user");
 
-	assert_eq!(user.username, "defaultuser");
-	assert_eq!(user.email, "default@example.com");
+	// Assert
+	assert_eq!(user.username, "dbuser");
+	assert_eq!(user.email, "db@example.com");
+	assert!(user.is_active);
+	assert!(!user.is_staff);
 }

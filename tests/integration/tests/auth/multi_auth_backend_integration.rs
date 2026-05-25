@@ -14,9 +14,10 @@
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, Version};
 use reinhardt_auth::sessions::{Session, backends::InMemorySessionBackend};
+use reinhardt_auth::internal_user::InternalUser;
 use reinhardt_auth::{
-	AuthenticationBackend, AuthenticationError, CompositeAuthentication, RestAuthentication,
-	SessionAuthentication, SimpleUser, TokenAuthentication, User,
+	AuthBackend, AuthIdentity, AuthenticationError, CompositeAuthentication, RestAuthentication,
+	SessionAuthentication, TokenAuthentication,
 };
 use reinhardt_http::Request;
 use reinhardt_test::fixtures::*;
@@ -120,12 +121,11 @@ async fn test_composite_auth_jwt_to_session_fallback() {
 	let request = build_test_request(Method::GET, "/api/profile", headers, Bytes::new());
 
 	// Authenticate - should fallback to session
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
 	assert_eq!(user.id(), user_id.to_string());
-	assert_eq!(user.get_username(), "alice");
 }
 
 /// Test composite authentication falls back from Session to Token
@@ -154,7 +154,7 @@ async fn test_composite_auth_session_to_token_fallback() {
 	let request = build_test_request(Method::GET, "/api/data", headers, Bytes::new());
 
 	// Authenticate - should fallback to token
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
@@ -188,7 +188,7 @@ async fn test_composite_auth_full_chain_fallback() {
 	let request = build_test_request(Method::POST, "/api/create", headers, Bytes::new());
 
 	// Authenticate - should try JWT (fail), Session (fail), Token (success)
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
@@ -218,7 +218,7 @@ async fn test_composite_auth_all_backends_fail() {
 	let request = build_test_request(Method::GET, "/api/public", headers, Bytes::new());
 
 	// Authenticate - all backends should fail, return None
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	assert!(result.is_none());
@@ -270,12 +270,11 @@ async fn test_backend_priority_jwt_first() {
 	let request = build_test_request(Method::GET, "/api/me", headers, Bytes::new());
 
 	// Authenticate - JWT should be used (higher priority)
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
 	assert_eq!(user.id(), jwt_user_id.to_string());
-	assert_eq!(user.get_username(), "jwt_user");
 }
 
 /// Test backend priority with Session first
@@ -317,12 +316,11 @@ async fn test_backend_priority_session_first() {
 	let request = build_test_request(Method::POST, "/api/action", headers, Bytes::new());
 
 	// Authenticate - Session should be used (higher priority)
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
 	assert_eq!(user.id(), session_user_id.to_string());
-	assert_eq!(user.get_username(), "session_user");
 }
 
 /// Test backend order affects authentication result
@@ -371,20 +369,18 @@ async fn test_backend_order_affects_result() {
 	let request = build_test_request(Method::GET, "/api/test", headers, Bytes::new());
 
 	// Composite 1 should use JWT (first in order)
-	let result1 = AuthenticationBackend::authenticate(&composite1, &request)
+	let result1 = AuthBackend::authenticate(&composite1, &request)
 		.await
 		.unwrap();
 	let user1 = result1.unwrap();
 	assert_eq!(user1.id(), jwt_user_id.to_string());
-	assert_eq!(user1.get_username(), "jwt_user");
 
 	// Composite 2 should use Session (first in order)
-	let result2 = AuthenticationBackend::authenticate(&composite2, &request)
+	let result2 = AuthBackend::authenticate(&composite2, &request)
 		.await
 		.unwrap();
 	let user2 = result2.unwrap();
 	assert_eq!(user2.id(), session_user_id.to_string());
-	assert_eq!(user2.get_username(), "session_user");
 }
 
 // ============================================================================
@@ -439,12 +435,11 @@ async fn test_single_request_multiple_valid_credentials() {
 	let request = build_test_request(Method::GET, "/api/data", headers, Bytes::new());
 
 	// Authenticate - should use JWT (highest priority)
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
 	assert_eq!(user.id(), jwt_user_id.to_string());
-	assert_eq!(user.get_username(), "jwt_alice");
 }
 
 /// Test single request with one valid and one invalid credential
@@ -486,12 +481,11 @@ async fn test_single_request_mixed_valid_invalid_credentials() {
 	let request = build_test_request(Method::POST, "/api/submit", headers, Bytes::new());
 
 	// Authenticate - should skip invalid JWT, use valid Session
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
 	assert_eq!(user.id(), session_user_id.to_string());
-	assert_eq!(user.get_username(), "valid_user");
 }
 
 /// Test single request with all invalid credentials
@@ -520,7 +514,7 @@ async fn test_single_request_all_invalid_credentials() {
 	let request = build_test_request(Method::GET, "/api/secure", headers, Bytes::new());
 
 	// Authenticate - all should fail, return None
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	assert!(result.is_none());
@@ -558,16 +552,14 @@ async fn test_jwt_backend_user_model() {
 
 	// Verify JWT-specific user fields
 	assert_eq!(user.id(), user_id.to_string());
-	assert_eq!(user.get_username(), "jwt_specific_user");
-	assert!(user.is_active()); // JWT users are active by default
 	assert!(!user.is_admin()); // Not admin by default
 }
 
 /// Test Session backend returns Session-specific user
 #[tokio::test]
 async fn test_session_backend_user_model() {
-	// Test intent: Verify Session authentication returns user model with all fields
-	// populated from session data (ID, username, email, is_active, is_admin, is_staff, is_superuser).
+	// Test intent: Verify Session authentication returns an AuthIdentity
+	// populated from session data (ID, is_admin).
 	// Not intent: Session expiry, CSRF validation, cookie security
 	let session_backend = Arc::new(InMemorySessionBackend::new());
 	let session_auth = SessionAuthentication::new((*session_backend).clone());
@@ -606,11 +598,7 @@ async fn test_session_backend_user_model() {
 
 	// Verify Session-specific user fields
 	assert_eq!(user.id(), user_id.to_string());
-	assert_eq!(user.get_username(), "session_user");
-	assert!(user.is_active());
 	assert!(user.is_admin());
-	assert!(user.is_staff());
-	assert!(!user.is_superuser());
 }
 
 /// Test Token backend returns Token-specific user
@@ -634,9 +622,8 @@ async fn test_token_backend_user_model() {
 		.unwrap();
 	let user = result.unwrap();
 
-	// Verify Token-specific user fields
-	// Token auth uses user_id as username
-	assert_eq!(user.get_username(), user_id.to_string());
+	// Verify the authenticated identity
+	assert!(user.is_authenticated());
 }
 
 // ============================================================================
@@ -671,12 +658,11 @@ async fn test_api_requests_prefer_jwt() {
 	let request = build_test_request(Method::GET, "/api/v1/users", headers, Bytes::new());
 
 	// Authenticate - JWT should succeed for API request
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
 	assert_eq!(user.id(), user_id.to_string());
-	assert_eq!(user.get_username(), "api_user");
 }
 
 /// Test web requests prefer Session authentication
@@ -708,12 +694,11 @@ async fn test_web_requests_prefer_session() {
 	let request = build_test_request(Method::GET, "/dashboard", headers, Bytes::new());
 
 	// Authenticate - Session should succeed for web request
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
 	assert_eq!(user.id(), user_id.to_string());
-	assert_eq!(user.get_username(), "web_user");
 }
 
 /// Test mobile app requests use Token authentication
@@ -740,7 +725,7 @@ async fn test_mobile_requests_use_token() {
 	let request = build_test_request(Method::POST, "/api/sync", headers, Bytes::new());
 
 	// Authenticate - Token should succeed for mobile request
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
@@ -779,12 +764,11 @@ async fn test_same_user_different_backends() {
 	);
 	let jwt_request = build_test_request(Method::GET, "/api/data", jwt_headers, Bytes::new());
 
-	let jwt_result = AuthenticationBackend::authenticate(&composite, &jwt_request)
+	let jwt_result = AuthBackend::authenticate(&composite, &jwt_request)
 		.await
 		.unwrap();
 	let jwt_user = jwt_result.unwrap();
 	assert_eq!(jwt_user.id(), user_id.to_string());
-	assert_eq!(jwt_user.get_username(), username);
 
 	// Request 2: Authenticate via Session (same user)
 	let mut session_headers = HeaderMap::new();
@@ -795,12 +779,11 @@ async fn test_same_user_different_backends() {
 	let session_request =
 		build_test_request(Method::GET, "/dashboard", session_headers, Bytes::new());
 
-	let session_result = AuthenticationBackend::authenticate(&composite, &session_request)
+	let session_result = AuthBackend::authenticate(&composite, &session_request)
 		.await
 		.unwrap();
 	let session_user = session_result.unwrap();
 	assert_eq!(session_user.id(), user_id.to_string());
-	assert_eq!(session_user.get_username(), username);
 }
 
 // ============================================================================
@@ -863,11 +846,11 @@ impl DatabaseAuthBackend {
 }
 
 #[async_trait::async_trait]
-impl AuthenticationBackend for DatabaseAuthBackend {
+impl AuthBackend for DatabaseAuthBackend {
 	async fn authenticate(
 		&self,
 		request: &reinhardt_http::Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Custom header: X-User-ID
 		let user_id_header = request
 			.headers
@@ -886,7 +869,10 @@ impl AuthenticationBackend for DatabaseAuthBackend {
 		Ok(None)
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		let uuid = Uuid::parse_str(user_id).map_err(|_| AuthenticationError::InvalidCredentials)?;
 
 		let result = sqlx::query_as::<_, (Uuid, String, String, bool, bool, bool)>(
@@ -903,7 +889,7 @@ impl AuthenticationBackend for DatabaseAuthBackend {
 
 		Ok(
 			result.map(|(id, username, email, is_active, is_staff, is_superuser)| {
-				Box::new(SimpleUser {
+				Box::new(InternalUser {
 					id,
 					username,
 					email,
@@ -911,7 +897,7 @@ impl AuthenticationBackend for DatabaseAuthBackend {
 					is_admin: is_staff,
 					is_staff,
 					is_superuser,
-				}) as Box<dyn User>
+				}) as Box<dyn AuthIdentity>
 			}),
 		)
 	}
@@ -947,9 +933,6 @@ async fn test_database_backend_authenticates_user(
 	let user = result.unwrap();
 
 	assert_eq!(user.id(), user_id.to_string());
-	assert_eq!(user.get_username(), "db_alice");
-	assert!(user.is_active());
-	assert!(!user.is_staff());
 }
 
 /// Test composite with database backend fallback
@@ -984,14 +967,12 @@ async fn test_composite_with_database_fallback(
 	let request = build_test_request(Method::POST, "/api/action", headers, Bytes::new());
 
 	// Authenticate - should fallback to database
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
 
 	assert_eq!(user.id(), user_id.to_string());
-	assert_eq!(user.get_username(), "fallback_user");
-	assert!(user.is_staff());
 }
 
 /// Test database backend with multiple users
@@ -1024,8 +1005,7 @@ async fn test_database_backend_multiple_users(
 
 	let result1 = db_backend.authenticate(&request1).await.unwrap();
 	let user1 = result1.unwrap();
-	assert_eq!(user1.get_username(), "alice");
-	assert!(!user1.is_staff());
+	assert_eq!(user1.id(), user1_id.to_string());
 
 	// Request for user 2
 	let mut headers2 = HeaderMap::new();
@@ -1034,8 +1014,7 @@ async fn test_database_backend_multiple_users(
 
 	let result2 = db_backend.authenticate(&request2).await.unwrap();
 	let user2 = result2.unwrap();
-	assert_eq!(user2.get_username(), "bob");
-	assert!(user2.is_staff());
+	assert_eq!(user2.id(), user2_id.to_string());
 }
 
 /// Test all backends (JWT + Session + Database) in chain
@@ -1073,11 +1052,10 @@ async fn test_all_backends_jwt_session_database_chain(
 	let request = build_test_request(Method::GET, "/api/final", headers, Bytes::new());
 
 	// Authenticate - should try JWT (fail), Session (fail), Database (success)
-	let result = AuthenticationBackend::authenticate(&composite, &request)
+	let result = AuthBackend::authenticate(&composite, &request)
 		.await
 		.unwrap();
 	let user = result.unwrap();
 
 	assert_eq!(user.id(), user_id.to_string());
-	assert_eq!(user.get_username(), "chain_user");
 }

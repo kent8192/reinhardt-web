@@ -11,14 +11,11 @@
 //! - Thread Safety: Verifying Send + Sync implementations
 
 use reinhardt_auth::token_storage::InMemoryTokenStorage;
-use reinhardt_auth::{
-	Argon2Hasher, BaseUser, DefaultUser, PasswordHasher, StoredToken, TokenStorage,
-};
+use reinhardt_auth::{Argon2Hasher, PasswordHasher, StoredToken, TokenStorage};
 use rstest::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Barrier;
-use uuid::Uuid;
 
 // =============================================================================
 // Fixtures
@@ -264,67 +261,6 @@ async fn test_concurrent_token_revocation(token_storage: Arc<InMemoryTokenStorag
 			i
 		);
 	}
-}
-
-// =============================================================================
-// Concurrent User Operations Tests
-// =============================================================================
-
-#[rstest]
-#[tokio::test]
-async fn test_concurrent_user_password_updates() {
-	let user = Arc::new(tokio::sync::RwLock::new(DefaultUser {
-		id: Uuid::now_v7(),
-		username: "concurrent_user".to_string(),
-		email: "concurrent@example.com".to_string(),
-		first_name: "Concurrent".to_string(),
-		last_name: "User".to_string(),
-		password_hash: None,
-		last_login: None,
-		is_active: true,
-		is_staff: false,
-		is_superuser: false,
-		date_joined: chrono::Utc::now(),
-		user_permissions: Vec::new(),
-		groups: Vec::new(),
-	}));
-
-	let barrier = Arc::new(Barrier::new(10));
-	let success_count = Arc::new(AtomicUsize::new(0));
-
-	let mut handles = Vec::new();
-
-	for i in 0..10 {
-		let u = user.clone();
-		let b = barrier.clone();
-		let count = success_count.clone();
-		let password = format!("password_{}", i);
-
-		let handle = tokio::spawn(async move {
-			b.wait().await;
-			let mut user = u.write().await;
-			if user.set_password(&password).is_ok() {
-				count.fetch_add(1, Ordering::SeqCst);
-			}
-		});
-
-		handles.push(handle);
-	}
-
-	futures::future::join_all(handles).await;
-
-	assert_eq!(
-		success_count.load(Ordering::SeqCst),
-		10,
-		"All password updates should succeed"
-	);
-
-	// The user should have a password hash set
-	let user = user.read().await;
-	assert!(
-		user.password_hash.is_some(),
-		"User should have a password hash"
-	);
 }
 
 // =============================================================================

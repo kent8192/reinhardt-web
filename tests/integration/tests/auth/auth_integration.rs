@@ -6,7 +6,7 @@
 //!
 //! 1. **Permission Tests**: Core permission classes (AllowAny, IsAuthenticated, etc.)
 //! 2. **JWT Tests**: Token generation, verification, and error handling
-//! 3. **User Model Tests**: SimpleUser, AnonymousUser, and DefaultUser implementations
+//! 3. **User Model Tests**: InternalUser AuthIdentity implementation
 //! 4. **Database Integration Tests**: Session authentication with database backend
 //!
 //! ## Test Organization
@@ -19,9 +19,10 @@
 
 use bytes::Bytes;
 use hyper::Method;
+use reinhardt_auth::internal_user::InternalUser;
 use reinhardt_auth::{
-	AllowAny, AnonymousUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
-	PermissionContext, SimpleUser,
+	AllowAny, AuthIdentity, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
+	PermissionContext,
 };
 use reinhardt_http::Request;
 use rstest::*;
@@ -341,17 +342,16 @@ mod jwt_tests {
 
 mod user_model_tests {
 	use super::*;
-	use reinhardt_auth::User;
 
-	/// Test SimpleUser implementation
+	/// Test InternalUser implements AuthIdentity correctly
 	///
-	/// **Test Intent**: Verify SimpleUser implements User trait correctly
+	/// **Test Intent**: Verify InternalUser implements AuthIdentity trait correctly
 	///
-	/// **Integration Point**: SimpleUser implementation
+	/// **Integration Point**: InternalUser AuthIdentity implementation
 	#[rstest]
 	#[tokio::test]
-	async fn test_simple_user_implementation() {
-		let user = SimpleUser {
+	async fn test_internal_user_implementation() {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),
@@ -362,58 +362,32 @@ mod user_model_tests {
 		};
 
 		assert!(!user.id().is_empty());
-		assert_eq!(user.username(), "testuser");
 		assert!(user.is_authenticated());
-		assert!(user.is_active());
 		assert!(!user.is_admin());
 	}
 
-	/// Test AnonymousUser is not authenticated
+	/// Test InternalUser with different admin flag values
 	///
-	/// **Test Intent**: Verify AnonymousUser represents unauthenticated state
+	/// **Test Intent**: Verify InternalUser correctly reports is_admin via AuthIdentity trait
 	///
-	/// **Integration Point**: AnonymousUser implementation
+	/// **Integration Point**: InternalUser AuthIdentity flag handling
 	#[rstest]
+	#[case(false)]
+	#[case(true)]
 	#[tokio::test]
-	async fn test_anonymous_user_not_authenticated() {
-		let user = AnonymousUser;
-
-		assert_eq!(user.id(), "");
-		assert_eq!(user.username(), "");
-		assert!(!user.is_authenticated());
-		assert!(!user.is_active());
-		assert!(!user.is_admin());
-	}
-
-	/// Test SimpleUser with different user flags
-	///
-	/// **Test Intent**: Verify SimpleUser correctly handles is_active, is_staff, is_superuser flags
-	///
-	/// **Integration Point**: SimpleUser flag handling
-	#[rstest]
-	#[case(true, false, false, false)]
-	#[case(true, true, false, false)]
-	#[case(true, false, true, false)]
-	#[case(true, true, true, true)]
-	#[tokio::test]
-	async fn test_simple_user_flags(
-		#[case] is_active: bool,
-		#[case] is_staff: bool,
-		#[case] is_admin: bool,
-		#[case] is_superuser: bool,
-	) {
-		let user = SimpleUser {
+	async fn test_internal_user_admin_flag(#[case] is_admin: bool) {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "user".to_string(),
 			email: "user@example.com".to_string(),
-			is_active,
+			is_active: true,
 			is_admin,
-			is_staff,
-			is_superuser,
+			is_staff: false,
+			is_superuser: false,
 		};
 
-		assert_eq!(user.is_active(), is_active);
 		assert_eq!(user.is_admin(), is_admin);
+		assert!(user.is_authenticated());
 	}
 }
 
@@ -424,8 +398,6 @@ mod user_model_tests {
 #[cfg(feature = "argon2-hasher")]
 mod database_integration_tests {
 	use super::*;
-	use chrono::Utc;
-	use reinhardt_auth::{BaseUser, DefaultUser, PermissionsMixin, User};
 	use reinhardt_db::DatabaseConnection;
 	use reinhardt_test::fixtures::postgres_container;
 	use serial_test::serial;
@@ -455,16 +427,10 @@ mod database_integration_tests {
 				id UUID PRIMARY KEY,
 				username VARCHAR(255) UNIQUE NOT NULL,
 				email VARCHAR(255),
-				first_name VARCHAR(255),
-				last_name VARCHAR(255),
-				password_hash TEXT,
-				last_login TIMESTAMP WITH TIME ZONE,
 				is_active BOOLEAN NOT NULL DEFAULT TRUE,
+				is_admin BOOLEAN NOT NULL DEFAULT FALSE,
 				is_staff BOOLEAN NOT NULL DEFAULT FALSE,
-				is_superuser BOOLEAN NOT NULL DEFAULT FALSE,
-				date_joined TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-				user_permissions TEXT[] NOT NULL DEFAULT '{}',
-				groups TEXT[] NOT NULL DEFAULT '{}'
+				is_superuser BOOLEAN NOT NULL DEFAULT FALSE
 			)
 			"#,
 		)
@@ -477,9 +443,9 @@ mod database_integration_tests {
 
 	/// Test session authentication with database
 	///
-	/// **Test Intent**: Verify session-based authentication can persist and restore user state
+	/// **Test Intent**: Verify InternalUser can represent an authenticated session user
 	///
-	/// **Integration Point**: Session authentication + Database backend
+	/// **Integration Point**: InternalUser AuthIdentity + Database backend
 	#[rstest]
 	#[serial(auth_db)]
 	#[tokio::test]
@@ -493,8 +459,8 @@ mod database_integration_tests {
 	) {
 		let (_container, _connection, _port, _url) = auth_test_db.await;
 
-		// Create a test user
-		let user = SimpleUser {
+		// Create a test user via InternalUser
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "session_user".to_string(),
 			email: "session@example.com".to_string(),
@@ -504,138 +470,9 @@ mod database_integration_tests {
 			is_superuser: false,
 		};
 
-		// Verify user ID can be used as session key
+		// Verify AuthIdentity methods
 		assert!(!user.id().is_empty());
-		assert_eq!(user.username(), "session_user");
 		assert!(user.is_authenticated());
-	}
-
-	/// Test DefaultUser password hashing
-	///
-	/// **Test Intent**: Verify DefaultUser correctly hashes and verifies passwords using Argon2
-	///
-	/// **Integration Point**: DefaultUser + Argon2Hasher
-	#[rstest]
-	#[serial(auth_db)]
-	#[tokio::test]
-	async fn test_default_user_password_hashing(
-		#[future] auth_test_db: (
-			ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
-			u16,
-			String,
-		),
-	) {
-		let (_container, _connection, _port, _url) = auth_test_db.await;
-
-		let mut user = DefaultUser {
-			id: Uuid::now_v7(),
-			username: "passworduser".to_string(),
-			email: "password@example.com".to_string(),
-			first_name: "Password".to_string(),
-			last_name: "User".to_string(),
-			password_hash: None,
-			last_login: None,
-			is_active: true,
-			is_staff: false,
-			is_superuser: false,
-			date_joined: Utc::now(),
-			user_permissions: Vec::new(),
-			groups: Vec::new(),
-		};
-
-		// Set password (should be hashed)
-		user.set_password("secure_password_123").unwrap();
-		assert!(user.password_hash.is_some());
-
-		// Verify correct password
-		assert!(user.check_password("secure_password_123").unwrap());
-
-		// Verify incorrect password fails
-		assert!(!user.check_password("wrong_password").unwrap());
-	}
-
-	/// Test DefaultUser with permissions
-	///
-	/// **Test Intent**: Verify DefaultUser correctly implements PermissionsMixin
-	///
-	/// **Integration Point**: DefaultUser + PermissionsMixin
-	#[rstest]
-	#[serial(auth_db)]
-	#[tokio::test]
-	async fn test_default_user_permissions(
-		#[future] auth_test_db: (
-			ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
-			u16,
-			String,
-		),
-	) {
-		let (_container, _connection, _port, _url) = auth_test_db.await;
-
-		let user = DefaultUser {
-			id: Uuid::now_v7(),
-			username: "permuser".to_string(),
-			email: "perm@example.com".to_string(),
-			first_name: "Permission".to_string(),
-			last_name: "User".to_string(),
-			password_hash: None,
-			last_login: None,
-			is_active: true,
-			is_staff: false,
-			is_superuser: false,
-			date_joined: Utc::now(),
-			user_permissions: vec!["blog.add_post".to_string(), "blog.change_post".to_string()],
-			groups: vec!["editors".to_string()],
-		};
-
-		// Check individual permissions
-		assert!(user.has_perm("blog.add_post"));
-		assert!(user.has_perm("blog.change_post"));
-		assert!(!user.has_perm("blog.delete_post"));
-
-		// Check module-level permissions
-		assert!(user.has_module_perms("blog"));
-		assert!(!user.has_module_perms("admin"));
-	}
-
-	/// Test DefaultUser superuser permissions
-	///
-	/// **Test Intent**: Verify superuser has all permissions regardless of explicit grants
-	///
-	/// **Integration Point**: DefaultUser superuser flag
-	#[rstest]
-	#[serial(auth_db)]
-	#[tokio::test]
-	async fn test_default_user_superuser_permissions(
-		#[future] auth_test_db: (
-			ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
-			u16,
-			String,
-		),
-	) {
-		let (_container, _connection, _port, _url) = auth_test_db.await;
-
-		let superuser = DefaultUser {
-			id: Uuid::now_v7(),
-			username: "superuser".to_string(),
-			email: "super@example.com".to_string(),
-			first_name: "Super".to_string(),
-			last_name: "User".to_string(),
-			password_hash: None,
-			last_login: None,
-			is_active: true,
-			is_staff: true,
-			is_superuser: true,
-			date_joined: Utc::now(),
-			user_permissions: Vec::new(),
-			groups: Vec::new(),
-		};
-
-		// Superuser should have all permissions even without explicit grants
-		assert!(superuser.has_perm("any.permission"));
-		assert!(superuser.has_perm("blog.delete_post"));
-		assert!(superuser.has_module_perms("any_module"));
+		assert!(!user.is_admin());
 	}
 }
