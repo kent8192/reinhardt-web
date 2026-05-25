@@ -416,7 +416,7 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		.expect("client_router.rs must define `pub fn client_url_patterns`");
 	let client_body = &client_contents[client_body_start..];
 	assert!(
-		!client_body.contains(".named_route(\"index\","),
+		!client_body.contains(".route(\"index\","),
 		"client_router.rs function body must not embed example route calls:\n{client_body}"
 	);
 

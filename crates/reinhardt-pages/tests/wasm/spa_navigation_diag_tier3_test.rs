@@ -103,9 +103,9 @@ fn login_page() -> Page {
 
 fn build_router() -> ClientRouter {
 	ClientRouter::new()
-		.route("/", home_page)
-		.route("/clusters", clusters_page)
-		.route("/login", login_page)
+		.route("home", "/", home_page)
+		.route("clusters", "/clusters", clusters_page)
+		.route("login", "/login", login_page)
 }
 
 // ---- DOM helpers ----

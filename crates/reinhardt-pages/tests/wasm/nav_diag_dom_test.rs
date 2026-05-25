@@ -49,8 +49,8 @@ fn install_app_root() -> web_sys::Element {
 
 fn build_router() -> ClientRouter {
 	ClientRouter::new()
-		.named_route("dashboard:home", "/", home_page)
-		.named_route("clusters:list", "/clusters", clusters_page)
+		.route("dashboard:home", "/", home_page)
+		.route("clusters:list", "/clusters", clusters_page)
 }
 
 fn read_dataset_nav_site() -> Option<String> {

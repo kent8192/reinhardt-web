@@ -19,10 +19,9 @@
 //!
 //! // Create a router
 //! let router = Arc::new(Router::new()
-//!     .route("/", home_page)
-//!     .route("/users/", user_list)
-//!     .route("/users/{id}/", user_detail)
-//!     .named_route("user_detail", "/users/{id}/", user_detail));
+//!     .route("home", "/", home_page)
+//!     .route("user_list", "/users/", user_list)
+//!     .route("user_detail", "/users/{id}/", user_detail));
 //!
 //! // Create a router outlet to render current route
 //! let outlet = RouterOutlet::new(router.clone());

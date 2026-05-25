@@ -59,8 +59,8 @@ fn install_app_root() -> web_sys::Element {
 
 fn build_router() -> ClientRouter {
 	ClientRouter::new()
-		.named_route("dashboard:home", "/", home_page)
-		.named_route("clusters:list", "/clusters", clusters_page)
+		.route("dashboard:home", "/", home_page)
+		.route("clusters:list", "/clusters", clusters_page)
 }
 
 /// Classify `history.state` into a JS-`typeof`-style label using

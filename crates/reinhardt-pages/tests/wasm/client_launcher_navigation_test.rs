@@ -76,9 +76,9 @@ async fn client_launcher_re_renders_on_router_push() {
 	ClientLauncher::new("#app")
 		.router_client(|| {
 			ClientRouter::new()
-				.route("/", page_root)
-				.route("/a", page_a)
-				.route("/b", page_b)
+				.route("root", "/", page_root)
+				.route("a", "/a", page_a)
+				.route("b", "/b", page_b)
 		})
 		.launch()
 		.expect("launch");
@@ -159,9 +159,9 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 	ClientLauncher::new("#app")
 		.router_client(|| {
 			ClientRouter::new()
-				.route("/", dashboard)
-				.route("/login", login_page)
-				.route("/register", register_page)
+				.route("dashboard", "/", dashboard)
+				.route("login", "/login", login_page)
+				.route("register", "/register", register_page)
 				.not_found(not_found)
 		})
 		.launch()
@@ -221,9 +221,9 @@ async fn client_launcher_re_renders_on_popstate() {
 	ClientLauncher::new("#app")
 		.router_client(|| {
 			ClientRouter::new()
-				.route("/", page_root)
-				.route("/a", page_a)
-				.route("/b", page_b)
+				.route("root", "/", page_root)
+				.route("a", "/a", page_a)
+				.route("b", "/b", page_b)
 		})
 		.after_launch(move |_ctx| {
 			// after_launch is FnOnce, so observed_paths_for_listener can
@@ -307,9 +307,9 @@ async fn client_launcher_handles_back_to_back_navigations() {
 	ClientLauncher::new("#app")
 		.router_client(|| {
 			ClientRouter::new()
-				.route("/", page_root)
-				.route("/a", page_a)
-				.route("/b", page_b)
+				.route("root", "/", page_root)
+				.route("a", "/a", page_a)
+				.route("b", "/b", page_b)
 		})
 		.launch()
 		.expect("launch");

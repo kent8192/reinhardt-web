@@ -106,10 +106,10 @@ fn login_page() -> Page {
 
 fn build_router() -> ClientRouter {
 	ClientRouter::new()
-		.named_route("dashboard:home", "/", home_page)
-		.named_route("clusters:list", "/clusters", clusters_page)
-		.named_route("deployments:list", "/deployments", deployments_page)
-		.named_route("auth:login", "/login", login_page)
+		.route("dashboard:home", "/", home_page)
+		.route("clusters:list", "/clusters", clusters_page)
+		.route("deployments:list", "/deployments", deployments_page)
+		.route("auth:login", "/login", login_page)
 }
 
 // ---- DOM helpers ----

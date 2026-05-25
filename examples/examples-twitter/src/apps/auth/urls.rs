@@ -32,8 +32,8 @@ pub fn routes() -> UnifiedRouter {
 		.client(|c| {
 			#[cfg(wasm)]
 			{
-				c.route("/login", || login_form())
-					.route("/register", || register_form())
+				c.route("login", "/login", || login_form())
+					.route("register", "/register", || register_form())
 			}
 			#[cfg(native)]
 			c

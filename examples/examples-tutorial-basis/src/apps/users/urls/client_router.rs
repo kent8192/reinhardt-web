@@ -14,7 +14,7 @@ use crate::config::apps::InstalledApp;
 #[url_patterns(InstalledApp::users, mode = client)]
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
-		.named_route("login", "/login/", login_page)
-		.named_route("logout", "/logout/", logout_page)
-		.named_route("signup", "/signup/", signup_page)
+		.route("login", "/login/", login_page)
+		.route("logout", "/logout/", logout_page)
+		.route("signup", "/signup/", signup_page)
 }

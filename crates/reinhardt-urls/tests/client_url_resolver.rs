@@ -22,9 +22,9 @@ fn test_client_url_reverser_round_trip_via_client_router() {
 	// Arrange
 	clear_client_reverser();
 	let router = ClientRouter::new()
-		.named_route("app:home", "/", stub_page)
-		.named_route("app:user_detail", "/users/{id}/", stub_page)
-		.named_route(
+		.route("app:home", "/", stub_page)
+		.route("app:user_detail", "/users/{id}/", stub_page)
+		.route(
 			"app:user_posts",
 			"/users/{user_id}/posts/{post_id}/",
 			stub_page,

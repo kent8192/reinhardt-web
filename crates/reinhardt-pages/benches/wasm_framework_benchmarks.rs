@@ -274,13 +274,13 @@ fn bench_ssr_with_hydration_markers(c: &mut Criterion) {
 /// Benchmark: Path matching with simple routes
 fn bench_router_path_matching(c: &mut Criterion) {
 	let router = ClientRouter::new()
-		.route("/users/{id}", || {
+		.route("user_detail", "/users/{id}", || {
 			PageElement::new("div").child("User").into_page()
 		})
-		.route("/posts/{slug}/", || {
+		.route("post_detail", "/posts/{slug}/", || {
 			PageElement::new("div").child("Post").into_page()
 		})
-		.route("/admin/users/{id}/edit", || {
+		.route("admin_user_edit", "/admin/users/{id}/edit", || {
 			PageElement::new("div").child("Edit").into_page()
 		});
 
@@ -295,7 +295,7 @@ fn bench_router_complex_path_matching(c: &mut Criterion) {
 
 	// Add many routes
 	for i in 0..100 {
-		router = router.route(&format!("/api/v1/resource{}/{{id}}", i), move || {
+		router = router.route(&format!("resource_{}", i), &format!("/api/v1/resource{}/{{id}}", i), move || {
 			PageElement::new("div")
 				.child(format!("Resource {}", i))
 				.into_page()
@@ -310,6 +310,7 @@ fn bench_router_complex_path_matching(c: &mut Criterion) {
 /// Benchmark: Parameter extraction
 fn bench_router_parameter_extraction(c: &mut Criterion) {
 	let router = ClientRouter::new().route(
+		"comment_detail",
 		"/users/{user_id}/posts/{post_id}/comments/{comment_id}/",
 		|| PageElement::new("div").child("Comment").into_page(),
 	);
@@ -329,13 +330,13 @@ fn bench_router_named_routes(c: &mut Criterion) {
 	c.bench_function("router_named_routes", |b| {
 		b.iter(|| {
 			let _router = ClientRouter::new()
-				.named_route("user_profile", "/users/{id}/profile", || {
+				.route("user_profile", "/users/{id}/profile", || {
 					PageElement::new("div").child("Profile").into_page()
 				})
-				.named_route("user_posts", "/users/{id}/posts", || {
+				.route("user_posts", "/users/{id}/posts", || {
 					PageElement::new("div").child("Posts").into_page()
 				})
-				.named_route("user_settings", "/users/{id}/settings", || {
+				.route("user_settings", "/users/{id}/settings", || {
 					PageElement::new("div").child("Settings").into_page()
 				});
 		})

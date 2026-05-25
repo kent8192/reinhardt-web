@@ -40,6 +40,7 @@ pub fn routes() -> UnifiedRouter {
 			#[cfg(wasm)]
 			{
 				c.route_path(
+					"dm_chat",
 					"/dm/{room_id}",
 					|ClientPath(room_id): ClientPath<String>| dm_chat_page(room_id),
 				)

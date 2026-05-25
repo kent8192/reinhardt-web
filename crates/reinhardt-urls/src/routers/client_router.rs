@@ -24,11 +24,11 @@
 //!
 //! // Create a router with routes
 //! let router = ClientRouter::new()
-//!     .route("/", || home_page())
-//!     .route_path("/users/{id}/", |Path(id): Path<u64>| {
+//!     .route("home", "/", || home_page())
+//!     .route_path("user_detail", "/users/{id}/", |Path(id): Path<u64>| {
 //!         user_page(id)
 //!     })
-//!     .named_route("settings", "/settings/", || settings_page())
+//!     .route("settings", "/settings/", || settings_page())
 //!     .not_found(|| not_found_page());
 //!
 //! // Setup browser history listener
@@ -48,13 +48,13 @@
 //!
 //! ```rust,ignore
 //! // Single parameter
-//! .route_path("/posts/{id}/", |Path(id): Path<i64>| {
+//! .route_path("post_detail", "/posts/{id}/", |Path(id): Path<i64>| {
 //!     post_page(id)
 //! })
 //!
 //! // Multiple parameters — same method, the arity is inferred from
 //! // the closure signature (Issue #4637).
-//! .route_path("/users/{user_id}/posts/{post_id}/",
+//! .route_path("user_post", "/users/{user_id}/posts/{post_id}/",
 //!     |Path(user_id): Path<u64>, Path(post_id): Path<u64>| {
 //!         user_post_page(user_id, post_id)
 //!     })

@@ -2,7 +2,7 @@
 //!
 //! Routes are declared with `#[url_patterns(InstalledApp::polls, mode = client)]`,
 //! which auto-registers the router via inventory and applies the `polls`
-//! namespace to every named route (so the route name passed to `named_route`
+//! namespace to every named route (so the route name passed to `route`
 //! is reachable as `polls:<name>` through `ResolvedUrls`). Each route is
 //! registered with a stable name so that page components can resolve URLs
 //! through `ResolvedUrls::resolve_client_url(...)` instead of formatting
@@ -23,43 +23,43 @@ use crate::config::apps::InstalledApp;
 #[url_patterns(InstalledApp::polls, mode = client)]
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
-		.named_route("index", "/", index_page)
-		.named_route("question_new", "/polls/new/", question_new_page)
-		.named_route_path(
+		.route("index", "/", index_page)
+		.route("question_new", "/polls/new/", question_new_page)
+		.route_path(
 			"choice_new",
 			"/polls/{question_id}/choices/new/",
 			|ClientPath(question_id): ClientPath<i64>| choice_new_page(question_id),
 		)
-		.named_route_path(
+		.route_path(
 			"choice_edit",
 			"/polls/{question_id}/choices/{choice_id}/edit/",
 			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
 				choice_edit_page(question_id, choice_id)
 			},
 		)
-		.named_route_path(
+		.route_path(
 			"choice_delete",
 			"/polls/{question_id}/choices/{choice_id}/delete/",
 			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
 				choice_delete_page(question_id, choice_id)
 			},
 		)
-		.named_route_path(
+		.route_path(
 			"detail",
 			"/polls/{question_id}/",
 			|ClientPath(question_id): ClientPath<i64>| polls_detail_page(question_id),
 		)
-		.named_route_path(
+		.route_path(
 			"question_edit",
 			"/polls/{question_id}/edit/",
 			|ClientPath(question_id): ClientPath<i64>| question_edit_page(question_id),
 		)
-		.named_route_path(
+		.route_path(
 			"question_delete",
 			"/polls/{question_id}/delete/",
 			|ClientPath(question_id): ClientPath<i64>| question_delete_page(question_id),
 		)
-		.named_route_path(
+		.route_path(
 			"results",
 			"/polls/{question_id}/results/",
 			|ClientPath(question_id): ClientPath<i64>| polls_results_page(question_id),

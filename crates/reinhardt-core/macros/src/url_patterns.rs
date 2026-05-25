@@ -25,7 +25,7 @@
 //! | mode      | Router         | Scanned calls                                  | Module(s) emitted                                          |
 //! |-----------|----------------|-----------------------------------------------|------------------------------------------------------------|
 //! | `server`  | `ServerRouter` | `.endpoint()`, `.viewset()`, `.mount()`        | `url_resolvers`                                            |
-//! | `client`  | `ClientRouter` | `.named_route()` family                        | `client_url_resolvers` + `urls` (typed helpers)            |
+//! | `client`  | `ClientRouter` | `.route()` family                              | `client_url_resolvers` + `urls` (typed helpers)            |
 //! | `unified` | `UnifiedRouter`| both sides (inside `.server(\|s\|)` / `.client(\|c\|)` closures) | `url_resolvers` + `client_url_resolvers` + `urls` |
 //!
 //! The `urls` module added for Issue #4644 contains one `pub fn` per named
@@ -475,10 +475,10 @@ fn build_mount_reexport(call: &ChainCall) -> TokenStream {
 
 /// A named client route extracted from the function body.
 ///
-/// Example: `.named_route("login_page", "/login/", handler)`
+/// Example: `.route("login_page", "/login/", handler)`
 /// yields `ClientNamedRoute { name: "login_page", pattern: "/login/" }`.
 ///
-/// For `.named_route_path*` calls whose third argument is an inline closure
+/// For `.route_path(…)` calls whose third argument is an inline closure
 /// with `ClientPath(name): ClientPath<T>` bindings, `typed_params` carries
 /// the per-binding `(name, T)` pairs so the macro can generate a typed
 /// helper `pub fn <name>(<name>: T, …) -> String`. When `typed_params` is
@@ -490,45 +490,45 @@ struct ClientNamedRoute {
 	typed_params: Option<Vec<(syn::Ident, syn::Type)>>,
 }
 
-/// Method variant of a `.named_route*(…)` call.
+/// Method variant of a `.route*(…)` call.
 ///
 /// Used to decide which call shapes carry path parameters whose types the
 /// macro should attempt to lift from the closure binding.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum NamedRouteVariant {
-	/// `.named_route(name, pattern, component)` — zero path params.
+	/// `.route(name, pattern, component)` — zero path params.
 	None,
-	/// `.named_route_path(name, pattern, |ClientPath(…): ClientPath<…>, …| body)`
+	/// `.route_path(name, pattern, |ClientPath(…): ClientPath<…>, …| body)`
 	/// — one `ClientPath<T>` binding per path param. Covers every arity
-	/// 1..=8 since Issue #4637 collapsed `named_route_path2` /
-	/// `named_route_path3` into the unified `named_route_path`.
+	/// 1..=8 since Issue #4637 collapsed `route_path2` /
+	/// `route_path3` into the unified `route_path`.
 	Path,
-	/// `.named_route_params(name, pattern, |Path(t): Path<Struct>| body)` or
-	/// `.named_route_result(name, pattern, …)` — typed struct binding the
+	/// `.route_params(name, pattern, |Path(t): Path<Struct>| body)` or
+	/// `.route_result(name, pattern, …)` — typed struct binding the
 	/// macro does not attempt to expand into a typed helper today.
 	Untyped,
 }
 
 fn classify_named_route(ident: &proc_macro2::Ident) -> Option<NamedRouteVariant> {
-	if ident == "named_route" {
+	if ident == "route" {
 		Some(NamedRouteVariant::None)
-	} else if ident == "named_route_path" {
-		// Issue #4637: arity-suffixed variants (`named_route_path2` /
-		// `named_route_path3`) were removed in favor of a single
-		// arity-generic `named_route_path` driven by `Handler<Args>`.
+	} else if ident == "route_path" {
+		// Issue #4637: arity-suffixed variants (`route_path2` /
+		// `route_path3`) were removed in favor of a single
+		// arity-generic `route_path` driven by `Handler<Args>`.
 		Some(NamedRouteVariant::Path)
-	} else if ident == "named_route_params" || ident == "named_route_result" {
+	} else if ident == "route_params" || ident == "route_result" {
 		Some(NamedRouteVariant::Untyped)
 	} else {
 		None
 	}
 }
 
-/// Extract `.named_route(NAME, PATTERN, HANDLER)` calls from a function body.
+/// Extract `.route(NAME, PATTERN, HANDLER)` calls from a function body.
 ///
-/// Scans for the pattern `.named_route("name", "/pattern/", expr)` and
+/// Scans for the pattern `.route("name", "/pattern/", expr)` and
 /// extracts the route name, URL pattern, and (when the call is one of the
-/// `named_route_path*` variants with an inline closure) the typed parameter
+/// `route_path` variants with an inline closure) the typed parameter
 /// list for typed-helper generation.
 fn extract_named_route_calls(body_tokens: &[proc_macro2::TokenTree]) -> Vec<ClientNamedRoute> {
 	let mut routes = Vec::new();
@@ -554,7 +554,7 @@ fn extract_named_route_calls(body_tokens: &[proc_macro2::TokenTree]) -> Vec<Clie
 	routes
 }
 
-/// Parse the arguments of a `named_route*(name, pattern, …)` call.
+/// Parse the arguments of a `route*(name, pattern, …)` call.
 ///
 /// Returns the route's `(name, pattern)` plus, when `variant ==
 /// NamedRouteVariant::Path` and the handler is an inline closure with
@@ -577,10 +577,10 @@ fn parse_named_route_args(
 				Some(syn::Expr::Closure(closure)) => parse_closure_typed_params(closure),
 				_ => None,
 			},
-			// `.named_route(…)` has no path params, so the typed helper is
+			// `.route(…)` has no path params, so the typed helper is
 			// always emittable as a zero-argument function.
 			NamedRouteVariant::None => Some(Vec::new()),
-			// `.named_route_params(…)` / `.named_route_result(…)` take a
+			// `.route_params(…)` / `.route_result(…)` take a
 			// single struct-typed binding; the macro does not attempt to
 			// project them into a typed helper today.
 			NamedRouteVariant::Untyped => None,
@@ -630,7 +630,7 @@ fn lit_str_value(expr: &syn::Expr) -> Option<String> {
 }
 
 /// Lift the typed parameter list from a closure passed to a
-/// `.named_route_path*(…)` call.
+/// `.route_path(…)` call.
 ///
 /// Recognises bindings shaped like `ClientPath(name): ClientPath<T>` and
 /// returns the corresponding `(name, T)` pairs. Returns `None` if any
@@ -1137,8 +1137,8 @@ fn build_server_resolvers(body_tokens: &[proc_macro2::TokenTree]) -> TokenStream
 /// Issue #4644 — exposes a typed `pub fn <route>(<arg>: T, …) -> String`
 /// per named route whose path params the macro could extract from the
 /// closure binding. Routes whose param types could not be statically
-/// recovered (e.g., a function reference passed to `.named_route_path*`,
-/// or `.named_route_params(…)` whose binding is a single struct) are
+/// recovered (e.g., a function reference passed to `.route_path`,
+/// or `.route_params(…)` whose binding is a single struct) are
 /// emitted in the resolver manifest but skipped in the typed `urls`
 /// module — the stringly-typed `ResolvedUrls::resolve_client_url(…)` API
 /// keeps working for them.
@@ -1381,7 +1381,7 @@ fn build_client_resolvers(
 ///   `.endpoint()`, `.viewset()`, `.mount()` calls on a `ServerRouter`;
 ///   generates the `url_resolvers` module.
 /// - `#[url_patterns(InstalledApp::variant, mode = client)]` — scans for
-///   `.named_route()` family calls on a `ClientRouter`; generates both
+///   `.route()` family calls on a `ClientRouter`; generates both
 ///   the `client_url_resolvers` manifest *and* the typed `urls` module
 ///   (Issue #4644).
 /// - `#[url_patterns(InstalledApp::variant, mode = unified)]` — scans both
@@ -1573,7 +1573,7 @@ fn url_patterns_ws_impl(
 ///
 /// Scanning relies on the existing `flatten_body` recursion into group tokens,
 /// which transparently picks up `.endpoint()/.viewset()/.mount()` calls inside
-/// `.server(|s| ...)` closures and `.named_route*()` calls inside
+/// `.server(|s| ...)` closures and `.route*()` calls inside
 /// `.client(|c| ...)` closures.
 fn url_patterns_unified_impl(
 	parsed_args: UrlPatternsArgs,
@@ -1923,7 +1923,7 @@ mod tests {
 		let args = quote! { InstalledApp::users, mode = client };
 		let input = quote! {
 			pub fn client_url_patterns() -> ClientRouter {
-				ClientRouter::new().named_route("login", "/login/", || {})
+				ClientRouter::new().route("login", "/login/", || {})
 			}
 		};
 		let out = url_patterns_impl(args, input).expect("should generate");
@@ -1949,7 +1949,7 @@ mod tests {
 			pub fn unified_url_patterns() -> UnifiedRouter {
 				UnifiedRouter::new()
 					.server(|s| s.endpoint(views::login))
-					.client(|c| c.named_route("login_page", "/login/", || {}))
+					.client(|c| c.route("login_page", "/login/", || {}))
 			}
 		};
 		let out = url_patterns_impl(args, input).expect("should generate");

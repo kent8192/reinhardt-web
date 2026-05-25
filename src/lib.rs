@@ -306,7 +306,7 @@ pub mod urls;
 /// provides the correct closure signatures
 /// (`server: FnOnce(ServerRouterStub) -> ServerRouterStub`,
 /// `client: FnOnce(ClientRouter) -> ClientRouter`) so user-supplied bodies
-/// such as `.client(|c| c.named_route(...))` type-check on wasm.
+/// such as `.client(|c| c.route(...))` type-check on wasm.
 ///
 /// Without `client-router`, an inert stub is exposed so that the path
 /// resolves; user bodies that invoke `.server`/`.client` on the stub are

@@ -27,8 +27,8 @@ use serial_test::serial;
 /// changes the `current_path` signal.
 fn build_test_router() -> ClientRouter {
 	ClientRouter::new()
-		.named_route("home", "/", || Page::text("Home"))
-		.named_route("welcome", "/welcome", || Page::text("Welcome"))
+		.route("home", "/", || Page::text("Home"))
+		.route("welcome", "/welcome", || Page::text("Welcome"))
 }
 
 /// RAII guard that installs a test router on construction and clears the

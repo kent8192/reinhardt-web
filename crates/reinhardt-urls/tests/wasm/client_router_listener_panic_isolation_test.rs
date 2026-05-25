@@ -26,7 +26,7 @@ fn page_a() -> Page {
 #[wasm_bindgen_test]
 fn reentrant_on_navigate_does_not_panic_inv4() {
 	// Arrange
-	let router = Rc::new(ClientRouter::new().named_route("a", "/a", page_a));
+	let router = Rc::new(ClientRouter::new().route("a", "/a", page_a));
 	let later_fires = Rc::new(Cell::new(0u64));
 	let router_for_listener = router.clone();
 	let later_fires_clone = later_fires.clone();

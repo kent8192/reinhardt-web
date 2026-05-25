@@ -27,7 +27,7 @@
 //!     UnifiedRouter::new()
 //!         .mount("/api/", api::routes())  // Returns ServerRouter, not annotated with #[routes]
 //!         .mount("/", web::routes())      // Returns ServerRouter, not annotated with #[routes]
-//!         .client(|c| c.route("/", home_page))
+//!         .client(|c| c.route("home", "/", home_page))
 //! }
 //! ```
 //!
@@ -60,7 +60,7 @@
 //! pub fn routes() -> UnifiedRouter {
 //!     UnifiedRouter::new()
 //!         .server(|s| s.endpoint(views::index))
-//!         .client(|c| c.route("/", home_page))
+//!         .client(|c| c.route("home", "/", home_page))
 //! }
 //! ```
 //!

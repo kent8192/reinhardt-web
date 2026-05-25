@@ -482,7 +482,7 @@ pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 /// | mode      | Router          | Scanned calls                                                            | Modules emitted                                    |
 /// |-----------|-----------------|--------------------------------------------------------------------------|----------------------------------------------------|
 /// | `server`  | `ServerRouter`  | `.endpoint()`, `.viewset()`, `.mount()`                                  | `url_resolvers`                                    |
-/// | `client`  | `ClientRouter`  | `.named_route()` / `.named_route_path*()` family                         | `client_url_resolvers` + `urls` (typed helpers)    |
+/// | `client`  | `ClientRouter`  | `.route()` / `.route_path()` family                                      | `client_url_resolvers` + `urls` (typed helpers)    |
 /// | `unified` | `UnifiedRouter` | both sides (inside `.server(\|s\| ...)` / `.client(\|c\| ...)` closures) | `url_resolvers` + `client_url_resolvers` + `urls`  |
 /// | `ws`      | `WsRouter`      | `.consumer(...)`                                                         | `ws_url_resolvers`                                 |
 ///
@@ -499,8 +499,8 @@ pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #[url_patterns(InstalledApp::polls, mode = client)]
 /// pub fn client_url_patterns() -> ClientRouter {
 ///     ClientRouter::new()
-///         .named_route("index", "/", index_page)
-///         .named_route_path(
+///         .route("index", "/", index_page)
+///         .route_path(
 ///             "detail",
 ///             "/polls/{question_id}/",
 ///             |ClientPath(question_id): ClientPath<i64>| polls_detail_page(question_id),
@@ -522,14 +522,14 @@ pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 /// parameter count in the pattern matches the binding count in the
 /// closure, and every binding is shaped `ClientPath(name): ClientPath<T>`:
 ///
-/// - `.named_route(name, pattern, component)` — always emits a zero-arg
+/// - `.route(name, pattern, component)` — always emits a zero-arg
 ///   helper.
-/// - `.named_route_path(name, pattern, |ClientPath(a): ClientPath<A>, …,
+/// - `.route_path(name, pattern, |ClientPath(a): ClientPath<A>, …,
 ///   ClientPath(n): ClientPath<N>| ...)` — emits
 ///   `fn name(a: A, …, n: N) -> String`. Up to **8** path parameters are
 ///   supported by the underlying `Handler<Args>` trait (Issue #4637); the
 ///   arity is inferred from the closure signature.
-/// - `.named_route_params(...)` / `.named_route_result(...)` — the macro
+/// - `.route_params(...)` / `.route_result(...)` — the macro
 ///   does not project these into typed helpers today; the route is still
 ///   reachable through the stringly-typed
 ///   `ResolvedUrls::resolve_client_url(...)` API.

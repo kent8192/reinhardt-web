@@ -43,7 +43,7 @@ mod apps {
 			#[url_patterns(crate::InstalledApp::accounts, mode = unified)]
 			pub fn unified_url_patterns() -> UnifiedRouter {
 				UnifiedRouter::new().client(|c| {
-					c.named_route("home", "/", || Page::Empty).named_route(
+					c.route("home", "/", || Page::Empty).route(
 						"user_detail",
 						"/users/{id}/",
 						|| Page::Empty,
@@ -79,7 +79,7 @@ mod apps {
 
 			#[url_patterns(crate::InstalledApp::blog, mode = unified)]
 			pub fn unified_url_patterns() -> UnifiedRouter {
-				UnifiedRouter::new().client(|c| c.named_route("placeholder", "/", || Page::Empty))
+				UnifiedRouter::new().client(|c| c.route("placeholder", "/", || Page::Empty))
 			}
 
 			pub(crate) mod ws_urls {

@@ -24,7 +24,7 @@ fn page_a() -> Page {
 #[wasm_bindgen_test]
 fn drop_subscription_deregisters_listener_inv2_inv6() {
 	// Arrange
-	let router = ClientRouter::new().named_route("a", "/a", page_a);
+	let router = ClientRouter::new().route("a", "/a", page_a);
 	let counter = Rc::new(Cell::new(0u64));
 	let counter_clone = counter.clone();
 

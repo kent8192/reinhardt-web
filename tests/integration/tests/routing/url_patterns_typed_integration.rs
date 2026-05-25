@@ -104,7 +104,7 @@ mod accounts_client_app {
 
 	#[url_patterns(super::InstalledApp::accounts, mode = client)]
 	pub fn client_url_patterns() -> ClientRouter {
-		ClientRouter::new().named_route("login", "/login/", || Page::Empty)
+		ClientRouter::new().route("login", "/login/", || Page::Empty)
 	}
 }
 
@@ -117,7 +117,7 @@ mod accounts_unified_app {
 
 	#[url_patterns(super::InstalledApp::accounts, mode = unified)]
 	pub fn unified_url_patterns() -> UnifiedRouter {
-		UnifiedRouter::new().client(|c| c.named_route("login", "/login/", || Page::Empty))
+		UnifiedRouter::new().client(|c| c.route("login", "/login/", || Page::Empty))
 	}
 }
 
@@ -181,14 +181,14 @@ mod typed_accounts_app {
 	#[url_patterns(super::InstalledApp::accounts, mode = client)]
 	pub fn client_url_patterns() -> ClientRouter {
 		ClientRouter::new()
-			.named_route("index", "/", || Page::Empty)
-			.named_route("question_new", "/polls/new/", || Page::Empty)
-			.named_route_path(
+			.route("index", "/", || Page::Empty)
+			.route("question_new", "/polls/new/", || Page::Empty)
+			.route_path(
 				"detail",
 				"/polls/{question_id}/",
 				|ClientPath(_question_id): ClientPath<i64>| Page::Empty,
 			)
-			.named_route_path(
+			.route_path(
 				"choice_edit",
 				"/polls/{question_id}/choices/{choice_id}/edit/",
 				|ClientPath(_question_id): ClientPath<i64>,
@@ -319,7 +319,7 @@ mod typed_accounts_app_swapped_order {
 
 	#[url_patterns(super::InstalledApp::accounts, mode = client)]
 	pub fn client_url_patterns() -> ClientRouter {
-		ClientRouter::new().named_route_path(
+		ClientRouter::new().route_path(
 			"choice_edit",
 			"/polls/{question_id}/choices/{choice_id}/edit/",
 			|ClientPath(_choice_id): ClientPath<i64>, ClientPath(_question_id): ClientPath<i64>| {

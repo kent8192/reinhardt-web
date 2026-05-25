@@ -31,8 +31,8 @@ pub fn routes() -> UnifiedRouter {
 		.client(|c| {
 			#[cfg(wasm)]
 			{
-				c.route("/", || home_page())
-					.route("/timeline", || timeline_page())
+				c.route("home", "/", || home_page())
+					.route("timeline", "/timeline", || timeline_page())
 			}
 			#[cfg(native)]
 			c
