@@ -15,7 +15,7 @@
 //! views/endpoints here:
 //!
 //! ```rust,ignore
-//! use crate::apps::{{ app_name }}::views;
+{% if is_workspace == "true" %}//! use crate::views;{% else %}//! use crate::apps::{{ app_name }}::views;{% endif %}
 //!
 //! ServerRouter::new()
 //!     .endpoint(views::index)
@@ -24,7 +24,7 @@
 use reinhardt::ServerRouter;
 use reinhardt::url_patterns;
 
-use crate::config::apps::InstalledApp;
+{% if is_workspace == "true" %}use {{ project_crate_name }}::config::apps::InstalledApp;{% else %}use crate::config::apps::InstalledApp;{% endif %}
 
 #[url_patterns(InstalledApp::{{ app_name }}, mode = server)]
 pub fn server_url_patterns() -> ServerRouter {

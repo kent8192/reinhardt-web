@@ -1,4 +1,4 @@
-//! {{ app_name }} application module
+//! {{ app_name }} application {% if is_workspace == "true" %}crate{% else %}module{% endif %}
 //!
 //! A RESTful API application
 
