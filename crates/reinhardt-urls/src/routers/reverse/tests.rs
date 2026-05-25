@@ -401,7 +401,8 @@ fn test_aho_corasick_multiple_params() {
 	params.insert("user_id".to_string(), "42".to_string());
 	params.insert("post_id".to_string(), "100".to_string());
 
-	let result = try_reverse_with_aho_corasick("/users/{user_id}/posts/{post_id}/", &params).unwrap();
+	let result =
+		try_reverse_with_aho_corasick("/users/{user_id}/posts/{post_id}/", &params).unwrap();
 	assert_eq!(result, "/users/42/posts/100/");
 }
 
