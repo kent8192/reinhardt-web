@@ -28,7 +28,7 @@
 use reinhardt::prelude::*;
 use reinhardt::routes;
 
-#[routes(standalone)]
+#[routes]
 pub fn routes() -> UnifiedRouter {
     let router = UnifiedRouter::new();
 
