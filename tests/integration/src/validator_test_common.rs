@@ -6,7 +6,7 @@
 use reinhardt_core::{macros::model, validators::ValidationResult};
 use reinhardt_db::{
 	DatabaseConnection,
-	orm::{FilterOperator, FilterValue, Model},
+	orm::{Filter, FilterOperator, FilterValue, Model},
 };
 use std::sync::Arc;
 use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
@@ -90,11 +90,11 @@ impl TestDatabase {
 	) -> Result<bool, Box<dyn std::error::Error>> {
 		let manager = TestUser::objects();
 		let count = manager
-			.filter(
+			.filter(Filter::new(
 				"username",
 				FilterOperator::Eq,
 				FilterValue::String(username.to_string()),
-			)
+			))
 			.count()
 			.await?;
 		Ok(count > 0)
@@ -104,11 +104,11 @@ impl TestDatabase {
 	pub async fn email_exists(&self, email: &str) -> Result<bool, Box<dyn std::error::Error>> {
 		let manager = TestUser::objects();
 		let count = manager
-			.filter(
+			.filter(Filter::new(
 				"email",
 				FilterOperator::Eq,
 				FilterValue::String(email.to_string()),
-			)
+			))
 			.count()
 			.await?;
 		Ok(count > 0)
@@ -132,11 +132,11 @@ impl TestDatabase {
 	pub async fn user_exists(&self, user_id: i32) -> Result<bool, Box<dyn std::error::Error>> {
 		let manager = TestUser::objects();
 		let count = manager
-			.filter(
+			.filter(Filter::new(
 				"id",
 				FilterOperator::Eq,
 				FilterValue::Integer(user_id as i64),
-			)
+			))
 			.count()
 			.await?;
 		Ok(count > 0)
@@ -149,11 +149,11 @@ impl TestDatabase {
 	) -> Result<bool, Box<dyn std::error::Error>> {
 		let manager = TestProduct::objects();
 		let count = manager
-			.filter(
+			.filter(Filter::new(
 				"id",
 				FilterOperator::Eq,
 				FilterValue::Integer(product_id as i64),
-			)
+			))
 			.count()
 			.await?;
 		Ok(count > 0)

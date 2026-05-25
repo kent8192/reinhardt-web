@@ -269,88 +269,6 @@ impl<'ast, 'a> Visit<'ast> for PageMacroVisitor<'a> {
 	}
 }
 
-/// Visitor that walks the AST to find form! macro invocations.
-struct FormMacroVisitor<'a> {
-	/// Collected macro information
-	macros: Vec<MacroInfo>,
-	/// Original source code for offset calculation
-	source: &'a str,
-}
-
-impl<'a> FormMacroVisitor<'a> {
-	fn new(source: &'a str) -> Self {
-		Self {
-			macros: Vec::new(),
-			source,
-		}
-	}
-
-	/// Extract form! macro info from a Macro node.
-	fn extract_macro_info(&mut self, mac: &Macro) {
-		if mac.path.is_ident("form") {
-			let tokens_str = mac.tokens.to_string();
-			if let Some(mut info) = self.find_macro_in_source(&tokens_str) {
-				info.kind = MacroKind::Form;
-				self.macros.push(info);
-			}
-		}
-	}
-
-	/// Find the form! macro in source and return its position info.
-	///
-	/// `tokens_content` is the `TokenStream` Display form of the macro
-	/// being located (i.e. `mac.tokens.to_string()` from syn).
-	fn find_macro_in_source(&self, tokens_content: &str) -> Option<MacroInfo> {
-		let mut search_start = 0;
-
-		// Skip already found macros
-		for found in &self.macros {
-			if found.end > search_start {
-				search_start = found.end;
-			}
-		}
-
-		while let Some(hit) = find_form_bang_brace(&self.source[search_start..]) {
-			let abs_start = search_start + hit.start;
-			let content_start = search_start + hit.paren_open + 1;
-
-			// Find matching closing brace
-			if let Some(end_pos) = find_matching_brace(self.source, content_start) {
-				let macro_content = &self.source[content_start..end_pos];
-
-				if let Ok(tokens) = syn::parse_str::<proc_macro2::TokenStream>(macro_content)
-					&& tokens.to_string() == tokens_content
-				{
-					return Some(MacroInfo {
-						start: abs_start,
-						end: end_pos + 1, // Include closing brace
-						tokens,
-						should_skip: false,
-						original_text: macro_content.to_string(),
-						kind: MacroKind::Form,
-					});
-				}
-			}
-
-			search_start = abs_start + 1;
-		}
-
-		None
-	}
-}
-
-impl<'ast, 'a> Visit<'ast> for FormMacroVisitor<'a> {
-	fn visit_expr_macro(&mut self, expr: &'ast ExprMacro) {
-		self.extract_macro_info(&expr.mac);
-		syn::visit::visit_expr_macro(self, expr);
-	}
-
-	fn visit_macro(&mut self, mac: &'ast Macro) {
-		self.extract_macro_info(mac);
-		syn::visit::visit_macro(self, mac);
-	}
-}
-
 /// Result of locating a `page!(` invocation (with possible whitespace).
 struct PageBangParen {
 	/// Byte offset of the leading `p` of `page`.
@@ -369,18 +287,10 @@ struct PageBangParen {
 /// Returns `None` if none found. Accepts the canonical `page!(` form
 /// authored by users as well as the `page ! (` form emitted by
 /// `proc_macro2::TokenStream`'s `Display`.
-/// Find the next `<name> <ws>* ! <ws>* (` occurrence in `s`, ensuring the
-/// `<name>` token is at a word boundary. Skips matches that appear inside
-/// line comments, block comments, string literals, raw string literals,
-/// and char literals. Returns `None` if none found. Accepts the canonical
-/// `<name>!(` form authored by users as well as the `<name> ! (` form
-/// emitted by `proc_macro2::TokenStream`'s `Display`.
-fn find_macro_bang_paren(name: &str, s: &str) -> Option<PageBangParen> {
+fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
 	let bytes = s.as_bytes();
-	let name_bytes = name.as_bytes();
-	let name_len = name_bytes.len();
 	let mut i = 0;
-	while i + name_len <= bytes.len() {
+	while i + "page".len() <= bytes.len() {
 		let b = bytes[i];
 
 		// Line comment: skip to end of line.
@@ -462,8 +372,8 @@ fn find_macro_bang_paren(name: &str, s: &str) -> Option<PageBangParen> {
 			continue;
 		}
 
-		// Not in a comment or literal — look for the name keyword.
-		if &bytes[i..i + name_len] != name_bytes {
+		// Not in a comment or literal — look for the `page` keyword.
+		if &bytes[i..i + "page".len()] != b"page" {
 			i += 1;
 			continue;
 		}
@@ -476,7 +386,7 @@ fn find_macro_bang_paren(name: &str, s: &str) -> Option<PageBangParen> {
 				continue;
 			}
 		}
-		let after = start + name_len;
+		let after = start + "page".len();
 		// Reject if followed by an identifier-continuation byte (excluding `!`).
 		if after < bytes.len() {
 			let nx = bytes[after];
@@ -485,7 +395,7 @@ fn find_macro_bang_paren(name: &str, s: &str) -> Option<PageBangParen> {
 				continue;
 			}
 		}
-		// Skip whitespace between name and `!`.
+		// Skip whitespace between `page` and `!`.
 		let mut j = after;
 		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
 			j += 1;
@@ -509,174 +419,6 @@ fn find_macro_bang_paren(name: &str, s: &str) -> Option<PageBangParen> {
 		});
 	}
 	None
-}
-
-/// Find the next `page <ws>* ! <ws>* (` occurrence. Delegates to
-/// `find_macro_bang_paren` with the name "page".
-fn find_page_bang_paren(s: &str) -> Option<PageBangParen> {
-	find_macro_bang_paren("page", s)
-}
-
-/// Find the next `form <ws>* ! <ws>* (` occurrence (with possible whitespace), skipping
-/// comments, strings, and char literals.
-///
-/// Returns `None` if none found. Accepts the canonical `form!(` form
-/// authored by users as well as the `form ! (` form emitted by
-/// `proc_macro2::TokenStream`'s `Display`.
-#[allow(dead_code, reason = "symmetry helper for form! compact syntax")]
-fn find_form_bang_paren(s: &str) -> Option<PageBangParen> {
-	find_macro_bang_paren("form", s)
-}
-
-/// Find the next `<name> <ws>* ! <ws>* {` occurrence in `s`, ensuring the
-/// `<name>` token is at a word boundary. Skips matches inside line
-/// comments, block comments, string literals, raw string literals,
-/// and char literals.
-///
-/// Returns `None` if none found. Accepts the canonical `name!{` form
-/// authored by users as well as the `name ! {` form emitted by
-/// `proc_macro2::TokenStream`'s `Display`.
-fn find_macro_bang_brace(name: &str, s: &str) -> Option<PageBangParen> {
-	let bytes = s.as_bytes();
-	let name_bytes = name.as_bytes();
-	let name_len = name_bytes.len();
-	let mut i = 0;
-	while i + name_len <= bytes.len() {
-		let b = bytes[i];
-
-		// Line comment: skip to end of line.
-		if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
-			i += 2;
-			while i < bytes.len() && bytes[i] != b'\n' {
-				i += 1;
-			}
-			continue;
-		}
-
-		// Block comment (Rust allows nesting): skip to matching `*/`.
-		if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
-			i += 2;
-			let mut depth: usize = 1;
-			while i + 1 < bytes.len() && depth > 0 {
-				if bytes[i] == b'/' && bytes[i + 1] == b'*' {
-					depth += 1;
-					i += 2;
-				} else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
-					depth -= 1;
-					i += 2;
-				} else {
-					i += 1;
-				}
-			}
-			continue;
-		}
-
-		// String literal — handle both raw and regular forms.
-		if b == b'"' {
-			if let Some(hash_count) = detect_raw_string_start(s, i)
-				&& let Some(end) = skip_raw_string(s, i + 1, hash_count)
-			{
-				i = end;
-				continue;
-			}
-			i += 1;
-			while i < bytes.len() {
-				match bytes[i] {
-					b'\\' if i + 1 < bytes.len() => i += 2,
-					b'"' => {
-						i += 1;
-						break;
-					}
-					_ => i += 1,
-				}
-			}
-			continue;
-		}
-
-		// Char literal vs lifetime.
-		if b == b'\'' {
-			let mut j = i + 1;
-			let limit = (i + 10).min(bytes.len());
-			let mut closed = None;
-			while j < limit {
-				match bytes[j] {
-					b'\\' if j + 1 < bytes.len() => j += 2,
-					b'\'' => {
-						closed = Some(j);
-						break;
-					}
-					_ => j += 1,
-				}
-			}
-			if let Some(close) = closed {
-				i = close + 1;
-				continue;
-			}
-			// Treat as lifetime — step past the apostrophe only.
-			i += 1;
-			continue;
-		}
-
-		// Not in a comment or literal — look for the name keyword.
-		if &bytes[i..i + name_len] != name_bytes {
-			i += 1;
-			continue;
-		}
-		let start = i;
-		// Reject if preceded by an identifier-continuation byte.
-		if start > 0 {
-			let prev = bytes[start - 1];
-			if prev.is_ascii_alphanumeric() || prev == b'_' {
-				i = start + 1;
-				continue;
-			}
-		}
-		let after = start + name_len;
-		// Reject if followed by an identifier-continuation byte (excluding `!`).
-		if after < bytes.len() {
-			let nx = bytes[after];
-			if nx.is_ascii_alphanumeric() || nx == b'_' {
-				i = start + 1;
-				continue;
-			}
-		}
-		// Skip whitespace between name and `!`.
-		let mut j = after;
-		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-			j += 1;
-		}
-		if j >= bytes.len() || bytes[j] != b'!' {
-			i = start + 1;
-			continue;
-		}
-		j += 1;
-		// Skip whitespace between `!` and `{`.
-		while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-			j += 1;
-		}
-		if j >= bytes.len() || bytes[j] != b'{' {
-			i = start + 1;
-			continue;
-		}
-		return Some(PageBangParen {
-			start,
-			paren_open: j,
-		});
-	}
-	None
-}
-
-/// Find the next `page <ws>* ! <ws>* {` occurrence. Delegates to
-/// `find_macro_bang_brace` with the name "page".
-#[allow(dead_code, reason = "symmetry helper for page! brace syntax")]
-fn find_page_bang_brace(s: &str) -> Option<PageBangParen> {
-	find_macro_bang_brace("page", s)
-}
-
-/// Find the next `form <ws>* ! <ws>* {` occurrence. Delegates to
-/// `find_macro_bang_brace` with the name "form".
-fn find_form_bang_brace(s: &str) -> Option<PageBangParen> {
-	find_macro_bang_brace("form", s)
 }
 
 /// Find the matching closing parenthesis, handling strings and nested parens.
@@ -979,15 +721,12 @@ impl AstPageFormatter {
 	/// Uses AST parsing for accurate macro detection. Falls back to returning
 	/// the original content if parsing fails.
 	pub(crate) fn format(&self, content: &str) -> Result<FormatResult, String> {
-		// Safety check FIRST: If no page! or form! pattern exists, return unchanged.
+		// Safety check FIRST: If no page! pattern exists, return unchanged.
 		// This is a successful no-op, not an intentional skip — skipped stays None.
-		// Match compact `page!(`/`form!(`/`form!{` and the TokenStream Display
-		// forms so recursive formatting (which wraps via `to_token_stream()`)
-		// still sees nested macros at every depth.
-		let found_page_paren = find_page_bang_paren(content);
-		let found_form_paren = find_form_bang_paren(content);
-		let found_form_brace = find_form_bang_brace(content);
-		if found_page_paren.is_none() && found_form_paren.is_none() && found_form_brace.is_none() {
+		// Match both compact `page!(` and the TokenStream Display form `page ! (`
+		// so recursive formatting (which wraps via `to_token_stream()`) still
+		// sees nested macros at every depth.
+		if find_page_bang_paren(content).is_none() {
 			return Ok(FormatResult {
 				content: content.to_string(),
 				contains_page_macro: false,
@@ -1111,14 +850,14 @@ impl AstPageFormatter {
 		}
 	}
 
-	/// Text-based fallback for finding page! and form! macros.
+	/// Text-based fallback for finding page! macros.
 	///
-	/// Accepts both the compact forms and the TokenStream Display forms.
+	/// Accepts both the compact `page!(` form and the TokenStream Display
+	/// form `page ! (` (see `find_page_bang_paren`).
 	fn find_page_macros_text_based(&self, content: &str) -> Result<Vec<MacroInfo>, String> {
 		let mut macros = Vec::new();
-
-		// Scan for page! macros (using paren delimiter)
 		let mut search_start = 0;
+
 		while let Some(hit) = find_page_bang_paren(&content[search_start..]) {
 			let abs_start = search_start + hit.start;
 			let abs_open = search_start + hit.paren_open;
@@ -1276,10 +1015,9 @@ impl AstPageFormatter {
 	/// When `\n\n` appears between the end of node i and the start of node i+1,
 	/// index i is added to the returned set.
 	fn detect_blank_lines_between_nodes(_body: &PageBody, _original_text: &str) -> BTreeSet<usize> {
-		// TODO(#4767): Detect blank lines from original text and re-insert between
-		// formatted nodes. Spans from parsed AST nodes don't map back to byte
-		// positions in the original body text, so this needs a text-scanning
-		// approach that walks brace-depth in the original source.
+		// Blank-line reinsertion is deferred to issue #4767. Spans from parsed AST
+		// nodes don't map back to byte positions in the original body text, so the
+		// implementation needs a text scanner that walks brace-depth in the source.
 		BTreeSet::new()
 	}
 
@@ -3300,11 +3038,8 @@ impl AstPageFormatter {
 	/// let view = __reinhardt_placeholder_0__!()(props);
 	/// ```
 	pub(crate) fn protect_page_macros(&self, content: &str) -> ProtectResult {
-		// Quick check: accept `page!(`/`form!(`/`form!{` and whitespace variants.
-		if find_page_bang_paren(content).is_none()
-			&& find_form_bang_paren(content).is_none()
-			&& find_form_bang_brace(content).is_none()
-		{
+		// Quick check: accept both `page!(` and `page ! (` (see `find_page_bang_paren`).
+		if find_page_bang_paren(content).is_none() {
 			return ProtectResult {
 				protected_content: content.to_string(),
 				backups: Vec::new(),
@@ -3403,7 +3138,7 @@ impl AstPageFormatter {
 		for backup in backups.iter().rev() {
 			let placeholder = format!("__reinhardt_placeholder_{}__!()", backup.id);
 			let replacement = self
-				.format_inner_page_macro(&backup.original, &result, &placeholder, backup.kind)
+				.format_inner_page_macro(&backup.original, &result, &placeholder)
 				.unwrap_or_else(|| backup.original.clone());
 			result = result.replace(&placeholder, &replacement);
 		}
@@ -3411,32 +3146,24 @@ impl AstPageFormatter {
 		result
 	}
 
-	/// Reformat a single backed-up `page!(...)` or `form!(...)` string with
-	/// `format_macro_tokens`, using the indentation of the placeholder's line
-	/// as the base indent. Returns `None` if parsing or re-formatting fails,
-	/// in which case the caller falls back to the original (unformatted) backup text.
+	/// Reformat a single backed-up `page!(...)` string with `format_macro_tokens`,
+	/// using the indentation of the placeholder's line as the base indent.
+	/// Returns `None` if parsing or re-formatting fails, in which case the
+	/// caller falls back to the original (unformatted) backup text.
 	fn format_inner_page_macro(
 		&self,
 		original: &str,
 		surrounding: &str,
 		placeholder: &str,
-		kind: MacroKind,
 	) -> Option<String> {
-		// Extract `<inner>` from `page!(<inner>)` or `form!(<inner>)`.
-		let (head, tail) = match kind {
-			MacroKind::Page => {
-				let hit = find_page_bang_paren(original)?;
-				let head = hit.paren_open + 1;
-				let tail = find_matching_paren(original, head)?;
-				(head, tail)
-			}
-			MacroKind::Form => {
-				let hit = find_form_bang_brace(original)?;
-				let head = hit.paren_open + 1;
-				let tail = find_matching_brace(original, head)?;
-				(head, tail)
-			}
-		};
+		// Extract `<inner>` from `page!(<inner>)` (or the equivalent
+		// TokenStream Display form `page ! ( <inner> )`).
+		// Use the string-aware `find_matching_paren` rather than
+		// `rfind(')')` so a `)` inside a string literal or nested group
+		// in the macro body never gets confused with the closing paren.
+		let hit = find_page_bang_paren(original)?;
+		let head = hit.paren_open + 1;
+		let tail = find_matching_paren(original, head)?;
 		if tail <= head {
 			return None;
 		}
@@ -3454,13 +3181,8 @@ impl AstPageFormatter {
 			.filter(|c| *c == '\t')
 			.count();
 
-		let formatted = self
-			.format_macro_tokens(&tokens, inner, base_indent, kind)
-			.ok()?;
-		match kind {
-			MacroKind::Page => Some(format!("page!({})", formatted)),
-			MacroKind::Form => Some(format!("form! {}", formatted)),
-		}
+		let formatted = self.format_macro_tokens(&tokens, base_indent).ok()?;
+		Some(format!("page!({})", formatted))
 	}
 }
 

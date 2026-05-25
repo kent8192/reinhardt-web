@@ -358,6 +358,55 @@ where
 #[cfg(feature = "validation")]
 impl<T> super::validation::WithValidation for Path<T> {}
 
+// Bridge to the DI container so that `#[injectable_factory]` and any handler
+// using `#[inject] Path(x): Path<T>` can resolve path parameters from the
+// active request scope without touching ParamContext directly.
+//
+// The bridge delegates to the existing `FromRequest` impl, which means every
+// type already wired through `impl_path_from_str!` (primitives, Uuid) and
+// `impl_path_tuple2_from_str!` (2-tuples), plus `Path<String>`, is injectable
+// for free without any further plumbing.
+#[async_trait]
+impl<T> crate::Injectable for Path<T>
+where
+	Path<T>: FromRequest,
+	T: Send + Sync + 'static,
+{
+	async fn inject(ctx: &crate::InjectionContext) -> crate::DiResult<Self> {
+		let request = ctx
+			.get_http_request()
+			.ok_or(crate::DiError::MissingParamContext { extractor: "Path" })?;
+		let param_ctx = ctx
+			.get_param_context()
+			.ok_or(crate::DiError::MissingParamContext { extractor: "Path" })?;
+		<Path<T> as FromRequest>::from_request(request, param_ctx)
+			.await
+			.map_err(crate::DiError::from_param_error)
+	}
+}
+
+#[async_trait]
+impl<T> crate::Injectable for PathStruct<T>
+where
+	T: DeserializeOwned + Send + Sync + 'static,
+{
+	async fn inject(ctx: &crate::InjectionContext) -> crate::DiResult<Self> {
+		let request = ctx
+			.get_http_request()
+			.ok_or(crate::DiError::MissingParamContext {
+				extractor: "PathStruct",
+			})?;
+		let param_ctx = ctx
+			.get_param_context()
+			.ok_or(crate::DiError::MissingParamContext {
+				extractor: "PathStruct",
+			})?;
+		<PathStruct<T> as FromRequest>::from_request(request, param_ctx)
+			.await
+			.map_err(crate::DiError::from_param_error)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

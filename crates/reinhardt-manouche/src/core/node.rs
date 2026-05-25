@@ -380,30 +380,94 @@ pub struct PageComponentArg {
 	pub span: Span,
 }
 
-/// A component call node.
+/// How a component was invoked in the source DSL.
 ///
-/// Components are Rust functions that return a View. They are called with
-/// named arguments using the syntax: `ComponentName(arg1: value1, arg2: value2)`.
+/// The two forms are syntactically distinguishable but semantically
+/// equivalent for callers — the parser routes each form to a dedicated
+/// codegen branch in `reinhardt-pages-macros`.
+///
+/// # Forms
+///
+/// - `Paren` — legacy positional form: `ComponentName(arg1: value1, ...)`.
+///   Codegen emits a direct function call with positional arguments.
+/// - `Brace` — React-style form: `ComponentName { prop: value, @event: handler, child { ... } }`.
+///   Codegen emits a `bon::Builder` chain on a `<ComponentName>Props` struct
+///   (spec §3.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentInvocationForm {
+	/// Legacy positional invocation: `Component(arg1: value1)`.
+	Paren,
+	/// Brace invocation introduced by spec §3.5: `Component { prop: value }`.
+	Brace,
+}
+
+/// A named children slot inside a component body.
+///
+/// Named slots use the `$slotname { ... }` syntax and allow components
+/// to accept multiple named children groups mapped to distinct builder setters.
 ///
 /// # Example
 ///
 /// ```text
-/// // Simple component call
+/// Table {
+///     $header { div { "Name" } }
+///     $body { for user in users { Row { ... } } }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct NamedSlot {
+	/// Slot name without the `$` prefix (e.g., "header", "body")
+	pub name: Ident,
+	/// Child nodes inside the slot
+	pub children: Vec<PageNode>,
+	/// Span for error reporting
+	pub span: Span,
+}
+
+/// A component call node.
+///
+/// Components are Rust functions that return a View. They can be called with
+/// two forms:
+///
+/// - Positional (legacy): `MyButton(label: "Click", disabled: false)`
+/// - Brace (spec §3.5):  `MyButton { label: "Click", @click: h, p { "child" } }`
+///
+/// The `invocation_form` discriminator records which form was used so codegen
+/// can emit the right call pattern (direct positional call vs. bon Builder chain).
+///
+/// # Example
+///
+/// ```text
+/// // Simple component call (Paren form)
 /// MyButton(label: "Click", disabled: false)
 ///
-/// // Component with children
+/// // Component with children (Paren form)
 /// MyWrapper(class: "container") {
 ///     p { "Child content" }
+/// }
+///
+/// // Brace form with intermixed props, events, and children
+/// MyCard {
+///     title: "Hello",
+///     @click: |_| { handle() },
+///     p { "child" }
 /// }
 /// ```
 #[derive(Debug, Clone)]
 pub struct PageComponent {
 	/// Component name (must be a valid Rust function name)
 	pub name: Ident,
-	/// Named arguments
+	/// How the component was invoked (paren vs brace form).
+	pub invocation_form: ComponentInvocationForm,
+	/// Named arguments / props
 	pub args: Vec<PageComponentArg>,
+	/// Event props (`@event: handler`). Only populated for `Brace` form;
+	/// always empty for `Paren` form to preserve backward compatibility.
+	pub events: Vec<PageEvent>,
 	/// Optional children (content inside `{ }` after arguments)
 	pub children: Option<Vec<PageNode>>,
+	/// Named children slots (e.g., `$header { ... }`)
+	pub named_slots: Vec<NamedSlot>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -492,5 +556,45 @@ mod tests {
 
 		// Assert
 		assert_eq!(result, "click");
+	}
+
+	#[rstest]
+	fn component_invocation_form_round_trip() {
+		// Arrange
+		let comp = PageComponent {
+			name: Ident::new("Card", Span::call_site()),
+			invocation_form: ComponentInvocationForm::Brace,
+			args: vec![],
+			events: vec![],
+			children: None,
+			named_slots: vec![],
+			span: Span::call_site(),
+		};
+
+		// Act + Assert
+		assert!(matches!(
+			comp.invocation_form,
+			ComponentInvocationForm::Brace
+		));
+		assert!(comp.events.is_empty());
+		assert_eq!(comp.name.to_string(), "Card");
+	}
+
+	#[rstest]
+	fn component_invocation_form_paren_is_default_for_legacy_sites() {
+		// Arrange: Construction sites that did not opt into the brace form
+		// MUST pass `Paren` explicitly so behavior is preserved.
+		let comp = PageComponent {
+			name: Ident::new("MyButton", Span::call_site()),
+			invocation_form: ComponentInvocationForm::Paren,
+			args: vec![],
+			events: vec![],
+			children: None,
+			named_slots: vec![],
+			span: Span::call_site(),
+		};
+
+		// Act + Assert
+		assert_eq!(comp.invocation_form, ComponentInvocationForm::Paren);
 	}
 }

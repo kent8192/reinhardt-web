@@ -9,7 +9,10 @@
 use proc_macro2::Span;
 use syn::{Expr, Ident, Pat};
 
-use super::{PageComponentArg, PageEvent, PageExpression, PageParam, PageText, types::AttrValue};
+use super::{
+	ComponentInvocationForm, PageComponentArg, PageEvent, PageExpression, PageParam, PageText,
+	types::AttrValue,
+};
 
 /// The top-level typed AST node representing a validated page! macro invocation.
 ///
@@ -195,18 +198,43 @@ pub struct TypedPageWatch {
 	pub span: Span,
 }
 
+/// A typed named children slot inside a component body.
+///
+/// This is the validated counterpart of `NamedSlot`, produced by the validator
+/// after transforming the slot's children from untyped to typed AST nodes.
+#[derive(Debug)]
+pub struct TypedNamedSlot {
+	/// Slot name without the `$` prefix
+	pub name: Ident,
+	/// Validated child nodes inside the slot
+	pub children: Vec<TypedPageNode>,
+	/// Span for error reporting
+	pub span: Span,
+}
+
 /// Typed component call node.
 ///
-/// Components are Rust functions that return a View. They are called with
-/// named arguments using the syntax: `ComponentName(arg1: value1, arg2: value2)`.
+/// Components are Rust functions that return a View. They can be invoked in
+/// two syntactic forms — see [`ComponentInvocationForm`] for the distinction.
 #[derive(Debug)]
 pub struct TypedPageComponent {
 	/// Component name (must be a valid Rust function name)
 	pub name: Ident,
-	/// Named arguments (unchanged from untyped version)
+	/// How the component was invoked (paren vs brace form).
+	///
+	/// Codegen branches on this field to emit either a direct positional
+	/// function call (paren form) or a `bon::Builder` chain on the
+	/// `<Name>Props` struct (brace form, spec §3.5).
+	pub invocation_form: ComponentInvocationForm,
+	/// Named arguments / props (unchanged from untyped version)
 	pub args: Vec<PageComponentArg>,
+	/// Event props (`@event: handler`). Only populated for the `Brace` form;
+	/// always empty for the `Paren` form.
+	pub events: Vec<PageEvent>,
 	/// Optional typed children (content inside `{ }` after arguments)
 	pub children: Option<Vec<TypedPageNode>>,
+	/// Typed named children slots
+	pub named_slots: Vec<TypedNamedSlot>,
 	/// Span for error reporting
 	pub span: Span,
 }

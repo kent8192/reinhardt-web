@@ -8,19 +8,19 @@
 //! because hooks must be invoked from a reactive context, which the
 //! generated `async fn submit(&self)` is not.
 
-#![allow(deprecated)] // (Refs #4234) Tests exercise deprecated `pages::Router` directly.
 
-use reinhardt_pages::app::{__clear_spa_router_for_test, __install_router_for_test};
+use reinhardt_pages::app::{__clear_spa_router_for_test, __install_client_router_for_test};
+use reinhardt_urls::routers::ClientRouter;
 use reinhardt_pages::component::Page;
-use reinhardt_pages::router::{NavigationType, Router, navigate};
+use reinhardt_pages::router::{NavigationType, navigate};
 
 use rstest::rstest;
 use serial_test::serial;
 
-/// Builds a small `Router` with two named routes so navigation observably
+/// Builds a small `ClientRouter` with two named routes so navigation observably
 /// changes the `current_path` signal.
-fn build_test_router() -> Router {
-	Router::new()
+fn build_test_router() -> ClientRouter {
+	ClientRouter::new()
 		.named_route("home", "/", || Page::text("Home"))
 		.named_route("profile", "/profile", || Page::text("Profile"))
 }
@@ -33,8 +33,8 @@ fn build_test_router() -> Router {
 struct SpaRouterGuard;
 
 impl SpaRouterGuard {
-	fn install(router: Router) -> Self {
-		__install_router_for_test(router);
+	fn install(router: ClientRouter) -> Self {
+		__install_client_router_for_test(router);
 		Self
 	}
 }

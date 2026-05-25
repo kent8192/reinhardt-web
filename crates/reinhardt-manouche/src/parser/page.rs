@@ -10,6 +10,15 @@
 //! - Attribute syntax: `key: value,`
 //! - Event syntax: `@event: handler,`
 //! - Child nodes: nested elements, text, expressions
+//! - Component invocation (spec §3.5):
+//!   * `Component(arg: val)` — legacy positional / paren form
+//!   * `Component { prop: val, @event: h, child { ... } }` — brace form
+//!
+//! Disambiguation: an identifier followed by `{` is routed to either the
+//! element parser (lowercase tag) or the brace-component parser (PascalCase
+//! identifier). See [`component_brace`] for the brace-body grammar.
+
+mod component_brace;
 
 use proc_macro2::TokenStream;
 use syn::{
@@ -21,8 +30,9 @@ use syn::{
 };
 
 use crate::{
-	PageAttr, PageBody, PageComponent, PageComponentArg, PageElement, PageElse, PageEvent,
-	PageExpression, PageFor, PageIf, PageMacro, PageNode, PageParam, PageText, PageWatch,
+	ComponentInvocationForm, NamedSlot, PageAttr, PageBody, PageComponent, PageComponentArg,
+	PageElement, PageElse, PageEvent, PageExpression, PageFor, PageIf, PageMacro, PageNode,
+	PageParam, PageText, PageWatch,
 };
 
 /// Parses a `page!` macro invocation into an untyped AST.
@@ -142,8 +152,20 @@ fn parse_nodes(input: ParseStream) -> Result<Vec<PageNode>> {
 	Ok(nodes)
 }
 
+/// Returns `true` when an identifier starts with an ASCII uppercase letter.
+///
+/// Spec §3.5 routes such identifiers to the component parsers (paren or
+/// brace form); lowercase identifiers are HTML elements.
+fn is_pascal_case_ident(ident: &Ident) -> bool {
+	ident
+		.to_string()
+		.chars()
+		.next()
+		.is_some_and(|c| c.is_ascii_uppercase())
+}
+
 /// Parses a single node from the input.
-fn parse_node(input: ParseStream) -> Result<PageNode> {
+pub(super) fn parse_node(input: ParseStream) -> Result<PageNode> {
 	// Check for string literal: "text"
 	if input.peek(syn::LitStr) {
 		return parse_text_node(input);
@@ -176,7 +198,12 @@ fn parse_node(input: ParseStream) -> Result<PageNode> {
 		}
 
 		if fork.peek(token::Brace) {
-			// It's an element: tag { ... }
+			// Disambiguate by case (spec §3.5):
+			// - PascalCase + `{` → component brace-form invocation
+			// - lowercase + `{` → HTML element
+			if is_pascal_case_ident(&ident) {
+				return component_brace::parse_component_brace_node(input);
+			}
 			return parse_element_node(input);
 		} else if fork.peek(token::Paren) {
 			// It's a component call: Component(args) or Component(args) { children }
@@ -185,6 +212,14 @@ fn parse_node(input: ParseStream) -> Result<PageNode> {
 			// It's an expression: variable or method call
 			return parse_expression_node(input);
 		}
+	}
+
+	// Check for named slot syntax `$slotname { ... }` — only valid inside component body
+	if input.peek(Token![$]) {
+		return Err(syn::Error::new(
+			input.span(),
+			"`$slotname { }` is only valid inside a component body",
+		));
 	}
 
 	// Otherwise, try to parse as a general expression
@@ -502,21 +537,93 @@ fn parse_component_node(input: ParseStream) -> Result<PageNode> {
 	parenthesized!(args_content in input);
 	let args = parse_component_args(&args_content)?;
 
-	// Parse optional children in braces
-	let children = if input.peek(token::Brace) {
+	// Parse optional body in braces (may contain default children and/or named slots)
+	let (children, named_slots) = if input.peek(token::Brace) {
 		let content;
 		braced!(content in input);
-		Some(parse_nodes(&content)?)
+		parse_component_body(&content)?
 	} else {
-		None
+		(None, Vec::new())
 	};
 
 	Ok(PageNode::Component(PageComponent {
 		name,
+		invocation_form: ComponentInvocationForm::Paren,
 		args,
+		// Paren form does not support inline event props; @event handlers
+		// in this form are passed positionally like any other named arg.
+		events: Vec::new(),
 		children,
+		named_slots,
 		span,
 	}))
+}
+
+/// Parses the body of a component invocation: `{ children... $slot { } ... }`.
+///
+/// Separates default (unnamed) children from named slots (`$slotname { }`).
+/// Detects duplicate named slots (E1).
+
+/// Converts a DSL slot name to snake_case for duplicate detection.
+fn slot_name_to_snake_case(name: &str) -> String {
+	let mut result = String::with_capacity(name.len() + 4);
+	for (i, ch) in name.chars().enumerate() {
+		if ch.is_uppercase() {
+			if i > 0 {
+				result.push('_');
+			}
+			result.push(ch.to_ascii_lowercase());
+		} else {
+			result.push(ch);
+		}
+	}
+	result
+}
+fn parse_component_body(input: ParseStream) -> Result<(Option<Vec<PageNode>>, Vec<NamedSlot>)> {
+	let mut default_children: Vec<PageNode> = Vec::new();
+	let mut named_slots: Vec<NamedSlot> = Vec::new();
+
+	while !input.is_empty() {
+		if input.peek(Token![$]) {
+			input.parse::<Token![$]>()?;
+			let name: Ident = input.parse()?;
+			let span = name.span();
+
+			// Compare snake_case-normalized names so that `$bodyContent` and
+			// `$body_content` are detected as duplicates (both map to the same
+			// builder setter `.body_content(...)`).
+			let normalized = slot_name_to_snake_case(&name.to_string());
+			if named_slots
+				.iter()
+				.any(|s: &NamedSlot| slot_name_to_snake_case(&s.name.to_string()) == normalized)
+			{
+				return Err(syn::Error::new(
+					span,
+					format!("duplicate named slot `{}` in component", name),
+				));
+			}
+
+			let content;
+			braced!(content in input);
+			let children = parse_nodes(&content)?;
+
+			named_slots.push(NamedSlot {
+				name,
+				children,
+				span,
+			});
+		} else {
+			default_children.push(parse_node(input)?);
+		}
+	}
+
+	let children = if default_children.is_empty() {
+		None
+	} else {
+		Some(default_children)
+	};
+
+	Ok((children, named_slots))
 }
 
 /// Parses component arguments: `name: value, ...`
@@ -1105,6 +1212,165 @@ mod tests {
 		}
 	}
 
+	// ---- Brace-form component invocation (spec §3.5) ----
+
+	#[rstest]
+	fn parses_component_brace_with_named_prop() {
+		// Arrange
+		let input = quote!(|| { Card { item: 42 } });
+
+		// Act
+		let ast: PageMacro = syn::parse2(input).unwrap();
+		let body = &ast.body.nodes;
+
+		// Assert
+		assert_eq!(body.len(), 1);
+		match &body[0] {
+			PageNode::Component(c) => {
+				assert_eq!(c.name.to_string(), "Card");
+				assert_eq!(c.invocation_form, ComponentInvocationForm::Brace);
+				assert_eq!(c.args.len(), 1);
+				assert_eq!(c.args[0].name.to_string(), "item");
+				assert!(c.events.is_empty());
+				assert!(c.children.is_none());
+			}
+			other => panic!("expected Component, got {:?}", other),
+		}
+	}
+
+	#[rstest]
+	fn parses_component_brace_with_event_prop() {
+		// Arrange
+		let input = quote!(|| { Card { item: 1, @click: |_| {}, } });
+
+		// Act
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		match &ast.body.nodes[0] {
+			PageNode::Component(c) => {
+				assert_eq!(c.invocation_form, ComponentInvocationForm::Brace);
+				assert_eq!(c.args.len(), 1);
+				assert_eq!(c.events.len(), 1);
+				assert_eq!(c.events[0].event_type.to_string(), "click");
+			}
+			other => panic!("expected Component, got {:?}", other),
+		}
+	}
+
+	#[rstest]
+	fn parses_component_brace_with_child_element() {
+		// Arrange
+		let input = quote!(|| { Card { item: 1, p { "child" } } });
+
+		// Act
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		match &ast.body.nodes[0] {
+			PageNode::Component(c) => {
+				assert_eq!(c.args.len(), 1);
+				let cs = c.children.as_ref().expect("children present");
+				assert_eq!(cs.len(), 1);
+				match &cs[0] {
+					PageNode::Element(e) => assert_eq!(e.tag.to_string(), "p"),
+					other => panic!("expected child Element, got {:?}", other),
+				}
+			}
+			other => panic!("expected Component, got {:?}", other),
+		}
+	}
+
+	#[rstest]
+	fn parses_nested_component_brace() {
+		// Arrange
+		let input = quote!(|| { Card { item: 1, Inner { x: 2 } } });
+
+		// Act
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		match &ast.body.nodes[0] {
+			PageNode::Component(outer) => {
+				let cs = outer.children.as_ref().expect("children");
+				match &cs[0] {
+					PageNode::Component(inner) => {
+						assert_eq!(inner.name.to_string(), "Inner");
+						assert_eq!(inner.invocation_form, ComponentInvocationForm::Brace);
+						assert_eq!(inner.args.len(), 1);
+						assert_eq!(inner.args[0].name.to_string(), "x");
+					}
+					other => panic!("expected nested Component, got {:?}", other),
+				}
+			}
+			other => panic!("expected outer Component, got {:?}", other),
+		}
+	}
+
+	#[rstest]
+	fn paren_form_keeps_paren_invocation_form() {
+		// Arrange
+		let input = quote!(|| { MyButton(label: "Click") });
+
+		// Act
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert: regression — legacy paren form is preserved and
+		// distinguished from the new brace form via invocation_form.
+		match &ast.body.nodes[0] {
+			PageNode::Component(c) => {
+				assert_eq!(c.invocation_form, ComponentInvocationForm::Paren);
+				assert!(c.events.is_empty());
+			}
+			other => panic!("expected Component, got {:?}", other),
+		}
+	}
+
+	#[rstest]
+	fn parses_component_brace_empty_body() {
+		// Arrange
+		let input = quote!(|| { Card {} });
+
+		// Act
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		match &ast.body.nodes[0] {
+			PageNode::Component(c) => {
+				assert_eq!(c.invocation_form, ComponentInvocationForm::Brace);
+				assert!(c.args.is_empty());
+				assert!(c.events.is_empty());
+				assert!(c.children.is_none());
+			}
+			other => panic!("expected Component, got {:?}", other),
+		}
+	}
+
+	#[rstest]
+	fn parses_component_brace_with_multiple_children() {
+		// Arrange
+		let input = quote!(|| {
+			Card {
+				title: "x",
+				p { "one" }
+				p { "two" }
+			}
+		});
+
+		// Act
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		match &ast.body.nodes[0] {
+			PageNode::Component(c) => {
+				assert_eq!(c.args.len(), 1);
+				let cs = c.children.as_ref().expect("children");
+				assert_eq!(cs.len(), 2);
+			}
+			other => panic!("expected Component, got {:?}", other),
+		}
+	}
+
 	#[rstest]
 	fn test_parse_standalone_boolean_with_children() {
 		// Arrange
@@ -1127,6 +1393,118 @@ mod tests {
 				assert_eq!(elem.children.len(), 2);
 			}
 			_ => panic!("expected Element"),
+		}
+	}
+
+	#[rstest]
+	fn test_parse_component_with_named_slot() {
+		// Arrange
+		let input = quote!(|| {
+			Table(args: 1) {
+				$header { div { "Title" } }
+				$body { div { "Content" } }
+			}
+		});
+
+		// Act
+		let result: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		let body = result.body;
+		assert_eq!(body.nodes.len(), 1);
+		if let PageNode::Component(comp) = &body.nodes[0] {
+			assert_eq!(comp.name, "Table");
+			assert_eq!(comp.named_slots.len(), 2);
+			assert_eq!(comp.named_slots[0].name, "header");
+			assert_eq!(comp.named_slots[1].name, "body");
+			assert_eq!(comp.named_slots[0].children.len(), 1);
+			assert_eq!(comp.named_slots[1].children.len(), 1);
+		} else {
+			panic!("expected Component node");
+		}
+	}
+
+	#[rstest]
+	fn test_parse_named_slot_duplicate_rejected() {
+		// Arrange
+		let input = quote!(|| {
+			Table(args: 1) {
+				$header { div { "A" } }
+				$header { div { "B" } }
+			}
+		});
+
+		// Act
+		let result: syn::Result<PageMacro> = syn::parse2(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert_eq!(err, "duplicate named slot `header` in component");
+	}
+
+	#[rstest]
+	fn test_named_slot_outside_component_rejected() {
+		// Arrange
+		let input = quote!(|| {
+			div {
+				$header { "this is invalid" }
+			}
+		});
+
+		// Act
+		let result: syn::Result<PageMacro> = syn::parse2(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert_eq!(err, "`$slotname { }` is only valid inside a component body");
+	}
+
+	#[rstest]
+	fn test_parse_component_mixed_default_and_named_slots() {
+		// Arrange
+		let input = quote!(|| {
+			Table(args: 1) {
+				div { "default child" }
+				$header { div { "Header" } }
+				span { "another default" }
+			}
+		});
+
+		// Act
+		let result: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		if let PageNode::Component(comp) = &result.body.nodes[0] {
+			assert!(comp.children.is_some());
+			assert_eq!(comp.children.as_ref().unwrap().len(), 2);
+			assert_eq!(comp.named_slots.len(), 1);
+			assert_eq!(comp.named_slots[0].name, "header");
+		} else {
+			panic!("expected Component node");
+		}
+	}
+
+	#[rstest]
+	fn test_parse_component_empty_named_slot() {
+		// Arrange
+		let input = quote!(|| {
+			Table(args: 1) {
+				$header {}
+			}
+		});
+
+		// Act
+		let result: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		if let PageNode::Component(comp) = &result.body.nodes[0] {
+			assert_eq!(comp.named_slots.len(), 1);
+			assert_eq!(comp.named_slots[0].name, "header");
+			assert!(comp.named_slots[0].children.is_empty());
+		} else {
+			panic!("expected Component node");
 		}
 	}
 }

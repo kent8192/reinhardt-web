@@ -30,6 +30,7 @@ append_slash = true
 # `scripts/infra_up.sh` (auto-started as a `runserver` dependency via
 # `migrate`). Override the credentials in `settings/local.toml` if you
 # point this crate at an existing Postgres instance instead.
+
 [database]
 engine = "postgresql"
 host = "localhost"

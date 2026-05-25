@@ -17,6 +17,7 @@ use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 use serde_json::Value;
 use std::env;
+use reinhardt_utils::staticfiles::StaticFilesConfig;
 #[allow(unused)]
 use std::path::PathBuf;
 
@@ -901,7 +902,6 @@ async fn execute_check(
 }
 
 /// Execute the collectstatic command
-#[allow(deprecated)] // Uses Settings which is deprecated; retained for backward compatibility
 async fn execute_collectstatic(
 	clear: bool,
 	no_input: bool,
@@ -982,12 +982,18 @@ async fn execute_collectstatic(
 		))
 		.build()?;
 
-	let settings = merged.into_typed::<reinhardt_conf::Settings>()?;
-
-	// Convert Settings to StaticFilesConfig
-	let config = settings
-		.get_static_config()
-		.map_err(|e| format!("Failed to get static config: {}", e))?;
+	// Construct StaticFilesConfig directly from merged settings
+	let static_root = merged
+		.get::<String>("static_root")
+		.ok()
+		.map(PathBuf::from)
+		.unwrap_or_else(|| base_dir.join("staticfiles"));
+	let config = StaticFilesConfig {
+		static_root,
+		static_url: merged.get_or("static_url", "/static/".to_string()),
+		staticfiles_dirs: merged.get_or("staticfiles_dirs", Vec::new()),
+		media_url: None,
+	};
 
 	// Create options
 	let options = CollectStaticOptions {

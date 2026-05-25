@@ -27,19 +27,19 @@ use reinhardt_pages::ServerFnError;
 pub fn login_form(error_message: Option<&str>) -> Page {
 	let error_html = error_message.map(|msg| {
 		let msg = msg.to_string();
-		page!(|| {
+		page!(|msg: String| {
 			div {
 				class: "admin-alert admin-alert-danger mt-4 text-center text-sm",
 				role: "alert",
 				{ msg }
 			}
-		})()
+		})(msg)
 	});
 
 	let form_page = build_login_form();
 	let error_page = error_html.unwrap_or_else(|| page!(|| { span {} })());
 
-	page!(|| {
+	page!(|form_page: Page, error_page: Page| {
 		div {
 			class: "flex justify-center items-center min-h-screen bg-slate-50 animate__animated animate__fadeIn",
 			div {
@@ -59,7 +59,7 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 			}
 			{ error_page }
 		}
-	})()
+	})(form_page, error_page)
 }
 
 /// Builds the login form HTML structure using the `form!` macro.
@@ -90,7 +90,7 @@ fn build_login_form() -> Page {
 				autocomplete: "username",
 				autofocus,
 				placeholder: "Enter your username",
-			}
+			},
 			password: CharField {
 				required,
 				widget: PasswordInput,
@@ -100,41 +100,60 @@ fn build_login_form() -> Page {
 				class: "admin-input",
 				autocomplete: "current-password",
 				placeholder: "Enter your password",
-			}
-		}
+			},
+		},
 
 		on_success: |response: LoginResponse| {
-				use reinhardt_pages::auth::auth_state;
-				let auth = auth_state();
-				auth.login_full(
-					response.user_id.clone(),
-					&response.username,
-					None,
-					response.is_staff,
-					response.is_superuser,
-				);
-				crate::pages::router::with_router(|r| {
-					let _ = r.push("/admin/");
-				});
-			},
+			use reinhardt_pages::auth::auth_state;
+
+			// JWT token is set as HTTP-Only cookie by the server.
+			// No need to store in sessionStorage — browser handles it.
+
+			let auth = auth_state();
+			auth.login_full(
+				response.user_id.clone(),
+				&response.username,
+				None,
+				response.is_staff,
+				response.is_superuser,
+			);
+
+			crate::pages::router::with_router(|r| {
+				let _ = r.push("/admin/");
+			});
+		},
+
 		on_error: |e: ServerFnError| {
-				let error_msg = e.to_string();
-				if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-					if let Some(error_div) = doc.get_element_by_id("login-error") {
-						let _ = error_div.class_list().remove_1("hidden");
-						error_div.set_text_content(Some(if error_msg.contains("401") {
-							"Invalid username or password"
-						} else {
-							"Login failed. Please try again."
-						}));
-					}
+			let error_msg = e.to_string();
+			if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+				if let Some(error_div) = doc.get_element_by_id("login-error") {
+					let _ = error_div.class_list().remove_1("hidden");
+					error_div.set_text_content(Some(if error_msg.contains("401") {
+						"Invalid username or password"
+					} else {
+						"Login failed. Please try again."
+					}));
 				}
-			},
+			}
+		},
 
 		slots: {
-			after_fields: | | page!(|| { div { id : "login-error", class : "admin-alert admin-alert-danger hidden mb-4", role : "alert", } button { type : "submit", class : "admin-btn admin-btn-primary w-full py-2.5 text-base", id : "login-submit-btn", "Sign in" } })(),
-		}
-
+			after_fields: || {
+				page!(|| {
+					div {
+						id: "login-error",
+						class: "admin-alert admin-alert-danger hidden mb-4",
+						role: "alert",
+					}
+					button {
+						type: "submit",
+						class: "admin-btn admin-btn-primary w-full py-2.5 text-base",
+						id: "login-submit-btn",
+						"Sign in"
+					}
+				})()
+			},
+		},
 	};
 
 	login_form.into_page()

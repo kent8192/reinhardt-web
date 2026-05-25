@@ -197,40 +197,31 @@ impl<M: Model> Manager<M> {
 		QuerySet::new()
 	}
 
-	/// Filter records by field, operator, and value
+	/// Filter records by a typed filter expression.
 	///
-	/// Accepts both string literals and FieldRef for type-safe field references.
+	/// Accepts any value convertible into a [`Filter`](super::query::Filter).
+	/// The intended call style is the fluent builder produced by the
+	/// `#[model]`-generated field accessors (`FieldRef::eq()` / `.gt()` / ...)
+	/// or the parallel `Field::eq()` builder, which returns a `Lookup<M>`
+	/// (convertible into [`Filter`] via its `Into` impl).
 	///
 	/// # Examples
 	///
 	/// ```ignore
-	/// // String literal
-	/// User::objects().filter("email", FilterOperator::Eq, FilterValue::String("alice@example.com".to_string()))
+	/// // Typed builder (recommended):
+	/// User::objects()
+	///     .filter(User::field_email().eq("alice@example.com"))
+	///     .all()
+	///     .await?;
 	///
-	/// // Type-safe FieldRef
-	/// User::objects().filter(User::field_email(), FilterOperator::Eq, FilterValue::String("alice@example.com".to_string()))
-	/// ```
-	pub fn filter<F: Into<String>>(
-		&self,
-		field: F,
-		operator: super::query::FilterOperator,
-		value: super::query::FilterValue,
-	) -> QuerySet<M> {
-		let filter = super::query::Filter::new(field.into(), operator, value);
-		QuerySet::new().filter(filter)
-	}
-
-	/// Filter records by a Filter object (Django-style)
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// let users = User::objects()
-	///     .filter_by(User::field_name().eq("Alice"))
-	///     .all(&db)
+	/// // Raw Filter (when the field name is dynamic):
+	/// use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
+	/// User::objects()
+	///     .filter(Filter::new("email", FilterOperator::Eq, FilterValue::String("alice@example.com".to_string())))
+	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter_by(&self, filter: super::query::Filter) -> QuerySet<M> {
+	pub fn filter(&self, filter: impl Into<super::query::Filter>) -> QuerySet<M> {
 		QuerySet::new().filter(filter)
 	}
 

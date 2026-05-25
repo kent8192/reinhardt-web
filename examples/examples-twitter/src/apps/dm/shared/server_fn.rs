@@ -61,11 +61,7 @@ pub async fn create_room(
 		}
 
 		let user = User::objects()
-			.filter(
-				User::field_id(),
-				FilterOperator::Eq,
-				FilterValue::String(pid.to_string()),
-			)
+			.filter(User::field_id().eq(*pid))
 			.first()
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -134,11 +130,7 @@ pub async fn create_room(
 
 	// Reload room to get the saved version
 	let saved_room = DMRoom::objects()
-		.filter(
-			DMRoom::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(room.id().to_string()),
-		)
+		.filter(DMRoom::field_id().eq(room.id()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -182,11 +174,11 @@ pub async fn list_rooms(
 
 	// Fetch all messages for these rooms in one query, ordered by created_at desc
 	let all_messages = DMMessage::objects()
-		.filter(
+		.filter(Filter::new(
 			"room_id",
 			FilterOperator::In,
 			FilterValue::Array(room_ids.clone()),
-		)
+		))
 		.order_by(&["-created_at"])
 		.all()
 		.await
@@ -244,11 +236,7 @@ pub async fn get_room(
 ) -> std::result::Result<RoomInfo, ServerFnError> {
 	// Find the room
 	let room = DMRoom::objects()
-		.filter(
-			DMRoom::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(room_id.to_string()),
-		)
+		.filter(DMRoom::field_id().eq(room_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -294,11 +282,7 @@ pub async fn send_message(
 
 	// Find the room
 	let room = DMRoom::objects()
-		.filter(
-			DMRoom::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(room_id.to_string()),
-		)
+		.filter(DMRoom::field_id().eq(room_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -322,11 +306,7 @@ pub async fn send_message(
 
 	// Reload to get the saved version with timestamps
 	let saved_message = DMMessage::objects()
-		.filter(
-			DMMessage::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(message.id().to_string()),
-		)
+		.filter(DMMessage::field_id().eq(message.id()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -348,11 +328,7 @@ pub async fn list_messages(
 ) -> std::result::Result<Vec<MessageInfo>, ServerFnError> {
 	// Find the room
 	let room = DMRoom::objects()
-		.filter(
-			DMRoom::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(room_id.to_string()),
-		)
+		.filter(DMRoom::field_id().eq(room_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -364,20 +340,12 @@ pub async fn list_messages(
 	}
 
 	// Build query for messages
-	let mut query = DMMessage::objects().filter(
-		DMMessage::field_room(),
-		FilterOperator::Eq,
-		FilterValue::String(room_id.to_string()),
-	);
+	let mut query = DMMessage::objects().filter(DMMessage::field_room().eq(room_id));
 
 	// Apply before cursor if provided
 	if let Some(before_id) = before {
 		let before_msg = DMMessage::objects()
-			.filter(
-				DMMessage::field_id(),
-				FilterOperator::Eq,
-				FilterValue::String(before_id.to_string()),
-			)
+			.filter(DMMessage::field_id().eq(before_id))
 			.first()
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
@@ -412,7 +380,11 @@ pub async fn list_messages(
 		Vec::new()
 	} else {
 		User::objects()
-			.filter("id", FilterOperator::In, FilterValue::Array(sender_ids))
+			.filter(Filter::new(
+				"id",
+				FilterOperator::In,
+				FilterValue::Array(sender_ids),
+			))
 			.all()
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -445,11 +417,7 @@ pub async fn mark_as_read(
 ) -> std::result::Result<(), ServerFnError> {
 	// Find the room
 	let room = DMRoom::objects()
-		.filter(
-			DMRoom::field_id(),
-			FilterOperator::Eq,
-			FilterValue::String(room_id.to_string()),
-		)
+		.filter(DMRoom::field_id().eq(room_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
@@ -462,11 +430,7 @@ pub async fn mark_as_read(
 
 	// Get all unread messages in this room that weren't sent by the current user
 	let unread_messages = DMMessage::objects()
-		.filter(
-			DMMessage::field_room(),
-			FilterOperator::Eq,
-			FilterValue::String(room_id.to_string()),
-		)
+		.filter(DMMessage::field_room().eq(room_id))
 		.filter(Filter::new(
 			"is_read",
 			FilterOperator::Eq,
@@ -503,11 +467,7 @@ async fn build_room_info(
 ) -> Result<RoomInfo, ServerFnError> {
 	// Get last message
 	let last_message = DMMessage::objects()
-		.filter(
-			DMMessage::field_room(),
-			FilterOperator::Eq,
-			FilterValue::String(room.id().to_string()),
-		)
+		.filter(DMMessage::field_room().eq(room.id()))
 		.order_by(&["-created_at"])
 		.first()
 		.await
@@ -515,11 +475,7 @@ async fn build_room_info(
 
 	// Count unread messages (messages not sent by current user and not read)
 	let unread_messages = DMMessage::objects()
-		.filter(
-			DMMessage::field_room(),
-			FilterOperator::Eq,
-			FilterValue::String(room.id().to_string()),
-		)
+		.filter(DMMessage::field_room().eq(room.id()))
 		.filter(Filter::new(
 			"is_read",
 			FilterOperator::Eq,

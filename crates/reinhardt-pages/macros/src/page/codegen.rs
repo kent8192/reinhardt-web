@@ -32,9 +32,9 @@ use syn::LitStr;
 use crate::crate_paths::get_reinhardt_pages_crate_info;
 use reinhardt_manouche::core::types::AttrValue;
 use reinhardt_manouche::core::{
-	PageEvent, PageExpression, PageParam, PageText, TypedPageAttr, TypedPageBody,
-	TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
-	TypedPageNode, TypedPageWatch,
+	ComponentInvocationForm, PageEvent, PageExpression, PageParam, PageText, TypedPageAttr,
+	TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf,
+	TypedPageMacro, TypedPageNode, TypedPageWatch,
 };
 
 /// Generates code for the entire page! macro.
@@ -131,13 +131,28 @@ fn generate_nodes(nodes: &[TypedPageNode], pages_crate: &TokenStream) -> TokenSt
 }
 
 /// Generates code for a single node.
+///
+/// Spec §4.1 unconditional auto-wrap: every `{expr}` and every `if` / `for`
+/// control-flow expression is wrapped in `Page::reactive(move || ...)` at
+/// codegen time. The wrap is the single point of truth so reactive reads
+/// inside helper-routed Signals (#4515) "just work" without a static
+/// detection step.
 fn generate_node(node: &TypedPageNode, pages_crate: &TokenStream) -> TokenStream {
 	match node {
 		TypedPageNode::Element(elem) => generate_element(elem, pages_crate),
 		TypedPageNode::Text(text) => generate_text(text, pages_crate),
-		TypedPageNode::Expression(expr) => generate_expression(expr, pages_crate),
-		TypedPageNode::If(if_node) => generate_if(if_node, pages_crate),
-		TypedPageNode::For(for_node) => generate_for(for_node, pages_crate),
+		TypedPageNode::Expression(expr) => {
+			let inner = generate_expression(expr, pages_crate);
+			wrap_reactive(inner, pages_crate)
+		}
+		TypedPageNode::If(if_node) => {
+			let inner = generate_if(if_node, pages_crate);
+			wrap_reactive(inner, pages_crate)
+		}
+		TypedPageNode::For(for_node) => {
+			let inner = generate_for(for_node, pages_crate);
+			wrap_reactive(inner, pages_crate)
+		}
 		TypedPageNode::Component(comp) => generate_component(comp, pages_crate),
 		TypedPageNode::Watch(watch_node) => generate_watch(watch_node, pages_crate),
 	}
@@ -456,16 +471,24 @@ fn generate_event(event: &PageEvent, pages_crate: &TokenStream) -> TokenStream {
 }
 
 /// Generates code for a child node (used in .child() calls).
+///
+/// Spec §4.1 unconditional auto-wrap: child `{expr}` / control-flow nodes
+/// are routed through `generate_node` so they pick up the
+/// `Page::reactive(move || ...)` wrap. Text and bare literals stay
+/// uninstrumented for performance.
+///
+/// Note: passing pre-built non-`Clone` `Page` values as `page!` parameters
+/// and then re-emitting them via `{ value }` will fail to compile under
+/// this rule because the inner `Page::reactive` closure must be `Fn` and
+/// `IntoPage::into_page` consumes the value. Compose such values inline
+/// from their underlying data (or pass them in via a `Clone`able wrapper
+/// once Page-Clone lands) instead.
 fn generate_child(node: &TypedPageNode, pages_crate: &TokenStream) -> TokenStream {
 	match node {
 		TypedPageNode::Text(text) => {
 			// Create a proper string literal token
 			let lit = LitStr::new(&text.content, Span::call_site());
 			quote!(#lit)
-		}
-		TypedPageNode::Expression(expr) => {
-			let e = &expr.expr;
-			quote!(#e)
 		}
 		_ => generate_node(node, pages_crate),
 	}
@@ -481,10 +504,18 @@ fn generate_text(text: &PageText, pages_crate: &TokenStream) -> TokenStream {
 }
 
 /// Generates code for an expression node.
+///
+/// The expression is cloned before conversion so the enclosing
+/// `Page::reactive(move || ...)` (spec §4.1 auto-wrap) remains `Fn` even
+/// when the captured value would otherwise be consumed by
+/// `IntoPage::into_page`. `Page` is `Clone` (cheap, Arc-backed), so this
+/// is a constant-time clone for the common case. For values that already
+/// borrow (e.g. `count.get()` returning `i32`), the redundant `.clone()`
+/// on the owned result is a no-op.
 fn generate_expression(expr: &PageExpression, pages_crate: &TokenStream) -> TokenStream {
 	let e = &expr.expr;
 	quote! {
-		#pages_crate::component::IntoPage::into_page(#e)
+		#pages_crate::component::IntoPage::into_page((#e).clone())
 	}
 }
 
@@ -592,15 +623,35 @@ fn generate_for(for_node: &TypedPageFor, pages_crate: &TokenStream) -> TokenStre
 /// ```
 fn generate_watch(watch_node: &TypedPageWatch, pages_crate: &TokenStream) -> TokenStream {
 	let inner_expr = generate_node(&watch_node.expr, pages_crate);
+	wrap_reactive(inner_expr, pages_crate)
+}
 
+/// Wraps a generated TokenStream in `Page::reactive(move || ...)`.
+///
+/// This is the single point of truth for spec §4.1 auto-wrap. Used by
+/// `generate_expression`, `generate_if`, `generate_for`, and (kept for
+/// backward compat) `generate_watch`.
+fn wrap_reactive(inner: TokenStream, pages_crate: &TokenStream) -> TokenStream {
 	quote! {
 		#pages_crate::component::Page::reactive(move || {
-			#inner_expr
+			#inner
 		})
 	}
 }
 
 /// Generates code for a component call.
+///
+/// Branches on [`ComponentInvocationForm`]: the legacy positional form is
+/// emitted as a direct function call (spec §3.5 backward-compat), while the
+/// brace form is emitted as a `bon::Builder` chain per spec §3.5.3.
+fn generate_component(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
+	match comp.invocation_form {
+		ComponentInvocationForm::Paren => generate_component_paren(comp, pages_crate),
+		ComponentInvocationForm::Brace => generate_component_brace(comp, pages_crate),
+	}
+}
+
+/// Generates code for the legacy positional component-call form.
 ///
 /// # Example
 ///
@@ -611,10 +662,9 @@ fn generate_watch(watch_node: &TypedPageWatch, pages_crate: &TokenStream) -> Tok
 /// // Generated code
 /// MyButton("Click", false)
 /// ```
-fn generate_component(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
+fn generate_component_paren(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
 	let name = &comp.name;
 
-	// Generate argument values (names are discarded in generated code)
 	let args: Vec<TokenStream> = comp
 		.args
 		.iter()
@@ -624,24 +674,208 @@ fn generate_component(comp: &TypedPageComponent, pages_crate: &TokenStream) -> T
 		})
 		.collect();
 
-	// Generate the component call
-	if let Some(children) = &comp.children {
-		// With children: add children as last argument
-		let children_view = generate_if_branch(children, pages_crate);
-
-		if args.is_empty() {
-			quote! { #name(#children_view) }
-		} else {
-			quote! { #name(#(#args),*, #children_view) }
-		}
+	// Build the base function call: Component(args...)
+	let base_call = if args.is_empty() {
+		quote! { #name () }
 	} else {
-		// Without children: simple function call
-		if args.is_empty() {
-			quote! { #name() }
+		quote! { #name (#(#args),*) }
+	};
+
+	// Generate children setter if present
+	let children_setter = comp.children.as_ref().map(|children| {
+		let children_view = generate_if_branch(children, pages_crate);
+		quote! { .children (#children_view) }
+	});
+
+	// Generate named slot setters
+	let slot_setters: Vec<TokenStream> = comp
+		.named_slots
+		.iter()
+		.map(|slot| {
+			let setter_name = slot_name_to_snake_case(&slot.name.to_string());
+			let setter_ident = syn::Ident::new(&setter_name, slot.name.span());
+			let slot_view = generate_if_branch(&slot.children, pages_crate);
+			quote! { .#setter_ident (#slot_view) }
+		})
+		.collect();
+
+	// If we have no children and no named slots, emit a simple function call
+	if children_setter.is_none() && slot_setters.is_empty() {
+		return base_call;
+	}
+
+	// Emit builder chain: Component(args...).children(c).slot1(v1).build()
+	quote! {
+		#base_call
+		#children_setter
+		#(#slot_setters)*
+		.build ()
+	}
+}
+
+/// Converts a DSL slot name to snake_case for the builder setter method name.
+///
+/// The DSL slot name is already in camelCase or PascalCase (it comes from a Rust
+/// identifier), so this converts to snake_case: "bodyContent" → "body_content".
+fn slot_name_to_snake_case(name: &str) -> String {
+	let mut result = String::with_capacity(name.len() + 4);
+	for (i, ch) in name.chars().enumerate() {
+		if ch.is_uppercase() {
+			if i > 0 {
+				result.push('_');
+			}
+			result.push(ch.to_ascii_lowercase());
 		} else {
-			quote! { #name(#(#args),*) }
+			result.push(ch);
 		}
 	}
+	result
+}
+
+/// Generates the `bon::Builder` chain for a brace-form component invocation.
+///
+/// Spec §3.5.1 convention: a component named `Card` resolves to a function
+/// `card(props: CardProps) -> Page` where `CardProps` derives `bon::Builder`.
+///
+/// Spec §3.5.3 lowering rules:
+///
+/// - `prop: value` → `.prop(value)` on the builder
+/// - `@event: handler` → `.on_event(handler)` on the builder
+/// - children arity (the `children:` field on the props struct must be
+///   `Option<Page>`, which `bon::Builder` exposes as a setter taking
+///   `Page` directly — bon wraps it in `Some` internally):
+///   * 0 children → omit the `.children(...)` setter (`bon` defaults
+///                  the `Option` field to `None`)
+///   * 1 child    → `.children(<child_view>)`
+///   * 2+ children → `.children(Page::fragment(vec![ ... ]))`
+///
+/// # Example
+///
+/// ```text
+/// // Input DSL
+/// Card { item: x, @click: h, p { "child" } }
+///
+/// // Generated code (simplified)
+/// card(CardProps::builder()
+///     .item(x)
+///     .on_click(h)
+///     .children(<p_element_view>)
+///     .build())
+/// ```
+fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
+	let props_ty = props_struct_name(&comp.name);
+	let fn_name = component_fn_name(&comp.name);
+
+	// `.field(value)` per named prop.
+	let prop_setters: Vec<TokenStream> = comp
+		.args
+		.iter()
+		.map(|arg| {
+			let n = &arg.name;
+			let v = &arg.value;
+			quote! { .#n(#v) }
+		})
+		.collect();
+
+	// `.on_<event>(handler)` per event prop.
+	let event_setters: Vec<TokenStream> = comp
+		.events
+		.iter()
+		.map(|ev| {
+			let on_name = syn::Ident::new(
+				&format!("on_{}", ev.event_type),
+				ev.event_type.span(),
+			);
+			let h = &ev.handler;
+			quote! { .#on_name(#h) }
+		})
+		.collect();
+
+	// children: per §3.5.3 table.
+	//
+	// `bon::Builder` synthesises an `.children(value: Page)` setter for
+	// `children: Option<Page>` (the Option is wrapped internally), so we
+	// pass the child view directly without an explicit `Some(...)`.
+	let children_setter = match &comp.children {
+		None => quote! {},
+		Some(cs) if cs.len() == 1 => {
+			let one = generate_node(&cs[0], pages_crate);
+			quote! { .children(#one) }
+		}
+		Some(cs) => {
+			let many: Vec<TokenStream> = cs
+				.iter()
+				.map(|c| generate_node(c, pages_crate))
+				.collect();
+			quote! {
+				.children(
+					#pages_crate::component::Page::fragment(::std::vec![ #(#many),* ])
+				)
+			}
+		}
+	};
+
+	// Named slot setters (e.g., `$header { ... }` → `.header(view)`).
+	let slot_setters: Vec<TokenStream> = comp
+		.named_slots
+		.iter()
+		.map(|slot| {
+			let setter_name = slot_name_to_snake_case(&slot.name.to_string());
+			let setter_ident = syn::Ident::new(&setter_name, slot.name.span());
+			let slot_view = generate_if_branch(&slot.children, pages_crate);
+			quote! { .#setter_ident (#slot_view) }
+		})
+		.collect();
+
+	quote! {
+		#fn_name(
+			#props_ty::builder()
+				#(#prop_setters)*
+				#(#event_setters)*
+				#children_setter
+				#(#slot_setters)*
+				.build()
+		)
+	}
+}
+
+/// Spec §3.5.1 convention: `Card` → struct `CardProps`.
+fn props_struct_name(comp: &syn::Ident) -> syn::Ident {
+	syn::Ident::new(&format!("{comp}Props"), comp.span())
+}
+
+/// Spec §3.5.1 convention: `Card` → fn `card` (snake_case of the component name).
+///
+/// Conversion lowercases the name and inserts `_` at word boundaries, while
+/// keeping consecutive uppercase runs together as a single acronym word
+/// (e.g. `URLCard` → `url_card`). Already-snake-case names round-trip unchanged.
+fn component_fn_name(comp: &syn::Ident) -> syn::Ident {
+	let s = comp.to_string();
+	let snake = pascal_to_snake(&s);
+	syn::Ident::new(&snake, comp.span())
+}
+
+/// PascalCase → snake_case conversion. Treats consecutive uppercase runs as
+/// acronyms per Rust naming conventions (e.g. `URLCard` → `url_card`).
+fn pascal_to_snake(s: &str) -> String {
+	let mut out = String::with_capacity(s.len() + 4);
+	let mut chars = s.chars().peekable();
+	let mut prev_is_lower_or_digit = false;
+
+	while let Some(c) = chars.next() {
+		if c.is_ascii_uppercase() {
+			let next_is_lower = chars.peek().is_some_and(|next| next.is_ascii_lowercase());
+			if !out.is_empty() && (prev_is_lower_or_digit || next_is_lower) {
+				out.push('_');
+			}
+			out.push(c.to_ascii_lowercase());
+			prev_is_lower_or_digit = false;
+		} else {
+			out.push(c);
+			prev_is_lower_or_digit = c.is_ascii_lowercase() || c.is_ascii_digit();
+		}
+	}
+	out
 }
 
 #[cfg(test)]
@@ -766,5 +1000,68 @@ mod tests {
 		assert!(output_str.contains("MyWrapper"));
 		assert!(output_str.contains("\"container\""));
 		assert!(output_str.contains("PageElement"));
+	}
+
+	#[test]
+	fn test_generate_component_with_named_slots() {
+		let input = quote::quote!(|| {
+			Table(args: 1) {
+				$header { div { "Header" } }
+				$body { div { "Body" } }
+			}
+		});
+		let output = parse_and_generate(input);
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("Table"));
+		// Should contain builder chain with named slot setters
+		assert!(output_str.contains(". header"));
+		assert!(output_str.contains(". body"));
+		assert!(output_str.contains(". build ()"));
+	}
+
+	#[test]
+	fn test_generate_component_mixed_default_and_named() {
+		let input = quote::quote!(|| {
+			Layout(args: 1) {
+				div { "default" }
+				$sidebar { div { "Sidebar" } }
+			}
+		});
+		let output = parse_and_generate(input);
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("Layout"));
+		assert!(output_str.contains(". children"));
+		assert!(output_str.contains(". sidebar"));
+		assert!(output_str.contains(". build ()"));
+	}
+
+	#[test]
+	fn test_generate_component_slot_name_snake_case() {
+		let input = quote::quote!(|| {
+			Container(args: 1) {
+				$bodyContent { div { "Body" } }
+			}
+		});
+		let output = parse_and_generate(input);
+		let output_str = output.to_string();
+
+		// bodyContent → body_content
+		assert!(output_str.contains(". body_content"));
+	}
+
+	#[test]
+	fn test_generate_component_no_slots_unchanged() {
+		// Components without named slots should keep existing behavior
+		let input = quote::quote!(|| {
+			MyButton(label: "Click")
+		});
+		let output = parse_and_generate(input);
+		let output_str = output.to_string();
+
+		// No builder chain for simple component
+		assert!(output_str.contains("MyButton"));
+		assert!(!output_str.contains(". build ()"));
 	}
 }

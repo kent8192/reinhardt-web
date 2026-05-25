@@ -479,12 +479,22 @@ impl DatabaseMigrationExecutor {
 			// Standard reverse SQL execution
 			let reverse_sql = operation.to_reverse_sql(&dialect, &project_state)?;
 
-			if let Some(sql) = reverse_sql {
-				tracing::debug!("=== Reverse SQL for {:?} ===", operation);
-				tracing::debug!("{}", sql);
-
-				// Execute reverse SQL using SchemaEditor
-				editor.execute(&sql).await?;
+			if let Some(statements) = reverse_sql {
+				tracing::debug!(
+					"=== Reverse SQL for {:?} ({} statement(s)) ===",
+					operation,
+					statements.len()
+				);
+				// Dispatch each statement separately through SchemaEditor.
+				// SchemaEditor::execute() is backed by sqlx Extended Query, which
+				// accepts only one statement per payload — see operations.rs
+				// `Operation::to_reverse_sql` for why some DDL reversals produce
+				// multiple statements (e.g. AlterColumn on PostgreSQL/CockroachDB
+				// splits type reversion and NOT NULL restoration).
+				for sql in &statements {
+					tracing::debug!("{}", sql);
+					editor.execute(sql).await?;
+				}
 
 				tracing::debug!("✅ Reverse operation executed successfully");
 			} else {

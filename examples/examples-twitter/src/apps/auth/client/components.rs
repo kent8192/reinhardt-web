@@ -34,6 +34,19 @@ pub fn login_form() -> Page {
 	let login_form = form! {
 		name: LoginForm,
 		server_fn: login,
+
+		// UI state management
+		state: { loading, error },
+
+		// Success callback: set current user before redirect
+		on_success: |user_info| {
+			#[cfg(wasm)]
+			{
+				set_current_user(Some(user_info));
+			}
+		},
+
+		// Redirect after successful login
 		redirect_on_success: "/timeline",
 
 		state: {

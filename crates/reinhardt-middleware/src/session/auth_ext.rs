@@ -10,7 +10,7 @@ use reinhardt_http::Result;
 use serde::Serialize;
 
 use super::data::{SessionData, USER_ID_SESSION_KEY};
-use super::injectable::SessionStoreRef;
+use super::store::SessionStore;
 
 /// Login/logout helpers for [`SessionData`].
 ///
@@ -22,25 +22,29 @@ use super::injectable::SessionStoreRef;
 /// The trait is provided as an extension so existing call sites can opt
 /// in by adding a single `use` and replacing their inline blocks; the
 /// implementation lives in `reinhardt-middleware` because that is the
-/// crate that owns [`SessionData`] and [`SessionStoreRef`]. `BaseUser` is
+/// crate that owns [`SessionData`] and [`SessionStore`]. `BaseUser` is
 /// deliberately *not* a bound on `login` — taking `impl Serialize` keeps
 /// the helper usable with any primary-key shape (`i64`, `Uuid`, a tenant
 /// composite key, …) and avoids the otherwise-circular auth ↔ middleware
 /// coupling.
 ///
+/// The `store` parameter is a `&SessionStore`. Callers that have
+/// `#[inject] store: Depends<SessionStore>` can pass `&store` directly —
+/// Rust deref coercion converts `&Depends<SessionStore>` to `&SessionStore`
+/// transparently via [`Depends<T>: Deref<Target = T>`][reinhardt_di::Depends].
+///
 /// # Usage
 ///
 /// ```rust,ignore
-/// use reinhardt::middleware::session::{
-///     SessionAuthExt, SessionData, SessionStoreRef,
-/// };
+/// use reinhardt::di::Depends;
+/// use reinhardt::middleware::session::{SessionAuthExt, SessionData, SessionStore};
 ///
 /// #[server_fn]
 /// pub async fn login(
 ///     username: String,
 ///     password: String,
 ///     #[inject] mut session: SessionData,
-///     #[inject] store: SessionStoreRef,
+///     #[inject] store: Depends<SessionStore>,
 /// ) -> Result<(), ServerFnError> {
 ///     // … authenticate `user` …
 ///     session.login(&store, user.id())
@@ -56,18 +60,15 @@ pub trait SessionAuthExt {
 	/// ```text
 	/// let old_id = self.regenerate_id();
 	/// self.set(USER_ID_SESSION_KEY.to_string(), user_id)?;
-	/// store.inner().delete(&old_id);
-	/// store.inner().save(self.clone());
+	/// store.delete(&old_id);
+	/// store.save(self.clone());
 	/// ```
 	///
 	/// Returns a [`reinhardt_http::Result`] so the serialisation failure
 	/// inside [`SessionData::set`] propagates with the same error type as
 	/// the rest of the session API.
-	fn login<V: Serialize + Send + Sync>(
-		&mut self,
-		store: &SessionStoreRef,
-		user_id: V,
-	) -> Result<()>;
+	fn login<V: Serialize + Send + Sync>(&mut self, store: &SessionStore, user_id: V)
+	-> Result<()>;
 
 	/// Clear the authenticated-user reference from the current session.
 	///
@@ -76,26 +77,26 @@ pub trait SessionAuthExt {
 	/// keys callers may have written), and persists the rotated session.
 	/// Callers who want to drop *all* session state should call
 	/// [`SessionData::clear`] before invoking this helper.
-	fn logout(&mut self, store: &SessionStoreRef);
+	fn logout(&mut self, store: &SessionStore);
 }
 
 impl SessionAuthExt for SessionData {
 	fn login<V: Serialize + Send + Sync>(
 		&mut self,
-		store: &SessionStoreRef,
+		store: &SessionStore,
 		user_id: V,
 	) -> Result<()> {
 		let old_id = self.regenerate_id();
 		self.set(USER_ID_SESSION_KEY.to_string(), user_id)?;
-		store.inner().delete(&old_id);
-		store.inner().save(self.clone());
+		store.delete(&old_id);
+		store.save(self.clone());
 		Ok(())
 	}
 
-	fn logout(&mut self, store: &SessionStoreRef) {
+	fn logout(&mut self, store: &SessionStore) {
 		let old_id = self.regenerate_id();
 		self.delete(USER_ID_SESSION_KEY);
-		store.inner().delete(&old_id);
-		store.inner().save(self.clone());
+		store.delete(&old_id);
+		store.save(self.clone());
 	}
 }

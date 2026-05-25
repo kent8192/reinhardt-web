@@ -255,6 +255,36 @@ pub fn legacy_method() {
 }
 ```
 
+### SP-4a (MUST): Deprecated API Removal Mechanism
+
+When removing a deprecated API, the removal **MUST** be a true deletion — the code and its module declaration are removed from the source tree. Conditional compilation gates that preserve dead code are **NEVER** acceptable as a "soft deletion" mechanism.
+
+**Prohibited pattern:**
+```rust
+// ❌ NEVER gate deprecated items behind cfg(any()) to hide them
+#[cfg(any())]
+pub fn legacy_function() {
+    // dead code preserved in the tree
+}
+```
+
+**Required pattern:**
+```rust
+// ✅ DELETE the file and the `pub mod` declaration.
+// git blame <deletion-commit>^ is the mechanism for inspecting past state.
+```
+
+**Caller update obligation:**
+- All in-crate callers of the deleted API **MUST** be updated or removed in the same commit
+- All cross-crate callers in the workspace **MUST** be updated or removed in the same commit
+- When a caller cannot be trivially updated (e.g., the replacement API lives in a different crate), file a tracking issue and reference it in the commit message
+
+**Rationale:**
+- `#[cfg(any())]` is always-false conditional compilation — it is semantically equivalent to deletion but leaves dead code in the tree
+- Dead code accumulates technical debt: it confuses readers, bloats IDE search results, and misleads future refactoring efforts
+- The "git blame readability" argument for preserving dead code is invalid: `git blame <deletion-commit>^` allows inspecting the code as it existed before deletion
+- `#[cfg(any())]` gates can mask compilation errors in callers, hiding the full impact of an API removal
+
 ### SP-5 (SHOULD): Commit Message Convention for RC
 
 During the RC phase, commit messages should clearly indicate the nature of the fix:
@@ -412,16 +442,14 @@ git push origin --delete develop/0.2.0
 ### DB-6 (MUST): release-plz Interaction
 
 release-plz monitors both `main` and `develop/**`. Each branch follows the
-Cargo.toml version it currently carries. **Branch-specific `pr_branch_prefix`
-values are REQUIRED in `release-plz.toml`** to prevent cross-branch PR closure
-(release-plz's `opened_prs()` searches all open PRs by branch prefix with no
-base-branch filter):
+Cargo.toml version it currently carries, with no branch-specific
+configuration in `release-plz.toml`:
 
-| Branch | `pr_branch_prefix` | Cargo.toml version | Release PR output |
-|---|---|---|---|
-| `main` | `"release-plz-"` | `x.y.z` (stable) | Stable Release PR (`x.y.z` → `x.y.(z+1)` or `x.(y+1).0`) |
-| `develop/m.n.l` (alpha phase) | `"develop-release-plz-"` | `m.n.l-alpha.N` | Prerelease Release PR (`alpha.N` → `alpha.(N+1)`) |
-| `develop/m.n.l` (rc phase) | `"develop-release-plz-"` | `m.n.l-rc.N` | Prerelease Release PR (`rc.N` → `rc.(N+1)`) |
+| Branch | Cargo.toml version | Release PR output |
+|---|---|---|
+| `main` | `x.y.z` (stable) | Stable Release PR (`x.y.z` → `x.y.(z+1)` or `x.(y+1).0`) |
+| `develop/m.n.l` (alpha phase) | `m.n.l-alpha.N` | Prerelease Release PR (`alpha.N` → `alpha.(N+1)`) |
+| `develop/m.n.l` (rc phase) | `m.n.l-rc.N` | Prerelease Release PR (`rc.N` → `rc.(N+1)`) |
 
 **Version management on the develop branch** is operator-controlled at three
 explicit gates (see `instructions/RELEASE_PROCESS.md` § "Develop Branch
@@ -706,7 +734,6 @@ During the RC phase:
 Automated SemVer checking is performed on every pull request targeting `main` using [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks).
 
 - **CI workflow**: `.github/workflows/semver-check.yml` reports any detected SemVer violations before code is merged.
-- **Local mirror**: `cargo make semver-check` mirrors the CI workflow and MUST be run before converting a Draft PR to Ready for Review on any PR touching public API (see `instructions/PR_GUIDELINE.md` § RP-1a).
 - **Audit trail**: A full breaking change audit is maintained at `docs/breaking-change-audit.md`.
 
 ---
@@ -739,6 +766,7 @@ Automated SemVer checking is performed on every pull request targeting `main` us
 - Trigger `release-plz-promote.yml` (`workflow_dispatch`) after merging `develop/m.n.l` into `main` to graduate the prerelease suffix to stable (DBR-3)
 
 ### NEVER DO
+- Use `#[cfg(any())]` as a substitute for deleting deprecated code — deprecated code MUST be deleted entirely, not hidden behind an always-false cfg gate
 - Regress from RC back to alpha
 - Add new public APIs during the RC phase without SP-6 approval
 - Add unapproved `feat:` commits during the RC phase (SP-6-approved additions may use `feat:`)
