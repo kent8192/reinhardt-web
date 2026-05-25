@@ -602,6 +602,40 @@ fn find_matching_brace(source: &str, start: usize) -> Option<usize> {
 			continue;
 		}
 
+		if ch == '/'
+			&& let Some((_, next_ch)) = chars.get(i + 1)
+		{
+			if *next_ch == '/' {
+				i += 2;
+				while i < chars.len() && chars[i].1 != '\n' {
+					i += 1;
+				}
+				continue;
+			}
+
+			if *next_ch == '*' {
+				i += 2;
+				let mut comment_depth: usize = 1;
+				while i + 1 < chars.len() && comment_depth > 0 {
+					let current = chars[i].1;
+					let next = chars[i + 1].1;
+					if current == '/' && next == '*' {
+						comment_depth += 1;
+						i += 2;
+					} else if current == '*' && next == '/' {
+						comment_depth -= 1;
+						i += 2;
+					} else {
+						i += 1;
+					}
+				}
+				if comment_depth > 0 {
+					return None;
+				}
+				continue;
+			}
+		}
+
 		match ch {
 			'"' => {
 				// Check for raw strings: r#"..."# or r"..."
@@ -4459,6 +4493,32 @@ fn main() {
 			result.protected_content,
 			r#"let login = __reinhardt_placeholder_0__!();"#
 		);
+	}
+
+	#[rstest]
+	fn test_protect_form_macro_ignores_braces_in_comments() {
+		// Arrange
+		let formatter = AstPageFormatter::new();
+		let input = r#"let login = form! {
+	name: LoginForm,
+	// }
+	fields: {
+		username: CharField {
+			required,
+			/* } */
+		}
+	}
+};"#;
+
+		// Act
+		let protected = formatter.protect_page_macros(input);
+		let restored =
+			AstPageFormatter::restore_page_macros(&protected.protected_content, &protected.backups);
+
+		// Assert
+		assert_eq!(protected.backups.len(), 1);
+		assert_eq!(protected.backups[0].kind, MacroKind::Form);
+		assert_eq!(restored, input);
 	}
 
 	// Regression: raw byte string with multiple hashes (`br##"..."##`).

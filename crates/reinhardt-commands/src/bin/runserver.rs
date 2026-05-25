@@ -354,9 +354,7 @@ async fn dispatch_through_router(
 fn convert_to_hyper_response(
 	response: reinhardt_http::Response,
 ) -> Option<hyper::Response<Full<Bytes>>> {
-	if response.status == hyper::StatusCode::NOT_FOUND
-		|| response.status == hyper::StatusCode::METHOD_NOT_ALLOWED
-	{
+	if response.status == hyper::StatusCode::NOT_FOUND {
 		return None;
 	}
 	let mut hyper_resp = hyper::Response::builder().status(response.status);

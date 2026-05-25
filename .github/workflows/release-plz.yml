@@ -339,6 +339,18 @@ jobs:
           fi
           echo "PR #$PR_NUMBER has the 'release' label — proceeding with publish"
 
+          MERGE_COMMIT_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq '.mergeCommit.oid // ""' 2>/dev/null || echo "")
+          if [ -z "$MERGE_COMMIT_SHA" ]; then
+            echo "::error::Could not determine merge commit SHA for PR #$PR_NUMBER"
+            exit 1
+          fi
+          if [ "$MERGE_COMMIT_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Pushed SHA $GITHUB_SHA does not match release PR #$PR_NUMBER merge commit $MERGE_COMMIT_SHA"
+            echo "::error::Refusing to publish from an unverified release commit."
+            exit 1
+          fi
+          echo "Pushed SHA matches PR #$PR_NUMBER merge commit — proceeding with publish"
+
       # Workaround for gix slotmap overflow (GitoxideLabs/gitoxide#1788)
       - name: Clear cargo registry git index cache
         run: rm -rf ~/.cargo/registry/index/github.com-*
