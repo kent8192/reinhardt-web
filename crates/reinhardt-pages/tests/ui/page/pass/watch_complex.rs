@@ -17,7 +17,9 @@ fn main() {
 				if error.get().is_some() {
 					div {
 						class: "alert alert-danger",
-						{ error.get().unwrap_or_default() }
+						{
+							error.get().unwrap_or_default()
+						}
 					}
 				}
 			}
@@ -27,17 +29,21 @@ fn main() {
 						class: "spinner",
 						"Loading..."
 					}
-				} else if items.get().is_empty() {
+				}
+				else if items.get().is_empty() {
 					p {
 						"No items available"
 					}
-				} else {
+				}
+				else {
 					ul {
 						class: "item-list",
 						for item in items.get().iter() {
 							li {
 								class: "item",
-								{ item.clone() }
+								{
+									item.clone()
+								}
 							}
 						}
 					}
@@ -56,17 +62,20 @@ fn main() {
 							span {
 								if c.get() {
 									"All true"
-								} else {
+								}
+								else {
 									"A and B true"
 								}
 							}
-						} else {
+						}
+						else {
 							span {
 								"Only A true"
 							}
 						}
 					}
-				} else {
+				}
+				else {
 					span {
 						"A is false"
 					}

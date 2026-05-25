@@ -96,8 +96,12 @@ pub fn timeline_page_view() -> Page {
 	page!(|form_view: Page, list_view: Page| {
 		div {
 			class: "flex flex-col gap-4",
-			{ form_view }
-			{ list_view }
+			{
+				form_view
+			}
+			{
+				list_view
+			}
 		}
 	})(form_view, list_view)
 }

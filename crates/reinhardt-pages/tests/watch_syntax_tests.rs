@@ -99,7 +99,8 @@ fn test_watch_with_if_else(bool_signal: Signal<bool>) {
 					span {
 						"True branch"
 					}
-				} else {
+				}
+				else {
 					span {
 						"False branch"
 					}
@@ -135,12 +136,14 @@ fn test_watch_with_nested_if(bool_signal: Signal<bool>) {
 						span {
 							"Both true"
 						}
-					} else {
+					}
+					else {
 						span {
 							"Outer only"
 						}
 					}
-				} else {
+				}
+				else {
 					span {
 						"Outer false"
 					}
@@ -204,7 +207,9 @@ fn test_watch_with_text_content(string_signal: Signal<String>) {
 	let view = page!(|signal: Signal<String>| {
 		div {
 			watch {
-				{ signal.get() }
+				{
+					signal.get()
+				}
 			}
 		}
 	})(signal.clone());
@@ -229,7 +234,9 @@ fn test_watch_with_expression_node(counter_signal: Signal<i32>) {
 	let view = page!(|signal: Signal<i32>| {
 		div {
 			watch {
-				{ format!("Count: {}", signal.get()) }
+				{
+					format!("Count: {}", signal.get())
+				}
 			}
 		}
 	})(signal.clone());
@@ -256,7 +263,9 @@ fn test_watch_with_for_loop(list_signal: Signal<Vec<String>>) {
 			watch {
 				for item in signal.get().iter() {
 					li {
-						{ item.clone() }
+						{
+							item.clone()
+						}
 					}
 				}
 			}
@@ -332,7 +341,9 @@ fn test_multiple_watch_blocks(bool_signal: Signal<bool>, error_signal: Signal<Op
 			watch {
 				if error.get().is_some() {
 					div {
-						{ error.get().unwrap_or_default() }
+						{
+							error.get().unwrap_or_default()
+						}
 					}
 				}
 			}
@@ -401,7 +412,9 @@ fn test_watch_with_unicode() {
 	let view = page!(|text: Signal<String>| {
 		div {
 			watch {
-				{ text.get() }
+				{
+					text.get()
+				}
 			}
 		}
 	})(text.clone());
@@ -426,7 +439,9 @@ fn test_watch_with_empty_string() {
 	let view = page!(|text: Signal<String>| {
 		div {
 			watch {
-				{ text.get() }
+				{
+					text.get()
+				}
 			}
 		}
 	})(text.clone());
@@ -452,13 +467,7 @@ fn test_watch_with_fragment_result(list_signal: Signal<Vec<String>>) {
 		div {
 			watch {
 				{
-					Page::fragment(
-							items
-								.get()
-								.iter()
-								.map(|i| Page::text(i.clone()))
-								.collect::<Vec<Page>>(),
-						)
+					Page::fragment(items.get().iter().map(|i| Page::text(i.clone())).collect::<Vec<Page>>(), )
 				}
 			}
 		}
@@ -484,7 +493,7 @@ fn test_watch_with_data_attributes(counter_signal: Signal<i32>) {
 	let view = page!(|signal: Signal<i32>| {
 		div {
 			watch {
-				if signal.get()> 0 {
+				if signal.get() > 0 {
 					span {
 						data_count: signal.get().to_string(),
 						"Has data"
@@ -520,7 +529,8 @@ fn test_watch_condition_boolean_partitions(#[case] initial_value: bool) {
 					span {
 						"True"
 					}
-				} else {
+				}
+				else {
 					span {
 						"False"
 					}
@@ -589,7 +599,8 @@ fn test_watch_condition_content_matrix(#[case] condition: bool, #[case] content_
 				watch {
 					if signal.get() {
 						"Text content"
-					} else {
+					}
+					else {
 						"Other text"
 					}
 				}
@@ -603,7 +614,8 @@ fn test_watch_condition_content_matrix(#[case] condition: bool, #[case] content_
 						span {
 							"Element content"
 						}
-					} else {
+					}
+					else {
 						span {
 							"Other element"
 						}
@@ -677,7 +689,9 @@ fn test_watch_complex_state_machine() {
 				if error.get().is_some() {
 					div {
 						class: "error",
-						{ error.get().unwrap_or_default() }
+						{
+							error.get().unwrap_or_default()
+						}
 					}
 				}
 			}
@@ -686,15 +700,19 @@ fn test_watch_complex_state_machine() {
 					div {
 						"Loading..."
 					}
-				} else if data.get().is_empty() {
+				}
+				else if data.get().is_empty() {
 					div {
 						"No data"
 					}
-				} else {
+				}
+				else {
 					ul {
 						for item in data.get().iter() {
 							li {
-								{ item.clone() }
+								{
+									item.clone()
+								}
 							}
 						}
 					}

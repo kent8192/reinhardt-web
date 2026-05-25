@@ -6,7 +6,12 @@ fn main() {
 	// Dynamic class attribute with conditional
 	let _dynamic_class = page!(|is_active: bool| {
 		div {
-			class: if is_active { "active" } else { "inactive" },
+			class: if is_active {
+				"active"
+			}
+			else {
+				"inactive"
+			},
 			"Content"
 		}
 	});

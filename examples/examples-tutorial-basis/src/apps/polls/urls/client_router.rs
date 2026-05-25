@@ -78,7 +78,9 @@ fn error_page(message: &str) -> Page {
 			class: "layout-page",
 			div {
 				class: "alert-danger mb-4",
-				{ message }
+				{
+					message
+				}
 			}
 			a {
 				href: home_href,

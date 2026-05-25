@@ -22,7 +22,8 @@ fn main() {
 					class: "badge",
 					"Admin"
 				}
-			} else {
+			}
+			else {
 				span {
 					"User"
 				}

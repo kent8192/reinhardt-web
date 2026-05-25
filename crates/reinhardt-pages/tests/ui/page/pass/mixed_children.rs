@@ -42,7 +42,9 @@ fn main() {
 				"Count: "
 			}
 			strong {
-				{ format!("{}", count) }
+				{
+					format!("{}", count)
+				}
 			}
 		}
 	});

@@ -194,7 +194,9 @@ fn dashboard_view() -> Page {
 	page!(|| {
 		div {
 			class: "dashboard-container p-6 md:p-8 max-w-7xl mx-auto",
-			{ reactive_content }
+			{
+				reactive_content
+			}
 		}
 	})()
 }
@@ -302,7 +304,9 @@ fn list_view_component(model_name: String) -> Page {
 	page!(|| {
 		div {
 			class: "list-container p-6 md:p-8 max-w-7xl mx-auto",
-			{ reactive_content }
+			{
+				reactive_content
+			}
 		}
 	})()
 }
@@ -375,7 +379,9 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 	page!(|| {
 		div {
 			class: "detail-container p-6 md:p-8 max-w-7xl mx-auto",
-			{ reactive_content }
+			{
+				reactive_content
+			}
 		}
 	})()
 }
@@ -430,7 +436,9 @@ fn create_view_component(model_name: String) -> Page {
 	page!(|| {
 		div {
 			class: "form-container p-6 md:p-8 max-w-7xl mx-auto",
-			{ reactive_content }
+			{
+				reactive_content
+			}
 		}
 	})()
 }
@@ -527,7 +535,9 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 	page!(|| {
 		div {
 			class: "form-container p-6 md:p-8 max-w-7xl mx-auto",
-			{ reactive_content }
+			{
+				reactive_content
+			}
 		}
 	})()
 }
@@ -578,7 +588,9 @@ fn not_found_view() -> Page {
 				"The requested page could not be found."
 			}
 			div {
-				{ dashboard_link }
+				{
+					dashboard_link
+				}
 			}
 		}
 	})()
@@ -644,9 +656,13 @@ fn error_view(message: &str) -> Page {
 			}
 			p {
 				class: "mb-4",
-				{ message }
+				{
+					message
+				}
 			}
-			{ dashboard_link }
+			{
+				dashboard_link
+			}
 		}
 	})()
 }

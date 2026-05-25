@@ -9,15 +9,13 @@ fn main() {
 	let _form = form! {
 		name: TestForm,
 		action: "/api/submit",
-
 		fields: {
-			username: CharField { required },
+			username: CharField {
+				required
+			},
 		},
-
 		client_validators: {
-			username: [
-				"value.length >= 3" => "Too short",
-			],
+			username:["value.length >= 3" =>"Too short", ],
 		},
 	};
 }

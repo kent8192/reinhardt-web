@@ -29,12 +29,14 @@ fn main() {
 	let _form = form! {
 		name: OnSuccessCaptureForm,
 		server_fn: submit_vote,
-
 		fields: {
-			_question_id: IntegerField { widget: HiddenInput },
-			_choice_id: IntegerField { required },
+			_question_id: IntegerField {
+				widget: HiddenInput
+			},
+			_choice_id: IntegerField {
+				required
+			},
 		},
-
 		// The hook that #4624 fixes. The explicit `: i64` annotation
 		// activates the lift — `target_id` is captured from the enclosing
 		// scope just like a normal Rust closure.

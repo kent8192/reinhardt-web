@@ -15,9 +15,9 @@ fn main() {
 	});
 
 	// For with tuple destructuring
-	let _for_enumerate = page!(|items: Vec<(usize, String)>| {
+	let _for_enumerate = page!(|items: Vec<(usize, String) >| {
 		ul {
-			for (index, item) in items {
+			for(index, item)in items {
 				li {
 					span {
 						index.to_string()

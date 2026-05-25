@@ -6,7 +6,8 @@ fn main() {
 	// Click event
 	let _with_click = page!(|| {
 		button {
-			@click: |_| { },
+			@click: |_| {
+			},
 			"Click me"
 		}
 	});
@@ -14,19 +15,25 @@ fn main() {
 	// Multiple events
 	let _with_events = page!(|| {
 		input {
-			@input: |_| { },
-			@change: |_| { },
-			@focus: |_| { },
-			@blur: |_| { },
+			@input: |_| {
+			},
+			@change: |_| {
+			},
+			@focus: |_| {
+			},
+			@blur: |_| {
+			},
 		}
 	});
 
 	// Form events
 	let _form = page!(|| {
 		form {
-			@submit: |_| { },
+			@submit: |_| {
+			},
 			button {
-				@click: |_| { },
+				@click: |_| {
+				},
 				"Submit"
 			}
 		}

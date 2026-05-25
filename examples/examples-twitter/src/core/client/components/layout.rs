@@ -125,9 +125,13 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 				class: "flex items-center gap-3",
 				span {
 					class: "text-content-secondary text-sm hidden md:block",
-					{ username }
+					{
+						username
+					}
 				}
-				{ profile_link }
+				{
+					profile_link
+				}
 				a {
 					href: "/logout",
 					class: "btn-outline btn-sm",
@@ -146,8 +150,12 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 		page!(|login_link: Page, register_link: Page| {
 			div {
 				class: "flex items-center gap-2",
-				{ login_link }
-				{ register_link }
+				{
+					login_link
+				}
+				{
+					register_link
+				}
 			}
 		})(login_link, register_link)
 	};
@@ -161,16 +169,24 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 					class: "flex items-center justify-between h-14",
 					div {
 						class: "flex items-center gap-6",
-						{ brand_link }
+						{
+							brand_link
+						}
 						nav {
 							class: "hidden md:flex items-center gap-1",
-							{ nav_links_view }
+							{
+								nav_links_view
+							}
 						}
 					}
 					div {
 						class: "flex items-center gap-2",
-						{ theme_toggle_view }
-						{ user_menu }
+						{
+							theme_toggle_view
+						}
+						{
+							user_menu
+						}
 					}
 				}
 			}
@@ -200,15 +216,21 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 					class: "sidebar-item block",
 					div {
 						class: "text-content-tertiary text-xs mb-0.5",
-						{ category }
+						{
+							category
+						}
 					}
 					div {
 						class: "font-semibold text-content-primary",
-						{ name }
+						{
+							name
+						}
 					}
 					div {
 						class: "text-content-tertiary text-xs mt-0.5",
-						{ tweets_text }
+						{
+							tweets_text
+						}
 					}
 				}
 			})(href, name, category, tweets_text)
@@ -250,19 +272,25 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 						class: "flex items-center gap-3",
 						div {
 							class: "w-10 h-10 rounded-full bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold text-sm",
-							{ avatar_initial }
+							{
+								avatar_initial
+							}
 						}
 						div {
 							class: "flex-1 min-w-0",
 							a {
 								href: profile_href,
 								class: "font-semibold text-content-primary hover:underline block truncate",
-								{ username }
+								{
+									username
+								}
 							}
 							if has_bio {
 								p {
 									class: "text-content-tertiary text-xs truncate",
-									{ bio_text }
+									{
+										bio_text
+									}
 								}
 							}
 						}
@@ -303,7 +331,9 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 					class: "sidebar-header",
 					"Trending"
 				}
-				{ topics_view }
+				{
+					topics_view
+				}
 				a {
 					href: "/explore",
 					class: "block px-4 py-3 text-brand text-sm hover:bg-surface-secondary transition-colors",
@@ -316,7 +346,9 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 					class: "sidebar-header",
 					"Who to follow"
 				}
-				{ users_view }
+				{
+					users_view
+				}
 				a {
 					href: "/explore/users",
 					class: "block px-4 py-3 text-brand text-sm hover:bg-surface-secondary transition-colors",
@@ -391,22 +423,30 @@ fn bottom_navigation(current_path: &str) -> Page {
 			a {
 				href: "/",
 				class: home_class,
-				{ icons::home_icon() }
+				{
+					icons::home_icon()
+				}
 			}
 			a {
 				href: "/explore",
 				class: explore_class,
-				{ icons::search_icon() }
+				{
+					icons::search_icon()
+				}
 			}
 			a {
 				href: "/notifications",
 				class: notif_class,
-				{ icons::bell_icon() }
+				{
+					icons::bell_icon()
+				}
 			}
 			a {
 				href: "/profile",
 				class: profile_class,
-				{ icons::user_icon() }
+				{
+					icons::user_icon()
+				}
 			}
 		}
 	})(
@@ -424,7 +464,9 @@ fn floating_action_button() -> Page {
 			href: "/compose",
 			class: "fab",
 			aria_label: "Compose",
-			{ icons::plus_icon() }
+			{
+				icons::plus_icon()
+			}
 		}
 	})()
 }
@@ -465,7 +507,9 @@ pub fn footer(version: &str) -> Page {
 						}
 					}
 					span {
-						{ format!("Twitter Clone v{} - Built with Reinhardt", version) }
+						{
+							format!("Twitter Clone v{} - Built with Reinhardt", version)
+						}
 					}
 				}
 			}
@@ -515,17 +559,27 @@ pub fn main_layout(
 	page!(|header_view: Page, main_content: Page, footer_view: Page, bottom_nav: Page, fab: Page| {
 		div {
 			class: "layout-main bg-surface-secondary",
-			{ header_view }
+			{
+				header_view
+			}
 			main {
 				class: "flex-1 pt-4 pb-20 md:pb-4",
 				div {
 					class: "layout-container",
-					{ main_content }
+					{
+						main_content
+					}
 				}
 			}
-			{ footer_view }
-			{ bottom_nav }
-			{ fab }
+			{
+				footer_view
+			}
+			{
+				bottom_nav
+			}
+			{
+				fab
+			}
 		}
 	})(header_view, main_content, footer_view, bottom_nav, fab)
 }
@@ -540,18 +594,24 @@ pub fn simple_layout(site_name: &str, nav_items: &[NavItem], content: Page, vers
 	page!(|header_view: Page, content: Page, footer_view: Page| {
 		div {
 			class: "layout-main bg-surface-secondary",
-			{ header_view }
+			{
+				header_view
+			}
 			main {
 				class: "flex-1 py-8",
 				div {
 					class: "layout-container",
 					div {
 						class: "max-w-md mx-auto",
-						{ content }
+						{
+							content
+						}
 					}
 				}
 			}
-			{ footer_view }
+			{
+				footer_view
+			}
 		}
 	})(header_view, content, footer_view)
 }

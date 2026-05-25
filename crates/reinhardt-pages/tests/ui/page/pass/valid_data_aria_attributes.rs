@@ -63,7 +63,8 @@ fn main() {
 			data_testid: "close-button",
 			data_dialog_id: "modal-1",
 			data_action: "close",
-			@click: |_| { },
+			@click: |_| {
+			},
 			"Close"
 		}
 	});
@@ -81,7 +82,8 @@ fn main() {
 				aria_controls: "panel-1",
 				data_tab: "tab-1",
 				data_index: "0",
-				@click: |_| { },
+				@click: |_| {
+				},
 				"Tab 1"
 			}
 			button {
@@ -90,7 +92,8 @@ fn main() {
 				aria_controls: "panel-2",
 				data_tab: "tab-2",
 				data_index: "1",
-				@click: |_| { },
+				@click: |_| {
+				},
 				"Tab 2"
 			}
 			div {
@@ -188,13 +191,15 @@ fn main() {
 					button {
 						aria_label: "Confirm",
 						data_action: "confirm",
-						@click: |_| { },
+						@click: |_| {
+						},
 						"Confirm"
 					}
 					button {
 						aria_label: "Cancel",
 						data_action: "cancel",
-						@click: |_| { },
+						@click: |_| {
+						},
 						"Cancel"
 					}
 				}

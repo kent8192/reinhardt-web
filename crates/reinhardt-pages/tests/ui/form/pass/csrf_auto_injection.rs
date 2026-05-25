@@ -8,9 +8,10 @@ fn main() {
 		name: PostForm,
 		action: "/api/submit",
 		method: Post,
-
 		fields: {
-			message: CharField { required },
+			message: CharField {
+				required
+			},
 		},
 	};
 
@@ -19,9 +20,10 @@ fn main() {
 		name: PutForm,
 		action: "/api/update",
 		method: Put,
-
 		fields: {
-			data: CharField { required },
+			data: CharField {
+				required
+			},
 		},
 	};
 
@@ -30,9 +32,10 @@ fn main() {
 		name: PatchForm,
 		action: "/api/patch",
 		method: Patch,
-
 		fields: {
-			field: CharField { required },
+			field: CharField {
+				required
+			},
 		},
 	};
 
@@ -41,9 +44,10 @@ fn main() {
 		name: DeleteForm,
 		action: "/api/delete",
 		method: Delete,
-
 		fields: {
-			id: IntegerField { required },
+			id: IntegerField {
+				required
+			},
 		},
 	};
 
@@ -52,9 +56,10 @@ fn main() {
 		name: GetForm,
 		action: "/api/search",
 		method: Get,
-
 		fields: {
-			query: CharField { required },
+			query: CharField {
+				required
+			},
 		},
 	};
 }

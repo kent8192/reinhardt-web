@@ -69,12 +69,15 @@ pub fn nav_bar() -> Page {
 							aria_hidden: "true",
 						}
 					}
-				} else if let Some(Some(user)) = auth_signal.result() {
+				}
+				else if let Some(Some(user)) = auth_signal.result() {
 					div {
 						class: "flex items-center gap-3",
 						span {
 							class: "text-sm text-muted",
-							{ format!("Signed in as {}", user.username) }
+							{
+								format!("Signed in as {}", user.username)
+							}
 						}
 						a {
 							href: logout_href.clone(),
@@ -82,7 +85,8 @@ pub fn nav_bar() -> Page {
 							"Logout"
 						}
 					}
-				} else {
+				}
+				else {
 					div {
 						class: "flex items-center gap-2",
 						a {

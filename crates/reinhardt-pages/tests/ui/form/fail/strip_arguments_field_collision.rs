@@ -12,11 +12,11 @@ fn main() {
 		name: ConflictForm,
 		server_fn: submit,
 		method: Post,
-
 		fields: {
-			tenant_id: IntegerField { required },
+			tenant_id: IntegerField {
+				required
+			},
 		},
-
 		strip_arguments: {
 			tenant_id: 0u64,
 		},

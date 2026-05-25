@@ -10,15 +10,18 @@ fn main() {
 				span {
 					"Pending"
 				}
-			} else if status == 1 {
+			}
+			else if status == 1 {
 				span {
 					"Processing"
 				}
-			} else if status == 2 {
+			}
+			else if status == 2 {
 				span {
 					"Complete"
 				}
-			} else {
+			}
+			else {
 				span {
 					"Unknown"
 				}
@@ -35,22 +38,26 @@ fn main() {
 					class: "a",
 					"A"
 				}
-			} else if score>= 80 {
+			}
+			else if score>= 80 {
 				span {
 					class: "b",
 					"B"
 				}
-			} else if score>= 70 {
+			}
+			else if score>= 70 {
 				span {
 					class: "c",
 					"C"
 				}
-			} else if score>= 60 {
+			}
+			else if score>= 60 {
 				span {
 					class: "d",
 					"D"
 				}
-			} else {
+			}
+			else {
 				span {
 					class: "f",
 					"F"
@@ -66,15 +73,18 @@ fn main() {
 				span {
 					"Both true"
 				}
-			} else if a {
+			}
+			else if a {
 				span {
 					"Only A"
 				}
-			} else if b {
+			}
+			else if b {
 				span {
 					"Only B"
 				}
-			} else {
+			}
+			else {
 				span {
 					"Neither"
 				}

@@ -92,11 +92,16 @@ fn main() {
 			data_loading: "false",
 			data_success: "false",
 			data_error: "false",
-			@click: |_| { },
-			@mouseenter: |_| { },
-			@mouseleave: |_| { },
-			@focus: |_| { },
-			@blur: |_| { },
+			@click: |_| {
+			},
+			@mouseenter: |_| {
+			},
+			@mouseleave: |_| {
+			},
+			@focus: |_| {
+			},
+			@blur: |_| {
+			},
 			"Submit"
 		}
 	});
@@ -123,8 +128,10 @@ fn main() {
 			data_current_step: "1",
 			data_track: "true",
 			data_analytics: "enabled",
-			@submit: |_| { },
-			@change: |_| { },
+			@submit: |_| {
+			},
+			@change: |_| {
+			},
 			div {
 				"Form content"
 			}
@@ -156,9 +163,12 @@ fn main() {
 			data_external: "true",
 			data_analytics: "enabled",
 			data_label: "main-link",
-			@click: |_| { },
-			@mouseenter: |_| { },
-			@mouseleave: |_| { },
+			@click: |_| {
+			},
+			@mouseenter: |_| {
+			},
+			@mouseleave: |_| {
+			},
 			"Click here"
 		}
 	});

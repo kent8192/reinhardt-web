@@ -39,7 +39,9 @@ fn main() {
 				if error.get().is_some() {
 					div {
 						class: "error",
-						{ error.get().unwrap_or_default() }
+						{
+							error.get().unwrap_or_default()
+						}
 					}
 				}
 			}

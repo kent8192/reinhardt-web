@@ -16,7 +16,8 @@ fn main() {
 			span {
 				"Line 1"
 			}
-			br {}
+			br {
+			}
 			span {
 				"Line 2"
 			}
@@ -38,7 +39,8 @@ fn main() {
 			p {
 				"Section 1"
 			}
-			hr {}
+			hr {
+			}
 			p {
 				"Section 2"
 			}

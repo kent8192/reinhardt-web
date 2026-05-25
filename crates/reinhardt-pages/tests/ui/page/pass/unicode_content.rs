@@ -110,7 +110,8 @@ fn main() {
 			}
 			button {
 				aria_label: "クリックしてください",
-				@click: |_| { },
+				@click: |_| {
+				},
 				"ボタン 🔘"
 			}
 		}

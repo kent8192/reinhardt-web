@@ -12,7 +12,9 @@ fn main() {
 			watch {
 				for item in items.get().iter() {
 					li {
-						{ item.clone() }
+						{
+							item.clone()
+						}
 					}
 				}
 			}
@@ -27,11 +29,14 @@ fn main() {
 					p {
 						"No items"
 					}
-				} else {
+				}
+				else {
 					ul {
 						for num in data.get().iter() {
 							li {
-								{ num.to_string() }
+								{
+									num.to_string()
+								}
 							}
 						}
 					}

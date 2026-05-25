@@ -15,7 +15,8 @@ fn main() {
 					span {
 						"Loading..."
 					}
-				} else {
+				}
+				else {
 					span {
 						"Content loaded"
 					}
@@ -32,11 +33,13 @@ fn main() {
 					span {
 						"Idle"
 					}
-				} else if status.get() == 1 {
+				}
+				else if status.get() == 1 {
 					span {
 						"Processing"
 					}
-				} else {
+				}
+				else {
 					span {
 						"Complete"
 					}
