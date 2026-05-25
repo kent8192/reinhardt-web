@@ -239,10 +239,9 @@ pub use unified_router::UnifiedRouter;
 // Client router re-exports
 #[cfg(feature = "client-router")]
 pub use client_router::{
-	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, ClientUrlReverser, FromPath,
-	HistoryState, MergeError, NavigationSubscription, NavigationType, ParamContext, Path,
-	RouteHandler, SingleFromPath, clear_client_reverser, get_client_reverser,
-	register_client_reverser,
+	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, FromPath, HistoryState,
+	MergeError, NavigationSubscription, NavigationType, ParamContext, Path, RouteHandler,
+	SingleFromPath,
 };
 pub use resolver::{ClientUrlResolver, WebSocketUrlResolver};
 // Re-export the deprecated `UrlResolverUnprefixed` helper trait so the macro

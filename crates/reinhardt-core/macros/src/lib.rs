@@ -514,8 +514,8 @@ pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// Each helper resolves through the global `ClientUrlReverser`
-/// (`reinhardt::get_client_reverser()`), so a route-pattern change in the
+/// Each helper resolves through the global `UrlReverser`
+/// (`UrlReverser::from_global()`), so a route-pattern change in the
 /// `#[url_patterns]` body propagates without any call-site edits.
 ///
 /// **Extraction rules.** A typed helper is generated when the path

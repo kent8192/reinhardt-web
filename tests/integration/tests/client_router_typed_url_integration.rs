@@ -7,7 +7,7 @@
 //! `reinhardt::ClientUrlResolver` being in scope inside macro-generated
 //! code. Removing either `use ClientUrlResolver as _;` injection from
 //! `crates/reinhardt-core/macros/src/routes_registration.rs` causes this
-//! file to fail to compile — exactly the regression class PR #4090 fixed.
+//! file to fail to compile -- exactly the regression class PR #4090 fixed.
 //!
 //! Refs #4095.
 
@@ -15,7 +15,6 @@
 
 use reinhardt::installed_apps;
 use reinhardt_urls::routers::UnifiedRouter;
-use reinhardt_urls::routers::client_router::clear_client_reverser;
 use rstest::rstest;
 use serial_test::serial;
 
@@ -106,12 +105,11 @@ pub fn routes() -> UnifiedRouter {
 
 /// Register the test routes globally and return a `ResolvedUrls` snapshot.
 ///
-/// Tests are serialised on the `client_reverser` group because the global
-/// `ClientUrlReverser` registry is shared across all tests in this binary.
+/// Tests are serialised on the `url_reverser` group because the global
+/// `UrlReverser` registry is shared across all tests in this binary.
 fn install_routes_and_resolve() -> ResolvedUrls {
-	clear_client_reverser();
 	// `register_globally` consumes `self` and returns the `ClientRouter`,
-	// which we drop — only the global registration matters here.
+	// which we drop -- only the global registration matters here.
 	let _client = routes().register_globally();
 	ResolvedUrls::from_global()
 }
@@ -119,7 +117,7 @@ fn install_routes_and_resolve() -> ResolvedUrls {
 // === Tests ===
 
 #[rstest]
-#[serial(client_reverser)]
+#[serial(url_reverser)]
 fn typed_accessor_resolves_parameterless_route() {
 	// Arrange
 	let urls = install_routes_and_resolve();
@@ -132,13 +130,10 @@ fn typed_accessor_resolves_parameterless_route() {
 		resolved, "/",
 		"typed accessor for `home` must resolve to its registered path"
 	);
-
-	// Cleanup
-	clear_client_reverser();
 }
 
 #[rstest]
-#[serial(client_reverser)]
+#[serial(url_reverser)]
 fn typed_accessor_resolves_parameterised_route() {
 	// Arrange
 	let urls = install_routes_and_resolve();
@@ -151,13 +146,10 @@ fn typed_accessor_resolves_parameterised_route() {
 		resolved, "/users/42/",
 		"typed accessor must substitute the path parameter"
 	);
-
-	// Cleanup
-	clear_client_reverser();
 }
 
 #[rstest]
-#[serial(client_reverser)]
+#[serial(url_reverser)]
 fn resolve_fallback_returns_namespaced_path() {
 	// Arrange
 	let urls = install_routes_and_resolve();
@@ -170,7 +162,4 @@ fn resolve_fallback_returns_namespaced_path() {
 		resolved, "/",
 		"`resolve()` fallback must look up the namespaced route key `accounts:home`"
 	);
-
-	// Cleanup
-	clear_client_reverser();
 }

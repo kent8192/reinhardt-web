@@ -839,9 +839,7 @@ pub use reinhardt_urls::routers::{
 pub use reinhardt_urls::inventory;
 
 // Re-export the `reinhardt-urls` crate itself as a module so macro-emitted
-// paths like `::reinhardt::reinhardt_urls::routers::get_client_reverser(...)`
-// (produced by `#[url_patterns]` when downstream crates depend only on the
-// `reinhardt` facade) resolve on both native and wasm targets.
+// paths resolve on both native and wasm targets.
 #[doc(hidden)]
 pub use ::reinhardt_urls;
 
@@ -849,9 +847,8 @@ pub use ::reinhardt_urls;
 // These types enable UnifiedRouter<V> with both .server() and .client() methods
 #[cfg(feature = "client-router")]
 pub use reinhardt_urls::routers::{
-	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, ClientUrlReverser, FromPath,
-	HistoryState, MergeError, NavigationType, ParamContext, SingleFromPath, UnifiedRouter,
-	clear_client_reverser, get_client_reverser, register_client_reverser,
+	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, FromPath, HistoryState,
+	MergeError, NavigationType, ParamContext, SingleFromPath, UnifiedRouter,
 };
 // Path extractor for client-side routing (separate from server-side Path from reinhardt-di)
 #[cfg(feature = "client-router")]

@@ -262,9 +262,7 @@ impl UnifiedRouter {
 	/// ```
 	pub fn register_globally(self) -> ClientRouter {
 		let (server, client) = self.into_parts();
-		let reverser = client.to_reverser();
 		crate::routers::register_router(server);
-		crate::routers::client_router::register_client_reverser(reverser);
 		client
 	}
 
@@ -353,7 +351,7 @@ impl UnifiedRouter {
 	/// Mounts the child's server router under `prefix` and merges its client
 	/// routes into the parent. Client named routes are preserved with index
 	/// offset adjustment so that `url_for("app:route")` resolves on the
-	/// project-level reverser obtained from `client_ref().to_reverser()`.
+	/// project-level unified `UrlReverser`.
 	///
 	/// The `prefix` argument is applied to server routes only; client routes
 	/// keep their patterns as-declared, mirroring the WASM behavior.
@@ -922,10 +920,8 @@ impl UnifiedRouter {
 		self.client
 	}
 
-	/// Registers client reverser globally and returns client router.
+	/// Registers client router globally and returns it.
 	pub fn register_globally(self) -> ClientRouter {
-		let reverser = self.client.to_reverser();
-		crate::routers::client_router::register_client_reverser(reverser);
 		self.client
 	}
 
@@ -1053,8 +1049,7 @@ mod tests {
 		let merged = parent.mount_unified("/", child);
 
 		// Assert: both parent and child client routes are reachable on the
-		// resulting router, so a project-level reverser built from
-		// `client_ref().to_reverser()` can resolve `url_for(name)` for both.
+		// resulting router and can resolve via `ClientRouter::reverse()`.
 		assert!(merged.client_ref().has_route("home"));
 		assert!(
 			merged.client_ref().has_route("login_page"),
@@ -1062,11 +1057,10 @@ mod tests {
 		);
 		assert_eq!(merged.client_ref().route_count(), 2);
 
-		let reverser = merged.client_ref().to_reverser();
 		assert_eq!(
-			reverser.reverse("login_page", &[]),
+			merged.client_ref().reverse("login_page", &[]),
 			Some("/login/".to_string()),
-			"merged client routes must be resolvable via the reverser on native"
+			"merged client routes must be resolvable on native"
 		);
 	}
 
@@ -1089,9 +1083,8 @@ mod tests {
 			merged.client_ref().has_route("auth:login_page"),
 			"namespaced child client routes must survive native mount_unified"
 		);
-		let reverser = merged.client_ref().to_reverser();
 		assert_eq!(
-			reverser.reverse("auth:login_page", &[]),
+			merged.client_ref().reverse("auth:login_page", &[]),
 			Some("/login/".to_string())
 		);
 	}

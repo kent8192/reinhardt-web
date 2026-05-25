@@ -1270,7 +1270,7 @@ fn build_client_resolvers(
 			.collect();
 		let helper_doc = format!(
 			"Resolve the `{route_name}` route registered with `#[url_patterns]`. \
-			 Returns the URL the global `ClientUrlReverser` currently produces \
+			 Returns the URL the global `UrlReverser` currently produces \
 			 for `{route_name}` (the app namespace is prepended automatically).",
 			route_name = route.name,
 		);
@@ -1278,14 +1278,7 @@ fn build_client_resolvers(
 		typed_helper_defs.push(quote! {
 			#[doc = #helper_doc]
 			pub fn #helper_ident(#(#helper_args),*) -> ::std::string::String {
-				let __reverser = #urls_crate::routers::get_client_reverser()
-					.expect(
-						"client URL reverser is not registered. \
-						 Register the client URL reverser globally \
-						 (e.g. via `UnifiedRouter::register_globally()` or \
-						 `register_client_reverser(...)`) before calling \
-						 the typed `urls::*` helpers.",
-					);
+				let __reverser = #urls_crate::routers::UrlReverser::from_global();
 				let __namespaced = ::std::format!(
 					"{}:{}",
 					super::__reinhardt_url_patterns_app_namespace(),
@@ -1301,11 +1294,13 @@ fn build_client_resolvers(
 						(__keys[__i], __v.as_str())
 					})
 					.collect();
-				match __reverser.reverse(&__namespaced, &__params) {
-					::std::option::Option::Some(url) => url,
-					::std::option::Option::None => ::std::panic!(
-						"named client route `{}` is not registered with the global reverser",
-						__namespaced,
+				let __param_map: ::std::collections::HashMap<::std::string::String, ::std::string::String> =
+					__params.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+				match __reverser.reverse(&__namespaced, &__param_map) {
+					::std::result::Result::Ok(url) => url,
+					::std::result::Result::Err(e) => ::std::panic!(
+						"named client route `{}` is not registered with the global reverser: {}",
+						__namespaced, e,
 					),
 				}
 			}
@@ -1332,7 +1327,7 @@ fn build_client_resolvers(
 		Each named route declared in this app appears here as a free \
 		function whose signature mirrors the path parameters and their \
 		declared types. The function resolves through the global \
-		`ClientUrlReverser`, so a route-pattern change in the surrounding \
+		`UrlReverser`, so a route-pattern change in the surrounding \
 		`#[url_patterns]` body propagates without any call-site edits.\n\n\
 		Added by Issue #4644.";
 

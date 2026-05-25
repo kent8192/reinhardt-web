@@ -6,6 +6,9 @@ use super::super::pattern::PathPattern;
 use super::runtime::ReverseResult;
 use reinhardt_core::exception::Error;
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+static GLOBAL_REVERSER: OnceLock<UrlReverser> = OnceLock::new();
 
 /// URL reverser for resolving names back to URLs
 /// Similar to Django's URLResolver reverse functionality
@@ -243,6 +246,29 @@ impl UrlReverser {
 	pub fn add_name_alias(&mut self, alias: &str, canonical: &str) {
 		self.aliases
 			.insert(alias.to_string(), canonical.to_string());
+	}
+
+	/// Retrieve the global URL reverser.
+	///
+	/// # Panics
+	///
+	/// Panics if `register_global()` has not been called yet.
+	pub fn from_global() -> &'static UrlReverser {
+		GLOBAL_REVERSER.get().expect(
+			"global URL reverser is not registered. \
+			 Call register_global() before using from_global().",
+		)
+	}
+
+	/// Register this reverser as the global instance.
+	///
+	/// # Panics
+	///
+	/// Panics if a global reverser has already been registered.
+	pub fn register_global(self) {
+		GLOBAL_REVERSER
+			.set(self)
+			.expect("global URL reverser already registered");
 	}
 }
 

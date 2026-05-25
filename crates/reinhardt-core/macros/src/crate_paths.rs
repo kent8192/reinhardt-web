@@ -393,8 +393,8 @@ pub(crate) fn get_reinhardt_exception_crate() -> TokenStream {
 
 /// Resolves the path to the reinhardt_urls crate dynamically.
 ///
-/// Used by `#[url_patterns]` to reference `get_client_reverser` and the
-/// `ClientUrlReverser` type from the typed-URL-helper module it emits.
+/// Used by `#[url_patterns]` to reference `UrlReverser` and its global
+/// accessor from the typed-URL-helper module it emits.
 pub(crate) fn get_reinhardt_urls_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 

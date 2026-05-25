@@ -66,8 +66,7 @@ fn create_session_middleware() -> SessionMiddleware {
 ///   block ensure that.
 /// - `standalone`: suppresses generation of `crate::urls::url_prelude` and
 ///   the `ResolvedUrls::<app>()` accessor methods. The project still
-///   resolves SPA URLs via `register_client_reverser` (called inside
-///   `collect_client_router_from_inventory`).
+///   resolves SPA URLs via the client router inventory collection.
 ///
 /// On native, the macro emits `inventory::submit!(UrlPatternsRegistration)`
 /// for the `ServerRouter` carried by the returned `UnifiedRouter`. On wasm

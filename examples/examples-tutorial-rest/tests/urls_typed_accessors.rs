@@ -15,43 +15,34 @@
 mod tests {
 	use examples_tutorial_rest::config::urls::{ResolvedUrls, routes};
 	use examples_tutorial_rest::urls_demo;
-	use reinhardt::register_client_reverser;
 	use reinhardt::register_router;
 	use rstest::rstest;
 	use serial_test::serial;
 	use std::sync::Once;
 
-	// `register_router` and `register_client_reverser` overwrite global
-	// `OnceCell` slots, so the second integration-test binary in this
-	// crate that touches the global router would race with the first.
-	// `tests/integration.rs` does not touch the router at all (it only
-	// exercises raw SQL through `sqlx`), so a single-process `Once`
-	// guard is sufficient here — every `#[rstest]` below shares the
-	// same registered routes.
+	// `register_router` overwrites a global `OnceCell` slot, so the
+	// second integration-test binary in this crate that touches the
+	// global router would race with the first. `tests/integration.rs`
+	// does not touch the router at all (it only exercises raw SQL
+	// through `sqlx`), so a single-process `Once` guard is sufficient
+	// here -- every `#[rstest]` below shares the same registered routes.
 	//
 	// Every test below is additionally marked `#[serial(routes_global)]`
 	// so it runs serially with any future test (in this crate or another
 	// integration binary in the same `cargo test` invocation) that
 	// touches the same global router slots. This matches the project-
-	// wide convention in `CLAUDE.md` § Testing for global-state tests
-	// and mirrors the framework's own typed-viewset integration test
-	// (see `tests/integration/tests/url_patterns_viewset_typed_integration.rs`).
+	// wide convention in `CLAUDE.md` for global-state tests and mirrors
+	// the framework's own typed-viewset integration test.
 	static INSTALL_ROUTES: Once = Once::new();
 
 	fn install_routes_and_resolve() -> ResolvedUrls {
 		INSTALL_ROUTES.call_once(|| {
 			// `routes()` returns a `UnifiedRouter` that the framework
 			// would normally consume via `register_globally()` during
-			// server startup. We do the same thing manually here so
-			// `ResolvedUrls::from_global()` finds both halves of the
-			// global registration. Splitting `into_parts()` and pushing
-			// each half explicitly mirrors what `register_globally()`
-			// does internally — the indirection makes the registration
-			// flow visible to readers learning the API.
-			let (server, client) = routes().into_parts();
-			let reverser = client.to_reverser();
+			// server startup. We register the server router explicitly
+			// so `ResolvedUrls::from_global()` can find it.
+			let (server, _client) = routes().into_parts();
 			register_router(server);
-			register_client_reverser(reverser);
 		});
 		ResolvedUrls::from_global()
 	}
