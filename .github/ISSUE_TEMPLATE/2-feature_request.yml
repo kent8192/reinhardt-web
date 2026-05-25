@@ -58,6 +58,38 @@ body:
       placeholder: |
         I've considered using X, but it doesn't work because...
 
+  - type: dropdown
+    id: breaking-change
+    attributes:
+      label: Is this a breaking change?
+      description: |
+        Would implementing this feature require changes to existing public APIs
+        that could break downstream code? See instructions/STABILITY_POLICY.md for details.
+      options:
+        - "No - backward compatible"
+        - "Yes - requires major version bump (SemVer MAJOR)"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: migration-path
+    attributes:
+      label: Migration Path (if breaking)
+      description: |
+        If this is a breaking change, describe how users should migrate.
+        Include code examples showing before and after.
+      placeholder: |
+        Before:
+        ```rust
+        let result = old_function(param);
+        ```
+
+        After:
+        ```rust
+        let result = new_function(new_param);
+        ```
+
   - type: textarea
     id: context
     attributes:

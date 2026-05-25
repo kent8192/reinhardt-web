@@ -22,6 +22,19 @@ This PR addresses:
 - [ ] CI/CD changes
 - [ ] Other (please describe):
 
+## Breaking Change Assessment
+
+<!-- REQUIRED: Select one. -->
+
+- [ ] **No** - This change is backward compatible
+- [ ] **Yes** - This change breaks existing public API or behavior
+
+<!-- If "Yes", you MUST:
+  1. Fill out the "Breaking Changes" section below with impact and migration guide
+  2. Apply the `breaking-change` label in the "Labels to Apply" section
+  3. Use `!` in the commit type (e.g., `feat!:` or `fix!:`)
+-->
+
 ## Motivation and Context
 
 <!-- Why is this change necessary? What problem does it solve? -->
@@ -64,7 +77,7 @@ Related to: #
 
 -
 
-<!-- If this is NOT a breaking change, you can remove this section. -->
+<!-- REQUIRED if "Yes" is checked in Breaking Change Assessment above. Remove this section otherwise. -->
 
 ## Screenshots
 
