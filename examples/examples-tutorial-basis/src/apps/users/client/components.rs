@@ -3,10 +3,8 @@
 //! Provides minimal login / logout / sign-up pages backed by the `users`
 //! server functions. Every form uses the `form!` macro to bind fields and
 //! attach the CSRF token automatically.
-use crate::apps::polls::urls::client_router::urls as polls_links;
 #[cfg(wasm)]
 use crate::apps::users::server_fn::{login, logout, register};
-use crate::apps::users::urls::client_router::urls as links;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
@@ -27,8 +25,8 @@ pub fn login_form() -> Page {
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
 	let form_view = login_form.into_page();
-	let polls_index_href = polls_links::index();
-	let signup_href = links::signup();
+	let polls_index_href = "/".to_string();
+	let signup_href = "/signup/".to_string();
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, signup_href: String| {
 		div {
 			class: "max-w-md mx-auto px-4 mt-12",
@@ -99,7 +97,7 @@ pub fn logout_form() -> Page {
 	};
 	let error_signal = logout_form.error().clone();
 	let form_view = logout_form.into_page();
-	let polls_index_href = polls_links::index();
+	let polls_index_href = "/".to_string();
 	page!(|error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
 			class: "max-w-md mx-auto px-4 mt-12",
@@ -161,8 +159,8 @@ pub fn signup_form() -> Page {
 	let loading_signal = signup_form.loading().clone();
 	let error_signal = signup_form.error().clone();
 	let form_view = signup_form.into_page();
-	let polls_index_href = polls_links::index();
-	let login_href = links::login();
+	let polls_index_href = "/".to_string();
+	let login_href = "/login/".to_string();
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, login_href: String| {
 		div {
 			class: "max-w-md mx-auto px-4 mt-12",
