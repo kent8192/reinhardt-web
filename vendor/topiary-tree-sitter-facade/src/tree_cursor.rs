@@ -76,10 +76,18 @@ mod wasm {
     use crate::node::Node;
     use std::borrow::Cow;
 
-    #[derive(Clone)]
     pub struct TreeCursor<'a> {
         pub(crate) inner: topiary_web_tree_sitter_sys::TreeCursor,
         pub(crate) phantom: std::marker::PhantomData<&'a ()>,
+    }
+
+    impl<'a> Clone for TreeCursor<'a> {
+        fn clone(&self) -> Self {
+            // Create a new cursor at the same node rather than shallow-cloning
+            // the JS handle, which would cause double-free when both copies
+            // call delete() on drop.
+            self.inner.current_node().walk().into()
+        }
     }
 
     impl<'a> TreeCursor<'a> {

@@ -356,6 +356,7 @@ mod wasm {
                     }
                 }
                 let result = cursor.node();
+                cursor.goto_next_sibling();
                 Some(result)
             })
         }
@@ -374,6 +375,7 @@ mod wasm {
                     }
                 }
                 let result = cursor.node();
+                cursor.goto_next_sibling();
                 Some(result)
             })
         }
@@ -606,9 +608,13 @@ mod wasm {
         type Item = Node<'tree>;
 
         fn next(&mut self) -> Option<Self::Item> {
+            if self.index >= self.inner.len() {
+                return None;
+            }
             let node = self.inner[self.index]
                 .clone()
                 .unchecked_into::<SyntaxNode>();
+            self.index += 1;
             Some(node.into())
         }
     }
