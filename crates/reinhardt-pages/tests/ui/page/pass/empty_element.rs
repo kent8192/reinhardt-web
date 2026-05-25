@@ -4,7 +4,9 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Empty div
-	let _empty_div = page!(|| { div {} });
+	let _empty_div = page!(|| {
+		div {}
+	});
 
 	// Empty span with attribute only
 	let _empty_span = page!(|| {

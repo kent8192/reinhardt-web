@@ -10,9 +10,9 @@ fn main() {
 	// Watch with expression node
 	let _with_expr = page!(|count: Signal<i32>| {
 		div {
-			watch {
-				{ format!("Count: {}", count.get()) }
-			}
+			watch { {
+				format!("Count: {}", count.get())
+			} }
 		}
 	});
 
@@ -22,7 +22,9 @@ fn main() {
 			watch {
 				span {
 					class: "greeting",
-					{ format!("Hello, {}!", name.get()) }
+					{
+						format!("Hello, {}!", name.get())
+					}
 				}
 			}
 		}
@@ -31,9 +33,9 @@ fn main() {
 	// Watch with conditional expression
 	let _conditional_expr = page!(|value: Signal<Option<String>>| {
 		div {
-			watch {
-				{ value.get().unwrap_or_else(| | "Default".to_string()) }
-			}
+			watch { {
+				value.get().unwrap_or_else(| |"Default".to_string())
+			} }
 		}
 	});
 }

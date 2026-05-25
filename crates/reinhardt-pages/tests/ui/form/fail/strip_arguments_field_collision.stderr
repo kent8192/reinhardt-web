@@ -1,5 +1,5 @@
 error: strip_arguments key 'tenant_id' collides with a declared form field; either rename the field or remove this strip entry
-  --> tests/ui/form/fail/strip_arguments_field_collision.rs:21:4
+  --> tests/ui/form/fail/strip_arguments_field_collision.rs:19:4
    |
-21 |             tenant_id: 0u64,
+19 |             tenant_id: 0u64,
    |             ^^^^^^^^^

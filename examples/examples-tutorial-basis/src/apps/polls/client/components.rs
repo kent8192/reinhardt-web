@@ -91,9 +91,7 @@ pub fn polls_index() -> Page {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			div {
 				class: "flex justify-between items-center mb-4",
-				h1 {
-					"Polls"
-				}
+				h1 { "Polls" }
 				a {
 					href: new_question_href,
 					class: "btn-primary",
@@ -104,7 +102,9 @@ pub fn polls_index() -> Page {
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
+						{
+							format_server_error(&load_questions_error.error().unwrap_or_default())
+						}
 					}
 				}
 			}
@@ -137,11 +137,13 @@ pub fn polls_index() -> Page {
 									class: "flex w-full justify-between",
 									h5 {
 										class: "mb-1",
-										{ question.question_text.clone() }
+										{
+											question.question_text.clone()
+										}
 									}
-									small {
-										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
-									}
+									small { {
+										question.pub_date.format("%Y-%m-%d %H:%M").to_string()
+									} }
 								}
 							}
 						}
@@ -206,12 +208,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
@@ -226,43 +226,45 @@ pub fn polls_detail(question_id: i64) -> Page {
 				choice_label: "choice_text",
 			}
 		}
-
 		watch: {
 			submit_button: |form| {
-					let is_loading = form.loading().get();
-					let back_href = links::index();
-					page!(|is_loading: bool, back_href: String| {
-						div {
-							class: "mt-3",
-							button {
-								type: "submit",
-								class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
-								disabled: is_loading,
-								{ if is_loading { "Voting..." } else { "Vote" } }
-							}
-							a {
-								href: back_href,
-								class: "btn-secondary ml-2",
-								"Back to Polls"
+				let is_loading = form.loading().get();
+				let back_href = links::index();
+				page!(|is_loading: bool, back_href: String| {
+					div {
+						class: "mt-3",
+						button {
+							type: "submit",
+							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
+							disabled: is_loading,
+							{
+								if is_loading { "Voting..." } else { "Vote" }
 							}
 						}
-					})(is_loading, back_href)
-				},
+						a {
+							href: back_href,
+							class: "btn-secondary ml-2",
+							"Back to Polls"
+						}
+					}
+				})(is_loading, back_href)
+			},
 			error_display: |form| {
-					let err = form.error().get();
-					page!(|err: Option<String>| {
-						watch {
-							if let Some(e) = err.clone() {
-								div {
-									class: "alert-danger mt-3",
-									{ format_server_error(&e) }
+				let err = form.error().get();
+				page!(|err: Option<String>| {
+					watch {
+						if let Some(e) = err.clone() {
+							div {
+								class: "alert-danger mt-3",
+								{
+									format_server_error(&e)
 								}
 							}
 						}
-					})(err)
-				},
+					}
+				})(err)
+			},
 		}
-
 	};
 
 	// Bridge load_detail results to form choices via use_effect
@@ -320,7 +322,9 @@ pub fn polls_detail(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+							{
+								format_server_error(&load_detail_signal.error().unwrap_or_default())
+							}
 						}
 						a {
 							href: links::detail(question_id),
@@ -353,9 +357,9 @@ pub fn polls_detail(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "flex justify-between items-center mb-4",
-							h1 {
-								{ q.question_text.clone() }
-							}
+							h1 { {
+								q.question_text.clone()
+							} }
 							div {
 								class: "flex gap-2",
 								a {
@@ -377,9 +381,9 @@ pub fn polls_detail(question_id: i64) -> Page {
 								}
 							}
 						}
-						if !choices.is_empty() {
-							{ voting_form.clone().into_page() }
-						} else {
+						if !choices.is_empty() { {
+							voting_form.clone().into_page()
+						} } else {
 							div {
 								class: "alert-warning",
 								"This question has no choices yet. Add one below to start voting."
@@ -458,7 +462,9 @@ pub fn polls_results(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ format_server_error(&load_results_signal.error().unwrap_or_default()) }
+							{
+								format_server_error(&load_results_signal.error().unwrap_or_default())
+							}
 						}
 						a {
 							href: links::index(),
@@ -474,10 +480,7 @@ pub fn polls_results(question_id: i64) -> Page {
 					// error, or unauthenticated) leaves `is_author` as
 					// `false`. Server-side `require_question_author` still
 					// rejects unauthorized mutations as defense in depth.
-					let is_author = match (
-						load_results_signal.result(),
-						load_current_user_signal.result(),
-					) {
+					let is_author = match(load_results_signal.result(), load_current_user_signal.result(), ) {
 						(Some((ref q, _, _)), Some(Some(ref u))) => u.id == q.author_id,
 						_ => false,
 					};
@@ -486,10 +489,7 @@ pub fn polls_results(question_id: i64) -> Page {
 						h1 {
 							class: "mb-4",
 							{
-								load_results_signal
-										.result()
-										.map(|(q, _, _)| q.question_text.clone())
-										.unwrap_or_default()
+								load_results_signal.result().map(|(q, _, _)| q.question_text.clone()).unwrap_or_default()
 							}
 						}
 						div {
@@ -504,49 +504,45 @@ pub fn polls_results(question_id: i64) -> Page {
 									class: "divide-y divide-border",
 									{
 										if let Some((_, choices, total)) = load_results_signal.result() {
-												page!(|choices: Vec<ChoiceInfo>, total: i32| {
-													for choice in choices {
-														{
-															{
-																	let percentage = if total > 0 {
-																		(choice.votes as f64 / total as f64 * 100.0) as i32
-																	} else {
-																		0
-																	};
-																	page!(|choice: ChoiceInfo, percentage: i32| {
-																		div {
-																			class: "py-4",
-																			div {
-																				class: "flex justify-between items-center mb-2",
-																				strong {
-																					{ choice.choice_text.clone() }
-																				}
-																				span {
-																					class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-																					{ format!("{} votes", choice.votes) }
-																				}
-																			}
-																			div {
-																				class: "w-full bg-surface-tertiary rounded-full h-2.5",
-																				div {
-																					class: "bg-brand h-2.5 rounded-full",
-																					role: "progressbar",
-																					style: format!("width: {}%", percentage),
-																					aria_valuenow: percentage.to_string(),
-																					aria_valuemin: "0",
-																					aria_valuemax: "100",
-																					{ format!("{}%", percentage) }
-																				}
-																			}
-																		}
-																	})(choice, percentage)
+											page!(|choices: Vec<ChoiceInfo>, total: i32| {
+												for choice in choices { { {
+													let percentage = if total > 0 {
+														(choice.votes as f64 / total as f64 * 100.0) as i32
+													} else { 0 };
+													page!(|choice: ChoiceInfo, percentage: i32| {
+														div {
+															class: "py-4",
+															div {
+																class: "flex justify-between items-center mb-2",
+																strong { {
+																	choice.choice_text.clone()
+																} }
+																span {
+																	class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
+																	{
+																		format!("{} votes", choice.votes)
+																	}
 																}
+															}
+															div {
+																class: "w-full bg-surface-tertiary rounded-full h-2.5",
+																div {
+																	class: "bg-brand h-2.5 rounded-full",
+																	role: "progressbar",
+																	style: format!("width: {}%", percentage),
+																	aria_valuenow: percentage.to_string(),
+																	aria_valuemin: "0",
+																	aria_valuemax: "100",
+																	{
+																		format!("{}%", percentage)
+																	}
+																}
+															}
 														}
-													}
-												})(choices, total)
-											} else {
-												Page::Empty
-											}
+													})(choice, percentage)
+												} } }
+											})(choices, total)
+										} else { Page::Empty }
 									}
 								}
 								div {
@@ -554,13 +550,7 @@ pub fn polls_results(question_id: i64) -> Page {
 									p {
 										class: "text-muted",
 										{
-											format!(
-													"Total votes: {}",
-													load_results_signal
-														.result()
-														.map(|(_, _, total)| total)
-														.unwrap_or(0)
-												)
+											format!("Total votes: {}", load_results_signal.result().map(|(_, _, total)| total).unwrap_or(0))
 										}
 									}
 								}
@@ -643,7 +633,9 @@ pub fn polls_index_with_logo() -> Page {
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
+						{
+							format_server_error(&load_questions_error.error().unwrap_or_default())
+						}
 					}
 				}
 			}
@@ -683,12 +675,14 @@ pub fn polls_index_with_logo() -> Page {
 										class: "flex-1",
 										h5 {
 											class: "mb-1",
-											{ question.question_text.clone() }
+											{
+												question.question_text.clone()
+											}
 										}
 									}
-									small {
-										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
-									}
+									small { {
+										question.pub_date.format("%Y-%m-%d %H:%M").to_string()
+									} }
 								}
 							}
 						}
@@ -719,12 +713,10 @@ pub fn question_new() -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			question_text: CharField {
 				label: "Question",
@@ -733,7 +725,6 @@ pub fn question_new() -> Page {
 				class: "form-control",
 			}
 		}
-
 	};
 
 	let loading_signal = new_form.loading().clone();
@@ -752,7 +743,9 @@ pub fn question_new() -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
+						{
+							format_server_error(&error_signal.get().unwrap_or_default())
+						}
 					}
 				}
 			}
@@ -809,12 +802,10 @@ pub fn question_edit(question_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
@@ -826,7 +817,6 @@ pub fn question_edit(question_id: i64) -> Page {
 				class: "form-control",
 			}
 		}
-
 	};
 
 	// Prefill the question_text input once the load_detail action resolves.
@@ -881,7 +871,9 @@ pub fn question_edit(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+							{
+								format_server_error(&load_detail_signal.error().unwrap_or_default())
+							}
 						}
 						a {
 							href: links::index(),
@@ -899,10 +891,14 @@ pub fn question_edit(question_id: i64) -> Page {
 						if edit_form.error().get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ format_server_error(&edit_form.error().get().unwrap_or_default()) }
+								{
+									format_server_error(&edit_form.error().get().unwrap_or_default())
+								}
 							}
 						}
-						{ edit_form.clone().into_page() }
+						{
+							edit_form.clone().into_page()
+						}
 						div {
 							class: "mt-3",
 							if edit_form.loading().get() {
@@ -952,18 +948,15 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			}
 		}
-
 	};
 
 	let loading_signal = delete_form.loading().clone();
@@ -996,14 +989,18 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 							}
 							blockquote {
 								class: "border-l-4 border-border-secondary pl-4 italic my-3",
-								{ q.question_text.clone() }
+								{
+									q.question_text.clone()
+								}
 							}
 						}
 					}
 				} else if load_detail_signal.error().is_some() {
 					div {
 						class: "alert-danger",
-						{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+						{
+							format_server_error(&load_detail_signal.error().unwrap_or_default())
+						}
 					}
 				}
 			}
@@ -1011,7 +1008,9 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mt-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
+						{
+							format_server_error(&error_signal.get().unwrap_or_default())
+						}
 					}
 				}
 			}
@@ -1080,9 +1079,11 @@ pub fn choice_new(question_id: i64) -> Page {
 		name: NewChoiceForm,
 		server_fn: create_choice,
 		method: Post,
-		state: { loading, error },
+		state: {
+			loading,
+			error
+		},
 		redirect_on_success: links::detail(qid),
-
 		fields: {
 			question_id: HiddenField {
 				initial: qid_str,
@@ -1095,10 +1096,8 @@ pub fn choice_new(question_id: i64) -> Page {
 				class: "form-control",
 			},
 		},
-
 		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
-				.unwrap_or_default(),
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
 	};
 
@@ -1118,7 +1117,9 @@ pub fn choice_new(question_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
+						{
+							format_server_error(&error_signal.get().unwrap_or_default())
+						}
 					}
 				}
 			}
@@ -1170,12 +1171,10 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			choice_id: HiddenField {
 				initial: cid_str,
@@ -1187,7 +1186,6 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 				class: "form-control",
 			}
 		}
-
 	};
 
 	let loading_signal = edit_form.loading().clone();
@@ -1205,7 +1203,9 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
+						{
+							format_server_error(&error_signal.get().unwrap_or_default())
+						}
 					}
 				}
 			}
@@ -1257,18 +1257,15 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			choice_id: HiddenField {
 				initial: cid_str,
 			}
 		}
-
 	};
 
 	let loading_signal = delete_form.loading().clone();
@@ -1290,7 +1287,9 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mt-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
+						{
+							format_server_error(&error_signal.get().unwrap_or_default())
+						}
 					}
 				}
 			}

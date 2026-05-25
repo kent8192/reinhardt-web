@@ -35,12 +35,10 @@ pub fn login_form() -> Page {
 		name: LoginForm,
 		server_fn: login,
 		redirect_on_success: "/timeline",
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			email: EmailField {
 				label: "Email",
@@ -85,14 +83,11 @@ pub fn login_form() -> Page {
 				class: "form-input pl-10",
 			}
 		}
-
 		on_success: |user_info| {
-				#[cfg(wasm)]
-				{
-					set_current_user(Some(user_info));
-				}
-			},
-
+			#[cfg(wasm)] {
+				set_current_user(Some(user_info));
+			}
+		},
 	};
 
 	// Clone state signals for page! macro
@@ -112,7 +107,9 @@ pub fn login_form() -> Page {
 					class: "text-center mb-8",
 					div {
 						class: "inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand/10 mb-4",
-						{ icons::chat_bubble_icon_brand() }
+						{
+							icons::chat_bubble_icon_brand()
+						}
 					}
 					h1 {
 						class: "text-2xl font-bold text-content-primary",
@@ -133,10 +130,12 @@ pub fn login_form() -> Page {
 									class: "alert-danger mb-4",
 									div {
 										class: "flex items-center gap-2",
-										{ icons::error_circle_icon() }
-										span {
-											{ error_signal.get().unwrap_or_default() }
+										{
+											icons::error_circle_icon()
 										}
+										span { {
+											error_signal.get().unwrap_or_default()
+										} }
 									}
 								}
 							}
@@ -222,12 +221,10 @@ pub fn register_form() -> Page {
 		name: RegisterForm,
 		server_fn: register,
 		redirect_on_success: "/login",
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			username: CharField {
 				label: "Username",
@@ -315,7 +312,6 @@ pub fn register_form() -> Page {
 				class: "form-input pl-10",
 			}
 		}
-
 	};
 
 	// Clone state signals for page! macro
@@ -335,7 +331,9 @@ pub fn register_form() -> Page {
 					class: "text-center mb-8",
 					div {
 						class: "inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand/10 mb-4",
-						{ icons::user_add_icon() }
+						{
+							icons::user_add_icon()
+						}
 					}
 					h1 {
 						class: "text-2xl font-bold text-content-primary",
@@ -356,10 +354,12 @@ pub fn register_form() -> Page {
 									class: "alert-danger mb-4",
 									div {
 										class: "flex items-center gap-2",
-										{ icons::error_circle_icon() }
-										span {
-											{ error_signal.get().unwrap_or_default() }
+										{
+											icons::error_circle_icon()
 										}
+										span { {
+											error_signal.get().unwrap_or_default()
+										} }
 									}
 								}
 							}
@@ -375,13 +375,11 @@ pub fn register_form() -> Page {
 							label {
 								for: "terms",
 								class: "text-sm text-content-secondary",
-								"I agree to the "
-								span {
+								"I agree to the " span {
 									class: "text-brand hover:text-brand-hover cursor-pointer",
 									"Terms of Service"
 								}
-								" and "
-								span {
+								" and " span {
 									class: "text-brand hover:text-brand-hover cursor-pointer",
 									"Privacy Policy"
 								}

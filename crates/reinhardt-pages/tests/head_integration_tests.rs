@@ -179,9 +179,18 @@ fn test_empty_fragment_no_head() {
 fn test_head_macro_multiple_elements() {
 	let page_head = head!(|| {
 		title { "Full Page" }
-		meta { name: "description", content: "A full page" }
-		link { rel: "stylesheet", href: "/style.css" }
-		script { src: "/app.js", defer }
+		meta {
+			name: "description",
+			content: "A full page"
+		}
+		link {
+			rel: "stylesheet",
+			href: "/style.css"
+		}
+		script {
+			src: "/app.js",
+			defer
+		}
 	});
 
 	assert_eq!(

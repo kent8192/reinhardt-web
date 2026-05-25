@@ -14,12 +14,10 @@ fn main() {
 		name: VoteForm,
 		server_fn: submit_vote,
 		method: Post,
-
 		fields: {
 			_question_id: IntegerField { widget: HiddenInput },
 			_choice_id: IntegerField { required },
 		},
-
 		strip_arguments: {
 			csrf_token: String::new(),
 		},
@@ -30,11 +28,9 @@ fn main() {
 		name: MultiForm,
 		server_fn: submit_multi,
 		method: Post,
-
 		fields: {
 			_payload: CharField { required },
 		},
-
 		strip_arguments: {
 			csrf_token: String::new(),
 			tenant_id: 0u64,

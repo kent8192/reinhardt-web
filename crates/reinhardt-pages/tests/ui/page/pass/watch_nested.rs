@@ -15,9 +15,7 @@ fn main() {
 				article {
 					watch {
 						if active.get() {
-							p {
-								"Active content"
-							}
+							p { "Active content" }
 						}
 					}
 				}
@@ -30,16 +28,16 @@ fn main() {
 		div {
 			watch {
 				if loading.get() {
-					div {
-						"Loading..."
-					}
+					div { "Loading..." }
 				}
 			}
 			watch {
 				if error.get().is_some() {
 					div {
 						class: "error",
-						{ error.get().unwrap_or_default() }
+						{
+							error.get().unwrap_or_default()
+						}
 					}
 				}
 			}

@@ -13,13 +13,9 @@ fn main() {
 	// Break element (void)
 	let _br = page!(|| {
 		div {
-			span {
-				"Line 1"
-			}
+			span { "Line 1" }
 			br {}
-			span {
-				"Line 2"
-			}
+			span { "Line 2" }
 		}
 	});
 
@@ -35,13 +31,9 @@ fn main() {
 	// Horizontal rule (void)
 	let _hr = page!(|| {
 		div {
-			p {
-				"Section 1"
-			}
+			p { "Section 1" }
 			hr {}
-			p {
-				"Section 2"
-			}
+			p { "Section 2" }
 		}
 	});
 }
