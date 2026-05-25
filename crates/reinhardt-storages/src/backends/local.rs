@@ -69,6 +69,7 @@ fn validate_path(name: &str) -> Result<&str> {
 #[derive(Debug, Clone)]
 pub struct LocalStorage {
 	base_path: PathBuf,
+	canonical_base: PathBuf,
 }
 
 impl LocalStorage {
@@ -98,13 +99,33 @@ impl LocalStorage {
 			)));
 		}
 
-		Ok(Self { base_path })
+		let canonical_base = base_path.canonicalize().map_err(|e| {
+			StorageError::ConfigError(format!(
+				"Failed to canonicalize base path {}: {e}",
+				base_path.display()
+			))
+		})?;
+
+		Ok(Self {
+			base_path,
+			canonical_base,
+		})
 	}
 
 	/// Get the full file path after validating it does not escape the storage root.
 	fn get_path(&self, name: &str) -> Result<PathBuf> {
 		let validated = validate_path(name)?;
 		Ok(self.base_path.join(validated))
+	}
+
+	/// Verify that a resolved path is contained within the canonical base.
+	fn check_containment(&self, canonical_path: &Path) -> Result<()> {
+		if !canonical_path.starts_with(&self.canonical_base) {
+			return Err(StorageError::InvalidPath(
+				"resolved path escapes storage root".to_string(),
+			));
+		}
+		Ok(())
 	}
 }
 
@@ -113,9 +134,10 @@ impl StorageBackend for LocalStorage {
 	async fn save(&self, name: &str, content: &[u8]) -> Result<String> {
 		let path = self.get_path(name)?;
 
-		// Create parent directories if they don't exist
 		if let Some(parent) = path.parent() {
 			fs::create_dir_all(parent).await?;
+			let canonical_parent = parent.canonicalize()?;
+			self.check_containment(&canonical_parent)?;
 		}
 
 		fs::write(&path, content).await?;
@@ -130,7 +152,10 @@ impl StorageBackend for LocalStorage {
 			return Err(StorageError::NotFound(name.to_string()));
 		}
 
-		let content = fs::read(&path).await?;
+		let canonical = path.canonicalize()?;
+		self.check_containment(&canonical)?;
+
+		let content = fs::read(&canonical).await?;
 		Ok(content)
 	}
 
@@ -141,13 +166,24 @@ impl StorageBackend for LocalStorage {
 			return Err(StorageError::NotFound(name.to_string()));
 		}
 
-		fs::remove_file(&path).await?;
+		let canonical = path.canonicalize()?;
+		self.check_containment(&canonical)?;
+
+		fs::remove_file(&canonical).await?;
 		Ok(())
 	}
 
 	async fn exists(&self, name: &str) -> Result<bool> {
 		let path = self.get_path(name)?;
-		Ok(path.exists() && path.is_file())
+
+		if !path.exists() || !path.is_file() {
+			return Ok(false);
+		}
+
+		let canonical = path.canonicalize()?;
+		self.check_containment(&canonical)?;
+
+		Ok(true)
 	}
 
 	async fn url(&self, name: &str, _expiry_secs: u64) -> Result<String> {
@@ -157,11 +193,10 @@ impl StorageBackend for LocalStorage {
 			return Err(StorageError::NotFound(name.to_string()));
 		}
 
-		// Convert to absolute path
-		let abs_path = path.canonicalize()?;
+		let canonical = path.canonicalize()?;
+		self.check_containment(&canonical)?;
 
-		// Return as file:// URL
-		Ok(format!("file://{}", abs_path.display()))
+		Ok(format!("file://{}", canonical.display()))
 	}
 
 	async fn size(&self, name: &str) -> Result<u64> {
@@ -171,7 +206,10 @@ impl StorageBackend for LocalStorage {
 			return Err(StorageError::NotFound(name.to_string()));
 		}
 
-		let metadata = fs::metadata(&path).await?;
+		let canonical = path.canonicalize()?;
+		self.check_containment(&canonical)?;
+
+		let metadata = fs::metadata(&canonical).await?;
 		Ok(metadata.len())
 	}
 
@@ -182,7 +220,10 @@ impl StorageBackend for LocalStorage {
 			return Err(StorageError::NotFound(name.to_string()));
 		}
 
-		let metadata = fs::metadata(&path).await?;
+		let canonical = path.canonicalize()?;
+		self.check_containment(&canonical)?;
+
+		let metadata = fs::metadata(&canonical).await?;
 		let modified = metadata.modified()?;
 
 		let datetime: DateTime<Utc> = modified.into();

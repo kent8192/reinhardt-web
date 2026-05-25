@@ -665,6 +665,87 @@ mod path_traversal_tests {
 	}
 
 	#[rstest]
+	#[case("../escape.txt")]
+	#[case("/etc/passwd")]
+	#[case("")]
+	#[case("..")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn url_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.url(dangerous_path, 3600).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
+	#[case("../escape.txt")]
+	#[case("/etc/passwd")]
+	#[case("")]
+	#[case("..")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn size_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.size(dangerous_path).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
+	#[case("../escape.txt")]
+	#[case("/etc/passwd")]
+	#[case("")]
+	#[case("..")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn get_modified_time_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.get_modified_time(dangerous_path).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
 	#[tokio::test]
 	async fn valid_paths_with_dots_still_work() {
 		// Arrange
