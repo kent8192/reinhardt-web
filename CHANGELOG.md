@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.2...reinhardt-web@v0.1.3) - 2026-05-25
+
+### Documentation
+
+- add release announcement(s)
+- *(tree-sitter)* add SAFETY comments for unsafe impls in wasm facade
+
+### Fixed
+
+- *(ci)* merge main and fix DSL formatting for examples-twitter common.rs
+- *(tree-sitter)* replace from_utf8_unchecked with safe alternatives in wasm facade
+- *(tree-sitter)* fix infinite loop, iterator, and double-free bugs in wasm facade
+- *(tree-sitter)* return false for is_extra in wasm facade instead of panicking
+- *(tree-sitter)* fix LoggerParams indexing setter signature in wasm sys crate
+- *(tree-sitter)* prevent repeat of last match in children_by_field_* iterators
+- *(tree-sitter)* handle empty-child case in children_by_field_* iterators
+- *(tree-sitter)* preserve cursor state in TreeCursor::clone via copy()
+
 ## [0.1.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.1...reinhardt-web@v0.1.2) - 2026-05-25
 
 ### Documentation

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.2...reinhardt-admin-cli@v0.1.3) - 2026-05-25
+
+### Fixed
+
+- *(ci)* merge main and fix DSL formatting for examples-twitter common.rs
+
 ### Changed
 
 - *(admin-cli)* replace the imperative AST formatter with a tree-sitter and Topiary pipeline for `page!`, `form!`, and `head!` DSL macros.

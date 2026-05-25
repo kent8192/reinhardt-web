@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.2...reinhardt-pages@v0.1.3) - 2026-05-25
+
+### Fixed
+
+- *(pages)* update trybuild stderr line numbers after formatting
+- *(ci)* merge main and fix DSL formatting for examples-twitter common.rs
+
+### Styling
+
+- apply Reinhardt DSL formatter
+- apply updated Topiary block formatting rules
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages` as part of the
