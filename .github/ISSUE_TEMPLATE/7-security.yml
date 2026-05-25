@@ -137,7 +137,7 @@ body:
 		attributes:
 			label: Confirmation
 			description: Please confirm the following
-	options:
+			options:
 				- label: "I have searched existing issues for duplicate vulnerabilities"
 				  required: true
 				- label: "I have NOT disclosed this vulnerability publicly"
