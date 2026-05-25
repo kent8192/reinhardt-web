@@ -17,16 +17,17 @@ struct ButtonProps {
 }
 
 fn button(p: ButtonProps) -> Page {
-	page!(|p: ButtonProps| { button { {p.label.clone()} } })(p)
+	page!(|p: ButtonProps| {
+		button {
+			{ p.label.clone() }
+		}
+	})(p)
 }
 
 fn main() {
 	let _ = page!(|| {
 		div {
-			Button {
-				label: "click me".to_string(),
-				@click: Callback::new(|_: DummyEvent| {}),
-			}
+			Button(label: "click me".to_string())
 		}
 	});
 }

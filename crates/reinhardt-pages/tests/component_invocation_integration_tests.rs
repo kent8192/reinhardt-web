@@ -23,8 +23,10 @@ struct CardProps {
 fn card(props: CardProps) -> Page {
 	page!(|p: CardProps| {
 		article {
-			h2 { {p.item.clone()} }
-			{p.children.unwrap_or_else(Page::empty)}
+			h2 {
+				{ p.item.clone() }
+			}
+			{ p.children.unwrap_or_else(Page::empty) }
 		}
 	})(props)
 }
@@ -34,7 +36,7 @@ fn brace_invocation_compiles_and_renders() {
 	// Arrange + Act
 	let v = page!(|| {
 		div {
-			Card { item: "hello".to_string() }
+			Card(item: "hello".to_string())
 		}
 	})();
 
@@ -53,9 +55,10 @@ fn brace_invocation_with_single_child() {
 	// Arrange + Act
 	let v = page!(|| {
 		div {
-			Card {
-				item: "outer".to_string(),
-				p { "inner" }
+			Card(item: "outer".to_string()) {
+				p {
+					"inner"
+				}
 			}
 		}
 	})();
@@ -73,10 +76,13 @@ fn brace_invocation_with_multiple_children() {
 	// Arrange + Act
 	let v = page!(|| {
 		div {
-			Card {
-				item: "outer".to_string(),
-				p { "one" }
-				p { "two" }
+			Card(item: "outer".to_string()) {
+				p {
+					"one"
+				}
+				p {
+					"two"
+				}
 			}
 		}
 	})();
@@ -106,14 +112,20 @@ fn nested_component_inside_for_loop() {
 	}
 
 	fn item_card(p: ItemCardProps) -> Page {
-		page!(|p: ItemCardProps| { article { h2 { {p.title.clone()} } } })(p)
+		page!(|p: ItemCardProps| {
+			article {
+				h2 {
+					{ p.title.clone() }
+				}
+			}
+		})(p)
 	}
 
 	let titles = vec!["a".to_string(), "b".to_string(), "c".to_string()];
 	let v = page!(|titles: Vec<String>| {
 		div {
 			for t in titles.iter() {
-				ItemCard { title: t.clone() }
+				ItemCard(title: t.clone())
 			}
 		}
 	})(titles);

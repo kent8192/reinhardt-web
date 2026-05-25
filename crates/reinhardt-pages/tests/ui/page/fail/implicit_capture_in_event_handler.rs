@@ -5,7 +5,9 @@ fn main() {
 	let outer = Signal::new(0_i32);
 	let _ = page!(|| {
 		button {
-			@click: |_| { let _ = outer.get(); },
+			@click: |_| {
+						let _ = outer.get();
+					},
 			"x"
 		}
 	});

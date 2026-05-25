@@ -409,7 +409,6 @@ impl TomlFileSource {
 		self.interpolate = false;
 		self
 	}
-
 }
 
 impl ConfigSource for TomlFileSource {

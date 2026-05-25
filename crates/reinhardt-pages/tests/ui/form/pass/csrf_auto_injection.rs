@@ -10,8 +10,11 @@ fn main() {
 		method: Post,
 
 		fields: {
-			message: CharField { required },
-		},
+			message: CharField {
+				required,
+			}
+		}
+
 	};
 
 	// PUT form also includes CSRF token
@@ -21,8 +24,11 @@ fn main() {
 		method: Put,
 
 		fields: {
-			data: CharField { required },
-		},
+			data: CharField {
+				required,
+			}
+		}
+
 	};
 
 	// PATCH form includes CSRF token
@@ -32,8 +38,11 @@ fn main() {
 		method: Patch,
 
 		fields: {
-			field: CharField { required },
-		},
+			field: CharField {
+				required,
+			}
+		}
+
 	};
 
 	// DELETE form includes CSRF token
@@ -43,8 +52,11 @@ fn main() {
 		method: Delete,
 
 		fields: {
-			id: IntegerField { required },
-		},
+			id: IntegerField {
+				required,
+			}
+		}
+
 	};
 
 	// GET form does NOT include CSRF token (safe method)
@@ -54,7 +66,10 @@ fn main() {
 		method: Get,
 
 		fields: {
-			query: CharField { required },
-		},
+			query: CharField {
+				required,
+			}
+		}
+
 	};
 }

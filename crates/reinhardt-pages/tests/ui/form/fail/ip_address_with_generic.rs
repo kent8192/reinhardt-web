@@ -9,7 +9,8 @@ fn main() {
 		action: "/x",
 
 		fields: {
-			client_ip: IpAddressField<i32> { },
-		},
+			client_ip: IpAddressField,
+		}
+
 	};
 }

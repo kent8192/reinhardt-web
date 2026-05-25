@@ -11,13 +11,16 @@ fn main() {
 		name: TweetForm,
 		action: "/api/tweets",
 
-		derived: {
-			// Single derived value from a field
-			char_count: |form| form.content().get().len(),
-		},
-
 		fields: {
-			content: CharField { required, bind: true },
-		},
+			content: CharField {
+				required,
+				bind: true,
+			}
+		}
+
+		derived: {
+			char_count: |form| form.content().get().len(),
+		}
+
 	};
 }

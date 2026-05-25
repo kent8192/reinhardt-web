@@ -17,7 +17,6 @@ thread_local! {
 	static APP_ROUTER: RefCell<Option<Box<dyn SpaRouter>>> = const { RefCell::new(None) };
 }
 
-
 /// Internal helper: access the globally registered SPA router as a
 /// trait object.
 ///
@@ -75,7 +74,6 @@ fn store_spa_router(router: Box<dyn SpaRouter>) {
 	});
 }
 
-
 /// Hidden API for installing a
 /// [`reinhardt_urls::routers::ClientRouter`] in the per-thread
 /// `APP_ROUTER` slot from integration tests on native targets.
@@ -118,4 +116,3 @@ pub fn __current_path_for_test() -> Option<String> {
 			.map(|spa| spa.current_path().get_untracked())
 	})
 }
-

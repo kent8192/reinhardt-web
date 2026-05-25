@@ -9,7 +9,8 @@ fn main() {
 		action: "/x",
 
 		fields: {
-			username: CharField<i32> { },
-		},
+			username: CharField,
+		}
+
 	};
 }

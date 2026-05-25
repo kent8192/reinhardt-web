@@ -12,9 +12,19 @@ struct CardProps {
 }
 
 fn card(p: CardProps) -> Page {
-	page!(|p: CardProps| { article { h2 { {p.item.clone()} } } })(p)
+	page!(|p: CardProps| {
+		article {
+			h2 {
+				{ p.item.clone() }
+			}
+		}
+	})(p)
 }
 
 fn main() {
-	let _ = page!(|| { div { Card { item: "x".to_string() } } });
+	let _ = page!(|| {
+		div {
+			Card(item: "x".to_string())
+		}
+	});
 }

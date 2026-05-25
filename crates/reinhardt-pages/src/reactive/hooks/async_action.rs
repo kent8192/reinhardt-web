@@ -7,8 +7,8 @@
 use std::future::Future;
 use std::rc::Rc;
 
-use reinhardt_core::reactive::deps::Trackable;
 use crate::reactive::Signal;
+use reinhardt_core::reactive::deps::Trackable;
 
 /// Represents the current phase of an async action.
 ///

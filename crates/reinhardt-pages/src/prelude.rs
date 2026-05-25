@@ -74,13 +74,15 @@ pub use crate::reactive::{
 
 // Hooks API
 pub use crate::reactive::{Action, ActionPhase, use_action};
-#[allow(deprecated, reason = "re-export kept until removal in v0.3.0 (Refs #4195)")]
+#[allow(
+	deprecated,
+	reason = "re-export kept until removal in v0.3.0 (Refs #4195)"
+)]
 pub use crate::reactive::{
-	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal,
-	TransitionState, use_callback, use_context, use_debug_value,
-	use_deferred_value, use_effect, use_effect_event, use_id, use_layout_effect, use_memo,
-	use_optimistic, use_reducer, use_ref, use_shared_state, use_state, use_sync_external_store,
-	use_transition,
+	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
+	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_effect_event,
+	use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state,
+	use_state, use_sync_external_store, use_transition,
 };
 
 // WASM-only resource creation functions

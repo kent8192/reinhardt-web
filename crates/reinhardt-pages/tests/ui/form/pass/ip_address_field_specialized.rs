@@ -8,7 +8,8 @@ fn main() {
 		action: "/api/net",
 
 		fields: {
-			client_ip: IpAddressField { },
-		},
+			client_ip: IpAddressField,
+		}
+
 	};
 }

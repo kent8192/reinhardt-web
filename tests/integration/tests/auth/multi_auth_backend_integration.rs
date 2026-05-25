@@ -912,14 +912,14 @@ impl AuthBackend for DatabaseAuthBackend {
 		.await
 		.map_err(|e| AuthenticationError::DatabaseError(e.to_string()))?;
 
-		Ok(
-			result.map(|(id, _username, _email, _is_active, is_staff, _is_superuser)| {
+		Ok(result.map(
+			|(id, _username, _email, _is_active, is_staff, _is_superuser)| {
 				Box::new(TestUser {
 					id,
 					is_admin: is_staff,
 				}) as Box<dyn AuthIdentity>
-			}),
-		)
+			},
+		))
 	}
 }
 

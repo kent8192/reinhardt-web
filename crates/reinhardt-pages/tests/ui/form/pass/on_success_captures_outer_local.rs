@@ -31,16 +31,18 @@ fn main() {
 		server_fn: submit_vote,
 
 		fields: {
-			_question_id: IntegerField { widget: HiddenInput },
-			_choice_id: IntegerField { required },
-		},
+			_question_id: IntegerField {
+				widget: HiddenInput,
+			}
+			_choice_id: IntegerField {
+				required,
+			}
+		}
 
-		// The hook that #4624 fixes. The explicit `: i64` annotation
-		// activates the lift — `target_id` is captured from the enclosing
-		// scope just like a normal Rust closure.
 		on_success: |_value: i64| {
-			let _captured = target_id;
-		},
+				let _captured = target_id;
+			},
+
 	};
 }
 

@@ -13,7 +13,10 @@ use uuid::Uuid;
 /// exposes `id()`, `is_authenticated()`, and `is_admin()` through the
 /// [`AuthIdentity`] trait.
 #[derive(Debug, Clone)]
-#[allow(dead_code, reason = "fields are used by InternalUser constructors in tests")]
+#[allow(
+	dead_code,
+	reason = "fields are used by InternalUser constructors in tests"
+)]
 pub(crate) struct InternalUser {
 	pub(crate) id: Uuid,
 	pub(crate) username: String,

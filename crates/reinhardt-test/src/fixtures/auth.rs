@@ -8,7 +8,7 @@ use rstest::*;
 // Re-exports for convenience
 pub use reinhardt_auth::mfa::MFAAuthentication as MfaManager;
 pub use reinhardt_auth::{
-    Argon2Hasher, InMemoryTokenStorage, JwtAuth, PasswordHasher, StoredToken, TokenStorage,
+	Argon2Hasher, InMemoryTokenStorage, JwtAuth, PasswordHasher, StoredToken, TokenStorage,
 };
 
 // =============================================================================
@@ -32,7 +32,7 @@ pub use reinhardt_auth::{
 /// ```
 #[fixture]
 pub fn mfa_authentication() -> MfaManager {
-    MfaManager::new("ReinhardtTest").time_window(30)
+	MfaManager::new("ReinhardtTest").time_window(30)
 }
 
 // =============================================================================
@@ -57,8 +57,8 @@ pub fn mfa_authentication() -> MfaManager {
 /// ```
 #[fixture]
 pub fn jwt_auth() -> JwtAuth {
-    // Use a secure test secret (32 bytes minimum)
-    JwtAuth::new(b"reinhardt-test-secret-key-32bytes")
+	// Use a secure test secret (32 bytes minimum)
+	JwtAuth::new(b"reinhardt-test-secret-key-32bytes")
 }
 
 /// JWT authentication fixture with custom secret
@@ -66,9 +66,9 @@ pub fn jwt_auth() -> JwtAuth {
 /// Provides a JWT authentication backend with a specified secret.
 #[fixture]
 pub fn jwt_auth_with_secret(
-    #[default(b"custom-secret-key-for-testing-32")] secret: &[u8],
+	#[default(b"custom-secret-key-for-testing-32")] secret: &[u8],
 ) -> JwtAuth {
-    JwtAuth::new(secret)
+	JwtAuth::new(secret)
 }
 
 // =============================================================================
@@ -93,7 +93,7 @@ pub fn jwt_auth_with_secret(
 /// ```
 #[fixture]
 pub fn argon2_hasher() -> Argon2Hasher {
-    Argon2Hasher
+	Argon2Hasher
 }
 
 // =============================================================================
@@ -118,7 +118,7 @@ pub fn argon2_hasher() -> Argon2Hasher {
 /// ```
 #[fixture]
 pub fn in_memory_token_storage() -> InMemoryTokenStorage {
-    InMemoryTokenStorage::new()
+	InMemoryTokenStorage::new()
 }
 
 /// Token storage with test data fixture
@@ -126,5 +126,5 @@ pub fn in_memory_token_storage() -> InMemoryTokenStorage {
 /// Provides an in-memory token storage pre-populated with test tokens.
 #[fixture]
 pub fn token_storage_with_data() -> InMemoryTokenStorage {
-    InMemoryTokenStorage::new()
+	InMemoryTokenStorage::new()
 }

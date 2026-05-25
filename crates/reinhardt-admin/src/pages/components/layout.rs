@@ -185,7 +185,7 @@ pub fn main_layout(
 	let header_page = header(site_name, user_name);
 	let sidebar_page = sidebar(models, Some(&current_path));
 	let footer_page = footer(version);
-		let outlet = router.render_current();
+	let outlet = router.render_current();
 
 	page!(|header_page: Page, sidebar_page: Page, outlet: Page, footer_page: Page| {
 		div {

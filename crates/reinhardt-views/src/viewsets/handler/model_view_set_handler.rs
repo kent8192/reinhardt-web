@@ -1,4 +1,3 @@
-
 //! `ModelViewSetHandler` — Django REST Framework-style CRUD handler.
 //!
 //! Provides the standard list/retrieve/create/update/destroy actions with

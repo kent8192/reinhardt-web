@@ -1,4 +1,3 @@
-
 //! WASM Framework Benchmarks
 //!
 //! Comprehensive performance benchmarks for the reinhardt-pages framework.
@@ -12,8 +11,8 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{Effect, Memo, Signal};
-use reinhardt_urls::routers::ClientRouter;
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use reinhardt_urls::routers::ClientRouter;
 
 // ============================================================================
 // Category 1: Reactive System Benchmarks (7 benchmarks)

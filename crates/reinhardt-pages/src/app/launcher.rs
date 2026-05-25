@@ -308,7 +308,7 @@ impl ClientLauncher {
 	pub fn new(root_selector: &'static str) -> Self {
 		Self {
 			root_selector,
-				client_router_init: None,
+			client_router_init: None,
 			intercept_links: true,
 			before_launch_hooks: Vec::new(),
 			after_launch_hooks: Vec::new(),
@@ -603,45 +603,42 @@ impl ClientLauncher {
 		let client_init = self.client_router_init.take();
 		let use_inventory = self.use_inventory;
 
-		let spa_router: Box<dyn super::SpaRouter> = match select_router_source_counts(
-			client_init.is_some(),
-			use_inventory,
-		) {
-
-			RouterSourceChoice::Client => {
-				Box::new((client_init.expect("Client variant guarantees Some"))())
-			}
-			RouterSourceChoice::Inventory => {
-				match reinhardt_urls::routers::collect_client_router_from_inventory() {
-					Some(router) => Box::new(router),
-					None => {
-						return Err(wasm_bindgen::JsValue::from_str(
-							"ClientLauncher::register_routes_from_inventory: no \
+		let spa_router: Box<dyn super::SpaRouter> =
+			match select_router_source_counts(client_init.is_some(), use_inventory) {
+				RouterSourceChoice::Client => {
+					Box::new((client_init.expect("Client variant guarantees Some"))())
+				}
+				RouterSourceChoice::Inventory => {
+					match reinhardt_urls::routers::collect_client_router_from_inventory() {
+						Some(router) => Box::new(router),
+						None => {
+							return Err(wasm_bindgen::JsValue::from_str(
+								"ClientLauncher::register_routes_from_inventory: no \
 							 `#[routes(..., client_inventory)]` registrations found. \
 							 The `client_inventory` flag is required on the project's \
 							 `#[routes]` attribute to emit the WASM-side inventory \
 							 entry; ensure `routes()` returns a `UnifiedRouter` whose \
 							 `.client(|c| ...)` aggregates the per-app \
 							 `client_url_patterns()` outputs.",
-						));
+							));
+						}
 					}
 				}
-			}
-			RouterSourceChoice::None => {
-				return Err(wasm_bindgen::JsValue::from_str(
-					"ClientLauncher: `router_client(...)`, or \
+				RouterSourceChoice::None => {
+					return Err(wasm_bindgen::JsValue::from_str(
+						"ClientLauncher: `router_client(...)`, or \
 					 `register_routes_from_inventory()` must be called before \
 					 `launch()`.",
-				));
-			}
-			RouterSourceChoice::Conflict => {
-				return Err(wasm_bindgen::JsValue::from_str(
-					"ClientLauncher: `router_client(...)`, and \
+					));
+				}
+				RouterSourceChoice::Conflict => {
+					return Err(wasm_bindgen::JsValue::from_str(
+						"ClientLauncher: `router_client(...)`, and \
 					 `register_routes_from_inventory()` are mutually exclusive; \
 					 configure exactly one.",
-				));
-			}
-		};
+					));
+				}
+			};
 		store_spa_router(spa_router);
 
 		crate::nav_diag!(
@@ -802,7 +799,6 @@ mod tests {
 		assert_eq!(launcher.root_selector, "#root");
 		assert!(launcher.client_router_init.is_none());
 	}
-
 
 	// (Refs #4234) Mirrors `test_client_launcher_router_stores_init_fn`
 	// for the new `router_client(...)` builder.
@@ -995,9 +991,6 @@ mod tests {
 	/// Returns the `NavigationSubscription` so the test can `mem::forget`
 	/// it (matching the launcher) or drop it to unregister.
 
-
-
-
 	#[rstest]
 	fn test_lifecycle_hooks_observe_registration_order() {
 		// Arrange: shared counter that records the call order.
@@ -1040,7 +1033,6 @@ mod select_router_source_tests {
 		assert_eq!(result, RouterSourceChoice::None);
 	}
 
-
 	#[rstest::rstest]
 	fn returns_client_when_only_client_set() {
 		// Arrange + Act
@@ -1059,10 +1051,7 @@ mod select_router_source_tests {
 
 	#[rstest::rstest]
 	#[case(true, true)]
-	fn returns_conflict_when_multiple_sources_set(
-		#[case] client: bool,
-		#[case] inventory: bool,
-	) {
+	fn returns_conflict_when_multiple_sources_set(#[case] client: bool, #[case] inventory: bool) {
 		// Arrange + Act
 		let result = select_router_source_counts(client, inventory);
 		// Assert

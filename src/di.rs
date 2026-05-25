@@ -14,6 +14,4 @@ pub use reinhardt_di::*;
 
 // Re-export reinhardt-di types for macro compatibility
 #[cfg(feature = "di")]
-pub use reinhardt_di::{
-	DiError, DiResult, Injectable, InjectionContext, InjectionMetadata,
-};
+pub use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, InjectionMetadata};

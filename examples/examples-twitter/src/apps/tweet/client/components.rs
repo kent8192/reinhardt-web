@@ -291,6 +291,15 @@ pub fn tweet_form() -> Page {
 			}
 		}
 
+		on_success: |_result| {
+				#[cfg(wasm)]
+				{
+					if let Some(window) = web_sys::window() {
+						let _ = window.location().reload();
+					}
+				}
+			},
+
 		watch: {
 			char_counter: |form| {
 					let char_count = form.content().get().len();
@@ -364,15 +373,6 @@ pub fn tweet_form() -> Page {
 				},
 		}
 
-		// Callback for successful submission - reload page
-		on_success: |_result| {
-			#[cfg(wasm)]
-			{
-				if let Some(window) = web_sys::window() {
-					let _ = window.location().reload();
-				}
-			}
-		},
 	};
 
 	// Wrap form in the card layout
