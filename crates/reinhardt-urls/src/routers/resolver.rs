@@ -16,11 +16,9 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use crate::config::urls::url_prelude::*;
-//!
-//! let urls = ResolvedUrls::from_global();
-//! let login_url = urls.auth_login();           // "/api/auth/login/"
-//! let detail_url = urls.cluster_retrieve("x"); // "/api/clusters/x/"
+//! let reverser = UrlReverser::from_global();
+//! let login_url = reverser.reverse("server:auth:login", &HashMap::new())?;
+//! let detail_url = reverser.reverse_with("server:clusters:retrieve", &[("id", "x")])?;
 //! ```
 
 /// Base trait for type-safe URL resolution.

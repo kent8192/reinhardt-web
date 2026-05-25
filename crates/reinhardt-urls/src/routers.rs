@@ -200,13 +200,8 @@ pub use registration::{
 pub use registration::{RouterFactory, UrlPatternsRegistration};
 #[cfg(native)]
 pub use reverse::{
-	ReverseError,
-	ReverseResult,
-	UrlReverser,
-	extract_param_names,
-	reverse,
-	try_reverse_single_pass,
-	try_reverse_with_aho_corasick,
+	ReverseError, ReverseResult, UrlReverser, extract_param_names, reverse,
+	try_reverse_single_pass, try_reverse_with_aho_corasick,
 };
 #[cfg(native)]
 #[allow(

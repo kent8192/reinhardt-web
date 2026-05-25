@@ -62,8 +62,8 @@ fn test_reverse_with_parameters() {
 fn test_reverse_with_namespace() {
 	let mut reverser = UrlReverser::new();
 
-	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler))
-		.with_namespace("users");
+	let mut route =
+		Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_namespace("users");
 	route.name = Some("detail".to_string());
 
 	reverser.register(route).unwrap();

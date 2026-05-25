@@ -78,7 +78,6 @@ impl CsrfMiddlewareConfig {
 		self.exempt_paths.insert(path);
 		self
 	}
-
 }
 
 /// CSRF protection middleware

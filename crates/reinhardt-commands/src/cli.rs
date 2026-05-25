@@ -15,9 +15,9 @@ use clap::{Parser, Subcommand};
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt_utils::staticfiles::StaticFilesConfig;
 use serde_json::Value;
 use std::env;
-use reinhardt_utils::staticfiles::StaticFilesConfig;
 #[allow(unused)]
 use std::path::PathBuf;
 

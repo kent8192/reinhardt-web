@@ -116,7 +116,6 @@ pub use advanced::{
 	LoggingSettings, MediaSettings, SessionSettings, SettingsError, StaticSettings,
 };
 
-
 // Re-export DatabaseConfig from database_config module
 pub use database_config::DatabaseConfig;
 
@@ -256,4 +255,3 @@ impl MiddlewareConfig {
 		self
 	}
 }
-

@@ -243,11 +243,7 @@ impl Effect {
 	/// Internal helper: constructs an Effect with deps and a specified timing,
 	/// inserting the timing entry *before* the initial execution so the first
 	/// run respects the requested timing.
-	fn new_with_deps_internal<F, C>(
-		mut f: F,
-		deps: super::deps::Deps,
-		timing: EffectTiming,
-	) -> Self
+	fn new_with_deps_internal<F, C>(mut f: F, deps: super::deps::Deps, timing: EffectTiming) -> Self
 	where
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,

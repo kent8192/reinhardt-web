@@ -1064,7 +1064,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_router_named_route() {
+	fn test_router_route_with_name() {
 		let router = ClientRouter::new()
 			.route("home", "/", home_page)
 			.route("users", "/users/", user_page);
@@ -1098,9 +1098,11 @@ mod tests {
 
 	#[test]
 	fn test_router_reverse() {
-		let router = ClientRouter::new()
-			.route("home", "/", home_page)
-			.route("user_detail", "/users/{id}/", user_page);
+		let router = ClientRouter::new().route("home", "/", home_page).route(
+			"user_detail",
+			"/users/{id}/",
+			user_page,
+		);
 
 		assert_eq!(router.reverse("home", &[]).unwrap(), "/");
 		assert_eq!(
@@ -1183,10 +1185,11 @@ mod tests {
 
 	#[test]
 	fn test_route_path_single() {
-		let router =
-			ClientRouter::new().route_path("user_detail", "/users/{id}/", |Path(_id): Path<i64>| {
-				page_with_text("User")
-			});
+		let router = ClientRouter::new().route_path(
+			"user_detail",
+			"/users/{id}/",
+			|Path(_id): Path<i64>| page_with_text("User"),
+		);
 
 		assert_eq!(router.route_count(), 1);
 
@@ -1327,10 +1330,11 @@ mod tests {
 
 	#[test]
 	fn test_route_path_with_string_param() {
-		let router = ClientRouter::new()
-			.route_path("post_detail", "/posts/{slug}/", |Path(_slug): Path<String>| {
-				page_with_text("Post")
-			});
+		let router = ClientRouter::new().route_path(
+			"post_detail",
+			"/posts/{slug}/",
+			|Path(_slug): Path<String>| page_with_text("Post"),
+		);
 
 		let route_match = router.match_path("/posts/hello-world/");
 		assert!(route_match.is_some());
@@ -1396,7 +1400,9 @@ mod tests {
 			page_with_text("other-not-found")
 		});
 
-		let merged = ClientRouter::new().route("home", "/home/", home_page).merge(other);
+		let merged = ClientRouter::new()
+			.route("home", "/home/", home_page)
+			.merge(other);
 
 		// Render against a non-matching path; `other`'s `not_found` must not
 		// fire because `merge` keeps `self`'s observation state and discards

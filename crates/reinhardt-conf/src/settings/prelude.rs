@@ -4,8 +4,8 @@
 
 #[allow(deprecated)]
 pub use super::advanced::{
-	CacheSettings, CorsSettings, DatabaseSettings as AdvancedDatabaseSettings,
-	EmailSettings, LoggingSettings, MediaSettings, SessionSettings, SettingsError, StaticSettings,
+	CacheSettings, CorsSettings, DatabaseSettings as AdvancedDatabaseSettings, EmailSettings,
+	LoggingSettings, MediaSettings, SessionSettings, SettingsError, StaticSettings,
 };
 pub use super::builder::{BuildError, GetError, MergeStrategy, MergedSettings, SettingsBuilder};
 pub use super::env::{Env, EnvError};
@@ -19,8 +19,8 @@ pub use super::sources::{
 	ConfigSource, DefaultSource, DotEnvSource, EnvSource, HighPriorityEnvSource,
 	LowPriorityEnvSource, SourceError, TomlFileSource,
 };
-pub use super::typed_deserializer::CoercionError;
 pub use super::testing::{SettingsOverride, SettingsOverrideGuard};
+pub use super::typed_deserializer::CoercionError;
 pub use super::validation::{
 	ChoiceValidator, PatternValidator, RangeValidator, RequiredValidator, SecurityValidator,
 	SettingsValidator, ValidationError, ValidationResult, Validator,

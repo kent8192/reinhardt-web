@@ -103,12 +103,11 @@ pub(crate) const USER_ID_NAMESPACE: uuid::Uuid =
 // removed in 0.2.0 per Issue #4520 — use `AuthIdentity` + `BaseUser` /
 // `FullUser` + `PermissionsMixin` instead.
 pub use core::{
-	AllowAny, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser,
-	IsActiveUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher,
-	Permission, PermissionContext, PermissionsMixin, SuperuserCreator,
-	SuperuserCreatorRegistration, SuperuserInit, TypedSuperuserCreator,
-	auto_register_superuser_creator, get_superuser_creator, register_superuser_creator,
-	superuser_creator_for,
+	AllowAny, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser, IsActiveUser,
+	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher, Permission,
+	PermissionContext, PermissionsMixin, SuperuserCreator, SuperuserCreatorRegistration,
+	SuperuserInit, TypedSuperuserCreator, auto_register_superuser_creator, get_superuser_creator,
+	register_superuser_creator, superuser_creator_for,
 };
 
 #[cfg(feature = "argon2-hasher")]

@@ -3030,21 +3030,21 @@ pub(crate) async fn initialize_orm_database(
 	ctx: &CommandContext,
 ) -> Result<(), crate::CommandError> {
 	let env_database_url = std::env::var("DATABASE_URL").ok();
-	let url = match ctx.settings.as_ref() {
-		Some(settings) => DatabaseConnection::database_url_from(
-			settings.as_ref(),
-			env_database_url.as_deref(),
-		)
-		.map_err(|e| {
-			crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
-		})?,
-		None => env_database_url.ok_or_else(|| {
-			crate::CommandError::ExecutionError(
-				"No database URL available. Set DATABASE_URL environment variable."
-					.to_string(),
+	let url =
+		match ctx.settings.as_ref() {
+			Some(settings) => DatabaseConnection::database_url_from(
+				settings.as_ref(),
+				env_database_url.as_deref(),
 			)
-		})?,
-	};
+			.map_err(|e| {
+				crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
+			})?,
+			None => env_database_url.ok_or_else(|| {
+				crate::CommandError::ExecutionError(
+					"No database URL available. Set DATABASE_URL environment variable.".to_string(),
+				)
+			})?,
+		};
 
 	sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
 
@@ -3059,7 +3059,6 @@ pub(crate) async fn initialize_orm_database(
 	));
 	Ok(())
 }
-
 
 /// Helper function to get DATABASE_URL from settings files only (ignoring env var).
 ///

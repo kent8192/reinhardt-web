@@ -4,8 +4,8 @@
 //! default debug flags, allowed hosts configuration, and database config per profile.
 
 use reinhardt_conf::settings::DatabaseConfig;
-use reinhardt_conf::settings::core_settings::CoreSettings;
 use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::core_settings::CoreSettings;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::DefaultSource;
 use rstest::rstest;
@@ -278,7 +278,11 @@ fn settings_staging_profile_keeps_debug_enabled() {
 #[rstest]
 fn development_settings_allows_localhost() {
 	// Arrange
-	let mut settings = CoreSettings { base_dir: PathBuf::from("."), secret_key: "dev-secret".to_string(), ..Default::default() };
+	let mut settings = CoreSettings {
+		base_dir: PathBuf::from("."),
+		secret_key: "dev-secret".to_string(),
+		..Default::default()
+	};
 
 	// Act – typical development setup
 	settings.allowed_hosts = vec!["localhost".to_string(), "127.0.0.1".to_string()];
@@ -301,7 +305,11 @@ fn development_settings_allows_localhost() {
 #[rstest]
 fn production_settings_disallows_debug_and_restricts_hosts() {
 	// Arrange
-	let mut settings = CoreSettings { base_dir: PathBuf::from("/app"), secret_key: "prod-secret-key".to_string(), ..Default::default() };
+	let mut settings = CoreSettings {
+		base_dir: PathBuf::from("/app"),
+		secret_key: "prod-secret-key".to_string(),
+		..Default::default()
+	};
 
 	// Act – typical production setup
 	settings.debug = false;
@@ -326,7 +334,11 @@ fn production_settings_disallows_debug_and_restricts_hosts() {
 #[rstest]
 fn staging_settings_allows_staging_domain() {
 	// Arrange
-	let mut settings = CoreSettings { base_dir: PathBuf::from("/app"), secret_key: "staging-secret".to_string(), ..Default::default() };
+	let mut settings = CoreSettings {
+		base_dir: PathBuf::from("/app"),
+		secret_key: "staging-secret".to_string(),
+		..Default::default()
+	};
 
 	// Act
 	settings.allowed_hosts = vec!["staging.example.com".to_string()];

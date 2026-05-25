@@ -454,9 +454,8 @@ pub use reinhardt_macros::admin;
 // Re-export settings from dedicated crate
 #[cfg(all(feature = "conf", native))]
 pub use reinhardt_conf::settings::{
-	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
-	MediaSettings, MiddlewareConfig, SessionSettings, SettingsError, StaticSettings,
-	TemplateConfig,
+	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings, MediaSettings,
+	MiddlewareConfig, SessionSettings, SettingsError, StaticSettings, TemplateConfig,
 };
 
 #[cfg(all(feature = "conf", native))]
