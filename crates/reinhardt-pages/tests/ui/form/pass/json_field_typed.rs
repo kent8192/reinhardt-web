@@ -33,9 +33,10 @@ fn main() {
 		action: "/api/prefs",
 
 		fields: {
-			prefs: JsonField<UserPrefs> {
+			prefs: JsonField {
 				initial: UserPrefs::default(),
-			},
-		},
+			}
+		}
+
 	};
 }

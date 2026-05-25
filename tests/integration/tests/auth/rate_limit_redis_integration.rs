@@ -14,7 +14,7 @@
 use bytes::Bytes;
 use hyper::{HeaderMap, Method};
 use reinhardt_auth::rate_limit_permission::RateLimitStrategy;
-use reinhardt_auth::{Permission, PermissionContext, RateLimitPermission, SimpleUser};
+use reinhardt_auth::{AuthIdentity, Permission, PermissionContext, RateLimitPermission};
 use reinhardt_http::{Request, TrustedProxies};
 use reinhardt_throttling::{MemoryBackend, ThrottleBackend};
 use rstest::*;
@@ -100,16 +100,33 @@ fn create_basic_request() -> Request {
 		.unwrap()
 }
 
+/// Local test user implementing `AuthIdentity` for rate limit tests.
+/// Replaces `InternalUser` which is now `pub(crate)` in `reinhardt-auth`.
+#[derive(Debug, Clone)]
+struct TestUser {
+	id: Uuid,
+	is_admin: bool,
+}
+
+impl AuthIdentity for TestUser {
+	fn id(&self) -> String {
+		self.id.to_string()
+	}
+
+	fn is_authenticated(&self) -> bool {
+		true
+	}
+
+	fn is_admin(&self) -> bool {
+		self.is_admin
+	}
+}
+
 /// Creates a test user
-fn create_test_user(username: &str) -> SimpleUser {
-	SimpleUser {
+fn create_test_user(_username: &str) -> TestUser {
+	TestUser {
 		id: Uuid::now_v7(),
-		username: username.to_string(),
-		email: format!("{}@example.com", username),
-		is_active: true,
 		is_admin: false,
-		is_staff: false,
-		is_superuser: false,
 	}
 }
 
@@ -652,8 +669,8 @@ async fn test_key_strategy_decision_table(
 	};
 
 	// Create context with or without user
-	let user = if has_user {
-		Some(Box::new(create_test_user("test_user")) as Box<SimpleUser>)
+	let user: Option<Box<dyn AuthIdentity>> = if has_user {
+		Some(Box::new(create_test_user("test_user")))
 	} else {
 		None
 	};
@@ -663,7 +680,7 @@ async fn test_key_strategy_decision_table(
 		is_authenticated: has_user,
 		is_admin: false,
 		is_active: has_user,
-		user: user.map(|u| u as Box<dyn reinhardt_auth::User>),
+		user,
 	};
 
 	let result = permission.has_permission(&context).await;

@@ -1,8 +1,6 @@
 //! Tests for DI scope hierarchy enforcement (Issue #4651)
 
-use reinhardt_di::{
-	DependencyScope, DiError, InjectionContext, SingletonScope, global_registry,
-};
+use reinhardt_di::{DependencyScope, DiError, InjectionContext, SingletonScope, global_registry};
 use rstest::rstest;
 use serial_test::serial;
 use std::sync::Arc;
@@ -51,9 +49,10 @@ struct TransientWidget;
 async fn singleton_resolving_singleton_succeeds() {
 	// Arrange
 	let registry = global_registry();
-	let _guard = registry.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |_ctx| async {
-		Ok(SingletonService)
-	});
+	let _guard = registry
+		.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |_ctx| async {
+			Ok(SingletonService)
+		});
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
@@ -71,14 +70,18 @@ async fn singleton_resolving_singleton_succeeds() {
 async fn singleton_resolving_request_returns_scope_error() {
 	// Arrange
 	let registry = global_registry();
-	let _guard1 = registry.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-		Ok(RequestConfig::default())
-	});
-	let _guard2 = registry.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |ctx| async move {
-		// This singleton factory tries to resolve a request-scoped dependency
-		let _config = ctx.resolve::<RequestConfig>().await?;
-		Ok(SingletonService)
-	});
+	let _guard1 = registry
+		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
+			Ok(RequestConfig::default())
+		});
+	let _guard2 = registry.register_override::<SingletonService, _, _>(
+		DependencyScope::Singleton,
+		|ctx| async move {
+			// This singleton factory tries to resolve a request-scoped dependency
+			let _config = ctx.resolve::<RequestConfig>().await?;
+			Ok(SingletonService)
+		},
+	);
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
@@ -99,13 +102,17 @@ async fn singleton_resolving_request_returns_scope_error() {
 async fn request_resolving_singleton_succeeds() {
 	// Arrange
 	let registry = global_registry();
-	let _guard1 = registry.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |_ctx| async {
-		Ok(SingletonService)
-	});
-	let _guard2 = registry.register_override::<RequestConfig, _, _>(DependencyScope::Request, |ctx| async move {
-		let _service = ctx.resolve::<SingletonService>().await?;
-		Ok(RequestConfig::default())
-	});
+	let _guard1 = registry
+		.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |_ctx| async {
+			Ok(SingletonService)
+		});
+	let _guard2 = registry.register_override::<RequestConfig, _, _>(
+		DependencyScope::Request,
+		|ctx| async move {
+			let _service = ctx.resolve::<SingletonService>().await?;
+			Ok(RequestConfig::default())
+		},
+	);
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
@@ -126,13 +133,17 @@ async fn request_resolving_request_succeeds() {
 	struct RequestConfigB;
 
 	let registry = global_registry();
-	let _guard1 = registry.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-		Ok(RequestConfig::default())
-	});
-	let _guard2 = registry.register_override::<RequestConfigB, _, _>(DependencyScope::Request, |ctx| async move {
-		let _config = ctx.resolve::<RequestConfig>().await?;
-		Ok(RequestConfigB)
-	});
+	let _guard1 = registry
+		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
+			Ok(RequestConfig::default())
+		});
+	let _guard2 = registry.register_override::<RequestConfigB, _, _>(
+		DependencyScope::Request,
+		|ctx| async move {
+			let _config = ctx.resolve::<RequestConfig>().await?;
+			Ok(RequestConfigB)
+		},
+	);
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
@@ -150,15 +161,18 @@ async fn request_resolving_request_succeeds() {
 async fn root_resolving_any_scope_succeeds() {
 	// Arrange
 	let registry = global_registry();
-	let _guard1 = registry.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |_ctx| async {
-		Ok(SingletonService)
-	});
-	let _guard2 = registry.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-		Ok(RequestConfig::default())
-	});
-	let _guard3 = registry.register_override::<TransientWidget, _, _>(DependencyScope::Transient, |_ctx| async {
-		Ok(TransientWidget)
-	});
+	let _guard1 = registry
+		.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |_ctx| async {
+			Ok(SingletonService)
+		});
+	let _guard2 = registry
+		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
+			Ok(RequestConfig::default())
+		});
+	let _guard3 = registry
+		.register_override::<TransientWidget, _, _>(DependencyScope::Transient, |_ctx| async {
+			Ok(TransientWidget)
+		});
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
@@ -178,12 +192,14 @@ async fn transient_resolving_any_scope_succeeds() {
 	struct TransientConsumer;
 
 	let registry = global_registry();
-	let _guard1 = registry.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |_ctx| async {
-		Ok(SingletonService)
-	});
-	let _guard2 = registry.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-		Ok(RequestConfig::default())
-	});
+	let _guard1 = registry
+		.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |_ctx| async {
+			Ok(SingletonService)
+		});
+	let _guard2 = registry
+		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
+			Ok(RequestConfig::default())
+		});
 	let _guard3 = registry.register_override::<TransientConsumer, _, _>(
 		DependencyScope::Transient,
 		|ctx| async move {
@@ -209,13 +225,17 @@ async fn transient_resolving_any_scope_succeeds() {
 async fn scope_error_message_contains_type_names() {
 	// Arrange
 	let registry = global_registry();
-	let _guard1 = registry.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-		Ok(RequestConfig::default())
-	});
-	let _guard2 = registry.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |ctx| async move {
-		let _config = ctx.resolve::<RequestConfig>().await?;
-		Ok(SingletonService)
-	});
+	let _guard1 = registry
+		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
+			Ok(RequestConfig::default())
+		});
+	let _guard2 = registry.register_override::<SingletonService, _, _>(
+		DependencyScope::Singleton,
+		|ctx| async move {
+			let _config = ctx.resolve::<RequestConfig>().await?;
+			Ok(SingletonService)
+		},
+	);
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
@@ -242,19 +262,26 @@ async fn scope_error_message_contains_type_names() {
 async fn singleton_resolving_cached_request_still_returns_scope_error() {
 	// Arrange: pre-populate the request cache so the singleton hits the fast path
 	let registry = global_registry();
-	let _guard1 = registry.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-		Ok(RequestConfig)
-	});
-	let _guard2 = registry.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |ctx| async move {
-		let _config = ctx.resolve::<RequestConfig>().await?;
-		Ok(SingletonService)
-	});
+	let _guard1 = registry
+		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
+			Ok(RequestConfig)
+		});
+	let _guard2 = registry.register_override::<SingletonService, _, _>(
+		DependencyScope::Singleton,
+		|ctx| async move {
+			let _config = ctx.resolve::<RequestConfig>().await?;
+			Ok(SingletonService)
+		},
+	);
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// Warm the request cache from a root (Transient) context — this succeeds
-	let _ = ctx.resolve::<RequestConfig>().await.expect("root can resolve request");
+	let _ = ctx
+		.resolve::<RequestConfig>()
+		.await
+		.expect("root can resolve request");
 
 	// Act: singleton factory tries to resolve the now-cached RequestConfig
 	let result = ctx.resolve::<SingletonService>().await;
@@ -272,10 +299,13 @@ async fn singleton_resolving_cached_request_still_returns_scope_error() {
 async fn singleton_resolving_preseeded_request_returns_scope_error() {
 	// Arrange: pre-seed request cache directly (no registry entry)
 	let registry = global_registry();
-	let _guard = registry.register_override::<SingletonService, _, _>(DependencyScope::Singleton, |ctx| async move {
-		let _config = ctx.resolve::<RequestConfig>().await?;
-		Ok(SingletonService)
-	});
+	let _guard = registry.register_override::<SingletonService, _, _>(
+		DependencyScope::Singleton,
+		|ctx| async move {
+			let _config = ctx.resolve::<RequestConfig>().await?;
+			Ok(SingletonService)
+		},
+	);
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();

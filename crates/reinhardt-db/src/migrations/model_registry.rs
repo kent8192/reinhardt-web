@@ -821,8 +821,8 @@ mod tests {
 		assert!(!field.nullable);
 		assert_eq!(field.params.get("null").unwrap(), "false");
 
-		let field = FieldMetadata::new(FieldType::Custom("IntegerField".to_string()))
-			.with_nullable(true);
+		let field =
+			FieldMetadata::new(FieldType::Custom("IntegerField".to_string())).with_nullable(true);
 		assert!(field.nullable);
 		assert_eq!(field.params.get("null").unwrap(), "true");
 	}

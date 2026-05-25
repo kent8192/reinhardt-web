@@ -3,10 +3,9 @@
 //! Authentication backend that trusts HTTP headers set by upstream
 //! authentication systems (e.g., Apache mod_auth, nginx auth_request).
 
-// This module uses the deprecated User trait for backward compatibility.
-// RemoteUserAuthentication returns Box<dyn User> to preserve existing authentication APIs.
-#![allow(deprecated)]
-use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
+use crate::core::AuthIdentity;
+use crate::internal_user::InternalUser;
+use crate::{AuthBackend, AuthenticationError};
 use reinhardt_http::Request;
 use uuid::Uuid;
 
@@ -24,7 +23,7 @@ use uuid::Uuid;
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_auth::{AuthenticationBackend, SimpleUser};
+/// use reinhardt_auth::{AuthBackend, AuthIdentity};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method};
 /// use reinhardt_http::Request;
@@ -46,7 +45,7 @@ use uuid::Uuid;
 ///
 /// let result = auth.authenticate(&request).await.unwrap();
 /// assert!(result.is_some());
-/// assert_eq!(result.unwrap().get_username(), "alice");
+/// assert!(result.unwrap().is_authenticated());
 /// # }
 /// ```
 pub struct RemoteUserAuthentication {
@@ -102,11 +101,11 @@ impl Default for RemoteUserAuthentication {
 }
 
 #[async_trait::async_trait]
-impl AuthenticationBackend for RemoteUserAuthentication {
+impl AuthBackend for RemoteUserAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Get header value
 		let header_value = request
 			.headers
@@ -115,8 +114,8 @@ impl AuthenticationBackend for RemoteUserAuthentication {
 
 		match header_value {
 			Some(username) if !username.is_empty() => {
-				// Create user from header
-				Ok(Some(Box::new(SimpleUser {
+				// Create identity from header
+				Ok(Some(Box::new(InternalUser {
 					id: Uuid::new_v5(&crate::USER_ID_NAMESPACE, username.as_bytes()),
 					username: username.to_string(),
 					email: String::new(),
@@ -133,7 +132,10 @@ impl AuthenticationBackend for RemoteUserAuthentication {
 		}
 	}
 
-	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		_user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// For remote user auth, we can't retrieve users by ID
 		// since we only have the username from the header
 		Ok(None)
@@ -162,8 +164,10 @@ mod tests {
 			.unwrap();
 
 		let result = auth.authenticate(&request).await.unwrap();
-		assert!(result.is_some());
-		assert_eq!(result.unwrap().get_username(), "testuser");
+		let user = result.expect("remote user authentication should succeed");
+		let expected_id = Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"testuser").to_string();
+		assert_eq!(user.id(), expected_id);
+		assert!(user.is_authenticated());
 	}
 
 	#[tokio::test]
@@ -195,8 +199,10 @@ mod tests {
 			.unwrap();
 
 		let result = auth.authenticate(&request).await.unwrap();
-		assert!(result.is_some());
-		assert_eq!(result.unwrap().get_username(), "alice");
+		let user = result.expect("custom header authentication should succeed");
+		let expected_id = Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"alice").to_string();
+		assert_eq!(user.id(), expected_id);
+		assert!(user.is_authenticated());
 	}
 
 	#[rstest]
@@ -256,7 +262,7 @@ mod tests {
 		let user = auth.authenticate(&request).await.unwrap().unwrap();
 
 		// Assert
-		assert!(user.is_active());
+		assert!(user.is_authenticated());
 		assert!(!user.is_admin());
 	}
 

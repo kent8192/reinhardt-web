@@ -11,7 +11,8 @@ fn main() {
 		fields: {
 			note: HiddenField {
 				initial: "hello".to_string(),
-			},
-		},
+			}
+		}
+
 	};
 }

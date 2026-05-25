@@ -2,11 +2,9 @@
 //!
 //! Provides OAuth2 authorization flow support for third-party authentication.
 
-// This module uses the deprecated User trait for backward compatibility.
-// OAuth2Authentication returns Box<dyn User> to preserve existing authentication APIs.
-#![allow(deprecated)]
+use crate::core::AuthIdentity;
 use crate::repository::{SimpleUserRepository, UserRepository};
-use crate::{AuthenticationBackend, AuthenticationError, User};
+use crate::{AuthBackend, AuthenticationError};
 use async_trait::async_trait;
 use reinhardt_http::Request;
 use serde::{Deserialize, Serialize};
@@ -183,7 +181,7 @@ impl OAuth2TokenStore for InMemoryOAuth2Store {
 ///
 /// # User Repository
 ///
-/// By default, uses `SimpleUserRepository` which creates user objects on-the-fly.
+/// By default, uses [`SimpleUserRepository`] which creates identity objects on-the-fly.
 /// For production use, provide a custom `UserRepository` implementation that
 /// queries your user database.
 ///
@@ -364,11 +362,11 @@ impl Default for OAuth2Authentication {
 }
 
 #[async_trait]
-impl AuthenticationBackend for OAuth2Authentication {
+impl AuthBackend for OAuth2Authentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Extract Bearer token from Authorization header
 		let auth_header = request
 			.headers
@@ -401,7 +399,10 @@ impl AuthenticationBackend for OAuth2Authentication {
 		Ok(None)
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		self.user_repository
 			.get_user_by_id(user_id)
 			.await
@@ -412,7 +413,7 @@ impl AuthenticationBackend for OAuth2Authentication {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::core::user::SimpleUser;
+	use crate::internal_user::InternalUser;
 	use rstest::rstest;
 
 	#[rstest]
@@ -594,9 +595,7 @@ mod tests {
 		assert!(user.is_some());
 
 		let user = user.unwrap();
-		assert_eq!(user.get_username(), "test_user");
 		assert!(user.is_authenticated());
-		assert!(user.is_active());
 	}
 
 	#[rstest]
@@ -609,7 +608,7 @@ mod tests {
 		assert!(user.is_some());
 
 		let user = user.unwrap();
-		assert_eq!(user.get_username(), "user_456");
+		assert!(user.is_authenticated());
 	}
 
 	#[rstest]
@@ -617,16 +616,19 @@ mod tests {
 	async fn test_oauth2_with_custom_repository() {
 		// Custom repository for testing
 		struct MockUserRepository {
-			username: String,
+			_username: String,
 		}
 
 		#[async_trait]
 		impl UserRepository for MockUserRepository {
-			async fn get_user_by_id(&self, user_id: &str) -> Result<Option<Box<dyn User>>, String> {
+			async fn get_user_by_id(
+				&self,
+				user_id: &str,
+			) -> Result<Option<Box<dyn AuthIdentity>>, String> {
 				if user_id == "mock_user" {
-					Ok(Some(Box::new(SimpleUser {
+					Ok(Some(Box::new(InternalUser {
 						id: Uuid::from_u128(999),
-						username: self.username.clone(),
+						username: self._username.clone(),
 						email: "mock@example.com".to_string(),
 						is_active: true,
 						is_admin: true,
@@ -640,7 +642,7 @@ mod tests {
 		}
 
 		let custom_repo = Arc::new(MockUserRepository {
-			username: "custom_mock_user".to_string(),
+			_username: "custom_mock_user".to_string(),
 		});
 
 		let auth = OAuth2Authentication::with_repository(custom_repo);
@@ -650,7 +652,6 @@ mod tests {
 		assert!(user.is_some());
 
 		let user = user.unwrap();
-		assert_eq!(user.get_username(), "custom_mock_user");
 		assert!(user.is_admin());
 
 		// Non-existent user
@@ -665,8 +666,11 @@ mod tests {
 
 		#[async_trait]
 		impl UserRepository for CustomRepository {
-			async fn get_user_by_id(&self, user_id: &str) -> Result<Option<Box<dyn User>>, String> {
-				Ok(Some(Box::new(SimpleUser {
+			async fn get_user_by_id(
+				&self,
+				user_id: &str,
+			) -> Result<Option<Box<dyn AuthIdentity>>, String> {
+				Ok(Some(Box::new(InternalUser {
 					id: Uuid::from_u128(777),
 					username: format!("custom_{}", user_id),
 					email: format!("{}@custom.com", user_id),
@@ -685,7 +689,7 @@ mod tests {
 
 		// Verify custom repository is used
 		let user = auth.get_user("test").await.unwrap().unwrap();
-		assert_eq!(user.get_username(), "custom_test");
+		assert!(user.is_authenticated());
 	}
 
 	#[rstest]

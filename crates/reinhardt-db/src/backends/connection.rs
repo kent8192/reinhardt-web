@@ -581,7 +581,6 @@ impl DatabaseConnection {
 		Ok(db_config.to_url())
 	}
 
-
 	/// Executes the operation.
 	pub async fn execute(
 		&self,

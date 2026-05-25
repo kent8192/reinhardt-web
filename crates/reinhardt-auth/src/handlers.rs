@@ -2,11 +2,8 @@
 //!
 //! Provides ready-to-use handlers for common authentication workflows
 
-// This module uses the deprecated User trait for backward compatibility.
-// Login handler accepts Box<dyn User> to preserve existing authentication APIs.
-#![allow(deprecated)]
-use crate::AuthenticationBackend;
-use crate::User;
+use crate::core::AuthIdentity;
+use crate::core::backend::AuthBackend;
 use crate::session::{SESSION_KEY_USER_ID, Session, SessionId, SessionStore};
 use async_trait::async_trait;
 use reinhardt_core::exception::Result;
@@ -49,20 +46,20 @@ pub const SESSION_COOKIE_NAME: &str = "sessionid";
 /// ```ignore
 /// use reinhardt_auth::handlers::LoginHandler;
 /// use reinhardt_auth::session::InMemorySessionStore;
-/// use reinhardt_auth::core::backend::AuthenticationBackend;
+/// use reinhardt_auth::core::backend::AuthBackend;
 /// use std::sync::Arc;
 ///
 /// let session_store = Arc::new(InMemorySessionStore::new());
-/// // AuthenticationBackend is a trait - use a concrete implementation
+/// // `AuthBackend` is a trait - use a concrete implementation
 /// let auth_backend = Arc::new(YourAuthBackendImpl::new());
 /// let handler = LoginHandler::new(session_store, auth_backend);
 /// ```
-pub struct LoginHandler<S: SessionStore, A: AuthenticationBackend> {
+pub struct LoginHandler<S: SessionStore, A: AuthBackend> {
 	session_store: Arc<S>,
 	auth_backend: Arc<A>,
 }
 
-impl<S: SessionStore, A: AuthenticationBackend> LoginHandler<S, A> {
+impl<S: SessionStore, A: AuthBackend> LoginHandler<S, A> {
 	/// Create a new login handler
 	///
 	/// # Examples
@@ -70,11 +67,11 @@ impl<S: SessionStore, A: AuthenticationBackend> LoginHandler<S, A> {
 	/// ```ignore
 	/// use reinhardt_auth::handlers::LoginHandler;
 	/// use reinhardt_auth::session::InMemorySessionStore;
-	/// use reinhardt_auth::backend::AuthBackend;
+	/// use reinhardt_auth::core::backend::AuthBackend;
 	/// use std::sync::Arc;
 	///
 	/// let session_store = Arc::new(InMemorySessionStore::new());
-	/// // AuthBackend is a trait - use a concrete implementation
+	/// // `AuthBackend` is a trait - use a concrete implementation
 	/// let auth_backend = Arc::new(YourAuthBackendImpl::new());
 	/// let handler = LoginHandler::new(session_store, auth_backend);
 	/// ```
@@ -102,7 +99,7 @@ impl<S: SessionStore, A: AuthenticationBackend> LoginHandler<S, A> {
 			})
 	}
 
-	async fn perform_login(&self, user: Box<dyn User>) -> Result<(SessionId, String)> {
+	async fn perform_login(&self, user: Box<dyn AuthIdentity>) -> Result<(SessionId, String)> {
 		let session_id = self.session_store.create_session_id();
 		let mut session = Session::new();
 		session.set(SESSION_KEY_USER_ID, serde_json::json!(user.id()));
@@ -119,7 +116,7 @@ impl<S: SessionStore, A: AuthenticationBackend> LoginHandler<S, A> {
 }
 
 #[async_trait]
-impl<S: SessionStore + 'static, A: AuthenticationBackend + 'static> Handler for LoginHandler<S, A> {
+impl<S: SessionStore + 'static, A: AuthBackend + 'static> Handler for LoginHandler<S, A> {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		if let Some(user) = self
 			.auth_backend
@@ -227,7 +224,7 @@ impl<S: SessionStore + 'static> Handler for LogoutHandler<S> {
 mod tests {
 	use super::*;
 	use crate::AuthenticationError;
-	use crate::SimpleUser;
+	use crate::internal_user::InternalUser;
 	use crate::session::InMemorySessionStore;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
@@ -235,15 +232,15 @@ mod tests {
 	use uuid::Uuid;
 
 	struct TestAuthBackend {
-		test_user: Option<SimpleUser>,
+		test_user: Option<InternalUser>,
 	}
 
 	#[async_trait]
-	impl AuthenticationBackend for TestAuthBackend {
+	impl AuthBackend for TestAuthBackend {
 		async fn authenticate(
 			&self,
 			_request: &Request,
-		) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
+		) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 			if let Some(user) = &self.test_user {
 				Ok(Some(Box::new(user.clone())))
 			} else {
@@ -254,7 +251,7 @@ mod tests {
 		async fn get_user(
 			&self,
 			_user_id: &str,
-		) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
+		) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 			if let Some(user) = &self.test_user {
 				Ok(Some(Box::new(user.clone())))
 			} else {
@@ -267,7 +264,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_login_handler_success() {
 		let session_store = Arc::new(InMemorySessionStore::new());
-		let test_user = SimpleUser {
+		let test_user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),
@@ -383,7 +380,7 @@ mod tests {
 		// Arrange
 		let session_store = Arc::new(InMemorySessionStore::new());
 		let user_id = Uuid::now_v7();
-		let test_user = SimpleUser {
+		let test_user = InternalUser {
 			id: user_id,
 			username: "session_user".to_string(),
 			email: "session@example.com".to_string(),
@@ -433,7 +430,7 @@ mod tests {
 	async fn test_login_handler_cookie_attributes() {
 		// Arrange
 		let session_store = Arc::new(InMemorySessionStore::new());
-		let test_user = SimpleUser {
+		let test_user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "cookie_user".to_string(),
 			email: "cookie@example.com".to_string(),
@@ -513,7 +510,7 @@ mod tests {
 	async fn test_login_handler_response_body_structure() {
 		// Arrange
 		let session_store = Arc::new(InMemorySessionStore::new());
-		let test_user = SimpleUser {
+		let test_user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "body_user".to_string(),
 			email: "body@example.com".to_string(),
@@ -581,7 +578,7 @@ mod tests {
 		old_session.set(SESSION_KEY_USER_ID, serde_json::json!("old_user"));
 		session_store.save(&old_session_id, &old_session).await;
 
-		let test_user = SimpleUser {
+		let test_user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "new_user".to_string(),
 			email: "new@example.com".to_string(),

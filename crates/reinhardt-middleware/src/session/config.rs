@@ -129,7 +129,6 @@ impl SessionConfig {
 		self.path = path;
 		self
 	}
-
 }
 
 impl Default for SessionConfig {

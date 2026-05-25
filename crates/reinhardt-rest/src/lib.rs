@@ -89,8 +89,8 @@ pub mod schema;
 
 // Re-export authentication types
 pub use authentication::{
-	AllowAny, AnonymousUser, AuthBackend, AuthResult, IsAdminUser, IsAuthenticated,
-	IsAuthenticatedOrReadOnly, Permission, SimpleUser, User,
+	AllowAny, AuthBackend, AuthIdentity, AuthResult, IsAdminUser, IsAuthenticated,
+	IsAuthenticatedOrReadOnly, Permission,
 };
 
 // Re-export JWT types conditionally

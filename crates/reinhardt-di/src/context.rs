@@ -680,14 +680,13 @@ impl InjectionContext {
 			}
 
 			// [Slow path] Scope-aware resolution with cycle detection
-			let _guard = begin_scoped_resolution(type_id, type_name, scope).map_err(|e| {
-				match e {
+			let _guard =
+				begin_scoped_resolution(type_id, type_name, scope).map_err(|e| match e {
 					crate::cycle_detection::CycleError::ScopeViolation { .. } => {
 						crate::DiError::ScopeError(e.to_string())
 					}
 					other => crate::DiError::CircularDependency(other.to_string()),
-				}
-			})?;
+				})?;
 
 			// Actual resolution processing (existing logic)
 			self.resolve_internal::<T>(scope).await

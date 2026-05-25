@@ -13,48 +13,6 @@ pub type ReverseError = Error;
 /// Result type for URL reverse resolution operations.
 pub type ReverseResult<T> = Result<T>;
 
-/// Optimized URL parameter substitution using Aho-Corasick algorithm
-///
-/// This function uses Aho-Corasick for multi-pattern matching, allowing
-/// simultaneous detection of all placeholders in a single pass.
-///
-/// # Algorithm
-///
-/// 1. Extract all placeholder names from the pattern
-/// 2. Build Aho-Corasick automaton for all placeholders (one-time construction)
-/// 3. Find all placeholder positions in O(n+z) where z is number of matches
-/// 4. Replace placeholders from right to left to avoid position shifts
-///
-/// # Performance
-///
-/// - Time complexity: O(n+m+z) where:
-///   - n: pattern length
-///   - m: total parameter values length
-///   - z: number of placeholder matches
-/// - Expected improvement: 3-5x for patterns with 10+ parameters
-///
-/// # Arguments
-///
-/// * `pattern` - URL pattern with placeholders like "/users/{id}/posts/{post_id}/"
-/// * `params` - HashMap of parameter names to values
-///
-/// # Examples
-///
-/// ```
-/// use std::collections::HashMap;
-/// use reinhardt_urls::routers::reverse::reverse_with_aho_corasick;
-///
-/// let mut params = HashMap::new();
-/// params.insert("id".to_string(), "123".to_string());
-/// params.insert("post_id".to_string(), "456".to_string());
-///
-/// let url = reverse_with_aho_corasick("/users/{id}/posts/{post_id}/", &params);
-/// assert_eq!(url, "/users/123/posts/456/");
-/// ```
-// `reverse_with_aho_corasick(pattern, params)` (deprecated since
-// 0.1.0-rc.29) was removed in 0.2.0 per Issue #4520. Use
-// `try_reverse_with_aho_corasick` — the fallible variant — instead.
-
 /// Extract parameter names from a URL pattern
 ///
 /// # Examples
@@ -80,46 +38,6 @@ pub fn extract_param_names(pattern: &str) -> Vec<String> {
 
 	names
 }
-
-/// Single-pass URL parameter substitution algorithm
-///
-/// This function performs placeholder substitution in O(n+m) time complexity,
-/// where n is the length of the pattern and m is the total length of parameter values.
-///
-/// # Algorithm
-///
-/// 1. Iterate through pattern characters once (O(n))
-/// 2. When encountering '{', extract parameter name until '}'
-/// 3. Lookup parameter value in HashMap (O(1) amortized)
-/// 4. Append value to result string
-///
-/// # Performance
-///
-/// - Old algorithm: O(n×m×p) where p is number of parameters
-/// - New algorithm: O(n+m) where m is total length of parameter values
-/// - Expected improvement: 10-50x for patterns with multiple parameters
-///
-/// # Arguments
-///
-/// * `pattern` - URL pattern with placeholders like "/users/{id}/posts/{post_id}/"
-/// * `params` - HashMap of parameter names to values
-///
-/// # Examples
-///
-/// ```
-/// use std::collections::HashMap;
-/// use reinhardt_urls::routers::reverse::reverse_single_pass;
-///
-/// let mut params = HashMap::new();
-/// params.insert("id".to_string(), "123".to_string());
-/// params.insert("post_id".to_string(), "456".to_string());
-///
-/// let url = reverse_single_pass("/users/{id}/posts/{post_id}/", &params);
-/// assert_eq!(url, "/users/123/posts/456/");
-/// ```
-// `reverse_single_pass(pattern, params)` (deprecated since 0.1.0-rc.29)
-// was removed in 0.2.0 per Issue #4520. Use `try_reverse_single_pass` —
-// the fallible variant — instead.
 
 /// Fallible URL parameter substitution using Aho-Corasick algorithm.
 ///

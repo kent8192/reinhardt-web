@@ -30,19 +30,16 @@ fn main() {
 		name: DualCallbackForm,
 		server_fn: update_profile,
 
-		// Lifted variant — captures outer local.
-		on_success_ref: |_form, _updated: &i64| {
-			let _captured = user_id;
-		},
-
-		// Inline variant — consumes the value by move. Stays inside
-		// the generated `fn submit()` body; cannot see outer locals.
-		on_success: |_value| {
-			// Side effect only — does not touch outer scope.
-		},
-
 		fields: {
-			name: CharField { required },
-		},
+			name: CharField {
+				required,
+			}
+		}
+
+		on_success: |_value| {},
+		on_success_ref: |_form, _updated: &i64| {
+				let _captured = user_id;
+			},
+
 	};
 }

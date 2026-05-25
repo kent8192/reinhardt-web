@@ -25,9 +25,9 @@ use reinhardt_pages::Signal;
 use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::page;
 use reinhardt_pages::router::Link;
-use reinhardt_urls::routers::ClientRouter;
 #[cfg(client)]
 use reinhardt_pages::{ResourceState, create_resource};
+use reinhardt_urls::routers::ClientRouter;
 use std::cell::RefCell;
 use std::collections::HashMap;
 

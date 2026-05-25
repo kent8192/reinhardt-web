@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use reinhardt_apps::{Handler, Request, Response, Result};
 use reinhardt_auth::session::InMemorySessionStore;
-use reinhardt_auth::{SimpleUser, User};
+use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
 use reinhardt_middleware::AuthenticationMiddleware;
 use reinhardt_middleware::csrf::{CsrfMiddleware, CsrfMiddlewareConfig};
 use reinhardt_core::security::csrf::{CsrfMeta, check_token, get_secret};
@@ -268,27 +268,46 @@ pub fn get_csrf_token_for_testing(state: &AppState) -> Option<String> {
 	})
 }
 
+/// Local test user implementing `AuthIdentity` for flatpages integration tests.
+/// Replaces `InternalUser` which is now `pub(crate)` in `reinhardt-auth`.
+#[derive(Debug, Clone)]
+struct FlatpagesTestUser {
+	id: Uuid,
+	is_admin: bool,
+}
+
+impl AuthIdentity for FlatpagesTestUser {
+	fn id(&self) -> String {
+		self.id.to_string()
+	}
+
+	fn is_authenticated(&self) -> bool {
+		true
+	}
+
+	fn is_admin(&self) -> bool {
+		self.is_admin
+	}
+}
+
 /// Authentication backend for integration tests
 struct TestAuthBackend {
 	authenticated: bool,
-	test_user: Option<SimpleUser>,
+	test_user: Option<FlatpagesTestUser>,
 }
 
 #[async_trait]
-impl reinhardt_auth::AuthenticationBackend for TestAuthBackend {
+impl AuthBackend for TestAuthBackend {
 	async fn authenticate(
 		&self,
 		_request: &Request,
-	) -> std::result::Result<Option<Box<dyn User>>, reinhardt_auth::AuthenticationError> {
+	) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		if self.authenticated {
 			if let Some(user) = &self.test_user {
 				Ok(Some(Box::new(user.clone())))
 			} else {
-				Ok(Some(Box::new(SimpleUser {
+				Ok(Some(Box::new(FlatpagesTestUser {
 					id: Uuid::now_v7(),
-					username: "testuser".to_string(),
-					email: "test@example.com".to_string(),
-					is_active: true,
 					is_admin: false,
 				})))
 			}
@@ -300,16 +319,13 @@ impl reinhardt_auth::AuthenticationBackend for TestAuthBackend {
 	async fn get_user(
 		&self,
 		_user_id: &str,
-	) -> std::result::Result<Option<Box<dyn User>>, reinhardt_auth::AuthenticationError> {
+	) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		if self.authenticated {
 			if let Some(user) = &self.test_user {
 				Ok(Some(Box::new(user.clone())))
 			} else {
-				Ok(Some(Box::new(SimpleUser {
+				Ok(Some(Box::new(FlatpagesTestUser {
 					id: Uuid::now_v7(),
-					username: "testuser".to_string(),
-					email: "test@example.com".to_string(),
-					is_active: true,
 					is_admin: false,
 				})))
 			}

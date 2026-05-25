@@ -24,7 +24,7 @@
 use syn::{Expr, Ident, Result, Token, braced, ext::IdentExt, parse::ParseStream};
 
 use crate::{
-    ComponentInvocationForm, NamedSlot, PageComponent, PageComponentArg, PageEvent, PageNode,
+	ComponentInvocationForm, NamedSlot, PageComponent, PageComponentArg, PageEvent, PageNode,
 };
 
 /// Parses one brace-form component invocation, starting at the PascalCase

@@ -27,19 +27,19 @@ use reinhardt_pages::ServerFnError;
 pub fn login_form(error_message: Option<&str>) -> Page {
 	let error_html = error_message.map(|msg| {
 		let msg = msg.to_string();
-		page!(|| {
+		page!(|msg: String| {
 			div {
 				class: "admin-alert admin-alert-danger mt-4 text-center text-sm",
 				role: "alert",
 				{ msg }
 			}
-		})()
+		})(msg)
 	});
 
 	let form_page = build_login_form();
 	let error_page = error_html.unwrap_or_else(|| page!(|| { span {} })());
 
-	page!(|| {
+	page!(|form_page: Page, error_page: Page| {
 		div {
 			class: "flex justify-center items-center min-h-screen bg-slate-50 animate__animated animate__fadeIn",
 			div {
@@ -59,7 +59,7 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 			}
 			{ error_page }
 		}
-	})()
+	})(form_page, error_page)
 }
 
 /// Builds the login form HTML structure using the `form!` macro.

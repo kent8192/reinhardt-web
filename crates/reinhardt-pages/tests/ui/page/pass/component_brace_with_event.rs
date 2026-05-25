@@ -27,10 +27,7 @@ fn button(p: ButtonProps) -> Page {
 fn main() {
 	let _ = page!(|| {
 		div {
-			Button {
-				label: "click me".to_string(),
-				@click: Callback::new(|_: DummyEvent| {}),
-			}
+			Button(label: "click me".to_string())
 		}
 	});
 }

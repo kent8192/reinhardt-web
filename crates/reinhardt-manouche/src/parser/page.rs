@@ -559,11 +559,6 @@ fn parse_component_node(input: ParseStream) -> Result<PageNode> {
 	}))
 }
 
-/// Parses the body of a component invocation: `{ children... $slot { } ... }`.
-///
-/// Separates default (unnamed) children from named slots (`$slotname { }`).
-/// Detects duplicate named slots (E1).
-
 /// Converts a DSL slot name to snake_case for duplicate detection.
 fn slot_name_to_snake_case(name: &str) -> String {
 	let mut result = String::with_capacity(name.len() + 4);

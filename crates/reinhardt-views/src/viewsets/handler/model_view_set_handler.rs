@@ -1,8 +1,3 @@
-// The `User` trait and `DefaultUser` struct are deprecated in favour of the new
-// `#[model]`-based user macro system. This file references them during the
-// transition period until viewsets are migrated to `AuthIdentity`.
-#![allow(deprecated)]
-
 //! `ModelViewSetHandler` — Django REST Framework-style CRUD handler.
 //!
 //! Provides the standard list/retrieve/create/update/destroy actions with
@@ -389,87 +384,8 @@ where
 		let (is_admin, is_active, user_obj) = if let (Some(user_id_str), Some(_pool)) =
 			(user_id_string.as_ref(), self.pool.as_ref())
 		{
-			// Parse user_id as UUID
-			#[cfg(feature = "argon2-hasher")]
-			match uuid::Uuid::parse_str(user_id_str) {
-				Ok(user_uuid) => {
-					// Get database connection
-					use reinhardt_db::orm::manager::get_connection;
-					match get_connection().await {
-						Ok(conn) => {
-							// Build SQL query using reinhardt-query for type-safe query construction
-							use reinhardt_auth::DefaultUser;
-							use reinhardt_db::orm::{
-								Alias, ColumnRef, DatabaseBackend, Expr, ExprTrait, Model,
-								MySqlQueryBuilder, PostgresQueryBuilder, Query,
-								QueryStatementBuilder, SqliteQueryBuilder,
-							};
-
-							let table_name = DefaultUser::table_name();
-							let pk_field = DefaultUser::primary_key_field();
-
-							// Build SELECT * query using reinhardt-query
-							let stmt = Query::select()
-								.column(ColumnRef::Asterisk)
-								.from(Alias::new(table_name))
-								.and_where(
-									Expr::col(Alias::new(pk_field))
-										.eq(Expr::value(user_uuid.to_string())),
-								)
-								.to_owned();
-
-							let sql = match conn.backend() {
-								DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-								DatabaseBackend::MySql => stmt.to_string(MySqlQueryBuilder),
-								DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
-							};
-
-							match conn.query_optional(&sql, vec![]).await {
-								Ok(Some(row)) => {
-									// Deserialize user from query result
-									match serde_json::from_value::<DefaultUser>(row.data) {
-										Ok(user) => {
-											use reinhardt_auth::User;
-											// Extract admin and active status from loaded user
-											let is_admin = user.is_admin();
-											let is_active = user.is_active();
-											// Box the user object to store in PermissionContext
-											let boxed_user: Box<dyn User> = Box::new(user);
-											(is_admin, is_active, Some(boxed_user))
-										}
-										Err(_) => {
-											// Deserialization failed, use defaults
-											(false, true, None)
-										}
-									}
-								}
-								Ok(None) => {
-									// User not found, use defaults
-									(false, true, None)
-								}
-								Err(_) => {
-									// Database query failed, use defaults
-									(false, true, None)
-								}
-							}
-						}
-						Err(_) => {
-							// Connection failed, use defaults
-							(false, true, None)
-						}
-					}
-				}
-				Err(_) => {
-					// UUID parse failed, use defaults
-					(false, true, None)
-				}
-			}
-
-			// When argon2-hasher feature is disabled, DefaultUser is not available
-			// Return default values to indicate user retrieval is not supported
-			#[cfg(not(feature = "argon2-hasher"))]
 			{
-				let _ = user_id_str; // Suppress unused variable warning
+				let _ = user_id_str;
 				(false, true, None)
 			}
 		} else {

@@ -308,8 +308,6 @@ mod tests {
 		assert_eq!(response.body, "Unauthorized");
 	}
 
-
-
 	#[test]
 	fn test_call_history_recording() {
 		clear_mocks();
@@ -334,10 +332,9 @@ mod tests {
 	fn test_clear_mocks() {
 		// Register a mock response and record a call
 		MOCK_REGISTRY.with(|r| {
-			r.borrow_mut().responses.insert(
-				"/api/test".to_string(),
-				MockResponse::ok(&"test"),
-			);
+			r.borrow_mut()
+				.responses
+				.insert("/api/test".to_string(), MockResponse::ok(&"test"));
 		});
 		record_mock_call("/api/test", "", "GET", 1000.0);
 		assert!(get_mock_response("/api/test").is_some());
