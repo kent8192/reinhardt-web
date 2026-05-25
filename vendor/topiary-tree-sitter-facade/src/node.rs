@@ -348,8 +348,8 @@ mod wasm {
             cursor: &'a mut TreeCursor<'tree>,
         ) -> impl Iterator<Item = Node<'tree>> + 'a {
             cursor.reset(self.clone());
-            cursor.goto_first_child();
-            let mut done = false;
+            let has_children = cursor.goto_first_child();
+            let mut done = !has_children;
             std::iter::from_fn(move || {
                 if done {
                     return None;
@@ -373,8 +373,8 @@ mod wasm {
             cursor: &'a mut TreeCursor<'tree>,
         ) -> impl Iterator<Item = Node<'tree>> + 'a {
             cursor.reset(self.clone());
-            cursor.goto_first_child();
-            let mut done = false;
+            let has_children = cursor.goto_first_child();
+            let mut done = !has_children;
             std::iter::from_fn(move || {
                 if done {
                     return None;
