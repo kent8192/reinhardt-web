@@ -5,18 +5,14 @@ use reinhardt_pages::page;
 fn main() {
 	// Single prop
 	let _greeting = page!(|name: String| {
-		span {
-			name
-		}
+		span { name }
 	});
 
 	// Multiple props
 	let _user_card = page!(|name: String, age: i32| {
 		div {
 			class: "user-card",
-			span {
-				name
-			}
+			span { name }
 			span {
 				age.to_string()
 			}

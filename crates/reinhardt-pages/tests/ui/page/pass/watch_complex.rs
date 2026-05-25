@@ -10,9 +10,7 @@ fn main() {
 	let _complex = page!(|loading: Signal<bool>, error: Signal<Option<String>>, items: Signal<Vec<String>>| {
 		div {
 			class: "container",
-			h1 {
-				"Dashboard"
-			}
+			h1 { "Dashboard" }
 			watch {
 				if error.get().is_some() {
 					div {
@@ -29,13 +27,9 @@ fn main() {
 						class: "spinner",
 						"Loading..."
 					}
-				}
-				else if items.get().is_empty() {
-					p {
-						"No items available"
-					}
-				}
-				else {
+				} else if items.get().is_empty() {
+					p { "No items available" }
+				} else {
 					ul {
 						class: "item-list",
 						for item in items.get().iter() {
@@ -60,25 +54,14 @@ fn main() {
 					div {
 						if b.get() {
 							span {
-								if c.get() {
-									"All true"
-								}
-								else {
-									"A and B true"
-								}
+								if c.get() { "All true" } else { "A and B true" }
 							}
-						}
-						else {
-							span {
-								"Only A true"
-							}
+						} else {
+							span { "Only A true" }
 						}
 					}
-				}
-				else {
-					span {
-						"A is false"
-					}
+				} else {
+					span { "A is false" }
 				}
 			}
 		}

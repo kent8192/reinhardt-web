@@ -61,9 +61,7 @@ fn test_watch_with_if_condition(bool_signal: Signal<bool>) {
 		div {
 			watch {
 				if signal.get() {
-					span {
-						"Visible"
-					}
+					span { "Visible" }
 				}
 			}
 		}
@@ -96,14 +94,9 @@ fn test_watch_with_if_else(bool_signal: Signal<bool>) {
 		div {
 			watch {
 				if signal.get() {
-					span {
-						"True branch"
-					}
-				}
-				else {
-					span {
-						"False branch"
-					}
+					span { "True branch" }
+				} else {
+					span { "False branch" }
 				}
 			}
 		}
@@ -133,20 +126,12 @@ fn test_watch_with_nested_if(bool_signal: Signal<bool>) {
 			watch {
 				if outer.get() {
 					if inner.get() {
-						span {
-							"Both true"
-						}
+						span { "Both true" }
+					} else {
+						span { "Outer only" }
 					}
-					else {
-						span {
-							"Outer only"
-						}
-					}
-				}
-				else {
-					span {
-						"Outer false"
-					}
+				} else {
+					span { "Outer false" }
 				}
 			}
 		}
@@ -175,12 +160,8 @@ fn test_watch_with_element_child(bool_signal: Signal<bool>) {
 				if signal.get() {
 					div {
 						class: "container",
-						p {
-							"Paragraph 1"
-						}
-						p {
-							"Paragraph 2"
-						}
+						p { "Paragraph 1" }
+						p { "Paragraph 2" }
 					}
 				}
 			}
@@ -206,11 +187,9 @@ fn test_watch_with_text_content(string_signal: Signal<String>) {
 
 	let view = page!(|signal: Signal<String>| {
 		div {
-			watch {
-				{
-					signal.get()
-				}
-			}
+			watch { {
+				signal.get()
+			} }
 		}
 	})(signal.clone());
 
@@ -233,11 +212,9 @@ fn test_watch_with_expression_node(counter_signal: Signal<i32>) {
 
 	let view = page!(|signal: Signal<i32>| {
 		div {
-			watch {
-				{
-					format!("Count: {}", signal.get())
-				}
-			}
+			watch { {
+				format!("Count: {}", signal.get())
+			} }
 		}
 	})(signal.clone());
 
@@ -262,11 +239,9 @@ fn test_watch_with_for_loop(list_signal: Signal<Vec<String>>) {
 		ul {
 			watch {
 				for item in signal.get().iter() {
-					li {
-						{
-							item.clone()
-						}
-					}
+					li { {
+						item.clone()
+					} }
 				}
 			}
 		}
@@ -298,9 +273,7 @@ fn test_watch_nested_in_element(bool_signal: Signal<bool>) {
 					class: "inner",
 					watch {
 						if signal.get() {
-							p {
-								"Deep nested content"
-							}
+							p { "Deep nested content" }
 						}
 					}
 				}
@@ -333,18 +306,14 @@ fn test_multiple_watch_blocks(bool_signal: Signal<bool>, error_signal: Signal<Op
 		div {
 			watch {
 				if loading.get() {
-					div {
-						"Loading..."
-					}
+					div { "Loading..." }
 				}
 			}
 			watch {
 				if error.get().is_some() {
-					div {
-						{
-							error.get().unwrap_or_default()
-						}
-					}
+					div { {
+						error.get().unwrap_or_default()
+					} }
 				}
 			}
 		}
@@ -380,9 +349,7 @@ fn test_watch_deeply_nested(bool_signal: Signal<bool>) {
 						div {
 							watch {
 								if signal.get() {
-									span {
-										"Deep"
-									}
+									span { "Deep" }
 								}
 							}
 						}
@@ -411,11 +378,9 @@ fn test_watch_with_unicode() {
 
 	let view = page!(|text: Signal<String>| {
 		div {
-			watch {
-				{
-					text.get()
-				}
-			}
+			watch { {
+				text.get()
+			} }
 		}
 	})(text.clone());
 
@@ -438,11 +403,9 @@ fn test_watch_with_empty_string() {
 
 	let view = page!(|text: Signal<String>| {
 		div {
-			watch {
-				{
-					text.get()
-				}
-			}
+			watch { {
+				text.get()
+			} }
 		}
 	})(text.clone());
 
@@ -465,11 +428,9 @@ fn test_watch_with_fragment_result(list_signal: Signal<Vec<String>>) {
 
 	let view = page!(|items: Signal<Vec<String>>| {
 		div {
-			watch {
-				{
-					Page::fragment(items.get().iter().map(|i| Page::text(i.clone())).collect::<Vec<Page>>(), )
-				}
-			}
+			watch { {
+				Page::fragment(items.get().iter().map(|i| Page::text(i.clone())).collect::<Vec<Page>>(), )
+			} }
 		}
 	})(items.clone());
 
@@ -526,14 +487,9 @@ fn test_watch_condition_boolean_partitions(#[case] initial_value: bool) {
 		div {
 			watch {
 				if signal.get() {
-					span {
-						"True"
-					}
-				}
-				else {
-					span {
-						"False"
-					}
+					span { "True" }
+				} else {
+					span { "False" }
 				}
 			}
 		}
@@ -564,9 +520,7 @@ fn test_watch_nesting_depth(#[case] depth: usize, bool_signal: Signal<bool>) {
 		div {
 			watch {
 				if signal.get() {
-					span {
-						"Content"
-					}
+					span { "Content" }
 				}
 			}
 		}
@@ -597,12 +551,7 @@ fn test_watch_condition_content_matrix(#[case] condition: bool, #[case] content_
 		page!(|signal: Signal<bool>| {
 			div {
 				watch {
-					if signal.get() {
-						"Text content"
-					}
-					else {
-						"Other text"
-					}
+					if signal.get() { "Text content" } else { "Other text" }
 				}
 			}
 		})(signal.clone())
@@ -611,14 +560,9 @@ fn test_watch_condition_content_matrix(#[case] condition: bool, #[case] content_
 			div {
 				watch {
 					if signal.get() {
-						span {
-							"Element content"
-						}
-					}
-					else {
-						span {
-							"Other element"
-						}
+						span { "Element content" }
+					} else {
+						span { "Other element" }
 					}
 				}
 			}
@@ -697,23 +641,15 @@ fn test_watch_complex_state_machine() {
 			}
 			watch {
 				if loading.get() {
-					div {
-						"Loading..."
-					}
-				}
-				else if data.get().is_empty() {
-					div {
-						"No data"
-					}
-				}
-				else {
+					div { "Loading..." }
+				} else if data.get().is_empty() {
+					div { "No data" }
+				} else {
 					ul {
 						for item in data.get().iter() {
-							li {
-								{
-									item.clone()
-								}
-							}
+							li { {
+								item.clone()
+							} }
 						}
 					}
 				}

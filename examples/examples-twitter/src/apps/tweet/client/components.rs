@@ -52,25 +52,17 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> Page {
 							let current_liked = liked_for_click.get();
 							let current_count = like_count_for_click.get();
 							liked_for_click.set(!current_liked);
-							like_count_for_click.set(if current_liked {
-								current_count - 1
-							}
-							else {
-								current_count + 1
-							});
+							like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
 						}
 					},
 					{
 						icons::heart_icon_filled()
 					}
-					span {
-						{
-							format!("{}", like_count_signal.get())
-						}
-					}
+					span { {
+						format!("{}", like_count_signal.get())
+					} }
 				}
-			}
-			else {
+			} else {
 				button {
 					class: "tweet-action-btn hover:text-danger",
 					type: "button",
@@ -82,22 +74,15 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> Page {
 							let current_liked = liked_for_click.get();
 							let current_count = like_count_for_click.get();
 							liked_for_click.set(!current_liked);
-							like_count_for_click.set(if current_liked {
-								current_count - 1
-							}
-							else {
-								current_count + 1
-							});
+							like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
 						}
 					},
 					{
 						icons::heart_icon_outline()
 					}
-					span {
-						{
-							format!("{}", like_count_signal_else.get())
-						}
-					}
+					span { {
+						format!("{}", like_count_signal_else.get())
+					} }
 				}
 			}
 		}
@@ -149,8 +134,7 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 				div {
 					class: "hidden",
 				}
-			}
-			else {
+			} else {
 				div {
 					class: "tweet-card animate-fade-in",
 					div {
@@ -225,9 +209,7 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 									{
 										icons::chat_bubble_icon()
 									}
-									span {
-										"0"
-									}
+									span { "0" }
 								}
 								button {
 									class: "tweet-action-btn hover:text-success",
@@ -236,9 +218,7 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 									{
 										icons::retweet_icon()
 									}
-									span {
-										"0"
-									}
+									span { "0" }
 								}
 								{
 									like_button(liked_signal.clone(), like_count_signal.clone())
@@ -324,29 +304,16 @@ pub fn tweet_form() -> Page {
 		watch: {
 			char_counter: |form| {
 				let char_count = form.content().get().len();
-				let progress_percent =(char_count as f64 / 280.0 * 100.0).min(100.0);
+				let progress_percent = (char_count as f64 / 280.0 * 100.0).min(100.0);
 				let width_style = format!("width: {}%", progress_percent);
-				let(text_class, bar_class) = if char_count > 280 {
-					("text-sm font-medium text-danger".to_string(), "h-full bg-danger transition-all".to_string(), )
-				}
-				else if char_count > 250 {
-					("text-sm font-medium text-warning".to_string(), "h-full bg-warning transition-all".to_string(), )
-				}
-				else if char_count > 0 {
-					("text-sm font-medium text-content-tertiary".to_string(), "h-full bg-brand transition-all".to_string(), )
-				}
-				else {
-					("text-sm font-medium text-content-tertiary".to_string(), "h-full bg-surface-tertiary transition-all".to_string(), )
-				};
+				let(text_class, bar_class) = if char_count > 280 { ("text-sm font-medium text-danger".to_string(), "h-full bg-danger transition-all".to_string(), ) } else if char_count > 250 { ("text-sm font-medium text-warning".to_string(), "h-full bg-warning transition-all".to_string(), ) } else if char_count > 0 { ("text-sm font-medium text-content-tertiary".to_string(), "h-full bg-brand transition-all".to_string(), ) } else { ("text-sm font-medium text-content-tertiary".to_string(), "h-full bg-surface-tertiary transition-all".to_string(), ) };
 				let display_text = format!("{}/280", char_count);
 				page!(|text_class: String, bar_class: String, width_style: String, display_text: String| {
 					div {
 						class: "flex items-center gap-2",
 						div {
 							class: text_class,
-							{
-								display_text
-							}
+							{ display_text }
 						}
 						div {
 							class: "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden",
@@ -367,20 +334,10 @@ pub fn tweet_form() -> Page {
 					div {
 						button {
 							type: "submit",
-							class: if is_disabled {
-								"btn-primary opacity-50 cursor-not-allowed"
-							}
-							else {
-								"btn-primary"
-							},
+							class: if is_disabled { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
 							disabled: is_disabled,
 							{
-								if is_loading {
-									"Posting..."
-								}
-								else {
-									"Post"
-								}
+								if is_loading { "Posting..." } else { "Post" }
 							}
 						}
 					}
@@ -392,15 +349,8 @@ pub fn tweet_form() -> Page {
 				let error_msg = err.unwrap_or_default();
 				page!(|has_error: bool, error_msg: String| {
 					div {
-						class: if has_error {
-							"alert-danger mb-3"
-						}
-						else {
-							"hidden"
-						},
-						{
-							error_msg
-						}
+						class: if has_error { "alert-danger mb-3" } else { "hidden" },
+						{ error_msg }
 					}
 				})(has_error, error_msg)
 			},
@@ -428,9 +378,7 @@ pub fn tweet_form() -> Page {
 					}
 					div {
 						class: "flex-1",
-						{
-							form_view
-						}
+						{ form_view }
 					}
 				}
 			}
@@ -497,8 +445,7 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 							"Loading tweets..."
 						}
 					}
-				}
-				else if error_signal.get().is_some() {
+				} else if error_signal.get().is_some() {
 					div {
 						class: "alert-danger",
 						role: "alert",
@@ -507,15 +454,12 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 							{
 								icons::error_circle_icon()
 							}
-							span {
-								{
-									error_signal.get().unwrap_or_default()
-								}
-							}
+							span { {
+								error_signal.get().unwrap_or_default()
+							} }
 						}
 					}
-				}
-				else if tweets_signal.get().is_empty() {
+				} else if tweets_signal.get().is_empty() {
 					div {
 						class: "flex flex-col items-center justify-center py-16 text-center",
 						div {
@@ -533,8 +477,7 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 							"Be the first to share something!"
 						}
 					}
-				}
-				else {
+				} else {
 					div {
 						class: "card overflow-hidden",
 						{

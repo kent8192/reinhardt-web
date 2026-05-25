@@ -9,9 +9,7 @@ fn main() {
 		server_fn: submit,
 		method: Post,
 		fields: {
-			payload: CharField {
-				required
-			},
+			payload: CharField { required },
 		},
 		strip_arguments: {
 			csrf_token: String::new(),

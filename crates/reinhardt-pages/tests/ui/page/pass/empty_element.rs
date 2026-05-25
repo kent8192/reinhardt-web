@@ -5,8 +5,7 @@ use reinhardt_pages::page;
 fn main() {
 	// Empty div
 	let _empty_div = page!(|| {
-		div {
-		}
+		div {}
 	});
 
 	// Empty span with attribute only
@@ -20,10 +19,8 @@ fn main() {
 	let _nested_empty = page!(|| {
 		div {
 			class: "container",
-			div {
-			}
-			div {
-			}
+			div {}
+			div {}
 		}
 	});
 
@@ -31,8 +28,7 @@ fn main() {
 	let _conditional_empty = page!(|show: bool| {
 		div {
 			if show {
-				span {
-				}
+				span {}
 			}
 		}
 	});
@@ -41,8 +37,7 @@ fn main() {
 	let _loop_empty = page!(|count: usize| {
 		div {
 			for _i in 0 .. count {
-				br {
-				}
+				br {}
 			}
 		}
 	});

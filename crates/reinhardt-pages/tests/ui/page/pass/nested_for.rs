@@ -7,11 +7,7 @@ fn main() {
 	let _simple = page!(|items: Vec<String>| {
 		ul {
 			for item in items {
-				li {
-					{
-						item
-					}
-				}
+				li { { item } }
 			}
 		}
 	});
@@ -22,18 +18,13 @@ fn main() {
 			for(num, active)in items {
 				li {
 					if active {
-						strong {
-							{
-								format!("{}", num)
-							}
-						}
-					}
-					else {
-						span {
-							{
-								format!("{}", num)
-							}
-						}
+						strong { {
+							format!("{}", num)
+						} }
+					} else {
+						span { {
+							format!("{}", num)
+						} }
 					}
 				}
 			}

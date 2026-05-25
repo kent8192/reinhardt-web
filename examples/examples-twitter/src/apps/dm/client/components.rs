@@ -79,7 +79,7 @@ fn message_item(message: &MessageInfo, is_own_message: bool) -> Page {
 		"dm-message other bg-surface-secondary rounded-2xl rounded-bl-sm px-4 py-2 max-w-[70%]"
 	};
 
-	page!(|align_class: &'static str, bubble_class: &'static str, sender: String, content: String, timestamp: String, is_own_message: bool| {
+	page!(|align_class: &'static str, bubble_class: &' static str, sender: String, content: String, timestamp: String, is_own_message: bool| {
 		div {
 			class: align_class,
 			div {
@@ -87,27 +87,16 @@ fn message_item(message: &MessageInfo, is_own_message: bool) -> Page {
 				if ! is_own_message {
 					div {
 						class: "text-xs font-medium text-content-secondary mb-1",
-						{
-							sender
-						}
+						{ sender }
 					}
 				}
 				p {
 					class: "text-sm break-words",
-					{
-						content
-					}
+					{ content }
 				}
 				div {
-					class: if is_own_message {
-						"text-xs text-white/70 mt-1 text-right"
-					}
-					else {
-						"text-xs text-content-tertiary mt-1"
-					},
-					{
-						timestamp
-					}
+					class: if is_own_message { "text-xs text-white/70 mt-1 text-right" } else { "text-xs text-content-tertiary mt-1" },
+					{ timestamp }
 				}
 			}
 		}
@@ -127,22 +116,12 @@ fn connection_status(is_connected: bool) -> Page {
 		div {
 			class: "flex items-center gap-2 text-sm",
 			div {
-				class: if is_connected {
-					"w-2 h-2 rounded-full bg-success animate-pulse"
-				}
-				else {
-					"w-2 h-2 rounded-full bg-warning"
-				},
+				class: if is_connected { "w-2 h-2 rounded-full bg-success animate-pulse" } else { "w-2 h-2 rounded-full bg-warning" },
 			}
 			span {
 				class: "text-content-secondary",
 				{
-					if is_connected {
-						"Connected"
-					}
-					else {
-						"Connecting..."
-					}
+					if is_connected { "Connected" } else { "Connecting..." }
 				}
 			}
 		}
@@ -190,11 +169,9 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 					class: "text-lg font-semibold",
 					"Direct Messages"
 				}
-				watch {
-					{
-						connection_status(matches!(ws_state.get(), ConnectionState::Open))
-					}
-				}
+				watch { {
+					connection_status(matches!(ws_state.get(), ConnectionState::Open))
+				} }
 			}
 			div {
 				class: "dm-messages flex-1 overflow-y-auto p-4 space-y-3",
@@ -210,8 +187,7 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 								"Loading messages..."
 							}
 						}
-					}
-					else if error_signal.get().is_some() {
+					} else if error_signal.get().is_some() {
 						div {
 							class: "alert-danger",
 							role: "alert",
@@ -219,8 +195,7 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 								error_signal.get().unwrap_or_default()
 							}
 						}
-					}
-					else if messages_signal.get().is_empty() {
+					} else if messages_signal.get().is_empty() {
 						div {
 							class: "flex flex-col items-center justify-center py-16 text-center",
 							div {
@@ -238,8 +213,7 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 								"Send a message to start the conversation!"
 							}
 						}
-					}
-					else {
+					} else {
 						div {
 							class: "space-y-3",
 							{
@@ -384,8 +358,7 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> Page {
 								"Loading conversations..."
 							}
 						}
-					}
-					else if error_signal.get().is_some() {
+					} else if error_signal.get().is_some() {
 						div {
 							class: "p-4",
 							div {
@@ -396,8 +369,7 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> Page {
 								}
 							}
 						}
-					}
-					else if rooms_signal.get().is_empty() {
+					} else if rooms_signal.get().is_empty() {
 						div {
 							class: "flex flex-col items-center justify-center py-16 text-center px-4",
 							div {
@@ -415,13 +387,10 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> Page {
 								"Start a new conversation with someone!"
 							}
 						}
-					}
-					else {
-						div {
-							{
-								Page::Fragment(rooms_signal.get().iter().map(|r| room_item(r, on_room_select.clone())).collect::<Vec<_>>(), )
-							}
-						}
+					} else {
+						div { {
+							Page::Fragment(rooms_signal.get().iter().map(|r| room_item(r, on_room_select.clone())).collect::<Vec<_>>(), )
+						} }
 					}
 				}
 			}

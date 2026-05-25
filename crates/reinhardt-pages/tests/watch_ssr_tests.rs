@@ -78,11 +78,9 @@ fn test_watch_ssr_basic_render(string_signal: Signal<String>) {
 		div {
 			class: "container",
 			watch {
-				span {
-					{
-						signal.get()
-					}
-				}
+				span { {
+					signal.get()
+				} }
 			}
 		}
 	})(signal.clone());
@@ -114,9 +112,7 @@ fn test_watch_ssr_condition_true(bool_signal_true: Signal<bool>) {
 		div {
 			watch {
 				if signal.get() {
-					span {
-						"Visible content"
-					}
+					span { "Visible content" }
 				}
 			}
 		}
@@ -147,9 +143,7 @@ fn test_watch_ssr_condition_false(bool_signal_false: Signal<bool>) {
 		div {
 			watch {
 				if signal.get() {
-					span {
-						"Should not appear"
-					}
+					span { "Should not appear" }
 				}
 			}
 		}
@@ -179,14 +173,9 @@ fn test_watch_ssr_if_else_true_branch(bool_signal_true: Signal<bool>) {
 		div {
 			watch {
 				if signal.get() {
-					span {
-						"True branch"
-					}
-				}
-				else {
-					span {
-						"False branch"
-					}
+					span { "True branch" }
+				} else {
+					span { "False branch" }
 				}
 			}
 		}
@@ -210,14 +199,9 @@ fn test_watch_ssr_if_else_false_branch(bool_signal_false: Signal<bool>) {
 		div {
 			watch {
 				if signal.get() {
-					span {
-						"True branch"
-					}
-				}
-				else {
-					span {
-						"False branch"
-					}
+					span { "True branch" }
+				} else {
+					span { "False branch" }
 				}
 			}
 		}
@@ -250,9 +234,7 @@ fn test_watch_ssr_nested_elements(bool_signal_true: Signal<bool>) {
 						class: "section",
 						article {
 							class: "article",
-							p {
-								"Nested paragraph"
-							}
+							p { "Nested paragraph" }
 						}
 					}
 				}
@@ -287,11 +269,9 @@ fn test_watch_ssr_content_escaping() {
 
 	let view = page!(|xss_content: Signal<String>| {
 		div {
-			watch {
-				{
-					xss_content.get()
-				}
-			}
+			watch { {
+				xss_content.get()
+			} }
 		}
 	})(xss_content.clone());
 
@@ -322,11 +302,9 @@ fn test_watch_ssr_for_loop(list_signal: Signal<Vec<String>>) {
 		ul {
 			watch {
 				for item in items.get().iter() {
-					li {
-						{
-							item.clone()
-						}
-					}
+					li { {
+						item.clone()
+					} }
 				}
 			}
 		}
@@ -361,11 +339,9 @@ fn test_watch_ssr_expression(counter_signal: Signal<i32>) {
 
 	let view = page!(|counter: Signal<i32>| {
 		div {
-			watch {
-				{
-					format!("Count: {}", counter.get())
-				}
-			}
+			watch { {
+				format!("Count: {}", counter.get())
+			} }
 		}
 	})(counter.clone());
 
@@ -437,11 +413,9 @@ fn test_watch_ssr_unicode() {
 
 	let view = page!(|content: Signal<String>| {
 		div {
-			watch {
-				{
-					content.get()
-				}
-			}
+			watch { {
+				content.get()
+			} }
 		}
 	})(unicode_content.clone());
 
@@ -500,11 +474,9 @@ fn test_watch_ssr_empty_content() {
 	let view = page!(|empty: Signal<String>| {
 		div {
 			class: "wrapper",
-			watch {
-				{
-					empty.get()
-				}
-			}
+			watch { {
+				empty.get()
+			} }
 		}
 	})(empty.clone());
 
@@ -532,11 +504,9 @@ fn test_watch_ssr_with_renderer(ssr_renderer: SsrRenderer, string_signal: Signal
 	let view = page!(|signal: Signal<String>| {
 		div {
 			watch {
-				p {
-					{
-						signal.get()
-					}
-				}
+				p { {
+					signal.get()
+				} }
 			}
 		}
 	})(signal.clone());
@@ -570,9 +540,7 @@ fn test_watch_ssr_deeply_nested(bool_signal_true: Signal<bool>) {
 						if signal.get() {
 							div {
 								class: "level-4",
-								span {
-									"Deep content"
-								}
+								span { "Deep content" }
 							}
 						}
 					}
@@ -613,11 +581,9 @@ fn test_watch_ssr_fragment_result(list_signal: Signal<Vec<String>>) {
 
 	let view = page!(|items: Signal<Vec<String>>| {
 		div {
-			watch {
-				{
-					Page::fragment(items.get().iter().map(|i| Page::text(i.clone())).collect::<Vec<Page>>(), )
-				}
-			}
+			watch { {
+				Page::fragment(items.get().iter().map(|i| Page::text(i.clone())).collect::<Vec<Page>>(), )
+			} }
 		}
 	})(items.clone());
 
@@ -736,10 +702,8 @@ fn test_watch_ssr_void_elements(bool_signal_true: Signal<bool>) {
 		div {
 			watch {
 				if show.get() {
-					br {
-					}
-					hr {
-					}
+					br {}
+					hr {}
 					img {
 						src: "/image.png",
 						alt: "Test image",

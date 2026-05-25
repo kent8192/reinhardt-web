@@ -91,8 +91,7 @@ pub fn profile_view(user_id: Uuid) -> Page {
 							"Loading profile..."
 						}
 					}
-				}
-				else if error_signal.get().is_some() {
+				} else if error_signal.get().is_some() {
 					div {
 						class: "p-4",
 						div {
@@ -103,16 +102,13 @@ pub fn profile_view(user_id: Uuid) -> Page {
 								{
 									icons::error_circle_icon()
 								}
-								span {
-									{
-										error_signal.get().unwrap_or_default()
-									}
-								}
+								span { {
+									error_signal.get().unwrap_or_default()
+								} }
 							}
 						}
 					}
-				}
-				else if profile_signal.get().is_some() {
+				} else if profile_signal.get().is_some() {
 					div {
 						class: "card overflow-hidden animate-fade-in",
 						div {
@@ -124,9 +120,7 @@ pub fn profile_view(user_id: Uuid) -> Page {
 								class: "flex justify-between items-end -mt-12 sm:-mt-16 mb-4",
 								div {
 									class: "avatar-xl sm:w-32 sm:h-32 rounded-full border-4 border-surface-primary bg-surface-tertiary flex items-center justify-center text-3xl sm:text-4xl font-bold text-content-secondary",
-									span {
-										"👤"
-									}
+									span { "👤" }
 								}
 								a {
 									href: format!("/profile/{}/edit", user_id_str),
@@ -160,11 +154,9 @@ pub fn profile_view(user_id: Uuid) -> Page {
 											{
 												icons::location_pin_icon()
 											}
-											span {
-												{
-													data.location.clone().unwrap_or_default()
-												}
-											}
+											span { {
+												data.location.clone().unwrap_or_default()
+											} }
 										}
 									}
 									if data.website.is_some() {
@@ -176,11 +168,9 @@ pub fn profile_view(user_id: Uuid) -> Page {
 											{
 												icons::link_icon()
 											}
-											span {
-												{
-													data.website.clone().unwrap_or_default()
-												}
-											}
+											span { {
+												data.website.clone().unwrap_or_default()
+											} }
 										}
 									}
 								}
@@ -397,9 +387,7 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 									{
 										icons::success_check_icon()
 									}
-									span {
-										"Profile updated successfully! Redirecting..."
-									}
+									span { "Profile updated successfully! Redirecting..." }
 								}
 							}
 						}
@@ -414,18 +402,14 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 									{
 										icons::error_circle_icon()
 									}
-									span {
-										{
-											error_signal.get().unwrap_or_default()
-										}
-									}
+									span { {
+										error_signal.get().unwrap_or_default()
+									} }
 								}
 							}
 						}
 					}
-					{
-						form_view
-					}
+					{ form_view }
 					div {
 						class: "flex justify-end gap-3 pt-4 border-t border-border mt-5",
 						a {
@@ -448,8 +432,7 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 										"Saving..."
 									}
 								}
-							}
-							else {
+							} else {
 								button {
 									type: "submit",
 									class: "btn-primary",

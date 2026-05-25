@@ -74,9 +74,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 						button {
 							type: "button",
 							class: "btn-secondary opacity-50 cursor-not-allowed",
-							disabled: {
-								true
-							},
+							disabled: { true },
 							aria_label: "Loading",
 							@click: {
 								let toggle_follow = toggle_follow.clone();
@@ -92,8 +90,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 								}
 							}
 						}
-					}
-					else if is_following_signal.get() {
+					} else if is_following_signal.get() {
 						button {
 							type: "button",
 							class: "btn-outline group",
@@ -113,8 +110,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 								"Unfollow"
 							}
 						}
-					}
-					else {
+					} else {
 						button {
 							type: "button",
 							class: "btn-primary",
@@ -162,9 +158,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 				button {
 					type: "button",
 					class: btn_class,
-					{
-						btn_text
-					}
+					{ btn_text }
 				}
 			}
 		})(btn_class, btn_text)
@@ -196,23 +190,17 @@ fn user_card(user: &UserInfo) -> Page {
 				class: "flex items-center gap-3",
 				div {
 					class: "user-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold flex-shrink-0",
-					{
-						avatar_initial
-					}
+					{ avatar_initial }
 				}
 				div {
 					class: "flex-1 min-w-0",
 					div {
 						class: "font-semibold text-content-primary truncate",
-						{
-							username
-						}
+						{ username }
 					}
 					div {
 						class: "text-content-secondary text-sm truncate",
-						{
-							display_username
-						}
+						{ display_username }
 					}
 				}
 				{
@@ -309,9 +297,7 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 				}
 				h2 {
 					class: "text-xl font-bold text-content-primary",
-					{
-						title
-					}
+					{ title }
 				}
 			}
 			watch {
@@ -326,8 +312,7 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 							"Loading..."
 						}
 					}
-				}
-				else if error_signal.get().is_some() {
+				} else if error_signal.get().is_some() {
 					div {
 						class: "alert-danger",
 						div {
@@ -335,15 +320,12 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 							{
 								icons::error_circle_icon()
 							}
-							span {
-								{
-									error_signal.get().unwrap_or_default()
-								}
-							}
+							span { {
+								error_signal.get().unwrap_or_default()
+							} }
 						}
 					}
-				}
-				else if users_signal.get().is_empty() {
+				} else if users_signal.get().is_empty() {
 					div {
 						class: "flex flex-col items-center justify-center py-16 text-center",
 						div {
@@ -368,8 +350,7 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 							}
 						}
 					}
-				}
-				else {
+				} else {
 					div {
 						class: "card overflow-hidden",
 						{

@@ -7,9 +7,7 @@ fn main() {
 	let _form = form! {
 		action: "/api/submit",
 		fields: {
-			username: CharField {
-				required
-			},
+			username: CharField { required },
 		},
 	};
 }

@@ -7,9 +7,7 @@ fn main() {
 	let _with_for = page!(|items: Vec<String>| {
 		ul {
 			for item in items {
-				li {
-					item
-				}
+				li { item }
 			}
 		}
 	});
@@ -22,9 +20,7 @@ fn main() {
 					span {
 						index.to_string()
 					}
-					span {
-						item
-					}
+					span { item }
 				}
 			}
 		}

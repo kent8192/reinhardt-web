@@ -12,12 +12,8 @@ fn main() {
 			value: |form| form.x().get() * form.y().get(),
 		},
 		fields: {
-			x: IntegerField {
-				required
-			},
-			y: IntegerField {
-				required
-			},
+			x: IntegerField { required },
+			y: IntegerField { required },
 		},
 	};
 }

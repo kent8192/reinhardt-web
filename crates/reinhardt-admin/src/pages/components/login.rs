@@ -31,9 +31,7 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 			div {
 				class: "admin-alert admin-alert-danger mt-4 text-center text-sm",
 				role: "alert",
-				{
-					msg
-				}
+				{ msg }
 			}
 		})()
 	});
@@ -56,14 +54,10 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 						class: "text-sm text-slate-500 text-center mb-6",
 						"Sign in to manage your application"
 					}
-					{
-						form_page
-					}
+					{ form_page }
 				}
 			}
-			{
-				error_page
-			}
+			{ error_page }
 		}
 	})()
 }
@@ -120,12 +114,7 @@ fn build_login_form() -> Page {
 			if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
 				if let Some(error_div) = doc.get_element_by_id("login-error") {
 					let _ = error_div.class_list().remove_1("hidden");
-					error_div.set_text_content(Some(if error_msg.contains("401") {
-						"Invalid username or password"
-					}
-					else {
-						"Login failed. Please try again."
-					}));
+					error_div.set_text_content(Some(if error_msg.contains("401") { "Invalid username or password" } else { "Login failed. Please try again." }));
 				}
 			}
 		},

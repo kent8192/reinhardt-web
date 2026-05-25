@@ -133,9 +133,7 @@ pub fn button_with_size(
 						on_click.set(true);
 					}
 				},
-				{
-					text
-				}
+				{ text }
 			}
 		})(class, text, disabled)
 	}
@@ -145,15 +143,11 @@ pub fn button_with_size(
 		let _ = on_click; // Suppress unused warning
 		page!(|class: String, text: String, disabled: bool| {
 			button {
-				class: {
-					class
-				},
+				class: { class },
 				type: "button",
 				disabled: disabled,
 				data_reactive: "true",
-				{
-					text
-				}
+				{ text }
 			}
 		})(class, text, disabled)
 	}
@@ -190,9 +184,7 @@ pub fn loading_spinner_large(message: &str) -> Page {
 			}
 			p {
 				class: "text-content-secondary text-sm",
-				{
-					message
-				}
+				{ message }
 			}
 		}
 	})(message)
@@ -220,9 +212,7 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 					}
 					span {
 						class: "flex-1",
-						{
-							message
-						}
+						{ message }
 					}
 					button {
 						type: "button",
@@ -245,11 +235,7 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 					{
 						icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5")
 					}
-					span {
-						{
-							message
-						}
-					}
+					span { { message } }
 				}
 			}
 		})(message)
@@ -274,11 +260,7 @@ pub fn success_alert(message: &str) -> Page {
 				{
 					icons::success_check_icon()
 				}
-				span {
-					{
-						message
-					}
-				}
+				span { { message } }
 			}
 		}
 	})(message)
@@ -296,11 +278,7 @@ pub fn warning_alert(message: &str) -> Page {
 				{
 					icons::warning_icon()
 				}
-				span {
-					{
-						message
-					}
-				}
+				span { { message } }
 			}
 		}
 	})(message)
@@ -343,9 +321,7 @@ pub fn text_input(
 				label {
 					for: id_owned.clone(),
 					class: "form-label",
-					{
-						label_owned
-					}
+					{ label_owned }
 				}
 				watch {
 					input {
@@ -389,9 +365,7 @@ pub fn text_input(
 						id_owned.clone()
 					},
 					class: "form-label",
-					{
-						label_owned
-					}
+					{ label_owned }
 				}
 				watch {
 					input {
@@ -472,9 +446,7 @@ pub fn textarea(
 				label {
 					for: id_owned.clone(),
 					class: "form-label",
-					{
-						label_owned
-					}
+					{ label_owned }
 				}
 				watch {
 					textarea {
@@ -504,15 +476,7 @@ pub fn textarea(
 						div {
 							class: "flex justify-end mt-1",
 							span {
-								class: if value_signal_for_count.get().len() > max_length {
-									"text-danger font-medium"
-								}
-								else if value_signal_for_count.get().len() > max_length * 9 / 10 {
-									"text-warning font-medium"
-								}
-								else {
-									"text-content-tertiary"
-								},
+								class: if value_signal_for_count.get().len() > max_length { "text-danger font-medium" } else if value_signal_for_count.get().len() > max_length * 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" },
 								{
 									format!("{}/{}", value_signal_for_count.get().len(), max_length)
 								}
@@ -544,9 +508,7 @@ pub fn textarea(
 						id_owned.clone()
 					},
 					class: "form-label",
-					{
-						label_owned
-					}
+					{ label_owned }
 				}
 				watch {
 					textarea {
@@ -575,25 +537,13 @@ pub fn textarea(
 				watch {
 					if show_count {
 						let char_count = value_signal.get().len();
-						let count_class = if char_count > max_length {
-							"text-danger font-medium"
-						}
-						else if char_count > max_length * 9 / 10 {
-							"text-warning font-medium"
-						}
-						else {
-							"text-content-tertiary"
-						};
+						let count_class = if char_count > max_length { "text-danger font-medium" } else if char_count > max_length * 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" };
 						let count_text = format!("{}/{}", char_count, max_length);
 						div {
 							class: "flex justify-end mt-1",
 							span {
-								class: {
-									count_class
-								},
-								{
-									count_text
-								}
+								class: { count_class },
+								{ count_text }
 							}
 						}
 					}
@@ -715,8 +665,7 @@ pub fn theme_toggle() -> Page {
 /// Displays an empty div (useful for conditional rendering).
 pub fn empty() -> Page {
 	page!(|| {
-		div {
-		}
+		div {}
 	})()
 }
 
@@ -742,9 +691,7 @@ pub fn badge(text: &str, primary: bool) -> Page {
 	page!(|text: String, class: String| {
 		span {
 			class: class,
-			{
-				text
-			}
+			{ text }
 		}
 	})(text, class)
 }

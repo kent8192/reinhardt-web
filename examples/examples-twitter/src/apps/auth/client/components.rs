@@ -133,18 +133,14 @@ pub fn login_form() -> Page {
 										{
 											icons::error_circle_icon()
 										}
-										span {
-											{
-												error_signal.get().unwrap_or_default()
-											}
-										}
+										span { {
+											error_signal.get().unwrap_or_default()
+										} }
 									}
 								}
 							}
 						}
-						{
-							form_view
-						}
+						{ form_view }
 						div {
 							class: "flex items-center justify-between mt-4",
 							label {
@@ -181,8 +177,7 @@ pub fn login_form() -> Page {
 											"Signing in..."
 										}
 									}
-								}
-								else {
+								} else {
 									button {
 										type: "submit",
 										class: "btn-primary w-full",
@@ -362,18 +357,14 @@ pub fn register_form() -> Page {
 										{
 											icons::error_circle_icon()
 										}
-										span {
-											{
-												error_signal.get().unwrap_or_default()
-											}
-										}
+										span { {
+											error_signal.get().unwrap_or_default()
+										} }
 									}
 								}
 							}
 						}
-						{
-							form_view
-						}
+						{ form_view }
 						div {
 							class: "flex items-start gap-2 mt-4",
 							input {
@@ -411,8 +402,7 @@ pub fn register_form() -> Page {
 											"Creating account..."
 										}
 									}
-								}
-								else {
+								} else {
 									button {
 										type: "submit",
 										class: "btn-primary w-full",

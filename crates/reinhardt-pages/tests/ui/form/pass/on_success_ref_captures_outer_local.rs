@@ -50,9 +50,7 @@ fn main() {
 			let _captured = user_id;
 		},
 		fields: {
-			name: CharField {
-				required
-			},
+			name: CharField { required },
 		},
 	};
 }

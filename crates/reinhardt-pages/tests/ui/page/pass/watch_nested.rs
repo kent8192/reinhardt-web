@@ -15,9 +15,7 @@ fn main() {
 				article {
 					watch {
 						if active.get() {
-							p {
-								"Active content"
-							}
+							p { "Active content" }
 						}
 					}
 				}
@@ -30,9 +28,7 @@ fn main() {
 		div {
 			watch {
 				if loading.get() {
-					div {
-						"Loading..."
-					}
+					div { "Loading..." }
 				}
 			}
 			watch {

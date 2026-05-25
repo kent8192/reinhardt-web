@@ -31,11 +31,8 @@ fn main() {
 		name: MinimalForm,
 		action: "/api/submit",
 		fields: {
-			name: CharField {
-				required
-			},
-			submit: SubmitButton {
-			},
+			name: CharField { required },
+			submit: SubmitButton {},
 		},
 	};
 
@@ -44,9 +41,7 @@ fn main() {
 		name: DisabledForm,
 		action: "/api/submit",
 		fields: {
-			email: EmailField {
-				required
-			},
+			email: EmailField { required },
 			submit: SubmitButton {
 				label: "Send",
 				id: "submit-btn",

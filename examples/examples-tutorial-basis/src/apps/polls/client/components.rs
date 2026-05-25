@@ -91,9 +91,7 @@ pub fn polls_index() -> Page {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			div {
 				class: "flex justify-between items-center mb-4",
-				h1 {
-					"Polls"
-				}
+				h1 { "Polls" }
 				a {
 					href: new_question_href,
 					class: "btn-primary",
@@ -123,14 +121,12 @@ pub fn polls_index() -> Page {
 							}
 						}
 					}
-				}
-				else if load_questions_signal.result().unwrap_or_default().is_empty() {
+				} else if load_questions_signal.result().unwrap_or_default().is_empty() {
 					p {
 						class: "text-muted",
 						"No polls are available."
 					}
-				}
-				else {
+				} else {
 					div {
 						class: "space-y-2",
 						for question in load_questions_signal.result().unwrap_or_default() {
@@ -145,11 +141,9 @@ pub fn polls_index() -> Page {
 											question.question_text.clone()
 										}
 									}
-									small {
-										{
-											question.pub_date.format("%Y-%m-%d %H:%M").to_string()
-										}
-									}
+									small { {
+										question.pub_date.format("%Y-%m-%d %H:%M").to_string()
+									} }
 								}
 							}
 						}
@@ -241,20 +235,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 						class: "mt-3",
 						button {
 							type: "submit",
-							class: if is_loading {
-								"btn-primary opacity-50 cursor-not-allowed"
-							}
-							else {
-								"btn-primary"
-							},
+							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
 							disabled: is_loading,
 							{
-								if is_loading {
-									"Voting..."
-								}
-								else {
-									"Vote"
-								}
+								if is_loading { "Voting..." } else { "Vote" }
 							}
 						}
 						a {
@@ -333,8 +317,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 							}
 						}
 					}
-				}
-				else if load_detail_signal.error().is_some() {
+				} else if load_detail_signal.error().is_some() {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
@@ -354,8 +337,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 							"Back to Polls"
 						}
 					}
-				}
-				else if let Some((ref q, ref choices)) = load_detail_signal.result() {
+				} else if let Some((ref q, ref choices)) = load_detail_signal.result() {
 					// Bind the result once: `Action::result()` clones the
 					// underlying `(QuestionInfo, Vec<ChoiceInfo>)` on every
 					// call, so reusing `q`/`choices` here avoids redundant
@@ -375,11 +357,9 @@ pub fn polls_detail(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "flex justify-between items-center mb-4",
-							h1 {
-								{
-									q.question_text.clone()
-								}
-							}
+							h1 { {
+								q.question_text.clone()
+							} }
 							div {
 								class: "flex gap-2",
 								a {
@@ -401,12 +381,9 @@ pub fn polls_detail(question_id: i64) -> Page {
 								}
 							}
 						}
-						if !choices.is_empty() {
-							{
-								voting_form.clone().into_page()
-							}
-						}
-						else {
+						if !choices.is_empty() { {
+							voting_form.clone().into_page()
+						} } else {
 							div {
 								class: "alert-warning",
 								"This question has no choices yet. Add one below to start voting."
@@ -423,8 +400,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 							}
 						}
 					}
-				}
-				else {
+				} else {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
@@ -481,8 +457,7 @@ pub fn polls_results(question_id: i64) -> Page {
 							}
 						}
 					}
-				}
-				else if load_results_signal.error().is_some() {
+				} else if load_results_signal.error().is_some() {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
@@ -497,8 +472,7 @@ pub fn polls_results(question_id: i64) -> Page {
 							"Back to Polls"
 						}
 					}
-				}
-				else if load_results_signal.result().is_some() {
+				} else if load_results_signal.result().is_some() {
 					// Owner-only controls (Edit / Delete) are hidden for
 					// non-authors and unauthenticated viewers (issue #4703).
 					// `current_user` returns `Ok(None)` when no session user
@@ -531,56 +505,44 @@ pub fn polls_results(question_id: i64) -> Page {
 									{
 										if let Some((_, choices, total)) = load_results_signal.result() {
 											page!(|choices: Vec<ChoiceInfo>, total: i32| {
-												for choice in choices {
-													{
-														{
-															let percentage = if total > 0 {
-																(choice.votes as f64 / total as f64 * 100.0) as i32
-															}
-															else {
-																0
-															};
-															page!(|choice: ChoiceInfo, percentage: i32| {
-																div {
-																	class: "py-4",
-																	div {
-																		class: "flex justify-between items-center mb-2",
-																		strong {
-																			{
-																				choice.choice_text.clone()
-																			}
-																		}
-																		span {
-																			class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-																			{
-																				format!("{} votes", choice.votes)
-																			}
-																		}
-																	}
-																	div {
-																		class: "w-full bg-surface-tertiary rounded-full h-2.5",
-																		div {
-																			class: "bg-brand h-2.5 rounded-full",
-																			role: "progressbar",
-																			style: format!("width: {}%", percentage),
-																			aria_valuenow: percentage.to_string(),
-																			aria_valuemin: "0",
-																			aria_valuemax: "100",
-																			{
-																				format!("{}%", percentage)
-																			}
-																		}
+												for choice in choices { { {
+													let percentage = if total > 0 {
+														(choice.votes as f64 / total as f64 * 100.0) as i32
+													} else { 0 };
+													page!(|choice: ChoiceInfo, percentage: i32| {
+														div {
+															class: "py-4",
+															div {
+																class: "flex justify-between items-center mb-2",
+																strong { {
+																	choice.choice_text.clone()
+																} }
+																span {
+																	class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
+																	{
+																		format!("{} votes", choice.votes)
 																	}
 																}
-															})(choice, percentage)
+															}
+															div {
+																class: "w-full bg-surface-tertiary rounded-full h-2.5",
+																div {
+																	class: "bg-brand h-2.5 rounded-full",
+																	role: "progressbar",
+																	style: format!("width: {}%", percentage),
+																	aria_valuenow: percentage.to_string(),
+																	aria_valuemin: "0",
+																	aria_valuemax: "100",
+																	{
+																		format!("{}%", percentage)
+																	}
+																}
+															}
 														}
-													}
-												}
+													})(choice, percentage)
+												} } }
 											})(choices, total)
-										}
-										else {
-											Page::Empty
-										}
+										} else { Page::Empty }
 									}
 								}
 								div {
@@ -620,8 +582,7 @@ pub fn polls_results(question_id: i64) -> Page {
 							}
 						}
 					}
-				}
-				else {
+				} else {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
@@ -691,14 +652,12 @@ pub fn polls_index_with_logo() -> Page {
 							}
 						}
 					}
-				}
-				else if load_questions_signal.result().unwrap_or_default().is_empty() {
+				} else if load_questions_signal.result().unwrap_or_default().is_empty() {
 					p {
 						class: "text-muted",
 						"No polls are available."
 					}
-				}
-				else {
+				} else {
 					div {
 						class: "space-y-2",
 						for question in load_questions_signal.result().unwrap_or_default() {
@@ -721,11 +680,9 @@ pub fn polls_index_with_logo() -> Page {
 											}
 										}
 									}
-									small {
-										{
-											question.pub_date.format("%Y-%m-%d %H:%M").to_string()
-										}
-									}
+									small { {
+										question.pub_date.format("%Y-%m-%d %H:%M").to_string()
+									} }
 								}
 							}
 						}
@@ -792,9 +749,7 @@ pub fn question_new() -> Page {
 					}
 				}
 			}
-			{
-				form_view
-			}
+			{ form_view }
 			div {
 				class: "mt-3",
 				watch {
@@ -806,8 +761,7 @@ pub fn question_new() -> Page {
 							form: "new-question-form",
 							"Creating..."
 						}
-					}
-					else {
+					} else {
 						button {
 							type: "submit",
 							class: "btn-primary",
@@ -912,8 +866,7 @@ pub fn question_edit(question_id: i64) -> Page {
 							}
 						}
 					}
-				}
-				else if load_detail_signal.error().is_some() {
+				} else if load_detail_signal.error().is_some() {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
@@ -928,8 +881,7 @@ pub fn question_edit(question_id: i64) -> Page {
 							"Back to Polls"
 						}
 					}
-				}
-				else {
+				} else {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						h1 {
@@ -957,8 +909,7 @@ pub fn question_edit(question_id: i64) -> Page {
 									form: "edit-question-form",
 									"Saving..."
 								}
-							}
-							else {
+							} else {
 								button {
 									type: "submit",
 									class: "btn-primary",
@@ -1027,8 +978,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 						class: "text-center",
 						"Loading..."
 					}
-				}
-				else if let Some((ref q, _)) = load_detail_signal.result() {
+				} else if let Some((ref q, _)) = load_detail_signal.result() {
 					div {
 						class: "card",
 						div {
@@ -1045,8 +995,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 							}
 						}
 					}
-				}
-				else if load_detail_signal.error().is_some() {
+				} else if load_detail_signal.error().is_some() {
 					div {
 						class: "alert-danger",
 						{
@@ -1065,9 +1014,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 					}
 				}
 			}
-			{
-				form_view
-			}
+			{ form_view }
 			div {
 				class: "mt-3",
 				watch {
@@ -1079,8 +1026,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 							form: "delete-question-form",
 							"Deleting..."
 						}
-					}
-					else {
+					} else {
 						button {
 							type: "submit",
 							class: "btn-danger",
@@ -1177,9 +1123,7 @@ pub fn choice_new(question_id: i64) -> Page {
 					}
 				}
 			}
-			{
-				form_view
-			}
+			{ form_view }
 			div {
 				class: "mt-3",
 				watch {
@@ -1191,8 +1135,7 @@ pub fn choice_new(question_id: i64) -> Page {
 							form: "new-choice-form",
 							"Adding..."
 						}
-					}
-					else {
+					} else {
 						button {
 							type: "submit",
 							class: "btn-primary",
@@ -1266,9 +1209,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 					}
 				}
 			}
-			{
-				form_view
-			}
+			{ form_view }
 			div {
 				class: "mt-3",
 				watch {
@@ -1280,8 +1221,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 							form: "edit-choice-form",
 							"Saving..."
 						}
-					}
-					else {
+					} else {
 						button {
 							type: "submit",
 							class: "btn-primary",
@@ -1353,9 +1293,7 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 					}
 				}
 			}
-			{
-				form_view
-			}
+			{ form_view }
 			div {
 				class: "mt-3",
 				watch {
@@ -1367,8 +1305,7 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 							form: "delete-choice-form",
 							"Deleting..."
 						}
-					}
-					else {
+					} else {
 						button {
 							type: "submit",
 							class: "btn-danger",

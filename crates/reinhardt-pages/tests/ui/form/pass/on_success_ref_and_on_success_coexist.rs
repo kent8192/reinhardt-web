@@ -36,13 +36,10 @@ fn main() {
 		},
 		// Inline variant — consumes the value by move. Stays inside
 		// the generated `fn submit()` body; cannot see outer locals.
-		on_success: |_value| {
-			// Side effect only — does not touch outer scope.
+		on_success: |_value|{// Side effect only — does not touch outer scope.
 		},
 		fields: {
-			name: CharField {
-				required
-			},
+			name: CharField { required },
 		},
 	};
 }

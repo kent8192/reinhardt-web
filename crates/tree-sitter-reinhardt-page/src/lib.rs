@@ -197,10 +197,7 @@ mod tests {
 
 		// Assert
 		let sexp = tree.root_node().to_sexp();
-		assert!(
-			!tree.root_node().has_error(),
-			"parse tree: {sexp}"
-		);
+		assert!(!tree.root_node().has_error(), "parse tree: {sexp}");
 		assert!(
 			sexp.contains("block_comment"),
 			"expected a block_comment node in the tree: {sexp}"

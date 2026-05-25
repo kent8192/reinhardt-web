@@ -30,9 +30,7 @@ fn main() {
 			},
 		},
 		fields: {
-			content: CharField {
-				required
-			},
+			content: CharField { required },
 		},
 	};
 }

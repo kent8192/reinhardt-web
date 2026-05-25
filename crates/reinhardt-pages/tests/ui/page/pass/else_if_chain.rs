@@ -7,24 +7,13 @@ fn main() {
 	let _else_if = page!(|status: i32| {
 		div {
 			if status == 0 {
-				span {
-					"Pending"
-				}
-			}
-			else if status == 1 {
-				span {
-					"Processing"
-				}
-			}
-			else if status == 2 {
-				span {
-					"Complete"
-				}
-			}
-			else {
-				span {
-					"Unknown"
-				}
+				span { "Pending" }
+			} else if status == 1 {
+				span { "Processing" }
+			} else if status == 2 {
+				span { "Complete" }
+			} else {
+				span { "Unknown" }
 			}
 		}
 	});
@@ -38,26 +27,22 @@ fn main() {
 					class: "a",
 					"A"
 				}
-			}
-			else if score>= 80 {
+			} else if score>= 80 {
 				span {
 					class: "b",
 					"B"
 				}
-			}
-			else if score>= 70 {
+			} else if score>= 70 {
 				span {
 					class: "c",
 					"C"
 				}
-			}
-			else if score>= 60 {
+			} else if score>= 60 {
 				span {
 					class: "d",
 					"D"
 				}
-			}
-			else {
+			} else {
 				span {
 					class: "f",
 					"F"
@@ -70,24 +55,13 @@ fn main() {
 	let _complex = page!(|a: bool, b: bool| {
 		div {
 			if a &&b {
-				span {
-					"Both true"
-				}
-			}
-			else if a {
-				span {
-					"Only A"
-				}
-			}
-			else if b {
-				span {
-					"Only B"
-				}
-			}
-			else {
-				span {
-					"Neither"
-				}
+				span { "Both true" }
+			} else if a {
+				span { "Only A" }
+			} else if b {
+				span { "Only B" }
+			} else {
+				span { "Neither" }
 			}
 		}
 	});

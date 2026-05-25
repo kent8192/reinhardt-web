@@ -163,9 +163,7 @@ mod ssr_tests {
 	#[rstest]
 	fn test_render_with_head_macro() {
 		let page_head = head!(|| {
-			title {
-				"Macro Title"
-			}
+			title { "Macro Title" }
 			meta {
 				name: "description",
 				content: "Macro description"

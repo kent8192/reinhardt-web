@@ -68,9 +68,7 @@ fn test_head_to_html() {
 #[rstest]
 fn test_head_macro_basic() {
 	let page_head = head!(|| {
-		title {
-			"Macro Page"
-		}
+		title { "Macro Page" }
 	});
 
 	assert_eq!(
@@ -180,9 +178,7 @@ fn test_empty_fragment_no_head() {
 #[rstest]
 fn test_head_macro_multiple_elements() {
 	let page_head = head!(|| {
-		title {
-			"Full Page"
-		}
+		title { "Full Page" }
 		meta {
 			name: "description",
 			content: "A full page"

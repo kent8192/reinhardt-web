@@ -74,9 +74,7 @@ pub fn login_form() -> Page {
 							}
 						}
 					}
-					{
-						form_view
-					}
+					{ form_view }
 					div {
 						class: "mt-4",
 						watch {
@@ -88,8 +86,7 @@ pub fn login_form() -> Page {
 									form: "login-form",
 									"Signing in..."
 								}
-							}
-							else {
+							} else {
 								button {
 									type: "submit",
 									class: "btn-primary w-full",
@@ -135,8 +132,7 @@ pub fn logout_form() -> Page {
 			loading,
 			error,
 		}
-		fields: {
-		}
+		fields: {}
 	};
 
 	let error_signal = logout_form.error().clone();
@@ -168,9 +164,7 @@ pub fn logout_form() -> Page {
 							}
 						}
 					}
-					{
-						form_view
-					}
+					{ form_view }
 					button {
 						type: "submit",
 						class: "btn-secondary w-full",
@@ -254,9 +248,7 @@ pub fn signup_form() -> Page {
 							}
 						}
 					}
-					{
-						form_view
-					}
+					{ form_view }
 					div {
 						class: "mt-4",
 						watch {
@@ -268,8 +260,7 @@ pub fn signup_form() -> Page {
 									form: "signup-form",
 									"Creating account..."
 								}
-							}
-							else {
+							} else {
 								button {
 									type: "submit",
 									class: "btn-primary w-full",

@@ -1285,9 +1285,11 @@ fn main() {}";
 	#[rstest]
 	fn single_variable_block_stays_inline() {
 		// Arrange / Act
-		let formatted =
-			format_dsl(MacroKind::Page, r#"|| { span { disabled: true, { text } } }"#)
-				.expect("format DSL");
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { span { disabled: true, { text } } }"#,
+		)
+		.expect("format DSL");
 
 		// Assert
 		assert!(
@@ -1299,9 +1301,11 @@ fn main() {}";
 	#[rstest]
 	fn space_after_colon_before_paren() {
 		// Arrange / Act
-		let formatted =
-			format_dsl(MacroKind::Page, r#"|| { span { tabindex: (-1_i32).to_string(), } }"#)
-				.expect("format DSL");
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { span { tabindex: (-1_i32).to_string(), } }"#,
+		)
+		.expect("format DSL");
 
 		// Assert
 		assert!(
@@ -1349,8 +1353,7 @@ fn main() {}";
 	#[rstest]
 	fn empty_element_block_stays_inline() {
 		// Arrange / Act
-		let formatted =
-			format_dsl(MacroKind::Page, r#"|| { div {} div {} }"#).expect("format DSL");
+		let formatted = format_dsl(MacroKind::Page, r#"|| { div {} div {} }"#).expect("format DSL");
 
 		// Assert
 		assert!(

@@ -12,14 +12,9 @@ fn main() {
 		div {
 			watch {
 				if loading.get() {
-					span {
-						"Loading..."
-					}
-				}
-				else {
-					span {
-						"Content loaded"
-					}
+					span { "Loading..." }
+				} else {
+					span { "Content loaded" }
 				}
 			}
 		}
@@ -30,19 +25,11 @@ fn main() {
 		div {
 			watch {
 				if status.get() == 0 {
-					span {
-						"Idle"
-					}
-				}
-				else if status.get() == 1 {
-					span {
-						"Processing"
-					}
-				}
-				else {
-					span {
-						"Complete"
-					}
+					span { "Idle" }
+				} else if status.get() == 1 {
+					span { "Processing" }
+				} else {
+					span { "Complete" }
 				}
 			}
 		}
