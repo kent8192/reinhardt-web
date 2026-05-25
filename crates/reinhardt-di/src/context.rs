@@ -605,7 +605,8 @@ impl InjectionContext {
 	/// ```
 	pub async fn resolve<T: Any + Send + Sync + 'static>(&self) -> crate::DiResult<Arc<T>> {
 		use crate::cycle_detection::{
-			begin_scoped_resolution, register_type_name, with_cycle_detection_scope,
+			begin_scoped_resolution, current_dependent_scope, register_type_name,
+			with_cycle_detection_scope,
 		};
 		use crate::registry::{DependencyScope, global_registry};
 
@@ -635,6 +636,21 @@ impl InjectionContext {
 					});
 				}
 			};
+
+			// Scope hierarchy check — runs on EVERY resolution (cache hit or miss).
+			// A singleton dependent must not resolve a request-scoped dependency,
+			// even if that dependency is already cached from a prior request.
+			if !scope.outlives(current_dependent_scope()) {
+				return Err(crate::DiError::ScopeError(format!(
+					"Scope violation: {:?}-scoped dependent cannot resolve \
+					 {:?}-scoped '{}'; the dependency would be captured with \
+					 a shorter lifetime",
+					current_dependent_scope(),
+					scope,
+					type_name,
+				)));
+			}
+
 			match scope {
 				DependencyScope::Singleton => {
 					if let Some(cached) = self.get_singleton::<T>() {

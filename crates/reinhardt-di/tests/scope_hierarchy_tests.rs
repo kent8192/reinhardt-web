@@ -235,3 +235,33 @@ async fn scope_error_message_contains_type_names() {
 		"Error should mention Request scope: {msg}"
 	);
 }
+
+#[rstest]
+#[tokio::test]
+#[serial(di_registry)]
+async fn singleton_resolving_cached_request_still_returns_scope_error() {
+	// Arrange: pre-populate the request cache so the singleton hits the fast path
+	let registry = global_registry();
+	registry.register_async::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
+		Ok(RequestConfig)
+	});
+	registry.register_async::<SingletonService, _, _>(DependencyScope::Singleton, |ctx| async move {
+		let _config = ctx.resolve::<RequestConfig>().await?;
+		Ok(SingletonService)
+	});
+
+	let singleton_scope = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::builder(singleton_scope).build();
+
+	// Warm the request cache from a root (Transient) context — this succeeds
+	let _ = ctx.resolve::<RequestConfig>().await.expect("root can resolve request");
+
+	// Act: singleton factory tries to resolve the now-cached RequestConfig
+	let result = ctx.resolve::<SingletonService>().await;
+
+	// Assert: scope violation must still be detected even on cache hit
+	assert!(
+		matches!(result, Err(DiError::ScopeError(_))),
+		"Cached request-scoped dep must still fail for singleton: {result:?}"
+	);
+}
