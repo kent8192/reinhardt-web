@@ -488,8 +488,10 @@ mod tests {
 
 		let result = formatter.format(source).expect("format source");
 
-		assert!(result.content.contains("page!(|| {"));
-		assert!(result.content.contains("\n\t\tdiv {"));
+		assert_eq!(
+			result.content,
+			"fn main() {\n\tlet view = page!(|| {\n\t\tdiv {\n\t\t\t\"x\"\n\t\t}\n\t});\n}"
+		);
 		assert_eq!(result.skipped, None);
 	}
 
@@ -498,7 +500,7 @@ mod tests {
 		let formatted =
 			format_dsl(MacroKind::Page, r#"|| { div { "x" } }"#).expect("format page DSL");
 
-		assert!(formatted.contains("\n\tdiv {"));
+		assert_eq!(formatted, "|| {\n\tdiv {\n\t\t\"x\"\n\t}\n}");
 	}
 
 	#[test]
