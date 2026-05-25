@@ -1123,10 +1123,7 @@ pub use reinhardt_shortcuts::{get_list_or_404, get_object_or_404};
 
 // Re-export URL utilities
 #[cfg(native)]
-pub use reinhardt_urls::routers::{
-	UrlPattern, UrlPatternWithParams, UrlReverser, include_routes as include, path, re_path,
-	reverse,
-};
+pub use reinhardt_urls::routers::{UrlReverser, include_routes as include, path, re_path, reverse};
 
 // Admin functionality is available through reinhardt-admin-api crate
 // See reinhardt-admin-types for type definitions

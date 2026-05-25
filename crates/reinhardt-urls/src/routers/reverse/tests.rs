@@ -12,9 +12,6 @@ use super::runtime::{
 	ReverseError, extract_param_names, reverse_single_pass, reverse_with_aho_corasick,
 	try_reverse_single_pass, try_reverse_with_aho_corasick,
 };
-use super::typed::{
-	UrlParams, UrlPattern, UrlPatternWithParams, reverse_typed, reverse_typed_with_params,
-};
 use crate::routers_macros::path;
 use async_trait::async_trait;
 use reinhardt_core::exception::Error;
@@ -124,113 +121,6 @@ fn test_has_route() {
 
 	assert!(reverser.has_route("users-list"));
 	assert!(!reverser.has_route("nonexistent"));
-}
-
-// Type-safe URL reversal tests
-struct HomeUrl;
-impl UrlPattern for HomeUrl {
-	const NAME: &'static str = "home";
-	const PATTERN: &'static str = reinhardt_routers_macros::path!("/");
-}
-
-struct UserListUrl;
-impl UrlPattern for UserListUrl {
-	const NAME: &'static str = "user-list";
-	const PATTERN: &'static str = reinhardt_routers_macros::path!("/users/");
-}
-
-struct UserDetailUrl;
-impl UrlPattern for UserDetailUrl {
-	const NAME: &'static str = "user-detail";
-	const PATTERN: &'static str = reinhardt_routers_macros::path!("/users/{id}/");
-}
-impl UrlPatternWithParams for UserDetailUrl {
-	const PARAMS: &'static [&'static str] = &["id"];
-}
-
-struct PostDetailUrl;
-impl UrlPattern for PostDetailUrl {
-	const NAME: &'static str = "post-detail";
-	const PATTERN: &'static str =
-		reinhardt_routers_macros::path!("/users/{user_id}/posts/{post_id}/");
-}
-impl UrlPatternWithParams for PostDetailUrl {
-	const PARAMS: &'static [&'static str] = &["user_id", "post_id"];
-}
-
-#[test]
-fn test_typed_reverse_simple() {
-	let url = reverse_typed::<HomeUrl>();
-	assert_eq!(url, path!("/"));
-}
-
-#[test]
-fn test_typed_reverse_user_list() {
-	let url = reverse_typed::<UserListUrl>();
-	assert_eq!(url, path!("/users/"));
-}
-
-#[test]
-fn test_typed_reverse_with_params() {
-	let mut params = HashMap::new();
-	params.insert("id", "123");
-
-	let url = reverse_typed_with_params::<UserDetailUrl>(&params).unwrap();
-	assert_eq!(url, "/users/123/");
-}
-
-#[test]
-fn test_typed_reverse_with_multiple_params() {
-	let mut params = HashMap::new();
-	params.insert("user_id", "42");
-	params.insert("post_id", "100");
-
-	let url = reverse_typed_with_params::<PostDetailUrl>(&params).unwrap();
-	assert_eq!(url, "/users/42/posts/100/");
-}
-
-#[test]
-fn test_typed_reverse_missing_param() {
-	let params = HashMap::new();
-
-	let result = reverse_typed_with_params::<UserDetailUrl>(&params);
-	assert!(result.is_err());
-
-	if let Err(ReverseError::MissingParameter(param)) = result {
-		assert_eq!(param, "id");
-	}
-}
-
-#[test]
-fn test_url_params_builder() {
-	let url = UrlParams::<UserDetailUrl>::new()
-		.param("id", "456")
-		.build()
-		.unwrap();
-
-	assert_eq!(url, "/users/456/");
-}
-
-#[test]
-fn test_url_params_builder_multiple() {
-	let url = UrlParams::<PostDetailUrl>::new()
-		.param("user_id", "42")
-		.param("post_id", "100")
-		.build()
-		.unwrap();
-
-	assert_eq!(url, "/users/42/posts/100/");
-}
-
-#[test]
-fn test_url_params_builder_missing() {
-	let result = UrlParams::<UserDetailUrl>::new().build();
-
-	assert!(result.is_err());
-	assert!(matches!(
-		result.unwrap_err(),
-		ReverseError::MissingParameter(_)
-	));
 }
 
 // Single-pass algorithm tests
@@ -743,19 +633,6 @@ fn test_aho_corasick_rejects_path_separator() {
 
 	// Act - should panic
 	reverse_with_aho_corasick("/users/{id}/", &params);
-}
-
-#[test]
-fn test_typed_reverse_rejects_injection() {
-	// Arrange
-	let mut params = HashMap::new();
-	params.insert("id", "123/admin");
-
-	// Act
-	let result = reverse_typed_with_params::<UserDetailUrl>(&params);
-
-	// Assert
-	assert!(result.is_err(), "Typed reverse should reject injection");
 }
 
 #[test]

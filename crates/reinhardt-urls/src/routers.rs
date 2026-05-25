@@ -202,15 +202,9 @@ pub use registration::{RouterFactory, UrlPatternsRegistration};
 pub use reverse::{
 	ReverseError,
 	ReverseResult,
-	UrlParams,
-	// Type-safe reversal
-	UrlPattern,
-	UrlPatternWithParams,
 	UrlReverser,
 	extract_param_names,
 	reverse,
-	reverse_typed,
-	reverse_typed_with_params,
 	try_reverse_single_pass,
 	try_reverse_with_aho_corasick,
 };
