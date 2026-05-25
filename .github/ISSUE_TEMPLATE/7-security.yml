@@ -119,11 +119,25 @@ body:
 		validations:
 			required: false
 
+	- type: dropdown
+		id: breaking-change
+		attributes:
+			label: Could the fix be a breaking change?
+			description: |
+				Would fixing this vulnerability require removing, restricting, or changing
+				existing public APIs or default behaviors?
+			options:
+				- "No - fix should be backward compatible"
+				- "Yes - fix may require API or behavior changes"
+				- "Not sure"
+		validations:
+			required: true
+
 	- type: checkboxes
 		attributes:
 			label: Confirmation
 			description: Please confirm the following
-			options:
+	options:
 				- label: "I have searched existing issues for duplicate vulnerabilities"
 				  required: true
 				- label: "I have NOT disclosed this vulnerability publicly"
