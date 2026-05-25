@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.2...reinhardt-rest@v0.2.0-rc.2) - 2026-05-25
+
+### Added
+
+- *(rest)* [**breaking**] remove deprecated OpenApiConfig struct (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(rest)* remove deletion-history comments from openapi.rs
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* address CodeRabbit review feedback
+
 ### Removed
 
 #### BREAKING CHANGES

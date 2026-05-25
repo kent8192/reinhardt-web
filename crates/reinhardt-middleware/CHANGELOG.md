@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.2...reinhardt-middleware@v0.2.0-rc.2) - 2026-05-25
+
+### Added
+
+- *(middleware)* [**breaking**] migrate session DI from Arc<SessionStore> to Depends<SessionStore>
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* address CodeRabbit review feedback
+
+### Styling
+
+- apply formatter fixes across workspace
+
 ### Changed
 
 - [**breaking**] Migrate session DI resolution from `Arc<SessionStore>` to the
