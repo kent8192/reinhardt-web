@@ -321,8 +321,7 @@ impl ClientRouter {
 	///
 	/// # Examples
 	///
-	/// Composing per-app SPA routers produced by
-	/// `#[url_patterns(InstalledApp::<app>, mode = client)]` into the single
+	/// Composing per-app SPA routers into the single
 	/// `ClientRouter` that `ClientLauncher::router_client` expects:
 	///
 	/// ```rust,ignore
@@ -375,9 +374,9 @@ impl ClientRouter {
 	/// Prefix all named route keys with `"namespace:"`.
 	///
 	/// This is the client-side equivalent of `ServerRouter::with_namespace()`.
-	/// Called by `#[url_patterns(InstalledApp::<variant>, mode = client)]` (or
-	/// `mode = unified`) to ensure registered names match the `"app:route"`
-	/// format used by per-app resolver structs.
+	/// Called by client/unified route declarations to ensure registered
+	/// names match the `"app:route"` format used by per-app resolver
+	/// structs.
 	pub fn with_namespace(mut self, namespace: &str) -> Self {
 		let old = std::mem::take(&mut self.named_routes);
 		for (name, idx) in old {

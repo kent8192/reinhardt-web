@@ -1,7 +1,6 @@
 //! Client-side routing for the polls SPA.
 //!
-//! Routes are declared with `#[url_patterns(InstalledApp::polls, mode = client)]`,
-//! which auto-registers the router via inventory and applies the `polls`
+//! The router is auto-registered via inventory and applies the `polls`
 //! namespace to every named route (so the route name passed to `route`
 //! is reachable as `polls:<name>` through `ResolvedUrls`). Each route is
 //! registered with a stable name so that page components can resolve URLs
@@ -12,15 +11,12 @@ use reinhardt::ClientPath;
 use reinhardt::ClientRouter;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
-use reinhardt::url_patterns;
 
 use crate::client::pages::{
 	choice_delete_page, choice_edit_page, choice_new_page, index_page, polls_detail_page,
 	polls_results_page, question_delete_page, question_edit_page, question_new_page,
 };
-use crate::config::apps::InstalledApp;
 
-#[url_patterns(InstalledApp::polls, mode = client)]
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
 		.route("index", "/", index_page)

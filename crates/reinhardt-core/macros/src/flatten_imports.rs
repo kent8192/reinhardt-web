@@ -3,8 +3,8 @@
 //! When used in a view module that uses per-file endpoint organization,
 //! this macro generates `pub use submod::*;` for each `pub mod` declaration.
 //! This re-exports endpoint functions and their `__url_resolver_*` modules
-//! so that `#[url_patterns]` can discover resolvers using the standard
-//! parent-module path.
+//! so that resolvers can be discovered using the standard parent-module
+//! path.
 //!
 //! # Example
 //!
@@ -33,7 +33,7 @@ use syn::{Item, parse2};
 /// Scans the macro input for `pub mod name;` declarations and appends
 /// `pub use name::*;` for each one. This brings endpoint functions and their
 /// generated `__url_resolver_*` modules into the parent module scope, enabling
-/// `#[url_patterns]` to resolve them with the standard path convention.
+/// resolvers to be discovered with the standard path convention.
 pub(crate) fn flatten_imports_impl(input: TokenStream) -> syn::Result<TokenStream> {
 	let items: Vec<Item> = {
 		let file: syn::File = parse2(input.clone())

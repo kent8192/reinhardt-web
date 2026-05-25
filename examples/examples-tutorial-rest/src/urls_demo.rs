@@ -19,10 +19,9 @@
 //!    a `panic!("Route not found")` at request time.
 //! 2. **Namespace safety** — the per-app gateway
 //!    (`urls.server().snippets()`) auto-prefixes route names with the
-//!    `"snippets:"` namespace registered by
-//!    `#[url_patterns(InstalledApp::snippets, mode = server)]`. The
-//!    deprecated flat surface relies on a runtime namespace-iteration
-//!    fallback (see `UrlResolverUnprefixed` in `reinhardt-urls`).
+//!    `"snippets:"` namespace. The deprecated flat surface relies on a
+//!    runtime namespace-iteration fallback (see `UrlResolverUnprefixed`
+//!    in `reinhardt-urls`).
 //! 3. **Refactor-safe** — when a route path changes in
 //!    `apps::snippets::urls`, every call site that goes through this
 //!    module continues to resolve to the new path automatically.

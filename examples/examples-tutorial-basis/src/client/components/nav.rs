@@ -6,11 +6,9 @@
 //! the result is bound through `use_action`, so the bar reactively updates
 //! once the WASM client finishes its first roundtrip.
 //!
-//! All `href` values are resolved through the typed `urls` modules emitted
-//! by `#[url_patterns]` (issue #4656): `apps::polls::urls::client_router::urls`
-//! and `apps::users::urls::client_router::urls`. The macro-generated
-//! helpers wrap `ResolvedUrls::from_global()` internally; the reverser is
-//! registered in `client::lib::main`.
+//! All `href` values are resolved through the typed `urls` modules at
+//! `apps::polls::urls::client_router::urls` and
+//! `apps::users::urls::client_router::urls`.
 
 // `nav_bar` crosses app boundaries: the home link belongs to the polls
 // app, and the login/logout/signup links belong to the users app. Pulling

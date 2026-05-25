@@ -4,6 +4,37 @@ use syn::ItemFn;
 #[cfg(test)]
 use syn::parse2;
 
+/// Extract URL parameter names from a pattern string.
+///
+/// Given `/users/{id}/posts/{post_id}/`, returns `["id", "post_id"]`.
+/// Strips type constraints (e.g., `{id:int}` yields `"id"`).
+fn extract_url_params(pattern: &str) -> Vec<String> {
+	let mut params = Vec::new();
+	let mut in_param = false;
+	let mut name = String::new();
+	for ch in pattern.chars() {
+		match ch {
+			'{' => {
+				in_param = true;
+				name.clear();
+			}
+			'}' => {
+				if in_param && !name.is_empty() {
+					// Strip type constraint (e.g., "{id:int}" -> "id")
+					if let Some(pos) = name.find(':') {
+						name.truncate(pos);
+					}
+					params.push(name.clone());
+				}
+				in_param = false;
+			}
+			_ if in_param => name.push(ch),
+			_ => {}
+		}
+	}
+	params
+}
+
 /// Extract basename string literal from a function body.
 ///
 /// Scans tokens for `ModelViewSet::new("basename")` or `GenericViewSet::new("basename", ...)`
@@ -102,7 +133,7 @@ fn emit_meta_macro(
 
 /// Emit a per-fn manifest macro that fans out the list/detail metas.
 ///
-/// `#[url_patterns]` in Phase 6 calls this manifest from inside its
+/// The route resolver machinery calls this manifest from inside its
 /// `__for_each_url_resolver` arm so the corresponding `<App>Urls` struct
 /// gets the typed methods.
 ///
@@ -115,7 +146,7 @@ fn emit_meta_macro(
 /// `<basename>` so that two `#[viewset]` functions in different modules
 /// sharing the same function identifier (e.g. the conventional
 /// `pub fn viewset()` in two sibling modules) do not collide on a single
-/// crate-root name. The consumer side (`url_patterns::build_viewset_meta_forwarder`)
+/// crate-root name. The consumer side
 /// does not know the basename from the call site, so it reaches the
 /// manifest through the scope-respecting bundle module
 /// `__viewset_resolvers_<fn>`, which re-exports the manifest under the
@@ -289,8 +320,8 @@ fn viewset_fn_impl(args: TokenStream, func: ItemFn) -> syn::Result<TokenStream> 
 	let detail_meta = emit_meta_macro(fn_name, &basename, "detail", true);
 	let manifest = emit_per_fn_manifest(fn_name, &basename);
 
-	// Generate a well-known bundle module that #[url_patterns] can reference
-	// by function name (which it CAN see from tokens).
+	// Generate a well-known bundle module that the route resolver machinery
+	// can reference by function name (which it CAN see from tokens).
 	let bundle_mod_ident =
 		syn::Ident::new(&format!("__viewset_resolvers_{fn_name}"), Span::call_site());
 	// Issue #4523 fix: the manifest macro name embeds `<basename>` to avoid
@@ -636,7 +667,7 @@ fn parse_action_meta_for_viewset(
 	if meta.detail {
 		param_literals.push(quote! { "id" });
 	}
-	for p in crate::url_patterns::extract_url_params_pub(&meta.url_path) {
+	for p in extract_url_params(&meta.url_path) {
 		let lit = syn::LitStr::new(&p, Span::call_site());
 		param_literals.push(quote! { #lit });
 	}
@@ -666,7 +697,7 @@ fn parse_action_meta_for_viewset(
 ///
 /// The manifest is named `__for_each_viewset_action_meta_<TypeNameSnake>`
 /// so Phase 6 can call it from `__for_each_url_resolver`'s arm without
-/// needing to see the ViewSet's basename at the `#[url_patterns]` site.
+/// needing to see the ViewSet's basename at the call site.
 ///
 /// Each entry references the per-action meta macro by its `url_name`-derived
 /// name (post-Phase-5), not the bare method identifier.
@@ -695,8 +726,8 @@ fn emit_impl_action_manifest(
 		})
 		.collect();
 	// Phase 6.2 (Issue #4507): `#[macro_export]` puts the manifest at the
-	// user crate root so the `#[url_patterns]`-generated forwarder can
-	// reach it via `$crate::__for_each_viewset_action_meta_<TypeSnake>!`.
+	// user crate root so the resolver forwarder can reach it via
+	// `$crate::__for_each_viewset_action_meta_<TypeSnake>!`.
 	// No additional `pub use` is required.
 	quote! {
 		#[doc(hidden)]

@@ -53,8 +53,7 @@ mod tests {
 	// Routes registered via `#[get("/snippets/", name = "snippets_list")]`
 	// etc. in `apps::snippets::views`. The route names become methods on
 	// the `SnippetsUrls<'_>` accessor returned by `urls.server().snippets()`,
-	// with the `"snippets:"` namespace added transparently by
-	// `#[url_patterns(InstalledApp::snippets, mode = server)]`.
+	// with the `"snippets:"` namespace added transparently.
 	// ------------------------------------------------------------------
 
 	#[rstest]

@@ -388,14 +388,14 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		"apps/foo/urls.rs must declare `pub mod client_router`:\n{urls_contents}"
 	);
 
-	// 4. Sub-routers carry the canonical #[url_patterns] attribute, and their
-	//    function bodies are empty. The bodies are isolated from the module
-	//    doc-comment (which may legitimately quote an example) by slicing the
-	//    file at the `pub fn` definition before searching for example calls.
+	// 4. Sub-routers define their url_patterns functions with empty bodies.
+	//    The bodies are isolated from the module doc-comment (which may
+	//    legitimately quote an example) by slicing the file at the `pub fn`
+	//    definition before searching for example calls.
 	let server_contents = fs::read_to_string(&server_urls).expect("read server_urls.rs");
 	assert!(
-		server_contents.contains("#[url_patterns(InstalledApp::foo, mode = server)]"),
-		"server_urls.rs must carry the server-mode #[url_patterns] attribute:\n{server_contents}"
+		!server_contents.contains("#[url_patterns"),
+		"server_urls.rs must NOT carry the removed #[url_patterns] attribute:\n{server_contents}"
 	);
 	let server_body_start = server_contents
 		.find("pub fn server_url_patterns")
@@ -408,8 +408,8 @@ async fn startapp_pages_layout_has_urls_submodule() {
 
 	let client_contents = fs::read_to_string(&client_router).expect("read client_router.rs");
 	assert!(
-		client_contents.contains("#[url_patterns(InstalledApp::foo, mode = client)]"),
-		"client_router.rs must carry the client-mode #[url_patterns] attribute:\n{client_contents}"
+		!client_contents.contains("#[url_patterns"),
+		"client_router.rs must NOT carry the removed #[url_patterns] attribute:\n{client_contents}"
 	);
 	let client_body_start = client_contents
 		.find("pub fn client_url_patterns")

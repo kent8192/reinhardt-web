@@ -33,9 +33,7 @@ use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
 use reinhardt::pages::resolve_static;
 
-// Typed URL helpers are now emitted by `#[url_patterns]` directly
-// (issue #4656); we alias the macro-emitted `urls` module as `links` to
-// keep call sites concise.
+// Alias the `urls` module as `links` to keep call sites concise.
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, submit_vote, update_choice, update_question,

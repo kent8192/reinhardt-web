@@ -9,8 +9,8 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
-	// Force-link the parent library so its `#[routes]` /
-	// `#[url_patterns]` `inventory::submit!` registrations (e.g. the
+	// Force-link the parent library so its `#[routes]`
+	// `inventory::submit!` registrations (e.g. the
 	// `UrlPatternsRegistration` emitted from `config::urls::routes`)
 	// survive Rust's dead-code elimination. Without an explicit
 	// reference from this binary, the linker drops the library

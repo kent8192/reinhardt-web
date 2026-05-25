@@ -771,10 +771,10 @@ pub(crate) fn extract_url_params(path: &str) -> Vec<String> {
 /// Generate per-endpoint URL resolver metadata tokens.
 ///
 /// Each endpoint gets a uniquely named `__url_resolver_<fn_name>` module that
-/// contains a metadata macro consumed by `#[url_patterns]`'s
+/// contains a metadata macro consumed by the
 /// `__for_each_url_resolver!` / `__build_namespaced_resolvers!` machinery.
-/// The `#[url_patterns]` macro references these modules by deriving the module
-/// name from the last segment of the endpoint path.
+/// The resolver modules are referenced by deriving the module name from
+/// the last segment of the endpoint path.
 ///
 /// The legacy per-route resolver trait surface was removed (refs #4520); only
 /// the metadata macro/module remains.
