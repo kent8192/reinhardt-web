@@ -26,7 +26,9 @@ fn expression_rerenders_when_signal_changes() {
 	// Arrange
 	let count = Signal::new(0_i32);
 	let view = page!(|count: Signal<i32>| {
-		div { {count.get().to_string()} }
+		div {
+			{ count.get().to_string() }
+		}
 	})(count.clone());
 
 	let snapshot_a = render(&view);
@@ -53,7 +55,11 @@ fn if_branch_rerenders_when_condition_signal_changes() {
 	let flag = Signal::new(false);
 	let view = page!(|flag: Signal<bool>| {
 		div {
-			if flag.get() { p { "ON" } }
+			if flag.get() {
+				p {
+					"ON"
+				}
+			}
 		}
 	})(flag.clone());
 

@@ -16,18 +16,14 @@
 //! **Run with** (from the workspace root):
 //!   `wasm-pack test --headless --chrome crates/reinhardt-pages \
 //!        --features wasm-diag-test -- --test history_state_shape_test`
-
 #![cfg(wasm)]
-
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::Page;
 use reinhardt_pages::page;
 use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
-
 wasm_bindgen_test_configure!(run_in_browser);
-
 fn home_page() -> Page {
 	page!(|| {
 		div {
@@ -36,7 +32,6 @@ fn home_page() -> Page {
 		}
 	})()
 }
-
 fn clusters_page() -> Page {
 	page!(|| {
 		div {
@@ -45,7 +40,6 @@ fn clusters_page() -> Page {
 		}
 	})()
 }
-
 fn install_app_root() -> web_sys::Element {
 	let document = web_sys::window().unwrap().document().unwrap();
 	if let Some(prev) = document.get_element_by_id("app") {
@@ -56,13 +50,11 @@ fn install_app_root() -> web_sys::Element {
 	document.body().unwrap().append_child(&root).unwrap();
 	root
 }
-
 fn build_router() -> ClientRouter {
 	ClientRouter::new()
 		.named_route("dashboard:home", "/", home_page)
 		.named_route("clusters:list", "/clusters", clusters_page)
 }
-
 /// Classify `history.state` into a JS-`typeof`-style label using
 /// `wasm_bindgen` helpers (`is_null`, `is_string`, `is_object`, ...).
 ///
@@ -74,11 +66,8 @@ fn typeof_history_state() -> String {
 	let window = web_sys::window().expect("window");
 	let history = window.history().expect("history");
 	let state = history.state().expect("state");
-	// Heuristic mapping mirroring JS `typeof` for the cases that matter
-	// to #4221. Avoids the cost (and global-scope pollution) of injecting
-	// an eval'd JS `typeof` helper.
 	if state.is_null() {
-		"object".to_string() // typeof null === "object" in JS
+		"object".to_string()
 	} else if state.is_undefined() {
 		"undefined".to_string()
 	} else if state.is_string() {
@@ -93,7 +82,6 @@ fn typeof_history_state() -> String {
 		format!("unknown: {:?}", state)
 	}
 }
-
 fn raw_history_state() -> JsValue {
 	web_sys::window()
 		.expect("window")
@@ -102,16 +90,13 @@ fn raw_history_state() -> JsValue {
 		.state()
 		.expect("state")
 }
-
 #[wasm_bindgen_test]
 async fn history_state_is_object_after_router_push() {
 	let _root = install_app_root();
-
 	ClientLauncher::new("#app")
 		.router_client(build_router)
 		.launch()
 		.expect("launch");
-
 	// Drive a programmatic navigation, mirroring the link-interceptor's
 	// `with_spa_router(|r| r.push(href))` call site exactly.
 	with_spa_router(|r| r.push("/clusters")).expect("push /clusters");
@@ -122,11 +107,8 @@ async fn history_state_is_object_after_router_push() {
 	// across runs.
 	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
 	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-
 	let state = raw_history_state();
 	let typeof_str = typeof_history_state();
-
-	// Assertion 1: the *exact* DevTools symptom from #4221 reproduction.
 	assert_eq!(
 		typeof_str, "object",
 		"#4221 symptom shape: typeof history.state expected \"object\" \
@@ -135,10 +117,6 @@ async fn history_state_is_object_after_router_push() {
 		 Raw state JsValue: {:?}",
 		typeof_str, state
 	);
-
-	// Assertion 2: explicit failure-mode check. The regression class
-	// stores state as `JsValue::from_str(&json)` — a JS string. We must
-	// not be looking at one.
 	assert!(
 		!state.is_string(),
 		"#4221 regression: history.state must NOT be a JS string. \
@@ -147,19 +125,12 @@ async fn history_state_is_object_after_router_push() {
 		 Raw state: {:?}",
 		state
 	);
-
-	// Assertion 3: positive shape check. After successfully serializing
-	// via `serde_wasm_bindgen::to_value`, the JsValue must be `is_object()`.
 	assert!(
 		state.is_object(),
 		"#4221 regression: history.state expected to be a JS object \
 		 (`is_object()`); got {:?}",
 		state
 	);
-
-	// Assertion 4: external-consumer property access works. The whole
-	// point of the post-#4203 fix is that
-	// `history.state.route_name` resolves via JS property access.
 	let route_name_key = JsValue::from_str("route_name");
 	let value = js_sys::Reflect::get(&state, &route_name_key)
 		.expect("Reflect::get must succeed on an object");
@@ -171,24 +142,18 @@ async fn history_state_is_object_after_router_push() {
 		 return undefined here."
 	);
 }
-
 #[wasm_bindgen_test]
 async fn history_state_is_object_after_router_replace() {
 	let _root = install_app_root();
-
 	ClientLauncher::new("#app")
 		.router_client(build_router)
 		.launch()
 		.expect("launch");
-
 	with_spa_router(|r| r.replace("/clusters")).expect("replace /clusters");
-
 	let promise = js_sys::Promise::resolve(&JsValue::UNDEFINED);
 	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-
 	let state = raw_history_state();
 	let typeof_str = typeof_history_state();
-
 	assert_eq!(
 		typeof_str, "object",
 		"#4221 symptom shape (replace path): typeof history.state expected \
