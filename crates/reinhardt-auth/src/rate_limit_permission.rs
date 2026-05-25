@@ -435,7 +435,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_rate_limit_permission_user_strategy() {
-		use crate::SimpleUser;
+		use crate::internal_user::InternalUser;
 		use uuid::Uuid;
 
 		let backend = Arc::new(MemoryBackend::new());
@@ -444,7 +444,7 @@ mod tests {
 		let headers = HeaderMap::new();
 		let request = create_test_request(headers);
 
-		let test_user = SimpleUser {
+		let test_user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "testuser".to_string(),
 			email: "test@example.com".to_string(),

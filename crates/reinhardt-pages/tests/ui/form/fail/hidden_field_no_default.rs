@@ -28,7 +28,8 @@ fn main() {
 		action: "/x",
 
 		fields: {
-			data: HiddenField<NoDefault> { },
-		},
+			data: HiddenField,
+		}
+
 	};
 }

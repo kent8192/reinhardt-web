@@ -72,7 +72,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 
 		let toggle_follow_for_error = toggle_follow.clone();
 
-		page!(| is_following_signal : Signal<bool>, toggle_follow : Action<(), String>, toggle_follow_for_error : Action<(), String> | {
+		page!(|is_following_signal: Signal<bool>, toggle_follow: Action<(), String>, toggle_follow_for_error: Action<(), String>| {
 			div {
 				if toggle_follow.is_pending() {
 					button {
@@ -152,7 +152,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 			"Follow"
 		};
 
-		page!(| btn_class : &str, btn_text : &str | {
+		page!(|btn_class: &str, btn_text: &str| {
 			div {
 				button {
 					type: "button",
@@ -181,7 +181,7 @@ fn user_card(user: &UserInfo) -> Page {
 		.to_uppercase()
 		.to_string();
 
-	page!(| username : String, display_username : String, _email : String, profile_url : String, avatar_initial : String | {
+	page!(|username: String, display_username: String, _email: String, profile_url: String, avatar_initial: String| {
 		a {
 			href: profile_url.clone(),
 			class: "user-card block",
@@ -286,7 +286,7 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
 
-	page!(| title : String, empty_message : String, empty_icon : String, users_signal : Signal<Vec<UserInfo>>, loading_signal : Signal<bool>, error_signal : Signal<Option<String>> | {
+	page!(|title: String, empty_message: String, empty_icon: String, users_signal: Signal<Vec<UserInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
 		div {
 			class: "animate-fade-in",
 			div {

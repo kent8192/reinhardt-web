@@ -1,7 +1,3 @@
-// The `User` trait is deprecated in favour of the new `#[model]`-based user macro system.
-// This crate re-exports it for downstream compatibility during the transition period.
-#![allow(deprecated)]
-
 //! # Reinhardt
 //!
 //! A full-stack API framework for Rust, inspired by Django and Django REST Framework.
@@ -856,29 +852,19 @@ pub use reinhardt_urls::routers::resolver::UrlResolver;
 // Deprecated namespace-aware helper trait used by the legacy flat
 // `#[viewset]` accessors. Refs #4507.
 #[cfg(native)]
-#[allow(
-	deprecated,
-	reason = "re-export deprecated helper trait during the deprecation cycle"
-)]
-pub use reinhardt_urls::routers::resolver::UrlResolverUnprefixed;
-#[cfg(native)]
 pub use reinhardt_urls::routers::resolver::WebSocketUrlResolver;
 
 // Re-export auth
 #[cfg(all(feature = "auth", native))]
-#[allow(deprecated)] // CurrentUser is deprecated in favor of AuthUser
 pub use reinhardt_auth::{
-	AllowAny, AnonymousUser, AuthBackend, AuthInfo, AuthUser, BaseUser, CurrentUser, FullUser,
-	IsAdminUser, IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, SimpleUser,
-	validate_auth_extractors,
+	AllowAny, AuthBackend, AuthIdentity, AuthInfo, AuthUser, BaseUser, FullUser, IsAdminUser,
+	IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, validate_auth_extractors,
 };
 
-// Re-export argon2-hasher gated types (DefaultUser, DefaultUserManager, Argon2Hasher)
-// These require the argon2-hasher feature because the entire default_user module
-// in reinhardt-auth is conditionally compiled with #[cfg(feature = "argon2-hasher")]
+// Re-export argon2-hasher gated types
 #[cfg(all(feature = "auth", feature = "argon2-hasher", native))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "auth", feature = "argon2-hasher"))))]
-pub use reinhardt_auth::{Argon2Hasher, DefaultUser, DefaultUserManager};
+pub use reinhardt_auth::Argon2Hasher;
 
 #[cfg(all(feature = "auth-jwt", native))]
 pub use reinhardt_auth::{Claims, JwtAuth, JwtError};
@@ -1304,6 +1290,7 @@ pub mod prelude {
 	#[cfg(feature = "auth")]
 	pub use crate::{
 		AuthBackend,
+		AuthIdentity,
 		Group,
 		GroupManager,
 		// Object-level permissions
@@ -1311,7 +1298,6 @@ pub mod prelude {
 		ObjectPermissionChecker,
 		PasswordHasher,
 		Permission,
-		SimpleUser,
 		// User and group management
 		UserManager,
 	};

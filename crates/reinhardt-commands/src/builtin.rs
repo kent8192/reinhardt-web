@@ -3039,7 +3039,7 @@ pub(crate) async fn initialize_orm_database(
 			.map_err(|e| {
 				crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
 			})?,
-			None => env_database_url.ok_or_else(|| {
+			None => env_database_url.clone().ok_or_else(|| {
 				crate::CommandError::ExecutionError(
 					"No database URL available. Set DATABASE_URL environment variable.".to_string(),
 				)

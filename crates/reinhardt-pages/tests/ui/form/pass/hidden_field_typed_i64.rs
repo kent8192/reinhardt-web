@@ -8,9 +8,10 @@ fn main() {
 		action: "/api/numeric",
 
 		fields: {
-			question_id: HiddenField<i64> {
+			question_id: HiddenField {
 				initial: 42i64,
-			},
-		},
+			}
+		}
+
 	};
 }

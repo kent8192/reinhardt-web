@@ -41,6 +41,9 @@ use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime,
 /// Type alias for effect functions
 type EffectFn = Box<dyn FnMut() + 'static>;
 
+/// Type alias for the cleanup slot shared between Effect instances and closures
+type CleanupSlot = Rc<RefCell<Option<Box<dyn FnOnce()>>>>;
+
 // Global storage for Effect functions
 //
 // This stores the closures for all Effects so they can be re-executed when dependencies change.
@@ -100,7 +103,7 @@ pub struct Effect {
 	/// Populated by `new_with_deps` when the user's closure returns `Some(c)`;
 	/// flushed before each re-run and on dispose. `Effect::new` and
 	/// `Effect::new_with_timing` leave this slot empty.
-	cleanup_slot: Rc<RefCell<Option<Box<dyn FnOnce()>>>>,
+	cleanup_slot: CleanupSlot,
 }
 
 impl Effect {
@@ -250,7 +253,7 @@ impl Effect {
 	{
 		let id = NodeId::new();
 		let disposed = Rc::new(RefCell::new(false));
-		let cleanup_slot: Rc<RefCell<Option<Box<dyn FnOnce()>>>> = Rc::new(RefCell::new(None));
+		let cleanup_slot: CleanupSlot = Rc::new(RefCell::new(None));
 
 		// Capture deps so the wrapped closure can re-subscribe after every
 		// run: `execute_effect` calls `clear_dependencies(id)` before each

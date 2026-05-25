@@ -204,12 +204,6 @@ pub use reverse::{
 	try_reverse_single_pass, try_reverse_with_aho_corasick,
 };
 #[cfg(native)]
-#[allow(
-	deprecated,
-	reason = "re-export deprecated panicking helpers during the deprecation cycle"
-)]
-pub use reverse::{reverse_single_pass, reverse_with_aho_corasick};
-#[cfg(native)]
 pub use route::Route;
 #[cfg(native)]
 pub use route_group::{RouteGroup, RouteInfo};
@@ -239,13 +233,6 @@ pub use client_router::{
 	SingleFromPath,
 };
 pub use resolver::{ClientUrlResolver, WebSocketUrlResolver};
-// Re-export the deprecated `UrlResolverUnprefixed` helper trait so the macro
-// can refer to it via `<reinhardt-facade>::UrlResolverUnprefixed`. Refs #4507.
-#[allow(
-	deprecated,
-	reason = "re-export deprecated helper trait during the deprecation cycle"
-)]
-pub use resolver::UrlResolverUnprefixed;
 
 // Re-export the canonical `StreamingTopicResolver` trait from
 // `reinhardt-streaming` so downstream users can keep importing it from

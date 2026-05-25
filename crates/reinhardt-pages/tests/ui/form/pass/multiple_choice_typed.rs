@@ -8,11 +8,12 @@ fn main() {
 		action: "/api/tags",
 
 		fields: {
-			tag_ids: MultipleChoiceField<i64> {
+			tag_ids: MultipleChoiceField {
 				choices_from: "tags",
 				choice_value: "id",
 				choice_label: "name",
-			},
-		},
+			}
+		}
+
 	};
 }

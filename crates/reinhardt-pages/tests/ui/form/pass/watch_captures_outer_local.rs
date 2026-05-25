@@ -18,19 +18,22 @@ fn main() {
 		name: CaptureWatchForm,
 		action: "/api/capture",
 
-		state: { loading, error },
-
-		watch: {
-			// The handler captures `outer_local` from the enclosing scope.
-			// The expression result is used inside the closure body so the
-			// compiler must treat it as a real closure (not a fn item).
-			captured_view: |_form| {
-				let _captured = outer_local;
-			},
-		},
+		state: {
+			loading,
+			error,
+		}
 
 		fields: {
-			content: CharField { required },
-		},
+			content: CharField {
+				required,
+			}
+		}
+
+		watch: {
+			captured_view: |_form| {
+					let _captured = outer_local;
+				},
+		}
+
 	};
 }

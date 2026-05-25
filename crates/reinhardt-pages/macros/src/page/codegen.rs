@@ -744,10 +744,10 @@ fn slot_name_to_snake_case(name: &str) -> String {
 /// - children arity (the `children:` field on the props struct must be
 ///   `Option<Page>`, which `bon::Builder` exposes as a setter taking
 ///   `Page` directly — bon wraps it in `Some` internally):
-///   * 0 children → omit the `.children(...)` setter (`bon` defaults
-///                  the `Option` field to `None`)
-///   * 1 child    → `.children(<child_view>)`
-///   * 2+ children → `.children(Page::fragment(vec![ ... ]))`
+///   - 0 children → omit the `.children(...)` setter (`bon` defaults
+///     the `Option` field to `None`)
+///   - 1 child    → `.children(<child_view>)`
+///   - 2+ children → `.children(Page::fragment(vec![ ... ]))`
 ///
 /// # Example
 ///

@@ -1,9 +1,6 @@
-// This module uses the deprecated User trait for backward compatibility.
-// PermissionContext holds an optional Box<dyn User> for existing permission APIs.
-#![allow(deprecated)]
 use async_trait::async_trait;
 
-use crate::core::user::User;
+use crate::core::AuthIdentity;
 
 /// Permission context - contains request information for permission checking
 ///
@@ -13,7 +10,7 @@ use crate::core::user::User;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::{PermissionContext, AnonymousUser, User};
+/// use reinhardt_auth::PermissionContext;
 /// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -46,7 +43,7 @@ pub struct PermissionContext<'a> {
 	/// Whether the user account is active
 	pub is_active: bool,
 	/// The authenticated user, if any
-	pub user: Option<Box<dyn User>>,
+	pub user: Option<Box<dyn AuthIdentity>>,
 }
 
 /// Permission trait - defines permission checking interface

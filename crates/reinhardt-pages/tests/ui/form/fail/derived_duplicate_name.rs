@@ -8,14 +8,19 @@ fn main() {
 		name: DuplicateForm,
 		action: "/api/submit",
 
+		fields: {
+			x: IntegerField {
+				required,
+			}
+			y: IntegerField {
+				required,
+			}
+		}
+
 		derived: {
 			value: |form| form.x().get() + form.y().get(),
 			value: |form| form.x().get() * form.y().get(),
-		},
+		}
 
-		fields: {
-			x: IntegerField { required },
-			y: IntegerField { required },
-		},
 	};
 }

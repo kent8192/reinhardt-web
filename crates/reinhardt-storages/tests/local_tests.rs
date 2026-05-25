@@ -576,10 +576,7 @@ mod path_traversal_tests {
 
 		// Assert
 		assert!(result.is_err());
-		assert!(matches!(
-			result.unwrap_err(),
-			StorageError::InvalidPath(_)
-		));
+		assert!(matches!(result.unwrap_err(), StorageError::InvalidPath(_)));
 	}
 
 	#[rstest]
@@ -607,10 +604,7 @@ mod path_traversal_tests {
 
 		// Assert
 		assert!(result.is_err());
-		assert!(matches!(
-			result.unwrap_err(),
-			StorageError::InvalidPath(_)
-		));
+		assert!(matches!(result.unwrap_err(), StorageError::InvalidPath(_)));
 	}
 
 	#[rstest]
@@ -638,10 +632,7 @@ mod path_traversal_tests {
 
 		// Assert
 		assert!(result.is_err());
-		assert!(matches!(
-			result.unwrap_err(),
-			StorageError::InvalidPath(_)
-		));
+		assert!(matches!(result.unwrap_err(), StorageError::InvalidPath(_)));
 	}
 
 	#[rstest]
@@ -669,10 +660,7 @@ mod path_traversal_tests {
 
 		// Assert
 		assert!(result.is_err());
-		assert!(matches!(
-			result.unwrap_err(),
-			StorageError::InvalidPath(_)
-		));
+		assert!(matches!(result.unwrap_err(), StorageError::InvalidPath(_)));
 	}
 
 	#[rstest]
@@ -700,10 +688,7 @@ mod path_traversal_tests {
 
 		// Assert
 		assert!(result.is_err());
-		assert!(matches!(
-			result.unwrap_err(),
-			StorageError::InvalidPath(_)
-		));
+		assert!(matches!(result.unwrap_err(), StorageError::InvalidPath(_)));
 	}
 
 	#[rstest]
@@ -731,10 +716,7 @@ mod path_traversal_tests {
 
 		// Assert
 		assert!(result.is_err());
-		assert!(matches!(
-			result.unwrap_err(),
-			StorageError::InvalidPath(_)
-		));
+		assert!(matches!(result.unwrap_err(), StorageError::InvalidPath(_)));
 	}
 
 	#[rstest]
@@ -762,10 +744,7 @@ mod path_traversal_tests {
 
 		// Assert
 		assert!(result.is_err());
-		assert!(matches!(
-			result.unwrap_err(),
-			StorageError::InvalidPath(_)
-		));
+		assert!(matches!(result.unwrap_err(), StorageError::InvalidPath(_)));
 	}
 
 	#[rstest]

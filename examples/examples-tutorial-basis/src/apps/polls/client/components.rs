@@ -200,6 +200,11 @@ pub fn polls_detail(question_id: i64) -> Page {
 		name: VotingForm,
 		server_fn: submit_vote,
 		method: Post,
+		success_url: |_form| links::results(qid),
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 		state: {
 			loading,
 			error,
@@ -209,7 +214,6 @@ pub fn polls_detail(question_id: i64) -> Page {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			}
-
 			choice_id: ChoiceField {
 				widget: RadioSelect,
 				required,
@@ -221,16 +225,11 @@ pub fn polls_detail(question_id: i64) -> Page {
 			}
 		}
 
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		watch: {
-			submit_button: | form | {
-				let is_loading = form.loading().get();
-				let back_href = links::index();
-				page!(
-					| is_loading : bool, back_href : String | {
+			submit_button: |form| {
+					let is_loading = form.loading().get();
+					let back_href = links::index();
+					page!(|is_loading: bool, back_href: String| {
 						div {
 							class: "mt-3",
 							button {
@@ -245,25 +244,21 @@ pub fn polls_detail(question_id: i64) -> Page {
 								"Back to Polls"
 							}
 						}
-					}
-				)(is_loading, back_href)
-			},
-			error_display: | form | {
-				let err = form.error().get();
-				page!(
-					| err : Option<String> | {
+					})(is_loading, back_href)
+				},
+			error_display: |form| {
+					let err = form.error().get();
+					page!(|err: Option<String>| {
 						if let Some(e) = err.clone() {
 							div {
 								class: "alert-danger mt-3",
 								{ format_server_error(&e) }
 							}
 						}
-					}
-				)(err)
-			},
-		},
+					})(err)
+				},
+		}
 
-		success_url: | _form | links::results(qid),
 	};
 
 	// Bridge load_detail results to form choices via use_effect
@@ -722,6 +717,10 @@ pub fn question_new() -> Page {
 		server_fn: create_question,
 		method: Post,
 		redirect_on_success: "/",
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 		state: {
 			loading,
 			error,
@@ -736,10 +735,6 @@ pub fn question_new() -> Page {
 			}
 		}
 
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 	};
 
 	let loading_signal = new_form.loading().clone();
@@ -747,50 +742,46 @@ pub fn question_new() -> Page {
 	let form_view = new_form.into_page();
 	let cancel_href = links::index();
 
-	page!(
-		| loading_signal : reinhardt::pages::reactive::Signal<bool>,
-		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
-		form_view : Page, cancel_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"New Question"
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mb-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ form_view }
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"New Question"
+			}
+			if error_signal.get().is_some() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "new-question-form",
-							"Creating..."
-						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-primary",
-							form: "new-question-form",
-							"Create"
-						}
+					class: "alert-danger mb-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "new-question-form",
+						"Creating..."
 					}
-					a {
-						href: cancel_href,
-						class: "btn-secondary ml-2",
-						"Cancel"
+				} else {
+					button {
+						type: "submit",
+						class: "btn-primary",
+						form: "new-question-form",
+						"Create"
 					}
+				}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	)(loading_signal, error_signal, form_view, cancel_href)
+	})(loading_signal, error_signal, form_view, cancel_href)
 }
 
 /// Edit question page (`/polls/{question_id}/edit/`).
@@ -812,6 +803,10 @@ pub fn question_edit(question_id: i64) -> Page {
 		server_fn: update_question,
 		method: Post,
 		redirect_on_success: "/",
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 		state: {
 			loading,
 			error,
@@ -821,7 +816,6 @@ pub fn question_edit(question_id: i64) -> Page {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			}
-
 			question_text: CharField {
 				label: "Question",
 				placeholder: "Updated question text",
@@ -829,10 +823,6 @@ pub fn question_edit(question_id: i64) -> Page {
 				class: "form-control",
 			}
 		}
-
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 
 	};
 
@@ -868,78 +858,75 @@ pub fn question_edit(question_id: i64) -> Page {
 	// `watch{}` blocks into the outer one removes the nested-capture
 	// move and still re-renders on `load_detail_signal`,
 	// `edit_form.error()`, and `edit_form.loading()` changes.
-	page!(
-		| load_detail_signal : Action<(QuestionInfo, Vec<ChoiceInfo>), String>,
-		question_id : i64 | {
-			div {
-				if load_detail_signal.is_pending() {
+	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
+		div {
+			if load_detail_signal.is_pending() {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12 text-center",
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
-						div {
-							class: "spinner w-8 h-8",
-							role: "status",
-							span {
-								class: "sr-only",
-								"Loading..."
-							}
+						class: "spinner w-8 h-8",
+						role: "status",
+						span {
+							class: "sr-only",
+							"Loading..."
 						}
 					}
-				} else if load_detail_signal.error().is_some() {
+				}
+			} else if load_detail_signal.error().is_some() {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
+						class: "alert-danger",
+						{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+					}
+					a {
+						href: links::index(),
+						class: "btn-primary",
+						"Back to Polls"
+					}
+				}
+			} else {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
+					h1 {
+						class: "mb-4",
+						"Edit Question"
+					}
+					if edit_form.error().get().is_some() {
 						div {
-							class: "alert-danger",
-							{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+							class: "alert-danger mb-3",
+							{ format_server_error(&edit_form.error().get().unwrap_or_default()) }
+						}
+					}
+					{ edit_form.clone().into_page() }
+					div {
+						class: "mt-3",
+						if edit_form.loading().get() {
+							button {
+								type: "submit",
+								class: "btn-primary opacity-50 cursor-not-allowed",
+								disabled: true,
+								form: "edit-question-form",
+								"Saving..."
+							}
+						} else {
+							button {
+								type: "submit",
+								class: "btn-primary",
+								form: "edit-question-form",
+								"Save"
+							}
 						}
 						a {
-							href: links::index(),
-							class: "btn-primary",
-							"Back to Polls"
-						}
-					}
-				} else {
-					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
-						h1 {
-							class: "mb-4",
-							"Edit Question"
-						}
-						if edit_form.error().get().is_some() {
-							div {
-								class: "alert-danger mb-3",
-								{ format_server_error(&edit_form.error().get().unwrap_or_default()) }
-							}
-						}
-						{ edit_form.clone().into_page() }
-						div {
-							class: "mt-3",
-							if edit_form.loading().get() {
-								button {
-									type: "submit",
-									class: "btn-primary opacity-50 cursor-not-allowed",
-									disabled: true,
-									form: "edit-question-form",
-									"Saving..."
-								}
-							} else {
-								button {
-									type: "submit",
-									class: "btn-primary",
-									form: "edit-question-form",
-									"Save"
-								}
-							}
-							a {
-								href: links::detail(question_id),
-								class: "btn-secondary ml-2",
-								"Cancel"
-							}
+							href: links::detail(question_id),
+							class: "btn-secondary ml-2",
+							"Cancel"
 						}
 					}
 				}
 			}
 		}
-	)(load_detail_signal, question_id)
+	})(load_detail_signal, question_id)
 }
 
 /// Delete confirmation page (`/polls/{question_id}/delete/`).
@@ -957,6 +944,10 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		server_fn: delete_question,
 		method: Post,
 		redirect_on_success: "/",
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 		state: {
 			loading,
 			error,
@@ -968,10 +959,6 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 			}
 		}
 
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 	};
 
 	let loading_signal = delete_form.loading().clone();
@@ -980,77 +967,72 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 	let load_detail_signal = load_detail.clone();
 	let cancel_href = links::detail(question_id);
 
-	page!(
-		| load_detail_signal : Action<(QuestionInfo, Vec<ChoiceInfo>), String>,
-		loading_signal : reinhardt::pages::reactive::Signal<bool>,
-		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
-		form_view : Page, cancel_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"Delete Question?"
-				}
-				if load_detail_signal.is_pending() {
-					div {
-						class: "text-center",
-						"Loading..."
-					}
-				} else if let Some((ref q, _)) = load_detail_signal.result() {
-					div {
-						class: "card",
-						div {
-							class: "card-body",
-							p {
-								class: "text-muted",
-								"You are about to delete the following question. This action cannot be undone."
-							}
-							blockquote {
-								class: "border-l-4 border-border-secondary pl-4 italic my-3",
-								{ q.question_text.clone() }
-							}
-						}
-					}
-				} else if load_detail_signal.error().is_some() {
-					div {
-						class: "alert-danger",
-						{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
-					}
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mt-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ form_view }
+	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Delete Question?"
+			}
+			if load_detail_signal.is_pending() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "delete-question-form",
-							"Deleting..."
+					class: "text-center",
+					"Loading..."
+				}
+			} else if let Some((ref q, _)) = load_detail_signal.result() {
+				div {
+					class: "card",
+					div {
+						class: "card-body",
+						p {
+							class: "text-muted",
+							"You are about to delete the following question. This action cannot be undone."
 						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-danger",
-							form: "delete-question-form",
-							"Delete"
+						blockquote {
+							class: "border-l-4 border-border-secondary pl-4 italic my-3",
+							{ q.question_text.clone() }
 						}
 					}
-					a {
-						href: cancel_href,
-						class: "btn-secondary ml-2",
-						"Cancel"
+				}
+			} else if load_detail_signal.error().is_some() {
+				div {
+					class: "alert-danger",
+					{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+				}
+			}
+			if error_signal.get().is_some() {
+				div {
+					class: "alert-danger mt-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "delete-question-form",
+						"Deleting..."
 					}
+				} else {
+					button {
+						type: "submit",
+						class: "btn-danger",
+						form: "delete-question-form",
+						"Delete"
+					}
+				}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	)(
+	})(
 		load_detail_signal,
 		loading_signal,
 		error_signal,
@@ -1114,50 +1096,46 @@ pub fn choice_new(question_id: i64) -> Page {
 	let form_view = new_form.into_page();
 	let back_href = links::detail(qid);
 
-	page!(
-		| loading_signal : reinhardt::pages::reactive::Signal<bool>,
-		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
-		form_view : Page, back_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"Add a Choice"
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mb-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ form_view }
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, back_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Add a Choice"
+			}
+			if error_signal.get().is_some() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "new-choice-form",
-							"Adding..."
-						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-primary",
-							form: "new-choice-form",
-							"Add Choice"
-						}
+					class: "alert-danger mb-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "new-choice-form",
+						"Adding..."
 					}
-					a {
-						href: back_href,
-						class: "btn-secondary ml-2",
-						"Back to poll"
+				} else {
+					button {
+						type: "submit",
+						class: "btn-primary",
+						form: "new-choice-form",
+						"Add Choice"
 					}
+				}
+				a {
+					href: back_href,
+					class: "btn-secondary ml-2",
+					"Back to poll"
 				}
 			}
 		}
-	)(loading_signal, error_signal, form_view, back_href)
+	})(loading_signal, error_signal, form_view, back_href)
 }
 
 /// Edit choice page (`/polls/{question_id}/choices/{choice_id}/edit/`).
@@ -1174,6 +1152,10 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 		server_fn: update_choice,
 		method: Post,
 		redirect_on_success: "/",
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 		state: {
 			loading,
 			error,
@@ -1183,7 +1165,6 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 			choice_id: HiddenField {
 				initial: cid_str,
 			}
-
 			choice_text: CharField {
 				label: "Choice text",
 				placeholder: "Updated answer option",
@@ -1192,60 +1173,52 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 			}
 		}
 
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 	};
 
 	let loading_signal = edit_form.loading().clone();
 	let error_signal = edit_form.error().clone();
 	let form_view = edit_form.into_page();
 
-	page!(
-		| loading_signal : reinhardt::pages::reactive::Signal<bool>,
-		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
-		form_view : Page, cancel_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"Edit Choice"
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mb-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ form_view }
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Edit Choice"
+			}
+			if error_signal.get().is_some() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "edit-choice-form",
-							"Saving..."
-						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-primary",
-							form: "edit-choice-form",
-							"Save"
-						}
+					class: "alert-danger mb-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "edit-choice-form",
+						"Saving..."
 					}
-					a {
-						href: cancel_href,
-						class: "btn-secondary ml-2",
-						"Cancel"
+				} else {
+					button {
+						type: "submit",
+						class: "btn-primary",
+						form: "edit-choice-form",
+						"Save"
 					}
+				}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	)(loading_signal, error_signal, form_view, cancel_href)
+	})(loading_signal, error_signal, form_view, cancel_href)
 }
 
 /// Delete-choice confirmation page
@@ -1262,6 +1235,10 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 		server_fn: delete_choice,
 		method: Post,
 		redirect_on_success: "/",
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 		state: {
 			loading,
 			error,
@@ -1273,62 +1250,54 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 			}
 		}
 
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 	};
 
 	let loading_signal = delete_form.loading().clone();
 	let error_signal = delete_form.error().clone();
 	let form_view = delete_form.into_page();
 
-	page!(
-		| loading_signal : reinhardt::pages::reactive::Signal<bool>,
-		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
-		form_view : Page, cancel_href : String | {
-			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
-				h1 {
-					class: "mb-4",
-					"Delete Choice?"
-				}
-				p {
-					class: "mb-3",
-					"This action cannot be undone."
-				}
-				if error_signal.get().is_some() {
-					div {
-						class: "alert-danger mt-3",
-						{ format_server_error(&error_signal.get().unwrap_or_default()) }
-					}
-				}
-				{ form_view }
+	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
+			h1 {
+				class: "mb-4",
+				"Delete Choice?"
+			}
+			p {
+				class: "mb-3",
+				"This action cannot be undone."
+			}
+			if error_signal.get().is_some() {
 				div {
-					class: "mt-3",
-					if loading_signal.get() {
-						button {
-							type: "submit",
-							class: "btn-primary opacity-50 cursor-not-allowed",
-							disabled: true,
-							form: "delete-choice-form",
-							"Deleting..."
-						}
-					} else {
-						button {
-							type: "submit",
-							class: "btn-danger",
-							form: "delete-choice-form",
-							"Delete"
-						}
+					class: "alert-danger mt-3",
+					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+				}
+			}
+			{ form_view }
+			div {
+				class: "mt-3",
+				if loading_signal.get() {
+					button {
+						type: "submit",
+						class: "btn-primary opacity-50 cursor-not-allowed",
+						disabled: true,
+						form: "delete-choice-form",
+						"Deleting..."
 					}
-					a {
-						href: cancel_href,
-						class: "btn-secondary ml-2",
-						"Cancel"
+				} else {
+					button {
+						type: "submit",
+						class: "btn-danger",
+						form: "delete-choice-form",
+						"Delete"
 					}
+				}
+				a {
+					href: cancel_href,
+					class: "btn-secondary ml-2",
+					"Cancel"
 				}
 			}
 		}
-	)(loading_signal, error_signal, form_view, cancel_href)
+	})(loading_signal, error_signal, form_view, cancel_href)
 }

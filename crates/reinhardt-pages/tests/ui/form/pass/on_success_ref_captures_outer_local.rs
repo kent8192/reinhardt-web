@@ -42,16 +42,15 @@ fn main() {
 		name: ProfileForm,
 		server_fn: update_profile,
 
-		// Two-parameter closure: `&Self` and `&T` (the server_fn Ok type).
-		// `T` is inferred from the closure body / parameter annotation;
-		// the macro never needs to name it. Here we just touch `user_id`
-		// to prove the outer-scope capture compiles.
-		on_success_ref: |_form, _updated: &i64| {
-			let _captured = user_id;
-		},
-
 		fields: {
-			name: CharField { required },
-		},
+			name: CharField {
+				required,
+			}
+		}
+
+		on_success_ref: |_form, _updated: &i64| {
+				let _captured = user_id;
+			},
+
 	};
 }
