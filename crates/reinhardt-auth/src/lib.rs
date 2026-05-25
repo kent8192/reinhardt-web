@@ -1,6 +1,4 @@
 #![warn(missing_docs)]
-// Re-exports of deprecated User trait and DefaultUser struct are intentional for backward compatibility.
-#![allow(deprecated)]
 //! # Reinhardt Auth
 //!
 //! Authentication and authorization system for Reinhardt framework.
@@ -98,6 +96,9 @@ pub use auth_extractors::validate_auth_extractors;
 pub(crate) const USER_ID_NAMESPACE: uuid::Uuid =
 	uuid::uuid!("c7a85537-073f-5092-8d10-774e109477c9");
 
+/// Internal user type for testing and development.
+pub mod internal_user;
+
 // Re-export core authentication types. The deprecated `User` trait,
 // `SimpleUser`, and `AnonymousUser` (which lived in `core::user`) were
 // removed in 0.2.0 per Issue #4520 — use `AuthIdentity` + `BaseUser` /
@@ -126,11 +127,6 @@ pub mod advanced_permissions;
 pub mod base_user_manager;
 /// HTTP Basic authentication backend.
 pub mod basic;
-/// Default user model with Argon2 password hashing.
-// `default_user` (`DefaultUser` struct) was removed in 0.2.0 per Issue
-// #4520. Define your own user type with the `#[user]` attribute macro.
-/// Default user manager implementation.
-pub mod default_user_manager;
 /// Group management (create, delete, assign users).
 pub mod group_management;
 /// Login/logout HTTP handlers.
@@ -183,10 +179,6 @@ pub mod user_management;
 pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
 pub use base_user_manager::BaseUserManager;
 pub use basic::BasicAuthentication as HttpBasicAuth;
-#[cfg(feature = "argon2-hasher")]
-// `DefaultUser` re-export removed (Issue #4520).
-#[cfg(feature = "argon2-hasher")]
-pub use default_user_manager::DefaultUserManager;
 pub use group_management::{
 	CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,
 	get_group_manager, register_group_manager,
@@ -307,46 +299,14 @@ impl From<JwtError> for AuthenticationError {
 	}
 }
 
-/// Authentication backend trait
-///
-/// All authentication operations are asynchronous to support various backends
-/// including database lookups, external API calls, and distributed systems.
-#[async_trait::async_trait]
-pub trait AuthenticationBackend: Send + Sync {
-	/// Authenticate a request and return a user if successful
-	///
-	/// # Arguments
-	///
-	/// * `request` - The incoming HTTP request
-	///
-	/// # Returns
-	///
-	/// - `Ok(Some(user))` if authentication succeeded
-	/// - `Ok(None)` if authentication failed but should try next backend
-	/// - `Err(error)` if a fatal error occurred
-	async fn authenticate(
-		&self,
-		request: &reinhardt_http::Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError>;
-
-	/// Get a user by their ID
-	///
-	/// # Arguments
-	///
-	/// * `user_id` - The user's unique identifier
-	///
-	/// # Returns
-	///
-	/// - `Ok(Some(user))` if user was found
-	/// - `Ok(None)` if user doesn't exist
-	/// - `Err(error)` if an error occurred
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError>;
-}
+// `AuthenticationBackend` trait was removed in 0.2.0 per Issue #4520.
+// Use `AuthBackend` (from `core::auth_backend`) instead. The old trait
+// depended on the removed `User` trait; `AuthBackend` works with
+// `AuthIdentity` and is the canonical authentication backend trait.
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use uuid::Uuid;
 
 	#[test]
 	#[cfg(feature = "jwt")]
@@ -567,33 +527,4 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
-	#[test]
-	fn test_simple_user_implementation() {
-		let user = SimpleUser {
-			id: Uuid::now_v7(),
-			username: "testuser".to_string(),
-			email: "test@example.com".to_string(),
-			is_active: true,
-			is_admin: false,
-			is_staff: false,
-			is_superuser: false,
-		};
-
-		assert!(!user.id().is_empty());
-		assert_eq!(user.username(), "testuser");
-		assert!(user.is_authenticated());
-		assert!(user.is_active());
-		assert!(!user.is_admin());
-	}
-
-	#[test]
-	fn test_anonymous_user() {
-		let user = AnonymousUser;
-
-		assert_eq!(user.id(), "");
-		assert_eq!(user.username(), "");
-		assert!(!user.is_authenticated());
-		assert!(!user.is_active());
-		assert!(!user.is_admin());
-	}
 }

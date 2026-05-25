@@ -230,7 +230,7 @@ impl Permission for DjangoModelPermissions {
 		// Check if the user has ALL required permissions
 		if let Some(user) = &context.user {
 			let perms = self.user_permissions.read().await;
-			if let Some(user_perms) = perms.get(user.username()) {
+			if let Some(user_perms) = perms.get(&user.id()) {
 				return required_perms
 					.iter()
 					.all(|required| user_perms.iter().any(|p| p == required));
@@ -660,8 +660,8 @@ mod tests {
 		assert!(perm.has_permission(&context).await);
 	}
 
-	fn make_user(username: &str) -> Box<dyn crate::User> {
-		Box::new(crate::SimpleUser {
+	fn make_user(username: &str) -> Box<dyn crate::core::AuthIdentity> {
+		Box::new(crate::internal_user::InternalUser {
 			id: uuid::Uuid::now_v7(),
 			username: username.to_string(),
 			email: format!("{}@example.com", username),
@@ -675,8 +675,10 @@ mod tests {
 	#[tokio::test(flavor = "multi_thread")]
 	async fn test_django_model_permissions_non_admin_with_matching_permissions() {
 		// Arrange
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = DjangoModelPermissions::with_model_name("blog.article");
-		perm.add_user_permission("alice", "blog.add_article");
+		perm.add_user_permission(&alice_id, "blog.add_article");
 
 		let request = Request::builder()
 			.method(Method::POST)
@@ -690,7 +692,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(alice),
 		};
 
 		// Act & Assert - user has the required "blog.add_article" for POST
@@ -701,8 +703,10 @@ mod tests {
 	#[tokio::test(flavor = "multi_thread")]
 	async fn test_django_model_permissions_non_admin_wrong_permissions() {
 		// Arrange - user has add but tries to delete
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = DjangoModelPermissions::with_model_name("blog.article");
-		perm.add_user_permission("alice", "blog.add_article");
+		perm.add_user_permission(&alice_id, "blog.add_article");
 
 		let request = Request::builder()
 			.method(Method::DELETE)
@@ -716,7 +720,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(alice),
 		};
 
 		// Act & Assert - user does NOT have "blog.delete_article"
@@ -726,7 +730,7 @@ mod tests {
 	#[tokio::test(flavor = "multi_thread")]
 	async fn test_django_model_permissions_non_admin_empty_permissions() {
 		// Arrange
-		let mut perm = DjangoModelPermissions::with_model_name("blog.article");
+		let perm = DjangoModelPermissions::with_model_name("blog.article");
 		// Don't add any permissions for alice
 
 		let request = Request::builder()
@@ -752,8 +756,10 @@ mod tests {
 	#[tokio::test(flavor = "multi_thread")]
 	async fn test_django_model_permissions_no_model_name_non_admin_denied() {
 		// Arrange - no model_name configured, non-admin user
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = DjangoModelPermissions::new();
-		perm.add_user_permission("alice", "blog.add_article");
+		perm.add_user_permission(&alice_id, "blog.add_article");
 
 		let request = Request::builder()
 			.method(Method::POST)
@@ -767,7 +773,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(alice),
 		};
 
 		// Act & Assert - without model_name, only admins get blanket access
@@ -802,14 +808,26 @@ mod tests {
 	#[rstest::rstest]
 	#[tokio::test(flavor = "multi_thread")]
 	async fn test_django_model_permissions_method_to_permission_mapping() {
-		// Arrange
-		let mut perm = DjangoModelPermissions::with_model_name("blog.article");
-		perm.add_user_permission("alice", "blog.view_article");
-		perm.add_user_permission("alice", "blog.add_article");
-		perm.add_user_permission("alice", "blog.change_article");
-		// Note: alice does NOT have blog.delete_article
+		// Arrange - use a shared ID so every alice instance resolves to the same
+		// permission key (make_user generates a random UUID each call)
+		let alice_id = uuid::Uuid::now_v7();
+		let make_alice = || -> Box<dyn crate::core::AuthIdentity> {
+			Box::new(crate::internal_user::InternalUser {
+				id: alice_id,
+				username: "alice".to_string(),
+				email: "alice@example.com".to_string(),
+				is_active: true,
+				is_admin: false,
+				is_staff: false,
+				is_superuser: false,
+			})
+		};
 
-		let user = make_user("alice");
+		let mut perm = DjangoModelPermissions::with_model_name("blog.article");
+		perm.add_user_permission(&alice_id.to_string(), "blog.view_article");
+		perm.add_user_permission(&alice_id.to_string(), "blog.add_article");
+		perm.add_user_permission(&alice_id.to_string(), "blog.change_article");
+		// Note: alice does NOT have blog.delete_article
 
 		// Act & Assert - GET requires view_article
 		let request = Request::builder()
@@ -823,7 +841,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(make_alice()),
 		};
 		assert!(perm.has_permission(&context).await);
 
@@ -839,7 +857,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(make_alice()),
 		};
 		assert!(perm.has_permission(&context).await);
 
@@ -855,7 +873,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(make_alice()),
 		};
 		assert!(perm.has_permission(&context).await);
 
@@ -871,7 +889,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(make_alice()),
 		};
 		assert!(!perm.has_permission(&context).await);
 	}

@@ -2,13 +2,14 @@
 //!
 //! Passwords are hashed with Argon2id on storage and verified using
 //! constant-time comparison provided by the `argon2` crate.
+//!
+//! Implements [`AuthBackend`] returning [`AuthIdentity`] trait objects.
 
-// This module uses the deprecated User trait for backward compatibility.
-// BasicAuthentication returns Box<dyn User> to preserve existing authentication APIs.
-#![allow(deprecated)]
 use crate::core::hasher::PasswordHasher;
+use crate::core::AuthIdentity;
+use crate::internal_user::InternalUser;
 use crate::rest_authentication::RestAuthentication;
-use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
+use crate::{AuthBackend, AuthenticationError};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use reinhardt_http::Request;
 use std::collections::HashMap;
@@ -64,7 +65,7 @@ impl BasicAuthentication {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_auth::{HttpBasicAuth, AuthenticationBackend};
+	/// use reinhardt_auth::{HttpBasicAuth, AuthBackend};
 	/// use bytes::Bytes;
 	/// use hyper::{HeaderMap, Method, Uri, Version};
 	/// use reinhardt_http::Request;
@@ -104,7 +105,7 @@ impl BasicAuthentication {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_auth::{HttpBasicAuth, AuthenticationBackend};
+	/// use reinhardt_auth::{HttpBasicAuth, AuthBackend};
 	/// use bytes::Bytes;
 	/// use hyper::{HeaderMap, Method, Uri, Version};
 	/// use reinhardt_http::Request;
@@ -129,7 +130,7 @@ impl BasicAuthentication {
 	/// // Authentication should succeed
 	/// let result = auth.authenticate(&request).await.unwrap();
 	/// assert!(result.is_some());
-	/// assert_eq!(result.unwrap().get_username(), "alice");
+	/// assert!(result.unwrap().is_authenticated());
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
@@ -167,11 +168,11 @@ impl Default for BasicAuthentication {
 }
 
 #[async_trait::async_trait]
-impl AuthenticationBackend for BasicAuthentication {
+impl AuthBackend for BasicAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		let auth_header = request
 			.headers
 			.get("Authorization")
@@ -184,7 +185,7 @@ impl AuthenticationBackend for BasicAuthentication {
 				// Argon2 verify uses constant-time comparison internally
 				let is_valid = self.hasher.verify(&password, stored_hash).unwrap_or(false);
 				if is_valid {
-					return Ok(Some(Box::new(SimpleUser {
+					return Ok(Some(Box::new(InternalUser {
 						id: Uuid::new_v5(&crate::USER_ID_NAMESPACE, username.as_bytes()),
 						username: username.clone(),
 						email: String::new(),
@@ -201,9 +202,9 @@ impl AuthenticationBackend for BasicAuthentication {
 		Ok(None)
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		if self.users.contains_key(user_id) {
-			Ok(Some(Box::new(SimpleUser {
+			Ok(Some(Box::new(InternalUser {
 				id: Uuid::new_v5(&crate::USER_ID_NAMESPACE, user_id.as_bytes()),
 				username: user_id.to_string(),
 				email: String::new(),
@@ -218,15 +219,15 @@ impl AuthenticationBackend for BasicAuthentication {
 	}
 }
 
-// Implement REST API Authentication trait by forwarding to AuthenticationBackend
+// Implement REST API Authentication trait by forwarding to AuthBackend
 #[async_trait::async_trait]
 impl RestAuthentication for BasicAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
-		// Forward to AuthenticationBackend implementation
-		AuthenticationBackend::authenticate(self, request).await
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+		// Forward to AuthBackend implementation
+		AuthBackend::authenticate(self, request).await
 	}
 }
 
@@ -261,13 +262,15 @@ mod tests {
 		let request = create_request_with_auth(auth);
 
 		// Act
-		let result = AuthenticationBackend::authenticate(&backend, &request)
+		let result = AuthBackend::authenticate(&backend, &request)
 			.await
 			.unwrap();
 
 		// Assert
-		assert!(result.is_some());
-		assert_eq!(result.unwrap().get_username(), "testuser");
+		let user = result.expect("authentication should succeed");
+		let expected_id = Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"testuser").to_string();
+		assert_eq!(user.id(), expected_id);
+		assert!(user.is_authenticated());
 	}
 
 	#[rstest]
@@ -282,7 +285,7 @@ mod tests {
 		let request = create_request_with_auth(auth);
 
 		// Act
-		let result = AuthenticationBackend::authenticate(&backend, &request).await;
+		let result = AuthBackend::authenticate(&backend, &request).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -301,7 +304,7 @@ mod tests {
 			.unwrap();
 
 		// Act
-		let result = AuthenticationBackend::authenticate(&backend, &request)
+		let result = AuthBackend::authenticate(&backend, &request)
 			.await
 			.unwrap();
 
@@ -334,8 +337,10 @@ mod tests {
 		let no_user = backend.get_user("nonexistent").await.unwrap();
 
 		// Assert
-		assert!(user.is_some());
-		assert_eq!(user.unwrap().get_username(), "testuser");
+		let user = user.expect("registered user should be found");
+		let expected_id = Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"testuser").to_string();
+		assert_eq!(user.id(), expected_id);
+		assert!(user.is_authenticated());
 		assert!(no_user.is_none());
 	}
 
@@ -370,11 +375,11 @@ mod tests {
 		let request2 = create_request_with_auth(auth);
 
 		// Act
-		let user1 = AuthenticationBackend::authenticate(&backend, &request1)
+		let user1 = AuthBackend::authenticate(&backend, &request1)
 			.await
 			.unwrap()
 			.unwrap();
-		let user2 = AuthenticationBackend::authenticate(&backend, &request2)
+		let user2 = AuthBackend::authenticate(&backend, &request2)
 			.await
 			.unwrap()
 			.unwrap();
@@ -398,7 +403,7 @@ mod tests {
 		let request = create_request_with_auth(auth);
 
 		// Act
-		let user = AuthenticationBackend::authenticate(&backend, &request)
+		let user = AuthBackend::authenticate(&backend, &request)
 			.await
 			.unwrap()
 			.unwrap();
@@ -424,16 +429,14 @@ mod tests {
 		let request = create_request_with_auth(auth);
 
 		// Act
-		let user = AuthenticationBackend::authenticate(&backend, &request)
+		let user = AuthBackend::authenticate(&backend, &request)
 			.await
 			.unwrap()
 			.unwrap();
 
 		// Assert
-		assert!(user.is_active());
+		assert!(user.is_authenticated());
 		assert!(!user.is_admin());
-		assert!(!user.is_staff());
-		assert!(!user.is_superuser());
 	}
 
 	#[rstest]

@@ -1,12 +1,9 @@
-// This module uses the deprecated User trait for backward compatibility.
-// AuthBackend and CompositeAuthBackend are keyed on User to preserve existing APIs
-// until a full migration to AuthIdentity is complete.
-#![allow(deprecated)]
 use async_trait::async_trait;
 
-use crate::core::user::User;
+use crate::AuthenticationError;
+use crate::core::AuthIdentity;
 
-/// Authentication backend trait
+/// Unified authentication backend trait
 ///
 /// Implement this trait to create custom authentication backends.
 /// A backend handles user authentication (login) and user retrieval.
@@ -14,97 +11,63 @@ use crate::core::user::User;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::{AuthBackend, User, SimpleUser, PasswordHasher};
-/// #[cfg(feature = "argon2-hasher")]
-/// use reinhardt_auth::Argon2Hasher;
+/// use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
 /// use async_trait::async_trait;
-/// use std::collections::HashMap;
-/// use uuid::Uuid;
+/// use reinhardt_http::Request;
 ///
-/// # #[cfg(feature = "argon2-hasher")]
-/// # {
-/// struct InMemoryAuthBackend {
-///     users: HashMap<String, (String, SimpleUser)>, // username -> (password_hash, user)
-///     hasher: Argon2Hasher,
-/// }
-///
-/// impl InMemoryAuthBackend {
-///     fn new() -> Self {
-///         let mut users = HashMap::new();
-///         let hasher = Argon2Hasher::new();
-///
-///         let user = SimpleUser {
-///             id: Uuid::now_v7(),
-///             username: "alice".to_string(),
-///             email: "alice@example.com".to_string(),
-///             is_active: true,
-///             is_admin: false,
-///             is_staff: false,
-///             is_superuser: false,
-///         };
-///         let hash = hasher.hash("password123").unwrap();
-///         users.insert("alice".to_string(), (hash, user));
-///
-///         Self { users, hasher }
-///     }
-/// }
+/// struct MyAuthBackend;
 ///
 /// #[async_trait]
-/// impl AuthBackend for InMemoryAuthBackend {
-///     type User = SimpleUser;
-///
-///     async fn authenticate(&self, username: &str, password: &str)
-///         -> Result<Option<Self::User>, reinhardt_core::exception::Error> {
-///         if let Some((hash, user)) = self.users.get(username) {
-///             if self.hasher.verify(password, hash)? {
-///                 return Ok(Some(user.clone()));
-///             }
-///         }
+/// impl AuthBackend for MyAuthBackend {
+///     async fn authenticate(
+///         &self,
+///         request: &Request,
+///     ) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+///         // Extract credentials from the request and verify
 ///         Ok(None)
 ///     }
 ///
-///     async fn get_user(&self, user_id: &str)
-///         -> Result<Option<Self::User>, reinhardt_core::exception::Error> {
-///         Ok(self.users.values()
-///             .find(|(_, u)| u.id.to_string() == user_id)
-///             .map(|(_, u)| u.clone()))
+///     async fn get_user(
+///         &self,
+///         user_id: &str,
+///     ) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+///         Ok(None)
 ///     }
 /// }
-/// # }
 /// ```
 #[async_trait]
 pub trait AuthBackend: Send + Sync {
-	/// The user type this backend works with
-	type User: User;
-
-	/// Authenticates a user with username and password
-	///
-	/// Returns `Ok(Some(user))` if authentication succeeds,
-	/// `Ok(None)` if credentials are invalid,
-	/// `Err(_)` if an error occurs.
+	/// Authenticate a request and return a user identity if successful
 	///
 	/// # Arguments
 	///
-	/// * `username` - The username or email to authenticate
-	/// * `password` - The plaintext password to verify
+	/// * `request` - The incoming HTTP request
+	///
+	/// # Returns
+	///
+	/// - `Ok(Some(identity))` if authentication succeeded
+	/// - `Ok(None)` if authentication failed but should try next backend
+	/// - `Err(error)` if a fatal error occurred
 	async fn authenticate(
 		&self,
-		username: &str,
-		password: &str,
-	) -> Result<Option<Self::User>, reinhardt_core::exception::Error>;
+		request: &reinhardt_http::Request,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>;
 
-	/// Retrieves a user by their ID
-	///
-	/// Returns `Ok(Some(user))` if found, `Ok(None)` if not found,
-	/// `Err(_)` if an error occurs.
+	/// Get a user by their ID
 	///
 	/// # Arguments
 	///
-	/// * `user_id` - The user's unique identifier as a string
+	/// * `user_id` - The user's unique identifier
+	///
+	/// # Returns
+	///
+	/// - `Ok(Some(identity))` if user was found
+	/// - `Ok(None)` if user doesn't exist
+	/// - `Err(error)` if an error occurred
 	async fn get_user(
 		&self,
 		user_id: &str,
-	) -> Result<Option<Self::User>, reinhardt_core::exception::Error>;
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>;
 }
 
 /// Composite auth backend - tries multiple backends in order
@@ -115,16 +78,16 @@ pub trait AuthBackend: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::{CompositeAuthBackend, SimpleUser};
+/// use reinhardt_auth::CompositeAuthBackend;
 ///
-/// let backend: CompositeAuthBackend<SimpleUser> = CompositeAuthBackend::new();
+/// let backend = CompositeAuthBackend::new();
 /// // Add custom backends with backend.add_backend(Box::new(my_backend))
 /// ```
-pub struct CompositeAuthBackend<U: User> {
-	backends: Vec<Box<dyn AuthBackend<User = U>>>,
+pub struct CompositeAuthBackend {
+	backends: Vec<Box<dyn AuthBackend>>,
 }
 
-impl<U: User> CompositeAuthBackend<U> {
+impl CompositeAuthBackend {
 	/// Creates a new composite authentication backend with no backends
 	pub fn new() -> Self {
 		Self {
@@ -135,28 +98,25 @@ impl<U: User> CompositeAuthBackend<U> {
 	/// Adds an authentication backend to the composite
 	///
 	/// Backends are tried in the order they are added.
-	pub fn add_backend(&mut self, backend: Box<dyn AuthBackend<User = U>>) {
+	pub fn add_backend(&mut self, backend: Box<dyn AuthBackend>) {
 		self.backends.push(backend);
 	}
 }
 
-impl<U: User> Default for CompositeAuthBackend<U> {
+impl Default for CompositeAuthBackend {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
 #[async_trait]
-impl<U: User + 'static> AuthBackend for CompositeAuthBackend<U> {
-	type User = U;
-
+impl AuthBackend for CompositeAuthBackend {
 	async fn authenticate(
 		&self,
-		username: &str,
-		password: &str,
-	) -> Result<Option<Self::User>, reinhardt_core::exception::Error> {
+		request: &reinhardt_http::Request,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		for backend in &self.backends {
-			if let Some(user) = backend.authenticate(username, password).await? {
+			if let Some(user) = backend.authenticate(request).await? {
 				return Ok(Some(user));
 			}
 		}
@@ -166,7 +126,7 @@ impl<U: User + 'static> AuthBackend for CompositeAuthBackend<U> {
 	async fn get_user(
 		&self,
 		user_id: &str,
-	) -> Result<Option<Self::User>, reinhardt_core::exception::Error> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		for backend in &self.backends {
 			if let Some(user) = backend.get_user(user_id).await? {
 				return Ok(Some(user));

@@ -1,14 +1,10 @@
-// The `User` trait is deprecated in favour of the new `#[model]`-based user macro system.
-// Downstream crates still reference it during the transition period.
-#![allow(deprecated)]
-
 #[cfg(feature = "sessions")]
 use async_trait::async_trait;
 #[cfg(feature = "sessions")]
 use std::sync::Arc;
 
 #[cfg(feature = "sessions")]
-use reinhardt_auth::{AuthenticationBackend, User};
+use reinhardt_auth::{AuthBackend, AuthIdentity};
 #[cfg(feature = "sessions")]
 use reinhardt_http::{
 	AuthState, Handler, IsActive, IsAdmin, IsAuthenticated, Middleware, Request, Response, Result,
@@ -25,7 +21,7 @@ pub const REMOTE_USER_HEADER: &str = "REMOTE_USER";
 /// of Django's [`RemoteUserMiddleware`](https://docs.djangoproject.com/en/5.1/ref/middleware/#django.contrib.auth.middleware.RemoteUserMiddleware).
 ///
 /// When the configured header is present, the middleware uses the
-/// provided [`AuthenticationBackend`] to look up the user. When the
+/// provided [`AuthBackend`] to look up the user. When the
 /// header is absent, the request proceeds as anonymous, clearing any
 /// previously authenticated state.
 ///
@@ -43,7 +39,7 @@ pub const REMOTE_USER_HEADER: &str = "REMOTE_USER";
 /// use reinhardt_middleware::RemoteUserMiddleware;
 /// use reinhardt_http::MiddlewareChain;
 /// # use reinhardt_http::{Handler, Request, Response, Result};
-/// # use reinhardt_auth::{AuthenticationBackend, AuthenticationError, User};
+/// # use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
 /// # use async_trait::async_trait;
 /// # struct MyHandler;
 /// # #[async_trait]
@@ -54,9 +50,9 @@ pub const REMOTE_USER_HEADER: &str = "REMOTE_USER";
 /// # }
 /// # struct MyAuthBackend;
 /// # #[async_trait]
-/// # impl AuthenticationBackend for MyAuthBackend {
-/// #     async fn authenticate(&self, _req: &Request) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> { Ok(None) }
-/// #     async fn get_user(&self, _uid: &str) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> { Ok(None) }
+/// # impl AuthBackend for MyAuthBackend {
+/// #     async fn authenticate(&self, _req: &Request) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> { Ok(None) }
+/// #     async fn get_user(&self, _uid: &str) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> { Ok(None) }
 /// # }
 /// # let handler = Arc::new(MyHandler);
 ///
@@ -67,7 +63,7 @@ pub const REMOTE_USER_HEADER: &str = "REMOTE_USER";
 ///     .with_middleware(Arc::new(middleware));
 /// ```
 #[cfg(feature = "sessions")]
-pub struct RemoteUserMiddleware<A: AuthenticationBackend> {
+pub struct RemoteUserMiddleware<A: AuthBackend> {
 	auth_backend: Arc<A>,
 	header_name: String,
 	/// When `true`, absence of the remote user header forces logout
@@ -77,7 +73,7 @@ pub struct RemoteUserMiddleware<A: AuthenticationBackend> {
 }
 
 #[cfg(feature = "sessions")]
-impl<A: AuthenticationBackend> RemoteUserMiddleware<A> {
+impl<A: AuthBackend> RemoteUserMiddleware<A> {
 	/// Creates a new remote user middleware with the default `REMOTE_USER` header.
 	///
 	/// When the header is absent, the request proceeds as anonymous.
@@ -104,14 +100,14 @@ impl<A: AuthenticationBackend> RemoteUserMiddleware<A> {
 	/// ```rust,no_run
 	/// # use std::sync::Arc;
 	/// # use reinhardt_middleware::RemoteUserMiddleware;
-	/// # use reinhardt_auth::{AuthenticationBackend, AuthenticationError, User};
+	/// # use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
 	/// # use reinhardt_http::Request;
 	/// # use async_trait::async_trait;
 	/// # struct MyAuth;
 	/// # #[async_trait]
-	/// # impl AuthenticationBackend for MyAuth {
-	/// #     async fn authenticate(&self, _req: &Request) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> { Ok(None) }
-	/// #     async fn get_user(&self, _uid: &str) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> { Ok(None) }
+	/// # impl AuthBackend for MyAuth {
+	/// #     async fn authenticate(&self, _req: &Request) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> { Ok(None) }
+	/// #     async fn get_user(&self, _uid: &str) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> { Ok(None) }
 	/// # }
 	///
 	/// let backend = Arc::new(MyAuth);
@@ -124,15 +120,17 @@ impl<A: AuthenticationBackend> RemoteUserMiddleware<A> {
 	}
 
 	/// Looks up a user by username via the authentication backend.
-	async fn get_user_by_name(&self, username: &str) -> Option<Box<dyn User>> {
+	async fn get_user_by_name(&self, username: &str) -> Option<Box<dyn AuthIdentity>> {
 		self.auth_backend.get_user(username).await.ok().flatten()
 	}
 
 	/// Inserts user information into request extensions.
-	fn insert_user_extensions(request: &Request, user: &dyn User) {
+	fn insert_user_extensions(request: &Request, user: &dyn AuthIdentity) {
 		let is_authenticated = user.is_authenticated();
 		let is_admin = user.is_admin();
-		let is_active = user.is_active();
+		// `AuthIdentity` does not expose `is_active`; authenticated users
+		// resolved from the remote user header are assumed active.
+		let is_active = is_authenticated;
 		let user_id = user.id();
 
 		// Insert individual values for backward compatibility
@@ -153,7 +151,7 @@ impl<A: AuthenticationBackend> RemoteUserMiddleware<A> {
 
 #[cfg(feature = "sessions")]
 #[async_trait]
-impl<A: AuthenticationBackend + 'static> Middleware for RemoteUserMiddleware<A> {
+impl<A: AuthBackend + 'static> Middleware for RemoteUserMiddleware<A> {
 	async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
 		let remote_user = request
 			.headers
@@ -196,7 +194,7 @@ impl<A: AuthenticationBackend + 'static> Middleware for RemoteUserMiddleware<A> 
 /// use reinhardt_middleware::PersistentRemoteUserMiddleware;
 /// use reinhardt_http::MiddlewareChain;
 /// # use reinhardt_http::{Handler, Request, Response, Result};
-/// # use reinhardt_auth::{AuthenticationBackend, AuthenticationError, User};
+/// # use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
 /// # use async_trait::async_trait;
 /// # struct MyHandler;
 /// # #[async_trait]
@@ -207,9 +205,9 @@ impl<A: AuthenticationBackend + 'static> Middleware for RemoteUserMiddleware<A> 
 /// # }
 /// # struct MyAuthBackend;
 /// # #[async_trait]
-/// # impl AuthenticationBackend for MyAuthBackend {
-/// #     async fn authenticate(&self, _req: &Request) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> { Ok(None) }
-/// #     async fn get_user(&self, _uid: &str) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> { Ok(None) }
+/// # impl AuthBackend for MyAuthBackend {
+/// #     async fn authenticate(&self, _req: &Request) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> { Ok(None) }
+/// #     async fn get_user(&self, _uid: &str) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> { Ok(None) }
 /// # }
 /// # let handler = Arc::new(MyHandler);
 ///
@@ -220,12 +218,12 @@ impl<A: AuthenticationBackend + 'static> Middleware for RemoteUserMiddleware<A> 
 ///     .with_middleware(Arc::new(middleware));
 /// ```
 #[cfg(feature = "sessions")]
-pub struct PersistentRemoteUserMiddleware<A: AuthenticationBackend> {
+pub struct PersistentRemoteUserMiddleware<A: AuthBackend> {
 	inner: RemoteUserMiddleware<A>,
 }
 
 #[cfg(feature = "sessions")]
-impl<A: AuthenticationBackend> PersistentRemoteUserMiddleware<A> {
+impl<A: AuthBackend> PersistentRemoteUserMiddleware<A> {
 	/// Creates a new persistent remote user middleware.
 	///
 	/// Unlike [`RemoteUserMiddleware`], this middleware does not clear
@@ -253,7 +251,7 @@ impl<A: AuthenticationBackend> PersistentRemoteUserMiddleware<A> {
 
 #[cfg(feature = "sessions")]
 #[async_trait]
-impl<A: AuthenticationBackend + 'static> Middleware for PersistentRemoteUserMiddleware<A> {
+impl<A: AuthBackend + 'static> Middleware for PersistentRemoteUserMiddleware<A> {
 	async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
 		self.inner.process(request, next).await
 	}
@@ -264,7 +262,8 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
-	use reinhardt_auth::{AuthenticationError, SimpleUser};
+	use reinhardt_auth::AuthenticationError;
+	use reinhardt_auth::internal_user::InternalUser;
 	use reinhardt_http::{AuthState, Handler, Middleware, Request, Response};
 	use rstest::rstest;
 	use uuid::Uuid;
@@ -283,34 +282,34 @@ mod tests {
 	}
 
 	struct TestAuthBackend {
-		user: Option<SimpleUser>,
+		user: Option<InternalUser>,
 	}
 
 	#[async_trait::async_trait]
-	impl AuthenticationBackend for TestAuthBackend {
+	impl AuthBackend for TestAuthBackend {
 		async fn authenticate(
 			&self,
 			_request: &Request,
-		) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
+		) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 			Ok(self
 				.user
 				.as_ref()
-				.map(|u| Box::new(u.clone()) as Box<dyn User>))
+				.map(|u| Box::new(u.clone()) as Box<dyn AuthIdentity>))
 		}
 
 		async fn get_user(
 			&self,
 			_user_id: &str,
-		) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
+		) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 			Ok(self
 				.user
 				.as_ref()
-				.map(|u| Box::new(u.clone()) as Box<dyn User>))
+				.map(|u| Box::new(u.clone()) as Box<dyn AuthIdentity>))
 		}
 	}
 
-	fn test_user() -> SimpleUser {
-		SimpleUser {
+	fn test_user() -> InternalUser {
+		InternalUser {
 			id: Uuid::now_v7(),
 			username: "proxy-user".to_string(),
 			email: "proxy@example.com".to_string(),

@@ -3,7 +3,7 @@
 //! Provides CRUD operations for user management.
 
 use crate::PasswordHasher;
-use crate::SimpleUser;
+use crate::internal_user::InternalUser;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -153,7 +153,7 @@ pub struct UpdateUserData {
 /// }
 /// ```
 pub struct UserManager<H: PasswordHasher> {
-	users: Arc<RwLock<HashMap<Uuid, SimpleUser>>>,
+	users: Arc<RwLock<HashMap<Uuid, InternalUser>>>,
 	username_index: Arc<RwLock<HashMap<String, Uuid>>>,
 	password_hashes: Arc<RwLock<HashMap<Uuid, String>>>,
 	hasher: H,
@@ -221,7 +221,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///     assert_eq!(user.username, "bob");
 	/// }
 	/// ```
-	pub async fn create_user(&mut self, data: CreateUserData) -> UserManagementResult<SimpleUser> {
+	pub async fn create_user(&mut self, data: CreateUserData) -> UserManagementResult<InternalUser> {
 		// Validate username
 		if data.username.is_empty() || data.username.len() < 3 {
 			return Err(UserManagementError::InvalidUsername);
@@ -252,7 +252,7 @@ impl<H: PasswordHasher> UserManager<H> {
 			.map_err(|e| UserManagementError::Other(e.to_string()))?;
 
 		// Create user
-		let user = SimpleUser {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: data.username.clone(),
 			email: data.email,
@@ -308,7 +308,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///     assert_eq!(retrieved.username, "charlie");
 	/// }
 	/// ```
-	pub async fn get_user(&self, user_id: &str) -> UserManagementResult<SimpleUser> {
+	pub async fn get_user(&self, user_id: &str) -> UserManagementResult<InternalUser> {
 		let uuid = Uuid::parse_str(user_id)
 			.map_err(|_| UserManagementError::Other("Invalid UUID".to_string()))?;
 
@@ -353,7 +353,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///     assert_eq!(retrieved.username, "diana");
 	/// }
 	/// ```
-	pub async fn get_user_by_username(&self, username: &str) -> UserManagementResult<SimpleUser> {
+	pub async fn get_user_by_username(&self, username: &str) -> UserManagementResult<InternalUser> {
 		let username_index = self.username_index.read().await;
 		let user_id = username_index
 			.get(username)
@@ -412,7 +412,7 @@ impl<H: PasswordHasher> UserManager<H> {
 		&mut self,
 		user_id: &str,
 		data: UpdateUserData,
-	) -> UserManagementResult<SimpleUser> {
+	) -> UserManagementResult<InternalUser> {
 		let uuid = Uuid::parse_str(user_id)
 			.map_err(|_| UserManagementError::Other("Invalid UUID".to_string()))?;
 
@@ -537,7 +537,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///     assert_eq!(users.len(), 2);
 	/// }
 	/// ```
-	pub async fn list_users(&self) -> Vec<SimpleUser> {
+	pub async fn list_users(&self) -> Vec<InternalUser> {
 		let users = self.users.read().await;
 		users.values().cloned().collect()
 	}

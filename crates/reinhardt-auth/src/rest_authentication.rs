@@ -2,13 +2,10 @@
 //!
 //! Provides REST API-compatible authentication wrappers and combinators.
 
-// This module uses the deprecated User and DefaultUser types for backward compatibility.
-// REST authentication backends return Box<dyn User> to preserve existing APIs.
-#![allow(deprecated)]
-#[cfg(feature = "argon2-hasher")]
-use crate::DefaultUser;
+use crate::core::AuthIdentity;
+use crate::internal_user::InternalUser;
 use crate::sessions::{Session, backends::SessionBackend};
-use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
+use crate::{AuthBackend, AuthenticationError};
 use reinhardt_http::Request;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -19,11 +16,11 @@ use subtle::ConstantTimeEq;
 /// Provides a REST API-compatible interface for authentication.
 #[async_trait::async_trait]
 pub trait RestAuthentication: Send + Sync {
-	/// Authenticate a request and return a user if successful
+	/// Authenticate a request and return an identity if successful
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError>;
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>;
 }
 
 /// Basic authentication configuration
@@ -93,7 +90,7 @@ impl Default for TokenAuthConfig {
 ///     .with_backend(TokenAuthentication::new());
 /// ```
 pub struct CompositeAuthentication {
-	backends: Vec<Arc<dyn AuthenticationBackend>>,
+	backends: Vec<Arc<dyn AuthBackend>>,
 }
 
 impl CompositeAuthentication {
@@ -125,13 +122,13 @@ impl CompositeAuthentication {
 	/// let auth = CompositeAuthentication::new()
 	///     .with_backend(TokenAuthentication::new());
 	/// ```
-	pub fn with_backend<B: AuthenticationBackend + 'static>(mut self, backend: B) -> Self {
+	pub fn with_backend<B: AuthBackend + 'static>(mut self, backend: B) -> Self {
 		self.backends.push(Arc::new(backend));
 		self
 	}
 
 	/// Add multiple backends at once (chainable)
-	pub fn with_backends(mut self, backends: Vec<Arc<dyn AuthenticationBackend>>) -> Self {
+	pub fn with_backends(mut self, backends: Vec<Arc<dyn AuthBackend>>) -> Self {
 		self.backends.extend(backends);
 		self
 	}
@@ -158,7 +155,7 @@ impl RestAuthentication for CompositeAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Try each backend in order, collecting errors
 		let mut errors: Vec<AuthenticationError> = Vec::new();
 
@@ -185,15 +182,15 @@ impl RestAuthentication for CompositeAuthentication {
 }
 
 #[async_trait::async_trait]
-impl AuthenticationBackend for CompositeAuthentication {
+impl AuthBackend for CompositeAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Try each backend in order until one succeeds, collecting errors
 		let mut errors: Vec<AuthenticationError> = Vec::new();
 
@@ -303,7 +300,7 @@ impl RestAuthentication for TokenAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		let auth_header = request
 			.headers
 			.get(&self.config.header_name)
@@ -318,7 +315,7 @@ impl RestAuthentication for TokenAuthentication {
 				let id = uuid::Uuid::parse_str(user_id).unwrap_or_else(|_| {
 					uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, user_id.as_bytes())
 				});
-				return Ok(Some(Box::new(SimpleUser {
+				return Ok(Some(Box::new(InternalUser {
 					id,
 					username: user_id.clone(),
 					email: String::new(),
@@ -335,21 +332,21 @@ impl RestAuthentication for TokenAuthentication {
 }
 
 #[async_trait::async_trait]
-impl AuthenticationBackend for TokenAuthentication {
+impl AuthBackend for TokenAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		if self.tokens.values().any(|id| id == user_id) {
 			// Try to parse user_id as UUID, or generate a new one if it fails
 			let id = uuid::Uuid::parse_str(user_id).unwrap_or_else(|_| {
 				uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, user_id.as_bytes())
 			});
-			Ok(Some(Box::new(SimpleUser {
+			Ok(Some(Box::new(InternalUser {
 				id,
 				username: user_id.to_string(),
 				email: String::new(),
@@ -396,7 +393,7 @@ impl RestAuthentication for RemoteUserAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		let header_value = request
 			.headers
 			.get(&self.header_name)
@@ -405,7 +402,7 @@ impl RestAuthentication for RemoteUserAuthentication {
 		if let Some(username) = header_value
 			&& !username.is_empty()
 		{
-			return Ok(Some(Box::new(SimpleUser {
+			return Ok(Some(Box::new(InternalUser {
 				id: uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, username.as_bytes()),
 				username: username.to_string(),
 				email: String::new(),
@@ -421,15 +418,15 @@ impl RestAuthentication for RemoteUserAuthentication {
 }
 
 #[async_trait::async_trait]
-impl AuthenticationBackend for RemoteUserAuthentication {
+impl AuthBackend for RemoteUserAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		Ok(None)
 	}
 }
@@ -472,7 +469,7 @@ impl<B: SessionBackend> RestAuthentication for SessionAuthentication<B> {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Check for session cookie
 		let cookie_header = request.headers.get("Cookie").and_then(|h| h.to_str().ok());
 
@@ -528,7 +525,7 @@ impl<B: SessionBackend> RestAuthentication for SessionAuthentication<B> {
 						.unwrap_or(false);
 
 					// Create user from session data
-					let user = SimpleUser {
+					let user = InternalUser {
 						id: uuid::Uuid::parse_str(&user_id)
 							.map_err(|_| AuthenticationError::InvalidCredentials)?,
 						username,
@@ -549,79 +546,19 @@ impl<B: SessionBackend> RestAuthentication for SessionAuthentication<B> {
 }
 
 #[async_trait::async_trait]
-impl<B: SessionBackend> AuthenticationBackend for SessionAuthentication<B> {
+impl<B: SessionBackend> AuthBackend for SessionAuthentication<B> {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	#[cfg(feature = "argon2-hasher")]
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
-		// Parse user_id as UUID
-		let id =
-			uuid::Uuid::parse_str(user_id).map_err(|_| AuthenticationError::InvalidCredentials)?;
-
-		// Get database connection
-		let conn = reinhardt_db::orm::manager::get_connection()
-			.await
-			.map_err(|e| AuthenticationError::DatabaseError(e.to_string()))?;
-
-		// Build SQL query using reinhardt-query for type-safe query construction
-		use reinhardt_db::orm::{
-			Alias, DatabaseBackend, Expr, ExprTrait, Model, MySqlQueryBuilder,
-			PostgresQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder,
-		};
-
-		let table_name = DefaultUser::table_name();
-
-		// Build SELECT query using reinhardt-query
-		let stmt = Query::select()
-			.columns([
-				Alias::new("id"),
-				Alias::new("username"),
-				Alias::new("email"),
-				Alias::new("first_name"),
-				Alias::new("last_name"),
-				Alias::new("password_hash"),
-				Alias::new("last_login"),
-				Alias::new("is_active"),
-				Alias::new("is_staff"),
-				Alias::new("is_superuser"),
-				Alias::new("date_joined"),
-				Alias::new("user_permissions"),
-				Alias::new("groups"),
-			])
-			.from(Alias::new(table_name))
-			.and_where(Expr::col(Alias::new("id")).eq(Expr::value(id.to_string())))
-			.to_owned();
-
-		let sql = match conn.backend() {
-			DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-			DatabaseBackend::MySql => stmt.to_string(MySqlQueryBuilder),
-			DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
-		};
-
-		// Execute query
-		let row = conn
-			.query_one(&sql, vec![])
-			.await
-			.map_err(|e| AuthenticationError::DatabaseError(e.to_string()))?;
-
-		// Deserialize to DefaultUser
-		let user: DefaultUser = serde_json::from_value(row.data).map_err(|e| {
-			AuthenticationError::DatabaseError(format!("Deserialization failed: {}", e))
-		})?;
-
-		// Return as trait object
-		Ok(Some(Box::new(user)))
-	}
-
-	#[cfg(not(feature = "argon2-hasher"))]
-	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
-		// When argon2-hasher feature is disabled, DefaultUser is not available
-		// Return None to indicate user retrieval is not supported
+	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+		// Session-based user retrieval by ID is not supported without a
+		// concrete user model. Applications should provide their own
+		// AuthBackend implementation that queries the database with their
+		// custom user type.
 		Ok(None)
 	}
 }
@@ -664,7 +601,7 @@ mod tests {
 			.await
 			.unwrap();
 		assert!(result.is_some());
-		assert_eq!(result.unwrap().get_username(), "user1");
+		assert!(result.unwrap().is_authenticated());
 	}
 
 	#[tokio::test]
@@ -686,8 +623,11 @@ mod tests {
 		let result = RestAuthentication::authenticate(&auth, &request)
 			.await
 			.unwrap();
-		assert!(result.is_some());
-		assert_eq!(result.unwrap().get_username(), "alice");
+		let user = result.expect("token authentication should succeed");
+		assert!(user.is_authenticated());
+		let expected_id =
+			uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"alice").to_string();
+		assert_eq!(user.id(), expected_id);
 	}
 
 	#[tokio::test]
@@ -708,8 +648,11 @@ mod tests {
 		let result = RestAuthentication::authenticate(&auth, &request)
 			.await
 			.unwrap();
-		assert!(result.is_some());
-		assert_eq!(result.unwrap().get_username(), "bob");
+		let user = result.expect("remote user authentication should succeed");
+		assert!(user.is_authenticated());
+		let expected_id =
+			uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"bob").to_string();
+		assert_eq!(user.id(), expected_id);
 	}
 
 	#[tokio::test]
@@ -753,7 +696,8 @@ mod tests {
 
 		// Verify the authenticated user
 		let user = result.unwrap();
-		assert_eq!(user.get_username(), "testuser");
+		assert_eq!(user.id(), "550e8400-e29b-41d4-a716-446655440000");
+		assert!(user.is_authenticated());
 	}
 
 	#[rstest]
@@ -826,7 +770,7 @@ mod tests {
 			.unwrap();
 
 		// Assert
-		assert!(user.is_active());
+		assert!(user.is_authenticated());
 		assert!(!user.is_admin());
 	}
 
@@ -957,19 +901,22 @@ mod tests {
 		let result = RestAuthentication::authenticate(&auth, &request)
 			.await
 			.unwrap();
-		assert!(result.is_some());
-		assert_eq!(result.unwrap().get_username(), "charlie");
+		let user = result.expect("custom token authentication should succeed");
+		assert!(user.is_authenticated());
+		let expected_id =
+			uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"charlie").to_string();
+		assert_eq!(user.id(), expected_id);
 	}
 
 	struct MockAuthBackend {
-		auth_result: Mutex<Option<Result<Option<Box<dyn User>>, AuthenticationError>>>,
-		get_user_result: Mutex<Option<Result<Option<Box<dyn User>>, AuthenticationError>>>,
+		auth_result: Mutex<Option<Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>>>,
+		get_user_result: Mutex<Option<Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>>>,
 	}
 
 	impl MockAuthBackend {
 		fn new(
-			auth_result: Result<Option<Box<dyn User>>, AuthenticationError>,
-			get_user_result: Result<Option<Box<dyn User>>, AuthenticationError>,
+			auth_result: Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>,
+			get_user_result: Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>,
 		) -> Self {
 			Self {
 				auth_result: Mutex::new(Some(auth_result)),
@@ -979,18 +926,18 @@ mod tests {
 	}
 
 	#[async_trait::async_trait]
-	impl AuthenticationBackend for MockAuthBackend {
+	impl AuthBackend for MockAuthBackend {
 		async fn authenticate(
 			&self,
 			_request: &Request,
-		) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+		) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 			self.auth_result.lock().unwrap().take().unwrap_or(Ok(None))
 		}
 
 		async fn get_user(
 			&self,
 			_user_id: &str,
-		) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+		) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 			self.get_user_result
 				.lock()
 				.unwrap()
@@ -1071,7 +1018,7 @@ mod tests {
 			));
 
 		// Act
-		let result = AuthenticationBackend::get_user(&composite, "some_user").await;
+		let result = AuthBackend::get_user(&composite, "some_user").await;
 
 		// Assert - all backends errored on get_user, so error is propagated
 		assert!(result.is_err());

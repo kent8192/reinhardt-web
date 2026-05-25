@@ -1,8 +1,7 @@
-// This module uses the deprecated User trait for backward compatibility.
-// JwtAuth returns Box<dyn User> to preserve existing authentication APIs.
-#![allow(deprecated)]
+use crate::core::AuthIdentity;
+use crate::internal_user::InternalUser;
 use crate::rest_authentication::RestAuthentication;
-use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
+use crate::{AuthBackend, AuthenticationError};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use reinhardt_http::Request;
@@ -322,7 +321,7 @@ impl RestAuthentication for JwtAuth {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Get Authorization header
 		let auth_header = request
 			.headers
@@ -338,14 +337,13 @@ impl RestAuthentication for JwtAuth {
 						// Parse user ID from claims, returning an error for malformed values
 						let id = Uuid::parse_str(&claims.sub)
 							.map_err(|_| AuthenticationError::InvalidToken)?;
-						// Create user from claims
-						return Ok(Some(Box::new(SimpleUser {
+						// Create identity from claims
+						return Ok(Some(Box::new(InternalUser {
 							id,
 							username: claims.username.clone(),
 							email: String::new(),
 							// Security defaults: privilege flags are set to restrictive values
 							// since JWT claims alone cannot determine user privileges.
-							// Use UserRepository integration for accurate privilege data.
 							is_active: true,
 							is_admin: false,
 							is_staff: false,
@@ -363,18 +361,18 @@ impl RestAuthentication for JwtAuth {
 	}
 }
 
-// Implement AuthenticationBackend trait
+// Implement AuthBackend trait
 #[async_trait::async_trait]
-impl AuthenticationBackend for JwtAuth {
+impl AuthBackend for JwtAuth {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Delegate to REST API Authentication trait implementation
 		<Self as RestAuthentication>::authenticate(self, request).await
 	}
 
-	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// JWT authentication doesn't support get_user by ID
 		// It only authenticates via token validation
 		// Return None to indicate this backend doesn't support user retrieval
@@ -423,9 +421,7 @@ mod tests {
 		// Assert
 		let user = result.unwrap().unwrap();
 		assert_eq!(user.id(), user_id);
-		assert_eq!(user.username(), username);
 		assert!(user.is_authenticated());
-		assert!(user.is_active());
 	}
 
 	#[rstest]
@@ -586,17 +582,8 @@ mod tests {
 		// must use security defaults (not fabricated values)
 		let user = result.unwrap().unwrap();
 		assert_eq!(user.id(), user_id);
-		assert_eq!(user.username(), username);
-		assert!(user.is_active());
+		assert!(user.is_authenticated());
 		assert!(!user.is_admin(), "admin flag should default to false");
-		assert!(!user.is_staff(), "staff flag should default to false");
-		assert!(
-			!user.is_superuser(),
-			"superuser flag should default to false"
-		);
-		// Email emptiness is verified in test_claims_struct_has_no_email_field.
-		// The User trait does not expose email, so direct assertion is not
-		// possible through the trait object returned by authenticate().
 	}
 
 	/// Verifies that JWT authentication does not fabricate email data.
@@ -636,8 +623,8 @@ mod tests {
 			"JWT Claims must not contain an email field"
 		);
 		// Verify the user was actually authenticated successfully
-		assert_eq!(user.username(), "alice");
 		assert_eq!(user.id(), "550e8400-e29b-41d4-a716-446655440000");
+		assert!(user.is_authenticated());
 	}
 
 	// === JwtError variant tests ===

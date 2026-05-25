@@ -1,15 +1,11 @@
-// The `User` trait is deprecated in favour of the new `#[model]`-based user macro system.
-// Re-exported here for downstream compatibility during the transition period.
-#![allow(deprecated)]
-
 //! REST API authentication
 //!
 //! Re-exports authentication types from reinhardt-core::auth.
 
 // Re-export core authentication types from reinhardt-auth
 pub use reinhardt_auth::{
-	AllowAny, AnonymousUser, AuthBackend, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly,
-	Permission, SimpleUser, User,
+	AllowAny, AuthBackend, AuthIdentity, IsAdminUser, IsAuthenticated,
+	IsAuthenticatedOrReadOnly, Permission,
 };
 
 // Re-export JWT types conditionally from reinhardt-auth

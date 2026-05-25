@@ -2,10 +2,7 @@
 //!
 //! Provides permission checking on individual object instances.
 
-// This module uses the deprecated User trait for backward compatibility.
-// ObjectPermission accepts &dyn User to preserve existing permission APIs.
-#![allow(deprecated)]
-use crate::User;
+use crate::core::AuthIdentity;
 use crate::{Permission, PermissionContext};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -13,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 // Type alias to simplify complex permission map type
-/// Permission map keyed by (username, object_id) tuple, storing a list of permission strings
+/// Permission map keyed by (user_id, object_id) tuple, storing a list of permission strings
 pub type PermissionMap = Arc<RwLock<HashMap<(String, String), Vec<String>>>>;
 
 /// Object permission checker trait
@@ -24,9 +21,8 @@ pub type PermissionMap = Arc<RwLock<HashMap<(String, String), Vec<String>>>>;
 ///
 /// ```
 /// use reinhardt_auth::object_permissions::ObjectPermissionChecker;
-/// use reinhardt_auth::{User, SimpleUser};
+/// use reinhardt_auth::AuthIdentity;
 /// use async_trait::async_trait;
-/// use uuid::Uuid;
 ///
 /// struct ArticlePermissionChecker;
 ///
@@ -34,30 +30,13 @@ pub type PermissionMap = Arc<RwLock<HashMap<(String, String), Vec<String>>>>;
 /// impl ObjectPermissionChecker for ArticlePermissionChecker {
 ///     async fn has_object_permission(
 ///         &self,
-///         user: &dyn User,
+///         user: &dyn AuthIdentity,
 ///         object_id: &str,
 ///         permission: &str,
 ///     ) -> bool {
-///         // Example: Check if user is the owner
-///         user.username() == "alice" && permission == "change"
+///         // Example: Check if user is the owner by ID
+///         user.id() == "alice_id" && permission == "change"
 ///     }
-/// }
-///
-/// #[tokio::main]
-/// async fn main() {
-///     let checker = ArticlePermissionChecker;
-///     let user = SimpleUser {
-///         id: Uuid::now_v7(),
-///         username: "alice".to_string(),
-///         email: "alice@example.com".to_string(),
-///         is_active: true,
-///         is_admin: false,
-///         is_staff: false,
-///         is_superuser: false,
-///     };
-///
-///     assert!(checker.has_object_permission(&user, "article:123", "change").await);
-///     assert!(!checker.has_object_permission(&user, "article:123", "delete").await);
 /// }
 /// ```
 #[async_trait]
@@ -66,7 +45,7 @@ pub trait ObjectPermissionChecker: Send + Sync {
 	///
 	/// # Arguments
 	///
-	/// * `user` - The user to check permissions for
+	/// * `user` - The authenticated identity to check permissions for
 	/// * `object_id` - Identifier for the object
 	/// * `permission` - Permission to check (e.g., "view", "change", "delete")
 	///
@@ -75,7 +54,7 @@ pub trait ObjectPermissionChecker: Send + Sync {
 	/// `true` if user has permission, `false` otherwise
 	async fn has_object_permission(
 		&self,
-		user: &dyn User,
+		user: &dyn AuthIdentity,
 		object_id: &str,
 		permission: &str,
 	) -> bool;
@@ -89,36 +68,34 @@ pub trait ObjectPermissionChecker: Send + Sync {
 ///
 /// ```
 /// use reinhardt_auth::object_permissions::{ObjectPermissionManager, ObjectPermissionChecker};
-/// use reinhardt_auth::{SimpleUser, User};
-/// use uuid::Uuid;
+/// use reinhardt_auth::AuthIdentity;
+///
+/// struct TestUser { id: String }
+/// impl AuthIdentity for TestUser {
+///     fn id(&self) -> String { self.id.clone() }
+///     fn is_authenticated(&self) -> bool { true }
+///     fn is_admin(&self) -> bool { false }
+/// }
 ///
 /// #[tokio::main]
 /// async fn main() {
 ///     let mut manager = ObjectPermissionManager::new();
 ///
-///     // Grant alice permission to change article:123
-///     manager.grant_permission("alice", "article:123", "change").await;
+///     // Grant user permission to change article:123 (keyed by user ID)
+///     manager.grant_permission("alice_id", "article:123", "change").await;
 ///
-///     let user = SimpleUser {
-///         id: Uuid::now_v7(),
-///         username: "alice".to_string(),
-///         email: "alice@example.com".to_string(),
-///         is_active: true,
-///         is_admin: false,
-///         is_staff: false,
-///         is_superuser: false,
-///     };
+///     let user = TestUser { id: "alice_id".to_string() };
 ///
 ///     assert!(manager.has_object_permission(&user, "article:123", "change").await);
 ///     assert!(!manager.has_object_permission(&user, "article:123", "delete").await);
 ///
 ///     // Revoke permission
-///     manager.revoke_permission("alice", "article:123", "change").await;
+///     manager.revoke_permission("alice_id", "article:123", "change").await;
 ///     assert!(!manager.has_object_permission(&user, "article:123", "change").await);
 /// }
 /// ```
 pub struct ObjectPermissionManager {
-	/// Permissions map: (username, object_id) -> list of permissions
+	/// Permissions map: (user_id, object_id) -> list of permissions
 	permissions: PermissionMap,
 }
 
@@ -238,12 +215,12 @@ impl Default for ObjectPermissionManager {
 impl ObjectPermissionChecker for ObjectPermissionManager {
 	async fn has_object_permission(
 		&self,
-		user: &dyn User,
+		user: &dyn AuthIdentity,
 		object_id: &str,
 		permission: &str,
 	) -> bool {
 		let perms = self.permissions.read().await;
-		let key = (user.username().to_string(), object_id.to_string());
+		let key = (user.id(), object_id.to_string());
 		if let Some(user_perms) = perms.get(&key) {
 			return user_perms.iter().any(|p| p == permission);
 		}
@@ -251,7 +228,7 @@ impl ObjectPermissionChecker for ObjectPermissionManager {
 	}
 }
 
-/// Object permission with Permission trait support
+/// Object permission with `Permission` trait support
 ///
 /// Wraps an `ObjectPermissionChecker` for use with the `Permission` trait.
 ///
@@ -259,29 +236,26 @@ impl ObjectPermissionChecker for ObjectPermissionManager {
 ///
 /// ```
 /// use reinhardt_auth::object_permissions::{ObjectPermission, ObjectPermissionManager};
-/// use reinhardt_auth::{Permission, PermissionContext};
-/// use reinhardt_auth::{SimpleUser, User};
+/// use reinhardt_auth::{Permission, PermissionContext, AuthIdentity};
 /// use bytes::Bytes;
-/// use hyper::{Method};
+/// use hyper::Method;
 /// use reinhardt_http::Request;
-/// use uuid::Uuid;
+///
+/// struct TestUser { id: String }
+/// impl AuthIdentity for TestUser {
+///     fn id(&self) -> String { self.id.clone() }
+///     fn is_authenticated(&self) -> bool { true }
+///     fn is_admin(&self) -> bool { false }
+/// }
 ///
 /// #[tokio::main]
 /// async fn main() {
 ///     let mut manager = ObjectPermissionManager::new();
-///     manager.grant_permission("alice", "article:123", "view").await;
+///     manager.grant_permission("alice_id", "article:123", "view").await;
 ///
 ///     let perm = ObjectPermission::new(manager, "article:123", "view");
 ///
-///     let user = SimpleUser {
-///         id: Uuid::now_v7(),
-///         username: "alice".to_string(),
-///         email: "alice@example.com".to_string(),
-///         is_active: true,
-///         is_admin: false,
-///         is_staff: false,
-///         is_superuser: false,
-///     };
+///     let user = TestUser { id: "alice_id".to_string() };
 ///
 ///     let request = Request::builder()
 ///         .method(Method::GET)
@@ -348,7 +322,7 @@ impl<T: ObjectPermissionChecker + Send + Sync> Permission for ObjectPermission<T
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::SimpleUser;
+	use crate::internal_user::InternalUser;
 	use bytes::Bytes;
 	use hyper::Method;
 	use reinhardt_http::Request;
@@ -357,15 +331,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_object_permission_manager_grant() {
-		let mut manager = ObjectPermissionManager::new();
-		manager
-			.grant_permission("alice", "article:123", "view")
-			.await;
-		manager
-			.grant_permission("alice", "article:123", "change")
-			.await;
-
-		let user = SimpleUser {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "alice".to_string(),
 			email: "alice@example.com".to_string(),
@@ -374,6 +340,15 @@ mod tests {
 			is_staff: false,
 			is_superuser: false,
 		};
+		let user_id = user.id.to_string();
+
+		let mut manager = ObjectPermissionManager::new();
+		manager
+			.grant_permission(&user_id, "article:123", "view")
+			.await;
+		manager
+			.grant_permission(&user_id, "article:123", "change")
+			.await;
 
 		assert!(
 			manager
@@ -394,15 +369,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_object_permission_manager_revoke() {
-		let mut manager = ObjectPermissionManager::new();
-		manager
-			.grant_permission("alice", "article:123", "view")
-			.await;
-		manager
-			.grant_permission("alice", "article:123", "change")
-			.await;
-
-		let user = SimpleUser {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "alice".to_string(),
 			email: "alice@example.com".to_string(),
@@ -411,9 +378,18 @@ mod tests {
 			is_staff: false,
 			is_superuser: false,
 		};
+		let user_id = user.id.to_string();
+
+		let mut manager = ObjectPermissionManager::new();
+		manager
+			.grant_permission(&user_id, "article:123", "view")
+			.await;
+		manager
+			.grant_permission(&user_id, "article:123", "change")
+			.await;
 
 		manager
-			.revoke_permission("alice", "article:123", "view")
+			.revoke_permission(&user_id, "article:123", "view")
 			.await;
 
 		assert!(
@@ -430,15 +406,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_object_permission_manager_revoke_all() {
-		let mut manager = ObjectPermissionManager::new();
-		manager
-			.grant_permission("alice", "article:123", "view")
-			.await;
-		manager
-			.grant_permission("alice", "article:123", "change")
-			.await;
-
-		let user = SimpleUser {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "alice".to_string(),
 			email: "alice@example.com".to_string(),
@@ -447,8 +415,17 @@ mod tests {
 			is_staff: false,
 			is_superuser: false,
 		};
+		let user_id = user.id.to_string();
 
-		manager.revoke_all_permissions("alice", "article:123").await;
+		let mut manager = ObjectPermissionManager::new();
+		manager
+			.grant_permission(&user_id, "article:123", "view")
+			.await;
+		manager
+			.grant_permission(&user_id, "article:123", "change")
+			.await;
+
+		manager.revoke_all_permissions(&user_id, "article:123").await;
 
 		assert!(
 			!manager
@@ -466,13 +443,13 @@ mod tests {
 	async fn test_object_permission_manager_list() {
 		let mut manager = ObjectPermissionManager::new();
 		manager
-			.grant_permission("alice", "article:123", "view")
+			.grant_permission("alice_id", "article:123", "view")
 			.await;
 		manager
-			.grant_permission("alice", "article:123", "change")
+			.grant_permission("alice_id", "article:123", "change")
 			.await;
 
-		let perms = manager.list_permissions("alice", "article:123").await;
+		let perms = manager.list_permissions("alice_id", "article:123").await;
 		assert_eq!(perms.len(), 2);
 		assert!(perms.contains(&"view".to_string()));
 		assert!(perms.contains(&"change".to_string()));
@@ -480,15 +457,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_object_permission_manager_different_objects() {
-		let mut manager = ObjectPermissionManager::new();
-		manager
-			.grant_permission("alice", "article:123", "view")
-			.await;
-		manager
-			.grant_permission("alice", "article:456", "change")
-			.await;
-
-		let user = SimpleUser {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "alice".to_string(),
 			email: "alice@example.com".to_string(),
@@ -497,6 +466,15 @@ mod tests {
 			is_staff: false,
 			is_superuser: false,
 		};
+		let user_id = user.id.to_string();
+
+		let mut manager = ObjectPermissionManager::new();
+		manager
+			.grant_permission(&user_id, "article:123", "view")
+			.await;
+		manager
+			.grant_permission(&user_id, "article:456", "change")
+			.await;
 
 		assert!(
 			manager
@@ -522,14 +500,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_object_permission_trait_authenticated() {
-		let mut manager = ObjectPermissionManager::new();
-		manager
-			.grant_permission("alice", "article:123", "view")
-			.await;
-
-		let perm = ObjectPermission::new(manager, "article:123", "view");
-
-		let user = SimpleUser {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "alice".to_string(),
 			email: "alice@example.com".to_string(),
@@ -538,6 +509,14 @@ mod tests {
 			is_staff: false,
 			is_superuser: false,
 		};
+		let user_id = user.id.to_string();
+
+		let mut manager = ObjectPermissionManager::new();
+		manager
+			.grant_permission(&user_id, "article:123", "view")
+			.await;
+
+		let perm = ObjectPermission::new(manager, "article:123", "view");
 
 		let request = Request::builder()
 			.method(Method::GET)
@@ -585,7 +564,7 @@ mod tests {
 		let manager = ObjectPermissionManager::new();
 		let perm = ObjectPermission::new(manager, "article:123", "delete");
 
-		let user = SimpleUser {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "alice".to_string(),
 			email: "alice@example.com".to_string(),
@@ -617,14 +596,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_bulk_check_multiple_objects() {
 		// Arrange
-		let mut manager = ObjectPermissionManager::new();
-		manager.grant_permission("alice", "article:1", "view").await;
-		manager
-			.grant_permission("alice", "article:2", "change")
-			.await;
-		// article:3 has no permissions granted for alice
-
-		let user = SimpleUser {
+		let user = InternalUser {
 			id: Uuid::now_v7(),
 			username: "alice".to_string(),
 			email: "alice@example.com".to_string(),
@@ -633,6 +605,16 @@ mod tests {
 			is_staff: false,
 			is_superuser: false,
 		};
+		let user_id = user.id.to_string();
+
+		let mut manager = ObjectPermissionManager::new();
+		manager
+			.grant_permission(&user_id, "article:1", "view")
+			.await;
+		manager
+			.grant_permission(&user_id, "article:2", "change")
+			.await;
+		// article:3 has no permissions granted for this user
 
 		// Act
 		let result_obj1 = manager
@@ -655,12 +637,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_different_users_same_object() {
 		// Arrange
-		let mut manager = ObjectPermissionManager::new();
-		manager
-			.grant_permission("alice", "article:42", "view")
-			.await;
-
-		let user_a = SimpleUser {
+		let user_a = InternalUser {
 			id: Uuid::now_v7(),
 			username: "alice".to_string(),
 			email: "alice@example.com".to_string(),
@@ -669,7 +646,9 @@ mod tests {
 			is_staff: false,
 			is_superuser: false,
 		};
-		let user_b = SimpleUser {
+		let user_a_id = user_a.id.to_string();
+
+		let user_b = InternalUser {
 			id: Uuid::now_v7(),
 			username: "bob".to_string(),
 			email: "bob@example.com".to_string(),
@@ -678,6 +657,11 @@ mod tests {
 			is_staff: false,
 			is_superuser: false,
 		};
+
+		let mut manager = ObjectPermissionManager::new();
+		manager
+			.grant_permission(&user_a_id, "article:42", "view")
+			.await;
 
 		// Act
 		let result_a = manager
