@@ -24,9 +24,7 @@ fn card(p: CardProps) -> Page {
 fn main() {
 	let _page: Page = page!(|| {
 		div {
-			Card {
-				item: "x".to_string(),
-			}
+			Card(item: "x".to_string())
 		}
 	})();
 }
