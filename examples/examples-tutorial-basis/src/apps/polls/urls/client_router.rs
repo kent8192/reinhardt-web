@@ -58,6 +58,44 @@ pub fn client_url_patterns() -> ClientRouter {
 		)
 		.not_found(|| error_page("Page not found"))
 }
+pub mod urls {
+	pub fn index() -> String {
+		"/".to_string()
+	}
+
+	pub fn detail(question_id: i64) -> String {
+		format!("/polls/{question_id}/")
+	}
+
+	pub fn results(question_id: i64) -> String {
+		format!("/polls/{question_id}/results/")
+	}
+
+	pub fn question_new() -> String {
+		"/polls/new/".to_string()
+	}
+
+	pub fn question_edit(question_id: i64) -> String {
+		format!("/polls/{question_id}/edit/")
+	}
+
+	pub fn question_delete(question_id: i64) -> String {
+		format!("/polls/{question_id}/delete/")
+	}
+
+	pub fn choice_new(question_id: i64) -> String {
+		format!("/polls/{question_id}/choices/new/")
+	}
+
+	pub fn choice_edit(question_id: i64, choice_id: i64) -> String {
+		format!("/polls/{question_id}/choices/{choice_id}/edit/")
+	}
+
+	pub fn choice_delete(question_id: i64, choice_id: i64) -> String {
+		format!("/polls/{question_id}/choices/{choice_id}/delete/")
+	}
+}
+
 /// Error page used as the `not_found` fallback.
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();

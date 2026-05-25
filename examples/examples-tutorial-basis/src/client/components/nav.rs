@@ -6,8 +6,8 @@
 //! the result is bound through `use_action`, so the bar reactively updates
 //! once the WASM client finishes its first roundtrip.
 //!
-//! All `href` values are resolved through the `urls` modules at
-//! `apps::polls::urls::client_router::urls` and
+//! All `href` values are resolved through the hand-written `urls`
+//! helper modules at `apps::polls::urls::client_router::urls` and
 //! `apps::users::urls::client_router::urls`.
 use crate::apps::polls::urls::client_router::urls as polls_links;
 use crate::apps::users::server_fn::current_user;
