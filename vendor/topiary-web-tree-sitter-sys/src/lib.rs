@@ -197,14 +197,14 @@ extern "C" {
     #[wasm_bindgen(extends = Object)]
     pub type LoggerParams;
 
-    #[wasm_bindgen(method, indexing_getter)]
+    #[wasm_bindgen(method, structural, indexing_getter)]
     fn get(this: &LoggerParams, key: &JsString) -> JsString;
 
-    #[wasm_bindgen(method, indexing_setter)]
-    fn set(this: &LoggerParams, val: &JsString);
+    #[wasm_bindgen(method, structural, indexing_setter)]
+    fn set(this: &LoggerParams, key: &JsString, val: &JsString);
 
-    #[wasm_bindgen(method, indexing_deleter)]
-    fn delete(this: &LoggerParams, val: &JsString);
+    #[wasm_bindgen(method, structural, indexing_deleter)]
+    fn delete(this: &LoggerParams, key: &JsString);
 }
 
 #[wasm_bindgen]
