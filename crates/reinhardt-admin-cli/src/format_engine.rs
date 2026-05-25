@@ -464,30 +464,42 @@ fn marker_matches(line: &str, compact_marker: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
+
 	use super::*;
 
-	#[test]
+	// -----------------------------------------------------------------------
+	// Existing tests (converted from #[test] to #[rstest])
+	// -----------------------------------------------------------------------
+
+	#[rstest]
 	fn tree_sitter_detection_ignores_strings() {
+		// Arrange
 		let source = r#"fn main() {
 	let literal = "page!(|| { div { \"x\" } })";
 	let view = page!(|| { div { "x" } });
 }"#;
 
+		// Act
 		let macros = find_dsl_macros(source).expect("parse source");
 
+		// Assert
 		assert_eq!(macros.len(), 1);
 		assert_eq!(macros[0].kind, MacroKind::Page);
 	}
 
-	#[test]
+	#[rstest]
 	fn formats_page_macro_with_topiary_query() {
+		// Arrange
 		let formatter = FormatEngine::new();
 		let source = r#"fn main() {
 	let view = page!(|| { div { "x" } });
 }"#;
 
+		// Act
 		let result = formatter.format(source).expect("format source");
 
+		// Assert
 		assert_eq!(
 			result.content,
 			"fn main() {\n\tlet view = page!(|| {\n\t\tdiv {\n\t\t\t\"x\"\n\t\t}\n\t});\n}"
@@ -495,20 +507,24 @@ mod tests {
 		assert_eq!(result.skipped, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn formats_page_dsl_directly_with_topiary_query() {
+		// Act
 		let formatted =
 			format_dsl(MacroKind::Page, r#"|| { div { "x" } }"#).expect("format page DSL");
 
+		// Assert
 		assert_eq!(formatted, "|| {\n\tdiv {\n\t\t\"x\"\n\t}\n}");
 	}
 
-	#[test]
+	#[rstest]
 	fn preserves_separator_between_text_literal_and_following_fragment() {
 		for kind in [MacroKind::Page, MacroKind::Form, MacroKind::Head] {
+			// Act
 			let formatted = format_dsl(kind, r#"|| { label { "hello"span { "world" } } }"#)
 				.expect("format DSL");
 
+			// Assert
 			assert!(
 				formatted.contains(r#""hello" span {"#),
 				"{kind:?} formatter should keep a separator before the following fragment: {formatted}"
@@ -520,49 +536,59 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn preserves_ignored_macro() {
+		// Arrange
 		let formatter = FormatEngine::new();
 		let source = r#"fn main() {
 	// reinhardt-fmt: ignore
 	let view = page!(|| { div { "x" } });
 }"#;
 
+		// Act
 		let result = formatter.format(source).expect("format source");
 
+		// Assert
 		assert_eq!(result.skipped, Some(SkipReason::AllMacrosIgnored));
 		assert_eq!(result.content, source);
 	}
 
-	#[test]
+	#[rstest]
 	fn formats_form_brace_macro() {
+		// Arrange
 		let formatter = FormatEngine::new();
 		let source = r#"fn main() {
 	let form = form! { name: "User", fields { email { label: "Email", } } };
 }"#;
 
+		// Act
 		let result = formatter.format(source).expect("format source");
 
+		// Assert
 		assert!(result.content.contains("form! {"));
 		assert!(result.content.contains("name:"));
 		assert!(result.content.contains("\n\t\tfields {"));
 	}
 
-	#[test]
+	#[rstest]
 	fn formats_head_macro() {
+		// Arrange
 		let formatter = FormatEngine::new();
 		let source = r#"fn main() {
 	let head = head!(|| { title { "Polls" } });
 }"#;
 
+		// Act
 		let result = formatter.format(source).expect("format source");
 
+		// Assert
 		assert!(result.content.contains("head!(|| {"));
 		assert!(result.content.contains("\n\t\ttitle {"));
 	}
 
-	#[test]
+	#[rstest]
 	fn preserves_rust_spacing_and_comments_inside_fragments() {
+		// Arrange
 		let formatter = FormatEngine::new();
 		let source = r#"fn main() {
 	let view = page!(|| { if let Some(e) = err.clone() { div { // keep words (Edit / Delete)
@@ -571,15 +597,633 @@ mod tests {
 	let form = form! { watch: { result: |form| { match user { Some(Some(ref u)) => u.id, _ => 0, } }, } };
 }"#;
 
+		// Act
 		let result = formatter.format(source).expect("format source");
 		let second = formatter
 			.format(&result.content)
 			.expect("format source again");
 
+		// Assert
 		assert_eq!(second.content, result.content);
 		assert!(result.content.contains("if let Some(e) = err.clone() {"));
 		assert!(result.content.contains("Some(Some(ref u)) => u.id"));
 		assert!(result.content.contains("// keep words (Edit / Delete)"));
 		assert!(!result.content.contains("}for"));
+	}
+
+	// -----------------------------------------------------------------------
+	// marker_matches tests
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn marker_matches_in_line_comment() {
+		// Arrange
+		let line = "// reinhardt-fmt: off";
+
+		// Act
+		let result = marker_matches(line, "reinhardt-fmt:off");
+
+		// Assert
+		assert!(result);
+	}
+
+	#[rstest]
+	fn marker_matches_ignores_string_literal() {
+		// Arrange
+		let line = r#"let s = "reinhardt-fmt: off";"#;
+
+		// Act
+		let result = marker_matches(line, "reinhardt-fmt:off");
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[rstest]
+	fn marker_matches_ignores_code_line() {
+		// Arrange
+		let line = "let off = reinhardt_fmt_off;";
+
+		// Act
+		let result = marker_matches(line, "reinhardt-fmt:off");
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[rstest]
+	fn marker_matches_with_leading_whitespace_comment() {
+		// Arrange: indented comment line
+		let line = "\t\t// reinhardt-fmt: ignore";
+
+		// Act
+		let result = marker_matches(line, "reinhardt-fmt:ignore");
+
+		// Assert
+		assert!(result);
+	}
+
+	#[rstest]
+	fn marker_matches_with_extra_spaces_in_marker() {
+		// Arrange: spaces around colon
+		let line = "//  reinhardt-fmt :  off";
+
+		// Act
+		let result = marker_matches(line, "reinhardt-fmt:off");
+
+		// Assert: whitespace is stripped before comparison
+		assert!(result);
+	}
+
+	#[rstest]
+	fn marker_matches_returns_false_for_empty_line() {
+		// Arrange
+		let line = "";
+
+		// Act
+		let result = marker_matches(line, "reinhardt-fmt:off");
+
+		// Assert
+		assert!(!result);
+	}
+
+	// -----------------------------------------------------------------------
+	// has_ignore_all_marker tests
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn has_ignore_all_marker_in_first_lines() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let content = "// reinhardt-fmt: ignore-all\nfn main() {}";
+
+		// Act
+		let result = formatter.has_ignore_all_marker(content);
+
+		// Assert
+		assert!(result);
+	}
+
+	#[rstest]
+	fn has_ignore_all_marker_absent() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let content = "fn main() {\n\tpage!(|| { div { \"x\" } });\n}";
+
+		// Act
+		let result = formatter.has_ignore_all_marker(content);
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[rstest]
+	fn has_ignore_all_marker_after_code_is_ignored() {
+		// Arrange: marker appears after a non-comment, non-empty line, so
+		// the `take_while` predicate stops before reaching it
+		let formatter = FormatEngine::new();
+		let mut lines: Vec<String> = Vec::new();
+		lines.push("fn main() {}".to_string());
+		for _ in 0..50 {
+			lines.push(String::new());
+		}
+		lines.push("// reinhardt-fmt: ignore-all".to_string());
+		let content = lines.join("\n");
+
+		// Act
+		let result = formatter.has_ignore_all_marker(&content);
+
+		// Assert: marker is unreachable because the predicate stops at the
+		// first non-comment, non-empty line (line 0: "fn main() {}")
+		assert!(!result);
+	}
+
+	#[rstest]
+	fn has_ignore_all_marker_among_comments() {
+		// Arrange: all lines before the marker are comments or empty
+		let formatter = FormatEngine::new();
+		let content = "\
+// Module doc comment
+// More comments
+
+// reinhardt-fmt: ignore-all
+fn main() {}";
+
+		// Act
+		let result = formatter.has_ignore_all_marker(content);
+
+		// Assert
+		assert!(result);
+	}
+
+	// -----------------------------------------------------------------------
+	// Format engine: no DSL macros
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn no_dsl_macros_returns_unchanged_content() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = "fn main() {\n\tprintln!(\"hello\");\n}";
+
+		// Act
+		let result = formatter.format(source).expect("format source");
+
+		// Assert
+		assert_eq!(result.content, source);
+		assert!(!result.contains_dsl_macro);
+		assert_eq!(result.skipped, None);
+	}
+
+	// -----------------------------------------------------------------------
+	// Format engine: multiple macros
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn formats_multiple_macros_in_one_file() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = r#"fn main() {
+	let view = page!(|| { div { "hello" } });
+	let h = head!(|| { title { "Title" } });
+}"#;
+
+		// Act
+		let result = formatter.format(source).expect("format source");
+
+		// Assert: both macros should be formatted (multi-line expansion)
+		assert!(
+			result.content.contains("page!(|| {"),
+			"page macro should be formatted: {}",
+			result.content
+		);
+		assert!(
+			result.content.contains("head!(|| {"),
+			"head macro should be formatted: {}",
+			result.content
+		);
+		assert!(result.contains_dsl_macro);
+		assert_eq!(result.skipped, None);
+	}
+
+	// -----------------------------------------------------------------------
+	// Format engine: file-wide ignore marker
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn file_wide_ignore_marker_skips_formatting() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source =
+			"// reinhardt-fmt: ignore-all\nfn main() {\n\tlet v = page!(|| { div { \"x\" } });\n}";
+
+		// Act
+		let result = formatter.format(source).expect("format source");
+
+		// Assert
+		assert_eq!(result.skipped, Some(SkipReason::FileWideMarker));
+		assert!(result.contains_dsl_macro);
+		assert_eq!(result.content, source);
+	}
+
+	// -----------------------------------------------------------------------
+	// Format engine: individual ignore markers
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn individual_ignore_preserves_targeted_macro_only() {
+		// Arrange: two macros, only the first has an ignore marker
+		let formatter = FormatEngine::new();
+		let source = r#"fn main() {
+	// reinhardt-fmt: ignore
+	let view = page!(|| { div { "x" } });
+	let h = head!(|| { title { "Title" } });
+}"#;
+
+		// Act
+		let result = formatter.format(source).expect("format source");
+
+		// Assert: first macro preserved verbatim, second formatted
+		assert!(
+			result.content.contains(r#"page!(|| { div { "x" } })"#),
+			"ignored macro should be preserved verbatim: {}",
+			result.content
+		);
+		assert!(
+			result.content.contains("\n\t\ttitle {"),
+			"non-ignored macro should be formatted: {}",
+			result.content
+		);
+		assert_eq!(result.skipped, None);
+	}
+
+	// -----------------------------------------------------------------------
+	// Format engine: off/on range markers
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn off_on_range_preserves_macros_in_disabled_region() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = r#"fn main() {
+	// reinhardt-fmt: off
+	let view = page!(|| { div { "x" } });
+	// reinhardt-fmt: on
+	let h = head!(|| { title { "Title" } });
+}"#;
+
+		// Act
+		let result = formatter.format(source).expect("format source");
+
+		// Assert: macro inside off/on region is preserved, outside is formatted
+		assert!(
+			result.content.contains(r#"page!(|| { div { "x" } })"#),
+			"macro in disabled region should be preserved: {}",
+			result.content
+		);
+		assert!(
+			result.content.contains("\n\t\ttitle {"),
+			"macro outside disabled region should be formatted: {}",
+			result.content
+		);
+		assert_eq!(result.skipped, None);
+	}
+
+	// -----------------------------------------------------------------------
+	// Format engine: idempotency
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn formatting_is_idempotent() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = r#"fn main() {
+	let view = page!(|| { div { "x" } });
+	let h = head!(|| { title { "T" } });
+}"#;
+
+		// Act
+		let first = formatter.format(source).expect("first format");
+		let second = formatter.format(&first.content).expect("second format");
+
+		// Assert
+		assert_eq!(first.content, second.content);
+	}
+
+	// -----------------------------------------------------------------------
+	// find_dsl_macros tests
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn find_dsl_macros_empty_for_no_macros() {
+		// Arrange
+		let source = "fn main() {\n\tprintln!(\"hello\");\n}";
+
+		// Act
+		let macros = find_dsl_macros(source).expect("parse source");
+
+		// Assert
+		assert_eq!(macros.len(), 0);
+	}
+
+	#[rstest]
+	fn find_dsl_macros_detects_all_three_kinds() {
+		// Arrange
+		let source = r#"fn main() {
+	let p = page!(|| { div {} });
+	let f = form! { name: "F", fields { x { label: "X", } } };
+	let h = head!(|| { title { "T" } });
+}"#;
+
+		// Act
+		let macros = find_dsl_macros(source).expect("parse source");
+
+		// Assert
+		assert_eq!(macros.len(), 3);
+		let kinds: Vec<MacroKind> = macros.iter().map(|m| m.kind).collect();
+		assert!(kinds.contains(&MacroKind::Page));
+		assert!(kinds.contains(&MacroKind::Form));
+		assert!(kinds.contains(&MacroKind::Head));
+	}
+
+	#[rstest]
+	fn find_dsl_macros_ignores_non_reinhardt_macros() {
+		// Arrange
+		let source = r#"fn main() {
+	let v = vec![1, 2, 3];
+	println!("hello");
+	assert_eq!(1, 1);
+}"#;
+
+		// Act
+		let macros = find_dsl_macros(source).expect("parse source");
+
+		// Assert
+		assert_eq!(macros.len(), 0);
+	}
+
+	#[rstest]
+	fn find_dsl_macros_ignores_macro_inside_string() {
+		// Arrange
+		let source = r#"fn main() {
+	let s = "page!(|| { div {} })";
+}"#;
+
+		// Act
+		let macros = find_dsl_macros(source).expect("parse source");
+
+		// Assert
+		assert_eq!(macros.len(), 0);
+	}
+
+	// -----------------------------------------------------------------------
+	// format_dsl edge cases
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn format_dsl_empty_closure_body() {
+		// Arrange
+		let input = "|| {}";
+
+		// Act
+		let formatted = format_dsl(MacroKind::Page, input).expect("format empty closure body");
+
+		// Assert: should produce valid output without error
+		assert!(
+			formatted.contains("||"),
+			"formatted output should contain closure syntax: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn format_dsl_nested_fragments() {
+		// Arrange
+		let input = r#"|| { div { span { a { "link" } } } }"#;
+
+		// Act
+		let formatted = format_dsl(MacroKind::Page, input).expect("format nested fragments");
+
+		// Assert: each nesting level should produce deeper indentation
+		assert!(
+			formatted.contains("\tdiv {"),
+			"outer fragment should be indented: {formatted}"
+		);
+		assert!(
+			formatted.contains("\"link\""),
+			"innermost text literal should be preserved: {formatted}"
+		);
+	}
+
+	// -----------------------------------------------------------------------
+	// apply_ignore_markers tests
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn apply_ignore_markers_skips_macro_with_preceding_ignore_comment() {
+		// Arrange
+		let source = r#"fn main() {
+	// reinhardt-fmt: ignore
+	let view = page!(|| { div { "x" } });
+}"#;
+		let mut macros = find_dsl_macros(source).expect("parse source");
+
+		// Act
+		apply_ignore_markers(source, &mut macros);
+
+		// Assert
+		assert_eq!(macros.len(), 1);
+		assert!(macros[0].should_skip);
+	}
+
+	#[rstest]
+	fn apply_ignore_markers_does_not_skip_without_comment() {
+		// Arrange
+		let source = r#"fn main() {
+	let view = page!(|| { div { "x" } });
+}"#;
+		let mut macros = find_dsl_macros(source).expect("parse source");
+
+		// Act
+		apply_ignore_markers(source, &mut macros);
+
+		// Assert
+		assert_eq!(macros.len(), 1);
+		assert!(!macros[0].should_skip);
+	}
+
+	// -----------------------------------------------------------------------
+	// SkipReason display
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn skip_reason_display_file_wide_marker() {
+		// Arrange
+		let reason = SkipReason::FileWideMarker;
+
+		// Act
+		let display = format!("{reason}");
+
+		// Assert
+		assert_eq!(display, "file-wide ignore marker");
+	}
+
+	#[rstest]
+	fn skip_reason_display_all_macros_ignored() {
+		// Arrange
+		let reason = SkipReason::AllMacrosIgnored;
+
+		// Act
+		let display = format!("{reason}");
+
+		// Assert
+		assert_eq!(display, "all macros ignored");
+	}
+
+	// -----------------------------------------------------------------------
+	// macro_kind helper
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn macro_kind_recognizes_page() {
+		// Act
+		let result = macro_kind("page! { }");
+
+		// Assert
+		assert_eq!(result, Some(MacroKind::Page));
+	}
+
+	#[rstest]
+	fn macro_kind_recognizes_form() {
+		// Act
+		let result = macro_kind("form! { }");
+
+		// Assert
+		assert_eq!(result, Some(MacroKind::Form));
+	}
+
+	#[rstest]
+	fn macro_kind_recognizes_head() {
+		// Act
+		let result = macro_kind("head! { }");
+
+		// Assert
+		assert_eq!(result, Some(MacroKind::Head));
+	}
+
+	#[rstest]
+	fn macro_kind_returns_none_for_unknown() {
+		// Act
+		let result = macro_kind("vec! [1, 2, 3]");
+
+		// Assert
+		assert_eq!(result, None);
+	}
+
+	#[rstest]
+	fn macro_kind_returns_none_for_prefix_without_bang() {
+		// Act: "page" without "!" should not match
+		let result = macro_kind("page { }");
+
+		// Assert
+		assert_eq!(result, None);
+	}
+
+	// -----------------------------------------------------------------------
+	// base_indent helper
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn base_indent_zero_for_first_line() {
+		// Arrange
+		let content = "page!(|| { div {} })";
+
+		// Act
+		let indent = base_indent(content, 0);
+
+		// Assert
+		assert_eq!(indent, 0);
+	}
+
+	#[rstest]
+	fn base_indent_counts_tabs() {
+		// Arrange
+		let content = "fn main() {\n\t\tlet view = page!(|| {});\n}";
+		let offset = content.find("page").expect("find page");
+
+		// Act
+		let indent = base_indent(content, offset);
+
+		// Assert: two tabs before "let"
+		assert_eq!(indent, 2);
+	}
+
+	// -----------------------------------------------------------------------
+	// indent_relative helper
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn indent_relative_no_indent() {
+		// Arrange
+		let input = "line1\nline2";
+
+		// Act
+		let result = indent_relative(input, 0);
+
+		// Assert
+		assert_eq!(result, "line1\nline2");
+	}
+
+	#[rstest]
+	fn indent_relative_adds_tabs_to_subsequent_lines() {
+		// Arrange
+		let input = "line1\nline2\nline3";
+
+		// Act
+		let result = indent_relative(input, 1);
+
+		// Assert: first line unchanged, subsequent lines get one tab prefix
+		assert_eq!(result, "line1\n\tline2\n\tline3");
+	}
+
+	#[rstest]
+	fn indent_relative_preserves_empty_lines() {
+		// Arrange
+		let input = "line1\n\nline3";
+
+		// Act
+		let result = indent_relative(input, 1);
+
+		// Assert: empty line should remain empty (no indent added)
+		assert_eq!(result, "line1\n\n\tline3");
+	}
+
+	// -----------------------------------------------------------------------
+	// FormatResult field validation
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn format_result_contains_dsl_macro_true_when_macro_present() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = r#"fn main() { let v = page!(|| { div { "x" } }); }"#;
+
+		// Act
+		let result = formatter.format(source).expect("format source");
+
+		// Assert
+		assert!(result.contains_dsl_macro);
+	}
+
+	#[rstest]
+	fn format_result_contains_dsl_macro_false_when_no_macro() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = "fn main() { println!(\"hello\"); }";
+
+		// Act
+		let result = formatter.format(source).expect("format source");
+
+		// Assert
+		assert!(!result.contains_dsl_macro);
 	}
 }
