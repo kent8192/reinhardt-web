@@ -19,9 +19,9 @@ changelog_update = true
 # main's release-plz would still find and close develop's Release PRs.
 # Using "develop-release-plz-" ensures neither prefix is a prefix of the other,
 # preventing cross-branch PR closure.
-pr_branch_prefix = "develop-release-plz-"
+pr_branch_prefix = "release-plz-"
 pr_labels = ["release", "automated"]
-pr_name = "chore: release (develop)"
+pr_name = "chore: release"
 
 # Git release settings
 git_release_enable = false
