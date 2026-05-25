@@ -229,19 +229,23 @@ jobs:
     # release_always=true (KI-5 phantom-version-bump fix) means release-plz
     # itself decides whether to publish based on Cargo.toml vs crates.io.
     #
-    # On develop/**, only squash-merge Release PR commits ("chore: release")
-    # trigger the job. The merge-commit trigger is intentionally NOT included
-    # because startsWith(commit.message, 'Merge pull request #') would also
-    # match regular feature-PR merges on develop/**, which would then fail
-    # at the branch-name verification step. Release-plz PRs should be
-    # squash-merged (MP-2), producing "chore: release" covered here.
+    # On develop/**, only squash-merge Release PR commits with a PR number
+    # ("chore: release (#N)") trigger the job. The merge-commit trigger is
+    # intentionally NOT included because startsWith(commit.message,
+    # 'Merge pull request #') would also match regular feature-PR merges on
+    # develop/**, which would then fail at the branch-name verification step.
+    # Release-plz PRs should be squash-merged (MP-2), producing the numbered
+    # "chore: release (#N)" shape covered here.
     #
     # release-plz-pr (above) still runs on every develop/** push, so the
     # next Release PR is always kept up to date.
     if: |
       github.event_name == 'push' && (
         github.ref == 'refs/heads/main' ||
-        startsWith(github.event.head_commit.message, 'chore: release')
+        (
+          startsWith(github.event.head_commit.message, 'chore: release ') &&
+          contains(github.event.head_commit.message, '(#')
+        )
       )
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
@@ -309,14 +313,19 @@ jobs:
           esac
 
       - name: Verify release PR label
-        if: "startsWith(github.event.head_commit.message, 'Merge pull request #')"
+        if: "startsWith(github.event.head_commit.message, 'Merge pull request #') || (startsWith(github.event.head_commit.message, 'chore: release ') && contains(github.event.head_commit.message, '(#'))"
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
-          # Extract PR number from merge commit message.
-          # Format: "Merge pull request #N from owner/BRANCH_NAME"
+          # Extract PR number from merge-commit or squash-merge commit message.
+          # Formats:
+          # - "Merge pull request #N from owner/BRANCH_NAME"
+          # - "chore: release (#N)"
           PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP '^Merge pull request #\K\d+' || true)
+          if [ -z "$PR_NUMBER" ]; then
+            PR_NUMBER=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | sed -nE 's/^chore: release \(#([0-9]+)\).*$/\1/p')
+          fi
           if [ -z "$PR_NUMBER" ]; then
             echo "::error::Could not extract PR number from commit message"
             exit 1

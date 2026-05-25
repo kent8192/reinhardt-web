@@ -105,10 +105,14 @@ fn apply_changes_preserving_formatting(
 	parsed: &syn::File,
 	out_ast: &syn::File,
 ) -> String {
+	if parsed.items.len() != out_ast.items.len() {
+		return prettyplease::unparse(out_ast);
+	}
+
 	let mut result = String::with_capacity(src.len() + 1024);
 	let mut last_pos: usize = 0;
 
-	let item_count = std::cmp::min(parsed.items.len(), out_ast.items.len());
+	let item_count = parsed.items.len();
 	for i in 0..item_count {
 		let orig_item = &parsed.items[i];
 		let new_item = &out_ast.items[i];
@@ -117,6 +121,9 @@ fn apply_changes_preserving_formatting(
 		let formatted_new = format_single_item(new_item);
 
 		let (start_byte, end_byte) = find_item_in_source(src, last_pos, &formatted_orig);
+		if start_byte < last_pos || start_byte >= end_byte || end_byte > src.len() {
+			return prettyplease::unparse(out_ast);
+		}
 
 		// Copy source between the previous item and this one (comments, blank lines).
 		result.push_str(&src[last_pos..start_byte]);
@@ -156,8 +163,7 @@ fn format_single_item(item: &syn::Item) -> String {
 
 /// Find an item's byte range in the source by searching for its normalized
 /// token text. Returns `(search_from, search_from)` when the item cannot be
-/// located (the caller's `src[last_pos..start_byte]` slice will be empty, and
-/// the whole remaining source is treated as trailing text).
+/// located so the caller can fall back to full-file formatting.
 fn find_item_in_source(src: &str, search_from: usize, item_tokens: &str) -> (usize, usize) {
 	let anchor = item_tokens
 		.lines()
@@ -545,5 +551,37 @@ mod tests {
 		let b_idx = result.find("pub const B_CHANGED").unwrap();
 		let c_idx = result.find("pub const C").unwrap();
 		assert!(a_idx < b_idx && b_idx < c_idx, "item order changed");
+	}
+
+	#[rstest]
+	fn item_count_mismatch_falls_back_to_full_unparse() {
+		// Arrange
+		let src = "pub fn a() {}\n";
+		let parsed: syn::File = syn::parse_file(src).unwrap();
+		let mut out_ast = parsed.clone();
+		out_ast.items.push(syn::parse_quote!(
+			pub fn b() {}
+		));
+
+		// Act
+		let result = apply_changes_preserving_formatting(src, &parsed, &out_ast);
+
+		// Assert
+		assert_eq!(result, prettyplease::unparse(&out_ast));
+	}
+
+	#[rstest]
+	fn missing_item_mapping_falls_back_to_full_unparse() {
+		// Arrange
+		let parsed_src = "pub fn original() {}\n";
+		let src = "pub fn different() {}\n";
+		let parsed: syn::File = syn::parse_file(parsed_src).unwrap();
+		let out_ast = parsed.clone();
+
+		// Act
+		let result = apply_changes_preserving_formatting(src, &parsed, &out_ast);
+
+		// Assert
+		assert_eq!(result, prettyplease::unparse(&out_ast));
 	}
 }
