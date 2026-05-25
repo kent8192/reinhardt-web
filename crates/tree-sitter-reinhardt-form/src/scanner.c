@@ -27,11 +27,38 @@ void tree_sitter_reinhardt_form_external_scanner_deserialize(void *payload, cons
 
 static bool is_structural_delimiter(int32_t c) {
 	return c == 0 || c == '\n' || c == '\r' || c == '{' || c == '}' || c == '[' || c == ']' ||
-		   c == '(' || c == ')' || c == '"' || c == '\'' || c == ',' || c == ';';
+		   c == '(' || c == ')' || c == '"' || c == ',' || c == ';';
+}
+
+static bool is_ident_start(int32_t c) {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+static bool is_ident_continue(int32_t c) {
+	return is_ident_start(c) || (c >= '0' && c <= '9');
 }
 
 static bool scan_fragment_tail(TSLexer *lexer, bool has_content) {
 	while (!is_structural_delimiter(lexer->lookahead)) {
+		if (lexer->lookahead == '\'') {
+			lexer->advance(lexer, false);
+			if (is_ident_start(lexer->lookahead)) {
+				lexer->advance(lexer, false);
+				if (lexer->lookahead == '\'') {
+					break;
+				}
+				has_content = true;
+				lexer->mark_end(lexer);
+				while (is_ident_continue(lexer->lookahead)) {
+					lexer->advance(lexer, false);
+					has_content = true;
+					lexer->mark_end(lexer);
+				}
+			} else {
+				break;
+			}
+			continue;
+		}
 		if (lexer->lookahead == '/') {
 			lexer->advance(lexer, false);
 			if (lexer->lookahead == '/' || lexer->lookahead == '*') {

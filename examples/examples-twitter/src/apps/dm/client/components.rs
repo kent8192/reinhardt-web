@@ -79,7 +79,7 @@ fn message_item(message: &MessageInfo, is_own_message: bool) -> Page {
 		"dm-message other bg-surface-secondary rounded-2xl rounded-bl-sm px-4 py-2 max-w-[70%]"
 	};
 
-	page!(|align_class: &'static str, bubble_class: &' static str, sender: String, content: String, timestamp: String, is_own_message: bool| {
+	page!(|align_class: &'static str, bubble_class: &'static str, sender: String, content: String, timestamp: String, is_own_message: bool| {
 		div {
 			class: align_class,
 			div {

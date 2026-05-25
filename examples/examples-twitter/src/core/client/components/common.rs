@@ -664,18 +664,12 @@ pub fn theme_toggle() -> Page {
 ///
 /// Displays an empty div (useful for conditional rendering).
 pub fn empty() -> Page {
-	page!(|| {
-		div {}
-	})()
+	page!(|| { div {} })()
 }
 
 /// Divider component
 pub fn divider() -> Page {
-	page!(|| {
-		div {
-			class: "divider",
-		}
-	})()
+	page!(|| { div { class: "divider" } })()
 }
 
 /// Badge component
