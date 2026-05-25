@@ -13,21 +13,15 @@ use uuid::Uuid;
 /// exposes `id()`, `is_authenticated()`, and `is_admin()` through the
 /// [`AuthIdentity`] trait.
 #[derive(Debug, Clone)]
-pub struct InternalUser {
-	/// The unique user identifier.
-	pub id: Uuid,
-	/// The user's login name.
-	pub username: String,
-	/// The user's email address.
-	pub email: String,
-	/// Whether the user account is active.
-	pub is_active: bool,
-	/// Whether the user has admin privileges.
-	pub is_admin: bool,
-	/// Whether the user is a staff member.
-	pub is_staff: bool,
-	/// Whether the user is a superuser.
-	pub is_superuser: bool,
+#[allow(dead_code, reason = "fields are used by InternalUser constructors in tests")]
+pub(crate) struct InternalUser {
+	pub(crate) id: Uuid,
+	pub(crate) username: String,
+	pub(crate) email: String,
+	pub(crate) is_active: bool,
+	pub(crate) is_admin: bool,
+	pub(crate) is_staff: bool,
+	pub(crate) is_superuser: bool,
 }
 
 impl AuthIdentity for InternalUser {

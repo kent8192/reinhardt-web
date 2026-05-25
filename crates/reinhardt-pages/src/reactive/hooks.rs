@@ -109,6 +109,7 @@ pub mod websocket;
 pub use action::{OptimisticState, use_optimistic};
 pub use async_action::{Action, ActionPhase, use_action};
 pub use context::use_context;
+#[allow(deprecated, reason = "re-export kept until removal in v0.3.0 (Refs #4195)")]
 pub use debug::{use_debug_value, use_effect_event};
 pub use effect::{use_effect, use_layout_effect};
 pub use id::use_id;

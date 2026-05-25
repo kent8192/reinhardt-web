@@ -74,6 +74,7 @@ pub use crate::reactive::{
 
 // Hooks API
 pub use crate::reactive::{Action, ActionPhase, use_action};
+#[allow(deprecated, reason = "re-export kept until removal in v0.3.0 (Refs #4195)")]
 pub use crate::reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal,
 	TransitionState, use_callback, use_context, use_debug_value,
