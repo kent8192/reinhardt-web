@@ -122,34 +122,58 @@ impl std::fmt::Display for ServerFnError {
 
 impl std::error::Error for ServerFnError {}
 
-/// Parse a JSON-serialized `ServerFnError` envelope and extract the
-/// human-readable message.
+/// Extract the human-readable message from a `ServerFnError` string,
+/// regardless of format.
 ///
-/// On the client side, `ServerFnError` values arrive as serde's
-/// externally-tagged JSON (e.g.,
-/// `{"Application":"Invalid choice_id"}` or
-/// `{"Server":{"status":403,"message":"Forbidden"}}`).
-/// This function deserializes the envelope, calls
-/// [`ServerFnError::message()`], and returns the result.
+/// Accepts three representations:
 ///
-/// Falls back to the raw string unchanged if JSON parsing fails,
-/// making it safe to call on any error string.
+/// 1. **JSON wire format** — serde's externally-tagged envelope
+///    (e.g., `{"Application":"Invalid choice_id"}`).
+/// 2. **`Display` format** — the variant-prefixed string produced by
+///    `ServerFnError::to_string()` (e.g., `"Application error: msg"`).
+/// 3. **Plain text** — returned unchanged as a fallback.
 ///
 /// # Examples
 ///
 /// ```
 /// use reinhardt_pages::parse_server_error_message;
 ///
+/// // JSON wire format
 /// let msg = parse_server_error_message(r#"{"Application":"Invalid choice_id"}"#);
 /// assert_eq!(msg, "Invalid choice_id");
 ///
+/// // Display format (from .to_string())
+/// let msg = parse_server_error_message("Application error: Invalid choice_id");
+/// assert_eq!(msg, "Invalid choice_id");
+///
+/// // Plain text fallback
 /// let msg = parse_server_error_message("plain error text");
 /// assert_eq!(msg, "plain error text");
 /// ```
 pub fn parse_server_error_message(raw: &str) -> String {
-	serde_json::from_str::<ServerFnError>(raw)
-		.map(|e| e.message().to_string())
-		.unwrap_or_else(|_| raw.to_string())
+	// 1. Try JSON deserialization (wire format)
+	if let Ok(e) = serde_json::from_str::<ServerFnError>(raw) {
+		return e.message().to_string();
+	}
+	// 2. Try stripping known Display prefixes
+	for prefix in [
+		"Network error: ",
+		"Serialization error: ",
+		"Deserialization error: ",
+		"Application error: ",
+	] {
+		if let Some(msg) = raw.strip_prefix(prefix) {
+			return msg.to_string();
+		}
+	}
+	// 2b. Handle "Server error (NNN): " format
+	if let Some(rest) = raw.strip_prefix("Server error (") {
+		if let Some(idx) = rest.find("): ") {
+			return rest[idx + 3..].to_string();
+		}
+	}
+	// 3. Fallback: return unchanged
+	raw.to_string()
 }
 
 #[cfg(test)]
@@ -234,6 +258,21 @@ mod tests {
 	fn test_parse_server_error_message_from_json(#[case] json: &str, #[case] expected: &str) {
 		// Act
 		let msg = parse_server_error_message(json);
+
+		// Assert
+		assert_eq!(msg, expected);
+	}
+
+	#[rstest]
+	#[case::application("Application error: Invalid choice_id", "Invalid choice_id")]
+	#[case::network("Network error: Connection timeout", "Connection timeout")]
+	#[case::serialization("Serialization error: bad input", "bad input")]
+	#[case::deserialization("Deserialization error: bad json", "bad json")]
+	#[case::server("Server error (403): Forbidden", "Forbidden")]
+	#[case::server_500("Server error (500): Internal error", "Internal error")]
+	fn test_parse_server_error_message_from_display(#[case] display: &str, #[case] expected: &str) {
+		// Act
+		let msg = parse_server_error_message(display);
 
 		// Assert
 		assert_eq!(msg, expected);
