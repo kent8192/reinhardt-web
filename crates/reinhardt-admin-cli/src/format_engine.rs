@@ -330,13 +330,68 @@ fn format_dsl(kind: MacroKind, input: &str) -> Result<String, String> {
 	)
 	.map_err(|e| format!("Topiary failed to format {} DSL: {e}", kind.name()))?;
 	String::from_utf8(output)
-		.map(|formatted| formatted.trim().to_string())
+		.map(|formatted| normalize_dsl_output(formatted.trim()))
 		.map_err(|e| {
 			format!(
 				"Topiary produced invalid UTF-8 for {} DSL: {e}",
 				kind.name()
 			)
 		})
+}
+
+fn normalize_dsl_output(input: &str) -> String {
+	normalize_unary_minus(input)
+}
+
+fn normalize_unary_minus(input: &str) -> String {
+	let bytes = input.as_bytes();
+	let mut result = Vec::with_capacity(bytes.len());
+	let mut i = 0;
+	let mut in_string = false;
+	while i < bytes.len() {
+		if !in_string && bytes[i] == b'"' {
+			in_string = true;
+			result.push(bytes[i]);
+			i += 1;
+			continue;
+		}
+		if in_string {
+			result.push(bytes[i]);
+			if bytes[i] == b'"' {
+				in_string = false;
+			} else if bytes[i] == b'\\' && i + 1 < bytes.len() {
+				i += 1;
+				result.push(bytes[i]);
+			}
+			i += 1;
+			continue;
+		}
+		result.push(bytes[i]);
+		if bytes[i] == b'(' {
+			i += 1;
+			while i < bytes.len() && bytes[i] == b' ' {
+				i += 1;
+			}
+			if i < bytes.len() && bytes[i] == b'-' {
+				result.push(b'-');
+				i += 1;
+				let start = i;
+				while i < bytes.len() && bytes[i] == b' ' {
+					i += 1;
+				}
+				if i > start
+					&& i < bytes.len()
+					&& (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
+				{
+					continue;
+				}
+				result.extend_from_slice(&bytes[start..i]);
+			}
+			continue;
+		}
+		i += 1;
+	}
+	String::from_utf8(result).unwrap_or_else(|_| input.to_string())
 }
 
 fn topiary_language(kind: MacroKind) -> Result<TopiaryLanguage, String> {
@@ -502,7 +557,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			result.content,
-			"fn main() {\n\tlet view = page!(|| {\n\t\tdiv {\n\t\t\t\"x\"\n\t\t}\n\t});\n}"
+			"fn main() {\n\tlet view = page!(|| {\n\t\tdiv { \"x\" }\n\t});\n}"
 		);
 		assert_eq!(result.skipped, None);
 	}
@@ -514,7 +569,7 @@ mod tests {
 			format_dsl(MacroKind::Page, r#"|| { div { "x" } }"#).expect("format page DSL");
 
 		// Assert
-		assert_eq!(formatted, "|| {\n\tdiv {\n\t\t\"x\"\n\t}\n}");
+		assert_eq!(formatted, "|| {\n\tdiv { \"x\" }\n}");
 	}
 
 	#[rstest]
@@ -1225,5 +1280,122 @@ fn main() {}";
 
 		// Assert
 		assert!(!result.contains_dsl_macro);
+	}
+
+	#[rstest]
+	fn single_variable_block_stays_inline() {
+		// Arrange / Act
+		let formatted =
+			format_dsl(MacroKind::Page, r#"|| { span { disabled: true, { text } } }"#)
+				.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("{ text }"),
+			"single-variable block should stay inline: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn space_after_colon_before_paren() {
+		// Arrange / Act
+		let formatted =
+			format_dsl(MacroKind::Page, r#"|| { span { tabindex: (-1_i32).to_string(), } }"#)
+				.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("tabindex: (-1_i32)"),
+			"space after colon and no space inside unary minus: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn empty_closure_body_stays_inline() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { div { @click: |_| { }, @dblclick: |_| { }, } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("|_| {},"),
+			"empty closure body should stay inline: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn else_if_stays_on_same_line_as_closing_brace() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { if status == 0 { span { "Pending" } } else if status == 1 { span { "Processing" } } else { span { "Done" } } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("} else if"),
+			"else if should be on same line as closing brace: {formatted}"
+		);
+		assert!(
+			formatted.contains("} else {"),
+			"else should be on same line as closing brace: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn empty_element_block_stays_inline() {
+		// Arrange / Act
+		let formatted =
+			format_dsl(MacroKind::Page, r#"|| { div {} div {} }"#).expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("div {}"),
+			"empty element block should stay inline: {formatted}"
+		);
+		assert!(
+			!formatted.contains("div {\n"),
+			"empty element block should not expand: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn normalize_unary_minus_preserves_string_contents() {
+		// Arrange
+		let input = r#"div { "value is (- 1)" }"#;
+
+		// Act
+		let result = normalize_unary_minus(input);
+
+		// Assert
+		assert_eq!(result, input);
+	}
+
+	#[rstest]
+	fn normalize_unary_minus_collapses_outside_strings() {
+		// Arrange
+		let input = r#"tabindex: (- 1_i32).to_string()"#;
+
+		// Act
+		let result = normalize_unary_minus(input);
+
+		// Assert
+		assert_eq!(result, r#"tabindex: (-1_i32).to_string()"#);
+	}
+
+	#[rstest]
+	fn normalize_unary_minus_handles_escaped_quotes() {
+		// Arrange
+		let input = r#""escaped \" (- 1) end" (- 2_i32)"#;
+
+		// Act
+		let result = normalize_unary_minus(input);
+
+		// Assert
+		assert_eq!(result, r#""escaped \" (- 1) end" (-2_i32)"#);
 	}
 }
