@@ -90,13 +90,14 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-// Re-export external crates for macro support
-// Macro-generated code uses paths like `::reinhardt::reinhardt_apps::AppConfig`
+// ============================================================================
+// Macro-support modules (D1: must stay at crate root for path stability)
+//
+// Macro-generated code uses paths like `::reinhardt::reinhardt_apps::AppConfig`.
 // These wrapper modules provide the namespace structure that macros expect.
-// Note: These are marked #[doc(hidden)] because they are internal dependencies
-// used by macro-generated code. Users should not use these directly.
+// Marked #[doc(hidden)] — users should not use these directly.
+// ============================================================================
 
-// WASM-compatible re-exports (always available)
 #[cfg(feature = "pages")]
 #[doc(hidden)]
 pub mod reinhardt_pages {
@@ -105,12 +106,10 @@ pub mod reinhardt_pages {
 
 #[doc(hidden)]
 pub mod reinhardt_types {
-	// Public API surface glob re-export requires allowing unused imports and unreachable pub
 	#[allow(unused_imports, unreachable_pub)]
 	pub use reinhardt_core::types::*;
 }
 
-// Server-side only re-exports (NOT for WASM)
 #[cfg(all(feature = "core", native))]
 #[doc(hidden)]
 pub mod reinhardt_apps {
@@ -189,7 +188,6 @@ pub mod reinhardt_commands {
 #[doc(hidden)]
 pub mod reinhardt_core {
 	pub use reinhardt_core::*;
-	// For macro compatibility: Re-export EndpointMetadata at module level
 	pub use reinhardt_core::endpoint::EndpointMetadata;
 }
 
@@ -223,7 +221,6 @@ pub mod ctor {
 	pub use ctor::*;
 }
 
-// Re-export paste for macro-generated code (Issue #3526: namespaced URL resolvers)
 #[cfg(native)]
 #[doc(hidden)]
 pub use paste::paste;
@@ -234,12 +231,13 @@ pub mod reinhardt_orm {
 	pub use reinhardt_db::orm::*;
 }
 
-// Module re-exports following Django's structure
-// WASM-compatible modules (always available)
+// ============================================================================
+// Module declarations (D2: define the crate's module tree)
+// ============================================================================
+
 #[cfg(feature = "pages")]
 pub mod pages;
 
-// Server-side only modules (NOT for WASM)
 #[cfg(all(feature = "admin", native))]
 pub mod admin;
 #[cfg(all(feature = "core", native))]
@@ -311,16 +309,11 @@ pub mod urls;
 pub mod urls {
 	/// Wasm-side stub mirroring `reinhardt_urls::prelude`.
 	pub mod prelude {
-		// Real wasm `UnifiedRouter` (with `ServerRouterStub` / `ClientRouter`
-		// builder closures). Available when `client-router` is enabled.
 		#[cfg(feature = "client-router")]
 		pub use reinhardt_urls::routers::unified_router::ServerRouterStub;
 		#[cfg(feature = "client-router")]
 		pub use reinhardt_urls::routers::{ClientRouter, UnifiedRouter};
 
-		// Inert fallback for wasm builds without `client-router`. Closures
-		// receive a stub parameter typed to match the real wasm API shape so
-		// that no-argument forms (`.server(|_| _)`) still type-check.
 		#[cfg(not(feature = "client-router"))]
 		pub use stub::*;
 
@@ -377,1065 +370,58 @@ pub mod utils;
 #[cfg(native)]
 pub mod views;
 
-// Server-side only re-exports (NOT for WASM)
-// Re-export app types from reinhardt-apps
-#[cfg(all(feature = "core", native))]
-pub use reinhardt_apps::{AppConfig, AppError, AppResult, Apps};
+// ============================================================================
+// Organized re-exports (extracted from the former monolithic lib.rs)
+// ============================================================================
 
-// Re-export macros
-// Issue #4161: `AppConfig` (derive), `app_config` (attribute), and `installed_apps`
-// are proc-macros that run host-side; the macro-emitted code references
-// `::reinhardt::macros::AppConfig` and `::reinhardt::reinhardt_apps::*`.
-// Re-exporting them on wasm (matching #4156's pattern for routes/url_patterns)
-// enables downstream client crates to use `#[app_config]` and `#[url_patterns]`
-// cross-target. The actual runtime types they reference are provided by the
-// wasm shim modules below.
-pub use reinhardt_macros::{AppConfig, app_config, installed_apps};
+mod exports;
+pub use exports::*;
 
-// Re-export settings attribute macro (requires conf feature)
-#[cfg(all(feature = "conf", native))]
-pub use reinhardt_macros::settings;
+// ============================================================================
+// Additional macro-support re-exports (D1: must stay at crate root)
+// ============================================================================
 
-// Re-export Model derive macro and model attribute macro (requires database feature)
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_macros::{Model, model};
-
-// Issue #4478: `#[dto]` absorbs the `cfg_attr(native, ...)` boilerplate for
-// data-transfer objects that cross the server (`native`) / client (`wasm`)
-// boundary — typically via `#[server_fn]` calls, REST handlers, or WebSocket
-// payloads. The macro itself is wasm-safe — its expansion uses
-// `cfg_attr(native, ...)` for any native-only items — so the re-export is
-// ungated. Sits clearly apart from `#[model]` (the ORM struct attribute):
-// `#[model]` describes a persistent record, `#[dto]` describes the wire
-// shape.
-pub use reinhardt_macros::dto;
-
-// Re-export collect_migrations macro (requires database feature)
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_macros::collect_migrations;
-
-// Re-export reinhardt_migrations crate (used by collect_migrations! macro)
 #[cfg(all(feature = "database", native))]
 pub use reinhardt_db::migrations;
 
-// Alias for macro compatibility
 #[cfg(all(feature = "database", native))]
 #[doc(hidden)]
 pub use migrations as reinhardt_migrations;
 
-// Re-export reinhardt_macros as a module for hierarchical imports
-// This allows macro-generated code to use ::reinhardt::macros::Model
-// Ungated on wasm (Issue #4161): the `#[app_config]` attribute macro
-// emits `#[derive(::reinhardt::macros::AppConfig)]`, so downstream wasm
-// consumers need this path to resolve. `reinhardt-macros` is a proc-macro
-// crate that runs host-side and is wasm-safe to re-export.
 #[doc(hidden)]
 pub mod macros {
 	pub use reinhardt_macros::*;
 }
 
-// Re-export HTTP method macros
-#[cfg(native)]
-pub use reinhardt_macros::{api_view, delete, get, patch, post, put};
-
-#[cfg(native)]
-pub use reinhardt_macros::flatten_imports;
-pub use reinhardt_macros::routes;
-pub use reinhardt_macros::url_patterns;
-#[cfg(native)]
-pub use reinhardt_macros::viewset;
-
-// client_routes! proc macro removed: superseded by #[url_patterns(client = true)]
-
-// Re-export admin attribute macro (requires admin feature)
-#[cfg(all(feature = "admin", native))]
-pub use reinhardt_macros::admin;
-
-// Re-export settings from dedicated crate
-#[cfg(all(feature = "conf", native))]
-pub use reinhardt_conf::settings::{
-	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings, MediaSettings,
-	MiddlewareConfig, SessionSettings, SettingsError, StaticSettings, TemplateConfig,
-};
-
-#[cfg(all(feature = "conf", native))]
-pub use reinhardt_conf::SecuritySettings;
-
-#[cfg(all(feature = "conf", native))]
-pub use reinhardt_conf::settings::core_settings::{CoreSettings, HasCoreSettings};
-
-#[cfg(all(feature = "conf", native))]
-pub use reinhardt_conf::settings::fragment::SettingsFragment;
-
-#[cfg(all(feature = "conf", native))]
-pub use reinhardt_conf::settings::fragment::HasSettings;
-
-#[cfg(all(feature = "conf", native))]
-pub use reinhardt_conf::settings::builder::SettingsBuilder;
-
-#[cfg(all(feature = "conf", native))]
-pub use reinhardt_conf::settings::profile::Profile;
-
-#[cfg(all(feature = "conf", native))]
-pub use reinhardt_conf::settings::sources::{
-	DefaultSource, EnvSource, LowPriorityEnvSource, TomlFileSource,
-};
-
-// Re-export ApplyUpdate trait and macros
-pub use reinhardt_core::apply_update::ApplyUpdate;
-#[cfg(native)]
-pub use reinhardt_macros::{ApplyUpdate as DeriveApplyUpdate, apply_update};
-
-// Re-export core types
-#[cfg(all(feature = "core", native))]
-pub use reinhardt_core::{
-	endpoint::EndpointMetadata,
-	exception::{Error, Result},
-};
-
-// Re-export HTTP types
-#[cfg(all(feature = "core", native))]
-pub use reinhardt_http::{Handler, Middleware, MiddlewareChain, Request, Response, ViewResult};
-
-// Re-export inventory crate (used by HTTP method macros for endpoint registration)
 #[cfg(all(feature = "core", native))]
 #[doc(hidden)]
 pub use inventory;
 
-// Re-export ORM
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::orm::{
-	DatabaseBackend, DatabaseConnection, Model, QuerySet, SoftDeletable, SoftDelete, Timestamped,
-	Timestamps,
-};
-
-// Re-export ORM query expressions (Django-style F/Q objects)
-//
-// # Availability
-//
-// Requires `database` feature.
-//
-// # Examples
-//
-// ```rust,no_run
-// # use reinhardt::{F, Q};
-// // Reference a field (like Django's F object)
-// let price_expr = F::field("price");
-//
-// // Build complex queries (like Django's Q object)
-// let filter = Q::and(vec![
-//     Q::field("status").equals("active"),
-//     Q::field("price").gt(100),
-// ]);
-// ```
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::orm::{
-	// Query expressions (equivalent to Django's F and Q)
-	Exists,
-	F,
-	FieldRef,
-	// Query filter types
-	Filter,
-	FilterOperator,
-	FilterValue,
-	OuterRef,
-	Q,
-	QOperator,
-	Subquery,
-};
-
-// Re-export ORM annotations and aggregations
-//
-// # Availability
-//
-// Requires `database` feature.
-//
-// # Examples
-//
-// ```rust,no_run
-// # use reinhardt::{Annotation, Aggregate, F};
-// # struct User;
-// # impl User { fn objects() -> QueryBuilder { QueryBuilder } }
-// # struct Product;
-// # impl Product { fn objects() -> QueryBuilder { QueryBuilder } }
-// # struct QueryBuilder;
-// # impl QueryBuilder {
-// #     fn annotate(self, _name: &str, _val: Annotation) -> Self { self }
-// #     fn aggregate(self, _name: &str, _val: Aggregate) -> Self { self }
-// # }
-// // Annotate query results with computed values
-// let query = User::objects()
-//     .annotate("full_name", Annotation::concat(vec![
-//         F::field("first_name"),
-//         F::value(" "),
-//         F::field("last_name"),
-//     ]));
-//
-// // Aggregate data
-// let stats = Product::objects()
-//     .aggregate("avg_price", Aggregate::avg("price"));
-// ```
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::orm::{
-	// Aggregations
-	Aggregate,
-	AggregateFunc,
-	AggregateValue,
-	// Annotations
-	Annotation,
-	AnnotationValue,
-};
-
-// Re-export ORM transactions
-//
-// # Availability
-//
-// Requires `database` feature.
-//
-// # Examples
-//
-// ```rust,no_run
-// # use reinhardt::{atomic, IsolationLevel, atomic_with_isolation};
-// # #[tokio::main]
-// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-// # struct User;
-// # struct Profile;
-// # let data = ();
-// // Use atomic decorator for transactions
-// // let result = atomic(|| async {
-// //     let user = User::create(data).await?;
-// //     let profile = Profile::create(user.id).await?;
-// //     Ok((user, profile))
-// // }).await?;
-//
-// // Or with specific isolation level
-// // let result = atomic_with_isolation(IsolationLevel::Serializable, || async {
-// //     // Your transaction code
-// // }).await?;
-// # Ok(())
-// # }
-// ```
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::orm::{
-	// Transaction management
-	IsolationLevel,
-	QueryValue,
-	Savepoint,
-	Transaction,
-	TransactionExecutor,
-	TransactionScope,
-	atomic,
-	atomic_with_isolation,
-};
-
-// Re-export ORM database functions
-//
-// # Availability
-//
-// Requires `database` feature.
-//
-// # Examples
-//
-// ```rust,no_run
-// # use reinhardt::{Concat, Upper, Lower, Now, F, Q};
-// # struct User;
-// # impl User { fn objects() -> QueryBuilder { QueryBuilder } }
-// # struct QueryBuilder;
-// # impl QueryBuilder {
-// #     fn annotate(self, _name: &str, _val: impl std::any::Any) -> Self { self }
-// #     fn filter(self, _q: impl std::any::Any) -> Self { self }
-// # }
-// // String functions
-// let query = User::objects()
-//     .annotate("full_name", Concat::new(vec![
-//         F::field("first_name"),
-//         F::value(" "),
-//         F::field("last_name"),
-//     ]))
-//     .annotate("email_upper", Upper::new(F::field("email")));
-//
-// // Date/time functions
-// let recent_users = User::objects()
-//     .filter(Q::field("created_at").gte(Now::new()));
-// ```
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::orm::{
-	// Math functions
-	Abs,
-	// Utility functions
-	Cast,
-	Ceil,
-	// String functions
-	Concat,
-	// Date/time functions
-	CurrentDate,
-	CurrentTime,
-	Extract,
-	ExtractComponent,
-	Floor,
-	Greatest,
-	Least,
-	Length,
-	Lower,
-	Mod,
-	Now,
-	NullIf,
-	Power,
-	Round,
-	SqlType,
-	Sqrt,
-	Substr,
-	Trim,
-	TrimType,
-	Upper,
-};
-
-// Re-export ORM window functions
-//
-// # Availability
-//
-// Requires `database` feature.
-//
-// # Examples
-//
-// ```rust,no_run
-// # use reinhardt::{Window, RowNumber, Rank};
-// # struct Product;
-// # impl Product { fn objects() -> QueryBuilder { QueryBuilder } }
-// # struct Sale;
-// # impl Sale { fn objects() -> QueryBuilder { QueryBuilder } }
-// # struct QueryBuilder;
-// # impl QueryBuilder {
-// #     fn annotate(self, _name: &str, _val: impl std::any::Any) -> Self { self }
-// # }
-// // Add row numbers to query results
-// let query = Product::objects()
-//     .annotate("row_num", RowNumber::new()
-//         .over(Window::new().order_by("price")));
-//
-// // Ranking within partitions
-// let query = Sale::objects()
-//     .annotate("rank", Rank::new()
-//         .over(Window::new()
-//             .partition_by("category")
-//             .order_by("-amount")));
-// ```
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::orm::{
-	// Ranking functions
-	DenseRank,
-	// Value functions
-	FirstValue,
-	// Window specification
-	Frame,
-	FrameBoundary,
-	FrameType,
-	Lag,
-	LastValue,
-	Lead,
-	NTile,
-	NthValue,
-	Rank,
-	RowNumber,
-	Window,
-	WindowFunction,
-};
-
-// Re-export ORM constraints and indexes
-//
-// # Availability
-//
-// Requires `database` feature.
-//
-// # Examples
-//
-// ```rust,no_run
-// # use reinhardt::{UniqueConstraint, BTreeIndex};
-// // Define constraints programmatically
-// let constraint = UniqueConstraint::new(vec!["email"]);
-//
-// // Create indexes
-// let index = BTreeIndex::new("user_email_idx", vec!["email"]);
-// ```
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::orm::{
-	// Indexes
-	BTreeIndex,
-	// Constraints
-	CheckConstraint,
-	Constraint,
-	ForeignKeyConstraint,
-	GinIndex,
-	GistIndex,
-	HashIndex,
-	Index,
-	OnDelete,
-	OnUpdate,
-	UniqueConstraint,
-};
-
-// Re-export reinhardt-query prelude types (via reinhardt-db orm)
-// Query builder Query type is available as reinhardt::db::orm::Query
-// to avoid name conflict with reinhardt::Query (DI params extractor).
-// Value is re-exported as QueryBuilderValue to avoid conflicts with existing types.
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::orm::{IntoValue, Order, QueryBuilderValue};
-
-// Re-export database pool
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::pool::{ConnectionPool, PoolConfig, PoolError};
-
-// Re-export serializers
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::serializers::{Deserializer, JsonSerializer, Serializer};
-
-// Re-export viewsets
-#[cfg(native)]
-pub use reinhardt_views::viewsets::{
-	Action, ActionType, CreateMixin, DestroyMixin, GenericViewSet, ListMixin, ModelViewSet,
-	ReadOnlyModelViewSet, RetrieveMixin, UpdateMixin, ViewSet,
-};
-
-// Re-export routers
-#[cfg(native)]
-pub use reinhardt_urls::routers::{
-	DefaultRouter, PathMatcher, PathPattern, Route, Router, RouterFactory, ServerRouter,
-	UrlPatternsRegistration, clear_router, get_router, is_router_registered, register_router,
-	register_router_arc,
-};
-
-// Re-export client-router inventory registration types (WASM target +
-// client-router feature). Mirrors the native `UrlPatternsRegistration`
-// re-export above so the `#[routes]` macro and downstream code can resolve
-// `reinhardt::ClientRouterRegistration` on `wasm32-unknown-unknown` when
-// the `client-router` feature is enabled. The `client-router` gate matches
-// the registration source module's gate in `reinhardt-urls`. Refs #4453,
-// Codex review feedback.
-#[cfg(all(
-	target_family = "wasm",
-	target_os = "unknown",
-	feature = "client-router"
-))]
-pub use reinhardt_urls::routers::{
-	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
-};
-
-// Re-export the `inventory` crate on the WASM target.
-//
-// The native build re-exports `inventory` above (gated to `core` feature),
-// and the `#[routes]` macro emits `reinhardt::inventory::submit!` to register
-// a server router. The macro's WASM emission also uses `inventory::submit!`
-// to register a `ClientRouterRegistration`, so the facade must expose
-// `reinhardt::inventory` on `wasm32-unknown-unknown` as well. `reinhardt-urls`
-// already depends on `inventory` unconditionally on WASM and re-exports it
-// for this purpose. Refs #4453.
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 #[doc(hidden)]
 pub use reinhardt_urls::inventory;
 
-// Re-export the `reinhardt-urls` crate itself as a module so macro-emitted
-// paths like `::reinhardt::reinhardt_urls::routers::get_client_reverser(...)`
-// (produced by `#[url_patterns]` when downstream crates depend only on the
-// `reinhardt` facade) resolve on both native and wasm targets.
 #[doc(hidden)]
 pub use ::reinhardt_urls;
 
-// Re-export client-router types (requires client-router feature)
-// These types enable UnifiedRouter<V> with both .server() and .client() methods
-#[cfg(feature = "client-router")]
-pub use reinhardt_urls::routers::{
-	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, ClientUrlReverser, FromPath,
-	HistoryState, MergeError, NavigationType, ParamContext, SingleFromPath, UnifiedRouter,
-	clear_client_reverser, get_client_reverser, register_client_reverser,
-};
-// Path extractor for client-side routing (separate from server-side Path from reinhardt-di)
-#[cfg(feature = "client-router")]
-pub use reinhardt_urls::routers::Path as ClientPath;
-
-// Re-export URL resolver traits
-pub use reinhardt_urls::routers::ClientUrlResolver;
-#[cfg(native)]
-pub use reinhardt_urls::routers::resolver::UrlResolver;
-// Deprecated namespace-aware helper trait used by the legacy flat
-// `#[viewset]` accessors. Refs #4507.
-#[cfg(native)]
-pub use reinhardt_urls::routers::resolver::WebSocketUrlResolver;
-
-// Re-export auth
-#[cfg(all(feature = "auth", native))]
-pub use reinhardt_auth::{
-	AllowAny, AuthBackend, AuthIdentity, AuthInfo, AuthUser, BaseUser, FullUser, IsAdminUser,
-	IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, validate_auth_extractors,
-};
-
-// Re-export argon2-hasher gated types
-#[cfg(all(feature = "auth", feature = "argon2-hasher", native))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "auth", feature = "argon2-hasher"))))]
-pub use reinhardt_auth::Argon2Hasher;
-
-#[cfg(all(feature = "auth-jwt", native))]
-pub use reinhardt_auth::{Claims, JwtAuth, JwtError};
-
-// Re-export auth management
-//
-// # Availability
-//
-// Requires `auth` feature.
-//
-// # Examples
-//
-// ```rust,no_run
-// # use reinhardt::{UserManager, GroupManager, ObjectPermission, CreateUserData, CreateGroupData};
-// # #[tokio::main]
-// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-// // User management
-// let user_manager = UserManager::new();
-// // let user = user_manager.create_user(CreateUserData {
-// //     username: "alice".to_string(),
-// //     email: "alice@example.com".to_string(),
-// //     password: "secret".to_string(),
-// // }).await?;
-//
-// // Group management
-// let group_manager = GroupManager::new();
-// // let group = group_manager.create_group(CreateGroupData {
-// //     name: "editors".to_string(),
-// // }).await?;
-//
-// // Object-level permissions
-// // let perm = ObjectPermission::new("edit", user, article);
-// # Ok(())
-// # }
-// ```
-#[cfg(all(feature = "auth", native))]
-pub use reinhardt_auth::{
-	// Group management
-	CreateGroupData,
-	// User management
-	CreateUserData,
-	Group,
-	GroupManagementError,
-	GroupManagementResult,
-	GroupManager,
-	// Object-level permissions
-	ObjectPermission,
-	ObjectPermissionChecker,
-	ObjectPermissionManager,
-	UpdateUserData,
-	UserManagementError,
-	UserManagementResult,
-	UserManager,
-};
-
-// Re-export middleware
-// AuthenticationMiddleware requires both sessions (for session backend) and
-// middleware (for the reinhardt-middleware crate dependency)
-#[cfg(all(feature = "sessions", feature = "middleware", native))]
-pub use reinhardt_middleware::AuthenticationMiddleware;
-
-// JWT authentication middleware (requires middleware-auth-jwt feature)
-#[cfg(all(feature = "middleware-auth-jwt", native))]
-pub use reinhardt_middleware::JwtAuthMiddleware;
-
-// Cookie-based session authentication middleware (requires sessions + middleware)
-#[cfg(all(feature = "sessions", feature = "middleware", native))]
-pub use reinhardt_middleware::{CookieSessionAuthMiddleware, CookieSessionConfig};
-
-// Typed session-value extractors and session-auth ergonomics (see #4446).
-#[cfg(all(feature = "sessions", feature = "middleware", native))]
-pub use reinhardt_middleware::session::{
-	OptionalSessionValue, SessionAuthExt, SessionKey, SessionValue, SessionValueNamed,
-	USER_ID_SESSION_KEY, UserIdKey,
-};
-
-// Redis session backend (requires session-redis + middleware)
-#[cfg(all(feature = "session-redis", feature = "middleware", native))]
-pub use reinhardt_middleware::RedisSessionBackend;
-
-// Origin guard middleware for CSRF protection
-#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
-pub use reinhardt_middleware::OriginGuardMiddleware;
-
-// Remote user authentication middleware (requires sessions + middleware)
-#[cfg(all(feature = "sessions", feature = "middleware", native))]
-pub use reinhardt_middleware::{PersistentRemoteUserMiddleware, RemoteUserMiddleware};
-
-// Login required middleware (available with any middleware feature)
-#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
-pub use reinhardt_middleware::{LoginRequiredConfig, LoginRequiredMiddleware};
-
-#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
-pub use reinhardt_middleware::LoggingMiddleware;
-
-#[cfg(all(feature = "middleware-cors", native))]
-pub use reinhardt_middleware::CorsMiddleware;
-
-// Security middleware (requires middleware-security feature)
-#[cfg(all(feature = "middleware-security", native))]
-pub use reinhardt_middleware::SecurityMiddleware;
-
-#[cfg(all(feature = "middleware-security", native))]
-#[allow(deprecated)] // SecurityConfig is deprecated but still re-exported for compatibility
-pub use reinhardt_middleware::SecurityConfig;
-
-// CSP middleware (available with any middleware feature)
-#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
-pub use reinhardt_middleware::{CspConfig, CspMiddleware, CspNonce};
-
-// XFrame middleware (available with any middleware feature)
-#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
-pub use reinhardt_middleware::{XFrameOptions, XFrameOptionsMiddleware};
-
-// Re-export HTTP types (additional commonly used types)
-#[cfg(all(feature = "core", native))]
-pub use reinhardt_http::Extensions;
-
-// Re-export HTTP types from hyper (already used in reinhardt_http)
-#[cfg(native)]
-pub use hyper::{Method, StatusCode};
-
-// Re-export pagination
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::pagination::{
-	CursorPagination, LimitOffsetPagination, PageNumberPagination, PaginatedResponse, Paginator,
-};
-
-// Re-export filters
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::filters::{
-	FieldOrderingExt, FilterBackend, FilterError, FilterResult, MultiTermSearch,
-};
-
-// Re-export throttling
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::throttling::{
-	AnonRateThrottle, ScopedRateThrottle, Throttle, UserRateThrottle,
-};
-
-// Re-export signals
-#[cfg(all(feature = "core", native))]
-pub use reinhardt_core::signals::{
-	M2MAction, M2MChangeEvent, Signal, m2m_changed, post_delete, post_save, pre_delete, pre_save,
-};
-
-// Re-export core utilities
-// Note: reinhardt_types provides Handler, Middleware, etc. which are already re-exported via reinhardt_apps
-
-// Re-export validators
-#[cfg(all(feature = "core", native))]
-pub use reinhardt_core::validators::{
-	CreditCardValidator, EmailValidator, IBANValidator, IPAddressValidator, PhoneNumberValidator,
-	UrlValidator, Validate, ValidationError as ValidatorError, ValidationErrors, ValidationResult,
-	Validator,
-};
-
-// Re-export views
-#[cfg(native)]
-pub use reinhardt_views::{
-	Context, DetailView, ListView, MultipleObjectMixin, SingleObjectMixin, View,
-};
-
-// Re-export parsers
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::parsers::{
-	FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
-	Parser,
-};
-
-// Re-export versioning
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::versioning::{
-	AcceptHeaderVersioning, BaseVersioning, HostNameVersioning, NamespaceVersioning,
-	QueryParameterVersioning, RequestVersionExt, URLPathVersioning, VersioningError,
-	VersioningMiddleware,
-};
-
-// Re-export metadata
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::metadata::{
-	ActionMetadata, BaseMetadata, ChoiceInfo, FieldInfo, FieldInfoBuilder, FieldType,
-	MetadataOptions, MetadataResponse, SimpleMetadata,
-};
-
-// Re-export negotiation
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::negotiation::*;
-
-// Re-export REST integration modules
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::{
-	filters, metadata, negotiation, pagination, parsers, serializers, throttling, versioning,
-};
-
-// Re-export browsable API (from reinhardt-browsable-api via reinhardt-rest)
-#[cfg(all(feature = "rest", native))]
-pub use reinhardt_rest::browsable_api;
-
-// Re-export OpenAPI types
-//
-// # Availability
-//
-// Requires `openapi` feature.
-//
-// # Examples
-//
-// ```rust,no_run
-// # // Note: This example requires the openapi feature
-// // use reinhardt::{OpenApi, ApiDoc};
-// //
-// // // Define API documentation
-// // #[derive(OpenApi)]
-// // #[openapi(paths(get_users, create_user))]
-// // struct ApiDoc;
-// //
-// // // Generate OpenAPI schema
-// // let openapi = ApiDoc::openapi();
-// // let json = serde_json::to_string_pretty(&openapi)?;
-// ```
-#[cfg(all(feature = "openapi", native))]
-pub use reinhardt_rest::openapi::*;
-
-// Re-export OpenApiRouter (requires openapi-router feature)
-#[cfg(all(feature = "openapi-router", native))]
-pub use reinhardt_openapi::OpenApiRouter;
-
-// Re-export shortcuts (Django-style convenience functions)
-#[cfg(all(feature = "shortcuts", native))]
-pub use reinhardt_shortcuts::{redirect, render_html, render_json, render_text};
-// ORM-integrated shortcuts require database feature
-#[cfg(all(feature = "shortcuts", feature = "database", native))]
-pub use reinhardt_shortcuts::{get_list_or_404, get_object_or_404};
-
-// Re-export URL utilities
-#[cfg(native)]
-pub use reinhardt_urls::routers::{
-	UrlPattern, UrlPatternWithParams, UrlReverser, include_routes as include, path, re_path,
-	reverse,
-};
-
-// Admin functionality is available through reinhardt-admin-api crate
-// See reinhardt-admin-types for type definitions
-
-// Re-export database related (database feature)
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::contenttypes::{
-	CONTENT_TYPE_REGISTRY, ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable,
-	GenericRelationQuery, ModelType,
-};
-#[cfg(all(feature = "database", native))]
-pub use reinhardt_db::migrations::{
-	FieldState, Migration, MigrationAutodetector, MigrationError, MigrationPlan, MigrationRecorder,
-	ModelState, ProjectState,
-};
-
-// Re-export cache (cache feature)
-#[cfg(all(feature = "cache", native))]
-pub use reinhardt_utils::cache::{Cache, CacheKeyBuilder, InMemoryCache};
-
-// Cache middleware is in reinhardt-middleware
-#[cfg(all(feature = "middleware", native))]
-pub use reinhardt_middleware::CacheMiddleware;
-
-#[cfg(all(feature = "cache", feature = "redis-backend", native))]
-pub use reinhardt_utils::cache::RedisCache;
-
-// Re-export sessions (sessions feature)
-#[cfg(all(feature = "sessions", native))]
-pub use reinhardt_auth::sessions::{
-	CacheSessionBackend, InMemorySessionBackend, Session, SessionBackend, SessionError,
-};
-
-#[cfg(all(feature = "sessions", feature = "middleware", native))]
-pub use reinhardt_auth::sessions::{HttpSessionConfig, SameSite, SessionMiddleware};
-
-// Re-export contrib modules (contrib feature)
-// Note: reinhardt_contrib exports individual modules (auth, sessions, etc.)
-// rather than a single "contrib" module
-
-// Re-export forms (forms feature)
-#[cfg(all(feature = "forms", native))]
-pub use reinhardt_forms::{
-	BoundField, CharField, EmailField, FieldError, FileField, Form, FormError, FormResult,
-	IntegerField, ModelForm,
-};
-
-// Re-export DI and parameters (FastAPI-style parameter extraction)
-#[cfg(all(feature = "di", native))]
-pub use reinhardt_di::scope::{RequestScope, Scope, SingletonScope};
-#[cfg(all(feature = "di", native))]
-pub use reinhardt_di::{
-	Depends, DependsBuilder, DiError, DiResult, Injectable, InjectionContext,
-	InjectionContextBuilder, InjectionMetadata, RequestContext,
-};
-
-// Re-export DI params - available in minimal, standard, and di features
-#[cfg(all(any(feature = "minimal", feature = "standard", feature = "di"), native))]
-pub use reinhardt_di::params::{Body, Cookie, Header, Json, Path, Query};
-
-// Re-export template/rendering functionality from reinhardt-pages
-// Note: TemplateError was removed as Tera templating was replaced with reinhardt-pages SSR
-
-// Re-export tasks
-#[cfg(all(feature = "tasks", native))]
-pub use reinhardt_tasks::{Scheduler, Task, TaskExecutor, TaskQueue};
-
-// Re-export test utilities
-#[cfg(all(feature = "test", native))]
-pub use reinhardt_test::{APIClient, APIRequestFactory, APITestCase, TestResponse};
-
-// Re-export storage
-#[cfg(all(feature = "storage", native))]
-pub use reinhardt_utils::storage::{InMemoryStorage, LocalStorage, Storage};
-
-/// Wasm-side `prelude` shim (Issue #4189).
-///
-/// The native `prelude` module is `#[cfg(native)]`-gated, but the
-/// `--with-pages` scaffold emits `use reinhardt::prelude::*;` in the
-/// generated `src/config/urls.rs`, which must compile on
-/// `wasm32-unknown-unknown` so wasm SPA consumers can `cargo check --lib`
-/// without modifying the scaffolded sources.
-///
-/// This wasm-only stub re-exports the minimum surface the scaffold uses
-/// (`UnifiedRouter` from the wasm-side `urls::prelude` shim, gated behind
-/// the `client-router` feature; the module is empty when that feature is
-/// disabled). Native builds keep using the full server-side `prelude`
-/// declared below.
-#[cfg(all(not(native), target_family = "wasm"))]
-pub mod prelude {
-	#[cfg(feature = "client-router")]
-	pub use crate::urls::prelude::UnifiedRouter;
-}
-
-/// Convenience re-exports of commonly used types (server-side only).
-#[cfg(native)]
-pub mod prelude {
-	// Core types - always available
-	pub use crate::{
-		Action,
-		DefaultRouter,
-		DetailView,
-		ListView,
-		ModelViewSet,
-		MultipleObjectMixin,
-		ReadOnlyModelViewSet,
-		Route,
-		Router,
-		ServerRouter,
-		SingleObjectMixin,
-		StatusCode,
-		View,
-		ViewSet,
-		// Routers
-		clear_router,
-		get_router,
-		is_router_registered,
-		register_router,
-	};
-
-	// ViewResult requires core feature (re-exported from reinhardt_http)
-	#[cfg(feature = "core")]
-	pub use crate::ViewResult;
-
-	// UnifiedRouter requires client-router feature
-	#[cfg(feature = "client-router")]
-	pub use crate::UnifiedRouter;
-
-	// External dependencies (via core)
-	#[cfg(feature = "core")]
-	pub use crate::core::async_trait;
-	#[cfg(feature = "core")]
-	pub use crate::core::serde::{Deserialize, Serialize};
-
-	// Core feature - types, signals, etc.
-	#[cfg(feature = "core")]
-	pub use crate::{
-		Error, Handler, Middleware, MiddlewareChain, Request, Response, Result, Signal,
-		m2m_changed, post_delete, post_save, pre_delete, pre_save,
-	};
-
-	// HTTP method macros - always available
-	pub use crate::{api_view, delete, get, patch, post, put};
-
-	// Database feature - ORM and Model macros
-	#[cfg(feature = "database")]
-	pub use crate::{
-		Aggregate,
-		// Annotations and aggregations
-		Annotation,
-		CheckConstraint,
-		// Common database functions
-		Concat,
-		CurrentDate,
-		DatabaseConnection,
-		DenseRank,
-		// Query expressions (Django-style F/Q objects)
-		F,
-		ForeignKeyConstraint,
-		Lower,
-		Now,
-		Q,
-		QOperator,
-		Rank,
-		RowNumber,
-		SoftDeletable,
-		Timestamped,
-		// Transaction management
-		Transaction,
-		// Constraints
-		UniqueConstraint,
-		Upper,
-		// Window functions (commonly used)
-		Window,
-		atomic,
-		// Model attribute macro for struct-level model definition
-		model,
-	};
-
-	// Import Model trait directly from reinhardt_db to avoid name shadowing
-	// (crate::Model refers to the derive macro, not the trait)
-	#[cfg(feature = "database")]
-	pub use reinhardt_db::orm::Model;
-
-	// Auth feature
-	#[cfg(feature = "auth")]
-	pub use crate::{
-		AuthBackend,
-		AuthIdentity,
-		Group,
-		GroupManager,
-		// Object-level permissions
-		ObjectPermission,
-		ObjectPermissionChecker,
-		PasswordHasher,
-		Permission,
-		// User and group management
-		UserManager,
-	};
-
-	// OpenAPI feature - schema generation and documentation
-	// Note: When 'openapi' feature is enabled, types are available at top level
-	// Example: use reinhardt::prelude::*; or use reinhardt::{OpenApi, ApiDoc, Schema};
-
-	// DI params - FastAPI-style parameter extraction
-	#[cfg(any(feature = "minimal", feature = "standard", feature = "di"))]
-	pub use crate::{Body, Cookie, Header, Json, Path, Query};
-
-	// REST feature - serializers, parsers, pagination, throttling, versioning, metadata
-	#[cfg(feature = "rest")]
-	pub use crate::{
-		// Versioning
-		AcceptHeaderVersioning,
-		// Throttling
-		AnonRateThrottle,
-		CursorPagination,
-		FormParser,
-		// Parsers
-		JSONParser,
-		JsonSerializer,
-		LimitOffsetPagination,
-		MultiPartParser,
-		// Filters
-		MultiTermSearch,
-		// Pagination
-		PageNumberPagination,
-		Paginator,
-		Parser,
-		QueryParameterVersioning,
-		ScopedRateThrottle,
-		// Serializers
-		Serializer,
-		// Metadata
-		SimpleMetadata,
-		Throttle,
-		URLPathVersioning,
-		UserRateThrottle,
-		VersioningMiddleware,
-	};
-
-	// Middleware
-	#[cfg(any(feature = "standard", feature = "middleware"))]
-	pub use crate::LoggingMiddleware;
-
-	// Security middleware
-	#[cfg(feature = "middleware-security")]
-	pub use crate::SecurityMiddleware;
-
-	// Sessions feature
-	#[cfg(all(feature = "sessions", feature = "middleware", native))]
-	pub use crate::AuthenticationMiddleware;
-	#[cfg(feature = "sessions")]
-	pub use crate::Session;
-
-	// Cache feature
-	#[cfg(feature = "cache")]
-	pub use crate::{Cache, InMemoryCache};
-
-	// Admin feature - use reinhardt-admin-api crate directly for admin functionality
-}
-
-// Re-export WebSocket types
-#[cfg(all(feature = "websockets-pages", native))]
-pub use reinhardt_websockets::integration::pages::PagesAuthenticator;
-#[cfg(all(feature = "websockets", native))]
-pub use reinhardt_websockets::room::{BroadcastResult, Room, RoomError, RoomManager, RoomResult};
-#[cfg(all(feature = "websockets", native))]
-pub use reinhardt_websockets::{
-	ConsumerContext, Message, WebSocketConnection, WebSocketConsumer, WebSocketError,
-	WebSocketResult,
-};
-#[cfg(all(feature = "websockets", native))]
-pub use reinhardt_websockets::{
-	RouteError, RouteResult, WebSocketRoute, WebSocketRouter, clear_websocket_router,
-	get_websocket_router, register_websocket_router, reverse_websocket_url,
-};
-
-/// WASM shim for `WebSocketRouter` (Issue #4161).
-///
-/// `#[url_patterns(.., mode = ws)]` expansions call `.with_namespace(...)`
-/// on the function's return value, and the function's return type
-/// references `WebSocketRouter`. The real type lives in
-/// `reinhardt-websockets`, which depends on `tokio-tungstenite` and is
-/// native-only. This stub matches the surface the macro emits and the
-/// user-facing imports (`use reinhardt::WebSocketRouter`) so that wasm
-/// consumers compile, including the typical
-/// `WebSocketRouter::new().consumer(my_ws).consumer(other_ws)` body
-/// pattern.
-#[cfg(not(native))]
-pub struct WebSocketRouter {
-	_private: (),
-}
+// ============================================================================
+// Prelude
+// ============================================================================
+
+pub mod prelude;
+
+// ============================================================================
+// WASM compatibility shims
+// ============================================================================
 
 #[cfg(not(native))]
-impl WebSocketRouter {
-	pub fn new() -> Self {
-		Self { _private: () }
-	}
-
-	pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
-		self
-	}
-
-	/// Inert wasm counterpart of `WebSocketRouter::consumer`.
-	///
-	/// The native variant requires `C: WebSocketEndpointInfo`, but that
-	/// trait lives behind `#[cfg(native)]` in `reinhardt-core::ws`. To
-	/// keep `#[url_patterns(.., mode = ws)]` user bodies such as
-	/// `.consumer(chat_ws)` compiling on wasm, this stub accepts any
-	/// factory `Fn() -> C` with no further bounds and discards it.
-	pub fn consumer<C, F>(self, _f: F) -> Self
-	where
-		F: Fn() -> C,
-	{
-		self
-	}
-}
-
+mod compat;
 #[cfg(not(native))]
-impl Default for WebSocketRouter {
-	fn default() -> Self {
-		Self::new()
-	}
-}
+pub use compat::websockets::WebSocketRouter;
+
+// ============================================================================
+// Database modules (D2: macro-emitted paths reference `::reinhardt::db::*`)
+// ============================================================================
 
 /// SQL query builder module.
 ///
@@ -1449,7 +435,6 @@ pub mod query;
 /// These must be available at `::reinhardt::db::*` for the macro to work correctly.
 #[cfg(all(feature = "database", native))]
 pub mod db {
-	// Re-export commonly used types at module level for easier access
 	pub use reinhardt_db::DatabaseConnection;
 	pub use reinhardt_db::DatabaseError as Error;
 
