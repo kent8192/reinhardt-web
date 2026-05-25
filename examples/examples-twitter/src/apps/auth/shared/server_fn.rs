@@ -11,8 +11,8 @@ use {
 	crate::apps::auth::models::User,
 	crate::apps::auth::shared::types::{LoginRequest, RegisterRequest},
 	reinhardt::Validate,
-		reinhardt::db::orm::Model,
-		reinhardt::di::Depends,
+	reinhardt::db::orm::Model,
+	reinhardt::di::Depends,
 	reinhardt::middleware::session::{
 		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
 	},

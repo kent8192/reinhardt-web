@@ -2,10 +2,8 @@
 //!
 //! Provides reusable SVG icon components used across the Twitter clone application.
 //! Each icon is a function that returns a `Page` using the `page!` macro.
-
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
-
 /// Error circle icon (filled, 20x20)
 ///
 /// Circle with X mark, used in error alerts and error displays.
@@ -22,7 +20,6 @@ pub fn error_circle_icon() -> Page {
 		}
 	})()
 }
-
 /// Error circle icon with custom class
 pub fn error_circle_icon_with_class(class: &str) -> Page {
 	let class = class.to_string();
@@ -38,7 +35,6 @@ pub fn error_circle_icon_with_class(class: &str) -> Page {
 		}
 	})(class)
 }
-
 /// Close/X icon (stroke, 24x24)
 ///
 /// Simple X mark, used in dismissible alerts and modals.
@@ -58,7 +54,6 @@ pub fn close_icon() -> Page {
 		}
 	})()
 }
-
 /// Success checkmark circle icon (filled, 20x20)
 ///
 /// Circle with checkmark, used in success alerts.
@@ -75,7 +70,6 @@ pub fn success_check_icon() -> Page {
 		}
 	})()
 }
-
 /// Warning triangle icon (filled, 20x20)
 ///
 /// Triangle with exclamation, used in warning alerts.
@@ -92,7 +86,6 @@ pub fn warning_icon() -> Page {
 		}
 	})()
 }
-
 /// Sun icon (stroke, 24x24)
 ///
 /// Sun symbol for light theme indicator.
@@ -112,7 +105,6 @@ pub fn sun_icon() -> Page {
 		}
 	})()
 }
-
 /// Moon icon (stroke, 24x24)
 ///
 /// Moon symbol for dark theme indicator.
@@ -132,7 +124,6 @@ pub fn moon_icon() -> Page {
 		}
 	})()
 }
-
 /// Home icon (stroke, 24x24)
 ///
 /// House symbol for home navigation.
@@ -152,7 +143,6 @@ pub fn home_icon() -> Page {
 		}
 	})()
 }
-
 /// Search/magnifying glass icon (stroke, 24x24)
 ///
 /// Magnifying glass for search navigation.
@@ -172,7 +162,6 @@ pub fn search_icon() -> Page {
 		}
 	})()
 }
-
 /// Bell/notification icon (stroke, 24x24)
 ///
 /// Bell symbol for notifications navigation.
@@ -192,7 +181,6 @@ pub fn bell_icon() -> Page {
 		}
 	})()
 }
-
 /// User icon (stroke, 24x24)
 ///
 /// Person silhouette for user/profile navigation.
@@ -212,7 +200,6 @@ pub fn user_icon() -> Page {
 		}
 	})()
 }
-
 /// Plus icon (stroke, 24x24)
 ///
 /// Plus sign for compose/create actions.
@@ -232,7 +219,6 @@ pub fn plus_icon() -> Page {
 		}
 	})()
 }
-
 /// Chat bubble icon (stroke, 24x24)
 ///
 /// Speech bubble with dots, used for reply actions and empty message states.
@@ -252,7 +238,6 @@ pub fn chat_bubble_icon() -> Page {
 		}
 	})()
 }
-
 /// Large chat bubble icon (stroke, 24x24, 8x8 size)
 ///
 /// Larger version of chat bubble for empty state displays.
@@ -272,7 +257,6 @@ pub fn chat_bubble_icon_lg() -> Page {
 		}
 	})()
 }
-
 /// Chat bubble branded icon (stroke, 24x24, 8x8 size, brand color)
 ///
 /// Brand-colored chat bubble for login/register page headers.
@@ -292,7 +276,6 @@ pub fn chat_bubble_icon_brand() -> Page {
 		}
 	})()
 }
-
 /// Arrow left / back icon (stroke, 24x24)
 ///
 /// Left-pointing arrow for back navigation.
@@ -312,7 +295,6 @@ pub fn arrow_left_icon() -> Page {
 		}
 	})()
 }
-
 /// Chevron right icon (stroke, 24x24)
 ///
 /// Right-pointing chevron for list item navigation.
@@ -332,7 +314,6 @@ pub fn chevron_right_icon() -> Page {
 		}
 	})()
 }
-
 /// Heart icon outline (stroke, 24x24)
 ///
 /// Empty heart for unliked state.
@@ -352,7 +333,6 @@ pub fn heart_icon_outline() -> Page {
 		}
 	})()
 }
-
 /// Heart icon filled (stroke+fill, 24x24, with animation)
 ///
 /// Filled heart for liked state with animation class.
@@ -372,7 +352,6 @@ pub fn heart_icon_filled() -> Page {
 		}
 	})()
 }
-
 /// Trash/delete icon (stroke, 24x24)
 ///
 /// Trash can for delete actions.
@@ -392,7 +371,6 @@ pub fn trash_icon() -> Page {
 		}
 	})()
 }
-
 /// Retweet icon (stroke, 24x24)
 ///
 /// Circular arrows for retweet action.
@@ -412,7 +390,6 @@ pub fn retweet_icon() -> Page {
 		}
 	})()
 }
-
 /// Share/upload icon (stroke, 24x24)
 ///
 /// Upload arrow for share action.
@@ -432,7 +409,6 @@ pub fn share_icon() -> Page {
 		}
 	})()
 }
-
 /// Location pin icon (stroke, 24x24)
 ///
 /// Map pin with inner circle for location display.
@@ -458,7 +434,6 @@ pub fn location_pin_icon() -> Page {
 		}
 	})()
 }
-
 /// Link/chain icon (stroke, 24x24)
 ///
 /// Interlinked chain for website/URL display.
@@ -478,7 +453,6 @@ pub fn link_icon() -> Page {
 		}
 	})()
 }
-
 /// User add icon (stroke, 24x24, brand color)
 ///
 /// Person silhouette with plus sign for registration page header.
@@ -498,7 +472,6 @@ pub fn user_add_icon() -> Page {
 		}
 	})()
 }
-
 /// Multi-chat bubble icon (stroke, 24x24, large)
 ///
 /// Overlapping chat bubbles for empty conversation list state.

@@ -86,29 +86,29 @@ pub fn polls_index() -> Page {
 	let load_questions_signal = load_questions.clone();
 	let new_question_href = links::question_new();
 
-	page!(|load_questions_error: Action<Vec<QuestionInfo>, String>, load_questions_signal: Action<Vec<QuestionInfo>, String>, new_question_href: String| {
-		div {
-			class: "max-w-4xl mx-auto px-4 mt-12",
+	page!(
+		| load_questions_error : Action<Vec<QuestionInfo>, String>,
+		load_questions_signal : Action<Vec<QuestionInfo>, String>,
+		new_question_href : String | {
 			div {
-				class: "flex justify-between items-center mb-4",
-				h1 {
-					"Polls"
+				class: "max-w-4xl mx-auto px-4 mt-12",
+				div {
+					class: "flex justify-between items-center mb-4",
+					h1 {
+						"Polls"
+					}
+					a {
+						href: new_question_href,
+						class: "btn-primary",
+						"New Question"
+					}
 				}
-				a {
-					href: new_question_href,
-					class: "btn-primary",
-					"New Question"
-				}
-			}
-			watch {
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
 						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
 					}
 				}
-			}
-			watch {
 				if load_questions_signal.is_pending() {
 					div {
 						class: "text-center",
@@ -129,7 +129,7 @@ pub fn polls_index() -> Page {
 				} else {
 					div {
 						class: "space-y-2",
-						for question in load_questions_signal.result().unwrap_or_default() {
+						for { question } in load_questions_signal.result().unwrap_or_default() {
 							a {
 								href: links::detail(question.id),
 								class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
@@ -149,7 +149,7 @@ pub fn polls_index() -> Page {
 				}
 			}
 		}
-	})(
+	)(
 		load_questions_error,
 		load_questions_signal,
 		new_question_href,
@@ -202,11 +202,6 @@ pub fn polls_detail(question_id: i64) -> Page {
 		name: VotingForm,
 		server_fn: submit_vote,
 		method: Post,
-		success_url: |_form| links::results(qid),
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -216,6 +211,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			}
+
 			choice_id: ChoiceField {
 				widget: RadioSelect,
 				required,
@@ -227,11 +223,16 @@ pub fn polls_detail(question_id: i64) -> Page {
 			}
 		}
 
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 		watch: {
-			submit_button: |form| {
-					let is_loading = form.loading().get();
-					let back_href = links::index();
-					page!(|is_loading: bool, back_href: String| {
+			submit_button: | form | {
+				let is_loading = form.loading().get();
+				let back_href = links::index();
+				page!(
+					| is_loading : bool, back_href : String | {
 						div {
 							class: "mt-3",
 							button {
@@ -246,23 +247,25 @@ pub fn polls_detail(question_id: i64) -> Page {
 								"Back to Polls"
 							}
 						}
-					})(is_loading, back_href)
-				},
-			error_display: |form| {
-					let err = form.error().get();
-					page!(|err: Option<String>| {
-						watch {
-							if let Some(e) = err.clone() {
-								div {
-									class: "alert-danger mt-3",
-									{ format_server_error(&e) }
-								}
+					}
+				)(is_loading, back_href)
+			},
+			error_display: | form | {
+				let err = form.error().get();
+				page!(
+					| err : Option<String> | {
+						if let Some(e) = err.clone() {
+							div {
+								class: "alert-danger mt-3",
+								{ format_server_error(&e) }
 							}
 						}
-					})(err)
-				},
-		}
+					}
+				)(err)
+			},
+		},
 
+		success_url: | _form | links::results(qid),
 	};
 
 	// Bridge load_detail results to form choices via use_effect
@@ -300,9 +303,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// `RadioSelect` group for choiceless questions, so any submit emitted
 	// `choice_id=""` and `submit_vote` rejected the request with the
 	// runtime `Invalid choice_id` application error.
-	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user_signal: Action<Option<UserInfo>, String>, question_id: i64| {
-		div {
-			watch {
+	page!(
+		| load_detail_signal : Action<(QuestionInfo, Vec<ChoiceInfo>), String>,
+		load_current_user_signal : Action<Option<UserInfo>, String>, question_id : i64 | {
+			div {
 				if load_detail_signal.is_pending() {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
@@ -377,7 +381,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 								}
 							}
 						}
-						if !choices.is_empty() {
+						if ! choices.is_empty() {
 							{ voting_form.clone().into_page() }
 						} else {
 							div {
@@ -412,7 +416,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 				}
 			}
 		}
-	})(load_detail_signal, load_current_user_signal, question_id)
+	)(load_detail_signal, load_current_user_signal, question_id)
 }
 
 /// Poll results page - Show voting results
@@ -438,9 +442,10 @@ pub fn polls_results(question_id: i64) -> Page {
 	let load_results_signal = load_results.clone();
 	let load_current_user_signal = load_current_user.clone();
 
-	page!(|load_results_signal: Action<(QuestionInfo, Vec<ChoiceInfo>, i32), String>, load_current_user_signal: Action<Option<UserInfo>, String>, question_id: i64| {
-		div {
-			watch {
+	page!(
+		| load_results_signal : Action<(QuestionInfo, Vec<ChoiceInfo>, i32), String>,
+		load_current_user_signal : Action<Option<UserInfo>, String>, question_id : i64 | {
+			div {
 				if load_results_signal.is_pending() {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
@@ -488,7 +493,7 @@ pub fn polls_results(question_id: i64) -> Page {
 							{
 								load_results_signal
 										.result()
-										.map(|(q, _, _)| q.question_text.clone())
+										.map(| (q, _, _) | q.question_text.clone())
 										.unwrap_or_default()
 							}
 						}
@@ -504,46 +509,50 @@ pub fn polls_results(question_id: i64) -> Page {
 									class: "divide-y divide-border",
 									{
 										if let Some((_, choices, total)) = load_results_signal.result() {
-												page!(|choices: Vec<ChoiceInfo>, total: i32| {
-													for choice in choices {
-														{
+												page!(
+													| choices : Vec<ChoiceInfo>, total : i32 | {
+														for choice in choices {
 															{
-																	let percentage = if total > 0 {
-																		(choice.votes as f64 / total as f64 * 100.0) as i32
-																	} else {
-																		0
-																	};
-																	page!(|choice: ChoiceInfo, percentage: i32| {
-																		div {
-																			class: "py-4",
-																			div {
-																				class: "flex justify-between items-center mb-2",
-																				strong {
-																					{ choice.choice_text.clone() }
-																				}
-																				span {
-																					class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-																					{ format!("{} votes", choice.votes) }
-																				}
-																			}
-																			div {
-																				class: "w-full bg-surface-tertiary rounded-full h-2.5",
+																{
+																		let percentage = if total > 0 {
+																			(choice.votes as f64 / total as f64 * 100.0) as i32
+																		} else {
+																			0
+																		};
+																		page!(
+																			| choice : ChoiceInfo, percentage : i32 | {
 																				div {
-																					class: "bg-brand h-2.5 rounded-full",
-																					role: "progressbar",
-																					style: format!("width: {}%", percentage),
-																					aria_valuenow: percentage.to_string(),
-																					aria_valuemin: "0",
-																					aria_valuemax: "100",
-																					{ format!("{}%", percentage) }
+																					class: "py-4",
+																					div {
+																						class: "flex justify-between items-center mb-2",
+																						strong {
+																							{ choice.choice_text.clone() }
+																						}
+																						span {
+																							class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
+																							{ format!("{} votes", choice.votes) }
+																						}
+																					}
+																					div {
+																						class: "w-full bg-surface-tertiary rounded-full h-2.5",
+																						div {
+																							class: "bg-brand h-2.5 rounded-full",
+																							role: "progressbar",
+																							style: format!("width: {}%", percentage),
+																							aria_valuenow: percentage.to_string(),
+																							aria_valuemin: "0",
+																							aria_valuemax: "100",
+																							{ format!("{}%", percentage) }
+																						}
+																					}
 																				}
 																			}
-																		}
-																	})(choice, percentage)
-																}
+																		)(choice, percentage)
+																	}
+															}
 														}
 													}
-												})(choices, total)
+												)(choices, total)
 											} else {
 												Page::Empty
 											}
@@ -558,7 +567,7 @@ pub fn polls_results(question_id: i64) -> Page {
 													"Total votes: {}",
 													load_results_signal
 														.result()
-														.map(|(_, _, total)| total)
+														.map(| (_, _, total) | total)
 														.unwrap_or(0)
 												)
 										}
@@ -608,7 +617,7 @@ pub fn polls_results(question_id: i64) -> Page {
 				}
 			}
 		}
-	})(load_results_signal, load_current_user_signal, question_id)
+	)(load_results_signal, load_current_user_signal, question_id)
 }
 
 /// Example component demonstrating static URL resolution
@@ -624,30 +633,29 @@ pub fn polls_index_with_logo() -> Page {
 	let load_questions_error = load_questions.clone();
 	let load_questions_signal = load_questions.clone();
 
-	page!(|load_questions_error: Action<Vec<QuestionInfo>, String>, load_questions_signal: Action<Vec<QuestionInfo>, String>| {
-		div {
-			class: "max-w-4xl mx-auto px-4 mt-12",
+	page!(
+		| load_questions_error : Action<Vec<QuestionInfo>, String>,
+		load_questions_signal : Action<Vec<QuestionInfo>, String> | {
 			div {
-				class: "text-center mb-6",
-				img {
-					src: resolve_static("images/poll-icon.svg"),
-					alt: "Polls App",
-					class: "mx-auto w-16 h-16",
+				class: "max-w-4xl mx-auto px-4 mt-12",
+				div {
+					class: "text-center mb-6",
+					img {
+						src: resolve_static("images/poll-icon.svg"),
+						alt: "Polls App",
+						class: "mx-auto w-16 h-16",
+					}
 				}
-			}
-			h1 {
-				class: "mb-4 text-center",
-				"Polls"
-			}
-			watch {
+				h1 {
+					class: "mb-4 text-center",
+					"Polls"
+				}
 				if load_questions_error.error().is_some() {
 					div {
 						class: "alert-danger",
 						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
 					}
 				}
-			}
-			watch {
 				if load_questions_signal.is_pending() {
 					div {
 						class: "text-center",
@@ -668,7 +676,7 @@ pub fn polls_index_with_logo() -> Page {
 				} else {
 					div {
 						class: "space-y-2",
-						for question in load_questions_signal.result().unwrap_or_default() {
+						for { question } in load_questions_signal.result().unwrap_or_default() {
 							a {
 								href: format!("/polls/{}/", question.id),
 								class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
@@ -696,7 +704,7 @@ pub fn polls_index_with_logo() -> Page {
 				}
 			}
 		}
-	})(load_questions_error, load_questions_signal)
+	)(load_questions_error, load_questions_signal)
 }
 
 // =========================================================================
@@ -716,10 +724,6 @@ pub fn question_new() -> Page {
 		server_fn: create_question,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -734,6 +738,10 @@ pub fn question_new() -> Page {
 			}
 		}
 
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 	};
 
 	let loading_signal = new_form.loading().clone();
@@ -741,25 +749,25 @@ pub fn question_new() -> Page {
 	let form_view = new_form.into_page();
 	let cancel_href = links::index();
 
-	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
-		div {
-			class: "max-w-4xl mx-auto px-4 mt-12",
-			h1 {
-				class: "mb-4",
-				"New Question"
-			}
-			watch {
+	page!(
+		| loading_signal : reinhardt::pages::reactive::Signal<bool>,
+		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
+		form_view : Page, cancel_href : String | {
+			div {
+				class: "max-w-4xl mx-auto px-4 mt-12",
+				h1 {
+					class: "mb-4",
+					"New Question"
+				}
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
 						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
-			}
-			{ form_view }
-			div {
-				class: "mt-3",
-				watch {
+				{ form_view }
+				div {
+					class: "mt-3",
 					if loading_signal.get() {
 						button {
 							type: "submit",
@@ -776,15 +784,15 @@ pub fn question_new() -> Page {
 							"Create"
 						}
 					}
-				}
-				a {
-					href: cancel_href,
-					class: "btn-secondary ml-2",
-					"Cancel"
+					a {
+						href: cancel_href,
+						class: "btn-secondary ml-2",
+						"Cancel"
+					}
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view, cancel_href)
+	)(loading_signal, error_signal, form_view, cancel_href)
 }
 
 /// Edit question page (`/polls/{question_id}/edit/`).
@@ -806,10 +814,6 @@ pub fn question_edit(question_id: i64) -> Page {
 		server_fn: update_question,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -819,6 +823,7 @@ pub fn question_edit(question_id: i64) -> Page {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			}
+
 			question_text: CharField {
 				label: "Question",
 				placeholder: "Updated question text",
@@ -826,6 +831,10 @@ pub fn question_edit(question_id: i64) -> Page {
 				class: "form-control",
 			}
 		}
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 
 	};
 
@@ -861,9 +870,10 @@ pub fn question_edit(question_id: i64) -> Page {
 	// `watch{}` blocks into the outer one removes the nested-capture
 	// move and still re-renders on `load_detail_signal`,
 	// `edit_form.error()`, and `edit_form.loading()` changes.
-	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, question_id: i64| {
-		div {
-			watch {
+	page!(
+		| load_detail_signal : Action<(QuestionInfo, Vec<ChoiceInfo>), String>,
+		question_id : i64 | {
+			div {
 				if load_detail_signal.is_pending() {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
@@ -931,7 +941,7 @@ pub fn question_edit(question_id: i64) -> Page {
 				}
 			}
 		}
-	})(load_detail_signal, question_id)
+	)(load_detail_signal, question_id)
 }
 
 /// Delete confirmation page (`/polls/{question_id}/delete/`).
@@ -949,10 +959,6 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		server_fn: delete_question,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -964,6 +970,10 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 			}
 		}
 
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 	};
 
 	let loading_signal = delete_form.loading().clone();
@@ -972,14 +982,17 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 	let load_detail_signal = load_detail.clone();
 	let cancel_href = links::detail(question_id);
 
-	page!(|load_detail_signal: Action<(QuestionInfo, Vec<ChoiceInfo>), String>, loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
-		div {
-			class: "max-w-4xl mx-auto px-4 mt-12",
-			h1 {
-				class: "mb-4",
-				"Delete Question?"
-			}
-			watch {
+	page!(
+		| load_detail_signal : Action<(QuestionInfo, Vec<ChoiceInfo>), String>,
+		loading_signal : reinhardt::pages::reactive::Signal<bool>,
+		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
+		form_view : Page, cancel_href : String | {
+			div {
+				class: "max-w-4xl mx-auto px-4 mt-12",
+				h1 {
+					class: "mb-4",
+					"Delete Question?"
+				}
 				if load_detail_signal.is_pending() {
 					div {
 						class: "text-center",
@@ -1006,19 +1019,15 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 						{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
 					}
 				}
-			}
-			watch {
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mt-3",
 						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
-			}
-			{ form_view }
-			div {
-				class: "mt-3",
-				watch {
+				{ form_view }
+				div {
+					class: "mt-3",
 					if loading_signal.get() {
 						button {
 							type: "submit",
@@ -1035,15 +1044,15 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 							"Delete"
 						}
 					}
-				}
-				a {
-					href: cancel_href,
-					class: "btn-secondary ml-2",
-					"Cancel"
+					a {
+						href: cancel_href,
+						class: "btn-secondary ml-2",
+						"Cancel"
+					}
 				}
 			}
 		}
-	})(
+	)(
 		load_detail_signal,
 		loading_signal,
 		error_signal,
@@ -1107,25 +1116,25 @@ pub fn choice_new(question_id: i64) -> Page {
 	let form_view = new_form.into_page();
 	let back_href = links::detail(qid);
 
-	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, back_href: String| {
-		div {
-			class: "max-w-4xl mx-auto px-4 mt-12",
-			h1 {
-				class: "mb-4",
-				"Add a Choice"
-			}
-			watch {
+	page!(
+		| loading_signal : reinhardt::pages::reactive::Signal<bool>,
+		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
+		form_view : Page, back_href : String | {
+			div {
+				class: "max-w-4xl mx-auto px-4 mt-12",
+				h1 {
+					class: "mb-4",
+					"Add a Choice"
+				}
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
 						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
-			}
-			{ form_view }
-			div {
-				class: "mt-3",
-				watch {
+				{ form_view }
+				div {
+					class: "mt-3",
 					if loading_signal.get() {
 						button {
 							type: "submit",
@@ -1142,15 +1151,15 @@ pub fn choice_new(question_id: i64) -> Page {
 							"Add Choice"
 						}
 					}
-				}
-				a {
-					href: back_href,
-					class: "btn-secondary ml-2",
-					"Back to poll"
+					a {
+						href: back_href,
+						class: "btn-secondary ml-2",
+						"Back to poll"
+					}
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view, back_href)
+	)(loading_signal, error_signal, form_view, back_href)
 }
 
 /// Edit choice page (`/polls/{question_id}/choices/{choice_id}/edit/`).
@@ -1167,10 +1176,6 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 		server_fn: update_choice,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -1180,6 +1185,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 			choice_id: HiddenField {
 				initial: cid_str,
 			}
+
 			choice_text: CharField {
 				label: "Choice text",
 				placeholder: "Updated answer option",
@@ -1188,31 +1194,35 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 			}
 		}
 
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 	};
 
 	let loading_signal = edit_form.loading().clone();
 	let error_signal = edit_form.error().clone();
 	let form_view = edit_form.into_page();
 
-	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
-		div {
-			class: "max-w-4xl mx-auto px-4 mt-12",
-			h1 {
-				class: "mb-4",
-				"Edit Choice"
-			}
-			watch {
+	page!(
+		| loading_signal : reinhardt::pages::reactive::Signal<bool>,
+		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
+		form_view : Page, cancel_href : String | {
+			div {
+				class: "max-w-4xl mx-auto px-4 mt-12",
+				h1 {
+					class: "mb-4",
+					"Edit Choice"
+				}
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mb-3",
 						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
-			}
-			{ form_view }
-			div {
-				class: "mt-3",
-				watch {
+				{ form_view }
+				div {
+					class: "mt-3",
 					if loading_signal.get() {
 						button {
 							type: "submit",
@@ -1229,15 +1239,15 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 							"Save"
 						}
 					}
-				}
-				a {
-					href: cancel_href,
-					class: "btn-secondary ml-2",
-					"Cancel"
+					a {
+						href: cancel_href,
+						class: "btn-secondary ml-2",
+						"Cancel"
+					}
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view, cancel_href)
+	)(loading_signal, error_signal, form_view, cancel_href)
 }
 
 /// Delete-choice confirmation page
@@ -1254,10 +1264,6 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 		server_fn: delete_choice,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -1269,35 +1275,39 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 			}
 		}
 
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
+
 	};
 
 	let loading_signal = delete_form.loading().clone();
 	let error_signal = delete_form.error().clone();
 	let form_view = delete_form.into_page();
 
-	page!(|loading_signal: reinhardt::pages::reactive::Signal<bool>, error_signal: reinhardt::pages::reactive::Signal<Option<String>>, form_view: Page, cancel_href: String| {
-		div {
-			class: "max-w-4xl mx-auto px-4 mt-12",
-			h1 {
-				class: "mb-4",
-				"Delete Choice?"
-			}
-			p {
-				class: "mb-3",
-				"This action cannot be undone."
-			}
-			watch {
+	page!(
+		| loading_signal : reinhardt::pages::reactive::Signal<bool>,
+		error_signal : reinhardt::pages::reactive::Signal<Option<String>>,
+		form_view : Page, cancel_href : String | {
+			div {
+				class: "max-w-4xl mx-auto px-4 mt-12",
+				h1 {
+					class: "mb-4",
+					"Delete Choice?"
+				}
+				p {
+					class: "mb-3",
+					"This action cannot be undone."
+				}
 				if error_signal.get().is_some() {
 					div {
 						class: "alert-danger mt-3",
 						{ format_server_error(&error_signal.get().unwrap_or_default()) }
 					}
 				}
-			}
-			{ form_view }
-			div {
-				class: "mt-3",
-				watch {
+				{ form_view }
+				div {
+					class: "mt-3",
 					if loading_signal.get() {
 						button {
 							type: "submit",
@@ -1314,13 +1324,13 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 							"Delete"
 						}
 					}
-				}
-				a {
-					href: cancel_href,
-					class: "btn-secondary ml-2",
-					"Cancel"
+					a {
+						href: cancel_href,
+						class: "btn-secondary ml-2",
+						"Cancel"
+					}
 				}
 			}
 		}
-	})(loading_signal, error_signal, form_view, cancel_href)
+	)(loading_signal, error_signal, form_view, cancel_href)
 }
