@@ -605,8 +605,8 @@ impl InjectionContext {
 	/// ```
 	pub async fn resolve<T: Any + Send + Sync + 'static>(&self) -> crate::DiResult<Arc<T>> {
 		use crate::cycle_detection::{
-			begin_scoped_resolution, current_dependent_scope, register_type_name,
-			with_cycle_detection_scope,
+			begin_scoped_resolution, current_dependent_scope, current_dependent_type_name,
+			register_type_name, with_cycle_detection_scope,
 		};
 		use crate::registry::{DependencyScope, global_registry};
 
@@ -634,10 +634,11 @@ impl InjectionContext {
 					if let Some(cached) = self.get_request::<T>() {
 						if !DependencyScope::Request.outlives(current_dependent_scope()) {
 							return Err(crate::DiError::ScopeError(format!(
-								"Scope violation: {:?}-scoped dependent cannot resolve \
+								"Scope violation: {:?}-scoped '{}' cannot resolve \
 								 Request-scoped '{}' (pre-seeded); the dependency would \
 								 be captured with a shorter lifetime",
 								current_dependent_scope(),
+								current_dependent_type_name(),
 								type_name,
 							)));
 						}
@@ -654,10 +655,11 @@ impl InjectionContext {
 			// even if that dependency is already cached from a prior request.
 			if !scope.outlives(current_dependent_scope()) {
 				return Err(crate::DiError::ScopeError(format!(
-					"Scope violation: {:?}-scoped dependent cannot resolve \
+					"Scope violation: {:?}-scoped '{}' cannot resolve \
 					 {:?}-scoped '{}'; the dependency would be captured with \
 					 a shorter lifetime",
 					current_dependent_scope(),
+					current_dependent_type_name(),
 					scope,
 					type_name,
 				)));
@@ -707,7 +709,7 @@ impl InjectionContext {
 	pub async fn __resolve_from_registry<T: Any + Send + Sync + 'static>(
 		&self,
 	) -> crate::DiResult<Arc<T>> {
-		use crate::cycle_detection::current_dependent_scope;
+		use crate::cycle_detection::{current_dependent_scope, current_dependent_type_name};
 		use crate::registry::{DependencyScope, global_registry};
 
 		let registry = global_registry();
@@ -722,10 +724,11 @@ impl InjectionContext {
 				if let Some(cached) = self.get_request::<T>() {
 					if !DependencyScope::Request.outlives(current_dependent_scope()) {
 						return Err(crate::DiError::ScopeError(format!(
-							"Scope violation: {:?}-scoped dependent cannot resolve \
+							"Scope violation: {:?}-scoped '{}' cannot resolve \
 							 Request-scoped '{}' (pre-seeded); the dependency would \
 							 be captured with a shorter lifetime",
 							current_dependent_scope(),
+							current_dependent_type_name(),
 							type_name,
 						)));
 					}
@@ -740,10 +743,11 @@ impl InjectionContext {
 		// Scope hierarchy check — same as resolve()
 		if !scope.outlives(current_dependent_scope()) {
 			return Err(crate::DiError::ScopeError(format!(
-				"Scope violation: {:?}-scoped dependent cannot resolve \
+				"Scope violation: {:?}-scoped '{}' cannot resolve \
 				 {:?}-scoped '{}'; the dependency would be captured with \
 				 a shorter lifetime",
 				current_dependent_scope(),
+				current_dependent_type_name(),
 				scope,
 				type_name,
 			)));

@@ -241,6 +241,22 @@ pub fn current_dependent_scope() -> DependencyScope {
 		.unwrap_or(DependencyScope::Transient)
 }
 
+/// Returns the type name of the current dependent (the type at the top of
+/// the resolution stack), or `"<root>"` if no resolution is in progress.
+pub fn current_dependent_type_name() -> String {
+	CYCLE_STATE
+		.try_with(|state| {
+			state
+				.borrow()
+				.resolution_path
+				.last()
+				.map(|(_, name)| name.to_string())
+		})
+		.ok()
+		.flatten()
+		.unwrap_or_else(|| "<root>".to_string())
+}
+
 /// Begin a scope-aware resolution, checking the scope hierarchy before proceeding.
 ///
 /// This is the scope-aware counterpart of [`begin_resolution`]. It:
