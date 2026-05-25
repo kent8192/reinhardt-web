@@ -83,10 +83,13 @@ mod wasm {
 
     impl<'a> Clone for TreeCursor<'a> {
         fn clone(&self) -> Self {
-            // Create a new cursor at the same node rather than shallow-cloning
-            // the JS handle, which would cause double-free when both copies
-            // call delete() on drop.
-            self.inner.current_node().walk().into()
+            // Use the JS TreeCursor.copy() method to deep-copy the cursor,
+            // preserving the full traversal state (parent stack, child index).
+            // A shallow clone via #[derive(Clone)] would share the same JS
+            // handle and cause double-free when both copies call delete().
+            let inner = self.inner.copy();
+            let phantom = std::marker::PhantomData;
+            Self { inner, phantom }
         }
     }
 

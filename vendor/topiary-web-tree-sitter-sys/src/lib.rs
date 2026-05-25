@@ -911,6 +911,9 @@ extern "C" {
     pub fn current_node(this: &TreeCursor) -> SyntaxNode;
 
     #[wasm_bindgen(method)]
+    pub fn copy(this: &TreeCursor) -> TreeCursor;
+
+    #[wasm_bindgen(method)]
     pub fn delete(this: &TreeCursor);
 
     #[wasm_bindgen(method, js_name = gotoFirstChild)]
