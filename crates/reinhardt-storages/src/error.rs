@@ -24,6 +24,10 @@ pub enum StorageError {
 	#[error("Configuration error: {0}")]
 	ConfigError(String),
 
+	/// The provided path is invalid or attempts to escape the storage root.
+	#[error("Invalid path: {0}")]
+	InvalidPath(String),
+
 	/// I/O error occurred during file operations.
 	#[error("I/O error: {0}")]
 	IoError(#[from] std::io::Error),

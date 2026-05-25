@@ -26,13 +26,16 @@ fn layout_shell(content_id: &'static str, content_label: &'static str) -> Page {
 			PageElement::new("aside").attr("id", "sidebar").child(
 				PageElement::new("ul")
 					.child(PageElement::new("li").child(nav_link("/", "Home", &current)))
-					.child(
-						PageElement::new("li").child(nav_link("/clusters", "Clusters", &current)),
-					)
-					.child(
-						PageElement::new("li")
-							.child(nav_link("/deployments", "Deployments", &current)),
-					)
+					.child(PageElement::new("li").child(nav_link(
+						"/clusters",
+						"Clusters",
+						&current,
+					)))
+					.child(PageElement::new("li").child(nav_link(
+						"/deployments",
+						"Deployments",
+						&current,
+					)))
 					.child(PageElement::new("li").child(nav_link("/login", "Login", &current))),
 			),
 		)

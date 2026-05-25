@@ -29,7 +29,8 @@ fn card(p: CardProps) -> Page {
 fn main() {
 	let _ = page!(|| {
 		div {
-			Card(item: "outer".to_string()) {
+			Card {
+				item: "outer".to_string(),
 				p {
 					"child 1"
 				}

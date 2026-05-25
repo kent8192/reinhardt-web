@@ -605,7 +605,8 @@ impl InjectionContext {
 	/// ```
 	pub async fn resolve<T: Any + Send + Sync + 'static>(&self) -> crate::DiResult<Arc<T>> {
 		use crate::cycle_detection::{
-			begin_resolution, register_type_name, with_cycle_detection_scope,
+			begin_scoped_resolution, current_dependent_scope, current_dependent_type_name,
+			register_type_name, with_cycle_detection_scope,
 		};
 		use crate::registry::{DependencyScope, global_registry};
 
@@ -624,10 +625,23 @@ impl InjectionContext {
 					// Fallback: check scope caches for types pre-seeded via
 					// SingletonScope::set() / InjectionContext::set_request()
 					// (e.g., types registered through DiRegistrationList).
+					// Singleton pre-seeds are safe for any dependent scope.
 					if let Some(cached) = self.get_singleton::<T>() {
 						return Ok(cached);
 					}
+					// Request pre-seeds are request-scoped: apply the same
+					// hierarchy check as registry-registered types.
 					if let Some(cached) = self.get_request::<T>() {
+						if !DependencyScope::Request.outlives(current_dependent_scope()) {
+							return Err(crate::DiError::ScopeError(format!(
+								"Scope violation: {:?}-scoped '{}' cannot resolve \
+								 Request-scoped '{}' (pre-seeded); the dependency would \
+								 be captured with a shorter lifetime",
+								current_dependent_scope(),
+								current_dependent_type_name(),
+								type_name,
+							)));
+						}
 						return Ok(cached);
 					}
 					return Err(crate::DiError::DependencyNotRegistered {
@@ -635,6 +649,22 @@ impl InjectionContext {
 					});
 				}
 			};
+
+			// Scope hierarchy check — runs on EVERY resolution (cache hit or miss).
+			// A singleton dependent must not resolve a request-scoped dependency,
+			// even if that dependency is already cached from a prior request.
+			if !scope.outlives(current_dependent_scope()) {
+				return Err(crate::DiError::ScopeError(format!(
+					"Scope violation: {:?}-scoped '{}' cannot resolve \
+					 {:?}-scoped '{}'; the dependency would be captured with \
+					 a shorter lifetime",
+					current_dependent_scope(),
+					current_dependent_type_name(),
+					scope,
+					type_name,
+				)));
+			}
+
 			match scope {
 				DependencyScope::Singleton => {
 					if let Some(cached) = self.get_singleton::<T>() {
@@ -649,9 +679,15 @@ impl InjectionContext {
 				_ => {}
 			}
 
-			// [Slow path] Execute circular detection only on cache miss
-			let _guard = begin_resolution(type_id, type_name)
-				.map_err(|e| crate::DiError::CircularDependency(e.to_string()))?;
+			// [Slow path] Scope-aware resolution with cycle detection
+			let _guard = begin_scoped_resolution(type_id, type_name, scope).map_err(|e| {
+				match e {
+					crate::cycle_detection::CycleError::ScopeViolation { .. } => {
+						crate::DiError::ScopeError(e.to_string())
+					}
+					other => crate::DiError::CircularDependency(other.to_string()),
+				}
+			})?;
 
 			// Actual resolution processing (existing logic)
 			self.resolve_internal::<T>(scope).await
@@ -673,6 +709,7 @@ impl InjectionContext {
 	pub async fn __resolve_from_registry<T: Any + Send + Sync + 'static>(
 		&self,
 	) -> crate::DiResult<Arc<T>> {
+		use crate::cycle_detection::{current_dependent_scope, current_dependent_type_name};
 		use crate::registry::{DependencyScope, global_registry};
 
 		let registry = global_registry();
@@ -685,6 +722,16 @@ impl InjectionContext {
 					return Ok(cached);
 				}
 				if let Some(cached) = self.get_request::<T>() {
+					if !DependencyScope::Request.outlives(current_dependent_scope()) {
+						return Err(crate::DiError::ScopeError(format!(
+							"Scope violation: {:?}-scoped '{}' cannot resolve \
+							 Request-scoped '{}' (pre-seeded); the dependency would \
+							 be captured with a shorter lifetime",
+							current_dependent_scope(),
+							current_dependent_type_name(),
+							type_name,
+						)));
+					}
 					return Ok(cached);
 				}
 				return Err(crate::DiError::DependencyNotRegistered {
@@ -692,6 +739,19 @@ impl InjectionContext {
 				});
 			}
 		};
+
+		// Scope hierarchy check — same as resolve()
+		if !scope.outlives(current_dependent_scope()) {
+			return Err(crate::DiError::ScopeError(format!(
+				"Scope violation: {:?}-scoped '{}' cannot resolve \
+				 {:?}-scoped '{}'; the dependency would be captured with \
+				 a shorter lifetime",
+				current_dependent_scope(),
+				current_dependent_type_name(),
+				scope,
+				type_name,
+			)));
+		}
 
 		// Fast cache check (same as resolve)
 		match scope {

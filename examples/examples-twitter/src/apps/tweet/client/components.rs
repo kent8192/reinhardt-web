@@ -38,55 +38,53 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> Page {
 	let liked_for_click_else = liked.clone();
 	let like_count_for_click_else = like_count.clone();
 
-	page!(|liked_signal: Signal<bool>, like_count_signal: Signal<i32>, like_count_signal_else: Signal<i32>, liked_for_click_if: Signal<bool>, like_count_for_click_if: Signal<i32>, liked_for_click_else: Signal<bool>, like_count_for_click_else: Signal<i32>| {
-		watch {
-			if liked_signal.get() {
-				button {
-					class: "tweet-action-btn text-danger",
-					type: "button",
-					aria_label: "Like",
-					@click: {
-								let liked_for_click = liked_for_click_if.clone();
-								let like_count_for_click = like_count_for_click_if.clone();
-								move |_event| {
-									let current_liked = liked_for_click.get();
-									let current_count = like_count_for_click.get();
-									liked_for_click.set(!current_liked);
-									like_count_for_click.set(if current_liked {
-										current_count - 1
-									} else {
-										current_count + 1
-									});
-								}
-							},
-					{ icons::heart_icon_filled() }
-					span {
-						{ format!("{}", like_count_signal.get()) }
-					}
+	page!(| liked_signal : Signal<bool>, like_count_signal : Signal<i32>, like_count_signal_else : Signal<i32>, liked_for_click_if : Signal<bool>, like_count_for_click_if : Signal<i32>, liked_for_click_else : Signal<bool>, like_count_for_click_else : Signal<i32> | {
+		if liked_signal.get() {
+			button {
+				class: "tweet-action-btn text-danger",
+				type: "button",
+				aria_label: "Like",
+				@click: {
+							let liked_for_click = liked_for_click_if.clone();
+							let like_count_for_click = like_count_for_click_if.clone();
+							move |_event| {
+								let current_liked = liked_for_click.get();
+								let current_count = like_count_for_click.get();
+								liked_for_click.set(!current_liked);
+								like_count_for_click.set(if current_liked {
+									current_count - 1
+								} else {
+									current_count + 1
+								});
+							}
+						},
+				{ icons::heart_icon_filled() }
+				span {
+					{ format!("{}", like_count_signal.get()) }
 				}
-			} else {
-				button {
-					class: "tweet-action-btn hover:text-danger",
-					type: "button",
-					aria_label: "Like",
-					@click: {
-								let liked_for_click = liked_for_click_else.clone();
-								let like_count_for_click = like_count_for_click_else.clone();
-								move |_event| {
-									let current_liked = liked_for_click.get();
-									let current_count = like_count_for_click.get();
-									liked_for_click.set(!current_liked);
-									like_count_for_click.set(if current_liked {
-										current_count - 1
-									} else {
-										current_count + 1
-									});
-								}
-							},
-					{ icons::heart_icon_outline() }
-					span {
-						{ format!("{}", like_count_signal_else.get()) }
-					}
+			}
+		} else {
+			button {
+				class: "tweet-action-btn hover:text-danger",
+				type: "button",
+				aria_label: "Like",
+				@click: {
+							let liked_for_click = liked_for_click_else.clone();
+							let like_count_for_click = like_count_for_click_else.clone();
+							move |_event| {
+								let current_liked = liked_for_click.get();
+								let current_count = like_count_for_click.get();
+								liked_for_click.set(!current_liked);
+								like_count_for_click.set(if current_liked {
+									current_count - 1
+								} else {
+									current_count + 1
+								});
+							}
+						},
+				{ icons::heart_icon_outline() }
+				span {
+					{ format!("{}", like_count_signal_else.get()) }
 				}
 			}
 		}
@@ -132,113 +130,109 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 	// Clone for error display watch block (separate closure from main watch block)
 	let delete_action_for_error = delete_action.clone();
 
-	page!(|delete_action: Action<(), String>, show_delete: bool, username: String, content: String, created_at: String, tweet_id: Uuid, liked_signal: Signal<bool>, like_count_signal: Signal<i32>, delete_action_for_click: Action<(), String>, delete_action_for_error: Action<(), String>| {
-		watch {
-			if delete_action.is_success() {
+	page!(| delete_action : Action<(), String>, show_delete : bool, username : String, content : String, created_at : String, tweet_id : Uuid, liked_signal : Signal<bool>, like_count_signal : Signal<i32>, delete_action_for_click : Action<(), String>, delete_action_for_error : Action<(), String> | {
+		if delete_action.is_success() {
+			div {
+				class: "hidden",
+			}
+		} else {
+			div {
+				class: "tweet-card animate-fade-in",
 				div {
-					class: "hidden",
-				}
-			} else {
-				div {
-					class: "tweet-card animate-fade-in",
+					class: "flex gap-3",
 					div {
-						class: "flex gap-3",
+						class: "flex-shrink-0",
 						div {
-							class: "flex-shrink-0",
+							class: "tweet-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold",
+							{
+								username
+										.clone()
+										.chars()
+										.next()
+										.unwrap_or('U')
+										.to_uppercase()
+										.to_string()
+							}
+						}
+					}
+					div {
+						class: "flex-1 min-w-0",
+						div {
+							class: "flex items-center justify-between gap-2",
 							div {
-								class: "tweet-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold",
-								{
-									username
-											.clone()
-											.chars()
-											.next()
-											.unwrap_or('U')
-											.to_uppercase()
-											.to_string()
+								class: "flex items-center gap-1 min-w-0",
+								span {
+									class: "tweet-username truncate",
+									{ username.clone() }
+								}
+								span {
+									class: "tweet-handle truncate",
+									{ format!("@{}", username.clone()) }
+								}
+								span {
+									class: "text-content-tertiary",
+									"·"
+								}
+								span {
+									class: "tweet-time",
+									{ created_at.clone() }
+								}
+							}
+							if show_delete {
+								button {
+									class: "btn-ghost btn-sm text-danger hover:bg-danger/10",
+									type: "button",
+									aria_label: "Delete tweet",
+									@click: {
+												let delete_action = delete_action_for_click.clone();
+												move |_event| {
+													delete_action.dispatch(tweet_id);
+												}
+											},
+									{ icons::trash_icon() }
 								}
 							}
 						}
+						p {
+							class: "tweet-content",
+							{ content.clone() }
+						}
 						div {
-							class: "flex-1 min-w-0",
-							div {
-								class: "flex items-center justify-between gap-2",
-								div {
-									class: "flex items-center gap-1 min-w-0",
-									span {
-										class: "tweet-username truncate",
-										{ username.clone() }
-									}
-									span {
-										class: "tweet-handle truncate",
-										{ format!("@{}", username.clone()) }
-									}
-									span {
-										class: "text-content-tertiary",
-										"·"
-									}
-									span {
-										class: "tweet-time",
-										{ created_at.clone() }
-									}
-								}
-								if show_delete {
-									button {
-										class: "btn-ghost btn-sm text-danger hover:bg-danger/10",
-										type: "button",
-										aria_label: "Delete tweet",
-										@click: {
-													let delete_action = delete_action_for_click.clone();
-													move |_event| {
-														delete_action.dispatch(tweet_id);
-													}
-												},
-										{ icons::trash_icon() }
-									}
+							class: "tweet-actions",
+							button {
+								class: "tweet-action-btn hover:text-brand",
+								type: "button",
+								aria_label: "Reply",
+								{ icons::chat_bubble_icon() }
+								span {
+									"0"
 								}
 							}
-							p {
-								class: "tweet-content",
-								{ content.clone() }
+							button {
+								class: "tweet-action-btn hover:text-success",
+								type: "button",
+								aria_label: "Retweet",
+								{ icons::retweet_icon() }
+								span {
+									"0"
+								}
 							}
-							div {
-								class: "tweet-actions",
-								button {
-									class: "tweet-action-btn hover:text-brand",
-									type: "button",
-									aria_label: "Reply",
-									{ icons::chat_bubble_icon() }
-									span {
-										"0"
-									}
-								}
-								button {
-									class: "tweet-action-btn hover:text-success",
-									type: "button",
-									aria_label: "Retweet",
-									{ icons::retweet_icon() }
-									span {
-										"0"
-									}
-								}
-								{ like_button(liked_signal.clone(), like_count_signal.clone()) }
-								button {
-									class: "tweet-action-btn hover:text-brand",
-									type: "button",
-									aria_label: "Share",
-									{ icons::share_icon() }
-								}
+							{ like_button(liked_signal.clone(), like_count_signal.clone()) }
+							button {
+								class: "tweet-action-btn hover:text-brand",
+								type: "button",
+								aria_label: "Share",
+								{ icons::share_icon() }
 							}
 						}
 					}
 				}
 			}
 		}
-		watch {
-			if delete_action_for_error.error().is_some() {
-				div {
-					class: "alert-danger mt-3",
-					{ delete_action_for_error.error().unwrap_or_default() }
-				}
+		if delete_action_for_error.error().is_some() {
+			div {
+				class: "alert-danger mt-3",
+				{ delete_action_for_error.error().unwrap_or_default() }
 			}
 		}
 	})(
@@ -270,109 +264,103 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 pub fn tweet_form() -> Page {
 	// Define the form using form! macro with derived signals
 	let tweet_form_instance = form! {
-		name: TweetFormInner,
-		server_fn: create_tweet,
-		method: Post,
+		name : TweetFormInner,
+		server_fn : create_tweet,
+		method : Post,
 
-		state: {
-			loading,
-			error,
-		}
+		// State management - generates loading and error signals automatically
+		state : { loading, error },
 
-		fields: {
-			content: TextField {
-				widget: Textarea,
-				bind: true,
-				max_length: 280,
+		fields : {
+			content : TextField {
+				widget : Textarea,
+				bind : true,
+				max_length : 280,
 				required,
-				placeholder: "What's happening?",
-				class: "form-textarea border-0 bg-transparent focus:ring-0 text-lg resize-none",
-				rows: 3,
-			}
-		}
-
-		on_success: |_result| {
-				#[cfg(wasm)]
-				{
-					if let Some(window) = web_sys::window() {
-						let _ = window.location().reload();
-					}
-				}
+				placeholder : "What's happening?",
+				class : "form-textarea border-0 bg-transparent focus:ring-0 text-lg resize-none",
+				rows : 3,
 			},
+		},
 
-		watch: {
-			char_counter: |form| {
-					let char_count = form.content().get().len();
-					let progress_percent = (char_count as f64 / 280.0 * 100.0).min(100.0);
-					let width_style = format!("width: {}%", progress_percent);
-					let (text_class, bar_class): (&'static str, &'static str) = if char_count > 280 {
-						(
-							"text-sm font-medium text-danger",
-							"h-full bg-danger transition-all",
-						)
-					} else if char_count > 250 {
-						(
-							"text-sm font-medium text-warning",
-							"h-full bg-warning transition-all",
-						)
-					} else if char_count > 0 {
-						(
-							"text-sm font-medium text-content-tertiary",
-							"h-full bg-brand transition-all",
-						)
-					} else {
-						(
-							"text-sm font-medium text-content-tertiary",
-							"h-full bg-surface-tertiary transition-all",
-						)
-					};
-					let display_text = format!("{}/280", char_count);
-					page!(|text_class: &'static str, bar_class: &'static str, width_style: String, display_text: String| {
+		// Watch blocks for reactive UI rendering
+		// Following polls.rs pattern: simple inline conditionals without nested watch blocks
+		watch : {
+			// Character counter with styling based on count
+			char_counter : |form| {
+				let char_count = form.content().get().len();
+				let progress_percent = (char_count as f64 / 280.0 * 100.0).min(100.0);
+				let width_style = format!("width: {}%", progress_percent);
+				// Determine color class based on count (use String for 'static lifetime)
+				let (text_class, bar_class) = if char_count > 280 {
+					("text-sm font-medium text-danger".to_string(), "h-full bg-danger transition-all".to_string())
+				} else if char_count > 250 {
+					("text-sm font-medium text-warning".to_string(), "h-full bg-warning transition-all".to_string())
+				} else if char_count > 0 {
+					("text-sm font-medium text-content-tertiary".to_string(), "h-full bg-brand transition-all".to_string())
+				} else {
+					("text-sm font-medium text-content-tertiary".to_string(), "h-full bg-surface-tertiary transition-all".to_string())
+				};
+				let display_text = format!("{}/280", char_count);
+				page!(| text_class : String, bar_class : String, width_style : String, display_text : String | {
+					div {
+						class: "flex items-center gap-2",
 						div {
-							class: "flex items-center gap-2",
-							div {
-								class: text_class,
-								{ display_text }
-							}
-							div {
-								class: "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden",
-								div {
-									class: bar_class,
-									style: width_style,
-								}
-							}
+							class: text_class,
+							{ display_text }
 						}
-					})(text_class, bar_class, width_style, display_text)
-				},
-			submit_button: |form| {
-					let is_loading = form.loading().get();
-					let char_count = form.content().get().len();
-					let is_valid = char_count > 0 && char_count <= 280;
-					let is_disabled = is_loading || !is_valid;
-					page!(|is_loading: bool, is_disabled: bool| {
-						div {
-							button {
-								type: "submit",
-								class: if is_disabled { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
-								disabled: is_disabled,
-								{ if is_loading { "Posting..." } else { "Post" } }
-							}
-						}
-					})(is_loading, is_disabled)
-				},
-			error_display: |form| {
-					let err = form.error().get();
-					let has_error = err.is_some();
-					let error_msg = err.unwrap_or_default();
-					page!(|has_error: bool, error_msg: String| {
-						div {
-							class: if has_error { "alert-danger mb-3" } else { "hidden" },
-							{ error_msg }
-						}
-					})(has_error, error_msg)
-				},
-		}
 
+						div {
+							class: "w-20 h-1 bg-surface-tertiary rounded-full overflow-hidden",
+							div {
+								class: bar_class,
+								style: width_style,
+							}
+						}
+					}
+				})(text_class, bar_class, width_style, display_text)
+			},
+			// Submit button with loading/disabled states
+			// Pattern from polls.rs: simple inline conditionals
+			submit_button : |form| {
+				let is_loading = form.loading().get();
+				let char_count = form.content().get().len();
+				let is_valid = char_count > 0 && char_count <= 280;
+				let is_disabled = is_loading || !is_valid;
+				page!(| is_loading : bool, is_disabled : bool | {
+					div {
+						button {
+							type: "submit",
+							class: if is_disabled { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
+							disabled: is_disabled,
+							{ if is_loading { "Posting..." } else { "Post" } }
+						}
+					}
+				})(is_loading, is_disabled)
+			},
+			// Error display - following polls.rs pattern with simple conditional
+			error_display : |form| {
+				let err = form.error().get();
+				let has_error = err.is_some();
+				let error_msg = err.unwrap_or_default();
+				page!(| has_error : bool, error_msg : String | {
+					div {
+						class: if has_error { "alert-danger mb-3" } else { "hidden" },
+						{ error_msg }
+					}
+				})(has_error, error_msg)
+			},
+		},
+
+		// Callback for successful submission - reload page
+		on_success : |_result| {
+			#[cfg(wasm)]
+			{
+				if let Some(window) = web_sys::window() {
+					let _ = window.location().reload();
+				}
+			}
+		},
 	};
 
 	// Wrap form in the card layout
@@ -380,7 +368,7 @@ pub fn tweet_form() -> Page {
 	let form_view = tweet_form_instance.into_page();
 
 	// Create the full card layout
-	page!(|form_view: Page| {
+	page!(| form_view : Page | {
 		div {
 			class: "card mb-4",
 			div {
@@ -456,60 +444,52 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
 
-	page!(|tweets_signal: Signal<Vec<TweetInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
+	page!(| tweets_signal : Signal<Vec<TweetInfo>>, loading_signal : Signal<bool>, error_signal : Signal<Option<String>> | {
 		div {
-			watch {
-				if loading_signal.get() {
+			if loading_signal.get() {
+				div {
+					class: "flex flex-col items-center justify-center py-12",
 					div {
-						class: "flex flex-col items-center justify-center py-12",
-						div {
-							class: "spinner-lg mb-4",
-						}
-						p {
-							class: "text-content-secondary text-sm",
-							"Loading tweets..."
+						class: "spinner-lg mb-4",
+					}
+					p {
+						class: "text-content-secondary text-sm",
+						"Loading tweets..."
+					}
+				}
+			} else if error_signal.get().is_some() {
+				div {
+					class: "alert-danger",
+					role: "alert",
+					div {
+						class: "flex items-center gap-2",
+						{ icons::error_circle_icon() }
+						span {
+							{ error_signal.get().unwrap_or_default() }
 						}
 					}
-				} else if error_signal.get().is_some() {
+				}
+			} else if tweets_signal.get().is_empty() {
+				div {
+					class: "flex flex-col items-center justify-center py-16 text-center",
 					div {
-						class: "alert-danger",
-						role: "alert",
-						div {
-							class: "flex items-center gap-2",
-							{ icons::error_circle_icon() }
-							span {
-								{ error_signal.get().unwrap_or_default() }
-							}
-						}
+						class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+						{ icons::chat_bubble_icon_lg() }
 					}
-				} else if tweets_signal.get().is_empty() {
-					div {
-						class: "flex flex-col items-center justify-center py-16 text-center",
-						div {
-							class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-							{ icons::chat_bubble_icon_lg() }
-						}
-						h3 {
-							class: "text-lg font-semibold text-content-primary mb-1",
-							"No tweets yet"
-						}
-						p {
-							class: "text-content-secondary",
-							"Be the first to share something!"
-						}
+					h3 {
+						class: "text-lg font-semibold text-content-primary mb-1",
+						"No tweets yet"
 					}
-				} else {
-					div {
-						class: "card overflow-hidden",
-						{
-							Page::Fragment(
-									tweets_signal
-										.get()
-										.iter()
-										.map(|t| tweet_card(t, false))
-										.collect::<Vec<_>>(),
-								)
-						}
+					p {
+						class: "text-content-secondary",
+						"Be the first to share something!"
+					}
+				}
+			} else {
+				div {
+					class: "card overflow-hidden",
+					for tweet in tweets_signal.get().iter() {
+						{ tweet_card(tweet, false) }
 					}
 				}
 			}

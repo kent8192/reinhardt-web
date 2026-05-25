@@ -541,3 +541,264 @@ mod persistence_tests {
 		}
 	}
 }
+
+// ============================================================================
+// Path Traversal Security Tests
+// ============================================================================
+
+mod path_traversal_tests {
+	use super::*;
+	use reinhardt_storages::backends::local::LocalStorage;
+	use reinhardt_storages::config::LocalConfig;
+
+	#[rstest]
+	#[case("../escape.txt")]
+	#[case("../../etc/passwd")]
+	#[case("/etc/passwd")]
+	#[case("foo/../../escape")]
+	#[case("")]
+	#[case(".")]
+	#[case("..")]
+	#[case("\\absolute\\path")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn save_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.save(dangerous_path, b"malicious content").await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
+	#[case("../escape.txt")]
+	#[case("../../etc/passwd")]
+	#[case("/etc/passwd")]
+	#[case("foo/../../escape")]
+	#[case("")]
+	#[case(".")]
+	#[case("..")]
+	#[case("\\absolute\\path")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn open_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.open(dangerous_path).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
+	#[case("../escape.txt")]
+	#[case("../../etc/passwd")]
+	#[case("/etc/passwd")]
+	#[case("foo/../../escape")]
+	#[case("")]
+	#[case(".")]
+	#[case("..")]
+	#[case("\\absolute\\path")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn delete_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.delete(dangerous_path).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
+	#[case("../escape.txt")]
+	#[case("../../etc/passwd")]
+	#[case("/etc/passwd")]
+	#[case("foo/../../escape")]
+	#[case("")]
+	#[case(".")]
+	#[case("..")]
+	#[case("\\absolute\\path")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn exists_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.exists(dangerous_path).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
+	#[case("../escape.txt")]
+	#[case("../../etc/passwd")]
+	#[case("/etc/passwd")]
+	#[case("foo/../../escape")]
+	#[case("")]
+	#[case(".")]
+	#[case("..")]
+	#[case("\\absolute\\path")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn url_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.url(dangerous_path, 3600).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
+	#[case("../escape.txt")]
+	#[case("../../etc/passwd")]
+	#[case("/etc/passwd")]
+	#[case("foo/../../escape")]
+	#[case("")]
+	#[case(".")]
+	#[case("..")]
+	#[case("\\absolute\\path")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn size_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.size(dangerous_path).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
+	#[case("../escape.txt")]
+	#[case("../../etc/passwd")]
+	#[case("/etc/passwd")]
+	#[case("foo/../../escape")]
+	#[case("")]
+	#[case(".")]
+	#[case("..")]
+	#[case("\\absolute\\path")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
+	#[tokio::test]
+	async fn get_modified_time_rejects_dangerous_paths(#[case] dangerous_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act
+		let result = storage.get_modified_time(dangerous_path).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			StorageError::InvalidPath(_)
+		));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn valid_paths_with_dots_still_work() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act - file names with dots should be fine
+		let result = storage.save("my.file.txt", b"content").await;
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn nested_valid_paths_still_work() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		let config = LocalConfig {
+			base_path: dir.path().to_string_lossy().to_string(),
+		};
+		let storage = LocalStorage::new(config).unwrap();
+
+		// Act - nested directories should work
+		let result = storage.save("subdir/nested/file.txt", b"content").await;
+
+		// Assert
+		assert!(result.is_ok());
+	}
+}

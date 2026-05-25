@@ -9,12 +9,8 @@ use uuid::Uuid;
 // Server-only imports
 #[cfg(native)]
 use {
-	crate::apps::auth::models::User,
-	crate::apps::profile::models::Profile,
-	reinhardt::AuthUser,
-	reinhardt::DatabaseConnection,
-	reinhardt::Validate,
-	reinhardt::db::orm::Model,
+	crate::apps::auth::models::User, crate::apps::profile::models::Profile, reinhardt::AuthUser,
+	reinhardt::DatabaseConnection, reinhardt::Validate, reinhardt::db::orm::Model,
 };
 
 /// Internal helper for profile update logic
