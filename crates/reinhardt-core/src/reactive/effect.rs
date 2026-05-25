@@ -232,7 +232,7 @@ impl Effect {
 	/// `reinhardt-pages`. See the design spec at
 	/// `docs/superpowers/specs/2026-05-22-issue-4195-hooks-deps-array-design.md`.
 	#[allow(dead_code)]
-	pub fn new_with_deps<F, C>(mut f: F, deps: super::deps::Deps) -> Self
+	pub fn new_with_deps<F, C>(f: F, deps: super::deps::Deps) -> Self
 	where
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
@@ -269,7 +269,7 @@ impl Effect {
 			}
 			// Run the user's closure with the Observer stack detached so
 			// in-closure Signal reads do not auto-subscribe.
-			let next = super::runtime::run_without_observer(|| f());
+			let next = super::runtime::run_without_observer(&mut f);
 			if let Some(c) = next {
 				*cleanup_for_closure.borrow_mut() = Some(Box::new(c));
 			}

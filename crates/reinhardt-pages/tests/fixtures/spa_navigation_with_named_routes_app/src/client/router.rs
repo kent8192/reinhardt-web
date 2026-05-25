@@ -1,4 +1,3 @@
-
 //! Client-side router for the Tier 4 fixture.
 //!
 //! Registers four **named** routes whose names follow the

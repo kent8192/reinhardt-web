@@ -4,16 +4,14 @@
 //! Each route is registered with a stable name so that page components
 //! can resolve URLs through the URL reverser instead of formatting
 //! path strings inline.
-
-use reinhardt::ClientPath;
-use reinhardt::ClientRouter;
-use reinhardt::pages::component::Page;
-use reinhardt::pages::page;
-
 use crate::client::pages::{
 	choice_delete_page, choice_edit_page, choice_new_page, index_page, polls_detail_page,
 	polls_results_page, question_delete_page, question_edit_page, question_new_page,
 };
+use reinhardt::ClientPath;
+use reinhardt::ClientRouter;
+use reinhardt::pages::component::Page;
+use reinhardt::pages::page;
 
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
@@ -60,19 +58,16 @@ pub fn client_url_patterns() -> ClientRouter {
 		)
 		.not_found(|| error_page("Page not found"))
 }
-
 /// Error page used as the `not_found` fallback.
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
-	// `urls::index()` is the macro-emitted typed helper (issue #4656);
-	// `urls` is a sibling of `client_url_patterns` in this module's scope.
 	let home_href = urls::index();
 	page!(|message: String, home_href: String| {
 		div {
 			class: "layout-page",
 			div {
 				class: "alert-danger mb-4",
-				{ message }
+				{ { message } }
 			}
 			a {
 				href: home_href,

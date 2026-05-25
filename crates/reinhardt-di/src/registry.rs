@@ -24,6 +24,22 @@ pub enum DependencyScope {
 	Transient,
 }
 
+impl DependencyScope {
+	/// Returns `true` if a type at scope `self` (the dependency being resolved)
+	/// lives at least as long as a type at scope `dependent` (the type
+	/// requesting resolution).
+	///
+	/// The only prohibited combination is a `Singleton`-scoped dependent
+	/// resolving a `Request`-scoped dependency, because the singleton would
+	/// capture a stale, request-bound value for the entire process lifetime.
+	pub fn outlives(&self, dependent: DependencyScope) -> bool {
+		!matches!(
+			(dependent, *self),
+			(DependencyScope::Singleton, DependencyScope::Request)
+		)
+	}
+}
+
 /// Factory trait for creating dependencies
 ///
 /// Factories are async functions that can resolve dependencies from an InjectionContext
