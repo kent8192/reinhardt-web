@@ -153,7 +153,7 @@ impl std::error::Error for ServerFnError {}
 pub fn parse_server_error_message(raw: &str) -> String {
 	// 1. Try JSON deserialization (wire format)
 	if let Ok(e) = serde_json::from_str::<ServerFnError>(raw) {
-		return e.message().to_string();
+		return unwrap_nested_or_raw(e.message());
 	}
 	// 2. Try stripping known Display prefixes
 	for prefix in [
@@ -163,17 +163,25 @@ pub fn parse_server_error_message(raw: &str) -> String {
 		"Application error: ",
 	] {
 		if let Some(msg) = raw.strip_prefix(prefix) {
-			return msg.to_string();
+			return unwrap_nested_or_raw(msg);
 		}
 	}
 	// 2b. Handle "Server error (NNN): " format
 	if let Some(rest) = raw.strip_prefix("Server error (") {
 		if let Some(idx) = rest.find("): ") {
-			return rest[idx + 3..].to_string();
+			return unwrap_nested_or_raw(&rest[idx + 3..]);
 		}
 	}
 	// 3. Fallback: return unchanged
 	raw.to_string()
+}
+
+/// If `msg` is itself a JSON-serialized `ServerFnError` (nested envelope),
+/// unwrap it; otherwise return the string as-is.
+fn unwrap_nested_or_raw(msg: &str) -> String {
+	serde_json::from_str::<ServerFnError>(msg)
+		.map(|e| e.message().to_string())
+		.unwrap_or_else(|_| msg.to_string())
 }
 
 #[cfg(test)]
@@ -273,6 +281,30 @@ mod tests {
 	fn test_parse_server_error_message_from_display(#[case] display: &str, #[case] expected: &str) {
 		// Act
 		let msg = parse_server_error_message(display);
+
+		// Assert
+		assert_eq!(msg, expected);
+	}
+
+	#[rstest]
+	#[case::server_wrapping_application(
+		r#"Server error (500): {"Application":"Invalid choice_id"}"#,
+		"Invalid choice_id"
+	)]
+	#[case::server_wrapping_network(
+		r#"Server error (500): {"Network":"Connection lost"}"#,
+		"Connection lost"
+	)]
+	#[case::json_server_wrapping_application(
+		r#"{"Server":{"status":500,"message":"{\"Application\":\"Invalid choice_id\"}"}}"#,
+		"Invalid choice_id"
+	)]
+	fn test_parse_server_error_message_unwraps_nested_json(
+		#[case] input: &str,
+		#[case] expected: &str,
+	) {
+		// Act
+		let msg = parse_server_error_message(input);
 
 		// Assert
 		assert_eq!(msg, expected);
