@@ -560,6 +560,8 @@ mod path_traversal_tests {
 	#[case(".")]
 	#[case("..")]
 	#[case("\\absolute\\path")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
 	#[tokio::test]
 	async fn save_rejects_dangerous_paths(#[case] dangerous_path: &str) {
 		// Arrange
@@ -586,6 +588,8 @@ mod path_traversal_tests {
 	#[case("foo/../../escape")]
 	#[case("")]
 	#[case("..")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
 	#[tokio::test]
 	async fn open_rejects_dangerous_paths(#[case] dangerous_path: &str) {
 		// Arrange
@@ -611,6 +615,8 @@ mod path_traversal_tests {
 	#[case("/etc/passwd")]
 	#[case("")]
 	#[case("..")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
 	#[tokio::test]
 	async fn delete_rejects_dangerous_paths(#[case] dangerous_path: &str) {
 		// Arrange
@@ -636,6 +642,8 @@ mod path_traversal_tests {
 	#[case("/etc/passwd")]
 	#[case("")]
 	#[case("..")]
+	#[case("C:\\Windows\\system.ini")]
+	#[case("C:/Windows/system.ini")]
 	#[tokio::test]
 	async fn exists_rejects_dangerous_paths(#[case] dangerous_path: &str) {
 		// Arrange

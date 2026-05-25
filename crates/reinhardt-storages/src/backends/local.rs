@@ -19,17 +19,40 @@ fn validate_path(name: &str) -> Result<&str> {
 		));
 	}
 
-	if name.starts_with('/') || name.starts_with('\\') {
+	let path = Path::new(name);
+
+	if path.is_absolute() || name.starts_with('\\') {
 		return Err(StorageError::InvalidPath(format!(
 			"absolute paths are not allowed: {name}"
 		)));
 	}
 
-	for component in Path::new(name).components() {
-		if component == Component::ParentDir {
+	// Reject Windows drive-letter absolute paths on all platforms for
+	// consistent behavior (on Unix, `Path::is_absolute` misses these).
+	if let Some(rest) = name.as_bytes().get(1..) {
+		if name.as_bytes()[0].is_ascii_alphabetic()
+			&& rest.first() == Some(&b':')
+			&& rest.get(1).is_some_and(|&b| b == b'/' || b == b'\\')
+		{
 			return Err(StorageError::InvalidPath(format!(
-				"parent directory references are not allowed: {name}"
+				"absolute paths are not allowed: {name}"
 			)));
+		}
+	}
+
+	for component in path.components() {
+		match component {
+			Component::ParentDir => {
+				return Err(StorageError::InvalidPath(format!(
+					"parent directory references are not allowed: {name}"
+				)));
+			}
+			Component::RootDir | Component::Prefix(_) => {
+				return Err(StorageError::InvalidPath(format!(
+					"absolute paths are not allowed: {name}"
+				)));
+			}
+			_ => {}
 		}
 	}
 
