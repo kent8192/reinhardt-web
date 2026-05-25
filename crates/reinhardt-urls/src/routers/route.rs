@@ -91,33 +91,6 @@ impl Route {
 		}
 	}
 
-	/// Set the name of the route
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_urls::routers::Route;
-	/// use reinhardt_http::Handler;
-	/// use std::sync::Arc;
-	///
-	/// # use async_trait::async_trait;
-	/// # use reinhardt_http::{Request, Response, Result};
-	/// # struct DummyHandler;
-	/// # #[async_trait]
-	/// # impl Handler for DummyHandler {
-	/// #     async fn handle(&self, _req: Request) -> Result<Response> {
-	/// #         Ok(Response::ok())
-	/// #     }
-	/// # }
-	/// let handler = Arc::new(DummyHandler);
-	/// let route = Route::new("/users/", handler)
-	///     .with_name("user-list");
-	/// assert_eq!(route.name, Some("user-list".to_string()));
-	/// ```
-	pub fn with_name(mut self, name: impl Into<String>) -> Self {
-		self.name = Some(name.into());
-		self
-	}
 	/// Set the namespace of the route
 	///
 	/// # Examples
@@ -197,14 +170,14 @@ impl Route {
 	/// let handler = Arc::new(DummyHandler);
 	///
 	/// // With namespace and name
-	/// let route = Route::new("/users/", handler.clone())
-	///     .with_namespace("api")
-	///     .with_name("list");
+	/// let mut route = Route::new("/users/", handler.clone())
+	///     .with_namespace("api");
+	/// route.name = Some("list".to_string());
 	/// assert_eq!(route.full_name(), Some("api:list".to_string()));
 	///
 	/// // With only name
-	/// let route = Route::new("/users/", handler.clone())
-	///     .with_name("list");
+	/// let mut route = Route::new("/users/", handler.clone());
+	/// route.name = Some("list".to_string());
 	/// assert_eq!(route.full_name(), Some("list".to_string()));
 	///
 	/// // Without name

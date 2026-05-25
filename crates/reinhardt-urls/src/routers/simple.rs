@@ -279,8 +279,12 @@ mod tests {
 		let mut router = SimpleRouter::new();
 		let handler = std::sync::Arc::new(DummyHandler);
 
-		router.add_route(path("/users/", handler.clone()).with_name("users"));
-		router.add_route(path("/users/{id}/", handler).with_name("user-detail"));
+		let mut users_route = path("/users/", handler.clone());
+		users_route.name = Some("users".to_string());
+		router.add_route(users_route);
+		let mut detail_route = path("/users/{id}/", handler);
+		detail_route.name = Some("user-detail".to_string());
+		router.add_route(detail_route);
 
 		let uri = Uri::from_static("/users/");
 		let req = Request::builder()
@@ -301,7 +305,9 @@ mod tests {
 		let mut router = SimpleRouter::new();
 		let handler = std::sync::Arc::new(DummyHandler);
 
-		router.add_route(path("/users/{id}/", handler).with_name("user-detail"));
+		let mut detail_route = path("/users/{id}/", handler);
+		detail_route.name = Some("user-detail".to_string());
+		router.add_route(detail_route);
 
 		let uri = Uri::from_static("/users/123/");
 		let req = Request::builder()

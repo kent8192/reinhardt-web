@@ -101,7 +101,8 @@ impl UrlReverser {
 			(name.to_string(), None)
 		};
 
-		let route = Route::new(path, Arc::new(DummyHandler)).with_name(&route_name);
+		let mut route = Route::new(path, Arc::new(DummyHandler));
+		route.name = Some(route_name.clone());
 
 		let route = if let Some(ns) = namespace {
 			route.with_namespace(&ns)
@@ -151,9 +152,9 @@ impl UrlReverser {
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
 	/// let mut reverser = UrlReverser::new();
-	/// let route = Route::new("/users/{id}/", handler)
-	///     .with_name("detail")
+	/// let mut route = Route::new("/users/{id}/", handler)
 	///     .with_namespace("users");
+	/// route.name = Some("detail".to_string());
 	/// reverser.register(route).unwrap();
 	///
 	/// let mut params = HashMap::new();
@@ -206,8 +207,8 @@ impl UrlReverser {
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
 	/// let mut reverser = UrlReverser::new();
-	/// let route = Route::new("/users/{id}/", handler)
-	///     .with_name("detail");
+	/// let mut route = Route::new("/users/{id}/", handler);
+	/// route.name = Some("detail".to_string());
 	/// reverser.register(route).unwrap();
 	///
 	/// let url = reverser.reverse_with("detail", &[("id", "123")]).unwrap();
