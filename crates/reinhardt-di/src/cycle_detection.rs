@@ -22,6 +22,8 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 
+use crate::registry::DependencyScope;
+
 /// Maximum resolution depth (prevents pathological cases)
 const MAX_RESOLUTION_DEPTH: usize = 100;
 
@@ -35,6 +37,10 @@ struct CycleDetectionState {
 	type_names: HashMap<TypeId, &'static str>,
 	/// Resolution path (for displaying circular paths)
 	resolution_path: Vec<(TypeId, &'static str)>,
+	/// Stack of scopes for the types currently being resolved.
+	/// The top is the scope of the type whose factory is currently executing
+	/// (the "dependent" in scope-hierarchy checks).
+	scope_stack: Vec<DependencyScope>,
 }
 
 impl CycleDetectionState {
@@ -44,6 +50,7 @@ impl CycleDetectionState {
 			resolution_depth: 0,
 			type_names: HashMap::new(),
 			resolution_path: Vec::new(),
+			scope_stack: Vec::new(),
 		}
 	}
 }
@@ -155,13 +162,18 @@ pub fn begin_resolution(
 /// When resolution is complete, the type is removed from the stack.
 #[derive(Debug)]
 pub enum ResolutionGuard {
-	/// Tracking circular detection
+	/// Tracking circular detection only (no scope push)
 	Tracked(TypeId),
+	/// Tracking circular detection AND scope hierarchy
+	TrackedWithScope(TypeId),
 }
 
 impl Drop for ResolutionGuard {
 	fn drop(&mut self) {
-		let ResolutionGuard::Tracked(type_id) = self;
+		let (type_id, pop_scope) = match self {
+			ResolutionGuard::Tracked(id) => (id, false),
+			ResolutionGuard::TrackedWithScope(id) => (id, true),
+		};
 		let _ = CYCLE_STATE.try_with(|state| {
 			let mut s = state.borrow_mut();
 			s.resolution_set.remove(type_id);
@@ -169,6 +181,9 @@ impl Drop for ResolutionGuard {
 				s.resolution_path.remove(pos);
 			}
 			s.resolution_depth = s.resolution_depth.saturating_sub(1);
+			if pop_scope {
+				s.scope_stack.pop();
+			}
 		});
 	}
 }
@@ -209,6 +224,70 @@ fn build_cycle_path_inner(state: &CycleDetectionState, current_type_id: TypeId) 
 	}
 }
 
+/// Returns the scope of the type currently being resolved (the dependent).
+///
+/// If no resolution is in progress (root call from a handler), returns
+/// [`DependencyScope::Transient`] (most permissive — allows resolving anything).
+pub fn current_dependent_scope() -> DependencyScope {
+	CYCLE_STATE
+		.try_with(|state| {
+			state
+				.borrow()
+				.scope_stack
+				.last()
+				.copied()
+				.unwrap_or(DependencyScope::Transient)
+		})
+		.unwrap_or(DependencyScope::Transient)
+}
+
+/// Begin a scope-aware resolution, checking the scope hierarchy before proceeding.
+///
+/// This is the scope-aware counterpart of [`begin_resolution`]. It:
+/// 1. Checks that the dependency's scope is compatible with the current
+///    dependent's scope (the top of the scope stack).
+/// 2. Delegates to [`begin_resolution`] for cycle detection.
+/// 3. Pushes the dependency's scope onto the scope stack.
+///
+/// The returned [`ResolutionGuard::TrackedWithScope`] pops the scope on drop.
+pub fn begin_scoped_resolution(
+	type_id: TypeId,
+	type_name: &'static str,
+	dependency_scope: DependencyScope,
+) -> Result<ResolutionGuard, CycleError> {
+	let dependent_scope = current_dependent_scope();
+	if !dependency_scope.outlives(dependent_scope) {
+		let dependent_type = CYCLE_STATE
+			.try_with(|state| {
+				state
+					.borrow()
+					.resolution_path
+					.last()
+					.map(|(_, name)| name.to_string())
+			})
+			.ok()
+			.flatten()
+			.unwrap_or_else(|| "<root>".to_string());
+		return Err(CycleError::ScopeViolation {
+			dependent_type,
+			dependent_scope,
+			dependency_type: type_name.to_string(),
+			dependency_scope,
+		});
+	}
+
+	let guard = begin_resolution(type_id, type_name)?;
+
+	with_state(|state| {
+		state.borrow_mut().scope_stack.push(dependency_scope);
+	})?;
+
+	// Prevent the Tracked guard from running its Drop (which would undo cycle detection).
+	// Return a TrackedWithScope that cleans up both cycle state and scope stack.
+	std::mem::forget(guard);
+	Ok(ResolutionGuard::TrackedWithScope(type_id))
+}
+
 /// Circular dependency error
 #[derive(Debug, thiserror::Error)]
 pub enum CycleError {
@@ -234,6 +313,23 @@ pub enum CycleError {
 		"Cycle detection called outside of a task-local scope. Use `with_cycle_detection_scope` to initialize."
 	)]
 	NoScope,
+
+	/// Scope hierarchy violation: a longer-lived type resolved a shorter-lived dependency
+	#[error(
+		"Scope violation: {dependent_scope:?}-scoped '{dependent_type}' cannot resolve \
+		 {dependency_scope:?}-scoped '{dependency_type}'; \
+		 the dependency would be captured with a shorter lifetime"
+	)]
+	ScopeViolation {
+		/// The type name of the dependent
+		dependent_type: String,
+		/// The scope of the dependent
+		dependent_scope: DependencyScope,
+		/// The type name of the dependency
+		dependency_type: String,
+		/// The scope of the dependency
+		dependency_scope: DependencyScope,
+	},
 }
 
 #[cfg(test)]

@@ -605,7 +605,7 @@ impl InjectionContext {
 	/// ```
 	pub async fn resolve<T: Any + Send + Sync + 'static>(&self) -> crate::DiResult<Arc<T>> {
 		use crate::cycle_detection::{
-			begin_resolution, register_type_name, with_cycle_detection_scope,
+			begin_scoped_resolution, register_type_name, with_cycle_detection_scope,
 		};
 		use crate::registry::{DependencyScope, global_registry};
 
@@ -649,9 +649,15 @@ impl InjectionContext {
 				_ => {}
 			}
 
-			// [Slow path] Execute circular detection only on cache miss
-			let _guard = begin_resolution(type_id, type_name)
-				.map_err(|e| crate::DiError::CircularDependency(e.to_string()))?;
+			// [Slow path] Scope-aware resolution with cycle detection
+			let _guard = begin_scoped_resolution(type_id, type_name, scope).map_err(|e| {
+				match e {
+					crate::cycle_detection::CycleError::ScopeViolation { .. } => {
+						crate::DiError::ScopeError(e.to_string())
+					}
+					other => crate::DiError::CircularDependency(other.to_string()),
+				}
+			})?;
 
 			// Actual resolution processing (existing logic)
 			self.resolve_internal::<T>(scope).await
