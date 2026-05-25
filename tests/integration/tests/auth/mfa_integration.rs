@@ -14,9 +14,22 @@
 
 use reinhardt_auth::AuthenticationError;
 use reinhardt_auth::mfa::MFAAuthentication as MfaManager;
-use reinhardt_test::fixtures::auth::TestUser;
 use rstest::*;
 use std::collections::HashSet;
+
+/// Local test user struct used by MFA integration test fixtures.
+///
+/// This is a plain data container for test purposes only; it does not
+/// implement `AuthIdentity` and is not registered with any auth backend.
+struct TestUser {
+	id: uuid::Uuid,
+	username: String,
+	email: String,
+	is_active: bool,
+	is_admin: bool,
+	is_staff: bool,
+	is_superuser: bool,
+}
 
 // =============================================================================
 // Test Fixtures

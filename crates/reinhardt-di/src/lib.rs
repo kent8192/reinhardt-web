@@ -272,6 +272,7 @@
 
 #![warn(missing_docs)]
 
+#[cfg(feature = "params")]
 pub mod params;
 
 pub mod context;
