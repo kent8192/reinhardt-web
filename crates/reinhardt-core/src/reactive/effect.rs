@@ -41,6 +41,9 @@ use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime,
 /// Type alias for effect functions
 type EffectFn = Box<dyn FnMut() + 'static>;
 
+/// Type alias for the cleanup slot shared between Effect instances and closures
+type CleanupSlot = Rc<RefCell<Option<Box<dyn FnOnce()>>>>;
+
 // Global storage for Effect functions
 //
 // This stores the closures for all Effects so they can be re-executed when dependencies change.
@@ -100,7 +103,7 @@ pub struct Effect {
 	/// Populated by `new_with_deps` when the user's closure returns `Some(c)`;
 	/// flushed before each re-run and on dispose. `Effect::new` and
 	/// `Effect::new_with_timing` leave this slot empty.
-	cleanup_slot: Rc<RefCell<Option<Box<dyn FnOnce()>>>>,
+	cleanup_slot: CleanupSlot,
 }
 
 impl Effect {
@@ -232,7 +235,7 @@ impl Effect {
 	/// `reinhardt-pages`. See the design spec at
 	/// `docs/superpowers/specs/2026-05-22-issue-4195-hooks-deps-array-design.md`.
 	#[allow(dead_code)]
-	pub fn new_with_deps<F, C>(mut f: F, deps: super::deps::Deps) -> Self
+	pub fn new_with_deps<F, C>(f: F, deps: super::deps::Deps) -> Self
 	where
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
@@ -243,18 +246,14 @@ impl Effect {
 	/// Internal helper: constructs an Effect with deps and a specified timing,
 	/// inserting the timing entry *before* the initial execution so the first
 	/// run respects the requested timing.
-	fn new_with_deps_internal<F, C>(
-		mut f: F,
-		deps: super::deps::Deps,
-		timing: EffectTiming,
-	) -> Self
+	fn new_with_deps_internal<F, C>(mut f: F, deps: super::deps::Deps, timing: EffectTiming) -> Self
 	where
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
 		let id = NodeId::new();
 		let disposed = Rc::new(RefCell::new(false));
-		let cleanup_slot: Rc<RefCell<Option<Box<dyn FnOnce()>>>> = Rc::new(RefCell::new(None));
+		let cleanup_slot: CleanupSlot = Rc::new(RefCell::new(None));
 
 		// Capture deps so the wrapped closure can re-subscribe after every
 		// run: `execute_effect` calls `clear_dependencies(id)` before each
@@ -273,7 +272,7 @@ impl Effect {
 			}
 			// Run the user's closure with the Observer stack detached so
 			// in-closure Signal reads do not auto-subscribe.
-			let next = super::runtime::run_without_observer(|| f());
+			let next = super::runtime::run_without_observer(&mut f);
 			if let Some(c) = next {
 				*cleanup_for_closure.borrow_mut() = Some(Box::new(c));
 			}

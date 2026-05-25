@@ -744,10 +744,10 @@ fn slot_name_to_snake_case(name: &str) -> String {
 /// - children arity (the `children:` field on the props struct must be
 ///   `Option<Page>`, which `bon::Builder` exposes as a setter taking
 ///   `Page` directly — bon wraps it in `Some` internally):
-///   * 0 children → omit the `.children(...)` setter (`bon` defaults
-///                  the `Option` field to `None`)
-///   * 1 child    → `.children(<child_view>)`
-///   * 2+ children → `.children(Page::fragment(vec![ ... ]))`
+///   - 0 children → omit the `.children(...)` setter (`bon` defaults
+///     the `Option` field to `None`)
+///   - 1 child    → `.children(<child_view>)`
+///   - 2+ children → `.children(Page::fragment(vec![ ... ]))`
 ///
 /// # Example
 ///
@@ -782,10 +782,7 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 		.events
 		.iter()
 		.map(|ev| {
-			let on_name = syn::Ident::new(
-				&format!("on_{}", ev.event_type),
-				ev.event_type.span(),
-			);
+			let on_name = syn::Ident::new(&format!("on_{}", ev.event_type), ev.event_type.span());
 			let h = &ev.handler;
 			quote! { .#on_name(#h) }
 		})
@@ -803,10 +800,7 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 			quote! { .children(#one) }
 		}
 		Some(cs) => {
-			let many: Vec<TokenStream> = cs
-				.iter()
-				.map(|c| generate_node(c, pages_crate))
-				.collect();
+			let many: Vec<TokenStream> = cs.iter().map(|c| generate_node(c, pages_crate)).collect();
 			quote! {
 				.children(
 					#pages_crate::component::Page::fragment(::std::vec![ #(#many),* ])

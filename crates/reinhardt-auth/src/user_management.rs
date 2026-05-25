@@ -3,11 +3,47 @@
 //! Provides CRUD operations for user management.
 
 use crate::PasswordHasher;
-use crate::internal_user::InternalUser;
+use crate::core::AuthIdentity;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+/// A user managed by [`UserManager`].
+///
+/// Carries common user fields and implements [`AuthIdentity`].
+/// Suitable for in-memory user management in testing and development.
+#[derive(Debug, Clone)]
+pub struct ManagedUser {
+	/// The unique user identifier.
+	pub id: Uuid,
+	/// The user's login name.
+	pub username: String,
+	/// The user's email address.
+	pub email: String,
+	/// Whether the user account is active.
+	pub is_active: bool,
+	/// Whether the user has admin privileges.
+	pub is_admin: bool,
+	/// Whether the user is a staff member.
+	pub is_staff: bool,
+	/// Whether the user is a superuser.
+	pub is_superuser: bool,
+}
+
+impl AuthIdentity for ManagedUser {
+	fn id(&self) -> String {
+		self.id.to_string()
+	}
+
+	fn is_authenticated(&self) -> bool {
+		true
+	}
+
+	fn is_admin(&self) -> bool {
+		self.is_admin
+	}
+}
 
 /// User management error
 #[non_exhaustive]
@@ -153,7 +189,7 @@ pub struct UpdateUserData {
 /// }
 /// ```
 pub struct UserManager<H: PasswordHasher> {
-	users: Arc<RwLock<HashMap<Uuid, InternalUser>>>,
+	users: Arc<RwLock<HashMap<Uuid, ManagedUser>>>,
 	username_index: Arc<RwLock<HashMap<String, Uuid>>>,
 	password_hashes: Arc<RwLock<HashMap<Uuid, String>>>,
 	hasher: H,
@@ -224,7 +260,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	pub async fn create_user(
 		&mut self,
 		data: CreateUserData,
-	) -> UserManagementResult<InternalUser> {
+	) -> UserManagementResult<ManagedUser> {
 		// Validate username
 		if data.username.is_empty() || data.username.len() < 3 {
 			return Err(UserManagementError::InvalidUsername);
@@ -255,7 +291,7 @@ impl<H: PasswordHasher> UserManager<H> {
 			.map_err(|e| UserManagementError::Other(e.to_string()))?;
 
 		// Create user
-		let user = InternalUser {
+		let user = ManagedUser {
 			id: Uuid::now_v7(),
 			username: data.username.clone(),
 			email: data.email,
@@ -311,7 +347,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///     assert_eq!(retrieved.username, "charlie");
 	/// }
 	/// ```
-	pub async fn get_user(&self, user_id: &str) -> UserManagementResult<InternalUser> {
+	pub async fn get_user(&self, user_id: &str) -> UserManagementResult<ManagedUser> {
 		let uuid = Uuid::parse_str(user_id)
 			.map_err(|_| UserManagementError::Other("Invalid UUID".to_string()))?;
 
@@ -356,7 +392,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///     assert_eq!(retrieved.username, "diana");
 	/// }
 	/// ```
-	pub async fn get_user_by_username(&self, username: &str) -> UserManagementResult<InternalUser> {
+	pub async fn get_user_by_username(&self, username: &str) -> UserManagementResult<ManagedUser> {
 		let username_index = self.username_index.read().await;
 		let user_id = username_index
 			.get(username)
@@ -415,7 +451,7 @@ impl<H: PasswordHasher> UserManager<H> {
 		&mut self,
 		user_id: &str,
 		data: UpdateUserData,
-	) -> UserManagementResult<InternalUser> {
+	) -> UserManagementResult<ManagedUser> {
 		let uuid = Uuid::parse_str(user_id)
 			.map_err(|_| UserManagementError::Other("Invalid UUID".to_string()))?;
 
@@ -540,7 +576,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///     assert_eq!(users.len(), 2);
 	/// }
 	/// ```
-	pub async fn list_users(&self) -> Vec<InternalUser> {
+	pub async fn list_users(&self) -> Vec<ManagedUser> {
 		let users = self.users.read().await;
 		users.values().cloned().collect()
 	}

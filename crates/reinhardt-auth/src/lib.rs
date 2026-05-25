@@ -242,7 +242,8 @@ pub use token_storage::{
 	InMemoryTokenStorage, StoredToken, TokenStorage, TokenStorageError, TokenStorageResult,
 };
 pub use user_management::{
-	CreateUserData, UpdateUserData, UserManagementError, UserManagementResult, UserManager,
+	CreateUserData, ManagedUser, UpdateUserData, UserManagementError, UserManagementResult,
+	UserManager,
 };
 
 /// Authentication errors that can occur during user verification.
