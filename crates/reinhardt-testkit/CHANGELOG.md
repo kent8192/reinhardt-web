@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.2...reinhardt-testkit@v0.2.0-rc.2) - 2026-05-25
+
+### Added
+
+- *(testkit)* [**breaking**] gate 9 RC-deprecated items behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(testkit)* remove residual doc references to deleted deprecated APIs
+
+### Fixed
+
+- delete gated items instead of cfg-gating, update callers
+- *(ci)* recover develop release-plz prerelease
+
 ### Removed
 
 #### BREAKING CHANGES
