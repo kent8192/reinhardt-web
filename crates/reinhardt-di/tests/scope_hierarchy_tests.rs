@@ -265,3 +265,28 @@ async fn singleton_resolving_cached_request_still_returns_scope_error() {
 		"Cached request-scoped dep must still fail for singleton: {result:?}"
 	);
 }
+
+#[rstest]
+#[tokio::test]
+#[serial(di_registry)]
+async fn singleton_resolving_preseeded_request_returns_scope_error() {
+	// Arrange: pre-seed request cache directly (no registry entry)
+	let registry = global_registry();
+	registry.register_async::<SingletonService, _, _>(DependencyScope::Singleton, |ctx| async move {
+		let _config = ctx.resolve::<RequestConfig>().await?;
+		Ok(SingletonService)
+	});
+
+	let singleton_scope = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::builder(singleton_scope).build();
+	ctx.set_request(RequestConfig);
+
+	// Act: singleton factory resolves pre-seeded request-scoped type
+	let result = ctx.resolve::<SingletonService>().await;
+
+	// Assert
+	assert!(
+		matches!(result, Err(DiError::ScopeError(_))),
+		"Pre-seeded request dep must still fail for singleton: {result:?}"
+	);
+}
