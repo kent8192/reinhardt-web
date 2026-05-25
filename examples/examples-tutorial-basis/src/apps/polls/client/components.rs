@@ -202,11 +202,6 @@ pub fn polls_detail(question_id: i64) -> Page {
 		name: VotingForm,
 		server_fn: submit_vote,
 		method: Post,
-		success_url: |_form| links::results(qid),
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -216,6 +211,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			}
+
 			choice_id: ChoiceField {
 				widget: RadioSelect,
 				required,
@@ -226,6 +222,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 				choice_label: "choice_text",
 			}
 		}
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 
 		watch: {
 			submit_button: | form | {
@@ -724,10 +724,6 @@ pub fn question_new() -> Page {
 		server_fn: create_question,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -741,6 +737,10 @@ pub fn question_new() -> Page {
 				class: "form-control",
 			}
 		}
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 
 	};
 
@@ -814,10 +814,6 @@ pub fn question_edit(question_id: i64) -> Page {
 		server_fn: update_question,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -827,6 +823,7 @@ pub fn question_edit(question_id: i64) -> Page {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			}
+
 			question_text: CharField {
 				label: "Question",
 				placeholder: "Updated question text",
@@ -834,6 +831,10 @@ pub fn question_edit(question_id: i64) -> Page {
 				class: "form-control",
 			}
 		}
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 
 	};
 
@@ -958,10 +959,6 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		server_fn: delete_question,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -972,6 +969,10 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 				initial: qid.to_string(),
 			}
 		}
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 
 	};
 
@@ -1175,10 +1176,6 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 		server_fn: update_choice,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -1188,6 +1185,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 			choice_id: HiddenField {
 				initial: cid_str,
 			}
+
 			choice_text: CharField {
 				label: "Choice text",
 				placeholder: "Updated answer option",
@@ -1195,6 +1193,10 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 				class: "form-control",
 			}
 		}
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 
 	};
 
@@ -1262,10 +1264,6 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 		server_fn: delete_choice,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
-
 		state: {
 			loading,
 			error,
@@ -1276,6 +1274,10 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 				initial: cid_str,
 			}
 		}
+
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 
 	};
 
