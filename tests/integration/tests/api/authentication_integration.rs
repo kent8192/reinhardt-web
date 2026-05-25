@@ -133,7 +133,7 @@ impl MockAuthBackend {
 		.bind(username)
 		.fetch_optional(self.pool.as_ref())
 		.await
-		.map_err(|e| AuthenticationError::BackendError(format!("Database query failed: {}", e)))?;
+		.map_err(|e| AuthenticationError::DatabaseError(format!("Database query failed: {}", e)))?;
 
 		Ok(user)
 	}
@@ -141,7 +141,7 @@ impl MockAuthBackend {
 	/// Look up a user by ID (test helper).
 	async fn get_user(&self, user_id: &str) -> Result<Option<AuthUser>, AuthenticationError> {
 		let uuid = Uuid::parse_str(user_id).map_err(|e| {
-			AuthenticationError::BackendError(format!("Invalid UUID format: {}", e))
+			AuthenticationError::DatabaseError(format!("Invalid UUID format: {}", e))
 		})?;
 
 		let user = sqlx::query_as::<_, AuthUser>(
@@ -151,7 +151,7 @@ impl MockAuthBackend {
 		.bind(uuid)
 		.fetch_optional(self.pool.as_ref())
 		.await
-		.map_err(|e| AuthenticationError::BackendError(format!("Database query failed: {}", e)))?;
+		.map_err(|e| AuthenticationError::DatabaseError(format!("Database query failed: {}", e)))?;
 
 		Ok(user)
 	}
@@ -259,8 +259,8 @@ async fn test_jwt_token_expiration(
 	// Here we verify the integration expects proper expiration handling
 	// (Actual JWT implementation would use jsonwebtoken crate)
 
-	// Simulate expired token scenario
-	let expired_token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDAwMDAwMDB9.invalid";
+	// Simulate expired token scenario with a payload containing an "exp" claim
+	let expired_token = "header.eyJleHAiOjE2MDAwMDAwMDB9.signature";
 
 	// In real implementation, this would return AuthenticationError::InvalidToken
 	assert!(expired_token.contains("exp"));
@@ -727,13 +727,13 @@ async fn test_authentication_with_database_error(
 	// Try to get user with invalid UUID
 	let result = backend.get_user("invalid-uuid").await;
 
-	// Should return BackendError
+	// Should return DatabaseError
 	assert!(result.is_err());
 	match result {
-		Err(AuthenticationError::BackendError(msg)) => {
+		Err(AuthenticationError::DatabaseError(msg)) => {
 			assert!(msg.contains("Invalid UUID"));
 		}
-		_ => panic!("Expected BackendError"),
+		_ => panic!("Expected DatabaseError"),
 	}
 }
 
