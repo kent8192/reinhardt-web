@@ -269,7 +269,7 @@ impl UrlReverser {
 	pub fn register_global(self) {
 		GLOBAL_REVERSER
 			.set(self)
-			.expect("global URL reverser already registered");
+			.unwrap_or_else(|_| panic!("global URL reverser already registered"));
 	}
 }
 

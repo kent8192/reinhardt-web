@@ -82,33 +82,11 @@ pub(crate) fn write_installed_apps(labels: &[String]) -> Result<(), String> {
 	std::fs::write(&path, content).map_err(|e| format!("Cannot write {}: {e}", path.display()))
 }
 
-/// Reads the installed app labels from the state file.
-///
-/// Returns a vector of label strings, or an error message if the file cannot be read.
-pub(crate) fn read_installed_apps() -> Result<Vec<String>, String> {
-	let dir = state_dir_path()?;
-	let path = dir.join(STATE_FILE_NAME);
-	let content = match std::fs::read_to_string(&path) {
-		Ok(c) => c,
-		// Missing file is the expected soft-fallback case (Issue #4189): wasm SPA
-		// consumers never run `installed_apps!`, so the state file simply does not
-		// exist. Other IO errors (permission denied, corrupt FS, etc.) are
-		// surfaced so they cannot be silently swallowed.
-		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-		Err(e) => return Err(format!("Cannot read {}: {e}", path.display())),
-	};
-	Ok(content
-		.lines()
-		.filter(|line| !line.is_empty())
-		.map(|line| line.to_string())
-		.collect())
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 
-	// Note: `state_dir_path()`, `write_installed_apps()`, and `read_installed_apps()`
+	// Note: `state_dir_path()` and `write_installed_apps()`
 	// rely on `CARGO_MANIFEST_DIR` / `CARGO_CRATE_NAME` set by cargo in the rustc
 	// invocation environment. Cargo propagates `CARGO_MANIFEST_DIR` to test
 	// runtimes but NOT `CARGO_CRATE_NAME`, so we cannot meaningfully exercise the
