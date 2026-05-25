@@ -347,23 +347,14 @@ fn normalize_unary_minus(input: &str) -> String {
 	let bytes = input.as_bytes();
 	let mut result = Vec::with_capacity(bytes.len());
 	let mut i = 0;
-	let mut in_string = false;
 	while i < bytes.len() {
-		if !in_string && bytes[i] == b'"' {
-			in_string = true;
-			result.push(bytes[i]);
-			i += 1;
+		if bytes[i] == b'r' && i + 1 < bytes.len() && (bytes[i + 1] == b'"' || bytes[i + 1] == b'#')
+		{
+			i = skip_raw_string(bytes, i, &mut result);
 			continue;
 		}
-		if in_string {
-			result.push(bytes[i]);
-			if bytes[i] == b'"' {
-				in_string = false;
-			} else if bytes[i] == b'\\' && i + 1 < bytes.len() {
-				i += 1;
-				result.push(bytes[i]);
-			}
-			i += 1;
+		if bytes[i] == b'"' {
+			i = skip_regular_string(bytes, i, &mut result);
 			continue;
 		}
 		result.push(bytes[i]);
@@ -392,6 +383,60 @@ fn normalize_unary_minus(input: &str) -> String {
 		i += 1;
 	}
 	String::from_utf8(result).unwrap_or_else(|_| input.to_string())
+}
+
+fn skip_regular_string(bytes: &[u8], start: usize, result: &mut Vec<u8>) -> usize {
+	result.push(bytes[start]);
+	let mut i = start + 1;
+	while i < bytes.len() {
+		result.push(bytes[i]);
+		if bytes[i] == b'"' {
+			return i + 1;
+		}
+		if bytes[i] == b'\\' && i + 1 < bytes.len() {
+			i += 1;
+			result.push(bytes[i]);
+		}
+		i += 1;
+	}
+	i
+}
+
+fn skip_raw_string(bytes: &[u8], start: usize, result: &mut Vec<u8>) -> usize {
+	result.push(bytes[start]);
+	let mut i = start + 1;
+	let mut hashes: usize = 0;
+	while i < bytes.len() && bytes[i] == b'#' {
+		hashes += 1;
+		result.push(bytes[i]);
+		i += 1;
+	}
+	if i >= bytes.len() || bytes[i] != b'"' {
+		return i;
+	}
+	result.push(bytes[i]);
+	i += 1;
+	loop {
+		if i >= bytes.len() {
+			return i;
+		}
+		result.push(bytes[i]);
+		if bytes[i] == b'"' {
+			let mut matched = 0;
+			while matched < hashes && i + 1 + matched < bytes.len() && bytes[i + 1 + matched] == b'#'
+			{
+				matched += 1;
+			}
+			if matched == hashes {
+				for _ in 0..hashes {
+					i += 1;
+					result.push(bytes[i]);
+				}
+				return i + 1;
+			}
+		}
+		i += 1;
+	}
 }
 
 fn topiary_language(kind: MacroKind) -> Result<TopiaryLanguage, String> {
@@ -1400,5 +1445,29 @@ fn main() {}";
 
 		// Assert
 		assert_eq!(result, r#""escaped \" (- 1) end" (-2_i32)"#);
+	}
+
+	#[rstest]
+	fn normalize_unary_minus_preserves_raw_string_contents() {
+		// Arrange
+		let input = r##"r#"raw (- 1) content"# (- 3_u8)"##;
+
+		// Act
+		let result = normalize_unary_minus(input);
+
+		// Assert
+		assert_eq!(result, r##"r#"raw (- 1) content"# (-3_u8)"##);
+	}
+
+	#[rstest]
+	fn normalize_unary_minus_preserves_raw_string_no_hashes() {
+		// Arrange
+		let input = r#"r"raw (- 1) here" (- 4_i64)"#;
+
+		// Act
+		let result = normalize_unary_minus(input);
+
+		// Assert
+		assert_eq!(result, r#"r"raw (- 1) here" (-4_i64)"#);
 	}
 }
