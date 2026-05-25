@@ -1,4 +1,4 @@
-// FIXME: make .logger() return type uniform
+// The native and wasm modules expose different logger() return types.
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {

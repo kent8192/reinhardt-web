@@ -121,7 +121,7 @@ mod native {
 
         #[inline]
         pub fn is_extra(&self) -> bool {
-            self.inner.is_named()
+            self.inner.is_extra()
         }
 
         #[inline]
@@ -227,6 +227,7 @@ mod native {
         }
 
         #[inline]
+        // Mirrors upstream tree-sitter API naming convention.
         #[allow(clippy::wrong_self_convention)]
         pub fn to_sexp(&self) -> Cow<'_, str> {
             self.inner.to_sexp().into()
@@ -542,6 +543,7 @@ mod wasm {
 
         // FIXME: check that this is correct
         #[inline]
+        // Mirrors upstream tree-sitter API naming convention.
         #[allow(clippy::wrong_self_convention)]
         pub fn to_sexp(&self) -> Cow<str> {
             From::<String>::from(self.inner.to_string().into())

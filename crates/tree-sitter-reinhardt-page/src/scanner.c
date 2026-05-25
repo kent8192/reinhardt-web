@@ -62,13 +62,14 @@ static bool scan_line_comment_after_slash(TSLexer *lexer) {
 static bool scan_block_comment_after_slash(TSLexer *lexer) {
 	bool saw_star = false;
 	while (lexer->lookahead != 0) {
-		lexer->advance(lexer, false);
-		if (saw_star && lexer->lookahead == '/') {
+		int32_t curr = lexer->lookahead;
+		if (saw_star && curr == '/') {
 			lexer->advance(lexer, false);
 			lexer->mark_end(lexer);
 			return true;
 		}
-		saw_star = lexer->lookahead == '*';
+		saw_star = (curr == '*');
+		lexer->advance(lexer, false);
 	}
 	return false;
 }

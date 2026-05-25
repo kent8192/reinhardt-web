@@ -451,7 +451,12 @@ fn line<'a>(content: &'a str, starts: &[usize], line_index: usize) -> &'a str {
 }
 
 fn marker_matches(line: &str, compact_marker: &str) -> bool {
-	line.chars()
+	let trimmed = line.trim_start();
+	if !trimmed.starts_with("//") {
+		return false;
+	}
+	trimmed
+		.chars()
 		.filter(|ch| !ch.is_whitespace())
 		.collect::<String>()
 		.contains(compact_marker)
@@ -485,7 +490,7 @@ mod tests {
 
 		assert!(result.content.contains("page!(|| {"));
 		assert!(result.content.contains("\n\t\tdiv {"));
-		assert!(result.skipped.is_none());
+		assert_eq!(result.skipped, None);
 	}
 
 	#[test]

@@ -15,9 +15,9 @@ code style and, potentially, the convenience of using a single formatter
 tool, across multiple languages over their codebases, each with
 comparable styles applied.
 
-### [&raquo; :book: Read the Topiary Book][topiary:book]
-### [&raquo; :computer: Topiary website][topiary:website]
-### [&raquo; :deciduous_tree: Topiary playground][topiary:playground]
+## [&raquo; :book: Read the Topiary Book][topiary:book]
+## [&raquo; :computer: Topiary website][topiary:website]
+## [&raquo; :deciduous_tree: Topiary playground][topiary:playground]
 
 <!-- Links -->
 [ci:badge]: https://img.shields.io/github/actions/workflow/status/tweag/topiary/ci.yml?style=for-the-badge&logo=github
