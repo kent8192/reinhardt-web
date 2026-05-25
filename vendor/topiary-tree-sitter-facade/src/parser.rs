@@ -198,7 +198,7 @@ mod wasm {
             old_tree: Option<&Tree>,
         ) -> Result<Option<Tree>, ParserError> {
             let text = text.as_ref();
-            let text = unsafe { std::str::from_utf8_unchecked(text) };
+            let text = std::str::from_utf8(text).expect("parse input must be valid UTF-8");
             let text = &text.into();
             let old_tree = old_tree.map(|tree| &tree.inner);
             let options = Some(&self.options);
@@ -243,7 +243,8 @@ mod wasm {
                     let start_point = start_point.map(Into::into);
                     let result = callback(start_index, start_point, end_index);
                     let result = result.as_ref();
-                    let result = unsafe { std::str::from_utf8_unchecked(result) };
+                    let result =
+                        std::str::from_utf8(result).expect("callback output must be valid UTF-8");
                     Some(result.into())
                 },
             )

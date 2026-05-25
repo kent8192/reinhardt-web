@@ -126,7 +126,7 @@ mod wasm {
         #[inline]
         pub fn field_id_for_name(&self, field_name: impl AsRef<[u8]>) -> Option<u16> {
             let field_name = field_name.as_ref();
-            let field_name = unsafe { std::str::from_utf8_unchecked(field_name) };
+            let field_name = std::str::from_utf8(field_name).ok()?;
             self.inner.field_id_for_name(field_name)
         }
 

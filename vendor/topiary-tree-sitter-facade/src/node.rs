@@ -321,7 +321,7 @@ mod wasm {
         #[inline]
         pub fn child_by_field_name(&self, field_name: impl AsRef<[u8]>) -> Option<Self> {
             let field_name = field_name.as_ref();
-            let field_name = unsafe { std::str::from_utf8_unchecked(field_name) };
+            let field_name = std::str::from_utf8(field_name).ok()?;
             self.inner.child_for_field_name(field_name).map(Into::into)
         }
 
