@@ -430,9 +430,10 @@ mod wasm {
             self.kind_id() == u16::MAX
         }
 
+        // web-tree-sitter does not expose isExtra; return false as conservative default
         #[inline]
         pub fn is_extra(&self) -> bool {
-            unimplemented!()
+            false
         }
 
         #[inline]
