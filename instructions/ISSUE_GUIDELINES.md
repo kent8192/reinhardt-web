@@ -160,6 +160,7 @@ Issue titles MUST be:
 | `performance` | #fbca04 | Performance-related issues |
 | `ci-cd` | #2cbe4e | CI/CD workflow issues |
 | `security` | #ee0701 | Security vulnerabilities or concerns |
+| `breaking-change` | #ededed | Breaking changes that require migration |
 
 ### IL-2 (SHOULD): Apply Priority and Scope Labels
 
@@ -538,6 +539,7 @@ https://github.com/kent8192/reinhardt-web/security/advisories
 - Be specific in issue titles (max 72 characters)
 - Apply `agent-suspect` label to all agent-detected bug issues
 - Verify agent-detected bugs independently before removing `agent-suspect` label
+- Apply `breaking-change` label when an issue involves breaking changes
 
 ### ❌ NEVER DO
 
