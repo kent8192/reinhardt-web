@@ -32,8 +32,7 @@ use syn::{
 use crate::{
 	ComponentInvocationForm, NamedSlot, PageAttr, PageBody, PageComponent, PageComponentArg,
 	PageElement, PageElse, PageEvent, PageExpression, PageFor, PageIf, PageMacro, PageNode,
-	PageParam, PageText,
-	PageWatch,
+	PageParam, PageText, PageWatch,
 };
 
 /// Parses a `page!` macro invocation into an untyped AST.
@@ -478,12 +477,12 @@ fn parse_for_node(input: ParseStream) -> Result<PageNode> {
 	braced!(content in input);
 	let body = parse_nodes(&content)?;
 
-	Ok(PageNode::For(PageFor {
+	Ok(PageNode::For(Box::new(PageFor {
 		pat,
 		iter,
 		body,
 		span,
-	}))
+	})))
 }
 
 /// Parses a watch node: `watch { expr }`
@@ -580,9 +579,7 @@ fn slot_name_to_snake_case(name: &str) -> String {
 	}
 	result
 }
-fn parse_component_body(
-	input: ParseStream,
-) -> Result<(Option<Vec<PageNode>>, Vec<NamedSlot>)> {
+fn parse_component_body(input: ParseStream) -> Result<(Option<Vec<PageNode>>, Vec<NamedSlot>)> {
 	let mut default_children: Vec<PageNode> = Vec::new();
 	let mut named_slots: Vec<NamedSlot> = Vec::new();
 
@@ -610,7 +607,11 @@ fn parse_component_body(
 			braced!(content in input);
 			let children = parse_nodes(&content)?;
 
-			named_slots.push(NamedSlot { name, children, span });
+			named_slots.push(NamedSlot {
+				name,
+				children,
+				span,
+			});
 		} else {
 			default_children.push(parse_node(input)?);
 		}

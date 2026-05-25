@@ -55,7 +55,7 @@ pub enum TypedPageNode {
 	/// Conditional rendering
 	If(TypedPageIf),
 	/// List rendering
-	For(TypedPageFor),
+	For(Box<TypedPageFor>),
 	/// A component call with typed children
 	Component(TypedPageComponent),
 	/// Reactive watch block
@@ -204,12 +204,12 @@ pub struct TypedPageWatch {
 /// after transforming the slot's children from untyped to typed AST nodes.
 #[derive(Debug)]
 pub struct TypedNamedSlot {
-    /// Slot name without the `$` prefix
-    pub name: Ident,
-    /// Validated child nodes inside the slot
-    pub children: Vec<TypedPageNode>,
-    /// Span for error reporting
-    pub span: Span,
+	/// Slot name without the `$` prefix
+	pub name: Ident,
+	/// Validated child nodes inside the slot
+	pub children: Vec<TypedPageNode>,
+	/// Span for error reporting
+	pub span: Span,
 }
 
 /// Typed component call node.

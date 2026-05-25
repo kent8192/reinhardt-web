@@ -2,6 +2,9 @@
 //!
 //! Starts the development server.
 
+// Uses deprecated Settings type; retained for backward compatibility until migration is complete.
+#![allow(deprecated)]
+
 use clap::Parser;
 use colored::Colorize;
 use http_body_util::Full;
@@ -31,10 +34,18 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 
-use reinhardt_conf::settings::core_settings::CoreSettings;
 use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::core_settings::CoreSettings;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+
+#[cfg(feature = "routers")]
+use {
+	http_body_util::{BodyExt, Limited},
+	reinhardt_commands::auto_register_router,
+	reinhardt_http::Handler,
+	reinhardt_urls::routers::get_router,
+};
 
 /// Settings bundle needed by the runserver command.
 struct RunServerSettings {
@@ -254,7 +265,8 @@ fn load_settings() -> RunServerSettings {
 		Ok(merged_settings) => {
 			let static_url: String = merged_settings.get_or("static_url", "/static/".to_string());
 			let static_root: Option<PathBuf> = merged_settings.get("static_root").ok().flatten();
-			let staticfiles_dirs: Vec<PathBuf> = merged_settings.get_or("staticfiles_dirs", Vec::new());
+			let staticfiles_dirs: Vec<PathBuf> =
+				merged_settings.get_or("staticfiles_dirs", Vec::new());
 			match merged_settings.into_typed::<CoreSettings>() {
 				Ok(core) => {
 					println!(
@@ -272,15 +284,16 @@ fn load_settings() -> RunServerSettings {
 						staticfiles_dirs,
 					}
 				}
-			Err(e) => {
-				eprintln!(
-					"{}",
-					format!("Warning: Failed to parse settings: {}. Using defaults.", e).yellow()
-				);
-				RunServerSettings::default()
+				Err(e) => {
+					eprintln!(
+						"{}",
+						format!("Warning: Failed to parse settings: {}. Using defaults.", e)
+							.yellow()
+					);
+					RunServerSettings::default()
+				}
 			}
-			}
-		},
+		}
 		Err(e) => {
 			eprintln!(
 				"{}",
@@ -291,19 +304,88 @@ fn load_settings() -> RunServerSettings {
 	}
 }
 
+#[cfg(feature = "routers")]
+async fn dispatch_through_router(
+	req: hyper::Request<hyper::body::Incoming>,
+	remote_addr: std::net::SocketAddr,
+) -> Option<hyper::Response<Full<Bytes>>> {
+	const MAX_BODY: usize = 10 * 1024 * 1024; // 10 MiB
+	let router = get_router()?;
+
+	let (parts, body) = req.into_parts();
+	let body_bytes = match Limited::new(body, MAX_BODY).collect().await {
+		Ok(collected) => collected.to_bytes(),
+		Err(_) => {
+			return Some(
+				hyper::Response::builder()
+					.status(StatusCode::PAYLOAD_TOO_LARGE)
+					.header("Content-Type", "text/plain; charset=utf-8")
+					.body(Full::new(Bytes::from("Request body exceeds 10 MiB")))
+					.expect("failed to build 413 response"),
+			);
+		}
+	};
+	let request = match reinhardt_http::Request::builder()
+		.method(parts.method)
+		.uri(parts.uri)
+		.version(parts.version)
+		.headers(parts.headers)
+		.body(body_bytes)
+		.remote_addr(remote_addr)
+		.build()
+	{
+		Ok(r) => r,
+		Err(e) => {
+			eprintln!(
+				"{}",
+				format!("Warning: Failed to build router request: {}.", e).yellow()
+			);
+			return None;
+		}
+	};
+
+	match router.handle(request).await {
+		Ok(response) => convert_to_hyper_response(response),
+		Err(e) => convert_to_hyper_response(reinhardt_http::Response::from(e)),
+	}
+}
+
+#[cfg(feature = "routers")]
+fn convert_to_hyper_response(
+	response: reinhardt_http::Response,
+) -> Option<hyper::Response<Full<Bytes>>> {
+	if response.status == hyper::StatusCode::NOT_FOUND {
+		return None;
+	}
+	let mut hyper_resp = hyper::Response::builder().status(response.status);
+	for (key, value) in response.headers.iter() {
+		hyper_resp = hyper_resp.header(key, value);
+	}
+	hyper_resp.body(Full::new(response.body)).ok()
+}
+
 async fn handle_request(
 	req: Request<Incoming>,
 	settings: Arc<RunServerSettings>,
 	spa_index: Option<Arc<PathBuf>>,
+	remote_addr: SocketAddr,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-	let path = req.uri().path();
+	let path = req.uri().path().to_string();
+
+	// Route dispatch through registered ServerRouter
+	#[cfg(feature = "routers")]
+	{
+		if let Some(response) = dispatch_through_router(req, remote_addr).await {
+			return Ok(response);
+		}
+	}
 
 	// Serve static files in debug mode from staticfiles_dirs
 	if settings.debug && path.starts_with(&settings.static_url) {
 		// Strip static_url prefix to get relative path
 		let relative_path = match path.strip_prefix(&settings.static_url) {
 			Some(p) => p,
-			None => path,
+			None => path.as_str(),
 		};
 		let relative_path = relative_path.trim_start_matches('/');
 
@@ -795,6 +877,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		println!("{}", "collectstatic skipped (--no-collectstatic)".dimmed());
 	}
 
+	// Phase 3: Register HTTP routes from #[routes] inventory
+	#[cfg(feature = "routers")]
+	auto_register_router().await?;
+
 	// Detect SPA index.html for client-side routing fallback
 	let spa_index = resolve_spa_index(&settings).map(Arc::new);
 	if spa_index.is_some() {
@@ -885,7 +971,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	// Accept connections in a loop
 	loop {
-		let (stream, _) = listener.accept().await?;
+		let (stream, peer_addr) = listener.accept().await?;
 
 		if let Some(ref acceptor) = tls_acceptor {
 			// HTTPS connection
@@ -902,7 +988,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 								service_fn(move |req| {
 									let settings = Arc::clone(&settings_clone);
 									let spa = spa_clone.clone();
-									async move { handle_request(req, settings, spa).await }
+									async move { handle_request(req, settings, spa, peer_addr).await }
 								}),
 							)
 							.await
@@ -927,7 +1013,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 						service_fn(move |req| {
 							let settings = Arc::clone(&settings_clone);
 							let spa = spa_clone.clone();
-							async move { handle_request(req, settings, spa).await }
+							async move { handle_request(req, settings, spa, peer_addr).await }
 						}),
 					)
 					.await

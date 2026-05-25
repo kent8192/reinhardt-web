@@ -36,8 +36,8 @@ use syn::{Expr, Result};
 
 use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
-	PageIf, PageMacro, PageNode, PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent,
-	TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedNamedSlot,
+	PageIf, PageMacro, PageNode, PageWatch, TypedNamedSlot, TypedPageAttr, TypedPageBody,
+	TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
 	TypedPageNode, TypedPageWatch, types::AttrValue,
 };
 
@@ -463,9 +463,7 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 				// A bare path like `name` becomes `{name}`; anything else falls
 				// back to a generic `{expr}` placeholder.
 				let suggestion = match &expr.expr {
-					Expr::Path(ep)
-						if ep.qself.is_none() && ep.path.segments.len() == 1 =>
-					{
+					Expr::Path(ep) if ep.qself.is_none() && ep.path.segments.len() == 1 => {
 						format!("{{{}}}", ep.path.segments[0].ident)
 					}
 					_ => "{expr}".to_string(),
@@ -485,7 +483,10 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 			Ok(TypedPageNode::Expression(expr.clone()))
 		}
 		PageNode::If(if_node) => Ok(TypedPageNode::If(transform_if(if_node, parent_tags)?)),
-		PageNode::For(for_node) => Ok(TypedPageNode::For(transform_for(for_node, parent_tags)?)),
+		PageNode::For(for_node) => Ok(TypedPageNode::For(Box::new(transform_for(
+			for_node,
+			parent_tags,
+		)?))),
 		PageNode::Component(comp) => Ok(TypedPageNode::Component(transform_component(
 			comp,
 			parent_tags,

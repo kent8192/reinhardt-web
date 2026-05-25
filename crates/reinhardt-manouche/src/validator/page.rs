@@ -16,9 +16,9 @@ use syn::{Expr, Result};
 
 use crate::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageFor, PageIf,
-	PageMacro, PageNode, PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent,
-	TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
-	TypedNamedSlot, TypedPageNode, TypedPageWatch, types::AttrValue,
+	PageMacro, PageNode, PageWatch, TypedNamedSlot, TypedPageAttr, TypedPageBody,
+	TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
+	TypedPageNode, TypedPageWatch, types::AttrValue,
 };
 
 /// Validates and transforms the entire PageMacro AST into a typed AST.
@@ -86,7 +86,10 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 		PageNode::Text(text) => Ok(TypedPageNode::Text(text.clone())),
 		PageNode::Expression(expr) => Ok(TypedPageNode::Expression(expr.clone())),
 		PageNode::If(if_node) => Ok(TypedPageNode::If(transform_if(if_node, parent_tags)?)),
-		PageNode::For(for_node) => Ok(TypedPageNode::For(transform_for(for_node, parent_tags)?)),
+		PageNode::For(for_node) => Ok(TypedPageNode::For(Box::new(transform_for(
+			for_node,
+			parent_tags,
+		)?))),
 		PageNode::Component(comp) => Ok(TypedPageNode::Component(transform_component(
 			comp,
 			parent_tags,

@@ -13,9 +13,8 @@
 - Understand that Plan Mode approval authorizes both implementation and commits
 - Treat the Autonomous Operation Policy (Reinhardt family) as a standing exception that allows commit and push on any non-protected branch (anything other than `main`/`master`/`develop/*`/`release/*`), Draft PR creation, Draft→Ready conversion (implementation-complete only — no CI requirement), and Issue creation without further confirmation
 - When editing `CLAUDE.md` or `AGENTS.md`, mirror the change into the other file in the same commit (sync policy)
-- **MUST** convert Draft PRs to Ready for Review **immediately** once the implementation is complete (CI completion is NOT required) — leaving a PR in Draft state after implementation completion is forbidden (see instructions/PR_GUIDELINE.md § PC-4a)
+- Convert Draft PRs to Ready for Review autonomously once the implementation is complete (CI completion is NOT required under the Autonomous Operation Policy) OR upon explicit user instruction (see instructions/PR_GUIDELINE.md § PC-4a)
 - Mark placeholders with `todo!()` or `// TODO:`
-- Delete deprecated code entirely — never use `#[cfg(any())]` as a hiding mechanism
 - Use `#[serial(group_name)]` for global state tests
 - Split commits by specific intent, not features
 - Follow Conventional Commits v1.0.0 format: `<type>[scope]: <description>`
@@ -63,6 +62,7 @@
 - Use `issue-XXXX-to-YYYY` for consecutive issue ranges and `and` for multiple ranges in branch names
 - Check known CI failure patterns before deep investigation
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
+- Run `cargo make semver-check` locally and post the output as a PR comment with the `<!-- local-semver-check -->` marker before converting Draft → Ready on any PR touching public API (see instructions/PR_GUIDELINE.md § RP-1a)
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
@@ -85,22 +85,18 @@
 - Create upstream issue before implementing any workaround for external dependency bugs (WP-2)
 - Include the ideal implementation as a comment when introducing workaround code (WP-3)
 - Create a tracking issue in reinhardt-web for every upstream dependency issue with `upstream-tracking` label (UR-4)
-- When removing deprecated APIs, DELETE the code and update all callers — never use `#[cfg(any())]` or other conditional compilation gates to preserve dead code
 - Apply `good first issue` only when all GFI-1 criteria are met (single crate, ≤3 files, unambiguous fix)
 - Ensure issue description has file paths, expected behavior, and verification steps before applying `good first issue` (GFI-4)
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
 - Commit without user instruction (except Plan Mode approval or the Autonomous Operation Policy for Reinhardt-family repos)
-- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — direct commits and pushes to protected branches are NEVER allowed; changes must go through Pull Requests from non-protected branches
-- Commit directly to a protected branch (`main`, `master`, `develop/*`, `release/*`) — all changes to protected branches MUST go through feature/fix/docs branches and Pull Requests
+- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — even under the Autonomous Operation Policy these require explicit user authorization
 - Force-push, rebase-and-push, or otherwise rewrite history without explicit user authorization (the Autonomous Operation Policy does NOT cover history-rewriting pushes)
 - Close, merge, or delete PRs / Issues / comments without explicit user authorization (autonomy covers creation only, not destruction)
 - Create release tags or any PR with the `release` label without explicit user authorization
 - Commit a change that touches only `CLAUDE.md` or only `AGENTS.md` without mirroring it into the other
 - Convert Draft PRs to Ready for Review when implementation is incomplete, without explicit user override
-- Leave a PR in Draft state after the implementation is complete (MUST convert to Ready for Review immediately; the agent MUST NOT wait for CI completion)
-- Use `#[cfg(any())]` instead of deleting deprecated APIs — always delete dead code, never cfg-gate it
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
 - Save files to project directory (use `/tmp`)
@@ -111,7 +107,6 @@
 - Create circular dependencies
 - Leave unmarked placeholder implementations
 - Use `#[allow(...)]` without explanatory comments
-- Use `#[cfg(any())]` or similar conditional compilation hacks to "soft-delete" deprecated APIs (delete the code and update callers)
 - Use alternative TODO notations (`FIXME:`, `NOTE:` for unimplemented features)
 - Create batch commits without user confirmation
 - Use relative paths beyond `../`
@@ -120,7 +115,7 @@
 - Skip reviewing Release PRs before merging
 - Use `reinhardt-test = { workspace = true }` in functional crate `[dev-dependencies]` (workspace deps include version, causing publish failures; use optional dep or path-only dev-dep instead)
 - Omit `version` field from `reinhardt-test` workspace dependency (causes publish failure for dependents)
-- Change `pr_branch_prefix` from `"release-plz-"` (breaks two-step release workflow)
+- Change `pr_branch_prefix` from `"release-plz-"` on `main` (breaks two-step release workflow); on `develop/*` the prefix MUST be `"develop-release-plz-"` to prevent cross-branch PR closure
 - Merge Release PR without rolling back unpublished crate versions after partial release failure
 - Write vague commit descriptions that are unclear as CHANGELOG entries (e.g., "fix issue", "update code")
 - Start commit description with uppercase letter
@@ -157,6 +152,8 @@
 - Create branches without checking for name conflicts
 - Use hyphens between issue numbers for ranges in branch names (use `to` and `and` instead)
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
+- Convert a Draft PR to Ready for Review on a PR touching public API without first running `cargo make semver-check` locally and posting the result to the PR with the `<!-- local-semver-check -->` marker
+- Create duplicate `<!-- local-semver-check -->` comments on re-runs (update the existing marked comment instead)
 - Merge develop/* branches into main without `migration-approved` label and CI version validation
 - Remove `agent-suspect` label without independent verification (separate agent or human)
 - Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)

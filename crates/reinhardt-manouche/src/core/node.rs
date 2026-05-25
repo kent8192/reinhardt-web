@@ -129,7 +129,7 @@ pub enum PageNode {
 	/// Conditional rendering (e.g., `if condition { ... }`)
 	If(PageIf),
 	/// List rendering (e.g., `for item in items { ... }`)
-	For(PageFor),
+	For(Box<PageFor>),
 	/// A component call (e.g., `MyButton(label: "Click")`)
 	Component(PageComponent),
 	/// Reactive watch block (e.g., `watch { if signal.get() { ... } }`)
@@ -416,12 +416,12 @@ pub enum ComponentInvocationForm {
 /// ```
 #[derive(Debug, Clone)]
 pub struct NamedSlot {
-    /// Slot name without the `$` prefix (e.g., "header", "body")
-    pub name: Ident,
-    /// Child nodes inside the slot
-    pub children: Vec<PageNode>,
-    /// Span for error reporting
-    pub span: Span,
+	/// Slot name without the `$` prefix (e.g., "header", "body")
+	pub name: Ident,
+	/// Child nodes inside the slot
+	pub children: Vec<PageNode>,
+	/// Span for error reporting
+	pub span: Span,
 }
 
 /// A component call node.
@@ -572,7 +572,10 @@ mod tests {
 		};
 
 		// Act + Assert
-		assert!(matches!(comp.invocation_form, ComponentInvocationForm::Brace));
+		assert!(matches!(
+			comp.invocation_form,
+			ComponentInvocationForm::Brace
+		));
 		assert!(comp.events.is_empty());
 		assert_eq!(comp.name.to_string(), "Card");
 	}
