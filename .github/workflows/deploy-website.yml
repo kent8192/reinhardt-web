@@ -35,7 +35,7 @@ jobs:
   determine-runner:
     name: Determine Runner
     timeout-minutes: 360
-    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
+    runs-on: ubuntu-latest
     outputs:
       runner: ${{ steps.set-runner.outputs.runner }}
     steps:
@@ -75,8 +75,6 @@ jobs:
                 USE_MAC=true
               fi
             elif [[ "$EVENT_NAME" == "push" ]] && [[ "$ACTOR" == "$REPO_OWNER" ]]; then
-              USE_MAC=true
-            elif [[ "$EVENT_NAME" == "schedule" ]]; then
               USE_MAC=true
             fi
           fi
