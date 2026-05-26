@@ -230,7 +230,12 @@ stateDiagram-v2
 | Documentation | `documentation` | - |
 | Dependency updates | `dependencies` | - |
 | Release preparation | `release` | **CRITICAL** - See special notes below |
-| Breaking changes | `enhancement` + custom | Consider adding breaking change indicator |
+
+**Additional Labels (apply alongside the type label above):**
+
+| Condition | Additional Label | Note |
+|-----------|-----------------|------|
+| Breaking change | `breaking-change` | **MUST** apply *in addition to* the normal type label (e.g., `enhancement` + `breaking-change`) |
 
 **Common Labels:**
 
@@ -810,19 +815,23 @@ docs(readme): add installation instructions
 - Use GitHub MCP (`create_pull_request`) or `gh pr create` for creating PRs
 - Follow PR template structure from `.github/PULL_REQUEST_TEMPLATE.md`
 - Follow Conventional Commits format for titles
-- Include Summary, Type of Change, Motivation and Context, How Was This Tested, Checklist sections
+- Include Summary, Type of Change, Breaking Change Assessment, Motivation and Context, How Was This Tested, Checklist sections
 - Include Labels to Apply section with appropriate type and scope labels
 - Run all checks before **merging** (NOT before Draft → Ready conversion — § PC-4a mandates immediate Ready conversion)
 - Address all review comments
 - Ensure all CI checks pass before merge
 - Use three-dot diff (`main...branch`) for PR verification to exclude merge history noise
 - **MUST** convert Draft PRs to Ready for Review **immediately** once the implementation is complete (CI completion is NOT required), OR upon explicit user instruction (see § PC-4a)
+- Apply the `breaking-change` label to ALL breaking change PRs
+- Complete the "Breaking Change Assessment" section (Yes/No) on every PR
+- Fill the "Breaking Changes" section with migration guide when the assessment is "Yes"
 
 ### ❌ NEVER DO
 - Write PR titles or descriptions in non-English languages
 - Create PRs without following PR template structure from `.github/PULL_REQUEST_TEMPLATE.md`
 - Create PRs without proper description
-- Skip required sections (Summary, Type of Change, Motivation and Context, How Was This Tested, Checklist)
+- Skip required sections (Summary, Type of Change, Breaking Change Assessment, Motivation and Context, How Was This Tested, Checklist)
+- Submit a breaking change PR without the `breaking-change` label
 - Skip Labels to Apply section
 - Merge with failing CI checks
 - Leave unresolved review comments
