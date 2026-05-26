@@ -770,17 +770,21 @@ fn run_fmt(
 		let dsl_result = match formatter.format(&original_content) {
 			Ok(result) => {
 				if let Some(reason) = &result.skipped {
-					ignored_count += 1;
-					println!(
-						"{} {} {} ({})",
-						progress.bright_blue(),
-						"Ignored:".yellow(),
-						display_path(file_path),
-						reason
-					);
-					continue;
+					if !with_rustfmt {
+						ignored_count += 1;
+						println!(
+							"{} {} {} ({})",
+							progress.bright_blue(),
+							"Ignored:".yellow(),
+							display_path(file_path),
+							reason
+						);
+						continue;
+					}
+					original_content.clone()
+				} else {
+					result.content
 				}
-				result.content
 			}
 			Err(e) => {
 				eprintln!(
