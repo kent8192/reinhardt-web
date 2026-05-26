@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.2...reinhardt-openapi@v0.2.0-rc.2) - 2026-05-26
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.0-rc.30...reinhardt-openapi@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-openapi` as part of the
