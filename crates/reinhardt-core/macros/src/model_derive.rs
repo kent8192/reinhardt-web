@@ -59,6 +59,11 @@ struct ModelAttributesParsed {
 	/// Whether to generate Info companion struct (Issue #4194).
 	/// `None` means not specified (defaults to `true` in `ModelConfig`).
 	info: Option<bool>,
+	/// Whether the original model has `#[derive(serde::Serialize)]`.
+	/// Passed from the attribute macro since derive macros cannot see `#[derive()]`.
+	serde_serialize: bool,
+	/// Whether the original model has `#[derive(serde::Deserialize)]`.
+	serde_deserialize: bool,
 }
 
 /// Validate a raw SQL expression to reject dangerous patterns.
@@ -138,6 +143,10 @@ struct ModelConfig {
 	/// Whether to generate an `{Model}Info` companion struct (Issue #4194).
 	/// Defaults to `true`. Set `#[model(info = false)]` to opt out.
 	info: bool,
+	/// Whether the original model derives `serde::Serialize`.
+	serde_serialize: bool,
+	/// Whether the original model derives `serde::Deserialize`.
+	serde_deserialize: bool,
 }
 
 impl ModelConfig {
@@ -148,6 +157,8 @@ impl ModelConfig {
 		let mut constraints = Vec::new();
 		let mut manager: Option<syn::Path> = None;
 		let mut info: Option<bool> = None;
+		let mut serde_serialize = false;
+		let mut serde_deserialize = false;
 
 		for attr in attrs {
 			// Accept both #[model(...)] and #[model_config(...)] helper attributes
@@ -193,6 +204,12 @@ impl ModelConfig {
 			if let Some(i) = model_attr.info {
 				info = Some(i);
 			}
+			if model_attr.serde_serialize {
+				serde_serialize = true;
+			}
+			if model_attr.serde_deserialize {
+				serde_deserialize = true;
+			}
 		}
 
 		let table_name = table_name.ok_or_else(|| {
@@ -208,6 +225,8 @@ impl ModelConfig {
 			constraints,
 			manager,
 			info: info.unwrap_or(true),
+			serde_serialize,
+			serde_deserialize,
 		})
 	}
 
@@ -221,9 +240,31 @@ impl ModelConfig {
 		let mut unique_together = Vec::new();
 		let mut manager: Option<syn::Path> = None;
 		let mut info: Option<bool> = None;
+		let mut serde_serialize = false;
+		let mut serde_deserialize = false;
 
 		while !input.is_empty() {
 			let ident: Ident = input.parse()?;
+
+			// Bare flags (no `= value`)
+			if ident == "serde_serialize" {
+				serde_serialize = true;
+				if input.peek(Token![,]) {
+					input.parse::<Token![,]>()?;
+				} else {
+					break;
+				}
+				continue;
+			} else if ident == "serde_deserialize" {
+				serde_deserialize = true;
+				if input.peek(Token![,]) {
+					input.parse::<Token![,]>()?;
+				} else {
+					break;
+				}
+				continue;
+			}
+
 			input.parse::<Token![=]>()?;
 
 			if ident == "app_label" {
@@ -285,6 +326,8 @@ impl ModelConfig {
 			unique_together,
 			manager,
 			info,
+			serde_serialize,
+			serde_deserialize,
 		})
 	}
 
@@ -1744,6 +1787,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	make_fields_private(&mut input);
 
 	let struct_name = &input.ident;
+
 	let generics = &input.generics;
 	let where_clause = &generics.where_clause;
 
@@ -2154,7 +2198,8 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			generics,
 			&field_infos,
 			&fk_field_infos,
-			&input.attrs,
+			model_config.serde_serialize,
+			model_config.serde_deserialize,
 		)?
 	} else {
 		quote! {}
@@ -4767,7 +4812,8 @@ fn generate_info_struct(
 	generics: &syn::Generics,
 	field_infos: &[FieldInfo],
 	fk_field_infos: &[ForeignKeyFieldInfo],
-	input_attrs: &[syn::Attribute],
+	serde_serialize: bool,
+	serde_deserialize: bool,
 ) -> Result<TokenStream> {
 	let orm_crate = get_reinhardt_orm_crate();
 	let reinhardt = get_reinhardt_crate();
@@ -4806,15 +4852,15 @@ fn generate_info_struct(
 		})
 		.collect();
 
-	// Detect serde derives on the original model
-	let has_serialize = has_derive_trait(input_attrs, "Serialize");
-	let has_deserialize = has_derive_trait(input_attrs, "Deserialize");
-
+	// Propagate serde derives detected by the attribute macro via model_config flags.
+	// Derive macros cannot see #[derive()] attributes (stripped by rustc), so the
+	// attribute macro detects them and passes serde_serialize/serde_deserialize bare
+	// flags through #[model_config(...)].
 	let mut extra_derives = Vec::new();
-	if has_serialize {
+	if serde_serialize {
 		extra_derives.push(quote!(serde::Serialize));
 	}
-	if has_deserialize {
+	if serde_deserialize {
 		extra_derives.push(quote!(serde::Deserialize));
 	}
 
@@ -4825,9 +4871,7 @@ fn generate_info_struct(
 	};
 
 	// Conditionally add Validate/Schema derives if any field has validation
-	let has_any_validation = info_fields
-		.iter()
-		.any(|f| field_has_validation(&f.config));
+	let has_any_validation = info_fields.iter().any(|f| field_has_validation(&f.config));
 
 	let validate_derive = if has_any_validation {
 		quote! {
@@ -4970,6 +5014,9 @@ fn field_has_validation(config: &FieldConfig) -> bool {
 }
 
 /// Check if the input struct has a specific trait in its `#[derive(...)]` attributes.
+///
+/// In the Model derive macro, `DeriveInput.attrs` includes the merged
+/// `#[derive(Model, ...)]` attribute produced by the `#[model]` attribute macro.
 fn has_derive_trait(attrs: &[syn::Attribute], trait_name: &str) -> bool {
 	use syn::{Meta, Token, punctuated::Punctuated};
 
@@ -4980,9 +5027,10 @@ fn has_derive_trait(attrs: &[syn::Attribute], trait_name: &str) -> bool {
 		let Meta::List(list) = &attr.meta else {
 			continue;
 		};
-		if let Ok(derives) =
-			syn::parse::Parser::parse2(Punctuated::<syn::Path, Token![,]>::parse_terminated, list.tokens.clone())
-		{
+		if let Ok(derives) = syn::parse::Parser::parse2(
+			Punctuated::<syn::Path, Token![,]>::parse_terminated,
+			list.tokens.clone(),
+		) {
 			if derives
 				.iter()
 				.any(|p| p.segments.last().is_some_and(|seg| seg.ident == trait_name))

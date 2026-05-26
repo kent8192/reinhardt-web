@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 
 // --- Basic Info generation ---
 
-#[derive(Serialize, Deserialize)]
 #[model(app_label = "test", table_name = "persons")]
+#[derive(Serialize, Deserialize)]
 struct Person {
 	#[field(primary_key = true)]
 	id: Option<i64>,
@@ -97,7 +97,10 @@ fn test_info_debug_clone_partial_eq() {
 
 	// Assert — Debug
 	let debug = format!("{:?}", info);
-	assert_eq!(debug, "PersonInfo { id: Some(1), name: \"Alice\", age: Some(30) }");
+	assert_eq!(
+		debug,
+		"PersonInfo { id: Some(1), name: \"Alice\", age: Some(30) }"
+	);
 
 	// Assert — Clone
 	let cloned = info.clone();
