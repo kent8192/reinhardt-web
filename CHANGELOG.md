@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.2...reinhardt-web@v0.2.0-rc.2) - 2026-05-26
+
+### Added
+
+- *(storages)* [**breaking**] add #[non_exhaustive] to StorageError
+
+### Fixed
+
+- address CodeRabbit review comments
+- address remaining CodeRabbit comments
+- address Copilot review comments
+- address follow-up CodeRabbit comments
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* migrate integration tests from removed auth types
+- *(auth)* replace non-existent BackendError with DatabaseError in tests
+- *(auth)* address CodeRabbit review feedback
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(urls)* migrate reverse tests from removed panicking helpers to try_ variants
+- *(pages)* restore brace-form component invocation tests
+- *(templates)* restore breaking change dropdowns to issue templates
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(tests)* remove duplicate TestUser definition in mfa_integration
+- *(admin-cli)* restore Topiary formatter wiring from main
+- *(admin-cli)* run rustfmt on DSL-skipped files in fmt command
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+- include all main v0.1.1 PR changes
+- forward merge main v0.1.2 changes into develop 0.2.0
+
+### Other
+
+- resolve conflicts with develop/0.2.0
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+
 ## [0.1.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.1...reinhardt-web@v0.1.2) - 2026-05-25
 
 ### Documentation
