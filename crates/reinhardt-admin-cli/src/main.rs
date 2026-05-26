@@ -753,8 +753,11 @@ fn run_fmt(
 			))
 		})?;
 
-		// Check for file-wide ignore marker BEFORE any processing
-		if formatter.has_ignore_all_marker(&original_content) {
+		// Check for file-wide ignore marker BEFORE any processing.
+		// When with_rustfmt is enabled, skip only the DSL pass but still
+		// run rustfmt below so plain Rust formatting is applied.
+		let ignore_all = formatter.has_ignore_all_marker(&original_content);
+		if ignore_all && !with_rustfmt {
 			ignored_count += 1;
 			if verbosity > 0 {
 				println!(
@@ -767,35 +770,40 @@ fn run_fmt(
 			continue;
 		}
 
-		let dsl_result = match formatter.format(&original_content) {
-			Ok(result) => {
-				if let Some(reason) = &result.skipped {
-					if !with_rustfmt {
-						ignored_count += 1;
-						println!(
-							"{} {} {} ({})",
-							progress.bright_blue(),
-							"Ignored:".yellow(),
-							display_path(file_path),
-							reason
-						);
-						continue;
+		let dsl_result = if ignore_all {
+			// ignore-all with rustfmt: skip DSL pass, feed original to rustfmt
+			original_content.clone()
+		} else {
+			match formatter.format(&original_content) {
+				Ok(result) => {
+					if let Some(reason) = &result.skipped {
+						if !with_rustfmt {
+							ignored_count += 1;
+							println!(
+								"{} {} {} ({})",
+								progress.bright_blue(),
+								"Ignored:".yellow(),
+								display_path(file_path),
+								reason
+							);
+							continue;
+						}
+						original_content.clone()
+					} else {
+						result.content
 					}
-					original_content.clone()
-				} else {
-					result.content
 				}
-			}
-			Err(e) => {
-				eprintln!(
-					"{} {} {}: {}",
-					progress.bright_blue(),
-					"Error".red(),
-					display_path(file_path),
-					sanitize_error(&e.to_string())
-				);
-				error_count += 1;
-				continue;
+				Err(e) => {
+					eprintln!(
+						"{} {} {}: {}",
+						progress.bright_blue(),
+						"Error".red(),
+						display_path(file_path),
+						sanitize_error(&e.to_string())
+					);
+					error_count += 1;
+					continue;
+				}
 			}
 		};
 
