@@ -974,10 +974,6 @@ pub use reinhardt_middleware::CorsMiddleware;
 #[cfg(all(feature = "middleware-security", native))]
 pub use reinhardt_middleware::SecurityMiddleware;
 
-#[cfg(all(feature = "middleware-security", native))]
-#[allow(deprecated)] // SecurityConfig is deprecated but still re-exported for compatibility
-pub use reinhardt_middleware::SecurityConfig;
-
 // CSP middleware (available with any middleware feature)
 #[cfg(all(any(feature = "standard", feature = "middleware"), native))]
 pub use reinhardt_middleware::{CspConfig, CspMiddleware, CspNonce};
