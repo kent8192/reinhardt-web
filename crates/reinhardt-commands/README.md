@@ -434,8 +434,6 @@ subdirectories matching the built-in names:
 - `project_restful_template`
 - `app_pages_template`
 - `app_restful_template`
-- `app_pages_workspace_template`
-- `app_restful_workspace_template`
 
 Any file present in your override directory wins; any file absent falls back to
 the embedded copy. This lets you customise a single file without vendoring the

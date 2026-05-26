@@ -76,6 +76,7 @@ web-sys-full = [
 	"web-sys/HtmlFormElement",
 	"web-sys/HtmlTextAreaElement",
 	"web-sys/HtmlSelectElement",
+	"web-sys/HtmlOptionElement",
 	"web-sys/DomTokenList",
 	"web-sys/NamedNodeMap",
 	"web-sys/Attr",

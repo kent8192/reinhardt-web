@@ -7,6 +7,7 @@ pub type Result<T> = std::result::Result<T, StorageError>;
 
 /// Error types that can occur during storage operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum StorageError {
 	/// The requested file or resource was not found.
 	#[error("File not found: {0}")]
