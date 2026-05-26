@@ -167,10 +167,10 @@ pub fn parse_server_error_message(raw: &str) -> String {
 		}
 	}
 	// 2b. Handle "Server error (NNN): " format
-	if let Some(rest) = raw.strip_prefix("Server error (") {
-		if let Some(idx) = rest.find("): ") {
-			return unwrap_nested_or_raw(&rest[idx + 3..]);
-		}
+	if let Some(rest) = raw.strip_prefix("Server error (")
+		&& let Some(idx) = rest.find("): ")
+	{
+		return unwrap_nested_or_raw(&rest[idx + 3..]);
 	}
 	// 3. Fallback: return unchanged
 	raw.to_string()
@@ -198,7 +198,10 @@ mod tests {
 
 		// Assert
 		assert!(matches!(network_err, ServerFnError::Network(_)));
-		assert!(matches!(server_err, ServerFnError::Server { status: 404, .. }));
+		assert!(matches!(
+			server_err,
+			ServerFnError::Server { status: 404, .. }
+		));
 	}
 
 	#[rstest]
@@ -251,18 +254,9 @@ mod tests {
 	}
 
 	#[rstest]
-	#[case::application(
-		r#"{"Application":"Invalid choice_id"}"#,
-		"Invalid choice_id"
-	)]
-	#[case::server(
-		r#"{"Server":{"status":403,"message":"Forbidden"}}"#,
-		"Forbidden"
-	)]
-	#[case::network(
-		r#"{"Network":"Connection timeout"}"#,
-		"Connection timeout"
-	)]
+	#[case::application(r#"{"Application":"Invalid choice_id"}"#, "Invalid choice_id")]
+	#[case::server(r#"{"Server":{"status":403,"message":"Forbidden"}}"#, "Forbidden")]
+	#[case::network(r#"{"Network":"Connection timeout"}"#, "Connection timeout")]
 	fn test_parse_server_error_message_from_json(#[case] json: &str, #[case] expected: &str) {
 		// Act
 		let msg = parse_server_error_message(json);
