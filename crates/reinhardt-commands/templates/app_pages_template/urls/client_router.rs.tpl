@@ -16,7 +16,7 @@
 //!
 //! ```rust,ignore
 //! use reinhardt::ClientPath;
-//! use crate::apps::{{ app_name }}::client::pages;
+{% if is_workspace == "true" %}//! use crate::client::pages;{% else %}//! use crate::apps::{{ app_name }}::client::pages;{% endif %}
 //!
 //! ClientRouter::new()
 //!     .named_route("placeholder", "/", pages::placeholder_page)
@@ -29,7 +29,7 @@
 use reinhardt::ClientRouter;
 use reinhardt::url_patterns;
 
-use crate::config::apps::InstalledApp;
+{% if is_workspace == "true" %}use {{ project_crate_name }}::config::apps::InstalledApp;{% else %}use crate::config::apps::InstalledApp;{% endif %}
 
 #[url_patterns(InstalledApp::{{ app_name }}, mode = client)]
 pub fn client_url_patterns() -> ClientRouter {

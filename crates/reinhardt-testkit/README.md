@@ -13,10 +13,8 @@ Core testing infrastructure for the Reinhardt framework.
 ```rust,no_run
 use reinhardt_testkit::with_di_overrides;
 use rstest::*;
-use serial_test::serial;
 
 #[rstest]
-#[serial(di_registry)]
 #[tokio::test]
 async fn example() {
     let (ctx, _di) = with_di_overrides! {

@@ -15,8 +15,10 @@ use crate::registry::{DependencyRegistry, DependencyScope, FactoryTrait};
 /// alive the override is active; when it is dropped the previous factory and
 /// scope are restored (or the entry is removed entirely if there was none).
 ///
-/// Tests using this guard must run inside the `#[serial(di_registry)]` group
-/// because the global registry is mutated.
+/// When used with a per-context registry (via
+/// `InjectionContextBuilder::with_registry`), `#[serial(di_registry)]` is
+/// not required. When used with the global registry,
+/// `#[serial(di_registry)]` is still required.
 pub struct OverrideGuard {
 	pub(crate) type_id: TypeId,
 	pub(crate) previous: Option<(Box<dyn FactoryTrait>, DependencyScope)>,
