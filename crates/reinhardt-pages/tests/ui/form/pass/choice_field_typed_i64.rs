@@ -8,7 +8,7 @@ fn main() {
 		action: "/api/choice",
 
 		fields: {
-			choice_id: ChoiceField {
+			choice_id: ChoiceField<i64> {
 				required,
 				choices_from: "choices",
 				choice_value: "id",
