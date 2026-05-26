@@ -138,6 +138,64 @@ let choice = Choice::build()
 
 ## Quick Reference
 
+### MU-4 (SHOULD): Use Info Companion Type for Cross-Layer Data Transfer
+
+The `#[model]` macro automatically generates a `{Model}Info` companion struct — a plain data carrier with all non-ORM fields, `pub` visibility, and bidirectional `From` conversions.
+
+**Generated for every model by default.** Opt out with `#[model(info = false)]`.
+
+```rust
+#[model(app_label = "blog", table_name = "posts")]
+struct Post {
+    #[field(primary_key = true)]
+    id: Option<i64>,
+    #[field(max_length = 255)]
+    title: String,
+    #[field(skip_info = true)]
+    internal_cache: String,
+    #[rel(foreign_key, related_name = "posts")]
+    author: ForeignKeyField<Author>,
+}
+
+// Auto-generated: PostInfo { id, title, author_id }
+// From<Post> for PostInfo ✓
+// From<PostInfo> for Post ✓
+```
+
+**Field inclusion rules:**
+- Regular data fields: included
+- FK `_id` fields (auto-generated): included (carry actual FK values)
+- Relationship marker types (`ForeignKeyField`, `OneToOneField`, `ManyToManyField`): excluded
+- `#[field(skip = true)]` or `#[field(skip_info = true)]` fields: excluded
+
+**Builder with `IntoPrimaryKey` support:**
+```rust
+let info = PostInfo::build()
+    .id(Some(1))
+    .title("Hello")
+    .author_id(&author)  // accepts &Author via IntoPrimaryKey
+    .finish();
+
+let info = PostInfo::build()
+    .id(Some(1))
+    .title("Hello")
+    .author_id(author_uuid)  // also accepts raw PK value
+    .finish();
+```
+
+**Validation auto-generation:**
+Validation attributes are derived from `#[field(...)]` config and emitted as `#[cfg_attr(native, validate(...))]`:
+
+| `#[field(...)]` | Generated validation |
+|---|---|
+| `max_length = N` | `validate(length(max = N))` |
+| `min_length = M` | `validate(length(min = M))` |
+| `email = true` | `validate(email)` |
+| `url = true` | `validate(url)` |
+| `min_value = M` / `max_value = N` | `validate(range(min = M, max = N))` |
+
+---
+
 ### ✅ MUST DO
 - Initialize `#[model(...)]` structs via the macro-generated `new(...)` or `build()` constructor
 - Add unrelated derives (e.g., `Debug`, `Clone`) via a separate `#[derive(...)]`
@@ -146,6 +204,9 @@ let choice = Choice::build()
 - Use `#[model(...)]` alone (do not also write `#[derive(Model)]`) — the attribute applies the derive for you
 - Prefer `Model::build()` over `Model::new(...)` in tutorials, examples, and call sites where the model schema is expected to evolve (MU-3)
 - Pass FK values via `.<related>(&model)` in `build()` setters when the related instance is already in scope (composes with #4398)
+- Use `{Model}Info` for API DTOs and cross-layer data transfer instead of hand-writing parallel structs (MU-4)
+- Use `#[field(skip_info = true)]` to exclude sensitive fields (e.g., password hashes) from the Info struct
+- Use `#[model(info = false)]` only when the Info struct would be genuinely unused
 
 ### ❌ NEVER DO
 - Initialize `#[model(...)]` structs via struct-literal syntax in production code (use `new(...)` or `build()`)

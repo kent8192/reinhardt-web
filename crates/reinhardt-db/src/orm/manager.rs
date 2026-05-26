@@ -1603,6 +1603,7 @@ mod tests {
 	use crate::orm::FieldSelector;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
+	use super::Manager;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
@@ -1637,6 +1638,7 @@ mod tests {
 	impl Model for TestUser {
 		type PrimaryKey = i64;
 		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"test_user"

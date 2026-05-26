@@ -33,6 +33,7 @@ use reinhardt_db::orm::{Field, Model};
 /// # impl Model for Post {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = PostFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "posts" }
 /// #     fn new_fields() -> Self::Fields { PostFields }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }

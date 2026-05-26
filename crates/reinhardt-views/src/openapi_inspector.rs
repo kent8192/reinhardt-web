@@ -37,6 +37,7 @@ use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key(&self) -> Option<i64> { self.id }
 /// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
@@ -130,6 +131,7 @@ impl ViewSetInspector {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn primary_key(&self) -> Option<i64> { self.id }
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
@@ -267,6 +269,7 @@ impl ViewSetInspector {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn primary_key(&self) -> Option<i64> { self.id }
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
@@ -745,6 +748,7 @@ mod tests {
 	impl Model for TestModel {
 		type PrimaryKey = i64;
 		type Fields = TestModelFields;
+		type Objects = reinhardt_db::orm::Manager<Self>;
 		fn table_name() -> &'static str {
 			"test_models"
 		}

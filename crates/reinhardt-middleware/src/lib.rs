@@ -244,8 +244,7 @@ pub use redis_session::RedisSessionBackend;
 pub use remote_user::{PersistentRemoteUserMiddleware, REMOTE_USER_HEADER, RemoteUserMiddleware};
 pub use request_id::{REQUEST_ID_HEADER, RequestIdConfig, RequestIdMiddleware};
 #[cfg(feature = "security")]
-#[allow(deprecated)] // SecurityConfig is deprecated but still re-exported for compatibility
-pub use security_middleware::{SecurityConfig, SecurityMiddleware};
+pub use security_middleware::SecurityMiddleware;
 pub use session::{SessionConfig, SessionData, SessionMiddleware, SessionStore};
 pub use site::{SITE_ID_HEADER, Site, SiteConfig, SiteMiddleware, SiteRegistry};
 pub use timeout::{TimeoutConfig, TimeoutMiddleware};

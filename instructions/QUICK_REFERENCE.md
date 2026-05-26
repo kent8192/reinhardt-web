@@ -67,6 +67,9 @@
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
 - Apply `agent-suspect` label to all agent-detected bug Issues
+- Apply the `breaking-change` label to ALL breaking change PRs and Issues
+- Complete the "Breaking Change Assessment" section (Yes/No) on every PR
+- Fill the "Breaking Changes" section with migration guide when the assessment is "Yes"
 - Verify agent-detected bugs independently before removing `agent-suspect` label
 - Create `develop/0.x+1.0` branch when version group enters RC phase (DB-1)
 - Direct next-version features and breaking changes to `develop/0.x+1.0` during RC (DB-2)
@@ -121,6 +124,9 @@
 - Start commit description with uppercase letter
 - End commit description with a period
 - Omit `!` or `BREAKING CHANGE:` for API-breaking changes
+- Submit a breaking change PR or Issue without the `breaking-change` label
+- Skip the Breaking Change Assessment section in PRs
+- Check "Yes" in Breaking Change Assessment without filling the Breaking Changes section
 - Create issues without appropriate labels
 - Create public issues for security vulnerabilities
 - Create duplicate issues without searching first

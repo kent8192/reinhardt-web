@@ -52,9 +52,8 @@ async fn test_session_authentication_with_inmemory_backend() {
 		.await
 		.unwrap();
 	let user = result.unwrap();
-	// AuthIdentity only exposes id(), is_authenticated(), and is_admin().
-	// The id field contains the user UUID that was stored in the session.
 	assert_eq!(user.id(), user_id.to_string());
+	assert!(user.is_authenticated());
 	assert!(!user.is_admin());
 }
 

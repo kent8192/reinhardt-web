@@ -157,6 +157,7 @@ impl CachedResponse {
 /// impl Model for User {
 ///     type PrimaryKey = i64;
 ///     type Fields = UserFields;
+///     type Objects = reinhardt_db::orm::Manager<Self>;
 ///     fn table_name() -> &'static str { "users" }
 ///     fn primary_key(&self) -> Option<i64> { self.id }
 ///     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
