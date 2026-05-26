@@ -185,7 +185,7 @@ async fn test_composite_unique_constraint_validation(
 	// Verify composite uniqueness - count posts by user and title
 	let manager = TestPost::objects();
 	let count = manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"user_id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(user1_id as i64),
@@ -387,7 +387,7 @@ async fn test_cascade_delete_validation(
 
 	// Verify comments exist before deletion
 	let comment_count_before = comment_manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"post_id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(post_id as i64),
@@ -399,7 +399,7 @@ async fn test_cascade_delete_validation(
 
 	// Application-level validation: Check cascade impact before delete
 	let affected_comments = comment_manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"post_id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(post_id as i64),
@@ -419,7 +419,7 @@ async fn test_cascade_delete_validation(
 
 	// Verify post is deleted
 	let post_exists = post_manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(post_id as i64),
@@ -431,7 +431,7 @@ async fn test_cascade_delete_validation(
 
 	// Verify comments are cascade-deleted
 	let comment_count_after = comment_manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"post_id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(post_id as i64),
@@ -511,7 +511,7 @@ async fn test_validation_failure_transaction_rollback(
 
 	// Verify the valid product was NOT committed
 	let product_exists = manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"code".to_string(),
 			FilterOperator::Eq,
 			FilterValue::String("PROD001".to_string()),
@@ -605,7 +605,7 @@ async fn test_partial_update_validation(
 	// Apply partial update
 	let manager = TestProduct::objects();
 	let mut product = manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
@@ -620,7 +620,7 @@ async fn test_partial_update_validation(
 
 	// Verify updated field
 	let updated_product = manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
@@ -640,7 +640,7 @@ async fn test_partial_update_validation(
 	assert!(stock_validator.validate(&new_stock).is_ok());
 
 	let mut product2 = manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
@@ -655,7 +655,7 @@ async fn test_partial_update_validation(
 
 	// Verify updated field
 	let updated_product2 = manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
@@ -676,7 +676,7 @@ async fn test_partial_update_validation(
 	// Do not apply invalid update
 	// Database constraint also prevents it
 	let mut invalid_product = manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
@@ -691,7 +691,7 @@ async fn test_partial_update_validation(
 
 	// Verify product state remains unchanged after failed update
 	let final_product = manager
-		.filter_by(Filter::new(
+		.filter(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
