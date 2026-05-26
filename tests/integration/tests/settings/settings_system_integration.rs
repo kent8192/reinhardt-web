@@ -6,7 +6,7 @@
 //! was refactored to use composable fragments (`CoreSettings`, `CacheSettings`,
 //! etc.) instead of a monolithic type.
 
-use reinhardt_conf::settings::{DatabaseConfig, TemplateConfig};
+use reinhardt_conf::settings::TemplateConfig;
 use std::path::PathBuf;
 
 // ============================================================================
