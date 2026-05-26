@@ -21,6 +21,7 @@
 //! impl Model for User {
 //!     type PrimaryKey = i64;
 //!     type Fields = UserFields;
+//!     type Objects = reinhardt_db::orm::Manager<Self>;
 //!     fn table_name() -> &'static str { "users" }
 //!     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 //!     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -52,7 +53,7 @@
 
 use super::SerializerError;
 use reinhardt_db::backends::DatabaseConnection;
-use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, Model};
+use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue, Model};
 use std::marker::PhantomData;
 use thiserror::Error;
 
@@ -179,6 +180,7 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -226,6 +228,7 @@ impl<M: Model> UniqueValidator<M> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -263,6 +266,7 @@ impl<M: Model> UniqueValidator<M> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -364,6 +368,7 @@ impl<M: Model> UniqueValidator<M> {
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -410,6 +415,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -447,6 +453,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -559,6 +566,7 @@ mod tests {
 	impl Model for TestUser {
 		type PrimaryKey = i64;
 		type Fields = TestUserFields;
+		type Objects = reinhardt_db::orm::Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"test_users"

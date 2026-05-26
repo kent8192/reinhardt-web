@@ -30,6 +30,14 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// It provides compile-time type safety for field references in queries.
 	type Fields: FieldSelector;
 
+	/// The manager type returned by `objects()`.
+	///
+	/// Defaults to [`Manager<Self>`](super::Manager) when no custom manager is
+	/// configured. When `#[model(manager = MyManager)]` is specified, the macro
+	/// sets this to the custom manager type, so `objects()` returns the custom
+	/// manager directly.
+	type Objects: super::custom_manager::CustomManager<Model = Self> + Default;
+
 	/// Get the table name
 	fn table_name() -> &'static str;
 
@@ -135,7 +143,9 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 
 	/// Django-style objects manager accessor
 	///
-	/// Returns a new Manager instance for this model type.
+	/// Returns the configured manager for this model type. When a custom manager
+	/// is specified via `#[model(manager = MyManager)]`, this returns the custom
+	/// manager; otherwise it returns the default [`Manager<Self>`](super::Manager).
 	///
 	/// # Examples
 	///
@@ -152,6 +162,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// # impl Model for MyModel {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = MyModelFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "table" }
 	/// #     fn new_fields() -> Self::Fields { MyModelFields }
@@ -167,11 +178,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// # Ok(())
 	/// # }
 	/// ```
-	fn objects() -> super::Manager<Self>
+	fn objects() -> Self::Objects
 	where
 		Self: Sized,
 	{
-		super::Manager::new()
+		Self::Objects::default()
 	}
 
 	/// Save the model instance to the database with event dispatching
@@ -196,6 +207,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
@@ -323,6 +335,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }

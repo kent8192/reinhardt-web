@@ -1,9 +1,10 @@
-//! Compile-time tests for `#[model(manager = ...)]` (Issue #3980).
+//! Compile-time tests for `#[model(manager = ...)]` (Issue #3980, #3984).
 //!
 //! These tests use trybuild to verify both pass and fail behaviors of the
 //! `manager = <Path>` attribute argument added to `#[model(...)]`.
 //!
-//! Pass: a valid manager type wires up `Model::custom_manager()` correctly.
+//! Pass: a valid manager type wires up `Model::objects()` correctly via
+//! `type Objects`.
 //! Fail: invalid manager paths and type-mismatched managers are rejected at
 //! compile time, surfacing actionable error messages to the developer.
 

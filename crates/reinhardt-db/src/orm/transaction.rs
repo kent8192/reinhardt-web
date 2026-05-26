@@ -1330,6 +1330,7 @@ mod tests {
 	use crate::backends::error::Result;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 	use crate::orm::connection::{DatabaseBackend, DatabaseConnection};
+	use crate::orm::Manager;
 	use crate::prelude::Model;
 	use rstest::*;
 	use std::sync::Arc;
@@ -1639,6 +1640,7 @@ mod tests {
 	impl Model for TestItem {
 		type PrimaryKey = i64;
 		type Fields = TestItemFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			TEST_ITEM_TABLE.as_str()
